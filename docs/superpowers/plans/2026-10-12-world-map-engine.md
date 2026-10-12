@@ -844,3 +844,175 @@ Expected: the run for the pushed head finishes green.
 - [ ] **Step 8: Integrate**
 
 Fast-forward engine `main` to the branch head and push `main`. The tag is not part of this plan. Report the main commit to the controller so the owner can tag 20.33.0 from a KhaozEngine-rooted thread.
+
+---
+
+## Addendum: level of detail and bounded retention (final review I3, controller ruling R11)
+
+The spec promises that a much larger world (#456) stays cheap. The nine tasks above request and retain every full-resolution chunk when the whole world is fitted on screen. A 6.4 km square world at the defaults is 10,000 chunks and about 2.4 GiB of RGBA plus the same again in textures. Tasks 10 and 11 add a level-of-detail pyramid and bounded retention. They change two public contracts before 20.33.0 ships, so no consumer sees a break.
+
+Pyramid rule: a chunk at level `L` covers `ChunkMetres * 2^L` metres square, aligned on multiples of that size, and is rasterized at `ChunkPixels` pixels, so its raster scale is `EffectivePixelsPerMetre / 2^L`. Level 0 is today's chunk.
+
+### Task 10: Level-of-detail chunks, resolution-aware sampling and bounded chunk retention
+
+**Files:**
+- Modify: `KhaozEngine.WorldMap/WorldMapChunking.cs`, `IWorldMapSource.cs`, `WorldMapRasterizer.cs`, `Raster/WorldMapRasterReach.cs`, `Raster/FootprintPainter.cs`, `WorldMapFeatureCollector.cs`, `WorldMapChunkCache.cs`, `WorldMapStyle.cs`, `README.md`
+- Modify: `KhaozEngine.TileWorld.WorldMap/TileWorldMapSource.cs`, `TileWorldMapSurface.cs`, `README.md`
+- Modify: test sources `KhaozEngine.WorldMap.Tests/TestWorldMapSource.cs`, `KhaozEngine.WorldMap.Gui.Tests/FlatTestSource.cs` (new signature only)
+- Create: `KhaozEngine.WorldMap.Tests/LevelOfDetailTests.cs`, `KhaozEngine.WorldMap.Tests/ChunkRetentionTests.cs`, `KhaozEngine.TileWorld.WorldMap.Tests/TileWorldMapStrideTests.cs`
+
+**Interfaces:**
+- Consumes: the canonical chunk edges and `EffectivePixelsPerMetre` from the final fix wave, `WorldMapRasterReach`, the cache generation rules (Task 5).
+- Produces:
+
+```csharp
+public readonly record struct WorldMapChunkCoord(int X, int Y, int Level = 0); // Level >= 0
+public static class WorldMapChunking
+{
+    public static float LevelMetres(float chunkMetres, int level);                                      // chunkMetres * 2^level
+    public static WorldMapChunkCoord ChunkAt(Vector2 mapPosition, float chunkMetres, int level = 0);
+    public static MapRect ChunkRect(WorldMapChunkCoord chunk, float chunkMetres);                        // honours chunk.Level
+    public static IEnumerable<WorldMapChunkCoord> ChunksTouching(MapRect area, float chunkMetres, int level = 0);
+    public static int MaxLevel(MapRect bounds, float chunkMetres);  // smallest L >= 0 with LevelMetres(L) >= max(bounds.Width, bounds.Height), 0 for empty bounds
+}
+public interface IWorldMapSource
+{
+    // replaces SampleSurface(MapRect area)
+    WorldMapSurfaceGrid SampleSurface(MapRect area, float maxCellSize);
+    // the returned grid's CellSize is the coarsest multiple of SurfaceCellSize that is <= max(maxCellSize, SurfaceCellSize)
+}
+public static class WorldMapRasterizer
+{
+    public static WorldMapChunkImage Rasterize(IWorldMapSource source, WorldMapStyle style, WorldMapChunkCoord chunk); // level-aware
+}
+public sealed class WorldMapChunkCache : IDisposable
+{
+    public WorldMapChunkCache(IWorldMapSource source, WorldMapStyle style, int maxRetainedChunks = 256);
+    public int MaxRetainedChunks { get; }
+    public int RetainedCount { get; }
+    // other members unchanged
+}
+```
+
+Rules the tests pin:
+- The rasterizer works at `levelPpm = EffectivePixelsPerMetre / 2^Level` over `ChunkRect(chunk)` and requests `SampleSurface(area, maxCellSize: 2f / levelPpm)`. Its sampling and footprint reaches are computed at `levelPpm` and at the returned grid's cell size. `WorldMapRasterReach` gains level-aware overloads, and the level-0 values are unchanged.
+- A footprint whose larger extent (`2 * max(HalfExtents)`) times `levelPpm` is under 0.5 pixel is skipped at that level. Shadows of skipped buildings are skipped too.
+- Feature anchors are collected per chunk at any level with ownership `ChunkAt(anchor, chunkMetres, chunk.Level) == chunk`.
+- `Invalidate(area)` bumps generations level by level: for each level that has a retained or pending chunk, expand `area` by that level's reach and bump the touched chunks of that level.
+- Retention: the cache tracks a request sequence number per chunk (bumped by every `Request`). After a build publishes, while `RetainedCount > MaxRetainedChunks`, it evicts the built chunk with the oldest request sequence that is not pending and not building. An evicted chunk has no image (`TryGet` false, `IsCurrent` false) and its generation entry is dropped. Requesting it again rebuilds it. `maxRetainedChunks` below 1 throws `ArgumentOutOfRangeException`.
+- `TileWorldMapSource.SampleSurface(area, maxCellSize)` uses stride `n = max(1, floor(maxCellSize / TileSize))`. Grid cells are `n` tiles square, aligned to multiples of `n` tiles, and point-sample the tile at the block's centre (`blockStart + n / 2`) for colour, mean corner height and water surface. With `n = 1` the output equals today's output byte for byte.
+
+- [ ] **Step 1: Write the failing tests**
+
+`LevelOfDetailTests`:
+
+```csharp
+[Fact] public void LevelRect_DoublesPerLevel_AlignedToLevelSize()     // ChunkRect((1, -1, 2), 64) == new MapRect(256, -256, 256, 256)
+[Fact] public void ChunkAt_LevelAware_FloorsNegative()               // ChunkAt((-1, 300), 64, 2) == (-1, 1, 2)
+[Fact] public void MaxLevel_CoversLargestSide()                      // bounds 6400 x 3000 at 64 m: 7 (64 * 2^7 = 8192 >= 6400, 2^6 * 64 = 4096 < 6400)
+[Fact] public void Rasterize_Level_RequestsCoarserCells()            // TestWorldMapSource records maxCellSize: level 0 request 0.5, level 3 request 4.0 at default style
+[Fact] public void Rasterize_UniformWorld_EveryLevelIsUniform()      // flat #808080 world: level 0, 1 and 4 chunks are all exactly #808080
+[Fact] public void Rasterize_SubPixelFootprint_SkippedAtCoarseLevel() // 0.5 m rock: drawn at level 0, absent at level 4 (bytes equal the no-footprint raster)
+[Fact] public void Features_OwnedOncePerLevel()                      // marker at a level-1 chunk edge belongs to exactly one level-1 chunk and one level-0 chunk
+[Fact] public void Invalidate_BumpsTouchedChunksOnEveryRetainedLevel() // build (0,0,0) and (0,0,1), invalidate a 1 m rect inside both: both stale, (1,0,0) current
+```
+
+`ChunkRetentionTests`:
+
+```csharp
+[Fact] public void Retention_EvictsOldestRequested_BeyondCap()        // cap 4, request and build 6 chunks in order: the first two are evicted, RetainedCount == 4
+[Fact] public void Retention_NeverEvictsPendingOrBuilding()
+[Fact] public void Retention_EvictedChunkRebuildsOnRequest()
+[Fact] public void Retention_InvalidCap_Throws()
+[Fact] public void FitWholeLargeWorld_RetainsAtMostCap()              // 6400 m square source, request every level-MaxLevel chunk plus 50 level-0 chunks with cap 16: RetainedCount <= 16 after BuildNext drains
+```
+
+`TileWorldMapStrideTests`: `Stride1_EqualsNativeSampling` (byte-equal grids with maxCellSize 0.5 and 1), `Stride4_PointSamplesBlockCentre` (cell size 4, colour of the tile at block start + 2), `Stride_NegativeRegionsAlignToMultiples`.
+
+- [ ] **Step 2: Run them to verify they fail**
+
+Run each test project through `build-slot --label wm-t10 -- dotnet test <project> -c Release --filter "FullyQualifiedName~LevelOfDetailTests|FullyQualifiedName~ChunkRetentionTests|FullyQualifiedName~TileWorldMapStrideTests"`.
+Expected: compile failures on the new signatures.
+
+- [ ] **Step 3: Implement the level-aware chunking, sampling contract, rasterizer, collector, invalidation and retention, then update the adapter and the two test sources to the new `SampleSurface` signature**
+
+- [ ] **Step 4: Run all three package test projects**
+
+`KhaozEngine.WorldMap.Tests`, `KhaozEngine.TileWorld.WorldMap.Tests`, `KhaozEngine.WorldMap.Gui.Tests`, each through build-slot. Expected: PASS, golden unchanged.
+
+- [ ] **Step 5: README updates and guards**
+
+State the pyramid rule, the `SampleSurface` resolution contract and the retention cap with its memory bound (256 chunks of 256 by 256 RGBA is 64 MiB) in the two package READMEs and the spec's Rasterizer and chunk cache section. Run the dashes, prose and file-size guards.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git commit -m "feat(worldmap): level-of-detail chunks with bounded retention"
+```
+
+### Task 11: View level selection, coarser fallback and bounded textures
+
+**Files:**
+- Modify: `KhaozEngine.WorldMap.Gui/WorldMapViewCore.cs`, `WorldMapView.cs`, `ChunkTextureStore.cs`, `WorldMapDrawList.cs`, `README.md`
+- Create: `KhaozEngine.WorldMap.Gui.Tests/WorldMapViewLevelTests.cs`
+- Modify: `KhaozEngine.WorldMap.Gui.Tests/WorldMapViewNavigationTests.cs`, `WorldMapViewOverlayTests.cs` (final review M3 and M4)
+
+**Interfaces:**
+- Consumes: Task 10's level-aware chunking, `MaxLevel`, cache retention.
+- Produces:
+
+```csharp
+public sealed class WorldMapView
+{
+    public int MaxTextures { get; set; }   // 192, values below 1 throw ArgumentOutOfRangeException
+    public int CurrentLevel { get; }       // level chosen by the last Update
+    // other members unchanged
+}
+```
+
+Rules the tests pin:
+- Level choice: the largest `L` in `[0, MaxLevel(bounds)]` with `EffectivePixelsPerMetre / 2^L >= PixelsPerMetre` (current zoom), so the raster is never coarser than the screen. At or above full raster zoom, `L = 0`.
+- Requests go only to visible chunks of `CurrentLevel`, with priority by distance from the view centre.
+- Drawing: each visible chunk of `CurrentLevel` draws its texture when uploaded. Otherwise it draws the uploaded texture of the nearest coarser level whose chunk contains it, using the matching sub-rectangle UV, and otherwise a placeholder.
+- Uploads favour `CurrentLevel` and stay under `UploadBudgetPerFrame`.
+- Texture retention: after uploads, while the store holds more than `MaxTextures`, dispose the texture that was least recently drawn and was not drawn this frame. Disposal happens only in `Update` or `Dispose` on the frame thread.
+- Overlays take anchors from visible built chunks of `CurrentLevel` only.
+
+- [ ] **Step 1: Write the failing tests**
+
+`WorldMapViewLevelTests` (fake textures, viewport `new Rect(100, 50, 400, 300)`):
+
+```csharp
+[Fact] public void LevelChoice_FollowsZoom()                       // 256 x 192 m world: fit (1.5625 px/m) gives level 1, 4 px/m gives 0, 8 px/m gives 0
+[Fact] public void HugeWorldFit_RequestsAFewCoarseChunks()         // 6400 m square source at fit: CurrentLevel == MaxLevel or one below it, and the cache receives at most 16 requests
+[Fact] public void MissingChunk_DrawsCoarserSubRect()              // level-0 chunk missing, its level-1 parent uploaded: the draw item uses the parent texture with a UV rect half as wide and half as tall, at the quadrant matching the child
+[Fact] public void TextureCap_EvictsLeastRecentlyDrawn()           // MaxTextures 4, pan across 6 chunks: 4 retained, the two least recently drawn disposed exactly once
+[Fact] public void TextureCap_InvalidValue_Throws()
+```
+
+Final review M3 in `WorldMapViewNavigationTests`: `SmallWorld_FitCappedAtMax_CentredAndClipped` (32 by 16 m world: zoom == 8, world centred in the viewport, one requested chunk, UVs clipped to the world) and `EmptyWorld_NoRequestsNoThrow`.
+
+Final review M4 in `WorldMapViewOverlayTests`: `BorderAnchor_DrawnOnce_AndLeavesWithItsOwner` (icon exactly on a chunk edge is drawn once with both chunks visible, and disappears when a pan takes only its owner chunk out of view).
+
+- [ ] **Step 2: Run them to verify they fail**
+
+Run: `build-slot --label wm-t11 -- dotnet test KhaozEngine.WorldMap.Gui.Tests/KhaozEngine.WorldMap.Gui.Tests.csproj -c Release`
+Expected: compile failures on `MaxTextures` and `CurrentLevel`.
+
+- [ ] **Step 3: Implement level selection, coarser fallback in the draw list and texture retention**
+
+Keep the zero-allocation steady-state overlay test from Task 8 green. The level-selection and fallback paths must not allocate per frame either.
+
+- [ ] **Step 4: Run the Gui and core test projects**
+
+Expected: PASS.
+
+- [ ] **Step 5: README, USING section and guards**
+
+Document `CurrentLevel`, `MaxTextures` and the memory bound per view (192 textures of 256 by 256 RGBA is 48 MiB) in the Gui README and the `docs/USING-KHAOZENGINE.md` world map section, plus a 20.33.0 changelog line for level of detail. Run the dashes, prose and file-size guards.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git commit -m "feat(worldmap): pick map level by zoom with coarser fallback and bounded textures"
+```

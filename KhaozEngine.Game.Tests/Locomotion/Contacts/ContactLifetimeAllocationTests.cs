@@ -124,7 +124,7 @@ public sealed partial class ContactLifetimeAllocationTests(ITestOutputHelper out
         Assert.True(samples.Max(s => s.Counts.Find) > samples.Min(s => s.Counts.Find));
     }
 
-    static (long Movement, long Physics, long Pin) Inventory()
+    internal static (long Movement, long Physics, long Pin) Inventory()
     {
         using var world = new BepuPhysicsWorld(Vector3.Zero);
         using var view = world.CreateQueryViewExcludingStatics([]);

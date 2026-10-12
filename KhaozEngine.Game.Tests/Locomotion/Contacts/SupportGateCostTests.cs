@@ -108,12 +108,7 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
         Assert.Equal(0, find.Queries.Raycasts);
         output.WriteLine($"{name} Find geometry={find.GeometryPassed}, oracle={find.OracleOutcome}/{find.OracleHeight}, " +
             $"actual={find.Outcome}/{find.Height}, bytes={find.WarmBytes}, counts={find.Counts}");
-        if (!find.WarmAllocationFinding) Assert.Equal(0, find.WarmBytes);
-        else
-        {
-            Assert.True(find.WarmAllocationFinding);
-            Assert.False(SupportCostVerdict.Evaluate(find, find, row.Dense));
-        }
+        Assert.Equal(0, find.WarmBytes);
         Assert.Equal(4352, find.StackBytes);
         if (row.ExpectedRefusal)
         {
@@ -310,8 +305,9 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
             if (row.Name.StartsWith("stairs ", StringComparison.Ordinal))
                 samples.AddRange(sampler.Measure(row, "LegacyTreadDownPass"));
         }
+        string label = File.Exists(path) ? "sg9-cost" : "sg2-baseline";
         string command = "DOTNET_TieredCompilation=0 KHAOZ_SUPPORT_COST_ARTIFACT=" + path +
-            " build-slot --label sg2-baseline -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --filter \"FullyQualifiedName~SupportGateCostTests.OneShotCostArtifact\"";
+            " build-slot --label " + label + " -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --filter \"FullyQualifiedName~SupportGateCostTests.OneShotCostArtifact\"";
         SupportCostArtifact.Write(path, samples, BaseSha, sha, command);
         Assert.True(File.Exists(path));
         Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));

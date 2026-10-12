@@ -70,7 +70,10 @@ internal static partial class SupportCertification
                         (joins[i * stride + j / 64] & (1UL << (j % 64))) == 0) continue;
                     if (kind == CertifiedSupportKind.Steep && kinds[j] == CertifiedSupportKind.Walkable)
                     { suppressed = true; break; }
-                    if (kinds[j] == kind) minimum.Offer(j, planes[2 * j], planes[2 * j + 1]);
+                    // Equal certified plane bounds cannot lower the member's own cap.
+                    // Skipping their offer preserves the initial owner and every raw join.
+                    if (kinds[j] == kind && (planes[2 * j] != planes[2 * i] || planes[2 * j + 1] != planes[2 * i + 1]))
+                        minimum.Offer(j, planes[2 * j], planes[2 * j + 1]);
                 }
                 if (suppressed) continue;
                 double low = member.HasDiscMaximum ? Math.Min(minimum.Lower, member.DiscHeightLower) : minimum.Lower;

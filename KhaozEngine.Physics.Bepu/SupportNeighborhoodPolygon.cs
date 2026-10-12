@@ -26,6 +26,7 @@ internal sealed class SupportPolygon
     internal double[] Low { get; } = new double[3];
     internal double[] High { get; } = new double[3];
     internal bool IsResolved { get; private set; }
+    internal bool HasJoinIncidenceCertificate { get; private set; }
     internal bool HasSource { get; private set; }
     internal SupportPolygonSourceMap SourceMap { get; private set; }
     internal ReadOnlySpan<Vector3> SourceVertices => _sourceVertices.AsSpan(0, _count);
@@ -86,6 +87,7 @@ internal sealed class SupportPolygon
         }
         foreach (FeaturePoint edge in Edges) resolved &= edge.IsResolved;
         IsResolved = resolved;
+        HasJoinIncidenceCertificate = SupportJoinIncidence.Certify(this);
     }
 
     /// <summary>The signed height of <paramref name="point"/> above this polygon's plane, in metres.</summary>

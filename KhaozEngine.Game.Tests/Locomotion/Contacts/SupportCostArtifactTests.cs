@@ -11,6 +11,35 @@ namespace KhaozEngine.Tests.Locomotion.Contacts;
 [Collection("AllocSensitive")]
 public sealed class SupportCostArtifactTests
 {
+    [Theory]
+    [InlineData(0, true)]
+    [InlineData(1, false)]
+    public void ArtifactAppliesTheMeasuredExplicitLifetimeInventory(int extraBytes, bool expected)
+    {
+        var tokens = ContactLifetimeAllocationTests.Inventory();
+        string path = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".json");
+        try
+        {
+            SupportCostSample candidate = Sample() with
+            {
+                Operation = "ExplicitTick",
+                GeometryPassed = true,
+                Refusal = false,
+                Height = 0,
+                HeightError = 0,
+                AchievedMotion = Vector3.UnitX,
+                Substeps = 1,
+                WarmMicroseconds = 50,
+                WarmBytes = tokens.Movement + tokens.Physics + tokens.Pin + extraBytes
+            };
+            SupportCostSample legacy = candidate with { Operation = "LegacyTick", WarmMicroseconds = 20, WarmBytes = 64 };
+            SupportCostArtifact.Write(path, [candidate, legacy], "base", "candidate", "command");
+            JsonNode gate = JsonNode.Parse(File.ReadAllText(path))!["baseline"]!["Samples"]![0]!["GatePassed"]!;
+            Assert.Equal(expected, gate.GetValue<bool>());
+        }
+        finally { File.Delete(path); }
+    }
+
     [Fact]
     public void ArtifactRetainsBaselineWhenChangedSamplesAreFinalized()
     {
@@ -29,6 +58,13 @@ public sealed class SupportCostArtifactTests
             root = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
             Assert.Equal(baseline, root["baseline"]!.ToJsonString());
             Assert.Equal(0, root["changed"]!["ProcessExitStatus"]!.GetValue<int>());
+            JsonNode inventory = root["changed"]!["LifetimeInventory"]!;
+            Assert.NotNull(inventory);
+            long movement = inventory["MovementQueryLeaseAndReleaseBindingBytes"]!.GetValue<long>();
+            long physics = inventory["PhysicsReadLeaseBytes"]!.GetValue<long>();
+            long pin = inventory["ProducerPinBytes"]!.GetValue<long>();
+            Assert.True(movement > 0 && physics > 0 && pin > 0);
+            Assert.Equal(movement + physics + pin, inventory["AcquiredExplicitTickBytes"]!.GetValue<long>());
             Assert.Null(root["pendingFinalization"]);
             Assert.NotEqual(0, Finalize(path, 0));
             Assert.Throws<InvalidOperationException>(() => SupportCostArtifact.Write(path, [Sample()], "base", "third", "command"));

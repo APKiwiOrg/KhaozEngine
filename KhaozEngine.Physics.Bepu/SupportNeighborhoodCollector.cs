@@ -192,7 +192,6 @@ internal sealed class SupportNeighborhoodCollector
         if (_matrix.Length < count * stride) _matrix = new ulong[count * stride];
         Span<ulong> matrix = _matrix.AsSpan(0, count * stride);
         matrix.Clear();
-        double apart = 2 * _band + Apart;
         for (int first = 0; first < count; first++)
         {
             SupportPolygon? a = _members[first].Polygon;
@@ -201,7 +200,7 @@ internal sealed class SupportNeighborhoodCollector
             {
                 SupportPolygon? b = _members[second].Polygon;
                 SupportQueryDiagnostics.Record(SupportQueryCounter.JoinPairs);
-                if (b is null || Separated(a, b, apart))
+                if (b is null || SupportNeighborhoodJoins.Separated(a, b, _band))
                 {
                     SupportQueryDiagnostics.Record(SupportQueryCounter.JoinsPruned);
                     continue;
@@ -222,19 +221,4 @@ internal sealed class SupportNeighborhoodCollector
         return result;
     }
 
-    // Lossless pruning of the join pass. Joined returns Negative at its first test whenever the BoxGap lower bound
-    // of the two polygons' bounds exceeds the band, before any arithmetic that could refuse. When the raw gap on one
-    // axis exceeds twice the band plus 2^-400, that bound does: each of BoxGap's outward steps (the difference, its
-    // square, three sums and the square root) gives up at most one or two units in the last place, a relative loss
-    // far below one half, and the margin keeps every intermediate value normal. A pair is skipped only then.
-    // Certification never reads a pair whose member may face sideways or down, but those joins are part of the
-    // published matrix, so they are still decided.
-    static readonly double Apart = Math.ScaleB(1, -400);
-
-    static bool Separated(SupportPolygon a, SupportPolygon b, double apart)
-    {
-        for (int axis = 0; axis < 3; axis++)
-            if (b.Low[axis] - a.High[axis] > apart || a.Low[axis] - b.High[axis] > apart) return true;
-        return false;
-    }
 }

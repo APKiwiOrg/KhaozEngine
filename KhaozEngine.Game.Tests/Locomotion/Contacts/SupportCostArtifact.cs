@@ -52,7 +52,7 @@ internal sealed record SupportCostSample(string Operation, string Scene, bool Ge
 internal static class SupportCostVerdict
 {
     internal static bool Evaluate(in SupportCostSample candidate, in SupportCostSample legacy, bool dense,
-        double hostScale = 1)
+        double hostScale = 1, long explicitLifetimeBytes = 0)
     {
         if (!(hostScale > 0) || !double.IsFinite(hostScale)) throw new ArgumentOutOfRangeException(nameof(hostScale));
         if (!candidate.GeometryPassed || candidate.Refusal || !double.IsFinite(candidate.WarmMicroseconds) ||
@@ -61,16 +61,17 @@ internal static class SupportCostVerdict
             return candidate.WarmBytes == 0 && candidate.WarmMicroseconds <= (dense ? 500 : 50) * hostScale;
         if (candidate.Operation.StartsWith("GroundSubstep", StringComparison.Ordinal))
             return candidate.WarmBytes == 0 && candidate.WarmMicroseconds <= (dense ? 1000 : 200) * hostScale;
-        if (candidate.Operation == "DryTick")
+        if (candidate.Operation is "DryTick" or "ExplicitTick")
         {
+            long allocationLimit = candidate.Operation == "DryTick" ? 208 : explicitLifetimeBytes;
+            if (allocationLimit <= 0) return false;
             if (candidate.AchievedMotion.X == 0 && candidate.AchievedMotion.Z == 0 || candidate.Substeps > 3 || candidate.Counts.ModeSegments > 1 || !candidate.Comparable ||
-                candidate.WarmBytes > 208 || candidate.WarmMicroseconds > (dense ? 4000 : 1000) * hostScale)
+                candidate.WarmBytes > allocationLimit || candidate.WarmMicroseconds > (dense ? 4000 : 1000) * hostScale)
                 return false;
             return dense || legacy.GeometryPassed && double.IsFinite(legacy.WarmMicroseconds) &&
                 legacy.WarmMicroseconds >= 0 && candidate.WarmMicroseconds <= legacy.WarmMicroseconds +
                 Math.Max(hostScale * 100, 0.25 * legacy.WarmMicroseconds);
         }
-        // Explicit lifetime allocations are recorded until SG-22 names and proves their fixed tokens.
         return false;
     }
 }
@@ -98,6 +99,7 @@ internal static class SupportCostArtifact
         if (root["pendingFinalization"] is not null) throw new InvalidOperationException("The prior invocation has no process exit.");
         string section = root["baseline"] is null ? "baseline" : "changed";
         if (root[section] is not null) throw new InvalidOperationException("This cost section is already recorded.");
+        var lifetime = ContactLifetimeAllocationTests.Inventory();
         string runId = Guid.NewGuid().ToString("N");
         var compared = samples.Select(sample =>
         {
@@ -109,7 +111,8 @@ internal static class SupportCostArtifact
             {
                 CandidateLegacyRatio = sample.Operation is "Find" or "DryTick" or "ExplicitTick" && legacy.WarmMicroseconds > 0 ? sample.WarmMicroseconds / legacy.WarmMicroseconds : null,
                 WholeTickDeltaMicroseconds = sample.Operation is "DryTick" or "ExplicitTick" ? sample.WarmMicroseconds - legacy.WarmMicroseconds : null,
-                GatePassed = SupportCostVerdict.Evaluate(sample, legacy, sample.Dense),
+                GatePassed = SupportCostVerdict.Evaluate(sample, legacy, sample.Dense,
+                    explicitLifetimeBytes: lifetime.Movement + lifetime.Physics + lifetime.Pin),
             };
         }).ToArray();
         root[section] = JsonSerializer.SerializeToNode(new
@@ -135,6 +138,14 @@ internal static class SupportCostArtifact
             ExplicitScope = "Physics frame at the origin, bounds (-1500, -30, -30) to (1500, 30, 30), MaxRise 20 and MaxDrop 20. Controller inputs stay within the released 512 m local radius.",
             Counters = "IntervalFallbacks counts unresolved interval signs. ExactFallbacks counts dyadic predicate entries only. JoinPairs includes broadphase-pruned pairs. Proposals counts attempted sweeps even without a contact.",
             Stack = "4352 is the released FootSupport certificate span bound. It is not a measured total call stack or a new extremum-kernel allowance.",
+            LifetimeInventory = new
+            {
+                MovementQueryLeaseAndReleaseBindingBytes = lifetime.Movement,
+                PhysicsReadLeaseBytes = lifetime.Physics,
+                ProducerPinBytes = lifetime.Pin,
+                AcquiredExplicitTickBytes = lifetime.Movement + lifetime.Physics + lifetime.Pin,
+                Measurement = "Actual acquisition, producer pin and fresh movement-token constructors on this runtime, outside sample windows. Borrowed support remains zero allocation."
+            },
             Acquisition = "Lease rows isolate physics acquisition and disposal. Tick rows include all acquisition and disposal. Explicit rows use the real MovementEnvironmentContext with the test producer, whose witness and pin allocations remain visible.",
             Observers = "Opt-in counters and preallocated Find/substep callbacks are enabled inside samples. Oracle checks, callback installation, scratch inspection, delegate construction and serialization are outside sample windows.",
             Geometry = "Every captured Find is checked against the independent installed-geometry oracle after both sample windows. Correct None and capacity refusals cannot pass a support cost gate. Tick geometry requires matching support reads and a finite advancing state.",

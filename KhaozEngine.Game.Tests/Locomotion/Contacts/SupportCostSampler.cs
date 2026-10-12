@@ -69,13 +69,14 @@ internal sealed class SupportCostSampler
         stepCount = 0;
         execution.View.Reset();
         SupportQueryDiagnostics.Reset();
-        using var allocationRegion = SupportAllocationRegion.Start(IsolateAllocations);
+        using var coldAllocationRegion = SupportAllocationRegion.Start(IsolateAllocations);
         long before = GC.GetAllocatedBytesForCurrentThread();
         long start = timing ? Stopwatch.GetTimestamp() : 0;
         SupportCostOutput cold;
         using (ContactAllocationDiagnostics.Begin(ContactAllocationPhase.Route)) cold = execution.Invoke();
         long coldTicks = timing ? Stopwatch.GetTimestamp() - start : 0;
         long coldBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        coldAllocationRegion.Dispose();
         SupportQueryCounts coldCounts = SupportQueryDiagnostics.Snapshot();
         QueryCounts coldQueries = execution.View.Counts;
         int coldStepCount = stepCount;
@@ -89,13 +90,16 @@ internal sealed class SupportCostSampler
         execution.View.Reset();
         SupportQueryDiagnostics.Reset();
         BeforeWarm?.Invoke();
+        // Reflection over retained scratch allocates outside both sample windows and
+        // outside their no-GC regions. Each region encloses only one gameplay operation.
+        using var warmAllocationRegion = SupportAllocationRegion.Start(IsolateAllocations);
         before = GC.GetAllocatedBytesForCurrentThread();
         start = timing ? Stopwatch.GetTimestamp() : 0;
         SupportCostOutput warm;
         using (ContactAllocationDiagnostics.Begin(ContactAllocationPhase.Route)) warm = execution.Invoke();
         long warmTicks = timing ? Stopwatch.GetTimestamp() - start : 0;
         long warmBytes = GC.GetAllocatedBytesForCurrentThread() - before;
-        allocationRegion.Dispose();
+        warmAllocationRegion.Dispose();
         SupportQueryCounts counts = SupportQueryDiagnostics.Snapshot();
         QueryCounts queries = execution.View.Counts;
         int warmStepCount = stepCount;

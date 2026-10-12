@@ -19,7 +19,8 @@ internal static class SupportCostScratch
         var seen = new HashSet<object>(ReferenceEqualityComparer.Instance);
         object? foot = typeof(FootSupport).GetField("t_scratch", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null);
         object? backend = typeof(BepuPhysicsWorld).GetField("_neighborhoodScratch", Fields)!.GetValue(world);
-        return Visit(foot, seen) + Visit(backend, seen);
+        object? footprint = typeof(BepuPhysicsWorld).GetField("_footprintScratch", Fields)!.GetValue(world);
+        return Visit(foot, seen) + Visit(backend, seen) + Visit(footprint, seen);
     }
 
     static long Visit(object? value, HashSet<object> seen)

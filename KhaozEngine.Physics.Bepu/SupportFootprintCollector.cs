@@ -107,44 +107,8 @@ internal sealed partial class SupportFootprintCollector
                 SupportNeighborhoodPolyhedra.Polygons(owner, leaf, _pool, _polygons, footprint: true);
         }
         if (captured != CapsuleFeatureStatus.Complete) return captured;
-        foreach (SupportPolygon polygon in _polygons)
-        {
-            GeometrySign admitted = SupportFootprintPolygon.Measure(polygon, _request, out SupportFootprintMember value);
-            if (admitted == GeometrySign.Unresolved) return CapsuleFeatureStatus.Unsupported;
-            if (admitted == GeometrySign.Negative) continue;
-            byte mask = 0;
-            for (int proposal = 0; proposal < 2; proposal++)
-            {
-                if (_verdicts[proposal].Status != SupportProposalStatus.Contact) continue;
-                GeometrySign member = ContactMember(polygon, proposal);
-                if (member == GeometrySign.Unresolved) return CapsuleFeatureStatus.Unsupported;
-                if (member != GeometrySign.Positive) continue;
-                mask |= (byte)(1 << proposal);
-                if (!_belowBandPass && !ContactHeight(polygon, proposal, sourceHeight: true)) return CapsuleFeatureStatus.Unsupported;
-            }
-            CapsuleFeatureStatus retained = Retain(new(polygon, default, 0, value with { ProposalMask = mask }));
-            if (retained != CapsuleFeatureStatus.Complete) return retained;
-        }
-        foreach (SupportCurvedLeaf leaf in _curved)
-            for (int part = 0; part < leaf.Parts; part++)
-            {
-                GeometrySign admitted = _curvedKernel.Measure(owner, leaf, part, _request, out SupportFootprintMember value);
-                if (admitted == GeometrySign.Unresolved) return CapsuleFeatureStatus.Unsupported;
-                if (admitted == GeometrySign.Negative) continue;
-                byte mask = 0;
-                for (int proposal = 0; proposal < 2; proposal++)
-                {
-                    if (_verdicts[proposal].Status != SupportProposalStatus.Contact) continue;
-                    GeometrySign context = CurvedContactMember(owner, leaf, part, proposal);
-                    if (context == GeometrySign.Unresolved) return CapsuleFeatureStatus.Unsupported;
-                    if (context != GeometrySign.Positive) continue;
-                    mask |= (byte)(1 << proposal);
-                    if (!_belowBandPass && !CurvedContactHeight(leaf, part, proposal)) return CapsuleFeatureStatus.Unsupported;
-                }
-                CapsuleFeatureStatus retained = Retain(new(null, leaf, part, value with { ProposalMask = mask }));
-                if (retained != CapsuleFeatureStatus.Complete) return retained;
-            }
-        return CapsuleFeatureStatus.Complete;
+        CapsuleFeatureStatus polygons = CollectPolygons();
+        return polygons != CapsuleFeatureStatus.Complete ? polygons : CollectCurves(owner);
     }
 
     GeometrySign ContactMember(SupportPolygon polygon, int index)
@@ -237,7 +201,7 @@ internal sealed partial class SupportFootprintCollector
             {
                 SupportQueryDiagnostics.Record(SupportQueryCounter.JoinPairs);
                 if (_members[first].Polygon is not { } a || _members[second].Polygon is not { } b) continue;
-                if (SupportGeometry.BoxGap(a.Low, a.High, b.Low, b.High) > _request.ContactBand)
+                if (SupportNeighborhoodJoins.Separated(a, b, _request.ContactBand))
                 {
                     SupportQueryDiagnostics.Record(SupportQueryCounter.JoinsPruned);
                     continue;

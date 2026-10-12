@@ -1,4 +1,6 @@
 using System;
+using System.Numerics;
+using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Internal;
 using static KhaozEngine.Render3D.Internal.FragmentPassResources;
@@ -9,6 +11,9 @@ namespace KhaozEngine.Render3D.Rendering;
 /// Standalone consumers can own an instance instead. Construction always initializes a disabled UBO.</summary>
 internal sealed class AtmosphereBindings : IDisposable
 {
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct FogBlendUniforms { public Matrix4x4 ViewProj; public Vector4 FogBlend; }
+
     internal IGpuBuffer Uniforms { get; }
     internal IGpuTexture SkyView { get; }
     internal IGpuSampler SkySampler { get; }

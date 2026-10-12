@@ -50,7 +50,11 @@ public sealed class AtmosphereGoldenScene : IDisposable
     public byte[] CaptureWater(Action<Scene3D> configure)
         => Capture(configure, water: true);
 
-    byte[] Capture(Action<Scene3D> configure, bool water)
+    /// <summary>Capture only the submitted effect controls, without the default floor or box.</summary>
+    public byte[] CaptureEffects(Action<Scene3D> configure, Action<Scene3D> draw)
+        => Capture(configure, water: false, draw);
+
+    byte[] Capture(Action<Scene3D> configure, bool water, Action<Scene3D>? draw = null)
     {
         ArgumentNullException.ThrowIfNull(configure);
         var gd = Device();
@@ -61,7 +65,8 @@ public sealed class AtmosphereGoldenScene : IDisposable
         for (int i = 0; i < Frames; i++)
         {
             scene.Begin();
-            if (water)
+            if (draw is not null) draw(scene);
+            else if (water)
             {
                 scene.Draw(_floor, Matrix4x4.CreateScale(7.5f) * Matrix4x4.CreateTranslation(0, -6, -20),
                     new Color(.1f, .12f, .14f));

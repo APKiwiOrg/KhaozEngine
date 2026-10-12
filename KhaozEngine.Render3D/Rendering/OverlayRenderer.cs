@@ -7,7 +7,8 @@ namespace KhaozEngine.Render3D.Rendering
 {
     /// <summary>
     /// Shared GPU plumbing for the immediate-mode debug/overlay renderers (lines, filled triangles, billboards).
-    /// Owns a 64-byte mat4 ViewProj UBO, a single vertex-stage uniform resource set, the shader set, and one
+    /// Owns a 64-byte mat4 ViewProj UBO for debug lines/fills, or two 80-byte ViewProj/FogBlend buffers
+    /// for fogged billboards, plus their resource sets, the shader set, and one
     /// growable vertex buffer; creates one pipeline per supplied blend attachment (index 0 is the primary one).
     /// <see cref="Draw"/> uploads a vertex span and the view-projection and draws on top of an already-rendered
     /// target with depth disabled. The concrete overlay renderers (<see cref="LineRenderer"/>,
@@ -19,9 +20,10 @@ namespace KhaozEngine.Render3D.Rendering
     internal sealed class OverlayRenderer<TVertex> : IDisposable where TVertex : unmanaged
     {
         readonly IGpuDevice _gd;
-        readonly IGpuBuffer _ubo;              // one mat4 ViewProj (64 bytes)
+        readonly AtmosphereBindings? _atmosphere;
+        readonly IGpuBuffer[] _ubos;
+        readonly IGpuResourceSet[] _sets;
         readonly IGpuResourceLayout _layout;
-        readonly IGpuResourceSet _set;
         readonly IGpuShaderSet _shaders;
         readonly IGpuPipeline[] _pipelines;    // one per blend mode; [0] is the default
         readonly uint _stride;                 // vertex size in bytes
@@ -34,6 +36,11 @@ namespace KhaozEngine.Render3D.Rendering
         public OverlayRenderer(IGpuDevice gd, GpuOutputDescription targetOutput, string vertSpirv, string fragSpirv,
             GpuVertexLayoutDescription vertexLayout, uint stride, GpuPrimitiveTopology topology,
             params GpuBlendAttachment[] blends)
+            : this(gd, targetOutput, vertSpirv, fragSpirv, vertexLayout, stride, topology, null, blends) { }
+
+        public OverlayRenderer(IGpuDevice gd, GpuOutputDescription targetOutput, string vertSpirv, string fragSpirv,
+            GpuVertexLayoutDescription vertexLayout, uint stride, GpuPrimitiveTopology topology,
+            AtmosphereBindings? atmosphere = null, params GpuBlendAttachment[] blends)
         {
             if (blends is null || blends.Length == 0)
                 throw new ArgumentException("At least one blend attachment is required.", nameof(blends));
@@ -42,11 +49,26 @@ namespace KhaozEngine.Render3D.Rendering
             _stride = stride;
             var factory = gd.Factory;
 
-            _ubo = factory.CreateBuffer(new GpuBufferDescription(64, GpuBufferUsage.UniformBuffer)); // mat4 ViewProj
-
+            _atmosphere = atmosphere;
+            var uniform = new GpuResourceLayoutElement("U", GpuResourceKind.UniformBuffer,
+                atmosphere is null ? GpuShaderStages.Vertex : GpuShaderStages.Vertex | GpuShaderStages.Fragment);
             _layout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(
-                new GpuResourceLayoutElement("U", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex)));
-            _set = factory.CreateResourceSet(new GpuResourceSetDescription(_layout, _ubo));
+                atmosphere is null ? new[] { uniform } : AtmosphereBindings.AppendLayout(uniform)));
+            // Fogged billboards use the existing alpha/additive pipeline indices, with immutable blend lanes.
+            _ubos = new IGpuBuffer[atmosphere is null ? 1 : 2];
+            _sets = new IGpuResourceSet[_ubos.Length];
+            for (int i = 0; i < _ubos.Length; i++)
+            {
+                _ubos[i] = factory.CreateBuffer(new GpuBufferDescription(atmosphere is null ? 64u : 80u,
+                    GpuBufferUsage.UniformBuffer));
+                if (atmosphere is not null)
+                {
+                    var uniforms = new AtmosphereBindings.FogBlendUniforms { ViewProj = Matrix4x4.Identity, FogBlend = new Vector4(i, 0, 0, 0) };
+                    gd.UpdateBuffer(_ubos[i], 0, in uniforms);
+                }
+                _sets[i] = factory.CreateResourceSet(new GpuResourceSetDescription(_layout,
+                    atmosphere is null ? new IGpuBindableResource[] { _ubos[i] } : atmosphere.AppendResources(_ubos[i])));
+            }
 
             _shaders = factory.CreateShadersFromSpirv(vertSpirv, fragSpirv);
 
@@ -80,11 +102,11 @@ namespace KhaozEngine.Render3D.Rendering
             cl.UpdateBuffer(_vb!, 0, verts);
             // Clip-Y derived from the live backend (identity on Metal/D3D, flips on Vulkan) - see GpuClip.
             var clipVp = GpuClip.Correct(viewProj, _gd.Capabilities);
-            cl.UpdateBuffer(_ubo, 0, in clipVp);
+            foreach (var ubo in _ubos) cl.UpdateBuffer(ubo, 0, in clipVp);
 
             cl.SetFramebuffer(target);
             cl.SetPipeline(_pipelines[pipelineIndex]);
-            cl.SetGraphicsResourceSet(0, _set);
+            cl.SetGraphicsResourceSet(0, _sets[_atmosphere is null ? 0 : pipelineIndex]);
             cl.SetVertexBuffer(0, _vb!);
             cl.Draw((uint)verts.Length, 1, 0, 0);
         }
@@ -101,10 +123,10 @@ namespace KhaozEngine.Render3D.Rendering
         public void Dispose()
         {
             foreach (var p in _pipelines) p.Dispose();
-            _set.Dispose();
+            foreach (var set in _sets) set.Dispose();
             _layout.Dispose();
             _shaders.Dispose();
-            _ubo.Dispose();
+            foreach (var ubo in _ubos) ubo.Dispose();
             _vb?.Dispose();
         }
     }

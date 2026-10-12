@@ -105,6 +105,8 @@ namespace KhaozEngine.Render3D.Rendering
         // corner projection / rasterization so a boundary pixel the fullscreen path would have painted is never clipped.
         const float NdcMargin = 0.02f;
 
+        readonly AtmosphereBindings _atmosphere;
+        readonly bool _ownsAtmosphere;
         readonly IGpuDevice _gd;
         readonly IGpuShaderSet _shaders;
         readonly IGpuResourceLayout _layout;
@@ -132,20 +134,22 @@ namespace KhaozEngine.Render3D.Rendering
         /// use it to isolate the fill-reduction win. Off by default, so production always bounds the fill.</summary>
         internal bool ForceFullscreenQuads;
 
-        public GroundDecalRenderer(IGpuDevice gd, GpuOutputDescription colorOutput, GpuRetireQueue retired)
+        public GroundDecalRenderer(IGpuDevice gd, GpuOutputDescription colorOutput, GpuRetireQueue retired, AtmosphereBindings? atmosphere = null)
         {
             _gd = gd;
+            _ownsAtmosphere = atmosphere is null;
+            _atmosphere = atmosphere ?? new AtmosphereBindings(gd);
             _retired = retired;
             var f = gd.Factory;
             _shaders = f.CreateShadersFromSpirv(ShaderSources.DecalVert, ShaderSources.DecalFrag);
             // Still ONE uniform buffer (the Metal invariant when this was written, retired by #604), and the extra TEXTURE is fine. NormalTex is appended last so
             // the existing bindings do not renumber. Every MAIN-pass decal reads it to reject a near-vertical face
             // as ground because the Y band alone cannot tell the top of a cliff from a terrain dip.
-            _layout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
+            _layout = f.CreateResourceLayout(new GpuResourceLayoutDescription(AtmosphereBindings.AppendLayout(
                 new GpuResourceLayoutElement("DepthTex", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("Samp", GpuResourceKind.Sampler, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("Frame", GpuResourceKind.UniformBuffer, GpuShaderStages.Fragment, dynamic: true),
-                new GpuResourceLayoutElement("NormalTex", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment)));
+                new GpuResourceLayoutElement("NormalTex", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment))));
             _frameUbo = f.CreateBuffer(new GpuBufferDescription(FrameUboBytes, GpuBufferUsage.UniformBuffer));
             BuildPipelines(f, colorOutput);
         }
@@ -219,8 +223,8 @@ namespace KhaozEngine.Render3D.Rendering
             // does not churn on instance-buffer regrowth the way the old dynamic-offset set did).
             if (_set != null && ReferenceEquals(_bound, res) && res.Generation == _boundGen) return;
             _set?.Dispose();
-            _set = _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(_layout, res.DepthColorTex,
-                _gd.PointSampler, new GpuBufferRange(_frameUbo, 0, FramePayloadBytes), res.NormalTex));
+            _set = _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(_layout, _atmosphere.AppendResources(res.DepthColorTex,
+                _gd.PointSampler, new GpuBufferRange(_frameUbo, 0, FramePayloadBytes), res.NormalTex)));
             _bound = res; _boundGen = res.Generation;
         }
 
@@ -261,7 +265,7 @@ namespace KhaozEngine.Render3D.Rendering
             Accent = d.Pattern == DecalFillPattern.MoltenCracks ? (Vector4)d.AccentColor : Vector4.Zero,
             Misc = new Vector4(
                 d.Pattern == DecalFillPattern.MoltenCracks ? d.PatternParam : 0f,
-                Math.Clamp(d.EdgeErosion, 0f, 1f), 0f, 0f),
+                Math.Clamp(d.EdgeErosion, 0f, 1f), d.Blend == DecalBlend.Additive ? 1f : 0f, 0f),
         };
 
         /// <summary>The clamped void dim, or 0 when the decal did not opt in (so an authored-but-unused VoidDim can
@@ -500,6 +504,7 @@ namespace KhaozEngine.Render3D.Rendering
             _layout.Dispose(); _shaders.Dispose();
             _frameUbo.Dispose();
             _instances?.Dispose();
+            if (_ownsAtmosphere) _atmosphere.Dispose();
         }
     }
 }

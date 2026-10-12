@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using KhaozEngine.Render3D;
+using KhaozEngine.Render3D.Internal;
 using Xunit;
 
 namespace KhaozEngine.Tests.Render3D;
@@ -8,6 +9,49 @@ namespace KhaozEngine.Tests.Render3D;
 public sealed class AtmosphereFogTests
 {
     static readonly AtmosphereFrame Noon = new(Vector3.UnitY, -Vector3.UnitY, 0, Vector3.One);
+
+    [Theory]
+    [InlineData(0f)]
+    [InlineData(.5f)]
+    [InlineData(1f)]
+    public void BlendModes_DoNotInjectAdditiveHaze(float additivity)
+    {
+        var t = new Vector3(.25f);
+        var haze = new Vector3(.8f, .6f, .4f);
+        Assert.Equal(new Vector3(.25f), AtmosphereFog.Compose(Vector3.One, t, haze, true));
+        var expected = new Vector3(.125f) + new Vector3(.6f, .45f, .3f) * (1 - additivity);
+        Close(expected, AtmosphereFog.ComposePremultiplied(new Vector3(.5f), 1, t, haze, additivity));
+        Close(expected * .5f, AtmosphereFog.ComposePremultiplied(new Vector3(.25f), .5f, t, haze, additivity));
+        Assert.Equal(Vector3.Zero, AtmosphereFog.ComposePremultiplied(Vector3.Zero, 0, t, haze, additivity));
+        Assert.Equal(new Vector3(.5f), AtmosphereFog.ComposePremultiplied(new Vector3(.5f), 1,
+            Vector3.One, haze, additivity));
+        Assert.Equal(haze * (1 - additivity), AtmosphereFog.ComposePremultiplied(Vector3.One, 1,
+            Vector3.Zero, haze, additivity));
+        Assert.Equal(Vector3.Zero, AtmosphereFog.ComposePremultiplied(Vector3.Zero, 1, t, haze, 1));
+    }
+
+    [Theory]
+    [InlineData(TonemapOperator.AcesFilmic, 0f)]
+    [InlineData(TonemapOperator.AcesFilmic, .75f)]
+    [InlineData(TonemapOperator.Reinhard, 1f)]
+    [InlineData(TonemapOperator.Clamp, .5f)]
+    public void DisplayBillboard_UsesExistingTonemap(TonemapOperator op, float chroma)
+    {
+        var haze = new Vector3(.8f, .6f, .4f);
+        var hdr = new HdrSettings { Enabled = true, Exposure = 1.7f, Operator = op, ChromaPreservation = chroma };
+        var mapped = TonemapMath.Map(haze.X, haze.Y, haze.Z, hdr.Exposure, (int)op, chroma);
+        var displayHaze = new Vector3(mapped.R, mapped.G, mapped.B);
+        Close(displayHaze, AtmosphereFog.ComposeDisplay(Vector3.Zero, Vector3.Zero, haze, hdr));
+        var rgb = new Vector3(.2f, .3f, .4f);
+        Close(rgb * .25f + displayHaze * .75f,
+            AtmosphereFog.ComposeDisplay(rgb, new Vector3(.25f), haze, hdr));
+        Assert.Equal(rgb, AtmosphereFog.ComposeDisplay(rgb, Vector3.One, haze, hdr));
+        Assert.Equal(rgb * .25f, AtmosphereFog.ComposeDisplay(rgb, new Vector3(.25f), haze, hdr, true));
+        Assert.Equal(Vector3.Zero, AtmosphereFog.ComposeDisplay(Vector3.Zero, new Vector3(.25f), haze, hdr, true));
+        hdr.Enabled = false;
+        Assert.Equal(new Vector3(1, .6f, 0), AtmosphereFog.ComposeDisplay(Vector3.Zero, Vector3.Zero,
+            new Vector3(2, .6f, -1), hdr));
+    }
 
     [Fact]
     public void Fog_HasExactSegmentLimits()

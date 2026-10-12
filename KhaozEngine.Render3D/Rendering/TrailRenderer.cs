@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Internal;
 
@@ -31,13 +30,14 @@ namespace KhaozEngine.Render3D.Rendering
             public const uint SizeInBytes = 40;
         }
 
-        [StructLayout(LayoutKind.Sequential)]
-        struct FrameUniforms { public Matrix4x4 ViewProj; }
-
+        readonly AtmosphereBindings _atmosphere;
+        readonly bool _ownsAtmosphere;
         readonly IGpuDevice _gd;
-        readonly IGpuBuffer _ubo;              // mat4 ViewProj (64 bytes)
+        readonly IGpuBuffer _ubo;              // ViewProj + immutable alpha FogBlend (80 bytes)
+        readonly IGpuBuffer _additiveUbo;
         readonly IGpuResourceLayout _layout;   // UBO (vertex)
         readonly IGpuResourceSet _set;
+        readonly IGpuResourceSet _additiveSet;
         readonly IGpuShaderSet _shaders;
         IGpuShaderSet? _motionShaders;   // TrailMotionFrag, built only for a temporal model target
         IGpuPipeline _additive;                // rebuilt by SetOutputs when the MRT sample count (MSAA) changes
@@ -45,15 +45,23 @@ namespace KhaozEngine.Render3D.Rendering
         IGpuBuffer? _vb;
         uint _vbCapacity;                      // capacity in vertices
 
-        public TrailRenderer(IGpuDevice gd, GpuOutputDescription modelOutputs)
+        public TrailRenderer(IGpuDevice gd, GpuOutputDescription modelOutputs, AtmosphereBindings? atmosphere = null)
         {
             _gd = gd;
+            _ownsAtmosphere = atmosphere is null;
+            _atmosphere = atmosphere ?? new AtmosphereBindings(gd);
             var factory = gd.Factory;
 
-            _ubo = factory.CreateBuffer(new GpuBufferDescription(64, GpuBufferUsage.UniformBuffer)); // mat4
-            _layout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(
-                new GpuResourceLayoutElement("U", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex)));
-            _set = factory.CreateResourceSet(new GpuResourceSetDescription(_layout, _ubo));
+            _ubo = factory.CreateBuffer(new GpuBufferDescription(80, GpuBufferUsage.UniformBuffer));
+            _additiveUbo = factory.CreateBuffer(new GpuBufferDescription(80, GpuBufferUsage.UniformBuffer));
+            var uniforms = new AtmosphereBindings.FogBlendUniforms { ViewProj = Matrix4x4.Identity, FogBlend = Vector4.Zero };
+            gd.UpdateBuffer(_ubo, 0, in uniforms);
+            uniforms.FogBlend = Vector4.UnitX;
+            gd.UpdateBuffer(_additiveUbo, 0, in uniforms);
+            _layout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(AtmosphereBindings.AppendLayout(
+                new GpuResourceLayoutElement("U", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex | GpuShaderStages.Fragment))));
+            _set = factory.CreateResourceSet(new GpuResourceSetDescription(_layout, _atmosphere.AppendResources(_ubo)));
+            _additiveSet = factory.CreateResourceSet(new GpuResourceSetDescription(_layout, _atmosphere.AppendResources(_additiveUbo)));
             _shaders = factory.CreateShadersFromSpirv(ShaderSources.TrailVert, ShaderSources.TrailFrag);
 
             _additive = BuildPipeline(factory, modelOutputs, GpuBlendAttachment.Additive);
@@ -110,8 +118,9 @@ namespace KhaozEngine.Render3D.Rendering
         /// <summary>Upload this frame's view-projection (clip-Y corrected) once before the draws.</summary>
         public void SetFrameUniforms(IGpuCommandList cl, Matrix4x4 viewProj)
         {
-            var u = new FrameUniforms { ViewProj = GpuClip.Correct(viewProj, _gd.Capabilities) };
-            cl.UpdateBuffer(_ubo, 0, in u);
+            var matrix = GpuClip.Correct(viewProj, _gd.Capabilities);
+            cl.UpdateBuffer(_ubo, 0, in matrix);
+            cl.UpdateBuffer(_additiveUbo, 0, in matrix);
         }
 
         /// <summary>Draw <paramref name="verts"/> (all trails of one blend) into <paramref name="target"/> (the model
@@ -126,7 +135,7 @@ namespace KhaozEngine.Render3D.Rendering
 
             cl.SetFramebuffer(target);
             cl.SetPipeline(blend == TrailBlend.Alpha ? _alpha : _additive);
-            cl.SetGraphicsResourceSet(0, _set);
+            cl.SetGraphicsResourceSet(0, blend == TrailBlend.Alpha ? _set : _additiveSet);
             cl.SetVertexBuffer(0, _vb!);
             cl.Draw((uint)verts.Length, 1, 0, 0);
         }
@@ -146,9 +155,12 @@ namespace KhaozEngine.Render3D.Rendering
             _shaders.Dispose();
             _motionShaders?.Dispose();
             _set.Dispose();
+            _additiveSet.Dispose();
             _layout.Dispose();
             _ubo.Dispose();
+            _additiveUbo.Dispose();
             _vb?.Dispose();
+            if (_ownsAtmosphere) _atmosphere.Dispose();
         }
     }
 }

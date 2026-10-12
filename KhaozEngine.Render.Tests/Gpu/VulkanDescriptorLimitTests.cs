@@ -69,13 +69,13 @@ namespace KhaozEngine.Tests.Gpu
                 ["SpriteBatch.vp"] = L(U("Vp", V, dynamic: true)),
 
                 // Render3D/Rendering/BeamRenderer.cs:54
-                ["Beam"] = L(U("U", VF)),
+                ["Beam"] = L(AtmosphereBindings.AppendLayout(U("U", VF))),
                 // Render3D/Rendering/DepthLineRenderer.cs:36
                 ["DepthLine"] = L(U("U", V)),
                 // Render3D/Rendering/DistortionRenderer.cs:84
                 ["Distortion"] = L(U("Frame", VF), T("DepthTex"), S("Samp")),
                 // Render3D/Rendering/GroundDecalRenderer.cs:126
-                ["GroundDecal"] = L(T("DepthTex"), S("Samp"), U("Frame", F, dynamic: true), T("NormalTex")),
+                ["GroundDecal"] = L(AtmosphereBindings.AppendLayout(T("DepthTex"), S("Samp"), U("Frame", F, dynamic: true), T("NormalTex"))),
 
                 // Render3D/Rendering/ModelRenderer.cs:225, :270 and :273
                 ["Model"] = L(AtmosphereBindings.AppendLayout(U("U", VF), Ro("PointLights", F), Ro("PointLightClusters", F), T("Albedo"),
@@ -123,11 +123,12 @@ namespace KhaozEngine.Tests.Gpu
                 ["OverlayMesh"] = L(U("Draw", V, dynamic: true)),
                 // Render3D/Rendering/SilhouetteRenderer.cs:50-54, both stages read one dynamic-offset window.
                 ["Silhouette"] = L(U("Draw", VF, dynamic: true)),
-                // Render3D/Rendering/OverlayRenderer.cs:47, shared by Billboard, Fill and Line
+                // OverlayRenderer retains the debug layout and appends atmosphere for billboard pipelines only.
                 ["Overlay"] = L(U("U", V)),
+                ["Billboard"] = L(AtmosphereBindings.AppendLayout(U("U", VF))),
                 // Render3D/Rendering/ParticleRenderer.cs:93
-                ["Particle"] = L(U("Frame", VF), T("DepthTex"), S("Samp"), T("MotionTex"), T("AtlasTex"),
-                    S("AtlasSamp")),
+                ["Particle"] = L(AtmosphereBindings.AppendLayout(U("Frame", VF), T("DepthTex"), S("Samp"), T("MotionTex"), T("AtlasTex"),
+                    S("AtlasSamp"))),
 
                 // Render3D/Rendering/TargetOutlineRenderer.cs and TargetOutlineSkinningStore.cs.
                 ["TargetOutline.draw"] = L(U("Draw", VF, dynamic: true)),
@@ -191,8 +192,8 @@ namespace KhaozEngine.Tests.Gpu
                 ["Starfield"] = L(U("Starfield", F)),
 
                 // Render3D/Rendering/TexturedBillboardRenderer.cs:38 and TrailRenderer.cs:53
-                ["TexturedBillboard"] = L(U("U", V), T("Tex"), S("Samp")),
-                ["Trail"] = L(U("U", V)),
+                ["TexturedBillboard"] = L(AtmosphereBindings.AppendLayout(U("U", VF, dynamic: true), T("Tex"), S("Samp"))),
+                ["Trail"] = L(AtmosphereBindings.AppendLayout(U("U", VF))),
 
                 // Render3D/Rendering/TransitionRenderer.cs:66 and :68
                 ["Transition.solid"] = L(U("Fill", F)),
@@ -257,6 +258,7 @@ namespace KhaozEngine.Tests.Gpu
             ("OceanFftProducer col", ["OceanFft.col"]),
             ("OverlayMeshRenderer", ["OverlayMesh"]),
             ("OverlayRenderer", ["Overlay"]),
+            ("BillboardRenderer", ["Billboard"]),
             ("SilhouetteRenderer", ["Silhouette"]),
             ("ParticleRenderer", ["Particle"]),
             ("TargetOutlineRenderer rigid full", ["TargetOutline.draw", "TargetOutline.material"]),
@@ -314,8 +316,8 @@ namespace KhaozEngine.Tests.Gpu
         {
             // The atmosphere producers add three dense layouts and pipeline rows.
             // Both counts are stated so an emptied table cannot pass by agreeing with itself.
-            Assert.Equal(60, ShippedLayouts.Count);
-            Assert.Equal(64, ShippedPipelines.Count);
+            Assert.Equal(61, ShippedLayouts.Count);
+            Assert.Equal(65, ShippedPipelines.Count);
 
             foreach ((string pipeline, string[] slots) in ShippedPipelines)
             {

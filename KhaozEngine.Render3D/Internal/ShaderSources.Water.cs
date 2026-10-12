@@ -209,7 +209,7 @@ void main() {
         /// <see cref="SkyMath.ShadeDirection"/> (the reflected sky) exactly.
         /// </summary>
         public const string WaterFrag = @"#version 450
-" + AtmosphereBindingsAt7Glsl + AtmosphereTransportGlsl + AtmosphereSkyConsumersGlsl
+" + AtmosphereBindingsAt7Glsl + AtmosphereFogGlsl
     + WaterShoreBindingsGlsl + WaterFftBindingsGlsl + @"
 layout(set=0, binding=4) uniform texture2D DepthTex;   // .r = resolved scene linear depth (single-channel R32F)
 layout(set=0, binding=5) uniform sampler Samp;
@@ -676,6 +676,7 @@ void main() {
     rgb = mix(rgb, FoamColor.rgb, foam);
     alpha = mix(alpha, max(alpha, FoamColor.a * opacity * shoreFade), foam);
     if (alpha <= 0.001) discard;
+    rgb = atmosphereFog(rgb, vWorldPos, false);
     oColor = vec4(rgb, alpha);
 }";
     }

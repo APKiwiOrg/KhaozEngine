@@ -404,25 +404,25 @@ namespace KhaozEngine.Render3D
             _post.BindTargets(_res);
             _lines = new LineRenderer(gd, targetOutput);
             _fills = new FillRenderer(gd, targetOutput);
-            _billboards = new BillboardRenderer(gd, targetOutput);
+            _billboards = new BillboardRenderer(gd, targetOutput, _atmosphere.Bindings);
             _transitions = new TransitionRenderer(gd, targetOutput);
             _transitions.BindTargets(_res);
             // Textured billboards draw INTO the model MRT (depth-interleaved with meshes), so they target the model
             // framebuffer's output description, not the final target like the overlay renderers above.
-            _texBillboards = new TexturedBillboardRenderer(gd, _res.ModelFB.Outputs);
+            _texBillboards = new TexturedBillboardRenderer(gd, _res.ModelFB.Outputs, _atmosphere.Bindings);
             // Beams draw into the same model MRT as the textured billboards (depth-interleaved), so they target the
             // model framebuffer's output description.
-            _beams = new BeamRenderer(gd, _res.ModelFB.Outputs);
+            _beams = new BeamRenderer(gd, _res.ModelFB.Outputs, _atmosphere.Bindings);
             // Trails draw into the same model MRT as the beams (depth-interleaved), so they target the model
             // framebuffer's output description too.
-            _trails = new TrailRenderer(gd, _res.ModelFB.Outputs);
+            _trails = new TrailRenderer(gd, _res.ModelFB.Outputs, _atmosphere.Bindings);
             // Ground decals render into the lit color attachment + read-only scene depth (ColorDepthFB) before the
             // post chain, so they pass that framebuffer's output description (color format + depth format).
-            _decalRenderer = new Rendering.GroundDecalRenderer(gd, _res.ColorDepthFB.Outputs, _retired);
+            _decalRenderer = new Rendering.GroundDecalRenderer(gd, _res.ColorDepthFB.Outputs, _retired, _atmosphere.Bindings);
             // Modern particle sprites render into the same ColorDepthFB (lit colour + read-only scene depth)
             // after the water pass, sampling the resolved scene depth for the soft fade. Default empty (no
             // DrawParticle call queued == the pass never runs, existing scenes byte-stable).
-            _particleRenderer = new Rendering.ParticleRenderer(gd, _res.ColorDepthFB.Outputs, _retired);
+            _particleRenderer = new Rendering.ParticleRenderer(gd, _res.ColorDepthFB.Outputs, _retired, _atmosphere.Bindings);
             // Screen-space distortion writes into its own lazily allocated half/quarter-res offset field (a fixed
             // R16G16Float output, never multisampled, so it needs no SetOutputs), re-sampled by the post apply pass.
             // Default empty (no DrawDistortion call queued == nothing allocated, no apply pass, existing scenes byte-stable).

@@ -45,6 +45,16 @@ public sealed class AtmosphereRendererTests
     [InlineData("Splat", 3)]
     [InlineData("TileGround", 3)]
     [InlineData("Sky", 1)]
+    [InlineData("Water", 7)]
+    [InlineData("Decal", 4)]
+    [InlineData("Particle", 6)]
+    [InlineData("Billboard", 1)]
+    [InlineData("TexturedBillboard", 3)]
+    [InlineData("TexturedBillboardMotion", 3)]
+    [InlineData("Trail", 1)]
+    [InlineData("TrailMotion", 1)]
+    [InlineData("Beam", 1)]
+    [InlineData("BeamMotion", 1)]
     public void ConsumerReflection_PinsSharedSlots(string program, int prefix)
     {
         var (vertex, fragment) = program switch
@@ -57,6 +67,16 @@ public sealed class AtmosphereRendererTests
             "Splat" => (ShaderSources.SplatVert, ShaderSources.SplatFrag),
             "TileGround" => (ShaderSources.TileGroundVert, ShaderSources.TileGroundFrag),
             "Sky" => (ShaderSources.SkyVert, ShaderSources.SkyFrag),
+            "Water" => (ShaderSources.WaterVert, ShaderSources.WaterFrag),
+            "Decal" => (ShaderSources.DecalVert, ShaderSources.DecalFrag),
+            "Particle" => (ShaderSources.ParticleVert, ShaderSources.ParticleFrag),
+            "Billboard" => (ShaderSources.BillboardVert, ShaderSources.BillboardFrag),
+            "TexturedBillboard" => (ShaderSources.BillboardVert, ShaderSources.TexturedBillboardFrag),
+            "TexturedBillboardMotion" => (ShaderSources.BillboardVert, ShaderSources.TexturedBillboardMotionFrag),
+            "Trail" => (ShaderSources.TrailVert, ShaderSources.TrailFrag),
+            "TrailMotion" => (ShaderSources.TrailVert, ShaderSources.TrailMotionFrag),
+            "Beam" => (ShaderSources.BeamVert, ShaderSources.BeamFrag),
+            "BeamMotion" => (ShaderSources.BeamVert, ShaderSources.BeamMotionFrag),
             _ => throw new ArgumentOutOfRangeException(nameof(program)),
         };
         var vertexBytes = SpirvFrontEnd.ToSpirv(vertex, GpuShaderStages.Vertex, program);
@@ -89,7 +109,77 @@ public sealed class AtmosphereRendererTests
             < body.IndexOf("atmosphereTransmittance(fragmentRelative)", StringComparison.Ordinal));
         Assert.Contains("if (all(equal(transmission, vec3(1.0)))) return colour;", body);
         Assert.True(body.IndexOf("if (additive) return colour * transmission;", StringComparison.Ordinal)
-            < body.IndexOf("atmosphereSkyValue(", StringComparison.Ordinal));
+            < body.IndexOf("atmosphereFogColour(", StringComparison.Ordinal));
+    }
+
+    internal static void VerifyFogBlendLayout()
+    {
+        Assert.Equal(80, Marshal.SizeOf<AtmosphereBindings.FogBlendUniforms>());
+        Assert.Equal(64, (int)Marshal.OffsetOf<AtmosphereBindings.FogBlendUniforms>("FogBlend"));
+        Assert.Equal(80u, TexturedBillboardRenderer.FramePayloadBytes);
+        Assert.True(TexturedBillboardRenderer.FrameSlotBytes >= TexturedBillboardRenderer.FramePayloadBytes);
+        Assert.Equal(0u, TexturedBillboardRenderer.FrameSlotBytes % 256);
+        foreach (var source in new[] { ShaderSources.BillboardVert, ShaderSources.BillboardFrag,
+            ShaderSources.TexturedBillboardFrag, ShaderSources.TrailVert, ShaderSources.TrailFrag })
+            Assert.Contains("uniform U { mat4 ViewProj; vec4 FogBlend; };", source);
+        Assert.Contains("uniform U { mat4 ViewProj; };", ShaderSources.LineVert);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void EffectBuffers_PreserveBlendSlotsAndAtmosphereOwnership(bool borrowed)
+    {
+        using var device = new FakeGpuDevice();
+        var factory = (FakeGpuResourceFactory)device.Factory;
+        using var sceneBindings = new AtmosphereBindings(device);
+        var bindings = borrowed ? sceneBindings : null;
+        var output = new GpuOutputDescription(null, GpuPixelFormat.R8G8B8A8UNorm);
+        using (var billboards = new BillboardRenderer(device, output, bindings))
+        using (var trails = new TrailRenderer(device, ModelTargets.Base, bindings))
+        using (var beams = new BeamRenderer(device, ModelTargets.Base, bindings))
+        using (var textured = new TexturedBillboardRenderer(device, ModelTargets.Base, bindings))
+        {
+            using var texture = device.Factory.CreateTexture(GpuTextureDescription.Texture2D(1, 1,
+                GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled));
+            using var textureSet = textured.CreateTextureSet(texture);
+            Assert.Equal(5, factory.ResourceSets.Count(set => set.Resources.Length == 4));
+            Assert.Equal(6, Assert.IsType<FakeResourceSet>(textureSet).Resources.Length);
+            var range = Assert.IsType<GpuBufferRange>(Assert.IsType<FakeResourceSet>(textureSet).Resources[0]);
+            Assert.Equal(2 * TexturedBillboardRenderer.FrameSlotBytes, range.Buffer.SizeInBytes);
+            Assert.Equal(TexturedBillboardRenderer.FrameSlotBytes, range.Size);
+            var effectSets = factory.ResourceSets.ToArray();
+            Assert.All(effectSets.Where(set => set.Resources.Length == 4), set =>
+                Assert.Equal(80u, Assert.IsAssignableFrom<IGpuBuffer>(set.Resources[0]).SizeInBytes));
+            if (borrowed) Assert.All(effectSets, set => Assert.Same(sceneBindings.Uniforms, set.Resources[^3]));
+        }
+        Assert.All(factory.ResourceSets, set =>
+        {
+            Assert.True(set.Disposed);
+            Assert.Equal(!borrowed, Assert.IsType<FakeBuffer>(set.Resources[^3]).Disposed);
+            Assert.Equal(!borrowed, Assert.IsType<FakeTexture>(set.Resources[^2]).Disposed);
+        });
+    }
+
+    [Theory]
+    [InlineData(DecalBlend.Alpha, 0f)]
+    [InlineData(DecalBlend.Additive, 1f)]
+    public void DecalInstances_PreserveCoverageAndCarryBlendMode(DecalBlend blend, float flag)
+    {
+        var decal = new GroundDecal
+        {
+            Blend = blend,
+            FillColor = new(.2f, .3f, .4f, .5f),
+            OutlineColor = new(.8f, .7f, .6f, .25f),
+            VoidFallback = true
+        };
+        var receiver = GroundDecalRenderer.PackInstance(decal, Vector4.One);
+        var fallback = GroundDecalRenderer.PackVoidInstance(decal, Vector4.One);
+        Assert.Equal(flag, receiver.Misc.Z);
+        Assert.Equal(flag, fallback.Misc.Z);
+        Assert.Equal(.5f, receiver.Fill.W);
+        Assert.Equal(.25f, receiver.Outline.W);
+        Assert.Equal(receiver.Fill, fallback.Fill);
     }
 
     [Fact]

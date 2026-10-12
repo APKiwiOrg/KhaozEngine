@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using KhaozEngine.Render3D.Internal;
 
 namespace KhaozEngine.Render3D;
 
@@ -64,6 +65,30 @@ public static class AtmosphereFog
     /// <summary>Blends surface colour toward fog colour. Additive effects only lose transmitted energy.</summary>
     public static Vector3 Compose(Vector3 colour, Vector3 transmittance, Vector3 haze, bool additive = false)
         => additive ? colour * transmittance : colour * transmittance + haze * (Vector3.One - transmittance);
+
+    /// <summary>Fogs premultiplied RGB without changing coverage. Additivity removes only the haze term.</summary>
+    public static Vector3 ComposePremultiplied(Vector3 rgb, float coverage, Vector3 transmittance,
+        Vector3 haze, float additivity)
+        => rgb * transmittance + coverage * (1 - additivity) * haze * (Vector3.One - transmittance);
+
+    /// <summary>Fogs display-space RGB toward the tonemapped haze, leaving the input colour unmapped.
+    /// With HDR disabled the haze clamps to the display range. Additive effects only attenuate.</summary>
+    public static Vector3 ComposeDisplay(Vector3 rgb, Vector3 transmittance, Vector3 haze, HdrSettings hdr,
+        bool additive = false)
+    {
+        ArgumentNullException.ThrowIfNull(hdr);
+        if (additive) return rgb * transmittance;
+        if (transmittance == Vector3.One) return rgb;
+        Vector3 displayHaze;
+        if (hdr.Enabled)
+        {
+            var mapped = TonemapMath.Map(haze.X, haze.Y, haze.Z, MathF.Max(hdr.Exposure, 0),
+                (int)hdr.Operator, Math.Clamp(hdr.ChromaPreservation, 0, 1));
+            displayHaze = new Vector3(mapped.R, mapped.G, mapped.B);
+        }
+        else displayHaze = Vector3.Clamp(haze, Vector3.Zero, Vector3.One);
+        return Compose(rgb, transmittance, displayHaze);
+    }
 
     /// <summary>Shades a camera-relative segment with absolute heights recovered from renderOrigin.Y.
     /// Displacement remains relative. Sky colour uses the unscaled physical camera altitude and view

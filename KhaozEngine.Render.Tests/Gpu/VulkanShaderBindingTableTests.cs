@@ -100,7 +100,7 @@ namespace KhaozEngine.Tests.Gpu
                 // The Line pair has three call sites and two of them go through OverlayRenderer, whose layout is
                 // the same single uniform block. Its primary one is named here, as in the catalog.
                 ["Line"] = "DepthLineRenderer",
-                ["Billboard"] = "OverlayRenderer",
+                ["Billboard"] = "BillboardRenderer",
                 ["TexturedBillboard"] = "TexturedBillboardRenderer",
                 ["Particle"] = "ParticleRenderer",
                 ["Trail"] = "TrailRenderer",

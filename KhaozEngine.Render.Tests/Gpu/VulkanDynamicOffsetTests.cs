@@ -55,7 +55,7 @@ namespace KhaozEngine.Tests.Gpu
 
             // Includes the three atmosphere producers, target-outline layouts, point-skinned caster header
             // and both split-resolve layouts.
-            Assert.Equal(60, shapes.Count);
+            Assert.Equal(61, shapes.Count);
 
             for (int segment = 0; segment < harness.Rings.FramesInFlight; segment++)
             {
@@ -340,7 +340,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             using var harness = new VulkanBindHarness(framesInFlight: 3);
             VulkanResourceSet named = harness.WindowedSet(slotBytes: 256, slots: 4);
-            VulkanResourceSet unnamed = harness.Set("Beam");
+            VulkanResourceSet unnamed = harness.Set("DepthLine");
             VulkanResourceSet textureOnly = harness.Set("SpriteBatch.texture");
             VulkanBoundPipeline pipeline = harness.PipelineFor(named, unnamed, textureOnly);
 
@@ -470,10 +470,10 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal(2, binds.Count);
 
-            // Sky carries two uniform buffers, so the first run has three offsets and the second has two.
-            // The second must not inherit the first run's entries and carry five.
-            Assert.Equal(3, binds[0].DynamicOffsets.Length);
-            Assert.Equal(2, binds[1].DynamicOffsets.Length);
+            // Sky and Beam each carry two uniform buffers. The first run has four offsets, the second three.
+            // The second must not inherit the first run's entries.
+            Assert.Equal(4, binds[0].DynamicOffsets.Length);
+            Assert.Equal(3, binds[1].DynamicOffsets.Length);
         }
 
         /// <summary>

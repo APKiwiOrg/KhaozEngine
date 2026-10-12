@@ -27,30 +27,35 @@ void main() {
     oColor = vColor;
 }";
 
-        // ---- Camera-facing billboard overlay. Standalone mat4 ViewProj UBO (64 bytes), its own layout/buffer.
+        // ---- Camera-facing billboard overlay. Standalone ViewProj + FogBlend UBO (80 bytes), its own layout/buffer.
         //      Soft disc: alpha falls to 0 toward the corners so the quad reads as a round, feathered sprite.
         //      Depth disabled + alpha-or-additive blend = overlay; drawn after the line pass. ----
         public const string BillboardVert = @"#version 450
-layout(set=0, binding=0) uniform U { mat4 ViewProj; };
+layout(set=0, binding=0) uniform U { mat4 ViewProj; vec4 FogBlend; };
 layout(location=0) in vec3 Position;
 layout(location=1) in vec2 Uv;
 layout(location=2) in vec4 Color;
 layout(location=0) out vec2 vUv;
 layout(location=1) out vec4 vColor;
+layout(location=2) out vec3 vWorld;
 void main() {
     gl_Position = ViewProj * vec4(Position, 1.0);
     vUv = Uv;
     vColor = Color;
+    vWorld = Position;
 }";
 
         public const string BillboardFrag = @"#version 450
+layout(set=0, binding=0) uniform U { mat4 ViewProj; vec4 FogBlend; };
+" + AtmosphereBindingsAt1Glsl + AtmosphereFogGlsl + TonemapCommonGlsl + AtmosphereDisplayFogGlsl + @"
 layout(location=0) in vec2 vUv;
 layout(location=1) in vec4 vColor;
+layout(location=2) in vec3 vWorld;
 layout(location=0) out vec4 oColor;
 void main() {
     float d = length(vUv * 2.0 - 1.0);
     float a = smoothstep(1.0, 0.55, d);
-    oColor = vec4(vColor.rgb, vColor.a * a);
+    oColor = vec4(atmosphereFogDisplay(vColor.rgb, vWorld, FogBlend.x > 0.5), vColor.a * a);
 }";
 
         // ---- Textured, depth-interleaved billboard. Unlike the soft-disc overlay above (which draws AFTER the
@@ -60,16 +65,19 @@ void main() {
         //      and writes all 3 MRT targets so the SPIR-V output count matches the framebuffer: only colour matters
         //      (the normal/depth attachments use a PreserveDestination blend, so what it writes there is discarded). ----
         public const string TexturedBillboardFrag = @"#version 450
+layout(set=0, binding=0) uniform U { mat4 ViewProj; vec4 FogBlend; };
+" + AtmosphereBindingsAt3Glsl + AtmosphereFogGlsl + @"
 layout(set=0, binding=1) uniform texture2D Tex;
 layout(set=0, binding=2) uniform sampler Samp;
 layout(location=0) in vec2 vUv;
 layout(location=1) in vec4 vColor;
+layout(location=2) in vec3 vWorld;
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oNormal;
 layout(location=2) out vec4 oDepth;
 void main() {
     vec4 t = texture(sampler2D(Tex, Samp), vUv);
-    oColor = vec4(t.rgb * vColor.rgb, t.a * vColor.a);
+    oColor = vec4(atmosphereFog(t.rgb * vColor.rgb, vWorld, FogBlend.x > 0.5), t.a * vColor.a);
     oNormal = vec4(0.0);   // discarded (PreserveDestination blend on attachment 1)
     oDepth  = vec4(0.0);   // discarded (PreserveDestination blend on attachment 2)
 }";
@@ -156,6 +164,7 @@ void main() {
 }";
 
         public const string ParticleFrag = @"#version 450
+" + AtmosphereBindingsAt6Glsl + AtmosphereFogGlsl + @"
 layout(set=0, binding=0) uniform Frame {
     mat4 ViewProj;
     mat4 InvViewProj;
@@ -347,6 +356,7 @@ void main() {
         a = clamp(vColor.a * mask, 0.0, 1.0) * fade;
         rgb = vColor.rgb * a;
     }
+    rgb = atmosphereFogPremultiplied(rgb, a, vWorld, vExtra.y);
     oColor = vec4(rgb, a * (1.0 - vExtra.y));
 }";
 
@@ -517,6 +527,7 @@ layout(location=1) out vec4 vCoreColor;
 layout(location=2) out vec4 vGlowColor;
 layout(location=3) out vec4 vShape;
 layout(location=4) out vec4 vAnim;
+layout(location=5) out vec3 vWorld;
 void main() {
     gl_Position = ViewProj * vec4(Position, 1.0);
     vUv = Uv;
@@ -524,15 +535,18 @@ void main() {
     vGlowColor = GlowColor;
     vShape = Shape;
     vAnim = Anim;
+    vWorld = Position;
 }";
 
         public const string BeamFrag = @"#version 450
+" + AtmosphereBindingsAt1Glsl + AtmosphereFogGlsl + @"
 layout(set=0, binding=0) uniform U { mat4 ViewProj; vec4 Time; };
 layout(location=0) in vec2 vUv;
 layout(location=1) in vec4 vCoreColor;
 layout(location=2) in vec4 vGlowColor;
 layout(location=3) in vec4 vShape;   // x=coreFrac, y=glowSoftness, z=taper
 layout(location=4) in vec4 vAnim;    // x=pulseSpeed, y=pulseAmount, z=scrollSpeed
+layout(location=5) in vec3 vWorld;
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oNormal;
 layout(location=2) out vec4 oDepth;
@@ -553,6 +567,8 @@ void main() {
     float master = max(taperFade * pulse, 0.0);
     vec3 rgb = vCoreColor.rgb * vCoreColor.a * core * flow
              + vGlowColor.rgb * vGlowColor.a * glow;
+    // Time.w is fixed at one by BeamRenderer. A runtime flag keeps the shared sky resources reflected.
+    rgb = atmosphereFog(rgb, vWorld, Time.w > 0.5);
     oColor  = vec4(rgb, master);   // Additive (src.a / one): out.rgb = rgb*master + dst.rgb
     oNormal = vec4(0.0);           // discarded (PreserveDestination on attachment 1)
     oDepth  = vec4(0.0);           // discarded (PreserveDestination on attachment 2)
@@ -564,21 +580,26 @@ void main() {
         //      feeds both blend pipelines: the output vec4(rgb, a) is what Additive (src.a/1) and AlphaBlend
         //      (src.a/1-src.a) both consume. Writes all 3 MRT targets; attachments 1 & 2 preserve destination. ----
         public const string TrailVert = @"#version 450
-layout(set=0, binding=0) uniform U { mat4 ViewProj; };
+layout(set=0, binding=0) uniform U { mat4 ViewProj; vec4 FogBlend; };
 layout(location=0) in vec3 Position;
 layout(location=1) in vec3 Uv;      // x=across, y=along, z=softEdge
 layout(location=2) in vec4 Color;   // rgb tint, a = style.alpha * sample.alpha
 layout(location=0) out vec3 vUv;
 layout(location=1) out vec4 vColor;
+layout(location=2) out vec3 vWorld;
 void main() {
     gl_Position = ViewProj * vec4(Position, 1.0);
     vUv = Uv;
     vColor = Color;
+    vWorld = Position;
 }";
 
         public const string TrailFrag = @"#version 450
+layout(set=0, binding=0) uniform U { mat4 ViewProj; vec4 FogBlend; };
+" + AtmosphereBindingsAt1Glsl + AtmosphereFogGlsl + @"
 layout(location=0) in vec3 vUv;     // x=across, y=along, z=softEdge
 layout(location=1) in vec4 vColor;
+layout(location=2) in vec3 vWorld;
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oNormal;
 layout(location=2) out vec4 oDepth;
@@ -587,7 +608,7 @@ void main() {
     float soft = clamp(vUv.z, 0.0, 1.0);
     float edge = 1.0 - smoothstep(1.0 - soft, 1.0, d); // feather the across-width edge
     float a = vColor.a * edge;
-    oColor  = vec4(vColor.rgb, a);   // Additive: rgb*a + dst; AlphaBlend: rgb*a + dst*(1-a)
+    oColor  = vec4(atmosphereFog(vColor.rgb, vWorld, FogBlend.x > 0.5), a);   // Additive: rgb*a + dst; AlphaBlend: rgb*a + dst*(1-a)
     oNormal = vec4(0.0);             // discarded (PreserveDestination on attachment 1)
     oDepth  = vec4(0.0);             // discarded (PreserveDestination on attachment 2)
 }";

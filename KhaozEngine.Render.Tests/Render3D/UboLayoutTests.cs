@@ -621,6 +621,10 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Contains("vOverlaySlot > 0.5 ? clamp(1.0 - wsum, 0.0, 1.0) : 0.0", ShaderSources.TileGroundFrag);
         }
 
+        [Fact]
+        public void FogBlendBlocks_AppendOneVec4WithoutChangingMatrixPrefix()
+            => AtmosphereRendererTests.VerifyFogBlendLayout();
+
         // ---- Sky background pass UBO (SkyRenderer) ----
 
         [Fact]

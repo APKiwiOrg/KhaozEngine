@@ -70,18 +70,45 @@ vec3 atmosphereFogSkyDirection(vec3 view, float cameraHeightKm) {
     float horizontal = sqrt(max(0.0, 1.0 - horizonY * horizonY));
     return vec3(azimuth.x * horizontal, horizonY, azimuth.y * horizontal);
 }
+// Mirrors AtmosphereFog.Shade's physical sky lookup.
+vec3 atmosphereFogColour(vec3 fragmentRelative) {
+    float distanceWorld;
+    vec3 view = atmosphereSegmentView(fragmentRelative, distanceWorld);
+    float cameraHeightKm = max((Atmo.Camera.y + Atmo.Origin.y) / Atmo.Planet.z, 0.0);
+    vec3 skyDirection = atmosphereFogSkyDirection(view, cameraHeightKm);
+    return atmosphereSkyValue(skyDirection);
+}
 // Mirrors AtmosphereFog.Shade and AtmosphereFog.Compose. SkyValue already applies tint exactly once.
 vec3 atmosphereFog(vec3 colour, vec3 fragmentRelative, bool additive) {
     if (Atmo.Tint.w < 0.5) return colour;
     vec3 transmission = atmosphereTransmittance(fragmentRelative);
     if (additive) return colour * transmission;
     if (all(equal(transmission, vec3(1.0)))) return colour;
-    float distanceWorld;
-    vec3 view = atmosphereSegmentView(fragmentRelative, distanceWorld);
-    float cameraHeightKm = max((Atmo.Camera.y + Atmo.Origin.y) / Atmo.Planet.z, 0.0);
-    vec3 skyDirection = atmosphereFogSkyDirection(view, cameraHeightKm);
-    vec3 haze = atmosphereSkyValue(skyDirection);
+    vec3 haze = atmosphereFogColour(fragmentRelative);
     return colour * transmission + haze * (vec3(1.0) - transmission);
+}
+// Mirrors AtmosphereFog.ComposePremultiplied. Coverage remains in the caller's alpha lane.
+vec3 atmosphereFogPremultiplied(vec3 rgb, float coverage, vec3 fragmentRelative, float additivity) {
+    if (Atmo.Tint.w < 0.5) return rgb;
+    vec3 transmission = atmosphereTransmittance(fragmentRelative);
+    if (all(equal(transmission, vec3(1.0)))) return rgb;
+    if (coverage == 0.0 || additivity == 1.0) return rgb * transmission;
+    vec3 haze = atmosphereFogColour(fragmentRelative);
+    return rgb * transmission + coverage * (1.0 - additivity) * haze * (vec3(1.0) - transmission);
+}
+";
+
+    // Only post-tonemap overlays include this chunk, after TonemapCommonGlsl.
+    internal const string AtmosphereDisplayFogGlsl = @"
+// Mirrors AtmosphereFog.ComposeDisplay. Only haze is mapped into display space.
+vec3 atmosphereFogDisplay(vec3 rgb, vec3 fragmentRelative, bool additive) {
+    if (Atmo.Tint.w < 0.5) return rgb;
+    vec3 transmission = atmosphereTransmittance(fragmentRelative);
+    if (additive) return rgb * transmission;
+    if (all(equal(transmission, vec3(1.0)))) return rgb;
+    vec3 haze = atmosphereFogColour(fragmentRelative);
+    vec3 displayHaze = Atmo.Tone.x > 0.5 ? tonemapColour(haze, Atmo.Tone.yzw) : clamp(haze, 0.0, 1.0);
+    return rgb * transmission + displayHaze * (vec3(1.0) - transmission);
 }
 ";
 }

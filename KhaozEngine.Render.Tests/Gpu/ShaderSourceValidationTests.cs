@@ -98,6 +98,10 @@ namespace KhaozEngine.Tests.Gpu
             => ShaderValidation.ValidatePair(ShaderSources.DistortionVert, ShaderSources.DistortionFrag, "Distortion");
 
         [Fact]
+        public void Trail()
+            => ShaderValidation.ValidatePair(ShaderSources.TrailVert, ShaderSources.TrailFrag, "Trail");
+
+        [Fact]
         public void Beam()
             => ShaderValidation.ValidatePair(ShaderSources.BeamVert, ShaderSources.BeamFrag, "Beam");
 

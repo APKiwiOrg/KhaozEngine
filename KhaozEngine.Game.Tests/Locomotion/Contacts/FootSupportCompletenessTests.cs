@@ -4,11 +4,50 @@ using KhaozEngine.Locomotion.Contacts;
 using KhaozEngine.Physics;
 using KhaozEngine.Tests.Physics;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace KhaozEngine.Tests.Locomotion.Contacts;
 
-public class FootSupportCompletenessTests
+public class FootSupportCompletenessTests(ITestOutputHelper output)
 {
+    [Fact]
+    public void AtomicCapacityRefusalCannotDistinguishBelowBandAndInBandFans()
+    {
+        var query = new FootSupportQuery(Vector2.Zero, 0, 0.2f, 0.4f, 0.4f, MathF.Cos(MathF.PI / 4));
+        SupportFootprintRequest request = SupportFootprintTests.Request(cosine: query.CosMaxSlope,
+            lower: -(double)query.ReachDown, upper: query.ReachUp);
+        var members = new SupportFootprintMember[SupportFootprintResult.MaximumElements];
+        var joins = new ulong[SupportFootprintResult.MaximumElements *
+            SupportFootprintResult.JoinWordsFor(SupportFootprintResult.MaximumElements)];
+        SupportFootprintMember untouched = default(SupportFootprintMember) with
+        { ElementId = -99, PlanePoint = new(1, 2, 3) };
+        foreach (float height in new[] { -0.4005f, 0f })
+        {
+            using FootSupportScene scene = FootSupportScenes.OverCapacityFan(new(0, height, 0));
+            SupportSample released = FootSupport.Find(null, null, scene.World, scene.Lease, query);
+            Array.Fill(members, untouched);
+            Array.Fill(joins, ulong.MaxValue);
+            SupportFootprintResult complete = scene.World.QuerySupportFootprint(scene.Lease, request, members,
+                joins, QueryFilter.StaticsOnly);
+            output.WriteLine($"Fan Y={height:R}, released={released.Status}, footprint={complete.Status}, " +
+                $"required={complete.RequiredElements}, members={complete.Members}, witnesses={complete.Witnesses}, " +
+                $"axis={complete.AxisVerdict}, foot={complete.FootVerdict}");
+
+            Assert.Equal(height < -(double)query.ReachDown ? SupportStatus.None : SupportStatus.Refused,
+                released.Status);
+            Assert.Equal(CapsuleFeatureStatus.CapacityExceeded, complete.Status);
+            Assert.Equal(257, complete.RequiredElements);
+            Assert.Equal(0, complete.Members);
+            Assert.Equal(0, complete.Witnesses);
+            Assert.Equal(default, complete.AxisVerdict);
+            Assert.Equal(default, complete.FootVerdict);
+            Assert.Null(complete.QueryWorld);
+            Assert.Null(complete.Lease);
+            Assert.All(members, member => Assert.Equal(untouched, member));
+            Assert.All(joins, word => Assert.Equal(ulong.MaxValue, word));
+        }
+    }
+
     [Fact]
     public void HiddenCrateUnderSixtyDegreeWedge()
     {

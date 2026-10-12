@@ -30,6 +30,18 @@ public sealed record MapResourceTransform(MapEffectiveTransform Transform)
         return MapExactValue.FromSingle(Freeze(Transform.Y + local.ToDouble() * Transform.Scale).ToSingle());
     }
 
+    /// <summary>The released binary32 water-placement adapter. R5 effective resources use Point and Height,
+    /// while the pre-existing bounded placement API retains its results and representability refusals.</summary>
+    internal MapExactXz ReleasedWaterXz(MapExactXz local)
+    {
+        var yaw = Quaternion.CreateFromAxisAngle(Vector3.UnitY, (float)Transform.YawRadians);
+        var world = Vector3.Transform(new Vector3(local.X.ToSingle(), 0, local.Z.ToSingle()) * (float)Transform.Scale, yaw)
+            + new Vector3((float)Transform.X, (float)Transform.Y, (float)Transform.Z);
+        if (!float.IsFinite(world.X) || !float.IsFinite(world.Z)) throw new MapExactOverflowException();
+        return new(MapExactValue.FromSingle(world.X), MapExactValue.FromSingle(world.Z));
+    }
+    internal float ReleasedWaterHeight(float local) => (float)Transform.Y + (float)Transform.Scale * local;
+
     internal static MapExactValue Freeze(double value)
     {
         if (!double.IsFinite(value) || Math.Abs(value) > MaxCoordinateMetres)

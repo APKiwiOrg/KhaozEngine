@@ -75,9 +75,14 @@ internal sealed class MapEffectiveContext
     internal IReadOnlyDictionary<string, MapEffectiveTransform> Transforms { get; }
     internal string Digest { get; }
     internal IReadOnlyList<MapStoreyDoc> Storeys { get; }
-    internal MapEffectiveContext(MapSurfaceSet surfaces, IReadOnlyDictionary<string, MapEffectiveTransform> transforms, string digest, IReadOnlyList<MapStoreyDoc>? storeys = null)
+    internal IReadOnlyDictionary<string, MapWaterBodyDoc> WaterSources { get; }
+    internal MapEffectiveContext(MapSurfaceSet surfaces, IReadOnlyDictionary<string, MapEffectiveTransform> transforms, string digest,
+        IReadOnlyList<MapStoreyDoc>? storeys = null, IReadOnlyList<MapWaterBodyDoc>? waterSources = null)
     {
         Storeys = Array.AsReadOnly((storeys ?? Array.Empty<MapStoreyDoc>()).ToArray());
+        var water = new MapWaterSet();
+        water.Bodies.AddRange(waterSources ?? Array.Empty<MapWaterBodyDoc>());
+        WaterSources = new ReadOnlyDictionary<string, MapWaterBodyDoc>(water.Clone().Bodies.ToDictionary(b => b.Id, StringComparer.Ordinal));
         Surfaces = surfaces.Clone();
         _surfaces = new ReadOnlyDictionary<string, MapSurfaceRef>(Surfaces.Refs.ToDictionary(s => s.Id, StringComparer.Ordinal));
         Transforms = new ReadOnlyDictionary<string, MapEffectiveTransform>(new Dictionary<string, MapEffectiveTransform>(transforms, StringComparer.Ordinal));

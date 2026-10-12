@@ -196,7 +196,7 @@ internal static class MapEffectiveGeometry
         RefinePolygonWide(lower, upper, boundary.Select(MapWideXz.From).ToArray(), limits, work).Narrow();
 
     internal static MapWideCellRefinement RefinePolygonWide(IReadOnlyList<MapBoundFace> lower, IReadOnlyList<MapBoundFace>? upper,
-        IReadOnlyList<MapWideXz> boundary, MapRefinementLimits limits, MapRefinementWork? work = null)
+        IReadOnlyList<MapWideXz> boundary, MapRefinementLimits limits, MapRefinementWork? work = null, MapWaterWorkBudget? budget = null)
     {
         try
         {
@@ -205,8 +205,10 @@ internal static class MapEffectiveGeometry
             var clip = boundary.ToList();
             if (AreaWide(clip).Sign == 0) return MapWideCellRefinement.Failure(MapRefinementStatus.Invalid, "cell");
             if (AreaWide(clip).Sign < 0) clip.Reverse();
+            budget?.Charge((long)lower.Count + (upper?.Count ?? 0));
             var bottom = ClipFaces(lower); var top = upper is null ? new List<WideFace>() : ClipFaces(upper);
             long pairs = upper is null ? 0 : checked((long)bottom.Count * top.Count);
+            budget?.Charge(pairs);
             if (work is not null) work.ChargedPairs = pairs;
             if (pairs > limits.MaxPairChecks) return MapWideCellRefinement.Failure(MapRefinementStatus.CapacityExceeded, "pair checks");
             var vertices = new SortedSet<MapWideXz>();

@@ -437,18 +437,22 @@ public static class MapNavTiling
     static IEnumerable<MapNavTileCoord> WaterCaptureTiles(MapCompiledWaterBody body, MapWorldGrids grids, double margin)
     {
         var tiles = new SortedSet<MapNavTileCoord>(TileOrder);
-        foreach (MapExactTriangle triangle in body.Regions.SelectMany(r => r.Triangles))
+        foreach (var region in body.Regions)
         {
-            MapBox3 box = MapResidencyOwnership.XzBounds(triangle);
-            var polygon = new[] { triangle.A, triangle.B, triangle.C }
-                .Select(p => new MapWideXz(MapWideRational.From(p.X), MapWideRational.From(p.Z))).ToArray();
-            foreach (MapNavTileCoord tile in CaptureTilesMeeting(box.MinX, box.MinZ, box.MaxX, box.MaxZ, grids, margin))
+            var pieces = region.WidePolygons.Count == 0 ? region.Triangles.Select(t =>
+                (Polygon: (IReadOnlyList<MapWideXz>)new[] { MapWideXz.From(new(t.A.X, t.A.Z)), MapWideXz.From(new(t.B.X, t.B.Z)), MapWideXz.From(new(t.C.X, t.C.Z)) },
+                    Box: MapResidencyOwnership.XzBounds(t)))
+                : region.WidePolygons.Select(p => (Polygon: p, Box: MapWaterOccupiedPieces.Bounds(p, default, default)));
+            foreach (var (polygon, box) in pieces)
             {
-                if (tiles.Contains(tile)) continue;
-                MapBox3 capture = Grow(TileBounds(tile, grids, 0, 0), margin);
-                var min = new MapWideXz(MapWideRational.FromDouble(capture.MinX), MapWideRational.FromDouble(capture.MinZ));
-                var max = new MapWideXz(MapWideRational.FromDouble(capture.MaxX), MapWideRational.FromDouble(capture.MaxZ));
-                if (MapWaterPolygons.ClipToRect(polygon, min, max).Count > 0) tiles.Add(tile);
+                foreach (MapNavTileCoord tile in CaptureTilesMeeting(box.MinX, box.MinZ, box.MaxX, box.MaxZ, grids, margin))
+                {
+                    if (tiles.Contains(tile)) continue;
+                    MapBox3 capture = Grow(TileBounds(tile, grids, 0, 0), margin);
+                    var min = new MapWideXz(MapWideRational.FromDouble(capture.MinX), MapWideRational.FromDouble(capture.MinZ));
+                    var max = new MapWideXz(MapWideRational.FromDouble(capture.MaxX), MapWideRational.FromDouble(capture.MaxZ));
+                    if (MapWaterPolygons.ClipToRect(polygon, min, max).Count > 0) tiles.Add(tile);
+                }
             }
         }
         return tiles;

@@ -25,7 +25,7 @@ internal static class MapRelationApertures
         {
             IReadOnlyList<MapExactPoint> bottom = Chain(portal.BandBottom);
             IReadOnlyList<MapExactPoint>? top = portal.BandTop is { } upper ? Chain(upper) : null;
-            MapExactXz[] interval = portal.Interval.Select(v => MapSpaceGeometry.Surface(view, v.SurfaceId).Frame.WorldXz(v.Address)).ToArray();
+            MapExactXz[] interval = portal.Interval.Select(v => MapEffectiveGeometry.Vertex(view, v)).ToArray();
             if (interval.Length < 2 || !interval.SequenceEqual(bottom.Select(MapSpaceGeometry.Xz)) ||
                 (top is not null && !interval.SequenceEqual(top.Select(MapSpaceGeometry.Xz))))
                 throw new MapDocumentException($"invalid vertex sequence: portal '{portal.Id}'");

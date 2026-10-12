@@ -34,6 +34,9 @@ internal static class MapOccupiedPartitions
     {
         string digest;
         var record = MapSpaceGeometry.Records(view).FirstOrDefault(r => r.Id == owner);
+        // Space and surface IDs have separate namespaces. A canonical floor/ceiling belongs to its surface,
+        // even when an exterior space uses that same text ID. Ancestor-space metadata still names the record.
+        if (record is MapSpaceDoc && role is "canonical-floor" or "canonical-ceiling" && view.Surfaces.Any(s => s.Id == owner)) record = null;
         if (record is not null)
             digest = MapPrefabJson.Digest("kemap/occupied-boundary/1", new
             { Record = record, Pose = view.EffectiveContext?.Transform(MapPrefabChildKind.Record, owner)?.Transform });
@@ -163,9 +166,9 @@ internal static class MapOccupiedPartitions
     }
 
     internal static MapOccupiedPartitionResult BuildWide(MapScopedSurfaces view, MapExactXz min, MapExactXz max,
-        MapRefinementLimits limits, bool carve)
+        MapRefinementLimits limits, bool carve, MapWaterWorkMeter? meter = null)
     {
-        try { return new(MapRefinementStatus.Complete, BuildCore(view, min, max, limits, carve), null, view.ReadWitness); }
+        try { return new(MapRefinementStatus.Complete, BuildCore(view, min, max, limits, carve, meter), null, view.ReadWitness); }
         catch (Exception error) when (error is MapDocumentException or MapExactOverflowException or OverflowException)
         {
             var status = error.Message.Contains("capacity exceeded", StringComparison.Ordinal) || error.Message.Contains("domain work exceeds", StringComparison.Ordinal)
@@ -176,7 +179,7 @@ internal static class MapOccupiedPartitions
     }
 
     static IReadOnlyList<MapOccupiedPiece> BuildCore(MapScopedSurfaces view, MapExactXz min, MapExactXz max,
-        MapRefinementLimits limits, bool carve)
+        MapRefinementLimits limits, bool carve, MapWaterWorkMeter? meter)
     {
         if (!view.Witness.Complete) throw new MapDocumentException("missing geometry: occupied partition acquisition");
         var records = MapSpaceGeometry.Records(view).ToArray();
@@ -184,11 +187,11 @@ internal static class MapOccupiedPartitions
         if (domains.Length > view.Scope.Limits.MaxRecordReads || domains.Sum(MapPrismGeometry.Cost) > limits.MaxRefinementVertices)
             throw new MapDocumentException("capacity exceeded: prism records or vertices");
         var footprints = records.OfType<MapSpaceFootprint>().ToArray();
-        var prepared = MapCommonRefinement.PrepareFootprints(view, footprints, limits, null);
+        var prepared = MapCommonRefinement.PrepareFootprints(view, footprints, limits, null, meter);
         if (prepared.Context is not { } context) throw new MapDocumentException("capacity exceeded: " + prepared.Refusal);
         var raw = new List<MapOccupiedPiece>();
         var vertices = new Dictionary<List<MapOccupiedPiece>, long>();
-        var work = new MapWaterWorkBudget(limits.MaxPairChecks);
+        var work = new MapWaterWorkBudget(limits.MaxPairChecks, compile: false, meter?.Pairs);
         foreach (var footprint in footprints)
         {
             var space = MapSpaceGeometry.Record<MapSpaceDoc>(view, footprint.Space);
@@ -204,7 +207,7 @@ internal static class MapOccupiedPartitions
                 var upper = footprint.Upper.Kind == MapBoundKind.OpenTop ? null :
                     MapCommonRefinement.BoundFaces(context, footprint, footprint.Upper, new(rect.MinX, rect.MinZ), new(rect.MaxX, rect.MaxZ), limits);
                 Require(lower); if (upper is not null) Require(upper);
-                var refined = MapCommonRefinement.RefineWide(lower.Faces, upper?.Faces, polygon, limits);
+                var refined = MapCommonRefinement.RefineWide(lower.Faces, upper?.Faces, polygon, limits, budget: meter is null ? null : work);
                 if (refined.Status != MapRefinementStatus.Complete) throw Refusal(refined.Status, refined.Detail);
                 if (!refined.LowerArea.Equals(refined.CellArea) || upper is not null && !refined.UpperArea!.Value.Equals(refined.CellArea))
                     throw new MapDocumentException("missing geometry: canonical occupied bounds");

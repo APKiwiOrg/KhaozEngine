@@ -176,7 +176,8 @@ public static class MapPrefabResolver
         });
         MapStoreyDoc[] Storeys() => (authored.BuildingIntent?.Storeys ?? []).Concat(children.OfType<MapPrefabStoreyChild>()
             .Select(c => new MapStoreyDoc(1, c.Key.Key, c.Name, storeyOwners.GetValueOrDefault(c.Key.Key)))).ToArray();
-        var context = new MapEffectiveContext(surfaces, transforms, Digest(), Storeys());
+        var localWater = children.OfType<MapPrefabWaterChild>().Select(c => c.Value).ToArray();
+        var context = new MapEffectiveContext(surfaces, transforms, Digest(), Storeys(), localWater);
         IMapSurfaceSource Source(MapEffectiveContext value) => nativeSource is null ? new MapEffectiveSurfaceSource(value) : new MapComposedSurfaceSource(value, nativeSource);
         var source = Source(context);
         var effectivePlacements = new List<MapPlacement>();
@@ -204,7 +205,7 @@ public static class MapPrefabResolver
         }
         if (supports.Count != 0)
         {
-            context = new(surfaces, transforms, Digest(), Storeys());
+            context = new(surfaces, transforms, Digest(), Storeys(), localWater);
             source = Source(context);
         }
         var water = authored.Water?.Clone();

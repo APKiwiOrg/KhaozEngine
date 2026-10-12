@@ -284,11 +284,30 @@ the body, space, medium and lower/upper boundary ids, carries the nominal level 
 is a free surface. A level strictly below the ceiling, or an open top, is free. A ceiling tie closes the top.
 Missing geometry, ambiguity, capacity and narrowing failures keep their typed status, never become dry.
 
+Prefab water uses the captured instance pose and the shared resource transform policy. Local levels and domains
+transform once, and effective body IDs and covers are already binding-remapped. Covers name authored spaces.
+Covering a parent leaves an uncovered room dry. Occupied fragments retain distinct identities and lower/upper
+boundary provenance when the parent recurs below and above a room. `MapWaterRegion.Fragment` and
+`MapWaterSample.Fragment` name those owners. `MapCompiledWaterBody.FragmentBounds` contains their conservative
+wet bounds. `ClassifyFragment(fragmentId, point)` classifies one fragment. `Classify(spaceId, point)` returns a
+unanimous fragment answer, or `Unresolved` when their kinds differ. Closed precedence applies within a fragment.
+`SampleExact(world)` shares the sampling core with exact membership and retains the supplied `ExactPoint`.
+
+Effective clipping, contours, classification, bounds and digests keep wide rational geometry. Effective region
+triangles are a bounded drawing adapter, and do not feed semantic predicates or hashes. Unplaced R4 compilation
+keeps its released exact triangles, digests and narrowing refusals. The existing interval, clipping and height-split
+kernels supply both paths. A compiled digest includes each consumed hydraulic aperture's geometry and pose,
+without including the containing prefab resource SHA or the whole scoped digest. An unrelated marker edit leaves
+the body's digest and its navigation medium identities unchanged.
+
 `MapWaterContainment.Validate(view, water)` checks authored spaces only, requires positive-area contact with a
 covered footprint and connects multiple covered spaces through portal or vertical-link openings whose exact bottom
 lies strictly below the body's level. No implicit exterior is added. Every editor publication with water validates
 the complete set, including terrain and unrelated placement edits, and every compile and build checks containment.
 Document-level water rules and render material closure run on both in-memory and stored native identity paths.
+`MapBoundDocumentValidation.ValidateEffectiveWater(resources, assets)` is the complete effective publication gate
+for prefab, placement and roof edits. It checks material closure and requires every body to compile completely.
+Identity validation remains geometry-free. R5 editor publication wiring consumes this gate separately.
 
 `MapWaterCompiler.Compile(view, water, limits)` captures the set and emits `MapCompiledWaterBody` values in id order,
 with exact up-facing region triangles split into `FreeSurface`, `Closed` and `Unresolved` at every ceiling transition,

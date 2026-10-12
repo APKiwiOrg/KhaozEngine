@@ -125,6 +125,8 @@ public static class MapWorldBuilder
             throw new MapDocumentException($"water: {body.Detail ?? $"water body '{body.BodyId}': {body.Status}"}");
         if (body.Regions.Count > 0 && body.Bounds is null)
             throw new MapDocumentException($"water: body '{body.BodyId}' has regions but no bounds");
+        if (body.Regions.Any(r => r.Fragment is not null) && body.FragmentBounds.Count == 0)
+            throw new MapDocumentException($"water: body '{body.BodyId}' has occupied regions but no fragment bounds");
     }
 
     static void ValidateOptions(MapWorldBuildOptions options)

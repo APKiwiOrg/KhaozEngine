@@ -28,8 +28,8 @@ public static class MapCommonRefinement
     }
 
     internal static MapWideCellRefinement RefineWide(IReadOnlyList<MapBoundFace> lower, IReadOnlyList<MapBoundFace>? upper,
-        IReadOnlyList<MapWideXz> polygon, MapRefinementLimits limits, MapRefinementWork? work = null) =>
-        MapEffectiveGeometry.RefinePolygonWide(lower, upper, polygon, limits, work);
+        IReadOnlyList<MapWideXz> polygon, MapRefinementLimits limits, MapRefinementWork? work = null, MapWaterWorkBudget? budget = null) =>
+        MapEffectiveGeometry.RefinePolygonWide(lower, upper, polygon, limits, work, budget);
 
     public static MapExactValue Area(MapRefinementFace face) => MapEffectiveGeometry.Area(face.Polygon);
 
@@ -100,13 +100,13 @@ public static class MapCommonRefinement
     }
 
     internal static MapFootprintPreparation PrepareFootprints(MapScopedSurfaces view, IReadOnlyList<MapSpaceFootprint> footprints,
-        MapRefinementLimits limits, MapBoundFaceWork? work) => Prepare(view, footprints, f => f.SlotCells, limits, work);
+        MapRefinementLimits limits, MapBoundFaceWork? work, MapWaterWorkMeter? meter = null) => Prepare(view, footprints, f => f.SlotCells, limits, work, meter);
 
     static MapFootprintPreparation Prepare(MapScopedSurfaces view, IReadOnlyList<MapSpaceFootprint> footprints,
-        Func<MapSpaceFootprint, IEnumerable<int>> cells, MapRefinementLimits limits, MapBoundFaceWork? work)
+        Func<MapSpaceFootprint, IEnumerable<int>> cells, MapRefinementLimits limits, MapBoundFaceWork? work, MapWaterWorkMeter? meter = null)
     {
         var outcomes = new Dictionary<(string, int), MapCellRefinement>();
-        var preparation = new MapBoundPreparation(view, limits, work);
+        var preparation = new MapBoundPreparation(view, limits, work, meter);
         MapBoundFaceContext? context;
         string? refusal;
         try

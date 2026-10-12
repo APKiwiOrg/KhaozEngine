@@ -9922,6 +9922,15 @@ XZ in ascending order. Samples name body, space, medium and boundary ids and dis
 from a closed ceiling, with ceiling ties closed. Missing, ambiguous, over-budget and unrepresentable
 geometry keep their failure status rather than becoming dry.
 
+For prefab water, pass the water set and view from the same `MapEffectiveResources` snapshot. Domains and local
+levels use the shared captured transform exactly once. Explicit covers include only their authored spaces, so
+parent water does not flood an uncovered room. Region and sample `Fragment` properties preserve occupied owners
+and both boundary provenances. `FragmentBounds` supplies conservative wet bounds, and
+`ClassifyFragment(fragmentId, point)` distinguishes repeated vertical fragments of one space.
+The space classifier returns `Unresolved` when fragment kinds disagree. `SampleExact(world)` uses exact membership
+and retains `ExactPoint`. Effective semantic geometry and digests remain wide, with bounded region triangles for
+drawing. Released unplaced R4 results and refusals stay unchanged.
+
 `MapWaterCompiler.Compile(view, water, limits)` emits exact free, closed and unresolved region triangles
 with per-body digests and counted work. `MapWaterCompileLimits.MaxBoundCells` counts bound-lattice slot
 and cell candidates before reads and sweeps, including absent and skipped candidates. Every compile,

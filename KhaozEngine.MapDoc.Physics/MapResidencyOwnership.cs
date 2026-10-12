@@ -101,15 +101,17 @@ public static class MapResidencyOwnership
     {
         string what = $"Water body '{body.BodyId}'";
         var tiles = new SortedSet<MapTileCoord>(TileOrder);
-        foreach (MapExactTriangle triangle in body.Regions.SelectMany(r => r.Triangles))
-        {
-            MapTileRect rect = TilesOf(XzBounds(triangle), grids.StorageTileSize);
-            RequireStorageTiles(rect, what);
-            tiles.UnionWith(Enumerate(rect));
-            if (tiles.Count > MaxStorageTiles)
-                throw new MapDocumentException(string.Format(CultureInfo.InvariantCulture,
-                    "{0} reaches more than the {1:N0} storage tiles one list allows.", what, MaxStorageTiles));
-        }
+        foreach (var region in body.Regions)
+            foreach (var bounds in region.WidePolygons.Count == 0 ? region.Triangles.Select(XzBounds) : region.WidePolygons.SelectMany(p =>
+                Enumerable.Range(1, p.Count - 2).Select(i => MapWaterOccupiedPieces.Bounds(new[] { p[0], p[i], p[i + 1] }, default, default))))
+            {
+                MapTileRect rect = TilesOf(bounds, grids.StorageTileSize);
+                RequireStorageTiles(rect, what);
+                tiles.UnionWith(Enumerate(rect));
+                if (tiles.Count > MaxStorageTiles)
+                    throw new MapDocumentException(string.Format(CultureInfo.InvariantCulture,
+                        "{0} reaches more than the {1:N0} storage tiles one list allows.", what, MaxStorageTiles));
+            }
         return tiles.ToArray();
     }
 

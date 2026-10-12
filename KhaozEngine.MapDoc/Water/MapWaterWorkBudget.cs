@@ -9,16 +9,18 @@ namespace KhaozEngine.MapDoc.Water;
 internal sealed class MapWaterWorkBudget
 {
     readonly bool _compile;
+    readonly MapWaterWorkBudget? _parent;
 
     public MapWaterWorkBudget(long limit = MapWaterDomain.MaxPairChecks) : this(limit, compile: false) { }
 
     /// <summary>A compile budget throws <see cref="MapWaterCapacityException"/> instead, which no validation step
     /// catches, so the compile refuses with its limit rather than reporting the overrun as unverified.</summary>
-    internal MapWaterWorkBudget(long limit, bool compile)
+    internal MapWaterWorkBudget(long limit, bool compile, MapWaterWorkBudget? parent = null)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(limit);
         Limit = limit;
         _compile = compile;
+        _parent = parent;
     }
 
     public long Limit { get; }
@@ -30,6 +32,7 @@ internal sealed class MapWaterWorkBudget
     public void Charge(long checks)
     {
         Charged += checks;
+        _parent?.Charge(checks);
         if (Charged <= Limit) return;
         if (_compile) throw new MapWaterCapacityException(MapWaterWorkMeter.PairChecks);
         throw new MapDocumentException($"domain work exceeds {Limit} pair checks");

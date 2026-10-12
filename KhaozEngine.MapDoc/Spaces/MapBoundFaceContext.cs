@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
+using KhaozEngine.MapDoc.Water;
 
 namespace KhaozEngine.MapDoc.Spaces;
 
@@ -15,12 +16,15 @@ internal sealed class MapBoundFaceContext
     readonly IReadOnlyDictionary<MapPatchKey, MapValidatedSurfacePatch> _validated;
     internal MapScopedSurfaces View { get; }
     internal MapBoundFaceWork? Work { get; }
+    internal MapWaterWorkMeter? WaterMeter { get; }
 
     MapBoundFaceContext(MapScopedSurfaces view, Dictionary<MapPatchKey, Entry> entries,
-        Dictionary<MapRecordRef, OpeningEntry> openings, Dictionary<MapPatchKey, MapValidatedSurfacePatch> validated, MapBoundFaceWork? work)
+        Dictionary<MapRecordRef, OpeningEntry> openings, Dictionary<MapPatchKey, MapValidatedSurfacePatch> validated,
+        MapBoundFaceWork? work, MapWaterWorkMeter? meter)
     {
         View = view;
         Work = work;
+        WaterMeter = meter;
         _entries = new ReadOnlyDictionary<MapPatchKey, Entry>(entries);
         _openings = new ReadOnlyDictionary<MapRecordRef, OpeningEntry>(openings);
         _validated = new ReadOnlyDictionary<MapPatchKey, MapValidatedSurfacePatch>(validated);
@@ -160,7 +164,7 @@ internal sealed class MapBoundFaceContext
         }
         MapExactTriangle Transform(MapExactTriangle triangle, string id) => new(MapEffectiveGeometry.Point(view, id, triangle.A),
             MapEffectiveGeometry.Point(view, id, triangle.B), MapEffectiveGeometry.Point(view, id, triangle.C));
-        return new(view, entries, openings, validated, work);
+        return new(view, entries, openings, validated, work, preparation.WaterMeter);
     }
 
     internal void RequireView(MapScopedSurfaces view)

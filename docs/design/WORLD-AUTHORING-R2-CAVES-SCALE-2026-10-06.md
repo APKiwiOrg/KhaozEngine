@@ -230,8 +230,10 @@ known opening returns `NoSupport` unless an eligible lower floor is found throug
 
 An exterior space explicitly declares an open top and its support/footprint. The absence of a cave
 match alone does not certify exterior membership. A cave boundary cannot omit its ceiling and
-silently become exterior. At a portal, persist a normal from FromSpace to ToSpace. ToSpace owns
-exact-plane points, while negative signed distance is on the FromSpace side. The containing-space
+silently become exterior. At a lattice-only portal, persist a normal from FromSpace to ToSpace. ToSpace owns
+exact-plane points, while negative signed distance is on the FromSpace side. A portal incident to
+an R5 prism room uses the prism's world-edge owner for occupied membership. Its From/To normal
+remains an authored relation fact. The containing-space
 rule applies beyond that boundary. At a shared portal vertex, the lowest ordinal incident boundary
 key supplies the tie rule on both heads. No epsilon-sized overlapping doorway volume is introduced.
 
@@ -242,7 +244,9 @@ when their actual variable intervals distinguish the point. Missing/unloaded flo
 dependencies return `MissingGeometry`. They do not fall back to the surface world.
 
 Overlap validation is about competing interpretations, not all overlapping volumes. Allow nested
-interior domains with an explicit parent space and independent gameplay tags. Multiple tags may
+rooms as occupied spaces with an explicit parent space and independent gameplay tags. The deepest
+containing descendant owns occupancy. Containing ancestors are reported in ParentSpaceIds and
+DomainKeys, and are not competing owners. Multiple tags may
 apply to one point. Two peer spaces describing the same occupied air must declare one shared-space
 alias or an explicit partition/portal. Otherwise membership is ambiguous and publication refuses.
 Coincident support faces similarly require one geometry owner or an explicit paint role. Distinct
@@ -250,9 +254,22 @@ floors separated in Y are valid. Do not impose a blanket 3D or XZ non-overlap ru
 
 Imported Indoor masks retain their bytes and connected footprint. Their agreed explicit vertical
 span remains an import-domain recipe, compiled through the shared membership service. It does not
-turn all cave layers into fixed prisms. R5's authored rigid polygon-prism interiors remain valid
-semantic domains inside a parent space. That contract does not require every cave enclosure to be
-a prism. Roof/light consumers receive all relevant typed membership keys, not a guessed single tag.
+turn all cave layers into fixed prisms. R5's authored rigid polygon-prism rooms use this same space authority. A Room MapSpaceDoc has one
+payload-1 MapPrismDomain, an explicit matching parent and a declared storey with matching instance
+ownership. Its transformed XZ polygon follows the R4-P28 world direction (1, infinitesimal +Z),
+including convex, reflex and collinear vertices. Its vertical span is [lower, upper), intersected
+with the parent's canonical variable bounds. A semantic room edge need not fabricate a physical
+wall. Cave enclosure, ceiling and aperture rules remain unchanged.
+
+Descendants carve ancestors into disjoint occupied fragments. Columns may therefore repeat a
+parent space below and above a room. Membership, scalar intervals and polygon partitions carry the
+same fragment identity, lower/upper boundary provenance and ordered ancestor-carving path. Logical
+fragment IDs exclude semantic digests, float endpoints, clipping order and tile packing. A geometry
+change updates the boundary semantic digest without reallocating the logical fragment ID. Roof,
+water and support consumers use these occupied facts. Prism planes create no support triangles.
+Incomplete acquisition remains MissingGeometry. Work beyond the configured budgets is
+CapacityExceeded, and an exact final value beyond the bounded rational representation is
+NotRepresentable. None of these refusals certifies exterior, dry water or hidden roofs.
 
 ## Physical holes, paint and imported fallback
 

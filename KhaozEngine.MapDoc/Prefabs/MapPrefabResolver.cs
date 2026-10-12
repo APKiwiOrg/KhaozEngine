@@ -6,6 +6,7 @@ using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Identity;
 using KhaozEngine.MapDoc.Interiors;
 using KhaozEngine.MapDoc.Storage;
+using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Support;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Water;
@@ -32,6 +33,7 @@ public static class MapPrefabResolver
         var transforms = new Dictionary<string, MapEffectiveTransform>(StringComparer.Ordinal);
         foreach (var value in authored.NativeResourceTransforms ?? []) transforms.Add(MapEffectiveContext.Key(value.Kind, value.OwnerId), value.Transform);
         var children = new List<MapPrefabChild>();
+        var storeyOwners = new Dictionary<string, string>(StringComparer.Ordinal);
         var attachments = new List<MapPrefabAttachmentTransfer>();
         var owners = new Dictionary<string, string>(StringComparer.Ordinal);
         var roofs = new List<MapPrefabReference>(authored.BuildingIntent?.Roofs ?? []);
@@ -138,6 +140,9 @@ public static class MapPrefabResolver
                     }
                 }
                 string id = bindings[local.Key];
+                if (world is MapPrefabStoreyChild) storeyOwners[id] = instance.Id;
+                if (world is MapPrefabRecordChild { Value: MapPrismDomain prism } room)
+                    world = room with { Value = prism with { InstanceId = instance.Id } };
                 if (capturedRow is not null) owners[MapEffectiveContext.Key(local.Key.Kind, id)] = bindings[new(MapPrefabChildKind.Placement, capturedRow.Placement.Id)];
                 else if (local is not MapPrefabPlacementChild)
                 {
@@ -169,7 +174,9 @@ public static class MapPrefabResolver
             Transforms = transforms.OrderBy(t => t.Key, StringComparer.Ordinal).ToArray(),
             Patches = surfaces.Patches.Select(p => new { p.Key, Digest = MapSurfaceSemantics.PatchDigest(p.Value) }).ToArray(),
         });
-        var context = new MapEffectiveContext(surfaces, transforms, Digest());
+        MapStoreyDoc[] Storeys() => (authored.BuildingIntent?.Storeys ?? []).Concat(children.OfType<MapPrefabStoreyChild>()
+            .Select(c => new MapStoreyDoc(1, c.Key.Key, c.Name, storeyOwners.GetValueOrDefault(c.Key.Key)))).ToArray();
+        var context = new MapEffectiveContext(surfaces, transforms, Digest(), Storeys());
         IMapSurfaceSource Source(MapEffectiveContext value) => nativeSource is null ? new MapEffectiveSurfaceSource(value) : new MapComposedSurfaceSource(value, nativeSource);
         var source = Source(context);
         var effectivePlacements = new List<MapPlacement>();
@@ -197,7 +204,7 @@ public static class MapPrefabResolver
         }
         if (supports.Count != 0)
         {
-            context = new(surfaces, transforms, Digest());
+            context = new(surfaces, transforms, Digest(), Storeys());
             source = Source(context);
         }
         var water = authored.Water?.Clone();
@@ -245,7 +252,7 @@ public static class MapPrefabResolver
             originalIntent.RoofGroups.Concat(children.OfType<MapPrefabRoofGroupChild>().Select(c => c.Value)).ToArray(), lights, markers)
         {
             Roofs = roofs,
-            Storeys = originalIntent.Storeys.Concat(children.OfType<MapPrefabStoreyChild>().Select(c => new MapStoreyDoc(1, c.Key.Key, c.Name, null))).ToArray(),
+            Storeys = Storeys(),
         };
         return new(context, source, placements, supports, water, intent, lightPoints, waterCorners, attachments);
     }

@@ -118,6 +118,13 @@ public sealed class MapSupportQuery
                 if (face is null) return Failure(MapSupportStatus.NoSupport, "surface has no physical support at XZ");
                 MapSpaceFootprint? footprint = footprints.FirstOrDefault(f => f.Lower.SurfaceId == request.SurfaceId);
                 string? owner = footprint is null ? null : MapSpaceGeometry.Owner(_view, MapSpaceGeometry.Record<MapSpaceDoc>(_view, footprint.Space));
+                if (records.OfType<MapPrismDomain>().Any())
+                {
+                    var occupiedFace = _membership.QueryExact(new(xz.X, face.Height, xz.Z), context);
+                    if (occupiedFace.Status is not (MapMembershipStatus.Resolved or MapMembershipStatus.Outside))
+                        return Failure(Status(occupiedFace.Status), occupiedFace.Detail);
+                    owner = occupiedFace.SpaceId;
+                }
                 var candidate = new Candidate(face.Face, face.Height, owner, null);
                 return new(Supported(candidate), new[] { candidate });
             }
@@ -128,9 +135,26 @@ public sealed class MapSupportQuery
             string ownerId = MapSpaceGeometry.Owner(_view, space);
             Dictionary<string, MapRecordRef?> reachable = Reachable(ownerId, footprints, records, xz);
             var eligible = new List<Candidate>();
+            IReadOnlyList<MapSpaceBoundsPart> occupied = Array.Empty<MapSpaceBoundsPart>();
+            if (space.Kind == MapSpaceKind.Room)
+            {
+                var column = _membership.Column(point, exactWorld, context, out occupied);
+                if (column.Status is not (MapMembershipStatus.Resolved or MapMembershipStatus.Outside))
+                    return Failure(Status(column.Status), column.Detail);
+            }
             foreach (Intersection intersection in intersections)
             {
                 if (request.SurfaceId is not null && intersection.Face.Key.OwnerId != request.SurfaceId) continue;
+                if (space.Kind == MapSpaceKind.Room && occupied.Any(p => p.Owner == ownerId &&
+                    intersection.Height.CompareTo(p.Lower) >= 0 && (p.Upper is not { } top || intersection.Height.CompareTo(top) < 0)))
+                {
+                    var sample = _membership.QueryExact(new(xz.X, intersection.Height, xz.Z), context);
+                    if (sample.Status != MapMembershipStatus.Resolved) return Failure(Status(sample.Status), sample.Detail);
+                    if (sample.SpaceId == ownerId && intersection.Height.CompareTo(low) >= 0 && intersection.Height.CompareTo(high) <= 0 &&
+                        intersection.Face.Normal.Y > 0 && (request.MaxSlopeRadians is not { } roomSlope || MathF.Acos(Math.Clamp(intersection.Face.Normal.Y, -1, 1)) <= roomSlope))
+                        eligible.Add(new(intersection.Face, intersection.Height, ownerId, null));
+                    continue;
+                }
                 foreach (MapSpaceFootprint footprint in footprints)
                 {
                     if (footprint.Lower.Kind is not (MapBoundKind.SupportFloor or MapBoundKind.LegacyExteriorV1) ||

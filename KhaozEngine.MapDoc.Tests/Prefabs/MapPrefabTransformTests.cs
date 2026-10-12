@@ -114,17 +114,19 @@ public sealed partial class MapPrefabTransformTests
         var compiled = MapEffectiveGeometry.Patch(view, new("a/floor", 0, 0));
         var face = compiled.Faces.First();
         var t = compiled.ExactTriangle(face);
-        var x = t.A.X.Add(t.B.X).Divide(new(2, 1));
-        var z = t.A.Z.Add(t.B.Z).Divide(new(2, 1));
-        var expected = t.A.Y.Add(t.B.Y).Divide(new(2, 1));
+        var x = t.A.X.Add(t.B.X).Add(t.C.X).Divide(new(3, 1));
+        var z = t.A.Z.Add(t.B.Z).Add(t.C.Z).Divide(new(3, 1));
+        var expected = t.A.Y.Add(t.B.Y).Add(t.C.Y).Divide(new(3, 1));
         Assert.Equal(expected, MapSubdividedTriangle.Height(t, x, z));
         var world = new MapExactPoint(x, expected.Add(new(1, 1)), z);
         Assert.Equal(MapSupportStatus.Supported, new MapSupportQuery(view).SampleSurfaceExact(world, "a/floor").Status);
         Assert.Equal(MapMembershipStatus.Resolved, new MapSpaceMembership(view).QueryExact(world).Status);
-        Assert.Equal(expected, MapSpaceIntervals.AtExact(view, world).Lower);
+        Assert.Equal(MapExactValue.FromSingle(far ? -450f : 5f), MapSpaceIntervals.AtExact(view, world).Lower);
         Assert.True(face.Normal.Y > 0.9f);
-        var footprint = view.RecordsIn(new("a/floor", 0, 0)).OfType<MapSpaceFootprint>().Single();
-        Assert.Equal(MapRefinementStatus.Complete, MapCommonRefinement.RefineFootprintCell(view, footprint, face.Key.Primitive, new()).Status);
+        var prism = view.RecordsIn(new("a/floor", 0, 0)).OfType<MapPrismDomain>().Single();
+        Assert.True(MapPrismGeometry.Compile(view, prism).Contains(new(x, z)));
+        Assert.Equal(far ? -450d : 5d, MapPrismGeometry.Bounds(view, prism).MinY);
+        Assert.Equal(PrefabFixtures.StoreyUpper(r).ToDouble(), MapPrismGeometry.Bounds(view, prism).MaxY);
     }
     [Fact]
     public void ExactQueries_FinalDenominatorRefusesWithoutIntermediateThrow()

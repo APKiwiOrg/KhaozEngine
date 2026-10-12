@@ -95,15 +95,15 @@ internal static partial class PrefabFixtures
             children.Add(SurfaceChild("floor", MapSurfaceRole.SupportFloor, Patch("floor", 4, 4, 0)));
             children.Add(SurfaceChild("ceiling", MapSurfaceRole.Ceiling, Patch("ceiling", 4, 4, 300)));
             var floor = new MapPatchKey("floor", 0, 0);
-            children.Add(new MapPrefabRecordChild(new(MapPrefabChildKind.Record, "room"), new MapSpaceDoc("room", MapSpaceKind.Cave,
+            children.Add(new MapPrefabRecordChild(new(MapPrefabChildKind.Record, "room"), new MapSpaceDoc("room", MapSpaceKind.Room,
                 new("$parent", new("$parent", 0, 0)), null, [], [], [], []), floor)
             { References = Slots(Anchor("floor"), Ref("/value/parent", "$parent", "$parent")) });
-            children.Add(new MapPrefabRecordChild(new(MapPrefabChildKind.Record, "room-domain"), new MapSpaceFootprint("room-domain", new("room", floor), floor,
-                Enumerable.Range(0, 4).SelectMany(z => Enumerable.Range(0, 4).Select(x => z * 64 + x)).ToArray(),
-                new(MapBoundKind.SupportFloor, "floor", null), new(MapBoundKind.Ceiling, "ceiling", null)), floor)
+            children.Add(new MapPrefabRecordChild(new(MapPrefabChildKind.Record, "room-domain"), new MapPrismDomain("room-domain", 1,
+                new("room", floor), new("$parent", new("$parent", 0, 0)), "", "lower",
+                new(MapLatticeFrame.ImportedMetreCentimetre, new[] { new MapWaterRect(0, 0, 4, 4) }, []), 0, 3), floor)
             {
-                References = Slots(Anchor("floor"), Ref("/value/space", "room", "floor"), Surf("/value/lattice/surfaceId", "floor"),
-                    Surf("/value/lower/surfaceId", "floor"), Surf("/value/upper/surfaceId", "ceiling"))
+                References = Slots(Anchor("floor"), Ref("/value/space", "room", "floor"), Ref("/value/parent", "$parent", "$parent"),
+                    Slot("/value/storeyId", MapPrefabChildKind.Storey, "lower"))
             });
             foreach (var (id, surfaceId, height) in new[] { ("door-bottom", "floor", 0), ("door-top", "ceiling", 300) })
                 children.Add(new MapPrefabRecordChild(new(MapPrefabChildKind.Record, id), new MapBoundaryChain(id, MapChainKind.Authored, null,

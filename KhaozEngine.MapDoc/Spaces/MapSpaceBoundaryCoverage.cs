@@ -34,7 +34,7 @@ internal static class MapSpaceBoundaryCoverage
             {
                 MapChainResolution bottom = Chain(portal.BandBottom);
                 MapChainResolution? top = portal.BandTop is { } reference ? Chain(reference) : null;
-                MapExactXz[] interval = portal.Interval.Select(v => MapSpaceGeometry.Surface(view, v.SurfaceId).Frame.WorldXz(v.Address)).ToArray();
+                MapExactXz[] interval = portal.Interval.Select(v => MapEffectiveGeometry.Vertex(view, v)).ToArray();
                 if (!interval.SequenceEqual(bottom.Points.Select(MapSpaceGeometry.Xz)) ||
                     (top is not null && !interval.SequenceEqual(top.Points.Select(MapSpaceGeometry.Xz))))
                 { add(portal.Id, -1, $"vertex sequence: portal '{portal.Id}'"); continue; }

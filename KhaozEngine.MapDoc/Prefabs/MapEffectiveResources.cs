@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using KhaozEngine.MapDoc.Storage;
+using KhaozEngine.MapDoc.Interiors;
 using KhaozEngine.MapDoc.Support;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Water;
@@ -56,8 +57,10 @@ internal sealed class MapEffectiveContext
     internal MapSurfaceSet Surfaces { get; }
     internal IReadOnlyDictionary<string, MapEffectiveTransform> Transforms { get; }
     internal string Digest { get; }
-    internal MapEffectiveContext(MapSurfaceSet surfaces, IReadOnlyDictionary<string, MapEffectiveTransform> transforms, string digest)
+    internal IReadOnlyList<MapStoreyDoc> Storeys { get; }
+    internal MapEffectiveContext(MapSurfaceSet surfaces, IReadOnlyDictionary<string, MapEffectiveTransform> transforms, string digest, IReadOnlyList<MapStoreyDoc>? storeys = null)
     {
+        Storeys = Array.AsReadOnly((storeys ?? Array.Empty<MapStoreyDoc>()).ToArray());
         Surfaces = surfaces.Clone();
         _surfaces = new ReadOnlyDictionary<string, MapSurfaceRef>(Surfaces.Refs.ToDictionary(s => s.Id, StringComparer.Ordinal));
         Transforms = new ReadOnlyDictionary<string, MapEffectiveTransform>(new Dictionary<string, MapEffectiveTransform>(transforms, StringComparer.Ordinal));

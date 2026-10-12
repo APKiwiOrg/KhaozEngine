@@ -92,6 +92,7 @@ public static class MapSpaceCoverageValidator
         }
         MapSpaceBoundaryCoverage.Validate(view, records, columns, Add);
         MapSpaceOverlapValidator.Validate(view, columns, Add);
+        foreach (string finding in MapPrismCoverage.Validate(view, limits)) Add(OwnerOf(finding), -1, finding);
         return Array.AsReadOnly(findings.OrderBy(f => f.Id, StringComparer.Ordinal).ThenBy(f => f.Cell)
             .ThenBy(f => f.Text, StringComparer.Ordinal).Select(f => f.Text).Distinct(StringComparer.Ordinal).ToArray());
 

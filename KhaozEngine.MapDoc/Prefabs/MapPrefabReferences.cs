@@ -152,7 +152,7 @@ public static class MapPrefabReferences
                 intent.RoofGroups.Select(g => g with { Rooms = g.Rooms.Select(Ref).ToArray() }).ToArray(),
                 intent.Lights.Select(l => l with { Owner = l.Owner is { } owner ? Ref(owner) : null }).ToArray(),
                 intent.Markers.ToArray())
-            { Roofs = intent.Roofs.Select(Ref).ToArray(), Storeys = intent.Storeys.ToArray() };
+            { Roofs = intent.Roofs.Select(Ref).ToArray(), Storeys = intent.Storeys.Select(s => s with { Id = Id(MapPrefabChildKind.Storey, s.Id) }).ToArray() };
         if (copy.NativeResourceTransforms is { } poses)
             copy.NativeResourceTransforms = poses.Select(p => p with { OwnerId = Id(p.Kind, p.OwnerId) }).ToArray();
         return copy;
@@ -457,6 +457,17 @@ internal static class MapPrefabReferenceWalker
                 Walls = Boundaries("/walls", s.Walls),
                 Portals = Boundaries("/portals", s.Portals),
                 Links = Refs("/links", s.Links),
+            },
+            MapPrismDomain p => p with
+            {
+                Space = RefAt("/space", p.Space, true),
+                Parent = RefAt("/parent", p.Parent, true),
+                StoreyId = Add("/storeyId", Text(p.StoreyId, path + "/storeyId", map, MapPrefabChildKind.Storey, MapPrefabOccurrenceRole.SurfaceText, false)),
+                Footprint = p.Footprint with
+                {
+                    Rects = p.Footprint.Rects.ToArray(),
+                    Rings = p.Footprint.Rings.Select(r => r with { Vertices = r.Vertices.ToArray() }).ToArray(),
+                },
             },
             MapSpaceFootprint f => f with
             {

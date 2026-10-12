@@ -71,7 +71,30 @@ internal static class MapWaterJson
         w.WriteNumber("surfaceY", body.SurfaceY == 0f ? 0f : body.SurfaceY);
         w.WriteString("medium", body.Medium);
         w.WriteString("renderMaterial", body.RenderMaterial);
-        w.WriteStartObject("domain");
+        w.WritePropertyName("domain");
+        WriteDomain(w, domain, label);
+        w.WriteStartArray("covers");
+        foreach (MapRecordRef cover in Require(body.Covers, label + " covers"))
+        {
+            Require(cover, label + " cover");
+            w.WriteStartObject();
+            w.WriteString("id", cover.Id);
+            w.WriteStartObject("anchor");
+            w.WriteString("surfaceId", cover.Anchor.SurfaceId);
+            w.WriteString("slotX", MapSignedDecimal.Format(cover.Anchor.SlotX));
+            w.WriteString("slotZ", MapSignedDecimal.Format(cover.Anchor.SlotZ));
+            w.WriteEndObject();
+            w.WriteEndObject();
+        }
+        w.WriteEndArray();
+        if (body.DisplayName is not null) w.WriteString("displayName", body.DisplayName);
+        w.WriteEndObject();
+    }
+
+    internal static void WriteDomain(Utf8JsonWriter w, MapWaterDomainDoc domain, string label = "water domain")
+    {
+        Require(domain, label);
+        w.WriteStartObject();
         w.WritePropertyName("frame");
         WriteFrame(w, Require(domain.Frame, label + " frame"));
         w.WriteStartArray("rects");
@@ -97,22 +120,6 @@ internal static class MapWaterJson
         }
         w.WriteEndArray();
         w.WriteEndObject();
-        w.WriteStartArray("covers");
-        foreach (MapRecordRef cover in Require(body.Covers, label + " covers"))
-        {
-            Require(cover, label + " cover");
-            w.WriteStartObject();
-            w.WriteString("id", cover.Id);
-            w.WriteStartObject("anchor");
-            w.WriteString("surfaceId", cover.Anchor.SurfaceId);
-            w.WriteString("slotX", MapSignedDecimal.Format(cover.Anchor.SlotX));
-            w.WriteString("slotZ", MapSignedDecimal.Format(cover.Anchor.SlotZ));
-            w.WriteEndObject();
-            w.WriteEndObject();
-        }
-        w.WriteEndArray();
-        if (body.DisplayName is not null) w.WriteString("displayName", body.DisplayName);
-        w.WriteEndObject();
     }
 
     internal static MapWaterSet Read(JsonElement json)
@@ -132,7 +139,23 @@ internal static class MapWaterJson
     static MapWaterBodyDoc ReadBody(JsonElement body)
     {
         Members(body, "water body", ["id", "surfaceY", "medium", "renderMaterial", "domain", "covers"], "displayName");
-        JsonElement domain = body.GetProperty("domain");
+        MapWaterDomainDoc domain = ReadDomain(body.GetProperty("domain"));
+        MapRecordRef[] covers = Items(body.GetProperty("covers"), "water covers").Select(cover =>
+        {
+            Members(cover, "water cover", ["id", "anchor"]);
+            JsonElement anchor = cover.GetProperty("anchor");
+            Members(anchor, "water cover anchor", ["surfaceId", "slotX", "slotZ"]);
+            return new MapRecordRef(Text(cover.GetProperty("id")), new MapPatchKey(Text(anchor.GetProperty("surfaceId")),
+                Long(anchor.GetProperty("slotX")), Long(anchor.GetProperty("slotZ"))));
+        }).ToArray();
+        return new MapWaterBodyDoc(Text(body.GetProperty("id")), Finite(body.GetProperty("surfaceY")),
+            Text(body.GetProperty("medium")), Text(body.GetProperty("renderMaterial")),
+            domain, covers,
+            body.TryGetProperty("displayName", out JsonElement name) ? Text(name) : null);
+    }
+
+    internal static MapWaterDomainDoc ReadDomain(JsonElement domain)
+    {
         Members(domain, "water domain", ["frame", "rects", "rings"]);
         MapWaterRect[] rects = Items(domain.GetProperty("rects"), "water rects").Select(rect =>
         {
@@ -145,18 +168,7 @@ internal static class MapWaterJson
             Members(ring, "water ring", ["vertices"]);
             return new MapWaterRing(Items(ring.GetProperty("vertices"), "water ring vertices").Select(ReadAddress).ToArray());
         }).ToArray();
-        MapRecordRef[] covers = Items(body.GetProperty("covers"), "water covers").Select(cover =>
-        {
-            Members(cover, "water cover", ["id", "anchor"]);
-            JsonElement anchor = cover.GetProperty("anchor");
-            Members(anchor, "water cover anchor", ["surfaceId", "slotX", "slotZ"]);
-            return new MapRecordRef(Text(cover.GetProperty("id")), new MapPatchKey(Text(anchor.GetProperty("surfaceId")),
-                Long(anchor.GetProperty("slotX")), Long(anchor.GetProperty("slotZ"))));
-        }).ToArray();
-        return new MapWaterBodyDoc(Text(body.GetProperty("id")), Finite(body.GetProperty("surfaceY")),
-            Text(body.GetProperty("medium")), Text(body.GetProperty("renderMaterial")),
-            new MapWaterDomainDoc(ReadFrame(domain.GetProperty("frame")), rects, rings), covers,
-            body.TryGetProperty("displayName", out JsonElement name) ? Text(name) : null);
+        return new(ReadFrame(domain.GetProperty("frame")), rects, rings);
     }
 
     internal static void WriteFrame(Utf8JsonWriter w, MapLatticeFrame frame)

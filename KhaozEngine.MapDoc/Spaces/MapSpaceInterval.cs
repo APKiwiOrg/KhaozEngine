@@ -13,6 +13,11 @@ namespace KhaozEngine.MapDoc.Spaces;
 public sealed record MapSpaceInterval(MapMembershipStatus Status, string? SpaceId, MapExactValue Lower, MapExactValue? Upper,
     string? LowerBoundaryId, string? UpperBoundaryId, string? Detail, MapReadWitness Witness)
 {
+    public MapOccupiedFragment? Fragment { get; }
+    internal MapSpaceInterval(MapMembershipStatus status, string? spaceId, MapExactValue lower, MapExactValue? upper,
+        string? lowerBoundaryId, string? upperBoundaryId, string? detail, MapReadWitness witness, MapOccupiedFragment? fragment)
+        : this(status, spaceId, lower, upper, lowerBoundaryId, upperBoundaryId, detail, witness) => Fragment = fragment;
+
     /// <summary>The boundary id of an open top.</summary>
     internal const string OpenTop = "open-top";
 }
@@ -20,7 +25,15 @@ public sealed record MapSpaceInterval(MapMembershipStatus Status, string? SpaceI
 /// <summary>One candidate footprint or portal band at an XZ, as membership evaluates it. <see cref="SpaceId"/> is
 /// the alias-resolved space membership reports and <see cref="Owner"/> the root that groups peers.</summary>
 internal sealed record MapSpaceBoundsPart(string SpaceId, string Owner, MapExactValue Lower, MapExactValue? Upper,
-    string LowerBoundaryId, string UpperBoundaryId, bool Portal);
+    string LowerBoundaryId, string UpperBoundaryId, bool Portal)
+{
+    internal MapOccupiedBoundary? LowerBoundary { get; init; }
+    internal MapOccupiedBoundary? UpperBoundary { get; init; }
+    internal MapOccupiedFragment? Fragment { get; init; }
+    internal IReadOnlyList<MapBoundFace> LowerFaces { get; init; } = Array.Empty<MapBoundFace>();
+    internal IReadOnlyList<MapBoundFace> UpperFaces { get; init; } = Array.Empty<MapBoundFace>();
+    internal IReadOnlyList<string> Path { get; init; } = Array.Empty<string>();
+}
 
 /// <summary>Occupied-space intervals read through point membership, so the two can never disagree.</summary>
 public static class MapSpaceIntervals
@@ -71,11 +84,11 @@ public static class MapSpaceIntervals
                 owned.RemoveAll(o => overlapping.Any(x => ReferenceEquals(x, o)));
                 owned.Add(overlapping.Aggregate(piece, Union));
             }
-        return bands.Concat(owned).OrderBy(p => p.Lower).Select(p => Interval(p, result.Witness)).ToArray();
+        return bands.Concat(owned).OrderBy(p => p.Lower).Select(p => Interval(MapOccupiedPartitions.Identify(view, p), result.Witness)).ToArray();
     }
 
     static MapSpaceInterval Interval(MapSpaceBoundsPart part, MapReadWitness witness) => new(MapMembershipStatus.Resolved,
-        part.SpaceId, part.Lower, part.Upper, part.LowerBoundaryId, part.UpperBoundaryId, null, witness);
+        part.SpaceId, part.Lower, part.Upper, part.LowerBoundaryId, part.UpperBoundaryId, null, witness, part.Fragment);
 
     static MapSpaceInterval Failure(MapMembershipStatus status, string? detail, MapReadWitness witness) =>
         new(status, null, default, null, null, null, detail, witness);
@@ -86,18 +99,20 @@ public static class MapSpaceIntervals
     {
         MapExactValue cursor = part.Lower;
         string cursorId = part.LowerBoundaryId;
+        MapOccupiedBoundary? cursorBoundary = part.LowerBoundary;
         foreach (MapSpaceBoundsPart band in claimed.OrderBy(b => b.Lower))
         {
             if (band.Upper is { } bandTop && bandTop.CompareTo(cursor) <= 0) continue;
             if (part.Upper is { } top && band.Lower.CompareTo(top) >= 0) break;
             if (band.Lower.CompareTo(cursor) > 0)
-                yield return part with { Lower = cursor, LowerBoundaryId = cursorId, Upper = band.Lower, UpperBoundaryId = band.LowerBoundaryId };
+                yield return part with { Lower = cursor, LowerBoundaryId = cursorId, Upper = band.Lower, UpperBoundaryId = band.LowerBoundaryId, LowerBoundary = cursorBoundary, UpperBoundary = band.LowerBoundary, Fragment = null };
             if (band.Upper is not { } end) yield break;
             cursor = end;
             cursorId = band.UpperBoundaryId;
+            cursorBoundary = band.UpperBoundary;
         }
         if (part.Upper is not { } upper || cursor.CompareTo(upper) < 0)
-            yield return part with { Lower = cursor, LowerBoundaryId = cursorId };
+            yield return part with { Lower = cursor, LowerBoundaryId = cursorId, LowerBoundary = cursorBoundary, Fragment = null };
     }
 
     static bool Overlaps(MapSpaceBoundsPart a, MapSpaceBoundsPart b) =>
@@ -107,6 +122,6 @@ public static class MapSpaceIntervals
     {
         MapSpaceBoundsPart low = a.Lower.CompareTo(b.Lower) <= 0 ? a : b;
         MapSpaceBoundsPart high = a.Upper is null || (b.Upper is { } bTop && a.Upper.Value.CompareTo(bTop) >= 0) ? a : b;
-        return low with { Upper = high.Upper, UpperBoundaryId = high.UpperBoundaryId };
+        return low with { Upper = high.Upper, UpperBoundaryId = high.UpperBoundaryId, UpperBoundary = high.UpperBoundary, Fragment = null };
     }
 }

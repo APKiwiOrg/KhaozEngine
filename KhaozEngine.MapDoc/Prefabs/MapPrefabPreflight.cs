@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Collections.Generic;
 using System.Text;
 using KhaozEngine.MapDoc.Assets;
@@ -223,6 +224,7 @@ internal static class MapPrefabPreflight
                 {
                     MapBoundaryChain chain => chain.Vertices.Count + (chain.SourcePatch is null ? 0L : 1L),
                     MapCavePortal portal => portal.Interval.Count,
+                    MapPrismDomain => 1L,
                     MapSpaceFootprint footprint => 1L + (footprint.Lower.SurfaceId is null ? 0 : 1) + (footprint.Upper.SurfaceId is null ? 0 : 1),
                     MapHorizontalOpening => 1L,
                     MapSurfaceSeam seam => 6L + 2L * seam.Pairs.Count,
@@ -231,6 +233,9 @@ internal static class MapPrefabPreflight
             }
             switch (record)
             {
+                case MapPrismDomain prism:
+                    GeometryElements = checked(GeometryElements + 4L * prism.Footprint.Rects.Count + prism.Footprint.Rings.Sum(r => (long)r.Vertices.Count));
+                    break;
                 case MapSpaceFootprint footprint: GeometryElements = checked(GeometryElements + footprint.SlotCells.Count); break;
                 case MapBoundaryChain chain: GeometryElements = checked(GeometryElements + chain.Vertices.Count); break;
                 case MapCavePortal portal: GeometryElements = checked(GeometryElements + portal.Interval.Count); break;

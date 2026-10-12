@@ -30,6 +30,7 @@ internal static class MapSurfaceReferences
         MapSpaceDoc space => (space.Parent is { } parent ? new[] { parent } : Array.Empty<MapRecordRef>())
             .Concat(space.AliasOf is { } alias ? new[] { alias } : Array.Empty<MapRecordRef>())
             .Concat(space.Walls.Select(w => w.Record)).Concat(space.Portals.Select(p => p.Record)).Concat(space.Links),
+        MapPrismDomain prism => new[] { prism.Space, prism.Parent },
         MapSpaceFootprint footprint => new[] { footprint.Space }.Concat(new[] { footprint.Lower.Opening, footprint.Upper.Opening }.OfType<MapRecordRef>()),
         _ => Array.Empty<MapRecordRef>(),
     };
@@ -42,6 +43,7 @@ internal static class MapSurfaceReferences
     static IEnumerable<string> SpaceIds(MapTopologyRecord r) => r switch
     {
         MapSpaceDoc space => new[] { space.Id },
+        MapPrismDomain prism => new[] { prism.Space.Id, prism.Parent.Id },
         MapSpaceFootprint footprint => new[] { footprint.Space.Id },
         MapCavePortal portal => new[] { portal.FromSpace.Id, portal.ToSpace.Id },
         MapVerticalLink link => new[] { link.UpperSpace.Id, link.LowerSpace.Id },

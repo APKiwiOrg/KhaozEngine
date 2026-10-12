@@ -286,7 +286,7 @@ internal static class MapEffectiveGeometry
         return W(t.A.Y).Add(W(t.B.Y).Subtract(W(t.A.Y)).Multiply(Cross(a, p, c).Divide(area)))
             .Add(W(t.C.Y).Subtract(W(t.A.Y)).Multiply(Cross(a, b, p).Divide(area)));
     }
-    static List<MapWideXz> Intersect(IReadOnlyList<MapWideXz> source, IReadOnlyList<MapWideXz> clip)
+    internal static List<MapWideXz> Intersect(IReadOnlyList<MapWideXz> source, IReadOnlyList<MapWideXz> clip)
     {
         var output = source.ToList();
         for (int i = 0; i < clip.Count && output.Count != 0; i++)

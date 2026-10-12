@@ -28,16 +28,16 @@ internal static partial class PrefabFixtures
         f.Document.Prefabs = new(1, 1, new[] { instance }, []);
         f.Document.NativeResourceTransforms = new[] { new MapStandaloneResourceTransform(MapPrefabChildKind.Surface, "exterior",
             new(position.X, position.Y, position.Z, yaw, scale), MapPrefabIdentity.ChildDigest(SurfaceChild("exterior", MapSurfaceRole.SupportFloor,
-                f.Document.Surfaces.Patches.Values.Single()))) };
+                f.Document.Surfaces.Patches[new("exterior", 0, 0)]))) };
         return f;
     }
     internal static MapExactPoint SharedFloorCorner(MapEffectiveResources resources) => Corner(resources, "a/floor", 4, 4);
     internal static MapExactPoint SharedRoomCorner(MapEffectiveResources resources)
     {
         var view = resources.CompleteView();
-        var footprint = view.RecordsIn(new("a/floor", 0, 0)).OfType<MapSpaceFootprint>().Single();
-        var polygon = MapEffectiveGeometry.CellPolygon(view, footprint.Lattice, footprint.SlotCells.Max());
-        var corner = polygon.Single(p => p == new MapExactXz(SharedFloorCorner(resources).X, SharedFloorCorner(resources).Z));
+        var prism = view.RecordsIn(new("a/floor", 0, 0)).OfType<MapPrismDomain>().Single();
+        var corner = MapPrismGeometry.Compile(view, prism).Pieces.SelectMany(p => p.Ring)
+            .Single(p => p == new MapExactXz(SharedFloorCorner(resources).X, SharedFloorCorner(resources).Z));
         return new(corner.X, StoreyUpper(resources), corner.Z);
     }
     internal static MapExactPoint SharedWaterCorner(MapEffectiveResources resources) => resources.WaterCorners["a/pool-water"].First();
@@ -79,6 +79,17 @@ internal static partial class PrefabFixtures
         foreach (var patch in floor.Patches)
             for (int z = 0; z <= patch.Depth; z++)
                 for (int x = 0; x <= patch.Width; x++) patch.Heights[z * (patch.Width + 1) + x] = x * 25;
+        // The prism must acquire its canonical parent even when its constant plane is higher.
+        // Keep the parent ramp two metres below the leaf ramp, so exact narrowing remains exercised.
+        var parent = f.Document.Surfaces.Patches[new("exterior", 0, 0)];
+        for (int z = 0; z <= parent.Depth; z++)
+            for (int x = 0; x <= parent.Width; x++) parent.Heights[z * (parent.Width + 1) + x] = -200 + x * 25;
+        var surface = f.Document.Surfaces.Refs.Single();
+        f.Document.Surfaces.Refs[0] = surface with
+        {
+            SemanticSha256 = MapSurfaceSemantics.SurfaceDigest(surface,
+            new[] { new KeyValuePair<MapPatchKey, string>(parent.Key, MapSurfaceSemantics.PatchDigest(parent)) })
+        };
         return Reasset(f, asset);
     }
     static PrefabFixture Reasset(PrefabFixture f, MapPrefabAsset asset, IReadOnlyDictionary<string, string>? ids = null, MapAssetClosure? captured = null)
@@ -222,7 +233,7 @@ internal static partial class PrefabFixtures
         {
             MapPrefabRecordChild { Value: MapSpaceDoc { Id: "room" } } room => room with
             { Anchor = anchor, References = room.References.Select(r => r.Path == "/anchor/surfaceId" ? r with { Target = r.Target with { Id = "remote-anchor" } } : r).ToArray() },
-            MapPrefabRecordChild { Value: MapSpaceFootprint domain } record when domain.Space.Id == "room" => record with
+            MapPrefabRecordChild { Value: MapPrismDomain domain } record when domain.Space.Id == "room" => record with
             { Value = domain with { Space = new("room", anchor) }, References = record.References.Select(r => r.Path == "/value/space/anchor/surfaceId" ? r with { Target = r.Target with { Id = "remote-anchor" } } : r).ToArray() },
             MapPrefabRecordChild { Value: MapCavePortal portal } record when portal.FromSpace.Id == "room" => record with
             { Value = portal with { FromSpace = new("room", anchor) }, References = record.References.Select(r => r.Path == "/value/fromSpace/anchor/surfaceId" ? r with { Target = r.Target with { Id = "remote-anchor" } } : r).ToArray() },
@@ -236,7 +247,7 @@ internal static partial class PrefabFixtures
     internal static MapSurfaceScope Scope(MapEffectiveResources resources)
     {
         var scope = resources.CompleteView().Scope;
-        return scope with { LocalMin = new(-0.1f, -4.1f), LocalMax = new(4.1f, 0.1f) };
+        return scope;
     }
     sealed class FaultSurfaceSource(IMapSurfaceAcquisitionSource source, string fault) : IMapSurfaceAcquisitionSource, IMapEffectiveSurfaceContext
     {
@@ -248,7 +259,7 @@ internal static partial class PrefabFixtures
         {
             if (fault == "parent-floor" && read.Key.SurfaceId == "exterior" || fault == "remote-anchor" && read.Key.SurfaceId == "a/remote-anchor")
                 return read with { Status = MapPatchStatus.Unloaded, Patch = null, SemanticSha256 = null };
-            if (fault == "room-domain" && read.Patch is { } original && original.Records.Any(r => r.Id == "a/room-domain"))
+            if (fault is "room-domain" or "prism" && read.Patch is { } original && original.Records.Any(r => r.Id == "a/room-domain"))
             {
                 var patch = original.Clone(); patch.Records.RemoveAll(r => r.Id == "a/room-domain");
                 return read with { Patch = patch, SemanticSha256 = MapSurfaceSemantics.PatchDigest(patch) };

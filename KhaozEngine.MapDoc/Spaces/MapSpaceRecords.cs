@@ -3,7 +3,7 @@ using KhaozEngine.MapDoc.Surfaces;
 
 namespace KhaozEngine.MapDoc.Spaces;
 
-public enum MapSpaceKind : byte { Cave, Exterior }
+public enum MapSpaceKind : byte { Cave, Exterior, Room }
 public enum MapSide : byte { Front, Back }
 public sealed record MapBoundaryRef(MapRecordRef Record, MapSide Side);
 public sealed record MapSpaceDoc(string Id, MapSpaceKind Kind, MapRecordRef? Parent, MapRecordRef? AliasOf,

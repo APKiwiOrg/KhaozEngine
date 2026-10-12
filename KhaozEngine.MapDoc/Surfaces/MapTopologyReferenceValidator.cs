@@ -89,10 +89,19 @@ public static class MapTopologyReferenceValidator
                     case MapHorizontalOpening opening: Slots(opening.Patch, opening.SlotCells, opening.Id, requireAbsent: true); break;
                     case MapVerticalLink link: Link(link, row.Anchor); break;
                     case MapSpaceDoc space: Space(space); break;
+                    case MapPrismDomain prism:
+                        var room = Find<MapSpaceDoc>(prism.Space, prism.Id);
+                        _ = Find<MapSpaceDoc>(prism.Parent, prism.Id);
+                        if (prism.PayloadVersion != 1 || room?.Kind != MapSpaceKind.Room || room.Parent != prism.Parent)
+                            Errors.Add($"invalid prism parent/room '{prism.Id}'");
+                        break;
                     case MapSpaceFootprint footprint: Footprint(footprint); break;
                     default: Errors.Add($"unknown record type '{record.Id}'"); break;
                 }
             }
+            foreach (var room in _records.Values.Select(r => r.Record).OfType<MapSpaceDoc>().Where(s => s.Kind == MapSpaceKind.Room && s.AliasOf is null))
+                if (_records.Values.Count(r => r.Record is MapPrismDomain p && p.Space.Id == room.Id) != 1)
+                    Errors.Add($"room requires one prism '{room.Id}'");
             ValidateParentCycles();
         }
 
@@ -171,9 +180,10 @@ public static class MapTopologyReferenceValidator
             if (portal.Interval.Count < 2) Errors.Add($"invalid portal interval '{portal.Id}'");
             foreach (MapLatticeVertex v in portal.Interval) Vertex(v, portal.Id);
             var reference = new MapRecordRef(portal.Id, anchor);
-            if (from is not null && _portalMembership.GetValueOrDefault((from.Id, reference, MapSide.Front)) != 1)
+            bool semanticRoom = from?.Kind == MapSpaceKind.Room || to?.Kind == MapSpaceKind.Room;
+            if (!semanticRoom && from is not null && _portalMembership.GetValueOrDefault((from.Id, reference, MapSide.Front)) != 1)
                 Errors.Add($"portal list mismatch '{portal.Id}'");
-            if (to is not null && _portalMembership.GetValueOrDefault((to.Id, reference, MapSide.Back)) != 1)
+            if (!semanticRoom && to is not null && _portalMembership.GetValueOrDefault((to.Id, reference, MapSide.Back)) != 1)
                 Errors.Add($"portal list mismatch '{portal.Id}'");
         }
         void Link(MapVerticalLink link, MapPatchKey anchor)
@@ -234,6 +244,7 @@ public static class MapTopologyReferenceValidator
         void Footprint(MapSpaceFootprint footprint)
         {
             MapSpaceDoc? space = Find<MapSpaceDoc>(footprint.Space, footprint.Id);
+            if (space?.Kind == MapSpaceKind.Room) Errors.Add($"room occupancy requires its prism, not a lattice footprint '{footprint.Id}'");
             Slots(footprint.Lattice, footprint.SlotCells, footprint.Id, requireAbsent: false);
             Bound(footprint.Lower, lower: true, space, footprint.Id);
             Bound(footprint.Upper, lower: false, space, footprint.Id);

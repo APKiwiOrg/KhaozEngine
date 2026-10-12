@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using KhaozEngine.MapDoc.Water;
 using KhaozEngine.MapDoc.Spaces;
 
 namespace KhaozEngine.MapDoc.Surfaces;
@@ -40,6 +41,7 @@ public static partial class MapSurfacePatchCodec
             MapVerticalLink => "link",
             MapSpaceDoc => "space",
             MapSpaceFootprint => "footprint",
+            MapPrismDomain => "prism",
             _ => throw new MapDocumentException("unknown topology record type"),
         };
         w.WriteStartObject(); w.WriteString("type", type); Text(w, "id", record.Id);
@@ -95,6 +97,15 @@ public static partial class MapSurfacePatchCodec
                     RequireText(tag); writer.WriteStringValue(tag);
                 });
                 Boundaries(w, "walls", space.Walls); Boundaries(w, "portals", space.Portals); Refs(w, "links", space.Links);
+                break;
+            case MapPrismDomain prism:
+                if (prism.PayloadVersion != 1) throw new MapDocumentException("unsupported prism payload version");
+                w.WriteNumber("payloadVersion", prism.PayloadVersion);
+                RefProperty(w, "space", prism.Space); RefProperty(w, "parent", prism.Parent);
+                w.WriteString("instanceId", prism.InstanceId); Text(w, "storeyId", prism.StoreyId);
+                w.WritePropertyName("footprint");
+                MapWaterJson.WriteDomain(w, prism.Footprint, $"prism '{prism.Id}' footprint");
+                w.WriteNumber("lowerY", prism.LowerY); w.WriteNumber("upperY", prism.UpperY);
                 break;
             case MapSpaceFootprint footprint:
                 RefProperty(w, "space", footprint.Space); w.WritePropertyName("lattice"); WriteKey(w, footprint.Lattice);
@@ -154,6 +165,12 @@ public static partial class MapSurfacePatchCodec
                         string text = tag.GetString()!; RequireText(text); return text;
                     }), ReadList(r.GetProperty("walls"), ReadBoundary), ReadList(r.GetProperty("portals"), ReadBoundary),
                     ReadList(r.GetProperty("links"), ReadRef));
+            case "prism":
+                Members(r, "type", "id", "payloadVersion", "space", "parent", "instanceId", "storeyId", "footprint", "lowerY", "upperY");
+                if (r.GetProperty("payloadVersion").GetInt32() != 1) throw new MapDocumentException("unsupported prism payload version");
+                return new MapPrismDomain(id, 1, ReadRef(r.GetProperty("space")), ReadRef(r.GetProperty("parent")),
+                    r.GetProperty("instanceId").GetString()!, r.GetProperty("storeyId").GetString()!,
+                    MapWaterJson.ReadDomain(r.GetProperty("footprint")), r.GetProperty("lowerY").GetSingle(), r.GetProperty("upperY").GetSingle());
             case "footprint":
                 Members(r, "type", "id", "space", "lattice", "slotCells", "lower", "upper");
                 return new MapSpaceFootprint(id, ReadRef(r.GetProperty("space")), ReadKey(r.GetProperty("lattice")),

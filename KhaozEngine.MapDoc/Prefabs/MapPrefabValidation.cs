@@ -32,6 +32,7 @@ public static class MapPrefabValidation
 
     static void ValidateDocument(MapDocument doc, MapAssetClosure? assets)
     {
+        MapPrismCoverage.RequireStandaloneStoreys(doc);
         bool present = doc.Prefabs is not null || doc.BuildingIntent is not null || doc.NativeResourceTransforms is not null;
         if (present && (doc.ResolverIdentity is not { PayloadVersion: 1, ResolverVersion: 2 } || doc.SupportRecipe != MapSupportRecipe.AuthoredBindingsV2))
             Fail("Prefab sections require resolver identity (1, 2) and AuthoredBindingsV2.");
@@ -223,6 +224,9 @@ public static class MapPrefabValidation
                     if (patch.Key.SurfaceId != s.Surface.Id || patch.Records.Count != 0) Fail("Surface children must contain only their geometry and no embedded records.");
                     _ = MapSurfacePatchCodec.Encode(patch);
                 }
+                break;
+            case MapPrefabRecordChild { Value: MapPrismDomain prism }:
+                if (prism.InstanceId != "") Fail("Prefab-local prism ownership is assigned by expansion.");
                 break;
             case MapPrefabStoreyChild s: Text(s.Name); break;
             case MapPrefabLightChild l: Light(l.Value); break;

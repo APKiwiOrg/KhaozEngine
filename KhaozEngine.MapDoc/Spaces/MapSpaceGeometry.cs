@@ -73,6 +73,28 @@ internal static class MapSpaceGeometry
         return null;
     }
 
+    /// <summary>The lexicographic derivative in the R4 world direction (1, infinitesimal +Z).</summary>
+    internal static int Direction(IReadOnlyList<MapBoundFace> faces, MapExactXz point)
+    {
+        MapBoundFace? selected = null;
+        foreach (var face in faces)
+        {
+            if (MapSubdividedTriangle.Height(face.Triangle, point.X, point.Z) is null) continue;
+            selected ??= face;
+            var polygon = MapRefinementPolygon.Triangle(face.Triangle).Select(MapWideXz.From).ToArray();
+            if (MapWaterPolygons.RingContains(polygon, MapWideXz.From(point))) { selected = face; break; }
+        }
+        if (selected is not { } bound) return 0;
+        var t = bound.Triangle;
+        var dx1 = W(t.B.X).Subtract(W(t.A.X)); var dx2 = W(t.C.X).Subtract(W(t.A.X));
+        var dz1 = W(t.B.Z).Subtract(W(t.A.Z)); var dz2 = W(t.C.Z).Subtract(W(t.A.Z));
+        var dy1 = W(t.B.Y).Subtract(W(t.A.Y)); var dy2 = W(t.C.Y).Subtract(W(t.A.Y));
+        var area = dx1.Multiply(dz2).Subtract(dz1.Multiply(dx2));
+        var x = dy1.Multiply(dz2).Subtract(dy2.Multiply(dz1)).Divide(area);
+        return x.Sign != 0 ? x.Sign : dx1.Multiply(dy2).Subtract(dx2.Multiply(dy1)).Divide(area).Sign;
+        static MapWideRational W(MapExactValue value) => MapWideRational.From(value);
+    }
+
     internal static string Owner(MapScopedSurfaces view, MapSpaceDoc space)
     {
         var seen = new HashSet<string>(StringComparer.Ordinal);

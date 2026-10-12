@@ -4,6 +4,7 @@ using System.Linq;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Surfaces;
+using KhaozEngine.MapDoc.Water;
 
 namespace KhaozEngine.MapDoc.Storage;
 
@@ -29,6 +30,7 @@ internal sealed class MapEffectiveSurfaceSource : IMapSurfaceAcquisitionSource, 
             {
                 IEnumerable<MapExactXz> vertices = record switch
                 {
+                    MapPrismDomain prism => PrismPoints(prism),
                     MapSpaceFootprint footprint => footprint.SlotCells.SelectMany(c => MapEffectiveGeometry.CellPolygon(context, footprint.Lattice, c)),
                     MapHorizontalOpening opening => opening.SlotCells.SelectMany(c => MapEffectiveGeometry.CellPolygon(context, opening.Patch, c)),
                     MapBoundaryChain chain => chain.Vertices.Select(v => MapEffectiveGeometry.Vertex(context, v.Vertex)),
@@ -40,6 +42,18 @@ internal sealed class MapEffectiveSurfaceSource : IMapSurfaceAcquisitionSource, 
                 if (points.Length != 0) records.Add((new(record.Id, patch.Key), MapEffectiveGeometry.Bounds(points)));
             }
         _records = records.AsReadOnly();
+    }
+    IEnumerable<MapExactXz> PrismPoints(MapPrismDomain prism)
+    {
+        var addresses = prism.Footprint.Rects.SelectMany(r => new[] { MapLatticeAddress.Corner(r.MinX, r.MinZ),
+            MapLatticeAddress.Corner(r.MaxX, r.MinZ), MapLatticeAddress.Corner(r.MaxX, r.MaxZ), MapLatticeAddress.Corner(r.MinX, r.MaxZ) })
+            .Concat(prism.Footprint.Rings.SelectMany(r => r.Vertices));
+        foreach (var address in addresses)
+        {
+            var point = prism.Footprint.Frame.WorldXz(address);
+            var world = EffectiveContext.Point(MapPrefabChildKind.Record, prism.Id, new(point.X, default, point.Z));
+            yield return new(world.X, world.Z);
+        }
     }
     MapExactRect Bounds(MapSurfacePatch patch)
     {

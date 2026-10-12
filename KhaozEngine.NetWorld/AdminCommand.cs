@@ -10,10 +10,11 @@ namespace KhaozEngine.NetWorld;
 // state, submitted from an arbitrary thread, that must land at one deterministic point in the tick.
 // SetPosition is Teleport's twin: the same placement, applied through the same case, differing only in whether the
 // teleport epoch advances. It is a separate KIND rather than a flag on the struct so the drain reads the intent
-// straight off the command.
+// straight off the command. HoldMovement and ReleaseMovement carry only a target and edit the head's held-slot set.
 internal enum AdminCommandKind : byte
 {
     Teleport, Kick, Broadcast, SpeedScale, SetPosition, BeginMovementCommitment, AbortMovementCommitment,
+    HoldMovement, ReleaseMovement,
 }
 
 /// <summary>A queued admin mutation, applied on the host thread during the next tick.</summary>

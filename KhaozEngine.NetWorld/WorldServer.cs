@@ -555,6 +555,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
         {
             MoveCommand cmd = commands.Dequeue(slot, out int ack);
             lastAckBySlot[slot] = ack;
+            if (heldMovementSlots.Contains(slot)) cmd = MoveCommand.Idle;   // acknowledged, never acted on
             // Everything this island owns is stepped in the island's frame. Unframed (the default) that frame is
             // WorldFrame.Origin, whose anchor is exactly zero, so every line below is byte-identical to the
             // pre-frame server: a state converted from Origin to Origin is the same state, and InFrame(Origin, p)
@@ -712,6 +713,10 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
                 break;
             case AdminCommandKind.AbortMovementCommitment:
                 ApplyAbortMovementCommitment(cmd.Target, cmd.Sequence, MovementCommitmentEndReason.Aborted);
+                break;
+            case AdminCommandKind.HoldMovement:
+            case AdminCommandKind.ReleaseMovement:
+                ApplyMovementHold(cmd);
                 break;
             case AdminCommandKind.Kick:
                 {

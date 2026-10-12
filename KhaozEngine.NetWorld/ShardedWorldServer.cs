@@ -505,6 +505,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         {
             MoveCommand cmd = commands.Dequeue(slot, out int ack);
             lastAckBySlot[slot] = ack;
+            if (heldMovementSlots.Contains(slot)) cmd = MoveCommand.Idle;   // acknowledged, never acted on
             if (host.TryGetOwner(netIdBySlot[slot], out CellSim cell, out Entity e))
             {
                 cell.World.Set(e, new PendingMove { Command = cmd });
@@ -712,6 +713,10 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
                 break;
             case AdminCommandKind.AbortMovementCommitment:
                 ApplyAbortMovementCommitment(cmd.Target, cmd.Sequence, MovementCommitmentEndReason.Aborted);
+                break;
+            case AdminCommandKind.HoldMovement:
+            case AdminCommandKind.ReleaseMovement:
+                ApplyMovementHold(cmd);
                 break;
             case AdminCommandKind.Kick:
                 {

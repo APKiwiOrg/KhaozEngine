@@ -69,15 +69,15 @@ void main() {
     gl_Position = vec4(p * 2.0 - 1.0, 1.0, 1.0);   // far plane (z=1): passes the Equal depth test only on background
 }";
 
-        // SkyFrag mirrors SkyMath.Shade EXACTLY (keep in sync, like EdgeFrag mirrors OutlineMath). Screen-space: the
+        // The disabled atmosphere branch mirrors SkyMath.Shade (keep in sync, like EdgeFrag mirrors OutlineMath). Screen-space: the
         // gradient is a vertical ramp over NDC.y and the sun disc/halo is a screen-space distance to the sun's
         // projected NDC position (SunNdc, computed on the CPU by SkyMath.ProjectSunToNdc so a DIRECTIONAL light with
         // no position still lands on-screen). NDC is rebuilt from gl_FragCoord (upper-left on EVERY backend) + the
         // render size (Res.xy = 1/width,1/height) - the same backend-independent convention DecalFrag uses, NOT an
-        // interpolated vertex NDC (which would flip on Vulkan against the geometry). The single UBO holds the colours
-        // + projected-sun params + render size, which is everything this pass reads. It satisfied the
-        // one-uniform-buffer rule (retired by #604) without having to fold anything. No texture.
-        public const string SkyFrag = @"#version 450
+        // interpolated vertex NDC (which would flip on Vulkan against the geometry). Physical atmosphere appends
+        // the shared atmosphere UBO, sky-view texture and sampler after the legacy Sky uniform prefix.
+        public const string SkyFrag = "#version 450\n" + AtmosphereBindingsAt1Glsl
+            + AtmosphereTransportGlsl + AtmosphereSkyConsumersGlsl + @"
 layout(set=0, binding=0) uniform Sky {
     vec4 Horizon;     // rgb gradient at the horizon (bottom)
     vec4 Zenith;      // rgb gradient at the zenith (top)
@@ -87,12 +87,36 @@ layout(set=0, binding=0) uniform Sky {
     vec4 HorizonUp;   // xyz = world-Y of the camera right, up and back axes, w = 1 when the world horizon is live
     vec4 DiscColor[8];  // per on-screen disc: rgb colour, a = opacity
     vec4 DiscPlace[8];  // xy = screen NDC, z = radius, w = halo strength
-    vec4 DiscHalo[8];   // x = halo falloff
+    vec4 DiscHalo[8];   // x = halo falloff, y = physical primary marker
+    vec4 DiscDirection[8]; // xyz = world direction, w = angular radius (physical sky)
 };
 layout(location=0) out vec4 oColor;
 void main() {
     // NDC from gl_FragCoord (upper-left origin on every backend): x in [-1,1] rightward, y in [-1,1] UPWARD.
     vec2 ndc = vec2(gl_FragCoord.x * Res.x * 2.0 - 1.0, 1.0 - gl_FragCoord.y * Res.y * 2.0);
+    if (Atmo.Tint.w > 0.5) {
+        // Shared row-vector camera basis and projection, including jitter and off-centre terms.
+        vec2 v = ndc * Atmo.Ray.xy + Atmo.Ray.zw;
+        vec3 direction = Atmo.Res.z > 0.5 ? -normalize(Atmo.Back.xyz)
+            : normalize(v.x * Atmo.Right.xyz + v.y * Atmo.Up.xyz - Atmo.Back.xyz);
+        vec3 physical = atmosphereSkyValue(direction);
+        for (int i = 0; i < 8; i++) {
+            if (i >= int(Res.w)) break;
+            if (DiscHalo[i].y > 0.5) {
+                physical += atmosphereSunDisc(direction);
+            } else {
+                vec3 body = normalize(DiscDirection[i].xyz);
+                float angle = atan(length(cross(direction, body)), clamp(dot(direction, body), -1.0, 1.0));
+                float radius = DiscDirection[i].w, feather = max(fwidth(angle), 1e-6);
+                float edge = 1.0 - smoothstep(radius - feather * 0.5, radius + feather * 0.5, angle);
+                vec3 p = vec3(0.0, Atmo.Planet.x + max(Atmo.Camera.w, 0.0), 0.0);
+                if (!AtmoPlanetOccludes(p, direction))
+                    physical += DiscColor[i].rgb * (edge * clamp(DiscColor[i].a, 0.0, 1.0));
+            }
+        }
+        oColor = vec4(physical, 1.0);
+        return;
+    }
     // Screen horizon: a vertical screen gradient, NDC.y in [-1,1] -> [0,1] (bottom -> top). World horizon: the same
     // ramp off the elevation of this pixel's view ray (SkyHorizonFrame.SinElevation), which is the gradient the
     // water's skyAlongDirection already uses.

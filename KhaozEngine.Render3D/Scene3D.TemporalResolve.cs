@@ -206,7 +206,7 @@ namespace KhaozEngine.Render3D
             switch (Post.Background)
             {
                 case BackgroundMode.Sky:
-                    _sky.Draw(cl, _res, _currentFrameView.View, _currentFrameView.JitteredProjection, Post.LightDirection, Post.Sky);
+                    _sky.Draw(cl, _res, _currentFrameView.View, _currentFrameView.JitteredProjection, Post.LightDirection, Post.Sky, Post.Atmosphere.Enabled);
                     _frameStats.DrawCalls++;
                     break;
                 case BackgroundMode.Starfield:

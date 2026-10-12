@@ -16,12 +16,12 @@ namespace KhaozEngine.Render3D.Rendering
     /// (ColorDepthFB binds only colour + depth). This is the inverse selection to the decal pass's Greater test,
     /// which under the [0,1]/LessEqual convention passes on GEOMETRY only. Runs after the model pass wrote depth and before the
     /// decals + post chain, so the sky flows through the pixel post like the rest of the scene. Zero cost when the
-    /// sky is off (the scene skips this pass entirely). One UBO, one draw.
+    /// sky is off (the scene skips this pass entirely). Physical atmosphere borrows the scene's LUT and uniforms.
     /// </summary>
     internal sealed class SkyRenderer : IDisposable
     {
-        /// <summary>480-byte UBO matching the Sky block in <see cref="ShaderSources.SkyFrag"/> (6 vec4 and three
-        /// <c>vec4[8]</c> disc arrays; every member
+        /// <summary>608-byte UBO matching the Sky block in <see cref="ShaderSources.SkyFrag"/> (6 vec4 and four
+        /// <c>vec4[8]</c> disc arrays, every member
         /// 16-byte aligned, so std140 needs no extra padding). Size-checked by the UboLayoutTests tripwire.</summary>
         public struct SkyUbo
         {
@@ -33,28 +33,37 @@ namespace KhaozEngine.Render3D.Rendering
             public Vector4 HorizonUp;   // xyz = world-Y of the camera right/up/back axes, w = 1 when live
             public SkyDiscVec4s DiscColor;  // per on-screen disc: rgb colour, a = opacity
             public SkyDiscVec4s DiscPlace;  // xy = screen NDC, z = radius, w = halo strength
-            public SkyDiscVec4s DiscHalo;   // x = halo falloff
+            public SkyDiscVec4s DiscHalo;   // x = halo falloff, y = physical primary marker
+            public SkyDiscVec4s DiscDirection; // xyz = world direction, w = angular radius (physical sky only)
         }
 
-        /// <summary>Byte size of <see cref="SkyUbo"/> / the GPU uniform buffer. (6 + 3 * 8) * 16 (vec4) = 480.</summary>
-        internal const uint UboBytes = 480;
+        /// <summary>Byte size of <see cref="SkyUbo"/> / the GPU uniform buffer. (6 + 4 * 8) * 16 = 608.</summary>
+        internal const uint UboBytes = 608;
 
         readonly IGpuDevice _gd;
         readonly IGpuShaderSet _shaders;
         readonly IGpuResourceLayout _layout;
         readonly IGpuBuffer _ubo;
         readonly IGpuResourceSet _set;
+        readonly AtmosphereBindings? _ownedAtmosphere;
         IGpuPipeline _pipe;   // rebuilt by SetOutputs when the MRT sample count (MSAA) changes
 
         public SkyRenderer(IGpuDevice gd, GpuOutputDescription colorOutput)
+            : this(gd, colorOutput, new AtmosphereBindings(gd), ownsAtmosphere: true) { }
+
+        public SkyRenderer(IGpuDevice gd, GpuOutputDescription colorOutput, AtmosphereBindings atmosphere)
+            : this(gd, colorOutput, atmosphere, ownsAtmosphere: false) { }
+
+        SkyRenderer(IGpuDevice gd, GpuOutputDescription colorOutput, AtmosphereBindings atmosphere, bool ownsAtmosphere)
         {
             _gd = gd;
+            _ownedAtmosphere = ownsAtmosphere ? atmosphere : null;
             var f = gd.Factory;
             _shaders = f.CreateShadersFromSpirv(ShaderSources.SkyVert, ShaderSources.SkyFrag);
-            _layout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
-                new GpuResourceLayoutElement("Sky", GpuResourceKind.UniformBuffer, GpuShaderStages.Fragment)));
+            _layout = f.CreateResourceLayout(new GpuResourceLayoutDescription(AtmosphereBindings.AppendLayout(
+                new GpuResourceLayoutElement("Sky", GpuResourceKind.UniformBuffer, GpuShaderStages.Fragment))));
             _ubo = f.CreateBuffer(new GpuBufferDescription(UboBytes, GpuBufferUsage.UniformBuffer));
-            _set = f.CreateResourceSet(new GpuResourceSetDescription(_layout, _ubo));
+            _set = f.CreateResourceSet(new GpuResourceSetDescription(_layout, atmosphere.AppendResources(_ubo)));
             _pipe = Pipe(f, colorOutput);
         }
 
@@ -90,9 +99,10 @@ namespace KhaozEngine.Render3D.Rendering
         /// <see cref="SkyMath.ProjectSunToNdc"/>): the world-anchored point-at-infinity projection (default, needs
         /// <paramref name="projection"/>) or the legacy stylized backdrop. The projection is done ENTIRELY on the CPU,
         /// and <see cref="SkyDiscs.Resolve"/> decides which discs there are. The render size derives the aspect
-        /// (keeps the discs round) and the 1/size the shader uses to rebuild NDC from gl_FragCoord.</summary>
+        /// (keeps the discs round) and the 1/size the shader uses to rebuild NDC from gl_FragCoord. Physical
+        /// packing carries angular world directions independently of the legacy anchor and horizon controls.</summary>
         public static SkyUbo PackUbo(SkySettings sky, Matrix4x4 view, Matrix4x4 projection, Vector3 lightDirection,
-            int renderWidth, int renderHeight)
+            int renderWidth, int renderHeight, bool atmosphereEnabled = false)
         {
             float aspect = renderHeight > 0 ? (float)renderWidth / renderHeight : 1f;
             float invW = renderWidth > 0 ? 1f / renderWidth : 0f;
@@ -101,14 +111,25 @@ namespace KhaozEngine.Render3D.Rendering
             Vector4 zenith = sky.ZenithColor;
             SkyHorizonFrame frame = SkyHorizonMath.ResolveFrame(sky, view, projection);
 
-            // Only the discs that project on screen are packed, in draw order, so the shader needs no visibility flag.
+            // Legacy discs must project on screen. Physical discs keep their directions for per-pixel angle tests.
             Span<SkyDisc> discs = stackalloc SkyDisc[SkySettings.MaxDiscs];
             int resolved = SkyDiscs.Resolve(sky, lightDirection, discs);
-            SkyDiscVec4s color = default, place = default, halo = default;
+            SkyDiscVec4s color = default, place = default, halo = default, direction = default;
             int onScreen = 0;
             for (int i = 0; i < resolved; i++)
             {
                 SkyDisc disc = discs[i];
+                if (atmosphereEnabled)
+                {
+                    // Parallel orthographic rays have no directional disc location. Perspective discs are
+                    // evaluated by world angle, including limbs whose centres lie outside the viewport.
+                    if (!SkyHorizonMath.IsPerspective(projection)) continue;
+                    color[onScreen] = disc.Color;
+                    direction[onScreen] = new Vector4(disc.Direction, disc.Radius);
+                    halo[onScreen] = new Vector4(0f, sky.SunEnabled && i == 0 ? 1f : 0f, 0f, 0f);
+                    onScreen++;
+                    continue;
+                }
                 if (!SkyMath.ProjectSunToNdc(sky.Anchor, view, projection, disc.Direction, out Vector2 ndc)) continue;
                 color[onScreen] = disc.Color;
                 place[onScreen] = new Vector4(ndc.X, ndc.Y, disc.Radius, disc.HaloStrength);
@@ -127,6 +148,7 @@ namespace KhaozEngine.Render3D.Rendering
                 DiscColor = color,
                 DiscPlace = place,
                 DiscHalo = halo,
+                DiscDirection = direction,
             };
         }
 
@@ -134,10 +156,12 @@ namespace KhaozEngine.Render3D.Rendering
         /// pass is complete (depth written) and the framebuffer is free to rebind. The sun screen position is
         /// CPU-projected from the RAW <paramref name="view"/> + <paramref name="projection"/> per
         /// <see cref="SkySettings.Anchor"/> (the fragment rebuilds NDC from gl_FragCoord, the backend-independent decal
-        /// convention), so the disc lands consistently across backends.</summary>
-        public void Draw(IGpuCommandList cl, RenderResources res, Matrix4x4 view, Matrix4x4 projection, Vector3 lightDirection, SkySettings sky)
+        /// convention), so the disc lands consistently across backends. Physical atmosphere reconstructs rays
+        /// through its shared camera basis instead of using projected disc centres.</summary>
+        public void Draw(IGpuCommandList cl, RenderResources res, Matrix4x4 view, Matrix4x4 projection, Vector3 lightDirection, SkySettings sky,
+            bool atmosphereEnabled = false)
         {
-            var u = PackUbo(sky, view, projection, lightDirection, res.Width, res.Height);
+            var u = PackUbo(sky, view, projection, lightDirection, res.Width, res.Height, atmosphereEnabled);
             cl.UpdateBuffer(_ubo, 0, in u);
             cl.SetFramebuffer(res.ColorDepthFB);
             cl.SetPipeline(_pipe);
@@ -152,6 +176,7 @@ namespace KhaozEngine.Render3D.Rendering
             _layout.Dispose();
             _shaders.Dispose();
             _ubo.Dispose();
+            _ownedAtmosphere?.Dispose();
         }
     }
 }

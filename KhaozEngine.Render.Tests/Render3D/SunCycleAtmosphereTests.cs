@@ -2,12 +2,104 @@ using System;
 using System.Numerics;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
+using KhaozEngine.Render3D.Rendering;
 using Xunit;
 
 namespace KhaozEngine.Tests.Render3D;
 
 public sealed class SunCycleAtmosphereTests
 {
+    [Fact]
+    public void PhysicalSky_OverridesBackgroundAndAnchor()
+    {
+        var post = new PixelPostProcessSettings();
+        post.Atmosphere.Enabled = true;
+        Assert.False(post.Sky.Enabled);
+        Assert.Equal(BackgroundMode.Sky, post.Background);
+        post.Background = BackgroundMode.Sky;
+        Assert.True(post.Atmosphere.Enabled);
+        post.Background = BackgroundMode.Solid;
+        Assert.False(post.Atmosphere.Enabled);
+        post.Atmosphere.Enabled = true;
+        post.Background = BackgroundMode.Starfield;
+        Assert.False(post.Atmosphere.Enabled);
+        post.Background = BackgroundMode.Sky;
+        Assert.False(post.Atmosphere.Enabled);
+
+        var sky = post.Sky;
+        sky.SunDirectionOverride = Vector3.Normalize(new Vector3(-1, .1f, 0));
+        sky.SunRadius = .01f;
+        sky.ExtraDiscs.Add(new SkyDisc { Direction = Vector3.UnitZ, Radius = .02f, Color = Color.White });
+        var view = Matrix4x4.CreateLookAt(new Vector3(0, 2, 9), new Vector3(-1, 2, 9), Vector3.UnitY);
+        var projection = Matrix4x4.CreatePerspectiveFieldOfView(MathF.PI / 3, 1.5f, .1f, 100);
+        sky.Anchor = SunAnchor.StylizedBackdrop;
+        sky.Horizon = SkyHorizon.Screen;
+        var screen = SkyRenderer.PackUbo(sky, view, projection, -Vector3.UnitY, 480, 320, atmosphereEnabled: true);
+        sky.Anchor = SunAnchor.World;
+        sky.Horizon = SkyHorizon.World;
+        var world = SkyRenderer.PackUbo(sky, view, projection, -Vector3.UnitY, 480, 320, atmosphereEnabled: true);
+        Assert.Equal(2, world.Res.W);
+        for (int i = 0; i < 2; i++)
+        {
+            Assert.Equal(world.DiscDirection[i], screen.DiscDirection[i]);
+            Assert.Equal(world.DiscColor[i], screen.DiscColor[i]);
+        }
+        Assert.InRange(Vector4.Distance(new Vector4(-.9950372f, .09950372f, 0, .01f), world.DiscDirection[0]), 0, 1e-6f);
+        Assert.Equal(new Vector4(Vector3.UnitZ, .02f), world.DiscDirection[1]);
+        Assert.Equal(1, world.DiscHalo[0].Y);
+        Assert.Equal(0, world.DiscHalo[1].Y);
+        var legacy = SkyRenderer.PackUbo(sky, view, projection, -Vector3.UnitY, 480, 320);
+        Assert.Equal(0, legacy.DiscHalo[0].Y);
+
+        var ortho = Matrix4x4.CreateOrthographic(8, 6, .1f, 100);
+        Assert.Equal(0, SkyRenderer.PackUbo(sky, view, ortho, -Vector3.UnitY, 480, 320, true).Res.W);
+        sky.SunEnabled = false;
+        var moonOnly = SkyRenderer.PackUbo(sky, view, projection, -Vector3.UnitY, 480, 320, true);
+        Assert.Equal(1, moonOnly.Res.W);
+        Assert.Equal(0, moonOnly.DiscHalo[0].Y);
+        Assert.Equal(new Vector4(Vector3.UnitZ, .02f), moonOnly.DiscDirection[0]);
+    }
+
+    [Fact]
+    public void SunDiscValue_NormalizesLimbAndAppliesTransmissionOpacityAndTintOnce()
+    {
+        var post = VacuumPost();
+        post.Atmosphere.SunIlluminance = 2;
+        post.Atmosphere.SunAngularRadiusRadians = .02f;
+        var model = post.ResolveAtmosphereModel();
+        var tint = new Vector3(.5f, .75f, 1);
+        var frame = new AtmosphereFrame(Vector3.UnitY, -Vector3.UnitY, 0, tint, SunOpacity: .5f);
+        float scale = 2 / MathF.Pow(MathF.Sin(.02f), 2);
+        Close(tint * (scale * .625f), model.SunDiscValue(0, Vector3.UnitY, frame), .002f);
+        var innerLimb = new Vector3(MathF.Sin(.015f), MathF.Cos(.015f), 0);
+        // At three quarters of the angular radius, the normalized profile is 0.9960784.
+        Close(tint * (scale * .5f * .9960784f), model.SunDiscValue(0, innerLimb, frame), .003f);
+        Assert.Equal(Vector3.Zero, model.SunDiscValue(0, Vector3.UnitX, frame));
+        Assert.Equal(Vector3.Zero, model.SunDiscValue(0, Vector3.UnitY, frame with { SunOpacity = 0 }));
+
+        var earth = new AtmosphereModel(AtmosphereSettings.Earth());
+        var unscaled = frame with { Tint = Vector3.One, SunOpacity = 1 };
+        var centre = earth.SunDiscValue(.002f, Vector3.UnitY, unscaled);
+        Assert.True(centre.X > centre.Z, "Rayleigh extinction must colour the solar disc.");
+        Close(centre * tint * .5f, earth.SunDiscValue(.002f, Vector3.UnitY, frame), .005f);
+    }
+
+    [Fact]
+    public void SunDiscValue_PlanetClipsTheLimbAndNegativeAltitudeUsesSurface()
+    {
+        var post = VacuumPost();
+        post.Atmosphere.SunAngularRadiusRadians = .02f;
+        var model = post.ResolveAtmosphereModel();
+        var frame = new AtmosphereFrame(Vector3.UnitX, -Vector3.UnitX, 0, Vector3.One);
+        var upper = new Vector3(MathF.Cos(.01f), MathF.Sin(.01f), 0);
+        var lower = new Vector3(MathF.Cos(.01f), -MathF.Sin(.01f), 0);
+        Assert.True(model.SunDiscValue(0, upper, frame).LengthSquared() > 0);
+        Assert.Equal(Vector3.Zero, model.SunDiscValue(0, lower, frame));
+        Assert.Equal(model.SunDiscValue(0, upper, frame), model.SunDiscValue(-1, upper, frame));
+        Assert.Throws<ArgumentOutOfRangeException>(() => model.SunDiscValue(float.NaN, upper, frame));
+        Assert.Throws<ArgumentException>(() => model.SunDiscValue(0, Vector3.Zero, frame));
+    }
+
     [Fact]
     public void ApplyPhysical_IgnoresPalettesAndReturnsHorizon()
     {

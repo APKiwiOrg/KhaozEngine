@@ -216,6 +216,29 @@ bool AtmoScatteringInterval(vec3 p, vec3 d, out float start, out float end, out 
 }
 ";
 
+    // Sky and later reflection consumers share the same directional LUT and solar radiance.
+    internal const string AtmosphereSkyConsumersGlsl = @"
+// Mirrors AtmosphereModel.SkyValue. Ground radiance is already present below the geometric horizon.
+vec3 atmosphereSkyValue(vec3 direction) {
+    float radius = Atmo.Planet.x + max(Atmo.Camera.w, 0.0);
+    vec3 radiance = textureLod(sampler2D(AtmoSkyView, AtmoSkySampler), AtmoSkyUv(direction, radius), 0.0).rgb;
+    return max(radiance * (Atmo.Sun.w * ATMO_PI), vec3(Atmo.Floors.w)) * Atmo.Tint.rgb;
+}
+// Mirrors AtmosphereModel.SunDiscValue, with an additional one-pixel edge feather.
+vec3 atmosphereSunDisc(vec3 direction) {
+    vec3 d = normalize(direction), sun = normalize(Atmo.Sun.xyz);
+    float angle = atan(length(cross(d, sun)), clamp(dot(d, sun), -1.0, 1.0));
+    float radius = Atmo.Res.w, feather = max(fwidth(angle), 1e-6);
+    float edge = 1.0 - smoothstep(radius - feather * 0.5, radius + feather * 0.5, angle);
+    vec3 p = vec3(0.0, Atmo.Planet.x + max(Atmo.Camera.w, 0.0), 0.0);
+    if (AtmoPlanetOccludes(p, d)) return vec3(0.0);
+    float relative = angle / radius;
+    float limb = (0.4 + 0.6 * sqrt(max(0.0, 1.0 - relative * relative))) / 0.8;
+    float discScale = Atmo.Sun.w / (sin(radius) * sin(radius));
+    return Atmo.SunT.rgb * Atmo.Tint.rgb * (discScale * limb * edge * clamp(Atmo.SunT.w, 0.0, 1.0));
+}
+";
+
     // Only scattering passes read static input textures. Transmittance needs geometry and density alone.
     const string AtmosphereScatteringGlsl = @"
 // Mirrors AtmosphereTables.SampleTransmittance.

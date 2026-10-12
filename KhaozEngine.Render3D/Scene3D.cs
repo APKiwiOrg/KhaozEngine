@@ -429,7 +429,7 @@ namespace KhaozEngine.Render3D
             _distortionRenderer = new Rendering.DistortionRenderer(gd, _retired);
             // The procedural sky renders into the same ColorDepthFB (lit colour + read-only scene depth) as the
             // decals, as a far-plane background pass behind the geometry. Default off (Post.Sky.Enabled == false).
-            _sky = new Rendering.SkyRenderer(gd, _res.ColorDepthFB.Outputs);
+            _sky = new Rendering.SkyRenderer(gd, _res.ColorDepthFB.Outputs, _atmosphere.Bindings);
             // Procedural starfield: a background pass at the same slot as the sky (before the decals), so the stars
             // are part of the scene and anything drawn over the void composites over them. Default on
             // (Post.Background == BackgroundMode.Starfield).

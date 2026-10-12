@@ -165,19 +165,20 @@ namespace KhaozEngine.Render3D
 
         /// <summary>
         /// What fills the background, as one mutually-exclusive knob. DERIVED from <see cref="Starfield"/> and
-        /// <see cref="SkySettings.Enabled"/> rather than stored, so it can never drift from them: the getter encodes
+        /// <see cref="SkySettings.Enabled"/> and <see cref="AtmosphereSettings.Enabled"/> rather than stored: the getter encodes
         /// the engine's long-standing sky-over-starfield-over-solid precedence, and the setter clears the modes it
         /// did not select. Prefer this over setting the booleans directly.
         /// </summary>
         public BackgroundMode Background
         {
-            get => Sky.Enabled ? BackgroundMode.Sky
+            get => Atmosphere.Enabled || Sky.Enabled ? BackgroundMode.Sky
                  : Starfield ? BackgroundMode.Starfield
                  : BackgroundMode.Solid;
             set
             {
                 Sky.Enabled = value == BackgroundMode.Sky;
                 Starfield = value == BackgroundMode.Starfield;
+                if (value != BackgroundMode.Sky) Atmosphere.Enabled = false;
             }
         }
 

@@ -93,6 +93,25 @@ public sealed partial class AtmosphereModel
         return ApplySkyControls(radiance, frame.Tint);
     }
 
+    /// <summary>Solar disc radiance with a normalized limb-darkening profile, source transmission,
+    /// opacity and one tint. Planet intersection clips each view ray. GPU consumers feather the edge.</summary>
+    internal Vector3 SunDiscValue(float cameraHeightKm, Vector3 direction, in AtmosphereFrame frame)
+    {
+        ValidateLightingInputs(cameraHeightKm, frame);
+        var view = UnitDirection(direction);
+        var sun = UnitDirection(frame.SunDirection);
+        float angle = MathF.Atan2(Vector3.Cross(view, sun).Length(), Math.Clamp(Vector3.Dot(view, sun), -1f, 1f));
+        float radius = _settings.SunAngularRadiusRadians;
+        if (angle > radius) return Vector3.Zero;
+        var position = new Vector3(0, _settings.PlanetRadiusKm + MathF.Max(cameraHeightKm, 0), 0);
+        if (AtmosphereShaderMath.PlanetOccludes(position, view, _settings.PlanetRadiusKm)) return Vector3.Zero;
+        float relative = angle / radius;
+        float limb = (.4f + .6f * MathF.Sqrt(MathF.Max(0, 1 - relative * relative))) / .8f;
+        float scale = _settings.SunIlluminance / MathF.Pow(MathF.Sin(radius), 2);
+        return EvaluateLighting(cameraHeightKm, frame).SunTransmittance * frame.Tint
+            * (scale * limb * Math.Clamp(frame.SunOpacity, 0, 1));
+    }
+
     /// <summary>Zenith and ground sky values from the physical-settings lighting table. Both bodies
     /// interpolate by elevation and altitude before source brightness, sky floor and tint are applied.</summary>
     internal (Vector3 Zenith, Vector3 Ground) EvaluateSkyBands(float cameraHeightKm, in AtmosphereFrame frame)

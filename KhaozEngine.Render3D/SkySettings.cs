@@ -10,7 +10,8 @@ namespace KhaozEngine.Render3D
     /// <see cref="PixelPostProcessSettings.Sky"/>; defaults to <see cref="Enabled"/> == false so existing scenes are
     /// byte-stable (the current clear colour + starfield background is untouched) until a game opts in. Follows the
     /// <see cref="ShadowSettings"/> precedent: a plain settings bag with sensible defaults; the sky math is pure and
-    /// headless-tested (<c>SkyMath</c>).
+    /// headless-tested (<c>SkyMath</c>). When <see cref="AtmosphereSettings.Enabled"/> is true, the physical
+    /// sky-view LUT replaces the gradient and ground band, regardless of <see cref="Enabled"/>.
     /// <para>
     /// The sun direction defaults to the key light (<see cref="PixelPostProcessSettings.LightDirection"/>) so the sky
     /// and the scene lighting agree automatically: the sun sits where the light comes from and shadows fall away from
@@ -31,14 +32,16 @@ namespace KhaozEngine.Render3D
         /// fixed over the world features the light agrees with, and it vanishes when the sun is behind the camera. Set
         /// <see cref="SunAnchor.StylizedBackdrop"/> for the legacy camera-relative placement (a decorative backdrop
         /// that also works under the orthographic iso camera, where the world projection degenerates). See
-        /// <see cref="SunAnchor"/>.</summary>
+        /// <see cref="SunAnchor"/>. Physical atmosphere always uses world angular directions, independently
+        /// of this setting. Orthographic physical skies use the constant forward ray and hide discs.</summary>
         public SunAnchor Anchor = SunAnchor.World;
 
         /// <summary>Where the horizon is. Default <see cref="SkyHorizon.Screen"/>, the historical groundless
         /// screen-space ramp, so existing scenes are byte-stable. <see cref="SkyHorizon.World"/> anchors the
         /// gradient to the world horizon and paints <see cref="GroundColor"/> below it, which is what lets the sun
         /// disc set through the horizon line. It needs a perspective camera and <see cref="SunAnchor.World"/>, and
-        /// falls back to the screen ramp without them. The water's reflected sky follows the same setting.</summary>
+        /// falls back to the screen ramp without them. The water's reflected sky follows the same setting.
+        /// Physical atmosphere always uses the geometric horizon and the LUT's ground radiance.</summary>
         public SkyHorizon Horizon = SkyHorizon.Screen;
 
         /// <summary>Colour of the ground band below the world horizon (<see cref="SkyHorizon.World"/> only). Pick
@@ -64,13 +67,16 @@ namespace KhaozEngine.Render3D
 
         /// <summary>Sun disc + halo colour. Default a bright warm white. Alpha is the disc + halo opacity: the sky
         /// replace-blends toward this colour, so fade a body out by lowering alpha, not by darkening the RGB (a dark
-        /// RGB paints a dark disc over the sky). The water's reflected disc follows the same alpha.</summary>
+        /// RGB paints a dark disc over the sky). The water's reflected disc follows the same alpha.
+        /// Physical atmosphere adds HDR radiance with solar limb darkening instead.</summary>
         public Color SunColor = new(1f, 0.96f, 0.85f, 1f);
 
         /// <summary>Screen-space radius of the solid sun disc, in NDC-y units (the vertical half-screen is 1.0, so
         /// <c>0.05</c> is 5% of the half-height). The sky is drawn in screen space (so it reads under the
         /// orthographic iso camera too, where all view rays are parallel), and the disc is placed at the screen
-        /// projection of the sun direction. Default <c>0.05</c>.</summary>
+        /// projection of the sun direction. Default <c>0.05</c>. The physical overload of
+        /// <see cref="SunCycle.Apply(in SunCycleState, PixelPostProcessSettings, Vector3)"/> writes an angular
+        /// radius in radians, shared with <see cref="AtmosphereSettings.SunAngularRadiusRadians"/>.</summary>
         public float SunRadius = 0.05f;
 
         /// <summary>Peak intensity of the soft glow ringing the disc (0 = disc only, no halo). Default <c>0.5</c>.
@@ -93,7 +99,8 @@ namespace KhaozEngine.Render3D
         /// <summary>Celestial discs beyond the primary sun (a moon, a second sun), drawn in list order after it, so
         /// a later disc goes over an earlier one. Each carries its own direction, colour and shape. Empty by
         /// default. <see cref="SunCycle.Apply(in SunCycleState, PixelPostProcessSettings)"/> rewrites this list every
-        /// call (it owns the body that does not hold the primary slot), so add your own after it.</summary>
+        /// call (it owns the body that does not hold the primary slot), so add your own after it. Physical
+        /// atmosphere uses each extra disc's world direction, angular radius and transmittance-coloured HDR value.</summary>
         public readonly System.Collections.Generic.List<SkyDisc> ExtraDiscs = new();
 
         /// <summary>The direction TO the sun this frame: <see cref="SunDirectionOverride"/> if set (normalized), else

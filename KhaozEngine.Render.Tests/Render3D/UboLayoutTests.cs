@@ -624,14 +624,15 @@ namespace KhaozEngine.Tests.Render3D
         // ---- Sky background pass UBO (SkyRenderer) ----
 
         [Fact]
-        public void SkyUbo_MarshalSize_EqualsUboBytesConstant_And_GlslBlock()
+        public void SkyUbo_AppendsDirectionsAt480()
         {
-            // GLSL Sky block: 6 vec4 (Horizon, Zenith, Res, Ground, HorizonRay, HorizonUp) + three vec4[8] disc arrays
-            // (DiscColor, DiscPlace, DiscHalo) = 480 bytes. If the struct or
-            // the shader block drift apart, the per-frame sky UBO upload smears the colours / sun params. The other
-            // half lives in ShaderSources.SkyFrag.
+            Assert.Equal(608, Marshal.SizeOf<SkyRenderer.SkyUbo>());
             Assert.Equal((int)SkyRenderer.UboBytes, Marshal.SizeOf<SkyRenderer.SkyUbo>());
-            Assert.Equal((6 + 3 * SkySettings.MaxDiscs) * 16, (int)SkyRenderer.UboBytes);
+            Assert.Equal(480, (int)Marshal.OffsetOf<SkyRenderer.SkyUbo>("DiscDirection"));
+            Assert.Equal(0, (int)Marshal.OffsetOf<SkyRenderer.SkyUbo>("Horizon"));
+            Assert.Equal(96, (int)Marshal.OffsetOf<SkyRenderer.SkyUbo>("DiscColor"));
+            Assert.Equal(224, (int)Marshal.OffsetOf<SkyRenderer.SkyUbo>("DiscPlace"));
+            Assert.Equal(352, (int)Marshal.OffsetOf<SkyRenderer.SkyUbo>("DiscHalo"));
         }
 
         [Fact]
@@ -640,7 +641,7 @@ namespace KhaozEngine.Tests.Render3D
             // Assert every member of the Sky block is present (in the fragment that reads it), so a rename/reorder on
             // the shader side that silently changes the layout trips here. Other half: ShaderSources.SkyFrag.
             foreach (var member in new[] { "vec4 Horizon;", "vec4 Zenith;", "vec4 Res;", "vec4 Ground;",
-                "vec4 HorizonRay;", "vec4 HorizonUp;", "vec4 DiscColor[8];", "vec4 DiscPlace[8];", "vec4 DiscHalo[8];" })
+                "vec4 HorizonRay;", "vec4 HorizonUp;", "vec4 DiscColor[8];", "vec4 DiscPlace[8];", "vec4 DiscHalo[8];", "vec4 DiscDirection[8];" })
                 Assert.True(ShaderSources.SkyFrag.Contains(member),
                     $"SkyFrag lost '{member}': the Sky UBO block drifted from SkyRenderer.SkyUbo. Fix ShaderSources.SkyFrag or the struct.");
         }

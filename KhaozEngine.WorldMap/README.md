@@ -152,18 +152,20 @@ feature anchors together. The cap must be at least one. `MaxRetainedChunks` expo
 `RetainedCount` includes both current images and stale images retained during rebuilds.
 `Request` refreshes a chunk's request sequence even when its image is already current.
 After every build completion, including failure, and before a no-work `BuildNext` returns,
-excess images are evicted in oldest-request order. Pending and building chunks
-are protected. Once work drains, 256 default chunks of 256 by 256 RGBA pixels have a 64 MiB image
-payload bound, excluding feature metadata and temporary build allocations. Protected rebuilds can
-temporarily exceed the cap.
+excess images are evicted until `RetainedCount <= MaxRetainedChunks`. Eviction visits chunks without
+pending or active work first, then pending or building chunks, in oldest-request order within each
+group. The 256 default chunks of 256 by 256 RGBA pixels have a 64 MiB retained image payload bound,
+excluding feature metadata and temporary build allocations.
 
 Generations are `long` values allocated by one cache-wide monotonically increasing counter.
 A first request and every touching invalidation assign a fresh generation. A build captures it
 at start, and `IsCurrent` compares it with the entry's current generation.
-Eviction drops the image and entry. `TryGet` and `IsCurrent` return false afterward,
-and requesting the chunk again rebuilds it with a never-used generation, permitting views to
-replace any surviving upload. `Invalidate(area)` expands the edit separately for
-each cached level using that level's surface cell size and footprint reach. Builds run outside
+Eviction drops the retained image. Pending and building chunks keep their flags and generation entry,
+so their queued or active builds still publish. `TryGet` and `IsCurrent` return false until a build
+publishes another image. Other evicted chunks lose their entry too. Requesting those chunks again
+rebuilds them with a never-used generation, permitting views to replace any surviving upload.
+Uploaded view textures are independent of retained cache images. `Invalidate(area)` expands the edit
+separately for each cached level using that level's surface cell size and footprint reach. Builds run outside
 the bookkeeping lock. An invalidation during a build leaves its result stale, and a failed source
 read quarantines only that generation until invalidation permits a retry.
 

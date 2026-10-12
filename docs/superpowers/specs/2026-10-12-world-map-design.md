@@ -183,17 +183,19 @@ and publishes it. `IsCurrent` compares the built generation with the entry's cur
 the entry because a later request receives a never-used generation, so views replace surviving stale uploads.
 `Invalidate(area)` widens the touched area separately for every cached level by the sum of that level's surface
 and footprint reaches from `WorldMapRasterReach`,
-marks previously requested chunks stale and clears failed generations for retry. `TryGet(chunk, out built)` retains
-the last successful result during a rebuild. `BuildNext()` attempts the lowest-priority pending chunk outside the
-bookkeeping lock. A source failure quarantines that generation without stopping `WorldMapChunkWorker`.
+marks previously requested chunks stale and clears failed generations for retry. `TryGet(chunk, out built)` returns
+the last successful result during a rebuild while its image is retained. `BuildNext()` attempts the lowest-priority
+pending chunk outside the bookkeeping lock. A source failure quarantines that generation without stopping `WorldMapChunkWorker`.
 
 The cache constructor accepts `maxRetainedChunks = 256`, requiring at least one. `MaxRetainedChunks` exposes the cap
 and `RetainedCount` counts built images, including stale images. Every `Request` refreshes that chunk's request sequence.
 After every build completion, including failure, and before a no-work `BuildNext` returns, the cache evicts built
-chunks in oldest-request order until the cap is met or all remaining
-chunks are pending or building. Protected rebuilds can temporarily exceed the cap. Once work drains, the default cap
-of 256 chunks of 256 by 256 RGBA pixels bounds image payload to 64 MiB, excluding feature metadata and temporary
-allocations. Eviction drops the generation entry too. `TryGet` and `IsCurrent` return false, and a new request rebuilds.
+images until `RetainedCount <= MaxRetainedChunks`. Chunks without pending or active work are evicted first, then
+pending or building chunks, in oldest-request order within each group. The default cap of 256 chunks of 256 by 256
+RGBA pixels bounds retained image payload to 64 MiB, excluding feature metadata and temporary allocations.
+Evicting a pending or building image preserves its flags and generation entry, so its build still runs and publishes.
+`TryGet` and `IsCurrent` return false until another image is published. Other evicted chunks lose their generation
+entry too, and a new request rebuilds them. Uploaded view textures are independent of retained cache images.
 
 `WorldMapFeatureCollector.Collect(source, style, chunk)` collects icon and label anchors owned by the chunk containing
 the footprint centre or marker position through `ChunkAt(anchor, chunkMetres, chunk.Level) == chunk`.

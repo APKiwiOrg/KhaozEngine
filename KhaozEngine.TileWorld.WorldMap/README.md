@@ -52,11 +52,13 @@ The core pyramid uses `WorldMapChunkCoord(X, Y, Level = 0)` and chunk lengths
 `EffectivePixelsPerMetre / 2^Level`, and the rasterizer requests `maxCellSize: 2f / levelPpm`.
 The adapter's stride therefore grows as coarse chunks cover more of the world.
 `WorldMapChunkCache` defaults to retaining 256 built chunks, a 64 MiB RGBA image payload bound for
-256 by 256 default chunks once pending work drains. It evicts the oldest requested eligible chunk,
-protecting pending and building chunks. Protected rebuilds can temporarily exceed the cap, and
-feature metadata and build allocations are additional memory.
+256 by 256 default chunks after every `BuildNext` returns. It evicts chunks without pending or
+active work first, then pending or building images, in oldest-request order within each group.
+Pending and building entries keep their flags and generation so their builds still publish.
+`TryGet` returns false for an evicted image until another build publishes. View uploads remain
+independent of retained cache images. Feature metadata and build allocations are additional memory.
 Trimming also runs after failed builds and before no-work returns. Cache generations are
-monotonically increasing `long` values shared across entries. Requests after eviction receive
+monotonically increasing `long` values shared across entries. Requests for entries removed by eviction receive
 fresh generations so surviving view uploads can be replaced.
 
 ## Footprints and markers

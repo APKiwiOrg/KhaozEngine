@@ -40,7 +40,7 @@ public sealed class WorldMapChunkCache : IDisposable
     /// <summary>The raster resolution, appearance and feature rules used by this cache.</summary>
     public WorldMapStyle Style { get; }
 
-    /// <summary>The maximum number of retained built chunks when eligible images can be evicted.</summary>
+    /// <summary>The maximum number of retained built chunks after every build attempt.</summary>
     public int MaxRetainedChunks { get; }
 
     /// <summary>The number of retained images, including stale images during pending or active rebuilds.</summary>
@@ -76,9 +76,9 @@ public sealed class WorldMapChunkCache : IDisposable
         wake?.Invoke();
     }
 
-    /// <summary>Reads the latest successfully built chunk, including a stale result during rebuilds.</summary>
+    /// <summary>Reads the latest retained chunk, including a stale result during rebuilds.</summary>
     /// <param name="chunk">The map-space chunk address.</param>
-    /// <param name="built">The latest published chunk, or null when none has been built.</param>
+    /// <param name="built">The latest retained chunk, or null when no image is retained.</param>
     /// <returns>Whether a built chunk is available.</returns>
     public bool TryGet(WorldMapChunkCoord chunk, [NotNullWhen(true)] out WorldMapChunk? built)
     {
@@ -218,13 +218,20 @@ public sealed class WorldMapChunkCache : IDisposable
             foreach (var pair in _chunks)
             {
                 Entry entry = pair.Value;
-                if (entry.Built is null || entry.Pending || entry.Building) continue;
-                if (oldest is not null && entry.RequestSequence >= oldest.RequestSequence) continue;
+                if (entry.Built is null) continue;
+                if (oldest is not null)
+                {
+                    bool hasWork = entry.Pending || entry.Building;
+                    bool oldestHasWork = oldest.Pending || oldest.Building;
+                    if (hasWork && !oldestHasWork) continue;
+                    if (hasWork == oldestHasWork && entry.RequestSequence >= oldest.RequestSequence) continue;
+                }
                 oldestChunk = pair.Key;
                 oldest = entry;
             }
             if (oldest is null) break;
-            _chunks.Remove(oldestChunk);
+            if (oldest.Pending || oldest.Building) oldest.Built = null;
+            else _chunks.Remove(oldestChunk);
             _retainedCount--;
         }
     }

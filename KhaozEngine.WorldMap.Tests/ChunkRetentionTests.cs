@@ -42,9 +42,9 @@ public sealed class ChunkRetentionTests
         Assert.True(cache.IsCurrent(new(2, 0)));
     }
 
-    /// <summary>Old images survive while one rebuild is active and another is pending.</summary>
+    /// <summary>Idle images are evicted before images with an active or pending rebuild.</summary>
     [Fact]
-    public async Task Retention_NeverEvictsPendingOrBuilding()
+    public async Task Retention_EvictsIdleImagesBeforePendingOrBuilding()
     {
         var source = new TestWorldMapSource(new(0f, 0f, 384f, 64f));
         using var cache = new WorldMapChunkCache(source, Style, 2);
@@ -81,6 +81,61 @@ public sealed class ChunkRetentionTests
         Assert.True(cache.IsCurrent(new(1, 0)));
     }
 
+    /// <summary>Dropping an active rebuild's old image preserves its entry and eventual current publication.</summary>
+    [Fact]
+    public async Task Retention_EvictedBuildingImage_StillPublishesCurrentChunk()
+    {
+        var source = new TestWorldMapSource(new(0f, 0f, 384f, 64f));
+        using var cache = new WorldMapChunkCache(source, Style, 1);
+        Build(cache, new(0, 0));
+        Assert.True(cache.TryGet(new(0, 0), out var original));
+        cache.Invalidate(new(31f, 31f, 1f, 1f));
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        source.BeforeSample = area =>
+        {
+            if (area.X >= 0f)
+            {
+                cache.Invalidate(new(223f, 31f, 1f, 1f));
+                return;
+            }
+            entered.Set();
+            if (!release.Wait(Timeout)) throw new TimeoutException("Build was not released.");
+        };
+        Task<bool> building = Task.Run(cache.BuildNext);
+        try
+        {
+            Assert.True(entered.Wait(Timeout));
+            cache.Request(new(3, 0), -1f);
+            Assert.True(cache.BuildNext());
+            Assert.Equal(1, cache.RetainedCount);
+            Assert.False(cache.TryGet(new(0, 0), out _));
+            Assert.False(cache.IsCurrent(new(0, 0)));
+            Assert.True(cache.TryGet(new(3, 0), out _));
+            Assert.False(cache.IsCurrent(new(3, 0)));
+
+            source.BeforeSample = null;
+            cache.Request(new(0, 0), 0f);
+            Assert.True(cache.BuildNext());
+            Assert.True(cache.IsCurrent(new(3, 0)));
+            Assert.Equal(1, cache.RetainedCount);
+            Assert.False(cache.TryGet(new(0, 0), out _));
+            Assert.False(cache.BuildNext());
+        }
+        finally
+        {
+            release.Set();
+            Assert.True(await building.WaitAsync(Timeout));
+        }
+        Assert.True(cache.TryGet(new(0, 0), out var rebuilt));
+        Assert.NotSame(original, rebuilt);
+        Assert.True(rebuilt.Generation > original.Generation);
+        Assert.True(cache.IsCurrent(new(0, 0)));
+        Assert.False(cache.TryGet(new(3, 0), out _));
+        Assert.Equal(1, cache.RetainedCount);
+        Assert.False(cache.BuildNext());
+    }
+
     /// <summary>Eviction removes the entry, but later requests never reuse its published generations.</summary>
     [Fact]
     public void Retention_EvictedChunkRebuildsOnRequest()
@@ -103,7 +158,7 @@ public sealed class ChunkRetentionTests
         Assert.Equal(1, cache.RetainedCount);
     }
 
-    /// <summary>Failed rebuilds release protected stale images and trim them before the worker drains.</summary>
+    /// <summary>Pending images obey the cap immediately and their queued rebuilds still run after eviction.</summary>
     [Fact]
     public void Retention_FailedRebuilds_TrimProtectedOverflow()
     {
@@ -114,15 +169,18 @@ public sealed class ChunkRetentionTests
         cache.Request(new(1, 0), -1f);
         source.BeforeSample = _ => cache.Invalidate(new(95f, 31f, 1f, 1f));
         Assert.True(cache.BuildNext());
-        Assert.Equal(2, cache.RetainedCount);
+        Assert.Equal(1, cache.RetainedCount);
+        Assert.False(cache.TryGet(new(0, 0), out _));
+        Assert.True(cache.TryGet(new(1, 0), out _));
         Assert.False(cache.IsCurrent(new(0, 0)));
         Assert.False(cache.IsCurrent(new(1, 0)));
 
-        cache.Request(new(0, 0), -2f);
         source.BeforeSample = _ => throw new InvalidOperationException("Rebuild failure.");
         Assert.True(cache.BuildNext());
         int afterFirstFailure = cache.RetainedCount;
+        Assert.True(cache.IsFailed(new(1, 0)));
         Assert.True(cache.BuildNext());
+        Assert.True(cache.IsFailed(new(0, 0)));
         Assert.False(cache.BuildNext());
 
         Assert.Equal(1, afterFirstFailure);

@@ -3,7 +3,7 @@ using System.Numerics;
 
 namespace KhaozEngine.Render3D.Internal;
 
-/// <summary>Unit-source hemisphere irradiance, its ground bounce, and mean geometric-horizon radiance.
+/// <summary>Unit-source hemisphere irradiance, its ground bounce, and horizon, zenith and ground radiance.
 /// Only physical settings are retained. Elevations span [-90,90] at one degree intervals, with eight
 /// quadratic altitude slices spanning the atmosphere. Samples interpolate in physical altitude.</summary>
 internal sealed class AtmosphereLightingCache
@@ -45,7 +45,9 @@ internal sealed class AtmosphereLightingCache
                     horizon += model.SkyRadiance(heightKm,
                         Direction(horizonMu, (azimuth + .5) * 2 * Math.PI / 16), source);
                 _values[h * ElevationCount + e] = new UnitLighting(irradiance,
-                    irradiance * settings.GroundAlbedo, horizon / 16);
+                    irradiance * settings.GroundAlbedo, horizon / 16,
+                    model.SkyRadiance(heightKm, Vector3.UnitY, source),
+                    model.SkyRadiance(heightKm, -Vector3.UnitY, source));
             }
         }
     }
@@ -73,7 +75,9 @@ internal sealed class AtmosphereLightingCache
 
     static UnitLighting Lerp(UnitLighting a, UnitLighting b, float weight)
         => new(Vector3.Lerp(a.Ambient, b.Ambient, weight), Vector3.Lerp(a.Bounce, b.Bounce, weight),
-            Vector3.Lerp(a.Horizon, b.Horizon, weight));
+            Vector3.Lerp(a.Horizon, b.Horizon, weight), Vector3.Lerp(a.Zenith, b.Zenith, weight),
+            Vector3.Lerp(a.Ground, b.Ground, weight));
 
-    internal readonly record struct UnitLighting(Vector3 Ambient, Vector3 Bounce, Vector3 Horizon);
+    internal readonly record struct UnitLighting(Vector3 Ambient, Vector3 Bounce, Vector3 Horizon,
+        Vector3 Zenith, Vector3 Ground);
 }

@@ -188,6 +188,77 @@ public sealed class SunCycleAtmosphereTests
     }
 
     [Fact]
+    public void ApplyPhysical_AdvancingCycleUsesCachedSkyBands()
+    {
+        var post = new PixelPostProcessSettings();
+        post.Atmosphere.Enabled = true;
+        post.Atmosphere.NightSkyFloor = 0;
+        var cycle = Equatorial(NightKeyMode.Moon);
+        cycle.MoonHourOffset = 16;
+        var first = SunCycle.Apply(SunCycle.Evaluate(.5f, cycle), post, new Vector3(0, 2, 0));
+        var model = post.ResolveAtmosphereModel();
+        int scattering = model.ScatteringIntegrationCount;
+        int tables = model.BuildCount, lightingTables = model.LightingBuildCount;
+        Assert.True(scattering > 0);
+
+        var next = SunCycle.Evaluate(.7f, cycle);
+        var second = SunCycle.Apply(next, post, new Vector3(0, 2000, 0));
+        Assert.NotEqual(first.ZenithColor, second.ZenithColor);
+        Assert.NotEqual(first.GroundColor, second.GroundColor);
+        Assert.Equal(scattering, model.ScatteringIntegrationCount);
+        Assert.Equal(tables, model.BuildCount);
+        Assert.Equal(lightingTables, model.LightingBuildCount);
+
+        post.Atmosphere.SunIlluminance = 3;
+        post.Atmosphere.DayTint = post.Atmosphere.DuskTint = post.Atmosphere.NightTint = new Vector3(.5f);
+        post.Atmosphere.AmbientScale = post.Atmosphere.FillScale = 0;
+        var scaled = SunCycle.Apply(next, post, new Vector3(0, 2000, 0));
+        Close(Rgb(second.ZenithColor) * 1.5f, Rgb(scaled.ZenithColor));
+        Close(Rgb(second.GroundColor) * 1.5f, Rgb(scaled.GroundColor));
+        Assert.Equal(scattering, model.ScatteringIntegrationCount);
+
+        post.Atmosphere.SunIlluminance = 0;
+        post.Atmosphere.NightSkyFloor = .125f;
+        var floored = SunCycle.Apply(next, post, new Vector3(0, 2000, 0));
+        Assert.Equal(new Vector3(.0625f), Rgb(floored.ZenithColor));
+        Assert.Equal(new Vector3(.0625f), Rgb(floored.GroundColor));
+        Assert.Equal(scattering, model.ScatteringIntegrationCount);
+        Assert.Equal(tables, model.BuildCount);
+        Assert.Equal(lightingTables, model.LightingBuildCount);
+    }
+
+    [Fact]
+    public void ApplyPhysical_CachedSkyBandsMatchDirectSkyAcrossElevationAndHeight()
+    {
+        var post = new PixelPostProcessSettings();
+        post.Atmosphere.Enabled = true;
+        post.Atmosphere.SunIlluminance = 2.5f;
+        post.Atmosphere.MoonIlluminanceFraction = .125f;
+        post.Atmosphere.NightSkyFloor = .002f;
+        post.Atmosphere.DayTint = new Vector3(.7f, .9f, 1.2f);
+        post.Atmosphere.DuskTint = new Vector3(1.1f, .8f, .6f);
+        post.Atmosphere.NightTint = new Vector3(.6f, .8f, 1.1f);
+        post.Atmosphere.AmbientScale = post.Atmosphere.FillScale = 0;
+        var cycle = Equatorial(NightKeyMode.Moon);
+        cycle.MoonHourOffset = 16;
+        var model = post.ResolveAtmosphereModel();
+        foreach (float elevation in new[] { 60f, 5f, -6f })
+        {
+            var raw = SunCycle.Evaluate(EveningTime(elevation), cycle);
+            var frame = model.CreateFrame(raw);
+            Assert.InRange(MathF.Abs(raw.SunElevationDegrees - elevation), 0, 1e-4f);
+            foreach (float heightKm in new[] { .002f, 2f })
+            {
+                var physical = SunCycle.Apply(raw, post, new Vector3(0, heightKm * 1000, 0));
+                CloseCachedSky(model.SkyValue(heightKm, Vector3.UnitY, frame), Rgb(physical.ZenithColor));
+                CloseCachedSky(model.SkyValue(heightKm, -Vector3.UnitY, frame), Rgb(physical.GroundColor));
+                Assert.Equal(physical.ZenithColor, post.Sky.ZenithColor);
+                Assert.Equal(physical.GroundColor, post.Sky.GroundColor);
+            }
+        }
+    }
+
+    [Fact]
     public void ApplyPhysical_UpdatesLiveSettingsAndMapsAbsoluteCameraHeight()
     {
         var post = new PixelPostProcessSettings();
@@ -220,6 +291,8 @@ public sealed class SunCycleAtmosphereTests
         post.Atmosphere.RayleighScatteringPerKm *= 2;
         var changed = SunCycle.Apply(raw, post, new Vector3(0, 200, 0));
         Assert.NotEqual(noFill.LightColor, changed.LightColor);
+        Assert.NotEqual(noFill.ZenithColor, changed.ZenithColor);
+        Assert.NotEqual(noFill.GroundColor, changed.GroundColor);
         Assert.Equal(tables + 1, model.BuildCount);
         Assert.Equal(lightingTables + 1, model.LightingBuildCount);
     }
@@ -346,6 +419,15 @@ public sealed class SunCycleAtmosphereTests
 
     static float EveningTime(float elevation) => .5f + MathF.Acos(MathF.Sin(elevation * MathF.PI / 180)) / MathF.Tau;
     static Vector3 Rgb(Color color) => new(color.R, color.G, color.B);
+    static void CloseCachedSky(Vector3 expected, Vector3 actual)
+    {
+        // The 0 and 100/49 km slices bracket these heights. Allow 2% interpolation error,
+        // plus 0.0001 Lambert units so channels near the sky floor have a useful absolute bound.
+        for (int channel = 0; channel < 3; channel++)
+            Assert.InRange(MathF.Abs(expected[channel] - actual[channel]), 0,
+                MathF.Abs(expected[channel]) * .02f + .0001f);
+    }
+
     static void Close(Vector3 expected, Vector3 actual, float tolerance = 1e-6f)
         => Assert.InRange(Vector3.Distance(expected, actual), 0, tolerance);
 }

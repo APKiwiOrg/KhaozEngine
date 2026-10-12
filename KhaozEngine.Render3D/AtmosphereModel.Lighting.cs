@@ -90,9 +90,23 @@ public sealed partial class AtmosphereModel
         var radiance = SkyRadiance(cameraHeightKm, view, frame.SunDirection);
         if (frame.MoonFraction > 0)
             radiance += SkyRadiance(cameraHeightKm, view, frame.MoonDirection) * frame.MoonFraction;
-        return Vector3.Max(radiance * (_settings.SunIlluminance * MathF.PI),
-            new Vector3(_settings.NightSkyFloor)) * frame.Tint;
+        return ApplySkyControls(radiance, frame.Tint);
     }
+
+    /// <summary>Zenith and ground sky values from the physical-settings lighting table. Both bodies
+    /// interpolate by elevation and altitude before source brightness, sky floor and tint are applied.</summary>
+    internal (Vector3 Zenith, Vector3 Ground) EvaluateSkyBands(float cameraHeightKm, in AtmosphereFrame frame)
+    {
+        ValidateLightingInputs(cameraHeightKm, frame);
+        var sun = LightingCache.Sample(cameraHeightKm, UnitDirection(frame.SunDirection).Y);
+        var moon = LightingCache.Sample(cameraHeightKm, UnitDirection(frame.MoonDirection).Y);
+        return (ApplySkyControls(sun.Zenith + moon.Zenith * frame.MoonFraction, frame.Tint),
+            ApplySkyControls(sun.Ground + moon.Ground * frame.MoonFraction, frame.Tint));
+    }
+
+    Vector3 ApplySkyControls(Vector3 radiance, Vector3 tint)
+        => Vector3.Max(radiance * (_settings.SunIlluminance * MathF.PI),
+            new Vector3(_settings.NightSkyFloor)) * tint;
 
     /// <summary>Blends the atmosphere art tints using SunCycle's day, dusk and night elevation weights.</summary>
     internal Vector3 Tint(Vector3 dayDuskNightWeights)

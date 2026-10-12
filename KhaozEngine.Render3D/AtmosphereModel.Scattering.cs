@@ -11,6 +11,9 @@ public sealed partial class AtmosphereModel
     /// <summary>Completed static LUT builds. Construction is lazy and accepted settings updates invalidate it.</summary>
     internal int BuildCount { get; private set; }
 
+    /// <summary>Scattering integrations, including static table construction.</summary>
+    internal int ScatteringIntegrationCount { get; private set; }
+
     internal AtmosphereTables Tables
     {
         get
@@ -97,6 +100,7 @@ public sealed partial class AtmosphereModel
         if (!ScatteringInterval(position, view, out double start, out double end, out bool groundHit))
             return (Vector3.Zero, Vector3.Zero);
 
+        ScatteringIntegrationCount++;
         float cosine = (float)Math.Clamp(view.X * light.X + view.Y * light.Y + view.Z * light.Z, -1, 1);
         float rayleighPhase = isotropic ? (float)(1 / (4 * Math.PI)) : RayleighPhase(cosine);
         float miePhase = isotropic ? rayleighPhase : MiePhase(cosine, _settings.MieAnisotropy);

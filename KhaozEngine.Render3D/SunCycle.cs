@@ -589,6 +589,7 @@ namespace KhaozEngine.Render3D
                 var frame = model.CreateFrame(state);
                 float heightKm = post.Atmosphere.HeightKm(cameraWorldPosition.Y);
                 var lighting = model.EvaluateLighting(heightKm, frame);
+                var skyBands = model.EvaluateSkyBands(heightKm, frame);
                 float radius = post.Atmosphere.SunAngularRadiusRadians;
                 float sinRadius = MathF.Sin(radius);
                 float discScale = post.Atmosphere.SunIlluminance / (sinRadius * sinRadius);
@@ -598,10 +599,10 @@ namespace KhaozEngine.Render3D
                         lighting.MoonTransmittance * (discScale * frame.MoonFraction) * frame.Tint, frame.MoonOpacity))
                     : null;
                 var physical = new SunCycleState(state.LightDirection, state.SunElevationDegrees,
-                    PhysicalColor(lighting.Horizon), PhysicalColor(model.SkyValue(heightKm, Vector3.UnitY, frame)),
+                    PhysicalColor(lighting.Horizon), PhysicalColor(skyBands.Zenith),
                     sun, frame.SunOpacity > 0, PhysicalColor(lighting.Key), PhysicalColor(lighting.Ambient),
                     PhysicalColor(lighting.Fill), state.MoonElevationDegrees, state.MoonDirection, state.ActiveSource,
-                    frame.SunDirection, PhysicalColor(model.SkyValue(heightKm, -Vector3.UnitY, frame)), moon)
+                    frame.SunDirection, PhysicalColor(skyBands.Ground), moon)
                     .WithAtmosphereSample(sample);
                 post.AtmosphereCycle = state;
                 post.LightDirection = physical.LightDirection;

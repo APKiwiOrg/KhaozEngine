@@ -57,6 +57,7 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
     {
         SupportQueryDiagnostics.Enable(false);
         SupportQueryDiagnostics.Reset();
+        using var region = SupportAllocationRegion.Start();
         SupportQueryDiagnostics.Record(SupportQueryCounter.Find);
         Assert.Equal(0, SupportQueryDiagnostics.Snapshot().Find);
         SupportQueryDiagnostics.Enable(true);
@@ -71,6 +72,7 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
         SupportQueryDiagnostics.Record(SupportQueryCounter.Find);
         SupportQueryCounts counts = SupportQueryDiagnostics.Snapshot();
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        region.Dispose();
         Assert.Equal(0, allocated);
         Assert.Equal(3, counts.Find);
     }
@@ -102,7 +104,7 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
     {
         SupportCostRow row = Row(name);
         SupportQueryDiagnostics.Enable(true);
-        var sampler = new SupportCostSampler(false) { IsolateAllocations = true, IsolateColdAllocations = false };
+        var sampler = new SupportCostSampler(false) { IsolateAllocations = true };
         SupportCostSample find = sampler.Measure(row, "Find")[0];
         Assert.Equal(1, find.Counts.Find);
         Assert.Equal(2, find.Counts.Proposals);
@@ -285,7 +287,7 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
         Assert.Equal("0", Environment.GetEnvironmentVariable("DOTNET_TieredCompilation"));
         string sha = GitSha();
         SupportQueryDiagnostics.Enable(true);
-        var sampler = new SupportCostSampler(true) { IsolateAllocations = true, IsolateColdAllocations = false };
+        var sampler = new SupportCostSampler(true) { IsolateAllocations = true };
         var samples = new List<SupportCostSample>();
         var failures = new List<string>();
         foreach (object[] data in SupportGateCostScenes.Rows())

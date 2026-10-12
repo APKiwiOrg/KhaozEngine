@@ -148,13 +148,13 @@ public partial class SupportFootprintTests
         var members = new SupportFootprintMember[256];
         var joins = new ulong[1024];
         var capability = Capability(scene.World);
+        using var region = KhaozEngine.Tests.Locomotion.Contacts.SupportAllocationRegion.Start();
         Assert.Equal(CapsuleFeatureStatus.Complete,
             capability.QuerySupportFootprint(lease, request, members, joins).Status);
         SupportQueryDiagnostics.Reset();
         var phases = new KhaozEngine.Tests.Locomotion.Contacts.SupportCostAttributionTests.PhaseRecorder(false);
         ContactAllocationDiagnostics.SetObserver(phases.Observe);
         phases.Reset();
-        using var region = KhaozEngine.Tests.Locomotion.Contacts.SupportAllocationRegion.Start();
         long before = GC.GetAllocatedBytesForCurrentThread();
         SupportFootprintResult result;
         try

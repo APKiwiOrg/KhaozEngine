@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.Physics;
+using KhaozEngine.Tests.Locomotion.Contacts;
 using Xunit;
 using R = KhaozEngine.Tests.Physics.InstalledPoseOracle.R;
 using B = KhaozEngine.Tests.Physics.SupportFootprintExactOracle.Bounds;
@@ -69,9 +70,16 @@ public partial class SupportFootprintTests
         using IPhysicsQueryLease lease = scene.World.AcquireQueryReadLease();
         var members = new SupportFootprintMember[256];
         var joins = new ulong[1024];
+        using var region = SupportAllocationRegion.Start();
         SupportFootprintResult result = Capability(scene.World).QuerySupportFootprint(lease, request, members, joins);
+        var coldMembers = (SupportFootprintMember[])members.Clone();
+        var coldJoins = (ulong[])joins.Clone();
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        SupportFootprintResult warm = Capability(scene.World).QuerySupportFootprint(lease, request, members, joins);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        region.Dispose();
         Assert.Equal(CapsuleFeatureStatus.Complete, result.Status);
-        SupportFootprintMember[] actual = members.Take(result.Members).Where(m => m.Static == owner).ToArray();
+        SupportFootprintMember[] actual = coldMembers.Take(result.Members).Where(m => m.Static == owner).ToArray();
         Assert.Equal(expected.Length, actual.Length);
         for (int i = 0; i < actual.Length; i++)
         {
@@ -97,12 +105,12 @@ public partial class SupportFootprintTests
                 if (attained.Contribution is { } contribution)
                     ContainsCurvedContribution(witness, request, contribution);
             }
-            int index = Array.FindIndex(members, 0, result.Members,
+            int index = Array.FindIndex(coldMembers, 0, result.Members,
                 m => m.Static == member.Static && m.ElementId == member.ElementId);
             for (int j = 0; j < result.Members; j++)
-                Assert.Equal(0UL, joins[index * result.JoinWordsPerRow + j / 64] & (1UL << (j % 64)));
+                Assert.Equal(0UL, coldJoins[index * result.JoinWordsPerRow + j / 64] & (1UL << (j % 64)));
         }
-        Assert.Equal(members.Take(result.Members).Sum(m => m.WitnessCount), result.Witnesses);
+        Assert.Equal(coldMembers.Take(result.Members).Sum(m => m.WitnessCount), result.Witnesses);
         if (stratum == "cylinder-upright")
             Assert.InRange(0.5, actual.Single(m => m.ElementId == 1).DiscHeightLower,
                 actual.Single(m => m.ElementId == 1).DiscHeightUpper);
@@ -113,9 +121,6 @@ public partial class SupportFootprintTests
             Assert.InRange(top, side.DiscHeightLower, side.DiscHeightUpper);
         }
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        SupportFootprintResult warm = Capability(scene.World).QuerySupportFootprint(lease, request, members, joins);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
         Assert.Equal(CapsuleFeatureStatus.Complete, warm.Status);
         Assert.Equal(0, allocated);
     }
@@ -132,6 +137,7 @@ public partial class SupportFootprintTests
         SupportFootprintMember[] members = MemberSentinels(256), before = (SupportFootprintMember[])members.Clone();
         ulong[] joins = Enumerable.Repeat(0xDEADBEEFUL, 1024).ToArray(), beforeJoins = (ulong[])joins.Clone();
         var request = Request();
+        using var region = SupportAllocationRegion.Start();
         SupportFootprintResult result = Capability(scene.World).QuerySupportFootprint(lease, request, members, joins);
         if (count == 256)
         {
@@ -150,12 +156,14 @@ public partial class SupportFootprintTests
             long bytesBefore = GC.GetAllocatedBytesForCurrentThread();
             var warm = Capability(scene.World).QuerySupportFootprint(lease, request, members, joins);
             long bytes = GC.GetAllocatedBytesForCurrentThread() - bytesBefore;
+            region.Dispose();
             Assert.Equal(CapsuleFeatureStatus.Complete, warm.Status);
             Assert.Equal(512, warm.Witnesses);
             Assert.Equal(0, bytes);
         }
         else
         {
+            region.Dispose();
             Assert.Equal(CapsuleFeatureStatus.CapacityExceeded, result.Status);
             Assert.Equal(257, result.RequiredElements);
             Assert.Equal(0, result.Members);

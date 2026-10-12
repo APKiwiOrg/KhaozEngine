@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Runtime;
 using KhaozEngine.Physics;
 using KhaozEngine.Locomotion;
 
@@ -57,8 +58,7 @@ internal sealed class SupportCostSampler
     }
 
     internal Action? BeforeWarm { get; init; }
-    internal bool IsolateAllocations { get; init; }
-    internal bool IsolateColdAllocations { get; init; } = true;
+    internal bool IsolateAllocations { get; init; } = true;
 
     internal IReadOnlyList<SupportCostSample> Measure(SupportCostRow row, string operation)
     {
@@ -71,19 +71,23 @@ internal sealed class SupportCostSampler
         stepCount = 0;
         execution.View.Reset();
         SupportQueryDiagnostics.Reset();
-        using var coldAllocationRegion = SupportAllocationRegion.Start(IsolateAllocations && IsolateColdAllocations);
+        // Dense first use exceeds 40 MB. Reserve room for it and the unmeasured scratch inspection.
+        using var allocationRegion = SupportAllocationRegion.Start(IsolateAllocations, totalSize: 64 * 1024 * 1024);
         long before = GC.GetAllocatedBytesForCurrentThread();
         long start = timing ? Stopwatch.GetTimestamp() : 0;
         SupportCostOutput cold;
         using (ContactAllocationDiagnostics.Begin(ContactAllocationPhase.Route)) cold = execution.Invoke();
         long coldTicks = timing ? Stopwatch.GetTimestamp() - start : 0;
         long coldBytes = GC.GetAllocatedBytesForCurrentThread() - before;
-        coldAllocationRegion.Dispose();
+        bool coldIsolated = GCSettings.LatencyMode == GCLatencyMode.NoGCRegion;
         SupportQueryCounts coldCounts = SupportQueryDiagnostics.Snapshot();
         QueryCounts coldQueries = execution.View.Counts;
         int coldStepCount = stepCount;
         int coldFindCount = findCount;
+        long inspectionBefore = GC.GetAllocatedBytesForCurrentThread();
         long coldScratch = execution.ScratchPayloadBytes;
+        long inspectionBytes = GC.GetAllocatedBytesForCurrentThread() - inspectionBefore;
+        bool inspectionIsolated = GCSettings.LatencyMode == GCLatencyMode.NoGCRegion;
 
         steps = warmSteps;
         finds = warmFinds;
@@ -91,22 +95,29 @@ internal sealed class SupportCostSampler
         stepCount = 0;
         // A hit-only branch can first JIT on the second call even with tiering disabled.
         // One unmeasured call prepares it. Reset its observations before the warm window.
+        long primingBefore = GC.GetAllocatedBytesForCurrentThread();
         using (ContactAllocationDiagnostics.Begin(ContactAllocationPhase.Route)) execution.Invoke();
+        long primingBytes = GC.GetAllocatedBytesForCurrentThread() - primingBefore;
+        bool primingIsolated = GCSettings.LatencyMode == GCLatencyMode.NoGCRegion;
         findCount = 0;
         stepCount = 0;
         execution.View.Reset();
         SupportQueryDiagnostics.Reset();
         BeforeWarm?.Invoke();
-        // Reflection over retained scratch allocates outside both sample windows and
-        // outside their no-GC regions. Each region encloses only one gameplay operation.
-        using var warmAllocationRegion = SupportAllocationRegion.Start(IsolateAllocations);
+        // The checked region spans cold, priming and warm calls. Reflection stays outside the byte windows.
         before = GC.GetAllocatedBytesForCurrentThread();
         start = timing ? Stopwatch.GetTimestamp() : 0;
         SupportCostOutput warm;
         using (ContactAllocationDiagnostics.Begin(ContactAllocationPhase.Route)) warm = execution.Invoke();
         long warmTicks = timing ? Stopwatch.GetTimestamp() - start : 0;
         long warmBytes = GC.GetAllocatedBytesForCurrentThread() - before;
-        warmAllocationRegion.Dispose();
+        try { allocationRegion.Dispose(); }
+        catch (InvalidOperationException error)
+        {
+            throw new InvalidOperationException($"{row.Name} {operation} no-GC region failed. " +
+                $"Cold {coldBytes} B (isolated {coldIsolated}), scratch inspection {inspectionBytes} B " +
+                $"(isolated {inspectionIsolated}), priming {primingBytes} B (isolated {primingIsolated}), warm {warmBytes} B.", error);
+        }
         SupportQueryCounts counts = SupportQueryDiagnostics.Snapshot();
         QueryCounts queries = execution.View.Counts;
         int warmStepCount = stepCount;

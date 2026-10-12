@@ -1,4 +1,5 @@
 using System.Linq;
+using System.Runtime;
 using KhaozEngine.Physics;
 using Xunit;
 
@@ -23,21 +24,26 @@ public sealed class SupportCostSamplerTests
             with
         { Explicit = operation.StartsWith("Explicit", System.StringComparison.Ordinal) };
         int invocations = 0, beforeWarm = 0;
+        bool allInvocationsIsolated = true;
         SupportQueryDiagnostics.Enable(true);
         ContactAllocationDiagnostics.SetObserver((phase, entering) =>
         {
-            if (phase == ContactAllocationPhase.Route && entering) invocations++;
+            if (phase == ContactAllocationPhase.Route && entering)
+            {
+                invocations++;
+                allInvocationsIsolated &= GCSettings.LatencyMode == GCLatencyMode.NoGCRegion;
+            }
         });
         try
         {
             var samples = new SupportCostSampler(false)
             {
                 BeforeWarm = () => beforeWarm = invocations,
-                IsolateAllocations = true,
-                IsolateColdAllocations = false
+                IsolateAllocations = true
             }.Measure(row, operation);
             Assert.Equal(2, beforeWarm);
             Assert.Equal(3, invocations);
+            Assert.True(allInvocationsIsolated, "Cold, priming and warm operations must share the checked no-GC region.");
             var whole = samples[0];
             Assert.Equal(whole.ColdEndState, whole.EndState);
             Assert.Equal(whole.ColdCounts, whole.Counts);

@@ -5,6 +5,7 @@ using System.Numerics;
 using System.Reflection;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
+using KhaozEngine.Tests.Locomotion.Contacts;
 using Xunit;
 using Xunit.Abstractions;
 using R = KhaozEngine.Tests.Physics.InstalledPoseOracle.R;
@@ -187,6 +188,7 @@ public partial class SupportFootprintTests
         SupportQueryDiagnostics.Enable(true);
         try
         {
+            using var region = SupportAllocationRegion.Start();
             long coldBefore = GC.GetAllocatedBytesForCurrentThread();
             var cold = capability.QuerySupportFootprint(lease, request, members, joins);
             long coldBytes = GC.GetAllocatedBytesForCurrentThread() - coldBefore;
@@ -195,6 +197,7 @@ public partial class SupportFootprintTests
             long before = GC.GetAllocatedBytesForCurrentThread();
             var result = capability.QuerySupportFootprint(lease, request, members, joins);
             long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            region.Dispose();
             Assert.Equal(CapsuleFeatureStatus.Complete, result.Status);
             Assert.Equal(0, allocated);
             Assert.Equal(2, SupportQueryDiagnostics.Snapshot().Proposals);

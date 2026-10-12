@@ -5,6 +5,7 @@ using System.Numerics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using KhaozEngine.Physics;
+using KhaozEngine.Tests.Locomotion.Contacts;
 using Xunit;
 
 namespace KhaozEngine.Tests.Physics;
@@ -27,19 +28,22 @@ public partial class SupportFootprintTests
         using var lease = scene.World.AcquireQueryReadLease();
         var members = new SupportFootprintMember[256]; var joins = new ulong[1024];
         var capability = Capability(scene.World);
+        using var region = SupportAllocationRegion.Start();
         long coldBefore = GC.GetAllocatedBytesForCurrentThread();
         var cold = capability.QuerySupportFootprint(lease, request, members, joins);
         long coldBytes = GC.GetAllocatedBytesForCurrentThread() - coldBefore;
+        var coldMembers = (SupportFootprintMember[])members.Clone();
         Assert.Equal(CapsuleFeatureStatus.Complete, cold.Status);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        var warm = capability.QuerySupportFootprint(lease, request, members, joins);
+        long bytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        region.Dispose();
         foreach (var source in SupportFootprintCurvedProofOracle.Installed(scene.World, owner))
         {
             var expected = SupportFootprintOracle.Curved(source.Tangent, request);
             if (expected is not null)
-                CheckTiltedMember(Assert.Single(members.Take(cold.Members), m => m.ElementId == expected.ElementId), expected, source, request);
+                CheckTiltedMember(Assert.Single(coldMembers.Take(cold.Members), m => m.ElementId == expected.ElementId), expected, source, request);
         }
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        var warm = capability.QuerySupportFootprint(lease, request, members, joins);
-        long bytes = GC.GetAllocatedBytesForCurrentThread() - before;
         Assert.Equal(CapsuleFeatureStatus.Complete, warm.Status);
         Assert.Equal(0, bytes);
         var (tilted, _, _) = TiltedScratch(scene.World);

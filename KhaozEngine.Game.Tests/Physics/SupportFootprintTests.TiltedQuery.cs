@@ -3,6 +3,7 @@ using System.Linq;
 using System.Numerics;
 using System.Reflection;
 using KhaozEngine.Physics;
+using KhaozEngine.Tests.Locomotion.Contacts;
 using Xunit;
 using B = KhaozEngine.Tests.Physics.SupportFootprintExactOracle.Bounds;
 using P = KhaozEngine.Tests.Physics.SupportFootprintExactOracle.Point;
@@ -51,6 +52,7 @@ public partial class SupportFootprintTests
         using var lease = scene.World.AcquireQueryReadLease();
         var members = MemberSentinels(256); var before = (SupportFootprintMember[])members.Clone();
         var joins = Enumerable.Repeat(73UL, 1024).ToArray();
+        using var region = SupportAllocationRegion.Start();
         var result = Capability(scene.World).QuerySupportFootprint(lease, request, members, joins);
         _output.WriteLine(TiltedStatistics(scene.World));
         Assert.Equal(CapsuleFeatureStatus.Unsupported, result.Status);
@@ -58,10 +60,11 @@ public partial class SupportFootprintTests
         Assert.All(joins, word => Assert.Equal(73UL, word));
         var (_, roots, admission) = TiltedScratch(scene.World);
         Assert.True((bool)Property(roots, "CapacityRefused") || (bool)Property(admission, "CapacityRefused"));
-        _output.WriteLine($"refusal retained-array-payload={ArrayPayload(TiltedScratch(scene.World).Tilted)}");
         long allocationBefore = GC.GetAllocatedBytesForCurrentThread();
         var warm = Capability(scene.World).QuerySupportFootprint(lease, request, members, joins);
         long allocation = GC.GetAllocatedBytesForCurrentThread() - allocationBefore;
+        region.Dispose();
+        _output.WriteLine($"refusal retained-array-payload={ArrayPayload(TiltedScratch(scene.World).Tilted)}");
         Assert.Equal(CapsuleFeatureStatus.Unsupported, warm.Status);
         Assert.Equal(0, allocation);
         Assert.Equal(before, members);
@@ -114,10 +117,16 @@ public partial class SupportFootprintTests
         using var lease = scene.World.AcquireQueryReadLease();
         var members = new SupportFootprintMember[256]; var joins = new ulong[1024];
         var capability = Capability(scene.World);
+        using var region = SupportAllocationRegion.Start();
         var result = capability.QuerySupportFootprint(lease, request, members, joins);
-        _output.WriteLine($"{stratum} status={result.Status} {TiltedStatistics(scene.World)}");
-        Assert.Equal(CapsuleFeatureStatus.Complete, result.Status);
         var actual = members.Take(result.Members).Where(m => m.Static == owner).ToArray();
+        string coldStatistics = TiltedStatistics(scene.World);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        var warm = capability.QuerySupportFootprint(lease, request, members, joins);
+        long bytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        region.Dispose();
+        _output.WriteLine($"{stratum} status={result.Status} {coldStatistics}");
+        Assert.Equal(CapsuleFeatureStatus.Complete, result.Status);
         Assert.Equal(expected.Length, actual.Length);
         for (int i = 0; i < actual.Length; i++)
         {
@@ -131,10 +140,7 @@ public partial class SupportFootprintTests
             }
             CheckTiltedMember(actual[i], expected[i], source, request);
         }
-        _output.WriteLine($"{stratum} {TiltedStatistics(scene.World)}");
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        var warm = capability.QuerySupportFootprint(lease, request, members, joins);
-        long bytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        _output.WriteLine($"{stratum} {coldStatistics}");
         Assert.Equal(CapsuleFeatureStatus.Complete, warm.Status);
         Assert.Equal(0, bytes);
     }

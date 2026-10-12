@@ -3,6 +3,7 @@ using System.Numerics;
 using BepuPhysics;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
+using KhaozEngine.Tests.Locomotion.Contacts;
 using Xunit;
 using B = KhaozEngine.Tests.Physics.SupportFootprintExactOracle.Bounds;
 using P = KhaozEngine.Tests.Physics.SupportFootprintExactOracle.Point;
@@ -27,11 +28,13 @@ public partial class SupportFootprintTests
         var root = arithmetic.Root(square);
         var x = arithmetic.Divide(arithmetic.X, root); var z = arithmetic.Divide(arithmetic.Z, root);
         var identity = arithmetic.Subtract(arithmetic.Add(arithmetic.Square(x), arithmetic.Square(z)), arithmetic.One);
+        using var region = SupportAllocationRegion.Start();
         Assert.Equal(GeometrySign.Zero, arithmetic.Sign(identity));
         AssertSourceFallbacks();
         long before = GC.GetAllocatedBytesForCurrentThread();
         GeometrySign warm = arithmetic.Sign(identity);
         long bytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        region.Dispose();
         Assert.Equal(GeometrySign.Zero, warm);
         Assert.Equal(0, bytes);
     }
@@ -62,6 +65,7 @@ public partial class SupportFootprintTests
             axis, 0.25, half, default, default, default, map.Y);
         var kernel = new SupportFootprintCurved();
         var request = Request(x: x, z: z, lower: -2, upper: 2);
+        using var region = SupportAllocationRegion.Start();
         GeometrySign result = kernel.Measure(default, leaf, 0, request, out var member);
         Assert.Equal(GeometrySign.Positive, result);
         Assert.Equal(2, member.WitnessCount);
@@ -74,6 +78,7 @@ public partial class SupportFootprintTests
         long before = GC.GetAllocatedBytesForCurrentThread();
         GeometrySign warm = kernel.Measure(default, leaf, 0, request, out _);
         long bytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        region.Dispose();
         Assert.Equal(GeometrySign.Positive, warm);
         Assert.Equal(0, bytes);
 
@@ -137,7 +142,12 @@ public partial class SupportFootprintTests
             R.From(0.25), R.From(half));
         var exact = SupportFootprintClosedFormOracle.Measure(exactPart, request);
         var kernel = new SupportFootprintCurved();
+        using var region = SupportAllocationRegion.Start();
         Assert.Equal(GeometrySign.Positive, kernel.Measure(default, leaf, part, request, out var member));
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        GeometrySign warm = kernel.Measure(default, leaf, part, request, out var repeated);
+        long bytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        region.Dispose();
         Assert.Equal(exact.Witnesses.Count, member.WitnessCount);
         Assert.Equal(SupportWitnessRole.Footprint, member.WitnessCount == 2 ? member.Second.Role : member.First.Role);
         if (surface != OracleSurface.CylinderSide)
@@ -156,9 +166,6 @@ public partial class SupportFootprintTests
             ContainsCurvedVector(witness.Normal, witness.NormalError, reference.Normal);
             if (reference.Contribution is { } contribution) ContainsCurvedContribution(witness, request, contribution);
         }
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        GeometrySign warm = kernel.Measure(default, leaf, part, request, out var repeated);
-        long bytes = GC.GetAllocatedBytesForCurrentThread() - before;
         Assert.Equal(GeometrySign.Positive, warm);
         Assert.Equal(member, repeated);
         Assert.Equal(0, bytes);

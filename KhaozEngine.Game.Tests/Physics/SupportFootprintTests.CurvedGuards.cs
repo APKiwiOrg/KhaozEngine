@@ -3,6 +3,7 @@ using System.Linq;
 using System.Numerics;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
+using KhaozEngine.Tests.Locomotion.Contacts;
 using Xunit;
 
 namespace KhaozEngine.Tests.Physics;
@@ -33,7 +34,10 @@ public partial class SupportFootprintTests
         using var lease = scene.World.AcquireQueryReadLease();
         var members = new SupportFootprintMember[256]; var joins = new ulong[1024];
         var capability = Capability(scene.World);
+        using var region = SupportAllocationRegion.Start(totalSize: 16 * 1024 * 1024);
+        long coldBefore = GC.GetAllocatedBytesForCurrentThread();
         var cold = capability.QuerySupportFootprint(lease, request, members, joins);
+        long coldBytes = GC.GetAllocatedBytesForCurrentThread() - coldBefore;
         Assert.Equal(CapsuleFeatureStatus.Complete, cold.Status);
         Assert.Equal(SupportProposalStatus.Contact, cold.FootVerdict.Status);
         Assert.Equal(0, cold.FootVerdict.LowestLower);
@@ -43,6 +47,8 @@ public partial class SupportFootprintTests
         long before = GC.GetAllocatedBytesForCurrentThread();
         var warm = capability.QuerySupportFootprint(lease, request, members, joins);
         long bytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        _output.WriteLine($"Curved proposal {shape} coldBytes={coldBytes} warmBytes={bytes}");
+        region.Dispose();
         Assert.Equal(CapsuleFeatureStatus.Complete, warm.Status);
         Assert.Equal(0, bytes);
         if (shape != "cylinder-upright") AssertSourceFallbacks();

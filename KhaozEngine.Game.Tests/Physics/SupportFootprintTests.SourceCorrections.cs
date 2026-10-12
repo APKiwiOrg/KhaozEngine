@@ -88,6 +88,8 @@ public partial class SupportFootprintTests
             map.Z.X, map.Z.Y, map.Z.Z }.Count(c => c.Lower != c.Upper));
         var axis = FeaturePoint.Exact(Vector3.Zero);
         var radius = FeatureNumber.Exact(request.Radius);
+        // Include cold sparse terms and the structural scratch inspection before the warm window.
+        using var region = SupportAllocationRegion.Start(totalSize: 16 * 1024 * 1024);
         long coldBefore = GC.GetAllocatedBytesForCurrentThread();
         GeometrySign cold = polygon.SourcePredicates.Interior(polygon, 1, axis, radius, -1, spatial: true);
         long coldBytes = GC.GetAllocatedBytesForCurrentThread() - coldBefore;
@@ -102,12 +104,12 @@ public partial class SupportFootprintTests
         long warmBytes;
         try
         {
-            using var region = SupportAllocationRegion.Start();
             recorder.Reset();
             long warmBefore = GC.GetAllocatedBytesForCurrentThread();
             using (ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportExtrema))
                 warm = polygon.SourcePredicates.Interior(polygon, 1, axis, radius, -1, spatial: true);
             warmBytes = GC.GetAllocatedBytesForCurrentThread() - warmBefore;
+            region.Dispose();
         }
         finally { ContactAllocationDiagnostics.SetObserver(null); }
         Assert.Equal(0, recorder.Depth);

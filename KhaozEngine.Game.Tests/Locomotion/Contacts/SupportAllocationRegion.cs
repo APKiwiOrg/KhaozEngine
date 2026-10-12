@@ -17,11 +17,11 @@ internal sealed class SupportAllocationRegion : IDisposable
         gen2 = GC.CollectionCount(2);
     }
 
-    internal static SupportAllocationRegion Start(bool enabled = true)
+    internal static SupportAllocationRegion Start(bool enabled = true, long totalSize = 4 * 1024 * 1024)
     {
-        // Isolate the macOS arm64 allocation-counter concern without excluding gameplay allocations.
+        // Keep allocation-context reconciliation out of the cold/warm pair without excluding gameplay allocations.
         // https://github.com/dotnet/runtime/issues/134724
-        if (enabled && !GC.TryStartNoGCRegion(4 * 1024 * 1024, disallowFullBlockingGC: false))
+        if (enabled && !GC.TryStartNoGCRegion(totalSize, disallowFullBlockingGC: false))
             throw new InvalidOperationException("The allocation measurement could not enter its no-GC region.");
         return new(enabled);
     }

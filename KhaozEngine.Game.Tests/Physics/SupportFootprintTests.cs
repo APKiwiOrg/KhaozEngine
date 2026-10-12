@@ -6,6 +6,7 @@ using System.Reflection;
 using KhaozEngine.Locomotion.Contacts;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
+using KhaozEngine.Tests.Locomotion.Contacts;
 using Xunit;
 
 namespace KhaozEngine.Tests.Physics;
@@ -60,7 +61,9 @@ public partial class SupportFootprintTests
         // Tangency in an edge interior exercises the zero discriminant fallback.
         SupportPolygon tangent = Polygon([new(0.25f, 0.1f, -0.5f), new(0.25f, 0.1f, 0.5f),
             new(0.5f, 0.1f, 0.5f)], out OracleFace tangentFace);
-        CheckMaximum(Measure(tangent, request), SupportFootprintOracle.Polygon(tangentFace, request)!);
+        FootprintOracleMember tangentReference = SupportFootprintOracle.Polygon(tangentFace, request)!;
+        using var region = SupportAllocationRegion.Start();
+        CheckMaximum(Measure(tangent, request), tangentReference);
         // The warmed kernel has no per-query storage, including with predicate counters enabled.
         SupportQueryDiagnostics.Enable(true);
         try
@@ -79,7 +82,9 @@ public partial class SupportFootprintTests
         finally { SupportQueryDiagnostics.Enable(false); }
         long disabledBefore = GC.GetAllocatedBytesForCurrentThread();
         SupportFootprintPolygon.Measure(tangent, request, out _);
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - disabledBefore);
+        long disabledBytes = GC.GetAllocatedBytesForCurrentThread() - disabledBefore;
+        region.Dispose();
+        Assert.Equal(0, disabledBytes);
     }
 
     [Fact]

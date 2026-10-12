@@ -4,6 +4,7 @@ using System.Numerics;
 using BepuPhysics;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
+using KhaozEngine.Tests.Locomotion.Contacts;
 using Xunit;
 using Number = KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic.Number;
 using B = KhaozEngine.Tests.Physics.SupportFootprintExactOracle.Bounds;
@@ -251,6 +252,7 @@ public partial class SupportFootprintTests
             FeatureNumber.Exact(1), FeatureNumber.Exact(0)));
         var regions = new SupportCurvedRootRegions();
         Number[] polynomial = [arithmetic.Negate(arithmetic.X), arithmetic.Zero, arithmetic.One];
+        using var region = SupportAllocationRegion.Start();
         Assert.True(regions.Solve(arithmetic, polynomial, -1, 1));
         Assert.Equal(2, regions.Count);
         GeometryInterval negative = regions.Get(0), positive = regions.Get(1);
@@ -262,6 +264,7 @@ public partial class SupportFootprintTests
         long before = GC.GetAllocatedBytesForCurrentThread();
         bool complete = regions.Solve(arithmetic, polynomial, -1, 1);
         long bytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        region.Dispose();
         Assert.True(complete);
         Assert.Equal(0, bytes);
     }

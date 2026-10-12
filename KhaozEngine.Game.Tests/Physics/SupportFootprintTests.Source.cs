@@ -5,6 +5,7 @@ using System.Numerics;
 using BepuPhysics;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
+using KhaozEngine.Tests.Locomotion.Contacts;
 using Xunit;
 
 namespace KhaozEngine.Tests.Physics;
@@ -208,6 +209,7 @@ public partial class SupportFootprintTests
         SupportQueryDiagnostics.Enable(true);
         try
         {
+            using var region = SupportAllocationRegion.Start();
             long coldBefore = GC.GetAllocatedBytesForCurrentThread();
             var cold = capability.QuerySupportFootprint(lease, request, members, joins);
             long coldBytes = GC.GetAllocatedBytesForCurrentThread() - coldBefore;
@@ -216,6 +218,7 @@ public partial class SupportFootprintTests
             long before = GC.GetAllocatedBytesForCurrentThread();
             var result = capability.QuerySupportFootprint(lease, request, members, joins);
             long bytes = GC.GetAllocatedBytesForCurrentThread() - before;
+            region.Dispose();
             Assert.Equal(CapsuleFeatureStatus.Complete, result.Status);
             Assert.Equal(0, bytes);
             Assert.True(SupportQueryDiagnostics.Snapshot().ExactFallbacks > 0);
@@ -239,6 +242,7 @@ public partial class SupportFootprintTests
             [0, 2, 1]), new(Vector3.Zero, new Quaternion(0.5f, 0.5f, 0.5f, 0.5f)));
         var request = Request(radius: 5 * s, upper: 7);
         var polygon = Assert.Single(CapturedMesh(scene, request));
+        using var region = SupportAllocationRegion.Start();
         Assert.Equal(GeometrySign.Positive, SupportFootprintPolygon.Measure(polygon, request, out _));
         Assert.Equal(GeometrySign.Positive, SupportFootprintProposalGeometry.Lowest(polygon, request.FootProposal, out _));
         SupportQueryDiagnostics.Reset();
@@ -246,6 +250,7 @@ public partial class SupportFootprintTests
         var footprint = SupportFootprintPolygon.Measure(polygon, request, out _);
         var contact = SupportFootprintProposalGeometry.Lowest(polygon, request.FootProposal, out _);
         long bytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        region.Dispose();
         Assert.Equal(GeometrySign.Positive, footprint);
         Assert.Equal(GeometrySign.Positive, contact);
         Assert.Equal(0, bytes);

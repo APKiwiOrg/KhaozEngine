@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.Physics;
+using KhaozEngine.Tests.Locomotion.Contacts;
 using Xunit;
 
 namespace KhaozEngine.Tests.Physics;
@@ -84,10 +85,12 @@ public partial class SupportFootprintTests
         var members = new SupportFootprintMember[256];
         var joins = new ulong[1024];
         IPhysicsSupportFootprint capability = Capability(scene.World);
+        using var region = SupportAllocationRegion.Start();
         Assert.Equal(CapsuleFeatureStatus.Complete, capability.QuerySupportFootprint(lease, request, members, joins).Status);
         long before = GC.GetAllocatedBytesForCurrentThread();
         SupportFootprintResult warm = capability.QuerySupportFootprint(lease, request, members, joins);
         long bytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        region.Dispose();
         Assert.Equal(CapsuleFeatureStatus.Complete, warm.Status);
         Assert.Equal(0, warm.Members);
         Assert.Equal(0, bytes);

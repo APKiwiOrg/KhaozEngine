@@ -36,4 +36,35 @@ public partial class ArchitectureTests
         Assert.Equal(new[] { "Imaging", "WorldMap" },
             tests.ProjectRefs.Select(Short).OrderBy(name => name, StringComparer.Ordinal).ToArray());
     }
+
+    /// <summary>The TileWorld source adapter depends only on its two authored-world contracts.</summary>
+    [Fact]
+    public void TileWorldWorldMap_ReferencesOnlyWorldMapAndTileWorld()
+    {
+        Project adapter = LoadGraph()["KhaozEngine.TileWorld.WorldMap"];
+        Assert.True(adapter.IsPackableLibrary);
+        Assert.Equal(new[] { "TileWorld", "WorldMap" },
+            adapter.ProjectRefs.Select(Short).OrderBy(name => name, StringComparer.Ordinal).ToArray());
+        Assert.DoesNotContain(adapter.PackageRefs, package => !IgnoredInfraPackages.Contains(package));
+    }
+
+    /// <summary>Every umbrella leaves the TileWorld map source as an explicit consumer choice.</summary>
+    [Fact]
+    public void TileWorldWorldMap_IsAnExplicitReferenceOutsideEveryUmbrella()
+    {
+        var graph = LoadGraph();
+        Assert.Contains("TileWorld.WorldMap", OptInBackends);
+        foreach (string umbrella in Umbrellas)
+            Assert.DoesNotContain("KhaozEngine.TileWorld.WorldMap", TransitiveClosure(umbrella, graph));
+    }
+
+    /// <summary>The adapter tests reference only the adapter package.</summary>
+    [Fact]
+    public void TileWorldWorldMapTests_ReferenceOnlyThePackage()
+    {
+        Project tests = LoadGraph()["KhaozEngine.TileWorld.WorldMap.Tests"];
+        Assert.False(tests.IsPackableLibrary);
+        Assert.Equal(new[] { "TileWorld.WorldMap" },
+            tests.ProjectRefs.Select(Short).OrderBy(name => name, StringComparer.Ordinal).ToArray());
+    }
 }

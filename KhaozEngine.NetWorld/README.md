@@ -798,6 +798,42 @@ one served state before the next simulation step clears them. Timeout, deep-wate
 at its first stride abort the sequence without a landing event. A second server begin supersedes the first.
 Disconnect emits an ended result and strips the state before persistence.
 
+## Movement holds (since 20.27.2)
+
+Both `WorldServer` and `ShardedWorldServer` can hold a seat's movement input, for a death screen, a cutscene or
+any other moment the game owns. The hold is a command gate on the host, not a physics mode.
+
+```csharp
+public void HoldMovement(PlayerRef target);
+public void ReleaseMovement(PlayerRef target);
+public bool IsMovementHeld(int slot);
+```
+
+- **Queued and ordered.** `HoldMovement` and `ReleaseMovement` ride the admin queue, are safe from any thread and
+  apply at the start of the next `Tick`, in the order they were called (FIFO with every other admin command).
+  `IsMovementHeld` answers from the last applied drain, so a hold queued this tick reads false until that tick
+  runs. Read it on the host thread, like `TryGetPlayerState`. It is false for an unknown or departed slot.
+- **Commands are consumed, not acted on.** A held seat still dequeues each command it sends and its
+  acknowledgement still advances, so the client's pending commands drain. The body steps on
+  `MoveCommand.Idle`, so walking, running and jumping move nothing. Gravity and support keep stepping, so a held
+  body in the air falls and lands.
+- **Nothing else is cleared.** The hold resets no momentum, jump timer or active movement commitment. A
+  server-authored commitment already in flight completes or is aborted on its own terms. Cancel it with
+  `AbortMovementCommitment` if the game wants it stopped.
+- **Teleport keeps it, leave ends it.** An admin `Teleport`, `SetPosition` or cross-cell handoff keeps the hold.
+  Self-rescue still teleports a held seat, because it is a control request rather than a move command. An actual
+  leave releases it. On `ShardedWorldServer`, the only head with a disconnect linger, that includes the linger's
+  expiry and its reclaim, which leaves the lingering body through the ordinary leave before the account is seated
+  again. A lingering body stays held until then.
+- **Targets.** A slot target names that seat's occupant at the time of the call. A slot-targeted hold or release
+  queued before that occupant left is dropped at apply, even when a newcomer already holds the slot. An account
+  target is resolved when it applies and reaches that account on whatever slot it then holds. Either form is a
+  no-op for a player that is not joined when it applies, and a release of a seat that is not held is a no-op.
+
+Neither the hold nor its state crosses the wire, and `IAdminControllable` is unchanged. A predicting client that
+keeps sending movement while held is corrected back to the server position on each snapshot, so a game also
+gates its own movement input for as long as it holds the seat.
+
 ## Per-entity speed scale: haste, slow, root (since 14.26.0)
 
 One player can move at a different speed from everyone else on the server, for as long as the game says, with the

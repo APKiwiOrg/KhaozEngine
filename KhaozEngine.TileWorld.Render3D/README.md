@@ -463,9 +463,15 @@ catalog archetype up front, so a region load is placements alone.
   Marks coalesce, so a stroke that touches the same tiles a hundred times remeshes each region-plane once.
 - `Flush()` rebuilds queued region-planes oldest first, up to `MaxRebuildsPerFlush` (default 16) of them, and
   `PendingRebuilds` counts what the budget deferred to the next call. `Flush(int)` overrides the budget for one
-  call, and `int.MaxValue` is the settle-now form a loading moment wants. The budget bounds UPLOADS, not mesher
-  CPU: a rebuild that produces no mesh does not spend it. A rebuild that THROWS is dropped along with everything
-  completed ahead of it, so that region-plane keeps its previous mesh instead of being retried every frame.
+  call, and `int.MaxValue` is the settle-now form a loading moment wants. The budget bounds UPLOADS, not mesher CPU:
+  a rebuild that produces no mesh does not spend it. A rebuild that THROWS is dropped along with everything
+  completed ahead of it, so that region-plane keeps its previous mesh instead of being retried every frame. These
+  rebuilds run on the calling thread only for a view without a residency profile. A region kept by a three-state
+  profile is never meshed in `Flush`. Each mark submits detached ground to the background queue and spends one unit
+  of budget. A gameplay region also requests its cover once per region per drain, while a decor region submits
+  coarse ground only. The previous mesh and cover keep drawing until their replacements apply. So
+  `Flush(int.MaxValue)` no longer settles profile ground. Only `TileRegionResidency.PrimeAround` and headless
+  capture build profile work on the calling thread.
 - `Draw(focus)` flushes, then queues every loaded region: each plane's ground mesh at its world transform, that
   plane's ground props, and its roofs. `focus` is the point the prop draw radius (`PropDrawRadius`, 96 m) is
   measured from, which is the camera subject rather than the observer tile.
@@ -558,13 +564,23 @@ collision, navigation, simulation, replication or hashes.
 - `Update(observer)` drops what has fallen past `UnloadRadius`, then loads up to `MaxLoadsPerUpdate` (default 2)
   of what is missing, nearest first with a deterministic tie-break. A settled update allocates nothing.
   `Resident` snapshots the resident set and `CollectResident(into)` fills a reused buffer instead.
-- `PrimeAround(observer)` fills the whole legacy ring ignoring the budget. Under a three-state profile it drains
-  gameplay full-ground work synchronously, while coarse ground and HLOD remain budgeted. A teleport therefore
-  restores the interactive ring immediately without making the far decor horizon one blocking frame.
-- Ground and HLOD CPU work runs on background workers over detached snapshots. Completed generations are applied
-  on the scene thread, nearest region first, with independent full-ground, coarse-ground and HLOD caps. A pure
-  focus move reuses accepted clusters. Replacement failures keep the last accepted HLOD handle. Initial failures
-  retry three times, log once, and keep individual geometry where it is resident.
+- `PrimeAround(observer)` fills the whole legacy ring ignoring the budget and settles it with
+  `Flush(int.MaxValue)`, unchanged from earlier releases. Under a three-state profile it loads the ring ignoring
+  the budget, then settles synchronously only what would otherwise draw a hole: full ground for the regions it
+  loaded from `Unloaded` straight into gameplay, and for the already gameplay neighbours whose borders any
+  arrival dirties (the `DirtyRegionMargin` ground reach). A neighbour promoted by the same prime is not
+  settled. A prime with no arrivals builds nothing on the calling thread. Promotions, coarse ground, HLOD and
+  every cover build, arrival cover included, stay on the budgeted background path. A teleport therefore
+  restores the interactive ground immediately, and arrival cover lands a few frames after its ground.
+- **A promotion never stalls the frame.** A `Decor` region that moves into the gameplay radius, through
+  `Update` or `PrimeAround`, builds its full ground and its cover in the background. Its coarse ground and far
+  clusters keep drawing until the full ground replaces them, so a promotion never shows a hole. A promotion
+  changes only that region's representation and marks no neighbour.
+- Ground, cover and HLOD CPU work runs on background workers over detached snapshots. Completed generations are
+  applied on the scene thread, nearest region first, with independent full-ground, cover, coarse-ground and HLOD
+  caps. A generation stamp rejects a result whose region was demoted, unloaded or reloaded since it was asked
+  for. A pure focus move reuses accepted clusters. Replacement failures keep the last accepted HLOD handle.
+  Initial failures retry three times, log once, and keep individual geometry where it is resident.
 - **Streaming a region dirties its dependants** in both directions. Ground meshes rebuild across their fixed
   border reach. Ground-cover caches also rebuild where a streamed solid footprint, upper roof or tagged door can
   change eligibility, including regions reached by the door clearance.

@@ -35,8 +35,9 @@ public sealed partial class TileWorldView
     /// propagates, the queue keeps only what this call had not reached, and that region-plane keeps its previous
     /// mesh rather than being retried on every frame from here on.</para>
     /// <para>A region kept by a residency profile is never rebuilt here. Each of its marks submits detached ground
-    /// and, once per region, cover to the background queue, spending one unit of budget, and its previous mesh
-    /// and cover keep drawing until the replacements are applied.</para></summary>
+    /// to the background queue, spending one unit of budget. A gameplay region also requests its cover once per
+    /// region per drain, while a decor region submits coarse ground only. Its previous mesh and cover keep drawing
+    /// until the replacements are applied.</para></summary>
     /// <param name="maxRebuilds">Mesh-producing rebuilds this call may perform, treated as 1 when below 1.</param>
     public void Flush(int maxRebuilds)
     {

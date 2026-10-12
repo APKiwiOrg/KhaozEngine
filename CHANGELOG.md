@@ -5,6 +5,32 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.27.2
+
+- A Decor to Gameplay promotion in a `TileRegionResidencyProfile` no longer stalls the frame. Its full ground and
+  ground cover are built from detached snapshots on background workers and applied nearest first under the
+  per-frame caps, with cover under its own cap. The coarse ground and far prop clusters keep drawing until the full
+  ground replaces them, so a promotion never shows a hole. A promotion marks no neighbour.
+- `TileRegionResidency.PrimeAround` under a profile settles synchronously only the regions it loaded from `Unloaded`
+  straight into gameplay and the already gameplay ground borders any arrival dirties, a Decor arrival included.
+  Promotions, coarse ground, HLOD and every cover build stay budgeted, so arrival cover now lands a few frames after
+  its ground. `TileWorldView.Flush(int.MaxValue)` no longer settles profile ground. Only `PrimeAround` and headless
+  capture do. A view without a profile keeps the legacy synchronous ring unchanged.
+- `WorldServer` and `ShardedWorldServer` add `HoldMovement(PlayerRef)`, `ReleaseMovement(PlayerRef)` and
+  `IsMovementHeld(int slot)`. A hold is queued FIFO on the admin queue and applies at the start of the next tick. A
+  held seat's commands are still consumed and acknowledged while its body steps idle, so gravity and support keep
+  stepping and the client's pending commands drain. The hold clears no momentum, jump timer or movement commitment.
+  A teleport keeps it, self-rescue still teleports a held seat, and a leave releases it, including a disconnect
+  linger reclaim on `ShardedWorldServer`. A slot-targeted hold queued before its occupant left is dropped, while an
+  account target resolves at apply.
+- No wire, replicated state, command encoding, component codec or schema change. Clients and servers on 20.27.1
+  interoperate unchanged.
+- SemVer exception approved by the owner: the movement hold API is additive and would normally be a minor
+  release, but it ships as this patch because 20.28.0 is already taken on main.
+- Backports the PixelLab sheet assembler fix from main (#1326). The tool loads and saves PNGs through
+  `KhaozEngine.Imaging` instead of SixLabors.ImageSharp 2.1.13, whose NuGet audit advisories failed every Release
+  solution restore. NuGet audit and warnings as errors are unchanged.
+
 ## 20.27.1
 
 - Adds fixed-command phase overloads to `ClientPrediction.AdvancePresentation` and

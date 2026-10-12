@@ -12,7 +12,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.MapDoc.Prefabs;
 
-public sealed class MapPrefabTransformTests
+public sealed partial class MapPrefabTransformTests
 {
     [Theory]
     [InlineData(0.8f, 7.3999996f)]

@@ -26,7 +26,7 @@ internal sealed class MapBoundFaceContext
         _validated = new ReadOnlyDictionary<MapPatchKey, MapValidatedSurfacePatch>(validated);
     }
 
-    sealed record Entry(MapSlotCellMask Mask, MapCompiledPatch Compiled,
+    sealed record Entry(MapSlotCellMask Mask, MapCompiledPatch LocalCompiled, MapCompiledPatch Compiled,
         IReadOnlyDictionary<int, IReadOnlyList<MapBoundFace>> Cells);
     sealed record OpeningEntry(MapPatchKey Patch, MapSlotCellMask Mask,
         IReadOnlyDictionary<int, IReadOnlyList<MapBoundFace>> Cells);
@@ -133,12 +133,13 @@ internal sealed class MapBoundFaceContext
             MapCompiledPatch compiled;
             try { compiled = MapSurfaceCompiler.Compile(pendingEntry.Validated, mask, MapSurfaceCompiler.MaxFacesPerPatch); }
             catch (MapDocumentException error) when (MapCommonRefinement.NotRepresentable(error)) { throw new MapExactOverflowException(); }
+            MapCompiledPatch local = compiled;
             compiled = MapEffectiveGeometry.TransformPatch(view, compiled);
             if (work is not null) { work.Compiles++; work.CompiledFaces += compiled.Faces.Count; }
             var cells = compiled.Faces.GroupBy(f => f.Key.Primitive).ToDictionary(g => g.Key,
                 g => (IReadOnlyList<MapBoundFace>)Array.AsReadOnly(g.OrderBy(f => f.Key)
                     .Select(f => new MapBoundFace(f.Key, compiled.ExactTriangle(f))).ToArray()));
-            entries.Add(key, new(mask, compiled, new ReadOnlyDictionary<int, IReadOnlyList<MapBoundFace>>(cells)));
+            entries.Add(key, new(mask, local, compiled, new ReadOnlyDictionary<int, IReadOnlyList<MapBoundFace>>(cells)));
         }
         foreach (var (reference, requested) in pendingOpenings.OrderBy(p => p.Key.Anchor).ThenBy(p => p.Key.Id, StringComparer.Ordinal))
         {
@@ -173,6 +174,8 @@ internal sealed class MapBoundFaceContext
             throw new InvalidOperationException("context demand was not prepared");
         return entry.Cells.TryGetValue(cell.SlotCell, out IReadOnlyList<MapBoundFace>? faces) ? faces : Array.Empty<MapBoundFace>();
     }
+    internal MapCompiledPatch LocalCompiled(MapPatchKey key) => _entries.TryGetValue(key, out Entry? entry) ? entry.LocalCompiled
+        : throw new InvalidOperationException("context demand patch was not prepared");
     internal MapCompiledPatch Compiled(MapPatchKey key) => _entries.TryGetValue(key, out Entry? entry)
         ? entry.Compiled : throw new InvalidOperationException("context demand patch was not prepared");
     internal MapValidatedSurfacePatch ValidatedPatch(MapPatchKey key) => _validated.TryGetValue(key, out MapValidatedSurfacePatch? validated)

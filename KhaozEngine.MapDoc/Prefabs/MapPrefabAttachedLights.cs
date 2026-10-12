@@ -10,7 +10,7 @@ namespace KhaozEngine.MapDoc.Prefabs;
 internal static class MapPrefabAttachedLights
 {
     internal static IReadOnlyList<MapPrefabChild> Enumerate(MapAssetClosure assets, IReadOnlyList<MapPrefabChild> children,
-        IReadOnlyList<MapPrefabLocalMaterialization>? materialized = null, bool allowOpaque = false)
+        IReadOnlyList<MapPrefabLocalMaterialization>? materialized = null, bool allowOpaque = false, IDictionary<MapPrefabChildKey, MapPrefabChildKey>? owners = null)
     {
         ArgumentNullException.ThrowIfNull(assets);
         ArgumentNullException.ThrowIfNull(children);
@@ -24,7 +24,9 @@ internal static class MapPrefabAttachedLights
                 MapLocalLightDoc light = assets.BorrowLight(resourceId);
                 string key = MapEffectiveSupport.Key(placement.Key.Key, resourceId, light.Id);
                 var owner = light.Owner is null ? null : new MapPrefabReference(MapPrefabReferenceScope.Local, MapPrefabChildKind.Placement, placement.Key.Key);
-                result.Add(new MapPrefabLightChild(new(MapPrefabChildKind.Light, key), light with { Id = key, Owner = owner }));
+                var child = new MapPrefabLightChild(new(MapPrefabChildKind.Light, key), light with { Id = key, Owner = owner });
+                result.Add(child);
+                owners?.Add(child.Key, placement.Key);
             }
         return result;
     }

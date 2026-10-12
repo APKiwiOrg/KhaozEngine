@@ -13,8 +13,8 @@ namespace KhaozEngine.MapDoc.Surfaces;
 internal static class MapEffectiveGeometry
 {
     internal static MapFramePoint Presentation(MapScopedSurfaces view, MapExactPoint world) => new(view.Scope.Frame, new(
-        world.X.Subtract(new((long)view.Scope.Frame.X * (long)KhaozEngine.Primitives.WorldFrame.Grid, 1)).ToSingle(), world.Y.ToSingle(),
-        world.Z.Subtract(new((long)view.Scope.Frame.Z * (long)KhaozEngine.Primitives.WorldFrame.Grid, 1)).ToSingle()));
+        (float)W(world.X).Subtract(MapWideRational.From((long)view.Scope.Frame.X * (long)KhaozEngine.Primitives.WorldFrame.Grid)).ToDouble(), world.Y.ToSingle(),
+        (float)W(world.Z).Subtract(MapWideRational.From((long)view.Scope.Frame.Z * (long)KhaozEngine.Primitives.WorldFrame.Grid)).ToDouble()));
     internal static bool InScope(MapScopedSurfaces view, MapExactPoint world)
     {
         var rectangle = view.Scope.WorldRectangle();
@@ -134,26 +134,32 @@ internal static class MapEffectiveGeometry
         return new(points.Min(p => p.X), points.Min(p => p.Z), points.Max(p => p.X), points.Max(p => p.Z));
     }
 
-    internal static MapSpacePointBounds.Bound PlanPoint(MapScopedSurfaces view, MapBoundPreparation preparation,
-        MapSpaceFootprint footprint, MapBoundRef bound, MapExactXz point)
+    internal static MapExactValue LegacyHeight(MapScopedSurfaces view, MapValidatedSurfacePatch patch, MapExactXz point)
     {
-        if (bound.Kind == MapBoundKind.OpenTop) return new(MapMembershipStatus.Resolved, null, null, null, null);
-        var opening = bound.Kind == MapBoundKind.HorizontalOpening ? MapSpaceGeometry.Record<MapHorizontalOpening>(view, bound.Opening!) : null;
-        string id = opening?.Patch.SurfaceId ?? bound.SurfaceId ?? throw new MapDocumentException("Missing effective bound surface.");
-        foreach (var (x, z) in CellCandidates(view, id, point))
+        var kernel = view.EffectiveContext?.Transform(MapPrefabChildKind.Surface, patch.Surface.Id);
+        if (kernel is null) return MapExactValue.FromSingle(MapLegacyBilinear.HeightMetres(patch.Surface, patch.Patch, point));
+        var pose = kernel.Transform;
+        var (sin, cos) = Math.SinCos(pose.YawRadians);
+        double dx = point.X.ToDouble() - pose.X, dz = point.Z.ToDouble() - pose.Z;
+        var local = new MapExactXz(MapExactValue.FromSingle((float)((cos * dx - sin * dz) / pose.Scale)),
+            MapExactValue.FromSingle((float)((sin * dx + cos * dz) / pose.Scale)));
+        return kernel.Height(MapExactValue.FromSingle(MapLegacyBilinear.HeightMetres(patch.Surface, patch.Patch, local)));
+    }
+
+    internal static MapExactValue? SpanHeight(MapBoundFaceContext context, MapCellDemand cell, MapExactXz point, long offsetUnits)
+    {
+        var patch = context.ValidatedPatch(cell.Patch);
+        var offset = patch.Surface.Frame.Metres(new(offsetUnits, 1));
+        var kernel = context.View.EffectiveContext?.Transform(MapPrefabChildKind.Surface, cell.Patch.SurfaceId);
+        if (kernel is null) return MapSpaceGeometry.Height(context.Faces(cell), point)?.Add(offset);
+        var local = context.LocalCompiled(cell.Patch);
+        foreach (var face in local.Faces.Where(f => f.Key.Primitive == cell.SlotCell))
         {
-            var key = MapPatchKey.ForCell(id, x, z);
-            int slot = MapLowerCellClassifier.SlotCell(x, z);
-            if (!view.TryAcquiredPatch(key, out var patch, out var status)) return new(MapMembershipStatus.MissingGeometry, null, null, null, $"patch {key}: {status}");
-            if (patch is null) continue;
-            int lx = slot % 64 - patch.CellMinX, lz = slot / 64 - patch.CellMinZ;
-            if (lx < 0 || lx >= patch.Width || lz < 0 || lz >= patch.Depth) continue;
-            if (opening is not null ? opening.Patch != key || !opening.SlotCells.Contains(slot) : !patch.IsPresent(lx, lz)) continue;
-            if (preparation.ValidatedPatch(MapSpaceGeometry.Surface(view, id), patch) is null)
-                return new(MapMembershipStatus.CapacityExceeded, null, null, null, preparation.Refusal);
-            return new(MapMembershipStatus.Resolved, new(key, slot), bound.Opening, null, null);
+            var triangle = local.ExactTriangle(face);
+            MapExactPoint Raised(MapExactPoint vertex) => kernel.Point(vertex with { Y = vertex.Y.Add(offset) });
+            if (MapSubdividedTriangle.Height(new(Raised(triangle.A), Raised(triangle.B), Raised(triangle.C)), point.X, point.Z) is { } height) return height;
         }
-        return new(MapMembershipStatus.MissingGeometry, null, null, null, "Missing effective bound at exact XZ.");
+        return null;
     }
 
     internal static MapCellRefinement RefinePolygon(IReadOnlyList<MapBoundFace> lower, IReadOnlyList<MapBoundFace>? upper,

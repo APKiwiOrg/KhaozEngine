@@ -131,11 +131,9 @@ public sealed class MapSpaceMembership
             {
                 if (MapSpaceGeometry.FootprintCell(_view, footprint, xz) is null) continue;
                 _ = MapSpaceGeometry.Record<MapSpaceDoc>(_view, footprint.Space);
-                MapSpacePointBounds.Bound lower = _view.EffectiveContext is null ? bounds.Plan(footprint, footprint.Lower, xz)
-                    : MapEffectiveGeometry.PlanPoint(_view, bounds.Preparation, footprint, footprint.Lower, xz);
+                MapSpacePointBounds.Bound lower = bounds.Plan(footprint, footprint.Lower, xz);
                 if (lower.Status != MapMembershipStatus.Resolved) return Failure(lower.Status, $"footprint '{footprint.Id}': {lower.Detail}");
-                MapSpacePointBounds.Bound upper = _view.EffectiveContext is null ? bounds.Plan(footprint, footprint.Upper, xz)
-                    : MapEffectiveGeometry.PlanPoint(_view, bounds.Preparation, footprint, footprint.Upper, xz);
+                MapSpacePointBounds.Bound upper = bounds.Plan(footprint, footprint.Upper, xz);
                 if (upper.Status != MapMembershipStatus.Resolved) return Failure(upper.Status, $"footprint '{footprint.Id}': {upper.Detail}");
                 candidates.Add(new(footprint, lower, upper));
                 Add(lower);
@@ -149,13 +147,15 @@ public sealed class MapSpaceMembership
             }
             foreach (MapSurfaceRef surface in _view.Surfaces.Where(s => s.IndoorSpan is not null))
             {
-                var (x, z) = MapSpaceGeometry.Cell(surface.Frame, xz);
-                MapPatchKey key = MapPatchKey.ForCell(surface.Id, x, z);
-                if (!_view.TryAcquiredPatch(key, out MapSurfacePatch? patch, out _) || patch is null) continue;
-                int slot = MapLowerCellClassifier.SlotCell(x, z), lx = slot % 64 - patch.CellMinX, lz = slot / 64 - patch.CellMinZ;
-                if (lx >= 0 && lx < patch.Width && lz >= 0 && lz < patch.Depth &&
-                    (patch.Cells[lz * patch.Width + lx].Flags & MapCellFlags.Indoor) != 0)
-                    demands.Add(new(bounds.SourceCell(key, xz), null));
+                foreach (var (x, z) in MapEffectiveGeometry.CellCandidates(_view, surface.Id, xz))
+                {
+                    MapPatchKey key = MapPatchKey.ForCell(surface.Id, x, z);
+                    if (!_view.TryAcquiredPatch(key, out MapSurfacePatch? patch, out _) || patch is null) continue;
+                    int slot = MapLowerCellClassifier.SlotCell(x, z), lx = slot % 64 - patch.CellMinX, lz = slot / 64 - patch.CellMinZ;
+                    if (lx >= 0 && lx < patch.Width && lz >= 0 && lz < patch.Depth &&
+                        (patch.Cells[lz * patch.Width + lx].Flags & MapCellFlags.Indoor) != 0)
+                        demands.Add(new(new(key, slot), null));
+                }
             }
             if (additional is not null) demands.AddRange(additional);
             MapBoundFaceContext? context = supplied ?? MapBoundFaceContext.PrepareBounds(_view, demands,
@@ -258,19 +258,20 @@ public sealed class MapSpaceMembership
                 {
                     if (surface.IndoorSpan is not { } span || !ancestry.Any(s => s.Id == span.ParentSpace.Id)) continue;
                     _ = MapSpaceGeometry.Record<MapSpaceDoc>(_view, span.ParentSpace);
-                    var (x, z) = MapSpaceGeometry.Cell(surface.Frame, xz);
-                    MapCellDemand cell = new(MapPatchKey.ForCell(surface.Id, x, z), MapLowerCellClassifier.SlotCell(x, z));
-                    if (!_view.TryAcquiredPatch(cell.Patch, out MapSurfacePatch? patch, out MapPatchStatus status))
-                        return Failure(MapMembershipStatus.MissingGeometry, $"indoor span '{span.Id}' patch {cell.Patch}: {status}");
-                    if (patch is null) continue;
-                    int lx = cell.SlotCell % 64 - patch.CellMinX, lz = cell.SlotCell / 64 - patch.CellMinZ;
-                    if (lx < 0 || lx >= patch.Width || lz < 0 || lz >= patch.Depth ||
-                        (patch.Cells[lz * patch.Width + lx].Flags & MapCellFlags.Indoor) == 0) continue;
-                    MapExactValue? floor = MapSpaceGeometry.Height(prepared.Faces(cell), xz);
-                    if (floor is null) return Failure(MapMembershipStatus.MissingGeometry, $"missing bound: indoor span '{span.Id}'");
-                    MapExactValue lo = floor.Value.Add(surface.Frame.Metres(new(span.LowerOffsetUnits, 1)));
-                    MapExactValue hi = floor.Value.Add(surface.Frame.Metres(new(span.UpperOffsetUnits, 1)));
-                    if (y.CompareTo(lo) >= 0 && y.CompareTo(hi) < 0) { keys.Add(span.Id); keys.AddRange(span.DomainTags); }
+                    foreach (var (x, z) in MapEffectiveGeometry.CellCandidates(_view, surface.Id, xz))
+                    {
+                        MapCellDemand cell = new(MapPatchKey.ForCell(surface.Id, x, z), MapLowerCellClassifier.SlotCell(x, z));
+                        if (!_view.TryAcquiredPatch(cell.Patch, out MapSurfacePatch? patch, out MapPatchStatus status))
+                            return Failure(MapMembershipStatus.MissingGeometry, $"indoor span '{span.Id}' patch {cell.Patch}: {status}");
+                        if (patch is null) continue;
+                        int lx = cell.SlotCell % 64 - patch.CellMinX, lz = cell.SlotCell / 64 - patch.CellMinZ;
+                        if (lx < 0 || lx >= patch.Width || lz < 0 || lz >= patch.Depth ||
+                            (patch.Cells[lz * patch.Width + lx].Flags & MapCellFlags.Indoor) == 0) continue;
+                        MapExactValue? lo = MapEffectiveGeometry.SpanHeight(prepared, cell, xz, span.LowerOffsetUnits);
+                        MapExactValue? hi = MapEffectiveGeometry.SpanHeight(prepared, cell, xz, span.UpperOffsetUnits);
+                        if (lo is null || hi is null) return Failure(MapMembershipStatus.MissingGeometry, $"missing bound: indoor span '{span.Id}'");
+                        if (y.CompareTo(lo.Value) >= 0 && y.CompareTo(hi.Value) < 0) { keys.Add(span.Id); keys.AddRange(span.DomainTags); }
+                    }
                 }
                 if (selected is not null) parts?.Add(selected);
                 return new(MapMembershipStatus.Resolved, point, space.Id, keys.Distinct(StringComparer.Ordinal), compatibility, null, _view.ReadWitness, exactWorld);

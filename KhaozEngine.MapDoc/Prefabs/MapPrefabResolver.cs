@@ -19,7 +19,7 @@ public static class MapPrefabResolver
         Expand(document, assets, limits ?? new(), null);
 
     internal static MapEffectiveResources Expand(MapDocument document, MapAssetClosure assets, MapPrefabExpansionLimits limits,
-        MapPrefabExpansionObserver? observer)
+        MapPrefabExpansionObserver? observer, IMapSurfaceSource? nativeSource = null)
     {
         _ = MapPrefabPreflight.Count(document, assets, limits);
         observer?.EnterStage("Copies");
@@ -36,6 +36,7 @@ public static class MapPrefabResolver
         var owners = new Dictionary<string, string>(StringComparer.Ordinal);
         var roofs = new List<MapPrefabReference>(authored.BuildingIntent?.Roofs ?? []);
         var digestParts = new List<string> { "kemap/effective-resources/1", "2", assets.Hash, MapSurfaceSemantics.RootDigest(authored) };
+        if (nativeSource is not null) { digestParts.Add(nativeSource.RootSha256); digestParts.Add(nativeSource.SnapshotId); }
         var standaloneNumbers = authored.Placements.ToDictionary(p => p.Id, p => p.NumericId, StringComparer.Ordinal);
         var standalone = authored.Placements.Select(p =>
         {
@@ -57,8 +58,9 @@ public static class MapPrefabResolver
                 foreach (var child in attachment.Children) owners[MapEffectiveContext.Key(child.LocalChild.Kind, child.WorldId)] = attachment.PlacementId;
             }
         }
-        var standaloneChildren = standalone.Concat(MapEffectiveSupport.Enumerate(assets, standalone, rows, allowOpaque: true).Select(c => OwnerPose(c, standalone)))
-            .Concat(MapPrefabAttachedLights.Enumerate(assets, standalone, rows, allowOpaque: true).Select(c => OwnerPose(c, standalone))).ToArray();
+        var standaloneOwners = new Dictionary<MapPrefabChildKey, MapPrefabChildKey>();
+        var standaloneChildren = standalone.Concat(MapEffectiveSupport.Enumerate(assets, standalone, rows, allowOpaque: true, owners: standaloneOwners).Select(c => OwnerPose(c, standalone, standaloneOwners)))
+            .Concat(MapPrefabAttachedLights.Enumerate(assets, standalone, rows, allowOpaque: true, owners: standaloneOwners).Select(c => OwnerPose(c, standalone, standaloneOwners))).ToArray();
         observer?.EnterStage("Remaps");
         var standaloneAsset = new MapPrefabAsset(1, "standalone-effective", standaloneChildren);
         var standaloneBound = MapPrefabReferences.Remap(standaloneAsset, standaloneChildren.ToDictionary(c => c.Key, c => c.Key.Key), null);
@@ -72,9 +74,8 @@ public static class MapPrefabResolver
                     MapPrefabMaterializationOverrides.Pose(placement.Value)) : MapEffectiveTransform.From(local.LocalTransform);
                 if (local is not MapPrefabPlacementChild)
                 {
-                    var owner = standalone.OfType<MapPrefabPlacementChild>().FirstOrDefault(p => local.Key.Key.StartsWith(p.Key.Key + "/", StringComparison.Ordinal));
-                    if (owner is not null)
-                    { pose = transforms[MapEffectiveContext.Key(MapPrefabChildKind.Placement, owner.Key.Key)]; owners[key] = owner.Key.Key; }
+                    if (standaloneOwners.TryGetValue(local.Key, out var owner))
+                    { pose = transforms[MapEffectiveContext.Key(owner.Kind, owner.Key)]; owners[key] = owner.Key; }
                 }
                 transforms.Add(key, pose);
             }
@@ -89,8 +90,9 @@ public static class MapPrefabResolver
             var reconciled = MapPrefabMaterializationOverrides.Reconcile(assets.BorrowPrefab(instance.ResourceId), instance.Overrides);
             var explicitChildren = reconciled.EffectiveAsset.Children.Where(c => !reconciled.Removed.Contains(c.Key)).ToArray();
             var suppression = reconciled.EffectiveAsset.MaterializedAttachments;
-            var localChildren = explicitChildren.Concat(MapEffectiveSupport.Enumerate(assets, explicitChildren, suppression).Select(c => OwnerPose(c, explicitChildren)))
-                .Concat(MapPrefabAttachedLights.Enumerate(assets, explicitChildren, suppression).Select(c => OwnerPose(c, explicitChildren))).ToArray();
+            var implicitOwners = new Dictionary<MapPrefabChildKey, MapPrefabChildKey>();
+            var localChildren = explicitChildren.Concat(MapEffectiveSupport.Enumerate(assets, explicitChildren, suppression, owners: implicitOwners).Select(c => OwnerPose(c, explicitChildren, implicitOwners)))
+                .Concat(MapPrefabAttachedLights.Enumerate(assets, explicitChildren, suppression, owners: implicitOwners).Select(c => OwnerPose(c, explicitChildren, implicitOwners))).ToArray();
             var bindings = instance.Bindings.Entries.Where(b => !b.Removed).ToDictionary(b => b.Child, b => b.WorldId);
             var captured = MapEffectiveAttachments.ResolveLocal(reconciled, bindings, instancePose, instance.ParentSpace);
             attachments.AddRange(captured);
@@ -122,11 +124,12 @@ public static class MapPrefabResolver
                 else
                 {
                     pose = MapEffectiveTransform.Compose(instancePose, local.LocalTransform);
-                    var attachedOwner = explicitChildren.OfType<MapPrefabPlacementChild>()
-                        .FirstOrDefault(p => local.Key.Key.StartsWith(p.Key.Key + "/", StringComparison.Ordinal));
-                    if (attachedOwner is not null)
+                    if (implicitOwners.TryGetValue(local.Key, out var attachedKey))
+                    {
+                        var attachedOwner = explicitChildren.OfType<MapPrefabPlacementChild>().Single(p => p.Key == attachedKey);
                         pose = MapEffectiveTransform.Compose(MapEffectiveTransform.Compose(instancePose, attachedOwner.LocalTransform),
                             MapPrefabMaterializationOverrides.Pose(attachedOwner.Value));
+                    }
                     else if (local is MapPrefabLightChild { Value.Owner: { Scope: MapPrefabReferenceScope.Local } owner })
                     {
                         var placementOwner = explicitChildren.OfType<MapPrefabPlacementChild>().Single(p => p.Key.Key == owner.Id);
@@ -138,8 +141,7 @@ public static class MapPrefabResolver
                 if (capturedRow is not null) owners[MapEffectiveContext.Key(local.Key.Kind, id)] = bindings[new(MapPrefabChildKind.Placement, capturedRow.Placement.Id)];
                 else if (local is not MapPrefabPlacementChild)
                 {
-                    var attached = explicitChildren.OfType<MapPrefabPlacementChild>().FirstOrDefault(p => local.Key.Key.StartsWith(p.Key.Key + "/", StringComparison.Ordinal));
-                    if (attached is not null) owners[MapEffectiveContext.Key(local.Key.Kind, id)] = bindings[attached.Key];
+                    if (implicitOwners.TryGetValue(local.Key, out var attached)) owners[MapEffectiveContext.Key(local.Key.Kind, id)] = bindings[attached];
                     else if (world is MapPrefabLightChild { Value.Owner: { Kind: MapPrefabChildKind.Placement } owner }) owners[MapEffectiveContext.Key(local.Key.Kind, id)] = owner.Id;
                 }
                 transforms.Add(MapEffectiveContext.Key(local.Key.Kind, id), pose);
@@ -158,7 +160,7 @@ public static class MapPrefabResolver
         observer?.EnterStage("Sorts");
         children.Sort((a, b) => { int kind = a.Key.Kind.CompareTo(b.Key.Kind); return kind != 0 ? kind : StringComparer.Ordinal.Compare(a.Key.Key, b.Key.Key); });
         var surfaces = MapEffectiveSupport.Install(assets, children, transforms);
-        foreach (var surface in authored.Surfaces.Refs) surfaces.Refs.Add(surface);
+        foreach (var surface in nativeSource?.Surfaces ?? authored.Surfaces.Refs) surfaces.Refs.Add(surface);
         foreach (var patch in authored.Surfaces.Patches) surfaces.Patches.Add(patch.Key, patch.Value.Clone());
         observer?.EnterStage("ExpandedGeometry");
         string Digest() => MapPrefabJson.Digest("kemap/effective-resources/1", new
@@ -168,7 +170,8 @@ public static class MapPrefabResolver
             Patches = surfaces.Patches.Select(p => new { p.Key, Digest = MapSurfaceSemantics.PatchDigest(p.Value) }).ToArray(),
         });
         var context = new MapEffectiveContext(surfaces, transforms, Digest());
-        var source = new MapEffectiveSurfaceSource(context);
+        IMapSurfaceSource Source(MapEffectiveContext value) => nativeSource is null ? new MapEffectiveSurfaceSource(value) : new MapComposedSurfaceSource(value, nativeSource);
+        var source = Source(context);
         var effectivePlacements = new List<MapPlacement>();
         foreach (var child in children.OfType<MapPrefabPlacementChild>())
         {
@@ -184,7 +187,7 @@ public static class MapPrefabResolver
             };
             effectivePlacements.Add(p);
         }
-        var placements = MapResolverV2.ResolveEffectivePlacements(authored, assets, effectivePlacements, transforms, source, out var supports);
+        var placements = MapResolverV2.ResolveEffectivePlacements(authored, assets, effectivePlacements, transforms, source, out var supports, owners);
         foreach (var support in supports)
         {
             string key = MapEffectiveContext.Key(MapPrefabChildKind.Placement, support.PlacementId);
@@ -195,7 +198,7 @@ public static class MapPrefabResolver
         if (supports.Count != 0)
         {
             context = new(surfaces, transforms, Digest());
-            source = new(context);
+            source = Source(context);
         }
         var water = authored.Water?.Clone();
         foreach (var medium in children.OfType<MapPrefabMediumChild>()) (water ??= new()).Media.Add(medium.Value);
@@ -246,9 +249,9 @@ public static class MapPrefabResolver
         };
         return new(context, source, placements, supports, water, intent, lightPoints, waterCorners, attachments);
     }
-    static MapPrefabChild OwnerPose(MapPrefabChild child, IReadOnlyList<MapPrefabChild> owners) =>
-        MapPrefabReferences.ImplicitOwner(child.Key.Kind, child.Key.Key, owners, [], out var owner)
-            ? child with { LocalTransform = MapPrefabMaterializationOverrides.Pose(owner!.Value) } : child;
+    static MapPrefabChild OwnerPose(MapPrefabChild child, IReadOnlyList<MapPrefabChild> children,
+        IReadOnlyDictionary<MapPrefabChildKey, MapPrefabChildKey> owners) =>
+        child with { LocalTransform = MapPrefabMaterializationOverrides.Pose(children.OfType<MapPrefabPlacementChild>().Single(p => p.Key == owners[child.Key]).Value) };
     static MapExactPoint Exact(Vector3 point) => new(MapExactValue.FromSingle(point.X), MapExactValue.FromSingle(point.Y), MapExactValue.FromSingle(point.Z));
     static IEnumerable<MapExactPoint> Corners(MapWaterBodyDoc body)
     {

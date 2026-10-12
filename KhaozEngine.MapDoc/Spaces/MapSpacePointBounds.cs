@@ -43,37 +43,42 @@ internal sealed class MapSpacePointBounds
                 bound.Opening ?? throw new MapDocumentException("missing geometry: opening reference")) : null;
         string id = opening?.Patch.SurfaceId ?? bound.SurfaceId ?? throw new MapDocumentException("missing geometry: bound surface");
         MapSurfaceRef surface = MapSpaceGeometry.Surface(_view, id);
-        var (x, z) = MapSpaceGeometry.Cell(surface.Frame, point);
-        MapCellDemand cell = new(MapPatchKey.ForCell(id, x, z), MapLowerCellClassifier.SlotCell(x, z));
-        MapLegacyCellTag? compatibility = null;
-        if (lower && bound.Kind is MapBoundKind.SupportFloor or MapBoundKind.LegacyExteriorV1)
+        foreach (var (x, z) in MapEffectiveGeometry.CellCandidates(_view, id, point)) return PlanCell(x, z);
+        return Failure(MapMembershipStatus.MissingGeometry, "missing bound at exact XZ");
+
+        Bound PlanCell(long x, long z)
         {
-            MapLowerCellClassification classification = MapLowerCellClassifier.Classify(_view, footprint, x, z);
-            if (classification.Class == MapLowerCellClass.InvalidRecipe) return Failure(MapMembershipStatus.Invalid, classification.Detail);
-            if (classification.Class == MapLowerCellClass.Unavailable) return Failure(MapMembershipStatus.MissingGeometry, classification.Detail);
-            if (classification.Class is MapLowerCellClass.KnownHole or MapLowerCellClass.UntaggedLegacy)
-                return Failure(MapMembershipStatus.MissingGeometry, $"missing bound: {classification.Detail ?? cell.Patch.ToString()}");
-            compatibility = classification.Legacy;
+            MapCellDemand cell = new(MapPatchKey.ForCell(id, x, z), MapLowerCellClassifier.SlotCell(x, z));
+            MapLegacyCellTag? compatibility = null;
+            if (lower && bound.Kind is MapBoundKind.SupportFloor or MapBoundKind.LegacyExteriorV1)
+            {
+                MapLowerCellClassification classification = MapLowerCellClassifier.Classify(_view, footprint, x, z);
+                if (classification.Class == MapLowerCellClass.InvalidRecipe) return Failure(MapMembershipStatus.Invalid, classification.Detail);
+                if (classification.Class == MapLowerCellClass.Unavailable) return Failure(MapMembershipStatus.MissingGeometry, classification.Detail);
+                if (classification.Class is MapLowerCellClass.KnownHole or MapLowerCellClass.UntaggedLegacy)
+                    return Failure(MapMembershipStatus.MissingGeometry, $"missing bound: {classification.Detail ?? cell.Patch.ToString()}");
+                compatibility = classification.Legacy;
+            }
+            else if (opening is null && (lower || bound.Kind != MapBoundKind.Ceiling))
+                return Failure(MapMembershipStatus.Invalid, "invalid bound kind");
+            if (!_view.TryAcquiredPatch(cell.Patch, out MapSurfacePatch? patch, out MapPatchStatus status))
+                return Failure(MapMembershipStatus.MissingGeometry, $"patch {cell.Patch}: {status}");
+            if (patch is null) return Failure(MapMembershipStatus.MissingGeometry, $"missing bound: patch {cell.Patch}: {status}");
+            int localX = cell.SlotCell % 64 - patch.CellMinX, localZ = cell.SlotCell / 64 - patch.CellMinZ;
+            if (localX < 0 || localX >= patch.Width || localZ < 0 || localZ >= patch.Depth)
+                return Failure(MapMembershipStatus.MissingGeometry, $"missing bound: patch {cell.Patch} cell {cell.SlotCell}");
+            if (_preparation.ValidatedPatch(surface, patch) is null)
+                return Failure(MapMembershipStatus.CapacityExceeded, _preparation.Refusal);
+            if (opening is not null)
+            {
+                if (opening.Patch != cell.Patch || !Contains(opening.SlotCells, cell.SlotCell))
+                    return Failure(MapMembershipStatus.MissingGeometry, $"missing bound: opening '{opening.Id}' cell {cell.SlotCell}");
+                _ = MapBoundFaceContext.OpeningFaceCount(patch, cell.SlotCell);
+            }
+            else if (!patch.IsPresent(localX, localZ))
+                return Failure(MapMembershipStatus.MissingGeometry, $"missing bound: patch {cell.Patch} cell {cell.SlotCell}");
+            return new(MapMembershipStatus.Resolved, cell, bound.Opening, compatibility, null);
         }
-        else if (opening is null && (lower || bound.Kind != MapBoundKind.Ceiling))
-            return Failure(MapMembershipStatus.Invalid, "invalid bound kind");
-        if (!_view.TryAcquiredPatch(cell.Patch, out MapSurfacePatch? patch, out MapPatchStatus status))
-            return Failure(MapMembershipStatus.MissingGeometry, $"patch {cell.Patch}: {status}");
-        if (patch is null) return Failure(MapMembershipStatus.MissingGeometry, $"missing bound: patch {cell.Patch}: {status}");
-        int localX = cell.SlotCell % 64 - patch.CellMinX, localZ = cell.SlotCell / 64 - patch.CellMinZ;
-        if (localX < 0 || localX >= patch.Width || localZ < 0 || localZ >= patch.Depth)
-            return Failure(MapMembershipStatus.MissingGeometry, $"missing bound: patch {cell.Patch} cell {cell.SlotCell}");
-        if (_preparation.ValidatedPatch(surface, patch) is null)
-            return Failure(MapMembershipStatus.CapacityExceeded, _preparation.Refusal);
-        if (opening is not null)
-        {
-            if (opening.Patch != cell.Patch || !Contains(opening.SlotCells, cell.SlotCell))
-                return Failure(MapMembershipStatus.MissingGeometry, $"missing bound: opening '{opening.Id}' cell {cell.SlotCell}");
-            _ = MapBoundFaceContext.OpeningFaceCount(patch, cell.SlotCell);
-        }
-        else if (!patch.IsPresent(localX, localZ))
-            return Failure(MapMembershipStatus.MissingGeometry, $"missing bound: patch {cell.Patch} cell {cell.SlotCell}");
-        return new(MapMembershipStatus.Resolved, cell, bound.Opening, compatibility, null);
     }
 
     internal MapCellDemand SourceCell(MapPatchKey key, MapExactXz point)
@@ -119,7 +124,7 @@ internal sealed class MapSpacePointBounds
         if (bound.Compatibility is not null)
         {
             MapValidatedSurfacePatch patch = context.ValidatedPatch(cell.Patch);
-            return MapExactValue.FromSingle(MapLegacyBilinear.HeightMetres(patch.Surface, patch.Patch, point));
+            return MapEffectiveGeometry.LegacyHeight(context.View, patch, point);
         }
         return MapSpaceGeometry.Height(bound.Opening is { } opening ? context.Opening(opening, cell) : context.Faces(cell), point);
     }

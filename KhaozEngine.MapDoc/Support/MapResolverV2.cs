@@ -20,7 +20,7 @@ public static class MapResolverV2
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(surfaces);
         string hash = MapAuthoredIdentityV2.Compute(document, assets, options);
-        var effective = MapPrefabResolver.Expand(document, assets);
+        var effective = MapPrefabResolver.Expand(document, assets, new(), null, surfaces);
         var resolved = new MapResolvedDocument(effective.Placements, assets, MapResolvedBounds.Of(document.PlayableBounds!),
             MapResolvedBounds.Of(document.Bounds), hash, effective);
         return new(resolved, effective.PlacementSupports);
@@ -28,10 +28,11 @@ public static class MapResolverV2
 
     internal static IReadOnlyList<MapResolvedPlacement> ResolveEffectivePlacements(MapDocument authored, MapAssetClosure assets,
         IReadOnlyList<MapPlacement> effective, IReadOnlyDictionary<string, MapEffectiveTransform> transforms,
-        IMapSurfaceSource surfaces, out IReadOnlyList<MapPlacementSupport> supports)
+        IMapSurfaceSource surfaces, out IReadOnlyList<MapPlacementSupport> supports, IReadOnlyDictionary<string, string>? owners = null)
     {
         var result = new List<MapResolvedPlacement>();
         var selected = new List<MapPlacementSupport>();
+        var missingY = effective.Where(p => p.Y is null).Select(p => p.Id).ToHashSet(StringComparer.Ordinal);
         foreach (var placement in effective)
         {
             var pose = transforms[MapEffectiveContext.Key(MapPrefabChildKind.Placement, placement.Id)];
@@ -54,6 +55,9 @@ public static class MapResolverV2
                 var support = binding.Kind == MapSupportBindingKind.Surface ? query.SampleSurfaceExact(world, binding.SurfaceId!)
                     : query.SelectExact(new(MapEffectiveGeometry.Presentation(view, world), null, binding.SpaceId, null, binding.SearchAbove!.Value, binding.SearchBelow!.Value, null), world);
                 if (support.Status != MapSupportStatus.Supported) throw new MapDocumentException($"Placement '{placement.Id}' support status {support.Status}: {support.Detail}");
+                if (support.Face is { } face && owners is not null &&
+                    owners.TryGetValue(MapEffectiveContext.Key(MapPrefabChildKind.Surface, face.OwnerId), out var provider) && missingY.Contains(provider))
+                    throw new MapDocumentException($"Placement '{placement.Id}' with missing Y cannot bind support supplied by placement '{provider}' with missing Y.");
                 y = support.WorldY;
                 selected.Add(new(placement.Id, support));
             }

@@ -14,7 +14,7 @@ namespace KhaozEngine.MapDoc.Prefabs;
 internal static class MapEffectiveSupport
 {
     internal static IReadOnlyList<MapPrefabChild> Enumerate(MapAssetClosure assets, IReadOnlyList<MapPrefabChild> children,
-        IReadOnlyList<MapPrefabLocalMaterialization>? materialized = null, bool allowOpaque = false)
+        IReadOnlyList<MapPrefabLocalMaterialization>? materialized = null, bool allowOpaque = false, IDictionary<MapPrefabChildKey, MapPrefabChildKey>? owners = null)
     {
         ArgumentNullException.ThrowIfNull(assets);
         ArgumentNullException.ThrowIfNull(children);
@@ -26,7 +26,11 @@ internal static class MapEffectiveSupport
                 if (suppressed.Contains((placement.Key.Key, resourceId))) continue;
                 if (allowOpaque && !assets.HasSupport(resourceId)) continue;
                 MapSupportResource resource = assets.BorrowSupport(resourceId);
-                result.AddRange(Children(placement.Key.Key, resourceId, resource));
+                foreach (var child in Children(placement.Key.Key, resourceId, resource))
+                {
+                    result.Add(child);
+                    owners?.Add(child.Key, placement.Key);
+                }
             }
         return result;
     }

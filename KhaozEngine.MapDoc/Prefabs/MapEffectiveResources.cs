@@ -28,7 +28,7 @@ public sealed class MapEffectiveResources
     internal IReadOnlyDictionary<string, IReadOnlyList<MapExactPoint>> WaterCorners { get; }
     internal IReadOnlyList<MapPrefabAttachmentTransfer> Attachments { get; }
 
-    internal MapEffectiveResources(MapEffectiveContext context, MapEffectiveSurfaceSource source,
+    internal MapEffectiveResources(MapEffectiveContext context, IMapSurfaceSource source,
         IReadOnlyList<MapResolvedPlacement> placements, IReadOnlyList<MapPlacementSupport> supports,
         MapWaterSet? water, MapBuildingIntent intent, IReadOnlyDictionary<string, MapExactPoint> lights,
         IReadOnlyDictionary<string, IReadOnlyList<MapExactPoint>> waterCorners, IReadOnlyList<MapPrefabAttachmentTransfer> attachments)
@@ -44,7 +44,8 @@ public sealed class MapEffectiveResources
             p => (IReadOnlyList<MapExactPoint>)Array.AsReadOnly(p.Value.ToArray()), StringComparer.Ordinal));
         Attachments = Array.AsReadOnly(attachments.ToArray());
     }
-    public MapScopedSurfaces CompleteView() => MapScopedSurfaces.CompleteEffective(_context);
+    public MapScopedSurfaces CompleteView() => SurfaceSource is MapComposedSurfaceSource
+        ? Acquire(MapScopedSurfaces.CompleteEffective(_context).Scope) : MapScopedSurfaces.CompleteEffective(_context);
     public MapScopedSurfaces Acquire(MapSurfaceScope scope) => MapScopedSurfaces.Acquire(SurfaceSource, scope, new[] { Digest }, 2, 2);
 }
 

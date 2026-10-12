@@ -162,7 +162,8 @@ public sealed partial class TileWorldView : IDisposable
 
     internal TileWorldView(ITileWorldScene scene, TileWorldDocument doc, TileWorldCatalogs catalogs,
                            ITileMeshResolver resolver, TileWorldViewOptions? options,
-                           TileWorldBuildQueueOptions? buildQueueOptions, IChunkBuildDispatcher? dispatcher)
+                           TileWorldBuildQueueOptions? buildQueueOptions, IChunkBuildDispatcher? dispatcher,
+                           Action<TileWorldBuildKey>? onCpuBuild = null)
     {
         ArgumentNullException.ThrowIfNull(scene);
         ArgumentNullException.ThrowIfNull(doc);
@@ -179,8 +180,9 @@ public sealed partial class TileWorldView : IDisposable
         _planes = Math.Max(0, doc.PlaneCount);
         _terrainPickFilter = IsRenderedTerrain;
         _walkSurfacePickFilter = IsGameplayObject;
-        _groundBuilds = new TileWorldBuildQueue<TileGroundBuildInput, GltfMesh?>(
-            BuildGroundCpu, ApplyGroundBuild, buildQueueOptions, dispatcher);
+        _onCpuBuild = onCpuBuild;
+        _profileBuilds = new TileWorldBuildQueue<TileProfileBuildInput, TileProfileBuildOutput>(
+            BuildProfileCpu, ApplyProfileBuild, buildQueueOptions, dispatcher);
 
         // A throw part way through frees the sets already uploaded, because a constructor that throws never
         // produces the object whose Dispose would have freed them. The resolver is caller code and the upload is a
@@ -212,7 +214,7 @@ public sealed partial class TileWorldView : IDisposable
         }
         catch
         {
-            _groundBuilds.Dispose();
+            _profileBuilds.Dispose();
             UnloadPropMeshes();
             // The material is uploaded before the archetypes, so it is the one thing already on the device when
             // the ninth archetype of twelve throws.
@@ -398,21 +400,9 @@ public sealed partial class TileWorldView : IDisposable
             throw;
         }
         _loaded[region] = new RegionHandles(
-            meshes, snapshots, cover, TileRegionResidencyState.Gameplay,
-            new long[_planes]);
+            meshes, snapshots, cover, TileRegionResidencyState.Gameplay, profileManaged: false);
         RequestPropClusters(snapshots);
         GeneratedCoverCount += cover.Count;
-    }
-
-    void DemoteToDecor(RegionCoord region, RegionHandles handles)
-    {
-        GeneratedCoverCount -= handles.Cover.Count;
-        _scene.ReleaseGroundCover(handles.Cover);
-        handles.Cover = Array.Empty<GroundCoverInstance>();
-        ReleaseAnimatedFoliage(handles);
-        for (int plane = 0; plane < _planes; plane++) _water.Remove((region, plane));
-        handles.Residency = TileRegionResidencyState.Decor;
-        RequestGround(region, handles, TileGroundLod.Coarse4);
     }
 
     /// <summary>Frees every mesh handle of one region and forgets it, along with any rebuild it had queued.
@@ -427,6 +417,7 @@ public sealed partial class TileWorldView : IDisposable
             CancelGround(region, plane);
             _propClusters.Unload(region, plane);
         }
+        CancelCover(region);
         if (!_loaded.Remove(region, out RegionHandles? handles)) return;
         GeneratedCoverCount -= handles.Cover.Count;
         FreeMeshes(handles);
@@ -439,6 +430,7 @@ public sealed partial class TileWorldView : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (plane < 0 || plane >= _planes) return;
         MarkInteriorDirty(region.Rect, plane);
+        MarkCoverObjectsStale(region);
         Queue(region, plane);
     }
 
@@ -452,6 +444,7 @@ public sealed partial class TileWorldView : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (worldRect.IsEmpty || plane < 0 || plane >= _planes) return;
         MarkInteriorDirty(worldRect, plane);
+        MarkCoverObjectsStale(worldRect);
         QueueBaseDependencies(worldRect, plane, excluded: null);
         QueueFoliageDependencies(worldRect, plane, excluded: null);
     }
@@ -469,85 +462,6 @@ public sealed partial class TileWorldView : IDisposable
             }
     }
 
-    /// <summary>Rebuilds queued region-planes oldest first, up to
-    /// <see cref="TileWorldViewOptions.MaxRebuildsPerFlush"/> of them, and refreshes the roof rule's indoor flag.
-    /// Called at the start of <see cref="Draw"/>, so an explicit call is only needed to pay the cost off the draw
-    /// path. Whatever the budget did not reach stays queued and is counted by
-    /// <see cref="PendingRebuilds"/>.</summary>
-    public void Flush() => Flush(_options.MaxRebuildsPerFlush);
-
-    /// <summary>The same drain against an explicit budget, which overrides
-    /// <see cref="TileWorldViewOptions.MaxRebuildsPerFlush"/> for this one call. <see cref="int.MaxValue"/> is the
-    /// settle-now form a loading moment wants, and is what a residency prime finishes with, so a teleport does not
-    /// spend frames drawing borders meshed against a neighbour that had not arrived yet.
-    /// <para>A rebuild that produces NO mesh (the region-plane has no drawable tile) does not spend budget. It
-    /// uploads nothing and frees nothing, and a four-plane document where one plane is authored would otherwise
-    /// burn three quarters of every flush on region-planes that mesh to null.</para>
-    /// <para>A rebuild that THROWS is dropped along with everything already completed ahead of it: the exception
-    /// propagates, the queue keeps only what this call had not reached, and that region-plane keeps its previous
-    /// mesh rather than being retried on every frame from here on.</para></summary>
-    /// <param name="maxRebuilds">Mesh-producing rebuilds this call may perform, treated as 1 when below 1.</param>
-    public void Flush(int maxRebuilds)
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        // One settings lookup a frame, which is what it costs to stay right when the tile UNDER a stationary
-        // observer is edited: the setter alone only sees the observer moving. A flip refills the interior, and
-        // so does any MarkDirty, which is the only edit channel there is (the document raises no events).
-        bool indoors = IndoorsAt(_observer);
-        if (indoors != ObserverIndoors) _interiorStale = true;
-        ObserverIndoors = indoors;
-        EnsureInterior();
-        if (_dirtyOrder.Count == 0)
-        {
-            PrimeGroundIfRequested(maxRebuilds);
-            return;
-        }
-
-        int budget = Math.Max(1, maxRebuilds);
-        int taken = 0;
-        int scanned = 0;
-        try
-        {
-            while (scanned < _dirtyOrder.Count && taken < budget)
-            {
-                (RegionCoord region, int plane) = _dirtyOrder[scanned];
-                scanned++;
-                _dirty.Remove((region, plane));
-                // A mark on a region that is not loaded costs nothing to drop, so it must not spend the budget:
-                // the residency marks eight neighbours per streamed region and most of them are never loaded.
-                if (!_loaded.TryGetValue(region, out RegionHandles? handles)) continue;
-                // Build BEFORE freeing. A mesher that throws must leave the old handle live and drawable rather
-                // than a freed one in the slot, which would be a use-after-free on the next frame.
-                if (handles.Residency == TileRegionResidencyState.Decor)
-                {
-                    // Stream dependency marks exist to rebuild full ground against arriving neighbours. A decor
-                    // snapshot has no neighbour-derived data. Its coarse and HLOD work enters through the
-                    // background queue instead of running here on the view thread.
-                    RequestGroundPlane(region, handles, plane, TileGroundLod.Coarse4);
-                    continue;
-                }
-                InvalidateGround(region, handles, plane);
-                MeshHandle? rebuilt = BuildMesh(region, plane);
-                if (handles.Meshes[plane] is { } old) _scene.UnloadMesh(old);
-                handles.Meshes[plane] = rebuilt;
-                handles.Props[plane] = _propClusters.Build(_doc, region, plane, OverrideLookup());
-                _propClusters.Request(handles.Props[plane]);
-                ReleaseAnimatedFoliage(handles, plane);
-                RebuildCover(region, handles);
-                // Only a mesh that was actually built counts. The budget exists to bound uploads and handle
-                // churn, and an empty region-plane produces neither.
-                if (rebuilt is not null) taken++;
-            }
-        }
-        finally
-        {
-            // In a finally so a throwing mesher cannot leave the set and the list disagreeing, which would let a
-            // later MarkDirty push a duplicate of an entry the list still holds.
-            _dirtyOrder.RemoveRange(0, scanned);
-        }
-        PrimeGroundIfRequested(maxRebuilds);
-    }
-
     /// <summary>Flushes pending rebuilds, then queues every loaded region: each plane's ground mesh at the
     /// region's world transform, that plane's ground props, and every roof <see cref="IsRoofHidden"/> leaves
     /// visible. A roof it HIDES is queued as a shadow-only caster instead of dropped, so the building it covers
@@ -558,7 +472,7 @@ public sealed partial class TileWorldView : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         Flush();
-        PumpGround(focus);
+        PumpProfileBuilds(focus);
         _propClusters.Pump(focus);
 
         int drawn = 0, shadowOnly = 0;
@@ -658,7 +572,7 @@ public sealed partial class TileWorldView : IDisposable
         _dirty.Clear();
         _dirtyOrder.Clear();
 
-        _groundBuilds.Dispose();
+        _profileBuilds.Dispose();
 
         // The clusters hold the archetype handles and may still have builds in flight, so they drain before the
         // handles they reference are freed.
@@ -703,8 +617,10 @@ public sealed partial class TileWorldView : IDisposable
         if (_dirty.Add((region, plane))) _dirtyOrder.Add((region, plane));
     }
 
+    // The legacy synchronous ground build, which the CPU witness records like every other build entry.
     MeshHandle? BuildMesh(RegionCoord region, int plane)
     {
+        _onCpuBuild?.Invoke(new TileWorldBuildKey(region, plane, TileWorldBuildKind.FullGround));
         GltfMesh? mesh = TileGroundMesher.Build(_doc, _catalogs, region, plane, _mesher);
         return mesh is null ? null : _scene.LoadMesh(mesh, _material);
     }
@@ -745,23 +661,30 @@ public sealed partial class TileWorldView : IDisposable
     }
 
     // One loaded region: the ground mesh handle of each plane (null where the plane has no drawable tile) and
-    // that plane's placements. Dropped whole on unload, so a region never leaves half its handles behind.
+    // that plane's placements. Dropped whole on unload, so a region never leaves half its handles behind. A
+    // profile-managed region streams its ground and cover through the shared queue, and records the generation
+    // each kind of result must carry to be applied. Zero expects nothing.
     sealed class RegionHandles
     {
         public MeshHandle?[] Meshes { get; }
         public TileRegionProps[] Props { get; }
         public IReadOnlyList<GroundCoverInstance> Cover { get; set; }
         public TileRegionResidencyState Residency { get; set; }
-        public long[] GroundGenerations { get; }
+        public bool ProfileManaged { get; set; }
+        public long[] FullGroundGenerations { get; }
+        public long[] CoarseGroundGenerations { get; }
+        public long CoverGeneration { get; set; }
 
         public RegionHandles(MeshHandle?[] meshes, TileRegionProps[] props, IReadOnlyList<GroundCoverInstance> cover,
-                             TileRegionResidencyState residency, long[] groundGenerations)
+                             TileRegionResidencyState residency, bool profileManaged)
         {
             Meshes = meshes;
             Props = props;
             Cover = cover;
             Residency = residency;
-            GroundGenerations = groundGenerations;
+            ProfileManaged = profileManaged;
+            FullGroundGenerations = new long[meshes.Length];
+            CoarseGroundGenerations = new long[meshes.Length];
         }
     }
 }

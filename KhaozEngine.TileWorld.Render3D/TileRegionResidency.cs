@@ -100,6 +100,10 @@ public sealed class TileRegionResidency
     readonly HashSet<RegionCoord> _loaded = new();
     readonly List<Candidate> _candidates = new();
     readonly List<RegionCoord> _departing = new();
+    // This profile move's newly loaded regions and its decor to gameplay promotions, which a prime hands to the
+    // view so it settles only the arrivals and their borders on the calling thread.
+    readonly HashSet<RegionCoord> _arrivals = new();
+    readonly HashSet<RegionCoord> _promotions = new();
 
     readonly record struct Candidate(RegionCoord Region, int Distance);
 
@@ -177,13 +181,22 @@ public sealed class TileRegionResidency
     /// is easy to leave out. Loading the ring alone leaves the view's rebuild queue full: the regions loaded early
     /// were meshed while their later neighbours were still absent, so their borders carry edge-extended heights
     /// and blended-against-nothing corners until the per-frame budget works through the queue. On a teleport that
-    /// is several frames of visible cracks at exactly the moment the player is looking at new terrain.</para></summary>
+    /// is several frames of visible cracks at exactly the moment the player is looking at new terrain.</para>
+    /// <para>With a <see cref="Profile"/>, the settle is scoped. Full ground for the gameplay regions this prime
+    /// loaded, and for the already gameplay neighbours whose borders they change, is built before this returns.
+    /// A decor region promoted to gameplay keeps its coarse ground and far clusters drawing while its full ground
+    /// and cover stream in the background, and so does every other dependency, cover included.</para></summary>
     /// <param name="observer">The tile the ring is centred on.</param>
     public void PrimeAround(TileCoord observer)
     {
-        if (_profile is null) MoveLegacy(observer, int.MaxValue);
-        else MoveProfile(observer, int.MaxValue);
-        _view.Flush(int.MaxValue);
+        if (_profile is null)
+        {
+            MoveLegacy(observer, int.MaxValue);
+            _view.Flush(int.MaxValue);
+            return;
+        }
+        MoveProfile(observer, int.MaxValue);
+        _view.FlushProfilePrime(RegionCoord.Of(observer.X, observer.Z), _arrivals, _promotions);
     }
 
     void MoveLegacy(TileCoord observer, int budget)
@@ -202,6 +215,8 @@ public sealed class TileRegionResidency
         RegionCoord centre = RegionCoord.Of(observer.X, observer.Z);
 
         _view.CollectLoadedRegions(_loaded);
+        _arrivals.Clear();
+        _promotions.Clear();
 
         DropProfileDeparted(centre, profile);
         TransitionProfileResidents(centre, profile);
@@ -243,8 +258,10 @@ public sealed class TileRegionResidency
         {
             TileRegionResidencyState wanted = profile.Classify(region, centre, currentlyResident: true);
             if (wanted == TileRegionResidencyState.Unloaded || wanted == _view.ResidencyOf(region)) continue;
+            // A promotion changes only this region's representation. Its terrain and objects were already in
+            // the document and already announced when it streamed in, so no neighbour is marked here.
             _view.LoadRegion(region, wanted);
-            if (wanted == TileRegionResidencyState.Gameplay) _view.MarkRegionStreamed(region);
+            if (wanted == TileRegionResidencyState.Gameplay) _promotions.Add(region);
         }
     }
 
@@ -272,6 +289,7 @@ public sealed class TileRegionResidency
             _view.LoadRegion(candidate.Region, state);
             _view.MarkRegionStreamed(candidate.Region);
             _loaded.Add(candidate.Region);
+            _arrivals.Add(candidate.Region);
             taken++;
         }
     }

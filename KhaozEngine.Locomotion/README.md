@@ -576,8 +576,10 @@ frame mismatch. A refusal holds the recorded pose/frame, clears per-tick effects
 jump buffer. Cold state rebuilds canonical selection through the existing null-hint witness.
 
 Land support stays geometric. The published body uses one vertical 0.001 m placement offset,
-proved before shell and full-body medium queries. Accepted contact routes prove every lift, side
-segment, seat and correction under the same lease. Ground signals come from accepted walking
+proved before shell and full-body medium queries. The tuning's selected `FootRadiusFraction` follows
+ticks, exact validation, settling and continuation under that same placement composition.
+Accepted contact routes prove every lift, side segment, seat and correction under the same lease.
+Ground signals come from accepted walking
 segments only. A final air landing, slide landing or wedge has no walking remainder and clears all
 three ground signals. A land jump stamps its speed after the move and rises next tick, retaining the
 pre-jump support grant and any landing impact. No local query state enters the wire.

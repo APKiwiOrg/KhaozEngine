@@ -7,6 +7,9 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 20.34.0
 
+- Explicit contact ticks, exact placement, settling and continuation carry one placement offset and selected
+  foot fraction. Public explicit bodies retain the 0.001 m resting offset, and the internal ordinary
+  composition uses zero. Lifecycle placement reuses the composed interval's query workspace.
 - Locomotion adds the `MoveTuning.Controller`, `FootRadiusFraction` and `Water` init properties while retaining
   its 30-parameter positional constructor. Direct stateful movement selects the dry contact controller with
   shared configuration validation. Explicit profiles use the selected foot fraction and their supplied water

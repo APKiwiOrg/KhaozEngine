@@ -6,30 +6,29 @@ namespace KhaozEngine.Locomotion;
 
 public static partial class ExplicitCharacterMovement
 {
-    /// <summary>Classifies a placement without advancing time. A nearby eligible floor is reached
-    /// only through shared contact placement. Use ValidatePlacement for an exact correction basis.</summary>
-    public static MovementStepResult SettlePlacement(in FramedMovementState state, in MoveTuning tuning,
-        in WaterTraversalPolicy water, MovementQueryLease queries, MovementBoundary? boundary = null)
+    internal static MovementStepResult SettlePlacement(in FramedMovementState state, in MoveTuning tuning,
+        in WaterTraversalPolicy water, MovementQueryLease queries, in ContactComposition composition,
+        MovementBoundary? boundary = null)
     {
-        MovementStepResult validated = ValidatePlacement(state, tuning, water, queries, boundary);
+        MovementStepResult validated = ValidatePlacement(state, tuning, water, queries, composition, boundary);
         if (validated.Outcome != MovementStepOutcome.Advanced) return validated;
         try
         {
             MoveState placed = MovementStepResult.HoldState(state.State);
             MovementSelection selection = validated.State.Selection!.Value;
-            var contact = PlacementQueries(placed, tuning, water, queries, selection, boundary);
+            var contact = PlacementQueries(placed, tuning, composition, water, queries, selection, boundary);
             Vector3 feet = contact.KernelFeet(placed.Position, tuning);
             bool supported = false;
             MovementContactSupportBinding? binding = null;
             if (placed.Grounded || placed.VerticalVelocity <= 0)
             {
-                SupportSample support = ContactPlacement.Find(contact, feet, tuning,
+                SupportSample support = ContactPlacement.Find(contact, feet, tuning, composition,
                     placed.Grounded ? tuning.StepHeight : tuning.GroundedEpsilon, tuning.GroundedEpsilon, out _);
-                supported = ContactPlacement.TrySeat(contact, feet, support, tuning, out Vector3 seated);
+                supported = ContactPlacement.TrySeat(contact, feet, support, tuning, composition, out Vector3 seated);
                 if (supported)
                 {
-                    ContactPlacement.Validate(contact, seated, tuning);
-                    SupportSample final = ContactPlacement.Find(contact, seated, tuning,
+                    ContactPlacement.Validate(contact, seated, tuning, composition);
+                    SupportSample final = ContactPlacement.Find(contact, seated, tuning, composition,
                         tuning.StepHeight, tuning.GroundedEpsilon, out binding);
                     if (final.Status != SupportStatus.Walkable || binding is null)
                         return Hold(state, MovementStepOutcome.EnvironmentUnresolved);
@@ -57,10 +56,9 @@ public static partial class ExplicitCharacterMovement
         catch (ArgumentException) { return Hold(state, MovementStepOutcome.EnvironmentInvalid); }
     }
 
-    /// <summary>Rebuilds membership and validates the exact restored/corrected pose without running
-    /// a tick or changing its carried state. Retain the lease through publication of a successful basis.</summary>
-    public static MovementStepResult ValidatePlacement(in FramedMovementState state, in MoveTuning tuning,
-        in WaterTraversalPolicy water, MovementQueryLease queries, MovementBoundary? boundary = null)
+    internal static MovementStepResult ValidatePlacement(in FramedMovementState state, in MoveTuning tuning,
+        in WaterTraversalPolicy water, MovementQueryLease queries, in ContactComposition composition,
+        MovementBoundary? boundary = null)
     {
         ArgumentNullException.ThrowIfNull(queries);
         if (!state.IsValid || !ValidCarriedState(state.State) || !Valid(tuning) || !water.IsValid || water.Mode == WaterTraversalMode.Legacy)
@@ -70,16 +68,16 @@ public static partial class ExplicitCharacterMovement
             return Hold(state, MovementStepOutcome.EnvironmentUnresolved);
         try
         {
-            ContactShell.Validate(tuning);
+            ShellGeometry.Validate(tuning, composition.Foot);
             var unselected = new FramedMovementState(state.State, state.Frame, null);
             MovementAvailability status = queries.RebuildSelection(unselected, out MovementSelection selection);
             if (status != MovementAvailability.Known) return Hold(state, Outcome(status));
             MovementBodyQuery body = Body(state.State.Position, tuning, selection);
             MovementStepOutcome placement = WaterPlacement(body, tuning, water, queries, boundary);
             if (placement != MovementStepOutcome.Advanced) return Hold(state, placement);
-            var contact = PlacementQueries(state.State, tuning, water, queries, selection, boundary);
+            var contact = PlacementQueries(state.State, tuning, composition, water, queries, selection, boundary);
             Vector3 feet = contact.KernelFeet(state.State.Position, tuning);
-            ContactPlacement.Validate(contact, feet, tuning);
+            ContactPlacement.Validate(contact, feet, tuning, composition);
             MovementWaterPoint point = contact.SampleMedium(feet)!.Value;
             if (point.Space != selection.Space) return Hold(state, MovementStepOutcome.EnvironmentInvalid);
             if (point.InWater && !point.Interval!.Value.UpperIsFreeSurface)
@@ -87,7 +85,7 @@ public static partial class ExplicitCharacterMovement
             MovementContactSupportBinding? binding = null;
             if (state.State.Grounded)
             {
-                SupportSample support = ContactPlacement.Find(contact, feet, tuning, tuning.StepHeight,
+                SupportSample support = ContactPlacement.Find(contact, feet, tuning, composition, tuning.StepHeight,
                     tuning.GroundedEpsilon, out var found);
                 bool wasSwimming = state.State.Swimming || state.State.WaterExcursion == WaterExcursionState.Surface;
                 if (support.Status == SupportStatus.Walkable &&
@@ -105,7 +103,12 @@ public static partial class ExplicitCharacterMovement
     }
 
     static LeasedContactQueryContext PlacementQueries(in MoveState state, in MoveTuning tuning,
-        in WaterTraversalPolicy water, MovementQueryLease queries, in MovementSelection selection,
-        MovementBoundary? boundary) => new(queries, tuning, selection,
-            new(selection.Space, Body(state.Position, tuning, selection).Feet), waterMode: water.Mode, boundary: boundary);
+        in ContactComposition composition, in WaterTraversalPolicy water, MovementQueryLease queries,
+        in MovementSelection selection, MovementBoundary? boundary)
+    {
+        var contact = queries.Workspace.Queries;
+        contact.Initialize(queries, tuning, selection,
+            new(selection.Space, Body(state.Position, tuning, selection).Feet), composition, water.Mode, boundary);
+        return contact;
+    }
 }

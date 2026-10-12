@@ -108,8 +108,10 @@ shared with every participating pipeline.
 **`SunCycle` integration.** `SunCycle` keeps owning the clock, latitude, solar declination, heading, the sun and
 moon directions, `NightKeyMode` and the key source handover. When `Atmosphere.Enabled` is true,
 `SunCycle.Apply` takes the key light colour, fill and ambient from `AtmosphereModel` instead of the palettes, and
-the palettes are ignored. The XML docs say so. `SunCycleState` gains the atmosphere's horizon colour, so a game
-can keep feeding `Water.HorizonColor` from it.
+the palettes are ignored. The XML docs say so. Lighting depends on camera altitude, so an additive overload
+`SunCycle.Apply(in SunCycleState, PixelPostProcessSettings, Vector3 cameraWorldPosition) -> SunCycleState` returns
+the state with the atmosphere's horizon colour in the existing `HorizonColor` property, and a game keeps feeding
+`Water.HorizonColor` from it. The existing void `Apply` stays and evaluates at world height zero.
 
 ### Units
 

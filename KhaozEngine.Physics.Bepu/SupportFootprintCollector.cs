@@ -29,12 +29,14 @@ internal sealed partial class SupportFootprintCollector
     readonly List<(StaticHandle Seam, BepuStaticHandle Installed)> _candidates = [];
     readonly HashSet<int> _seen = [];
     readonly SupportProposalVerdict[] _verdicts = new SupportProposalVerdict[2];
-    readonly Pose[] _contacts = new Pose[2];
+    readonly FeaturePoint[] _contactStarts = new FeaturePoint[2], _contactEnds = new FeaturePoint[2],
+        _contactDirections = new FeaturePoint[2];
     readonly StaticHandle?[] _targets = new StaticHandle?[2];
     readonly double[] _contactLow = new double[2], _contactHigh = new double[2];
     readonly bool[] _hasContactGeometry = new bool[2];
     SupportFootprintRequest _request;
     SupportFootprintBounds _bounds;
+    double _columnBottom, _columnTop;
     int _count;
 
     internal bool Begin(in SupportFootprintRequest request)
@@ -49,7 +51,9 @@ internal sealed partial class SupportFootprintCollector
         Array.Clear(_verdicts);
         Array.Clear(_targets);
         Array.Clear(_hasContactGeometry);
-        return SupportFootprintBounds.TryCreate(request, out _bounds);
+        using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportColumnSetup);
+        return SupportFootprintBounds.TryCreate(request, out _bounds) &&
+            SupportFootprintBounds.TryColumn(request, out _columnBottom, out _columnTop);
     }
 
     internal void Proposal(int index, bool hit, in SweepHit contact)
@@ -66,8 +70,12 @@ internal sealed partial class SupportFootprintCollector
             return;
         }
         _verdicts[index] = new(SupportProposalStatus.Contact, 0, 0);
-        _contacts[index] = Pose.At(new(proposal.Start.Position.X, proposal.Start.Position.Y - contact.Distance,
-            proposal.Start.Position.Z));
+        FeaturePoint centre = FeaturePoint.Exact(new(proposal.Start.Position.X,
+            proposal.Start.Position.Y - contact.Distance, proposal.Start.Position.Z));
+        FeatureNumber half = FeatureNumber.Exact(proposal.Probe.Length).Multiply(FeatureNumber.Exact(0.5));
+        _contactStarts[index] = new(centre.X, centre.Y.Subtract(half), centre.Z);
+        _contactEnds[index] = new(centre.X, centre.Y.Add(half), centre.Z);
+        _contactDirections[index] = FeaturePoint.Subtract(_contactEnds[index], _contactStarts[index]);
     }
 
     internal List<(StaticHandle Seam, BepuStaticHandle Installed)> Candidates(Simulation simulation,
@@ -118,11 +126,7 @@ internal sealed partial class SupportFootprintCollector
     GeometrySign ContactMember(SupportPolygon polygon, int index)
     {
         SupportFootprintProposal proposal = index == 0 ? _request.AxisProposal : _request.FootProposal;
-        FeaturePoint centre = FeaturePoint.Exact(_contacts[index].Position);
-        FeatureNumber half = FeatureNumber.Exact(proposal.Probe.Length).Multiply(FeatureNumber.Exact(0.5));
-        var start = new FeaturePoint(centre.X, centre.Y.Subtract(half), centre.Z);
-        var end = new FeaturePoint(centre.X, centre.Y.Add(half), centre.Z);
-        SupportDistance distance = _kernel.MeasureFootprintContact(start, FeaturePoint.Subtract(end, start),
+        SupportDistance distance = _kernel.MeasureFootprintContact(_contactStarts[index], _contactDirections[index],
             polygon, _request.ContactBand);
         if (!distance.IsResolved) return GeometrySign.Unresolved;
         GeometryInterval separation = GeometryInterval.Enclose(distance.Lower, distance.Upper)
@@ -146,10 +150,8 @@ internal sealed partial class SupportFootprintCollector
     GeometrySign CurvedContactMember(StaticHandle owner, in SupportCurvedLeaf leaf, int part, int index)
     {
         SupportFootprintProposal proposal = index == 0 ? _request.AxisProposal : _request.FootProposal;
-        FeaturePoint centre = FeaturePoint.Exact(_contacts[index].Position);
-        FeatureNumber half = FeatureNumber.Exact(proposal.Probe.Length).Multiply(FeatureNumber.Exact(0.5));
-        _contactKernel.Reset(new(centre.X, centre.Y.Subtract(half), centre.Z),
-            new(centre.X, centre.Y.Add(half), centre.Z), GeometryInterval.Exact(proposal.Probe.Radius), _request.ContactBand);
+        _contactKernel.Reset(_contactStarts[index], _contactEnds[index],
+            GeometryInterval.Exact(proposal.Probe.Radius), _request.ContactBand);
         return _contactKernel.Measure(owner, leaf, part, out _);
     }
 

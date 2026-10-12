@@ -57,6 +57,7 @@ internal sealed class SupportCostSampler
 
     internal Action? BeforeWarm { get; init; }
     internal bool IsolateAllocations { get; init; }
+    internal bool IsolateColdAllocations { get; init; } = true;
 
     internal IReadOnlyList<SupportCostSample> Measure(SupportCostRow row, string operation)
     {
@@ -69,7 +70,7 @@ internal sealed class SupportCostSampler
         stepCount = 0;
         execution.View.Reset();
         SupportQueryDiagnostics.Reset();
-        using var coldAllocationRegion = SupportAllocationRegion.Start(IsolateAllocations);
+        using var coldAllocationRegion = SupportAllocationRegion.Start(IsolateAllocations && IsolateColdAllocations);
         long before = GC.GetAllocatedBytesForCurrentThread();
         long start = timing ? Stopwatch.GetTimestamp() : 0;
         SupportCostOutput cold;

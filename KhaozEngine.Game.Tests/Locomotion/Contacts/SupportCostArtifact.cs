@@ -152,7 +152,7 @@ internal static class SupportCostArtifact
             },
             Acquisition = "Lease rows isolate physics acquisition and disposal. Tick rows include all acquisition and disposal. Explicit rows use the real MovementEnvironmentContext with the test producer, whose witness and pin allocations remain visible.",
             Observers = "Opt-in counters and preallocated Find/substep callbacks are enabled inside samples. Oracle checks, callback installation, scratch inspection, delegate construction and serialization are outside sample windows.",
-            AllocationIsolation = "Each cold and warm operation runs inside its own checked 4 MiB no-GC region. Region setup and disposal are outside the sample window. Fresh gameplay allocations remain counted. See dotnet/runtime#134724.",
+            AllocationIsolation = "Each warm operation runs inside its own checked 4 MiB no-GC region. Region setup and disposal are outside the sample window. Fresh gameplay allocations remain counted. Cold allocation is recorded without isolation because first-use scratch can exceed the region allowance. See dotnet/runtime#134724.",
             Geometry = "Every captured Find is checked against the independent installed-geometry oracle after both sample windows. Correct None and capacity refusals cannot pass a support cost gate. Tick geometry requires matching support reads and a finite advancing state.",
             ProcessExitStatus = (int?)null,
             Scenes = scenes,

@@ -14,6 +14,20 @@ namespace KhaozEngine.Tests.Locomotion.Contacts;
 public sealed class SupportCostAttributionTests(ITestOutputHelper output) : IDisposable
 {
     [Fact]
+    public void FindReusesTheCertifiedColumnAcrossAllRawFaces()
+    {
+        SupportQueryDiagnostics.Enable(true);
+        var recorder = new PhaseRecorder(false);
+        ContactAllocationDiagnostics.SetObserver(recorder.Observe);
+        SupportCostSample sample = new SupportCostSampler(false)
+        { BeforeWarm = recorder.Reset, IsolateAllocations = true }.Measure(Row("flat box"), "Find")[0];
+        Assert.True(sample.GeometryMatchesOracle);
+        Assert.Equal(6, sample.Counts.Polygons);
+        Assert.Equal(1, recorder.Rows().Single(r => r.Phase == "SupportColumnSetup").Calls);
+        Assert.Equal(0, sample.WarmBytes);
+    }
+
+    [Fact]
     public void FindPhaseBracketsCoverTheCompleteOperation()
     {
         SupportQueryDiagnostics.Enable(true);

@@ -16,7 +16,8 @@ internal sealed partial class SupportFootprintCollector
             GeometrySign admitted;
             SupportFootprintMember value;
             using (ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportExtrema))
-                admitted = SupportFootprintPolygon.Measure(polygon, _request, out value);
+                admitted = SupportFootprintPolygon.Measure(polygon, _request, _bounds,
+                    _columnBottom, _columnTop, out value);
             if (admitted == GeometrySign.Unresolved) return CapsuleFeatureStatus.Unsupported;
             if (admitted == GeometrySign.Negative) continue;
             byte mask = 0;

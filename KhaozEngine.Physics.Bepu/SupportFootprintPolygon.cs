@@ -12,10 +12,25 @@ internal static class SupportFootprintPolygon
     internal static GeometrySign Measure(SupportPolygon polygon, in SupportFootprintRequest request,
         out SupportFootprintMember member)
     {
+        SupportFootprintBounds bounds;
+        double bottom, top;
+        using (ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportColumnSetup))
+            if (!SupportFootprintBounds.TryCreate(request, out bounds) ||
+                !SupportFootprintBounds.TryColumn(request, out bottom, out top))
+            {
+                member = default;
+                SupportQueryDiagnostics.Record(SupportQueryCounter.Polygons);
+                return GeometrySign.Unresolved;
+            }
+        return Measure(polygon, request, bounds, bottom, top, out member);
+    }
+
+    // The collector certifies these identical request operands once, before traversing any static.
+    internal static GeometrySign Measure(SupportPolygon polygon, in SupportFootprintRequest request,
+        in SupportFootprintBounds bounds, double bottom, double top, out SupportFootprintMember member)
+    {
         member = default;
         SupportQueryDiagnostics.Record(SupportQueryCounter.Polygons);
-        if (!SupportFootprintBounds.TryCreate(request, out var bounds) ||
-            !SupportFootprintBounds.TryColumn(request, out double bottom, out double top)) return GeometrySign.Unresolved;
         GeometrySign area = FeaturePoint.Dot(polygon.Normal, polygon.Normal).Sign;
         if (area == GeometrySign.Unresolved && polygon.HasSource) area = polygon.SourcePredicates.NormalSquared(polygon);
         if (area == GeometrySign.Zero) return GeometrySign.Negative;

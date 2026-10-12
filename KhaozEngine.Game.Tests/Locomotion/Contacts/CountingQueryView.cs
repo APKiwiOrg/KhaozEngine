@@ -17,7 +17,7 @@ internal readonly record struct QueryCounts(int Sweeps, int Penetrations, int Ra
 /// <see cref="SourceWorld"/> is the inner view's, so foot support accepts it as that view. The caller owns the inner
 /// view.</summary>
 internal sealed class CountingQueryView(IPhysicsWorldQueryView inner)
-    : IPhysicsWorldQueryView, IPhysicsCapsuleFeatures, IPhysicsSupportNeighborhood, IPhysicsQueryLeaseSource, IPhysicsCapsuleContacts, IPhysicsCapsuleSweep
+    : IPhysicsWorldQueryView, IPhysicsCapsuleFeatures, IPhysicsSupportNeighborhood, IPhysicsSupportFootprint, IPhysicsQueryLeaseSource, IPhysicsCapsuleContacts, IPhysicsCapsuleSweep
 {
     int _sweeps, _penetrations, _raycasts, _features;
 
@@ -84,6 +84,16 @@ internal sealed class CountingQueryView(IPhysicsWorldQueryView inner)
         return ((IPhysicsSupportNeighborhood)inner).QuerySupportNeighborhood(lease, probe, pose, bandMetres, elements,
             joins, filter);
     }
+
+    public SupportFootprintResult QuerySupportFootprint(IPhysicsQueryLease lease, in SupportFootprintRequest request,
+        Span<SupportFootprintMember> members, Span<ulong> joins, QueryFilter filter = default)
+    {
+        _features++;
+        return ((IPhysicsSupportFootprint)inner).QuerySupportFootprint(lease, request, members, joins, filter);
+    }
+
+    public void AssertFootprintCurrent(in SupportFootprintResult result, IPhysicsQueryLease lease) =>
+        ((IPhysicsSupportFootprint)inner).AssertFootprintCurrent(result, lease);
 
     public void AssertNeighborhoodCurrent(in SupportNeighborhoodResult result, IPhysicsQueryLease lease) =>
         ((IPhysicsSupportNeighborhood)inner).AssertNeighborhoodCurrent(result, lease);

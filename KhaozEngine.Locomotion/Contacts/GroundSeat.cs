@@ -24,7 +24,7 @@ internal static class GroundSeat
     /// wall, steep support at or below seats with steep footing, no support leaves the body airborne at the start
     /// height and a refusal refuses. <paramref name="start"/> is the support at <paramref name="startAxis"/>.
     /// <paramref name="moveDirection"/> must be finite and non-zero. <paramref name="cosMaxSlope"/> is the cosine of
-    /// the tick's traction gate. The <paramref name="queries"/> context enforces the <see cref="FootSupport.Find"/>
+    /// the tick's traction gate. The <paramref name="queries"/> context enforces the <see cref="FootSupport"/>
     /// contract.</summary>
     internal static GroundSeatResult Resolve(ContactQueryContext queries,
         in SupportSample start, Vector2 startAxis, float startFeetY, Vector2 axis, Vector2 moveDirection,

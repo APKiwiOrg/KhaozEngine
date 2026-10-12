@@ -62,11 +62,19 @@ public class FootSupportCompletenessTests(ITestOutputHelper output)
         }
     }
 
-    [Fact]
-    public void HiddenCrateUnderSixtyDegreeWedge()
+    [Theory]
+    [InlineData(FootprintPartition.Boxes, false)]
+    [InlineData(FootprintPartition.Hulls, false)]
+    [InlineData(FootprintPartition.Compound, false)]
+    [InlineData(FootprintPartition.Mesh, false)]
+    [InlineData(FootprintPartition.Boxes, true)]
+    [InlineData(FootprintPartition.Hulls, true)]
+    [InlineData(FootprintPartition.Compound, true)]
+    [InlineData(FootprintPartition.Mesh, true)]
+    public void HiddenCrateUnderSixtyDegreeWedge(FootprintPartition partition, bool reverse)
     {
-        using SupportFootprintScene scene = SupportFootprintScenes.HiddenCrate(FootprintPartition.Boxes);
-        double installedCrateTop = scene.Faces.Find(f => f.Static == scene.Crate && f.Normal.Y > 0)!.Vertices[0].Y;
+        using SupportFootprintScene scene = SupportFootprintScenes.HiddenCrate(partition, reverse);
+        double installedCrateTop = scene.Faces.Find(f => f.Static == scene.Crate && f.Normal.Y > 0.999 && Math.Abs(f.Vertices[0].Y - 0.1) < 0.000001)!.Vertices[0].Y;
         var query = new FootSupportQuery(Vector2.Zero, 0, 0.2f, 0.4f, 0.4f, MathF.Cos(MathF.PI / 4));
         using IPhysicsQueryLease lease = scene.World.AcquireQueryReadLease();
         SupportSample sample = FootSupport.Find(null, null, scene.World, lease, query);

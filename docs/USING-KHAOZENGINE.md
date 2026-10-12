@@ -8611,6 +8611,12 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 - Optional `IPhysicsSupportNeighborhood.QuerySupportNeighborhood(lease, probe, pose, bandMetres, elements, joins, filter) -> SupportNeighborhoodResult`
   publishes every front-facing surface element of every selected static within a band of an upright probe,
   with the symmetric join matrix over them. See [Support neighborhoods](#support-neighborhoods).
+- Optional `IPhysicsSupportFootprint.QuerySupportFootprint(lease, request, members, joins, filter) -> SupportFootprintResult`
+  publishes the complete relevant footprint member set, certified proposal guards and joins under
+  the original selected interval. Polygon witnesses attain the full closed-disc maximum. Curved
+  parts carry axis and footprint roles without changing raw IDs. The raw cap is 256, with atomic
+  refusal at 257. `SupportFootprintBounds.TryCreate` encloses both proposal paths and the admission
+  column for pre-query scope guards. Contact-controller footprints require radius at least 0.01 m.
 - `IPhysicsWorld` static bodies + queries: `AddStatic(PhysicsShape shape, Pose pose, PhysicsMaterial? material = null) -> StaticHandle`,
   `RemoveStatic(StaticHandle handle)`, `Step(float dt)`,
   `Raycast(Vector3 origin, Vector3 direction, float maxDistance, out RayHit hit, QueryFilter filter = default) -> bool`,
@@ -10286,11 +10292,11 @@ does not capture), `MeshTriangleCapacity` (a mesh over 65,536 triangles), `Local
 64 m from its origin) and `HullCapacity`. `HullCapacity` is conservative: any convex hull over 130 points is flagged,
 because 130 points always fit the backend's 256 faces and 1,524 face entries, even though a larger hull may still be
 captured. Every diagnostic predicts `IPhysicsCapsuleFeatures` capture only. The #438 contact controller's
-foot-support primitive, not yet used by movement, certifies through `IPhysicsSupportNeighborhood`, which has different
-limits: it captures curved leaves, reads only the mesh triangles near its probe and caps one query at 256 elements,
+foot-support primitive certifies movement through `IPhysicsSupportFootprint`, which has different
+limits: it captures curved leaves, reads mesh triangles in the full admitted footprint column and caps one query at 256 relevant raw members,
 while it shares the 64 leaf and hull face limits. It applies its own 64 m local bound to curved leaf sizes and to the
-mesh triangles near its probe, which `LocalExtent` does not predict, and one unsupported static near a probe refuses
-the whole neighborhood query.
+admitted mesh triangles, which `LocalExtent` does not predict, and one unsupported static in the column refuses
+the whole footprint query.
 
 **Refusals.** `MapAssetShapes.Read` throws `MapDocumentException` for an asset that declares a `Surface` (support)
 resource, since placement-local support surfaces arrive with R5. It also refuses a compound holding a triangle mesh,

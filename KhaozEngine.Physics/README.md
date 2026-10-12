@@ -72,6 +72,17 @@ explicitly, it is in no umbrella). Depends only on `System.Numerics`.
   mesh topology never refuses. Refusals are `CapacityExceeded` with `RequiredElements`, `Unsupported` outside
   the certified probe, pose, band or shape domain, and `Ambiguous` for a hull not proven convex. A layer filter
   and a join span shorter than `elements.Length * JoinWordsFor(elements.Length)` throw `ArgumentException`. Check a complete result with `AssertNeighborhoodCurrent(result, lease)`.
+- **`IPhysicsSupportFootprint`** - optional complete footprint capability used by the contact controller.
+  `QuerySupportFootprint` certifies the expanded closed-disc column, both retained proposal contacts
+  and the whole-polygon join matrix under one authenticated lease. Polygon maxima cover the full
+  original disc. Ring-only members cap and feed guards without contributing support. Curved parts
+  retain their raw IDs and publish up to two attained witness roles, axis then footprint. Certified
+  upward bounds classify slope equality independently of the full normal enclosure.
+  Capacity counts at most 256 relevant raw pairs, with atomic refusal at 257 and untouched output
+  spans. A below-band member can be omitted only with proof that it cannot contribute, join a
+  retained band-capable member or establish a required proposal guard. `AssertFootprintCurrent`
+  checks the original receiver and interval. `SupportFootprintBounds.TryCreate` supplies the shared
+  outward scope envelope. The released neighborhood capability remains independent.
 - **Static handle provenance for query views** - the factory rejects invalid, missing and stale handles at
   creation. Handles are numeric identities local to their source world, so equal values from different worlds
   are not interchangeable. Use handles returned by that source, and do not reuse removed exclusions to infer

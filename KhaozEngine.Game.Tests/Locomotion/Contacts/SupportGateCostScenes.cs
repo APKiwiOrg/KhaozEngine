@@ -72,17 +72,17 @@ internal static class SupportGateCostScenes
         }
         yield return [new SupportCostRow("analytic only") { Analytic = true, TerrainHeight = 0 }];
         yield return [new SupportCostRow("analytic plus props") { Analytic = true, TerrainHeight = 0 }];
-        yield return [new SupportCostRow("hidden crate", KnownIncomplete: true) { MustPass = false }];
+        yield return [new SupportCostRow("hidden crate") { MustPass = false }];
         foreach (string shape in new[] { "sphere", "capsule", "cylinder" })
             yield return [new SupportCostRow(shape) { MustPass = false }];
-        yield return [new SupportCostRow("grid 100", true, KnownIncomplete: true)];
+        // The complete footprint column over the dense grid holds more than 256 relevant triangles.
+        yield return [new SupportCostRow("grid 100", true, ExpectedRefusal: true) { MustPass = false }];
         foreach (int count in new[] { 96, 256, 257, 300 })
             yield return [new SupportCostRow("fan " + count, true, ExpectedRefusal: count > 256)
             { MustPass = count <= 256 }];
         foreach (int count in new[] { 8, 32, 128, 256 })
             foreach (string partition in new[] { "mesh", "compound", "split" })
-                yield return [new SupportCostRow($"cluster {count} {partition}", true,
-                    KnownIncomplete: partition == "compound" && count >= 128)];
+                yield return [new SupportCostRow($"cluster {count} {partition}", true)];
         yield return [new SupportCostRow("stacked irrelevant layers")];
         yield return [new SupportCostRow("stationary") { Direction = Vector2.Zero }];
         yield return [new SupportCostRow("initial")];

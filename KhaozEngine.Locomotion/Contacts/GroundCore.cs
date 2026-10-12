@@ -64,7 +64,7 @@ internal static partial class GroundCore
     /// <summary>Moves a grounded body whose feet are at <paramref name="feet"/>, in the world's local frame, by
     /// the horizontal <paramref name="displacement"/>. Free motion on walkable support is exact. A start that is
     /// not walkable ends the tick at the start with its own footing. The <paramref name="queries"/> context enforces
-    /// the <see cref="FootSupport.Find"/> contract. <paramref name="tractionSlopeRadians"/> is the tick's traction
+    /// the <see cref="FootSupport"/> contract. <paramref name="tractionSlopeRadians"/> is the tick's traction
     /// gate, and every slope decision in the tick uses it. Null means
     /// <see cref="MoveTuning.MaxSlopeRadians"/>. <paramref name="climbBudget"/> is the climb the tick may still pay,
     /// in metres. Null means a whole tick's <c>MaxStepClimbSpeed * dt</c>. <paramref name="clampXz"/> is the
@@ -231,7 +231,7 @@ internal static partial class GroundCore
             tuning.StepHeight < 0 || !float.IsFinite(tuning.MaxSlopeRadians) ||
             !float.IsFinite(tuning.MaxStepClimbSpeed))
             throw new ArgumentOutOfRangeException(nameof(tuning), "The ground core tuning values must be finite.");
-        ShellGeometry.Validate(tuning);
+        ShellGeometry.Validate(tuning, settings);
 
         double count = Math.Ceiling(Length(displacement) / (0.5 * tuning.CapsuleRadius));
         if (count > MaxSubsteps)

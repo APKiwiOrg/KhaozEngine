@@ -291,18 +291,19 @@ public class GroundCoreTests
         AssertNear(new Vector2(0.1f, 0.1f), stops.Achieved);
     }
 
-    // The over-capacity fan, flat at Y 0 with its apex at the origin. Each probe certifies the neighborhood of its
-    // contact, so at x -0.2 the start meets only the few triangles near that point and certifies. The move of 0.2
-    // is one substep onto the apex, where the probes meet all 300 triangles, over the neighborhood capacity. That
-    // refusal stops the lifted and the standing attempt alike, so the move is blocked at the start.
+    // The over-capacity fan, flat at Y 0 with its apex at the origin. The complete footprint admits every triangle
+    // meeting the 0.2 disc expanded by the contact band. At x -0.3 those lie within asin(0.2001 / 0.3), about 42
+    // degrees, of the axis direction, about 70 of the 300 triangles, so the start certifies. The move of 0.2 is
+    // one substep to x -0.1, where the disc holds the apex and all 300 triangles, over the capacity. That refusal
+    // stops the lifted and the standing attempt alike, so the move is blocked at the start.
     [Fact]
     public void RefusedTargetBlocks()
     {
         using FootSupportScene scene = OverCapacityFan();
-        var start = new Vector3(-0.2f, 0, 0);
+        var start = new Vector3(-0.3f, 0, 0);
         var move = new Vector2(0.2f, 0);
         SupportSample target = FootSupport.Find(null, null, scene.World, scene.Lease, new FootSupportQuery(
-            Vector2.Zero, 0, 0.5f * Tuning.CapsuleRadius, Tuning.StepHeight, Tuning.StepHeight,
+            new Vector2(-0.1f, 0), 0, 0.5f * Tuning.CapsuleRadius, Tuning.StepHeight, Tuning.StepHeight,
             MathF.Cos(Tuning.MaxSlopeRadians)));
         Assert.Equal(SupportStatus.Refused, target.Status);
 

@@ -157,8 +157,8 @@ public sealed partial class MovementQueryLease
             (double)centre.Y + vertical + request.MaxRise > max.Y)
             return MovementAvailability.Unresolved;
 
-        // Cover both proposal capsules, their vertical overshoot and the neighborhood contact band.
-        // A context using a larger custom footprint must additionally guard its exact probe shape.
+        // Preserve the body and reach envelope independently of the footprint's configuration.
+        // CheckContactSupportQuery additionally encloses the complete admission column and float paths.
         double probe = Math.Max(request.Body.Radius, FootSupport.AxisProbeRadius);
         double band = SupportCertification.ContactBand;
         double feet = (double)centre.Y - request.Body.HalfHeight;

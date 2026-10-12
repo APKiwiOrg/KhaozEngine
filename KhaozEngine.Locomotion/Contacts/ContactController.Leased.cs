@@ -28,10 +28,8 @@ internal static partial class ContactController
         {
             queries.AssertCurrent();
             queries.BeginContactTick();
-            ContactShell.Validate(tuning);
             GroundCoreSettings foot = settings ?? new GroundCoreSettings();
-            if (!float.IsFinite(foot.FootRadiusFraction) || foot.FootRadiusFraction <= 0)
-                return HoldLeased(state, MovementStepOutcome.EnvironmentInvalid);
+            ShellGeometry.Validate(tuning, foot);
             MovementSelection selection;
             if (state.Selection is { } selected)
             {

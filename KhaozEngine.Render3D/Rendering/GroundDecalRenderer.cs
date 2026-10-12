@@ -444,7 +444,7 @@ namespace KhaozEngine.Render3D.Rendering
             {
                 InvViewProj = inv,
                 TimeQ = new Vector4(timeSeconds, quality == GroundDecalQuality.Full ? 1f : 0f, maxRgb, rejectDynamicGeometry ? 1f : 0f),
-                RenderOrigin = new Vector4(renderOrigin, 0f),
+                RenderOrigin = new Vector4(renderOrigin, _atmosphere.Enabled ? 1f : 0f),
             };
             // This pass's own slot, then the WHOLE mirror in one write, ahead of every draw that binds a slot of
             // it. The other pass's slot goes up again carrying the bytes it already held, so the upload is a no-op

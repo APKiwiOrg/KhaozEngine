@@ -102,8 +102,17 @@ namespace KhaozEngine.Render3D.Rendering
             cl.UpdateBuffer(_vb!, 0, verts);
             // Clip-Y derived from the live backend (identity on Metal/D3D, flips on Vulkan) - see GpuClip.
             var clipVp = GpuClip.Correct(viewProj, _gd.Capabilities);
-            cl.UpdateBuffer(_ubos[0], 0, in clipVp);
-            if (_atmosphere?.Enabled == true) cl.UpdateBuffer(_ubos[1], 0, in clipVp);
+            if (_atmosphere is null) cl.UpdateBuffer(_ubos[0], 0, in clipVp);
+            else
+            {
+                var frame = _atmosphere.PackFogBlendFrame(clipVp);
+                cl.UpdateBuffer(_ubos[0], 0, in frame);
+                if (_atmosphere.Enabled)
+                {
+                    frame = _atmosphere.PackFogBlendFrame(clipVp, additive: true);
+                    cl.UpdateBuffer(_ubos[1], 0, in frame);
+                }
+            }
 
             cl.SetFramebuffer(target);
             cl.SetPipeline(_pipelines[pipelineIndex]);

@@ -28,7 +28,7 @@ public sealed class AtmosphereRendererTests
         })
         {
             Assert.Contains($"layout(std140, set=0, binding={prefix}) uniform Atmosphere", source);
-            Assert.Contains("lit = atmosphereFog(lit, vWorldPos, false);", source);
+            Assert.Contains("lit = atmosphereFog(lit, vWorldPos, false, RenderOrigin.w > 0.5);", source);
             Assert.Contains("fragmentRelative.y + Atmo.Origin.y", source);
             Assert.Contains("Atmo.Camera.y + Atmo.Origin.y", source);
         }
@@ -104,8 +104,8 @@ public sealed class AtmosphereRendererTests
         int fog = source.IndexOf("vec3 atmosphereFog(", StringComparison.Ordinal);
         Assert.True(fog >= 0);
         body = source[fog..];
-        Assert.Contains("if (Atmo.Tint.w < 0.5) return colour;", body);
-        Assert.True(body.IndexOf("if (Atmo.Tint.w < 0.5) return colour;", StringComparison.Ordinal)
+        Assert.Contains("if (!enabled) return colour;", body);
+        Assert.True(body.IndexOf("if (!enabled) return colour;", StringComparison.Ordinal)
             < body.IndexOf("atmosphereTransmittance(fragmentRelative)", StringComparison.Ordinal));
         Assert.Contains("if (all(equal(transmission, vec3(1.0)))) return colour;", body);
         Assert.True(body.IndexOf("if (additive) return colour * transmission;", StringComparison.Ordinal)

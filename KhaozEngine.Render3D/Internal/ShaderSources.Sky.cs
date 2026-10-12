@@ -79,7 +79,7 @@ void main() {
         public const string SkyFrag = "#version 450\n" + AtmosphereBindingsAt1Glsl
             + AtmosphereTransportGlsl + AtmosphereSkyConsumersGlsl + @"
 layout(set=0, binding=0) uniform Sky {
-    vec4 Horizon;     // rgb gradient at the horizon (bottom)
+    vec4 Horizon;     // rgb gradient at the horizon (bottom), w = atmosphere enabled this frame
     vec4 Zenith;      // rgb gradient at the zenith (top)
     vec4 Res;         // xy = 1/renderWidth, 1/renderHeight, z = aspect (width/height), w = disc count
     vec4 Ground;      // rgb ground band below the world horizon, a = blend depth (sin-elevation units)
@@ -94,7 +94,8 @@ layout(location=0) out vec4 oColor;
 void main() {
     // NDC from gl_FragCoord (upper-left origin on every backend): x in [-1,1] rightward, y in [-1,1] UPWARD.
     vec2 ndc = vec2(gl_FragCoord.x * Res.x * 2.0 - 1.0, 1.0 - gl_FragCoord.y * Res.y * 2.0);
-    if (Atmo.Tint.w > 0.5) {
+    // The shared atmosphere ring may retain enabled segments while disabled frames skip its upload.
+    if (Horizon.w > 0.5) {
         // Shared row-vector camera basis and projection, including jitter and off-centre terms.
         vec2 v = ndc * Atmo.Ray.xy + Atmo.Ray.zw;
         vec3 direction = Atmo.Res.z > 0.5 ? -normalize(Atmo.Back.xyz)

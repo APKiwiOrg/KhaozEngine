@@ -55,7 +55,7 @@ layout(location=0) out vec4 oColor;
 void main() {
     float d = length(vUv * 2.0 - 1.0);
     float a = smoothstep(1.0, 0.55, d);
-    oColor = vec4(atmosphereFogDisplay(vColor.rgb, vWorld, FogBlend.x > 0.5), vColor.a * a);
+    oColor = vec4(atmosphereFogDisplay(vColor.rgb, vWorld, FogBlend.x > 0.5, FogBlend.y > 0.5), vColor.a * a);
 }";
 
         // ---- Textured, depth-interleaved billboard. Unlike the soft-disc overlay above (which draws AFTER the
@@ -77,7 +77,7 @@ layout(location=1) out vec4 oNormal;
 layout(location=2) out vec4 oDepth;
 void main() {
     vec4 t = texture(sampler2D(Tex, Samp), vUv);
-    oColor = vec4(atmosphereFog(t.rgb * vColor.rgb, vWorld, FogBlend.x > 0.5), t.a * vColor.a);
+    oColor = vec4(atmosphereFog(t.rgb * vColor.rgb, vWorld, FogBlend.x > 0.5, FogBlend.y > 0.5), t.a * vColor.a);
     oNormal = vec4(0.0);   // discarded (PreserveDestination blend on attachment 1)
     oDepth  = vec4(0.0);   // discarded (PreserveDestination blend on attachment 2)
 }";
@@ -102,7 +102,7 @@ layout(set=0, binding=0) uniform Frame {
     vec4 CamRight;      // xyz camera right
     vec4 CamUp;         // xyz camera up
     vec4 CamPosTime;    // xyz eye position, w effect time seconds
-    vec4 Params;        // x soft-fade distance (0 = off), y quality (1 full / 0 reduced), z background depth-clear marker, w reserved
+    vec4 Params;        // x soft-fade distance (0 = off), y quality (1 full / 0 reduced), z background depth-clear marker, w atmosphere enabled this frame
 };
 layout(location=0) in vec4 ICenterSize;   // xyz world center, w half-size
 layout(location=1) in vec4 IVelocityRot;  // xyz world velocity, w rotation (radians)
@@ -356,7 +356,7 @@ void main() {
         a = clamp(vColor.a * mask, 0.0, 1.0) * fade;
         rgb = vColor.rgb * a;
     }
-    rgb = atmosphereFogPremultiplied(rgb, a, vWorld, vExtra.y);
+    rgb = atmosphereFogPremultiplied(rgb, a, vWorld, vExtra.y, Params.w > 0.5);
     oColor = vec4(rgb, a * (1.0 - vExtra.y));
 }";
 
@@ -568,7 +568,7 @@ void main() {
     vec3 rgb = vCoreColor.rgb * vCoreColor.a * core * flow
              + vGlowColor.rgb * vGlowColor.a * glow;
     // Time.w is fixed at one by BeamRenderer. A runtime flag keeps the shared sky resources reflected.
-    rgb = atmosphereFog(rgb, vWorld, Time.w > 0.5);
+    rgb = atmosphereFog(rgb, vWorld, Time.w > 0.5, Time.z > 0.5);
     oColor  = vec4(rgb, master);   // Additive (src.a / one): out.rgb = rgb*master + dst.rgb
     oNormal = vec4(0.0);           // discarded (PreserveDestination on attachment 1)
     oDepth  = vec4(0.0);           // discarded (PreserveDestination on attachment 2)
@@ -608,7 +608,7 @@ void main() {
     float soft = clamp(vUv.z, 0.0, 1.0);
     float edge = 1.0 - smoothstep(1.0 - soft, 1.0, d); // feather the across-width edge
     float a = vColor.a * edge;
-    oColor  = vec4(atmosphereFog(vColor.rgb, vWorld, FogBlend.x > 0.5), a);   // Additive: rgb*a + dst; AlphaBlend: rgb*a + dst*(1-a)
+    oColor  = vec4(atmosphereFog(vColor.rgb, vWorld, FogBlend.x > 0.5, FogBlend.y > 0.5), a);   // Additive: rgb*a + dst; AlphaBlend: rgb*a + dst*(1-a)
     oNormal = vec4(0.0);             // discarded (PreserveDestination on attachment 1)
     oDepth  = vec4(0.0);             // discarded (PreserveDestination on attachment 2)
 }";

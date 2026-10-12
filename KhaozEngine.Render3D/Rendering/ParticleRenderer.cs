@@ -337,7 +337,8 @@ namespace KhaozEngine.Render3D.Rendering
                 CamRight = new Vector4(right, 0f),
                 CamUp = new Vector4(up, 0f),
                 CamPosTime = new Vector4(eye, timeSeconds),
-                Params = new Vector4(MathF.Max(softFade, 0f), quality == ParticleQuality.Full ? 1f : 0f, backgroundDepthMarker, 0f),
+                Params = new Vector4(MathF.Max(softFade, 0f), quality == ParticleQuality.Full ? 1f : 0f,
+                    backgroundDepthMarker, _atmosphere.Enabled ? 1f : 0f),
             };
             cl.UpdateBuffer(_frameUbo, 0, in frame);
 

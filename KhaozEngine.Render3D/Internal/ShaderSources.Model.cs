@@ -209,7 +209,7 @@ void main() {
     } else {
         lit += vEmissive.rgb;                   // base emissive, unchanged old path
     }
-    lit = atmosphereFog(lit, vWorldPos, false);
+    lit = atmosphereFog(lit, vWorldPos, false, RenderOrigin.w > 0.5);
     oColor = vec4(lit, 1.0);
     // rgb: GEOMETRIC normal for the edge pass (not the perturbed one). a: dynamic-geometry decal mask - 1 for the
     // static world (unchanged), 0 for skinned/dynamic geometry so the main ground-decal pass rejects it (issue #235).
@@ -312,7 +312,7 @@ void main() {
     // threshold 0 (a fully-solid avatar routed through this pipeline still reads clean).
     float edge = (1.0 - smoothstep(threshold, threshold + edgeW, mask)) * step(0.001, threshold);
     lit += vEmissive.rgb * edge;
-    lit = atmosphereFog(lit, vWorldPos, false);
+    lit = atmosphereFog(lit, vWorldPos, false, RenderOrigin.w > 0.5);
     oColor = vec4(lit, 1.0);
     oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0 - clamp(vDynamic, 0.0, 1.0)); // a: dynamic-geometry decal mask (issue #235)
     oDepth = vec4(gl_FragCoord.z, gl_FragCoord.z, gl_FragCoord.z, 1.0);   // per-fragment NDC depth, see the note at the top
@@ -509,7 +509,7 @@ void main() {
     vec3 diffuse; vec3 specColor;
     computeLighting(PointShadowMap, PointShadowTransientMap, ShadowSamp, N, vWorldPos, specStrength, specExp, keyShadow, diffuse, specColor);
     vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor + vEmissive.rgb;
-    lit = atmosphereFog(lit, vWorldPos, false);
+    lit = atmosphereFog(lit, vWorldPos, false, RenderOrigin.w > 0.5);
     oColor = vec4(lit, 1.0);
     oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0 - clamp(vDynamic, 0.0, 1.0)); // a: dynamic-geometry decal mask (issue #235)
     oDepth = vec4(gl_FragCoord.z, gl_FragCoord.z, gl_FragCoord.z, 1.0);   // per-fragment NDC depth, see the note at the top
@@ -605,7 +605,7 @@ void main() {
     vec3 lit = albedo * (Ambient.rgb + diffuse) + specColor;
     float edge = (1.0 - smoothstep(threshold, threshold + edgeW, mask)) * step(0.001, threshold);
     lit += vEmissive.rgb * edge;
-    lit = atmosphereFog(lit, vWorldPos, false);
+    lit = atmosphereFog(lit, vWorldPos, false, RenderOrigin.w > 0.5);
     oColor = vec4(lit, 1.0);
     oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0 - clamp(vDynamic, 0.0, 1.0)); // a: dynamic-geometry decal mask (issue #235)
     oDepth = vec4(gl_FragCoord.z, gl_FragCoord.z, gl_FragCoord.z, 1.0);   // per-fragment NDC depth, see the note at the top

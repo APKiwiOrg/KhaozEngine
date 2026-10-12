@@ -73,6 +73,10 @@ public sealed class EffectAtmosphereCommandTests
             var upload = Assert.Single(uniforms, upload => ReferenceEquals(upload.Buffer, read.Buffer)
                 && upload.Offset == read.Offset);
             Assert.Equal(matrix, MemoryMarshal.Read<Matrix4x4>(upload.Data));
+            // This flag must travel with the frame matrix, rather than an older atmosphere ring segment.
+            Assert.NotNull(upload.Data);
+            Assert.Equal(80, upload.Data.Length);
+            Assert.Equal(enabled ? 1f : 0f, MemoryMarshal.Read<Vector4>(upload.Data.AsSpan(64)).Y);
         }
         Assert.Contains(commands.Reads, read => read.Buffer.SizeInBytes == uniformSize);
     }

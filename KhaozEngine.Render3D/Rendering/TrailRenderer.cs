@@ -33,7 +33,7 @@ namespace KhaozEngine.Render3D.Rendering
         readonly AtmosphereBindings _atmosphere;
         readonly bool _ownsAtmosphere;
         readonly IGpuDevice _gd;
-        readonly IGpuBuffer _ubo;              // ViewProj + immutable alpha FogBlend (80 bytes)
+        readonly IGpuBuffer _ubo;              // ViewProj + alpha FogBlend and frame enable flag (80 bytes)
         readonly IGpuBuffer _additiveUbo;
         readonly IGpuResourceLayout _layout;   // UBO (vertex)
         readonly IGpuResourceSet _set;
@@ -118,9 +118,13 @@ namespace KhaozEngine.Render3D.Rendering
         /// <summary>Upload this frame's view-projection (clip-Y corrected) once before the draws.</summary>
         public void SetFrameUniforms(IGpuCommandList cl, Matrix4x4 viewProj)
         {
-            var matrix = GpuClip.Correct(viewProj, _gd.Capabilities);
-            cl.UpdateBuffer(_ubo, 0, in matrix);
-            if (_atmosphere.Enabled) cl.UpdateBuffer(_additiveUbo, 0, in matrix);
+            var frame = _atmosphere.PackFogBlendFrame(GpuClip.Correct(viewProj, _gd.Capabilities));
+            cl.UpdateBuffer(_ubo, 0, in frame);
+            if (_atmosphere.Enabled)
+            {
+                frame.FogBlend.X = 1f;
+                cl.UpdateBuffer(_additiveUbo, 0, in frame);
+            }
         }
 
         /// <summary>Draw <paramref name="verts"/> (all trails of one blend) into <paramref name="target"/> (the model

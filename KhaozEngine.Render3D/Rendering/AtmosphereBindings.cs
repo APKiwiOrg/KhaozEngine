@@ -20,6 +20,12 @@ internal sealed class AtmosphereBindings : IDisposable
     /// <summary>Enabled flag in the most recently recorded UBO. Disabled effects share their alpha matrix lane.</summary>
     internal bool Enabled { get; set; }
 
+    internal FogBlendUniforms PackFogBlendFrame(Matrix4x4 viewProj, bool additive = false) => new()
+    {
+        ViewProj = viewProj,
+        FogBlend = new(additive ? 1f : 0f, Enabled ? 1f : 0f, 0f, 0f),
+    };
+
     internal AtmosphereBindings(IGpuDevice gd)
     {
         var f = gd.Factory;

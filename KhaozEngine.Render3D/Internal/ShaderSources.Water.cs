@@ -676,7 +676,7 @@ void main() {
     rgb = mix(rgb, FoamColor.rgb, foam);
     alpha = mix(alpha, max(alpha, FoamColor.a * opacity * shoreFade), foam);
     if (alpha <= 0.001) discard;
-    rgb = atmosphereFog(rgb, vWorldPos, false);
+    rgb = atmosphereFog(rgb, vWorldPos, false, SkyParams.y > 0.5);
     oColor = vec4(rgb, alpha);
 }";
     }

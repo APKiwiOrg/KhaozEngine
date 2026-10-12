@@ -118,7 +118,7 @@ namespace KhaozEngine.Render3D.Rendering
             var u = new FrameUniforms
             {
                 ViewProj = GpuClip.Correct(viewProj, _gd.Capabilities),
-                Time = new Vector4(timeSeconds, 0f, 0f, 1f),
+                Time = new Vector4(timeSeconds, 0f, _atmosphere.Enabled ? 1f : 0f, 1f),
             };
             cl.UpdateBuffer(_ubo, 0, in u);
         }

@@ -123,9 +123,13 @@ namespace KhaozEngine.Render3D.Rendering
         /// runs. The same matrix the model pass uses, so quad depth is comparable to mesh depth.</summary>
         public void SetViewProj(IGpuCommandList cl, Matrix4x4 viewProj)
         {
-            var clipVp = GpuClip.Correct(viewProj, _gd.Capabilities);
-            cl.UpdateBuffer(_ubo, 0, in clipVp);
-            if (_atmosphere.Enabled) cl.UpdateBuffer(_ubo, FrameSlotBytes, in clipVp);
+            var frame = _atmosphere.PackFogBlendFrame(GpuClip.Correct(viewProj, _gd.Capabilities));
+            cl.UpdateBuffer(_ubo, 0, in frame);
+            if (_atmosphere.Enabled)
+            {
+                frame.FogBlend.X = 1f;
+                cl.UpdateBuffer(_ubo, FrameSlotBytes, in frame);
+            }
         }
 
         /// <summary>Draw <paramref name="verts"/> (a run of one texture's quads) into <paramref name="target"/>

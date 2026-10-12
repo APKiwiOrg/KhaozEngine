@@ -509,7 +509,7 @@ void main() {
     // decals (all-new lanes zero) already keep a = max(fillA, outlineA) in [0,1], so this clamp is an identity
     // for them and only bites the modern energy path.
     a = clamp(a, 0.0, 1.0);
-    rgb = atmosphereFog(rgb, world, Misc.z > 0.5);
+    rgb = atmosphereFog(rgb, world, Misc.z > 0.5, RenderOrigin.w > 0.5);
     oColor = vec4(rgb, a);
 }";
     }

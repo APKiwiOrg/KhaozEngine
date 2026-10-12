@@ -25,7 +25,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// 16-byte aligned, so std140 needs no extra padding). Size-checked by the UboLayoutTests tripwire.</summary>
         public struct SkyUbo
         {
-            public Vector4 Horizon;   // rgb gradient at the horizon (bottom)
+            public Vector4 Horizon;   // rgb gradient at the horizon (bottom), w = atmosphere enabled this frame
             public Vector4 Zenith;    // rgb gradient at the zenith (top)
             public Vector4 Res;       // xy = 1/renderWidth, 1/renderHeight, z = aspect (width/height), w = disc count
             public Vector4 Ground;      // rgb ground band below the world horizon, a = blend depth (sin-elevation)
@@ -139,7 +139,7 @@ namespace KhaozEngine.Render3D.Rendering
 
             return new SkyUbo
             {
-                Horizon = new Vector4(horizon.X, horizon.Y, horizon.Z, 0f),
+                Horizon = new Vector4(horizon.X, horizon.Y, horizon.Z, atmosphereEnabled ? 1f : 0f),
                 Zenith = new Vector4(zenith.X, zenith.Y, zenith.Z, 0f),
                 Res = new Vector4(invW, invH, aspect, onScreen),
                 Ground = new Vector4(frame.Ground.Color, frame.Ground.Softness),

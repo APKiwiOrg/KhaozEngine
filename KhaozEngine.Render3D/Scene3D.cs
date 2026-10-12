@@ -2139,7 +2139,6 @@ namespace KhaozEngine.Render3D
             _overlayMeshes.Dispose();
             _silhouettes.Dispose();
             _targetOutlines.Dispose();
-            _atmosphere.Dispose();
             _res.Dispose();
             foreach (var m in _meshes)
                 if (m is { } mesh)
@@ -2168,6 +2167,7 @@ namespace KhaozEngine.Render3D
             DisposeMotionVectorsView();
             DisposeTileGroundAndPointShadowResources();
             DisposeTemporalResolve();
+            _atmosphere.Dispose();
         }
 
         /// <summary>A contiguous run of instances of one mesh handle inside the flat instance array.</summary>

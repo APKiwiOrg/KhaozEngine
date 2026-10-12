@@ -98,6 +98,82 @@ public sealed class AtmosphereRendererTests
         Assert.Equal(0, renderer.SkyViewDrawCount);
     }
 
+    [Fact]
+    public void TransmittanceFloat32_LastColumnIsUnoccludedAndMatchesCpu()
+    {
+        var settings = AtmosphereSettings.Earth();
+        var model = new AtmosphereModel(settings);
+        var oracle = model.Tables.Transmittance;
+        for (int y = 0; y < 64; y++)
+        {
+            var uv = new Vector2(255.5f / 256f, (y + .5f) / 64f);
+            var actual = AtmosphereShaderMath.TransmittanceTexel(settings, uv);
+            Assert.True(actual.X > 0f && actual.Y > 0f && actual.Z > 0f,
+                $"Transmittance last-column row {y} was treated as occluded: {actual}.");
+            var error = Vector3.Abs(actual - oracle[y * 256 + 255]);
+            Assert.True(MathF.Max(error.X, MathF.Max(error.Y, error.Z)) <= .01f,
+                $"Transmittance last-column row {y} differs from the CPU oracle: {error}.");
+        }
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(5)]
+    [InlineData(51)]
+    [InlineData(56)]
+    public void PlanetShadowFloat32_GrazingRaysRemainVisibleButPenetratingRaysAreBlocked(int y)
+    {
+        const float bottom = 6360f;
+        var parameters = AtmosphereShaderMath.TransmittanceParameters(
+            new Vector2(255.5f / 256f, (y + .5f) / 64f), bottom, 6460f);
+        var position = new Vector3(0f, parameters.X, 0f);
+        var tangent = AtmosphereShaderMath.TransmittanceDirection(parameters.X, parameters.Y, bottom);
+        Assert.False(AtmosphereShaderMath.PlanetOccludes(position, tangent, bottom));
+        var penetrating = Vector3.Normalize(tangent - Vector3.UnitY * .01f);
+        Assert.True(AtmosphereShaderMath.PlanetOccludes(position, penetrating, bottom));
+        Assert.True(AtmosphereShaderMath.PlanetOccludes(position, -Vector3.UnitY, bottom));
+        Assert.False(AtmosphereShaderMath.PlanetOccludes(position, Vector3.UnitY, bottom));
+    }
+
+    [GpuFact]
+    public void Golden_TransmittanceLastColumnIsNonzero()
+    {
+        using var gpu = GpuDeviceContext.CreateHeadless();
+        var device = gpu.GpuDevice;
+        using var renderer = new AtmosphereRenderer(device);
+        using var staging = device.Factory.CreateTexture(GpuTextureDescription.Texture2D(256, 64,
+            GpuPixelFormat.R16G16B16A16Float, GpuTextureUsage.Staging));
+        using var commands = device.Factory.CreateCommandList();
+        var post = new PixelPostProcessSettings();
+        post.Atmosphere.Enabled = true;
+        commands.Begin();
+        renderer.Record(commands, post, new Vector3(0f, 2f, 0f), Vector3.Zero, Matrix4x4.Identity,
+            Matrix4x4.CreatePerspectiveFieldOfView(1f, 1f, .1f, 100f), 64, 64);
+        commands.CopyTexture(renderer.TransmittanceTexture!, staging);
+        commands.End();
+        device.Submit(commands);
+        device.WaitForIdle();
+
+        var map = device.Map(staging, GpuMapMode.Read);
+        try
+        {
+            var texel = new byte[8];
+            for (int y = 0; y < 64; y++)
+            {
+                Marshal.Copy(IntPtr.Add(map.Data, checked((int)(y * map.RowPitch + 255 * 8))), texel, 0, 8);
+                float r = (float)BitConverter.ToHalf(texel, 0), g = (float)BitConverter.ToHalf(texel, 2);
+                float b = (float)BitConverter.ToHalf(texel, 4);
+                Assert.True(float.IsFinite(r) && float.IsFinite(g) && float.IsFinite(b)
+                    && (r > 0f || g > 0f || b > 0f),
+                    $"Rendered transmittance last-column row {y} is invalid or occluded: ({r}, {g}, {b}).");
+            }
+        }
+        finally
+        {
+            device.Unmap(staging);
+        }
+    }
+
     internal static void VerifyUboLayout()
     {
         string[] names = { "Planet", "Rayleigh", "Mie", "Ozone", "GroundHaze", "Sun", "Moon", "Tint",

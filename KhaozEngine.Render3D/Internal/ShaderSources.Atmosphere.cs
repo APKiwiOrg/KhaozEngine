@@ -107,6 +107,14 @@ bool AtmoSphereRoots(vec3 p, vec3 d, float radius, out vec2 roots) {
     return true;
 }
 
+// Mirrors AtmosphereShaderMath.PlanetOccludes. Require penetration beyond length/dot float32 roundoff.
+bool AtmoPlanetOccludes(vec3 p, vec3 d) {
+    float r = length(p), projection = dot(p, d);
+    float c = (r - Atmo.Planet.x) * (r + Atmo.Planet.x);
+    float epsilon = (8.0 * 1.1920929e-7) * max(r * r, Atmo.Planet.x * Atmo.Planet.x);
+    return projection < 0.0 && projection * projection - c > epsilon;
+}
+
 // Mirrors AtmosphereModel.DensityAtHeight. Haze is a frame-only aerial control, outside static transport.
 vec3 AtmoDensity(float height) {
     float h = max(height, 0.0);
@@ -127,7 +135,7 @@ vec2 AtmoTransmittanceUv(float radius, float mu) {
         AtmoSub(h > 0.0 ? rho / h : 0.0, 64.0));
 }
 
-// Mirrors AtmosphereLutMapping.TransmittanceParameters.
+// Mirrors AtmosphereShaderMath.TransmittanceParameters, the float32 AtmosphereLutMapping counterpart.
 vec2 AtmoTransmittanceParameters(vec2 uv) {
     float bottom = Atmo.Planet.x, top = Atmo.Planet.y;
     float x = AtmoUnsub(uv.x, 256.0), y = AtmoUnsub(uv.y, 64.0);
@@ -192,14 +200,14 @@ vec3 AtmoSegmentIntegral(vec3 source, vec3 extinction, float width) {
 // Mirrors AtmosphereModel.SegmentTransmittance.
 vec3 AtmoSegmentTransmittance(vec3 extinction, float width) { return exp(-extinction * width); }
 
-// Mirrors AtmosphereModel.ScatteringInterval.
+// Mirrors AtmosphereModel.ScatteringInterval, conservatively keeping float32 grazes unblocked.
 bool AtmoScatteringInterval(vec3 p, vec3 d, out float start, out float end, out bool groundHit) {
     start = 0.0; end = 0.0; groundHit = false;
     if (length(p) < Atmo.Planet.x) return false;
     vec2 topRoots, groundRoots;
     if (!AtmoSphereRoots(p, d, Atmo.Planet.y, topRoots) || topRoots.y <= 0.0) return false;
     start = max(topRoots.x, 0.0); end = topRoots.y;
-    if (AtmoSphereRoots(p, d, Atmo.Planet.x, groundRoots) && groundRoots.x >= start
+    if (AtmoPlanetOccludes(p, d) && AtmoSphereRoots(p, d, Atmo.Planet.x, groundRoots) && groundRoots.x >= start
         && groundRoots.x <= end && groundRoots.y > groundRoots.x) {
         end = groundRoots.x;
         groundHit = true;
@@ -220,11 +228,10 @@ vec3 AtmoSampleMulti(float height, float mu) {
     return textureLod(sampler2D(AtmoMultiScattering, AtmoClampSampler), AtmoMultiUv(height, mu), 0.0).rgb;
 }
 #endif
-// Mirrors AtmosphereModel.SourceTransmittance. Strict penetration blocks, a tangent remains visible.
+// Mirrors AtmosphereModel.SourceTransmittance. Definite penetration blocks, a rounded tangent remains visible.
 vec3 AtmoSourceTransmittance(vec3 p, vec3 light) {
     float r = length(p), projection = dot(p, light);
-    float c = (r - Atmo.Planet.x) * (r + Atmo.Planet.x);
-    if (projection < 0.0 && c - projection * projection < 0.0) return vec3(0.0);
+    if (AtmoPlanetOccludes(p, light)) return vec3(0.0);
     return AtmoSampleTransmittance(r, projection / r);
 }
 // Mirrors AtmosphereModel.DirectGroundBounce.
@@ -269,13 +276,13 @@ vec3 AtmoIntegrateScattering(vec3 p, vec3 view, vec3 light, int steps, bool isot
 ";
 
     const string AtmosphereTransmittanceIntegralGlsl = @"
-// Mirrors AtmosphereModel.Transmittance with its default 256 quadratic midpoint segments.
+// Mirrors AtmosphereShaderMath.TransmittanceIntegral with 256 quadratic midpoint segments.
+// This producer's mapping contains only rays that reach the atmosphere top without entering the planet.
+// A float32 ground-intersection retest can falsely reject its tangent endpoint, so omit it here.
 vec3 AtmoTransmittanceIntegral(vec3 p, vec3 d) {
-    vec2 topRoots, groundRoots;
+    vec2 topRoots;
     if (!AtmoSphereRoots(p, d, Atmo.Planet.y, topRoots) || topRoots.y <= 0.0) return vec3(1.0);
     float start = max(topRoots.x, 0.0), end = topRoots.y;
-    if (AtmoSphereRoots(p, d, Atmo.Planet.x, groundRoots) && groundRoots.x < end
-        && groundRoots.y > max(start, groundRoots.x)) return vec3(0.0);
     vec3 depth = vec3(0.0);
     float previous = start;
     for (int i = 0; i < 256; i++) {
@@ -293,14 +300,13 @@ vec3 AtmoTransmittanceIntegral(vec3 p, vec3 d) {
         + AtmosphereTransportGlsl + AtmosphereTransmittanceIntegralGlsl + @"
 layout(location=0) in vec2 vUv;
 layout(location=0) out vec4 oColor;
-// Mirrors AtmosphereTables.UnoccludedTransmittanceDirection, keeping rounded tangent rays unblocked.
+// Mirrors AtmosphereShaderMath.TransmittanceDirection. The mapped domain ends at the planet tangent.
 vec3 AtmoUnoccludedTransmittanceDirection(float r, float mu) {
     float horizon = -sqrt(max((r - Atmo.Planet.x) * (r + Atmo.Planet.x), 0.0)) / r;
     mu = max(mu, horizon);
-    if (horizon < 0.0 && mu <= horizon + 1e-7) mu = uintBitsToFloat(floatBitsToUint(mu) - 1u);
     return normalize(vec3(sqrt(max(1.0 - mu * mu, 0.0)), mu, 0.0));
 }
-// Mirrors AtmosphereTables.BuildTransmittance.
+// Mirrors AtmosphereShaderMath.TransmittanceTexel, the float32 AtmosphereTables.BuildTransmittance counterpart.
 void main() {
     vec2 parameters = AtmoTransmittanceParameters(vUv);
     oColor = vec4(AtmoTransmittanceIntegral(vec3(0.0, parameters.x, 0.0),

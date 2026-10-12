@@ -479,7 +479,7 @@ Expected: missing returning Apply overload and physical branch.
 
 - [ ] **Step 3: Implement** `SunCycle.Apply(in SunCycleState state, PixelPostProcessSettings post, Vector3 cameraWorldPosition) -> SunCycleState` in `KhaozEngine.Render3D/SunCycle.cs`. Evaluate retains true sun, untinted fade, weights and disc opacities before palette selection. CreateFrame uses sample.SunDirection and -state.MoonDirection, or the opposite sun for AntiSolarMoon. Attach the sample with a private state copy constructor, preserving the public constructor. Physical Apply rejects a manually constructed unsampled state with InvalidOperationException instructing the caller to use Evaluate.
 
-Void Apply delegates at world zero. Disabled writes stay identical. Enabled Apply stores post.AtmosphereCycle, resolves the model, writes physical lighting and returns the physical HorizonColor in the existing property. The caller copies it to Water.HorizonColor.
+Void Apply delegates at world zero. Disabled public writes stay identical. Per R16, disabled Apply retains the latest evaluated geometry in post.AtmosphereCycle without resolving the model or tables, while a manual legacy state invalidates the retained cycle. Enabled Apply stores post.AtmosphereCycle, resolves the model, writes physical lighting and returns the physical HorizonColor in the existing property. The caller copies it to Water.HorizonColor.
 
 Physical primary stays the true sun, moon stays ExtraDiscs. Disc RGB is S*T/sin(radius)^2 times source fraction and tint once, using cached transmittances, retained opacities and atmosphere radius. Ignore palette/MoonKeyColor/MoonDiscColor, preserve fades/fill direction. Document both Apply overloads.
 

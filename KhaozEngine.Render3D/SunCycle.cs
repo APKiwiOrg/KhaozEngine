@@ -577,7 +577,8 @@ namespace KhaozEngine.Render3D
         /// is an extra disc. The sun stays opaque until its upper limb crosses the camera's geometric horizon.
         /// Key direction, source handover, key and moon fades and the caller's fill direction are preserved.
         /// Copy the returned <see cref="SunCycleState.HorizonColor"/> to <see cref="WaterSettings.HorizonColor"/>.
-        /// With atmosphere disabled, writes the legacy palette state unchanged and returns it.</summary>
+        /// With atmosphere disabled, writes the legacy palette state unchanged and returns it. Retains evaluated
+        /// cycle geometry for re-enabling without resolving physical settings. A manual state clears that cache.</summary>
         /// <exception cref="InvalidOperationException">Physical atmosphere is enabled and the state was not
         /// produced by SunCycle.Evaluate.</exception>
         public static SunCycleState Apply(in SunCycleState state, PixelPostProcessSettings post, Vector3 cameraWorldPosition)
@@ -632,6 +633,9 @@ namespace KhaozEngine.Render3D
                 return physical;
             }
 
+            // Keep the latest evaluated geometry without resolving physical settings while disabled.
+            // A manual legacy state cannot seed a physical frame and invalidates any earlier cycle.
+            post.AtmosphereCycle = state.AtmosphereSample is null ? null : state;
             post.LightDirection = state.LightDirection;
             post.LightColor = state.LightColor;
             post.AmbientColor = state.AmbientColor;

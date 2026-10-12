@@ -63,7 +63,8 @@ namespace KhaozEngine.Render3D
 
         AtmosphereModel? _atmosphereModel;
 
-        /// <summary>Last cycle applied to the physical atmosphere, including its untinted geometry and fades.</summary>
+        /// <summary>Latest evaluated cycle applied while enabled or disabled, including untinted geometry and fades.
+        /// A manually constructed legacy state invalidates it.</summary>
         internal SunCycleState? AtmosphereCycle;
 
         /// <summary>Refreshes the retained model from the live settings bag. Only physical changes rebuild tables.</summary>

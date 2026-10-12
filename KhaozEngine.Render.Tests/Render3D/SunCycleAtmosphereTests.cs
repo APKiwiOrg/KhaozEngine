@@ -513,10 +513,10 @@ public sealed class SunCycleAtmosphereTests
             foreach (float time in new[] { 0, .24f, .25f, .5f, .74f, .75f, .76f })
                 AssertLegacyApply(SunCycle.Evaluate(time, cycle), post);
         }
-        AssertLegacyApply(ManualState(), post);
+        AssertLegacyApply(ManualState(), post, retainCycle: false);
     }
 
-    static void AssertLegacyApply(SunCycleState raw, PixelPostProcessSettings post)
+    static void AssertLegacyApply(SunCycleState raw, PixelPostProcessSettings post, bool retainCycle = true)
     {
         var applied = SunCycle.Apply(raw, post, new Vector3(0, float.NaN, 0));
         Assert.Equal(raw, applied);
@@ -540,7 +540,7 @@ public sealed class SunCycleAtmosphereTests
         Assert.Equal(Vector3.UnitZ, post.FillLightDirection);
         Assert.Equal(.3f, post.Sky.SunRadius);
         Assert.Equal(new Color(9, 8, 7), post.Water.HorizonColor);
-        Assert.Null(post.AtmosphereCycle);
+        Assert.Equal(retainCycle ? raw : (SunCycleState?)null, post.AtmosphereCycle);
     }
 
     static void AssertPhysicalColorsEqual(SunCycleState expected, SunCycleState actual)

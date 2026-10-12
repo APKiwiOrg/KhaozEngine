@@ -9,6 +9,7 @@
     <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.WorldMap.Tests" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 </Project>

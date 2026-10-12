@@ -25,6 +25,7 @@ public sealed partial class AtmosphereModel
         settings.Validate();
         if (_settings.ValueEquals(settings)) return false;
         _settings = settings.Clone();
+        _tables = null;
         return true;
     }
 

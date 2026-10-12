@@ -30,6 +30,7 @@ internal static class SupportFootprintPolygon
         in SupportFootprintBounds bounds, double bottom, double top, out SupportFootprintMember member)
     {
         member = default;
+        polygon.BeginFootprintOperands(request);
         SupportQueryDiagnostics.Record(SupportQueryCounter.Polygons);
         GeometrySign area = FeaturePoint.Dot(polygon.Normal, polygon.Normal).Sign;
         if (area == GeometrySign.Unresolved && polygon.HasSource) area = polygon.SourcePredicates.NormalSquared(polygon);
@@ -120,7 +121,7 @@ internal static class SupportFootprintPolygon
         for (int i = 0; i < polygon.Vertices.Length; i++)
         {
             FeaturePoint vertex = polygon.Vertices[i];
-            GeometrySign sign = InDisc(polygon, i, vertex, axis, radius);
+            GeometrySign sign = InDisc(polygon, i, vertex, axis, radius, originalVertex: true);
             if (sign == GeometrySign.Unresolved) return sign;
             if (sign != GeometrySign.Positive) range.Add(vertex);
         }
@@ -189,9 +190,12 @@ internal static class SupportFootprintPolygon
         return sign == GeometrySign.Unresolved && polygon.HasSource ? polygon.SourcePredicates.NormalComponent(polygon, 1) : sign;
     }
 
-    static GeometrySign InDisc(SupportPolygon polygon, int index, FeaturePoint point, FeaturePoint axis, FeatureNumber radius)
+    static GeometrySign InDisc(SupportPolygon polygon, int index, FeaturePoint point, FeaturePoint axis,
+        FeatureNumber radius, bool originalVertex = false)
     {
-        GeometrySign sign = InDisc(point, axis, radius);
+        GeometrySign sign = originalVertex
+            ? InDisc(point, axis, radius, polygon.FootprintOperands(index, axis).ProjectedDistanceSquared)
+            : InDisc(point, axis, radius);
         return sign == GeometrySign.Unresolved && polygon.HasSource ? polygon.SourcePredicates.VertexDisc(polygon, index, axis, radius) : sign;
     }
 
@@ -199,6 +203,11 @@ internal static class SupportFootprintPolygon
     {
         FeaturePoint delta = FeaturePoint.Subtract(point, axis);
         FeatureNumber squared = delta.X.Multiply(delta.X, exactZeroProducts: true).Add(delta.Z.Multiply(delta.Z, exactZeroProducts: true));
+        return InDisc(point, axis, radius, squared);
+    }
+
+    static GeometrySign InDisc(FeaturePoint point, FeaturePoint axis, FeatureNumber radius, FeatureNumber squared)
+    {
         GeometrySign sign = squared.Compare(radius.Multiply(radius, exactZeroProducts: true));
         if (sign != GeometrySign.Unresolved || !point.X.IsExact || !point.Z.IsExact || !radius.IsExact) return sign;
         SupportQueryDiagnostics.Record(SupportQueryCounter.ExactFallbacks);
@@ -209,21 +218,22 @@ internal static class SupportFootprintPolygon
     static bool Edge(SupportPolygon polygon, int index, FeaturePoint axis, FeatureNumber radius, ref Range range)
     {
         FeaturePoint vertex = polygon.Vertices[index], edge = polygon.Edges[index];
-        FeatureNumber a = DotXZ(edge, edge);
+        SupportFootprintEdgeOperands operands = polygon.FootprintOperands(index, axis);
+        FeatureNumber a = operands.LengthSquared;
         GeometrySign length = a.Sign;
         if (length == GeometrySign.Unresolved && polygon.HasSource)
             length = polygon.SourcePredicates.EdgeLength(polygon, index);
         if (length == GeometrySign.Zero) return true;
         if (length != GeometrySign.Positive) return false;
         FeaturePoint delta = FeaturePoint.Subtract(vertex, axis);
-        FeatureNumber dot = DotXZ(delta, edge);
+        FeatureNumber dot = operands.Dot;
         // An attained endpoint on the circle makes one root exactly 0 or 1. Factor that root before taking a
         // square root, so independently rounded enclosures cannot obscure a closed endpoint equality.
-        if (InDisc(polygon, index, vertex, axis, radius) == GeometrySign.Zero)
+        if (InDisc(polygon, index, vertex, axis, radius, originalVertex: true) == GeometrySign.Zero)
             return Parameter(polygon, index, axis, dot.Multiply(FeatureNumber.Exact(-2), exactZeroProducts: true).Divide(a), false, ref range);
         if (InDisc(polygon, (index + 1) % polygon.Vertices.Length, FeaturePoint.Add(vertex, edge), axis, radius) == GeometrySign.Zero)
             return Parameter(polygon, index, axis, dot.Multiply(FeatureNumber.Exact(-2), exactZeroProducts: true).Divide(a).Subtract(One), true, ref range);
-        FeatureNumber cross = delta.X.Multiply(edge.Z, exactZeroProducts: true).Subtract(delta.Z.Multiply(edge.X, exactZeroProducts: true));
+        FeatureNumber cross = operands.Cross;
         // Parallel projected edges factor the discriminant. This proves closed tangency
         // for every coefficient in the installed operator, without subtracting correlated intervals.
         FeatureNumber discriminant = edge.Z.IsExact && edge.Z.Value == 0

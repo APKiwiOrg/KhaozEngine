@@ -31,11 +31,12 @@ internal static class SupportFootprintProposalGeometry
         FeatureNumber radius = FeatureNumber.Exact(proposal.Probe.Radius);
         FeaturePoint axis = new(FeatureNumber.Exact(proposal.Start.Position.X), Zero,
             FeatureNumber.Exact(proposal.Start.Position.Z));
+        bool share = polygon.SharesFootprintOperands(proposal);
         var range = new Maximum();
         for (int i = 0; i < polygon.Vertices.Length; i++)
-            if (!range.Add(polygon, i, axis, radius)) return GeometrySign.Unresolved;
+            if (!range.Add(polygon, i, axis, radius, share)) return GeometrySign.Unresolved;
         for (int i = 0; i < polygon.Edges.Length; i++)
-            if (!Edge(polygon, i, axis, radius, ref range)) return GeometrySign.Unresolved;
+            if (!Edge(polygon, i, axis, radius, share, ref range)) return GeometrySign.Unresolved;
 
         FeatureNumber length = Root(FeaturePoint.Dot(polygon.Normal, polygon.Normal));
         FeatureNumber scale = radius.Divide(length);
@@ -83,11 +84,17 @@ internal static class SupportFootprintProposalGeometry
             HasUpper = true;
         }
 
-        internal bool Add(SupportPolygon polygon, int index, FeaturePoint axis, FeatureNumber radius)
+        internal bool Add(SupportPolygon polygon, int index, FeaturePoint axis, FeatureNumber radius, bool share)
         {
             FeaturePoint point = polygon.Vertices[index];
-            FeatureNumber dx = point.X.Subtract(axis.X), dz = point.Z.Subtract(axis.Z);
-            FeatureNumber radicand = radius.Multiply(radius, exactZeroProducts: true).Subtract(dx.Multiply(dx, exactZeroProducts: true).Add(dz.Multiply(dz, exactZeroProducts: true)));
+            FeatureNumber squared;
+            if (share) squared = polygon.FootprintOperands(index, axis).ProjectedDistanceSquared;
+            else
+            {
+                FeatureNumber dx = point.X.Subtract(axis.X), dz = point.Z.Subtract(axis.Z);
+                squared = dx.Multiply(dx, exactZeroProducts: true).Add(dz.Multiply(dz, exactZeroProducts: true));
+            }
+            FeatureNumber radicand = radius.Multiply(radius, exactZeroProducts: true).Subtract(squared);
             GeometrySign sign = radicand.Sign;
             if (sign == GeometrySign.Unresolved && polygon.HasSource)
             {
@@ -105,18 +112,18 @@ internal static class SupportFootprintProposalGeometry
         }
     }
 
-    static bool Edge(SupportPolygon polygon, int index, FeaturePoint axis, FeatureNumber radius, ref Maximum range)
+    static bool Edge(SupportPolygon polygon, int index, FeaturePoint axis, FeatureNumber radius, bool share, ref Maximum range)
     {
         FeaturePoint vertex = polygon.Vertices[index], edge = polygon.Edges[index];
-        FeatureNumber a = edge.X.Multiply(edge.X, exactZeroProducts: true).Add(edge.Z.Multiply(edge.Z, exactZeroProducts: true));
+        SupportFootprintEdgeOperands operands = polygon.FootprintOperands(index, axis, share);
+        FeatureNumber a = operands.LengthSquared;
         GeometrySign length = a.Sign;
         if (length == GeometrySign.Unresolved && polygon.HasSource)
             length = polygon.SourcePredicates.EdgeLength(polygon, index);
         if (length == GeometrySign.Zero) return true;
         if (length != GeometrySign.Positive) return false;
-        FeatureNumber dx = vertex.X.Subtract(axis.X), dz = vertex.Z.Subtract(axis.Z);
-        FeatureNumber b = dx.Multiply(edge.X, exactZeroProducts: true).Add(dz.Multiply(edge.Z, exactZeroProducts: true));
-        FeatureNumber cross = dx.Multiply(edge.Z, exactZeroProducts: true).Subtract(dz.Multiply(edge.X, exactZeroProducts: true));
+        FeatureNumber dx = operands.DeltaX, dz = operands.DeltaZ;
+        FeatureNumber b = operands.Dot, cross = operands.Cross;
         // Parallel projected edges retain closed tangency under an enclosed installed transform.
         FeatureNumber k = edge.Z.IsExact && edge.Z.Value == 0
             ? radius.Multiply(radius, exactZeroProducts: true).Subtract(dz.Multiply(dz, exactZeroProducts: true))

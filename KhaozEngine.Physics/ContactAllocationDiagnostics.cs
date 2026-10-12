@@ -9,6 +9,7 @@ internal enum ContactAllocationPhase
     ProducerPin, MovementLease, Fixture, SupportProposals, SupportTraversal, SupportCapture,
     SupportMaterialization, SupportExtrema, SupportContacts, SupportJoins, SupportCertification, SupportSelection,
     SupportSourceSetup, SupportColumnSetup, SupportPlanarContact, SupportPlanarHeight, SupportLocalValidation,
+    SupportEdgeSetup,
 }
 
 /// <summary>Opt-in phase boundaries. The observer owns preallocated measurement storage.</summary>

@@ -15,6 +15,7 @@ internal sealed class SupportPolygon
     FeaturePoint[] _vertices = new FeaturePoint[4], _edges = new FeaturePoint[4];
     Vector3[] _sourceVertices = new Vector3[4];
     SupportFootprintSourcePredicates? _sourcePredicates;
+    readonly SupportFootprintEdgeWorkspace _footprintEdges = new();
     int _count;
 
     internal StaticHandle Static { get; private set; }
@@ -31,12 +32,17 @@ internal sealed class SupportPolygon
     internal SupportPolygonSourceMap SourceMap { get; private set; }
     internal ReadOnlySpan<Vector3> SourceVertices => _sourceVertices.AsSpan(0, _count);
     internal SupportFootprintSourcePredicates SourcePredicates => _sourcePredicates ??= new();
+    internal void BeginFootprintOperands(in SupportFootprintRequest request) => _footprintEdges.Begin(request);
+    internal bool SharesFootprintOperands(in SupportFootprintProposal proposal) => _footprintEdges.Shares(proposal);
+    internal SupportFootprintEdgeOperands FootprintOperands(int index, FeaturePoint axis, bool share = true) =>
+        _footprintEdges.Read(this, index, axis, share);
 
     internal SupportPolygon(SupportFootprintSourcePredicates? sourcePredicates = null) => _sourcePredicates = sourcePredicates;
 
     /// <summary>Starts a polygon of <paramref name="count"/> vertices, growing the reused storage when needed.</summary>
     internal void Begin(StaticHandle owner, int elementId, int count)
     {
+        _footprintEdges.Clear();
         Static = owner;
         ElementId = elementId;
         HasSource = false;
@@ -51,15 +57,21 @@ internal sealed class SupportPolygon
 
     internal void BeginSource(in InstalledPoseOperator map)
     {
+        _footprintEdges.Clear();
         SourceMap = new(map.X.Bounds, map.Y.Bounds, map.Z.Bounds,
             new((float)map.Translation.X.Value, (float)map.Translation.Y.Value, (float)map.Translation.Z.Value));
         HasSource = map.IsResolved;
     }
 
-    internal void SetSource(int index, Vector3 local) => _sourceVertices[index] = local;
+    internal void SetSource(int index, Vector3 local)
+    {
+        _footprintEdges.Clear();
+        _sourceVertices[index] = local;
+    }
 
     internal void Set(int index, FeaturePoint vertex, FeaturePoint edge)
     {
+        _footprintEdges.Clear();
         _vertices[index] = vertex;
         _edges[index] = edge;
     }
@@ -67,6 +79,7 @@ internal sealed class SupportPolygon
     /// <summary>Completes the polygon: its normal length, bounds and whether every enclosure resolved.</summary>
     internal void Finish(FeaturePoint normal)
     {
+        _footprintEdges.Clear();
         Normal = normal;
         NormalLength = SupportGeometry.Length(normal.Bounds);
         bool resolved = NormalLength.IsResolved && NormalLength.Lower > 0 && _count >= 3;

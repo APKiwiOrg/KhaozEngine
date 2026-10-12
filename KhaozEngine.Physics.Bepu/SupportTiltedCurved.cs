@@ -22,14 +22,33 @@ internal sealed class SupportTiltedCurved
         GeometrySign admitted = _admission.Measure(_geometry, leaf.Shape, cap, request.Axis.X, request.Axis.Y,
             expanded, bottom, top);
         if (admitted != GeometrySign.Positive) return admitted;
-        GeometrySign axis = Maximum(leaf, part, true, 0, out var axisPoint, out _);
-        GeometrySign footprint = Maximum(leaf, part, false, 0, out var point, out var height);
+        bool noUpperDomain = false;
+        if (cap >= 0 && _geometry.CapNeedsUpperCoverage(part))
+        {
+            GeometryInterval reach = GeometryInterval.Exact(leaf.Radius).Add(GeometryInterval.Exact(leaf.HalfLength));
+            GeometrySign upperDomain = _admission.Measure(_geometry, leaf.Shape, cap, request.Axis.X, request.Axis.Y,
+                GeometryInterval.Exact(request.Radius), leaf.Centre.Y.Subtract(reach).Lower,
+                leaf.Centre.Y.Add(reach).Upper, requireUpward: true);
+            if (upperDomain == GeometrySign.Unresolved) return upperDomain;
+            noUpperDomain = upperDomain == GeometrySign.Negative;
+        }
+        var axisPoint = default(SupportTiltedCurvedGeometry.Witness);
+        var point = default(SupportTiltedCurvedGeometry.Witness);
+        var height = default(GeometryInterval);
+        GeometrySign axis = noUpperDomain ? GeometrySign.Negative : Maximum(leaf, part, true, 0, out axisPoint, out _);
+        GeometrySign footprint = noUpperDomain ? GeometrySign.Negative : Maximum(leaf, part, false, 0, out point, out height);
         if (axis == GeometrySign.Unresolved || footprint == GeometrySign.Unresolved) return GeometrySign.Unresolved;
+        // A cap has one normal, so its selected geometric point never needs replacement.
+        // At cosine one, every walkable curved point attains its part's global height.
         if (footprint == GeometrySign.Positive && point.Normal.Y.Lower < request.CosMaxSlope)
         {
-            GeometrySign walkable = Maximum(leaf, part, false, request.CosMaxSlope, out var replacement, out _);
-            if (walkable == GeometrySign.Unresolved) return walkable;
-            if (walkable == GeometrySign.Positive) point = replacement;
+            if (cap >= 0) _geometry.RefineCapUpward(part, request.CosMaxSlope, ref point);
+            else if (request.CosMaxSlope < 1 && !point.AtSideCrest)
+            {
+                GeometrySign walkable = Maximum(leaf, part, false, request.CosMaxSlope, out var replacement, out _);
+                if (walkable == GeometrySign.Unresolved) return walkable;
+                if (walkable == GeometrySign.Positive) point = replacement;
+            }
         }
         byte count = 0;
         SupportFootprintWitness first = default, second = default;
@@ -58,11 +77,10 @@ internal sealed class SupportTiltedCurved
     {
         if (leaf.Shape == SupportCurvedShape.Capsule) return _geometry.Round(axis, slope, out witness, out height);
         bool cap = part != SupportNeighborhoodCurved.Side;
-        if (cap && _geometry.CapKind(part) == 3) { witness = default; height = default; return GeometrySign.Negative; }
+        if (cap && _geometry.CapFacesDown(part)) { witness = default; height = default; return GeometrySign.Negative; }
         GeometrySign result = axis ? _geometry.Axis(cap, part, out witness) :
             cap ? _geometry.Cap(part, false, out witness, out _) : _geometry.Side(slope, out witness, out _);
         height = result == GeometrySign.Positive ? witness.Position.Y : default;
-        if (cap && slope > 0 && result == GeometrySign.Positive) return _geometry.CapSlope(slope, ref witness);
         return result;
     }
 

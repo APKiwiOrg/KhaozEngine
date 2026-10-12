@@ -17,12 +17,36 @@ public partial class SupportFootprintTests
         using var scene = new SupportFootprintScene();
         StaticHandle owner = scene.Install(new CylinderShape(0.25f, 1),
             new(new(0.08349365f, -0.25f, 0), Quaternion.CreateFromAxisAngle(Vector3.UnitZ, MathF.PI / 6)));
-        var part = SupportFootprintCurvedProofOracle.Installed(scene.World, owner)[0].Tangent;
+        var source = SupportFootprintCurvedProofOracle.Installed(scene.World, owner)[0];
+        var part = source.Tangent;
         double u = Math.Sqrt(part.Axis.X * part.Axis.X + part.Axis.Z * part.Axis.Z);
         var cap = part.Centre + part.Axis * part.HalfLength;
         var crest = cap + new OracleVector(-part.Axis.Y * part.Axis.X / u, u,
             -part.Axis.Y * part.Axis.Z / u) * part.Radius;
         var request = Request(x: (float)(crest.X + 0.2f), lower: -2, upper: 2, cosine: 0.4f);
+        var expected = SupportFootprintOracle.Curved(part, request);
+        Assert.NotNull(expected);
+        Assert.True(expected.Admitted);
+        Assert.True(expected.HasDiscMaximum);
+        var reading = SupportFootprintTiltedOracle.Enclose(source, expected.GeometricMaximum!.Value, request, restricted: false);
+        Assert.True(reading.Normal.Y.Lower > R.Zero);
+        var volume = SupportFootprintOracle.Volume(request);
+        Assert.True(reading.Position.Y.Lower >= R.From(volume.Bottom));
+        Assert.True(reading.Position.Y.Upper <= R.From(volume.Top));
+        var interior = SupportFootprintTiltedOracle.Crest(source, false).Position;
+        R inward = new(1, 1024);
+        Assert.True(source.Half > inward);
+        interior = new(interior.X - source.Axis.X * (B)inward,
+            interior.Y - source.Axis.Y * (B)inward, interior.Z - source.Axis.Z * (B)inward);
+        B ix = interior.X - (B)R.From(request.Axis.X), iz = interior.Z - (B)R.From(request.Axis.Y);
+        Assert.True((ix * ix + iz * iz).Upper <= R.From(request.Radius).Square());
+        Assert.True(interior.Y.Lower >= R.From(volume.Bottom) && interior.Y.Upper <= R.From(volume.Top));
+        B dx = reading.Position.X - (B)R.From(request.Axis.X), dz = reading.Position.Z - (B)R.From(request.Axis.Y);
+        R expanded = R.From(request.Radius) + R.From(request.ContactBand);
+        Assert.True((dx * dx + dz * dz).Upper <= expanded.Square());
+        var perPoint = SupportFootprintOracle.PerPointSupremum(part, request);
+        Assert.True(double.IsFinite(perPoint.Lower) && perPoint.Lower <= perPoint.Upper);
+        Assert.True(R.From(perPoint.Upper) <= R.From(part.Centre.Y) + source.Half + source.Radius);
         using var lease = scene.World.AcquireQueryReadLease();
         var members = MemberSentinels(256); var before = (SupportFootprintMember[])members.Clone();
         var joins = Enumerable.Repeat(73UL, 1024).ToArray();
@@ -104,9 +128,7 @@ public partial class SupportFootprintTests
                 Assert.True((dx * dx + dz * dz).Upper <= R.From(request.Radius).Square());
                 Assert.True(exact.Normal.Y.Lower >= R.From(request.CosMaxSlope));
             }
-            CheckTiltedMember(actual[i], expected[i], stratum == "finite-end" ?
-                source : null);
-            CheckTiltedPerPointEnclosure(actual[i], source.Tangent, request);
+            CheckTiltedMember(actual[i], expected[i], source, request);
         }
         _output.WriteLine($"{stratum} {TiltedStatistics(scene.World)}");
         long before = GC.GetAllocatedBytesForCurrentThread();
@@ -117,56 +139,64 @@ public partial class SupportFootprintTests
     }
 
     static void CheckTiltedMember(SupportFootprintMember member, FootprintOracleMember reference,
-        SupportFootprintCurvedProofOracle.InstalledPart? crest = null)
+        SupportFootprintCurvedProofOracle.InstalledPart source, in SupportFootprintRequest request)
     {
         Assert.Equal(reference.ElementId, member.ElementId);
         Assert.Equal(reference.Witnesses.Count, member.WitnessCount);
         Assert.Equal(reference.HasDiscMaximum, member.HasDiscMaximum);
-        if (reference.HasDiscMaximum) Assert.InRange(reference.Maximum, member.DiscHeightLower, member.DiscHeightUpper);
+        if (reference.GeometricMaximum is { } maximum)
+        {
+            var enclosed = SupportFootprintTiltedOracle.Enclose(source, maximum, request, restricted: false);
+            ContainsCurvedBounds(member.DiscHeightLower, member.DiscHeightUpper, enclosed.Position.Y);
+        }
         for (int role = 0; role < member.WitnessCount; role++)
         {
             var witness = role == 0 ? member.First : member.Second;
             var expected = reference.Witnesses[role];
             Assert.Equal(expected.Role, witness.Role);
-            if (crest is { } part && witness.Role == SupportWitnessRole.Footprint)
-            {
-                var exact = SupportFootprintTiltedOracle.Crest(part, part.Tangent.Surface != OracleSurface.CylinderSide);
-                ContainsCurvedVector(witness.Position, witness.PositionErrorMetres, exact.Position);
-                ContainsCurvedVector(witness.Normal, witness.NormalError, exact.Normal);
-                ContainsCurvedBounds(member.DiscHeightLower, member.DiscHeightUpper, exact.Position.Y);
-                continue;
-            }
-            Contains(witness.Position, witness.PositionErrorMetres, expected.Position);
-            Contains(witness.Normal, witness.NormalError, expected.Normal);
+            var enclosed = SupportFootprintTiltedOracle.Enclose(source, expected, request);
+            ContainsCurvedVector(witness.Position, witness.PositionErrorMetres, enclosed.Position);
+            ContainsCurvedVector(witness.Normal, witness.NormalError, enclosed.Normal);
+            Assert.True(R.From(witness.UpwardLower) <= enclosed.Normal.Y.Lower,
+                $"upward={witness.UpwardLower:R} oracle=[{enclosed.Normal.Y.Lower}, {enclosed.Normal.Y.Upper}]");
+            if (expected.Role == member.First.Role)
+                Assert.Equal(witness.UpwardLower, member.UpwardLower);
         }
-        static void Contains(Vector3 value, float error, OracleVector expected)
-        {
-            Assert.InRange(expected.X, (double)value.X - error, (double)value.X + error);
-            Assert.InRange(expected.Y, (double)value.Y - error, (double)value.Y + error);
-            Assert.InRange(expected.Z, (double)value.Z - error, (double)value.Z + error);
-        }
+        CheckTiltedPerPointEnclosure(member, source, request);
     }
 
-    static void CheckTiltedPerPointEnclosure(SupportFootprintMember member, OracleTangent part,
+    static void CheckTiltedPerPointEnclosure(SupportFootprintMember member, SupportFootprintCurvedProofOracle.InstalledPart source,
         in SupportFootprintRequest request)
     {
+        var part = source.Tangent;
         var reading = SupportFootprintOracle.PerPointSupremum(part, request);
-        if (double.IsNegativeInfinity(reading.Upper)) return;
+        if (double.IsNegativeInfinity(reading.Upper))
+        {
+            Assert.Equal(double.NegativeInfinity, reading.Lower);
+            return;
+        }
         Assert.True(member.HasDiscMaximum);
         // A per-point supremum differs from SG-19's selected tangent. The attained tangent
         // bounds it below, and the independent unit-axis solid bounds every point above.
         R upper = R.From(part.Centre.Y) + R.From(part.HalfLength) + R.From(part.Radius);
-        Assert.True(R.From(reading.Upper) <= upper);
         var witness = member.First.Role == SupportWitnessRole.Footprint ? member.First : member.Second;
         B Component(float value, float error) => new(R.From(value) - R.From(error), R.From(value) + R.From(error));
         B ny = Component(witness.Normal.Y, witness.NormalError);
-        if (ny.Lower <= R.Zero) return;
+        if (ny.Lower <= R.Zero)
+        {
+            var reference = SupportFootprintOracle.Curved(part, request)!;
+            var locator = reference.Witnesses.Single(w => w.Role == SupportWitnessRole.Footprint);
+            ny = SupportFootprintTiltedOracle.Enclose(source, locator, request).Normal.Y;
+            Assert.True(ny.Lower > R.Zero);
+        }
         B px = Component(witness.Position.X, witness.PositionErrorMetres), py = Component(witness.Position.Y, witness.PositionErrorMetres);
         B pz = Component(witness.Position.Z, witness.PositionErrorMetres), nx = Component(witness.Normal.X, witness.NormalError);
         B nz = Component(witness.Normal.Z, witness.NormalError);
         B plane = py + (nx * (px - (B)R.From(request.Axis.X)) + nz * (pz - (B)R.From(request.Axis.Y))) / ny;
         R lower = py.Lower < plane.Lower ? py.Lower : plane.Lower;
-        Assert.True(lower <= R.From(reading.Lower));
+        ContainsCurvedBounds(SupportFootprintCurvedProofOracle.Publish(new(lower, upper)).Lower,
+            SupportFootprintCurvedProofOracle.Publish(new(lower, upper)).Upper,
+            new(R.From(reading.Lower), R.From(reading.Upper)));
     }
 
     static string TiltedStatistics(object world)

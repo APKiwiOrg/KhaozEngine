@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -18,7 +19,7 @@ public partial class SupportFootprintTests
     {
         using var scene = new SupportFootprintScene();
         bool equality = shape == "equality";
-        scene.Install(shape == "cylinder" ? new CylinderShape(0.3f, 2) :
+        StaticHandle owner = scene.Install(shape == "cylinder" ? new CylinderShape(0.3f, 2) :
             equality ? new CapsuleShape(0.25f, 1) : new CapsuleShape(0.3f, 2),
             new(new(0, equality ? 0 : -0.25f, 0), equality ? new Quaternion(0, 0, 0.5f, MathF.Sqrt(3) / 2) :
                 Quaternion.CreateFromAxisAngle(Vector3.UnitZ, MathF.PI / 6)));
@@ -30,6 +31,12 @@ public partial class SupportFootprintTests
         var cold = capability.QuerySupportFootprint(lease, request, members, joins);
         long coldBytes = GC.GetAllocatedBytesForCurrentThread() - coldBefore;
         Assert.Equal(CapsuleFeatureStatus.Complete, cold.Status);
+        foreach (var source in SupportFootprintCurvedProofOracle.Installed(scene.World, owner))
+        {
+            var expected = SupportFootprintOracle.Curved(source.Tangent, request);
+            if (expected is not null)
+                CheckTiltedMember(Assert.Single(members.Take(cold.Members), m => m.ElementId == expected.ElementId), expected, source, request);
+        }
         long before = GC.GetAllocatedBytesForCurrentThread();
         var warm = capability.QuerySupportFootprint(lease, request, members, joins);
         long bytes = GC.GetAllocatedBytesForCurrentThread() - before;

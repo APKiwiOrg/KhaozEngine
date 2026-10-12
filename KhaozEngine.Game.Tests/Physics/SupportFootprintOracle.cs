@@ -17,6 +17,7 @@ internal sealed record FootprintOracleMember(StaticHandle Static, int ElementId,
     internal SupportFootprintExactOracle.Bounds? PlaneBounds { get; init; }
     internal SupportFootprintExactOracle.Bounds? MaximumBounds { get; init; }
     internal double UpwardLower => Normal.Y;
+    internal FootprintOracleWitness? GeometricMaximum { get; init; }
 }
 
 internal readonly record struct FootprintOracleSupport(SupportStatus Status, double Height, double HeightLower,
@@ -88,7 +89,8 @@ internal static class SupportFootprintOracle
         return new(part.Static, part.ElementId, true, highest is not null,
             own is { } p && p.Normal.Y > 0 ? Plane(p.Position, p.Normal, request.Axis.X, request.Axis.Y) : double.NaN,
             highest?.Position.Y ?? double.NaN, own?.Normal ?? default, witnesses,
-            witnesses.All(w => InDisc(w.Position, axisX, axisZ, discRadius)));
+            witnesses.All(w => InDisc(w.Position, axisX, axisZ, discRadius)))
+        { GeometricMaximum = highest is { } maximum ? new(SupportWitnessRole.Footprint, maximum.Position, maximum.Normal, maximum.Normal.Y) : null };
     }
 
     internal static FootprintOracleSupport Select(IReadOnlyList<FootprintOracleMember> members,

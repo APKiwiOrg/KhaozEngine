@@ -19,7 +19,8 @@ internal sealed partial class SupportTiltedCurvedGeometry
             { witness = point; maximum = point.Position.Y; }
             else if (point.Position.Y.Upper >= maximum.Lower)
             {
-                witness = new(Hull(witness.Position, point.Position), Hull(witness.Normal, point.Normal));
+                witness = new(Hull(witness.Position, point.Position), Hull(witness.Normal, point.Normal),
+                    witness.AtSideCrest && point.AtSideCrest);
                 maximum = GeometryInterval.Enclose(Math.Max(maximum.Lower, point.Position.Y.Lower),
                     Math.Max(maximum.Upper, point.Position.Y.Upper));
             }
@@ -43,7 +44,7 @@ internal sealed partial class SupportTiltedCurvedGeometry
             if (conditionalHeight.IsResolved && B(distance).Lower > 0)
             {
                 GeometryInterval along = B(_u).Multiply(N(B(p))).Multiply(B(nearest).Divide(B(distance)))
-                    .Add(B(_k).Multiply(conditionalHeight)).Multiply(I(end));
+                    .Add(_axis.Y.Multiply(conditionalHeight)).Multiply(I(end));
                 if (along.Upper < 0) return GeometrySign.Negative;
             }
             return exists;

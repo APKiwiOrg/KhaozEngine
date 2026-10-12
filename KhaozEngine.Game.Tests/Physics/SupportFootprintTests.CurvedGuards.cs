@@ -61,10 +61,12 @@ public partial class SupportFootprintTests
         var joins = Enumerable.Repeat(73UL, 1024).ToArray();
         var result = Capability(scene.World).QuerySupportFootprint(lease, Request(), members, joins);
         Assert.Equal(CapsuleFeatureStatus.Complete, result.Status);
-        var expected = SupportFootprintCurvedProofOracle.Installed(scene.World, owner)
+        var parts = SupportFootprintCurvedProofOracle.Installed(scene.World, owner);
+        var expected = parts
             .Select(p => SupportFootprintOracle.Curved(p.Tangent, Request())).OfType<FootprintOracleMember>().ToArray();
         var actual = members.Take(result.Members).Where(m => m.Static == owner).ToArray();
         Assert.Equal(expected.Length, actual.Length);
-        for (int i = 0; i < actual.Length; i++) CheckTiltedMember(actual[i], expected[i]);
+        for (int i = 0; i < actual.Length; i++)
+            CheckTiltedMember(actual[i], expected[i], parts.Single(p => p.Tangent.ElementId == actual[i].ElementId), Request());
     }
 }

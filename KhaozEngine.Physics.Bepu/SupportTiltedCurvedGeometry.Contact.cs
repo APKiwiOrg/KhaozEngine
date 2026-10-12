@@ -15,9 +15,11 @@ internal sealed partial class SupportTiltedCurvedGeometry : ISupportCurvedRootFu
         lowest = default;
         _contactShape = shape; _contactPart = part; _probe = probe;
         _boundaryMode = false;
+        _stationaryMode = false;
+        _axisMode = false;
         // A second probe radius is proof slack, outside every possible contact centre.
         // It gives strictly positive endpoint signs without enlarging the published reach.
-        GeometryInterval reach = B(_h).Multiply(B(_k)).Add(B(_r)).Add(I(probe).Multiply(I(2)));
+        GeometryInterval reach = B(_h).Multiply(B(_arithmetic.Abs(_k))).Add(B(_r)).Add(I(probe).Multiply(I(2)));
         double low = _centre.Y.Subtract(reach).Lower, high = _centre.Y.Add(reach).Upper;
         _contactLow = low; _contactHigh = high;
         if (!SolveRoots(low, high)) return GeometrySign.Unresolved;
@@ -36,8 +38,10 @@ internal sealed partial class SupportTiltedCurvedGeometry : ISupportCurvedRootFu
 
     GeometryInterval ISupportCurvedRootFunction.Evaluate(GeometryInterval y, bool derivative)
     {
+        if (_axisMode) return AxisValue(y, derivative);
+        if (_stationaryMode) return StationaryValue(y, derivative);
         if (_boundaryMode) return BoundaryValue(y, derivative);
-        GeometryInterval dy = y.Subtract(_centre.Y), u = B(_u), k = B(_k), p = B(_p);
+        GeometryInterval dy = y.Subtract(_centre.Y), u = B(_u), k = _axis.Y, p = B(_p);
         GeometryInterval t = k.Multiply(dy).Subtract(u.Multiply(p));
         GeometryInterval across = u.Multiply(dy).Add(k.Multiply(p));
         GeometryInterval radialSquare = across.Square().Add(B(_q).Square());
@@ -71,8 +75,11 @@ internal sealed partial class SupportTiltedCurvedGeometry : ISupportCurvedRootFu
         return I(2).Multiply(radialTerm.Add(gap.Multiply(gapDerivative)));
     }
 
-    GeometrySign ISupportCurvedRootFunction.Sign(double parameter) => _boundaryMode ? BoundarySign(parameter) : SignContact(parameter);
+    GeometrySign ISupportCurvedRootFunction.Sign(double parameter) => _axisMode ? AxisSign(parameter) :
+        _stationaryMode ? StationarySign(parameter) :
+        _boundaryMode ? BoundarySign(parameter) : SignContact(parameter);
     GeometrySign ISupportCurvedRootFunction.DerivativeSign(GeometryInterval parameter) =>
+        _axisMode ? GeometrySign.Unresolved : _stationaryMode ? StationaryDerivativeSign(parameter) :
         _boundaryMode ? BoundaryDerivativeSign(parameter) : GeometrySign.Unresolved;
 
     GeometrySign SignContact(double y)

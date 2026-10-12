@@ -14,7 +14,7 @@ internal sealed partial class SupportTiltedCurvedGeometry
         GeometryInterval v = PositiveRoot(I(1).Subtract(z.Square()));
         if (!derivative)
         {
-            GeometryInterval parallel = B(_boundaryP).Subtract(B(_r).Multiply(B(_k)).Multiply(v).Multiply(I(_boundaryRim)));
+            GeometryInterval parallel = B(_boundaryP).Subtract(B(_r).Multiply(_axis.Y).Multiply(v).Multiply(I(_boundaryRim)));
             GeometryInterval lateral = B(_q).Add(B(_r).Multiply(z));
             // Keep squared distances factored. At a pole the normal-square identity must
             // not be lost by separately enclosing R^2*k^2 and R^2*u^2.

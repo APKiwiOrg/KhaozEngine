@@ -300,13 +300,53 @@ probe nor incomplete support is a fallback.
 
 ### Task 6b region implementation
 
-`SupportTiltedCurvedGeometry` orients the same unnormalized installed column upward. Its finite
+`SupportTiltedCurvedGeometry` orients the same unnormalized installed column upward when the
+source box certifies a weak Y sign. A box crossing zero retains signed Y. The finite
 side keeps the full parameter range, the original disc endpoints and the closed slope endpoints.
+The positive normalizing length preserves a source's weak Y sign exactly. Intersect the
+normalized component enclosure with that certified half-line before choosing an axial branch
+or publishing a cap's component bound. Scalar normal error never supplies this certificate.
 The stationary equation is solved only between zero and `-Q/R`. The unsquared derivative requires
 z and `Q+R*z` to have opposite signs, so the squared equation's other roots cannot be stationary
 points of the original branch. The displayed strictly negative second derivative proves uniqueness
 of a disc-branch stationary maximum on its smooth domain. Source-uniform endpoint signs and a
 nonzero derivative enclosure certify existence and coverage of each retained root region.
+
+When Y includes zero, the disc branch uses `|k|` and its unsquared stationary function is
+`z/sqrt(1-z*z) + |k|*(Q+R*z)/sqrt(disc*disc-(Q+R*z)^2)`. Its derivative is strictly positive
+on the smooth domain, including k=0. A uniform existence bracket therefore covers every source's
+unique stationary point. If no such bracket covers the common domain, retain the union of the
+source-dependent domain tails in the existing bounded root owner. Signed Y selects the corresponding
+upper or lower finite axial endpoint. A box crossing zero retains their hull, including the tied
+horizontal crest. No source box is dropped because its Y sign is indefinite.
+
+At c=1 a walkable normal is vertical. On a capsule it is a global solid-height maximum.
+On a finite side it requires k=0 and is a global horizontal crest. On a cap it requires
+a horizontal plane and all cap points share its height. Consequently any such point in D
+already attains the unrestricted disc maximum. No distinct walkable replacement is needed
+at this exact gate, including a source box where only some sources have a vertical normal.
+Retain the original witness and its component enclosure without asserting Y=1 for other sources.
+A cap also needs no distinct replacement at any c because its normal is constant. If its
+geometric maximum is steep, every cap point is steep. If any cap point is walkable, its
+geometric maximum is walkable too. Source-polynomial slope certificates may refine the
+cap's upward component, including exact equality. An undecided certificate leaves its
+original enclosure intact because the selected geometric witness remains valid for every source.
+A selected barrel crest has the side's largest normal Y, u. A steep crest implies that the
+whole side is steep. On a capsule any spherical end point with normal Y greater than u belongs
+to the higher core end and exceeds the side's global height bound. It would already have replaced
+the barrel in the unrestricted maximum. Therefore a retained barrel crest also needs no distinct
+walkable replacement. Candidate hulls retain this certificate only when every retained candidate
+is a crest. Other source families crossing the side's slope-availability boundary retain the
+original quadratic `u*u*z*z + c*c - u*u` in the bounded root owner. A family with source-dependent
+walkable existence refuses at the storage bound instead of failing before a coverage attempt.
+
+Caps keep their raw signed normals. Their rim candidates do not divide by Y. A cap whose Y includes
+zero offers its whole-circle crest when original disc membership is certified, or retains the full
+possible vertical interval until a boundary candidate proves an attained lower bound. Axis roots
+at finite ends and vertical caps use their original linear equations under the same bounded root
+rules when a closed source predicate remains uncertain. A cap whose upper-role existence changes
+across the source box takes full surface coverage with the upward predicate included. Uncertain
+feasible cells remain live and refuse at the storage bound instead of publishing an uncertified role.
 
 End and cap crossings use the original function `A+B*z+J*z*z-K*sqrt(1-z*z)`, with the rim sign
 included in K. This avoids manufacturing a pair of almost coincident roots by squaring a small K.

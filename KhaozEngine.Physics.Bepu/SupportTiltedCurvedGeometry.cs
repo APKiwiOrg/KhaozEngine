@@ -8,7 +8,7 @@ namespace KhaozEngine.Physics.Bepu;
 /// projected domain. Source-uniform root regions enclose every stationary and boundary stratum.</summary>
 internal sealed partial class SupportTiltedCurvedGeometry
 {
-    internal readonly record struct Witness(GeometryVector Position, GeometryVector Normal);
+    internal readonly record struct Witness(GeometryVector Position, GeometryVector Normal, bool AtSideCrest = false);
     readonly record struct Candidate(GeometryInterval Parameter, double End, bool AtEnd, bool Slope, int Rim);
     readonly SupportCurvedSourceArithmetic _arithmetic = new();
     readonly SupportCurvedRootRegions _roots = new();
@@ -44,18 +44,17 @@ internal sealed partial class SupportTiltedCurvedGeometry
     internal bool Begin(in SupportCurvedLeaf leaf, double x, double z, double disc)
     {
         _arithmetic.Reset(leaf.SourceColumn);
+        _axisMode = false;
         Number sx = _arithmetic.X, sy = _arithmetic.Y, sz = _arithmetic.Z;
-        GeometrySign sign = Sign(sy);
-        if (sign is not (GeometrySign.Positive or GeometrySign.Negative)) return false;
-        _direction = sign == GeometrySign.Positive ? 1 : -1;
-        if (sign == GeometrySign.Negative) { sx = Neg(sx); sy = Neg(sy); sz = Neg(sz); }
+        _direction = B(sy).Upper <= 0 ? -1 : 1;
+        if (_direction < 0) { sx = Neg(sx); sy = Neg(sy); sz = Neg(sz); }
         Number horizontal = Sign(sz) == GeometrySign.Zero ? _arithmetic.Abs(sx) :
             Sign(sx) == GeometrySign.Zero ? _arithmetic.Abs(sz) : Root(Add(Sq(sx), Sq(sz)));
         Number length = Root(Add(Sq(horizontal), Sq(sy)));
         _sourceY = sy; _horizontal = horizontal; _length = length;
         _u = Div(horizontal, length); _k = Div(sy, length);
         _axisX = Div(sx, length); _axisZ = Div(sz, length);
-        _axis = new(B(_axisX), B(_k), B(_axisZ));
+        _axis = new(B(_axisX), NormalizedYBounds(), B(_axisZ));
         Number ex, ez;
         if (Sign(sz) == GeometrySign.Zero) { ex = C(Sign(sx) == GeometrySign.Positive ? 1 : -1); ez = C(0); }
         else if (Sign(sx) == GeometrySign.Zero) { ex = C(0); ez = C(Sign(sz) == GeometrySign.Positive ? 1 : -1); }
@@ -68,7 +67,7 @@ internal sealed partial class SupportTiltedCurvedGeometry
         _p = Add(Mul(dx, ex), Mul(dz, ez));
         _q = Add(Mul(dx, Neg(ez)), Mul(dz, ex));
         _r = C(leaf.Radius); _h = C(leaf.HalfLength); _disc = C(disc);
-        return _axis.IsResolved && _w.IsResolved && B(_u).Lower > 0 && B(_k).Lower > 0;
+        return _axis.IsResolved && _w.IsResolved && B(_u).Lower > 0;
     }
 
     bool Keep(GeometryInterval z, double end = 0, bool atEnd = false, bool slope = false, int rim = 0)
@@ -86,6 +85,8 @@ internal sealed partial class SupportTiltedCurvedGeometry
         _boundaryB = Mul(C(2), Mul(_r, _q)); _boundaryJ = Mul(Sq(_r), Sq(_u));
         _boundaryK = Mul(C(rim < 0 ? -2 : 2), Mul(Mul(_r, _k), p));
         _boundaryMode = true;
+        _axisMode = false;
+        _stationaryMode = false;
         if (!SolveRoots(-1, 1, maximumRoots: 4)) return false;
         for (int i = 0; i < _roots.Count; i++)
         {
@@ -98,6 +99,7 @@ internal sealed partial class SupportTiltedCurvedGeometry
     bool Stationary()
     {
         if (Sign(_q) == GeometrySign.Zero) return Keep(I(0));
+        if (_axis.Y.Lower <= 0) return SignedStationary();
         Number k2 = Sq(_k), q2 = Sq(_q), r2 = Sq(_r), u2 = Sq(_u);
         _polynomial[0] = Neg(Mul(k2, q2));
         _polynomial[1] = Neg(Mul(C(2), Mul(k2, Mul(_q, _r))));
@@ -128,9 +130,20 @@ internal sealed partial class SupportTiltedCurvedGeometry
         {
             GeometrySign available = Sign(Sub(_u, C(slope)));
             if (available == GeometrySign.Negative) return GeometrySign.Negative;
-            if (available == GeometrySign.Unresolved) return GeometrySign.Unresolved;
-            Number limit = Root(Sub(C(1), Sq(Div(C(slope), _u))));
-            if (!Keep(B(limit), slope: true) || !Keep(B(Neg(limit)), slope: true)) return GeometrySign.Unresolved;
+            if (available == GeometrySign.Unresolved)
+            {
+                _polynomial[0] = Sub(Sq(C(slope)), Sq(_u));
+                _polynomial[1] = C(0); _polynomial[2] = Sq(_u);
+                if (!SolveRoots(_polynomial.AsSpan(0, 3), -1, 1)) return GeometrySign.Unresolved;
+                if (_roots.Count == 0) return GeometrySign.Negative;
+                for (int i = 0; i < _roots.Count; i++)
+                    if (!Keep(_roots.Get(i), slope: true)) return GeometrySign.Unresolved;
+            }
+            else
+            {
+                Number limit = Root(Sub(C(1), Sq(Div(C(slope), _u))));
+                if (!Keep(B(limit), slope: true) || !Keep(B(Neg(limit)), slope: true)) return GeometrySign.Unresolved;
+            }
         }
         if (!Keep(I(-1)) || !Keep(I(1)) || !Keep(I(0)) ||
             !Keep(B(Div(Sub(Neg(_disc), _q), _r))) || !Keep(B(Div(Sub(_disc, _q), _r))) ||
@@ -150,7 +163,7 @@ internal sealed partial class SupportTiltedCurvedGeometry
         for (int direction = -1; direction <= 1; direction += 2)
         {
             double end = direction * B(_h).Lower;
-            GeometryInterval endUpper = _centre.Y.Add(B(_k).Multiply(I(end))).Add(B(_r).Multiply(B(_u)));
+            GeometryInterval endUpper = _centre.Y.Add(_axis.Y.Multiply(I(end))).Add(B(_r).Multiply(B(_u)));
             // Even a multiple or source-dependent crossing cannot improve this attained lower bound.
             if (endUpper.Upper < attained) continue;
             if (!Boundaries(end)) return GeometrySign.Unresolved;
@@ -176,7 +189,8 @@ internal sealed partial class SupportTiltedCurvedGeometry
             GeometrySign feasible = SidePoint(_candidates[i], slope, out Witness point, out _);
             if (feasible == GeometrySign.Unresolved) return feasible;
             if (feasible != GeometrySign.Positive || point.Position.Y.Upper < lower) continue;
-            witness = any ? new(Hull(witness.Position, point.Position), Hull(witness.Normal, point.Normal)) : point;
+            witness = any ? new(Hull(witness.Position, point.Position), Hull(witness.Normal, point.Normal),
+                witness.AtSideCrest && point.AtSideCrest) : point;
             any = true; upper = Math.Max(upper, point.Position.Y.Upper);
         }
         maximum = GeometryInterval.Enclose(lower, upper);
@@ -195,7 +209,7 @@ internal sealed partial class SupportTiltedCurvedGeometry
         GeometryInterval square = B(_disc).Square().Subtract(lateral.Square());
         if (!square.IsResolved || square.Upper < 0) return GeometrySign.Negative;
         GeometryInterval extent = PositiveRoot(square);
-        GeometryInterval centre = B(_r).Multiply(B(_k)).Multiply(v).Subtract(B(_p));
+        GeometryInterval centre = B(_r).Multiply(_axis.Y).Multiply(v).Subtract(B(_p));
         GeometryInterval low = centre.Subtract(extent).Divide(B(_u)), high = centre.Add(extent).Divide(B(_u));
         double half = B(_h).Lower;
         if (low.Lower > half || high.Upper < -half) return GeometrySign.Negative;
@@ -207,13 +221,15 @@ internal sealed partial class SupportTiltedCurvedGeometry
         }
         else
         {
-            t = GeometryInterval.Enclose(Math.Min(half, high.Lower), Math.Min(half, high.Upper));
+            GeometryInterval upper = GeometryInterval.Enclose(Math.Min(half, high.Lower), Math.Min(half, high.Upper));
+            GeometryInterval lower = GeometryInterval.Enclose(Math.Max(-half, low.Lower), Math.Max(-half, low.Upper));
+            t = _axis.Y.Lower >= 0 ? upper : _axis.Y.Upper <= 0 ? lower : Hull(lower, upper);
             certain = square.Lower >= 0 && low.Upper <= half && high.Lower >= -half && normalY.Lower >= slope;
         }
         GeometryVector normal = Add(Scale(_w, v), Scale(_f, z));
         if (slope > 0) normalY = GeometryInterval.Enclose(Math.Max(slope, normalY.Lower), normalY.Upper);
         normal = new(normal.X, normalY, normal.Z);
-        point = new(Add(Add(_centre, Scale(_axis, t)), Scale(normal, B(_r))), normal);
+        point = new(Add(Add(_centre, Scale(_axis, t)), Scale(normal, B(_r))), normal, z.Lower == 0 && z.Upper == 0);
         return point.Position.IsResolved && normal.IsResolved ? GeometrySign.Positive : GeometrySign.Unresolved;
     }
 }

@@ -39,7 +39,8 @@ public partial class SupportFootprintTests
         Assert.Equal(CapsuleFeatureStatus.Complete, result.Status);
         var actual = members.Take(result.Members).Where(m => m.Static == owner).OrderBy(m => m.ElementId).ToArray();
         Assert.Equal(expected.Length, actual.Length);
-        for (int i = 0; i < actual.Length; i++) CheckTiltedMember(actual[i], expected[i]);
+        for (int i = 0; i < actual.Length; i++)
+            CheckTiltedMember(actual[i], expected[i], parts.Single(p => p.Tangent.ElementId == actual[i].ElementId), request);
         _output.WriteLine(TiltedStatistics(scene.World));
     }
 
@@ -64,5 +65,6 @@ public partial class SupportFootprintTests
         ContainsCurvedVector(witness.Normal, witness.NormalError, exact.Normal);
         ContainsCurvedVector(witness.Position, witness.PositionErrorMetres, exact.Witness);
         Assert.Equal((double)request.CosMaxSlope, witness.UpwardLower);
+        CheckTiltedMember(member, SupportFootprintOracle.Curved(capsule.Tangent, request)!, capsule, request);
     }
 }

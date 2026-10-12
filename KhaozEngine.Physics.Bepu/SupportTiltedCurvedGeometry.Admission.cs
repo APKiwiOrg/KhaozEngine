@@ -9,6 +9,35 @@ internal sealed partial class SupportTiltedCurvedGeometry
     Vector Add(Vector a, Vector b) => new(Add(a.X, b.X), Add(a.Y, b.Y), Add(a.Z, b.Z));
     Vector Scale(Vector a, Number b) => new(Mul(a.X, b), Mul(a.Y, b), Mul(a.Z, b));
     internal int CapKind(int part) => ((part == SupportNeighborhoodCurved.TopCap ? 1 : -1) * _direction) > 0 ? 2 : 3;
+    internal bool CapFacesDown(int part) => CapUpward(CapKind(part)).Upper < 0;
+    internal GeometryInterval CapUpward(int kind) => kind == 2 ? _axis.Y : N(_axis.Y);
+    GeometryInterval NormalizedYBounds()
+    {
+        GeometryInterval bounds = B(_k), source = B(_arithmetic.Y);
+        if (!bounds.IsResolved || !source.IsResolved) return default;
+        // The positive normalizing length preserves the installed source's weak sign.
+        // Arithmetic rounding across zero does not invalidate that component certificate.
+        double lower = bounds.Lower, upper = bounds.Upper;
+        if (_direction > 0 ? source.Lower >= 0 : source.Upper <= 0) lower = Math.Max(0, lower);
+        if (_direction > 0 ? source.Upper <= 0 : source.Lower >= 0) upper = Math.Min(0, upper);
+        return GeometryInterval.Enclose(lower, upper);
+    }
+    GeometryVector CapNormal(int part)
+    {
+        int kind = CapKind(part);
+        GeometryVector normal = Scale(_axis, I(kind == 2 ? 1 : -1));
+        return new(normal.X, CapUpward(kind), normal.Z);
+    }
+    internal bool CapNeedsUpperCoverage(int part)
+    {
+        GeometryInterval upward = CapUpward(CapKind(part));
+        return upward.Lower < 0 && upward.Upper >= 0;
+    }
+    internal bool CapUniformlyUp(int kind)
+    {
+        GeometrySign sign = Sign(Mul(_k, C(kind == 2 ? 1 : -1)));
+        return sign is GeometrySign.Positive or GeometrySign.Zero || CapUpward(kind).Lower >= 0;
+    }
 
     internal GeometryVector Surface(int kind, GeometryInterval a, GeometryInterval b)
     {

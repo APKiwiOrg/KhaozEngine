@@ -106,23 +106,24 @@ public partial class SupportFootprintTests
     [Theory]
     [InlineData(0f)]
     [InlineData(10f)]
-    public void RelevantUnsupportedCompoundLeafRefusesEverything(float curveX)
+    public void CurvedCompoundLeafPublishesBesidePolygon(float curveX)
     {
         using var world = new BepuPhysicsWorld(Vector3.Zero);
         world.AddStatic(new CompoundShape([new(new BoxShape(new(2, 1, 2)), Pose.At(new(0, -1, 0))),
             new(new SphereShape(0.1f), Pose.At(new(curveX, 0, 0)))]), Pose.Identity);
         using IPhysicsQueryLease lease = world.AcquireQueryReadLease();
-        SupportFootprintMember[] members = MemberSentinels(256), before = (SupportFootprintMember[])members.Clone();
-        ulong[] joins = Enumerable.Repeat(77UL, 1024).ToArray(), beforeJoins = (ulong[])joins.Clone();
+        SupportFootprintMember[] members = MemberSentinels(256);
+        ulong[] joins = Enumerable.Repeat(77UL, 1024).ToArray();
         SupportFootprintResult result = Capability(world).QuerySupportFootprint(lease, Request(), members, joins);
-        Assert.Equal(curveX == 0 ? CapsuleFeatureStatus.Unsupported : CapsuleFeatureStatus.Complete, result.Status);
+        Assert.Equal(CapsuleFeatureStatus.Complete, result.Status);
+        Assert.Equal(curveX == 0 ? 2 : 1, result.Members);
+        Assert.Equal(SupportElementKind.Polygon, members[0].Kind);
         if (curveX == 0)
         {
-            Assert.Equal(before, members);
-            Assert.Equal(beforeJoins, joins);
-            Assert.Equal(0, result.Members);
+            Assert.Equal(SupportElementKind.Tangent, members[1].Kind);
+            Assert.Equal(SupportNeighborhoodOracle.TangentLeafStride, members[1].ElementId);
+            Assert.Equal(2, members[1].WitnessCount);
         }
-        else Assert.Equal(1, result.Members);
     }
 
     [Fact]

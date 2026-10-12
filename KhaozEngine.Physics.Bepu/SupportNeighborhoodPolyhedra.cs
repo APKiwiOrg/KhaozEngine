@@ -56,12 +56,13 @@ internal static class SupportNeighborhoodPolyhedra
     }
 
     /// <summary>Complete-volume capture shares the released leaf installation and polygon ids. Curved leaves
-    /// are explicitly refused until their footprint kernels exist, unless certified bounds exclude them.</summary>
+    /// retain their released independent raw leaf identity for the footprint owner.</summary>
     internal static CapsuleFeatureStatus Capture(Simulation simulation, TypedIndex shape, in RigidPose pose,
         in SupportFootprintBounds bounds, CapsuleFeatureCaptureScratch scratch,
         List<CapsuleFeaturePolyhedron> leaves, List<SupportCurvedLeaf> curved)
     {
         leaves.Clear();
+        curved.Clear();
         if (shape.Type != default(Compound).TypeId)
             return CaptureFootprintLeaf(simulation, shape, pose, new RigidPose(Vector3.Zero, Quaternion.Identity),
                 0, bounds, scratch, leaves, curved);
@@ -96,21 +97,7 @@ internal static class SupportNeighborhoodPolyhedra
         }
         if (shape.Type != default(Sphere).TypeId && shape.Type != default(Capsule).TypeId &&
             shape.Type != default(Cylinder).TypeId) return CapsuleFeatureStatus.Unsupported;
-        CapsuleFeatureStatus captured = SupportNeighborhoodCurved.Capture(simulation, shape, pose, curved);
-        if (captured != CapsuleFeatureStatus.Complete) return captured;
-        foreach (SupportCurvedLeaf leaf in curved)
-        {
-            // The sphere about the core segment encloses every capsule or cylinder surface, at every pose.
-            // Bounds only prove irrelevance. An overlap cannot certify a curved footprint.
-            GeometryInterval reach = GeometryInterval.Exact(leaf.Radius).Add(GeometryInterval.Exact(leaf.HalfLength));
-            GeometryVector centre = leaf.Centre;
-            if (centre.X.Add(reach).Upper < bounds.Minimum.X || centre.X.Subtract(reach).Lower > bounds.Maximum.X ||
-                centre.Y.Add(reach).Upper < bounds.Minimum.Y || centre.Y.Subtract(reach).Lower > bounds.Maximum.Y ||
-                centre.Z.Add(reach).Upper < bounds.Minimum.Z || centre.Z.Subtract(reach).Lower > bounds.Maximum.Z)
-                continue;
-            return CapsuleFeatureStatus.Unsupported;
-        }
-        return CapsuleFeatureStatus.Complete;
+        return SupportNeighborhoodCurved.Leaf(simulation, shape, pose, id, curved);
     }
 
     /// <summary>Every face of an admitted leaf, with edges and the outward normal from the leaf's common

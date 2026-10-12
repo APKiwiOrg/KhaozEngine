@@ -13,7 +13,7 @@ namespace KhaozEngine.Physics.Bepu;
 /// Every raw pair is captured once. Joins and lease metadata finish before either caller span is touched.</summary>
 internal sealed class SupportFootprintCollector
 {
-    readonly record struct Member(SupportPolygon Polygon, SupportFootprintMember Value);
+    readonly record struct Member(SupportPolygon? Polygon, SupportCurvedLeaf Curved, int Part, SupportFootprintMember Value);
     readonly Member[] _members = new Member[SupportFootprintResult.MaximumElements];
     readonly ulong[] _matrix = new ulong[1024];
     readonly SupportPolygonPool _pool = new();
@@ -21,6 +21,8 @@ internal sealed class SupportFootprintCollector
     readonly SupportSegmentPolygon _kernel = new();
     readonly List<CapsuleFeaturePolyhedron> _leaves = [];
     readonly List<SupportCurvedLeaf> _curved = [];
+    readonly SupportFootprintCurved _curvedKernel = new();
+    readonly SupportTangentKernel _contactKernel = new();
     readonly List<SupportPolygon> _polygons = [];
     readonly List<int> _triangles = [];
     readonly List<CollidableReference> _found = [];
@@ -88,6 +90,7 @@ internal sealed class SupportFootprintCollector
     internal CapsuleFeatureStatus Collect(Simulation simulation, StaticHandle owner, in StaticDescription description)
     {
         _polygons.Clear();
+        _curved.Clear();
         CapsuleFeatureStatus captured;
         if (SupportNeighborhoodMesh.IsMesh(description.Shape))
             captured = SupportNeighborhoodMesh.Polygons(simulation, description.Shape, description.Pose, owner,
@@ -118,8 +121,28 @@ internal sealed class SupportFootprintCollector
             }
             SupportQueryDiagnostics.Record(SupportQueryCounter.Members);
             if (++_count > SupportFootprintResult.MaximumElements) return CapsuleFeatureStatus.CapacityExceeded;
-            _members[_count - 1] = new(polygon, value with { ProposalMask = mask });
+            _members[_count - 1] = new(polygon, default, 0, value with { ProposalMask = mask });
         }
+        foreach (SupportCurvedLeaf leaf in _curved)
+            for (int part = 0; part < leaf.Parts; part++)
+            {
+                GeometrySign admitted = _curvedKernel.Measure(owner, leaf, part, _request, out SupportFootprintMember value);
+                if (admitted == GeometrySign.Unresolved) return CapsuleFeatureStatus.Unsupported;
+                if (admitted == GeometrySign.Negative) continue;
+                byte mask = 0;
+                for (int proposal = 0; proposal < 2; proposal++)
+                {
+                    if (_verdicts[proposal].Status != SupportProposalStatus.Contact) continue;
+                    GeometrySign context = CurvedContactMember(owner, leaf, part, proposal);
+                    if (context == GeometrySign.Unresolved) return CapsuleFeatureStatus.Unsupported;
+                    if (context != GeometrySign.Positive) continue;
+                    mask |= (byte)(1 << proposal);
+                    if (!CurvedContactHeight(leaf, part, proposal)) return CapsuleFeatureStatus.Unsupported;
+                }
+                SupportQueryDiagnostics.Record(SupportQueryCounter.Members);
+                if (++_count > SupportFootprintResult.MaximumElements) return CapsuleFeatureStatus.CapacityExceeded;
+                _members[_count - 1] = new(null, leaf, part, value with { ProposalMask = mask });
+            }
         return CapsuleFeatureStatus.Complete;
     }
 
@@ -150,6 +173,31 @@ internal sealed class SupportFootprintCollector
         return true;
     }
 
+    GeometrySign CurvedContactMember(StaticHandle owner, in SupportCurvedLeaf leaf, int part, int index)
+    {
+        SupportFootprintProposal proposal = index == 0 ? _request.AxisProposal : _request.FootProposal;
+        FeaturePoint centre = FeaturePoint.Exact(_contacts[index].Position);
+        FeatureNumber half = FeatureNumber.Exact(proposal.Probe.Length).Multiply(FeatureNumber.Exact(0.5));
+        _contactKernel.Reset(new(centre.X, centre.Y.Subtract(half), centre.Z),
+            new(centre.X, centre.Y.Add(half), centre.Z), GeometryInterval.Exact(proposal.Probe.Radius), _request.ContactBand);
+        return _contactKernel.Measure(owner, leaf, part, out _);
+    }
+
+    bool CurvedContactHeight(in SupportCurvedLeaf leaf, int part, int index)
+    {
+        SupportFootprintProposal proposal = index == 0 ? _request.AxisProposal : _request.FootProposal;
+        GeometrySign height = _curvedKernel.Lowest(leaf, part, proposal, _request.BandLower, _request.BandUpper, out var bounds);
+        if (height == GeometrySign.Unresolved) return false;
+        if (height != GeometrySign.Positive) return true;
+        _contactLow[index] = _hasContactGeometry[index] ? Math.Max(_contactLow[index], bounds.Lower) : bounds.Lower;
+        _contactHigh[index] = _hasContactGeometry[index] ? Math.Max(_contactHigh[index], bounds.Upper) : bounds.Upper;
+        _hasContactGeometry[index] = true;
+        return true;
+    }
+
+    bool RefineContact(in Member member, int index) => member.Polygon is { } polygon ?
+        ContactHeight(polygon, index, sourceHeight: true) : CurvedContactHeight(member.Curved, member.Part, index);
+
     internal SupportFootprintResult Refused(CapsuleFeatureStatus status) =>
         SupportFootprintResult.Refused(status, status == CapsuleFeatureStatus.CapacityExceeded ? _count : 0);
 
@@ -169,7 +217,7 @@ internal sealed class SupportFootprintCollector
                 _hasContactGeometry[index] = false;
                 for (int member = 0; member < _count; member++)
                     if ((_members[member].Value.ProposalMask & (1 << index)) != 0 &&
-                        !ContactHeight(_members[member].Polygon, index, sourceHeight: true))
+                        !RefineContact(_members[member], index))
                         return Refused(CapsuleFeatureStatus.Unsupported);
                 if (!_hasContactGeometry[index]) return Refused(CapsuleFeatureStatus.Unsupported);
                 low = _contactLow[index]; high = _contactHigh[index];
@@ -186,7 +234,7 @@ internal sealed class SupportFootprintCollector
             for (int second = first + 1; second < _count; second++)
             {
                 SupportQueryDiagnostics.Record(SupportQueryCounter.JoinPairs);
-                SupportPolygon a = _members[first].Polygon, b = _members[second].Polygon;
+                if (_members[first].Polygon is not { } a || _members[second].Polygon is not { } b) continue;
                 if (SupportGeometry.BoxGap(a.Low, a.High, b.Low, b.High) > _request.ContactBand)
                 {
                     SupportQueryDiagnostics.Record(SupportQueryCounter.JoinsPruned);

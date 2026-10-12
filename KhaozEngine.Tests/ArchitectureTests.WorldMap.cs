@@ -67,4 +67,35 @@ public partial class ArchitectureTests
         Assert.Equal(new[] { "TileWorld.WorldMap" },
             tests.ProjectRefs.Select(Short).OrderBy(name => name, StringComparer.Ordinal).ToArray());
     }
+
+    /// <summary>The map widget depends only on the cached map and shared GUI navigation.</summary>
+    [Fact]
+    public void WorldMapGui_ReferencesOnlyWorldMapAndGui()
+    {
+        Project view = LoadGraph()["KhaozEngine.WorldMap.Gui"];
+        Assert.True(view.IsPackableLibrary);
+        Assert.Equal(new[] { "Gui", "WorldMap" },
+            view.ProjectRefs.Select(Short).OrderBy(name => name, StringComparer.Ordinal).ToArray());
+        Assert.DoesNotContain(view.PackageRefs, package => !IgnoredInfraPackages.Contains(package));
+    }
+
+    /// <summary>Every umbrella leaves the world map widget as an explicit consumer choice.</summary>
+    [Fact]
+    public void WorldMapGui_IsAnExplicitReferenceOutsideEveryUmbrella()
+    {
+        var graph = LoadGraph();
+        Assert.Contains("WorldMap.Gui", OptInBackends);
+        foreach (string umbrella in Umbrellas)
+            Assert.DoesNotContain("KhaozEngine.WorldMap.Gui", TransitiveClosure(umbrella, graph));
+    }
+
+    /// <summary>The headless widget tests reference only the widget package.</summary>
+    [Fact]
+    public void WorldMapGuiTests_ReferenceOnlyThePackage()
+    {
+        Project tests = LoadGraph()["KhaozEngine.WorldMap.Gui.Tests"];
+        Assert.False(tests.IsPackableLibrary);
+        Assert.Equal(new[] { "WorldMap.Gui" },
+            tests.ProjectRefs.Select(Short).OrderBy(name => name, StringComparer.Ordinal).ToArray());
+    }
 }

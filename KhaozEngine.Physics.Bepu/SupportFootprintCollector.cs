@@ -16,6 +16,8 @@ internal sealed partial class SupportFootprintCollector
     readonly record struct Member(SupportPolygon? Polygon, SupportCurvedLeaf Curved, int Part, SupportFootprintMember Value);
     readonly Member[] _members = new Member[SupportFootprintResult.MaximumElements];
     readonly ulong[] _matrix = new ulong[1024];
+    readonly SupportSourceIncidence _incidence = new();
+    readonly SupportPolygon?[] _sourceMembers = new SupportPolygon?[SupportFootprintResult.MaximumElements];
     readonly SupportPolygonPool _pool = new();
     readonly CapsuleFeatureCaptureScratch _capture = new();
     readonly SupportSegmentPolygon _kernel = new();
@@ -223,6 +225,8 @@ internal sealed partial class SupportFootprintCollector
             ? a.Value.Static.Value.CompareTo(b.Value.Static.Value) : a.Value.ElementId.CompareTo(b.Value.ElementId));
         Span<ulong> matrix = _matrix.AsSpan(0, _count * stride);
         matrix.Clear();
+        for (int i = 0; i < _count; i++) _sourceMembers[i] = _members[i].Polygon;
+        _incidence.Build(_sourceMembers.AsSpan(0, _count));
         for (int first = 0; first < _count; first++)
             for (int second = first + 1; second < _count; second++)
             {
@@ -233,7 +237,8 @@ internal sealed partial class SupportFootprintCollector
                     SupportQueryDiagnostics.Record(SupportQueryCounter.JoinsPruned);
                     continue;
                 }
-                GeometrySign joined = SupportNeighborhoodJoins.Joined(a, b, _request.ContactBand, _kernel);
+                GeometrySign joined = SupportNeighborhoodJoins.Joined(a, b, _request.ContactBand, _kernel,
+                    _incidence, first, second);
                 if (joined == GeometrySign.Unresolved) return Refused(CapsuleFeatureStatus.Unsupported);
                 if (joined != GeometrySign.Positive) continue;
                 SupportQueryDiagnostics.Record(SupportQueryCounter.JoinsProved);

@@ -9,7 +9,10 @@ internal static class SupportNeighborhoodJoins
     static readonly double Apart = System.Math.ScaleB(1, -400);
     /// <summary>Positive when joined, negative when not, unresolved when the bounded arithmetic fails.</summary>
     internal static GeometrySign Joined(SupportPolygon first, SupportPolygon second, double band,
-        SupportSegmentPolygon kernel)
+        SupportSegmentPolygon kernel) => Joined(first, second, band, kernel, null, 0, 0);
+
+    internal static GeometrySign Joined(SupportPolygon first, SupportPolygon second, double band,
+        SupportSegmentPolygon kernel, SupportSourceIncidence? incidence, int firstIndex, int secondIndex)
     {
         if (!BoundsOverlap(first, second) && SupportGeometry.BoxGap(first.Low, first.High, second.Low, second.High) > band)
             return GeometrySign.Negative;
@@ -17,6 +20,8 @@ internal static class SupportNeighborhoodJoins
         if (below != GeometrySign.Positive) return below;
         below = Below(second, first, band);
         if (below != GeometrySign.Positive) return below;
+        if (band == SupportJoinIncidence.ContactBand && incidence is not null &&
+            incidence.ProvesMeeting(firstIndex, secondIndex)) return GeometrySign.Positive;
         if (band == SupportJoinIncidence.ContactBand && SupportJoinIncidence.CommonVertex(first, second))
             return GeometrySign.Positive;
         // The distance between two convex polygons is attained with a point on an edge of one of them.

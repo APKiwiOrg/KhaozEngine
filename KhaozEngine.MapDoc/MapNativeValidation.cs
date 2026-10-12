@@ -72,6 +72,8 @@ internal static class MapNativeValidation
                     continue;
                 }
                 if (!surfaces.TryAdd(surface.Id, surface)) errors.Add($"duplicate surface id '{surface.Id}'.");
+                if (surface.Role != MapSurfaceRole.PaintOverride && surface.PaintPriority != 0)
+                    errors.Add($"surface '{surface.Id}': paintPriority is valid only for PaintOverride.");
                 if (surface.Frame is null || !Enum.IsDefined(surface.Role) || !Enum.IsDefined(surface.PresencePolicy))
                     errors.Add($"surface '{surface.Id}': invalid frame, role or presence policy.");
                 else

@@ -32,6 +32,11 @@ internal static class MapPrefabJson
                     if (property.Name == "parentSpace") property.ShouldSerialize = (_, value) => value is not null;
                 }
                 if (info.Type == typeof(MapPlacement)) property.ShouldSerialize = (_, value) => value is not null;
+                if (info.Type == typeof(MapSurfaceRef) && property.Name == "paintPriority")
+                {
+                    property.IsRequired = false;
+                    property.ShouldSerialize = (_, value) => value is int priority && priority != 0;
+                }
                 if (property.Name is "attachments" or "roofs" or "storeys" or "materializedAttachments")
                     property.ShouldSerialize = (_, value) => value is IEnumerable items && items.Cast<object>().Any();
             }
@@ -63,7 +68,9 @@ internal static class MapPrefabJson
         {
             if (Encoding.UTF8.GetByteCount(value.GetRawText()) > Limits.MaxPayloadBytes) throw new MapDocumentException("Prefab payload byte limit exceeded.");
             Preflight(value);
-            return value.Deserialize<T>(Options) ?? throw new MapDocumentException("Prefab value must not be null.");
+            T result = value.Deserialize<T>(Options) ?? throw new MapDocumentException("Prefab value must not be null.");
+            if (result is MapSurfaceRef surface) MapSurfaceJson.RequirePaintPriority(surface);
+            return result;
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException or FormatException or OverflowException or KeyNotFoundException or ArgumentException)
         {
@@ -90,6 +97,7 @@ internal static class MapPrefabJson
 
     internal static void Write<T>(Utf8JsonWriter w, T value)
     {
+        if (value is MapSurfaceRef surface) MapSurfaceJson.RequirePaintPriority(surface);
         // A child is always written through its closed converter, whatever its runtime type.
         if (value is MapPrefabChild child)
         {
@@ -276,6 +284,7 @@ internal static class MapPrefabJson
 
     static void Property<T>(Utf8JsonWriter w, string name, T value)
     {
+        if (value is MapSurfaceRef surface) MapSurfaceJson.RequirePaintPriority(surface);
         w.WritePropertyName(name);
         JsonSerializer.Serialize(w, value, Options);
     }

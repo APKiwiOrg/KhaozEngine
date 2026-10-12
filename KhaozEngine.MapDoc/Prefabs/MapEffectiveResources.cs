@@ -25,6 +25,8 @@ public sealed class MapEffectiveResources
     public MapBuildingIntent BuildingIntent => _intent.Clone();
     public string Digest => _context.Digest;
     public IMapSurfaceSource SurfaceSource { get; }
+    /// <summary>Render-only partitions compiled once per affected physical target at strict expansion.</summary>
+    public IReadOnlyDictionary<string, MapPaintRegionSet> PaintRegions { get; }
     internal IReadOnlyDictionary<string, MapExactPoint> LightPoints { get; }
     internal IReadOnlyDictionary<string, IReadOnlyList<MapExactPoint>> WaterCorners { get; }
     internal IReadOnlyList<MapPrefabAttachmentTransfer> Attachments { get; }
@@ -44,6 +46,16 @@ public sealed class MapEffectiveResources
         WaterCorners = new ReadOnlyDictionary<string, IReadOnlyList<MapExactPoint>>(waterCorners.ToDictionary(p => p.Key,
             p => (IReadOnlyList<MapExactPoint>)Array.AsReadOnly(p.Value.ToArray()), StringComparer.Ordinal));
         Attachments = Array.AsReadOnly(attachments.ToArray());
+        var paintTargets = context.Surfaces.Refs.Where(s => s.Role == MapSurfaceRole.PaintOverride)
+            .Select(s => s.PaintTargetSurfaceId ?? throw new MapDocumentException("PaintOverride requires a target surface."))
+            .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+        var paintRegions = new Dictionary<string, MapPaintRegionSet>(StringComparer.Ordinal);
+        if (paintTargets.Length != 0)
+        {
+            var view = CompleteView();
+            foreach (string target in paintTargets) paintRegions.Add(target, MapPartialPaintCompiler.Compile(view, target));
+        }
+        PaintRegions = new ReadOnlyDictionary<string, MapPaintRegionSet>(paintRegions);
     }
     public MapScopedSurfaces CompleteView() => SurfaceSource is MapComposedSurfaceSource
         ? Acquire(MapScopedSurfaces.CompleteEffective(_context).Scope) : MapScopedSurfaces.CompleteEffective(_context);

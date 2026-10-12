@@ -33,6 +33,7 @@ internal static partial class PrefabFixtures
 
     internal static PrefabFixture Create(string variant = "basic")
     {
+        if (TryPaintVariant(variant, out PrefabFixture? paint)) return paint!;
         if (variant == "support-resource") return SupportResourceFixture();
         if (TryIdentityVariant(variant, out PrefabFixture? derived)) return derived!;
         byte[] bytes = AssetBytes(variant == "pool-material-undeclared" ? "pool" :

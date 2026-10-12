@@ -13,7 +13,7 @@ internal static class MapSurfacePaintOverride
         if (surface.Role != MapSurfaceRole.PaintOverride || surface.PaintTargetSurfaceId != target.Key.SurfaceId)
             throw new MapDocumentException("paint override must name its target surface");
         // This temporary triangulation describes paint regions. No face from it is returned as support.
-        MapCompiledPatch regions = MapSurfaceCompiler.Compile(surface with { Role = MapSurfaceRole.SupportFloor }, patch);
+        MapCompiledPatch regions = MapSurfaceCompiler.Compile(surface with { Role = MapSurfaceRole.SupportFloor, PaintPriority = 0 }, patch);
         try
         {
             var byCell = new Dictionary<int, List<int>>();
@@ -41,13 +41,13 @@ internal static class MapSurfacePaintOverride
                             if (area.Sign == 0) continue;
                             MapPaintCoverage next = regions.Paint[index] with { Face = face.Key };
                             if (selected is { } previous && previous != next)
-                                throw new MapDocumentException("paint override boundary crosses physical face");
+                                throw new MapDocumentException("paint override boundary crosses physical face. Use MapPaintRegionSet for partial-face materials.");
                             selected = next;
                             covered = covered.Add(area);
                         }
                     }
                 if (selected is not null && covered != Unsigned(MapSubdividedTriangle.Cross(triangle.A, triangle.B, triangle.C)).Divide(new(2, 1)))
-                    throw new MapDocumentException("paint override presence boundary crosses physical face");
+                    throw new MapDocumentException("paint override presence boundary crosses physical face. Use MapPaintRegionSet for partial-face materials.");
                 paint[i] = selected ?? target.Paint[i];
             }
             return new(target.Key, target.Role, target.Anchor, target.VertexIds, target.ExactVertices,

@@ -294,21 +294,25 @@ internal static class MapEffectiveGeometry
     {
         var output = source.ToList();
         for (int i = 0; i < clip.Count && output.Count != 0; i++)
+            output = ClipHalfPlane(output, clip[i], clip[(i + 1) % clip.Count]);
+        return output.Distinct().ToList();
+    }
+    internal static List<MapWideXz> ClipHalfPlane(IReadOnlyList<MapWideXz> source, MapWideXz a, MapWideXz b, bool inside = true)
+    {
+        var output = new List<MapWideXz>();
+        if (source.Count == 0) return output;
+        var previous = source[^1]; var previousSide = Cross(a, b, previous);
+        bool Kept(MapWideRational side) => inside ? side.Sign >= 0 : side.Sign <= 0;
+        foreach (var current in source)
         {
-            var input = output; output = new();
-            var a = clip[i]; var b = clip[(i + 1) % clip.Count];
-            var previous = input[^1]; var previousSide = Cross(a, b, previous);
-            foreach (var current in input)
+            var side = Cross(a, b, current);
+            if (Kept(side) != Kept(previousSide))
             {
-                var side = Cross(a, b, current);
-                if ((side.Sign >= 0) != (previousSide.Sign >= 0))
-                {
-                    var fraction = previousSide.Divide(previousSide.Subtract(side));
-                    output.Add(new(previous.X.Add(current.X.Subtract(previous.X).Multiply(fraction)), previous.Z.Add(current.Z.Subtract(previous.Z).Multiply(fraction))));
-                }
-                if (side.Sign >= 0) output.Add(current);
-                previous = current; previousSide = side;
+                var fraction = previousSide.Divide(previousSide.Subtract(side));
+                output.Add(new(previous.X.Add(current.X.Subtract(previous.X).Multiply(fraction)), previous.Z.Add(current.Z.Subtract(previous.Z).Multiply(fraction))));
             }
+            if (Kept(side)) output.Add(current);
+            previous = current; previousSide = side;
         }
         return output.Distinct().ToList();
     }

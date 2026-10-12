@@ -323,12 +323,15 @@
       "type": "object",
       "required": ["id", "frame", "role", "presencePolicy", "semanticSha256"],
       "additionalProperties": false,
+      "allOf": [{ "if": { "properties": { "role": { "enum": ["SupportFloor", "Ceiling"] } } },
+        "then": { "properties": { "paintPriority": { "const": 0 } } } }],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "frame": { "$ref": "#/$defs/latticeFrame" },
         "role": { "type": "string", "enum": ["SupportFloor", "Ceiling", "PaintOverride"] },
         "presencePolicy": { "type": "string", "enum": ["Native", "LegacyTileWorld"] },
         "paintTargetSurfaceId": { "type": ["string", "null"] },
+        "paintPriority": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647, "default": 0 },
         "indoorSpan": { "$ref": "#/$defs/indoorSpan" },
         "semanticSha256": { "type": "string", "minLength": 64, "maxLength": 64, "pattern": "^[0-9a-f]{64}(?![\\s\\S])" }
       }

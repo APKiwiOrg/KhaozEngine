@@ -201,6 +201,7 @@ public static class MapSurfaceCompiler
         IReadOnlyList<string> findings = patch.ValidateLocal();
         if (findings.Count != 0) throw new MapDocumentException(findings[0]);
         ArgumentNullException.ThrowIfNull(surface);
+        MapSurfaceJson.RequirePaintPriority(surface);
         if (surface.Id != patch.Key.SurfaceId || surface.Frame is null ||
             !Enum.IsDefined(surface.Role) || !Enum.IsDefined(surface.PresencePolicy))
             throw new MapDocumentException("invalid surface metadata or patch surface id");
@@ -248,6 +249,7 @@ public static class MapSurfaceCompiler
         }
     }
 
+    /// <summary>Whole-face compatibility adapter. Split materials require <see cref="MapPartialPaintCompiler"/>.</summary>
     public static MapCompiledPatch ApplyPaintOverride(MapCompiledPatch target, MapSurfaceRef overrideSurface,
         MapSurfacePatch overridePatch) => MapSurfacePaintOverride.Apply(target, overrideSurface, overridePatch);
 }

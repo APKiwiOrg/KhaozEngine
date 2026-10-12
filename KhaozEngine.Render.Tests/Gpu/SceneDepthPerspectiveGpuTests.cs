@@ -39,7 +39,7 @@ namespace KhaozEngine.Tests.Gpu
     {
         const int W = 640, H = 360;
 
-        /// <summary>Half-extent of the probe ocean, matching Ruinborne's Far render-distance tier.</summary>
+        /// <summary>Half-extent of the probe ocean, matching the reference consumer's Far render-distance tier.</summary>
         const float OceanHalfExtent = 600f;
 
         /// <summary>Still-water height, with the seabed this far below it.</summary>

@@ -2,7 +2,7 @@
 
 Design for the first deliberate slice of the roadmap item "NPC navigation: vertical worlds (multi-level
 overworld)". The follow-on to the 11.2.0 step-surface bake ([NAV-STEP-SURFACES-DESIGN.md](NAV-STEP-SURFACES-DESIGN.md)).
-First consumer: Ruinborne wolves chasing a player onto a mid-height rock the wolf must jump onto, not
+First consumer: the reference consumer wolves chasing a player onto a mid-height rock the wolf must jump onto, not
 walk up.
 
 This slice is scoped to **same-grid short vertical hops**: bake-generated links that let the planner (and
@@ -118,7 +118,7 @@ tells the follower's consumer "traverse this by jumping" so it can play a lunge 
    bare `NavGrid` with no hops. `NavSpace.Single(grid)` with no links plans exactly as today. A consumer
    gets hops only by calling `BakeOverworldHops` (or `NavHopLinks.Generate` plus `NavSpace`). Existing
    planner and follower tests are unaffected: `Stair` and `Walk` are the defaults, `Stair` link cost is the
-   unchanged one-cell charge, and no path without hop links ever sees `Hopping`. Ruinborne opts in by
+   unchanged one-cell charge, and no path without hop links ever sees `Hopping`. The reference consumer opts in by
    swapping its `BakeOverworldSteps` boot call for `BakeOverworldHops` and handling `Hopping` in its wolf
    brain.
 
@@ -178,7 +178,7 @@ provider `BakeOverworldSteps` does.
 `NavLink` is one enum wider (`Kind`), `NavWaypoint` one enum wider (`Kind`), both defaulted so existing
 storage and equality are preserved. `NavGrid` is unchanged. A baked `NavSpace` for a hop-enabled zone is
 one layer plus a flat list of `Hop` links along every hoppable cliff edge (bidirectional across the jump
-band), typically O(cliff perimeter) links. For Ruinborne's 520x520 zone with a handful of rocks and ledges
+band), typically O(cliff perimeter) links. For the reference consumer's 520x520 zone with a handful of rocks and ledges
 this is a few hundred links, an adjacency dictionary the planner builds once at construction.
 
 ## Generation algorithm (`NavHopLinks.Generate`)
@@ -271,9 +271,9 @@ The follower stays height-free: it hands the consumer the two XZ endpoints and t
 its own surface data via `NavGrid.SurfaceHeightAt`, consistent with the existing "a `NavWaypoint` stores no
 Y, callers resolve height from the layer's grid" rule.
 
-## Consumer wiring (Ruinborne, game-side, separate work)
+## Consumer wiring (the reference consumer, game-side, separate work)
 
-After the engine release ships, Ruinborne swaps its `BakeOverworldSteps` boot call for
+After the engine release ships, the reference consumer swaps its `BakeOverworldSteps` boot call for
 `BakeOverworldHops`, passing the same `TerrainSurfaceProvider` (or its physics-probe `INavSurfaceProvider`)
 plus a `jumpHeight` from the wolf `MoveTuning` (roughly 0.4 to 1.2 m, above `stepHeight`, below the jump
 ceiling), and hands the returned `NavSpace` to `GridPathPlanner` with a tuned `hopCostCells`. The wolf

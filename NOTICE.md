@@ -62,7 +62,7 @@ IN THE SOFTWARE.
 - **Project:** [sebh/UnrealEngineSkyAtmosphere](https://github.com/sebh/UnrealEngineSkyAtmosphere),
   Sebastien Hillaire's Hillaire 2020 reference implementation.
 - **Licence:** [MIT](https://github.com/sebh/UnrealEngineSkyAtmosphere/blob/master/LICENSE).
-- **Used by:** `KhaozEngine.Render3D` physical atmosphere (20.33.0), principally
+- **Used by:** `KhaozEngine.Render3D` physical atmosphere (20.34.0), principally
   `AtmosphereModel.Scattering.cs`, `AtmosphereModel.cs` and their GLSL mirrors in
   `Internal/ShaderSources.Atmosphere.cs`.
 - **What was ported:** transport math from `IntegrateScatteredLuminance` and `NewMultiScattCS` in

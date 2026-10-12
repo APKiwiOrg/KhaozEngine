@@ -14,7 +14,7 @@ seam. Props hard-cull at 96 metres by default even when the camera sees 600 metr
 already places 949 live trees. Its authored map is expected to grow to thousands or tens of thousands of tiles,
 where increasing the full-mesh radius is not a viable answer.
 
-The engine already owns the proven Ruinborne machinery in `KhaozEngine.Terrain.Render3D`:
+The engine already owns the proven consumer machinery in `KhaozEngine.Terrain.Render3D`:
 
 - full and authored LOD prop parts in `PropLayer` and `PropRenderer`
 - merged coarse meshes through `PropHlod`
@@ -24,7 +24,7 @@ The engine already owns the proven Ruinborne machinery in `KhaozEngine.Terrain.R
 - unload disposal and render statistics
 
 TileWorld does not consume those owners. `ITileWorldScene.DrawProps` carries only full parts and a radius, its
-catalog has only `meshRef`, and `TileRegionResidency` has no render-only decor class. Copying the Ruinborne logic
+catalog has only `meshRef`, and `TileRegionResidency` has no render-only decor class. Copying the reference consumer logic
 into `TileWorldView` would create two implementations of resource lifetime, invalidation, failure fallback, and
 crossfade policy.
 
@@ -71,7 +71,7 @@ The component owns:
 - LOD and HLOD crossfade values
 
 `Scene3DChunkSink` retains terrain, physics, water, and chunk orchestration. It delegates its prop build, apply,
-draw, invalidation, and unload work to `PropClusterRenderer`. Ruinborne changes no placement format or game code
+draw, invalidation, and unload work to `PropClusterRenderer`. The reference consumer changes no placement format or game code
 in this round and still consumes `PropLayer.WithHlod` through the sink. This makes it a regression consumer of
 the extracted owner.
 
@@ -278,5 +278,5 @@ Grimhollow is pinned and waiting on it.
 - Offline HLOD artifacts or a bake tool.
 - Changing TileWorld collision or server streaming.
 - Adding more than one authored prop LOD tier.
-- Requiring Ruinborne game-code migration in this release.
+- Requiring the reference consumer game-code migration in this release.
 - Fog or distance hiding as a correctness mechanism.

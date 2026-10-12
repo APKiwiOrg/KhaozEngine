@@ -6,13 +6,13 @@ recently the terrain sculpt layer, T1 field/format in 14.13.0, T2 editor brushes
 `sculpt_*` MCP verbs in 14.15.0, closing the sculpt program's engine side, #271). This
 header said "pre-implementation" for 40+ releases after implementation began, so treat any status claim in
 this file as history unless `CHANGELOG.md` agrees. Open work lives in the repo's GitHub Issues, not here.
-First adopter: Ruinborne
+First adopter: the reference consumer
 
 ## Problem
 
-KhaozEngine games have no map data. The world is code. In Ruinborne, terrain is a pure
+KhaozEngine games have no map data. The world is code. In the reference consumer, terrain is a pure
 analytic function (`TerrainConfig` with seed, biome bands, and parametric features, built in
-`Ruinborne.Core/RuinborneWorld.cs`), trees and rocks are deterministic coord-hash scatter
+`Consumer.Core/ConsumerWorld.cs`), trees and rocks are deterministic coord-hash scatter
 (`PropScatter.Generate`), the only hand-authored placements are literal C# arrays (7 town
 buildings, 2 showcase rocks), and NPC spawns are rows in `dbo.npc_spawn` with code defaults.
 Editing the world means editing C# and redeploying. There is no editor, no placement file
@@ -21,7 +21,7 @@ format, and no way for an AI to manipulate the world other than writing game cod
 This design introduces the map artifact itself (an engine-owned world document format) plus
 two frontends over it: an in-engine GUI editor for humans and an MCP server for AI-driven
 editing. The engine-first rule applies: all of this is engine machinery usable by every
-current and future game, with Ruinborne as the first adopter.
+current and future game, with the reference consumer as the first adopter.
 
 ## Decisions made (with rationale)
 
@@ -113,7 +113,7 @@ only for render verbs (via the Snapshot harness). Everything else runs headless.
 
 ### Per-game editor head
 
-A thin csproj (for example `Ruinborne.Editor`) that assembles MapEditor with the game's
+A thin csproj (for example `Consumer.Editor`) that assembles MapEditor with the game's
 asset manifests, archetype ids, and custom document types, and opens the game's documents.
 
 ## Document format
@@ -199,20 +199,20 @@ gone stale once by a factor of 4x. The current, complete verb table is canonical
 Documents are git-committed JSON, so the human review loop for AI edits is a git diff, and
 the GUI picks up the same file. The two frontends share nothing but the document.
 
-## Ruinborne adoption
+## The reference consumer adoption
 
-1. One-time export of `RuinborneWorld.cs` (terrain config, scatter configs, buildings,
+1. One-time export of `ConsumerWorld.cs` (terrain config, scatter configs, buildings,
    showcase rocks, wolf spawn) into `assets/maps/valley.map.json`. A parity test asserts the
    document-loaded field and placements match the code-built ones exactly before the code
    path is deleted.
-2. Both heads load the document through the MapDoc loader. `RuinborneWorld.cs` shrinks to
+2. Both heads load the document through the MapDoc loader. `ConsumerWorld.cs` shrinks to
    game constants. Physics, streaming, and replication are untouched.
 3. Spawns: the document becomes the authoring source. Mechanism: the deploy step seeds
    `dbo.npc_spawn` from the document (insert-if-absent, as `PostDeploy.sql` does today), the
-   server keeps reading SQL when `RUINBORNE_SQL_CONNECTION` is set, and the no-SQL fallback
+   server keeps reading SQL when `CONSUMER_GAME_SQL_CONNECTION` is set, and the no-SQL fallback
    switches from code defaults to document spawns. The enabled flag keeps working for
    live-ops. Full retirement of the table is a later decision.
-4. `Ruinborne.Editor` head joins the solution. Ruinborne's own `docs/ADDING-PROPS.md` and
+4. `Consumer.Editor` head joins the solution. The reference consumer's own `docs/ADDING-PROPS.md` and
    `docs/architecture/WORLD.md` are rewritten around the document workflow (game-side paths, not engine ones).
 
 ## Phasing
@@ -250,8 +250,8 @@ editor-runtime cores. Never Fable-tier subagents.
   exposing 39 document, query, mutation, and headless-render verbs over the same `MapDoc` model the
   GUI editor uses (`docs/USING-KHAOZENGINE.md` "ke-mapedit" section, `KhaozEngine.MapEdit.Tool`
   README). Shipped in 10.63.0, see CHANGELOG.
-- **Phase D (game repo)**: Ruinborne export, both-heads loading, parity test (D1,
-  Ruinborne 0.3.16), editor head and doc rewrite (D2, Ruinborne 0.6.2 era, engine 10.67.0).
+- **Phase D (game repo)**: the reference consumer export, both-heads loading, parity test (D1,
+  The reference consumer 0.3.16), editor head and doc rewrite (D2, the reference consumer 0.6.2 era, engine 10.67.0).
 
 B and C share only the MapDoc contract from A, so they run concurrently in separate
 worktrees. Doc sweep obligations per phase follow `AGENTS.md` (README catalog, per-package
@@ -322,7 +322,7 @@ polygon case `ShapeGeometry.Translated` does not need to handle is why they are 
 
 - **Format and schema (MapDoc)**: `MapTerrain` duplicates `TerrainConfig` defaults, a drift risk that
   is only partially parity-tested.
-- **Ruinborne adoption**: document-to-SQL spawn seed automation. `PostDeploy.sql` still
+- **the reference consumer adoption**: document-to-SQL spawn seed automation. `PostDeploy.sql` still
   hand-carries the wolf values, currently in agreement with the document. Retained
   constants (lake, town, rim, play area) are still read directly by game code. Migrate
   those consumers to document reads in the editor era. Clearing-disc boundary semantics
@@ -392,12 +392,12 @@ changed, consistent with the other mutation verbs' behavior when called with no 
 
 **zone-freeze round**: Whole-zone scatter freeze (`FreezeZoneCommand`, `EditorToolController.FreezeZone`,
 `MutationService.FreezeZone`, the `freeze_zone` MCP verb). Motivated by the authored-world program
-(Ruinborne https://github.com/APKiwiOrg/Ruinborne/issues/169): `BakeRegionCommand` already freezes one
+(a consumer report): `BakeRegionCommand` already freezes one
 scatter layer over one rect but leaves the layer alive behind a covering exclusion, so a zone going fully
 authored accumulates exclusions everywhere as more of it gets hand-tuned, exactly the pain the program
 wants gone. Issue #270 asked for the terminal form instead, one operation over the whole document, no
-exclusions left to add once no scatter survives. First consumer: Ruinborne's valley freeze,
-https://github.com/APKiwiOrg/Ruinborne/issues/170.
+exclusions left to add once no scatter survives. First consumer: the reference consumer's valley freeze,
+consumer report
 
 Decisions: a chord (Ctrl+Shift+F / Cmd+Shift+F), not a tool mode, since freezing has no gesture to arm,
 drag, or cancel: it is a one-shot whole-document action, not a fit for the palette's mode set. Frozen
@@ -420,8 +420,8 @@ placement lists, order included.
 **sculpt-brushes round (T2)**: The terrain-sculpt editor surface (`EditorToolMode.SculptTerrain`,
 `TerrainSculptBrush`, `SculptBounds`, `TerrainSculptStrokeCommand`, and the brush inspector), sculpting the
 `terrainOverrides` delta layer T1 shipped in 14.13.0. Design contract:
-`docs/design/TERRAIN-SCULPT-LAYER-DESIGN.md`. Motivated by the authored-world program (Ruinborne
-https://github.com/APKiwiOrg/Ruinborne/issues/169), which needs hand-authored topology the parametric
+`docs/design/TERRAIN-SCULPT-LAYER-DESIGN.md`. Motivated by the authored-world program (the reference consumer
+consumer report), which needs hand-authored topology the parametric
 pipeline cannot express.
 
 Decisions: a real tool mode, not a chord, since sculpting is a gesture (press-drag-release) with a footprint
@@ -448,11 +448,11 @@ same split-not-grow move the zone-freeze round used.
 **Original sculpt-brushes deferral, completed in 19.7.0 (#274):** the viewport now previews the brush
 with a terrain-following ring. The live contract is in the MapEditor package README under "Terrain sculpt".
 The `sculpt_*` MCP verbs (`sculpt_apply`, `sculpt_flatten_region`, `sculpt_clear`, tile-stat reads) and the
-Ruinborne repin + first valley sculpt pass are T3, tracked by the sculpt program design doc and #271.
+The reference consumer repin + first valley sculpt pass are T3, tracked by the sculpt program design doc and #271.
 
 **sculpt-verbs round (T3, final phase)**: The `ke-mapedit` MCP surface for the sculpt layer
 (`sculpt_apply`, `sculpt_flatten_region`, `sculpt_clear`, `sculpt_stats`), riding the T2 headless brush core
-through `MutationService`, closing the sculpt program's engine side (#271; Ruinborne repin and the first
+through `MutationService`, closing the sculpt program's engine side (#271, the reference consumer repin and the first
 valley sculpt pass are the game-side follow-up, tracked separately). Design contract:
 `docs/design/TERRAIN-SCULPT-LAYER-DESIGN.md`.
 

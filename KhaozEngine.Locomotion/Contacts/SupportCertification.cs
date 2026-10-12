@@ -17,7 +17,7 @@ internal readonly record struct SupportContribution(CertifiedSupportKind Kind, d
     Vector3 Normal, Vector3 Witness, int FeatureId);
 
 /// <summary>Turns a complete support neighborhood into certified support contributions at an axis.</summary>
-internal static class SupportCertification
+internal static partial class SupportCertification
 {
     // The represented query band is slightly inside the exact 0.1 mm limit. It never widens contact.
     internal const float ContactBand = 0.0001f;

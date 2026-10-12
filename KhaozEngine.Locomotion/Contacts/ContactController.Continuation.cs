@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using KhaozEngine.Physics;
 
 namespace KhaozEngine.Locomotion.Contacts;
 
@@ -44,6 +45,14 @@ internal static partial class ContactController
         bool firstRecorded = false, lagRecorded = false;
         for (int segment = 0; segment < MaxSegments; segment++)
         {
+            SupportQueryDiagnostics.Record(SupportQueryCounter.ModeSegments);
+            SupportQueryDiagnostics.Route(tick.Mode switch
+            {
+                Mode.Ground => SupportQueryRoute.Ground,
+                Mode.Slide => SupportQueryRoute.Slide,
+                Mode.Water => SupportQueryRoute.Water,
+                _ => SupportQueryRoute.Air,
+            });
             float time = tick.RemainingSeconds, remaining;
             bool continueMode, onPlan;
             Vector2 drive = tick.HorizontalVelocity;
@@ -156,6 +165,7 @@ internal static partial class ContactController
             }
             if (c.Fluid is { } fluid)
             {
+                using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.RoundingHandoff);
                 bool grounded = fluid.Accept(tick.Feet, tick.VerticalVelocity, tick.Support, tick.Grounded, tick.DescendingAtContact);
                 tick = tick with
                 {
@@ -173,6 +183,7 @@ internal static partial class ContactController
                 {
                     // A rounded axis earns its own certificate. An analytic sample and its binding belong to
                     // their queried axis, even when the previous axis differs by only one representable value.
+                    SupportQueryDiagnostics.Route(SupportQueryRoute.RoundedRead);
                     SupportSample rounded = tick.Queries.FindSupport(new(new(tick.Feet.X, tick.Feet.Z), tick.Feet.Y,
                         c.Settings.FootRadiusFraction * t.CapsuleRadius, t.StepHeight, t.StepHeight,
                         MathF.Cos(tick.TractionGate)), out var binding);

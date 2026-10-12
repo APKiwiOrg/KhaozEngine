@@ -10,7 +10,7 @@ namespace KhaozEngine.Tests;
 
 /// <summary>
 /// Queue/batch/salvage semantics of <see cref="BatchedWriter{T}"/>, exercised headlessly against a fake
-/// sink (no real store). Mirrors Ruinborne's LedgerWriterTests/ChatLogWriterTests (the game-side wrappers
+/// sink (no real store). Mirrors the reference consumer's LedgerWriterTests/ChatLogWriterTests (the game-side wrappers
 /// around this same type before it was promoted into the engine), focused on the generic primitive
 /// itself: batching, drop-oldest overflow, flush cadence, the whole-batch salvage fallback, shutdown
 /// drain, and the null-sink no-op.
@@ -117,7 +117,7 @@ public class BatchedWriterTests
         Assert.Equal(0, w.DroppedCount);
     }
 
-    // Mirrors Ruinborne LedgerWriterTests.Batch_failure_salvages_the_good_rows_and_drops_only_the_bad_one
+    // Mirrors the reference consumer LedgerWriterTests.Batch_failure_salvages_the_good_rows_and_drops_only_the_bad_one
     // (issue #43 there): one bad row in a batch must not lose the whole batch. BatchedWriter salvages a
     // failed batch by retrying every record on its own; the good rows land and only the genuinely bad one
     // is dropped and logged.

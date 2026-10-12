@@ -9,7 +9,7 @@ This is the **why**. What shipped and how to use it live in `CHANGELOG.md` 16.5.
 
 ## Where this came from
 
-Ruinborne played 16.3.1 and reported the release as a large improvement, with two asks:
+The reference consumer played 16.3.1 and reported the release as a large improvement, with two asks:
 
 1. The waves always run on one heading. On an island world the sea runs PAST the island rather than at it.
 2. From an elevated vantage (about 35 metres up, roughly 600 metres of water in frame) the 250 metre cascade-0

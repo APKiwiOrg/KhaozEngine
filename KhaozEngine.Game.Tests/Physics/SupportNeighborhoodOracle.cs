@@ -43,6 +43,7 @@ internal readonly record struct OracleVector(double X, double Y, double Z)
 /// <summary>One installed face, its vertices in the backend's order and its outward unit normal.</summary>
 internal sealed record OracleFace(StaticHandle Static, int ElementId, OracleVector[] Vertices)
 {
+    internal InstalledPoseOracle.V[]? ExactVertices { get; init; }
     internal OracleVector Normal { get; } =
         OracleVector.Cross(Vertices[1] - Vertices[0], Vertices[2] - Vertices[0]).Unit;
 }
@@ -62,6 +63,8 @@ internal readonly record struct OracleTangentPoint(double Distance, OracleVector
 internal sealed record OracleTangent(StaticHandle Static, int ElementId, OracleSurface Surface, OracleVector Centre,
     OracleVector Axis, double Radius, double HalfLength)
 {
+    internal SupportFootprintExactOracle.Point? ExactAxis { get; init; }
+
     /// <summary>The closed form closest point of this element to <paramref name="point"/>.</summary>
     internal OracleTangentPoint Closest(OracleVector point)
     {
@@ -113,15 +116,19 @@ internal static class SupportNeighborhoodOracle
     internal static List<OracleFace> Box(StaticHandle owner, Vector3 half, Pose pose)
     {
         var corners = new OracleVector[8];
+        var localCorners = new Vector3[8];
         for (int i = 0; i < corners.Length; i++)
         {
             var local = new OracleVector((i & 1) == 0 ? -half.X : half.X, (i & 2) == 0 ? -half.Y : half.Y,
                 (i & 4) == 0 ? -half.Z : half.Z);
+            localCorners[i] = new((float)local.X, (float)local.Y, (float)local.Z);
             corners[i] = OracleVector.Rotate(pose.Orientation, local) + OracleVector.From(pose.Position);
         }
+        var exact = SupportFootprintExactOracle.Transform(localCorners, pose);
         var faces = new List<OracleFace>();
         for (int face = 0; face < BoxFaces.Length; face++)
-            faces.Add(new OracleFace(owner, face, Array.ConvertAll(BoxFaces[face], i => corners[i])));
+            faces.Add(new OracleFace(owner, face, Array.ConvertAll(BoxFaces[face], i => corners[i]))
+            { ExactVertices = Array.ConvertAll(BoxFaces[face], i => exact[i]) });
         return faces;
     }
 
@@ -172,7 +179,11 @@ internal static class SupportNeighborhoodOracle
         for (int i = 0; i < mesh.Triangles.Length; i++)
         {
             ref var triangle = ref mesh.Triangles[i];
-            faces.Add(new OracleFace(owner, i, [World(triangle.A), World(triangle.C), World(triangle.B)]));
+            faces.Add(new OracleFace(owner, i, [World(triangle.A), World(triangle.C), World(triangle.B)])
+            {
+                ExactVertices = SupportFootprintExactOracle.Transform([triangle.A, triangle.C, triangle.B],
+                new Pose(description.Pose.Position, description.Pose.Orientation))
+            });
         }
         return faces;
     }

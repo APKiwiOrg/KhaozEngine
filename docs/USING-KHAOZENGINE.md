@@ -490,7 +490,7 @@ mistaken for an unset one. `WindowLaunch` holds all of that parsing (`TryParseMo
 
 **How a game remembers its window, and the one flag it must honour.** The engine does no settings IO: a game
 serialises `Display.CurrentDisplay` (mode, size, position) into its own settings file on exit and hands it back
-through `ApplyDisplay` in `OnLoad`, which clamps a stale position on-screen for it. Ruinborne's `MenuController`
+through `ApplyDisplay` in `OnLoad`, which clamps a stale position on-screen for it. The reference consumer's `MenuController`
 is the reference shape, with `BuildDisplaySnapshot` mapping its persisted settings to a `DisplaySettings` and
 `PositionUnspecified` standing in for "no saved position yet". Do not rebuild any of that.
 
@@ -1153,7 +1153,7 @@ gesture.Advance(input, uiBlocked, dt);   // the two-argument Advance throws on a
   `Advance` throws `ArgumentOutOfRangeException`. `TapTolerance` is null on a gesture built with a threshold, and its
   three-argument `Advance` neither uses nor checks the time, so it matches the two-argument one for any value.
 
-It is lifted from Ruinborne's `RightMouseGesture` and watches any button. `FollowCameraController` takes two of
+It is lifted from the reference consumer's `RightMouseGesture` and watches any button. `FollowCameraController` takes two of
 them (see "Tap-or-drag gestures" in the follow camera chapter).
 
 ### Rect, viewport, clock
@@ -3605,7 +3605,7 @@ scene.Draw(gun, sockets["socket_nose"] * shipWorld, Color.White);
   props occlude the buried parts (and it flows through the post chain like the meshes). `DebugDepthMode.AlwaysOnTop`
   draws it crisp over the finished frame with no depth test, for a fully buried volume you still need to see. All
   four clear each `Begin()` (immediate mode) and carry no player-facing text. The game owns which volumes to draw
-  and when (a hotkey, colours per volume type). A Ruinborne-style NPC combat-volume overlay behind an F-key toggle:
+  and when (a hotkey, colours per volume type). A consumer-shaped NPC combat-volume overlay behind an F-key toggle:
 
   ```csharp
   // Colours per volume type, owned by the game.
@@ -4133,7 +4133,7 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
   - The flip side of `FixedInternal`: a window SMALLER than the fixed target is a genuine downscale on the final
     blit, and by default that downscale is a single bilinear tap (kept exactly as-is so every existing consumer
     and GPU golden stays byte-identical) - which under-samples the same way an un-mip-filtered `Supersample`
-    factor above 2 would (the historical Ruinborne shimmer on a window under 1600x900). Opt into the correct
+    factor above 2 would (the historical consumer shimmer on a window under 1600x900). Opt into the correct
     mip-filtered blit for THIS case too with `Post.MipFilterFixedInternalDownscale = true` (default `false`). It
     reuses the exact mip-chain + trilinear-blit machinery `MatchViewport`'s `Supersample` downscale already uses,
     at whatever ratio the window ends up smaller by. Prefer `RenderScale.MatchViewport` outright if the small
@@ -4381,7 +4381,7 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       does not move it. This is the same quantization for ROTATION. The cascade fit keeps using the light direction it
       last adopted until the sun has turned far enough to drag a worst-case caster's shadow by
       `ShadowLightHoldTexels` shadow texels, and only then adopts the new one, so a stationary scene under a day/night
-      cycle stops repainting the whole atlas every frame for a displacement nobody can see. Under Ruinborne's
+      cycle stops repainting the whole atlas every frame for a displacement nobody can see. Under the reference consumer's
       30 minute day (0.00333 deg/frame) a wide outdoor camera re-fits about once every 29 frames instead of every
       frame. Set `ShadowLightHoldTexels = 0` to disable it, which restores the pre-17.36.1 fit byte for byte.
       Three things to know. The threshold is elevation-corrected and recomputed every frame
@@ -7924,7 +7924,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.33.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.34.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -8220,7 +8220,7 @@ On the dev Mac a 36,864-column flat world wrote 664,689 bytes and loaded in abou
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.33.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.34.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -8613,7 +8613,7 @@ rules replace it, both unconditional and neither a knob:
 
 **The gate has a MEMORY and the slide has FRICTION (17.30.0, [#475](https://github.com/APKiwiOrg/KhaozEngine/issues/475)).**
 A bare threshold chatters on real terrain: ground whose columns straddle it flips grip and slide every tick. Measured
-on a Ruinborne bank running 40.0 to 41.8 degrees against a 40 degree gate, 43 footing flips in 330 ticks and a stall
+on a consumer bank running 40.0 to 41.8 degrees against a 40 degree gate, 43 footing flips in 330 ticks and a stall
 2.73 m up a 7.6 m climb - and widening the gate past that bank simply moved the same failure onto the next feature,
 because any threshold lands inside some terrain's slope distribution. Two knobs, both **default-on**:
 
@@ -8810,9 +8810,8 @@ to a land character.
 `AnimatedCharacter` plays the forward `Swim` clip (speed-blended above `LocomotionThresholds.SwimForwardThreshold`) or the
 tread `SwimIdle` clip below it, threaded from `MoveState.Swimming` / the replicated `MovementState.Swimming` -
 never a water query of the animator's own. Remotes ride the same replicated bit via `EntityRenderState.Swimming`
--> `CharacterSample.Swimming`. Consumers bake two clips named `Swim` and `SwimIdle`; a rig without them degrades
-to `Idle` while swimming. Ruinborne's avatar is being rebaked with these two clips from the CC0 Quaternius
-Universal Animation Library and maps them on adoption.
+-> `CharacterSample.Swimming`. Consumers bake and map two clips named `Swim` and `SwimIdle`.
+A rig without them falls back to `Idle` while swimming.
 
 ---
 
@@ -8843,12 +8842,23 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
   `Unresolved` without a usable prefix. `IsComplete` reports structural Clear/Hit status, not proof of
   the backend certificate. Validate the whole request extent, error budget, scope and read lifetime.
   Closed endpoints and stationary requests are included. Hit bounds do not authorize placement.
+- Optional `IPhysicsCapsuleGeometryQueries` offers the same complete sweep and contact queries with
+  `CapsuleQueryDimensions` value inputs. Exact represented radius and cylindrical length reach the same
+  Bepu query core without constructing a shape. Restricted views retain their exclusions and read gates.
+  Use this capability for continuously varying geometric enclosures, including endpoint rounding.
 - Optional `IPhysicsCapsuleFeatures.QueryCapsuleFeature(lease, target, capsule, pose, maximumSeparationMetres, faces) -> CapsuleFeatureResult`
   certifies the closest finite feature of one static under a read lease. Bepu owners and restricted views
   support it. See [Capsule-feature certification](#capsule-feature-certification-iphysicscapsulefeatures).
 - Optional `IPhysicsSupportNeighborhood.QuerySupportNeighborhood(lease, probe, pose, bandMetres, elements, joins, filter) -> SupportNeighborhoodResult`
   publishes every front-facing surface element of every selected static within a band of an upright probe,
   with the symmetric join matrix over them. See [Support neighborhoods](#support-neighborhoods).
+- Optional `IPhysicsSupportFootprint.QuerySupportFootprint(lease, request, members, joins, filter) -> SupportFootprintResult`
+  publishes the complete relevant footprint member set, certified proposal guards and joins under
+  the original selected interval. Polygon witnesses attain the full closed-disc maximum. Curved
+  parts carry axis and footprint roles without changing raw IDs. The raw cap is 256, with atomic
+  refusal at 257. `SupportFootprintBounds.TryCreate` encloses both proposal paths and the admission
+  column for pre-query scope guards. Contact-controller footprints require radius at least 0.01 m.
+  See [Complete support footprints](#complete-support-footprints) for storage, witness and lifetime use.
 - `IPhysicsWorld` static bodies + queries: `AddStatic(PhysicsShape shape, Pose pose, PhysicsMaterial? material = null) -> StaticHandle`,
   `RemoveStatic(StaticHandle handle)`, `Step(float dt)`,
   `Raycast(Vector3 origin, Vector3 direction, float maxDistance, out RayHit hit, QueryFilter filter = default) -> bool`,
@@ -8952,7 +8962,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.33.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.34.0" />
 ```
 
 ```csharp
@@ -9202,6 +9212,69 @@ if (world is IPhysicsCapsuleFeatures features && world is IPhysicsQueryLeaseSour
   never carry it into a later lease. A later lease of the same generation cannot revive it, and
   `AssertFeatureCurrent` throws for another receiver, another lease or an expired interval.
 - The faces describe geometry only. Whether a face is walkable support is the caller's rule.
+
+### Complete support footprints
+
+`IPhysicsSupportFootprint` is the contact controller's optional capability. Test for it separately
+from features and neighborhoods. Bepu owners and selected views provide it. A caller supplies the
+closed disc, inclusive band, cosine slope gate, represented `0.0001f` contact band and two original
+upright downward proposal paths in one `SupportFootprintRequest`. No prior sweep hit is trusted.
+The backend authenticates the exact receiver and lease before executing both proposals.
+
+For axis `a`, radius `r`, band `[L, U]` and slope cosine `c`, the admission column covers the disc
+expanded by the contact band from `L - max(r * sqrt(1 - c*c) / c, 0.001) - 0.0001` to
+`U + 0.001 + 2*r + 0.01 + 0.0001`. Outward evaluation also encloses represented proposal paths.
+Use `SupportFootprintBounds.TryCreate` to guard the required volume against an environment scope
+before backend or producer work. This envelope does not extend the accepted disc or contribution band.
+Radius below 0.01 m is invalid, including analytic-only contact movement. A zero cosine returns
+`Unsupported`. Bepu accepts radius at most 2 m and proposal length at most 8 m.
+
+```csharp
+// Provision once outside the hot path. request and lease belong to the exact selected world.
+if (world is not IPhysicsSupportFootprint footprints)
+    throw new NotSupportedException("Complete footprint certification is required.");
+var members = new SupportFootprintMember[SupportFootprintResult.MaximumElements];
+var joins = new ulong[members.Length * SupportFootprintResult.JoinWordsFor(members.Length)];
+SupportFootprintResult result = footprints.QuerySupportFootprint(lease, request, members, joins,
+    QueryFilter.StaticsOnly);
+if (result.Status == CapsuleFeatureStatus.Complete)
+{
+    footprints.AssertFootprintCurrent(result, lease);
+    for (int i = 0; i < result.Members; i++)
+    {
+        SupportFootprintMember member = members[i];
+        int row = i * result.JoinWordsPerRow;
+        // First/Second are occupied only up to WitnessCount. UpwardLower certifies slope equality.
+        // Join bit j is joins[row + j / 64] & (1UL << (j % 64)). Locomotion selects support.
+    }
+}
+```
+
+Polygon witnesses attain the maximum over the entire original closed disc. Their planes and joined
+caps remain locomotion's responsibility. A ring-only polygon publishes no support witness but still
+joins and supplies proposal guards. Curved parts retain raw static/element IDs and at most two roles,
+axis then footprint. Their attained witnesses and certified per-component `UpwardLower` preserve
+walkable equality independently of scalar normal error. Curved parts never join.
+
+The published matrix is raw-member indexed, with stride `result.JoinWordsPerRow`, regardless of buffer
+capacity. At most 256 relevant raw pairs and 512 witnesses publish. A below-band member is omitted
+only with proof it cannot contribute, join a band-capable member or supply a required proposal guard.
+At 257 relevant members `CapacityExceeded` reports diagnostic `RequiredElements`. Every refusal or
+exception leaves both spans untouched. A short join buffer throws `ArgumentException`.
+There is no partial support, extra probe or fallback to an older query.
+
+A result expires with its original interval, even if the next lease has the same generation.
+`AssertFootprintCurrent` rejects a foreign receiver, source or lease, wrong thread, disposed view,
+changed origin or generation. All support, analytic facts, owner binding and signals share the tick's
+selected lease. An undersized explicit scope refuses before any backend or producer call.
+
+The staged controller's geometric proof and per-operation cost proof have separate gates. The recorded
+arm64 inventory has zero warm support/substep bytes, 64 bytes per acquired dry tick and 312 bytes per
+acquired explicit tick (192 movement/release binding, 64 physics ReadLease, 56 producer pin).
+Continuously varying capsule enclosures use `IPhysicsCapsuleGeometryQueries` value dimensions, without
+quantization. These bytes are runtime/adapter specific, not a promise for every backend. #1334 stays
+open with 96 local time rejections pending owner-approved normalized hosted repeat proof. Phase 5
+navigation capture and phase 6 game adoption/aggregate CPU remain separate.
 
 ### Support neighborhoods
 
@@ -9710,7 +9783,7 @@ fadeBandWidth = 0, lodMeshes = null, lodDistance = 0, colliders = true)` (issue 
 layer, with no procedural generation at load time. The multi-part overload takes `partMeshes`/`lodPartMeshes`
 the same way `ScatterLayer` does.
 
-Ruinborne-shaped: one baked list per source scatter layer, one `PlacementLayer` each, the tree layer keeping
+consumer-shaped: one baked list per source scatter layer, one `PlacementLayer` each, the tree layer keeping
 its far HLOD cluster:
 
 ```csharp
@@ -9793,7 +9866,7 @@ the remainder, so this pipeline cannot take a material palette that is content r
 there is a sibling, `Scene3D.LoadTileGroundMaterial` / `LoadMesh(mesh, TileGroundMaterialHandle)`: up to 64 albedo
 layers in one texture array, four material SLOTS per triangle instead of five fixed layers, and no normal maps.
 It is what a tile world's ground draws through (see "Tile world rendering"), and the two are separate pipelines on
-purpose, since widening this one would move Ruinborne's live terrain path and its goldens.
+purpose, since widening this one would move the reference consumer's live terrain path and its goldens.
 
 **1. Load the material.** `TerrainMaterialPresets.Procedural()` returns a ready-made `TerrainLayeredMaterial`
 built from five `TerrainMaterialLayer`s (one per biome layer). Each layer carries an albedo image, a normal map,
@@ -10524,11 +10597,11 @@ does not capture), `MeshTriangleCapacity` (a mesh over 65,536 triangles), `Local
 64 m from its origin) and `HullCapacity`. `HullCapacity` is conservative: any convex hull over 130 points is flagged,
 because 130 points always fit the backend's 256 faces and 1,524 face entries, even though a larger hull may still be
 captured. Every diagnostic predicts `IPhysicsCapsuleFeatures` capture only. The #438 contact controller's
-foot-support primitive, not yet used by movement, certifies through `IPhysicsSupportNeighborhood`, which has different
-limits: it captures curved leaves, reads only the mesh triangles near its probe and caps one query at 256 elements,
+foot-support primitive certifies movement through `IPhysicsSupportFootprint`, which has different
+limits: it captures curved leaves, reads mesh triangles in the full admitted footprint column and caps one query at 256 relevant raw members,
 while it shares the 64 leaf and hull face limits. It applies its own 64 m local bound to curved leaf sizes and to the
-mesh triangles near its probe, which `LocalExtent` does not predict, and one unsupported static near a probe refuses
-the whole neighborhood query.
+admitted mesh triangles, which `LocalExtent` does not predict, and one unsupported static in the column refuses
+the whole footprint query.
 
 **Refusals.** `MapAssetShapes.Read` throws `MapDocumentException` for an asset that declares a `Surface` (support)
 resource, since placement-local support surfaces arrive with R5. It also refuses a compound holding a triangle mesh,
@@ -15706,7 +15779,7 @@ itself.
 ```csharp
 var session = new TelemetrySessionInfo
 {
-    AppName    = "Ruinborne",         // handed in: the engine does not know the game's identity
+    AppName    = "ConsumerGame",         // handed in: the engine does not know the game's identity
     AppVersion = "0.7.3",             // your <Version>
     BuildName  = "Sundered Ground",   // your <BuildName>, the minor-series codename
 }
@@ -15719,7 +15792,7 @@ _recorder.Start(path, session);       // header first, then Sample() rows as bef
 The line that lands:
 
 ```json
-{"session":{"v":1,"engine":"17.25.0+3f2a1c9","app":{"name":"Ruinborne","version":"0.7.3","build":"Sundered Ground"},"gpu":{"backend":"Direct3D11","backendSource":"FallbackAfterFailure","requestedBackend":"Vulkan","requestedOverride":"vulkan","adapter":"NVIDIA GeForce RTX 4070","injectedModules":["RTSSHooks64.dll"],"threading":{"driverCommandLists":false,"driverConcurrentCreates":true}},"env":{"KE_GRAPHICS_BACKEND":"vulkan"},"game":{"worldSeed":"8812345","zone":"Ashfall"}}}
+{"session":{"v":1,"engine":"17.25.0+3f2a1c9","app":{"name":"ConsumerGame","version":"0.7.3","build":"Sundered Ground"},"gpu":{"backend":"Direct3D11","backendSource":"FallbackAfterFailure","requestedBackend":"Vulkan","requestedOverride":"vulkan","adapter":"NVIDIA GeForce RTX 4070","injectedModules":["RTSSHooks64.dll"],"threading":{"driverCommandLists":false,"driverConcurrentCreates":true}},"env":{"KE_GRAPHICS_BACKEND":"vulkan"},"game":{"worldSeed":"8812345","zone":"Ashfall"}}}
 ```
 
 **Telling the header from a sample row is one key test.** The header has a `session` envelope and no `t`. Every
@@ -16207,7 +16280,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.33.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.34.0" />
 ```
 
 ```csharp
@@ -16243,7 +16316,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.33.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.34.0" />
 ```
 
 ```csharp
@@ -16485,7 +16558,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.33.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.34.0" />
 ```
 
 ```csharp
@@ -20734,7 +20807,7 @@ pre-migration save, so it should never look like one. `StampCurrent` is what mak
 `KhaozEngine.Persistence.BatchedWriter<T>` is a bounded async batch-write queue for server-side
 telemetry: chat transcripts, operational samples, non-authoritative diagnostics, and similar record streams
 where losing the odd row under load is acceptable but blocking the sim tick on IO is not. Promoted
-from Ruinborne, which had run it in production behind three writers since its 0.9.x line.
+from the reference consumer, which had run it in production behind three writers since its 0.9.x line.
 
 ```csharp
 using KhaozEngine.Persistence;
@@ -20845,7 +20918,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.33.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.34.0" />
 </ItemGroup>
 ```
 
@@ -22988,7 +23061,7 @@ var client = new WorldClient(transport, groundHeight, MoveTuning.Default,
     token: System.Text.Encoding.UTF8.GetBytes(accountId));   // dev: raw id; prod: SignedToken.Mint(...) bytes
 ```
 
-**Azure SQL (Ruinborne).** For production, swap the backend - same `IWorldStore`, so `WorldPersistence` is
+**Azure SQL (the reference consumer).** For production, swap the backend - same `IWorldStore`, so `WorldPersistence` is
 unchanged:
 
 ```csharp
@@ -23063,7 +23136,7 @@ Both live in the one `player:{persistenceKey}` record, so position and the game 
 to *either* re-saves. Because the record is player-keyed, the blob is **unaffected by cell handoff** (unlike
 registered components, which migrate cell-to-cell with the entity).
 
-**Load-on-join guards the SESSION against a clobbering save.** On a genuinely-async store (Azure SQL / Ruinborne),
+**Load-on-join guards the SESSION against a clobbering save.** On a genuinely-async store (Azure SQL / the reference consumer),
 a load-on-join runs in the background while the tick loop keeps going. Until the loaded record is applied on the
 server thread, `WorldPersistence` guards that account: the periodic dirty pass and save-on-leave both skip it, so a
 save firing mid-load can't overwrite the stored record (position **and** the game blob) with the default-spawn state

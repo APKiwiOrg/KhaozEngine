@@ -405,7 +405,8 @@ public partial class ContactControllerTests
             "cliff" => (new Ground(null, (x, _) => MathF.Max(0, 5 * (x - 0.1f)),
                 (x, _) => x > 0.1f ? Vector3.Normalize(new Vector3(-5, 1, 0)) : Vector3.UnitY),
                 Vector3.Zero, new Vector2(0.2f, 0.2f)),
-            "refused-target" => (On(OverCapacityFan()), new Vector3(-0.2f, 0, 0), new Vector2(0.2f, 0)),
+            // The complete footprint at x -0.3 meets about 70 fan triangles. At x -0.1 it holds the apex and all 300.
+            "refused-target" => (On(OverCapacityFan()), new Vector3(-0.3f, 0, 0), new Vector2(0.2f, 0)),
             "refused-start" => (On(OverCapacityFan()), Vector3.Zero, new Vector2(0.2f, 0)),
             "ceiling" => (On(FootSupportScenes.Floor(SceneVariant.Box)
                 .Slab("ceiling", new Vector3(2.5f, 1.7f, 0), 0, 1.5f, 3)), new Vector3(0.39f, 0, 0),

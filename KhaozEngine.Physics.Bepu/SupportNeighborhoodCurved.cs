@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using BepuPhysics;
 using BepuPhysics.Collidables;
 using KhaozEngine.Physics;
+using static KhaozEngine.Physics.Bepu.SupportCurvedArithmetic;
 
 namespace KhaozEngine.Physics.Bepu;
 
@@ -17,7 +18,7 @@ internal enum SupportCurvedShape : byte { Sphere, Capsule, Cylinder }
 /// the radial direction along the axis.</summary>
 internal readonly record struct SupportCurvedLeaf(int LeafId, SupportCurvedShape Shape, GeometryVector Centre,
     GeometryVector Axis, double Radius, double HalfLength, GeometryVector AcrossX, GeometryVector AcrossY,
-    GeometryVector AcrossZ)
+    GeometryVector AcrossZ, FeaturePoint SourceColumn)
 {
     internal int Parts => Shape == SupportCurvedShape.Cylinder ? 3 : 1;
 
@@ -62,7 +63,7 @@ internal static class SupportNeighborhoodCurved
 
     // The axis is the normalized enclosure of the installed operator's Y column, which holds both the real
     // quaternion polynomial and the represented maps. Sizes share the local bound of captured polyhedron vertices.
-    static CapsuleFeatureStatus Leaf(Simulation simulation, TypedIndex index, in RigidPose pose, int leafId,
+    internal static CapsuleFeatureStatus Leaf(Simulation simulation, TypedIndex index, in RigidPose pose, int leafId,
         List<SupportCurvedLeaf> leaves)
     {
         if (!InstalledPoseOperator.TryCreate(pose, out InstalledPoseOperator transform))
@@ -91,6 +92,20 @@ internal static class SupportNeighborhoodCurved
         if (!(radius > 0 && radius <= local) || !(half >= 0 && half <= local) ||
             (shape == SupportCurvedShape.Cylinder && half == 0))
             return CapsuleFeatureStatus.Unsupported;
+        return Leaf(shape, radius, half, pose, leafId, transform, leaves);
+    }
+
+    internal static CapsuleFeatureStatus Leaf(SupportCurvedShape shape, float radius, float half,
+        in RigidPose pose, int leafId, List<SupportCurvedLeaf> leaves)
+    {
+        if (!InstalledPoseOperator.TryCreate(pose, out InstalledPoseOperator transform))
+            return CapsuleFeatureStatus.Unsupported;
+        return Leaf(shape, radius, half, pose, leafId, transform, leaves);
+    }
+
+    static CapsuleFeatureStatus Leaf(SupportCurvedShape shape, float radius, float half, in RigidPose pose,
+        int leafId, in InstalledPoseOperator transform, List<SupportCurvedLeaf> leaves)
+    {
         GeometryVector axis = GeometryVectorOperations.Normalize(transform.Y.Bounds);
         if (!axis.IsResolved) return CapsuleFeatureStatus.Unsupported;
         GeometryInterval one = GeometryInterval.Exact(1);
@@ -101,7 +116,7 @@ internal static class SupportNeighborhoodCurved
         var acrossZ = new GeometryVector(xz, yz, one.Subtract(axis.Z.Square()));
         if (!acrossX.IsResolved || !acrossY.IsResolved || !acrossZ.IsResolved) return CapsuleFeatureStatus.Unsupported;
         leaves.Add(new(leafId, shape, FeaturePoint.Exact(pose.Position).Bounds, axis, radius, half, acrossX, acrossY,
-            acrossZ));
+            acrossZ, transform.Y));
         return CapsuleFeatureStatus.Complete;
     }
 
@@ -155,6 +170,7 @@ internal sealed class SupportTangentKernel
     /// when the bounded arithmetic failed.</summary>
     internal GeometrySign Measure(StaticHandle owner, in SupportCurvedLeaf leaf, int part, out SupportElement element)
     {
+        SupportQueryDiagnostics.Record(SupportQueryCounter.Extrema);
         element = default;
         double upper = double.PositiveInfinity;
         if (_certainLow <= _certainHigh &&
@@ -324,21 +340,4 @@ internal sealed class SupportTangentKernel
 
     static GeometryInterval Hypot(GeometryInterval a, GeometryInterval b) =>
         SupportGeometry.Length(new GeometryVector(a, b, GeometryInterval.Exact(0)));
-
-    static GeometryVector Add(GeometryVector a, GeometryVector b) => new(a.X.Add(b.X), a.Y.Add(b.Y), a.Z.Add(b.Z));
-
-    static GeometryVector Subtract(GeometryVector a, GeometryVector b) =>
-        new(a.X.Subtract(b.X), a.Y.Subtract(b.Y), a.Z.Subtract(b.Z));
-
-    static GeometryVector Scale(GeometryVector a, GeometryInterval s) =>
-        new(a.X.Multiply(s), a.Y.Multiply(s), a.Z.Multiply(s));
-
-    // Unresolved when the divisor may be zero, which is where a radial normal has no bound.
-    static GeometryVector Divide(GeometryVector a, GeometryInterval s) =>
-        new(a.X.Divide(s), a.Y.Divide(s), a.Z.Divide(s));
-
-    static GeometryVector Hull(GeometryVector a, GeometryVector b) => new(Hull(a.X, b.X), Hull(a.Y, b.Y), Hull(a.Z, b.Z));
-
-    static GeometryInterval Hull(GeometryInterval a, GeometryInterval b) =>
-        GeometryInterval.Enclose(Math.Min(a.Lower, b.Lower), Math.Max(a.Upper, b.Upper));
 }

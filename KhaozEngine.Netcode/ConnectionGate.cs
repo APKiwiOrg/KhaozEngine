@@ -180,7 +180,7 @@ public sealed class BanGateAuthenticator : IConnectionAuthenticator, IConnection
 }
 
 /// <summary>
-/// The connect-time door: version, then world, then token, then ban. Promoted from Ruinborne (engine-first: two
+/// The connect-time door: version, then world, then token, then ban. Promoted from the reference consumer (engine-first: two
 /// games need the identical gate) and reachable without <c>KhaozEngine.NetWorld</c>, which is what lets a tile
 /// server use it.
 /// <para>Order is load-bearing. The VERSION gate is outermost, so a skewed client gets the ordinary out-of-date

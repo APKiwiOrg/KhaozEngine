@@ -8,8 +8,9 @@ namespace KhaozEngine.Locomotion.Contacts;
 /// member delegates to the controller's own shell geometry, so the body model has one implementation.</summary>
 public static class ContactShell
 {
-    /// <summary>Throws <see cref="System.ArgumentException"/> when the shell span cannot hold its radius or the shell
-    /// cannot clear its steepest walkable plane with the contact skin.</summary>
+    /// <summary>Throws <see cref="System.ArgumentException"/> when the default half-radius footprint is below 0.01 m,
+    /// the shell span cannot hold its radius or the shell cannot clear its steepest walkable plane with the contact
+    /// skin.</summary>
     public static void Validate(in MoveTuning tuning) => ShellGeometry.Validate(tuning);
 
     /// <summary>The shell capsule, upright under an identity orientation.</summary>

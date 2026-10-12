@@ -10,7 +10,7 @@ namespace KhaozEngine.Render3D
     /// The per-cascade half of the shadow depth pass: which of this frame's casters each cascade actually draws.
     /// <para>
     /// Before this, <c>RenderShadowDepthPass</c> drew EVERY caster span into EVERY cascade, so a cascade 0 fitted to
-    /// a ~19 m slice sphere still rasterized the whole world's caster set. On an MMO-shaped frame (Ruinborne: 13.6k
+    /// a ~19 m slice sphere still rasterized the whole world's caster set. On an MMO-shaped frame (the reference consumer: 13.6k
     /// instanced foliage casters plus a few thousand props over a 500 m island, four cascades) that is four full
     /// re-rasterizations of everything, every frame the pass is dirty, for a shadow that can only land inside four
     /// small light-space rects.

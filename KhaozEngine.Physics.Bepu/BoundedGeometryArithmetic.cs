@@ -141,6 +141,7 @@ internal static class BoundedGeometryArithmetic
     /// against.</summary>
     internal static GeometrySign CompareProductsDyadic(double a, double b, double c, double d)
     {
+        SupportQueryDiagnostics.Record(SupportQueryCounter.ExactFallbacks);
         if (!double.IsFinite(a) || !double.IsFinite(b) || !double.IsFinite(c) || !double.IsFinite(d))
             return GeometrySign.Unresolved;
         return Compare(Product(a, b), Product(c, d));
@@ -169,6 +170,7 @@ internal static class BoundedGeometryArithmetic
     internal static GeometrySign CompareSquaredDistancesDyadic(ReadOnlySpan<double> a, ReadOnlySpan<double> b,
         ReadOnlySpan<double> c, ReadOnlySpan<double> d)
     {
+        SupportQueryDiagnostics.Record(SupportQueryCounter.ExactFallbacks);
         if (!TrySquaredDistance(a, b, out Dyadic left) || !TrySquaredDistance(c, d, out Dyadic right))
             return GeometrySign.Unresolved;
         return Compare(left, right);
@@ -221,6 +223,7 @@ internal static class BoundedGeometryArithmetic
     internal static GeometrySign CompareSumOfFourSquaresDyadic(double x, double y, double z, double w,
         double expected)
     {
+        SupportQueryDiagnostics.Record(SupportQueryCounter.ExactFallbacks);
         if (!double.IsFinite(x) || !double.IsFinite(y) || !double.IsFinite(z) ||
             !double.IsFinite(w) || !double.IsFinite(expected)) return GeometrySign.Unresolved;
         Dyadic sum = default;
@@ -255,6 +258,7 @@ internal static class BoundedGeometryArithmetic
     /// <summary>The dyadic path of <see cref="Orient2D"/>, the reference its expansion path is proved against.</summary>
     internal static GeometrySign Orient2DDyadic(float ax, float ay, float bx, float by, float cx, float cy)
     {
+        SupportQueryDiagnostics.Record(SupportQueryCounter.ExactFallbacks);
         if (!float.IsFinite(ax) || !float.IsFinite(ay) || !float.IsFinite(bx) ||
             !float.IsFinite(by) || !float.IsFinite(cx) || !float.IsFinite(cy) ||
             !TryDifference(bx, ax, out Dyadic x1) || !TryDifference(by, ay, out Dyadic y1) ||
@@ -287,6 +291,7 @@ internal static class BoundedGeometryArithmetic
     /// <summary>The dyadic path of <see cref="Orient3D"/>, the reference its expansion path is proved against.</summary>
     internal static GeometrySign Orient3DDyadic(Vector3 a, Vector3 b, Vector3 c, Vector3 point)
     {
+        SupportQueryDiagnostics.Record(SupportQueryCounter.ExactFallbacks);
         if (!Finite(a) || !Finite(b) || !Finite(c) || !Finite(point) ||
             !TryDifference(b, a, out DyadicVector ab) || !TryDifference(c, a, out DyadicVector ac) ||
             !TryDifference(point, a, out DyadicVector ap) ||

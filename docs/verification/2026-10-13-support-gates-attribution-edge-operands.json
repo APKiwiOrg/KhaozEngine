@@ -1,0 +1,1315 @@
+[
+  {
+    "Scene": "flat box",
+    "Operation": "Find",
+    "WarmBytes": 0,
+    "GeometryMatchesOracle": true,
+    "Counts": {
+      "Find": 1,
+      "Proposals": 2,
+      "Volumes": 1,
+      "SelectedStatics": 1,
+      "MeshLeaves": 0,
+      "Polygons": 6,
+      "Members": 1,
+      "Extrema": 2,
+      "IntervalFallbacks": 0,
+      "ExactFallbacks": 0,
+      "JoinPairs": 0,
+      "JoinsProved": 0,
+      "JoinsPruned": 0,
+      "Unsupported": 0,
+      "Ambiguous": 0,
+      "CapacityExceeded": 0,
+      "AnalyticSamples": 0,
+      "Bindings": 0,
+      "PhysicsLeases": 0,
+      "MovementLeases": 0,
+      "ProducerPins": 0,
+      "GroundSubsteps": 0,
+      "MediumRetries": 0,
+      "ModeSegments": 0
+    },
+    "Phases": [
+      {
+        "Phase": "Route",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 23.709,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportProposals",
+        "Calls": 2,
+        "Bytes": 0,
+        "Microseconds": 6,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportTraversal",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 0.958,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportCapture",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 359.917,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportMaterialization",
+        "Calls": 2,
+        "Bytes": 0,
+        "Microseconds": 43.958,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportExtrema",
+        "Calls": 6,
+        "Bytes": 0,
+        "Microseconds": 10.709,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportContacts",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 3.416,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportJoins",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 3.791,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportCertification",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 5.583,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportSelection",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 0.25,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportColumnSetup",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 0.334,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportPlanarContact",
+        "Calls": 2,
+        "Bytes": 0,
+        "Microseconds": 0.084,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportPlanarHeight",
+        "Calls": 2,
+        "Bytes": 0,
+        "Microseconds": 0.084,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportEdgeSetup",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 1.166,
+        "Collections": 0
+      }
+    ]
+  },
+  {
+    "Scene": "flat box",
+    "Operation": "DryTick",
+    "WarmBytes": 64,
+    "GeometryMatchesOracle": true,
+    "Counts": {
+      "Find": 3,
+      "Proposals": 6,
+      "Volumes": 3,
+      "SelectedStatics": 3,
+      "MeshLeaves": 0,
+      "Polygons": 18,
+      "Members": 3,
+      "Extrema": 6,
+      "IntervalFallbacks": 0,
+      "ExactFallbacks": 0,
+      "JoinPairs": 0,
+      "JoinsProved": 0,
+      "JoinsPruned": 0,
+      "Unsupported": 0,
+      "Ambiguous": 0,
+      "CapacityExceeded": 0,
+      "AnalyticSamples": 6,
+      "Bindings": 0,
+      "PhysicsLeases": 1,
+      "MovementLeases": 0,
+      "ProducerPins": 0,
+      "GroundSubsteps": 2,
+      "MediumRetries": 0,
+      "ModeSegments": 1
+    },
+    "Phases": [
+      {
+        "Phase": "Route",
+        "Calls": 1,
+        "Bytes": 64,
+        "Microseconds": 27.413,
+        "Collections": 0
+      },
+      {
+        "Phase": "Placement",
+        "Calls": 2,
+        "Bytes": 0,
+        "Microseconds": 0.583,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportProposals",
+        "Calls": 6,
+        "Bytes": 0,
+        "Microseconds": 8.166,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportTraversal",
+        "Calls": 3,
+        "Bytes": 0,
+        "Microseconds": 0.667,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportCapture",
+        "Calls": 3,
+        "Bytes": 0,
+        "Microseconds": 0.917,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportMaterialization",
+        "Calls": 6,
+        "Bytes": 0,
+        "Microseconds": 97.25,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportExtrema",
+        "Calls": 18,
+        "Bytes": 0,
+        "Microseconds": 20.96,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportContacts",
+        "Calls": 3,
+        "Bytes": 0,
+        "Microseconds": 5.043,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportJoins",
+        "Calls": 3,
+        "Bytes": 0,
+        "Microseconds": 0.542,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportCertification",
+        "Calls": 3,
+        "Bytes": 0,
+        "Microseconds": 1.001,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportSelection",
+        "Calls": 3,
+        "Bytes": 0,
+        "Microseconds": 0.292,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportColumnSetup",
+        "Calls": 3,
+        "Bytes": 0,
+        "Microseconds": 0.667,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportPlanarContact",
+        "Calls": 6,
+        "Bytes": 0,
+        "Microseconds": 0.042,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportPlanarHeight",
+        "Calls": 6,
+        "Bytes": 0,
+        "Microseconds": 0.124,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportEdgeSetup",
+        "Calls": 3,
+        "Bytes": 0,
+        "Microseconds": 2.291,
+        "Collections": 0
+      }
+    ]
+  },
+  {
+    "Scene": "flat mesh",
+    "Operation": "Find",
+    "WarmBytes": 0,
+    "GeometryMatchesOracle": true,
+    "Counts": {
+      "Find": 1,
+      "Proposals": 2,
+      "Volumes": 1,
+      "SelectedStatics": 1,
+      "MeshLeaves": 2,
+      "Polygons": 2,
+      "Members": 2,
+      "Extrema": 12,
+      "IntervalFallbacks": 0,
+      "ExactFallbacks": 0,
+      "JoinPairs": 1,
+      "JoinsProved": 1,
+      "JoinsPruned": 0,
+      "Unsupported": 0,
+      "Ambiguous": 0,
+      "CapacityExceeded": 0,
+      "AnalyticSamples": 0,
+      "Bindings": 0,
+      "PhysicsLeases": 0,
+      "MovementLeases": 0,
+      "ProducerPins": 0,
+      "GroundSubsteps": 0,
+      "MediumRetries": 0,
+      "ModeSegments": 0
+    },
+    "Phases": [
+      {
+        "Phase": "Route",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 8.041,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportProposals",
+        "Calls": 2,
+        "Bytes": 0,
+        "Microseconds": 13.5,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportTraversal",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 0.416,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportCapture",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 29.334,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportExtrema",
+        "Calls": 2,
+        "Bytes": 0,
+        "Microseconds": 14.291,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportContacts",
+        "Calls": 2,
+        "Bytes": 0,
+        "Microseconds": 3.459,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportJoins",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 1.167,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportCertification",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 0.75,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportSelection",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 0.166,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportColumnSetup",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 0.334,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportPlanarContact",
+        "Calls": 4,
+        "Bytes": 0,
+        "Microseconds": 0.042,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportPlanarHeight",
+        "Calls": 4,
+        "Bytes": 0,
+        "Microseconds": 0.166,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportEdgeSetup",
+        "Calls": 2,
+        "Bytes": 0,
+        "Microseconds": 1.584,
+        "Collections": 0
+      }
+    ]
+  },
+  {
+    "Scene": "flat mesh",
+    "Operation": "DryTick",
+    "WarmBytes": 64,
+    "GeometryMatchesOracle": true,
+    "Counts": {
+      "Find": 3,
+      "Proposals": 6,
+      "Volumes": 3,
+      "SelectedStatics": 3,
+      "MeshLeaves": 6,
+      "Polygons": 6,
+      "Members": 6,
+      "Extrema": 32,
+      "IntervalFallbacks": 0,
+      "ExactFallbacks": 0,
+      "JoinPairs": 3,
+      "JoinsProved": 3,
+      "JoinsPruned": 0,
+      "Unsupported": 0,
+      "Ambiguous": 0,
+      "CapacityExceeded": 0,
+      "AnalyticSamples": 6,
+      "Bindings": 0,
+      "PhysicsLeases": 1,
+      "MovementLeases": 0,
+      "ProducerPins": 0,
+      "GroundSubsteps": 2,
+      "MediumRetries": 0,
+      "ModeSegments": 1
+    },
+    "Phases": [
+      {
+        "Phase": "Route",
+        "Calls": 1,
+        "Bytes": 64,
+        "Microseconds": 21.087,
+        "Collections": 0
+      },
+      {
+        "Phase": "Placement",
+        "Calls": 2,
+        "Bytes": 0,
+        "Microseconds": 0.624,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportProposals",
+        "Calls": 6,
+        "Bytes": 0,
+        "Microseconds": 25.207,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportTraversal",
+        "Calls": 3,
+        "Bytes": 0,
+        "Microseconds": 0.666,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportCapture",
+        "Calls": 3,
+        "Bytes": 0,
+        "Microseconds": 44.291,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportExtrema",
+        "Calls": 6,
+        "Bytes": 0,
+        "Microseconds": 35.499,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportContacts",
+        "Calls": 6,
+        "Bytes": 0,
+        "Microseconds": 42.625,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportJoins",
+        "Calls": 3,
+        "Bytes": 0,
+        "Microseconds": 2,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportCertification",
+        "Calls": 3,
+        "Bytes": 0,
+        "Microseconds": 1.75,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportSelection",
+        "Calls": 3,
+        "Bytes": 0,
+        "Microseconds": 0.334,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportColumnSetup",
+        "Calls": 3,
+        "Bytes": 0,
+        "Microseconds": 0.667,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportPlanarContact",
+        "Calls": 8,
+        "Bytes": 0,
+        "Microseconds": 0.291,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportPlanarHeight",
+        "Calls": 8,
+        "Bytes": 0,
+        "Microseconds": 0.208,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportEdgeSetup",
+        "Calls": 6,
+        "Bytes": 0,
+        "Microseconds": 3.792,
+        "Collections": 0
+      }
+    ]
+  },
+  {
+    "Scene": "fan 96",
+    "Operation": "Find",
+    "WarmBytes": 0,
+    "GeometryMatchesOracle": true,
+    "Counts": {
+      "Find": 1,
+      "Proposals": 2,
+      "Volumes": 1,
+      "SelectedStatics": 1,
+      "MeshLeaves": 96,
+      "Polygons": 96,
+      "Members": 96,
+      "Extrema": 768,
+      "IntervalFallbacks": 0,
+      "ExactFallbacks": 0,
+      "JoinPairs": 4560,
+      "JoinsProved": 4560,
+      "JoinsPruned": 0,
+      "Unsupported": 0,
+      "Ambiguous": 0,
+      "CapacityExceeded": 0,
+      "AnalyticSamples": 0,
+      "Bindings": 0,
+      "PhysicsLeases": 0,
+      "MovementLeases": 0,
+      "ProducerPins": 0,
+      "GroundSubsteps": 0,
+      "MediumRetries": 0,
+      "ModeSegments": 0
+    },
+    "Phases": [
+      {
+        "Phase": "Route",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 22.255,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportProposals",
+        "Calls": 2,
+        "Bytes": 0,
+        "Microseconds": 281.124,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportTraversal",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 0.25,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportCapture",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 429.75,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportExtrema",
+        "Calls": 96,
+        "Bytes": 0,
+        "Microseconds": 555.585,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportContacts",
+        "Calls": 96,
+        "Bytes": 0,
+        "Microseconds": 96.918,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportJoins",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 305.5,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportCertification",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 25.125,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportSelection",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 0.834,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportColumnSetup",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 0.208,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportPlanarContact",
+        "Calls": 192,
+        "Bytes": 0,
+        "Microseconds": 3.831,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportPlanarHeight",
+        "Calls": 192,
+        "Bytes": 0,
+        "Microseconds": 3.748,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportEdgeSetup",
+        "Calls": 96,
+        "Bytes": 0,
+        "Microseconds": 42.289,
+        "Collections": 0
+      }
+    ]
+  },
+  {
+    "Scene": "fan 96",
+    "Operation": "DryTick",
+    "WarmBytes": 64,
+    "GeometryMatchesOracle": true,
+    "Counts": {
+      "Find": 3,
+      "Proposals": 6,
+      "Volumes": 3,
+      "SelectedStatics": 3,
+      "MeshLeaves": 288,
+      "Polygons": 288,
+      "Members": 288,
+      "Extrema": 1828,
+      "IntervalFallbacks": 0,
+      "ExactFallbacks": 0,
+      "JoinPairs": 13680,
+      "JoinsProved": 13680,
+      "JoinsPruned": 0,
+      "Unsupported": 0,
+      "Ambiguous": 0,
+      "CapacityExceeded": 0,
+      "AnalyticSamples": 6,
+      "Bindings": 0,
+      "PhysicsLeases": 1,
+      "MovementLeases": 0,
+      "ProducerPins": 0,
+      "GroundSubsteps": 2,
+      "MediumRetries": 0,
+      "ModeSegments": 1
+    },
+    "Phases": [
+      {
+        "Phase": "Route",
+        "Calls": 1,
+        "Bytes": 64,
+        "Microseconds": 69.218,
+        "Collections": 0
+      },
+      {
+        "Phase": "Placement",
+        "Calls": 2,
+        "Bytes": 0,
+        "Microseconds": 0.667,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportProposals",
+        "Calls": 6,
+        "Bytes": 0,
+        "Microseconds": 504.582,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportTraversal",
+        "Calls": 3,
+        "Bytes": 0,
+        "Microseconds": 0.543,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportCapture",
+        "Calls": 3,
+        "Bytes": 0,
+        "Microseconds": 1285.875,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportExtrema",
+        "Calls": 288,
+        "Bytes": 0,
+        "Microseconds": 1575.995,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportContacts",
+        "Calls": 288,
+        "Bytes": 0,
+        "Microseconds": 3179.996,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportJoins",
+        "Calls": 3,
+        "Bytes": 0,
+        "Microseconds": 724.875,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportCertification",
+        "Calls": 3,
+        "Bytes": 0,
+        "Microseconds": 82.209,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportSelection",
+        "Calls": 3,
+        "Bytes": 0,
+        "Microseconds": 2.083,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportColumnSetup",
+        "Calls": 3,
+        "Bytes": 0,
+        "Microseconds": 0.625,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportPlanarContact",
+        "Calls": 200,
+        "Bytes": 0,
+        "Microseconds": 3.293,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportPlanarHeight",
+        "Calls": 200,
+        "Bytes": 0,
+        "Microseconds": 3.499,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportEdgeSetup",
+        "Calls": 288,
+        "Bytes": 0,
+        "Microseconds": 127.998,
+        "Collections": 0
+      }
+    ]
+  },
+  {
+    "Scene": "cluster 32 compound",
+    "Operation": "Find",
+    "WarmBytes": 0,
+    "GeometryMatchesOracle": true,
+    "Counts": {
+      "Find": 1,
+      "Proposals": 2,
+      "Volumes": 1,
+      "SelectedStatics": 1,
+      "MeshLeaves": 0,
+      "Polygons": 192,
+      "Members": 32,
+      "Extrema": 64,
+      "IntervalFallbacks": 0,
+      "ExactFallbacks": 0,
+      "JoinPairs": 496,
+      "JoinsProved": 496,
+      "JoinsPruned": 0,
+      "Unsupported": 0,
+      "Ambiguous": 0,
+      "CapacityExceeded": 0,
+      "AnalyticSamples": 0,
+      "Bindings": 0,
+      "PhysicsLeases": 0,
+      "MovementLeases": 0,
+      "ProducerPins": 0,
+      "GroundSubsteps": 0,
+      "MediumRetries": 0,
+      "ModeSegments": 0
+    },
+    "Phases": [
+      {
+        "Phase": "Route",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 19.754,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportProposals",
+        "Calls": 2,
+        "Bytes": 0,
+        "Microseconds": 61.458,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportTraversal",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 0.75,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportCapture",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 1.584,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportMaterialization",
+        "Calls": 2,
+        "Bytes": 0,
+        "Microseconds": 1092.041,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportExtrema",
+        "Calls": 192,
+        "Bytes": 0,
+        "Microseconds": 195.455,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportContacts",
+        "Calls": 32,
+        "Bytes": 0,
+        "Microseconds": 39.376,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportJoins",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 27.417,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportCertification",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 5.042,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportSelection",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 0.333,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportColumnSetup",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 0.334,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportPlanarContact",
+        "Calls": 64,
+        "Bytes": 0,
+        "Microseconds": 1.458,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportPlanarHeight",
+        "Calls": 64,
+        "Bytes": 0,
+        "Microseconds": 1.041,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportEdgeSetup",
+        "Calls": 32,
+        "Bytes": 0,
+        "Microseconds": 18.457,
+        "Collections": 0
+      }
+    ]
+  },
+  {
+    "Scene": "cluster 32 compound",
+    "Operation": "DryTick",
+    "WarmBytes": 64,
+    "GeometryMatchesOracle": true,
+    "Counts": {
+      "Find": 3,
+      "Proposals": 6,
+      "Volumes": 3,
+      "SelectedStatics": 3,
+      "MeshLeaves": 0,
+      "Polygons": 576,
+      "Members": 96,
+      "Extrema": 192,
+      "IntervalFallbacks": 0,
+      "ExactFallbacks": 0,
+      "JoinPairs": 1488,
+      "JoinsProved": 1488,
+      "JoinsPruned": 0,
+      "Unsupported": 0,
+      "Ambiguous": 0,
+      "CapacityExceeded": 0,
+      "AnalyticSamples": 6,
+      "Bindings": 0,
+      "PhysicsLeases": 1,
+      "MovementLeases": 0,
+      "ProducerPins": 0,
+      "GroundSubsteps": 2,
+      "MediumRetries": 0,
+      "ModeSegments": 1
+    },
+    "Phases": [
+      {
+        "Phase": "Route",
+        "Calls": 1,
+        "Bytes": 64,
+        "Microseconds": 51.663,
+        "Collections": 0
+      },
+      {
+        "Phase": "Placement",
+        "Calls": 2,
+        "Bytes": 0,
+        "Microseconds": 1,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportProposals",
+        "Calls": 6,
+        "Bytes": 0,
+        "Microseconds": 171.668,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportTraversal",
+        "Calls": 3,
+        "Bytes": 0,
+        "Microseconds": 0.626,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportCapture",
+        "Calls": 3,
+        "Bytes": 0,
+        "Microseconds": 1.792,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportMaterialization",
+        "Calls": 6,
+        "Bytes": 0,
+        "Microseconds": 3511.167,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportExtrema",
+        "Calls": 576,
+        "Bytes": 0,
+        "Microseconds": 601.538,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportContacts",
+        "Calls": 96,
+        "Bytes": 0,
+        "Microseconds": 119.888,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportJoins",
+        "Calls": 3,
+        "Bytes": 0,
+        "Microseconds": 79.251,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportCertification",
+        "Calls": 3,
+        "Bytes": 0,
+        "Microseconds": 14.542,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportSelection",
+        "Calls": 3,
+        "Bytes": 0,
+        "Microseconds": 1.084,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportColumnSetup",
+        "Calls": 3,
+        "Bytes": 0,
+        "Microseconds": 0.625,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportPlanarContact",
+        "Calls": 192,
+        "Bytes": 0,
+        "Microseconds": 3.828,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportPlanarHeight",
+        "Calls": 192,
+        "Bytes": 0,
+        "Microseconds": 3.789,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportEdgeSetup",
+        "Calls": 96,
+        "Bytes": 0,
+        "Microseconds": 57.581,
+        "Collections": 0
+      }
+    ]
+  },
+  {
+    "Scene": "cluster 32 split",
+    "Operation": "Find",
+    "WarmBytes": 0,
+    "GeometryMatchesOracle": true,
+    "Counts": {
+      "Find": 1,
+      "Proposals": 2,
+      "Volumes": 1,
+      "SelectedStatics": 32,
+      "MeshLeaves": 0,
+      "Polygons": 192,
+      "Members": 32,
+      "Extrema": 64,
+      "IntervalFallbacks": 0,
+      "ExactFallbacks": 0,
+      "JoinPairs": 496,
+      "JoinsProved": 496,
+      "JoinsPruned": 0,
+      "Unsupported": 0,
+      "Ambiguous": 0,
+      "CapacityExceeded": 0,
+      "AnalyticSamples": 0,
+      "Bindings": 0,
+      "PhysicsLeases": 0,
+      "MovementLeases": 0,
+      "ProducerPins": 0,
+      "GroundSubsteps": 0,
+      "MediumRetries": 0,
+      "ModeSegments": 0
+    },
+    "Phases": [
+      {
+        "Phase": "Route",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 19.781,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportProposals",
+        "Calls": 2,
+        "Bytes": 0,
+        "Microseconds": 44.833,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportTraversal",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 2.583,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportCapture",
+        "Calls": 32,
+        "Bytes": 0,
+        "Microseconds": 3.715,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportMaterialization",
+        "Calls": 64,
+        "Bytes": 0,
+        "Microseconds": 899.205,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportExtrema",
+        "Calls": 192,
+        "Bytes": 0,
+        "Microseconds": 191.84,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportContacts",
+        "Calls": 32,
+        "Bytes": 0,
+        "Microseconds": 40.035,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportJoins",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 27.25,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportCertification",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 5.042,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportSelection",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 0.334,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportColumnSetup",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 0.334,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportPlanarContact",
+        "Calls": 64,
+        "Bytes": 0,
+        "Microseconds": 1.129,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportPlanarHeight",
+        "Calls": 64,
+        "Bytes": 0,
+        "Microseconds": 1.131,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportEdgeSetup",
+        "Calls": 32,
+        "Bytes": 0,
+        "Microseconds": 17.122,
+        "Collections": 0
+      }
+    ]
+  },
+  {
+    "Scene": "cluster 256 mesh",
+    "Operation": "Find",
+    "WarmBytes": 0,
+    "GeometryMatchesOracle": true,
+    "Counts": {
+      "Find": 1,
+      "Proposals": 2,
+      "Volumes": 1,
+      "SelectedStatics": 1,
+      "MeshLeaves": 256,
+      "Polygons": 256,
+      "Members": 256,
+      "Extrema": 512,
+      "IntervalFallbacks": 0,
+      "ExactFallbacks": 0,
+      "JoinPairs": 32640,
+      "JoinsProved": 32640,
+      "JoinsPruned": 0,
+      "Unsupported": 0,
+      "Ambiguous": 0,
+      "CapacityExceeded": 0,
+      "AnalyticSamples": 0,
+      "Bindings": 0,
+      "PhysicsLeases": 0,
+      "MovementLeases": 0,
+      "ProducerPins": 0,
+      "GroundSubsteps": 0,
+      "MediumRetries": 0,
+      "ModeSegments": 0
+    },
+    "Phases": [
+      {
+        "Phase": "Route",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 52.16,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportProposals",
+        "Calls": 2,
+        "Bytes": 0,
+        "Microseconds": 1098.667,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportTraversal",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 0.459,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportCapture",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 1140.791,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportExtrema",
+        "Calls": 256,
+        "Bytes": 0,
+        "Microseconds": 1062.543,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportContacts",
+        "Calls": 256,
+        "Bytes": 0,
+        "Microseconds": 255.493,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportJoins",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 1487.5,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportCertification",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 159.667,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportSelection",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 2.125,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportColumnSetup",
+        "Calls": 1,
+        "Bytes": 0,
+        "Microseconds": 0.292,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportPlanarContact",
+        "Calls": 512,
+        "Bytes": 0,
+        "Microseconds": 9.751,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportPlanarHeight",
+        "Calls": 512,
+        "Bytes": 0,
+        "Microseconds": 9.723,
+        "Collections": 0
+      },
+      {
+        "Phase": "SupportEdgeSetup",
+        "Calls": 256,
+        "Bytes": 0,
+        "Microseconds": 101.746,
+        "Collections": 0
+      }
+    ]
+  }
+]

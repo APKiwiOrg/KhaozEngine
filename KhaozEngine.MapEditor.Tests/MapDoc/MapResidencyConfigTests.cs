@@ -14,7 +14,7 @@ namespace KhaozEngine.Tests.MapDoc
     public class MapResidencyConfigTests
     {
         const float Tile = 512f;
-        const float SculptCell = 2f;      // Ruinborne's, a 64 m sculpt span
+        const float SculptCell = 2f;      // the reference consumer's, a 64 m sculpt span
 
         static StreamerConfig Streamer(int load, int unload, int decor = 0, float chunkSize = 60f) =>
             new(LoadRadius: load, UnloadRadius: unload, MaxLoadsPerFrame: 3, ChunkSize: chunkSize, Async: true, DecorRadius: decor);

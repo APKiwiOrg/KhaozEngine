@@ -1,0 +1,1297 @@
+{
+  "task": 11,
+  "date": "2026-10-13",
+  "status": "DONE_WITH_CONCERNS",
+  "version": "20.33.0",
+  "newestReleaseTag": "v20.32.0",
+  "reconciliation": {
+    "taskBase": "fb8696c433d8e596d32dcbb3c69f96ce1939e9bf",
+    "verificationSourceCommit": "3a991edecf3cb1732c575690935df860f7057882",
+    "localMain": "bd2ed647fe83c34e9952aefcfc7485a465cce267",
+    "remoteMain": "bd2ed647fe83c34e9952aefcfc7485a465cce267",
+    "mainCommitsSinceBranchBase": "39",
+    "reconciliation": "Fetched origin and merged local main, then origin/main. No conflicts. Main unchanged.",
+    "version": "20.33.0",
+    "newestTag": "v20.32.0",
+    "architecture": "arm64",
+    "platform": "macOS-27.0.1-arm64-arm-64bit",
+    "releasedFixtureSha256": "083009f35b9fe237cded80124e861b23ac2d3b6621512aafe3f99c93f4268c2f"
+  },
+  "commands": [
+    {
+      "command": "build-slot --label sg11-build -- dotnet build KhaozEngine.slnx -c Release",
+      "exitCode": 0,
+      "invocations": 1,
+      "log": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-build.log",
+      "sha256": "d7a1b016beedafcdb8644db3fa93e944fe121ecc8b1b485b93e927de99bd1730"
+    },
+    {
+      "command": "build-slot --label sg11-suite --heavy -- dotnet test KhaozEngine.slnx -c Release --no-build --filter \"Category!=LiveSocket\" --logger \"trx;LogFilePrefix=sg11\" --results-directory .superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results",
+      "exitCode": 0,
+      "invocations": 1,
+      "log": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-suite.log",
+      "sha256": "022c0d8994bc6fbb8fdb9c66e5c3bc0cdb1a07436814ed92e38503dea5ee0ae1"
+    },
+    {
+      "command": "build-slot --label sg11-format -- dotnet format whitespace KhaozEngine.slnx --verify-no-changes --no-restore",
+      "exitCode": 0,
+      "invocations": 1,
+      "log": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-format.log",
+      "sha256": "5a641bc9967da09fdb498f209c8f5a6ebd8b62f91363c7d635cebc75e4d960f2"
+    },
+    {
+      "command": "sh scripts/check-dashes.sh --tree",
+      "exitCode": 0,
+      "log": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-final-guard-0.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "command": "sh scripts/check-prose.sh --tree",
+      "exitCode": 0,
+      "log": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-final-guard-1.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "command": "sh scripts/check-file-size.sh --tree",
+      "exitCode": 0,
+      "log": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-final-guard-2.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "command": "sh scripts/check-agent-instructions.sh --tree",
+      "exitCode": 0,
+      "log": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-final-guard-3.log",
+      "sha256": "679537ce091d060bc73f6b2eb9ff4edaa12c678e4ad855015c3fe5b24a119c8c"
+    },
+    {
+      "command": "bash scripts/check-doc-versions.sh",
+      "exitCode": 0,
+      "log": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-final-guard-4.log",
+      "sha256": "696e93d532ee8cad63ef443fb2a74c1548efbd0ba9946450f9f263d187c283a7"
+    },
+    {
+      "command": "git diff --check",
+      "exitCode": 0,
+      "log": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-final-guard-5.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "build": {
+    "exitCode": 0,
+    "warnings": 0,
+    "errors": 0,
+    "invocations": 1
+  },
+  "suite": {
+    "exitCode": 0,
+    "invocations": 1,
+    "totals": {
+      "total": 31232,
+      "executed": 29903,
+      "passed": 29903,
+      "failed": 0,
+      "error": 0,
+      "timeout": 0,
+      "aborted": 0,
+      "inconclusive": 0,
+      "notExecuted": 0,
+      "notRunnable": 0,
+      "skipped": 1329
+    },
+    "projectCount": 35,
+    "projects": [
+      {
+        "assembly": "KhaozEngine.Catalog.AzureBlob.Tests.dll",
+        "counts": {
+          "total": 32,
+          "executed": 25,
+          "passed": 25,
+          "failed": 0,
+          "error": 0,
+          "timeout": 0,
+          "aborted": 0,
+          "inconclusive": 0,
+          "passedButRunAborted": 0,
+          "notRunnable": 0,
+          "notExecuted": 0,
+          "disconnected": 0,
+          "warning": 0,
+          "completed": 0,
+          "inProgress": 0,
+          "pending": 0,
+          "skipped": 7
+        },
+        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053322.trx",
+        "sha256": "106988a1fa2aff4c64c10ff5251f0820bdb6c38fb9e784347fc991358578c732"
+      },
+      {
+        "assembly": "KhaozEngine.CodeHealth.Analyzers.Tests.dll",
+        "counts": {
+          "total": 51,
+          "executed": 51,
+          "passed": 51,
+          "failed": 0,
+          "error": 0,
+          "timeout": 0,
+          "aborted": 0,
+          "inconclusive": 0,
+          "passedButRunAborted": 0,
+          "notRunnable": 0,
+          "notExecuted": 0,
+          "disconnected": 0,
+          "warning": 0,
+          "completed": 0,
+          "inProgress": 0,
+          "pending": 0,
+          "skipped": 0
+        },
+        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053323.trx",
+        "sha256": "642a9c936ce4643a6dba43e3ab66b0503ab4ddf5d61d657b59feebde889bc063"
+      },
+      {
+        "assembly": "KhaozEngine.Gui.Tests.dll",
+        "counts": {
+          "total": 1276,
+          "executed": 1276,
+          "passed": 1276,
+          "failed": 0,
+          "error": 0,
+          "timeout": 0,
+          "aborted": 0,
+          "inconclusive": 0,
+          "passedButRunAborted": 0,
+          "notRunnable": 0,
+          "notExecuted": 0,
+          "disconnected": 0,
+          "warning": 0,
+          "completed": 0,
+          "inProgress": 0,
+          "pending": 0,
+          "skipped": 0
+        },
+        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053327.trx",
+        "sha256": "1850cd1bea925d84ffe2ae7928ec8404793b4f1e2ef5d929f054bde13e40580d"
+      },
+      {
+        "assembly": "KhaozEngine.Automation.Tests.dll",
+        "counts": {
+          "total": 106,
+          "executed": 106,
+          "passed": 106,
+          "failed": 0,
+          "error": 0,
+          "timeout": 0,
+          "aborted": 0,
+          "inconclusive": 0,
+          "passedButRunAborted": 0,
+          "notRunnable": 0,
+          "notExecuted": 0,
+          "disconnected": 0,
+          "warning": 0,
+          "completed": 0,
+          "inProgress": 0,
+          "pending": 0,
+          "skipped": 0
+        },
+        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053329.trx",
+        "sha256": "b0f0bb1ade2d2ef5567609ce85e38de6791009a773e9bb7a7ebf68028147977a"
+      },
+      {
+        "assembly": "KhaozEngine.Audio.Tests.dll",
+        "counts": {
+          "total": 209,
+          "executed": 206,
+          "passed": 206,
+          "failed": 0,
+          "error": 0,
+          "timeout": 0,
+          "aborted": 0,
+          "inconclusive": 0,
+          "passedButRunAborted": 0,
+          "notRunnable": 0,
+          "notExecuted": 0,
+          "disconnected": 0,
+          "warning": 0,
+          "completed": 0,
+          "inProgress": 0,
+          "pending": 0,
+          "skipped": 3
+        },
+        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053333.trx",
+        "sha256": "99c8f90f49c504e7d3d42d311ae9d27c5f15dbbce2fd3b9de0c3adf3a96cb173"
+      },
+      {
+        "assembly": "KhaozEngine.Localization.Analyzers.Tests.dll",
+        "counts": {
+          "total": 46,
+          "executed": 46,
+          "passed": 46,
+          "failed": 0,
+          "error": 0,
+          "timeout": 0,
+          "aborted": 0,
+          "inconclusive": 0,
+          "passedButRunAborted": 0,
+          "notRunnable": 0,
+          "notExecuted": 0,
+          "disconnected": 0,
+          "warning": 0,
+          "completed": 0,
+          "inProgress": 0,
+          "pending": 0,
+          "skipped": 0
+        },
+        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053334.trx",
+        "sha256": "188d89bb6388d864181a1562ee7bb328ecf2f1b5d4ffbdc9508f83cd19bcdabb"
+      },
+      {
+        "assembly": "KhaozEngine.Identity.Exchange.Tests.dll",
+        "counts": {
+          "total": 177,
+          "executed": 177,
+          "passed": 177,
+          "failed": 0,
+          "error": 0,
+          "timeout": 0,
+          "aborted": 0,
+          "inconclusive": 0,
+          "passedButRunAborted": 0,
+          "notRunnable": 0,
+          "notExecuted": 0,
+          "disconnected": 0,
+          "warning": 0,
+          "completed": 0,
+          "inProgress": 0,
+          "pending": 0,
+          "skipped": 0
+        },
+        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053336.trx",
+        "sha256": "4738b2e8fb7d5b4adb928d786cbaa4640fe1bf95ada2a9241accf87ee891b17f"
+      },
+      {
+        "assembly": "KhaozEngine.Accounts.Tests.dll",
+        "counts": {
+          "total": 332,
+          "executed": 286,
+          "passed": 286,
+          "failed": 0,
+          "error": 0,
+          "timeout": 0,
+          "aborted": 0,
+          "inconclusive": 0,
+          "passedButRunAborted": 0,
+          "notRunnable": 0,
+          "notExecuted": 0,
+          "disconnected": 0,
+          "warning": 0,
+          "completed": 0,
+          "inProgress": 0,
+          "pending": 0,
+          "skipped": 46
+        },
+        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053337.trx",
+        "sha256": "3ce4cd1344d391d8584b54cb8a142cc0fa2da975e3ffc0d8b3e6595799da7e67"
+      },
+      {
+        "assembly": "KhaozEngine.Netcode.Abstractions.DecouplingTests.dll",
+        "counts": {
+          "total": 4,
+          "executed": 4,
+          "passed": 4,
+          "failed": 0,
+          "error": 0,
+          "timeout": 0,
+          "aborted": 0,
+          "inconclusive": 0,
+          "passedButRunAborted": 0,
+          "notRunnable": 0,
+          "notExecuted": 0,
+          "disconnected": 0,
+          "warning": 0,
+          "completed": 0,
+          "inProgress": 0,
+          "pending": 0,
+          "skipped": 0
+        },
+        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053343.trx",
+        "sha256": "f3c71e2d358334a4f04a7bc6d6f606f000039ecfbe9ed24b29ba9fdd60186996"
+      },
+      {
+        "assembly": "KhaozEngine.MapDoc.Compatibility.Tests.dll",
+        "counts": {
+          "total": 14,
+          "executed": 14,
+          "passed": 14,
+          "failed": 0,
+          "error": 0,
+          "timeout": 0,
+          "aborted": 0,
+          "inconclusive": 0,
+          "passedButRunAborted": 0,
+          "notRunnable": 0,
+          "notExecuted": 0,
+          "disconnected": 0,
+          "warning": 0,
+          "completed": 0,
+          "inProgress": 0,
+          "pending": 0,
+          "skipped": 0
+        },
+        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053344.trx",
+        "sha256": "7f36089a918c59d764023b4a774e9ceaab211a117d1d96e854969c4e0856b373"
+      },
+      {
+        "assembly": "KhaozEngine.Foundation.Tests.dll",
+        "counts": {
+          "total": 1404,
+          "executed": 1404,
+          "passed": 1404,
+          "failed": 0,
+          "error": 0,
+          "timeout": 0,
+          "aborted": 0,
+          "inconclusive": 0,
+          "passedButRunAborted": 0,
+          "notRunnable": 0,
+          "notExecuted": 0,
+          "disconnected": 0,
+          "warning": 0,
+          "completed": 0,
+          "inProgress": 0,
+          "pending": 0,
+          "skipped": 0
+        },
+        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053345.trx",
+        "sha256": "87c2a5124a52142c2c4220206e04f16ab340fd939db4fdab436a6cbe4a9bbfb7"
+      },
+      {
+        "assembly": "KhaozEngine.Netcode.DecouplingTests.dll",
+        "counts": {
+          "total": 4,
+          "executed": 4,
+          "passed": 4,
+          "failed": 0,
+          "error": 0,
+          "timeout": 0,
+          "aborted": 0,
+          "inconclusive": 0,
+          "passedButRunAborted": 0,
+          "notRunnable": 0,
+          "notExecuted": 0,
+          "disconnected": 0,
+          "warning": 0,
+          "completed": 0,
+          "inProgress": 0,
+          "pending": 0,
+          "skipped": 0
+        },
+        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053346.trx",
+        "sha256": "de04e90bb89b44c6d08dd09944b528e44dd7abfbf0ea924e45549a4faa681008"
+      },
+      {
+        "assembly": "KhaozEngine.Particles.Tests.dll",
+        "counts": {
+          "total": 106,
+          "executed": 106,
+          "passed": 106,
+          "failed": 0,
+          "error": 0,
+          "timeout": 0,
+          "aborted": 0,
+          "inconclusive": 0,
+          "passedButRunAborted": 0,
+          "notRunnable": 0,
+          "notExecuted": 0,
+          "disconnected": 0,
+          "warning": 0,
+          "completed": 0,
+          "inProgress": 0,
+          "pending": 0,
+          "skipped": 0
+        },
+        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053351.trx",
+        "sha256": "1b055e60a97fb30a084fd3c9ebbe3f7c993bd626815af213f760fd9e4f58f2b6"
+      },
+      {
+        "assembly": "KhaozEngine.Physics.HeadlessLoaderTests.dll",
+        "counts": {
+          "total": 5,
+          "executed": 5,
+          "passed": 5,
+          "failed": 0,
+          "error": 0,
+          "timeout": 0,
+          "aborted": 0,
+          "inconclusive": 0,
+          "passedButRunAborted": 0,
+          "notRunnable": 0,
+          "notExecuted": 0,
+          "disconnected": 0,
+          "warning": 0,
+          "completed": 0,
+          "inProgress": 0,
+          "pending": 0,
+          "skipped": 0
+        },
+        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053359.trx",
+        "sha256": "76caf9df8854ace739f4fd0b7d86a6ea6ba71ea1c553cfcd523c0e352099c009"
+      },
+      {
+        "assembly": "KhaozEngine.Showcase.Tests.dll",
+        "counts": {
+          "total": 83,
+          "executed": 83,
+          "passed": 83,
+          "failed": 0,
+          "error": 0,
+          "timeout": 0,
+          "aborted": 0,
+          "inconclusive": 0,
+          "passedButRunAborted": 0,
+          "notRunnable": 0,
+          "notExecuted": 0,
+          "disconnected": 0,
+          "warning": 0,
+          "completed": 0,
+          "inProgress": 0,
+          "pending": 0,
+          "skipped": 0
+        },
+        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053402.trx",
+        "sha256": "42072be0a6fcddd3dc5c2bcd612f53eb4cc4a60a0980b5bb9462a1e18602d8a1"
+      },
+      {
+        "assembly": "KhaozEngine.Simulation.Tests.dll",
+        "counts": {
+          "total": 302,
+          "executed": 302,
+          "passed": 302,
+          "failed": 0,
+          "error": 0,
+          "timeout": 0,
+          "aborted": 0,
+          "inconclusive": 0,
+          "passedButRunAborted": 0,
+          "notRunnable": 0,
+          "notExecuted": 0,
+          "disconnected": 0,
+          "warning": 0,
+          "completed": 0,
+          "inProgress": 0,
+          "pending": 0,
+          "skipped": 0
+        },
+        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053405.trx",
+        "sha256": "760e63c2df1edc187190cb812ada473d5975e75534f33e7d82543c441dd89fdb"
+      },
+      {
+        "assembly": "KhaozEngine.TileEdit.Tests.dll",
+        "counts": {
+          "total": 104,
+          "executed": 97,
+          "passed": 97,
+          "failed": 0,
+          "error": 0,
+          "timeout": 0,
+          "aborted": 0,
+          "inconclusive": 0,
+          "passedButRunAborted": 0,
+          "notRunnable": 0,
+          "notExecuted": 0,
+          "disconnected": 0,
+          "warning": 0,
+          "completed": 0,
+          "inProgress": 0,
+          "pending": 0,
+          "skipped": 7
+        },
+        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053440.trx",
+        "sha256": "fe87b642f12fe1b702183bf66f325df034a1ace39d16551b43c5a95a104a8105"
+      },
+      {
+        "assembly": "KhaozEngine.MapDoc.Physics.Tests.dll",
+        "counts": {
+          "total": 159,
+          "executed": 159,
+          "passed": 159,
+          "failed": 0,
+          "error": 0,
+          "timeout": 0,
+          "aborted": 0,
+          "inconclusive": 0,
+          "passedButRunAborted": 0,
+          "notRunnable": 0,
+          "notExecuted": 0,
+          "disconnected": 0,
+          "warning": 0,
+          "completed": 0,
+          "inProgress": 0,
+          "pending": 0,
+          "skipped": 0
+        },
+        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053446.trx",
+        "sha256": "86c86f0c8a3c9a1252015147a07fbe6e6c90b24a89be29696a35085833d167e5"
+      },
+      {
+        "assembly": "KhaozEngine.TileWorld.Netcode.Tests.dll",
+        "counts": {
+          "total": 1382,
+          "executed": 1382,
+          "passed": 1382,
+          "failed": 0,
+          "error": 0,
+          "timeout": 0,
+          "aborted": 0,
+          "inconclusive": 0,
+          "passedButRunAborted": 0,
+          "notRunnable": 0,
+          "notExecuted": 0,
+          "disconnected": 0,
+          "warning": 0,
+          "completed": 0,
+          "inProgress": 0,
+          "pending": 0,
+          "skipped": 0
+        },
+        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053447.trx",
+        "sha256": "5ada18a36109d32357b6842385f3db8600e8ad067a639bd7c1c35d3ee6f198c7"
+      },
+      {
+        "assembly": "KhaozEngine.ItemInstances.Tests.dll",
+        "counts": {
+          "total": 888,
+          "executed": 888,
+          "passed": 888,
+          "failed": 0,
+          "error": 0,
+          "timeout": 0,
+          "aborted": 0,
+          "inconclusive": 0,
+          "passedButRunAborted": 0,
+          "notRunnable": 0,
+          "notExecuted": 0,
+          "disconnected": 0,
+          "warning": 0,
+          "completed": 0,
+          "inProgress": 0,
+          "pending": 0,
+          "skipped": 0
+        },
+        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053452.trx",
+        "sha256": "588bbbd5d4d421945f675feb3dd19a7342d1b2572af49f2b07294c31a6949233"
+      },
+      {
+        "assembly": "KhaozEngine.Movement.Tests.dll",
+        "counts": {
+          "total": 712,
+          "executed": 709,
+          "passed": 709,
+          "failed": 0,
+          "error": 0,
+          "timeout": 0,
+          "aborted": 0,
+          "inconclusive": 0,
+          "passedButRunAborted": 0,
+          "notRunnable": 0,
+          "notExecuted": 0,
+          "disconnected": 0,
+          "warning": 0,
+          "completed": 0,
+          "inProgress": 0,
+          "pending": 0,
+          "skipped": 3
+        },
+        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053453.trx",
+        "sha256": "3e3a608ba87d5066ee52b45b1bb5b25b5d06d67eeca9d553884e9a6ae444a520"
+      },
+      {
+        "assembly": "KhaozEngine.TileWorld.WorldMap.Tests.dll",
+        "counts": {
+          "total": 30,
+          "executed": 30,
+          "passed": 30,
+          "failed": 0,
+          "error": 0,
+          "timeout": 0,
+          "aborted": 0,
+          "inconclusive": 0,
+          "passedButRunAborted": 0,
+          "notRunnable": 0,
+          "notExecuted": 0,
+          "disconnected": 0,
+          "warning": 0,
+          "completed": 0,
+          "inProgress": 0,
+          "pending": 0,
+          "skipped": 0
+        },
+        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053459.trx",
+        "sha256": "ad4e2c1a16549b3ecb8484fbf8a26ba3f1fe9dc1f74d2d44680fa71276086c1b"
+      },
+      {
+        "assembly": "KhaozEngine.TileWorld.Tests.dll",
+        "counts": {
+          "total": 514,
+          "executed": 514,
+          "passed": 514,
+          "failed": 0,
+          "error": 0,
+          "timeout": 0,
+          "aborted": 0,
+          "inconclusive": 0,
+          "passedButRunAborted": 0,
+          "notRunnable": 0,
+          "notExecuted": 0,
+          "disconnected": 0,
+          "warning": 0,
+          "completed": 0,
+          "inProgress": 0,
+          "pending": 0,
+          "skipped": 0
+        },
+        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053505.trx",
+        "sha256": "a0fa2e0f5846a3f7f4e6ebcfae0742eb91034c6d70a9f978782ef4507aa122d2"
+      },
+      {
+        "assembly": "KhaozEngine.WorldMap.Tests.dll",
+        "counts": {
+          "total": 208,
+          "executed": 208,
+          "passed": 208,
+          "failed": 0,
+          "error": 0,
+          "timeout": 0,
+          "aborted": 0,
+          "inconclusive": 0,
+          "passedButRunAborted": 0,
+          "notRunnable": 0,
+          "notExecuted": 0,
+          "disconnected": 0,
+          "warning": 0,
+          "completed": 0,
+          "inProgress": 0,
+          "pending": 0,
+          "skipped": 0
+        },
+        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053508.trx",
+        "sha256": "96f4cb636a7d2addbf7699c82ffd41b73724f218d7a4e5e27b7af095c8a602d7"
+      },
+      {
+        "assembly": "KhaozEngine.TileWorld.Physics.Tests.dll",
+        "counts": {
+          "total": 89,
+          "executed": 89,
+          "passed": 89,
+          "failed": 0,
+          "error": 0,
+          "timeout": 0,
+          "aborted": 0,
+          "inconclusive": 0,
+          "passedButRunAborted": 0,
+          "notRunnable": 0,
+          "notExecuted": 0,
+          "disconnected": 0,
+          "warning": 0,
+          "completed": 0,
+          "inProgress": 0,
+          "pending": 0,
+          "skipped": 0
+        },
+        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053510.trx",
+        "sha256": "34068218bb14adb156f5374fde94fff6f9bae7223fa365fdb47e59a490a9d567"
+      },
+      {
+        "assembly": "KhaozEngine.WorldMap.Gui.Tests.dll",
+        "counts": {
+          "total": 57,
+          "executed": 57,
+          "passed": 57,
+          "failed": 0,
+          "error": 0,
+          "timeout": 0,
+          "aborted": 0,
+          "inconclusive": 0,
+          "passedButRunAborted": 0,
+          "notRunnable": 0,
+          "notExecuted": 0,
+          "disconnected": 0,
+          "warning": 0,
+          "completed": 0,
+          "inProgress": 0,
+          "pending": 0,
+          "skipped": 0
+        },
+        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053511.trx",
+        "sha256": "948f3719b8a230a953951acf2cd510b1e1eb0bd0683090ca24888e8357d0f863"
+      },
+      {
+        "assembly": "KeDungeon.Tests.dll",
+        "counts": {
+          "total": 13,
+          "executed": 13,
+          "passed": 13,
+          "failed": 0,
+          "error": 0,
+          "timeout": 0,
+          "aborted": 0,
+          "inconclusive": 0,
+          "passedButRunAborted": 0,
+          "notRunnable": 0,
+          "notExecuted": 0,
+          "disconnected": 0,
+          "warning": 0,
+          "completed": 0,
+          "inProgress": 0,
+          "pending": 0,
+          "skipped": 0
+        },
+        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053513.trx",
+        "sha256": "9529cec93dc265c2ea03e92cd95f4d7d421c44c0fce83aae27d7e6df628f3491"
+      },
+      {
+        "assembly": "PixelLabSheetAssembler.Tests.dll",
+        "counts": {
+          "total": 32,
+          "executed": 32,
+          "passed": 32,
+          "failed": 0,
+          "error": 0,
+          "timeout": 0,
+          "aborted": 0,
+          "inconclusive": 0,
+          "passedButRunAborted": 0,
+          "notRunnable": 0,
+          "notExecuted": 0,
+          "disconnected": 0,
+          "warning": 0,
+          "completed": 0,
+          "inProgress": 0,
+          "pending": 0,
+          "skipped": 0
+        },
+        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053517.trx",
+        "sha256": "2bff0b70c492044679602fd5548e9a5fa9063469c4477dacfc4eb67578edad8b"
+      },
+      {
+        "assembly": "KhaozEngine.Catalog.Tests.dll",
+        "counts": {
+          "total": 1514,
+          "executed": 1514,
+          "passed": 1514,
+          "failed": 0,
+          "error": 0,
+          "timeout": 0,
+          "aborted": 0,
+          "inconclusive": 0,
+          "passedButRunAborted": 0,
+          "notRunnable": 0,
+          "notExecuted": 0,
+          "disconnected": 0,
+          "warning": 0,
+          "completed": 0,
+          "inProgress": 0,
+          "pending": 0,
+          "skipped": 0
+        },
+        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053526.trx",
+        "sha256": "943647b0c021bdb086b7ae6b9b3b26bf31b7bad51f139ead6f68bd9cc290dba0"
+      },
+      {
+        "assembly": "KhaozEngine.Tests.dll",
+        "counts": {
+          "total": 70,
+          "executed": 70,
+          "passed": 70,
+          "failed": 0,
+          "error": 0,
+          "timeout": 0,
+          "aborted": 0,
+          "inconclusive": 0,
+          "passedButRunAborted": 0,
+          "notRunnable": 0,
+          "notExecuted": 0,
+          "disconnected": 0,
+          "warning": 0,
+          "completed": 0,
+          "inProgress": 0,
+          "pending": 0,
+          "skipped": 0
+        },
+        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053527.trx",
+        "sha256": "a391b2616ca664ab1b3a93a49ec7fc6936321589869ee2667d5df7edcb7e433c"
+      },
+      {
+        "assembly": "KhaozEngine.MapDoc.Tests.dll",
+        "counts": {
+          "total": 779,
+          "executed": 779,
+          "passed": 779,
+          "failed": 0,
+          "error": 0,
+          "timeout": 0,
+          "aborted": 0,
+          "inconclusive": 0,
+          "passedButRunAborted": 0,
+          "notRunnable": 0,
+          "notExecuted": 0,
+          "disconnected": 0,
+          "warning": 0,
+          "completed": 0,
+          "inProgress": 0,
+          "pending": 0,
+          "skipped": 0
+        },
+        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053531.trx",
+        "sha256": "2646230d6ac53c271abe7b289ce0b8e5d4adec3f9553f80ed225cc6c717dba68"
+      },
+      {
+        "assembly": "KhaozEngine.Render.Tests.dll",
+        "counts": {
+          "total": 9956,
+          "executed": 9020,
+          "passed": 9020,
+          "failed": 0,
+          "error": 0,
+          "timeout": 0,
+          "aborted": 0,
+          "inconclusive": 0,
+          "passedButRunAborted": 0,
+          "notRunnable": 0,
+          "notExecuted": 0,
+          "disconnected": 0,
+          "warning": 0,
+          "completed": 0,
+          "inProgress": 0,
+          "pending": 0,
+          "skipped": 936
+        },
+        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053532.trx",
+        "sha256": "4b8791b46fd791e5cdde8aa0cf5b132be503dfdddb2ea5bea0d49f84404eab1a"
+      },
+      {
+        "assembly": "KhaozEngine.MapEditor.Tests.dll",
+        "counts": {
+          "total": 1408,
+          "executed": 1399,
+          "passed": 1399,
+          "failed": 0,
+          "error": 0,
+          "timeout": 0,
+          "aborted": 0,
+          "inconclusive": 0,
+          "passedButRunAborted": 0,
+          "notRunnable": 0,
+          "notExecuted": 0,
+          "disconnected": 0,
+          "warning": 0,
+          "completed": 0,
+          "inProgress": 0,
+          "pending": 0,
+          "skipped": 9
+        },
+        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053543.trx",
+        "sha256": "d3cdc0c4251af75ddf03fe37a2fd3124ef8dc54ebcbb64b6fe8d936f24c87f43"
+      },
+      {
+        "assembly": "KhaozEngine.Server.Tests.dll",
+        "counts": {
+          "total": 4268,
+          "executed": 3951,
+          "passed": 3951,
+          "failed": 0,
+          "error": 0,
+          "timeout": 0,
+          "aborted": 0,
+          "inconclusive": 0,
+          "passedButRunAborted": 0,
+          "notRunnable": 0,
+          "notExecuted": 0,
+          "disconnected": 0,
+          "warning": 0,
+          "completed": 0,
+          "inProgress": 0,
+          "pending": 0,
+          "skipped": 317
+        },
+        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053554.trx",
+        "sha256": "1230eac1fcd2ec63278e848080e5c8fe1c589cd51e61119832b7c64b0db34598"
+      },
+      {
+        "assembly": "KhaozEngine.Game.Tests.dll",
+        "counts": {
+          "total": 4898,
+          "executed": 4897,
+          "passed": 4897,
+          "failed": 0,
+          "error": 0,
+          "timeout": 0,
+          "aborted": 0,
+          "inconclusive": 0,
+          "passedButRunAborted": 0,
+          "notRunnable": 0,
+          "notExecuted": 0,
+          "disconnected": 0,
+          "warning": 0,
+          "completed": 0,
+          "inProgress": 0,
+          "pending": 0,
+          "skipped": 1
+        },
+        "trx": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-11-results/sg11_net10.0_20261013053632.trx",
+        "sha256": "634ae3d53ff8b35af3097f4460634cdf14105ffa95df678fa8942b2c716b6b8f"
+      }
+    ],
+    "groups": {
+      "footprintPhysics": {
+        "total": 294,
+        "outcomes": {
+          "Passed": 294
+        }
+      },
+      "contactController": {
+        "total": 1213,
+        "outcomes": {
+          "Passed": 1213
+        }
+      },
+      "curvedGeometry": {
+        "total": 165,
+        "outcomes": {
+          "Passed": 165
+        }
+      },
+      "footprintBoundaryAndScope": {
+        "total": 12,
+        "outcomes": {
+          "Passed": 12
+        }
+      },
+      "releasedPhysicalRefusals": {
+        "total": 9,
+        "outcomes": {
+          "Passed": 9
+        }
+      },
+      "hiddenSupport": {
+        "total": 8,
+        "outcomes": {
+          "Passed": 8
+        }
+      },
+      "releasedNeighborhoodEquivalence": {
+        "total": 1,
+        "outcomes": {
+          "Passed": 1
+        }
+      },
+      "lifetimeAllocation": {
+        "total": 11,
+        "outcomes": {
+          "Passed": 11
+        }
+      },
+      "leasedIntegration": {
+        "total": 107,
+        "outcomes": {
+          "Passed": 107
+        }
+      },
+      "costGeometryCountersAllocationAndVerdict": {
+        "total": 107,
+        "outcomes": {
+          "Passed": 107
+        }
+      },
+      "intermittentAllocationWarning": {
+        "total": 2,
+        "outcomes": {
+          "Passed": 2
+        },
+        "rows": [
+          {
+            "method": "KhaozEngine.Tests.Physics.SupportFootprintTests.WarmEnclosedSourceInteriorKeepsScratchBounded",
+            "name": "KhaozEngine.Tests.Physics.SupportFootprintTests.WarmEnclosedSourceInteriorKeepsScratchBounded(general: False, variables: 4)",
+            "outcome": "Passed",
+            "assembly": "KhaozEngine.Game.Tests.dll",
+            "output": "Enclosed source variables=4 coldBytes=116024 scratchPayloadBytes=47816\nEnclosed source variables=4 warmBytes=0"
+          },
+          {
+            "method": "KhaozEngine.Tests.Physics.SupportFootprintTests.WarmEnclosedSourceInteriorKeepsScratchBounded",
+            "name": "KhaozEngine.Tests.Physics.SupportFootprintTests.WarmEnclosedSourceInteriorKeepsScratchBounded(general: True, variables: 9)",
+            "outcome": "Passed",
+            "assembly": "KhaozEngine.Game.Tests.dll",
+            "output": "Enclosed source variables=9 coldBytes=3035800 scratchPayloadBytes=1231256\nEnclosed source variables=9 warmBytes=0"
+          }
+        ]
+      }
+    },
+    "environmentOverrides": {
+      "DOTNET_TieredCompilation": null,
+      "COMPlus_TieredCompilation": null,
+      "DOTNET_ReadyToRun": null,
+      "COMPlus_ReadyToRun": null,
+      "KHAOZ_SUPPORT_COST_ARTIFACT": null,
+      "KE_GPU_TESTS": null
+    },
+    "liveSocketExcluded": true,
+    "gpuOrWindowedProof": false,
+    "skippedReasons": {
+      "set KE_PACKSTORE_BLOB to a container URL to run": 7,
+      "set KE_AUDIO_DEVICE_TESTS=1 to run tests against the real audio output device": 3,
+      "set KE_ACCOUNTS_SQLSERVER to run": 46,
+      "set KE_GPU_TESTS=1 (strict) or KE_GPU_TESTS=probe (skip if no device) to run GPU golden tests": 952,
+      "#1265 deferred: the M19 core attempt broke 7 stair tests, see the file header": 3,
+      "set KE_SQLSERVER_TEST_CONNSTRING to run SQL Server world-store conformance": 109,
+      "set KE_COMMERCE_SQLSERVER to run": 17,
+      "set KE_CATALOG_SQLSERVER to run": 191,
+      "measurement, not an assertion: see the procedure above, it needs an engine edit to mean anything": 1
+    },
+    "allocationWarning": {
+      "name": "WarmEnclosedSourceInteriorKeepsScratchBounded",
+      "historicalBytes": 3144,
+      "recurred": false,
+      "defaultRuntime": true,
+      "localRetry": false,
+      "hostedCharacterization": "Pending explicit owner approval at phase 6"
+    }
+  },
+  "geometryGate": {
+    "issue": 1347,
+    "disposition": "All required headless shape and integration rows passed. Closable only after the orchestrator pushes this verified branch commit. No issue closure performed.",
+    "proofClasses": [
+      "polygon full-disc extrema",
+      "all admitted curved pose strata",
+      "equivalent static partitions",
+      "atomic capacity and unsupported refusals",
+      "represented reach and slope boundaries",
+      "authenticated selected lifetime",
+      "adequately scoped explicit initial, motion, pushed seat, landing, signals and handoff"
+    ],
+    "releasedNeighborhoodFixture": {
+      "path": "KhaozEngine.Game.Tests/Locomotion/Contacts/Fixtures/support-equivalence.txt",
+      "unchangedSince": "b91fd7736",
+      "sha256": "083009f35b9fe237cded80124e861b23ac2d3b6621512aafe3f99c93f4268c2f"
+    },
+    "ordinaryErrorCeilingMetres": 0.0005,
+    "expectationOrToleranceChangesInTask11": false
+  },
+  "costGate": {
+    "issue": 1334,
+    "disposition": "Open. SG-12 limits unchanged. Owner-approved normalized hosted repeat proof pending at phase 6.",
+    "source": "2026-10-13-support-gates-budget-rejections-harness-corrected.json",
+    "candidateSha": "9f89dbd7f6f1d70c011b3dc1e5cf93a960103cf0",
+    "artifactSection": "changed-9f89dbd7f6f1d70c011b3dc1e5cf93a960103cf0",
+    "supportedTimeRejections": 96,
+    "byOperation": {
+      "Find": 27,
+      "DryTick": 18,
+      "ActualGroundSubstep": 51
+    },
+    "warmAllocationRejections": 0,
+    "unsuccessfulRouteGeometryFlags": [
+      {
+        "sampleIndex": 85,
+        "scene": "hidden crate",
+        "operation": "GroundTickBorrowed"
+      },
+      {
+        "sampleIndex": 90,
+        "scene": "hidden crate",
+        "operation": "DryTick"
+      },
+      {
+        "sampleIndex": 128,
+        "scene": "grid 100",
+        "operation": "DryTick"
+      },
+      {
+        "sampleIndex": 154,
+        "scene": "fan 257",
+        "operation": "DryTick"
+      },
+      {
+        "sampleIndex": 160,
+        "scene": "fan 300",
+        "operation": "DryTick"
+      },
+      {
+        "sampleIndex": 324,
+        "scene": "pushed seat",
+        "operation": "DryTick"
+      }
+    ],
+    "largerMixedOrNonComparableEnvelopes": 15,
+    "legacyComparisonUnavailable": 5,
+    "timingInvocationInTask11": false,
+    "normalization": "k = hosted legacy flat-box whole tick / M2 Max legacy flat-box whole tick. Scale absolute ceilings by k. Relative ceiling is legacy_hosted + max(k*100 us, 0.25*legacy_hosted).",
+    "harnessRule": "Each row records first use, one unmeasured priming call, then warm. Earlier sections remain immutable and may include first-hit JIT.",
+    "hostedRepeat": {
+      "approved": false,
+      "dispatchedByTask11": false,
+      "iterations": null,
+      "duration": null
+    }
+  },
+  "tokens": {
+    "source": "2026-10-12-support-gates-allocation.json",
+    "runtime": ".NET 10.0.12",
+    "architecture": "Arm64",
+    "namedBytes": {
+      "MovementQueryLeaseWithReleaseBinding": 192,
+      "PhysicsReadLease": 64,
+      "ProducerContactPin": 56
+    },
+    "acquiredExplicitTickBytes": 312,
+    "acquiredDryTickBytes": 64,
+    "retainedDryAllowanceBytes": 208,
+    "borrowedSupportSampleBindingBytes": 0,
+    "supportFindAndActualSubstepBytes": 0,
+    "oneUseLifetimeTokensReused": false,
+    "noProjectTieringOverride": true
+  },
+  "storage": {
+    "source": "2026-10-13-support-gates-stack-rw.json",
+    "retainedManagedArrayHighWaterBytes": 24984274,
+    "releasedCertificationBoundBytes": 4352,
+    "historicalCachedLivePoseFixedFrameSumBytes": 20944,
+    "historicalSourceMeetingFixedFrameSumBytes": 5168,
+    "newKernelStackGate": false,
+    "universalNativePeakClaimed": false,
+    "newStackMeasurementInTask11": false
+  },
+  "hostedPlumbing": {
+    "ruling": "SG-P1",
+    "runUrl": "https://github.com/APKiwiOrg/KhaozEngine/actions/runs/38290006616",
+    "commit": "fb8696c43",
+    "result": "succeeded",
+    "artifacts": 1,
+    "artifactBytes": 72227,
+    "iterations": 1,
+    "load": 0,
+    "evidenceSource": "Owning orchestrator dispatch and progress record. No hosted run launched by Task 11.",
+    "earlierFailure": {
+      "runUrl": "https://github.com/APKiwiOrg/KhaozEngine/actions/runs/38289303981",
+      "commit": "43a0168ad",
+      "cause": "The witness fixture partial was not linked by Movement.Tests and Server.Tests and needed Physics internal visibility.",
+      "fixedAt": "fb8696c43"
+    }
+  },
+  "changedResultClasses": [
+    {
+      "class": 1,
+      "name": "Hidden support found",
+      "derivation": "The complete admitted column independently includes the installed crate top 0.1 inside the 0.2 disc. The hiding wedge axis plane is about -0.0964 and steep. Highest eligible support is the crate on boxes, hulls, compound and mesh, both install orders.",
+      "tests": [
+        "HiddenCrateUnderSixtyDegreeWedge",
+        "SlopeEdgesReportDiscBoundaryStepsAndAuthoredDrop"
+      ]
+    },
+    {
+      "class": 2,
+      "name": "Lower-band rim support found",
+      "derivation": "The rim floor at represented -0.4 intersects the closed 0.2 disc at x 0.195 to 0.201 and its inclusive lower band, even when neither rounded probe touches it. The capped bank landing occurs at substep 2/27 rather than 3/27. Impact is 1 + 20 * (0.5 * 2/27) = 1.7407407.",
+      "tests": [
+        "RimFloorAtLowerReachIsFound",
+        "WaterOriginLandingImpactUsesOnlyTheConsumedDuration"
+      ]
+    },
+    {
+      "class": 3,
+      "name": "Polygon witness is the exact disc maximum",
+      "derivation": "Maximize the installed plane over the polygon intersected with the closed disc. The vertex row gives represented 0.1, edge-circle row sqrt(r*r - represented(0.1)^2), uphill-disc row r, and flat row represented 0.1. Contribution remains min(p, m, joined planes).",
+      "tests": [
+        "PolygonMaximumUsesVertexEdgeAndDiscExtrema",
+        "FullRampMaximumDoesNotLoseValidAxisPlane"
+      ]
+    },
+    {
+      "class": 4,
+      "name": "Attained SG-19 curved witnesses",
+      "derivation": "Sphere centre (0,-0.25,0), radius 0.25, axis X 0.35 and foot radius 0.2 have disc maximum X 0.15, height -0.05 and normal Y 0.8. The axis column misses. Tangent at axis is -0.05 - (0.15/0.2)*0.2 = -0.2, so support is Walkable at -0.2. Axis and footprint roles cover every admitted curved pose with certified bounds.",
+      "tests": [
+        "SphereFlankFootprintWitnessIsWalkable",
+        "CurvedTiltedQueryEnclosesEveryIndependentPart",
+        "CurvedExactBoundaryPublicationKeepsIndependentUpwardCertificate"
+      ]
+    },
+    {
+      "class": 5,
+      "name": "Additional admitted members supply released-predicate caps",
+      "derivation": "Whole polygons admitted in the expanded column retain the released meeting and mutual-below predicate, even when their common vertex is remote at (0,0,3). Every joined same-kind axis plane j remains in min(p,m,j...), independently of first probe contact. Ring members have no disc maximum but can supply a joined cap.",
+      "tests": [
+        "RemoteWholePolygonJoinsAndRingCapsMatchOracle",
+        "BelowBandFanJoinedToBandCapableSlopeRemainsRelevant"
+      ]
+    },
+    {
+      "class": 6,
+      "name": "Closed-disc support and minimum radius",
+      "derivation": "For radius 0.2, a face only at X 0.20004 to 0.20006 is inside the admission ring but outside the original disc. It provides context and no support witness. FootRadiusFraction*CapsuleRadius below represented 0.01 is rejected by query, ground and shell configuration, including analytic-only paths.",
+      "tests": [
+        "RingOnlyMemberNeverPublishesSupport",
+        "RemoteWholePolygonJoinsAndRingCapsMatchOracle"
+      ]
+    },
+    {
+      "class": 7,
+      "name": "Independent upward-bound classification",
+      "derivation": "RN carries the Y component certificate separately from scalar normal error. UpwardLower >= cosine is walkable, including equality. Installed 45-degree single-roof mesh vertices certify Y >= cos45 while the differently rounded split faces certify Y < cos45, yielding Walkable and Steep with height agreement inside the derived plane spread. Identical represented geometry keeps partition invariance.",
+      "tests": [
+        "TwoStaticRidgeMatchesTheSingleStatic",
+        "PolygonUpwardCertificateKeepsSourceBackedSlopeEquality"
+      ]
+    }
+  ],
+  "rulingDispositions": {
+    "SG-1": "Nine invariants and planar rule retained, with seven named result classes.",
+    "SG-2": "Two retained proposals and one complete footprint query proved by counters.",
+    "SG-3": "Shared outward admission envelope, original disc reach and minimum radius proved.",
+    "SG-4": "Full polygon-disc maxima proved against independent installed-source oracle.",
+    "SG-5": "Optional new capability and receiver authentication, released API/fixture unchanged.",
+    "SG-6": "Roof, band and invalid-start refusal rows pass unchanged.",
+    "SG-7": "256 relevant raw pairs, 512 slots and atomic 257 refusal, RP relevance proved.",
+    "SG-8": "Selected lease lifetime and scope-before-work rows pass.",
+    "SG-9": "Find, substep, whole-tick and route counters pass in ordinary suite.",
+    "SG-10": "Committed one-shot evidence carried, no timing or repeat invocation here.",
+    "SG-11": "Legacy route remains a cost baseline, not an expectation oracle.",
+    "SG-12": "Allocation rows pass. 96 time rejections remain. No ceiling widened.",
+    "SG-13": "Unique ReadLease is 64 bytes on recorded arm64 runtime. Stale references stay expired.",
+    "SG-14": "Lossless incidence/cap work and released neighborhood equivalence pass.",
+    "SG-15": "RX static-version cache lifecycle and live-pose/invalidation rows pass.",
+    "SG-16": "Geometry, provenance, boundary, leased and regression rows pass without snapshot changes.",
+    "SG-17": "Eleven bounded tasks complete at verified commit, orchestration owns integration.",
+    "SG-18": "Geometry closure conditional on pushed commit. Cost and adoption remain open.",
+    "SG-19": "RL/RM/RO attained curved witnesses and RN upward certificates pass.",
+    "SG-20": "Default-runtime suite has no timing environment. RY priming applies only to committed cost harness.",
+    "SG-21": "Aggregate actor CPU remains a phase 6 game obligation.",
+    "SG-22": "RQ default runtime and named one-use token ceilings pass.",
+    "SG-23": "Seven derived classes documented in specification and staged changelog.",
+    "SG-24": "SG-P1 plumbing passed. Approved normalized repeat acceptance remains pending."
+  },
+  "remainingAdoptionGates": [
+    "#1355 certified sweep shapes",
+    "#1334 support cost",
+    "#1344 small bodies",
+    "Phase 5 navigation capture",
+    "WH1 and remaining #438 phase 6 adoption proof",
+    "Phase 6 aggregate actor CPU and owner release gate"
+  ],
+  "formatFinding": {
+    "code": "CA2255",
+    "scope": "Pre-existing untouched KhaozEngine.Server.Tests PoolWatchHook, ThreadPoolFloorHook and FannedOutDeterminismTests",
+    "source": "Task 6b orchestrator format finding in progress.md",
+    "fullAnalyzerFormatRunInTask11": false,
+    "fixedHere": false,
+    "selectedCommand": "dotnet format whitespace KhaozEngine.slnx --verify-no-changes --no-restore"
+  },
+  "boundaries": {
+    "pushed": false,
+    "mergedToMain": false,
+    "tagged": false,
+    "released": false,
+    "enginePinChanged": false,
+    "gameChanged": false,
+    "navigationCaptured": false,
+    "issuesClosed": false
+  }
+}

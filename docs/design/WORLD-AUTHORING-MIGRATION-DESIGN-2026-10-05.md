@@ -561,7 +561,7 @@ Engine paths are relative to the pinned engine baseline, game paths to the pinne
 | G14 | Grimhollow Directory.Build.props:16, :34 | Frozen version/pin |
 | G15 | Grimhollow AGENTS.md:91 | Engine adoption and tool/feed ritual |
 | G16 | Grimhollow docs/DEVELOPMENT.md:228, :260 | TAA Native and golden procedure |
-| R1 | Ruinborne.Editor/Program.cs:145, Ruinborne.Editor/EditorPaths.cs:69 | Thin editor host and real paths/manifests |
+| R1 | Consumer.Editor/Program.cs:145, Consumer.Editor/EditorPaths.cs:69 | Thin editor host and real paths/manifests |
 | S1 | /tmp/grand-world/world-authoring-spike/output-ground/measured-results.json:3 | Final report, SHA-256 above |
 | S2 | /tmp/grand-world/world-authoring-spike/Program.cs:1, :22, :53, :65, :80 | Throwaway conversion, samples and tool mutation |
 | E33 | KhaozEngine.TileEdit.Tool/Tools/TileTools.cs:19, :27, :42, :59 | All cell/layer verbs |

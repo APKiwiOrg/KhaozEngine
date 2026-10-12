@@ -46,6 +46,10 @@ public sealed partial class EnvironmentAcquisitionFixture : IMovementEnvironment
     public delegate MovementAvailability RebuildHandler(in FramedMovementState state, out MovementSelection selection);
     public RebuildHandler? OnRebuild;
     public int RebuildCalls;
+    public IMovementEnvironmentPin? LastPin;
+    public IPhysicsQueryLease? LastPhysicsLease;
+    public MovementQueryScope Scope => _scope;
+    MovementScopeWitness? _preparedWitness;
 
     public EnvironmentAcquisitionFixture(IPhysicsWorldQueryView view, MovementQueryScope? scope = null)
     {
@@ -66,6 +70,7 @@ public sealed partial class EnvironmentAcquisitionFixture : IMovementEnvironment
     {
         Prepared = true;
         OnPrepare?.Invoke();
+        PrepareWitness();
         return new MovementPreparationResult(PrepareAvailability,
             Fault == "preparation-identity" ? OtherIdentity : _identity);
     }
@@ -76,11 +81,16 @@ public sealed partial class EnvironmentAcquisitionFixture : IMovementEnvironment
         Pinned = true;
         OnPin?.Invoke();
         pin = ContactSupportEnabled ? new ContactPin(this, physicsLease) : new Pin(this, physicsLease);
+        LastPin = pin;
+        LastPhysicsLease = physicsLease;
         return PinAvailability;
     }
 
     class Pin(EnvironmentAcquisitionFixture owner, IPhysicsQueryLease physics) : IMovementEnvironmentPin
     {
+        readonly MovementScopeWitness _witness = owner._preparedWitness!;
+        readonly int _thread = Environment.CurrentManagedThreadId;
+        bool _disposed;
         public IPhysicsWorldQueryView PhysicsView => owner.PinView ?? owner._view;
         public long GeometryGeneration => physics.GeometryGeneration + (owner.Fault == "geometry-generation" ? 1 : 0);
         public long EnvironmentGeneration => 7L;
@@ -93,25 +103,22 @@ public sealed partial class EnvironmentAcquisitionFixture : IMovementEnvironment
             {
                 owner.WitnessReads++;
                 if (owner.Fault == "throw-validation") throw new FixtureException();
-                MovementQueryIdentity identity = owner.Fault == "witness-identity" ? OtherIdentity : owner._identity;
-                var scope = owner.WitnessScope ?? (owner.Fault is "scope" or "support-envelope" or "witness-identity"
-                    ? new MovementQueryScope(owner._scope.Min,
-                    owner.Fault == "scope" ? owner._scope.Max - Vector3.UnitX : owner._scope.Max,
-                    owner.Fault == "support-envelope" ? 0f : owner._scope.MaxRise, owner._scope.MaxDrop,
-                    owner._scope.WorldId, owner._scope.CurrentSpace, identity, owner._scope.Frame) : owner._scope);
-                Assert.Equal(MovementAvailability.Known,
-                    MovementScopeWitness.TryCreate(scope, identity, owner.Resources, true, out var witness));
-                return witness!;
+                AssertCurrent();
+                return _witness;
             }
         }
 
         public void AssertCurrent()
         {
+            AssertThread();
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            physics.AssertCurrent();
             if (owner.Fault == "stale-pin") throw new InvalidOperationException("Pin is stale.");
         }
 
         public MovementWaterPoint SampleCentreWater(in MovementBodyQuery body)
         {
+            AssertCurrent();
             owner.SampleCalls++;
             owner.SampleSpaceObserved = body.CurrentSpace;
             owner.OnSample?.Invoke();
@@ -120,6 +127,7 @@ public sealed partial class EnvironmentAcquisitionFixture : IMovementEnvironment
 
         public MovementSupportSet EnumerateSupport(in MovementSupportRequest request, Span<MovementSupportCandidate> candidates)
         {
+            AssertCurrent();
             owner.SupportCalls++;
             return owner.OnSupport!(request, candidates);
         }
@@ -127,21 +135,32 @@ public sealed partial class EnvironmentAcquisitionFixture : IMovementEnvironment
         public MovementCoverageResult TraceWater(in MovementMediumSweepQuery query,
             Span<MovementCoverageSpan> spans, Span<MovementDomainContact> contacts)
         {
+            AssertCurrent();
             owner.CoverageCalls++;
             return owner.OnCoverage!(query, spans, contacts);
         }
 
         public MovementAvailability RebuildSelection(in FramedMovementState state, out MovementSelection selection)
         {
+            AssertCurrent();
             owner.RebuildCalls++;
             return owner.OnRebuild!(state, out selection);
         }
 
         public void Dispose()
         {
+            AssertThread();
+            if (_disposed) return;
+            _disposed = true;
             owner.Disposed = true;
             owner.OnDispose?.Invoke();
             if (owner.ThrowOnDispose) throw new FixtureException();
+        }
+
+        void AssertThread()
+        {
+            if (Environment.CurrentManagedThreadId != _thread)
+                throw new InvalidOperationException("A producer pin belongs to its acquiring thread.");
         }
     }
 

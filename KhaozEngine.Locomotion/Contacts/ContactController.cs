@@ -21,7 +21,7 @@ internal static partial class ContactController
     /// <summary>Advances <paramref name="state"/> one tick. The parameters mean what they mean for the legacy step
     /// core. <see cref="MoveState.Position"/> is the capsule centre, <see cref="MoveTuning.CapsuleHalfHeight"/> above
     /// the feet. A non-null <paramref name="world"/> must offer <see cref="IPhysicsQueryLeaseSource"/> and
-    /// <see cref="IPhysicsSupportNeighborhood"/>, and every query of the tick runs under one read lease. A
+    /// <see cref="IPhysicsSupportFootprint"/>, and every query of the tick runs under one read lease. A
     /// <paramref name="medium"/> that reports water throws until swimming moves here. Omitted
     /// <paramref name="settings"/> mean <c>new GroundCoreSettings()</c>. <paramref name="clampXz"/> clamps the planned
     /// move's end before the move and every substep's move in every mode, and again after the move as a backstop, as
@@ -35,14 +35,15 @@ internal static partial class ContactController
     {
         ArgumentNullException.ThrowIfNull(groundHeight);
         GroundCoreSettings foot = settings ?? new GroundCoreSettings();
+        ShellGeometry.Validate(tuning, foot);
         IPhysicsQueryLeaseSource? leases = null;
         if (world is not null)
         {
             leases = world as IPhysicsQueryLeaseSource ?? throw new NotSupportedException(
                 "The contact controller needs a physics world that offers IPhysicsQueryLeaseSource.");
-            if (world is not IPhysicsSupportNeighborhood)
+            if (world is not IPhysicsSupportFootprint)
                 throw new NotSupportedException(
-                    "The contact controller needs a physics world that offers IPhysicsSupportNeighborhood.");
+                    "The contact controller needs a physics world that offers IPhysicsSupportFootprint.");
         }
 
         using IPhysicsQueryLease? lease = leases?.AcquireQueryReadLease();
@@ -255,6 +256,7 @@ internal static partial class ContactController
     // feet never end below analytic terrain at the axis. A non-finite clamp poisons the end, which holds the tick.
     static ContactTickContinuation Bound(in Context c, in ContactTickContinuation tick, Func<float, float, Vector2> clampXz)
     {
+        using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.FinalClamp);
         Vector3 feet = tick.Feet;
         Vector2 axis = clampXz(feet.X, feet.Z);
         if (axis.X == feet.X && axis.Y == feet.Z) return tick;

@@ -43,7 +43,7 @@ public static partial class CharacterMovement
     // that rounding is proportional to the height magnitude, about 1e-7 of it per operand - a millimetre covers
     // several kilometres of world height, which is orders past anything the fleet authors. Against the #486 reach,
     // which is exactly 0 on every grounded walking tick, an unslacked comparison therefore refuses on noise. It did:
-    // measured on Ruinborne's island at 17.31.0, strafing a bank stopped a walker DEAD, 32 of 63 (site, heading)
+    // measured on the reference consumer's island at 17.31.0, strafing a bank stopped a walker DEAD, 32 of 63 (site, heading)
     // pairs kept under 90 percent of their commanded sideways travel and the worst kept 6 percent, for asks of
     // +0.000 to +0.021 m with eight of ten first blocks at +0.000 or +0.001.
     //
@@ -106,7 +106,7 @@ public static partial class CharacterMovement
     // the angle between the command and that facet's outward. So where the facet's outward lands anti-parallel to the
     // command the projection keeps NOTHING - and that point is a stable attractor, because the walker's own along-face
     // drift carries it there while the drift rate vanishes on arrival. It arrives, it stops, the geometry under it
-    // never changes, and every later tick sheds the same move for the same reason. On Ruinborne's island the 0.4 m
+    // never changes, and every later tick sheds the same move for the same reason. On the reference consumer's island the 0.4 m
     // outward read 180.000 degrees off the command with 0.002 of the speed surviving, and the worst censused ride
     // made 0.028 of its commanded travel with 248 of 300 ticks dead. What the player sees is a walker that is fully
     // footed and upright, holding a direction, going nowhere: no falling pose, no slide, no refusal.
@@ -144,7 +144,7 @@ public static partial class CharacterMovement
     // against a pinned 0.80, with 72 airborne ticks) and both push the rectification residual past its ceiling. Six
     // breaks that ceiling alone. Four and five are the plateau, and the geometry above is what picks five over four:
     // at four the wide direction's own worst keep along the traverse is 0.115 and at five it is 0.148, and further
-    // from a zero is the whole property being bought. Ruinborne's real island agrees at the same widths: at its worst
+    // from a zero is the whole property being bought. The reference consumer's real island agrees at the same widths: at its worst
     // censused site the 0.4 m read keeps 0.002 while 1 m keeps 0.286, 2 m 0.384 and 4 m 0.413.
     //
     // WHAT IT COSTS. Four more height probes on a contact tick whose narrow face is already suspect, and nothing at
@@ -159,7 +159,7 @@ public static partial class CharacterMovement
     // narrow face is doing what a wall does to a command aimed along it, is not second-guessed whatever the wide read
     // would have said, and costs exactly the probes it cost before #501.
     //
-    // WHERE THE NUMBER COMES FROM. The 266-row Ruinborne census behind #501 measured two populations rather than one
+    // WHERE THE NUMBER COMES FROM. The 266-row consumer census behind #501 measured two populations rather than one
     // continuum: every dead-stop row it found kept 0.002 or less, and the healthy contact rows beside them kept 0.2
     // and up. This line sits in the gap between them, which is why it is a line through empty space rather than a cut
     // through either population, and the census warns specifically that a 0.25 line does NOT have that property.
@@ -348,7 +348,7 @@ public static partial class CharacterMovement
     /// ordinary open terrain what the re-test asks for is float rounding plus whatever the surface curves through
     /// under one tick of travel. Against the #486 reach, which is exactly 0 on a grounded walking tick, ANY ask at
     /// all was a refusal of the WHOLE move - and since the geometry is unchanged the next tick, a permanent one.
-    /// On Ruinborne's island that stopped a walker dead while it strafed a bank at ten degrees off tangential, with
+    /// On the reference consumer's island that stopped a walker dead while it strafed a bank at ten degrees off tangential, with
     /// no footing flip and no slide tick anywhere in the trace. <see cref="ProjectedRiseSlack"/> covers the rounding,
     /// the shortening covers the curvature, and a face that genuinely climbs across the whole of the shortest rung
     /// still refuses.</para>

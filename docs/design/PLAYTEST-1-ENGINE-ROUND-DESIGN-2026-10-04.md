@@ -128,7 +128,7 @@ with server turn speeds, covers creatures and remote players today. A follow-up 
 | C. Leave it in Grimhollow | 2 | 8 | 9 | 19 |
 
 Select A. The solver sits beside `LocomotionStateMachine` and `LocomotionSpeedSync`, GPU-free and keyed by consumer
-clip ids, so Ruinborne can use it with any clip set. It is compatible with either #415 answer: an engine
+clip ids, so the reference consumer can use it with any clip set. It is compatible with either #415 answer: an engine
 `ContinuousLocomotion` later composes it with turn and jump states, and a Grimhollow one calls it directly.
 
 ### D7. Direction weights

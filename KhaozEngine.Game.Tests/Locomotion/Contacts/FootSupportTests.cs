@@ -218,7 +218,7 @@ public class FootSupportTests
 
         using var other = new BepuPhysicsWorld(Vector3.Zero);
         using IPhysicsQueryLease foreign = other.AcquireQueryReadLease();
-        Assert.Throws<InvalidOperationException>(() =>
+        Assert.Throws<ArgumentException>(() =>
             FootSupport.Find(null, null, scene.World, foreign, Query(-0.1f)));
     }
 

@@ -1,12 +1,14 @@
 # Content catalog: the versioned content system (Scope A)
 
+Consumer-prefixed paths and `c-consumer.md` citations describe an anonymized historical consumer snapshot.
+
 **Status:** Spec draft, awaiting owner gate 1. Nothing here is implemented. This is Scope A of the content
 foundation, [#882](https://github.com/APKiwiOrg/KhaozEngine/issues/882), written against the gate 0 contracts
 in [CONTENT-CONTRACTS-DESIGN-2026-09-14.md](CONTENT-CONTRACTS-DESIGN-2026-09-14.md), which are BINDING on this
 document. Scope B is owned item instances, affixes, sockets, crafting and the stat evaluation base,
 [#884](https://github.com/APKiwiOrg/KhaozEngine/issues/884), specified in parallel against the same contracts.
 Consumers are [Grimhollow #208](https://github.com/APKiwiOrg/Grimhollow/issues/208) and
-[Ruinborne #465](https://github.com/APKiwiOrg/Ruinborne/issues/465). Neither spec is implemented before the
+consumer report. Neither spec is implemented before the
 owner approves both.
 
 Every format below is byte level, every algorithm is stated so it can be coded without guessing, and every
@@ -15,8 +17,8 @@ comparison with a recommendation. Where this spec needs something the contracts 
 section 20 as a change request and the rest of the spec is designed on the contracts as written.
 
 File and line citations come from three read-only surveys taken on 2026-09-14 against KhaozEngine `1eb60de7`,
-Grimhollow `36f0139a` and Ruinborne `1b85e1aa`, plus direct reads of this worktree at `d4990be5`. Survey
-citations are written `a-engine.md:NNN`, `b-grimhollow.md:NNN` and `c-ruinborne.md:NNN`. Where a survey and
+Grimhollow `36f0139a` and the reference consumer `1b85e1aa`, plus direct reads of this worktree at `d4990be5`. Survey
+citations are written `a-engine.md:NNN`, `b-grimhollow.md:NNN` and `c-consumer.md:NNN`. Where a survey and
 this document disagree, the survey is the fact and this document is the decision.
 
 ## 1. Goals and non-goals
@@ -52,7 +54,7 @@ The ninth is the newest and is here for a reason worth stating. This spec define
 built the prefix-summed arrays the draw needs at load and budgeted the draw at P9, and then shipped no code
 that performs it. Scope B disclaims the roll deliberately, because deciding WHICH base drops is not an
 instance concern. So the roll fell between the two specs, and every consumer would have written the
-composition rule again against the engine's own arrays: Grimhollow for `monster_drop`, Ruinborne to replace
+composition rule again against the engine's own arrays: Grimhollow for `monster_drop`, the reference consumer to replace
 its `LootRoll`, and the two would have disagreed about how `guaranteed` interacts with `roll_count` on the
 first table that used both. The owner of a rule is the code that runs it.
 
@@ -370,16 +372,16 @@ flat list with no repeated group, so the alternative is `opaque bytes` carrying 
 | Field-level publish diff | 10 | 2 |
 | Cross-reference validation reaches the item id | 9 | 5 |
 | Bytes in the pack | 6 | 9 |
-| Matches the consumer shape being adopted | 10 (Ruinborne has `loot_table` plus `loot_table_entry`, `c-ruinborne.md:104-109`) | 4 |
+| Matches the consumer shape being adopted | 10 (the reference consumer has `loot_table` plus `loot_table_entry`, `c-consumer.md:104-109`) | 4 |
 | Cost to add a field to an entry | 9 | 5 |
 | Total | 64 | 29 |
 
 Recommendation: entries as their own content type. The `opaque bytes` option wins only on pack size, and the
 margin is a varint per entry for the parent key reference against a count prefix. Everything the field schema
 exists to give (contracts 4.7: a generic editor, a field-level audit, a field-level diff) is lost the moment a
-repeating group hides inside a blob, and Ruinborne's `item_ability_modifier` is the cautionary version of the
+repeating group hides inside a blob, and the reference consumer's `item_ability_modifier` is the cautionary version of the
 blob answer already in production: its tags are a comma-joined string in one column, which makes a set
-membership test a substring search (`c-ruinborne.md:67-72`).
+membership test a substring search (`c-consumer.md:67-72`).
 
 The same rule generalizes: **any repeating child structure in engine or game content is its own content type
 with a key reference to its parent, never a blob field.** Section 20 does not raise a change request for a
@@ -439,21 +441,21 @@ justified by a real consumer field it replaces, and nothing is speculative.
 
 | Field | Value kind | Reference target | Visibility | Required | Replaces |
 |---|---|---|---|---|---|
-| `name` | localized text key (derived marker) | | `Client` | yes | Grimhollow `ItemStrings.NameFor` 35-arm switch (`b-grimhollow.md:673-685`), Ruinborne `item_def.display_name` (`c-ruinborne.md:49-60`). |
+| `name` | localized text key (derived marker) | | `Client` | yes | Grimhollow `ItemStrings.NameFor` 35-arm switch (`b-grimhollow.md:673-685`), the reference consumer `item_def.display_name` (`c-consumer.md:49-60`). |
 | `examine` | localized text key (derived marker) | | `Client` | no | Grimhollow `ItemStrings.ExamineFor` (`b-grimhollow.md:679-681`). |
-| `tags` | tag list | `tag` | `Client` | no | Grimhollow `CanBeAHatchet` and `CanBeAPickaxe` predicates (`b-grimhollow.md:56-59`), Ruinborne `item_def.item_type` and `.slot` bare varchars (`c-ruinborne.md:63-66`, Ruinborne [#199](https://github.com/APKiwiOrg/Ruinborne/issues/199)). |
-| `stackable` | bool | | `Client` | yes | Grimhollow `GrimhollowItems.Stackable` (`b-grimhollow.md:52`), Ruinborne `item_def.stackable`. |
-| `max_stack` | int | | `Client` | yes | Ruinborne `item_def.max_stack`. Grimhollow has no cap today, so its import writes `int.MaxValue` for a stackable and 1 otherwise. |
+| `tags` | tag list | `tag` | `Client` | no | Grimhollow `CanBeAHatchet` and `CanBeAPickaxe` predicates (`b-grimhollow.md:56-59`), the reference consumer `item_def.item_type` and `.slot` bare varchars (`c-consumer.md:63-66`, a consumer report). |
+| `stackable` | bool | | `Client` | yes | Grimhollow `GrimhollowItems.Stackable` (`b-grimhollow.md:52`), the reference consumer `item_def.stackable`. |
+| `max_stack` | int | | `Client` | yes | the reference consumer `item_def.max_stack`. Grimhollow has no cap today, so its import writes `int.MaxValue` for a stackable and 1 otherwise. |
 | `tradable` | bool | | `Client` | yes | Grimhollow `assets/config/items.jsonc` `tradable` (item-drop design section 1). |
 | `value` | scaled int, scale 1 | | `Client` | yes | Grimhollow `item.<key>.value` economy row (`b-grimhollow.md:208-234`). |
-| `icon` | opaque bytes, asset reference | | `Client` | no | Grimhollow `ItemIcons.RosterIcons` (`b-grimhollow.md:686-705`), Ruinborne `item_def.icon_id`. |
+| `icon` | opaque bytes, asset reference | | `Client` | no | Grimhollow `ItemIcons.RosterIcons` (`b-grimhollow.md:686-705`), the reference consumer `item_def.icon_id`. |
 | `mesh` | opaque bytes, asset reference | | `Client` | no | Grimhollow `GroundItemMeshes.Roster` and its duplicated 35-arm switch (`b-grimhollow.md:706-724`). |
 | `held_mesh` | opaque bytes, asset reference | | `Client` | no | Grimhollow `GrimhollowHeldMeshes.For` 12-arm switch (`b-grimhollow.md:725-736`). |
 | `ground_pose` | int | | `Client` | no | Grimhollow's 12-id lie-flat list inside `GroundTransformFor` (`b-grimhollow.md:715-721`). 0 upright, 1 lie flat. |
 | `icon_tilt`, `icon_spin` | scaled int, scale 1000 | | `Client` | no | The two per-item switches in `tools/SnapshotTool/IconShots.cs` (`b-grimhollow.md:737-754`). |
 | `durability_max` | int | | `Client` | no | New. 0 means the base has no durability. Scope B reads it. |
 | `socket_max` | int | | `Client` | no | New. The CAP, not the authored set. 0 means the base takes no sockets. The sockets a base is authored WITH are `base_socket` rows (below). Scope B reads both. |
-| `equip_profile` | key reference | game type | `Client` | no | Grimhollow `GrimhollowEquipmentRoster.For` 9-arm switch (`b-grimhollow.md:78-104`), Ruinborne `weapon_def` and `item_stat` (`c-ruinborne.md:78-95`). |
+| `equip_profile` | key reference | game type | `Client` | no | Grimhollow `GrimhollowEquipmentRoster.For` 9-arm switch (`b-grimhollow.md:78-104`), the reference consumer `weapon_def` and `item_stat` (`c-consumer.md:78-95`). |
 
 **`socket_max` is a cap and `base_socket` is the declaration, and one int could not be both.** A count says
 HOW MANY sockets a base may end up with. It cannot say which socket TYPES those sockets are, nor in what
@@ -487,7 +489,7 @@ what a socket is for.
 
 **`equip_profile` points at a GAME type and the engine does not own its shape.** An equip slot vocabulary is
 game specific: Grimhollow has eleven slots whose numbers are durable because they shipped in that order
-(`b-grimhollow.md:80-85`), Ruinborne has a nullable `slot NVARCHAR(32)` with no reference table. The engine
+(`b-grimhollow.md:80-85`), the reference consumer has a nullable `slot NVARCHAR(32)` with no reference table. The engine
 declares the FIELD and the game registers the type it points at, which is exactly the `IProductCatalog` seam's
 stated shape: "The engine defines the shape, the game supplies entries"
 (`KhaozEngine.Commerce/IProductCatalog.cs:5`, `a-engine.md:668-676`).
@@ -783,7 +785,7 @@ Grimhollow's game types, from #882's phase 1 acceptance list and `b-grimhollow.m
 are assigned in the order they are decided rather than renumbered to read tidily. Nothing in a game's range is
 reserved by the engine, and Grimhollow may keep going from `1036`.
 
-Ruinborne's are in section 17. Scope B's are `256` to `1023` and are its spec's to assign.
+The reference consumer's are in section 17. Scope B's are `256` to `1023` and are its spec's to assign.
 
 ### 3.7 The row model in the authoring store
 
@@ -861,9 +863,9 @@ level before and after with no extra table (section 4.6), and it is what makes t
 fields of one row a merge rather than a last-write-wins clobber.
 
 **A draft edit that names a field the schema does not declare is refused at the API boundary**, not at
-publish, with HTTP 400 and finding `KEC0004`. This is the direct answer to Ruinborne's
+publish, with HTTP 400 and finding `KEC0004`. This is the direct answer to the reference consumer's
 `ContentStore.UpsertItemDefAsync`, the one upsert in its whole facade with no `Require(...)` gate
-(`c-ruinborne.md:370-383`, Ruinborne [#506](https://github.com/APKiwiOrg/Ruinborne/issues/506)), which lets an
+(`c-consumer.md:370-383`, a consumer report), which lets an
 operator save a row the server then rejects at boot while the console reports success.
 
 ### 3.8 Families, blocks and the parent reference
@@ -1013,9 +1015,9 @@ required migration.
 | `catalog_chunk` | one per (version, type, chunk index, side) | The chunk hash, so a republish knows which chunks changed. Two rows when the client and server bytes differ (section 6.7). |
 
 `catalog_row_field` is the decision that makes the audit and the diff cheap, and it is a deliberate departure
-from storing an encoded row blob. Ruinborne's audit is the lesson: its rows record THAT a row changed and
+from storing an encoded row blob. the reference consumer's audit is the lesson: its rows record THAT a row changed and
 carry no values at all, so the entire durable record of an item edit is "someone edited item_def:sword at time
-T" (`c-ruinborne.md:399-420`, Ruinborne [#509](https://github.com/APKiwiOrg/Ruinborne/issues/509)). With one
+T" (`c-consumer.md:399-420`, a consumer report). With one
 row per field, the before and after values fall out of the same table the editor writes.
 
 The encoded row blob is NOT stored. It is computed at publish from `catalog_row_field` through the type's
@@ -1339,8 +1341,8 @@ and joined by nothing, and rendering at write time means a later schema change c
 un-renderable. A tag list renders as its comma-joined tag KEYS resolved at write time, because a reader of an
 audit row six months later should not have to resolve ids against a version that may have retired them.
 
-**The audit append is IN the same transaction as the edit, not best effort.** Ruinborne's is best effort: it
-catches and logs a warning so an audit failure never blocks the edit (`c-ruinborne.md:415-417`), and in its
+**The audit append is IN the same transaction as the edit, not best effort.** The reference consumer's is best effort: it
+catches and logs a warning so an audit failure never blocks the edit (`c-consumer.md:415-417`), and in its
 no-SQL developer mode there is no audit at all. Both are the wrong default for content, because a content edit
 with no audit row is indistinguishable from no edit, and the whole reason this store exists is that the owner
 authors values a player's economy depends on. If the audit insert fails, the edit fails.
@@ -1360,8 +1362,8 @@ is the same for both. Write as much of the rendering as fits inside the cap minu
 complete one. Nothing is lost by it: the audit is the record of who changed what and when, and the record of
 the VALUE is the temporal row table, which holds every version of every field and is read through
 `catalog-get`'s history (section 10.4). Truncating SILENTLY is the option this rules out, because a partial
-value that reads as whole is Ruinborne
-[#509](https://github.com/APKiwiOrg/Ruinborne/issues/509)'s defect wearing a different hat.
+value that reads as whole is the reference consumer
+consumer report's defect wearing a different hat.
 
 ### 4.7 The id allocator
 
@@ -1518,11 +1520,11 @@ Section 5.3 marks the publish-only checks in the sweep, and 5.4 states which of 
 what.
 
 Because it is pure and takes its whole world as an argument, a test builds a snapshot in memory and asserts on
-findings, publish runs it before writing anything, and boot runs it against the loaded pack. Ruinborne's
+findings, publish runs it before writing anything, and boot runs it against the loaded pack. The reference consumer's
 catalog loader is the shape this avoids: validation lives INSIDE the SQL read delegate, so an
 `ArgumentException` from a bad row is routed to the connectivity failure handler and reported as
 `Item catalog: SQL read failed`, which sends an operator looking at the network
-(`c-ruinborne.md:176-196`, Ruinborne [#325](https://github.com/APKiwiOrg/Ruinborne/issues/325)).
+(`c-consumer.md:176-196`, a consumer report).
 
 ### 5.2 The findings
 
@@ -1586,9 +1588,9 @@ rule and does not change.
 | `KEC0042` | A definition id exceeds the `maxDefinitionId` its type declared at registration. | 4.3, 3.6 here |
 | `KEC0043` | A live `loot_entry.weight` is outside 0 to 2,147,483,647, or one live table's non-guaranteed weights total above 2,147,483,647. | 3.5 here |
 
-`KEC0022` and `KEC0025` are the two checks that make Ruinborne's stackable defects impossible to publish:
+`KEC0022` and `KEC0025` are the two checks that make the reference consumer's stackable defects impossible to publish:
 `Stackable = true, MaxStack = 1` is directly reachable in its admin form today
-(`c-ruinborne.md:359-363`) and Ruinborne [#279](https://github.com/APKiwiOrg/Ruinborne/issues/279) asks for
+(`c-consumer.md:359-363`) and a consumer report asks for
 the equippable-plus-stackable rule that `KEC0022` generalizes.
 
 `KEC0027` is the check most likely to be skipped and it is the one that pays. Encoding every row and decoding
@@ -1784,7 +1786,7 @@ reserved-but-unissued ids, which is the safe direction and costs nothing (sectio
 caller.** An `Add` with `definition_id = 0` is allocated one, an `Add` with a non-zero `definition_id` keeps
 it, and a bundle may mix the two because the id is per row. Ids that ARE allocated come in edit ordinal order,
 so two publishes of the same id-free bundle into two empty databases produce the same ids, which is what makes
-an export and re-import reproducible (section 10.9) and what fixes Ruinborne's ids at import (section 17.3).
+an export and re-import reproducible (section 10.9) and what fixes the reference consumer's ids at import (section 17.3).
 Ids that are CARRIED are kept exactly, which is what makes Grimhollow's import preserve ids 1 to 35 and leave
 every stored container decoding unchanged (section 16.4). Ordering does not preserve an id, carrying it does.
 
@@ -3113,10 +3115,10 @@ type then resolves to nothing, `KEC0006` fires at boot for each one, and the ope
 reference findings instead of one line naming the type that is missing. Both refuse at step 6, before a single
 chunk is fetched, because the manifest's type list is enough to decide it.
 
-This is stated as a hard rule because the consumer precedent is the opposite. Ruinborne's loader falls back to
+This is stated as a hard rule because the consumer precedent is the opposite. The reference consumer's loader falls back to
 five hardcoded code defaults on any failure, announces it with a `Console.WriteLine`, and serves a different
 catalog than the database holds with no metric, no exit code and no refusal to admit joins
-(`c-ruinborne.md:176-196`, Ruinborne [#512](https://github.com/APKiwiOrg/Ruinborne/issues/512)). A silent
+(`c-consumer.md:176-196`, a consumer report). A silent
 fallback catalog is worse than an outage, because an outage is noticed.
 
 ### 9.7 The atomic swap, and why there is no lock
@@ -3184,7 +3186,7 @@ existing packages:
 This is additive and breaks no caller, which is why it is a milestone item rather than a CCR: contracts 10.4
 and 10.5 say nothing about the admin result type. It is named here because the spec's entire answer to two
 named failure modes rides on it. `expectedBaseVersion` optimistic concurrency (section 10.6) is what section
-11 row 4 resolves with, and the empty-database 409 (section 10.9) is what the Ruinborne seeding class resolves
+11 row 4 resolves with, and the empty-database 409 (section 10.9) is what the reference consumer seeding class resolves
 with. An unnamed engine change is an unbudgeted one.
 
 ### 10.2 The sixteen actions
@@ -3224,9 +3226,9 @@ returns 501 and none of them is listed as returning one. The 409 column is the e
 **None of these returns 202 Accepted**, which is a deliberate departure from the built-in mutation routes. A
 202 means the command was enqueued to the host thread and will complete
 (`AdminHttpServer.cs:107-108`). A content edit completes INSIDE the request against the database, so the
-operator gets the real answer rather than an optimistic one. Ruinborne's console reporting success on a row
+operator gets the real answer rather than an optimistic one. The reference consumer's console reporting success on a row
 the server then rejects at boot is exactly the failure a 202 invites here
-(`c-ruinborne.md:364-369`).
+(`c-consumer.md:364-369`).
 
 ### 10.3 `catalog-schema`, the action the generic editor is built on
 
@@ -3258,9 +3260,9 @@ type for `TagList`. It also validates CLIENT SIDE against the same schema, so an
 reaches the server, and the server validates again because a client-side check is a convenience and never a
 gate.
 
-This is what closes Ruinborne #510, `item_stat` and `item_ability_modifier` having no admin page at all so
-per-item stats are hand SQL only (`c-ruinborne.md:334-339`,
-[#510](https://github.com/APKiwiOrg/Ruinborne/issues/510)). Under this design a type gets its editor by
+This is what closes consumer report, `item_stat` and `item_ability_modifier` having no admin page at all so
+per-item stats are hand SQL only (`c-consumer.md:334-339`,
+consumer report). Under this design a type gets its editor by
 registering, so there is no such thing as a content type with no page.
 
 ### 10.4 `catalog-list` and `catalog-get`
@@ -3281,8 +3283,8 @@ because a console lists rows by display name, and it is returned read only.
 
 `version: 0` means the current live set, which is the active version when one exists and the DRAFT-APPLIED set
 when a draft is open. `take` is capped at 500 server side and the response carries `total`, which is what
-makes a console page rather than fetch a million rows. Ruinborne's bag silently showing only the first 30
-stacks with no indication ([#233](https://github.com/APKiwiOrg/Ruinborne/issues/233), closed) is the shape
+makes a console page rather than fetch a million rows. The reference consumer's bag silently showing only the first 30
+stacks with no indication (consumer report, closed) is the shape
 this cap exists to avoid repeating.
 
 `catalog-get` takes `{ "typeKey", "id" }` or `{ "typeKey", "key" }` and returns one row plus its full version
@@ -3467,14 +3469,14 @@ database backup, and section 10.9's last paragraph says what is.
 imports a whole bundle into an empty database only"). Empty means `catalog_version` has no rows. A non-empty
 database gets a 409 with `{ "error": "catalog is not empty", "activeVersion": 48 }` and no partial write.
 
-That single rule is the answer to Ruinborne's entire seeding class of defects, and it is worth naming them
+That single rule is the answer to the reference consumer's entire seeding class of defects, and it is worth naming them
 because the rule looks unhelpfully strict until they are on the page:
 
 - Insert-if-absent seeding never reaches an existing row, so PostDeploy carries a growing set of guarded
   `UPDATE ... WHERE column = <old literal>` corrections that knowingly revert an operator value. The file says
   so in its own comments: an operator who retuned a number "would see it reverted on the next deploy, the same
-  limit every other numeric correction in this file already accepts" (`c-ruinborne.md:197-220`, Ruinborne
-  [#111](https://github.com/APKiwiOrg/Ruinborne/issues/111)).
+  limit every other numeric correction in this file already accepts" (`c-consumer.md:197-220`, the reference consumer
+  consumer report).
 - Grimhollow's economy has the same shape from the other side: a stored row WINS over a changed default
   forever, so a `GrimhollowEconomyMigration` one-time reset had to exist to push the owner's approved values
   onto a live database once (`b-grimhollow.md:304-319`).
@@ -3534,11 +3536,11 @@ holder) and `operator` is what the console asserted.
 
 Two consumer lessons say why this is the right shape and why the field is required rather than optional:
 
-- **[Ruinborne #371](https://github.com/APKiwiOrg/Ruinborne/issues/371)**, open: its console's owned-item
+- **consumer report**, open: its console's owned-item
   verbs hardcode `AdminActors.AdminConsole` on all ten including `grant_item`, `delete_item` and `move_item`,
   so an audit row cannot say which operator did it. Its CONTENT edits do carry a name, and they carry the
   operator's DISPLAY NAME rather than the stable object id, even though a stable `oid:` identity exists in the
-  same codebase and the content pages simply do not use it (`c-ruinborne.md:432-437`). So the engine's field
+  same codebase and the content pages simply do not use it (`c-consumer.md:432-437`). So the engine's field
   is documented as taking a STABLE identity, and a console passing a display name gets an audit trail that
   breaks when someone changes their name.
 - **[Grimhollow #226](https://github.com/APKiwiOrg/Grimhollow/issues/226)**, open: its console derives the
@@ -3725,20 +3727,20 @@ handshake completes before the bearer check: `MaxConcurrentConnections` 64, `Req
 `KeepAliveTimeout` 30 s (`AdminEndpointOptions.cs:39-51`). The content actions inherit all of it and add
 nothing, which is the point of registering rather than opening a second listener.
 
-Three Ruinborne admin lessons are ADDRESSED by the design rather than by a control, and they are worth naming
+Three consumer admin lessons are ADDRESSED by the design rather than by a control, and they are worth naming
 because each is an OPEN issue whose fix is structural. Two are resolved and the third is improved, which the
 bullets say individually:
 
-- [Ruinborne #506](https://github.com/APKiwiOrg/Ruinborne/issues/506), `UpsertItemDefAsync` has no domain gate
+- consumer report, `UpsertItemDefAsync` has no domain gate
   so the console can save one bad row that reverts the whole item catalog at boot. Answered by validating at
   the API boundary (section 3.7) and again at publish (section 6.4) and again at boot (section 9.5), and by
   boot failing closed rather than falling back (section 9.6).
-- [Ruinborne #509](https://github.com/APKiwiOrg/Ruinborne/issues/509), content-edit audit rows record no
+- consumer report, content-edit audit rows record no
   field, no old value and no new value. IMPROVED rather than resolved. The field-level audit through the schema
   (section 4.6) fixes the half the issue is titled for, one row per changed field with a before and an after,
   and it is the contracts' own second consumer for the field schema existing at all (contracts 4.7). The WHO
   half is only improved, for the reason below.
-- [Ruinborne #512](https://github.com/APKiwiOrg/Ruinborne/issues/512), a catalog load failure is a
+- consumer report, a catalog load failure is a
   `Console.WriteLine` with no metric and no refusal to boot, so players see a stale catalog. Answered by exit
   code 3 with findings on stderr (section 9.6) and by there being no code-default catalog to fall back TO.
 
@@ -3749,7 +3751,7 @@ the single bearer token can put any 128-character string in it including somebod
 from a true one in the table. That is a stated design limit rather than a defect, because the alternative is
 an identity provider inside `KhaozEngine.Server.Admin`, and it does constrain what this design may CLAIM: the
 audit is accountable to the TOKEN HOLDER, and it distinguishes operators only as far as the operators
-cooperate. Ruinborne [#371](https://github.com/APKiwiOrg/Ruinborne/issues/371) asks for exactly the
+cooperate. A consumer report asks for exactly the
 accountability a shared token cannot give, so this design improves it, by giving the console a stable place to
 put a stable identity and by auditing what it sent beside what the engine authenticated, and does not close
 it. Closing it needs per-operator credentials at the endpoint, which is a separate piece of work in a
@@ -4283,8 +4285,8 @@ genuinely differ, so the test proves the check is guarding a real failure rather
 **Manifest hash stability across registration order.** Register the same five types in a shuffled order,
 publish the same content, and assert the manifest hashes are byte identical. Ten shuffles from a seeded
 source. This is the direct test for contracts 4.3's registration-order independence and it is the test
-Ruinborne's wire index would have failed, since the same item has a different byte index depending on whether
-the catalog loaded from SQL or from code defaults (`c-ruinborne.md:517-536`).
+The reference consumer's wire index would have failed, since the same item has a different byte index depending on whether
+the catalog loaded from SQL or from code defaults (`c-consumer.md:517-536`).
 
 **Chunk reuse.** Publish, edit one row, publish again, and assert exactly one chunk hash changed and every
 other is identical to the previous version's. Then edit a row in a different chunk and assert two changed.
@@ -4563,16 +4565,16 @@ version bump underneath. It would also put `EveryStoredContainerStillDecodes` (1
 version change it never mentions, which turns the plan's sharpest regression fence into a test comparing two
 different formats. Neither ordering costs anything to choose. Choosing neither costs a half-migrated game.
 
-## 17. Ruinborne adoption plan
+## 17. Consumer migration example
 
-Written, not executed. Tracked in [Ruinborne #465](https://github.com/APKiwiOrg/Ruinborne/issues/465).
+Historical migration example. The schema and conversion lessons remain applicable to other consumers.
 
 ### 17.1 The precondition
 
-[Ruinborne #299](https://github.com/APKiwiOrg/Ruinborne/issues/299) is a PRECONDITION on the owned-item half,
+consumer report is a PRECONDITION on the owned-item half,
 not on this half. Its PostDeploy duplicate-row collapse partitions by `(character_id, item_id)` with no
 `instance_json` term and runs on every redeploy, so the moment two differently rolled copies of one
-non-stackable item exist they collapse into one (`c-ruinborne.md:939-948`). Scope A can land without it,
+non-stackable item exist they collapse into one (`c-consumer.md:939-948`). Scope A can land without it,
 because Scope A does not create instances. Scope B cannot.
 
 ### 17.2 `item_def` and its satellites, mapped
@@ -4581,18 +4583,18 @@ because Scope A does not create instances. Scope B cannot.
 |---|---|
 | `item_def.item_id NVARCHAR(64)`, the clustered PK | The `item` type's content KEY. The int32 definition id is NEW and allocated at import (contracts 5.5). |
 | `item_def.display_name` (already a localization key) | `item.name` |
-| `item_def.item_type` and `.slot`, bare varchars with no reference table | `item.tags` plus `item.equip_profile`. This is [Ruinborne #199](https://github.com/APKiwiOrg/Ruinborne/issues/199) resolved: the complaint is that rarity gets a proper reference table and these do not, and a tag row IS the reference table. |
+| `item_def.item_type` and `.slot`, bare varchars with no reference table | `item.tags` plus `item.equip_profile`. This is consumer report resolved: the complaint is that rarity gets a proper reference table and these do not, and a tag row IS the reference table. |
 | `item_def.stackable`, `.max_stack` | `item.stackable`, `item.max_stack` |
-| `item_def.base_stats_json`, the dead column with no reader | DELETED at import. It is [Ruinborne #511](https://github.com/APKiwiOrg/Ruinborne/issues/511), a dead column that is still editable, still encoded and still carried, and it stops being any of the three. |
+| `item_def.base_stats_json`, the dead column with no reader | DELETED at import. It is consumer report, a dead column that is still editable, still encoded and still carried, and it stops being any of the three. |
 | `item_def.rarity_id` and the `item_rarity` table | A Scope B `rarity` content type, id range 256 to 1023. Scope A imports the rows and Scope B owns the schema. |
 | `item_def.icon_id` | `item.icon` |
 | `item_stat` (composite PK, `flat REAL`, `percent REAL`) | An `item_stat` game type key-referencing `item` and `stat`, with `flat` and `percent` as `ScaledInt`. The REAL columns become integers, which is contracts 13.4's determinism rule and is a real behaviour change: a value of 0.1 becomes 10 at scale 100. |
 | `weapon_def` (1:1-optional, `damage`, `range REAL`, `half_arc_deg REAL`, `cooldown_seconds REAL`) | A `weapon_profile` game type, the same `ScaledInt` conversion. |
 | `item_ability_modifier`, whose `required_tags` and `excluded_tags` are COMMA-JOINED STRINGS in one column | Two `TagList` fields on an `ability_modifier` game type. A set membership test stops being a substring search (contracts 4.6). |
 | `stat_def` (whose own comment says the C# `StatChannel` enum stays the source of truth for the index) | The engine `stat` type. The enum stops being the source of truth for anything, which is what the comment asks for. |
-| `loot_table` and `loot_table_entry` | The engine `loot_table` and `loot_entry` types, one to one. Section 3.5 chose the child-type shape partly because Ruinborne already has it. |
+| `loot_table` and `loot_table_entry` | The engine `loot_table` and `loot_entry` types, one to one. Section 3.5 chose the child-type shape partly because the reference consumer already has it. |
 | `ability_def`, `npc_archetype`, `npc_spawn` | Game types, `1024` upward. |
-| The five `RuinborneItems` code defaults | DELETED. There is no code-default catalog under contracts 1.4 ("a definition exists in the authoring store and nowhere else"), and deleting them is what closes [#512](https://github.com/APKiwiOrg/Ruinborne/issues/512). |
+| The five `ConsumerItems` code defaults | DELETED. There is no code-default catalog under contracts 1.4 ("a definition exists in the authoring store and nowhere else"), and deleting them is what closes consumer report. |
 
 ### 17.3 The string id becomes the key, and the int id is new
 
@@ -4600,30 +4602,30 @@ Contracts 5.5 fixes this and names it as the single most likely place the two ad
 it is restated here in the concrete: `item_def.item_id NVARCHAR(64)` becomes the engine content KEY, and the
 int32 definition id is allocated by the authoring store at import and did not exist before.
 
-Ruinborne's five current ids are already legal keys under contracts 5.3, which is worth checking rather than
+The reference consumer's five current ids are already legal keys under contracts 5.3, which is worth checking rather than
 assuming: `health_potion`, `sword`, `staff`, `swiftstride_boots` and `rime_band` are `a-z0-9_`, no leading
-digit, no double underscore, well under 64 characters (`c-ruinborne.md:221-227`). So the import renames
+digit, no double underscore, well under 64 characters (`c-consumer.md:221-227`). So the import renames
 nothing, unlike Grimhollow's two localization keys (section 16.5).
 
 **Nothing durable is rewritten by Scope A.** The seven tables carrying `item_id` as a foreign key keep working
 unchanged, because the key survives: `character_inventory`, `item_stat`, `weapon_def`,
 `item_ability_modifier`, `loot_table_entry`, `world_entity` and `economy_ledger`
-(`c-ruinborne.md:859-867`). The int id is added beside the key, not in place of it. Migrating
+(`c-consumer.md:859-867`). The int id is added beside the key, not in place of it. Migrating
 `character_inventory.item_id` to the int definition id is Scope B's work, because it is the owned-item half,
 and it is not a precondition for anything in this section.
 
-**Ruinborne's bundle carries NO ids, so it is the allocated case, and the order is what pins them.**
-Grimhollow's bundle carries ids because it has ids to keep (section 16.4). Ruinborne has none: its catalog is
+**the reference consumer's bundle carries NO ids, so it is the allocated case, and the order is what pins them.**
+Grimhollow's bundle carries ids because it has ids to keep (section 16.4). The reference consumer has none: its catalog is
 keyed by a string and the int32 definition id is new here, so every row goes in with `definition_id = 0` and
 comes out with an allocated one. The two are the two bullets of section 10.9, one import path, chosen per row
 by whether the row names an id. Ids that are allocated come in edit ordinal order (section 6.3), so the
 bundle's row order determines them. The bundle builder orders every type's rows by KEY ascending, ordinal,
-which is the order `SqlRuinborneStore.cs:433` already reads them in (`ORDER BY [item_id]`). Two consequences:
+which is the order `SqlConsumerStore.cs:433` already reads them in (`ORDER BY [item_id]`). Two consequences:
 an export at version N re-imported into an empty database reproduces
 the same ids (section 10.9), and the ordering that was a hazard when it was a WIRE index becomes harmless the
 moment it is only an allocation order, because the id it produces is then stored rather than derived.
 
-**No families at import.** Nothing in Ruinborne's catalog is grouped contiguously today and contracts 5.2's
+**No families at import.** Nothing in the reference consumer's catalog is grouped contiguously today and contracts 5.2's
 block size is expensive to change once allocated, so the import declares no family and every id comes from the
 type's plain high-water mark. A family is declared later, for a new group, and costs nothing to add then. The
 opposite mistake, declaring a family at import to be tidy and sizing its block wrong, is in section 19's table.
@@ -4639,7 +4641,7 @@ POSITION in a list (`ItemRosterPush.cs:49-62`, `ItemDefCodec.cs:23-53`). The bag
 byte (`InventoryStateCodec.cs:40`). The position is built by a cast, `map[items[i].ItemId] = (byte)i`
 (`ItemCatalogContentLoader.cs:27`), enforced by a 255-item and a 255-rarity ceiling that reject the WHOLE
 catalog when breached (`:137-148`), and it disagrees between the two sources it can be built from
-(`c-ruinborne.md:517-536`).
+(`c-consumer.md:517-536`).
 
 After adoption the client has the catalog BEFORE it connects. The door refuses a client whose content version
 does not match, with the server's version and manifest hash in the refusal token, and the client fetches what
@@ -4648,16 +4650,16 @@ it lacks from the pack store and reconnects (section 8.5, gate 0 decision 6). So
 | Deleted | Replaced by |
 |---|---|
 | `ItemRosterPush` and its one call site at `PlayerLifecycleService.cs:491` | Nothing. The catalog is not pushed. |
-| Message kinds 16 `RarityDefsMessageKind` and 17 `ItemDefsMessageKind` (`RuinborneItemProtocol.cs:31, :36`) | Retired, never reused, for the same reason a definition id is never reused. |
+| Message kinds 16 `RarityDefsMessageKind` and 17 `ItemDefsMessageKind` (`ConsumerItemProtocol.cs:31, :36`) | Retired, never reused, for the same reason a definition id is never reused. |
 | `ItemDefCodec` and `RarityDefCodec` | The registered row codecs of section 3.6, one per type. |
 | `ItemClientState` and `RarityClientState`, their `totalCount` sizing and their out-of-order fill (`ItemClientState.cs:24-80`) | `ContentRuntime` on the client half, loaded from the cached pack at startup. |
 | The 255-item and 255-rarity ceilings | `int32` ids. |
 | `InventoryStack.ItemIndex`, a `byte` list position | The int32 definition id as a varint. **Scope A's change**, not durable, so it is a message version bump rather than a migration. |
 
 **That last row is claimed by THIS spec, and the claim is the fix for a scheduling contradiction.** It was
-labelled Scope B's message change, and it cannot be: Scope A's phase 2 IS Ruinborne's adoption, step 8 of
+labelled Scope B's message change, and it cannot be: Scope A's phase 2 IS the reference consumer's adoption, step 8 of
 17.10 performs the substitution, and step 8 and step 9 ship together or the bag names ids a client cannot
-resolve. Scope B's own Ruinborne adoption runs after its phase 3, several phases later, so leaving the row
+resolve. Scope B's own consumer adoption runs after its phase 3, several phases later, so leaving the row
 with Scope B would have made Scope A's phase 2 block on a phase no table draws an edge to, silently, until
 someone tried to sequence it.
 
@@ -4665,8 +4667,8 @@ It is also genuinely this spec's work by content. The change substitutes one num
 body: a byte holding a list position becomes a varint holding a definition id, with no payload, no instance,
 no roll and no property anywhere in it. Everything Scope B would contribute to that message arrives LATER,
 when a stack gains its third component, and that is a separate change in a separate phase (18.1). So the
-wire-index substitution lands in Scope A's phase 2, with the rest of Ruinborne's adoption, and Scope B's
-Ruinborne row 8 records the outcome without scheduling anything.
+wire-index substitution lands in Scope A's phase 2, with the rest of the reference consumer's adoption, and Scope B's
+The reference consumer row 8 records the outcome without scheduling anything.
 
 **Two documented holes close by construction rather than by a fix.** The first is the ordering hole at
 `ItemRosterPush.cs:43-48`: a killing blow attributed to the slot, landing after the character binding exists
@@ -4679,11 +4681,11 @@ not-ready window to render around.
 
 ### 17.5 The five content loaders collapse to one load
 
-Ruinborne has five content loaders, each with its own SQL read, its own retry wrapper, its own validation
+The reference consumer has five content loaders, each with its own SQL read, its own retry wrapper, its own validation
 placement and its own fallback. Four of them converged on `ContentRowMapping` when
-[#200](https://github.com/APKiwiOrg/Ruinborne/issues/200) was fixed, itself a repeat of #24 in
+consumer report was fixed, itself a repeat of #24 in
 `NpcContentLoader`, and the item loader is the fifth and was never swept
-([#325](https://github.com/APKiwiOrg/Ruinborne/issues/325), open).
+(consumer report, open).
 
 After adoption there are ZERO content loaders. There is one load, the engine's, at boot: read the active
 version, fetch and verify every chunk, decode, validate, build the runtime arrays, resolve the world keys
@@ -4696,16 +4698,16 @@ What that deletes, and what each deletion buys:
   whole-catalog rejections, and `AttachModifiers`. The modifier fold becomes a key reference from the
   `ability_modifier` game type to `item`, resolved by `KEC0006` at publish rather than by a per-row skip at
   load (`ItemCatalogContentLoader.cs:199-209`).
-- `RuinborneItems.All` and `RuinborneRarities.DefaultRarities()`. Contracts 1.4 is explicit that a definition
+- `ConsumerItems.All` and `ConsumerRarities.DefaultRarities()`. Contracts 1.4 is explicit that a definition
   exists in the authoring store and nowhere else, so there is no code-default catalog to fall back to. This is
-  what closes [#512](https://github.com/APKiwiOrg/Ruinborne/issues/512), and it closes it by removing the
+  what closes consumer report, and it closes it by removing the
   destination rather than by improving the announcement.
 - The hand-built `RarityDef` construction the item loader does instead of calling
-  `ContentRowMapping.ToItemRarity`, which is [#313](https://github.com/APKiwiOrg/Ruinborne/issues/313) exactly.
+  `ContentRowMapping.ToItemRarity`, which is consumer report exactly.
   It is resolved by there being one decode path per type, the registered codec, with no second hand-rolled
   mapper left to drift from.
 - The positional `SqlDataReader` ordinal hazard that shipped as
-  [#494](https://github.com/APKiwiOrg/Ruinborne/issues/494) in `AbilityContentLoader`, where a duplicate column
+  consumer report in `AbilityContentLoader`, where a duplicate column
   in a SELECT shifted every later ordinal. A pack row is a field list the schema names, so there is no ordinal
   to shift.
 
@@ -4720,9 +4722,9 @@ because they are different rows of the same table.
 
 ### 17.6 PostDeploy's insert-if-absent seeding becomes a one-time bundle import
 
-Every catalog row in Ruinborne is seeded by `Scripts/PostDeploy.sql` as `IF NOT EXISTS ... INSERT`, eleven
+Every catalog row in the reference consumer is seeded by `Scripts/PostDeploy.sql` as `IF NOT EXISTS ... INSERT`, eleven
 blocks across `item_def`, `item_rarity`, `weapon_def`, `item_stat`, `stat_def`, `item_ability_modifier` and
-`loot_table` (`c-ruinborne.md:197-209`). Because insert-if-absent never reaches an existing row, the script
+`loot_table` (`c-consumer.md:197-209`). Because insert-if-absent never reaches an existing row, the script
 carries a growing set of guarded `UPDATE ... WHERE column = <old literal>` corrections, and the file states in
 its own comments that these knowingly revert an operator value: "an operator who retuned it back down would
 see it reverted to 40 on the next deploy, the same limit every other numeric correction in this file already
@@ -4733,8 +4735,8 @@ class it exists for. The replacement is one `catalog-import` of one `ContentBund
 database, once, ever. After that a value changes through `catalog-edit` and `catalog-publish` and through
 nothing else.
 
-**The bundle is built from the LIVE database, not from PostDeploy and not from `RuinborneItems`.** This is the
-same step that Grimhollow's section 16.4 gets wrong if it is done backwards, and Ruinborne's version of it is
+**The bundle is built from the LIVE database, not from PostDeploy and not from `ConsumerItems`.** This is the
+same step that Grimhollow's section 16.4 gets wrong if it is done backwards, and the reference consumer's version of it is
 sharper, because its corrections mean the live rows and the seed text genuinely differ. The sequencing that
 makes it safe is: deploy normally so every pending correction has been applied, THEN export, so the
 corrections are already in the live rows and the export captures the operator's state including them.
@@ -4759,17 +4761,17 @@ gate for this step and it is a human one, the same shape as Grimhollow's diff ey
 bag-slot repair at `:538-602`. Those operate on `character_inventory`, which is owned data rather than
 content, and section 3.10's boundary rule applies in the same spirit. The content blocks and every content
 correction leave the script, and the duplicate-row collapse keeps its own open defect,
-[#299](https://github.com/APKiwiOrg/Ruinborne/issues/299), which section 17.1 already names as Scope B's
+consumer report, which section 17.1 already names as Scope B's
 precondition.
 
 ### 17.7 The seven content pages become one generic editor
 
-`Ruinborne.Admin` is a Blazor Server app with seven content editor pages, one per table, at `/content/items`,
+`Consumer.Admin` is a Blazor Server app with seven content editor pages, one per table, at `/content/items`,
 `/content/rarities`, `/content/weapons`, `/content/loot`, `/content/abilities`, `/content/npcs` and
-`/content/spawns` (`c-ruinborne.md:321-333`). Each has its own drawer, its own view model, its own
+`/content/spawns` (`c-consumer.md:321-333`). Each has its own drawer, its own view model, its own
 hand-written validation subset and its own upsert on the `ContentStore` facade. Two tables that are real
 content, `item_stat` and `item_ability_modifier`, have no page at all and are editable only by hand SQL or a
-PostDeploy edit ([#510](https://github.com/APKiwiOrg/Ruinborne/issues/510)).
+PostDeploy edit (consumer report).
 
 After adoption there is ONE page, routed `/content/{typeKey}`, rendering its grid and its drawer from
 `catalog-schema` (section 10.3). A type gets its editor by registering, so `item_stat` and
@@ -4777,8 +4779,8 @@ After adoption there is ONE page, routed `/content/{typeKey}`, rendering its gri
 
 **The console stops being a second writer to the same database, and this is the structural half of the
 change.** Today `ContentStore` holds a `relational` handle and writes SQL directly
-(`ContentStore.cs:91-96` calling `SqlRuinborneStore.UpsertItemDefAsync`, a bare `MERGE ... WITH (HOLDLOCK)`
-at `SqlRuinborneStore.cs:403-422`). The authoring store's one open draft, its id allocator and its single
+(`ContentStore.cs:91-96` calling `SqlConsumerStore.UpsertItemDefAsync`, a bare `MERGE ... WITH (HOLDLOCK)`
+at `SqlConsumerStore.cs:403-422`). The authoring store's one open draft, its id allocator and its single
 publish transaction cannot be enforced against two independent writers, so after adoption the console calls
 the admin endpoint's sixteen actions (section 10.2) and the server owns every write. The bearer token plus the
 pinned certificate is the transport, and the console forwards its stable Entra `oid` as the `operator` field
@@ -4786,18 +4788,18 @@ pinned certificate is the transport, and the console forwards its stable Entra `
 
 What that fixes, item by item:
 
-- **[#506](https://github.com/APKiwiOrg/Ruinborne/issues/506)**, `UpsertItemDefAsync` is the only upsert in
+- **consumer report**, `UpsertItemDefAsync` is the only upsert in
   the facade with no `Require(...)` gate, so an operator can save `stackable = 1, max_stack = 1` and the
   console reports success while the server rejects the whole catalog at the next boot. All nine `Require`
   call sites are deleted along with the facade: a draft edit naming an undeclared field is a 400 at the API
   boundary (section 3.7), and `KEC0025` refuses `max_stack` of 1 on a stackable row at publish (section 5.2).
   Two gates instead of a per-method habit that one method did not have.
-- **[#509](https://github.com/APKiwiOrg/Ruinborne/issues/509)**, the entire durable record of an item edit is
+- **consumer report**, the entire durable record of an item edit is
   "someone edited item_def:sword at time T", because `AuditAsync` passes `detail` as literal null and the
   table has no value columns. `catalog_audit` is one row per FIELD change with who, when, note, type, id,
   field, before and after (section 4.6), which is the contracts' own second consumer for the field schema
   existing at all.
-- **[#511](https://github.com/APKiwiOrg/Ruinborne/issues/511)**, `base_stats_json` is a dead
+- **consumer report**, `base_stats_json` is a dead
   `NVARCHAR(MAX)` with no reader, still a free-text box in the drawer at `Items.razor:99-100` and still
   written by the wire codec. It is not in the `item` schema of section 3.3, so after the import there is no
   field, no box and no codec arm.
@@ -4805,23 +4807,23 @@ What that fixes, item by item:
   `RarityId` as a "(current)" option so opening it cannot silently rewrite the row, and saving it leaves a
   reference that rejects the whole catalog at boot. A `KeyReference` field renders a typeahead over the
   target type's live keys, and `KEC0006` refuses a reference that is not live at the version being published.
-- The dropped-field-on-save class, [#201](https://github.com/APKiwiOrg/Ruinborne/issues/201) on the item
-  editor and [#250](https://github.com/APKiwiOrg/Ruinborne/issues/250) on the NPC editor, both closed and
+- The dropped-field-on-save class, consumer report on the item
+  editor and consumer report on the NPC editor, both closed and
   both the same shape: a view model round trip that silently resets a field the drawer does not carry. A
   `ContentEdit` carries the CHANGED FIELDS ONLY (section 3.7), so a field the editor never touched is not in
   the edit and cannot be reset by one.
 
 **What this does NOT fix**, named so nobody reads the list above as complete.
-[#425](https://github.com/APKiwiOrg/Ruinborne/issues/425), a stranded `max_stack` of 64 on a row whose
+consumer report, a stranded `max_stack` of 64 on a row whose
 `stackable` is false, survives: the engine has no rule that a non-stackable row's `max_stack` must be 1, and
-`KEC0025` only refuses the reverse. It stays a Ruinborne-side data-hygiene call, which is what the issue
+`KEC0025` only refuses the reverse. It stays a consumer-side data-hygiene call, which is what the issue
 itself calls it, and the game can add it as a registered per-type validator (contracts 4.4) in two lines if it
 wants it.
 
 ### 17.8 The tests that pin it
 
 Four, in the same order-of-value shape as section 16.7, and the second is the one that matters most because
-Ruinborne's durable rows reference the catalog by a key that is about to gain an id beside it.
+The reference consumer's durable rows reference the catalog by a key that is about to gain an id beside it.
 
 1. **`TheImportedBundleMatchesTheLiveDatabase`.** Build the bundle from a restored copy of the live database,
    import into an empty in-memory store, publish version 1, and assert every row's field set against the
@@ -4836,38 +4838,38 @@ Ruinborne's durable rows reference the catalog by a key that is about to gain an
    value in the live database, converting to the declared scale and back reproduces the source, or the import
    reported it. Nothing converts silently and nothing converts wrongly without a line.
 4. **`ThePublishedManifestIsStable`.** The same shuffled-registration-order test as Grimhollow's fourth,
-   against Ruinborne's type set, which is section 15.7's engine test applied to a second real consumer.
+   against the reference consumer's type set, which is section 15.7's engine test applied to a second real consumer.
 
-### 17.9 The Ruinborne issues this resolves
+### 17.9 The reference consumer issues this resolves
 
 Each row names the issue, what in this design resolves it, and where. A resolution is written against this
 spec's sections rather than against a promise, so a reviewer can check the claim.
 
 | Issue | State today | What resolves it | Where |
 |---|---|---|---|
-| [#506](https://github.com/APKiwiOrg/Ruinborne/issues/506) | open | The console cannot write a row the server will reject: an undeclared field is a 400 at the API boundary, `KEC0025` refuses `stackable` with `max_stack` 1 at publish, and boot fails closed rather than falling back. The ungated facade method is deleted with the facade. | 3.7, 5.2, 6.4, 9.6, 17.7 |
-| [#509](https://github.com/APKiwiOrg/Ruinborne/issues/509) | open | IMPROVED, not resolved. A field-level audit through the schema gives it one row per changed field with a before and an after, which is what it is titled for. The WHO half is improved only: the forwarded `operator` is caller-asserted and unverified, so it is an audit aid among cooperating operators (section 13.3). | 4.6, 10.10, 13.3, 17.7 |
-| [#510](https://github.com/APKiwiOrg/Ruinborne/issues/510) | open | A type gets its editor by registering, so `item_stat` and `item_ability_modifier` stop being hand-SQL-only content. There is no such thing as a registered type with no page. | 10.3, 17.7 |
-| [#511](https://github.com/APKiwiOrg/Ruinborne/issues/511) | open | `base_stats_json` is not in the `item` schema, so after the import it is not a column, not a drawer field and not a codec arm. | 3.3, 17.2, 17.7 |
-| [#512](https://github.com/APKiwiOrg/Ruinborne/issues/512) | open | There is no code-default catalog to fall back to, and a load failure is exit code 3 with findings on stderr rather than a `Console.WriteLine`. Resolved by removing the destination, not by improving the message. | 9.6, 17.5 |
-| [#325](https://github.com/APKiwiOrg/Ruinborne/issues/325) | open | The wholesale rejection the issue argues to KEEP is kept, because a pack is atomic. The diagnostic the issue names as the defect is fixed: a content finding and a transport failure are different rows of section 9.6's table and are never confusable. | 9.5, 9.6, 17.5 |
-| [#199](https://github.com/APKiwiOrg/Ruinborne/issues/199) | open | `item_type` and `slot` stop being bare varchars. `item_type` becomes `item.tags`, whose vocabulary is the `tag` content type with a real id and a real reference, and `slot` becomes `item.equip_profile`, a key reference to a game type. A tag row IS the reference table the issue asks for. | 3.2, 3.3, 17.2 |
-| [#313](https://github.com/APKiwiOrg/Ruinborne/issues/313) | open | There is one decode path per type, the registered codec, so the hand-built `RarityDef` the item loader constructs instead of calling the shared mapper has nothing to drift from. The loader is deleted. | 3.6, 17.5 |
+| consumer report | open | The console cannot write a row the server will reject: an undeclared field is a 400 at the API boundary, `KEC0025` refuses `stackable` with `max_stack` 1 at publish, and boot fails closed rather than falling back. The ungated facade method is deleted with the facade. | 3.7, 5.2, 6.4, 9.6, 17.7 |
+| consumer report | open | IMPROVED, not resolved. A field-level audit through the schema gives it one row per changed field with a before and an after, which is what it is titled for. The WHO half is improved only: the forwarded `operator` is caller-asserted and unverified, so it is an audit aid among cooperating operators (section 13.3). | 4.6, 10.10, 13.3, 17.7 |
+| consumer report | open | A type gets its editor by registering, so `item_stat` and `item_ability_modifier` stop being hand-SQL-only content. There is no such thing as a registered type with no page. | 10.3, 17.7 |
+| consumer report | open | `base_stats_json` is not in the `item` schema, so after the import it is not a column, not a drawer field and not a codec arm. | 3.3, 17.2, 17.7 |
+| consumer report | open | There is no code-default catalog to fall back to, and a load failure is exit code 3 with findings on stderr rather than a `Console.WriteLine`. Resolved by removing the destination, not by improving the message. | 9.6, 17.5 |
+| consumer report | open | The wholesale rejection the issue argues to KEEP is kept, because a pack is atomic. The diagnostic the issue names as the defect is fixed: a content finding and a transport failure are different rows of section 9.6's table and are never confusable. | 9.5, 9.6, 17.5 |
+| consumer report | open | `item_type` and `slot` stop being bare varchars. `item_type` becomes `item.tags`, whose vocabulary is the `tag` content type with a real id and a real reference, and `slot` becomes `item.equip_profile`, a key reference to a game type. A tag row IS the reference table the issue asks for. | 3.2, 3.3, 17.2 |
+| consumer report | open | There is one decode path per type, the registered codec, so the hand-built `RarityDef` the item loader constructs instead of calling the shared mapper has nothing to drift from. The loader is deleted. | 3.6, 17.5 |
 
 Three more are touched and none is claimed as resolved.
-[#371](https://github.com/APKiwiOrg/Ruinborne/issues/371), whose console hardcodes one actor on all ten
+consumer report, whose console hardcodes one actor on all ten
 owned-item verbs, is IMPROVED by the forwarded operator identity of section 10.10 and not closed by it: the
 engine does not verify the field and the endpoint still holds one bearer token, so the audit is accountable to
 the token holder (section 13.3).
-[#279](https://github.com/APKiwiOrg/Ruinborne/issues/279), asking that `ItemDef.Validate` forbid equippable
+consumer report, asking that `ItemDef.Validate` forbid equippable
 plus stackable, is GENERALIZED by `KEC0022` (a definition declaring durability or sockets is stackable) rather
 than answered: a row with an `equip_profile` and no durability is still publishable, and a game that wants the
-stricter rule registers it as a per-type validator. [#299](https://github.com/APKiwiOrg/Ruinborne/issues/299)
+stricter rule registers it as a per-type validator. consumer report
 stays open and stays Scope B's precondition, as section 17.1 says.
 
 ### 17.10 The order of steps
 
-1. Engine phase 1 ships (section 18) and Ruinborne pins it. Unlike Grimhollow there is no branch to land
+1. Engine phase 1 ships (section 18) and the reference consumer pins it. Unlike Grimhollow there is no branch to land
    first, so this is the first step.
 2. Register the five engine types and the game types of section 17.2. No behaviour change, nothing reads them.
 3. Deploy normally, so every pending PostDeploy correction has been applied to the live rows.
@@ -4885,11 +4887,11 @@ stays open and stays Scope B's precondition, as section 17.1 says.
    from Scope B: it is one number replacing another in a message body with no payload attached.
 9. Add the content layer to the connect door. This is the step that requires every client to update at once,
    the same boundary Grimhollow's step 9 has, and for the same reason.
-10. Delete the five loaders, `RuinborneItems`, `RuinborneRarities.DefaultRarities`, and every content block
+10. Delete the five loaders, `ConsumerItems`, `ConsumerRarities.DefaultRarities`, and every content block
     and content correction in `PostDeploy.sql`. The owned-item repairs stay.
 11. Rewire the console onto the authoring API and delete `ContentStore` and the seven pages (section 17.7).
 12. Scope B, separately: migrate `character_inventory.item_id` to the int32 definition id, after
-    [#299](https://github.com/APKiwiOrg/Ruinborne/issues/299) is closed.
+    consumer report is closed.
 
 Steps 1 to 7 are additive and shippable one at a time. Step 8 and step 9 ship together or the bag names ids a
 client cannot resolve, and step 9 is the release boundary.
@@ -4966,15 +4968,15 @@ stopped it either, because each spec's phase 1 is written as though the other's 
 
 ### 18.2 Phase 2, the second consumer
 
-**Ships:** by default, nothing new in the engine. Phase 2 is Ruinborne's adoption, section 17, and its job is
+**Ships:** by default, nothing new in the engine. Phase 2 is the reference consumer's adoption, section 17, and its job is
 to prove the engine is not shaped around one game.
 
 That is not a licence for it to ship nothing. Three things are EXPECTED and are budgeted for:
 
-- A `ContentBundle` conversion report helper, for section 17.6's REAL-to-scaled-int step. Ruinborne needs it
+- A `ContentBundle` conversion report helper, for section 17.6's REAL-to-scaled-int step. The reference consumer needs it
   and any consumer migrating a float column will.
 - The opt-in localization coverage helper of section 15.7, which Grimhollow's existing reflection test becomes
-  and which Ruinborne needs against a second string catalog.
+  and which the reference consumer needs against a second string catalog.
 - Whatever the SQL Server provider's first real production exercise turns up. Phase 1 gates it on an env-gated
   conformance suite that CI does not run (section 2.6), so phase 2 is where it meets a live schema.
 
@@ -4988,7 +4990,7 @@ quietly widening a varint because it is easier than filing an amendment.
 `EveryForeignKeyStillResolves`, because `character_inventory.item_id` is a database-enforced foreign key, so a
 key dropped in the import is a failed deploy rather than a wrong number.
 
-**Consumer:** Ruinborne, [#465](https://github.com/APKiwiOrg/Ruinborne/issues/465).
+**Consumer:** the reference consumer, consumer report.
 
 ### 18.3 Phase 3, scale and operations
 
@@ -5049,8 +5051,8 @@ production database, or in a player's cached pack, rather than a recompile or a 
 | The authoring store's temporal row shape: `valid_from_version` and `replaced_in_version` per row version | 3.7, 4.3 | Rewrites the operator's whole authoring database. Cheaper than the rows above because the store HAS a migration path by design (4.2's `CurrentVersion` and `RequiredMigration`), which is exactly what a pack format does not have. |
 | `catalog_row_field`, one row per field, rather than one encoded blob per row | 4.3 | The same migration, plus every audit row before the migration loses its field-level meaning. |
 | Grimhollow: definition ids 1 to 35 preserved exactly at import | 16.4 | Every stored `ItemContainer` blob names them, so a moved id is a player whose items are not the items they had. Today `ValidateContainer` THROWS on an unknown id and they cannot log in at all. After Scope B replaces it with the engine validator plus quarantine the failure is gentler, and the id is no less load bearing. |
-| Ruinborne: ids allocated in key-ascending order at import | 17.3 | The ids exist after the import. A different order is a different catalog, and `character_inventory` will reference them after Scope B. |
-| Ruinborne: the four REAL-to-`ScaledInt` scales, 100 for stats and modifier values, 1000 for range, arc and cooldown, basis points for drop chance | 17.6 | Restates every number those columns hold, in both directions, and a rescale after publish is a balance edit applied silently (gate 0 decision 4). |
+| the reference consumer: ids allocated in key-ascending order at import | 17.3 | The ids exist after the import. A different order is a different catalog, and `character_inventory` will reference them after Scope B. |
+| the reference consumer: the four REAL-to-`ScaledInt` scales, 100 for stats and modifier values, 1000 for range, arc and cooldown, basis points for drop chance | 17.6 | Restates every number those columns hold, in both directions, and a rescale after publish is a balance edit applied silently (gate 0 decision 4). |
 
 Everything else this spec introduces is cheap by comparison and is named so the table is not read as
 exhaustive in the other direction: the finding CODES (contracts 16 already lists the validator's findings as
@@ -5076,7 +5078,7 @@ followed by UTF-8 bytes, character set `a-z0-9_./-`, at most 128 bytes.
 
 **Why.** Three of the `item` type's fields are asset references: `icon`, `mesh` and `held_mesh`, replacing
 Grimhollow's `ItemIcons.RosterIcons`, `GroundItemMeshes.Roster` and `GrimhollowHeldMeshes.For` and
-Ruinborne's `item_def.icon_id` (section 3.3). Their values look like `kit/unknown_item.glb`
+The reference consumer's `item_def.icon_id` (section 3.3). Their values look like `kit/unknown_item.glb`
 (`b-grimhollow.md:709`), which cannot be a content key because keys are `a-z0-9_` only with no dot and no
 slash (contracts 5.3), and contracts 4.7's kind list has no plain-string kind. So on the contracts as
 written the only home for them is `opaque bytes`, which is what section 3.3 specifies and what the design
@@ -5344,7 +5346,7 @@ next reader as the reason another was right.
 | F25 | The action count is eleven, fourteen or sixteen by section | low | Confirmed, low | Fixed. Sixteen, everywhere. 10.1, 10.2, 10.11, 16.6, 17.7, 18.1 | `05f9bda9` |
 | F26 | "40 finding codes" is 36 | low | Confirmed, low | Fixed. Thirty-nine issued across `KEC0001` to `KEC0040`, with `KEC0013` withdrawn. 5.2, 15.7 | `05f9bda9` |
 | F27 | `KEC0013` as worded fires on the legal per-field override | low | Confirmed by quote, low | Fixed with F3. `KEC0013` is withdrawn and never reissued, and its real content is `KEC0014`. 5.2, 5.3 | `6cb5dfdb` |
-| F28 | Operator identity is unverified and optional, so it cannot do the accountability job it is given | low | Confirmed by quote, low | Fixed. 13.3 and 17.9 now say audit aid among cooperating operators, and Ruinborne 371 and 509 are improved rather than resolved | `05f9bda9` |
+| F28 | Operator identity is unverified and optional, so it cannot do the accountability job it is given | low | Confirmed by quote, low | Fixed. 13.3 and 17.9 now say audit aid among cooperating operators, and the reference consumer 371 and 509 are improved rather than resolved | `05f9bda9` |
 | F29 | The `equip_profile` reference target is a game type the engine schema cannot name | lead | LEAD | Fixed by naming the mechanism: the engine schema names the type KEY, a game registers under it in its own range, and an unregistered target means the field must be 0, refused otherwise by `KEC0007`. 3.3 | `5f60805b` |
 
 Three findings were rejected AS FINDINGS and still changed the text, which is worth separating: F2, F5 and F8.
@@ -5377,7 +5379,7 @@ the half each owns: C18, C26 and C30.
 | C12 | A rarity id must fit a byte and nothing stops the allocator issuing a 256th | medium | Confirmed, medium | Fixed. An optional `maxDefinitionId` at registration, refused by the allocator and by `KEC0042`, with retired rows counting toward it and Scope B declaring 255 on `rarity_rule`. 3.6, 4.4, 4.7, 5.2 | `ec3bd641` |
 | C13 | Three required checks are statements about a CHANGE and the validator cannot see the previous version | medium | Confirmed, medium | Fixed by the contracts amendment. `Validate` takes `ContentSnapshot? previous`, null at boot and in tests, populated at publish. `KEC0003`, `KEC0029` and Scope B's tier-order check are publish-only and `KEC0000` names them when they are skipped. 5.1, 5.2, 5.3, 5.4, 6.4 | `17b05e5f` |
 | C14 | The boot order is closed and has no hook for a Scope B or game load-time derived table | medium | Confirmed, medium | Fixed. `IContentLoadIndex` registered beside a codec, boot step 7b after the engine's four indexes and before the validator, with P3 stated to exclude them. 3.6, 9.4, 9.5, 9.6, 14, 18.1 | `17b05e5f` |
-| C16 | Ruinborne's wire-index change is scheduled by this spec's phase 2 and labelled Scope B's work, whose adoption is three phases later | medium | Confirmed, medium | Fixed by claiming it. A definition-id substitution with no payload is this spec's, in phase 2, and Scope B's row records the outcome without scheduling anything. 17.4, 17.10 step 8 | `e28dea2d` |
+| C16 | the reference consumer's wire-index change is scheduled by this spec's phase 2 and labelled Scope B's work, whose adoption is three phases later | medium | Confirmed, medium | Fixed by claiming it. A definition-id substitution with no payload is this spec's, in phase 2, and Scope B's row records the outcome without scheduling anything. 17.4, 17.10 step 8 | `e28dea2d` |
 | C18 | Scope B phase 1 takes `ItemStack` to three components, a fleet-wide compile break neither phase table sequences against Grimhollow's adoption | medium | Confirmed, medium, both | Fixed, this spec's half. The bump lands before step 7 or after step 11 of 16.8, never inside the window, named in both the adoption plan and the phase table. 16.8, 18.1 | `e28dea2d` |
 | C19 | Scope B's seven validators have no home in the finding codes or the sweep, so they would report as game findings | medium | Confirmed, medium | Fixed. `KEC0100` to `KEC0199` reserved for Scope B, run as pass 6 inside the sweep and before any game validator, with the cross-product check added to P8's derivation. 5.2, 5.3, 14.1 | `17b05e5f` |
 | C20 | P3 is a 400 ms restart that is really about 1.15 s, because the text decode and the per-type index builds are outside it | medium | Confirmed, medium | Fixed. P11, total cold boot to accepting connections, measured in one harness through a `--compose` flag rather than summed on paper. 14, 14.1, 14.2, 18.1 | `17b05e5f` |

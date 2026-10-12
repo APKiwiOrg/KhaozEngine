@@ -12,7 +12,7 @@ namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
     /// The measurement harness behind the per-cascade caster cull, on an MMO-shaped caster load: roughly 15k small
-    /// instanced casters spread over a 500 m disc (Ruinborne's foliage plus prop count), 50 large merged meshes
+    /// instanced casters spread over a 500 m disc (the reference consumer's foliage plus prop count), 50 large merged meshes
     /// (HLOD clusters), four cascades at 2048, a 35 degree sun. It renders the SAME scene several times in ONE
     /// process - shadows off, culling off, then culling on at a sweep of merge gaps - and prints every number.
     /// <para>
@@ -26,7 +26,7 @@ namespace KhaozEngine.Tests.Gpu
     /// dominate the raw frame time and would drown a real saving).
     /// </para>
     /// <para>
-    /// The sun advances by Ruinborne's real rate (a 30 minute day, about 0.2 degrees per second, so 0.0033 degrees
+    /// The sun advances by the reference consumer's real rate (a 30 minute day, about 0.2 degrees per second, so 0.0033 degrees
     /// per frame at 60 fps) so the depth pass is DIRTY every frame, which is the case the fix exists for. See
     /// <c>ShadowCascadeStabilityTests</c> for why that is the normal case and not a contrived one.
     /// </para>
@@ -38,7 +38,7 @@ namespace KhaozEngine.Tests.Gpu
         const int W = 960, H = 600;
         const int Resolution = 2048, Cascades = 4;
         const float DiscRadius = 250f;          // a 500 m disc
-        // Ruinborne's actual caster mix, and the TRIANGLE weighting matters as much as the counts: an instance
+        // The reference consumer's actual caster mix, and the TRIANGLE weighting matters as much as the counts: an instance
         // outside a cascade still pays vertex processing plus clipping even though it rasterizes nothing, so what
         // the cull recovers scales with the vertices of the instances it drops, not with their number. A harness
         // built entirely from 12-triangle boxes measures the cull as free and worthless in equal measure.
@@ -47,7 +47,7 @@ namespace KhaozEngine.Tests.Gpu
         const int MergedMeshes = 50;            // HLOD clusters: large bounds, heavy geometry
         const float ChunkSize = 64f;            // submission is chunk-major, like a streamed world
         const float SunElevationDegrees = 35f;
-        const float SunDegreesPerFrame = 0.2f / 60f;   // Ruinborne: 30 minute day at 60 fps
+        const float SunDegreesPerFrame = 0.2f / 60f;   // the reference consumer: 30 minute day at 60 fps
         // Every configuration is measured in INTERLEAVED blocks on ONE device, round-robin, and reduced by median.
         // Measuring them as separate sequential runs does not work: the first configuration pays the JIT and the
         // device warm-up for all of them, and the machine drifts under the run, which produced a first draft where
@@ -232,7 +232,7 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuFact]
-        public void Ruinborne_shaped_caster_load_costs_less_per_cascade_after_culling()
+        public void Consumer_shaped_caster_load_costs_less_per_cascade_after_culling()
         {
             Placement[] placements = BuildPlacements();
             _out.WriteLine($"scene: {placements.Length} caster instances over a {2 * DiscRadius} m disc " +

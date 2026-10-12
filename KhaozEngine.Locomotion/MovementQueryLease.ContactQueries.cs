@@ -13,29 +13,14 @@ public sealed partial class MovementQueryLease
         AssertUsable();
         MovementAvailability allowed = ContactSupportScope(request);
         if (allowed != MovementAvailability.Known) return allowed;
-        if (!float.IsFinite(query.FootRadius) || query.FootRadius <= 0 ||
+        if (!float.IsFinite(query.FootRadius) || query.FootRadius < FootSupport.AxisProbeRadius ||
             query.Axis.X != request.Body.Centre.X || query.Axis.Y != request.Body.Centre.Z ||
             !float.IsFinite(query.FeetY)) return MovementAvailability.Invalid;
-        Vector3 min = Witness.Scope.EnvelopeMin, max = Witness.Scope.EnvelopeMax;
-        double radius = Math.Max(query.FootRadius, FootSupport.AxisProbeRadius);
-        double band = SupportCertification.ContactBand;
-        double low = (double)query.FeetY - query.ReachDown - FootSupport.BandMargin;
-        double high = (double)query.FeetY + query.ReachUp + FootSupport.BandMargin + 2 * radius + FootSupport.ProbeLength;
-        // Guard both float probe paths and the rounded contact poses used for neighborhood queries.
-        // The largest radius alone does not enclose the thin probe's rounding at a coarse float datum.
-        float bottom = query.FeetY + query.ReachUp + FootSupport.BandMargin;
-        float distance = query.ReachUp + query.ReachDown + 2 * FootSupport.BandMargin;
-        for (int probe = 0; probe < 2; probe++)
-        {
-            float r = probe == 0 ? FootSupport.AxisProbeRadius : query.FootRadius;
-            float centre = bottom + r + FootSupport.ProbeLength / 2;
-            float end = centre - distance;
-            low = Math.Min(low, Math.Min((double)centre - distance, end) - r - FootSupport.ProbeLength / 2);
-            high = Math.Max(high, (double)centre + r + FootSupport.ProbeLength / 2);
-        }
-        if (!AxisInside(query.Axis.X, 0, radius + band, min.X, max.X) ||
-            !AxisInside(query.Axis.Y, 0, radius + band, min.Z, max.Z) || low - band < min.Y || high + band > max.Y)
-            return MovementAvailability.Unresolved;
+        SupportFootprintRequest footprint;
+        try { footprint = FootSupport.DescribeFootprint(query); }
+        catch (ArgumentException) { return MovementAvailability.Invalid; }
+        if (!SupportFootprintBounds.TryCreate(footprint, out var bounds) ||
+            !Witness.Scope.ContainsBounds(bounds.Minimum, bounds.Maximum)) return MovementAvailability.Unresolved;
         return MovementAvailability.Known;
     }
 
@@ -51,8 +36,9 @@ public sealed partial class MovementQueryLease
         try
         {
             AssertCurrent();
-            SupportSample found = FootSupport.Find(ground is { } field ? (x, z) => field.Height : null,
-                ground is { } plane ? (x, z) => plane.Normal : null, _view, _physics, query);
+            FootAnalyticGround? analytic = ground is { } field ? new(field.Height, field.Normal) : null;
+            SupportSample found = FootSupport.Find(analytic, _view, _physics, query,
+                new SupportFootprintBounds(Witness.Scope.EnvelopeMin, Witness.Scope.EnvelopeMax));
             AssertCurrent();
             if (found.Status is SupportStatus.Walkable or SupportStatus.Steep)
             {

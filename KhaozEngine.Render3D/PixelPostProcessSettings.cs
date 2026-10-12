@@ -140,7 +140,7 @@ namespace KhaozEngine.Render3D
         /// in either axis (a genuine downscale). Default <c>false</c> keeps the historical single bilinear tap on
         /// that downscale, so every existing consumer and GPU golden stays byte-identical. FixedInternal's fixed
         /// target does not track the window, so a window smaller than it under-samples on that bilinear tap (the
-        /// historical Ruinborne shimmer on a window under the 1600x900 default). Turning this on reuses the SAME
+        /// historical consumer shimmer on a window under the 1600x900 default). Turning this on reuses the SAME
         /// mip-chain + trilinear-sampled blit machinery <see cref="Render3D.RenderScale.MatchViewport"/> already
         /// uses for its own supersample downscale (see <see cref="Supersample"/>), so a correct multi-tap box
         /// replaces the single tap at any downscale ratio. Ignored (no effect) under

@@ -1,5 +1,7 @@
 # Content contracts: the shared ground under Scope A and Scope B
 
+Consumer-prefixed paths and `c-consumer.md` citations describe an anonymized historical consumer snapshot.
+
 **Status:** APPROVED BY THE OWNER AT GATE 0 on 2026-09-15, and BINDING ON BOTH SPECS. AMENDED after both
 specs were drafted, under the section 18 rule that a spec brings a needed change back here first: 4.7 gains
 an asset reference value kind, 5.1 gains a one-time import exception that 6.5 now cross-references, 3.2
@@ -20,7 +22,7 @@ content catalog, [#882](https://github.com/APKiwiOrg/KhaozEngine/issues/882). Sc
 owned item instances, affixes, sockets, crafting and the stat evaluation base,
 [#884](https://github.com/APKiwiOrg/KhaozEngine/issues/884). Consumers are
 [Grimhollow #208](https://github.com/APKiwiOrg/Grimhollow/issues/208) and
-[Ruinborne #465](https://github.com/APKiwiOrg/Ruinborne/issues/465). Neither spec is implemented before
+consumer report. Neither spec is implemented before
 the owner approves both.
 
 Every rule below is written to be coded against: types, widths, byte order, ranges and reserved values.
@@ -29,7 +31,7 @@ the file cited, a short rationale, an explicit note on whether the decision is e
 data exists, and the gate 0 answer wherever the draft carried a question.
 
 The file-and-line citations come from three read-only surveys taken on 2026-09-14 against
-KhaozEngine `1eb60de7`, Grimhollow `36f0139a` and Ruinborne `1b85e1aa`. Where a survey and this document
+KhaozEngine `1eb60de7`, Grimhollow `36f0139a` and the reference consumer `1b85e1aa`. Where a survey and this document
 disagree, the survey is the fact and this document is the decision.
 
 ## 1. Purpose, scope, and the two programs
@@ -242,8 +244,8 @@ the same seed gives the same sequence forever (`a-engine.md:1238-1258`,
 draw from three values a client can observe or guess. There is NO `IRandom` interface, no seam between
 them, and no cryptographically seeded gameplay source anywhere in the engine
 (`a-engine.md:1259-1269`, `a-engine.md:1572-1588`). Grimhollow seeds every gameplay stream with an integer
-literal (`b-grimhollow.md:786-836`) and Ruinborne's loot rolls come from an UNSEEDED `System.Random`
-created once at server start (`c-ruinborne.md:718-734`, `Ruinborne.Server/Program.cs:473`).
+literal (`b-grimhollow.md:786-836`) and the reference consumer's loot rolls come from an UNSEEDED `System.Random`
+created once at server start (`c-consumer.md:718-734`, `Consumer.Server/Program.cs:473`).
 
 ### 2.9 `StatSet` is dense float channels with two modifier kinds
 
@@ -276,22 +278,22 @@ refusal token on colons (`b-grimhollow.md:1332-1358`). It also introduces a THIR
 mechanism, `assets/config/items.jsonc`, with a `tradable` flag per live item and a fail-closed
 every-live-item-needs-a-row rule. Section 7.6 says how the engine absorbs both.
 
-### 2.12 Ruinborne's item id is a string across seven tables, and its instance id is a derived GUID
+### 2.12 the reference consumer's item id is a string across seven tables, and its instance id is a derived GUID
 
 `item_def.item_id` is `NVARCHAR(64)` and the clustered primary key, and the same string is the foreign key
 on `character_inventory`, `item_stat`, `weapon_def`, `item_ability_modifier`, `loot_table_entry`,
-`world_entity` and `economy_ledger`, seven tables (`c-ruinborne.md:859-875`). There is no integer id and no
+`world_entity` and `economy_ledger`, seven tables (`c-consumer.md:859-875`). There is no integer id and no
 allocator. The wire index is DERIVED from list position in one byte, and the order differs between the SQL
-source and the code-default source (`c-ruinborne.md:517-536`). `character_inventory.journal_item_id` is a
+source and the code-default source (`c-consumer.md:517-536`). `character_inventory.journal_item_id` is a
 deterministic version-5 GUID, `OwnedItemId`, derived from `$"{characterId}/{inventoryId}"` and friends, and
 it is what the client names in a use or destroy request so a stale catalog position cannot authorize a use
-(`c-ruinborne.md:949-962`). `instance_json` exists as a column and has NEVER been written: its only live
-meaning is a null-ness flag that suppresses stack merging (`c-ruinborne.md:113-132`,
-`c-ruinborne.md:565-589`).
+(`c-consumer.md:949-962`). `instance_json` exists as a column and has NEVER been written: its only live
+meaning is a null-ness flag that suppresses stack merging (`c-consumer.md:113-132`,
+`c-consumer.md:565-589`).
 
 The lowered stack cap is the lesson that shapes section 8's rule kind 4: lowering `item_def.max_stack`
 leaves every over-cap owned stack intact, invisible and permanent, because the merge candidate query is
-`AND [quantity] < @max` and nothing ever re-checks existing rows (`c-ruinborne.md:537-564`).
+`AND [quantity] < @max` and nothing ever re-checks existing rows (`c-consumer.md:537-564`).
 
 ## 3. Package naming and layering
 
@@ -424,9 +426,9 @@ type can never collide with a game's, which is the failure `ReplicationRegistry.
 already prevents for components (`a-engine.md:880-916`).
 
 **Registration order independence.** The registry is a map keyed by type id, not a list, and NOTHING
-anywhere derives an ordinal from registration order. This is a direct response to Ruinborne's wire index,
+anywhere derives an ordinal from registration order. This is a direct response to the reference consumer's wire index,
 which is a list POSITION cast to a byte and differs between the SQL source and the code-default source for
-the same five items (`c-ruinborne.md:517-536`). Two processes that register the same types in different
+the same five items (`c-consumer.md:517-536`). Two processes that register the same types in different
 orders must produce byte-identical packs and byte-identical manifests. The manifest hash sorts by type id
 before digesting, following `TileWorldHash`'s sort-before-digest rule (`a-engine.md:1219-1222`).
 
@@ -447,7 +449,7 @@ Chunk boundaries are therefore `floor(id / chunkSlots)`, computable without a lo
 
 The reason it is a slot count rather than a row count: a chunk's identity must not move when a row is
 added to it. If chunks held N ROWS, inserting one definition would renumber every chunk after it and
-change every downstream hash, which is exactly the Ruinborne list-position failure in another costume.
+change every downstream hash, which is exactly the reference consumer list-position failure in another costume.
 With fixed id ranges, adding a definition rewrites ONE chunk and leaves every other chunk hash untouched,
 which is what makes "download size after a one-item edit" a small number rather than the whole pack.
 
@@ -477,8 +479,8 @@ One mechanism, covering every case the three surveys found:
 - Store rates by item class, the same lookup from the other side.
 - Tool families. Grimhollow's `CanBeAHatchet` and `CanBeAPickaxe` predicates are CODE today
   (`b-grimhollow.md:56-59`), and a tag reference replaces each predicate with a row.
-- Ability and modifier grouping. Ruinborne's `item_ability_modifier` holds comma-joined tag STRINGS in a
-  column (`c-ruinborne.md:67-72`), which is a set membership test spelled as a substring search.
+- Ability and modifier grouping. The reference consumer's `item_ability_modifier` holds comma-joined tag STRINGS in a
+  column (`c-consumer.md:67-72`), which is a set membership test spelled as a substring search.
 
 Families (5.2) and tags answer different questions and both stay. A family is a contiguous ID BLOCK, so
 membership is two comparisons and the runtime array stays dense. A tag is a MANY-TO-MANY label, so one row
@@ -545,9 +547,9 @@ Three consumers read it, and they are why it exists rather than being a convenie
 - **A game's admin console renders a generic editor from it and validates client side against it.** That is
   what makes the owner's "edited in each game's admin app" (1.4) one editor rather than a bespoke screen per
   type. A new type gets its editor by registering.
-- **The authoring store's audit records field-level BEFORE and AFTER values through it.** Ruinborne's audit
+- **The authoring store's audit records field-level BEFORE and AFTER values through it.** The reference consumer's audit
   is the lesson: its rows record THAT a row changed and carry no values at all, so an audit row cannot
-  answer what the value was (`c-ruinborne.md:328-346`). A schema-driven audit names the field and both
+  answer what the value was (`c-consumer.md:328-346`). A schema-driven audit names the field and both
   sides of it.
 - **The publish diff is computed over it**, so "what changed between version 46 and 47" is a field-level
   answer rather than a chunk hash inequality.
@@ -615,8 +617,8 @@ reservation of 0 rewrites every durable byte in every consumer.
 A FAMILY is an author-declared grouping within one content type whose members are allocated ids from one
 contiguous block, so a runtime check "is this id in the sword family" is two comparisons rather than a set
 lookup. Grimhollow's `CanBeAHatchet` and `CanBeAPickaxe` predicates are the shape this replaces
-(`b-grimhollow.md:56-59` citing `GrimhollowItems.cs:164-170`), as is Ruinborne's bare-varchar `item_type`
-column that `stat_def.sql`'s own comment complains about (`c-ruinborne.md:63-66`).
+(`b-grimhollow.md:56-59` citing `GrimhollowItems.cs:164-170`), as is the reference consumer's bare-varchar `item_type`
+column that `stat_def.sql`'s own comment complains about (`c-consumer.md:63-66`).
 
 Rules:
 
@@ -648,8 +650,8 @@ durable player data or the wire use, which is always the int id.
 
 - Character set: `a-z`, `0-9` and `_`. Lower case only, no leading digit, no leading or trailing
   underscore, no double underscore.
-- Maximum length: 64 characters. That matches Ruinborne's `NVARCHAR(64)` primary key
-  (`c-ruinborne.md:49-60`) so an adoption never has to truncate, and it is half the journal's 128
+- Maximum length: 64 characters. That matches the reference consumer's `NVARCHAR(64)` primary key
+  (`c-consumer.md:49-60`) so an adoption never has to truncate, and it is half the journal's 128
   character identifier cap (`JournalLimits.cs:23`, `a-engine.md:361-372`).
 - Comparison is ORDINAL, always. Never culture-aware, never case-insensitive. The engine's typed string
   ids all do this (`StringId`, `AccountId`, `CurrencyId`, `a-engine.md:1097-1110` and `:679-687`), and
@@ -687,17 +689,17 @@ no byte.
 
 ### 5.5 What a consumer's existing string id becomes
 
-**Contract: a consumer's existing string item id is a KEY, not an ID.** Ruinborne's
+**Contract: a consumer's existing string item id is a KEY, not an ID.** The reference consumer's
 `item_def.item_id NVARCHAR(64)` becomes the engine content key. The int32 definition id is NEW and is
 allocated by the authoring store at import. This is stated here because it is the single most likely place
-the two adoption specs would diverge: Scope A could reasonably read "Ruinborne already has ids" and keep
+the two adoption specs would diverge: Scope A could reasonably read "the reference consumer already has ids" and keep
 them, and Scope B could reasonably read "instances reference an int32" and invent a mapping table.
 
 What follows from it, with the survey's evidence:
 
-- Ruinborne's seven foreign keys onto `item_def.item_id` (`c-ruinborne.md:859-867`) keep working during
+- the reference consumer's seven foreign keys onto `item_def.item_id` (`c-consumer.md:859-867`) keep working during
   adoption, because the key survives. The int id is added beside it.
-- Ruinborne's derived one-byte wire index (`c-ruinborne.md:517-536`) is DELETED and replaced by the int
+- the reference consumer's derived one-byte wire index (`c-consumer.md:517-536`) is DELETED and replaced by the int
   definition id. That removes the 255-item ceiling, the two disagreeing orders, and the renumber-on-drop
   hazard that forces the whole-catalog rejection at `ItemCatalogContentLoader.cs:137-148`.
 - Grimhollow's `public const int ItemId.*` constants (`b-grimhollow.md:24-29`) are already int ids in the
@@ -823,24 +825,24 @@ decision 4).
 
 This contract owns the MAPPING RULE. The plan belongs to the adoption specs.
 
-**Ruinborne** carries two per-row identities today: `character_inventory.inventory_id BIGINT IDENTITY`,
+**the reference consumer** carries two per-row identities today: `character_inventory.inventory_id BIGINT IDENTITY`,
 the database key, and `character_inventory.journal_item_id UNIQUEIDENTIFIER`, a derived version-5 GUID
-called `OwnedItemId` that the client names in a use or destroy request (`c-ruinborne.md:949-962`). The
+called `OwnedItemId` that the client names in a use or destroy request (`c-consumer.md:949-962`). The
 mapping rule is:
 
 - The GUID is the one on the wire and in the journal, and its derivation is load bearing for migration and
-  for spill rows (`c-ruinborne.md:956-960`). It is therefore the identity the engine instance id REPLACES,
+  for spill rows (`c-consumer.md:956-960`). It is therefore the identity the engine instance id REPLACES,
   not the one it sits beside. An engine long added beside the GUID would be a THIRD identity, which the
-  survey names as the failure mode (`c-ruinborne.md:961-962`).
+  survey names as the failure mode (`c-consumer.md:961-962`).
 - A migration allocates one engine instance id per existing owned row with a non-null property payload,
   and records the old GUID on the row for one release so an in-flight client request naming a GUID still
   resolves. Rows with no properties get instance id 0 and need no allocation at all.
-- Ruinborne's `instance_json` column has never been written (`c-ruinborne.md:113-132`), so there is no
+- the reference consumer's `instance_json` column has never been written (`c-consumer.md:113-132`), so there is no
   legacy payload to decode. That is a gift: the instance payload arrives with a clean slate.
-- Ruinborne #299 is a PRECONDITION on the whole thing, and the contract records it as such: the PostDeploy
+- consumer report is a PRECONDITION on the whole thing, and the contract records it as such: the PostDeploy
   duplicate-row collapse partitions by `(character_id, item_id)` with no `instance_json` term and runs on
   every redeploy, so the moment two differently rolled copies of one non-stackable item exist they collapse
-  into one (`c-ruinborne.md:939-948`). Instances cannot land in Ruinborne before that repair is fixed.
+  into one (`c-consumer.md:939-948`). Instances cannot land in the reference consumer before that repair is fixed.
 
 **Grimhollow** has int item ids already, so its definition ids map one to one and no stored container
 changes value. That one-to-one mapping rides 5.1's empty-database import exception, which is the only path
@@ -848,7 +850,7 @@ by which the existing ids survive the move into the authoring store. Its items c
 at all today, so every existing stack maps to instance id 0. The first Grimhollow item that gains a
 property is the first instance id it allocates.
 
-**Expensive to change once data exists: yes for Ruinborne, no for Grimhollow.** Ruinborne's is a data
+**Expensive to change once data exists: yes for the reference consumer, no for Grimhollow.** The reference consumer's is a data
 migration over millions of rows with a dual-read window. Grimhollow's is a no-op.
 
 ### 6.6 Dropped instances ride the region ground streams
@@ -1108,7 +1110,7 @@ still decodes (`b-grimhollow.md:30-36`).
 publish carry the new `FromId` with its new ranges. The two coexist forever.
 
 **Kind 4, `StackCapLowered`.** `FromId` is a definition whose stack cap fell. `ToId` is 0. The payload is
-an int32 new cap. The POLICY, stated here because Ruinborne's is the cautionary tale:
+an int32 new cap. The POLICY, stated here because the reference consumer's is the cautionary tale:
 
 - An existing over-cap stack is LEGAL. It is not split, not truncated, not deleted and not refused on
   load.
@@ -1116,10 +1118,10 @@ an int32 new cap. The POLICY, stated here because Ruinborne's is the cautionary 
   that would leave it above its current count is refused.
 - Once it is at or below the new cap, the ordinary cap applies and it can never go back up.
 
-Ruinborne's version of this is silent and permanent: the merge candidate query is
+The reference consumer's version of this is silent and permanent: the merge candidate query is
 `AND [quantity] < @max`, so an over-cap row is excluded from candidacy rather than repaired, nothing
 anywhere re-checks existing rows, there is no CHECK constraint on the quantity column and no repair pass
-(`c-ruinborne.md:537-564`). The failure is not that over-cap stacks exist. It is that nothing knows they
+(`c-consumer.md:537-564`). The failure is not that over-cap stacks exist. It is that nothing knows they
 do, so they never converge and never surface. Kind 4 makes the state explicit, bounded and self-healing.
 
 ### 8.3 Application
@@ -1569,21 +1571,21 @@ it from, never a lookup the validator performs. A test that wants a change-shape
 snapshots in memory and passes the pair.
 
 Because it is pure and takes its whole world as an argument, a test builds a snapshot in memory and asserts
-on findings, publish runs it before writing anything, and boot runs it against the loaded pack. Ruinborne's
+on findings, publish runs it before writing anything, and boot runs it against the loaded pack. The reference consumer's
 catalog loader is the shape this avoids: validation lives inside the SQL read delegate, so an
 `ArgumentException` from a bad row is routed to the connectivity failure handler and reported as
 `Item catalog: SQL read failed`, which sends an operator looking at the network
-(`c-ruinborne.md:176-196`, `c-ruinborne.md:481-501`).
+(`c-consumer.md:176-196`, `c-consumer.md:481-501`).
 
 ### 10.5 Fail closed at boot
 
 A missing or invalid active content version FAILS THE BOOT. There is no runtime fallback to code defaults
 (#882 body, item 8). The process exits non-zero with the validator's findings on stderr.
 
-This is stated as a contract because the consumer precedent is the opposite: Ruinborne's loader falls back
+This is stated as a contract because the consumer precedent is the opposite: the reference consumer's loader falls back
 to five hardcoded code defaults on any failure, announces it with a `Console.WriteLine`, and serves a
 different catalog than the database holds with no metric, no exit code and no refusal to admit joins
-(`c-ruinborne.md:176-196`, `c-ruinborne.md:1030-1038`). A silent fallback catalog is worse than an outage,
+(`c-consumer.md:176-196`, `c-consumer.md:1030-1038`). A silent fallback catalog is worse than an outage,
 because an outage is noticed.
 
 **What the rule binds is the CONTENT VERSION.** The boot fails when the active version is missing, when
@@ -1973,9 +1975,9 @@ test source. Both consumers are already shaped for this and both are adopters:
   depends on the production literals, and every test already passes its own seed through the same
   parameter, so the tests move to `SeededRandomSource` one construction at a time
   (`b-grimhollow.md:837-850`).
-- **Ruinborne** creates one UNSEEDED `System.Random` at server start and passes it to `LootRoll.Roll`
-  (`Ruinborne.Server/Program.cs:473`, `Ruinborne.Core/Loot/LootRoll.cs:18-33`,
-  `c-ruinborne.md:718-734`). `LootRoll`'s own doc already says the RNG is injected purely so tests can seed
+- **the reference consumer** creates one UNSEEDED `System.Random` at server start and passes it to `LootRoll.Roll`
+  (`Consumer.Server/Program.cs:473`, `Consumer.Core/Loot/LootRoll.cs:18-33`,
+  `c-consumer.md:718-734`). `LootRoll`'s own doc already says the RNG is injected purely so tests can seed
   it, so the seam is the right shape and only the type changes. Unseeded is better than a constant literal
   and still wrong: `System.Random`'s sequence is not guaranteed stable across .NET releases, which is the
   stated reason `TileActorRandom` exists at all (`a-engine.md:1252-1258`).

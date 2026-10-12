@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using KhaozEngine.Physics;
 
 namespace KhaozEngine.Locomotion.Contacts;
 
@@ -12,6 +13,7 @@ internal static partial class ContactController
         MovementQueryLease queries, MovementBoundary? boundary = null, float? faceYaw = null,
         GroundCoreSettings? settings = null)
     {
+        using var entry = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.ControllerEntry);
         ArgumentNullException.ThrowIfNull(queries);
         if (!state.IsValid || !ExplicitCharacterMovement.Valid(tuning) ||
             !ExplicitCharacterMovement.ValidCarriedState(state.State) || !water.IsValid ||
@@ -24,14 +26,14 @@ internal static partial class ContactController
             return HoldLeased(state, MovementStepOutcome.FrameMismatch);
         if (!MovementFrameRebinding.TryRebind(state, state.Frame, out _))
             return HoldLeased(state, MovementStepOutcome.EnvironmentUnresolved);
+        bool beganTick = false;
         try
         {
             queries.AssertCurrent();
             queries.BeginContactTick();
-            ContactShell.Validate(tuning);
+            beganTick = true;
             GroundCoreSettings foot = settings ?? new GroundCoreSettings();
-            if (!float.IsFinite(foot.FootRadiusFraction) || foot.FootRadiusFraction <= 0)
-                return HoldLeased(state, MovementStepOutcome.EnvironmentInvalid);
+            ShellGeometry.Validate(tuning, foot);
             MovementSelection selection;
             if (state.Selection is { } selected)
             {
@@ -50,9 +52,12 @@ internal static partial class ContactController
 
             var body = new MovementBodyQuery(state.State.Position, tuning.CapsuleRadius,
                 tuning.CapsuleHalfHeight, selection.Space, selection.Support);
-            MovementStepOutcome placement = ExplicitCharacterMovement.WaterPlacement(body, tuning, water, queries, boundary);
+            MovementStepOutcome placement;
+            using (ContactAllocationDiagnostics.Begin(ContactAllocationPhase.Placement))
+                placement = ExplicitCharacterMovement.WaterPlacement(body, tuning, water, queries, boundary);
             if (placement != MovementStepOutcome.Advanced) return HoldLeased(state, placement);
-            var leased = new LeasedContactQueryContext(queries, tuning, selection,
+            var leased = queries.Workspace.Queries;
+            leased.Initialize(queries, tuning, selection,
                 new(selection.Space, body.Feet), waterMode: water.Mode, boundary: boundary);
             Vector3 feet = leased.KernelFeet(state.State.Position, tuning);
             MovementWaterPoint point = leased.SampleMedium(feet)!.Value;
@@ -81,7 +86,8 @@ internal static partial class ContactController
                 start.WaterExcursion = WaterExcursionState.None;
             }
             if (start.Commitment.IsActive) start.JumpBufferRemaining = 0;
-            var modes = new ExplicitContactModes(leased, start, tuning, water, jump);
+            var modes = queries.Workspace.Modes;
+            modes.Initialize(leased, start, tuning, water, jump);
             MoveState next = StepWithQueries(start, moveDir, speedFraction, run, jump, dt, tuning,
                 leased, out ContactTickContinuation continuation, faceYaw: faceYaw, settings: foot, fluid: modes);
             if (!continuation.Completed)
@@ -114,6 +120,10 @@ internal static partial class ContactController
         catch (ContactQueryFailure failure) { return HoldLeased(state, failure.Outcome); }
         catch (InvalidOperationException) { return HoldLeased(state, MovementStepOutcome.EnvironmentUnresolved); }
         catch (ArgumentException) { return HoldLeased(state, MovementStepOutcome.EnvironmentInvalid); }
+        finally
+        {
+            if (beganTick) queries.EndContactTick();
+        }
     }
 
     static MovementStepResult HoldLeased(in FramedMovementState state, MovementStepOutcome outcome)

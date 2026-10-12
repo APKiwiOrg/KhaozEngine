@@ -20,7 +20,7 @@ public sealed partial class UpdateService
     /// and even past that gate its local picture is the CACHED <c>update-manifest.json</c>, which records the
     /// hash the file is supposed to have. Both together are why a damaged install runs forever reporting "up
     /// to date" while the server's content handshake rejects it. This call is the way out, and the reason it
-    /// is separate: hashing an install (~117 files including an 88 MB executable for Ruinborne) is far too
+    /// is separate: hashing an install (~117 files including an 88 MB executable for the reference consumer) is far too
     /// expensive to put on the launch path, so a game triggers it deliberately (a "Verify game files" button,
     /// or a targeted recovery after a handshake rejection).
     ///

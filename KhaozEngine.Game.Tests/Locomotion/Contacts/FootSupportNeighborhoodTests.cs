@@ -1,7 +1,8 @@
-// Foot support certified from the whole support neighborhood. Every expectation is derived from the installed
+// Foot support certified from the complete footprint. Every expectation is derived from the installed
 // geometry: planes through installed float vertices evaluated in double, or closed forms of the installed curved
 // shapes. A sweep-dependent contact point is never pinned finer than half the contact skin.
 using System;
+using System.Linq;
 using System.Numerics;
 using KhaozEngine.Locomotion.Contacts;
 using KhaozEngine.Physics;
@@ -35,6 +36,11 @@ public class FootSupportNeighborhoodTests
     static void AssertAgree(SupportSample expected, SupportSample actual, string label, double geometryGap = 0)
     {
         Assert.True(expected.Status == actual.Status, $"{label}: {expected} against {actual}");
+        AssertHeightAgree(expected, actual, label, geometryGap);
+    }
+
+    static void AssertHeightAgree(SupportSample expected, SupportSample actual, string label, double geometryGap)
+    {
         if (expected.Status is not (SupportStatus.Walkable or SupportStatus.Steep)) return;
         Assert.True(
             Math.Abs(expected.Height - actual.Height) <= expected.HeightError + actual.HeightError + geometryGap,
@@ -53,7 +59,8 @@ public class FootSupportNeighborhoodTests
     }
 
     // #1333. The same roof as one static and as two statics gives the axis-side plane either way. At 45 degrees
-    // each roof plane sits on the slope limit, so both builds agree on whatever status that limit gives. The two
+    // each intended roof plane sits on the slope limit. The per-component certificate resolves the two mesh
+    // builds on opposite sides of that limit, while their support heights still agree. The two
     // builds round their float vertices differently, and at 45 degrees a split box slab's end face is coplanar with
     // the other slab's top. So each build lies within its HeightError of the span of its installed planes facing
     // the axis side, and the builds agree within the sum of their HeightErrors plus the spread of those planes.
@@ -75,8 +82,19 @@ public class FootSupportNeighborhoodTests
         var side = new OracleVector(-Math.Sin(angle), Math.Cos(angle), 0);
         (double Lo, double Hi) singlePlanes = AxisSidePlanes(one, ["roof"], side, x);
         (double Lo, double Hi) splitPlanes = AxisSidePlanes(two, ["left", "right"], side, x);
-        AssertAgree(single, split, $"{degrees} degrees",
-            Math.Max(singlePlanes.Hi, splitPlanes.Hi) - Math.Min(singlePlanes.Lo, splitPlanes.Lo));
+        double gap = Math.Max(singlePlanes.Hi, splitPlanes.Hi) - Math.Min(singlePlanes.Lo, splitPlanes.Lo);
+        if (variant == SceneVariant.Mesh && degrees == 45)
+        {
+            // The independently rounded meshes have different installed upward components across the gate.
+            Assert.All(one.InstalledFaces("roof").Where(f => f.Normal.X < 0 && f.Normal.Y > 0),
+                f => Assert.True(f.Normal.Y >= query.CosMaxSlope));
+            Assert.All(two.InstalledFaces("left").Where(f => f.Normal.X < 0 && f.Normal.Y > 0),
+                f => Assert.True(f.Normal.Y < query.CosMaxSlope));
+            Assert.Equal(SupportStatus.Walkable, single.Status);
+            Assert.Equal(SupportStatus.Steep, split.Status);
+            AssertHeightAgree(single, split, $"{degrees} degrees", gap);
+        }
+        else AssertAgree(single, split, $"{degrees} degrees", gap);
         AssertWithin(singlePlanes, single);
         AssertWithin(splitPlanes, split);
     }
@@ -327,23 +345,21 @@ public class FootSupportNeighborhoodTests
         AssertSupport(SupportStatus.Walkable, centre.Y + radius, scene["log"], Find(scene, Query(0.25f, 0, 0.6f)));
     }
 
-    // The axis passes 0.35 from the centre of a sphere of radius 0.25, beyond the thin axis probe. The disc meets
-    // the sphere where sin(phi) = 0.35 / (0.25 + 0.2), about 51 degrees from the top, so the contact normal is
-    // steep. Its tangent plane at the axis is R cos(phi) - r sin(phi)^2 / cos(phi) above the centre. The contact
-    // point comes from a sweep, so the height is held to half the contact skin.
+    // The nearest point in D is x = offset - foot. On the upper sphere, its upward normal is
+    // sqrt(R^2 - x^2) / R = 0.8, so it is walkable. Its tangent at the axis is about -0.2.
     [Fact]
-    public void SphereFlankBeyondTheSlopeLimitIsSteep()
+    public void SphereFlankFootprintWitnessIsWalkable()
     {
         const float radius = 0.25f, foot = 0.2f, offset = 0.35f;
         var centre = new Vector3(0, -0.25f, 0);
         using FootSupportScene scene = Sphere(SceneVariant.Box, centre, radius);
-        double sin = offset / ((double)radius + foot), cos = Math.Sqrt(1 - sin * sin);
-        Assert.True(cos < CosMaxSlope, "The contact normal is steep.");
-        double expected = centre.Y + radius * cos - foot * sin * sin / cos;
+        double x = (double)offset - foot, rise = Math.Sqrt((double)radius * radius - x * x);
+        double expected = centre.Y + rise - x * ((double)offset - x) / rise;
+        Assert.True(rise / radius >= CosMaxSlope);
         SupportSample sample = Find(scene, Query(offset, 0, 0, foot));
-        Assert.True(sample.Status == SupportStatus.Steep, $"Expected Steep, got {sample}");
+        Assert.Equal(SupportStatus.Walkable, sample.Status);
         Assert.True(sample.HeightError <= HalfSkin, $"{sample}");
-        Assert.True(Math.Abs(sample.Height - expected) <= HalfSkin, $"Expected {expected:R}, got {sample}");
+        Assert.True(Math.Abs(sample.Height - expected) <= sample.HeightError, $"Expected {expected:R}, got {sample}");
         Assert.Equal(scene["sphere"], sample.Static);
     }
 

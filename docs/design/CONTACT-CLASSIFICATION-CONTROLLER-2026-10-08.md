@@ -3,7 +3,7 @@
 Date: 2026-10-08, revised 2026-10-09 for ground ownership. Specifies [#438](https://github.com/APKiwiOrg/KhaozEngine/issues/438), the phase 2
 direction chosen in [PHYSICS-LOCOMOTION-DESIGN-2026-08-02.md](PHYSICS-LOCOMOTION-DESIGN-2026-08-02.md).
 Status: phases 1 and 2 are implemented and released in 20.30.0, phase 2b is released in 20.31.0, phases 3 and 4a are released in
-20.32.0, and phase 4b is implemented and staged for 20.33.0. Opt-in explicit locomotion uses the shared contact controller
+20.32.0, phase 4b is released in 20.33.0, and complete footprint support is staged for 20.34.0. Opt-in explicit locomotion uses the shared contact controller
 for land and placement, composed with swimming's medium proofs. Legacy movement is unchanged.
 Phases 5 and 6 retain separate selector, navigation and game adoption gates. No game adopts before
 #1355 certified sweep shapes, #1334 cost, #1347 hidden support and #1344 small bodies are resolved.
@@ -37,7 +37,7 @@ controller properly instead of patching the stepper further.
 
 A kinematic controller in which support, slopes, walls, ceilings, step-up, step-down and ledges follow
 from classified contacts rather than from a gate per case. It replaces the whole `StepCore` pipeline when a
-game opts in. Grimhollow adopts first. Ruinborne (pinned at 20.2.0) adopts in its own release.
+game opts in. Grimhollow adopts first. Other consumers adopt in their own releases.
 
 Success is the new controller passing a fresh first-principles suite, then each adopting game's own
 playtest. The suite must include the measured defects above and the #1270 resting route.
@@ -195,10 +195,10 @@ Every phase's suite asserts these.
 | 1. Contact foundation | Integrated feature query, certified support primitive, contact classifier | Phase 1 suite green, including the swimming bank repro. Legacy stepper byte-unchanged. |
 | 2. Ground core | Up, side, down passes, recovery, slopes, walls, step-up, step-down, ledges ([phase 2 spec](CONTACT-CONTROLLER-PHASE-2-GROUND-CORE-2026-10-10.md)) | Ground suite green, including the shallow-tread runs at 2, 3 and 4 m/s and the 0.41 m ledge. |
 | 2b. Certified support coverage | A complete support neighborhood across statics, certified at concave creases, vertices, curved primitives and through one-sided back faces (#1329 to #1333, #1340, #1342, [phase 2b spec](CONTACT-CONTROLLER-PHASE-2B-SUPPORT-NEIGHBORHOOD-2026-10-10.md)) | Every phase 1 refusal row replaced by a certified result. Must land before any game adopts. Released in 20.31.0. |
-| Cost gate before adoption | Support query time ([#1334](https://github.com/APKiwiOrg/KhaozEngine/issues/1334)). A `FootSupport.Find` takes 55 to 165 microseconds on ordinary scenes, 542 microseconds on a 20,000-triangle grid and 102 ms on a 96-triangle fan, with zero allocation. Candidate approaches: filtered predicates with an exact fallback, lazy joins tested only where certification reads them, and a per-lease join cache. | Recorded time per `Find` within the #1334 budget on ordinary scenes and dense fans, results unchanged against the recorded equivalence fixture. No game adopts before it passes. |
-| Hidden support gate before adoption | Support hidden under a sloped first contact ([#1347](https://github.com/APKiwiOrg/KhaozEngine/issues/1347)). `FootSupport` certifies only the neighborhood at each probe's first sweep contact, so a sloped surface that stops the leg probe can hide a lower walkable surface inside the disc. Candidate approaches: a neighborhood over the whole foot cylinder, or a second proposal below the first contact. | The wedge and crate case in the known limits gives the crate top's 0.1. Navigation capture and adoption wait for it. |
+| Cost gate before adoption | [#1334](https://github.com/APKiwiOrg/KhaozEngine/issues/1334), governed by the [support gates](CONTACT-CONTROLLER-SUPPORT-GATES-2026-10-11.md). Two retained proposals and one complete footprint certification, lossless incidence and installed-geometry caching. Harness-corrected evidence retains 96 time rejections and zero warm allocation rejections. | SG-12 limits remain unchanged. Normalized hosted repeat-time proof needs owner approval at the phase 6 stop. One-shot plumbing passed and does not close the cost gate. |
+| Hidden support gate before adoption | [#1347](https://github.com/APKiwiOrg/KhaozEngine/issues/1347). Complete footprint-volume discovery now includes polygons and every admitted sphere/capsule/cylinder pose, independently of first contact. Seven result classes and final evidence are in the [support gates](CONTACT-CONTROLLER-SUPPORT-GATES-2026-10-11.md). | All shape, partition, refusal, boundary and adequately scoped explicit rows must pass, then the orchestrator must push the verified commit before closure. The wedge/crate row selects the crate top at 0.1. Navigation capture and adoption remain separate. |
 | 3. Air and state | Jump, coyote, momentum, landing impact, commitment, steep slide, traction hysteresis ([phase 3 spec](CONTACT-CONTROLLER-PHASE-3-AIR-AND-STATE-2026-10-10.md)) | Air and slide suite green with invariants 5 to 8. Released in 20.32.0. |
-| 4. Signals and fluids | Climb signals, step delta, support grant, facing, the swimming handoff contract | Signal suite green. Swimming's explicit grounded ticks run on this ground core. Split into 4a, ground signals ([phase 4a spec](CONTACT-CONTROLLER-PHASE-4A-GROUND-SIGNALS-2026-10-11.md), released in 20.32.0), and 4b, the swimming handoff and #1299 ([phase 4b spec](CONTACT-CONTROLLER-PHASE-4B-SWIMMING-HANDOFF-2026-10-11.md), implemented, staged for 20.33.0). Explicit land and placement share the core, with generation 14, two-head replay parity and body-relative deep-water enforcement. #1299 navigation acceptance remains phase 5. Adoption still waits on #1355, #1334, #1347 and #1344. Note the explicit resting feet are h + 0.001 m. Phase 5 capture must distinguish that profile. |
+| 4. Signals and fluids | Climb signals, step delta, support grant, facing, the swimming handoff contract | Signal suite green. Swimming's explicit grounded ticks run on this ground core. Split into 4a, ground signals ([phase 4a spec](CONTACT-CONTROLLER-PHASE-4A-GROUND-SIGNALS-2026-10-11.md), released in 20.32.0), and 4b, the swimming handoff and #1299 ([phase 4b spec](CONTACT-CONTROLLER-PHASE-4B-SWIMMING-HANDOFF-2026-10-11.md), released in 20.33.0). Explicit land and placement share the core, with generation 14, two-head replay parity and body-relative deep-water enforcement. #1299 navigation acceptance remains phase 5. Adoption still waits on #1355, #1334, #1347 and #1344. Note the explicit resting feet are h + 0.001 m. Phase 5 capture must distinguish that profile. |
 | 5. Switch, wire, navigation | `MoveTuning` selector, any wire fields, bake identity, traversal probe and capture on the selected controller | Both controllers selectable. Legacy bakes still load. A new-controller bake round-trips. |
 | 6. Grimhollow adoption | Grimhollow opt-in, #1270 resting route, bridge Complete and 600-step proof | Engine release, game pin and playtest, each separately authorized. |
 
@@ -213,7 +213,10 @@ feature query certifies, so a cylinder or general convex sweep would add a publi
 `IPhysicsWorld` itself is unchanged. `FootSupport` throws `NotSupportedException` for a non-null world without
 `IPhysicsCapsuleFeatures`, and phase 5 makes a context selecting the new controller check it at creation. The
 controller never silently degrades. Phase 2b moves certification to the separate optional capability
-`IPhysicsSupportNeighborhood`, so `FootSupport` now requires that one instead.
+`IPhysicsSupportNeighborhood`. The staged support-gates implementation instead requires
+`IPhysicsSupportFootprint`, with no fallback to either older capability. Physics authenticates the
+selected interval before both retained sweeps, and locomotion guards the complete admission envelope
+before any backend or producer call. The released neighborhood API and fixture remain unchanged.
 
 ### Support primitive
 
@@ -291,17 +294,17 @@ Known limits:
 - A one-sided fin tilted very slightly upward within 1 cm of the axis is still hit by the probe, contributes
   below the band and hides the floor beneath, giving `None`. An exactly vertical fin is culled.
 - Support query time misses its target and is the cost gate before adoption in the phases table.
-- A surface lying under a higher sloped surface inside the same disc can still be hidden, because each probe
-  certifies only the neighborhood at its first sweep contact. Over a floor at 0 with foot radius 0.2, a crate top
-  at 0.1 spanning x 0.05 to 0.12 and a 60 degree wedge `y = 0.25 + tan60 (x - 0.2)` at the disc rim, the leg probe
-  meets the wedge first with its centre at about 0.303. The crate top is not a member of that neighborhood, so
-  support is Walkable at 0 where the support rule gives 0.1. This is the hidden support gate in the phases table
-  ([#1347](https://github.com/APKiwiOrg/KhaozEngine/issues/1347)).
+- The released first-contact query hid a crate top at 0.1 behind a 60-degree wedge inside the 0.2 m disc.
+  Staged complete footprint discovery finds it on boxes, hulls, compounds and meshes in both install orders.
+  #1347 closure still requires the full geometric verification and the orchestrator's pushed commit.
 - A steep roof built from two interpenetrating box slabs pitched above 45 degrees reads Walkable at the ridge, as
   it did in phase 1.
 
 Phase 2b closed the phase 1 limits where separate statics could not form a certified crease and where a probe
-meeting a back face refused. It closed the hidden lower surface limit only for back faces.
+meeting a back face refused. Complete footprint discovery supersedes its first-contact coverage in staged
+20.34.0. Planar contributions remain `min(p, m, j...)`, with `m` over the whole closed disc, and SG-19
+curved witnesses use certified upward bounds. Ring-only members provide context. A foot radius below
+0.01 m is rejected, including analytic-only configurations.
 
 ### Shell queries
 
@@ -352,7 +355,7 @@ equivalent triangle mesh, and must give the same answer within float rounding.
 - A selected query view with an excluded static. The excluded static never contributes.
 - A rebased world origin. Results equal the unrebased world after translation.
 - Determinism. Two identical queries return bit-identical samples.
-- A world without the certification capability (`IPhysicsSupportNeighborhood` since phase 2b). `FootSupport`
+- A world without the certification capability (`IPhysicsSupportFootprint` in the staged support gates). `FootSupport`
   throws.
 - The swimming repro: a 0.25 m bank at X 1, radius 0.25, half-height 0.75, walking at 4 m/s and 30 Hz.
   At X 0.881 the disc touches the bank top, the certified crease names the top face, and support is 0.25

@@ -46,6 +46,11 @@ explicitly, it is in no umbrella). Depends only on `System.Numerics`.
   are finite nonnegative metres. `IsComplete` validates Clear/Hit structure only. Consumers still check
   requested extent, accepted error, scope and read currentness. Unsupported orientation, filters or
   numerical/work domains must refuse. Zero displacement requires a complete stationary certificate.
+- **`CapsuleQueryDimensions` / `IPhysicsCapsuleGeometryQueries`** - optional value-input sweep and
+  contact queries. Radius and cylindrical length retain their exact represented values. This avoids
+  constructing a persistent capsule shape for an enclosure whose dimensions vary with endpoint rounding.
+  Geometry, filters, completeness, validation, selected-view restrictions and lifetime rules match the
+  shape-input capabilities. Bepu owners and restricted views implement both routes through the same core.
 - **`IPhysicsCapsuleFeatures`** - optional finite-feature certification for one static. Under a read lease
   from the same receiver, `QueryCapsuleFeature(lease, target, capsule, pose, maximumSeparationMetres, faces)`
   names the closest feature of `target` to a capsule at `pose` within the capsule radius plus the
@@ -72,6 +77,22 @@ explicitly, it is in no umbrella). Depends only on `System.Numerics`.
   mesh topology never refuses. Refusals are `CapacityExceeded` with `RequiredElements`, `Unsupported` outside
   the certified probe, pose, band or shape domain, and `Ambiguous` for a hull not proven convex. A layer filter
   and a join span shorter than `elements.Length * JoinWordsFor(elements.Length)` throw `ArgumentException`. Check a complete result with `AssertNeighborhoodCurrent(result, lease)`.
+- **`IPhysicsSupportFootprint`** - optional complete footprint capability used by the contact controller.
+  `QuerySupportFootprint` certifies the expanded closed-disc column, both retained proposal contacts
+  and the whole-polygon join matrix under one authenticated lease. Polygon maxima cover the full
+  original disc. Ring-only members cap and feed guards without contributing support. Curved parts
+  retain their raw IDs and publish up to two attained witness roles, axis then footprint. Certified
+  upward bounds classify slope equality independently of the full normal enclosure.
+  Capacity counts at most 256 relevant raw pairs, with atomic refusal at 257 and untouched output
+  spans. A below-band member can be omitted only with proof that it cannot contribute, join a
+  retained band-capable member or establish a required proposal guard. `AssertFootprintCurrent`
+  checks the original receiver and interval, including same-generation reacquisition. Size member storage
+  with `SupportFootprintResult.MaximumElements`, joins with `members.Length * JoinWordsFor(members.Length)`
+  and index published rows with `result.JoinWordsPerRow`. A short join span throws `ArgumentException`.
+  `SupportFootprintBounds.TryCreate` supplies the shared outward scope envelope. Radius must be at least
+  0.01 m, `ContactBand` is exactly `0.0001f` and a zero cosine slope gate returns `Unsupported`.
+  The released neighborhood capability remains independent. See
+  [complete footprint use](../docs/USING-KHAOZENGINE.md#complete-support-footprints).
 - **Static handle provenance for query views** - the factory rejects invalid, missing and stale handles at
   creation. Handles are numeric identities local to their source world, so equal values from different worlds
   are not interchangeable. Use handles returned by that source, and do not reuse removed exclusions to infer

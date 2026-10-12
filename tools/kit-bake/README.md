@@ -123,7 +123,7 @@ node bake.mjs --input /path/to/world-of-claudecraft/public/models/foliage --out 
 
 The signpost, buildings, and grass are not part of this mapping: the signpost is a procedurally
 generated demo (`tools/TestModelGen`), the buildings were verified untextured upstream (nothing to
-re-bake), and grass has no upstream source (an original engine asset). Ruinborne's own groundcover
+re-bake), and grass has no upstream source (an original engine asset). The reference consumer's own groundcover
 copies (bush, bush_flowers, fern, mushroom) get baked with this same script during that repo's adopt
 step, with their own mapping file, not here.
 

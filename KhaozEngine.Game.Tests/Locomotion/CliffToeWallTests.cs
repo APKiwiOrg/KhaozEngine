@@ -8,7 +8,7 @@ namespace KhaozEngine.Tests.Locomotion;
 // A CLIFF TOE IS A WALL, NOT A SEAT (#486, 17.31.0). Seventh round of the steep-terrain chain, and like #475 it
 // comes from a playtest rather than an exploit sweep.
 //
-// WHAT WAS REPORTED. Walking into the bottom of a steep face on Ruinborne (engine 17.30.0, the traction band in)
+// WHAT WAS REPORTED. Walking into the bottom of a steep face on the reference consumer (engine 17.30.0, the traction band in)
 // flickers the character into the falling pose instead of simply refusing to walk up. The hysteresis band never
 // targeted this: it fixes flip-flopping on marginal ground, and a cliff toe is a step function from walkable beach
 // to a face far past gate plus band.

@@ -64,7 +64,7 @@ internal static partial class GroundCore
     /// <summary>Moves a grounded body whose feet are at <paramref name="feet"/>, in the world's local frame, by
     /// the horizontal <paramref name="displacement"/>. Free motion on walkable support is exact. A start that is
     /// not walkable ends the tick at the start with its own footing. The <paramref name="queries"/> context enforces
-    /// the <see cref="FootSupport.Find"/> contract. <paramref name="tractionSlopeRadians"/> is the tick's traction
+    /// the <see cref="FootSupport"/> contract. <paramref name="tractionSlopeRadians"/> is the tick's traction
     /// gate, and every slope decision in the tick uses it. Null means
     /// <see cref="MoveTuning.MaxSlopeRadians"/>. <paramref name="climbBudget"/> is the climb the tick may still pay,
     /// in metres. Null means a whole tick's <c>MaxStepClimbSpeed * dt</c>. <paramref name="clampXz"/> is the
@@ -231,7 +231,7 @@ internal static partial class GroundCore
             tuning.StepHeight < 0 || !float.IsFinite(tuning.MaxSlopeRadians) ||
             !float.IsFinite(tuning.MaxStepClimbSpeed))
             throw new ArgumentOutOfRangeException(nameof(tuning), "The ground core tuning values must be finite.");
-        ShellGeometry.Validate(tuning);
+        ShellGeometry.Validate(tuning, settings);
 
         double count = Math.Ceiling(Length(displacement) / (0.5 * tuning.CapsuleRadius));
         if (count > MaxSubsteps)
@@ -305,89 +305,104 @@ internal static partial class GroundCore
                 Vector2 move = next - planned;
                 planned = next;
                 if (move == Vector2.Zero) continue;
-                // A substep off the plan, or one whose prefix leaves a bound that is not convex, ends past the
-                // play area unless the clamp cuts it. A cut substep is a block.
-                if (PlayArea.Clamp(Axis, ref move, _clampXz))
+                SupportQueryDiagnostics.GroundState(new(Axis.X, FeetY, Axis.Y), Support.Height, Support.HeightError,
+                    Support.Status is SupportStatus.Walkable or SupportStatus.Steep);
+                SupportQueryDiagnostics.BeginGroundSubstep();
+                try
                 {
-                    blocked = true;
-                    onPlan = false;
-                    if (move == Vector2.Zero) break;
-                }
+                    // A substep off the plan, or one whose prefix leaves a bound that is not convex, ends past the
+                    // play area unless the clamp cuts it. A cut substep is a block.
+                    if (PlayArea.Clamp(Axis, ref move, _clampXz))
+                    {
+                        blocked = true;
+                        onPlan = false;
+                        if (move == Vector2.Zero) break;
+                    }
 
-                Attempt attempt = Resolve(move, onPlan ? next : null, budget);
-                if (attempt.Moved && attempt.Seat.Outcome == SeatOutcome.Wall)
-                {
-                    // Undo the substep and slide the whole of it along the wall's horizontal tangent once.
-                    blocked = true;
-                    onPlan = false;
-                    Vector2 tangent = Tangent(move, attempt.Seat.WallNormal);
-                    PlayArea.Clamp(Axis, ref tangent, _clampXz);
-                    if (tangent == Vector2.Zero) break;
-                    attempt = Resolve(tangent, null, budget);
-                    if (attempt.Moved && attempt.Seat.Outcome == SeatOutcome.Wall) break;
-                }
-                // The same substep from the same position gives the same result, so a stop ends the tick.
-                if (!attempt.Moved || attempt.Seat.Outcome == SeatOutcome.Refused)
-                {
-                    blocked = true;
-                    break;
-                }
-                if (attempt.Blocked || attempt.Achieved != move)
-                {
-                    blocked |= attempt.Blocked;
-                    onPlan = false;
-                }
+                    Attempt attempt = Resolve(move, onPlan ? next : null, budget);
+                    if (attempt.Moved && attempt.Seat.Outcome == SeatOutcome.Wall)
+                    {
+                        // Undo the substep and slide the whole of it along the wall's horizontal tangent once.
+                        blocked = true;
+                        onPlan = false;
+                        SupportQueryDiagnostics.Route(SupportQueryRoute.WallRetry);
+                        Vector2 tangent = Tangent(move, attempt.Seat.WallNormal);
+                        PlayArea.Clamp(Axis, ref tangent, _clampXz);
+                        if (tangent == Vector2.Zero) break;
+                        attempt = Resolve(tangent, null, budget);
+                        if (attempt.Moved && attempt.Seat.Outcome == SeatOutcome.Wall) break;
+                    }
+                    // The same substep from the same position gives the same result, so a stop ends the tick.
+                    if (!attempt.Moved || attempt.Seat.Outcome == SeatOutcome.Refused)
+                    {
+                        blocked = true;
+                        break;
+                    }
+                    if (attempt.Blocked || attempt.Achieved != move)
+                    {
+                        blocked |= attempt.Blocked;
+                        onPlan = false;
+                    }
 
-                GroundSeatResult seat = attempt.Seat;
-                GroundPlacement placement = attempt.Placement;
-                if (!placement.Valid)
-                {
-                    // A slide seat that fails clearance hands the body to the air pass.
-                    if (_slide && seat.Outcome == SeatOutcome.SteepSeated)
+                    GroundSeatResult seat = attempt.Seat;
+                    GroundPlacement placement = attempt.Placement;
+                    if (!placement.Valid)
+                    {
+                        // A slide seat that fails clearance hands the body to the air pass.
+                        if (_slide && seat.Outcome == SeatOutcome.SteepSeated)
+                        {
+                            footing = GroundFooting.None;
+                            unspent = substeps - i - 1;
+                        }
+                        blocked = true;
+                        break;
+                    }
+                    budget = placement.Budget;
+                    if (placement.Pushed)
+                    {
+                        SupportQueryDiagnostics.Route(SupportQueryRoute.PushedPlacement);
+                        blocked = true;
+                        onPlan = false;
+                    }
+                    _achieved = placement.Total;
+                    _moveRise += (double)placement.Feet.Y - FeetY;
+                    FeetY = placement.Feet.Y;
+                    Support = placement.Support;
+                    if (!_slide && seat.Outcome == SeatOutcome.Seated)
+                    {
+                        AccountDiscrete(seat.DiscreteStep);
+                        RiseSeen |= seat.DiscreteStep > 0;
+                        DropSeen |= seat.DiscreteStep < 0;
+                    }
+                    footing = Footing(Support.Status);
+                    if (medium?.ChangesOwner(new(Axis.X, FeetY, Axis.Y), 0, Support,
+                            footing == GroundFooting.Walkable) == true)
+                    {
+                        SupportQueryDiagnostics.Route(SupportQueryRoute.MediumHandoff);
+                        handoff = true;
+                        unspent = substeps - i - 1;
+                        break;
+                    }
+                    if (seat.Outcome == SeatOutcome.SteepSeated)
+                    {
+                        footing = GroundFooting.Steep;
+                        if (_slide) continue;
+                        unspent = substeps - i - 1;
+                        break;
+                    }
+                    footing = GroundFooting.Walkable;
+                    if (seat.Outcome == SeatOutcome.Airborne)
                     {
                         footing = GroundFooting.None;
                         unspent = substeps - i - 1;
+                        break;
                     }
-                    blocked = true;
-                    break;
                 }
-                budget = placement.Budget;
-                if (placement.Pushed)
+                finally
                 {
-                    blocked = true;
-                    onPlan = false;
-                }
-                _achieved = placement.Total;
-                _moveRise += (double)placement.Feet.Y - FeetY;
-                FeetY = placement.Feet.Y;
-                Support = placement.Support;
-                if (!_slide && seat.Outcome == SeatOutcome.Seated)
-                {
-                    AccountDiscrete(seat.DiscreteStep);
-                    RiseSeen |= seat.DiscreteStep > 0;
-                    DropSeen |= seat.DiscreteStep < 0;
-                }
-                footing = Footing(Support.Status);
-                if (medium?.ChangesOwner(new(Axis.X, FeetY, Axis.Y), 0, Support,
-                        footing == GroundFooting.Walkable) == true)
-                {
-                    handoff = true;
-                    unspent = substeps - i - 1;
-                    break;
-                }
-                if (seat.Outcome == SeatOutcome.SteepSeated)
-                {
-                    footing = GroundFooting.Steep;
-                    if (_slide) continue;
-                    unspent = substeps - i - 1;
-                    break;
-                }
-                footing = GroundFooting.Walkable;
-                if (seat.Outcome == SeatOutcome.Airborne)
-                {
-                    footing = GroundFooting.None;
-                    unspent = substeps - i - 1;
-                    break;
+                    SupportQueryDiagnostics.GroundState(new(Axis.X, FeetY, Axis.Y), Support.Height, Support.HeightError,
+                        Support.Status is SupportStatus.Walkable or SupportStatus.Steep);
+                    SupportQueryDiagnostics.EndGroundSubstep();
                 }
             }
             OnPlan = onPlan;

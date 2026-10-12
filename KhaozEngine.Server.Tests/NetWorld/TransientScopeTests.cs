@@ -22,7 +22,7 @@ namespace KhaozEngine.Tests.NetWorld;
 /// <para>The case this was filed for is whole-zone agent state: a spawner holding one record per authored creature
 /// keyed to a net id, which goes dormant while its cell is unloaded and expects its entity back on the restore, yet
 /// must be re-spawned from authored content after a restart rather than resurrected out of a blob
-/// (https://github.com/APKiwiOrg/Ruinborne/issues/455).</para>
+/// (consumer report).</para>
 /// </summary>
 public class TransientScopeTests
 {

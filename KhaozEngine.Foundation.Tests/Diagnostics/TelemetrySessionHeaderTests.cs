@@ -43,7 +43,7 @@ public sealed class TelemetrySessionHeaderTests
     {
         string path = TempPath();
         var rec = new TelemetryRecorder();
-        rec.Start(path, new TelemetrySessionInfo { AppName = "Ruinborne" });
+        rec.Start(path, new TelemetrySessionInfo { AppName = "ConsumerGame" });
         rec.Sample(0.0, new[] { new TelemetryChannel("fps", 60.0) });
         rec.Sample(0.5, new[] { new TelemetryChannel("fps", 59.0) });
         rec.Stop();
@@ -68,7 +68,7 @@ public sealed class TelemetrySessionHeaderTests
     {
         string path = TempPath();
         var rec = new TelemetryRecorder();
-        rec.Start(path, new TelemetrySessionInfo { AppName = "Ruinborne" });
+        rec.Start(path, new TelemetrySessionInfo { AppName = "ConsumerGame" });
         rec.Sample(1.25, new[] { new TelemetryChannel("fps", 59.7), new TelemetryChannel("rttMs", 48) });
         rec.Stop();
 
@@ -140,13 +140,13 @@ public sealed class TelemetrySessionHeaderTests
     {
         var info = new TelemetrySessionInfo
         {
-            AppName = "Ruinborne",
+            AppName = "ConsumerGame",
             AppVersion = "0.7.3",
             BuildName = "Sundered Ground",
         };
 
         JsonElement app = Session(TelemetrySessionHeader.Build(info, NoEnvironment())).GetProperty("app");
-        Assert.Equal("Ruinborne", app.GetProperty("name").GetString());
+        Assert.Equal("ConsumerGame", app.GetProperty("name").GetString());
         Assert.Equal("0.7.3", app.GetProperty("version").GetString());
         Assert.Equal("Sundered Ground", app.GetProperty("build").GetString());
     }
@@ -329,7 +329,7 @@ public sealed class TelemetrySessionHeaderTests
             ["characterLevel"] = "17",
         };
 
-        var info = new TelemetrySessionInfo { AppName = "Ruinborne" }.AddGameValues(durables);
+        var info = new TelemetrySessionInfo { AppName = "ConsumerGame" }.AddGameValues(durables);
 
         JsonElement session = Session(TelemetrySessionHeader.Build(info, NoEnvironment()));
         JsonElement game = session.GetProperty("game");

@@ -242,17 +242,27 @@ for surfaces that meet within the contact band.
 
 ## Known limits
 
+This section records the released 20.31.0 neighborhood. The [support gates](CONTACT-CONTROLLER-SUPPORT-GATES-2026-10-11.md)
+supersede first-contact discovery for the staged 20.33.0 controller, while preserving the neighborhood
+API and its equivalence fixture. Complete discovery, SG-19 curved witnesses, per-component upward
+classification and the seven SG-23 changes have separate geometry and cost evidence in
+[the final gate record](../verification/2026-10-11-support-gates-final.json). #1334 remains open with
+96 harness-corrected time rejections, pending owner-approved hosted repeat proof. #1347 closure needs
+all shape completeness rows and the orchestrator-pushed verified commit. The 256 relevant raw-member
+limit, unsupported certified domains and the interpenetrating box-roof limit remain.
+
 - A one-sided fin tilted very slightly upward within 1 cm of the axis is still hit by the probe, contributes below
   the band and hides the floor beneath, giving `None` as phase 1 did. An exactly vertical fin is culled and the
   floor is read.
 - A join decided at exactly the band tolerance switches a cap on or off, as above.
-- A surface lying under a higher sloped surface inside the same disc can be hidden, because each probe certifies
-  only the neighborhood at its first sweep contact. Over a floor at 0 with foot radius 0.2, a crate top at 0.1
+- In the released neighborhood, a surface under a higher sloped surface inside the same disc could be hidden,
+  because each probe certified only the neighborhood at its first sweep contact. Over a floor at 0 with foot radius 0.2, a crate top at 0.1
   spanning x 0.05 to 0.12 and a 60 degree wedge `y = 0.25 + tan60 (x - 0.2)` at the disc rim, the leg probe meets
   the wedge first with its centre at about 0.303. The crate top is not a member of that neighborhood, so support
   is Walkable at 0 where the support rule gives 0.1. A neighborhood over the whole foot cylinder or a second
-  proposal below the first contact would close it. It gates navigation capture and adoption beside the #1334 cost
-  gate ([#1347](https://github.com/APKiwiOrg/KhaozEngine/issues/1347)).
+  proposal below the first contact was proposed to close it. Staged complete footprint discovery now returns
+  the crate top at 0.1 across all four partitions. Neither this geometric repair nor hosted plumbing opens
+  navigation capture or adoption beside the #1334 cost gate.
 - A steep roof built from two interpenetrating box slabs pitched above 45 degrees reads Walkable at the ridge, as
   it did in phase 1.
 

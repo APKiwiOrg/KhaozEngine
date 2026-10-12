@@ -38,7 +38,7 @@ internal static class ContactPlacement
     }
 
     internal static bool Clear(ContactQueryContext queries, Vector3 feet, in MoveTuning tuning) =>
-        !queries.PenetrationShell(ShellGeometry.Shape(tuning), ShellGeometry.Centre(feet, tuning), out Vector3 mtv) ||
+        !queries.PenetrationShell(ShellGeometry.Shape(tuning, queries.Shapes), ShellGeometry.Centre(feet, tuning), out Vector3 mtv) ||
         mtv == Vector3.Zero;
 
     static bool Approach(ContactQueryContext queries, Vector3 from, Vector3 to, in MoveTuning tuning)
@@ -46,7 +46,7 @@ internal static class ContactPlacement
         Vector3 delta = to - from;
         float distance = delta.Length();
         if (!float.IsFinite(distance)) throw new ContactQueryFailure(MovementAvailability.Unresolved);
-        return distance == 0 || !queries.SweepShell(ShellGeometry.Shape(tuning), ShellGeometry.Centre(from, tuning),
+        return distance == 0 || !queries.SweepShell(ShellGeometry.Shape(tuning, queries.Shapes), ShellGeometry.Centre(from, tuning),
             delta / distance, distance, out _, QueryFilter.StaticsOnly);
     }
 }

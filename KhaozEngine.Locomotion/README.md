@@ -306,7 +306,7 @@ face now slides** - that is the fix, and it is a behaviour change rather than an
 ### Traction hysteresis and slide friction (17.30.0)
 
 `MaxSlopeRadians` was a bare per-tick binary and the slide had no friction, so ground sitting ON the threshold
-behaved like a cliff edge in the model where it is a hillside in the world. Measured on a Ruinborne bank running
+behaved like a cliff edge in the model where it is a hillside in the world. Measured on a consumer bank running
 40.0 to 41.8 degrees against a 40 degree gate: 43 footing flips in 330 ticks, stalled 2.73 m up a 7.6 m climb. Two
 composable mechanisms fix it ([#475](https://github.com/APKiwiOrg/KhaozEngine/issues/475)), both **default-on**.
 
@@ -416,6 +416,27 @@ and is thread-affine. Dispose it before physical writes. Pin disposal precedes p
 with finally-based release even if producer cleanup throws. Local `MovementQueryLeaseId` equality and
 hashing use source reference identity, never a backend's overridden value equality or portable hashing.
 
+Each context provisions bounded private consistency storage and reuses it across fresh leases.
+Serial explicit ticks clear analytic room/axis facts and borrowed context/mode references at tick end.
+Finite owner bindings and water-level facts retain consistency until interval disposal, including when
+producer cleanup throws. Capsule shapes are immutable and cached by exact radius/length bits in separate
+role slots. Certified sweeps and contact collection prefer `IPhysicsCapsuleGeometryQueries`, which takes
+exact `CapsuleQueryDimensions` values. Bepu and its selected views implement this path, so continuously
+varying endpoint-rounding enclosures do not construct shapes or churn the cache. Other backends retain
+the immutable shape route and must implement the value capability to meet the varying-dimension allocation
+gate. First-use stable shell shapes and backend scratch are cold work. A prepared warm Bepu route allocates
+only its fresh composed lease with release binding, physics read lease and producer pin. Producers prepare
+immutable witnesses once and capture them in each fresh one-use pin. Disposed public tokens remain expired
+across reacquisition, even when world generations have not changed.
+
+The allocation fixture uses the default runtime configuration. It brackets one cold operation and one
+warm operation in a checked 4 MiB no-GC region. This keeps
+runtime allocation-context reconciliation out of the counter window. Acquisition, controller execution
+and disposal remain measured. Region setup and exit are outside the window. The reserve is not a byte
+allowance, and an unavailable, exhausted or interrupted region fails without retry. Exact named-token
+and zero borrowed-allocation assertions remain, with a positive fresh-shape allocation control. Cost
+sampling does not use this region unless explicitly selected for allocation assertions.
+
 `MovementQueryLease.SampleCentreWater` validates the body, certified scope and current pin before
 and after the producer call. Unknown remains unknown, and known data from another world is refused.
 It queries centre-feet membership, not full capsule coverage. `MovementSupportRequest` and
@@ -506,15 +527,27 @@ swept movement or water transitions required to reach it.
 The [2026-10-09 owner amendment](../docs/design/SWIM-STEP-SUPPORT-DEPENDENCY-2026-10-09.md)
 assigns all ground movement to #438, including this explicit path. Explicit land ticks now use the
 shared contact controller's ground, slide and air passes, knee-height shell and certified footprint
-support. Swimming retains medium proofs, water motion/policies and leased admission/transport.
+support. Every Find requires `IPhysicsSupportFootprint` and runs the two retained proposal sweeps
+inside one complete-volume query under the tick's selected lease. Missing capability, incomplete
+certification or a required witness outside the admitted scope refuses. The foot radius must be at
+least 0.01 m, including analytic-only paths. Swimming retains medium proofs, water motion/policies and leased admission/transport.
 The unchanged bank-step regression passes. The
 [phase 4b handoff](../docs/design/CONTACT-CONTROLLER-PHASE-4B-SWIMMING-HANDOFF-2026-10-11.md)
 also shares remaining time, climb budget, facing and signals across land/water ownership changes.
 Placement and continuation use the same contact shell and footprint. Both server heads and
 correction replay agree from the same generation-14 wire basis. Local step impulses are counted
 once on prediction, never again on replay. Legacy movement remains on its existing path.
-Native adoption still waits on #1355 certified sweep shapes, #1334 support cost, #1347 hidden
-support and #1344 small bodies.
+The complete query preserves planar `min(p, m, j...)`, inclusive reach, released ties, slope hysteresis
+and above-band/invalid-start refusals. Curved witness slope equality uses the certified upward component.
+Ring-only members supply cap/guard context, and expired tokens cannot revive on reacquisition.
+On the recorded .NET 10 arm64 route, acquired explicit ticks allocate 312 bytes of one-use tokens
+(movement/release binding 192, physics ReadLease 64, producer pin 56), borrowed support reads allocate
+zero bytes and acquired dry ticks use 64 bytes. Continuously varying certified capsule dimensions use
+the optional value-input physics capability. Other backends need their own allocation inventory.
+Native adoption still waits on #1355 certified sweep shapes, #1334 support cost and #1344 small bodies.
+#1347 is closable only after all geometric rows pass and the orchestrator pushes the verified commit.
+The cost gate retains 96 local time rejections and an owner-approved normalized hosted repeat proof
+at the phase 6 stop. Phase 5 navigation and phase 6 aggregate actor CPU remain separate obligations.
 
 `ExplicitCharacterMovement.Step` and `StepTowards` use a caller-owned `MovementQueryLease` and
 return `MovementStepResult`. Publish its pure framed state before disposing the lease. Camera and

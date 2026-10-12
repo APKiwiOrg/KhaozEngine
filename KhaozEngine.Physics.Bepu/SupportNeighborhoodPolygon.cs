@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 using KhaozEngine.Physics;
 
 namespace KhaozEngine.Physics.Bepu;
@@ -12,6 +13,9 @@ namespace KhaozEngine.Physics.Bepu;
 internal sealed class SupportPolygon
 {
     FeaturePoint[] _vertices = new FeaturePoint[4], _edges = new FeaturePoint[4];
+    Vector3[] _sourceVertices = new Vector3[4];
+    SupportFootprintSourcePredicates? _sourcePredicates;
+    readonly SupportFootprintEdgeWorkspace _footprintEdges = new();
     int _count;
 
     internal StaticHandle Static { get; private set; }
@@ -23,22 +27,51 @@ internal sealed class SupportPolygon
     internal double[] Low { get; } = new double[3];
     internal double[] High { get; } = new double[3];
     internal bool IsResolved { get; private set; }
+    internal bool HasJoinIncidenceCertificate { get; private set; }
+    internal bool HasSource { get; private set; }
+    internal SupportPolygonSourceMap SourceMap { get; private set; }
+    internal ReadOnlySpan<Vector3> SourceVertices => _sourceVertices.AsSpan(0, _count);
+    internal SupportFootprintSourcePredicates SourcePredicates => _sourcePredicates ??= new();
+    internal void BeginFootprintOperands(in SupportFootprintRequest request) => _footprintEdges.Begin(request);
+    internal bool SharesFootprintOperands(in SupportFootprintProposal proposal) => _footprintEdges.Shares(proposal);
+    internal SupportFootprintEdgeOperands FootprintOperands(int index, FeaturePoint axis, bool share = true) =>
+        _footprintEdges.Read(this, index, axis, share);
+
+    internal SupportPolygon(SupportFootprintSourcePredicates? sourcePredicates = null) => _sourcePredicates = sourcePredicates;
 
     /// <summary>Starts a polygon of <paramref name="count"/> vertices, growing the reused storage when needed.</summary>
     internal void Begin(StaticHandle owner, int elementId, int count)
     {
+        _footprintEdges.Clear();
         Static = owner;
         ElementId = elementId;
+        HasSource = false;
         if (_vertices.Length < count)
         {
             _vertices = new FeaturePoint[count];
             _edges = new FeaturePoint[count];
+            _sourceVertices = new Vector3[count];
         }
         _count = count;
     }
 
+    internal void BeginSource(in InstalledPoseOperator map)
+    {
+        _footprintEdges.Clear();
+        SourceMap = new(map.X.Bounds, map.Y.Bounds, map.Z.Bounds,
+            new((float)map.Translation.X.Value, (float)map.Translation.Y.Value, (float)map.Translation.Z.Value));
+        HasSource = map.IsResolved;
+    }
+
+    internal void SetSource(int index, Vector3 local)
+    {
+        _footprintEdges.Clear();
+        _sourceVertices[index] = local;
+    }
+
     internal void Set(int index, FeaturePoint vertex, FeaturePoint edge)
     {
+        _footprintEdges.Clear();
         _vertices[index] = vertex;
         _edges[index] = edge;
     }
@@ -46,6 +79,7 @@ internal sealed class SupportPolygon
     /// <summary>Completes the polygon: its normal length, bounds and whether every enclosure resolved.</summary>
     internal void Finish(FeaturePoint normal)
     {
+        _footprintEdges.Clear();
         Normal = normal;
         NormalLength = SupportGeometry.Length(normal.Bounds);
         bool resolved = NormalLength.IsResolved && NormalLength.Lower > 0 && _count >= 3;
@@ -66,6 +100,7 @@ internal sealed class SupportPolygon
         }
         foreach (FeaturePoint edge in Edges) resolved &= edge.IsResolved;
         IsResolved = resolved;
+        HasJoinIncidenceCertificate = SupportJoinIncidence.Certify(this);
     }
 
     /// <summary>The signed height of <paramref name="point"/> above this polygon's plane, in metres.</summary>
@@ -91,18 +126,24 @@ internal sealed class SupportPolygon
         FeaturePoint.Subtract(point, Vertices[edge])), Normal).Sign;
 }
 
+/// <summary>The certified common coefficient box and exact installed binary32 translation. Inverse and
+/// Gram certificates are capture checks, so predicates retain only the forward source they evaluate.</summary>
+internal readonly record struct SupportPolygonSourceMap(GeometryVector X, GeometryVector Y, GeometryVector Z,
+    Vector3 Translation);
+
 /// <summary>Polygons reused across queries. Every polygon rented during one query stays valid until the next
 /// <see cref="Reset"/>, so members may hold them through the join pass.</summary>
 internal sealed class SupportPolygonPool
 {
     readonly List<SupportPolygon> _polygons = [];
+    readonly SupportFootprintSourcePredicates _sourcePredicates = new();
     int _used;
 
     internal void Reset() => _used = 0;
 
     internal SupportPolygon Rent()
     {
-        if (_used == _polygons.Count) _polygons.Add(new SupportPolygon());
+        if (_used == _polygons.Count) _polygons.Add(new SupportPolygon(_sourcePredicates));
         return _polygons[_used++];
     }
 
@@ -125,7 +166,7 @@ internal readonly record struct SupportDistance(bool IsResolved, double Lower, d
 /// against segment, edge against segment endpoint, edge against segment interior, segment endpoint against
 /// face interior, and the segment crossing the face. An undecided stratum condition keeps every pair it may
 /// produce, so ties and boundary positions widen the bounds and never refuse.</summary>
-internal sealed class SupportSegmentPolygon
+internal sealed partial class SupportSegmentPolygon
 {
     static readonly FeatureNumber One = FeatureNumber.Exact(1);
     static readonly FeatureNumber UnitRange = FeatureNumber.Enclosed(GeometryInterval.Enclose(0, 1));

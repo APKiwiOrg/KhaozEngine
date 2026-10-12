@@ -6,14 +6,13 @@ using Xunit;
 namespace KhaozEngine.Tests.Identity;
 
 /// <summary>
-/// The <c>/auth/exchange</c> wire DTOs pinned against what both games' clients and auth services exchange today, so
-/// either game switches to the engine records with no wire change and every outstanding client keeps working.
+/// Pins the /auth/exchange wire DTOs against an extended consumer contract and Grimhollow's slimmer contract.
+/// Either client can adopt the engine records without a wire change.
 /// </summary>
 /// <remarks>
-/// The game records below restate Ruinborne's <c>Ruinborne.Core/Auth/AuthProtocol.cs</c> and Grimhollow's
-/// <c>Grimhollow.Shared/AuthProtocol.cs</c> member for member, and both games serialize them with the web defaults.
-/// The JSON literals are the bytes those records produce. Ruinborne's response is the union's superset, so the engine
-/// writes it byte for byte. Grimhollow's differs only by members a reader skips.
+/// The extended consumer record includes optional ban details. Grimhollow's record models
+/// Grimhollow.Shared/AuthProtocol.cs. Both use the web serialization defaults.
+/// The JSON literals pin the bytes independently of the engine records. Grimhollow's reader skips ban details.
 /// </remarks>
 public class AuthExchangeWireTests
 {
@@ -23,7 +22,7 @@ public class AuthExchangeWireTests
 
     private sealed record GameRequest(string Provider, string AccessToken);
 
-    private sealed record RuinborneResponse(
+    private sealed record ExtendedConsumerResponse(
         string Status, string? SessionToken = null, DateTimeOffset? ExpiresAtUtc = null,
         string? Subject = null, string? DisplayName = null,
         string? BanReason = null, DateTimeOffset? BanExpiresAtUtc = null);
@@ -34,10 +33,10 @@ public class AuthExchangeWireTests
 
     private const string RequestJson = """{"provider":"discord","accessToken":"access-token"}""";
 
-    private const string RuinborneOkJson =
+    private const string ExtendedConsumerOkJson =
         """{"status":"ok","sessionToken":"v3.acct:42.V3Jlbg.Y2hhcmFjdGVyOjE3.1790769600.mac","expiresAtUtc":"2026-09-30T12:00:00.1234567+00:00","subject":"acct:42","displayName":"Wren","banReason":null,"banExpiresAtUtc":null}""";
 
-    private const string RuinborneBannedJson =
+    private const string ExtendedConsumerBannedJson =
         """{"status":"banned","sessionToken":null,"expiresAtUtc":null,"subject":"acct:42","displayName":null,"banReason":"griefing","banExpiresAtUtc":"2026-09-30T12:00:00+00:00"}""";
 
     private const string GrimhollowOkJson =
@@ -56,41 +55,41 @@ public class AuthExchangeWireTests
     }
 
     [Fact]
-    public void EveryResponse_IsByteForByteWhatRuinborneWritesToday()
+    public void EveryResponse_MatchesExtendedConsumerWireContract()
     {
-        (AuthExchangeResponse Engine, RuinborneResponse Game)[] pairs =
+        (AuthExchangeResponse Engine, ExtendedConsumerResponse Game)[] pairs =
         {
             (new AuthExchangeResponse(AuthExchangeStatuses.Ok, "v3.acct:42.V3Jlbg.Y2hhcmFjdGVyOjE3.1790769600.mac",
                 FractionalExpiry, "acct:42", "Wren"),
-             new RuinborneResponse("ok", "v3.acct:42.V3Jlbg.Y2hhcmFjdGVyOjE3.1790769600.mac",
+             new ExtendedConsumerResponse("ok", "v3.acct:42.V3Jlbg.Y2hhcmFjdGVyOjE3.1790769600.mac",
                 FractionalExpiry, "acct:42", "Wren")),
             (new AuthExchangeResponse(AuthExchangeStatuses.Banned, Subject: "acct:42", BanReason: "griefing",
                 BanExpiresAtUtc: Expiry),
-             new RuinborneResponse("banned", Subject: "acct:42", BanReason: "griefing", BanExpiresAtUtc: Expiry)),
+             new ExtendedConsumerResponse("banned", Subject: "acct:42", BanReason: "griefing", BanExpiresAtUtc: Expiry)),
             (new AuthExchangeResponse(AuthExchangeStatuses.NotWhitelisted, Subject: "acct:42", DisplayName: "Wren"),
-             new RuinborneResponse("not_whitelisted", Subject: "acct:42", DisplayName: "Wren")),
-            (new AuthExchangeResponse(AuthExchangeStatuses.InvalidCredential), new RuinborneResponse("invalid_credential")),
-            (new AuthExchangeResponse(AuthExchangeStatuses.Unavailable), new RuinborneResponse("unavailable")),
+             new ExtendedConsumerResponse("not_whitelisted", Subject: "acct:42", DisplayName: "Wren")),
+            (new AuthExchangeResponse(AuthExchangeStatuses.InvalidCredential), new ExtendedConsumerResponse("invalid_credential")),
+            (new AuthExchangeResponse(AuthExchangeStatuses.Unavailable), new ExtendedConsumerResponse("unavailable")),
         };
 
-        foreach ((AuthExchangeResponse engine, RuinborneResponse game) in pairs)
+        foreach ((AuthExchangeResponse engine, ExtendedConsumerResponse game) in pairs)
         {
             string expected = JsonSerializer.Serialize(game, Web);
             Assert.Equal(expected, JsonSerializer.Serialize(engine, Web));
             Assert.Equal(expected, JsonSerializer.Serialize(engine, JsonSerializerOptions.Default));
         }
-        Assert.Equal(RuinborneOkJson, JsonSerializer.Serialize(pairs[0].Engine, Web));
-        Assert.Equal(RuinborneBannedJson, JsonSerializer.Serialize(pairs[1].Engine, Web));
+        Assert.Equal(ExtendedConsumerOkJson, JsonSerializer.Serialize(pairs[0].Engine, Web));
+        Assert.Equal(ExtendedConsumerBannedJson, JsonSerializer.Serialize(pairs[1].Engine, Web));
     }
 
     [Fact]
     public void WhatBothServicesWriteToday_ReadsIntoTheEngineRecord()
     {
-        AuthExchangeResponse fromRuinborne = JsonSerializer.Deserialize<AuthExchangeResponse>(RuinborneBannedJson, Web)!;
+        AuthExchangeResponse fromExtendedConsumer = JsonSerializer.Deserialize<AuthExchangeResponse>(ExtendedConsumerBannedJson, Web)!;
         AuthExchangeResponse fromGrimhollow = JsonSerializer.Deserialize<AuthExchangeResponse>(GrimhollowOkJson, Web)!;
 
         Assert.Equal(new AuthExchangeResponse("banned", Subject: "acct:42", BanReason: "griefing", BanExpiresAtUtc: Expiry),
-            fromRuinborne);
+            fromExtendedConsumer);
         // Grimhollow's client-only retryAfterSeconds is skipped, and the ban fields it never wrote read as null.
         Assert.Equal(new AuthExchangeResponse("ok", "v2.discord:80351110224678912.V3Jlbg.1790769600.mac", Expiry,
             "discord:80351110224678912", "Wren"), fromGrimhollow);
@@ -103,11 +102,11 @@ public class AuthExchangeWireTests
             BanReason: "griefing", BanExpiresAtUtc: Expiry);
         string json = JsonSerializer.Serialize(engine, Web);
 
-        RuinborneResponse ruinborne = JsonSerializer.Deserialize<RuinborneResponse>(json, Web)!;
+        ExtendedConsumerResponse consumer = JsonSerializer.Deserialize<ExtendedConsumerResponse>(json, Web)!;
         GrimhollowResponse grimhollow = JsonSerializer.Deserialize<GrimhollowResponse>(json, Web)!;
 
-        Assert.Equal(new RuinborneResponse("banned", Subject: "discord:1", DisplayName: "Wren", BanReason: "griefing",
-            BanExpiresAtUtc: Expiry), ruinborne);
+        Assert.Equal(new ExtendedConsumerResponse("banned", Subject: "discord:1", DisplayName: "Wren", BanReason: "griefing",
+            BanExpiresAtUtc: Expiry), consumer);
         Assert.Equal(new GrimhollowResponse("banned", Subject: "discord:1", DisplayName: "Wren"), grimhollow);
     }
 

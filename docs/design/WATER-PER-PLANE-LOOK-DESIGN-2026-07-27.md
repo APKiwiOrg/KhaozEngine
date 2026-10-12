@@ -1,7 +1,7 @@
 # Per-plane water look
 
 Design for [#370](https://github.com/APKiwiOrg/KhaozEngine/issues/370). Consumer origin is
-[Ruinborne#293](https://github.com/APKiwiOrg/Ruinborne/issues/293).
+consumer report.
 
 ## The gap
 

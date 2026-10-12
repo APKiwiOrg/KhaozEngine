@@ -7,7 +7,7 @@ namespace KhaozEngine.Tests.Locomotion;
 
 // THE GROUND CLAMP MAY NOT LIFT A CAPSULE THAT HAS NO FOOTING (#468).
 //
-// Third round of the steep-terrain chain (#440 jump ratchet, #442 slide model). A Ruinborne playtest climbed an
+// Third round of the steep-terrain chain (#440 jump ratchet, #442 slide model). A consumer playtest climbed an
 // authored sea cliff, and the climber-bot repro that followed found the mechanism has nothing to do with footing,
 // with jumps, or with diagonal input being special:
 //
@@ -22,7 +22,7 @@ namespace KhaozEngine.Tests.Locomotion;
 // The invariant that closes it: A TICK WITHOUT FOOTING MUST NEVER END HIGHER THAN ITS OWN RESOLVED VERTICAL MOTION
 // ALLOWS. Altitude on steep ground comes only from real velocity, never from the ground clamp.
 //
-// THE FIXTURE is the repro's measured cliff patch, distilled and needing no Ruinborne data: a piecewise-planar
+// THE FIXTURE is the repro's measured cliff patch, distilled and needing no consumer data: a piecewise-planar
 // face with creases every 4 m whose four planes run 68.6 to 77.1 degrees, under a normal delegate SMOOTHED over a
 // stencil wider than the crease spacing, so the normal reads a smooth ~74 degrees while the height field under any
 // one tick's travel is one of the four planes. That disagreement is the whole engine of the cycle: it is what

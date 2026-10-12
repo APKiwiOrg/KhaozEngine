@@ -18,7 +18,7 @@ public sealed partial class EnvironmentAcquisitionFixture
                 _scope.WorldId, _scope.CurrentSpace, identity, _scope.Frame) : _scope);
         if (_preparedWitness is { } prepared)
         {
-            using var comparison = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.FixtureWitnessComparison);
+            using var comparison = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.Fixture);
             if (SameScope(prepared.Scope, scope) && SameIdentity(prepared.Identity, identity) && SameResources(prepared)) return;
         }
         Assert.Equal(MovementAvailability.Known,

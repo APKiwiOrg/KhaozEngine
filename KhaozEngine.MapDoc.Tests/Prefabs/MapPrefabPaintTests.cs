@@ -13,6 +13,75 @@ namespace KhaozEngine.Tests.MapDoc.Prefabs;
 
 public sealed class MapPrefabPaintTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ReleasedWorldPaint_PublicResolutionDoesNotAddPriorityConflicts(bool unrelatedPrefab)
+    {
+        var f = PrefabFixtures.ReleasedWorldPaint(unrelatedPrefab: unrelatedPrefab);
+        Assert.All(f.Document.Surfaces.Refs, s => Assert.Equal(0, s.PaintPriority));
+        var authored = f.Document.Surfaces;
+        var ground = authored.Refs.Single(s => s.Id == "ground");
+        var original = MapSurfaceCompiler.Compile(ground, authored.Patches[new("ground", 0, 0)]);
+        var first = authored.Refs.Single(s => s.Id == "priority-low");
+        var last = authored.Refs.Single(s => s.Id == "priority-high");
+        var whole = MapSurfaceCompiler.ApplyPaintOverride(MapSurfaceCompiler.ApplyPaintOverride(original,
+            first, authored.Patches[new(first.Id, 0, 0)]), last, authored.Patches[new(last.Id, 0, 0)]);
+        Assert.All(whole.Paint.Where(p => p.Face.Primitive == 1), p => Assert.Equal((ushort)8, p.Underlay));
+        Assert.Equal(original.ExactVertices, whole.ExactVertices);
+        Assert.Equal(original.Faces, whole.Faces);
+        string before = MapDocumentFile.SaveText(f.Document);
+
+        var resolved = MapNativeResolution.Resolve(f.Document, f.Assets, PrefabFixtures.Options());
+
+        Assert.Contains(resolved.Placements, p => p.PlacementId == "released-item" &&
+            p.Transform.Position == new System.Numerics.Vector3(0.25f, 2, -0.25f));
+        Assert.Equal(unrelatedPrefab ? 2 : 1, resolved.Placements.Count);
+        Assert.Empty(resolved.EffectiveResources!.PaintRegions);
+        var actual = resolved.EffectiveResources.Surfaces;
+        var physical = MapSurfaceCompiler.Compile(actual.Refs.Single(s => s.Id == "ground"), actual.Patches[new("ground", 0, 0)]);
+        Assert.Equal(original.ExactVertices, physical.ExactVertices);
+        Assert.Equal(original.Faces, physical.Faces);
+        Assert.Equal(original.Paint, physical.Paint);
+        Assert.Equal(before, MapDocumentFile.SaveText(f.Document));
+    }
+
+    [Fact]
+    public void ReleasedWorldPaint_PublicResolutionDoesNotChargePartialPaintBudgets()
+    {
+        var f = PrefabFixtures.ReleasedWorldPaint(large: true);
+        Assert.Null(f.Document.Prefabs);
+        long sourceFaces = f.Document.Surfaces.Patches.Values.Where(p => p.Key.SurfaceId == "priority-low")
+            .Sum(p => (long)MapSurfaceCompiler.Compile(f.Document.Surfaces.Refs.Single(s => s.Id == p.Key.SurfaceId)
+                with
+            { Role = MapSurfaceRole.SupportFloor }, p).Faces.Count);
+        Assert.True(sourceFaces > new MapRefinementLimits().MaxSourceFacesPerBound);
+        string before = MapDocumentFile.SaveText(f.Document);
+
+        var resolved = MapNativeResolution.Resolve(f.Document, f.Assets, PrefabFixtures.Options());
+
+        Assert.Equal("released-item", Assert.Single(resolved.Placements).PlacementId);
+        Assert.Empty(resolved.EffectiveResources!.PaintRegions);
+        Assert.Equal(before, MapDocumentFile.SaveText(f.Document));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void PrefabPaint_ReleasedWorldPaintDoesNotJoinConflictsOrBudgetCharges(bool large)
+    {
+        var plain = PrefabFixtures.Effective(PrefabFixtures.Create("uneven-painted"));
+        var mixed = PrefabFixtures.Create("uneven-painted");
+        PrefabFixtures.AddReleasedWorldPaint(mixed, large, large ? 0 : 2);
+
+        var resolved = MapNativeResolution.Resolve(mixed.Document, mixed.Assets, PrefabFixtures.Options());
+
+        var regions = resolved.EffectiveResources!.PaintRegions["ground"];
+        Assert.NotEmpty(regions.Regions);
+        Assert.All(regions.Regions, r => Assert.Equal("a/paint", r.PaintId));
+        Assert.Equal(plain.PaintRegions["ground"].Digest, regions.Digest);
+    }
+
     [Fact]
     public void PartialPaint_LeavesFacesAndSupportByteIdentical()
     {
@@ -145,7 +214,9 @@ public sealed class MapPrefabPaintTests
     [Fact]
     public void PaintPriority_RoundTripsAndDefaultKeepsReleasedDigest()
     {
-        var f = PrefabFixtures.Create("prioritized-paint");
+        var f = PrefabFixtures.ReleasedWorldPaint();
+        int paintIndex = f.Document.Surfaces.Refs.FindIndex(s => s.Id == "priority-high");
+        f.Document.Surfaces.Refs[paintIndex] = f.Document.Surfaces.Refs[paintIndex] with { PaintPriority = 2 };
         string json = MapDocumentFile.SaveText(f.Document);
         var loaded = MapDocumentFile.LoadText(json);
         Assert.Equal(2, loaded.Surfaces.Refs.Single(s => s.Id == "priority-high").PaintPriority);

@@ -23,9 +23,11 @@ public static class MapPartialPaintCompiler
         var target = view.Surfaces.SingleOrDefault(s => s.Id == targetSurfaceId);
         if (target is null || target.Role == MapSurfaceRole.PaintOverride)
             throw new MapDocumentException("Invalid: paint target must be a declared physical surface.");
-        var paints = view.Surfaces.Where(s => s.Role == MapSurfaceRole.PaintOverride && s.PaintTargetSurfaceId == targetSurfaceId)
+        var paints = view.Surfaces.Where(s => s.Role == MapSurfaceRole.PaintOverride && s.PaintTargetSurfaceId == targetSurfaceId &&
+            (view.EffectiveContext is null || view.EffectiveContext.IsPartialPaint(s)))
             .OrderByDescending(s => s.PaintPriority).ThenBy(s => s.Id, StringComparer.Ordinal).ToArray();
         foreach (var surface in view.Surfaces) MapSurfaceJson.RequirePaintPriority(surface);
+        if (paints.Length == 0) return new([], Digest([]));
         try { return CompileCore(view, target, paints, budget); }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
         { throw new MapDocumentException("NotRepresentable: paint intersection cannot be emitted exactly. No regions were published.", error); }

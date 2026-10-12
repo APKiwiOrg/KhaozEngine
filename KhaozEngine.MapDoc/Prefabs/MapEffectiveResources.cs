@@ -46,13 +46,18 @@ public sealed class MapEffectiveResources
         WaterCorners = new ReadOnlyDictionary<string, IReadOnlyList<MapExactPoint>>(waterCorners.ToDictionary(p => p.Key,
             p => (IReadOnlyList<MapExactPoint>)Array.AsReadOnly(p.Value.ToArray()), StringComparer.Ordinal));
         Attachments = Array.AsReadOnly(attachments.ToArray());
-        var paintTargets = context.Surfaces.Refs.Where(s => s.Role == MapSurfaceRole.PaintOverride)
+        var paintTargets = context.Surfaces.Refs.Where(context.IsPartialPaint)
             .Select(s => s.PaintTargetSurfaceId ?? throw new MapDocumentException("PaintOverride requires a target surface."))
             .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
         var paintRegions = new Dictionary<string, MapPaintRegionSet>(StringComparer.Ordinal);
         if (paintTargets.Length != 0)
         {
-            var view = CompleteView();
+            var scope = MapScopedSurfaces.CompleteEffective(context).Scope with
+            {
+                DiscoverySurfaces = context.Surfaces.Refs.Where(context.IsPartialPaint).Select(s => s.Id)
+                    .Concat(paintTargets).ToHashSet(StringComparer.Ordinal),
+            };
+            var view = SurfaceSource is MapComposedSurfaceSource ? Acquire(scope) : MapScopedSurfaces.CompleteEffective(context);
             foreach (string target in paintTargets) paintRegions.Add(target, MapPartialPaintCompiler.Compile(view, target));
         }
         PaintRegions = new ReadOnlyDictionary<string, MapPaintRegionSet>(paintRegions);
@@ -80,6 +85,10 @@ internal sealed class MapEffectiveContext
     }
     internal MapSurfaceRef Surface(string id) => _surfaces.TryGetValue(id, out var surface) ? surface : throw new MapDocumentException($"Missing effective surface '{id}'.");
     internal MapExactXz Xz(string id, MapExactXz local) => Transform(MapPrefabChildKind.Surface, id)?.Xz(local) ?? local;
+    // Installed prefab/resource surfaces and precise native poses are additive R5 geometry. World paint
+    // without such a pose keeps the released path, including when an unrelated prefab is present.
+    internal bool IsPartialPaint(MapSurfaceRef surface) => surface.Role == MapSurfaceRole.PaintOverride &&
+        Transforms.ContainsKey(Key(MapPrefabChildKind.Surface, surface.Id));
     internal static string Key(MapPrefabChildKind kind, string id) => kind + ":" + id;
     internal MapResourceTransform? Transform(MapPrefabChildKind kind, string id) =>
         Transforms.TryGetValue(Key(kind, id), out var transform) ? new(transform) : null;

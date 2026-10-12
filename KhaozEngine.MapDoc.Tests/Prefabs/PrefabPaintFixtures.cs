@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
+using System.Text.Json.Nodes;
 using KhaozEngine.MapDoc;
+using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Water;
@@ -10,6 +13,66 @@ namespace KhaozEngine.Tests.MapDoc.Prefabs;
 
 internal static partial class PrefabFixtures
 {
+    internal static PrefabFixture ReleasedWorldPaint(bool large = false, bool unrelatedPrefab = false)
+    {
+        var f = Create("uneven-unpainted");
+        if (!unrelatedPrefab)
+        {
+            f.Document.Prefabs = null;
+            var assets = ReleasedPaintAssets(f.Assets);
+            f = new(f.Document, assets);
+            f.Document.NativeAssets = assets.Roots.ToList();
+        }
+        f.Document.Placements.Add(new MapPlacement
+        { Id = "released-item", Kind = "scenery", AssetId = unrelatedPrefab ? "item" : "tree", X = 0.25f, Y = 2, Z = -0.25f, Scale = 1 });
+        AddReleasedWorldPaint(f, large);
+        return f;
+    }
+
+    static MapAssetClosure ReleasedPaintAssets(MapAssetClosure original)
+    {
+        var source = new FixtureSource();
+        var resources = new JsonArray();
+        foreach (var (id, kind) in new[] { ("mesh", "Mesh"), ("material", "Material"), ("item.selection", "Selection") })
+            resources.Add(Resource(source.Add(id, original.GetResource(id).Bytes.ToArray()), kind, []));
+        var leaf = new JsonObject
+        {
+            ["id"] = "tree",
+            ["meshResourceId"] = "mesh",
+            ["materialResourceIds"] = new JsonArray("material"),
+            ["selectionResourceId"] = "item.selection",
+            ["lodResourceIds"] = new JsonArray(),
+            ["supportResourceIds"] = new JsonArray(),
+            ["lightResourceIds"] = new JsonArray(),
+            ["sourceUnitsToMetres"] = 1,
+            ["renderBounds"] = JsonNode.Parse("""{"min":{"x":-0.1,"y":-0.1,"z":-0.1},"max":{"x":0.1,"y":0.1,"z":0.1}}"""),
+            ["source"] = "public/tree",
+            ["license"] = "CC0",
+            ["textured"] = false,
+        };
+        var manifest = source.Add("manifest", Encoding.UTF8.GetBytes(new JsonObject
+        { ["payloadVersion"] = 1, ["assets"] = new JsonArray(leaf), ["resources"] = resources }.ToJsonString()));
+        return MapAssetClosure.Load(new[] { manifest }, source);
+    }
+
+    internal static void AddReleasedWorldPaint(PrefabFixture f, bool large = false, int row = 0)
+    {
+        foreach (string id in large ? new[] { "priority-low" } : new[] { "priority-low", "priority-high" })
+        {
+            f.Document.Surfaces.Refs.Add(Surface(id, MapSurfaceRole.PaintOverride) with { PaintTargetSurfaceId = "ground" });
+            for (int slot = 0; slot < (large ? 3 : 1); slot++)
+            {
+                var patch = Patch(id, large ? 64 : 3, large ? 64 : 2, 9000);
+                patch.Key = new(id, slot, 0);
+                patch.CellMinX = id == "priority-high" ? 1 : 0;
+                patch.CellMinZ = row;
+                Array.Fill(patch.Cells, new(id == "priority-high" ? (ushort)8 : (ushort)7,
+                    0, MapOverlayCut.Full, 0, MapCellFlags.None, MapCellTopology.Auto));
+                f.Document.Surfaces.Patches.Add(patch.Key, patch);
+            }
+        }
+    }
+
     static bool TryPaintVariant(string variant, out PrefabFixture? fixture)
     {
         fixture = null;
@@ -24,9 +87,12 @@ internal static partial class PrefabFixtures
         f.Document.Surfaces.Patches.Add(ground.Key, ground);
         if (variant is "prioritized-paint" or "equal-priority-paint" or "identical-paint")
         {
-            AddWorldPaint("priority-low", 0, 1, 7);
-            AddWorldPaint("priority-high", 1, variant == "prioritized-paint" ? 2 : 1,
+            var asset = f.Assets.GetPrefab("hut");
+            var low = PaintChild("priority-low", 0, 1, 7);
+            var high = PaintChild("priority-high", 1, variant == "prioritized-paint" ? 2 : 1,
                 variant == "identical-paint" ? (ushort)7 : (ushort)8);
+            asset = asset with { Children = asset.Children.Concat(new[] { low, high }).ToArray() };
+            f = Reasset(f, asset, new Dictionary<string, string> { ["priority-low"] = "priority-low", ["priority-high"] = "priority-high" });
         }
         else
         {
@@ -50,14 +116,17 @@ internal static partial class PrefabFixtures
         fixture = f;
         return true;
 
-        void AddWorldPaint(string id, int x, int priority, ushort material)
+        MapPrefabSurfaceChild PaintChild(string id, int x, int priority, ushort material)
         {
             var patch = Patch(id, 3, 2, 9000);
             patch.CellMinX = x;
             Array.Fill(patch.Cells, new(material, 0, MapOverlayCut.Full, 0, MapCellFlags.None, MapCellTopology.Auto));
-            f.Document.Surfaces.Refs.Add(Surface(id, MapSurfaceRole.PaintOverride) with
-            { PaintTargetSurfaceId = "ground", PaintPriority = priority });
-            f.Document.Surfaces.Patches.Add(patch.Key, patch);
+            return SurfaceChild(id, MapSurfaceRole.PaintOverride, patch) with
+            {
+                Surface = Surface(id, MapSurfaceRole.PaintOverride) with { PaintTargetSurfaceId = "ground", PaintPriority = priority },
+                References = Slots(Surf("/patches/0/key/surfaceId", id),
+                    Surf("/surface/paintTargetSurfaceId", "ground", MapPrefabReferenceScope.World)),
+            };
         }
     }
 

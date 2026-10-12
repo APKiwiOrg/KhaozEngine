@@ -74,7 +74,9 @@ internal sealed class MapComposedSurfaceSource : IMapSurfaceAcquisitionSource, I
                 {
                     var request = group.Key is { } pose ? LocalScope(scope, pose) : scope;
                     var ids = group.Select(p => p.Key).ToHashSet(StringComparer.Ordinal);
-                    var session = ((IMapSurfaceAcquisitionSource)source._native).OpenAcquisition(request with { SharedBudget = budget, DiscoverySurfaces = ids });
+                    var discovery = scope.DiscoverySurfaces is { } selected
+                        ? ids.Where(selected.Contains).ToHashSet(StringComparer.Ordinal) : ids;
+                    var session = ((IMapSurfaceAcquisitionSource)source._native).OpenAcquisition(request with { SharedBudget = budget, DiscoverySurfaces = discovery });
                     if (session.SnapshotId != source._nativeSnapshot || session.RootSha256 != source._nativeRoot)
                     { session.Dispose(); throw new MapDocumentException("native producer differs from its pinned composition"); }
                     _parts.Add(new(session, ids));

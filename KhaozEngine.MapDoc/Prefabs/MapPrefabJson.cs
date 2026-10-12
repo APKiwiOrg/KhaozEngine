@@ -32,7 +32,7 @@ internal static class MapPrefabJson
                     if (property.Name == "parentSpace") property.ShouldSerialize = (_, value) => value is not null;
                 }
                 if (info.Type == typeof(MapPlacement)) property.ShouldSerialize = (_, value) => value is not null;
-                if (property.Name is "attachments" or "roofs" or "storeys")
+                if (property.Name is "attachments" or "roofs" or "storeys" or "materializedAttachments")
                     property.ShouldSerialize = (_, value) => value is IEnumerable items && items.Cast<object>().Any();
             }
         });
@@ -90,6 +90,12 @@ internal static class MapPrefabJson
 
     internal static void Write<T>(Utf8JsonWriter w, T value)
     {
+        // A child is always written through its closed converter, whatever its runtime type.
+        if (value is MapPrefabChild child)
+        {
+            JsonSerializer.Serialize(w, child, typeof(MapPrefabChild), Options);
+            return;
+        }
         object? normalized = value switch
         {
             MapPrefabSet set => new MapPrefabSet(set.PayloadVersion, set.ExpansionVersion, set.Instances, set.Transfers)
@@ -108,7 +114,13 @@ internal static class MapPrefabJson
             MapPrefabAsset asset => asset with
             {
                 Children = asset.Children.OrderBy(c => c.Key.Kind.ToString(), StringComparer.Ordinal).ThenBy(c => c.Key.Key, StringComparer.Ordinal).ToArray(),
-                Roofs = Ordered(asset.Roofs)
+                Roofs = Ordered(asset.Roofs),
+                MaterializedAttachments = asset.MaterializedAttachments.OrderBy(r => r.Placement.Id, StringComparer.Ordinal)
+                    .ThenBy(r => r.Kind.ToString(), StringComparer.Ordinal).ThenBy(r => r.ResourceId, StringComparer.Ordinal)
+                    .Select(r => r with
+                    {
+                        Children = r.Children.OrderBy(c => c.Child.Kind.ToString(), StringComparer.Ordinal).ThenBy(c => c.Child.Id, StringComparer.Ordinal).ToArray(),
+                    }).ToArray(),
             },
             MapBuildingIntent intent => new MapBuildingIntent(intent.PayloadVersion, intent.RoofLinks, intent.RoofGroups, intent.Lights, intent.Markers)
             {
@@ -163,10 +175,10 @@ internal static class MapPrefabJson
                     "patches" => Limits.MaxPatches,
                     "entries" => Limits.MaxBindings,
                     "overrides" => Limits.MaxOverrides,
-                    "transfers" or "attachments" => Limits.MaxTransfers,
+                    "transfers" or "attachments" or "materializedAttachments" => Limits.MaxTransfers,
                     _ => Limits.MaxGeometryElements,
                 };
-                if (name is "instances" or "children" or "entries" or "overrides" or "transfers" or "attachments")
+                if (name is "instances" or "children" or "entries" or "overrides" or "transfers" or "attachments" or "materializedAttachments")
                 {
                     totals.TryGetValue(name, out long total);
                     totals[name] = total + count;
@@ -197,9 +209,6 @@ internal static class MapPrefabJson
         foreach (string name in required)
             if (!seen.Contains(name)) throw new MapDocumentException("Missing prefab member '" + name + "'.");
     }
-
-    internal static JsonElement ChildElement(MapPrefabChild child) => JsonSerializer.SerializeToElement(child, Options);
-    internal static JsonElement RecordElement(MapTopologyRecord record) => JsonSerializer.SerializeToElement(record, Options);
 
     sealed class ChildConverter : JsonConverter<MapPrefabChild>
     {

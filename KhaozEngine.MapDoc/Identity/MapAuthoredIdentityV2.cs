@@ -10,7 +10,8 @@ namespace KhaozEngine.MapDoc.Identity;
 /// <summary>Whole authored identity from current complete edits or verified pinned storage. It covers the manifest
 /// root, the authored content digest, the ordered surface patch facts, the asset closure, the builder, the options
 /// hash and the resolver version. Both overloads refuse the same documents through the same validation
-/// code.</summary>
+/// code, including the shared prefab binding, transfer and reservation registry of <see cref="MapPrefabIdentity"/>.
+/// Prefab roots enter once, through the root digest.</summary>
 public static class MapAuthoredIdentityV2
 {
     public static string Compute(MapDocument document, MapAssetClosure assets, MapResolveOptions options)

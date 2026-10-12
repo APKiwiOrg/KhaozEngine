@@ -33,13 +33,15 @@ internal static partial class PrefabFixtures
 
     internal static PrefabFixture Create(string variant = "basic")
     {
+        if (TryIdentityVariant(variant, out PrefabFixture? derived)) return derived!;
         byte[] bytes = AssetBytes(variant == "pool-material-undeclared" ? "pool" :
-            variant is "roomless" or "pool" or "all-resources" or "pool-material-mesh" ? variant : "valid");
+            variant is "roomless" or "pool" or "all-resources" or "pool-material-mesh" or "attached" or "materialized" ? variant :
+            variant == "asset-version" ? "changed" : "valid");
         var (roots, source) = Inputs(bytes, true, variant);
         var assets = MapAssetClosure.Load(roots, source);
         var document = MapDocumentFile.LoadText(FormatSixJson(false));
         document.NativeAssets = roots.ToList();
-        if (variant != "roomless")
+        if (variant is not ("roomless" or "attached" or "materialized"))
         {
             var patch = Patch("exterior", 16, 16, -200);
             var anchor = patch.Key;
@@ -60,8 +62,13 @@ internal static partial class PrefabFixtures
         var bindings = asset.Children.Select(c => new MapPrefabBinding(c.Key, "a/" + c.Key.Key,
             c.Key.Kind == MapPrefabChildKind.Placement ? ++numeric : null, false)).ToArray();
         document.NumericIdHighWaterMark = numeric;
+        // Implicit leaf support and light children take their bindings from the planner under test.
+        var planned = variant is "attached" or "materialized"
+            ? MapPrefabBindingPlanner.Plan(document, asset, assets, "a", new(bindings)) : null;
+        if (planned is not null) document.NumericIdHighWaterMark = planned.HighWaterMark;
+        bool roomless = variant is "roomless" or "attached" or "materialized";
         document.Prefabs = new(1, 1, new[] { new MapPrefabInstance("a", "hut", assets.GetResource("hut").Reference.Sha256,
-            new(Vector3.Zero, 0, 1), variant == "roomless" ? null : new("exterior", new("exterior", 0, 0)), new(bindings), []) }, []);
+            new(Vector3.Zero, 0, 1), roomless ? null : new("exterior", new("exterior", 0, 0)), planned?.Bindings ?? new(bindings), []) }, []);
         return new(document, assets);
     }
 
@@ -70,77 +77,81 @@ internal static partial class PrefabFixtures
         var children = new List<MapPrefabChild>();
         var item = new MapPlacement { Id = "item", Kind = "item", AssetId = "item", X = 1, Y = 0, Z = -1, Scale = 1, Tags = new() { "first", "second" } };
         children.Add(new MapPrefabPlacementChild(new(MapPrefabChildKind.Placement, "item"), item));
+        if (variant is "attached" or "materialized")
+        {
+            children.Add(new MapPrefabPlacementChild(new(MapPrefabChildKind.Placement, "deck"), new MapPlacement
+            { Id = "deck", Kind = "deck", AssetId = "deck", X = -2, Y = 0, Z = -2, Scale = 1 }));
+            if (variant == "attached")
+                children.Add(new MapPrefabPlacementChild(new(MapPrefabChildKind.Placement, "lantern"), new MapPlacement
+                { Id = "lantern", Kind = "lantern", AssetId = "lantern", X = 2, Y = 0, Z = -2, Scale = 1 }));
+            return MapPrefabFile.Write(variant == "attached" ? new(1, "hut", children) : Materialized(children));
+        }
         if (variant != "roomless")
         {
             children.Add(new MapPrefabPlacementChild(new(MapPrefabChildKind.Placement, "doorway"), new MapPlacement
             { Id = "doorway", Kind = "doorway", AssetId = "doorway", X = 2, Y = 0, Z = 0, Scale = 1 }));
             children.Add(new MapPrefabPlacementChild(new(MapPrefabChildKind.Placement, "roof"), new MapPlacement
             { Id = "roof", Kind = "roof", AssetId = "roof", Y = 3, Scale = 1 }));
-            children.Add(new MapPrefabSurfaceChild(new(MapPrefabChildKind.Surface, "floor"), Surface("floor", MapSurfaceRole.SupportFloor), new[] { Patch("floor", 4, 4, 0) }));
-            children.Add(new MapPrefabSurfaceChild(new(MapPrefabChildKind.Surface, "ceiling"), Surface("ceiling", MapSurfaceRole.Ceiling), new[] { Patch("ceiling", 4, 4, 300) }));
+            children.Add(SurfaceChild("floor", MapSurfaceRole.SupportFloor, Patch("floor", 4, 4, 0)));
+            children.Add(SurfaceChild("ceiling", MapSurfaceRole.Ceiling, Patch("ceiling", 4, 4, 300)));
             var floor = new MapPatchKey("floor", 0, 0);
             children.Add(new MapPrefabRecordChild(new(MapPrefabChildKind.Record, "room"), new MapSpaceDoc("room", MapSpaceKind.Cave,
                 new("$parent", new("$parent", 0, 0)), null, [], [], [], []), floor)
-            { References = new[] { Slot("anchor.surfaceId", MapPrefabChildKind.Surface, "floor"), Slot("value.parent", MapPrefabChildKind.Record, "$parent") } });
+            { References = Slots(Anchor("floor"), Ref("/value/parent", "$parent", "$parent")) });
             children.Add(new MapPrefabRecordChild(new(MapPrefabChildKind.Record, "room-domain"), new MapSpaceFootprint("room-domain", new("room", floor), floor,
                 Enumerable.Range(0, 4).SelectMany(z => Enumerable.Range(0, 4).Select(x => z * 64 + x)).ToArray(),
                 new(MapBoundKind.SupportFloor, "floor", null), new(MapBoundKind.Ceiling, "ceiling", null)), floor)
             {
-                References = new[] { Slot("anchor.surfaceId", MapPrefabChildKind.Surface, "floor"), Slot("value.space", MapPrefabChildKind.Record, "room"),
-                Slot("value.lattice.surfaceId", MapPrefabChildKind.Surface, "floor"), Slot("value.lower.surfaceId", MapPrefabChildKind.Surface, "floor"),
-                Slot("value.upper.surfaceId", MapPrefabChildKind.Surface, "ceiling") }
+                References = Slots(Anchor("floor"), Ref("/value/space", "room", "floor"), Surf("/value/lattice/surfaceId", "floor"),
+                    Surf("/value/lower/surfaceId", "floor"), Surf("/value/upper/surfaceId", "ceiling"))
             });
             foreach (var (id, surfaceId, height) in new[] { ("door-bottom", "floor", 0), ("door-top", "ceiling", 300) })
                 children.Add(new MapPrefabRecordChild(new(MapPrefabChildKind.Record, id), new MapBoundaryChain(id, MapChainKind.Authored, null,
                     new[] { new MapChainVertex(new(surfaceId, MapLatticeAddress.Create(7, 0, 5)), height),
                         new MapChainVertex(new(surfaceId, MapLatticeAddress.Create(13, 0, 5)), height) }), floor)
                 {
-                    References = new[] { Slot("anchor.surfaceId", MapPrefabChildKind.Surface, "floor"), Slot("value.vertices[0].vertex.surfaceId", MapPrefabChildKind.Surface, surfaceId),
-                    Slot("value.vertices[1].vertex.surfaceId", MapPrefabChildKind.Surface, surfaceId) }
+                    References = Slots(Anchor("floor"), Surf("/value/vertices/0/vertex/surfaceId", surfaceId),
+                        Surf("/value/vertices/1/vertex/surfaceId", surfaceId))
                 });
             children.Add(new MapPrefabRecordChild(new(MapPrefabChildKind.Record, "room-portal"), new MapCavePortal("room-portal", new("room", floor),
                 new("$parent", new("$parent", 0, 0)), new[] { new MapLatticeVertex("floor", MapLatticeAddress.Create(7, 0, 5)), new MapLatticeVertex("floor", MapLatticeAddress.Create(13, 0, 5)) },
                 new("door-bottom", floor), new("door-top", floor)), floor)
             {
-                References = new[] { Slot("anchor.surfaceId", MapPrefabChildKind.Surface, "floor"), Slot("value.fromSpace", MapPrefabChildKind.Record, "room"),
-                Slot("value.toSpace", MapPrefabChildKind.Record, "$parent"), Slot("value.interval[0].surfaceId", MapPrefabChildKind.Surface, "floor"),
-                Slot("value.interval[1].surfaceId", MapPrefabChildKind.Surface, "floor"), Slot("value.bandBottom", MapPrefabChildKind.Record, "door-bottom"),
-                Slot("value.bandTop", MapPrefabChildKind.Record, "door-top") }
+                References = Slots(Anchor("floor"), Ref("/value/fromSpace", "room", "floor"), Ref("/value/toSpace", "$parent", "$parent"),
+                    Surf("/value/interval/0/surfaceId", "floor"), Surf("/value/interval/1/surfaceId", "floor"),
+                    Ref("/value/bandBottom", "door-bottom", "floor"), Ref("/value/bandTop", "door-top", "floor"))
             });
             children.Add(new MapPrefabStoreyChild(new(MapPrefabChildKind.Storey, "lower"), "Lower"));
+            // Annotation references carry their scope directly and take no slots.
             children.Add(new MapPrefabLightChild(new(MapPrefabChildKind.Light, "lamp"), new(1, "lamp", new(MapPrefabReferenceScope.Local, MapPrefabChildKind.Placement, "doorway"),
-                new(2, 2, 0), Vector3.One, 1, 4, false))
-            { References = new[] { Slot("value.owner", MapPrefabChildKind.Placement, "doorway") } });
+                new(2, 2, 0), Vector3.One, 1, 4, false)));
             children.Add(new MapPrefabMarkerChild(new(MapPrefabChildKind.Marker, "entry"), new(1, "entry", "Entry", new(0, 1, 0), 0, "entrance", true, new[] { "first", "second" })));
             children.Add(new MapPrefabRoofChild(new(MapPrefabChildKind.RoofLink, "roof-link"), new("roof-link", new(MapPrefabReferenceScope.Local, MapPrefabChildKind.Placement, "roof"),
-                new[] { new MapPrefabReference(MapPrefabReferenceScope.Local, MapPrefabChildKind.Record, "room") }, [], 3))
-            { References = new[] { Slot("value.roof", MapPrefabChildKind.Placement, "roof"), Slot("value.rooms[0]", MapPrefabChildKind.Record, "room") } });
+                new[] { new MapPrefabReference(MapPrefabReferenceScope.Local, MapPrefabChildKind.Record, "room") }, [], 3)));
         }
         if (variant is "pool" or "all-resources" or "pool-material-mesh")
         {
             var poolFloor = Patch("pool-floor", 4, 4, -100); poolFloor.CellMinX = 4; poolFloor.CellMinZ = 4;
             var poolCeiling = Patch("pool-ceiling", 4, 4, 300); poolCeiling.CellMinX = 4; poolCeiling.CellMinZ = 4;
-            children.Add(new MapPrefabSurfaceChild(new(MapPrefabChildKind.Surface, "pool-floor"), Surface("pool-floor", MapSurfaceRole.SupportFloor), new[] { poolFloor }));
-            children.Add(new MapPrefabSurfaceChild(new(MapPrefabChildKind.Surface, "pool-ceiling"), Surface("pool-ceiling", MapSurfaceRole.Ceiling), new[] { poolCeiling }));
+            children.Add(SurfaceChild("pool-floor", MapSurfaceRole.SupportFloor, poolFloor));
+            children.Add(SurfaceChild("pool-ceiling", MapSurfaceRole.Ceiling, poolCeiling));
             var anchor = poolFloor.Key;
             children.Add(new MapPrefabRecordChild(new(MapPrefabChildKind.Record, "pool"), new MapSpaceDoc("pool", MapSpaceKind.Cave,
                 new("$parent", new("$parent", 0, 0)), null, [], [], [], []), anchor)
-            { References = new[] { Slot("anchor.surfaceId", MapPrefabChildKind.Surface, "pool-floor"), Slot("value.parent", MapPrefabChildKind.Record, "$parent") } });
+            { References = Slots(Anchor("pool-floor"), Ref("/value/parent", "$parent", "$parent")) });
             children.Add(new MapPrefabRecordChild(new(MapPrefabChildKind.Record, "pool-domain"), new MapSpaceFootprint("pool-domain", new("pool", anchor), anchor,
                 Enumerable.Range(4, 4).SelectMany(z => Enumerable.Range(4, 4).Select(x => z * 64 + x)).ToArray(),
                 new(MapBoundKind.SupportFloor, "pool-floor", null), new(MapBoundKind.Ceiling, "pool-ceiling", null)), anchor)
             {
-                References = new[] { Slot("anchor.surfaceId", MapPrefabChildKind.Surface, "pool-floor"), Slot("value.space", MapPrefabChildKind.Record, "pool"),
-                Slot("value.lattice.surfaceId", MapPrefabChildKind.Surface, "pool-floor"), Slot("value.lower.surfaceId", MapPrefabChildKind.Surface, "pool-floor"),
-                Slot("value.upper.surfaceId", MapPrefabChildKind.Surface, "pool-ceiling") }
+                References = Slots(Anchor("pool-floor"), Ref("/value/space", "pool", "pool-floor"), Surf("/value/lattice/surfaceId", "pool-floor"),
+                    Surf("/value/lower/surfaceId", "pool-floor"), Surf("/value/upper/surfaceId", "pool-ceiling"))
             });
             children.Add(new MapPrefabMediumChild(new(MapPrefabChildKind.WaterMedium, "water"), new("water", MapWaterMediumKind.Water, 1)));
             children.Add(new MapPrefabWaterChild(new(MapPrefabChildKind.WaterBody, "pool-water"), new("pool-water", 0.5f, "water", "pool-material",
                 new(MapLatticeFrame.ImportedMetreCentimetre, new[] { new MapWaterRect(4, 4, 8, 8) }, []), new[] { new MapRecordRef("pool", anchor) }))
-            { References = new[] { Slot("value.medium", MapPrefabChildKind.WaterMedium, "water"), Slot("value.covers[0]", MapPrefabChildKind.Record, "pool") } });
+            { References = Slots(Slot("/value/medium", MapPrefabChildKind.WaterMedium, "water"), Ref("/value/covers/0", "pool", "pool-floor")) });
             children.Add(new MapPrefabRoofGroupChild(new(MapPrefabChildKind.RoofGroup, "hut-rooms"), new("hut-rooms",
-                new[] { new MapPrefabReference(MapPrefabReferenceScope.Local, MapPrefabChildKind.Record, "room"), new MapPrefabReference(MapPrefabReferenceScope.Local, MapPrefabChildKind.Record, "pool") }))
-            { References = new[] { Slot("value.rooms[0]", MapPrefabChildKind.Record, "pool"), Slot("value.rooms[1]", MapPrefabChildKind.Record, "room") } });
+                new[] { new MapPrefabReference(MapPrefabReferenceScope.Local, MapPrefabChildKind.Record, "room"), new MapPrefabReference(MapPrefabReferenceScope.Local, MapPrefabChildKind.Record, "pool") })));
         }
         byte[] bytes = MapPrefabFile.Write(new(1, "hut", children)
         { Roofs = variant == "roomless" ? [] : new[] { new MapPrefabReference(MapPrefabReferenceScope.Local, MapPrefabChildKind.Placement, "roof") } });
@@ -160,6 +171,7 @@ internal static partial class PrefabFixtures
                 displacedFloor["surface"]!["id"] = "chain-floor";
                 displacedFloor["localTransform"] = pose.DeepClone();
                 foreach (var patch in displacedFloor["patches"]!.AsArray()) patch!["key"]!["surfaceId"] = "chain-floor";
+                foreach (var slot in displacedFloor["references"]!.AsArray()) slot!["target"]!["id"] = "chain-floor";
                 root["children"]!.AsArray().Add(displacedFloor);
                 var chain = root["children"]!.AsArray().Single(c => c!["key"]!["key"]!.GetValue<string>() == "door-bottom")!;
                 chain["anchor"]!["surfaceId"] = "chain-floor";
@@ -168,8 +180,10 @@ internal static partial class PrefabFixtures
                 foreach (var slot in chain["references"]!.AsArray()) slot!["target"]!["id"] = "chain-floor";
                 var portal = root["children"]!.AsArray().Single(c => c!["key"]!["key"]!.GetValue<string>() == "room-portal")!;
                 portal["value"]!["bandBottom"]!["anchor"]!["surfaceId"] = "chain-floor";
+                portal["references"]!.AsArray().Single(r => r!["path"]!.GetValue<string>() == "/value/bandBottom/anchor/surfaceId")!["target"]!["id"] = "chain-floor";
                 if (variant == "record-record-pose-world")
-                    portal["references"]!.AsArray().Single(r => r!["path"]!.GetValue<string>() == "value.bandBottom")!["target"]!["scope"] = "World";
+                    foreach (var slot in portal["references"]!.AsArray().Where(r => r!["path"]!.GetValue<string>().StartsWith("/value/bandBottom/", StringComparison.Ordinal)))
+                        slot!["target"]!["scope"] = "World";
                 break;
             case "changed": first["value"]!["tags"]!.AsArray().Add("changed"); break;
             case "future-payload": root["payloadVersion"] = 2; break;
@@ -189,14 +203,16 @@ internal static partial class PrefabFixtures
             case "duplicate-slot":
                 var record = root["children"]!.AsArray().First(c => c!["key"]!["key"]!.GetValue<string>() == "room")!;
                 record["references"]!.AsArray().Add(record["references"]![0]!.DeepClone()); break;
-            case "unsupported-slot": first["references"] = new JsonArray(new JsonObject { ["path"] = "value.madeUp", ["target"] = new JsonObject { ["scope"] = "Local", ["kind"] = "Record", ["id"] = "room" } }); break;
+            case "unsupported-slot": first["references"] = new JsonArray(new JsonObject { ["path"] = "/value/madeUp", ["target"] = new JsonObject { ["scope"] = "Local", ["kind"] = "Record", ["id"] = "room" } }); break;
             case "wrong-payload-id": first["value"]!["id"] = "different"; break;
             case "missing-placement-field": first["value"]!.AsObject().Remove("x"); break;
             case "missing-light-field": root["children"]!.AsArray().First(c => c!["key"]!["kind"]!.GetValue<string>() == "Light")!["value"]!.AsObject().Remove("radius"); break;
             case "unknown-light-field": root["children"]!.AsArray().First(c => c!["key"]!["kind"]!.GetValue<string>() == "Light")!["value"]!["future"] = true; break;
             case "case-light-field": root["children"]!.AsArray().First(c => c!["key"]!["kind"]!.GetValue<string>() == "Light")!["value"]!["Radius"] = 4; break;
             case "infinite-transform": first["value"]!["scale"] = JsonNode.Parse("1e400"); break;
-            case "slot-scope-conflict": root["children"]!.AsArray().First(c => c!["key"]!["kind"]!.GetValue<string>() == "Light")!["references"]![0]!["target"]!["scope"] = "World"; break;
+            case "slot-scope-conflict":
+                root["children"]!.AsArray().First(c => c!["key"]!["key"]!.GetValue<string>() == "room-domain")!["references"]!.AsArray()
+                    .Single(r => r!["path"]!.GetValue<string>() == "/value/space/id")!["target"]!["scope"] = "World"; break;
             case "inconsistent-pose":
                 root["children"]!.AsArray().First(c => c!["key"]!["key"]!.GetValue<string>() == "room")!["localTransform"] = JsonNode.Parse("""{"position":{"x":1,"y":0,"z":0},"yawRadians":0,"scale":1}"""); break;
             default: throw new ArgumentException("Unknown prefab variant " + variant);
@@ -223,6 +239,8 @@ internal static partial class PrefabFixtures
             ("item.selection", "Selection", BoxBytes(0.1f, 0.1f, 0.1f)),
             ("light", "Light", Encoding.UTF8.GetBytes("public-fixture-light")),
             ("surface", "Surface", MapSurfacePatchCodec.Encode(Patch("leaf-support", 1, 1, 0))),
+            ("glow-light", "Light", MapLightFile.Write(GlowLight())),
+            ("deck-support", "Surface", MapSupportResourceFile.Write(DeckSupport())),
         })
         {
             var reference = source.Add(id, payload);
@@ -231,19 +249,20 @@ internal static partial class PrefabFixtures
         }
         var prefab = source.Add("hut", bytes);
         if (!refreshDigest) prefab = prefab with { Sha256 = Convert.ToHexStringLower(SHA256.HashData(AssetBytes("valid"))) };
-        var dependencies = new[] { "mesh", "material", "doorway.collider", "roof.collider", "item.selection", "light", "surface", "pool-material" };
+        var dependencies = new[] { "mesh", "material", "doorway.collider", "roof.collider", "item.selection", "light", "surface", "pool-material",
+            "glow-light", "deck-support" };
         resources.Add(Resource(prefab, "Prefab", variant == "cyclic-closure" ? new[] { "manifest" } : variant == "wrong-undeclared" ? [] :
             variant == "pool-material-undeclared" ? dependencies.Where(id => id != "pool-material").ToArray() : dependencies));
         var leaves = new JsonArray();
-        foreach (string id in new[] { "item", "doorway", "roof" })
+        foreach (string id in new[] { "item", "doorway", "roof", "deck", "lantern" })
             leaves.Add(new JsonObject
             {
                 ["id"] = id,
                 ["meshResourceId"] = "mesh",
-                ["supportResourceIds"] = variant == "wrong-surface" ? new JsonArray("surface") : new JsonArray(),
+                ["supportResourceIds"] = id == "deck" ? new JsonArray("deck-support") : variant == "wrong-surface" ? new JsonArray("surface") : new JsonArray(),
                 ["materialResourceIds"] = new JsonArray("material"),
                 ["lodResourceIds"] = new JsonArray(),
-                ["lightResourceIds"] = variant == "wrong-light" ? new JsonArray("light") : new JsonArray(),
+                ["lightResourceIds"] = id is "deck" or "lantern" ? new JsonArray("glow-light") : variant == "wrong-light" ? new JsonArray("light") : new JsonArray(),
                 ["sourceUnitsToMetres"] = 1,
                 ["renderBounds"] = JsonNode.Parse(id switch
                 {
@@ -258,7 +277,7 @@ internal static partial class PrefabFixtures
         foreach (JsonNode? leaf in leaves)
         {
             string id = leaf!["id"]!.GetValue<string>();
-            if (id == "item") leaf["selectionResourceId"] = "item.selection";
+            if (id is "item" or "deck" or "lantern") leaf["selectionResourceId"] = "item.selection";
             else leaf["collisionResourceId"] = id + ".collider";
         }
         if (variant == "wrong-unknown-asset") leaves.RemoveAt(0);
@@ -272,9 +291,20 @@ internal static partial class PrefabFixtures
         ["kind"] = kind,
         ["dependencies"] = new JsonArray(dependencies.Select(d => (JsonNode?)JsonValue.Create(d)).ToArray()),
     };
-    static MapPrefabReferenceSlot Slot(string path, MapPrefabChildKind kind, string id) => new(path, new(MapPrefabReferenceScope.Local, kind, id));
-    static MapSurfaceRef Surface(string id, MapSurfaceRole role) => new(id, MapLatticeFrame.ImportedMetreCentimetre, role, MapPresencePolicy.Native, null, null, new string('a', 64));
-    static MapSurfacePatch Patch(string id, int width, int depth, int height) => new()
+    internal static MapPrefabReferenceSlot Slot(string path, MapPrefabChildKind kind, string id,
+        MapPrefabReferenceScope scope = MapPrefabReferenceScope.Local) => new(path, new(scope, kind, id));
+    internal static MapPrefabReferenceSlot Surf(string path, string id, MapPrefabReferenceScope scope = MapPrefabReferenceScope.Local) =>
+        Slot(path, MapPrefabChildKind.Surface, id, scope);
+    internal static MapPrefabReferenceSlot Anchor(string surfaceId) => Surf("/anchor/surfaceId", surfaceId);
+    // A record reference consumes one slot for its ID and one for its anchor surface, with one scope.
+    internal static MapPrefabReferenceSlot[] Ref(string path, string id, string anchorSurface, MapPrefabReferenceScope scope = MapPrefabReferenceScope.Local) =>
+        new[] { Slot(path + "/id", MapPrefabChildKind.Record, id, scope), Surf(path + "/anchor/surfaceId", anchorSurface, scope) };
+    internal static MapPrefabReferenceSlot[] Slots(params object[] slots) =>
+        slots.SelectMany(s => s as MapPrefabReferenceSlot[] ?? new[] { (MapPrefabReferenceSlot)s }).ToArray();
+    internal static MapPrefabSurfaceChild SurfaceChild(string id, MapSurfaceRole role, MapSurfacePatch patch) =>
+        new(new(MapPrefabChildKind.Surface, id), Surface(id, role), new[] { patch }) { References = Slots(Surf("/patches/0/key/surfaceId", id)) };
+    internal static MapSurfaceRef Surface(string id, MapSurfaceRole role) => new(id, MapLatticeFrame.ImportedMetreCentimetre, role, MapPresencePolicy.Native, null, null, new string('a', 64));
+    internal static MapSurfacePatch Patch(string id, int width, int depth, int height) => new()
     {
         Key = new(id, 0, 0),
         Width = width,

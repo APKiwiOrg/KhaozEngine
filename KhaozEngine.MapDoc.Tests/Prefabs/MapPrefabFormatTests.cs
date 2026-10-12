@@ -92,7 +92,8 @@ public sealed class MapPrefabFormatTests
     {
         var asset = MapPrefabFile.Read(PrefabFixtures.AssetBytes("record-record-pose-world"), "hut");
         var portal = asset.Children.OfType<MapPrefabRecordChild>().Single(c => c.Key.Key == "room-portal");
-        Assert.Equal(MapPrefabReferenceScope.World, portal.References.Single(r => r.Path == "value.bandBottom").Target.Scope);
+        Assert.Equal(MapPrefabReferenceScope.World, portal.References.Single(r => r.Path == "/value/bandBottom/id").Target.Scope);
+        Assert.Equal(MapPrefabReferenceScope.World, portal.References.Single(r => r.Path == "/value/bandBottom/anchor/surfaceId").Target.Scope);
     }
 
     [Fact]
@@ -194,8 +195,10 @@ public sealed class MapPrefabFormatTests
         var instance = f.Document.Prefabs!.Instances.Single();
         var binding = instance.Bindings.Entries.Single() with { NumericId = numeric };
         instance = instance with { Bindings = new(new[] { binding }) };
+        // A retired transfer keeps its own reservation, distinct from every live binding.
+        var retired = binding with { WorldId = "retired-item", NumericId = numeric - 1 };
         f.Document.Prefabs = new(1, 1, new[] { instance },
-            new[] { new MapPrefabBindingTransfer("retired", binding) { Retired = true } })
+            new[] { new MapPrefabBindingTransfer("retired", retired) { Retired = true } })
         {
             Attachments = new[] { new MapPrefabAttachmentTransfer("a/item", "support", new string('a', 64), MapPrefabAttachmentKind.Support,
                 new[] { new MapPrefabAttachedChild(new(MapPrefabChildKind.Surface, "floor"), "world-floor", new("world-floor", numeric, -numeric),

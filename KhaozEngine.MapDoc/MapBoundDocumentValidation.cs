@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.MapDoc.Assets;
+using KhaozEngine.MapDoc.Identity;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Water;
@@ -17,7 +18,7 @@ public static class MapBoundDocumentValidation
         ArgumentNullException.ThrowIfNull(assets);
         ValidateLocal(document, registry);
         RequireRoots(document.NativeAssets, assets);
-        MapPrefabValidation.RequireDocument(document, assets);
+        MapPrefabIdentity.Require(document, assets);
         RequireWaterMaterials(document.Water, assets);
         foreach (MapPlacement placement in document.Placements) RequireClosureAsset(placement, assets);
     }
@@ -40,7 +41,8 @@ public static class MapBoundDocumentValidation
     /// <summary>Validates one slice of a document's content, such as one stored tile, with the rules and messages
     /// <see cref="Validate"/> applies to it. <paramref name="globals"/> is the content-free document, already
     /// accepted by <see cref="ValidateLocal"/> and <see cref="RequireRoots"/>. <paramref name="numericIds"/>
-    /// accumulates across slices. Duplicate string IDs across slices stay with the caller.</summary>
+    /// accumulates across slices and starts with the prefab reservations. Duplicate string IDs across slices and
+    /// prefab identity collisions stay with the caller's shared registry.</summary>
     internal static void ValidateContent(MapDocument globals, IReadOnlyDictionary<string, MapSurfaceRef> surfaces,
         MapTileContent content, HashSet<long> numericIds, MapAssetClosure assets)
     {

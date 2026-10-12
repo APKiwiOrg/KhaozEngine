@@ -29,6 +29,9 @@ public sealed record MapPrefabInstance(string Id, string ResourceId, string Reso
 public sealed record MapPrefabAsset(int PayloadVersion, string Id, IReadOnlyList<MapPrefabChild> Children)
 {
     public IReadOnlyList<MapPrefabReference> Roofs { get; init; } = Array.Empty<MapPrefabReference>();
+    /// <summary>Asset-local attachment dispositions. Each row suppresses one implicit (placement, kind, resource)
+    /// edge and names captured explicit children. Omitted when empty.</summary>
+    public IReadOnlyList<MapPrefabLocalMaterialization> MaterializedAttachments { get; init; } = Array.Empty<MapPrefabLocalMaterialization>();
 }
 
 public enum MapPrefabChildKind { Placement, Surface, Record, Storey, WaterMedium, WaterBody, Light, Marker, RoofLink, RoofGroup }

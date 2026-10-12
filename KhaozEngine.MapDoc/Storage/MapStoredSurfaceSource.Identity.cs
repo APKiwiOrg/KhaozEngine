@@ -6,7 +6,8 @@ namespace KhaozEngine.MapDoc.Storage;
 
 public sealed partial class MapStoredSurfaceSource
 {
-    /// <summary>The manifest-level checks the loaded document runs, through the same validation code.</summary>
+    /// <summary>The manifest-level checks the loaded document runs, through the same validation code. Prefab
+    /// reservations against standalone content follow in <see cref="IdentityContentDigest"/>.</summary>
     internal void RequireIdentityManifest(MapAssetClosure assets)
     {
         MapBoundDocumentValidation.ValidateLocal(_globals);

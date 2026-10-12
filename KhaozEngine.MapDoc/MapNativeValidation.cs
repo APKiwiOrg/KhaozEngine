@@ -113,19 +113,39 @@ internal static class MapNativeValidation
             errors.Add(prefix + "support search values must be finite with nonnegative extents.");
     }
 
-    // Reservation accepts newly imported placements above the old mark, but still checks their IDs.
+    // Reservation accepts newly imported placements above the old mark, but still checks their IDs. Prefab
+    // reservations come first, so a stored document that seeds them before its tiles reports the same message.
     internal static long ValidateNumericIds(MapDocument doc, List<string> errors, bool requireHighWater = true)
     {
         long maximum = doc.NumericIdHighWaterMark;
         if (maximum < 0)
             errors.Add("numericIdHighWaterMark must be nonnegative.");
         var seen = new HashSet<long>();
+        foreach (var (owner, id) in PrefabNumericIds(doc))
+        {
+            if (id <= 0) errors.Add($"{owner}: numericId must be positive when present.");
+            if (!seen.Add(id)) errors.Add($"{owner}: duplicate numericId '{id}'.");
+            if (requireHighWater && id > doc.NumericIdHighWaterMark) errors.Add($"{owner}: numericId exceeds numericIdHighWaterMark.");
+            maximum = System.Math.Max(maximum, id);
+        }
         foreach (MapPlacement placement in doc.Placements)
         {
             ValidateNumericId(placement, doc.NumericIdHighWaterMark, seen, errors, requireHighWater);
             if (placement.NumericId is { } id) maximum = System.Math.Max(maximum, id);
         }
         return maximum;
+    }
+
+    /// <summary>The numeric IDs prefab state reserves: every instance binding, live or removed, and every retired
+    /// transfer. An active transfer shares the numeric ID of its standalone placement and reserves nothing more.</summary>
+    internal static IEnumerable<(string Owner, long Id)> PrefabNumericIds(MapDocument doc)
+    {
+        if (doc.Prefabs is not { } set) yield break;
+        foreach (var instance in set.Instances ?? [])
+            foreach (var binding in instance?.Bindings?.Entries ?? [])
+                if (binding?.NumericId is { } id) yield return ($"prefab binding '{binding.WorldId}'", id);
+        foreach (var transfer in set.Transfers ?? [])
+            if (transfer is { Retired: true, Binding.NumericId: { } id }) yield return ($"retired transfer '{transfer.Binding.WorldId}'", id);
     }
 
     /// <summary>One placement's numeric ID. <paramref name="seen"/> accumulates the IDs of every placement checked

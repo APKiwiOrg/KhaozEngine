@@ -168,6 +168,9 @@ neighborhood query.
 
 `MapBackendPoseAdapter` is the explicit frame-local binary32 approximation of a retained `MapEffectiveTransform`.
 `ErrorMetres` bounds origin, scale, quaternion and local-coordinate rounding. Semantic support stays exact.
+Collider registration bounds compose every nested child in binary32 with `Pose.Compose`, the same operation used
+by the installer. They retain the rounded leaf poses before applying the full registration-origin allowance, and
+union the resulting extents with mathematical bounds. Intermediate offsets may exceed the final leaf extent.
 `MapPrefabSupportBounds.Bounds` measures transformed physical support without narrowing occupied-space partitions.
 Each terrain chunk retains outward-rounded `CanonicalBounds` alongside its submitted mesh. Its `Bounds` unions
 both, so exact support crossing a tile seam survives inward float vertex rounding. World bounds include these

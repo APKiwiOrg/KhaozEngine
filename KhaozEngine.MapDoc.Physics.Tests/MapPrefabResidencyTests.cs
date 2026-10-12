@@ -208,4 +208,30 @@ public class MapPrefabResidencyTests
         Assert.True(bounds.MinX <= installedCentre - 0.03125);
         Assert.True(bounds.MaxX >= installedCentre + 0.03125);
     }
+
+    [Theory]
+    [InlineData(4, 0)]
+    [InlineData(16, 0)]
+    [InlineData(4, 30336)]
+    [InlineData(16, 1000000)]
+    [InlineData(16, -1000000)]
+    public void NestedCompoundBounds_ContainInstalledLeafAndCrossedTile(int levels, float originX)
+    {
+        var world = NativeWorldFixtures.BuildNestedCompound(levels);
+        var bounds = world.Placements.Single().ColliderBounds!.Value;
+        using var physics = new BepuPhysicsWorld();
+        physics.Rebase(new(originX, 0, 0));
+        using var registration = MapPhysicsRegistration.Register(world, physics);
+        Assert.True(physics.Raycast(new(65 - originX, 0, 0), -Vector3.UnitX, 2, out var hit));
+        Assert.True(registration.TryOwner(hit.Body!.Value, out var owner));
+        Assert.Equal("nested-compound", owner.OwnerId);
+        double installedFace = (double)originX + hit.Point.X;
+        if (originX == 0) Assert.Equal(64.015625, installedFace);
+        Assert.True(bounds.MaxX >= installedFace, $"origin {originX}, {levels} levels, installed {installedFace:R}, maximum {bounds.MaxX:R}");
+        // Independent geometry expectation. At every origin, rounded flattening leaves a zero-centred child.
+        Assert.True(bounds.MaxX >= 64.015625);
+        Assert.True(world.Bounds.MaxX >= 64.015625);
+        Assert.Contains(MapResidencyOwnership.Build(world, Grids).Single().Membership, t => t.X == 1);
+        Assert.Contains(MapNavTiling.Partition(world, Grids, Nav), t => t.Coord.X == 1);
+    }
 }

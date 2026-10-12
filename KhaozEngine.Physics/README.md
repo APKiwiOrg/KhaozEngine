@@ -120,6 +120,7 @@ explicitly, it is in no umbrella). Depends only on `System.Numerics`.
   `WithMass(mass)`, plus optional `LinearVelocity`/`AngularVelocity`/`SleepThreshold`. Mass &lt;= 0 = an
   infinite-mass (kinematic) body: unmoved by gravity/impacts, moved only by its velocity.
 - **`Pose`** - world position + orientation record struct. `Pose.At(position)` for identity orientation,
+  `parent.Compose(child)` for compound flattening with each binary32 result retained before the next level,
   `Pose.Identity` for the origin (register a body whose geometry already carries its world position, e.g. a
   terrain chunk collision mesh, at this pose).
 - **`PhysicsGroundProbe`** - the OPT-IN unified-terrain adapter: wraps an `IPhysicsWorld` and exposes

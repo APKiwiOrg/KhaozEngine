@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Prefabs;
@@ -13,15 +14,34 @@ internal static class MapRegistrationBounds
     internal static MapBox3 Of(PhysicsShape shape, MapEffectiveTransform transform)
     {
         Quaternion orientation = MapBackendPoseAdapter.Pose(transform, WorldFrame.Origin).Orientation;
-        MapBox3 local = MapShapeBounds.Of(shape, new Pose(Vector3.Zero, orientation));
+        PhysicsShape installed = Flatten(shape);
+        MapBox3 local = MapShapeBounds.Of(installed, new Pose(Vector3.Zero, orientation));
         var (sin, cos) = Math.SinCos(transform.YawRadians * 0.5);
         MapBox3 canonical = MapShapeBounds.Of(shape, new MapDoublePose(new(transform.X, transform.Y, transform.Z), 0, sin, 0, cos));
-        double ex = AxisError(shape, orientation, transform.X, local.MinX, local.MaxX, true);
-        double ey = AxisError(shape, orientation, transform.Y, local.MinY, local.MaxY, false);
-        double ez = AxisError(shape, orientation, transform.Z, local.MinZ, local.MaxZ, true);
+        double ex = AxisError(installed, orientation, transform.X, local.MinX, local.MaxX, true);
+        double ey = AxisError(installed, orientation, transform.Y, local.MinY, local.MaxY, false);
+        double ez = AxisError(installed, orientation, transform.Z, local.MinZ, local.MaxZ, true);
         return canonical.Union(new MapBox3(
             Lower(transform.X, local.MinX, ex), Lower(transform.Y, local.MinY, ey), Lower(transform.Z, local.MinZ, ez),
             Upper(transform.X, local.MaxX, ex), Upper(transform.Y, local.MaxY, ey), Upper(transform.Z, local.MaxZ, ez)));
+    }
+
+    // The installer starts with each outer child pose and rounds at every nested composition. Its intermediate
+    // offsets can dwarf the final leaf extent, so an allowance based on the final radius cannot replace this path.
+    // Pose.Compose is shared with both static and dynamic compound installation.
+    static PhysicsShape Flatten(PhysicsShape shape)
+    {
+        if (shape is not CompoundShape compound) return shape;
+        var leaves = new List<CompoundChild>();
+        foreach (var child in compound.Children) Add(child.Shape, child.Local);
+        return new CompoundShape(leaves.ToArray());
+
+        void Add(PhysicsShape member, Pose local)
+        {
+            if (member is CompoundShape nested)
+                foreach (var child in nested.Children) Add(child.Shape, local.Compose(child.Local));
+            else leaves.Add(new(member, local));
+        }
     }
 
     static double AxisError(PhysicsShape shape, Quaternion orientation, double position, double min, double max, bool planar)

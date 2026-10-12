@@ -81,6 +81,17 @@ hillshade and the configured steep-slope multiplier. Water blends the depth pale
 then receives shoreline colour when dry, non-void pixels lie within the configured Chebyshev radius,
 including across chunk edges.
 
+Footprints are collected over the chunk expanded by `BuildingShadowOffsetMetres.Length()` plus
+one raster pixel. `WorldMapSymbolResolver.Matches` tests every non-null rule field with ordinal
+archetype and all-of tag matching. `SymbolFor` selects the first matching rule, then the blocking
+fallback or hidden symbol. All building shadows draw first. Symbols then draw by kind in declaration
+order and ascending footprint `Id` within each kind.
+
+Buildings and bridges use oriented rectangles. Trees and obstacles use inscribed ellipses. Walls
+follow the longer local axis, choosing local x on a tie, with the configured wall width and no outline.
+Other outlines stay inside the shape by subtracting its inset fill coverage. Each pixel uses a fixed
+four by four subsample pattern. Colour alpha multiplies coverage when compositing onto the canvas.
+
 Colour calculations use the stored channel values directly. Quantization clamps each channel to
 zero through one, rounds to the nearest byte, and sets alpha to 255. Matching source data, revision
 and style produce identical bytes on one machine. Chunk images match the corresponding pixels of a

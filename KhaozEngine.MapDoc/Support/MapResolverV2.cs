@@ -36,6 +36,7 @@ public static class MapResolverV2
         foreach (var placement in effective)
         {
             var pose = transforms[MapEffectiveContext.Key(MapPrefabChildKind.Placement, placement.Id)];
+            MapResourceTransform.RequireWithinWorld(placement.Id, pose.X, pose.Y, pose.Z);
             _ = new MapResourceTransform(pose).Point(new(default, default, default));
             float presentationScale = (float)pose.Scale, presentationYaw = (float)pose.YawRadians;
             if (!float.IsFinite(presentationScale) || presentationScale <= 0 || !float.IsFinite(presentationYaw))

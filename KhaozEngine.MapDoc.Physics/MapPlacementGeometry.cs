@@ -86,8 +86,9 @@ public static class MapPlacementShapes
         return result.AsReadOnly();
     }
 
-    /// <summary>The world bounds of one resolved placement: the union of its collider bounds and its interaction
-    /// envelope bounds, as <see cref="Resolve"/> computes them, or null when <paramref name="shapes"/> declares neither
+    /// <summary>The tight world bounds of one resolved placement: the union of its collider at the resolved pose and
+    /// its interaction envelope, excluding the registration-origin allowances in <see cref="MapPlacementGeometry.ColliderBounds"/>.
+    /// Returns null when <paramref name="shapes"/> declares neither
     /// a collider nor a selection volume. Unlike <see cref="Resolve"/> it never refuses a missing interaction source,
     /// so an editor can report an edit of such a placement. Throws <see cref="ArgumentException"/> when
     /// <paramref name="shapes"/> belongs to another asset, and <see cref="MapDocumentException"/> as
@@ -103,7 +104,7 @@ public static class MapPlacementShapes
         if (shapes.Collider is null && shapes.Selection is null) return null;
         MapPlacementGeometry geometry = Build(placement, shapes);
         MapBox3 envelope = geometry.Envelope.Bounds;
-        return geometry.ColliderBounds is { } collider ? collider.Union(envelope) : envelope;
+        return geometry.Collider is { } collider ? MapShapeBounds.Of(collider, geometry.WorldPose).Union(envelope) : envelope;
     }
 
     static MapPlacementGeometry Build(MapResolvedPlacement placement, MapAssetShapes shapes, MapEffectiveTransform? precise = null)

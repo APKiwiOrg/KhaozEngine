@@ -10,6 +10,7 @@ namespace KhaozEngine.MapDoc.Prefabs;
 public sealed record MapResourceTransform(MapEffectiveTransform Transform)
 {
     internal const long Quantum = 1048576;
+    internal const double MaxCoordinateMetres = 1_000_000;
     public MapExactPoint Point(MapExactPoint local)
     {
         var xz = Xz(new(local.X, local.Z));
@@ -31,10 +32,17 @@ public sealed record MapResourceTransform(MapEffectiveTransform Transform)
 
     internal static MapExactValue Freeze(double value)
     {
-        if (!double.IsFinite(value) || Math.Abs(value) > 1000000)
+        if (!double.IsFinite(value) || Math.Abs(value) > MaxCoordinateMetres)
             throw new MapDocumentException("Effective coordinate is not representable within the installed metre limit.");
         try { return new(checked((long)Math.Round(value * Quantum, MidpointRounding.ToEven)), Quantum); }
         catch (OverflowException) { throw new MapExactOverflowException(); }
+    }
+
+    internal static void RequireWithinWorld(string owner, double x, double y, double z)
+    {
+        if (Math.Abs(x) > MaxCoordinateMetres || Math.Abs(y) > MaxCoordinateMetres || Math.Abs(z) > MaxCoordinateMetres)
+            throw new MapDocumentException(FormattableString.Invariant(
+                $"Static '{owner}' at ({x}, {y}, {z}) lies beyond {MaxCoordinateMetres:N0} m from the world origin on an axis."));
     }
 
     public Vector3 ToFrame(MapExactPoint world, WorldFrame frame)

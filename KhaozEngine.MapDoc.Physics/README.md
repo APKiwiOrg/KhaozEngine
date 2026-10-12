@@ -85,8 +85,9 @@ covers the placement and asset identities, both resource digests, the float bits
 raise, and `MapInteractionPolicy.Hash`. A combined scale that is not finite and positive, an asset with neither a selection
 volume nor a collider and an envelope that cannot be swept refuse with `MapDocumentException`.
 
-`MapPlacementShapes.Bounds` bounds one resolved placement: the union of its collider bounds and its interaction
-envelope bounds, computed as `Resolve` computes them. It returns null instead of refusing when the asset declares
+`MapPlacementShapes.Bounds` reports the tight union of the collider at the resolved pose and its interaction
+envelope. Registration-origin allowances stay in `ColliderBounds` for world residency and navigation, rather than
+changing this reported interaction extent. It returns null instead of refusing when the asset declares
 neither a collider nor a selection volume, so an editor can size an edit of such a placement. World builds keep
 refusing it.
 
@@ -136,6 +137,7 @@ and collider floors duplicated by support surfaces are refused.
 `Build` refuses a partial window, options that do not match the resolver identity, a missing legacy support height
 for resolver 1, every resolution, placement and terrain refusal, a static beyond `MapWorldBuilder.MaxCoordinateMetres`
 (1,000,000 m) on an axis and two statics with one owner id.
+The released world-limit refusal precedes effective placement-coordinate representability checks.
 
 ### Feature query diagnostics
 

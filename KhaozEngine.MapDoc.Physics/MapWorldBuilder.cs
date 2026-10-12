@@ -8,6 +8,7 @@ using System.Text.Json;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Identity;
+using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
@@ -22,7 +23,7 @@ namespace KhaozEngine.MapDoc.Physics;
 public static class MapWorldBuilder
 {
     /// <summary>The largest static position, in metres from the world origin on any axis.</summary>
-    public const double MaxCoordinateMetres = 1_000_000;
+    public const double MaxCoordinateMetres = MapResourceTransform.MaxCoordinateMetres;
 
     // The backend capsule feature query's capture limits.
     const int MaxFeatureLeaves = 64, MaxFeatureMeshTriangles = 65_536;
@@ -149,7 +150,7 @@ public static class MapWorldBuilder
         {
             if (placement.Collider is null) continue;
             Vector3 p = placement.WorldPose.Position;
-            RequireWithinWorld(placement.PlacementId, p.X, p.Y, p.Z);
+            MapResourceTransform.RequireWithinWorld(placement.PlacementId, p.X, p.Y, p.Z);
             Add(new(placement.PlacementId, MapStaticKind.Placement, placement.Collider, p, placement.WorldPose.Orientation,
                 placement.ColliderBounds!.Value, placement.Digest, Array.Empty<MapFaceKey>())
             { EffectiveTransform = placement.EffectiveTransform });
@@ -157,7 +158,7 @@ public static class MapWorldBuilder
         foreach (MapTerrainChunk chunk in terrain.Chunks)
         {
             MapSubmissionAnchor a = chunk.Anchor;
-            RequireWithinWorld(chunk.ChunkId, a.X, a.Y, a.Z);
+            MapResourceTransform.RequireWithinWorld(chunk.ChunkId, a.X, a.Y, a.Z);
             var position = new Vector3(a.X, a.Y, a.Z);
             Add(new(chunk.ChunkId, MapStaticKind.TerrainChunk, chunk.Shape, position, Quaternion.Identity,
                 chunk.Bounds, chunk.Digest, chunk.TriangleOwners));
@@ -170,13 +171,6 @@ public static class MapWorldBuilder
                 throw new MapDocumentException($"Two statics share the owner id '{descriptor.OwnerId}'.");
             statics.Add(descriptor);
         }
-    }
-
-    static void RequireWithinWorld(string owner, double x, double y, double z)
-    {
-        if (Math.Abs(x) > MaxCoordinateMetres || Math.Abs(y) > MaxCoordinateMetres || Math.Abs(z) > MaxCoordinateMetres)
-            throw new MapDocumentException(FormattableString.Invariant(
-                $"Static '{owner}' at ({x}, {y}, {z}) lies beyond {MaxCoordinateMetres:N0} m from the world origin on an axis."));
     }
 
     /// <summary>The feature query limits a static meets, measured per installed leaf as the backend measures it.</summary>

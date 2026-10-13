@@ -1144,8 +1144,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     content in a framebuffer-int and an `IDesignViewport` overload, both with a caller-held
     `NameplatePlacementState`. Warm template draws allocate nothing. The legacy `Nameplate` and `NameplateStyle`
     API is now a built-in template with unchanged draw calls. A legacy panel capped narrower than the "..."
-    glyphs grows to fit them, and a legacy style whose values change every frame rebuilds its template each
-    frame, so fade through a template and `NameplateContent.Opacity` instead. The point rules come from
+    glyphs grows to fit them. The legacy cache keys on geometry, so a colour fade keeps its template, but a style
+    whose geometry changes every frame rebuilds its template each frame, so animate that through a template
+    instead. The point rules come from
     `AttachPoint` and `Attach` in Primitives, the outline from `TextOutline` in Render2D. Template files, an
     editor and a mod surface are tracked in https://github.com/APKiwiOrg/KhaozEngine/issues/1378.
 

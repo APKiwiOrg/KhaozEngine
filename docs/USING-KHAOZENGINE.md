@@ -12813,10 +12813,12 @@ itself is `TextOutline` in `KhaozEngine.Render2D` (`batch.DrawStringOutlined`, `
 point maths is `Attach.PointOf`, `Attach.Resolve` and `Attach.Union` in `KhaozEngine.Primitives`.
 
 The legacy `Nameplate` and `NameplateStyle` API now runs as a built-in template. Its draw calls are unchanged,
-and a warmed style with up to four bars reuses a cached template without allocating. Two limits remain on that
-path. A `MaxWidth` narrower than the "..." glyphs plus both paddings lets the panel grow to fit the ellipsis
-instead of overflowing it. A style whose values change every frame (a panel alpha fade, say) is a new cache key
-each frame and rebuilds its template, so a plate that fades should use a template and `NameplateContent.Opacity`.
+and a warmed style with up to four bars reuses a cached template without allocating. The cache keys on geometry
+and keeps 16 per thread, so a style that changes only its panel, border or title shadow colour (a panel alpha
+fade, say) keeps its template. Two limits remain on that path. A `MaxWidth` narrower than the "..." glyphs plus
+both paddings lets the panel grow to fit the ellipsis instead of overflowing it. A style whose geometry changes
+every frame (an animated padding or font scale, say) is a new cache key each frame and rebuilds its template, so
+animate such a plate through a template instead.
 
 Template files, an editor and a mod surface for templates are future work, tracked in
 [KhaozEngine#1378](https://github.com/APKiwiOrg/KhaozEngine/issues/1378).

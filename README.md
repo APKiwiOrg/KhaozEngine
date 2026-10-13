@@ -154,6 +154,14 @@ without choosing a backend. Its profiles retain pure captured data after the cal
 world, while the caller remains responsible for static content and origin lifetime during capture and profile
 construction.
 
+Local ordinary contact movement uses `GroundMoveContext` from `KhaozEngine.Movement`, or the input-driven
+`CharacterController3D` from `KhaozEngine.Game.Render3D`. Both select the Locomotion binding with Contact tuning,
+a non-Legacy water policy, physics, a resident registration and a boundary. A medium delegate also requires an
+`IMovementWaterField`. Dispose the local head to release its engine-created view. Caller-supplied context views
+and physics sources stay borrowed. Movement has no renderer dependency. The Game.Render3D package carries the
+controller and retains its existing Locomotion and Physics references. Resolver-1 MapDoc contexts remain legacy-only
+and refuse contact use with a message naming native G1b.
+
 `KhaozEngine.Automation` is opt-in in a stronger sense than the rest, and the reason is a constraint rather than a
 preference: a shipping client must CONTAIN no automation, not merely refuse to enable it. So a game head references
 it under `Condition="'$(Configuration)' == 'Debug'"`, exactly as it already does for a Debug-only in-process server.

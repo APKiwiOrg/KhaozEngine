@@ -665,8 +665,12 @@ See the [package README](../KhaozEngine.Movement/README.md) for the exact public
 
 The rest of Movement is the composition seam for absolute ground movement and physics-backed navigation.
 `GroundMoveContext` adapts absolute ground, normal, bounds and medium providers to a caller-owned local-origin
-`IPhysicsWorld`, and changes only the state position's frame during a sequential step. It does not step,
-dispose or rebase that world. `PhysicsNavBake.Capture` samples static columns through
+`IPhysicsWorld`, and changes only the state position's frame during a sequential step. Its ordinary contact overload
+accepts the Locomotion field, registration and boundary, caches tuning validation and owns only an engine-created
+query view. Its public construction restriction keeps resolver-1 MapDoc contexts legacy-only until native G1b.
+It does not step, dispose or rebase the physics source. Movement gains no renderer dependency. The input adapter
+`CharacterController3D` stays in Game.Render3D, uses the same Locomotion binding and owns its created view.
+`PhysicsNavBake.Capture` samples static columns through
 `PhysicsColumnProbe`, freezes absolute surface heights, headroom and caller-defined `uint` area tags, and keeps
 the classifier and world out of the resulting immutable column store. `PhysicsNavBakeOptions` supplies checked
 half-open bounds, probe settings and cell, layer, surface and edge budgets. Missing columns and outer-edge misses

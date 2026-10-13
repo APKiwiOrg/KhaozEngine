@@ -95,6 +95,37 @@ origin change or a source identity change during a step is rejected at the exist
 The context does not expose a public `Step` method. Its internal adapter is the shared frame seam used while a
 profile is being built.
 
+Ordinary contact movement uses this overload. The original overloads retain legacy movement:
+
+```csharp
+public GroundMoveContext(
+    Func<float, float, float> groundHeight,
+    Func<float, float, Vector3>? groundNormal,
+    IPhysicsWorld? physics,
+    Func<float, float, Vector2>? clampXz,
+    Func<float, float, float, MovementMedium>? medium,
+    IPhysicsWorldQueryView? movementQueries,
+    IMovementWaterField? movementWaterField,
+    OrdinaryMovementRegistration? movementRegistration,
+    MovementBoundary? movementBoundary,
+    string? legacyOnlyContactRefusal = null);
+```
+
+Select `MoveTuning.Controller = MovementControllerKind.Contact` and a non-Legacy `Water` policy. The registration,
+boundary and certified query capabilities are required. `SupportsContactController` records the construction's
+capabilities. Tuning is validated on first use and cached by value. A medium delegate requires a field. For contact
+movement, `Medium` is one absolute-coordinate point delegate derived from that field and the last admitted tuning.
+Approach pacing uses the selected water policy. Actual movement uses the certified water trace under a lease.
+The dry traversal helper remains legacy-only and cannot bypass contact water proof.
+
+The context implements `IDisposable`. A supplied `MovementQueries` view remains borrowed. Without one, a contact
+construction creates one selected view and releases it on disposal. It never disposes the physics source.
+`legacyOnlyContactRefusal` lets a producer record a restriction when constructing the context, before tuning is
+known. Every later contact use throws `NotSupportedException` with that message. Resolver-1 MapDoc contexts set
+`Resolver-1 MapDoc contexts are legacy-only. Native contact movement requires G1b.` No production friend access is
+required. Movement depends on Locomotion, Navigation and Physics, with no renderer dependency. The local input
+controller lives in `KhaozEngine.Game.Render3D` and selects the same binding through its own Update overload.
+
 ## Bounded static physics capture
 
 `PhysicsNavBakeOptions` is an immutable record with this exact parameter list and defaults:

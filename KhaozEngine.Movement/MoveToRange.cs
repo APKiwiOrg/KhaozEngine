@@ -133,7 +133,8 @@ public sealed partial class MoveToRange
         if (context.Medium is not { } medium) return true;
         float feetY = body.Position.Y - tuning.CapsuleHalfHeight;
         MovementMedium sample = medium(body.Position.X, body.Position.Z, feetY);
-        if (!sample.InWater) return true;
+        if (!sample.InWater || tuning.Controller == MovementControllerKind.Contact &&
+            !context.IsSwimmingForPacing(body, tuning, sample)) return true;
         float floatLine = sample.WaterSurfaceY - tuning.SwimSurfaceSubmersionFraction * (2f * tuning.CapsuleHalfHeight);
         double band = Math.Max(tuning.StepHeight, GroundTraversalProbe.ArrivalTolerance);
         return !(Math.Abs((double)feetY - floatLine) <= band);

@@ -117,6 +117,6 @@ public sealed partial class DirectMoveToRange
         Func<float, float, float, MovementMedium>? medium = _stepContext?.Medium;
         if (medium is null) return true;
         Vector3 feet = Feet(predicted, tuning);
-        return !CharacterMovement.ResolveSwimming(predicted.Swimming, medium(feet.X, feet.Z, feet.Y), feet.Y, tuning);
+        return !_stepContext!.IsSwimmingForPacing(predicted, tuning, medium(feet.X, feet.Z, feet.Y));
     }
 }

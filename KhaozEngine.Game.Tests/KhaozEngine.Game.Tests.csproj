@@ -15,6 +15,7 @@
     <PackageReference Include="BepuPhysics" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="../KhaozEngine.Server.Tests/NetWorld/Fixtures/ObservedPhysicsWorld.cs" Link="Game/Fixtures/ContactLifecyclePhysics.cs" />
     <!-- A captured real one-sided building collision mesh (a Ruinborne house with eaves/overhangs), used as a
          realistic regression fixture for the swept resolver: complex one-sided geometry with eaves is exactly where
          the resolver's one-sided-mesh handling must not pin or float the capsule. -->

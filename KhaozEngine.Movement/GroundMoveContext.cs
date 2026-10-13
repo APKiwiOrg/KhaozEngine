@@ -8,7 +8,7 @@ namespace KhaozEngine.Movement;
 /// <summary>Ground movement providers in absolute world metres, adapted to the physics world's current origin.
 /// The caller owns the physics world and calls this context sequentially. Providers must not rebase the world
 /// or recursively step the context. Rebase only between steps.</summary>
-public sealed partial class GroundMoveContext
+public sealed partial class GroundMoveContext : IDisposable
 {
     private GroundMoveContext? _dryContext;
 
@@ -25,19 +25,41 @@ public sealed partial class GroundMoveContext
         Func<float, float, Vector2>? clampXz,
         Func<float, float, float, MovementMedium>? medium,
         IPhysicsWorldQueryView? movementQueries)
+        : this(groundHeight, groundNormal, physics, clampXz, medium, movementQueries,
+            null, null, null, legacyOnlyContactRefusal: null, contactConstruction: false)
+    {
+    }
+
+    private GroundMoveContext(Func<float, float, float> groundHeight,
+        Func<float, float, Vector3>? groundNormal, IPhysicsWorld? physics,
+        Func<float, float, Vector2>? clampXz, Func<float, float, float, MovementMedium>? medium,
+        IPhysicsWorldQueryView? movementQueries, IMovementWaterField? movementWaterField,
+        OrdinaryMovementRegistration? movementRegistration, MovementBoundary? movementBoundary,
+        string? legacyOnlyContactRefusal, bool contactConstruction)
     {
         GroundHeight = groundHeight ?? throw new ArgumentNullException(nameof(groundHeight));
         if (movementQueries is not null && (physics is null || !ReferenceEquals(movementQueries.SourceWorld, physics)))
             throw new ArgumentException("Movement queries must belong to the complete physics world.", nameof(movementQueries));
         GroundNormal = groundNormal;
         Physics = physics;
-        MovementQueries = movementQueries;
         ClampXz = clampXz;
-        Medium = medium;
+        _providedMedium = medium;
+        MovementWaterField = movementWaterField;
+        MovementRegistration = movementRegistration;
+        MovementBoundary = movementBoundary;
+        _legacyOnlyContactRefusal = legacyOnlyContactRefusal;
+        _contactConstruction = contactConstruction;
+        MovementQueries = CreateMovementView(movementQueries);
+        SupportsContactController = contactConstruction && legacyOnlyContactRefusal is null &&
+            physics is not null && movementRegistration is not null && movementBoundary is not null &&
+            (medium is null || movementWaterField is not null) && MovementQueries is IPhysicsQueryLeaseSource &&
+            MovementQueries is IPhysicsCapsuleContacts && MovementQueries is IPhysicsSupportFootprint &&
+            MovementQueries is IPhysicsCapsuleSweep;
+        Medium = movementWaterField is null ? medium : FieldMedium;
         _localHeight = LocalHeight;
         _localNormal = groundNormal is null ? null : LocalNormal;
         _localClamp = clampXz is null ? null : LocalClamp;
-        _localMedium = medium is null ? null : LocalMedium;
+        _localMedium = Medium is null ? null : LocalMedium;
     }
 
     /// <summary>Absolute ground height at absolute XZ.</summary>
@@ -49,7 +71,8 @@ public sealed partial class GroundMoveContext
     /// <summary>Caller-owned physics world whose poses and queries are local to its Origin.</summary>
     public IPhysicsWorld? Physics { get; }
 
-    /// <summary>Optional non-owning query selection for movement through the complete physics world.</summary>
+    /// <summary>Movement query selection. Caller-supplied views stay borrowed. A contact construction without a
+    /// supplied view creates one owned by this context.</summary>
     public IPhysicsWorldQueryView? MovementQueries { get; }
 
     /// <summary>Absolute XZ bounds applied to an absolute XZ candidate.</summary>
@@ -67,8 +90,8 @@ public sealed partial class GroundMoveContext
 
     internal MoveState Step(in MoveState body, Vector2 worldDirection, bool run, float dt, in MoveTuning tuning)
     {
-        ValidateTuning(tuning);
         if (_stepping) throw new InvalidOperationException("Ground movement steps cannot overlap or recurse.");
+        ValidateTuning(tuning);
         _origin = Physics?.Origin ?? Vector3.Zero;
         if (!float.IsFinite(_origin.X) || !float.IsFinite(_origin.Y) || !float.IsFinite(_origin.Z))
             throw new InvalidOperationException("The physics origin must be finite.");
@@ -79,6 +102,8 @@ public sealed partial class GroundMoveContext
             EnsureOrigin();
             MoveState local = body;
             local.Position -= _origin;
+            if (_binding!.UsesLease)
+                return StepContact(local, worldDirection, run, dt);
             MoveState result = CharacterMovement.StepTowards(local, worldDirection, run, dt, _localHeight,
                 tuning, preserveSmallMagnitude: true, _localNormal, MovementQueries ?? Physics, _localClamp, _localMedium);
             EnsureOrigin();
@@ -90,8 +115,6 @@ public sealed partial class GroundMoveContext
             _stepping = false;
         }
     }
-
-    internal void ValidateTuning(in MoveTuning tuning) => CheckTuning(tuning);
 
     /// <summary>The tuning rules of <see cref="ValidateTuning"/>, which read no context state.</summary>
     internal static void CheckTuning(in MoveTuning tuning)

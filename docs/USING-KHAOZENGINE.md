@@ -6954,6 +6954,14 @@ right-button look gestures.
 so any height source works. Pair it with `TerrainCollision.GroundHeight` for analytic terrain. WASD is
 camera-relative on XZ (normalized diagonals, left/right shift to run); `Position` is the capsule centre.
 
+For certified ordinary contact movement, set `Controller = MovementControllerKind.Contact` and a non-Legacy `Water`
+policy. The full `Update` overload adds `IMovementWaterField`, `OrdinaryMovementRegistration` and `MovementBoundary`
+after the existing medium argument. Supply physics, registration and boundary, plus a field when a medium delegate
+is present. `FootRadiusFraction` defaults to 0.5. The controller validates changes before stepping and caches the
+binding by tuning value and provider reference identity. It owns the selected view it creates, so dispose it at
+teardown. The physics source remains caller-owned. Ground delegates stay absolute and movement runs in the current
+physics frame under a certified lease. The original Update overload and Legacy defaults remain available.
+
 **Jump + gravity (vertical physics).** `Update` reads `Space` (edge-triggered) as a jump and runs the vertical
 movement step: while airborne the character falls under `Gravity` (clamped to `MaxFallSpeed`) until it lands back
 on the ground; a jump launches at `JumpSpeed` only when grounded (or within `CoyoteTime` of leaving the ground),
@@ -7868,7 +7876,7 @@ epsilon. Use `Within` for reach decisions instead of comparing a rounded `Distan
 
 ### One absolute ground context
 
-`GroundMoveContext` is the cached adapter for the shared locomotion core. Its exact public constructor is:
+`GroundMoveContext` is the cached adapter for the shared locomotion core. Its original public constructor is:
 
 ```csharp
 public GroundMoveContext(
@@ -7908,6 +7916,19 @@ The adapter's `Step` and `ValidateTuning` methods are internal, so this package 
 driver API. Tuning validation keeps the actual capsule dimensions, finite nonnegative ground and medium controls,
 ordered medium thresholds and a slope below `pi / 2`.
 `FacingTurnSpeed = float.PositiveInfinity` remains a valid default.
+
+For ordinary contact movement, the additional constructor accepts `IMovementWaterField? movementWaterField`,
+`OrdinaryMovementRegistration? movementRegistration` and `MovementBoundary? movementBoundary` after the query view,
+followed by the optional `string? legacyOnlyContactRefusal = null`. Use Contact tuning and a non-Legacy water policy.
+Physics, registration, boundary and certified view capabilities are required. A medium delegate requires a field.
+`SupportsContactController` records the construction's capability. First-use tuning validation is cached by value.
+Contact `Medium` samples the field at absolute centre-feet coordinates using the last admitted tuning, for pacing
+only. Actual movement uses the certified trace. A dry traversal helper cannot bypass that proof.
+
+Dispose the context at teardown. Caller-supplied views stay borrowed, while a contact construction without a view
+creates and owns one selected view. The physics source remains caller-owned. Producers that support legacy geometry
+only set `legacyOnlyContactRefusal` at construction. Resolver-1 MapDoc contexts refuse every contact use with
+`Resolver-1 MapDoc contexts are legacy-only. Native contact movement requires G1b.`
 
 ### Static physics columns and profile construction
 

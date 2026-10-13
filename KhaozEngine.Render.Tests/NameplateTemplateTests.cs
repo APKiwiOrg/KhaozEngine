@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Reflection;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 using Xunit;
@@ -199,5 +200,20 @@ public sealed class NameplateTemplateTests
         Assert.Equal(NameplateEdgeBehavior.None, template.EdgeBehavior);
         Assert.Equal(4f, template.EdgeMargin);
         Assert.Equal(0f, template.EdgeHysteresis);
+    }
+
+    [Fact]
+    public void OnlyTheEngineCanConstructAComponentKind()
+    {
+        ConstructorInfo[] constructors = typeof(NameplateComponent).GetConstructors(
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        ConstructorInfo creating = Assert.Single(constructors,
+            constructor => constructor.GetParameters() is not [{ ParameterType: var type }] || type != typeof(NameplateComponent));
+
+        Assert.True(creating.IsFamilyAndAssembly);
+        string[] properties = Array.ConvertAll(
+            typeof(NameplateComponent).GetProperties(BindingFlags.Instance | BindingFlags.Public), property => property.Name);
+        Array.Sort(properties, StringComparer.Ordinal);
+        Assert.Equal(new[] { "Attach", "Id", "Slot" }, properties);
     }
 }

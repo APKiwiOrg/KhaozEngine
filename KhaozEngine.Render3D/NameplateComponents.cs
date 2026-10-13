@@ -6,9 +6,26 @@ namespace KhaozEngine.Render3D;
 /// <summary>Attaches a component point to a target point. A null target names the root component.</summary>
 public readonly record struct NameplateAttach(AttachPoint Self, string? Target, AttachPoint TargetPoint, Vector2 Offset);
 
-/// <summary>A named piece of a nameplate, bound to a content slot.</summary>
-public abstract record NameplateComponent(string Id, NameplateSlot Slot)
+/// <summary>
+/// A named piece of a nameplate, bound to a content slot. The engine owns the kinds, because the layout and
+/// renderer only know <see cref="NameplateTextComponent"/>, <see cref="NameplateBadgeComponent"/> and
+/// <see cref="NameplateBarComponent"/>.
+/// </summary>
+public abstract record NameplateComponent
 {
+    private protected NameplateComponent(string id, NameplateSlot slot)
+    {
+        Id = id;
+        Slot = slot;
+    }
+
+    /// <summary>The component's unique name within its template, used as an attachment target.</summary>
+    public string Id { get; init; }
+
+    /// <summary>The content slot this component reads its value from.</summary>
+    public NameplateSlot Slot { get; init; }
+
+    /// <summary>Where this component sits relative to an earlier one. The root component's target is null.</summary>
     public NameplateAttach Attach { get; init; }
 }
 

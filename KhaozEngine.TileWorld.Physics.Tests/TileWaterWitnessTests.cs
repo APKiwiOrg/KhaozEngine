@@ -17,7 +17,7 @@ public class TileWaterWitnessTests
         doc.SetCornerHeightCm(int.MinValue, -1, 0, -200);
         doc.SetCornerHeightCm(int.MinValue + 1, -1, 0, 2);
         var field = new TileMediumSampler(doc, TileWorldPhysicsTestData.Catalogs(), new[] { coord }, "water-world");
-        var point = field.SampleCentreWater(new(new(float.MaxValue, -0.5f, 0.5f), 0.1f, 0.25f, MovementWaterFieldTests.Space, null));
+        var point = field.SampleCentreWater(new(new(float.MaxValue, -0.5f, 0.5f), 0.1f, 0.25f, MovementWaterFieldTests.Space, null), Vector3.Zero);
         Assert.Equal(MovementAvailability.Known, point.Availability);
         Assert.False(point.InWater);
     }
@@ -33,7 +33,7 @@ public class TileWaterWitnessTests
         var query = new MovementMediumSweepQuery(new(new(tileX + 0.25f, 1, 0.5f), 0.1f, 0.25f, MovementWaterFieldTests.Space, null), new(0.2f, -4, 0));
         var spans = new MovementCoverageSpan[64];
         var contacts = new MovementDomainContact[256];
-        var result = field.TraceWater(query, MovementWaterFieldTests.Identity, spans, contacts);
+        var result = field.TraceWater(query, Vector3.Zero, MovementWaterFieldTests.Identity, spans, contacts);
         Assert.Equal(MovementAvailability.Unresolved, result.Availability);
         Assert.Equal(0, result.SpansWritten);
         Assert.Equal(0, result.ContactsWritten);

@@ -43,13 +43,16 @@ independently of commands or replay length.
 before acquisition, acquire with `TryAcquire`, then use the binding's tick, placement or continuation doors.
 Ground residency holes return Unresolved when a query needs them. Support enumeration always refuses.
 
-`IMovementWaterField` supplies absolute-coordinate point and complete capsule-path water evidence.
+`IMovementWaterField` supplies point and complete capsule-path water evidence for a body in physics-local
+coordinates and the frame's physics origin. Producers compare `(double)local + (double)origin` with their
+absolute geometry exactly, so a point's membership has no rounding band across any surface, bed or lateral face.
 `MovementWaterField.Level(worldId, surfaceY, floorY)` supplies an immutable finite bed and strict free
 surface over all XZ. The installer's extent supplies its finite resident horizontal bounds.
-Finite fields must fit that declared extent. Pins convert interval heights and contact columns through
-the captured physics origin. A point answers Unresolved only when rounding its centre or its local interval
-moves the centre feet across a surface or bed. Traces add their conversion error to the certified error under
-the 0.001 m budget. Mutable producers advance `Generation` before changing answers.
+Finite fields must fit that declared extent. Producers report absolute intervals and contact columns. Pins
+convert intervals outward and contact columns to the nearest local value through the captured physics origin,
+so a wet point's local interval contains its local feet. Traces add only that contact conversion to the
+producer's certified error under the 0.001 m budget. Mutable producers advance `Generation` before changing
+answers.
 
 An ordinary binding owns a view created from the source when none is supplied. A supplied view is
 borrowed after source validation and must represent the registration's selected exclusions.

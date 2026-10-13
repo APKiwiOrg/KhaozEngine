@@ -38,6 +38,34 @@ internal readonly record struct TileWaterArithmetic(double Low, double High)
         return new(Low <= 0 && High >= 0 ? 0 : Math.Min(a.Low, b.Low), Math.Max(a.High, b.High));
     }
 
+    /// <summary>The exact sign of a + b + c + d for binary32 operands, through a nonoverlapping binary64
+    /// expansion. Its largest nonzero component carries the sign of the whole sum.</summary>
+    internal static int Sign(float a, float b, float c, float d = 0)
+    {
+        Span<double> expansion = stackalloc double[4];
+        int count = 0;
+        Grow(expansion, ref count, a);
+        Grow(expansion, ref count, b);
+        Grow(expansion, ref count, c);
+        Grow(expansion, ref count, d);
+        for (int i = count - 1; i >= 0; i--)
+            if (expansion[i] != 0) return Math.Sign(expansion[i]);
+        return 0;
+    }
+
+    static void Grow(Span<double> expansion, ref int count, double value)
+    {
+        double carry = value;
+        for (int i = 0; i < count; i++)
+        {
+            double sum = carry + expansion[i];
+            double virtualPart = sum - carry;
+            expansion[i] = (carry - (sum - virtualPart)) + (expansion[i] - virtualPart);
+            carry = sum;
+        }
+        expansion[count++] = carry;
+    }
+
     internal TileWaterArithmetic Sqrt() => new(Root(Math.Max(0, Low)).Low, Root(Math.Max(0, High)).High);
 
     static TileWaterArithmetic Sum(double a, double b)

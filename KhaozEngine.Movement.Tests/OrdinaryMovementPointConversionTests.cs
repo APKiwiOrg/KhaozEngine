@@ -9,23 +9,23 @@ namespace KhaozEngine.Tests.Movement;
 public class OrdinaryMovementPointConversionTests
 {
     [Theory]
-    [InlineData(0f, 12.75f, -1, MovementAvailability.Known, true)]
-    [InlineData(0f, 12.75f, 0, MovementAvailability.Known, false)]
-    [InlineData(0f, 12.75f, 1, MovementAvailability.Known, false)]
-    [InlineData(10f, 2.75f, -1, MovementAvailability.Unresolved, true)]
-    [InlineData(10f, 2.75f, 0, MovementAvailability.Known, false)]
-    [InlineData(10f, 2.75f, 1, MovementAvailability.Known, false)]
-    [InlineData(12.75f, 0f, -1, MovementAvailability.Unresolved, true)]
-    [InlineData(12.75f, 0f, 0, MovementAvailability.Known, false)]
-    [InlineData(12.75f, 0f, 1, MovementAvailability.Known, false)]
-    [InlineData(0f, 8.75f, -1, MovementAvailability.Known, false)]
-    [InlineData(0f, 8.75f, 0, MovementAvailability.Known, true)]
-    [InlineData(0f, 8.75f, 1, MovementAvailability.Known, true)]
-    [InlineData(10f, -1.25f, -1, MovementAvailability.Unresolved, false)]
-    [InlineData(10f, -1.25f, 0, MovementAvailability.Known, true)]
-    [InlineData(10f, -1.25f, 1, MovementAvailability.Known, true)]
-    public void PointMembershipRefusesOnlyWhenRoundingStraddlesTheSurfaceOrBed(float originY, float tangentCentreY,
-        int neighbour, MovementAvailability expectedAvailability, bool canonicalWet)
+    [InlineData(0f, 12.75f, -1, true)]
+    [InlineData(0f, 12.75f, 0, false)]
+    [InlineData(0f, 12.75f, 1, false)]
+    [InlineData(10f, 2.75f, -1, true)]
+    [InlineData(10f, 2.75f, 0, false)]
+    [InlineData(10f, 2.75f, 1, false)]
+    [InlineData(12.75f, 0f, -1, true)]
+    [InlineData(12.75f, 0f, 0, false)]
+    [InlineData(12.75f, 0f, 1, false)]
+    [InlineData(0f, 8.75f, -1, false)]
+    [InlineData(0f, 8.75f, 0, true)]
+    [InlineData(0f, 8.75f, 1, true)]
+    [InlineData(10f, -1.25f, -1, false)]
+    [InlineData(10f, -1.25f, 0, true)]
+    [InlineData(10f, -1.25f, 1, true)]
+    public void PointMembershipIsExactAtTheSurfaceAndBed(float originY, float tangentCentreY, int neighbour,
+        bool canonicalWet)
     {
         float centreY = neighbour switch
         {
@@ -41,29 +41,24 @@ public class OrdinaryMovementPointConversionTests
         Vector3 centre = new(1, centreY, 1);
         Assert.Equal(MovementAvailability.Known, lease.RebuildSelection(scene.State(centre), out var selection));
         var point = lease.SampleCentreWater(new(centre, 0.25f, 0.75f, selection.Space, null));
-        Assert.Equal(expectedAvailability, point.Availability);
-        if (expectedAvailability == MovementAvailability.Known)
-        {
-            Assert.Equal(canonicalWet, point.InWater);
-            if (canonicalWet)
-            {
-                Assert.Equal(8f - originY, point.Interval!.Value.LowerY);
-                Assert.Equal(12f - originY, point.Interval!.Value.UpperY);
-            }
-        }
-        else
+        Assert.Equal(MovementAvailability.Known, point.Availability);
+        Assert.Equal(canonicalWet, point.InWater);
+        if (!canonicalWet)
         {
             Assert.Null(point.Domain);
             Assert.Null(point.Interval);
+            return;
         }
+        Assert.Equal(8f - originY, point.Interval!.Value.LowerY);
+        Assert.Equal(12f - originY, point.Interval!.Value.UpperY);
     }
 
     [Theory]
-    [InlineData(-4.0000005f, 0f, 0.75f, MovementAvailability.Known)]
-    [InlineData(-float.Epsilon, 0f, 0.75f, MovementAvailability.Known)]
-    [InlineData(-4.0000005f, -2.3841858E-07f, 14f, MovementAvailability.Unresolved)]
-    public void PointIntervalConversionRefusesOnlyWhenRoundingStraddlesTheLocalFeet(float bedY, float centreY,
-        float halfHeight, MovementAvailability expected)
+    [InlineData(-4.0000005f, 0f, 0.75f, -14.000001f)]
+    [InlineData(-float.Epsilon, 0f, 0.75f, -10.000001f)]
+    [InlineData(-4.0000005f, -2.3841858E-07f, 14f, -14.000001f)]
+    public void PointIntervalConvertsOutwardAroundTheLocalFeet(float bedY, float centreY, float halfHeight,
+        float expectedLower)
     {
         using var scene = new OrdinaryContactScene(height: (_, _) => -4,
             extent: new(new(-20, -5, -20), new(20, 40, 20), -4, -4),
@@ -71,23 +66,16 @@ public class OrdinaryMovementPointConversionTests
         using var lease = scene.Acquire();
         Vector3 centre = new(1, centreY, 1);
         Assert.Equal(MovementAvailability.Known, lease.RebuildSelection(scene.State(centre), out var selection));
-        // The absolute feet are wet in every row. Only the last row's local feet fall between the
-        // exact local bed and its rounded binary32 value.
+        // The absolute feet are wet in every row. The expected local bed is the next binary32 value at or
+        // below the exact local bed, so the last row's local feet stay inside the reported interval.
         Assert.True((double)centreY + 10 - halfHeight >= bedY);
+        Assert.True((double)expectedLower < (double)bedY - 10);
         var point = lease.SampleCentreWater(new(centre, 0.25f, halfHeight, selection.Space, null));
-        Assert.Equal(expected, point.Availability);
-        if (expected == MovementAvailability.Known)
-        {
-            Assert.True(point.InWater);
-            Assert.Equal(bedY - 10f, point.Interval!.Value.LowerY);
-            Assert.Equal(2f, point.Interval!.Value.UpperY);
-        }
-        else
-        {
-            Assert.True((double)centreY - halfHeight < bedY - 10f);
-            Assert.Null(point.Domain);
-            Assert.Null(point.Interval);
-        }
+        Assert.Equal(MovementAvailability.Known, point.Availability);
+        Assert.True(point.InWater);
+        Assert.Equal(expectedLower, point.Interval!.Value.LowerY);
+        Assert.Equal(2f, point.Interval!.Value.UpperY);
+        Assert.True((double)centreY - halfHeight >= point.Interval!.Value.LowerY);
     }
 
     [Theory]

@@ -43,12 +43,38 @@ public sealed partial class OrdinaryMovementEnvironment
         return translated;
     }
 
-    internal static MovementWaterInterval Translate(in MovementWaterInterval interval, float originY, out double error)
+    /// <summary>The binary64 sum of a local and an origin coordinate, adding its rounding residual to
+    /// <paramref name="error"/>. The residual is zero whenever the two binary32 operands fit one binary64.</summary>
+    internal static double Absolute(float local, float origin, ref double error)
     {
-        double lower = (double)interval.LowerY + originY, upper = (double)interval.UpperY + originY,
-            surface = (double)interval.NominalSurfaceY + originY;
-        float l = (float)lower, u = (float)upper, s = (float)surface;
-        error = Math.Max(Math.Abs(l - lower), Math.Max(Math.Abs(u - upper), Math.Abs(s - surface)));
-        return new(l, u, s, interval.UpperIsFreeSurface, interval.LowerBoundaryId, interval.UpperBoundaryId);
+        double sum = (double)local + origin, originPart = sum - local;
+        error += Math.Abs(((double)local - (sum - originPart)) + ((double)origin - originPart));
+        return sum;
     }
+
+    /// <summary>An absolute interval in local coordinates, rounded outward so it contains every local height the
+    /// absolute interval contains. The error is the largest displacement of a reported height.</summary>
+    internal static bool TryToLocal(in MovementWaterInterval interval, float originY, out MovementWaterInterval local,
+        out double error)
+    {
+        float lower = Outward(interval.LowerY, originY, false), upper = Outward(interval.UpperY, originY, true),
+            surface = Outward(interval.NominalSurfaceY, originY, true);
+        local = default;
+        error = Math.Max(Displacement(lower, interval.LowerY, originY), Math.Max(Displacement(upper, interval.UpperY, originY),
+            Displacement(surface, interval.NominalSurfaceY, originY)));
+        if (!float.IsFinite(lower) || !float.IsFinite(upper) || !float.IsFinite(surface) || !(lower < upper)) return false;
+        local = new(lower, upper, surface, interval.UpperIsFreeSurface, interval.LowerBoundaryId, interval.UpperBoundaryId);
+        return true;
+    }
+
+    static float Outward(float value, float origin, bool up)
+    {
+        float result = (float)((double)value - origin);
+        if (!float.IsFinite(result)) return result;
+        int side = ExactSign(result, -value, origin);
+        if (up && side < 0) return MathF.BitIncrement(result);
+        return !up && side > 0 ? MathF.BitDecrement(result) : result;
+    }
+
+    static double Displacement(float local, float value, float origin) => Math.Abs((double)local - ((double)value - origin));
 }

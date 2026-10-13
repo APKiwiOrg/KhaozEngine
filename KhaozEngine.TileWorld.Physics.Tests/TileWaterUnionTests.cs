@@ -23,7 +23,7 @@ public class TileWaterUnionTests
         var field = MovementWaterFieldTests.Field(doc);
         var query = new MovementMediumSweepQuery(new(new(0, -3.25f, 1), 0.25f, 0.75f, MovementWaterFieldTests.Space, null), new(1.2f, 0, 0));
         var spans = new MovementCoverageSpan[64];
-        var result = field.TraceWater(query, MovementWaterFieldTests.Identity, spans, new MovementDomainContact[256]);
+        var result = field.TraceWater(query, Vector3.Zero, MovementWaterFieldTests.Identity, spans, new MovementDomainContact[256]);
         Assert.Equal(MovementAvailability.Known, result.Availability);
         Assert.InRange(result.ContactsWritten, 1, 256);
         Assert.True(spans[0].HasDryCoverage);
@@ -42,7 +42,7 @@ public class TileWaterUnionTests
         var field = MovementWaterFieldTests.Field(doc);
         var query = new MovementMediumSweepQuery(new(new(axis, -1, axis), 0.4f, 0.5f, MovementWaterFieldTests.Space, null), Vector3.Zero);
         var spans = new MovementCoverageSpan[64];
-        var result = field.TraceWater(query, MovementWaterFieldTests.Identity, spans, new MovementDomainContact[256]);
+        var result = field.TraceWater(query, Vector3.Zero, MovementWaterFieldTests.Identity, spans, new MovementDomainContact[256]);
         Assert.Equal(MovementAvailability.Known, result.Availability);
         Assert.Equal(dry, spans[0].HasDryCoverage);
         Assert.True(result.ContactsWritten > 0);
@@ -59,15 +59,15 @@ public class TileWaterUnionTests
         doc.SetCornerHeightCm(64, -1, 0, 2);
         doc.SetCornerHeightCm(65, -1, 0, 102);
         var field = MovementWaterFieldTests.Field(doc);
-        MovementWaterPoint Point(float x) => field.SampleCentreWater(new(new(x, 0.1f, 0.5f), 0.25f, 0.75f, MovementWaterFieldTests.Space, null));
+        MovementWaterPoint Point(float x) => field.SampleCentreWater(new(new(x, 0.1f, 0.5f), 0.25f, 0.75f, MovementWaterFieldTests.Space, null), Vector3.Zero);
         var left = Point(63.75f);
-        var right = field.SampleCentreWater(new(new(64.25f, 0.9f, 0.5f), 0.25f, 0.75f, MovementWaterFieldTests.Space, null));
+        var right = field.SampleCentreWater(new(new(64.25f, 0.9f, 0.5f), 0.25f, 0.75f, MovementWaterFieldTests.Space, null), Vector3.Zero);
         Assert.NotEqual(left.Domain, right.Domain);
         Assert.Equal(0, left.Interval!.Value.NominalSurfaceY);
         Assert.Equal(1, right.Interval!.Value.NominalSurfaceY);
         var spans = new MovementCoverageSpan[64];
         var contacts = new MovementDomainContact[256];
-        var result = field.TraceWater(new(new(new(64, 0.1f, 0.5f), 0.25f, 0.75f, MovementWaterFieldTests.Space, null), Vector3.Zero), MovementWaterFieldTests.Identity, spans, contacts);
+        var result = field.TraceWater(new(new(new(64, 0.1f, 0.5f), 0.25f, 0.75f, MovementWaterFieldTests.Space, null), Vector3.Zero), Vector3.Zero, MovementWaterFieldTests.Identity, spans, contacts);
         Assert.Equal(MovementAvailability.Known, result.Availability);
         Assert.Contains(contacts.Take(result.ContactsWritten), c => c.Domain == left.Domain && c.Interval.LowerY == -2 && c.Interval.NominalSurfaceY == 0);
         Assert.Contains(contacts.Take(result.ContactsWritten), c => c.Domain == right.Domain && c.Interval.LowerY == 0 && c.Interval.NominalSurfaceY == 1);

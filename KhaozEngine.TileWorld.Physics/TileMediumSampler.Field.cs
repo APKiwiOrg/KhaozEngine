@@ -17,20 +17,39 @@ public sealed partial class TileMediumSampler
     public MovementWaterExtent Extent => _field.Extent;
     internal bool HasColumns => _field.Columns.Length > 0;
 
-    public MovementWaterPoint SampleCentreWater(in MovementBodyQuery body)
+    public MovementWaterPoint SampleCentreWater(in MovementBodyQuery body, Vector3 physicsOrigin)
     {
-        if (!body.IsValid || body.CurrentSpace.WorldId != _field.WorldId)
+        if (!body.IsValid || !float.IsFinite(physicsOrigin.X) || !float.IsFinite(physicsOrigin.Y) ||
+            !float.IsFinite(physicsOrigin.Z) || body.CurrentSpace.WorldId != _field.WorldId)
             return new(MovementAvailability.Invalid, default, null, false, 0, null);
-        double feet = (double)body.Centre.Y - body.HalfHeight;
-        int x = (int)MathF.Floor(TileWorldSpace.TileX(body.Centre.X, _tileSize));
-        int z = (int)MathF.Floor(TileWorldSpace.TileZ(body.Centre.Z, _tileSize));
-        if (_field.ByTile.TryGetValue((x, z), out int index))
-        {
-            TileWaterColumn column = _field.Columns[index];
-            if (feet >= column.Minimum.Y && feet < column.Maximum.Y)
-                return new(MovementAvailability.Known, body.CurrentSpace, column.Domain, true, 1, column.Interval);
-        }
+        // The binary64 quotient only proposes nearby tiles. Membership compares the exact absolute centre with
+        // each candidate column's faces: X in [minimum, maximum), Z in (minimum, maximum] and feet in [bed, surface).
+        double tileX = Math.Floor(((double)body.Centre.X + physicsOrigin.X) / _tileSize);
+        double tileZ = Math.Floor(-((double)body.Centre.Z + physicsOrigin.Z) / _tileSize);
+        for (int dz = -1; dz <= 1; dz++)
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                double x = tileX + dx, z = tileZ + dz;
+                if (!(x >= int.MinValue && x <= int.MaxValue && z >= int.MinValue && z <= int.MaxValue) ||
+                    !_field.ByTile.TryGetValue(((int)x, (int)z), out int index))
+                    continue;
+                TileWaterColumn column = _field.Columns[index];
+                if (Contains(column, body, physicsOrigin))
+                    return new(MovementAvailability.Known, body.CurrentSpace, column.Domain, true, 1, column.Interval);
+            }
         return new(MovementAvailability.Known, body.CurrentSpace, null, false, 1, null);
+    }
+
+    static bool Contains(in TileWaterColumn column, in MovementBodyQuery body, Vector3 origin)
+    {
+        Vector3 centre = body.Centre;
+        float half = -body.HalfHeight;
+        return TileWaterArithmetic.Sign(centre.X, origin.X, -column.Minimum.X) >= 0 &&
+            TileWaterArithmetic.Sign(centre.X, origin.X, -column.Maximum.X) < 0 &&
+            TileWaterArithmetic.Sign(centre.Z, origin.Z, -column.Minimum.Z) > 0 &&
+            TileWaterArithmetic.Sign(centre.Z, origin.Z, -column.Maximum.Z) <= 0 &&
+            TileWaterArithmetic.Sign(centre.Y, origin.Y, half, -column.Minimum.Y) >= 0 &&
+            TileWaterArithmetic.Sign(centre.Y, origin.Y, half, -column.Maximum.Y) < 0;
     }
 
     sealed class FieldSnapshot

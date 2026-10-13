@@ -167,12 +167,13 @@ public class OrdinaryServedDomainTests
         public string SemanticIdentity => "level-with-speed-four";
         public long Generation => 0;
         public MovementWaterExtent Extent => _inner.Extent;
-        public MovementWaterPoint SampleCentreWater(in MovementBodyQuery body)
+        public MovementWaterPoint SampleCentreWater(in MovementBodyQuery body, Vector3 physicsOrigin)
         {
-            var point = _inner.SampleCentreWater(body);
+            var point = _inner.SampleCentreWater(body, physicsOrigin);
             return new(point.Availability, point.Space, point.Domain, point.InWater, 4, point.Interval);
         }
-        public MovementCoverageResult TraceWater(in MovementMediumSweepQuery query, in MovementQueryIdentity identity,
-            Span<MovementCoverageSpan> spans, Span<MovementDomainContact> contacts) => _inner.TraceWater(query, identity, spans, contacts);
+        public MovementCoverageResult TraceWater(in MovementMediumSweepQuery query, Vector3 physicsOrigin,
+            in MovementQueryIdentity identity, Span<MovementCoverageSpan> spans, Span<MovementDomainContact> contacts) =>
+            _inner.TraceWater(query, physicsOrigin, identity, spans, contacts);
     }
 }

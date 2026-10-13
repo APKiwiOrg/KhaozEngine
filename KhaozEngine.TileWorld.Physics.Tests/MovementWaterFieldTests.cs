@@ -35,7 +35,7 @@ public class MovementWaterFieldTests
         {
             var spans = new MovementCoverageSpan[64];
             var contacts = new MovementDomainContact[256];
-            var result = field.TraceWater(new(body, new(dx, 0, 0.1f)), Identity, spans, contacts);
+            var result = field.TraceWater(new(body, new(dx, 0, 0.1f)), Vector3.Zero, Identity, spans, contacts);
             Assert.Equal(MovementAvailability.Known, result.Availability);
             Assert.True(result.IsValid);
             Assert.Equal(Identity, result.Identity);
@@ -66,7 +66,7 @@ public class MovementWaterFieldTests
         Assert.InRange(Math.Sqrt(0.09d * 0.09d + 0.09d * 0.09d), 0.1272d, 0.1274d);
         Assert.False(oracle.Overlaps(axis, radius, 0.25f));
         var spans = new MovementCoverageSpan[64];
-        var trace = field.TraceWater(new(new(axis, radius, 0.25f, Space, null), Vector3.Zero), Identity, spans, new MovementDomainContact[256]);
+        var trace = field.TraceWater(new(new(axis, radius, 0.25f, Space, null), Vector3.Zero), Vector3.Zero, Identity, spans, new MovementDomainContact[256]);
         Assert.Equal(MovementAvailability.Known, trace.Availability);
         Assert.Equal(0, trace.ContactsWritten);
         Assert.True(spans[0].HasDryCoverage);
@@ -92,7 +92,7 @@ public class MovementWaterFieldTests
         Assert.InRange(Math.Abs(expected.Exit - crossExit), 0, 1e-9);
         var spans = new MovementCoverageSpan[64];
         var contacts = new MovementDomainContact[256];
-        var result = field.TraceWater(new(body, delta), Identity, spans, contacts);
+        var result = field.TraceWater(new(body, delta), Vector3.Zero, Identity, spans, contacts);
         Assert.Equal(MovementAvailability.Known, result.Availability);
         Assert.Equal(Identity, result.Identity);
         Assert.InRange(result.CertifiedErrorMetres, 0f, 0.001f);
@@ -108,7 +108,7 @@ public class MovementWaterFieldTests
         Assert.True(certifiedExit >= expected.Exit);
         Assert.InRange((expected.Enter - certifiedEnter) * length, 0, result.CertifiedErrorMetres + 1e-7);
         Assert.InRange((certifiedExit - expected.Exit) * length, 0, result.CertifiedErrorMetres + 1e-7);
-        var domain = field.SampleCentreWater(new(new(0.5f, -0.5f, 0.5f), 0.1f, 0.25f, Space, null)).Domain;
+        var domain = field.SampleCentreWater(new(new(0.5f, -0.5f, 0.5f), 0.1f, 0.25f, Space, null), Vector3.Zero).Domain;
         Assert.All(contacts.Take(result.ContactsWritten), c =>
         {
             Assert.Equal(domain, c.Domain);
@@ -129,15 +129,15 @@ public class MovementWaterFieldTests
         var doc = WaterWorld();
         var field = Field(doc);
         var body = new MovementBodyQuery(TileWorldSpace.ToWorld(0.5f, -0.5f, -0.5f, 1), 0.1f, 0.25f, Space, null);
-        var snapshotPoint = field.SampleCentreWater(body);
+        var snapshotPoint = field.SampleCentreWater(body, Vector3.Zero);
         Assert.Equal(field.MediumAt(body.Centre.X, body.Centre.Z, body.Feet.Y).InWater, snapshotPoint.InWater);
         Assert.Equal(0, snapshotPoint.Interval!.Value.NominalSurfaceY);
         doc.SetUnderlay(0, -1, 0, 1);
         doc.SetCornerHeightCm(0, -1, 0, 100);
-        Assert.Equal(snapshotPoint, field.SampleCentreWater(body));
+        Assert.Equal(snapshotPoint, field.SampleCentreWater(body, Vector3.Zero));
         Assert.True(field.MediumAt(0.5f, 0.5f, -5).InWater);
-        Assert.False(field.SampleCentreWater(new(new(0.5f, -5, 0.5f), 0.1f, 0.25f, Space, null)).InWater);
-        Assert.False(field.SampleCentreWater(new(new(2.5f, -0.5f, 0.5f), 0.1f, 0.25f, Space, null)).InWater);
+        Assert.False(field.SampleCentreWater(new(new(0.5f, -5, 0.5f), 0.1f, 0.25f, Space, null), Vector3.Zero).InWater);
+        Assert.False(field.SampleCentreWater(new(new(2.5f, -0.5f, 0.5f), 0.1f, 0.25f, Space, null), Vector3.Zero).InWater);
         Assert.Equal(0, field.Generation);
         Assert.NotEqual(field.SemanticIdentity, Field(doc).SemanticIdentity);
     }
@@ -155,12 +155,12 @@ public class MovementWaterFieldTests
         doc.SetCornerHeightCm(63, -1, 0, 2);
         doc.SetCornerHeightCm(65, -1, 0, 2);
         var field = Field(doc);
-        MovementDomainKey? Domain(float x) => field.SampleCentreWater(new(new(x, -0.5f, 0.5f), 0.1f, 0.25f, Space, null)).Domain;
+        MovementDomainKey? Domain(float x) => field.SampleCentreWater(new(new(x, -0.5f, 0.5f), 0.1f, 0.25f, Space, null), Vector3.Zero).Domain;
         Assert.Equal(Domain(62.5f), Domain(63.5f));
         Assert.NotEqual(Domain(63.5f), Domain(64.5f));
         var spans = new MovementCoverageSpan[64];
         var contacts = new MovementDomainContact[256];
-        var result = field.TraceWater(new(new(new(63, -0.5f, 0.5f), 0.1f, 0.25f, Space, null), Vector3.Zero), Identity, spans, contacts);
+        var result = field.TraceWater(new(new(new(63, -0.5f, 0.5f), 0.1f, 0.25f, Space, null), Vector3.Zero), Vector3.Zero, Identity, spans, contacts);
         Assert.Equal(MovementAvailability.Known, result.Availability);
         Assert.False(spans[0].HasDryCoverage);
         Assert.DoesNotContain(contacts.Take(result.ContactsWritten), c => c.BoundaryId.EndsWith("/max-x", StringComparison.Ordinal) || c.BoundaryId.EndsWith("/min-x", StringComparison.Ordinal));
@@ -173,13 +173,13 @@ public class MovementWaterFieldTests
         var query = new MovementMediumSweepQuery(new(new(-1, -0.5f, 0.5f), 0.1f, 0.25f, Space, null), new(3, 0, 0));
         var spans = new MovementCoverageSpan[64];
         var contacts = new MovementDomainContact[256];
-        var good = field.TraceWater(query, Identity, spans, contacts);
+        var good = field.TraceWater(query, Vector3.Zero, Identity, spans, contacts);
         Assert.Equal(MovementAvailability.Known, good.Availability);
         var spanSentinels = spans.ToArray();
         var contactSentinels = contacts.ToArray();
         foreach (bool shortSpans in new[] { true, false })
         {
-            var result = field.TraceWater(query, Identity,
+            var result = field.TraceWater(query, Vector3.Zero, Identity,
                 spans.AsSpan(0, shortSpans ? good.SpansWritten - 1 : 64),
                 contacts.AsSpan(0, shortSpans ? 256 : good.ContactsWritten - 1));
             Assert.Equal(MovementAvailability.CapacityExceeded, result.Availability);

@@ -65,7 +65,9 @@ Outside the loaded bounding rectangle, captured analytic terrain extends the nea
 including objects outside their anchor region.
 
 `TileMediumSampler` implements `IMovementWaterField` with immutable body identities, finite beds and free surfaces.
-Its trace certifies rounded capsule coverage against column unions, including exposed face patches and dry volume.
+A point is in a column when the exact framed centre lies in X [minimum, maximum), Z (minimum, maximum] and its
+feet in [bed, surface). Its trace certifies rounded capsule coverage of the framed sweep against column unions,
+including exposed face patches and dry volume.
 Equal-height bodies in different regions keep distinct identities. Internal same-body faces are suppressed.
 Capacity refusals publish no prefix. `MediumAt` and `MediumDelegate` retain the legacy surface-only behavior,
 including water below a finite certified bed. Legacy builders derive a stable content identity independent of

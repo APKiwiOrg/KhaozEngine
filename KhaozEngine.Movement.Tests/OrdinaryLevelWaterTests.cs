@@ -23,7 +23,7 @@ public class OrdinaryLevelWaterTests
         var query = new MovementMediumSweepQuery(body, new(1, deltaY, 1));
         var spans = new MovementCoverageSpan[64];
         var contacts = new MovementDomainContact[256];
-        var result = field.TraceWater(query, identity, spans, contacts);
+        var result = field.TraceWater(query, Vector3.Zero, identity, spans, contacts);
         Assert.Equal(MovementAvailability.Known, result.Availability);
         Assert.Equal(0, spans[0].EnterFraction);
         Assert.Equal(1, spans[result.SpansWritten - 1].ExitFraction);
@@ -31,7 +31,7 @@ public class OrdinaryLevelWaterTests
         Assert.Equal(identity, result.Identity);
         var spanSentinels = spans.ToArray();
         var contactSentinels = contacts.ToArray();
-        var tooSmall = field.TraceWater(query, identity, spans.AsSpan(0, 0), contacts);
+        var tooSmall = field.TraceWater(query, Vector3.Zero, identity, spans.AsSpan(0, 0), contacts);
         Assert.Equal(MovementAvailability.CapacityExceeded, tooSmall.Availability);
         Assert.Equal(0, tooSmall.SpansWritten);
         Assert.Equal(0, tooSmall.ContactsWritten);
@@ -39,7 +39,7 @@ public class OrdinaryLevelWaterTests
         Assert.Equal(contactSentinels, contacts);
         if (result.ContactsWritten > 0)
         {
-            tooSmall = field.TraceWater(query, identity, spans, contacts.AsSpan(0, result.ContactsWritten - 1));
+            tooSmall = field.TraceWater(query, Vector3.Zero, identity, spans, contacts.AsSpan(0, result.ContactsWritten - 1));
             Assert.Equal(MovementAvailability.CapacityExceeded, tooSmall.Availability);
             Assert.Equal(0, tooSmall.SpansWritten);
             Assert.Equal(0, tooSmall.ContactsWritten);
@@ -66,17 +66,17 @@ public class OrdinaryLevelWaterTests
     {
         var field = MovementWaterField.Level("world", 0, -4);
         MovementWaterPoint Point(float feet) => field.SampleCentreWater(new(new(0, feet + 0.75f, 0),
-            0.25f, 0.75f, new("world", "ordinary"), null));
+            0.25f, 0.75f, new("world", "ordinary"), null), Vector3.Zero);
         Assert.False(Point(0).InWater);
         Assert.True(Point(-4).InWater);
         Assert.False(Point(-4.01f).InWater);
         Assert.Equal(MovementAvailability.Invalid, field.SampleCentreWater(new(new(0), 0.25f, 0.75f,
-            new("other", "ordinary"), null)).Availability);
+            new("other", "ordinary"), null), Vector3.Zero).Availability);
         Assert.Throws<ArgumentException>(() => MovementWaterField.Level(" ", 0, -4));
         Assert.Throws<ArgumentException>(() => MovementWaterField.Level("world", -4, -4));
         Assert.Throws<ArgumentException>(() => MovementWaterField.Level("world", float.PositiveInfinity, -4));
         var wrong = new MovementMediumSweepQuery(new(new(0), 0.25f, 0.75f, new("other", "ordinary"), null), Vector3.Zero);
-        Assert.Equal(MovementAvailability.Invalid, field.TraceWater(wrong, new("test", 1, "wrong"), [], []).Availability);
+        Assert.Equal(MovementAvailability.Invalid, field.TraceWater(wrong, Vector3.Zero, new("test", 1, "wrong"), [], []).Availability);
     }
 
     [Theory]

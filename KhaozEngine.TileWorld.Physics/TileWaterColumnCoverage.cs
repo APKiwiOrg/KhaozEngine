@@ -20,12 +20,14 @@ internal static class TileWaterColumnCoverage
     internal static MovementCoverageResult Trace(ReadOnlySpan<TileWaterColumn> columns,
         in MovementMediumSweepQuery query, in MovementQueryIdentity identity,
         Span<MovementCoverageSpan> spans, Span<MovementDomainContact> contacts) =>
-        Trace(columns, TileWaterBoundary.Build(columns, true), TileWaterBoundary.Build(columns, false), query, identity, spans, contacts);
+        Trace(columns, TileWaterBoundary.Build(columns, true), TileWaterBoundary.Build(columns, false), query, Vector3.Zero,
+            identity, spans, contacts);
 
     // Runtime callers retain topology with the immutable field. Only bounded per-thread output scratch is mutable.
+    // The query is local to the physics origin. Every geometric test uses the absolute start local + origin.
     internal static MovementCoverageResult Trace(ReadOnlySpan<TileWaterColumn> columns,
         ReadOnlySpan<TileWaterBoundary> boundaries, ReadOnlySpan<TileWaterBoundary> exterior,
-        in MovementMediumSweepQuery query, in MovementQueryIdentity identity,
+        in MovementMediumSweepQuery query, Vector3 origin, in MovementQueryIdentity identity,
         Span<MovementCoverageSpan> spans, Span<MovementDomainContact> contacts)
     {
         if (!query.IsValid || !identity.IsValid)
@@ -40,13 +42,13 @@ internal static class TileWaterColumnCoverage
         cuts[1] = 1;
         double error = 0;
         foreach (TileWaterColumn column in columns)
-            if (!AddRange(column.Minimum, column.Maximum, query, cuts, ref cutCount, ref error))
+            if (!AddRange(column.Minimum, column.Maximum, query, origin, cuts, ref cutCount, ref error))
                 return Refuse(MovementAvailability.CapacityExceeded, identity, SpanLimit + 1);
         foreach (TileWaterBoundary face in boundaries)
-            if (!AddRange(face.Minimum, face.Maximum, query, cuts, ref cutCount, ref error))
+            if (!AddRange(face.Minimum, face.Maximum, query, origin, cuts, ref cutCount, ref error))
                 return Refuse(MovementAvailability.CapacityExceeded, identity, SpanLimit + 1);
         foreach (TileWaterBoundary face in exterior)
-            if (!AddRange(face.Minimum, face.Maximum, query, cuts, ref cutCount, ref error))
+            if (!AddRange(face.Minimum, face.Maximum, query, origin, cuts, ref cutCount, ref error))
                 return Refuse(MovementAvailability.CapacityExceeded, identity, SpanLimit + 1);
         float certified = Upper(error);
         if (!float.IsFinite(certified) || certified > MovementQueryLease.CoverageSkinMetres)
@@ -63,25 +65,25 @@ internal static class TileWaterColumnCoverage
                 int first = contactCount;
                 foreach (TileWaterColumn column in columns)
                 {
-                    TileCapsuleBoxPath.Range range = TileCapsuleBoxPath.Intersect(column.Minimum, column.Maximum, query, enter, exit);
+                    TileCapsuleBoxPath.Range range = TileCapsuleBoxPath.Intersect(column.Minimum, column.Maximum, query, origin, enter, exit);
                     if (!range.Hit) continue;
                     bool hasFace = false;
                     foreach (TileWaterBoundary face in boundaries)
                     {
                         if (columns[face.Column] != column) continue;
-                        var contactRange = TileCapsuleBoxPath.Intersect(face.Minimum, face.Maximum, query, enter, exit);
+                        var contactRange = TileCapsuleBoxPath.Intersect(face.Minimum, face.Maximum, query, origin, enter, exit);
                         if (!contactRange.Hit) continue;
                         hasFace = true;
-                        if (!Append(column, face, range, contactRange, enter, exit, query, scratch.Contacts, ref contactCount, ref locationError))
+                        if (!Append(column, face, range, contactRange, enter, exit, query, origin, scratch.Contacts, ref contactCount, ref locationError))
                             return Refuse(MovementAvailability.CapacityExceeded, identity, spanCount, ContactLimit + 1, certified);
                     }
                     if (!hasFace && !AlreadyCovered(column, scratch.Contacts.AsSpan(first, contactCount - first)))
                     {
-                        if (!Append(column, new TileWaterBoundary(0, new(column.Minimum.X, column.Maximum.Y, column.Minimum.Z), column.Maximum, Vector3.UnitY, column.SurfaceBoundaryId), range, range, enter, exit, query, scratch.Contacts, ref contactCount, ref locationError))
+                        if (!Append(column, new TileWaterBoundary(0, new(column.Minimum.X, column.Maximum.Y, column.Minimum.Z), column.Maximum, Vector3.UnitY, column.SurfaceBoundaryId), range, range, enter, exit, query, origin, scratch.Contacts, ref contactCount, ref locationError))
                             return Refuse(MovementAvailability.CapacityExceeded, identity, spanCount, ContactLimit + 1, certified);
                     }
                 }
-                bool dry = DryCoverage(columns, exterior, query, enter, exit);
+                bool dry = DryCoverage(columns, exterior, query, origin, enter, exit);
                 scratch.Spans[i] = new(enter, exit, first, contactCount - first, dry);
             }
             certified = Upper(error + locationError);
@@ -96,10 +98,10 @@ internal static class TileWaterColumnCoverage
         finally { scratch.Contacts.AsSpan(0, contactCount).Clear(); }
     }
 
-    static bool AddRange(Vector3 min, Vector3 max, in MovementMediumSweepQuery query,
+    static bool AddRange(Vector3 min, Vector3 max, in MovementMediumSweepQuery query, Vector3 origin,
         Span<float> cuts, ref int count, ref double error)
     {
-        var range = TileCapsuleBoxPath.Intersect(min, max, query);
+        var range = TileCapsuleBoxPath.Intersect(min, max, query, origin);
         double fractionError = 0;
         bool fits = !range.Hit || AddCut(range.Enter, query, cuts, ref count, ref fractionError) &&
             AddCut(range.Exit, query, cuts, ref count, ref fractionError);
@@ -129,23 +131,24 @@ internal static class TileWaterColumnCoverage
     }
 
     static bool Append(TileWaterColumn column, TileWaterBoundary face, TileCapsuleBoxPath.Range range, TileCapsuleBoxPath.Range contactRange,
-        float enter, float exit, in MovementMediumSweepQuery query, Span<MovementDomainContact> contacts, ref int count, ref double locationError)
+        float enter, float exit, in MovementMediumSweepQuery query, Vector3 origin, Span<MovementDomainContact> contacts,
+        ref int count, ref double locationError)
     {
         if (count == contacts.Length) return false;
         float fraction = Math.Clamp((float)contactRange.Enter, enter, exit);
-        double x = query.Body.Centre.X + (double)fraction * query.Delta.X;
-        double z = query.Body.Centre.Z + (double)fraction * query.Delta.Z;
+        double x = (double)query.Body.Centre.X + origin.X + (double)fraction * query.Delta.X;
+        double z = (double)query.Body.Centre.Z + origin.Z + (double)fraction * query.Delta.Z;
         Vector2 witness = new(Math.Clamp((float)x, column.Minimum.X, column.Maximum.X), Math.Clamp((float)z, column.Minimum.Z, column.Maximum.Z));
         double dx = witness.X - Math.Clamp(x, column.Minimum.X, column.Maximum.X);
         double dz = witness.Y - Math.Clamp(z, column.Minimum.Z, column.Maximum.Z);
         locationError = Math.Max(locationError, Math.Sqrt(dx * dx + dz * dz));
         double r2 = (double)query.Body.Radius * query.Body.Radius;
         var spanOverlap = range.MinimumSquared >= r2 ? MovementContactOverlap.Tangent : MovementContactOverlap.Overlapping;
-        var overlap = TileCapsuleBoxPath.DistanceSquared(column.Minimum, column.Maximum, query, fraction) >= r2
+        var overlap = TileCapsuleBoxPath.DistanceSquared(column.Minimum, column.Maximum, query, origin, fraction) >= r2
             ? MovementContactOverlap.Tangent : MovementContactOverlap.Overlapping;
         if (spanOverlap == MovementContactOverlap.Tangent) overlap = MovementContactOverlap.Tangent;
         contacts[count++] = new(column.Domain, query.Body.CurrentSpace, column.Interval, witness,
-            TileCapsuleBoxPath.Normal(face, query, fraction), fraction, face.Id, 0, overlap, spanOverlap);
+            TileCapsuleBoxPath.Normal(face, query, origin, fraction), fraction, face.Id, 0, overlap, spanOverlap);
         return true;
     }
 
@@ -158,11 +161,12 @@ internal static class TileWaterColumnCoverage
     }
 
     static bool DryCoverage(ReadOnlySpan<TileWaterColumn> columns, ReadOnlySpan<TileWaterBoundary> exterior,
-        in MovementMediumSweepQuery query, float enter, float exit)
+        in MovementMediumSweepQuery query, Vector3 origin, float enter, float exit)
     {
         double middle = ((double)enter + exit) * 0.5;
-        double x = query.Body.Centre.X + middle * query.Delta.X, y = query.Body.Centre.Y + middle * query.Delta.Y,
-            z = query.Body.Centre.Z + middle * query.Delta.Z;
+        double x = (double)query.Body.Centre.X + origin.X + middle * query.Delta.X,
+            y = (double)query.Body.Centre.Y + origin.Y + middle * query.Delta.Y,
+            z = (double)query.Body.Centre.Z + origin.Z + middle * query.Delta.Z;
         bool centreInside = false;
         foreach (TileWaterColumn column in columns)
             if (x >= column.Minimum.X && x <= column.Maximum.X && y >= column.Minimum.Y &&
@@ -171,7 +175,7 @@ internal static class TileWaterColumnCoverage
         if (!centreInside) return true;
         double squaredRadius = (double)query.Body.Radius * query.Body.Radius;
         foreach (TileWaterBoundary face in exterior)
-            if (TileCapsuleBoxPath.Intersect(face.Minimum, face.Maximum, query, enter, exit).MinimumSquared < squaredRadius)
+            if (TileCapsuleBoxPath.Intersect(face.Minimum, face.Maximum, query, origin, enter, exit).MinimumSquared < squaredRadius)
                 return true;
         return false;
     }

@@ -29,10 +29,10 @@ public class OrdinaryMovementMalformedFieldTests
         public string SemanticIdentity => "malformed-fixture";
         public long Generation => 0;
         public MovementWaterExtent Extent => new(new(-20, -4, -20), new(20, 0, 20));
-        public MovementWaterPoint SampleCentreWater(in MovementBodyQuery body) =>
+        public MovementWaterPoint SampleCentreWater(in MovementBodyQuery body, Vector3 physicsOrigin) =>
             new(MovementAvailability.Known, body.CurrentSpace, null, false, 1, null);
-        public MovementCoverageResult TraceWater(in MovementMediumSweepQuery query, in MovementQueryIdentity identity,
-            Span<MovementCoverageSpan> spans, Span<MovementDomainContact> contacts)
+        public MovementCoverageResult TraceWater(in MovementMediumSweepQuery query, Vector3 physicsOrigin,
+            in MovementQueryIdentity identity, Span<MovementCoverageSpan> spans, Span<MovementDomainContact> contacts)
         {
             if (fault == "space")
             {

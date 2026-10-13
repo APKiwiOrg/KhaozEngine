@@ -65,12 +65,12 @@ public class OrdinaryMovementEnvironmentTests
         Assert.True(result.ContactsWritten > 0);
         Assert.Equal(new Vector2(1, 1), contacts[0].IntervalColumnXZ);
         Assert.Equal(selection.Space, contacts[0].Space);
-        Assert.Equal(new MovementMediumSweepQuery(new(new(9, 10, -15), 0.25f, 0.75f, selection.Space, null),
-            Vector3.Zero), field.ObservedQuery);
+        Assert.Equal(new MovementMediumSweepQuery(body, Vector3.Zero), field.ObservedQuery);
+        Assert.Equal(new Vector3(8, 10, -16), field.ObservedOrigin);
     }
 
     [Fact]
-    public void TraceAtOrigin256CertifiesItsConversionErrorWithinTheBudget()
+    public void TraceAtOrigin256PassesTheLocalSweepWithItsOriginAndAddsNoInputError()
     {
         var field = new ObservedField(MovementWaterField.Level("world", 0, -4));
         using var scene = new OrdinaryContactScene(height: (_, _) => -4, water: field, origin: new(256, 0, 0),
@@ -84,13 +84,15 @@ public class OrdinaryMovementEnvironmentTests
         var contacts = new MovementDomainContact[256];
         var result = lease.TraceWater(new(body, new(0.1f, 0, 0)), spans, contacts);
         Assert.Equal(MovementAvailability.Known, result.Availability);
-        Vector3 observed = field.ObservedQuery.Body.Centre;
-        double inputError = Math.Abs(observed.X - ((double)centre.X + 256));
-        Assert.True(inputError > 0);
-        var reference = MovementWaterField.Level("world", 0, -4).TraceWater(field.ObservedQuery, new("reference", 1, "reference"),
-            new MovementCoverageSpan[64], new MovementDomainContact[256]);
+        // The rounded absolute centre would carry this error. The producer receives the exact pair instead.
+        Assert.True(Math.Abs((centre.X + 256f) - ((double)centre.X + 256)) > 0);
+        Assert.Equal(new MovementMediumSweepQuery(body, new(0.1f, 0, 0)), field.ObservedQuery);
+        Assert.Equal(new Vector3(256, 0, 0), field.ObservedOrigin);
+        var reference = MovementWaterField.Level("world", 0, -4).TraceWater(field.ObservedQuery, field.ObservedOrigin,
+            new("reference", 1, "reference"), new MovementCoverageSpan[64], new MovementDomainContact[256]);
         Assert.Equal(MovementAvailability.Known, reference.Availability);
-        Assert.True(result.CertifiedErrorMetres >= reference.CertifiedErrorMetres + inputError);
+        Assert.Equal(reference.SpansWritten, result.SpansWritten);
+        Assert.True(result.CertifiedErrorMetres >= reference.CertifiedErrorMetres);
         Assert.True(result.CertifiedErrorMetres <= MovementQueryLease.CoverageSkinMetres);
         Assert.True(result.ContactsWritten > 0);
         Assert.Equal(-4f, contacts[0].Interval.LowerY);
@@ -207,10 +209,16 @@ public class OrdinaryMovementEnvironmentTests
         public long Generation { get { OnGenerationRead?.Invoke(); return _generation; } set => _generation = value; }
         public MovementWaterExtent Extent => inner.Extent;
         public MovementMediumSweepQuery ObservedQuery;
-        public MovementWaterPoint SampleCentreWater(in MovementBodyQuery body) => inner.SampleCentreWater(body);
-        public MovementCoverageResult TraceWater(in MovementMediumSweepQuery query, in MovementQueryIdentity identity,
-            Span<MovementCoverageSpan> spans, Span<MovementDomainContact> contacts)
-        { ObservedQuery = query; return inner.TraceWater(query, identity, spans, contacts); }
+        public Vector3 ObservedOrigin;
+        public MovementWaterPoint SampleCentreWater(in MovementBodyQuery body, Vector3 physicsOrigin) =>
+            inner.SampleCentreWater(body, physicsOrigin);
+        public MovementCoverageResult TraceWater(in MovementMediumSweepQuery query, Vector3 physicsOrigin,
+            in MovementQueryIdentity identity, Span<MovementCoverageSpan> spans, Span<MovementDomainContact> contacts)
+        {
+            ObservedQuery = query;
+            ObservedOrigin = physicsOrigin;
+            return inner.TraceWater(query, physicsOrigin, identity, spans, contacts);
+        }
     }
 
     sealed class RecordingProvider(OrdinaryMovementEnvironment inner) : IMovementEnvironmentProvider

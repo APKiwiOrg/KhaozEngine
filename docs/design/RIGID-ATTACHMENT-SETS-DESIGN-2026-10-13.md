@@ -5,6 +5,32 @@ The [implementation plan](../superpowers/plans/2026-10-13-rigid-attachment-sets.
 This document records the design rationale. The package READMEs and consumer guide describe current APIs.
 Package availability is determined by release tags, with consumer adoption gated on an approved release.
 
+## Implementation checkpoint, 2026-10-14
+
+All four implementation tasks and their scoped reviews are complete. The final review corrections are
+included. The feature remains on `feature/rigid-attachment-sets`, with integration and release gates open.
+
+At `f037fd0fc0448771c9484b1b08111aaf9e5ba6e0`, the combined Release build passed with zero warnings and
+errors. The full solution suite reported 31,031 passed, zero failed and 1,361 conditional skips across
+37 test projects. Whole-tree governance checks passed. A strict local Metal run passed all eight attachment
+GPU cases with no skips. Private packaging produced 107 packages and 105 symbol packages. The two new
+package DLLs match the tested build, their repository commit is correct and their dependency edges match
+the package contract.
+
+[Hosted run 38392043530](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/38392043530) tested
+`fcf49bf5d3f94ddfbcacd25e426af3c8da267eef`. All eight attachment GPU cases passed on Metal, Direct3D 11
+and Vulkan. The Metal job and Vulkan synchronization validation job passed. The primary Vulkan job is
+still running at this checkpoint. The Windows job failed 14 existing rows tracked by
+[#1382](https://github.com/APKiwiOrg/KhaozEngine/issues/1382),
+[#1316](https://github.com/APKiwiOrg/KhaozEngine/issues/1316) and
+[#1157](https://github.com/APKiwiOrg/KhaozEngine/issues/1157). This is feature-specific proof, not a green
+full matrix or a waiver of those failures.
+
+The subsequent input and GUI merge into `f037fd0fc` leaves the attachment, renderer, backend and headless
+fixture paths unchanged. Its combined local build, suite, Metal proof and packaging were rerun. Later
+foliage work on main is not contained in this checkpoint. Integration must reconcile current main and
+refresh affected verification. No engine release or dependent consumer adoption is authorized here.
+
 ## Purpose
 
 Represent one authored visual as several rigid mesh parts following named joints of one posed skeleton.

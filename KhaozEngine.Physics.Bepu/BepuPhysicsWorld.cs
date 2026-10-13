@@ -124,7 +124,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsWorld
 
     public SeamHandle AddStatic(PhysicsShape shape, Pose pose, PhysicsMaterial? material = null)
     {
-        using QueryOperation scope = EnterMutation();
+        using QueryOperation scope = EnterStaticMutation();
         CapsuleSweepEvidence.Mutation evidence = BeginSweepMutation();
         var shapeIndex = ShapeFactory.Add(_sim, _pool, shape);
         var desc = new StaticDescription(pose.Position, pose.Orientation, shapeIndex);
@@ -138,7 +138,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsWorld
 
     public void RemoveStatic(SeamHandle handle)
     {
-        using QueryOperation scope = EnterMutation();
+        using QueryOperation scope = EnterStaticMutation();
         CapsuleSweepEvidence.Mutation evidence = BeginSweepMutation();
         if (_handles.TryGetValue(handle.Value, out var entry))
         {
@@ -156,7 +156,6 @@ public sealed partial class BepuPhysicsWorld : IPhysicsWorld
     // _reverseHandles for why both must move in lockstep.
     private void AddStaticEntry(int id, BepuStaticHandle handle, TypedIndex shape)
     {
-        StaticGeometryChanged(new SeamHandle(id));
         _handles[id] = (handle, shape);
         _reverseHandles[handle.Value] = id;
     }
@@ -164,7 +163,6 @@ public sealed partial class BepuPhysicsWorld : IPhysicsWorld
     // Single point of truth for removing from _handles/_reverseHandles together.
     private void RemoveStaticEntry(int id, BepuStaticHandle handle)
     {
-        StaticGeometryChanged(new SeamHandle(id));
         _handles.Remove(id);
         _reverseHandles.Remove(handle.Value);
         _sweepStaticBounds.Remove(id);

@@ -31,6 +31,10 @@ explicitly, it is in no umbrella). Depends only on `System.Numerics`.
   interval. A lease does not certify water/terrain residency, portable world identity or scope completeness.
   Those facts belong to the environment adapter paired with this physical read interval. A backend that
   lacks the optional interface remains valid for legacy callers and cannot promise an explicit lease.
+- **`IPhysicsStaticGeometrySource.StaticGeometryGeneration`** - optional installer provenance marker.
+  Bepu and its restricted views expose the existing static-support version. Static installation and
+  removal advance it before mutation. Steps, dynamics, constraints and pure rebases preserve it.
+  This marker does not replace the read lease's current `GeometryGeneration`.
 - **`IPhysicsCapsuleContacts` / `QueryCapsuleContacts`** - optional complete contact constraints in the
   current physics frame. Supply a finite nonnegative separation margin and caller-owned span. Normals
   point away from the contacted body, separation is positive outside and negative inside. Contacts retain

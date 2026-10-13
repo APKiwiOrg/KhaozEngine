@@ -46,6 +46,9 @@ either value shifts the bit-exact result legitimately.
 - **`Step(dt)`**, **`Raycast`**, **`SweepCapsule`**, **`ComputePenetration`** - the last is one
   CollisionBatcher manifold query over every shape type, deepest contact wins.
 - **Complete capsule contacts** - the owner and restricted views implement `IPhysicsCapsuleContacts`.
+  A bounded empty selection returns a complete empty result with zero error, without capsule/hull
+  face selection. Excessive coordinate spacing still refuses. Every candidate query retains the
+  existing radius-scaled error formula and 0.001 m limit.
   The query selects convex leaves with margin-expanded bounds, bypasses final contact-count reduction, applies mesh seam
   smoothing, then sorts geometric constraints with local provenance. Distinct normals survive even when
   a deeper bed contact exists. Mobility and view exclusions apply before gathering. Nonzero layer masks

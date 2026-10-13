@@ -21,7 +21,34 @@ analytic-only dry movement. Clamp and dry medium delegates are allowed. A wet po
 The position-only `Step(Vector3, ...)` refuses Contact and names the stateful overload. Legacy requires
 the default foot fraction and the complete default water policy, including zero surface jump speed.
 Undefined selectors throw `ArgumentOutOfRangeException`. Released legacy movement arithmetic is unchanged.
-Ordinary head composition and certified water integration remain separate phase 5a tasks.
+Head adoption remains a separate phase 5a task.
+
+## Ordinary contact environment
+
+`EffectiveMovementBinding.Ordinary` composes the leased contact controller at zero placement offset.
+The static installer publishes an immutable `OrdinaryMovementRegistration` under its source read lease,
+with a finite `OrdinaryMovementExtent`, inclusive feature ranges and authored `MovementSupportKey` owners.
+Several pieces may alias one owner. Ambiguous, missing, excluded and stale features refuse binding.
+Register excluded statics before publication so their provenance participates in portable identity.
+The optional `IPhysicsStaticGeometrySource` marker keeps a registration valid across steps and pure rebases.
+Without it, a fresh physics geometry generation requires a fresh registration.
+
+Supply absolute ground delegates and a `MovementBoundary`. The served query domain includes exterior
+footprint, signal look-ahead and vertical reach margins, independently of commands or replay length.
+`CreateOrdinaryScope(frame)` returns the same cold scope for that frame. Capture the ordinary boundary
+before acquisition, acquire with `TryAcquire`, then use the binding's tick, placement or continuation doors.
+Ground residency holes return Unresolved when a query needs them. Support enumeration always refuses.
+
+`IMovementWaterField` supplies absolute-coordinate point and complete capsule-path water evidence.
+`MovementWaterField.Level(worldId, surfaceY, floorY)` supplies an immutable finite bed and strict free
+surface over all XZ. The installer's extent supplies its finite resident horizontal bounds.
+Finite fields must fit that declared extent. Pins convert interval heights and contact columns through
+the captured physics origin. Mutable producers advance `Generation` before changing answers.
+
+An ordinary binding owns a view created from the source when none is supplied. A supplied view is
+borrowed after source validation and must represent the registration's selected exclusions.
+Dispose the binding after its reads. Owned-view disposal refuses an active read and remains retryable.
+`Legacy` creates no view. `PublicExplicit` borrows the supplied context and retains the 0.001 m offset.
 
 ## API
 

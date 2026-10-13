@@ -8642,6 +8642,15 @@ rect/polygon rim and gravity/jump are named follow-ups (prop/building collision 
 
 ### Movement medium + wading (`MovementMedium`, `KhaozEngine.Locomotion`)
 
+For leased ordinary contact movement, use `EffectiveMovementBinding.Ordinary` with an installer-authored
+`OrdinaryMovementRegistration`, finite resident extent, absolute ground delegates, playable boundary and
+optional `IMovementWaterField`. `MovementWaterField.Level(worldId, surfaceY, floorY)` certifies a flat water
+slab with a finite bed. Its horizontal resident extent comes from the installer. The binding keeps one
+served scope per frame, converts water heights and contact columns through the physics origin, and owns
+only a view it creates. See [the ordinary environment contract](../KhaozEngine.Locomotion/README.md#ordinary-contact-environment)
+for installation, exclusions, scope acquisition and lifetime rules. Point-only medium delegates do not
+certify contact water paths. Head integration remains a separate phase 5a step.
+
 The separate explicit environment values use `MovementAvailability.Unresolved` by default.
 `MovementWaterPoint` requires world-qualified space/domain identity and actual vertical containment
 before a wet result can be Known. `MovementWaterInterval.UpperY` may be a flooded cave ceiling below

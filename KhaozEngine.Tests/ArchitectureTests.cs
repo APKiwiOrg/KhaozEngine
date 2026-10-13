@@ -244,12 +244,14 @@ public partial class ArchitectureTests
             "Linux Consumption (which has no .NET 10) can reference them. Keep that set exact: " + string.Join("; ", violations));
     }
 
-    [Fact]
-    public void Primitives_IsTheZeroDependencyLeaf()
+    [Theory]
+    [InlineData("KhaozEngine.Primitives")]
+    [InlineData("KhaozEngine.Attachments")]
+    public void ZeroDependencyLeaves_CarryNoProjectReferences(string package)
     {
-        IReadOnlySet<string> refs = LoadGraph()["KhaozEngine.Primitives"].ProjectRefs;
+        IReadOnlySet<string> refs = LoadGraph()[package].ProjectRefs;
         bool leaf = refs.Count == 0;
-        Assert.True(leaf, "Primitives is the zero-dependency leaf at the bottom of the graph but references: " + string.Join(", ", refs));
+        Assert.True(leaf, package + " is a zero-dependency leaf but references: " + string.Join(", ", refs));
     }
 
     [Fact]
@@ -366,7 +368,7 @@ public partial class ArchitectureTests
             new[]
             {
                 "Game2D", "Render3D", "Render3D.Ecs", "Game.Render3D", "Telegraphs.Render3D", "Terrain.Render3D",
-                "TileWorld.Render3D", "Particles.Render3D", "Physics", "CodeHealth.Analyzers",
+                "TileWorld.Render3D", "Particles.Render3D", "Physics", "CodeHealth.Analyzers", "Attachments.Render3D",
             }
         },
         {
@@ -622,13 +624,15 @@ public partial class ArchitectureTests
             string.Join(", ", hits));
     }
 
-    [Fact]
-    public void Render3DEcs_ReferencesOnlyEcsAndRender3D()
+    [Theory]
+    [InlineData("Render3D.Ecs", "Ecs")]
+    [InlineData("Attachments.Render3D", "Attachments")]
+    public void RendererArms_ReferenceOnlyTheirOwnerAndRender3D(string arm, string owner)
     {
         IReadOnlyDictionary<string, Project> graph = LoadGraph();
-        string[] actual = graph["KhaozEngine.Render3D.Ecs"].ProjectRefs.Select(Short).OrderBy(a => a, StringComparer.Ordinal).ToArray();
+        string[] actual = graph["KhaozEngine." + arm].ProjectRefs.Select(Short).OrderBy(a => a, StringComparer.Ordinal).ToArray();
 
-        Assert.Equal(new[] { "Ecs", "Render3D" }, actual);
+        Assert.Equal(new[] { owner, "Render3D" }, actual);
     }
 
     [Fact]

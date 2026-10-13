@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.Attachments</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <Description>GPU-free rigid attachment definitions, canonical JSON, reference validation and embedded asset policy. BCL-only and explicitly referenced.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

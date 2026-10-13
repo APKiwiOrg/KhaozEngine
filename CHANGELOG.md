@@ -5,8 +5,13 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 20.37.1
+## 20.38.0
 
+- Added GPU-free rigid attachment definitions, strict JSON and embedded GLB validation in
+  `KhaozEngine.Attachments`. The separate renderer arm is included in Game3D and provides named-joint
+  binding, shared scene uploads, stable part/material motion identities and allocation-free submission.
+- The tile scene exposes attachment uploads through an optional capability. Render3D adds material-part
+  import from GLB bytes, transactional surface-map loading and explicit release of owned maps.
 - Physical atmosphere fog samples only the sky hemisphere and meets its horizon colour with zero slope.
   Rounded tangent directions no longer produce a colour jump in the CPU fog oracle.
 

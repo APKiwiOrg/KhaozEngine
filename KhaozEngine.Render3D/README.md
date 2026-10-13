@@ -126,6 +126,10 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   model, shadow, decal, particle, distortion, water and overlay renderers. Those renderers keep no private retired
   lists, so a grow survives until the same fence or frame boundary and teardown drains the queue once before GPU
   resources are destroyed.
+- `Scene3D.LoadSurfaceMaps` uploads each present glTF material map transactionally. A later upload failure
+  retires the maps already created. `UnloadSurfaceMaps(in maps)` releases each distinct valid map handle
+  through the same deferred queue. Unload the meshes that reference a map bundle first. All-absent bundles
+  neither upload textures nor release scene defaults.
 - `RigidInstanceDraw` / `SkinnedInstanceDraw` / `MotionKey` - draw descriptors and motion keys. A descriptor carries
   every knob of one draw (mesh, absolute transform, tint, material, dissolve and edge, shadow casting, and for a
   rigid draw the shadow-only flag, the inverted shadow dither and the complement phase) plus a `Motion` key.
@@ -1038,6 +1042,12 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   Scene3D.PropHandle`, draw as a unit with `Scene3D.Draw(PropHandle, world[, tint])` (each part is a normal
   instanced mesh sharing the transform, so drawing a prop at several transforms batches as instances), and free
   with `Scene3D.UnloadProp`.
+- Material parts from bytes: `GltfLoader.LoadPartsWithMaterials(ReadOnlyMemory<byte> glb, string identity)`
+  imports the same welded geometry, baked node transforms and decoded maps as the path overload, in
+  the same first-use material order. A byte slice reads only that slice. The source is read without
+  mutation, and `identity` names malformed indices in diagnostics. Attachment consumers apply
+  `AttachmentGlb.ValidateRigidEmbedded` before import through `KhaozEngine.Attachments`.
+  `KhaozEngine.Attachments.Render3D` supplies the skeleton binding and ships in Game3D.
 - Named nodes and sockets: `GltfLoader.LoadNamedNodes(path) -> IReadOnlyList<GltfNamedNode>` returns every logical
   node with a non-empty name, empties included, in logical-node order. Each `GltfNamedNode(Name, WorldTransform)`
   carries the node's world matrix exactly as `Load` bakes a mesh node's vertices, so an empty named `socket_nose`

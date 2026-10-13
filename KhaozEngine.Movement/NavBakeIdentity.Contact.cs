@@ -16,10 +16,12 @@ internal static partial class NavBakeIdentity
 
     private static void WriteContactIdentity(NavBakeWriter writer, in MoveTuning tuning)
     {
-        writer.WriteUInt8(tuning.Controller == MovementControllerKind.Contact ? (byte)1 : (byte)0);
-        writer.WriteSingle(tuning.FootRadiusFraction);
-        writer.WriteUInt8((byte)tuning.Water.Mode);
-        writer.WriteSingle(tuning.Water.SurfaceJumpSpeed);
+        bool contact = tuning.Controller == MovementControllerKind.Contact;
+        writer.WriteUInt8(contact ? (byte)1 : (byte)0);
+        // Legacy selects semantic defaults. Its unused water fields have one canonical bit representation.
+        writer.WriteSingle(contact ? tuning.FootRadiusFraction : 0.5f);
+        writer.WriteUInt8(contact ? (byte)tuning.Water.Mode : (byte)0);
+        writer.WriteSingle(contact ? tuning.Water.SurfaceJumpSpeed : 0);
         writer.WriteSingle(0);
     }
 

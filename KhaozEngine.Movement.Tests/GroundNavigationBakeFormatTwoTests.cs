@@ -250,4 +250,33 @@ public class GroundNavigationBakeFormatTwoTests
         Assert.False(loaded.GetProfile(legacy.Name).Space.Layers[0].HasRestingHeights);
         Assert.True(loaded.GetProfile(contact.Name).Space.Layers[0].HasRestingHeights);
     }
+
+    [Fact]
+    public void MixedLegacyDefaultWaterSignedZeroIsCanonical()
+    {
+        using var world = GroundTraversalProbeTests.FlatWorld();
+        var field = MovementWaterField.Level("world", 0.1f, -4);
+        using var context = Context(world, water: field, medium: (_, _, _) => new MovementMedium(0.1f, true, 1));
+        var options = FlatOptions with { SampleWater = true };
+        var contact = new NavBakeProfile("contact", Tuning with { Water = new(WaterTraversalMode.WadeOnly) }, default);
+        var legacy = new NavBakeProfile("legacy", Tuning with { Controller = MovementControllerKind.Legacy, Water = default }, default)
+        { Aquatic = true };
+        var signed = legacy with
+        {
+            Tuning = legacy.Tuning with
+            {
+                Water = new(WaterTraversalMode.Legacy, BitConverter.UInt32BitsToSingle(0x80000000)),
+            },
+        };
+        Assert.Equal(default, signed.Tuning.Water);
+        Assert.Equal(EffectiveMovementBindingKind.Legacy, signed.ResolveKind());
+        byte[] normalFile = Write(Bake(context, options, contact, legacy));
+        byte[] signedFile = Write(Bake(context, options, contact, signed));
+        var expected = new NavBakeExpectation(options, Sources(), [contact, legacy]);
+
+        Assert.Equal(NavBakeLoadStatus.EngineChanged,
+            GroundNavigationBake.Load(new MemoryStream(signedFile), expected, "0.0.0-other").Status);
+        Assert.Equal(normalFile, signedFile);
+        Assert.Equal(signedFile, Write(Load(signedFile, expected)));
+    }
 }

@@ -68,6 +68,10 @@ including objects outside their anchor region.
 A point is in a column when the exact framed centre lies in X [minimum, maximum), Z (minimum, maximum] and its
 feet in [bed, surface). Its trace certifies rounded capsule coverage of the framed sweep against column unions,
 including exposed face patches and dry volume.
+Point and trace queries receive the physics-local body plus its frame origin and compare their double sum
+against the captured absolute column bounds. An immutable column index searches the actual rounded XZ bounds,
+including large tile addresses whose rounded faces move across several nominal tiles. Candidate generation
+does not assume a fixed neighbouring-tile radius and never turns a missing candidate into a false dry fact.
 Equal-height bodies in different regions keep distinct identities. Internal same-body faces are suppressed.
 Capacity refusals publish no prefix. `MediumAt` and `MediumDelegate` retain the legacy surface-only behavior,
 including water below a finite certified bed. Legacy builders derive a stable content identity independent of

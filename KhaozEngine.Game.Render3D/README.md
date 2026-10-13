@@ -107,6 +107,9 @@ the read. Field generation and frame currentness are authenticated by the pin. T
 `IDisposable` and releases its engine-created view on reconfiguration or disposal. The supplied physics world stays
 caller-owned. Input still comes only from `InputState` through `CharacterFacing.MoveAxis`. No Movement package or
 new renderer dependency is needed.
+Ordinary contact rests at support height with zero placement offset. Public explicit movement retains
+0.001 m. Validation follows [the shared selector contract](../KhaozEngine.Locomotion/README.md#movement-selector),
+including the 0.01 m minimum foot radius and positive kernel controls. Phase 5a is staged in 20.37.0.
 
 ## ReplicatedCharacterAnimators
 

@@ -7,6 +7,31 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 20.37.0
 
+- Locomotion adds ordinary contact selection through `MoveTuning.Controller`, `FootRadiusFraction` and `Water`,
+  retaining its 30-parameter constructor and Legacy defaults. Network heads, prediction/replay, ground movement
+  drivers and the local 3D controller share the leased kernel through one effective binding. Spawn, restore,
+  teleport, transfer and continuation use the same composition. Ordinary feet rest at support height, while
+  public explicit APIs retain 0.001 m. Wire generation 14 and frozen legacy v1 bake bytes are unchanged.
+- Ordinary registrations publish canonical installer owners, exclusions and a finite resident served domain.
+  Analytic residency holes refuse only queries needing their data. Views created by a binding dispose with it,
+  while supplied views and explicit contexts stay borrowed. Boundaries capture local double coordinates once
+  per frame. Frame-local ground delegates keep their original operands, and world delegates retain dry parity.
+- Level and TileWorld water fields certify complete capsule paths and exact frame-origin point membership.
+  TileWorld captures finite columns, exposed union boundaries and an index over actual rounded column bounds.
+  Capacity refusals remain atomic. Legacy surface-only sampling and collider hashes stay unchanged.
+- Static registrations survive simulation steps and pure rebases. Missing removals leave static generation
+  unchanged. Empty bounded capsule contact selections certify zero error. Local vertices admit through 2048 m,
+  with precision, exact-arithmetic capacity and incidence limits enforced per query under unchanged budgets.
+- Warm bounded rectangular ordinary ticks allocate only the measured physics lease, ordinary pin, movement
+  lease plus release binding and player read scope. Exact rectangular boundary signs use stack storage, and
+  the player read-release callback is cached. Older support-cost evidence supplies defaults for absent selector,
+  foot and water fields without changing committed baselines.
+- Resolver-1 MapDoc contexts record their G1b refusal through public construction options. Contact approach
+  pacing uses the controller's own water classification. Contact navigation capture refuses until phase 5b.
+  Native G1b, #1299 navigation acceptance and the remaining adoption and hosted cost gates stay open.
+- Legacy ground contexts reuse their resource-free binding when navigation alternates source and unit-speed
+  probe tuning. Validation and actual per-call movement tuning stay current, preserving the profile allocation budget.
+
 - Windowing delivers native macOS trackpad magnify and precise two-axis scroll through immutable,
   ordered `InputState.Gestures` samples, with event anchors, modifiers, phases and momentum.
   Windows adds Ctrl+wheel pinch compatibility. Full native Windows precision-touchpad pan is not included.
@@ -80,24 +105,6 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 20.34.0
 
-- TileWorld certifies immutable finite water columns with rounded capsule coverage, exposed union boundaries,
-  dry volume and atomic capacity refusals. Ordinary registrations retain installer support owners and captured
-  analytic terrain, including truthful query refusal inside non-resident holes. Legacy collider hashes and
-  surface-only medium sampling remain unchanged.
-- Ordinary water point facts refuse lossy frame conversions. Every effective movement binding execution
-  door authenticates the acquiring environment context, including when bindings share a borrowed view.
-- Ordinary contact environments provide immutable installer provenance, fixed resident served scopes,
-  framed analytic ground and certified Level water through an effective movement binding. Owned views
-  have explicit read lifetimes, and registrations survive steps and pure rebases through the existing
-  static geometry version. Empty bounded capsule contact selections certify zero error while candidate
-  queries retain the 0.001 m budget.
-- Explicit contact ticks, exact placement, settling and continuation carry one placement offset and selected
-  foot fraction. Public explicit bodies retain the 0.001 m resting offset, and the internal ordinary
-  composition uses zero. Lifecycle placement reuses the composed interval's query workspace.
-- Locomotion adds the `MoveTuning.Controller`, `FootRadiusFraction` and `Water` init properties while retaining
-  its 30-parameter positional constructor. Direct stateful movement selects the dry contact controller with
-  shared configuration validation. Explicit profiles use the selected foot fraction and their supplied water
-  policy, preserving default fingerprints. Contact navigation profiles refuse until phase 5b, before encoding.
 - Removed references to a retired consumer game from docs, tests, fixtures and comments.
 
 - Physics adds the optional `IPhysicsSupportFootprint` capability, `SupportFootprintRequest`, raw members with

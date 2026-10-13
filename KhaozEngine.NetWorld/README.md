@@ -1065,6 +1065,9 @@ offset zero. `WorldServerConfig` and `WorldClientConfig` carry `MovementRegistra
 `MovementBoundary` is absolute and takes precedence over constructor `WorldBounds`. Without it, rectangular
 or circular `WorldBounds` provide the complete-path certificate. A custom point-only bound is refused.
 The water field is optional for dry worlds. A point medium delegate requires a field.
+Tuning must select a non-Legacy water policy even in a dry world. The view must implement query leases,
+capsule contacts, complete support footprints and certified capsule sweeps. Shell and foot geometry, positive
+gravity, maximum fall speed and swim-enter depth fraction validate before a head can step.
 
 ```csharp
 var tuning = MoveTuning.Default with
@@ -1102,8 +1105,18 @@ Ordinary scopes are constant per binding and frame. `BeginExplicitRead` opens bo
 null only for Legacy. Hold one read through a replay batch and publication. Exact corrected bases validate
 without settlement, and unavailable bases remain deferred. Ordinary frame descriptors use the actual physics
 origin, including Y, and advance their epoch when the frame or origin changes. Player states retain their planar
-frame stamp and absolute Y. Frame-local sampler heights become absolute providers using the physics Y origin.
-The wire generation, codecs and persistence payloads remain unchanged.
+frame stamp and absolute Y. `SamplerSpace.Frame` ground delegates receive the original physics-local axis and
+return local heights directly. `SamplerSpace.World` retains the dry adapter's rounded absolute translation.
+The registration's analytic height range stays absolute. The playable boundary is captured once per frame
+in local double coordinates, independently of the resident served domain. Water fields receive the local body
+and physics origin, classify their exact double sum against absolute geometry, and return absolute intervals
+and contact columns for local conversion. Missing analytic data refuses only queries needing that data.
+Wire generation 14, codecs and persistence payloads remain unchanged. Public explicit reads remain borrowed,
+use their supplied scope and water policy, and retain the 0.001 m resting offset.
+
+Phase 5a is staged in 20.37.0. The [allocation and local cost proof](../docs/superpowers/plans/proofs/2026-10-13-contact-controller-phase5a-cost.md)
+records one cold/warm read-and-step pair per row, including the production ordinary pin and player read scope.
+The head release callback is cached. Contact navigation and #1299 navigation acceptance wait for phase 5b.
 
 ## Explicit player simulation read scope
 

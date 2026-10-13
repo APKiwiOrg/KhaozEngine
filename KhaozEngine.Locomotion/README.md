@@ -21,7 +21,16 @@ analytic-only dry movement. Clamp and dry medium delegates are allowed. A wet po
 The position-only `Step(Vector3, ...)` refuses Contact and names the stateful overload. Legacy requires
 the default foot fraction and the complete default water policy, including zero surface jump speed.
 Undefined selectors throw `ArgumentOutOfRangeException`. Released legacy movement arithmetic is unchanged.
-Head adoption remains a separate phase 5a task.
+Phase 5a is implemented and staged in 20.37.0. Network and local heads select the same contact kernel.
+
+Ordinary heads additionally require positive gravity, maximum fall speed and swim-enter depth fraction,
+a non-Legacy water policy, registration, boundary and a view implementing `IPhysicsQueryLeaseSource`,
+`IPhysicsCapsuleContacts`, `IPhysicsSupportFootprint` and `IPhysicsCapsuleSweep`. A point medium delegate
+requires a field. The dry direct path requires only its shell/foot rules and the two physics capabilities
+listed above. Legacy rejects contact-only foot and water settings rather than ignoring them.
+Public explicit configuration selects contact independently of the selector, uses its supplied water policy,
+and accepts tuning water only when default or equal to that policy. Heads reject Contact plus public explicit
+configuration as two selections.
 
 ## Ordinary contact environment
 
@@ -71,6 +80,12 @@ Dispose the binding after its reads. Owned-view disposal refuses an active read 
 Complete factories still validate real views, registration, boundaries and each explicit factory's water policy.
 Every binding execution door requires a lease acquired from its environment context and physical view.
 Sharing a borrowed view does not make leases from different contexts interchangeable.
+
+The [phase 5a allocation proof](../docs/superpowers/plans/proofs/2026-10-13-contact-controller-phase5a-cost.md)
+records the production physics lease, ordinary pin, movement lease plus context release binding and player
+read scope independently. Its three bounded rectangular rows allocate only those tokens when warm.
+The read-release callback is cached per simulator. Timing is recorded evidence, with no SG-12 verdict.
+Contact navigation capture remains refused until phase 5b. Wire generation 14 and legacy v1 bake bytes stay unchanged.
 
 ## API
 

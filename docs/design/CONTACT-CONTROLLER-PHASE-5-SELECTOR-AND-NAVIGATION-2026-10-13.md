@@ -2,7 +2,12 @@
 
 Design for [#438](https://github.com/APKiwiOrg/KhaozEngine/issues/438) phase 5 and the navigation half of
 [#1299](https://github.com/APKiwiOrg/KhaozEngine/issues/1299). Source baseline: `ec20a2b61` on `main`, staged 20.34.0,
-phases 1 to 4b and the support gates. Status: revision 6, after independent review rounds 1 to 5 (each REVISE) and the controller's round 5 adjudication. Written
+phases 1 to 4b and the support gates. Status: phase 5a implemented and staged in 20.37.0, with controller execution
+rulings C1 to C20 applied. Phase 5b navigation is next. The revision 6 design and its review history below remain
+the historical baseline. Current APIs, package placement, frame rules and lifetime contracts live in
+[Locomotion](../../KhaozEngine.Locomotion/README.md#ordinary-contact-environment),
+[Movement](../../KhaozEngine.Movement/README.md#absolute-ground-movement-context) and
+[NetWorld](../../KhaozEngine.NetWorld/README.md#ordinary-contact-configuration). Written
 under the owner's instruction to continue the program to completion, so every choice below is a recorded ruling for
 the owner's review.
 

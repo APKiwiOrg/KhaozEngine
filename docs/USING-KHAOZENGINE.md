@@ -8977,7 +8977,12 @@ only a view it creates. Ground delegates use rounded absolute sampling by defaul
 `groundSpace: OrdinaryGroundSpace.Frame` for original physics-local axes and local heights without an
 absolute float round trip. See [the ordinary environment contract](../KhaozEngine.Locomotion/README.md#ordinary-contact-environment)
 for installation, exclusions, scope acquisition and lifetime rules. Point-only medium delegates do not
-certify contact water paths. Head integration remains a separate phase 5a step.
+certify contact water paths. Ordinary head integration is implemented and staged in 20.37.0.
+The boundary is captured once per frame in local double coordinates. Water producers receive local queries
+and the physics origin, compare their exact double sum with absolute geometry, then return absolute intervals
+and contact columns for local conversion. TileWorld indexes captured rounded column bounds so large tile
+addresses do not rely on a fixed neighbouring-tile radius. Analytic residency holes refuse only queries
+needing their missing ground data. See [TileWorld setup](../KhaozEngine.TileWorld.Physics/README.md#use).
 
 The separate explicit environment values use `MovementAvailability.Unresolved` by default.
 `MovementWaterPoint` requires world-qualified space/domain identity and actual vertical containment
@@ -9471,6 +9476,9 @@ Use `SupportFootprintBounds.TryCreate` to guard the required volume against an e
 before backend or producer work. This envelope does not extend the accepted disc or contribution band.
 Radius below 0.01 m is invalid, including analytic-only contact movement. A zero cosine returns
 `Unsupported`. Bepu accepts radius at most 2 m and proposal length at most 8 m.
+The shared local-vertex admission cap is 2048 m. It limits the represented range, while every query still
+enforces its position, separation and normal publication ceilings, exact-arithmetic capacity and 256 m
+incidence bound. Admitting a vertex does not promise that its query can certify under those unchanged budgets.
 
 ```csharp
 // Provision once outside the hot path. request and lease belong to the exact selected world.
@@ -12659,7 +12667,13 @@ precise direction resolution. The foot fraction must be finite in (0, 1], the fo
 requires `IPhysicsQueryLeaseSource` and `IPhysicsSupportFootprint`. Clamp and dry medium delegates are accepted.
 Wet point samples refuse and name the ordinary `IMovementWaterField` route. The position-only overload refuses
 Contact and names the stateful overload. Legacy requires default foot and water settings. Undefined selectors
-throw `ArgumentOutOfRangeException`. Ordinary head composition remains a separate phase 5a task.
+throw `ArgumentOutOfRangeException`. Ordinary heads run the leased contact composition at placement offset zero,
+while public explicit APIs retain 0.001 m. Ordinary validation additionally requires positive gravity,
+maximum fall speed and swim-enter depth fraction, a non-Legacy water policy, registration, boundary and a view
+with query leases, capsule contacts, complete support footprints and certified capsule sweeps. A medium
+delegate requires a field. Public explicit configuration governs its own water policy and rejects conflicting
+tuning water. Contact plus public explicit configuration is refused as two selections.
+Phase 5a is implemented and staged in 20.37.0. Phase 5b capture and navigation acceptance remain open.
 
 The retained `MoveCommand(move, run, cameraYaw, jump, faceCamera)` constructor and `default(MoveCommand)` leave
 `ScaleSpeedByAxis` false. They keep nonzero player axes normalized to full speed and keep the legacy dead zone. The
@@ -12699,6 +12713,11 @@ at offset zero. Supply the installer's `MovementRegistration`, an absolute `Move
 per-cell factories. Standalone simulators and movement systems, single servers and clients release their
 owned binding on disposal. See [ordinary contact configuration](../KhaozEngine.NetWorld/README.md#ordinary-contact-configuration)
 for configuration, resident scopes, replay and view lifetime.
+`SamplerSpace.Frame` ordinary ground samplers receive the original local axes and return local heights directly,
+including a nonzero physics Y origin. World samplers keep the direct dry path's rounded absolute translation.
+The registration's analytic range is absolute in both spaces. Wire generation 14 stays unchanged.
+The [allocation and local cost proof](superpowers/plans/proofs/2026-10-13-contact-controller-phase5a-cost.md)
+records named lifetime tokens and three one-pair samples without a timing threshold or hosted cost-gate claim.
 
 `KhaozEngine.NetWorld` (`Server` umbrella; deps Locomotion/Netcode/Replication/Ecs, render-free) wires that
 core to the shipped authoritative netcode for a **single authoritative `World`** (multi-cell `Sharding` folds

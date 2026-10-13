@@ -78,21 +78,36 @@ internal sealed class MapEffectiveAcquisition
                     if (bound.SurfaceId is not { } id) continue;
                     Surface(id);
                     var range = MapEffectiveGeometry.CellRange(_context, id, new(bounds.MinX, bounds.MinZ), new(bounds.MaxX, bounds.MaxZ));
-                    var slots = MapSurfaceRanges.Slots(range);
-                    long gross;
-                    try { gross = checked((slots.MaxXExclusive - slots.MinX) * (slots.MaxZExclusive - slots.MinZ)); }
-                    catch (OverflowException) { throw new MapSurfaceCapacityException(); }
-                    if (gross > _scope.Limits.MaxCandidatePatches) throw new MapSurfaceCapacityException();
-                    for (long z = slots.MinZ; z < slots.MaxZExclusive; z++)
-                        for (long x = slots.MinX; x < slots.MaxXExclusive; x++)
-                        {
-                            var key = new MapPatchKey(id, x, z);
-                            if (!_reserved.Contains(key)) keys.Add(key);
-                            if (keys.Count > _scope.Limits.MaxCandidatePatches - _reserved.Count) throw new MapSurfaceCapacityException();
-                        }
+                    Collect(id, range);
                 }
             }
+        // Incident records can introduce an offsite transformed floor. Support queries still inspect its column, so
+        // capture empty slots as evidence rather than treating an undiscovered local key as unloaded.
+        foreach (var surface in _facts.Surfaces.Where(s => s.Role == MapSurfaceRole.SupportFloor &&
+            _context.Transform(MapPrefabChildKind.Surface, s.Id) is not null))
+        {
+            _boundBudget.BeforeMetadata();
+            Collect(surface.Id, MapEffectiveGeometry.CellRange(_context, surface.Id,
+                new(window.MinX, window.MinZ), new(window.MaxX, window.MaxZ)), knownCoverage: true);
+        }
         return Array.AsReadOnly(keys.ToArray());
+
+        void Collect(string id, MapCellRect range, bool knownCoverage = false)
+        {
+            var slots = MapSurfaceRanges.Slots(range);
+            long gross;
+            try { gross = checked((slots.MaxXExclusive - slots.MinX) * (slots.MaxZExclusive - slots.MinZ)); }
+            catch (OverflowException) { throw new MapSurfaceCapacityException(); }
+            if (gross > _scope.Limits.MaxCandidatePatches) throw new MapSurfaceCapacityException();
+            for (long z = slots.MinZ; z < slots.MaxZExclusive; z++)
+                for (long x = slots.MinX; x < slots.MaxXExclusive; x++)
+                {
+                    var key = new MapPatchKey(id, x, z);
+                    if (knownCoverage && _facts.IsKnownEmpty(key)) continue;
+                    if (!_reserved.Contains(key)) keys.Add(key);
+                    if (keys.Count > _scope.Limits.MaxCandidatePatches - _reserved.Count) throw new MapSurfaceCapacityException();
+                }
+        }
     }
 
     void Discover()

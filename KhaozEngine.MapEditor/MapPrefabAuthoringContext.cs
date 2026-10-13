@@ -60,7 +60,12 @@ internal static class MapPrefabAuthoringContext
         if (document.BuildingIntent is { } intent)
             document.BuildingIntent = new(intent.PayloadVersion,
                 intent.RoofLinks.Where(r => !Removed(MapPrefabChildKind.RoofLink, r.Id)).ToArray(),
-                intent.RoofGroups.Where(g => !Removed(MapPrefabChildKind.RoofGroup, g.Id)).ToArray(),
+                intent.RoofGroups.Where(g => !Removed(MapPrefabChildKind.RoofGroup, g.Id)).Select(g => g with
+                {
+                    // The local replacement has its own room IDs. Keep foreign group membership while the
+                    // chosen source's rooms are absent, without changing the captured map or exported group reference.
+                    Rooms = g.Rooms.Where(r => !Removed(r.Kind, r.Id)).ToArray()
+                }).ToArray(),
                 intent.Lights.Where(l => !Removed(MapPrefabChildKind.Light, l.Id)).ToArray(),
                 intent.Markers.Where(m => !Removed(MapPrefabChildKind.Marker, m.Id)).ToArray())
             {

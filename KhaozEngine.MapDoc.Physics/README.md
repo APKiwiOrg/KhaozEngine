@@ -202,6 +202,21 @@ Light extents use the effective position and scaled metre radius with outward ro
 world point. Both contribute to world bounds and residency invalidation. They never register physics shapes.
 `Build` remains the static-only ownership list and `BuildWater` remains the compiled-water list.
 
+## Independent synthetic village heads
+
+`MapPrefabVillageAcceptanceTests.IndependentHeads_ResolveIdenticalEffectiveVillage` builds two heads
+from separately loaded format-7 documents and independently verified copies of the same invented
+resource bytes. It compares build hashes, static owner/digest sequences, compiled water, annotation
+identity, room domains and parent membership, water samples and roof intent at a fixed probe list.
+Missing prefab bytes refuse before a built world can be installed. The village also exercises real
+backend doorway clearance and the one-world-metre minimum reach envelope for a small scaled item.
+
+The four definitions and five instances share support, partial ground paint, two storeys, local
+water, markers, lights and a cross-building roof group. A roomless canopy keeps its unlinked roof
+visible in Auto. Concealment leaves statics intact. The acceptance covers headless geometry and
+ownership. The [MapDoc handoff table](../KhaozEngine.MapDoc/README.md#public-synthetic-village-acceptance)
+names the remaining controller, route, rendering, streaming, marker and importer proofs.
+
 ## Pick, reach and stances
 
 ```csharp

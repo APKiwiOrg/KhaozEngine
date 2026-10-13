@@ -648,6 +648,39 @@ instances, children and the effective roof, light and marker inventories. Empty 
 and the released positional write-set and effect constructors remain unchanged. Physical bounds and editor publication
 are later stages. These APIs have no editor, tool, rendering or physics dependency.
 
+## Public synthetic village acceptance
+
+`PrefabFixtures.Village()` in `MapDoc.Tests/Prefabs/PrefabVillageFixtures.cs` is invented public data.
+Four payload-1 definitions, hut, tower, bath and canopy, produce five instances with two huts. Free
+XYZ, yaw 0.371 and scales 0.8 and 1.2 compose support-resource floors, two storeys, authored room
+parents, AuthoredOpen portals, a cross-instance roof group and an inventoried unlinked canopy roof.
+The bath supplies optional local water. One hut has an explicit extra-furniture override. Notched
+ground paint subdivides unchanged canonical faces. Lights and XYZ markers retain versioned fields
+and ordered tags. The canopy requires no Room or ParentSpace.
+
+`MapPrefabVillageTests` checks tiled reload, strict closure pins, single leaf ownership, fixed wet/dry
+and room probes, and complete scoped witnesses. Support acquisition captures known-empty local slots
+for offsite floors introduced by incident records. Those reads share the existing patch allowance,
+so missing geometry remains a refusal and a limit overflow publishes no partial owner. Format 7
+moves native root identities once. Resolving and reloading allocate no new bindings.
+
+The independent-head acceptance lives in `MapDoc.Physics.Tests`, and the shared command plus real
+MCP workflow lives in `MapEditor.Tests/MapEditTool/PrefabVillageWorkflowTests.cs`. These tests consume
+verified bytes and separately loaded documents. They supply headless acceptance for these seams.
+
+| Later owner | Remaining proof |
+| --- | --- |
+| R6 | Local marker role registry, spawn projection and gameplay consumers |
+| R7 | Distribution and foliage exclusions over effective canonical paint owners |
+| R8 | Partial-face drawing, roof colour and shadows, camera boom, sky picking, local-light pixels, bounded streaming, eviction, HLOD and on-demand navigation |
+| R9 and #1349 | GUI closure/bounds binding, prefab mode, inspectors and real pointer/key input |
+| R10 | Whole verb-map wire parity beyond the registered prefab/interior commands |
+| R11 and G2 | Private lossless importer, exhaustive source comparison, actual source freeze and import-time acceptance of target, distance, occlusion and stance changes |
+| G1b, #1355 and #438 phase 5 | Native controller walking, body certificates and complete layered routes |
+| #1363 | Live door state and generation-fenced collision, navigation and water swaps |
+| #1327 | Compound contact provenance beyond canonical support surfaces |
+| #1301 and #1358 to #1362 | Runtime residency and water indexing, huge exterior coverage and medium-aware seam capture |
+
 ## Format versioning
 
 `MapDocumentFile.CurrentFormatVersion` is the version this engine build reads and writes, currently 7.

@@ -160,6 +160,20 @@ scoped references and decimal-string int64 IDs. Existing tool registrations and 
 same. Coordinates are metres and yaw is radians. The GUI host and remaining verb parity belong to R9
 and R10.
 
+`PrefabVillageWorkflowTests` drives the invented public village through these shared services and
+real MCP calls. A tool author opens an immutable definition with `prefab_open`, makes keyed local
+water, paint or marker edits with `prefab_edit`, then publishes with `prefab_save`. `prefab_place`
+accepts non-grid XYZ, yaw 0.371 and scales 0.8 or 1.2. Whole-building moves use
+`MutationService.PrefabApply(new MapMovePrefab(...))`. Overrides and unpack use `prefab_override`
+and `prefab_unpack`. Undo/redo restore matching roots, bindings, closure and effective resources.
+Save/reopen preserves leaf IDs and the digest-addressed versions. Other maps retain their pins.
+
+`interior_volume_add` returns one `MapPrefabMutationResult` for the accepted Room and prism together.
+Its `Mutation` carries `Verb`, `Detail` and `WorldChanged`, and `Effects` carries the resource-derived
+invalidation flags and affected typed IDs. The same response shape comes from `PrefabApply` and
+`InteriorApply`. The [MapDoc handoff table](../KhaozEngine.MapDoc/README.md#public-synthetic-village-acceptance)
+records the remaining GUI input, rendering, controller and whole verb-map parity gates.
+
 ## Native colliders
 
 `NativeCollisionService(session)` measures and edits the colliders of the open native document. It is a service

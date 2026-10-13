@@ -206,7 +206,17 @@ internal static class NativePlacementEffects
             string key = MapEffectiveContext.Key(MapPrefabChildKind.Surface, patch.Key.SurfaceId);
             if (otherSurfaces.Patches.TryGetValue(patch.Key, out var old) && MapSurfaceSemantics.PatchDigest(old) == MapSurfaceSemantics.PatchDigest(patch) &&
                 resources.Transforms.GetValueOrDefault(key) == other.Transforms.GetValueOrDefault(key)) continue;
-            invalidates |= PatchRole(patch.Key.SurfaceId) == MapSurfaceRole.PaintOverride ? MapNativeInvalidation.Residency : Spatial;
+            if (PatchRole(patch.Key.SurfaceId) == MapSurfaceRole.PaintOverride)
+            {
+                invalidates |= MapNativeInvalidation.Material | MapNativeInvalidation.Residency;
+                // Paint has no physical faces. Its clipped polygons already sit on the canonical target,
+                // so effects use those captured points rather than compiling the authored paint height.
+                foreach (var region in resources.PaintRegions.Values.SelectMany(set => set.Regions).Where(r => r.PaintId == patch.Key.SurfaceId))
+                    foreach (var point in region.Polygon)
+                        box = Union(box, new(point.X.ToDouble(), point.Y.ToDouble(), point.Z.ToDouble(), point.X.ToDouble(), point.Y.ToDouble(), point.Z.ToDouble()));
+                continue;
+            }
+            invalidates |= Spatial;
             foreach (var point in MapEffectiveGeometry.Patch(view, patch.Key).ExactVertices)
                 box = Union(box, new(point.X.ToDouble(), point.Y.ToDouble(), point.Z.ToDouble(), point.X.ToDouble(), point.Y.ToDouble(), point.Z.ToDouble()));
         }

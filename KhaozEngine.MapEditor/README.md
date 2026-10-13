@@ -963,6 +963,22 @@ same local keys. Materialized support and light rows retain their original resou
 and empty suppression edges. Removing an owner removes its exported row. Undo restores captured
 values rather than regenerating children from the resource bytes. `Cancel` changes no world or file.
 
+Local authoring retains the full captured map except the chosen source's own children. World roof
+groups omit that source's room memberships in the detached context, while keeping foreign rooms and
+the same group identity. The exported prefab retains its World group reference, and the open map's
+group membership stays unchanged. Ordinary foreign topology dependencies still require their full
+authored closure.
+
+`PrefabVillageWorkflowTests` exercises whole-building moves, keyed overrides, unpack reservations,
+nullable-Y support ownership, undo/redo, immutable version updates and save/reload on the invented
+village. The same commands serve `PrefabService`, `MutationService` and the prefab/interior MCP
+adapters. Local water, paint and marker changes remain detached until one accepted publication.
+Paint changes add Material and Residency invalidation with bounds from captured clipped target
+polygons. The authored paint height never supplies physical faces or an effects extent.
+Real MCP calls also prove typed mutation responses and atomic Room/prism creation. The
+[MapDoc handoff table](../KhaozEngine.MapDoc/README.md#public-synthetic-village-acceptance) names the
+remaining GUI, rendering and broader wire proofs.
+
 The history staging seam prepares command acceptance, stack capacity and gesture adoption before an
 outer publisher runs. The publisher validates and publishes first, then accepts the prepared history
 movement. Callback snapshots delegate to the complete-snapshot command and capture every semantic

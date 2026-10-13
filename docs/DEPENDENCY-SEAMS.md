@@ -888,6 +888,24 @@ KhaozEngine.MapEdit.Tool -> KhaozEngine.MapDoc.Physics  (NativeCollisionService 
 
 `ke-mapedit` is in no umbrella, so the edge carries the package into no shipped game.
 
+### Prefab runtime and authoring non-edges
+
+Rigid prefab payloads, persisted bindings, format-7 identity, strict immutable resource closure,
+local support ownership, partial paint, room parenting, AuthoredOpen portals, bounded effective
+witnesses, roof flags and versioned marker/light values stay in `MapDoc`. `MapDoc.Physics` consumes
+that same effective village for statics, water inputs, membership and annotation intent. Neither
+runtime producer references TileWorld, a renderer, GPU, MapEditor or a game. MapDoc also stays free
+of the physics seam. MapEditor gains no MapDoc.Physics reference. The dev tool's existing explicit
+physics edge supplies collider measurement, and introduces no runtime edge.
+
+`ArchitectureTests.Prefabs.cs`, a partial of the existing architecture test class, checks these
+transitive runtime non-edges and the editor's direct non-edge. The invented public village verifies
+two independently loaded headless builds and the actual prefab/interior services and MCP commands.
+`NativeManifestAdapterTests` remains the regression for the one-way verified native asset adapter.
+No TileWorld oracle or game source data participates in the village. The
+[MapDoc handoff table](../KhaozEngine.MapDoc/README.md#public-synthetic-village-acceptance) lists every
+remaining R6 to R11 proof, native controller/route gates and live-door/rendering consumers.
+
 ## Content catalog package edges
 
 The family is seven packages, and every edge is forward and acyclic. `KhaozEngine.Catalog`, the read side, adds

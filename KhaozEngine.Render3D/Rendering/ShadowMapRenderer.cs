@@ -122,6 +122,9 @@ namespace KhaozEngine.Render3D.Rendering
         /// <summary>The current number of cascade columns in the atlas.</summary>
         public int CascadeCount => _graph.CascadeCount;
 
+        internal GpuOutputDescription Outputs => _graph.Framebuffer.Outputs;
+        internal IGpuResourceLayout CutoutMaterialLayout => _cutoutMaterialLayout;
+
         // bonePalette is the frame's shared GPU-skinned bone palettes, created and disposed by ModelRenderer. This
         // pass binds the same layout and the same set the model pass does, so a caster's palette is uploaded once
         // and read by the main pass and every cascade (#407).
@@ -452,7 +455,7 @@ namespace KhaozEngine.Render3D.Rendering
         public IGpuResourceSet CreateCutoutMaterialSet(IGpuTexture albedo)
             => _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(_cutoutMaterialLayout, albedo, _gd.LinearSampler));
 
-        void SetCascadeScissor(IGpuCommandList cl, int cascade)
+        internal void SetCascadeScissor(IGpuCommandList cl, int cascade)
         {
             uint res = (uint)Resolution;
             cl.SetScissorRect(0, (uint)cascade * res, 0, res, res);

@@ -1,15 +1,15 @@
 using System;
 using System.Numerics;
+using KhaozEngine.Locomotion.Contacts;
 using KhaozEngine.Physics;
 
 namespace KhaozEngine.Locomotion;
 
 /// <summary>
 /// Character locomotion: the single movement step run by the local controller, the authoritative server sim,
-/// and client-side prediction alike. Every entry point funnels a resolved horizontal move (unit direction + a
-/// speed fraction in [0,1]), walk/run speed, and an optional steep-terrain wall slide through ONE collision core, so a
-/// camera-relative player command and a world-space AI steering direction resolve identically - parity by
-/// construction, not by copy:
+/// and client-side prediction alike. Stateful entry points resolve horizontal intent (unit direction + a speed
+/// fraction in [0,1]) before selecting the legacy core or the dry contact controller from <see cref="MoveTuning.Controller"/>.
+/// Camera-relative commands and world-space AI steering use the same selected controller:
 /// <list type="bullet">
 /// <item><see cref="Step(Vector3, in MoveCommand, float, Func{float, float, float}, in MoveTuning, Func{float, float, Vector3}?, Func{float, float, float, MovementMedium}?)"/>
 /// is the horizontal-only step: Y is a pure function of XZ (ground + half-height), no air.</item>
@@ -26,7 +26,8 @@ namespace KhaozEngine.Locomotion;
 /// </summary>
 public static partial class CharacterMovement
 {
-    /// <summary>Horizontal-only step (no vertical physics): Y is clamped onto the ground + half-height every tick.</summary>
+    /// <summary>Legacy horizontal-only step (no vertical physics): Y is clamped onto the ground + half-height every tick.
+    /// Contact movement requires the stateful overload.</summary>
     /// <param name="position">Current capsule-centre world position.</param>
     /// <param name="cmd">Movement intent (camera-relative axis + run + camera yaw).</param>
     /// <param name="dt">Timestep in seconds.</param>
@@ -45,6 +46,9 @@ public static partial class CharacterMovement
         Func<float, float, float, MovementMedium>? medium = null)
     {
         if (groundHeight is null) throw new ArgumentNullException(nameof(groundHeight));
+        if (tuning.Controller == MovementControllerKind.Contact)
+            throw new NotSupportedException("Contact movement requires the stateful CharacterMovement.Step(in MoveState, ...) overload.");
+        MovementConfigurationValidation.ValidateLegacy(tuning);
 
         (Vector2 moveDir, float speedFraction, bool run) = ResolveCameraCommand(cmd, tuning);
         float wade = WadeSpeedScale(position.X, position.Z, position.Y - tuning.CapsuleHalfHeight, tuning, medium);
@@ -65,7 +69,8 @@ public static partial class CharacterMovement
         return IsFinite(result) ? result : position;
     }
 
-    /// <summary>Vertical-physics step resolving collision against a 3D <see cref="IPhysicsWorld"/> via a
+    /// <summary>Vertical-physics step selecting the dry contact controller when <see cref="MoveTuning.Controller"/>
+    /// is Contact. Legacy resolves collision against a 3D <see cref="IPhysicsWorld"/> via a
     /// substepped swept collide-and-slide (<see cref="IPhysicsWorld.SweepCapsule"/>): the capsule is swept from
     /// its current pose to the desired target in substeps no larger than a fraction of the capsule radius, so a
     /// fast move (jump / run / terminal fall) can never tunnel through a thin one-sided wall, and the capsule
@@ -102,6 +107,11 @@ public static partial class CharacterMovement
     {
         if (groundHeight is null) throw new ArgumentNullException(nameof(groundHeight));
         (Vector2 moveDir, float speedFraction, bool run) = ResolveCameraCommand(cmd, tuning);
+        if (tuning.Controller == MovementControllerKind.Contact)
+            return ContactController.Step(state, moveDir, speedFraction, run, cmd.Jump, dt, groundHeight, tuning,
+                groundNormal, world, clampXz, medium, cmd.FaceCamera ? cmd.CameraYaw : null,
+                new GroundCoreSettings(tuning.FootRadiusFraction));
+        MovementConfigurationValidation.ValidateLegacy(tuning);
         return StepCore(state, moveDir, speedFraction, run, cmd.Jump, dt, groundHeight, tuning,
             groundNormal, world, clampXz, medium, cmd.FaceCamera ? cmd.CameraYaw : null);
     }
@@ -114,7 +124,7 @@ public static partial class CharacterMovement
     /// Per-agent capsule radius / half-height / walk-run speed all come from <paramref name="tuning"/>, so different
     /// creatures get different sizes and speeds with no extra plumbing. There is no jump bit (NPCs do not jump in
     /// v1) and no client prediction path: AI is server-only, so this is called once per tick by the authoritative
-    /// sim. Shares <c>StepCore</c> with the camera-relative player
+    /// sim. Shares the selected controller with the camera-relative player
     /// <see cref="Step(in MoveState, in MoveCommand, float, Func{float, float, float}, in MoveTuning, Func{float, float, Vector3}?, IPhysicsWorld?, Func{float, float, Vector2}?, Func{float, float, float, MovementMedium}?)"/>,
     /// so the two can never drift apart.</summary>
     /// <param name="state">The carried kinematic state (position + vertical velocity + grounded + feel timers).</param>

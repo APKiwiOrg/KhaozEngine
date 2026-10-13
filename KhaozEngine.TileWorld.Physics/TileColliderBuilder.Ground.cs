@@ -12,7 +12,11 @@ static partial class TileColliderBuilder
     // The one plane this round describes.
     const int Plane = 0;
 
-    internal static void AddGround(TileWorldDocument document, RegionCoord[] regions, List<TileCollider> into)
+    internal static void AddGround(TileWorldDocument document, RegionCoord[] regions, List<TileCollider> into) =>
+        AddGround(document, regions, into, null);
+
+    internal static void AddGround(TileWorldDocument document, RegionCoord[] regions, List<TileCollider> into,
+        List<TileColliderProvenance>? provenance)
     {
         foreach (RegionCoord region in regions)
         {
@@ -33,11 +37,15 @@ static partial class TileColliderBuilder
             Vector3 origin = TileWorldSpace.ToWorld(region.OriginX, 0f, region.OriginZ, document.TileSize);
             into.Add(new TileCollider(TileColliderKind.Ground, new TriangleMeshShape(mesh.Positions, indices),
                                       Pose.At(origin)));
+            provenance?.Add(TileColliderProvenance.Capture(FormattableString.Invariant($"ground/{region.Rx}/{region.Rz}/0"), into[^1]));
         }
     }
 
     internal static void AddBlocked(TileWorldDocument document, RegionCoord[] regions, float height,
-                                    List<TileCollider> into)
+                                    List<TileCollider> into) => AddBlocked(document, regions, height, into, null);
+
+    internal static void AddBlocked(TileWorldDocument document, RegionCoord[] regions, float height,
+        List<TileCollider> into, List<TileColliderProvenance>? provenance)
     {
         float tileSize = document.TileSize;
         foreach (RegionCoord region in regions)
@@ -53,6 +61,7 @@ static partial class TileColliderBuilder
                     into.Add(Box(TileColliderKind.Blocked,
                         TileWorldSpace.WorldX(x + 0.5f, tileSize), TileWorldSpace.WorldZ(z + 0.5f, tileSize),
                         tileSize * 0.5f, tileSize * 0.5f, bottom, top));
+                    provenance?.Add(TileColliderProvenance.Capture(FormattableString.Invariant($"blocked/{Plane}/{x}/{z}"), into[^1]));
                 }
     }
 

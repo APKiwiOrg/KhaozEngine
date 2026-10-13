@@ -64,9 +64,13 @@ public class NavBakeIdentityTests
             .OrderByDescending(c => c.GetParameters().Length).First();
         List<ParameterInfo> all = [.. constructor.GetParameters()];
         List<ParameterInfo> retained = [.. all.Where(p => !ExcludedTuningFields.Contains(p.Name))];
-        int stored = typeof(MoveTuning).GetFields(InstanceFields).Length;
+        FieldInfo[] stored = typeof(MoveTuning).GetFields(InstanceFields);
+        string[] positional = [.. all.Select(p => $"<{p.Name}>k__BackingField")];
+        string[] selectable = ["<Controller>k__BackingField", "<FootRadiusFraction>k__BackingField", "<Water>k__BackingField"];
         Assert.True(all.Count == 30, $"MoveTuning has {all.Count} constructor fields. {TuningGrows}");
-        Assert.True(stored == 30, $"MoveTuning stores {stored} instance fields. {TuningGrows}");
+        Assert.True(stored.Length == 33, $"MoveTuning stores {stored.Length} instance fields. {TuningGrows}");
+        Assert.Equal(positional.Order(), stored.Where(f => positional.Contains(f.Name)).Select(f => f.Name).Order());
+        Assert.Equal(selectable.Order(), stored.Where(f => !positional.Contains(f.Name)).Select(f => f.Name).Order());
         Assert.True(retained.Count == 27, $"MoveTuning retains {retained.Count} fields. {TuningGrows}");
         Assert.True(retained.Select(p => p.Name!).SequenceEqual(NavBakeIdentity.TuningFieldNames),
             $"MoveTuning field order differs from the encoder table. {TuningGrows}");

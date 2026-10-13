@@ -10,7 +10,8 @@ Validated expanded-admission slice: the [installed-pose argument](CAPSULE-FEATUR
 records the closed-band common affine certificate and operational correspondence limits. Independent
 source/math review, 124 arithmetic/geometry cases, 39 movement correspondence/policy cases and scoped
 format passed. Earlier exact-rigid admission restrictions below describe their historical subset.
-Current admission is governed by the linked certificate. APIs, caps and output ceilings are unchanged.
+Current admission is governed by the linked certificate and the range extension below. APIs, exact-arithmetic
+work caps and output ceilings are unchanged.
 
 
 ## Represented inputs and default
@@ -138,7 +139,8 @@ backend comparison alone is not the real-arithmetic proof.
 [CreateFromQuaternion](https://github.com/bepu/bepuphysics2/blob/v2.4.0/BepuUtilities/Matrix3x3.cs#L277),
 including binary32 rounding after each operation. It uses the supplied quaternion without normalizing
 it. Its represented squared norm must be enclosed wholly within `1 +/- 2^-20`. Non-finite values,
-position components beyond 2048 m and local components beyond 64 m refuse before evaluation.
+position components beyond 2048 m and local components beyond 2048 m refuse before evaluation. The shared
+`MaximumLocalMagnitude` feeds both this gate and `CapsuleFeatureGeometry.TransformVertex`.
 
 The same interval composition argument covers coefficients, row-basis products and translation.
 This proves arithmetic for the supplied pose data, not that the pose belongs to a current installed
@@ -149,6 +151,36 @@ Eight additional fixed cases cover exact identity/half-turn/cyclic rotations, a 
 unit rotation, invalid rotations, the unit-band boundary, input-domain boundaries and opposite
 quaternion signs. Thirty tests passed with the earlier arithmetic regressions. Installed geometry,
 normal reconstruction and the complete feature query remain separate proof gates.
+
+## Local-vertex range admission
+
+Local admission is a range domain, not a uniform error guarantee. Let `L` bound each local component
+and `W=2048` bound each admitted world component. The unchanged quaternion norm band bounds each
+common affine coefficient strictly below 2 in magnitude, including the inspected scalar/SIMD maps.
+Before outward endpoint expansion, a transformed point is bounded componentwise by `6L+W`, a
+transformed edge by `E=12L`, and a cross-derived normal by `2E^2=288L^2`. At `L=2048` these
+polynomial terms remain finite in binary64. Every complete point enclosure still passes `world.Within(2048)`.
+
+For a world-vertex/query-axis difference bounded by `D`, horizontal polygon operands are bounded
+by `2E^2` for edge length squared, `2DE` for dot and cross, and `2D^2` for distance squared.
+The disc discriminant has magnitude at most `2E^2*r^2+4D^2*E^2`. The same finite polynomial
+terms feed closest-feature and join expressions. Division still requires a certified zero-free
+denominator, and any nonfinite endpoint or unresolved root refuses. This proves range, not small
+quotient or witness widths. Exact source predicates retain their degree-eight, nine-variable and
+64-expression caps. `ExactExpansion.InRange` and the dyadic pre-allocation checks, including the
+4096-bit operand cap, remain unchanged.
+
+Each actual query enforces its precision contract. Capsule publication retains the rational position,
+separation-width and normal-error ceilings `1/4000`, `1/10000` and `1/100000`. Support certification
+propagates the actual position and normal boxes through plane heights, footprint extrema and scope
+checks. The join band, 256 m incidence-shortcut coordinate bound, `2^-80` lattice, minimum lengths
+and normal component bound are unchanged. A resolved admitted transform cannot waive those checks.
+
+For example, `q=(0.6f,0.8f,0,0)` and the corner `(-128,1,1)` of a box with half-extents `(128,1,1)`
+are admitted. At the represented axis `(36.81000518798828125,-122.600006103515625,-1.0010001659393310546875)`,
+the common corner enclosure gives a normalized separation error above `1/100000`. Publication
+returns Unresolved through that existing ceiling and writes no incident-face prefix. An identity
+192 m floor instead certifies its exact horizontal height. Admission alone predicts neither result.
 
 ## Vector normalization and represented output
 

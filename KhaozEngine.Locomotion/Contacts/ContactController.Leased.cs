@@ -7,11 +7,19 @@ namespace KhaozEngine.Locomotion.Contacts;
 internal static partial class ContactController
 {
     /// <summary>Borrows the caller's composed interval. Land uses the shared whole tick, with geometric feet
-    /// and the explicit placement profile. Swimming hands off accepted substeps within the same tick.</summary>
+    /// and the selected composition. Swimming hands off accepted substeps within the same tick.</summary>
     internal static MovementStepResult StepLeased(in FramedMovementState state, Vector2 moveDir,
         float speedFraction, bool run, bool jump, float dt, in MoveTuning tuning, in WaterTraversalPolicy water,
         MovementQueryLease queries, MovementBoundary? boundary = null, float? faceYaw = null,
-        GroundCoreSettings? settings = null)
+        GroundCoreSettings? settings = null) =>
+        StepLeased(state, moveDir, speedFraction, run, jump, dt, tuning, water, queries,
+            new ContactComposition(LeasedContactQueryContext.PlacementSkin,
+                settings ?? new GroundCoreSettings(tuning.FootRadiusFraction)), boundary, faceYaw);
+
+    internal static MovementStepResult StepLeased(in FramedMovementState state, Vector2 moveDir,
+        float speedFraction, bool run, bool jump, float dt, in MoveTuning tuning, in WaterTraversalPolicy water,
+        MovementQueryLease queries, in ContactComposition composition, MovementBoundary? boundary = null,
+        float? faceYaw = null)
     {
         using var entry = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.ControllerEntry);
         ArgumentNullException.ThrowIfNull(queries);
@@ -32,7 +40,7 @@ internal static partial class ContactController
             queries.AssertCurrent();
             queries.BeginContactTick();
             beganTick = true;
-            GroundCoreSettings foot = settings ?? new GroundCoreSettings();
+            GroundCoreSettings foot = composition.Foot;
             ShellGeometry.Validate(tuning, foot);
             MovementSelection selection;
             if (state.Selection is { } selected)
@@ -58,33 +66,12 @@ internal static partial class ContactController
             if (placement != MovementStepOutcome.Advanced) return HoldLeased(state, placement);
             var leased = queries.Workspace.Queries;
             leased.Initialize(queries, tuning, selection,
-                new(selection.Space, body.Feet), waterMode: water.Mode, boundary: boundary);
+                new(selection.Space, body.Feet), composition, waterMode: water.Mode, boundary: boundary);
             Vector3 feet = leased.KernelFeet(state.State.Position, tuning);
             MovementWaterPoint point = leased.SampleMedium(feet)!.Value;
             if (point.Space != selection.Space)
                 return HoldLeased(state, MovementStepOutcome.EnvironmentInvalid);
-            bool wasSwimming = state.State.Swimming || state.State.WaterExcursion == WaterExcursionState.Surface;
-            float gate = CharacterMovement.TractionGate(state.State.Grounded, tuning);
-            SupportSample initial = leased.FindSupport(new(new(feet.X, feet.Z), feet.Y,
-                foot.FootRadiusFraction * tuning.CapsuleRadius, tuning.StepHeight, tuning.StepHeight, MathF.Cos(gate)));
-            bool footingAllowed = ExplicitCharacterMovement.FootingAllowed(point, wasSwimming,
-                state.State.Position.Y, tuning, water);
-            bool supported = initial.Status == SupportStatus.Walkable && footingAllowed &&
-                (state.State.Grounded || state.State.VerticalVelocity <= 0 &&
-                    MathF.Abs(initial.Height - feet.Y) <= tuning.GroundedEpsilon);
-            MoveState start = state.State;
-            ExplicitCharacterMovement.ClassifyWater(ref start, point, supported, wasSwimming,
-                tuning, water, start.VerticalVelocity < 0);
-            if (supported && state.State.Swimming)
-            {
-                start.Grounded = true;
-                start.VerticalVelocity = 0;
-            }
-            if (water.Mode != WaterTraversalMode.SurfaceSwimmer)
-            {
-                start.Swimming = false;
-                start.WaterExcursion = WaterExcursionState.None;
-            }
+            MoveState start = ClassifyStartWater(state.State, point, feet, tuning, water, leased, foot);
             if (start.Commitment.IsActive) start.JumpBufferRemaining = 0;
             var modes = queries.Workspace.Modes;
             modes.Initialize(leased, start, tuning, water, jump);

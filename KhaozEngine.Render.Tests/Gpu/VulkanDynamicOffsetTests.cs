@@ -53,9 +53,9 @@ namespace KhaozEngine.Tests.Gpu
                 shapes.Add((name, harness.Set(name)));
             }
 
-            // Includes the three atmosphere producers, target-outline layouts, point-skinned caster header
-            // and both split-resolve layouts.
-            Assert.Equal(61, shapes.Count);
+            // Includes atmosphere producers, target outlines, the point-skinned caster header,
+            // split resolves and the foliage cascade block.
+            Assert.Equal(62, shapes.Count);
 
             for (int segment = 0; segment < harness.Rings.FramesInFlight; segment++)
             {

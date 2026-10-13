@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
@@ -14,7 +13,8 @@ internal sealed partial class ModelRenderer
     {
         public Matrix4x4 Model;
         public Vector4 Parameters; // rank, local root Y, inverse local height, alpha cutoff
-        public const uint SizeInBytes = 80;
+        public Vector4 Motion; // interactor bend scale, maximum lean, wind scale, shiver
+        public const uint SizeInBytes = 96;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -24,12 +24,14 @@ internal sealed partial class ModelRenderer
         public Vector4 Interactor0, Interactor1, Interactor2, Interactor3, Strengths;
         // x = blade pixels where wind stops, y = metres per internal pixel at clip w of 1, z = the same last frame
         public Vector4 WindFade;
-        // Last frame's state for FoliageMotionVert, zero while temporal rendering is off. FoliageVert's block is the 160
-        // bytes above, and these fill the rest of the slot it always had.
+        public Vector4 Agitation;
+        // Last frame's state for FoliageMotionVert, zero while temporal rendering is off. Both programs declare
+        // the complete 288-byte block. Dynamic offsets require 256-byte alignment (D3D11UniformRing), so slots are 512.
         public Vector4 PrevFocus;   // xyz = last frame's focus, w = last frame's wind time
         public Vector4 PrevInteractor0, PrevInteractor1, PrevInteractor2, PrevInteractor3, PrevStrengths;
-        public const uint SizeInBytes = 256;
-        public const uint SlotBytes = 256;
+        public Vector4 PrevAgitation;
+        public const uint SizeInBytes = 288;
+        public const uint SlotBytes = 512;
 
         /// <summary>Metres one internal pixel covers vertically at clip w of 1. Perspective clip w is view depth.
         /// Orthographic clip w is 1, which gives view height over render height. Zero when degenerate.</summary>
@@ -58,7 +60,7 @@ internal sealed partial class ModelRenderer
             }
         }
 
-        /// <summary>This submission with <paramref name="previous"/>'s focus, clock, interactors and strengths as
+        /// <summary>This submission with <paramref name="previous"/>'s focus, clock, interactors, strengths and agitation as
         /// last frame's.</summary>
         public readonly FoliageUniforms WithPrevious(in FoliageUniforms previous)
         {
@@ -70,6 +72,7 @@ internal sealed partial class ModelRenderer
             data.PrevInteractor2 = previous.Interactor2;
             data.PrevInteractor3 = previous.Interactor3;
             data.PrevStrengths = previous.Strengths;
+            data.PrevAgitation = previous.Agitation;
             return data;
         }
 
@@ -91,14 +94,19 @@ internal sealed partial class ModelRenderer
             };
             Span<Vector4> locations = MemoryMarshal.CreateSpan(ref data.Interactor0, 4);
             Span<float> strengths = MemoryMarshal.CreateSpan(ref data.Strengths.X, 4);
+            Span<float> agitation = MemoryMarshal.CreateSpan(ref data.Agitation.X, 4);
             for (int i = 0; i < interactors.Length; i++)
             {
                 locations[i] = new Vector4(interactors[i].Position, interactors[i].Radius);
                 strengths[i] = interactors[i].Strength;
+                agitation[i] = interactors[i].Agitation;
             }
             return data;
         }
     }
+
+    internal IGpuResourceLayout FoliageLayout => _foliageLayout!;
+    internal IGpuResourceSet FoliageSet => _foliageSet!;
 
     IGpuPipeline? _foliagePipeline;
     IGpuShaderSet? _foliageShaders;
@@ -140,23 +148,7 @@ internal sealed partial class ModelRenderer
                 ? new[] { _layout, _foliageLayout }
                 : new[] { _layout, _foliageLayout, motion.FrameLayout },
             ShaderSet = shaders,
-            VertexLayouts = new List<GpuVertexLayoutDescription>
-            {
-                new GpuVertexLayoutDescription(
-                    new GpuVertexElement("Position", GpuVertexElementFormat.Float3),
-                    new GpuVertexElement("Normal", GpuVertexElementFormat.Float3),
-                    new GpuVertexElement("Color", GpuVertexElementFormat.Float4),
-                    new GpuVertexElement("TexCoord", GpuVertexElementFormat.Float2),
-                    new GpuVertexElement("Tangent", GpuVertexElementFormat.Float4)),
-                new GpuVertexLayoutDescription(FoliageInstanceData.SizeInBytes, 1, new[]
-                {
-                    new GpuVertexElement("IModel0", GpuVertexElementFormat.Float4),
-                    new GpuVertexElement("IModel1", GpuVertexElementFormat.Float4),
-                    new GpuVertexElement("IModel2", GpuVertexElementFormat.Float4),
-                    new GpuVertexElement("IModel3", GpuVertexElementFormat.Float4),
-                    new GpuVertexElement("FoliageParameters", GpuVertexElementFormat.Float4),
-                }),
-            },
+            VertexLayouts = new(FoliageVertexLayouts.Create()),
             Outputs = _foliageOutputs,
         });
     }

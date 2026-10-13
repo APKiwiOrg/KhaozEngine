@@ -138,14 +138,14 @@ namespace KhaozEngine.Tests.Gpu
             Dictionary<string, string> emitted = EmitEverything();
             int distinct = emitted.Values.Distinct(StringComparer.Ordinal).Count();
 
-            // 172 with the three atmosphere LUT passes. 166 added the edge outline ahead of the temporal resolve.
+            // 176 with atmosphere LUT passes and foliage depth pairs. 166 added the edge outline ahead of the temporal resolve.
             // 164 was the split's second pass at the display's
             // own size, 160 the four temporal programs at half precision, 152 the resolve's split entry point, 148 the
             // temporal count probe, 146 the temporal debug views, 144 the temporal sharpen, 142 the temporal resolve
             // and its depth store, 138 the MotionVectors debug view, 136 the thirteen temporal motion programs, 126
             // their eight opaque ones, 110 the five target-outline pairs and three point-skinned pairs, 94 the cascade
             // cutout pair and dissolve-aware skinned vertex, and the 76 above is the original 2026-08-08 measurement.
-            Assert.Equal(172, emitted.Count);
+            Assert.Equal(176, emitted.Count);
             Assert.True(distinct < emitted.Count,
                 $"The {emitted.Count} shipped stage emissions produced {distinct} distinct SPIR-V modules, so "
                 + "nothing is shared and decision V-S7's dedup buys nothing. Measured at 59 distinct on "

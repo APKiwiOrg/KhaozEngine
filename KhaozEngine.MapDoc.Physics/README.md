@@ -152,9 +152,12 @@ foot-support primitive certifies explicit movement through `IPhysicsSupportFootp
 limits. It captures sphere, capsule and cylinder leaves, so `CurvedLeaf` does not apply to it. It reads mesh
 triangles in the complete admitted foot column, so `MeshTriangleCapacity` does not apply either, and it caps
 one query at 256 relevant raw elements. It shares the 64 leaf limit of `LeafCapacity` and the hull face limits
-behind `HullCapacity`. It applies its own 64 m local bound to the radius and half length of a curved leaf and
-to admitted mesh triangles. `LocalExtent` does not predict that bound: the builder never flags it on a curved
-leaf, and a mesh it flags may still pass when its admitted triangles stay within 64 m. One unsupported
+behind `HullCapacity`. Local vertex admission for feature and footprint queries is 2048 m, with precision
+enforced per query by unchanged publication ceilings, exact-arithmetic capacity and the 256 m incidence bound.
+Curved leaf sizes retain their separate 64 m limit, and full capsule-feature mesh capture retains its
+explicit 64 m subset. Complete footprints apply the 2048 m vertex domain to admitted mesh triangles.
+`LocalExtent` still describes the builder's separate 64 m chunk diagnostic. It does not predict this admission
+domain, and a mesh it flags may still pass a footprint query. One unsupported
 static in the column refuses the whole footprint query. Native adoption remains separately gated.
 
 ## Pick, reach and stances

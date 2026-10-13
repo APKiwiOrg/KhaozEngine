@@ -10,6 +10,7 @@ namespace KhaozEngine.NetWorld;
 public sealed partial class PlayerMoveSimulator
 {
     readonly ExplicitPlayerMovement? explicitMovement;
+    readonly Action<PlayerMoveReadScope> releaseRead;
     PlayerMoveReadScope? explicitRead;
     int explicitReadActive;
 
@@ -17,18 +18,18 @@ public sealed partial class PlayerMoveSimulator
         Func<float, float, Vector3>? groundNormal, WorldBounds? bounds, IPhysicsWorld? physics,
         Func<float, float, float, MovementMedium>? medium, SamplerSpace samplerSpace,
         ExplicitPlayerMovement? explicitMovement)
-        : this(groundHeight, tuning, groundNormal, bounds, physics, medium, samplerSpace)
-    {
-        this.explicitMovement = explicitMovement;
-    }
+        : this(groundHeight, tuning, groundNormal, bounds, physics, medium, samplerSpace,
+            explicitMovement, null, null, null, null)
+    { }
 
     public MovementStepOutcome? LastExplicitOutcome { get; private set; }
 
     /// <summary>Acquires and classifies a cold basis. Hold this scope across Step, Predict or
-    /// Reconcile and pure result publication. Null means deliberately unconfigured legacy movement.</summary>
+    /// Reconcile and pure result publication. Null means the Legacy binding.</summary>
     public PlayerMoveReadScope? BeginExplicitRead(in PlayerMoveState basis)
     {
-        if (explicitMovement is null) return null;
+        ObjectDisposedException.ThrowIf(disposed, this);
+        if (!Binding.UsesLease) return null;
         lock (frameMutationGate)
         {
             if (Interlocked.CompareExchange(ref explicitReadActive, 1, 0) != 0)
@@ -41,19 +42,27 @@ public sealed partial class PlayerMoveSimulator
             MovementStepOutcome outcome = MovementStepOutcome.FrameMismatch;
             if (basis.FrameAnchor == new Vector2(Frame.Anchor.X, Frame.Anchor.Z))
             {
-                MovementAvailability boundaryStatus = bounds is null ? MovementAvailability.Known
+                bool ordinary = Binding.Kind == EffectiveMovementBindingKind.OrdinaryContact;
+                MovementFrameDescriptor descriptor = ordinary ? OrdinaryFrame() : default;
+                MovementAvailability boundaryStatus;
+                if (ordinary)
+                {
+                    boundary = Binding.CaptureOrdinaryBoundary(descriptor);
+                    boundaryStatus = MovementAvailability.Known;
+                }
+                else boundaryStatus = bounds is null ? MovementAvailability.Known
                     : bounds.TryCaptureExplicit(Frame.Anchor, out boundary);
                 outcome = boundaryStatus == MovementAvailability.Invalid ? MovementStepOutcome.EnvironmentInvalid
                     : MovementStepOutcome.EnvironmentUnresolved;
                 if (boundaryStatus == MovementAvailability.Known)
                 {
-                    MovementQueryScope scope = explicitMovement.Scope(basis, Frame);
-                    if (scope.Frame.Frame == Frame && scope.Frame.PhysicsOrigin == new Vector3(Frame.Anchor.X, 0, Frame.Anchor.Z))
+                    MovementQueryScope scope = ordinary ? Binding.CreateOrdinaryScope(descriptor) : explicitMovement!.Scope(basis, Frame);
+                    if (scope.Frame.Frame == Frame && scope.Frame.PhysicsOrigin == (ordinary ? physics!.Origin : new Vector3(Frame.Anchor.X, 0, Frame.Anchor.Z)))
                     {
                         outcome = MovementStepOutcome.EnvironmentInvalid;
                         if (scope.CurrentSpace is null)
                         {
-                            MovementAvailability status = explicitMovement.Environment.TryAcquire(scope, out queries);
+                            MovementAvailability status = Binding.TryAcquire(scope, out queries);
                             outcome = status == MovementAvailability.Invalid ? MovementStepOutcome.EnvironmentInvalid
                                 : MovementStepOutcome.EnvironmentUnresolved;
                             if (status == MovementAvailability.Known && queries is not null)
@@ -61,9 +70,8 @@ public sealed partial class PlayerMoveSimulator
                                 IPhysicsWorld? expected = physics is IPhysicsWorldQueryView selected ? selected.SourceWorld : physics;
                                 if (ReferenceEquals(queries.Id.SourceWorld, expected))
                                 {
-                                    var framed = new FramedMovementState(basis.Move, queries.Frame, null);
-                                    outcome = ExplicitCharacterMovement.ValidatePlacement(framed, tuning,
-                                        explicitMovement.Water, queries, boundary).Outcome;
+                                    var framed = new FramedMovementState(OrdinaryPlayerMovement.ToPhysics(basis.Move, queries.Frame), queries.Frame, null);
+                                    outcome = Binding.ValidatePlacement(framed, queries, boundary).Outcome;
                                 }
                                 else outcome = MovementStepOutcome.EnvironmentInvalid;
                             }
@@ -71,7 +79,7 @@ public sealed partial class PlayerMoveSimulator
                     }
                 }
             }
-            explicitRead = new PlayerMoveReadScope(queries, outcome, EndExplicitRead, boundary);
+            explicitRead = new PlayerMoveReadScope(queries, outcome, releaseRead, boundary);
             return explicitRead;
         }
         catch
@@ -102,13 +110,12 @@ public sealed partial class PlayerMoveSimulator
         {
             // Replay reconstructs each corrected pose from the null-hint witness. No predicted
             // selection or local handle survives through the player state or this adapter.
-            var framed = new FramedMovementState(state.Move, queries.Frame, null);
-            MovementStepResult result = ExplicitCharacterMovement.Step(framed, command, dt, tuning,
-                explicitMovement!.Water, queries, read.Boundary);
+            var framed = new FramedMovementState(OrdinaryPlayerMovement.ToPhysics(state.Move, queries.Frame), queries.Frame, null);
+            MovementStepResult result = Binding.Step(framed, command, dt, queries, read.Boundary);
             LastExplicitOutcome = result.Outcome;
             return new PlayerMoveState
             {
-                Move = result.State.State,
+                Move = OrdinaryPlayerMovement.FromPhysics(result.State.State, queries.Frame),
                 TeleportEpoch = state.TeleportEpoch,
                 FrameAnchor = state.FrameAnchor
             };

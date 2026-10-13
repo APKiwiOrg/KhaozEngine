@@ -95,6 +95,46 @@ origin change or a source identity change during a step is rejected at the exist
 The context does not expose a public `Step` method. Its internal adapter is the shared frame seam used while a
 profile is being built.
 
+Ordinary contact movement uses this overload. The original overloads retain legacy movement:
+
+```csharp
+public GroundMoveContext(
+    Func<float, float, float> groundHeight,
+    Func<float, float, Vector3>? groundNormal,
+    IPhysicsWorld? physics,
+    Func<float, float, Vector2>? clampXz,
+    Func<float, float, float, MovementMedium>? medium,
+    IPhysicsWorldQueryView? movementQueries,
+    IMovementWaterField? movementWaterField,
+    OrdinaryMovementRegistration? movementRegistration,
+    MovementBoundary? movementBoundary,
+    string? legacyOnlyContactRefusal = null);
+```
+
+Select `MoveTuning.Controller = MovementControllerKind.Contact` and a non-Legacy `Water` policy. The registration,
+boundary and certified query capabilities are required. `SupportsContactController` records the construction's
+capabilities. Tuning is validated on first use and cached by value. A medium delegate requires a field. For contact
+movement, `Medium` is one absolute-coordinate point delegate derived from that field and the last admitted tuning.
+Contact approach pacing samples the ordinary leased query with the carried centre and actual physics frame. It uses
+the controller's swimmer classification, including the converted interval, free-surface flag and support decision.
+The public `Medium` delegate retains its absolute feet contract for legacy consumers. Actual movement uses the
+certified water trace under a lease.
+The dry traversal helper remains legacy-only and cannot bypass contact water proof.
+Legacy traversal reuses its resource-free binding when source and unit-speed probe tuning alternate. Each
+changed tuning still validates and drives the actual movement call, without allocating another binding.
+The ordinary composition rests at the support height with zero placement offset. Public explicit motion below
+keeps its 0.001 m offset. Ordinary contact requires query leases, capsule contacts, complete support footprints
+and certified capsule sweeps, valid shell/foot geometry and positive gravity, maximum fall speed and swim-enter
+depth fraction. The selected foot radius must be at least 0.01 m. No missing capability falls back to Legacy.
+
+The context implements `IDisposable`. A supplied `MovementQueries` view remains borrowed. Without one, a contact
+construction creates one selected view and releases it on disposal. It never disposes the physics source.
+`legacyOnlyContactRefusal` lets a producer record a restriction when constructing the context, before tuning is
+known. Every later contact use throws `NotSupportedException` with that message. Resolver-1 MapDoc contexts set
+`Resolver-1 MapDoc contexts are legacy-only. Native contact movement requires G1b.` No production friend access is
+required. Movement depends on Locomotion, Navigation and Physics, with no renderer dependency. The local input
+controller lives in `KhaozEngine.Game.Render3D` and selects the same binding through its own Update overload.
+
 ## Bounded static physics capture
 
 `PhysicsNavBakeOptions` is an immutable record with this exact parameter list and defaults:
@@ -194,6 +234,8 @@ public sealed class GroundNavigation
 ```
 
 The two-argument `BuildProfile` builds a ground profile and equals the overload with `GroundProfileOptions.Default`.
+Both overloads and `GroundNavigationBake.Create` refuse Contact profiles with `NotSupportedException` naming
+phase 5b. Bake creation checks every profile before identity encoding. Legacy v1 bytes remain unchanged.
 
 `AgentRadius` and `AgentHeight` are the baked radius and full capsule height. Profile geometry must match
 `CapsuleRadius`, `CapsuleHalfHeight`, `MaxSlopeRadians` and `StepHeight` exactly when a context validates a
@@ -845,14 +887,24 @@ The driver has no wall following or local avoidance. It walks straight and repor
 `ExplicitMovementProfile` identifies `contact-shell-footprint-swim-v1`. The
 [phase 4b handoff](../docs/design/CONTACT-CONTROLLER-PHASE-4B-SWIMMING-HANDOFF-2026-10-11.md)
 uses #438 shell solids and certified footprint support for explicit land motion, with swimming's
-full-body medium and route proofs. The fingerprint includes the fixed footprint radius fraction
-0.5, vertical placement offset 0.001 m, handoff recipe version 1 and route-proof recipe version 1.
+full-body medium and route proofs. The fingerprint includes `MoveTuning.FootRadiusFraction` (default 0.5),
+vertical placement offset 0.001 m, handoff recipe version 1 and route-proof recipe version 1.
 Earlier `f3-full-capsule-v1` proofs cannot certify this behavior. It also includes all
-MoveTuning inputs, water capability and launch tuning, area masks, captured boundary identity,
+positional MoveTuning inputs, water capability and launch tuning, area masks, captured boundary identity,
 probe cadence and budget, finite resolver limits and versions, engine version, and ordinal-sorted
 semantic source digests. Supply every query/clearance, shore-policy and actual route-cost dependency
 through NavBakeSources. No new route-cost control is added. Profile construction snapshots those
 inputs. Local leases, physics handles and frame epochs never enter the fingerprint.
+
+The profile's supplied water policy governs. `MoveTuning.Water` must be default or identical to that policy.
+Both defined `Controller` values produce the same explicit fingerprint. Undefined selectors refuse.
+Construction validates the selected foot geometry and every explicit kernel requirement, including positive
+gravity, maximum fall speed and swim-enter depth fraction. Default foot and water inputs retain their fingerprints.
+Ordinary runtime selection is implemented in phase 5a, staged in 20.37.0. `PhysicsNavBake.BuildProfile` and
+`GroundNavigationBake.Create` still refuse Contact before encoding, naming phase 5b. The frozen v1 fingerprint
+and legacy bake bytes are unchanged. Native G1b, #1299 navigation acceptance and the remaining adoption gates
+stay open. Local timing in the [5a proof](../docs/superpowers/plans/proofs/2026-10-13-contact-controller-phase5a-cost.md)
+does not establish the hosted cost gate.
 
 `GroundMoveContext.StepExplicit` uses that profile's actual cadence and tuning with the existing
 explicit locomotion kernel. The context must name the exact captured movement query view. A second

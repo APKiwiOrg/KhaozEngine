@@ -90,7 +90,7 @@ internal readonly struct DryContactQueryContext(Func<float, float, float>? heigh
     internal void CheckMedium(Vector3 feet)
     {
         if (medium is not null && medium(feet.X, feet.Z, feet.Y).InWater)
-            throw new NotSupportedException("The contact controller does not swim yet. Water arrives in phase 4.");
+            throw new NotSupportedException("Point-sampled water cannot certify contact movement. Use an ordinary movement head with IMovementWaterField.");
     }
     internal float HeightAt(Vector3 feet)
     {

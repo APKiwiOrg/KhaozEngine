@@ -5,19 +5,17 @@ namespace KhaozEngine.Locomotion;
 
 public static partial class ExplicitCharacterMovement
 {
-    /// <summary>Rebuilds destination membership for a live continuation without moving the pose,
-    /// advancing time or consuming an already accepted buffered press. Footing and water mode are
-    /// reclassified from the destination facts. Restore and teleport use SettlePlacement instead.</summary>
-    public static MovementStepResult ReclassifyContinuation(in FramedMovementState state, in MoveTuning tuning,
-        in WaterTraversalPolicy water, MovementQueryLease queries, MovementBoundary? boundary = null)
+    internal static MovementStepResult ReclassifyContinuation(in FramedMovementState state, in MoveTuning tuning,
+        in WaterTraversalPolicy water, MovementQueryLease queries, in ContactComposition composition,
+        MovementBoundary? boundary = null)
     {
-        MovementStepResult validated = ValidatePlacement(state, tuning, water, queries, boundary);
+        MovementStepResult validated = ValidatePlacement(state, tuning, water, queries, composition, boundary);
         if (validated.Outcome != MovementStepOutcome.Advanced) return validated;
         try
         {
             MoveState carried = state.State;
             MovementSelection selection = validated.State.Selection!.Value;
-            var contact = PlacementQueries(carried, tuning, water, queries, selection, boundary);
+            var contact = PlacementQueries(carried, tuning, composition, water, queries, selection, boundary);
             var feet = contact.KernelFeet(carried.Position, tuning);
             MovementWaterPoint point = contact.SampleMedium(feet)!.Value;
             bool wasSwimming = carried.Swimming || carried.WaterExcursion == WaterExcursionState.Surface;
@@ -26,7 +24,7 @@ public static partial class ExplicitCharacterMovement
             if ((carried.Grounded || carried.VerticalVelocity <= 0) &&
                 FootingAllowed(point, wasSwimming, carried.Position.Y, tuning, water))
             {
-                SupportSample support = ContactPlacement.Find(contact, feet, tuning,
+                SupportSample support = ContactPlacement.Find(contact, feet, tuning, composition,
                     carried.Grounded ? tuning.StepHeight : tuning.GroundedEpsilon, tuning.GroundedEpsilon, out var binding);
                 footing = support.Status == SupportStatus.Walkable;
                 if (footing)

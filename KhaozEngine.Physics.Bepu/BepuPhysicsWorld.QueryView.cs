@@ -23,7 +23,7 @@ public sealed partial class BepuPhysicsWorld
     }
 
     private sealed class QueryView : IPhysicsWorldQueryView, IPhysicsQueryLeaseSource, IPhysicsCapsuleContacts,
-        IPhysicsCapsuleSweep, IPhysicsCapsuleGeometryQueries, IPhysicsCapsuleFeatures, IPhysicsSupportNeighborhood, IPhysicsSupportFootprint
+        IPhysicsCapsuleSweep, IPhysicsCapsuleGeometryQueries, IPhysicsCapsuleFeatures, IPhysicsSupportNeighborhood, IPhysicsSupportFootprint, IPhysicsStaticGeometrySource
     {
         private readonly BepuPhysicsWorld _owner;
         private readonly StaticQueryExclusions _exclusions;
@@ -36,6 +36,11 @@ public sealed partial class BepuPhysicsWorld
         }
 
         public IPhysicsWorld SourceWorld => _owner;
+
+        public long StaticGeometryGeneration
+        {
+            get { ThrowIfDisposed(); return _owner.StaticGeometryGeneration; }
+        }
 
         public IPhysicsQueryLease AcquireQueryReadLease()
         {

@@ -11,7 +11,7 @@ namespace KhaozEngine.NetWorld;
 
 /// <summary>Classifies the complete imported movement batch under one destination lease. The
 /// scope union is prepared before acquisition, and all derived state stays staged until accepted.</summary>
-internal sealed class ExplicitCellAdmission(ExplicitPlayerMovement settings, MoveTuning tuning,
+internal sealed class ExplicitCellAdmission(EffectiveMovementBinding binding, ExplicitPlayerMovement? publicExplicit, MoveTuning tuning,
     WorldFrame frame, IPhysicsWorld? physics, WorldBounds? bounds) : ICellImportAdmission
 {
     public CellAdmissionRead Acquire(World staged, IReadOnlyDictionary<long, Entity> entities, CellImportPurpose purpose)
@@ -19,8 +19,11 @@ internal sealed class ExplicitCellAdmission(ExplicitPlayerMovement settings, Mov
         MovementQueryLease? queries = null;
         try
         {
-            MovementBoundary? boundary = null;
-            if (bounds is not null)
+            if (binding.Tuning != tuning) return new(CellAdmissionOutcome.Refused, detail: "The cell binding has different movement tuning.");
+            bool ordinary = binding.Kind == EffectiveMovementBindingKind.OrdinaryContact;
+            MovementFrameDescriptor descriptor = ordinary ? new(frame, physics!.Origin, 1) : default;
+            MovementBoundary? boundary = ordinary ? binding.CaptureOrdinaryBoundary(descriptor) : null;
+            if (!ordinary && bounds is not null)
             {
                 MovementAvailability capture = bounds.TryCaptureExplicit(frame.Anchor, out boundary);
                 if (capture != MovementAvailability.Known)
@@ -36,11 +39,11 @@ internal sealed class ExplicitCellAdmission(ExplicitPlayerMovement settings, Mov
                     return new(CellAdmissionOutcome.Refused, detail: "Imported movement has no destination-frame position.");
                 staged.TryGet(entity, out MovementOwnerState owner);
                 PlayerMoveState state = PlayerMoveState.From(position, movement, owner);
-                MovementQueryScope scope = settings.Scope(state, frame);
+                MovementQueryScope scope = ordinary ? binding.CreateOrdinaryScope(descriptor) : publicExplicit!.Scope(state, frame);
                 if (scope.CurrentSpace is not null || scope.Frame.Frame != frame ||
-                    scope.Frame.PhysicsOrigin != new Vector3(frame.Anchor.X, 0, frame.Anchor.Z))
+                    scope.Frame.PhysicsOrigin != (ordinary ? physics!.Origin : new Vector3(frame.Anchor.X, 0, frame.Anchor.Z)))
                     return new(CellAdmissionOutcome.Refused, detail: "Imported movement scope has the wrong frame or a selection hint.");
-                if (aggregate is { } previous)
+                if (!ordinary && aggregate is { } previous)
                 {
                     if (scope.Identity != previous.Identity || scope.Frame != previous.Frame || scope.WorldId != previous.WorldId)
                         return new(CellAdmissionOutcome.Refused, detail: "Imported movement scopes disagree on their environment identity.");
@@ -52,7 +55,7 @@ internal sealed class ExplicitCellAdmission(ExplicitPlayerMovement settings, Mov
                 actors.Add((entity, state));
             }
             if (aggregate is not { } batch) return new(CellAdmissionOutcome.Accepted);
-            MovementAvailability availability = settings.Environment.TryAcquire(batch, out queries);
+            MovementAvailability availability = binding.TryAcquire(batch, out queries);
             if (availability != MovementAvailability.Known || queries is null)
                 return Reject(availability == MovementAvailability.Invalid ? CellAdmissionOutcome.Refused : CellAdmissionOutcome.Unresolved,
                     "Destination environment could not certify the imported batch.");
@@ -61,15 +64,15 @@ internal sealed class ExplicitCellAdmission(ExplicitPlayerMovement settings, Mov
                 return Reject(CellAdmissionOutcome.Refused, "Imported movement captured a different physics source.");
             foreach (var actor in actors)
             {
-                var framed = new FramedMovementState(actor.State.Move, queries.Frame, null);
+                var framed = new FramedMovementState(OrdinaryPlayerMovement.ToPhysics(actor.State.Move, queries.Frame), queries.Frame, null);
                 var result = purpose == CellImportPurpose.Transfer
-                    ? ExplicitCharacterMovement.ReclassifyContinuation(framed, tuning, settings.Water, queries, boundary)
-                    : ExplicitCharacterMovement.SettlePlacement(framed, tuning, settings.Water, queries, boundary);
+                    ? binding.ReclassifyContinuation(framed, queries, boundary)
+                    : binding.SettlePlacement(framed, queries, boundary);
                 if (result.Outcome != MovementStepOutcome.Advanced)
                     return Reject(result.Outcome is MovementStepOutcome.EnvironmentInvalid or MovementStepOutcome.PlacementRefused
                         ? CellAdmissionOutcome.Refused : CellAdmissionOutcome.Unresolved, "Imported movement placement was not admitted.");
                 PlayerMoveState state = actor.State;
-                state.Move = result.State.State;
+                state.Move = OrdinaryPlayerMovement.FromPhysics(result.State.State, queries.Frame);
                 staged.Set(actor.Entity, ReplicatedPosition.InFrame(frame, state.Position));
                 MovementComponents.Set(staged, actor.Entity, state);
             }

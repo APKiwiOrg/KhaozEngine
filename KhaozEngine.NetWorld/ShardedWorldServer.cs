@@ -93,6 +93,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         if (!float.IsFinite(config.CellOrigin.X) || !float.IsFinite(config.CellOrigin.Y))
             throw new ArgumentException($"CellOrigin {config.CellOrigin} must be finite on both axes.", nameof(config));
         ValidateCellSizeAgainstFrameGrid(config);
+        OrdinaryPlayerMovement.ValidateSharded(config, tuning, bounds, medium is not null);
 
         // Consumer-injectable registry (shared with the client) so NPCs/enemies carry game components across every
         // cell's replication + handoff + ghosting; default = movement-only. Assigned before the host so cells use it.
@@ -128,12 +129,15 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         host.CellCreated += cell =>
         {
             cell.FrameAdapter = ReplicatedPositionFrameAdapter.Instance;
-            if (config.ExplicitMovementFactory is not null) EnsureWired(cell);
+            if (tuning.Controller == MovementControllerKind.Contact || config.ExplicitMovementFactory is not null) EnsureWired(cell);
             CellCreated?.Invoke(cell.Coord);
         };
         // An unloaded coordinate comes back as a genuinely fresh cell with an empty world, so the record of having
         // wired its movement system has to go with it or the recreated cell would never simulate.
-        host.CellRemoved += cell => cellRuntime.Remove(cell.Coord);
+        host.CellRemoved += cell =>
+        {
+            if (cellRuntime.Remove(cell.Coord, out var runtime)) runtime.Dispose();
+        };
         // Always enforce the engine wire generation at connect (see WorldServer): a wire-skewed / version-less client
         // is rejected cleanly rather than admitted and left to misparse the wire.
         var admission = new ReplicationAdmissionGate(WireGenerationAuthenticator.Install(authenticator));
@@ -159,7 +163,12 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
     /// live (the ordinary shutdown case, since eviction is opt-in and cold) leaked that cell's physics world. Call this
     /// when the server itself is done, not per-cell: individual cells still come and go through eviction as before.
     /// </summary>
-    public void Dispose() => host.Dispose();
+    public void Dispose()
+    {
+        foreach (var runtime in cellRuntime.Values) runtime.Dispose();
+        cellRuntime.Clear();
+        host.Dispose();
+    }
 
     // --- ICellPersistenceHost: per-cell world-state persistence (non-player entities). ---
 

@@ -5,13 +5,41 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 20.37.0
+## 20.38.0
 
 - Added GPU-free rigid attachment definitions, strict JSON and embedded GLB validation in
   `KhaozEngine.Attachments`. The separate renderer arm is included in Game3D and provides named-joint
   binding, shared scene uploads, stable part/material motion identities and allocation-free submission.
 - The tile scene exposes attachment uploads through an optional capability. Render3D adds material-part
   import from GLB bytes, transactional surface-map loading and explicit release of owned maps.
+
+## 20.37.0
+
+- Locomotion adds ordinary contact selection through `MoveTuning.Controller`, `FootRadiusFraction` and `Water`,
+  retaining its 30-parameter constructor and Legacy defaults. Network heads, prediction/replay, ground movement
+  drivers and the local 3D controller share the leased kernel through one effective binding. Spawn, restore,
+  teleport, transfer and continuation use the same composition. Ordinary feet rest at support height, while
+  public explicit APIs retain 0.001 m. Wire generation 14 and frozen legacy v1 bake bytes are unchanged.
+- Ordinary registrations publish canonical installer owners, exclusions and a finite resident served domain.
+  Analytic residency holes refuse only queries needing their data. Views created by a binding dispose with it,
+  while supplied views and explicit contexts stay borrowed. Boundaries capture local double coordinates once
+  per frame. Frame-local ground delegates keep their original operands, and world delegates retain dry parity.
+- Level and TileWorld water fields certify complete capsule paths and exact frame-origin point membership.
+  TileWorld captures finite columns, exposed union boundaries and an index over actual rounded column bounds.
+  Capacity refusals remain atomic. Legacy surface-only sampling and collider hashes stay unchanged.
+- Static registrations survive simulation steps and pure rebases. Missing removals leave static generation
+  unchanged. Empty bounded capsule contact selections certify zero error. Local vertices admit through 2048 m,
+  with precision, exact-arithmetic capacity and incidence limits enforced per query under unchanged budgets.
+- Warm bounded rectangular ordinary ticks allocate only the measured physics lease, ordinary pin, movement
+  lease plus release binding and player read scope. Exact rectangular boundary signs use stack storage, and
+  the player read-release callback is cached. Older support-cost evidence supplies defaults for absent selector,
+  foot and water fields without changing committed baselines.
+- Resolver-1 MapDoc contexts record their G1b refusal through public construction options. Contact approach
+  pacing uses the controller's own water classification. Contact navigation capture refuses until phase 5b.
+  Native G1b, #1299 navigation acceptance and the remaining adoption and hosted cost gates stay open.
+- Legacy ground contexts reuse their resource-free binding when navigation alternates source and unit-speed
+  probe tuning. Validation and actual per-call movement tuning stay current, preserving the profile allocation budget.
+
 - Windowing delivers native macOS trackpad magnify and precise two-axis scroll through immutable,
   ordered `InputState.Gestures` samples, with event anchors, modifiers, phases and momentum.
   Windows adds Ctrl+wheel pinch compatibility. Full native Windows precision-touchpad pan is not included.
@@ -24,6 +52,16 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   content-scroll handoff, child-control taps and ownership that prevents input leaking into lower maps.
 - The opt-in `GestureInputProbe` and public API examples support owner device validation and consumer
   adoption. Flightline adoption remains separate at https://github.com/APKiwiOrg/Flightline/issues/3.
+
+- Render3D adds per-instance `FoliageMotionProfile` coefficients, movement-driven leaf shiver through
+  `FoliageAgitation` and `FoliageInteractor.Agitation`, and opt-in animated cascade shadows. The default
+  `Blade` profile preserves existing grass motion. Casting defaults to off. Point-light shadows use the
+  authored rest pose. Terrain exposes model-keyed motion and casting maps, and TileWorld exposes
+  `AnimatedFoliageStyles` for selected archetypes.
+- Retained GPU ground cover no longer refuses `CastsShadows`. A consumer using eligible `UseGpuBatches`
+  cover with global casting enabled now gets retained, animated, casting cover instead of the CPU path.
+  No current consumer sets that combination. Grimhollow keeps ground-cover casting off.
+
 
 ## 20.36.0
 

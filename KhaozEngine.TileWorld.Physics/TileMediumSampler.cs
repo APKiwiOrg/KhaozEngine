@@ -11,11 +11,11 @@ namespace KhaozEngine.TileWorld.Physics;
 /// carries the surface height and leaves the wade speed to the movement tuning.
 /// <para>Every water tile's surface is collected once into a per-tile table, so a call is one lookup with no search
 /// and no allocation. The table is a snapshot of the document it was built from, so a document edited after
-/// <see cref="TileWorldColliders.Build"/> needs a rebuild.</para>
+/// <see cref="TileWorldColliders.Build(TileWorldDocument, TileWorldCatalogs, TileColliderOptions?)"/> needs a rebuild.</para>
 /// <para>The table is read-only after construction, so several threads may call the sampler at once as long as
 /// nothing edits the document meanwhile.</para>
 /// </summary>
-public sealed class TileMediumSampler
+public sealed partial class TileMediumSampler : IMovementWaterField
 {
     // The one plane this round describes.
     const int Plane = 0;
@@ -24,8 +24,15 @@ public sealed class TileMediumSampler
     readonly Dictionary<(int X, int Z), float> _surfaceByTile = new();
 
     internal TileMediumSampler(TileWorldDocument document, TileWorldCatalogs catalogs, RegionCoord[] regions)
+        : this(document, catalogs, regions, TileMovementSnapshot.ContentWorldId(document, regions))
     {
+    }
+
+    internal TileMediumSampler(TileWorldDocument document, TileWorldCatalogs catalogs, RegionCoord[] regions, string worldId)
+    {
+        if (string.IsNullOrWhiteSpace(worldId)) throw new ArgumentException("A movement world identity is required.", nameof(worldId));
         _tileSize = document.TileSize;
+        _field = new FieldSnapshot(document, catalogs, regions, worldId);
         foreach (RegionCoord region in regions)
             foreach (TileWaterBody body in TileWaterBodies.Collect(document, catalogs, region, Plane))
                 foreach (TileRect rect in body.Rects)

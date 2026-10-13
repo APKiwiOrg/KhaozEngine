@@ -26,12 +26,28 @@ public sealed class GroundCoverRenderOptions
     public float FadeBandWidth { get; set; } = 8f;
     public float QualityDensity { get; set; } = 1f;
     public float DistantDensity { get; set; } = 0.35f;
+    /// <summary>Shadow casting for every model without an entry in <see cref="ModelCastsShadows"/>. The CPU
+    /// path applies only this value.</summary>
     public bool CastsShadows { get; set; }
+    /// <summary>Retained GPU motion by ground-cover model id. A model without an entry moves as
+    /// <see cref="FoliageMotionProfile.Blade"/>. The CPU path ignores it.</summary>
+    public IReadOnlyDictionary<string, FoliageMotionProfile> MotionProfiles
+    {
+        get => _motionProfiles;
+        set => _motionProfiles = value ?? throw new ArgumentNullException(nameof(MotionProfiles));
+    }
+    /// <summary>Retained GPU shadow casting by ground-cover model id. A model without an entry follows
+    /// <see cref="CastsShadows"/>. The CPU path ignores it.</summary>
+    public IReadOnlyDictionary<string, bool> ModelCastsShadows
+    {
+        get => _modelCastsShadows;
+        set => _modelCastsShadows = value ?? throw new ArgumentNullException(nameof(ModelCastsShadows));
+    }
     /// <summary>Width in metres of each thinning placement's fade. The layer fade band bounds it.</summary>
     public float InstanceFadeBandWidth { get; set; } = 1f;
     /// <summary>Defaults to the original fragment dissolve. Height scaling suits short rooted foliage.</summary>
     public GroundCoverFadeMode FadeMode { get; set; }
-    /// <summary>Retains immutable height-scaled batches on the GPU when shadow casting is disabled.</summary>
+    /// <summary>Retains immutable height-scaled batches on the GPU.</summary>
     public bool UseGpuBatches { get; set; }
     /// <summary>World-space XZ wind direction for GPU batches. A zero vector disables wind.</summary>
     public Vector2 WindDirection { get; set; } = Vector2.UnitX;
@@ -44,6 +60,10 @@ public sealed class GroundCoverRenderOptions
     public float WindFadeBladePixels { get; set; }
     /// <summary>Up to four cosmetic influences, sampled by value for each GPU submission.</summary>
     public IReadOnlyList<FoliageInteractor> Interactors { get; set; } = Array.Empty<FoliageInteractor>();
+
+    IReadOnlyDictionary<string, FoliageMotionProfile> _motionProfiles =
+        new Dictionary<string, FoliageMotionProfile>(StringComparer.Ordinal);
+    IReadOnlyDictionary<string, bool> _modelCastsShadows = new Dictionary<string, bool>(StringComparer.Ordinal);
 }
 
 /// <summary>Queues precomputed ground cover through immediate or retained instancing.</summary>

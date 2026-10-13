@@ -18,6 +18,7 @@
     <None Include="NetWorld/Fixtures/cell-v1-32bit.blob" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Contacts/SupportAllocationRegion.cs" Link="NetWorld/Fixtures/SupportAllocationRegion.cs" />
     <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Fixtures/AnalyticMovementEnvironment.cs" Link="NetWorld/Fixtures/AnalyticMovementEnvironment.cs" />
     <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Fixtures/AnalyticMovementEnvironment.ContactSupport.cs" Link="NetWorld/Fixtures/AnalyticMovementEnvironment.ContactSupport.cs" />
     <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Fixtures/AnalyticCapsuleVolume.cs" Link="NetWorld/Fixtures/AnalyticCapsuleVolume.cs" />

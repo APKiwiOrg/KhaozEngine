@@ -7291,6 +7291,14 @@ right-button look gestures.
 so any height source works. Pair it with `TerrainCollision.GroundHeight` for analytic terrain. WASD is
 camera-relative on XZ (normalized diagonals, left/right shift to run); `Position` is the capsule centre.
 
+For certified ordinary contact movement, set `Controller = MovementControllerKind.Contact` and a non-Legacy `Water`
+policy. The full `Update` overload adds `IMovementWaterField`, `OrdinaryMovementRegistration` and `MovementBoundary`
+after the existing medium argument. Supply physics, registration and boundary, plus a field when a medium delegate
+is present. `FootRadiusFraction` defaults to 0.5. The controller validates changes before stepping and caches the
+binding by tuning value and provider reference identity. It owns the selected view it creates, so dispose it at
+teardown. The physics source remains caller-owned. Ground delegates stay absolute and movement runs in the current
+physics frame under a certified lease. The original Update overload and Legacy defaults remain available.
+
 **Jump + gravity (vertical physics).** `Update` reads `Space` (edge-triggered) as a jump and runs the vertical
 movement step: while airborne the character falls under `Gravity` (clamped to `MaxFallSpeed`) until it lands back
 on the ground; a jump launches at `JumpSpeed` only when grounded (or within `CoyoteTime` of leaving the ground),
@@ -8164,7 +8172,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.37.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.38.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -8205,7 +8213,7 @@ epsilon. Use `Within` for reach decisions instead of comparing a rounded `Distan
 
 ### One absolute ground context
 
-`GroundMoveContext` is the cached adapter for the shared locomotion core. Its exact public constructor is:
+`GroundMoveContext` is the cached adapter for the shared locomotion core. Its original public constructor is:
 
 ```csharp
 public GroundMoveContext(
@@ -8245,6 +8253,22 @@ The adapter's `Step` and `ValidateTuning` methods are internal, so this package 
 driver API. Tuning validation keeps the actual capsule dimensions, finite nonnegative ground and medium controls,
 ordered medium thresholds and a slope below `pi / 2`.
 `FacingTurnSpeed = float.PositiveInfinity` remains a valid default.
+
+For ordinary contact movement, the additional constructor accepts `IMovementWaterField? movementWaterField`,
+`OrdinaryMovementRegistration? movementRegistration` and `MovementBoundary? movementBoundary` after the query view,
+followed by the optional `string? legacyOnlyContactRefusal = null`. Use Contact tuning and a non-Legacy water policy.
+Physics, registration, boundary and certified view capabilities are required. A medium delegate requires a field.
+`SupportsContactController` records the construction's capability. First-use tuning validation is cached by value.
+Contact `Medium` retains its absolute feet contract and samples the field using the last admitted tuning. Contact
+approach pacing instead uses `EffectiveMovementBinding.SampleWaterForPacing` under the ordinary lease, with the
+carried local centre and actual frame. It shares the controller's tick-start classification, converted interval,
+free-surface flag and support decision. Legacy pacing retains `ResolveSwimming`. Actual movement uses the certified
+trace. A dry traversal helper cannot bypass that proof.
+
+Dispose the context at teardown. Caller-supplied views stay borrowed, while a contact construction without a view
+creates and owns one selected view. The physics source remains caller-owned. Producers that support legacy geometry
+only set `legacyOnlyContactRefusal` at construction. Resolver-1 MapDoc contexts refuse every contact use with
+`Resolver-1 MapDoc contexts are legacy-only. Native contact movement requires G1b.`
 
 ### Static physics columns and profile construction
 
@@ -8319,6 +8343,9 @@ clearance check sees only the deepest contact, so a route may clip a bank within
 `wading length / (EdgeProbeSeconds x 1 m/s x WadeMinSpeedScale x zone scale)` steps while it wades plus the swimming
 steps, so larger cells than 0.25 m or slow zones must raise `MaxEdgeProbeSteps`. The Movement README states the full
 rules.
+
+Both `BuildProfile` overloads and `GroundNavigationBake.Create` refuse Contact profiles before identity encoding,
+with `NotSupportedException` naming phase 5b. Legacy v1 bake bytes remain unchanged.
 
 Radius, full height, slope class and step class must match the capture profile's
 `CapsuleRadius`, `CapsuleHalfHeight`, `MaxSlopeRadians` and `StepHeight` exactly. Walk and run pace, climb pace
@@ -8460,7 +8487,7 @@ On the dev Mac a 36,864-column flat world wrote 664,689 bytes and loaded in abou
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.37.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.38.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -8976,6 +9003,22 @@ rect/polygon rim and gravity/jump are named follow-ups (prop/building collision 
 
 ### Movement medium + wading (`MovementMedium`, `KhaozEngine.Locomotion`)
 
+For leased ordinary contact movement, use `EffectiveMovementBinding.Ordinary` with an installer-authored
+`OrdinaryMovementRegistration`, finite resident extent, ground delegates, playable boundary and
+optional `IMovementWaterField`. `MovementWaterField.Level(worldId, surfaceY, floorY)` certifies a flat water
+slab with a finite bed. Its horizontal resident extent comes from the installer. The binding keeps one
+served scope per frame, converts water heights and contact columns through the physics origin, and owns
+only a view it creates. Ground delegates use rounded absolute sampling by default. Select
+`groundSpace: OrdinaryGroundSpace.Frame` for original physics-local axes and local heights without an
+absolute float round trip. See [the ordinary environment contract](../KhaozEngine.Locomotion/README.md#ordinary-contact-environment)
+for installation, exclusions, scope acquisition and lifetime rules. Point-only medium delegates do not
+certify contact water paths. Ordinary head integration is implemented and staged in 20.37.0.
+The boundary is captured once per frame in local double coordinates. Water producers receive local queries
+and the physics origin, compare their exact double sum with absolute geometry, then return absolute intervals
+and contact columns for local conversion. TileWorld indexes captured rounded column bounds so large tile
+addresses do not rely on a fixed neighbouring-tile radius. Analytic residency holes refuse only queries
+needing their missing ground data. See [TileWorld setup](../KhaozEngine.TileWorld.Physics/README.md#use).
+
 The separate explicit environment values use `MovementAvailability.Unresolved` by default.
 `MovementWaterPoint` requires world-qualified space/domain identity and actual vertical containment
 before a wet result can be Known. `MovementWaterInterval.UpperY` may be a flooded cave ceiling below
@@ -9202,7 +9245,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.37.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.38.0" />
 ```
 
 ```csharp
@@ -9468,6 +9511,9 @@ Use `SupportFootprintBounds.TryCreate` to guard the required volume against an e
 before backend or producer work. This envelope does not extend the accepted disc or contribution band.
 Radius below 0.01 m is invalid, including analytic-only contact movement. A zero cosine returns
 `Unsupported`. Bepu accepts radius at most 2 m and proposal length at most 8 m.
+The shared local-vertex admission cap is 2048 m. It limits the represented range, while every query still
+enforces its position, separation and normal publication ceilings, exact-arithmetic capacity and 256 m
+incidence bound. Admitting a vertex does not promise that its query can certify under those unchanged budgets.
 
 ```csharp
 // Provision once outside the hot path. request and lease belong to the exact selected world.
@@ -10834,13 +10880,16 @@ supplies no medium, and native worlds refuse either legacy move context.
 (`IPhysicsCapsuleFeatures`) a static meets, without refusing the static, which still collides and blocks:
 `LeafCapacity` (a compound of more than 64 leaves), `CurvedLeaf` (a sphere, capsule or cylinder leaf, which that query
 does not capture), `MeshTriangleCapacity` (a mesh over 65,536 triangles), `LocalExtent` (a leaf reaching more than
-64 m from its origin) and `HullCapacity`. `HullCapacity` is conservative: any convex hull over 130 points is flagged,
+64 m from its origin) and `HullCapacity`. `LocalExtent` remains a conservative diagnostic for boxes and hulls,
+whose shared vertex admission now allows 2048 m per axis with precision enforced per query. Full capsule-feature
+mesh capture retains its explicit 64 m subset. `HullCapacity` is conservative: any convex hull over 130 points is flagged,
 because 130 points always fit the backend's 256 faces and 1,524 face entries, even though a larger hull may still be
 captured. Every diagnostic predicts `IPhysicsCapsuleFeatures` capture only. The #438 contact controller's
 foot-support primitive certifies movement through `IPhysicsSupportFootprint`, which has different
 limits: it captures curved leaves, reads mesh triangles in the full admitted footprint column and caps one query at 256 relevant raw members,
-while it shares the 64 leaf and hull face limits. It applies its own 64 m local bound to curved leaf sizes and to the
-admitted mesh triangles, which `LocalExtent` does not predict, and one unsupported static in the column refuses
+while it shares the 64 leaf and hull face limits. Curved leaf sizes retain their own 64 m bound. Admitted mesh
+triangles use the shared 2048 m vertex range and world-enclosure gates, with error propagation and acceptance
+checked per query. `LocalExtent` does not predict those footprint decisions, and one unsupported static in the column refuses
 the whole footprint query.
 
 **Refusals.** `MapAssetShapes.Read` throws `MapDocumentException` for an asset that declares a `Surface` (support)
@@ -11152,27 +11201,97 @@ lighting and defaults to no shadow casting. `MarkDirty` includes every loaded re
 same-plane door clearance. Streaming loads and unloads also rebuild caches affected by solid footprints, upper
 roofs and tagged doors.
 
-**Persistent GPU grass and shader wind (18.29.0).** Keep the existing authored placements and enable:
+**Persistent GPU foliage and shader wind.** Keep the existing authored placements and enable:
 
 ```csharp
 options.GroundCover.UseGpuBatches = true;
 options.GroundCover.FadeMode = GroundCoverFadeMode.HeightScale;
 options.GroundCover.CastsShadows = false;
 options.GroundCover.WindStrength = 0.1f;
-options.AnimatedFoliageArchetypes = new HashSet<string> { "grass_tall" };
-// Advance the scene clock in Update. Reuse the interactor array each frame.
+options.AnimatedFoliageArchetypes = new HashSet<string> { "grass_tall", "bush" };
+options.AnimatedFoliageStyles = new Dictionary<string, AnimatedFoliageStyle>
+{
+    ["bush"] = new(new FoliageMotionProfile(0.3f, 0.15f, 0.4f, 0.035f), CastsShadows: true),
+};
+var agitation = new FoliageAgitation(); // Retain one helper per actor between frames.
+options.GroundCover.Interactors = interactors; // Reuse this array each frame.
+
+// Each frame, advance the render clock and sample the actor's movement.
 scene.EffectTimeSeconds += dt;
-interactors[0] = new FoliageInteractor(playerPosition, 0.8f, 0.8f);
-options.GroundCover.Interactors = interactors;
+interactors[0] = new FoliageInteractor(playerPosition, 0.8f, 0.8f,
+    Agitation: agitation.Update(playerPosition, dt));
 ```
 
 The renderer retains immutable buffers until placements or model bindings change. CPU work culls patches,
 while the GPU fades and bends blades. Short grass and selected tall props share wind and interactions, but
 tall props keep full density and ordinary prop distance. This adds no collision. Wind is height-relative,
 roots stay planted, and the shader uses at most four nearby interaction positions with vertical separation.
-Other fade and shadow policies keep the existing CPU path. `LastDrawnCover` on the retained path is a
-conservative candidate count, including placements rejected by the shader. `Scene3D.LastFoliageStats`
-separates instance upload bytes, uniform bytes and submitted patch counts.
+Retention requires an immutable `GroundCoverBatch`, `UseGpuBatches` and `HeightScale` fading. It supports
+casting. Other fade modes and mutable placement lists keep the existing CPU path. `LastDrawnCover` on the
+retained path is a conservative candidate count, including placements rejected by the shader.
+`Scene3D.LastFoliageStats` separates instance upload bytes, uniform bytes and submitted patch counts.
+
+`GroundCoverRenderOptions.MotionProfiles` and `ModelCastsShadows` map ground-cover model IDs to motion
+and casting overrides. Both start empty and refuse null. A missing motion uses `FoliageMotionProfile.Blade`.
+A missing casting entry follows global `CastsShadows`, false by default. The renderer resolves policies
+before multipart expansion so all parts share them. Effective values and mesh handles are snapshotted at submission and
+compared by value on later draws. Changing or removing an entry recreates retained data when needed.
+Removal restores Blade motion or global casting. The CPU path ignores the maps and applies only global
+casting. For example, configure a short-cover model separately from the authored prop styles:
+
+```csharp
+options.GroundCover.MotionProfiles = new Dictionary<string, FoliageMotionProfile>
+{
+    ["reeds"] = new(0.3f, 0.15f, 0.4f, 0.035f),
+};
+options.GroundCover.ModelCastsShadows = new Dictionary<string, bool> { ["reeds"] = true };
+```
+
+`AnimatedFoliageArchetypes` is the only selection for authored ground props. `AnimatedFoliageStyles`
+starts empty and maps exact authored selected archetype IDs to `AnimatedFoliageStyle(Motion, CastsShadows)`.
+Use IDs from your catalogs. An omitted style is Blade with casting off, independent of short-cover
+casting. Entries outside the selection or not exactly naming an authored selected archetype throw
+`ArgumentException` naming the ID. Selected archetypes sharing a catalog mesh reference or any resolved
+mesh part must agree on their effective style, including omitted defaults. Conflicts name both IDs.
+Styles are detached snapshots validated before submission and compared by value each draw. A changed
+selection or style, including an in-place map edit, invalidates affected splits. Removing a style restores
+Blade motion and casting off. Short-cover maps do not override these styles.
+
+`FoliageMotionProfile(BendScale, MaxLean, WindScale, Shiver)` has these finite inclusive ranges:
+
+| Coefficient | Blade default | Range | Meaning |
+|---|---|---|---|
+| `BendScale` | 1 | 0 to 4 | Interactor lean multiplier |
+| `MaxLean` | 0.65 | 0 to 1 | Combined wind and lean cap as a fraction of instance height |
+| `WindScale` | 1 | 0 to 4 | Wind sway multiplier |
+| `Shiver` | 0 | 0 to 0.25 | Leaf shiver amplitude as a fraction of instance height |
+
+An invalid coefficient throws `ArgumentOutOfRangeException` naming the field. Both an omitted profile
+and `default(FoliageMotionProfile)` resolve to Blade. Profiles travel in each 96-byte GPU instance and
+do not add draws or regroup meshes by motion. Casting is part of the patch grouping. Foliage uniform
+payloads are 288 bytes in 512-byte aligned slots, with current and previous interactor agitation.
+Temporal history resets use previous equals current. Colour, motion vectors and cascade depth use one
+shared displacement function.
+
+`FoliageInteractor(Position, Radius, Strength = 1f, Agitation = 0f)` accepts finite positions,
+finite non-negative radii and finite strength and agitation in `[0, 1]`. `FoliageAgitation` is an
+allocation-free retained helper whose configurable `referenceSpeed`, `settleTime` and
+`teleportResetDistance` default to 2 m/s, 0.6 s and 5 m. Settings must be finite and strictly positive.
+`Update(position, deltaTime)` uses horizontal speed, capped at full agitation, and linearly settles
+when movement stops. A full 3D jump beyond the reset distance resets it to rest. First samples seed at
+rest. Zero time rebases without changing agitation. `Reset()` clears the value and sampled position.
+Update rejects non-finite positions and non-finite or negative frame times. Shiver takes the strongest
+single interactor's `falloff * Strength * Agitation`, never their sum, at a fixed 14 rad/s (about
+2.2 Hz). Its vertex-dependent phase and squared height weight keep roots fixed. It is added after
+the lean cap, and is zero at zero agitation.
+
+Casting is opt-in. Animated cascade shadows follow the visible displacement, camera wind-fade scale
+and material alpha cutout. Casters are gathered before camera culling. Animated casters redraw the atlas
+every frame, with one clearing render when the last is removed before static reuse. Point-light shadows
+draw casting animated foliage at its authored rest pose through the existing rigid path, preserving
+static point-shadow caching. Point proxies are lazy and caster-only, with 128 GPU bytes per casting
+instance when point shadows need them. They upload once and after a render-origin change, and retire
+on batch release. Non-casting foliage pays no point-proxy cost.
 
 `WindFadeBladePixels` on `GroundCoverRenderOptions` and `FoliageRenderSettings` stops wind on blades that
 are only a few pixels tall on screen. It is a blade height in internal render target pixels. Wind is off
@@ -11193,8 +11312,15 @@ on-screen height is lower by about the cosine of the view elevation, roughly 11%
 elevation.
 
 For a non-tile game, create `FoliageBatch` through `Scene3D.CreateFoliageBatch` once from authored
-`FoliageInstance` values and call `DrawFoliage` each frame with `FoliageRenderSettings`. Dispose the batch
-on unload. A terrain caller using `DrawGroundCover` instead releases its source with
+`FoliageInstance` values and call `DrawFoliage` each frame with `FoliageRenderSettings` and the interactor
+span. The instance constructor's optional `Motion` defaults to Blade and `CastsShadows` to false:
+
+```csharp
+var instance = new FoliageInstance(mesh, transform, thinningRank,
+    Motion: new FoliageMotionProfile(0.3f, 0.15f, 0.4f, 0.035f), CastsShadows: true);
+```
+
+Dispose the batch on unload. A terrain caller using `DrawGroundCover` instead releases its source with
 `scene.ReleaseGroundCover(batch)`. See the Render3D and Terrain.Render3D package READMEs.
 
 **Roofs come off one building at a time.** `Observer` is the tile the roof rule is judged from, and
@@ -12568,6 +12694,22 @@ carried `MoveState` (position + vertical velocity + grounded + feel timers). The
 wraps the vertical step; the authoritative server and client prediction run the same `Step`, so the vertical axis
 reconciles identically.
 
+`MoveTuning` adds init-only `Controller`, `FootRadiusFraction` and `Water` outside its unchanged 30-parameter
+constructor. Defaults are `Legacy`, 0.5 and the default water policy. Direct stateful `Step` and `StepTowards`
+select the dry contact controller when `Controller` is `Contact`, retaining camera-facing yaw, run, jump and
+precise direction resolution. The foot fraction must be finite in (0, 1], the foot radius must be at least
+0.01 m and the knee-height shell must validate. Null physics supports analytic-only movement. Supplied physics
+requires `IPhysicsQueryLeaseSource` and `IPhysicsSupportFootprint`. Clamp and dry medium delegates are accepted.
+Wet point samples refuse and name the ordinary `IMovementWaterField` route. The position-only overload refuses
+Contact and names the stateful overload. Legacy requires default foot and water settings. Undefined selectors
+throw `ArgumentOutOfRangeException`. Ordinary heads run the leased contact composition at placement offset zero,
+while public explicit APIs retain 0.001 m. Ordinary validation additionally requires positive gravity,
+maximum fall speed and swim-enter depth fraction, a non-Legacy water policy, registration, boundary and a view
+with query leases, capsule contacts, complete support footprints and certified capsule sweeps. A medium
+delegate requires a field. Public explicit configuration governs its own water policy and rejects conflicting
+tuning water. Contact plus public explicit configuration is refused as two selections.
+Phase 5a is implemented and staged in 20.37.0. Phase 5b capture and navigation acceptance remain open.
+
 The retained `MoveCommand(move, run, cameraYaw, jump, faceCamera)` constructor and `default(MoveCommand)` leave
 `ScaleSpeedByAxis` false. They keep nonzero player axes normalized to full speed and keep the legacy dead zone. The
 six-argument overload adds `scaleSpeedByAxis`: set it to `true` to
@@ -12599,6 +12741,18 @@ MoveState s = CharacterMovement.Step(s, new MoveCommand(move, run, cameraYaw, ju
 // Explicit final-step fraction for a path or analog source:
 MoveCommand precise = new(move, run, cameraYaw, jump: false, faceCamera: false, scaleSpeedByAxis: true);
 ```
+
+Network heads resolve one movement binding at configuration. Contact tuning uses ordinary leased queries
+at offset zero. Supply the installer's `MovementRegistration`, an absolute `MovementBoundary` and optional
+`MovementWaterField` on `WorldServerConfig` and `WorldClientConfig`. Sharded servers use the corresponding
+per-cell factories. Standalone simulators and movement systems, single servers and clients release their
+owned binding on disposal. See [ordinary contact configuration](../KhaozEngine.NetWorld/README.md#ordinary-contact-configuration)
+for configuration, resident scopes, replay and view lifetime.
+`SamplerSpace.Frame` ordinary ground samplers receive the original local axes and return local heights directly,
+including a nonzero physics Y origin. World samplers keep the direct dry path's rounded absolute translation.
+The registration's analytic range is absolute in both spaces. Wire generation 14 stays unchanged.
+The [allocation and local cost proof](superpowers/plans/proofs/2026-10-13-contact-controller-phase5a-cost.md)
+records named lifetime tokens and three one-pair samples without a timing threshold or hosted cost-gate claim.
 
 `KhaozEngine.NetWorld` (`Server` umbrella; deps Locomotion/Netcode/Replication/Ecs, render-free) wires that
 core to the shipped authoritative netcode for a **single authoritative `World`** (multi-cell `Sharding` folds
@@ -13235,7 +13389,7 @@ while (running)   // per fixed tick:
 ```
 
 Each tick routes every client's `MoveCommand` to the cell that **owns** its player, steps each cell's
-`PlayerMovementSystem` (the shared `CharacterMovement.Step`, ground-clamped) via `ShardHost.Tick`, transfers
+`PlayerMovementSystem` (the shared movement binding) via `ShardHost.Tick`, transfers
 authority for boundary crossers exactly-once, refreshes border ghosts, then serves each client its single
 home-cell area-of-interest (owned + ghosts). Walking across a boundary hands off with no hitch; two players in
 adjacent cells see each other via ghosting. `WorldServer` stays the single-`World` option for a modest player
@@ -16635,7 +16789,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.37.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.38.0" />
 ```
 
 ```csharp
@@ -16671,7 +16825,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.37.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.38.0" />
 ```
 
 ```csharp
@@ -16913,7 +17067,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.37.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.38.0" />
 ```
 
 ```csharp
@@ -21273,7 +21427,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.37.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.38.0" />
 </ItemGroup>
 ```
 

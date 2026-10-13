@@ -4,9 +4,13 @@ using System.Numerics;
 namespace KhaozEngine.Render3D;
 
 /// <summary>A cosmetic world-space influence that bends nearby foliage without adding collision.</summary>
-public readonly record struct FoliageInteractor(Vector3 Position, float Radius, float Strength = 1f)
+public readonly record struct FoliageInteractor(Vector3 Position, float Radius, float Strength = 1f, float Agitation = 0f)
 {
-    /// <summary>Rejects non-finite positions, negative radii and strengths outside the range 0 through 1.</summary>
+    /// <summary>Preserves the three-output deconstruction used before agitation was added.</summary>
+    public void Deconstruct(out Vector3 position, out float radius, out float strength)
+        => (position, radius, strength) = (Position, Radius, Strength);
+
+    /// <summary>Rejects non-finite positions, negative radii and strengths or agitation outside the range 0 through 1.</summary>
     public void Validate()
     {
         if (!float.IsFinite(Position.X) || !float.IsFinite(Position.Y) || !float.IsFinite(Position.Z))
@@ -15,5 +19,7 @@ public readonly record struct FoliageInteractor(Vector3 Position, float Radius, 
             throw new ArgumentOutOfRangeException(nameof(Radius), "Foliage interactor radius must be finite and non-negative.");
         if (!float.IsFinite(Strength) || Strength < 0f || Strength > 1f)
             throw new ArgumentOutOfRangeException(nameof(Strength), "Foliage interactor strength must be from 0 through 1.");
+        if (!float.IsFinite(Agitation) || Agitation < 0f || Agitation > 1f)
+            throw new ArgumentOutOfRangeException(nameof(Agitation), "Foliage interactor agitation must be from 0 through 1.");
     }
 }

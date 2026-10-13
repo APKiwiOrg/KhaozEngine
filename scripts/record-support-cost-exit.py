@@ -34,16 +34,17 @@ def finalize(path, status):
     section["ProcessExitStatus"] = status
     section["FinalizedAtUtc"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
     del root["pendingFinalization"]
-    with tempfile.NamedTemporaryFile(mode="w", dir=path.parent, prefix=path.name + ".", delete=False) as temporary:
-        try:
+    temporary = tempfile.NamedTemporaryFile(mode="w", dir=path.parent, prefix=path.name + ".", delete=False)
+    try:
+        with temporary:
             json.dump(root, temporary, indent=2, allow_nan=False)
             temporary.write("\n")
             temporary.flush()
             os.fsync(temporary.fileno())
-            os.replace(temporary.name, path)
-        finally:
-            if os.path.exists(temporary.name):
-                os.unlink(temporary.name)
+        os.replace(temporary.name, path)
+    finally:
+        if os.path.exists(temporary.name):
+            os.unlink(temporary.name)
 
 
 if __name__ == "__main__":

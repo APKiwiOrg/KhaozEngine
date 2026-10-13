@@ -28,6 +28,16 @@ public sealed class FoliageBatch : IDisposable
         Pending = data;
     }
 
+    internal long UploadPending(IGpuDevice device, IGpuCommandList cl)
+    {
+        if (IsDisposed || Pending is not { } data) return 0;
+        uint bytes = checked((uint)data.Length * ModelRenderer.FoliageInstanceData.SizeInBytes);
+        Buffer = device.Factory.CreateBuffer(new GpuBufferDescription(bytes, GpuBufferUsage.VertexBuffer));
+        cl.UpdateBuffer<ModelRenderer.FoliageInstanceData>(Buffer, 0, data);
+        Pending = null;
+        return bytes;
+    }
+
     /// <summary>Number of retained mesh instances. Multipart models contribute one per part.</summary>
     public int Count => Layout.Instances.Length;
 

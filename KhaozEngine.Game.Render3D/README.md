@@ -94,6 +94,23 @@ the camera instead of to the direction of travel, which is also what makes `Stra
 the landing a networked game gets server-side, for a single-player fall-damage curve. A game that wants the turn
 OUTSIDE the movement step, on something that is not a `CharacterController3D`, still uses `TurnTowards`.
 
+For ordinary contact movement, set `Controller = MovementControllerKind.Contact`, `FootRadiusFraction` and a
+non-Legacy `Water` policy, then call the full `Update` overload with absolute ground delegates, physics, medium,
+`IMovementWaterField`, `OrdinaryMovementRegistration` and `MovementBoundary`. Physics, registration, boundary and
+certified query capabilities are required. A medium delegate requires a field. The released Update overload keeps
+its defaults and forwards null for the three environment arguments.
+
+The controller validates before changing its carried state and caches one effective binding by tuning equality and
+the reference identities of physics, field, registration, boundary, medium and analytic delegates. Contact Update
+uses the physics-local frame, steps under a certified lease and publishes the absolute position before releasing
+the read. Field generation and frame currentness are authenticated by the pin. The controller implements
+`IDisposable` and releases its engine-created view on reconfiguration or disposal. The supplied physics world stays
+caller-owned. Input still comes only from `InputState` through `CharacterFacing.MoveAxis`. No Movement package or
+new renderer dependency is needed.
+Ordinary contact rests at support height with zero placement offset. Public explicit movement retains
+0.001 m. Validation follows [the shared selector contract](../KhaozEngine.Locomotion/README.md#movement-selector),
+including the 0.01 m minimum foot radius and positive kernel controls. Phase 5a is staged in 20.37.0.
+
 ## ReplicatedCharacterAnimators
 
 A render-free bridge ("the character bridge") that drives one skinned-character brain per entity from a per-frame

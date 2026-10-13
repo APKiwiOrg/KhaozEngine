@@ -104,17 +104,19 @@ flattens a compound's convex children to leaves so the broadphase sweep handles 
 
 ```mermaid
 flowchart LR
-    INPUT["MoveCommand (axes + yaw + jump bit)"] --> SSTEP["server: PlayerMoveSimulator -> CharacterMovement.Step(IPhysicsWorld)"]
-    INPUT --> CSTEP["client: ClientPrediction -> CharacterMovement.Step(same IPhysicsWorld config)"]
-    SSTEP --> WIRE["replicated position + MovementState"]
+    INPUT["MoveCommand (axes + yaw + jump bit)"] --> SSTEP["server: PlayerMoveSimulator -> effective movement binding"]
+    INPUT --> CSTEP["client: ClientPrediction -> same movement binding configuration"]
+    SSTEP --> WIRE["replicated position + movement and owner state"]
     WIRE --> RECON["client reconcile: replay unacked cmds"]
     CSTEP --> RECON
     RECON --> NOOP["match -> no-op (no rubber-band)"]
 ```
 
-Because client prediction resolves against the same `IPhysicsWorld` (and same optional `WorldBounds`) as the
-server, it predicts around solid props and clamps at the wall, so reconciliation stays a no-op instead of
-snapping the player back.
+Client prediction uses matching movement configuration and its own resident physics. Legacy uses
+`CharacterMovement.Step` with optional `WorldBounds`. Contact uses the registered ordinary environment,
+water field and absolute boundary through one leased binding. Both predict around solid props and clamp
+at the playable wall. A client with missing resident data holds and defers an unclassified correction.
+See [ordinary network configuration](../KhaozEngine.NetWorld/README.md#ordinary-contact-configuration).
 
 **Analytic terrain keeps one complete owner.** A TileWorld registration puts its ground meshes, props, walls,
 decks and blocked shapes in one complete `IPhysicsWorld`. When point-height terrain also supplies the character

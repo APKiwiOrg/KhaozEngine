@@ -184,4 +184,24 @@ public class MapPhysicsRegistrationTests
         using var legacy = MapPhysicsRegistration.Register(NativeWorldFixtures.BuildLegacySlope(), legacyPhysics);
         Assert.Same(legacyPhysics, legacy.CreateLegacyMoveContext().Physics);
     }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ResolverOneContextRefusesContactOnFirstUseNamingNativeG1b(bool water)
+    {
+        using var physics = new BepuPhysicsWorld();
+        using var registration = MapPhysicsRegistration.Register(NativeWorldFixtures.BuildLegacySlope(), physics);
+        using var context = registration.CreateLegacyMoveContext(water);
+        var tuning = KhaozEngine.Locomotion.MoveTuning.Default with
+        {
+            Controller = KhaozEngine.Locomotion.MovementControllerKind.Contact,
+            Water = new(KhaozEngine.Locomotion.WaterTraversalMode.DryOnly)
+        };
+        Assert.False(context.SupportsContactController);
+        var failure = Assert.Throws<NotSupportedException>(() => KhaozEngine.Movement.NpcGroundMovement.Hold(
+            default, 0.1f, tuning, context));
+        Assert.Contains("Resolver-1", failure.Message);
+        Assert.Contains("G1b", failure.Message);
+    }
 }

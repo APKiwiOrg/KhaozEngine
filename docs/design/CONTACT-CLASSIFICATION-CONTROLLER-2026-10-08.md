@@ -3,9 +3,10 @@
 Date: 2026-10-08, revised 2026-10-09 for ground ownership. Specifies [#438](https://github.com/APKiwiOrg/KhaozEngine/issues/438), the phase 2
 direction chosen in [PHYSICS-LOCOMOTION-DESIGN-2026-08-02.md](PHYSICS-LOCOMOTION-DESIGN-2026-08-02.md).
 Status: phases 1 and 2 are implemented and released in 20.30.0, phase 2b is released in 20.31.0, phases 3 and 4a are released in
-20.32.0, phase 4b is released in 20.33.0, and complete footprint support is staged for 20.34.0. Opt-in explicit locomotion uses the shared contact controller
+20.32.0, phase 4b is released in 20.33.0, complete footprint support is released in 20.34.0, and phase 5a ordinary
+runtime selection is implemented and staged in 20.37.0. Opt-in explicit locomotion uses the shared contact controller
 for land and placement, composed with swimming's medium proofs. Legacy movement is unchanged.
-Phases 5 and 6 retain separate selector, navigation and game adoption gates. No game adopts before
+Phase 5b navigation is next. Phase 6 game adoption remains separate. No game adopts before
 #1355 certified sweep shapes, #1334 cost, #1347 hidden support and #1344 small bodies are resolved.
 
 ## Why now
@@ -199,7 +200,7 @@ Every phase's suite asserts these.
 | Hidden support gate before adoption | [#1347](https://github.com/APKiwiOrg/KhaozEngine/issues/1347). Complete footprint-volume discovery now includes polygons and every admitted sphere/capsule/cylinder pose, independently of first contact. Seven result classes and final evidence are in the [support gates](CONTACT-CONTROLLER-SUPPORT-GATES-2026-10-11.md). | All shape, partition, refusal, boundary and adequately scoped explicit rows must pass, then the orchestrator must push the verified commit before closure. The wedge/crate row selects the crate top at 0.1. Navigation capture and adoption remain separate. |
 | 3. Air and state | Jump, coyote, momentum, landing impact, commitment, steep slide, traction hysteresis ([phase 3 spec](CONTACT-CONTROLLER-PHASE-3-AIR-AND-STATE-2026-10-10.md)) | Air and slide suite green with invariants 5 to 8. Released in 20.32.0. |
 | 4. Signals and fluids | Climb signals, step delta, support grant, facing, the swimming handoff contract | Signal suite green. Swimming's explicit grounded ticks run on this ground core. Split into 4a, ground signals ([phase 4a spec](CONTACT-CONTROLLER-PHASE-4A-GROUND-SIGNALS-2026-10-11.md), released in 20.32.0), and 4b, the swimming handoff and #1299 ([phase 4b spec](CONTACT-CONTROLLER-PHASE-4B-SWIMMING-HANDOFF-2026-10-11.md), released in 20.33.0). Explicit land and placement share the core, with generation 14, two-head replay parity and body-relative deep-water enforcement. #1299 navigation acceptance remains phase 5. Adoption still waits on #1355, #1334, #1347 and #1344. Note the explicit resting feet are h + 0.001 m. Phase 5 capture must distinguish that profile. |
-| 5. Switch, wire, navigation | `MoveTuning` selector, any wire fields, bake identity, traversal probe and capture on the selected controller | Both controllers selectable. Legacy bakes still load. A new-controller bake round-trips. |
+| 5. Switch, wire, navigation | 5a ordinary runtime and `MoveTuning` selector, then 5b bake identity, traversal probe and capture on the selected controller | 5a implemented and staged in 20.37.0, wire generation 14 unchanged. 5b is next, with legacy bakes preserved and new-controller bake round-trip still required. |
 | 6. Grimhollow adoption | Grimhollow opt-in, #1270 resting route, bridge Complete and 600-step proof | Engine release, game pin and playtest, each separately authorized. |
 
 ## Phase 1 design: contact foundation
@@ -211,7 +212,7 @@ and certifies them through the optional `IPhysicsCapsuleFeatures` capability, in
 optional-interface pattern. A probe sweep leaves the probe capsule exactly in contact, which is the pose the
 feature query certifies, so a cylinder or general convex sweep would add a public API with no remaining use.
 `IPhysicsWorld` itself is unchanged. `FootSupport` throws `NotSupportedException` for a non-null world without
-`IPhysicsCapsuleFeatures`, and phase 5 makes a context selecting the new controller check it at creation. The
+`IPhysicsSupportFootprint` in the current controller, and phase 5a validates a selected context before use. The
 controller never silently degrades. Phase 2b moves certification to the separate optional capability
 `IPhysicsSupportNeighborhood`. The staged support-gates implementation instead requires
 `IPhysicsSupportFootprint`, with no fallback to either older capability. Physics authenticates the

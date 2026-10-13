@@ -10,13 +10,12 @@ namespace KhaozEngine.Game
     /// Terrain-agnostic third-person locomotion for the walkable slice. WASD moves the character on the XZ
     /// plane relative to a camera yaw (forward = the camera's look direction projected onto the ground);
     /// diagonals are normalized; left/right shift runs; Space jumps. A thin input adapter over the shared
-    /// vertical <see cref="CharacterMovement.Step(in MoveState, in MoveCommand, float, Func{float, float, float}, in MoveTuning, Func{float, float, Vector3}?, IPhysicsWorld?, Func{float, float, Vector2}?, Func{float, float, float, MovementMedium}?)"/>
-    /// core (KhaozEngine.Locomotion): the same code runs the local feel and the networked authoritative/predicted
+    /// Locomotion controller selected by <see cref="MoveTuning"/>: the same code runs local and networked
     /// movement, with one <see cref="MoveTuning"/> source of truth. Reads only the immutable input snapshot; no
-    /// terrain dependency, no physics beyond gravity + ground contact. Speeds, half-height, and the vertical-feel
+    /// terrain dependency. Contact movement uses a certified ordinary environment. Speeds, half-height, and the vertical-feel
     /// constants are public fields, feel-tuned later.
     /// </summary>
-    public sealed class CharacterController3D
+    public sealed partial class CharacterController3D : IDisposable
     {
         MoveState _state;
 
@@ -29,9 +28,9 @@ namespace KhaozEngine.Game
         /// <summary>Current vertical velocity (m/s, positive up).</summary>
         public float VerticalVelocity => _state.VerticalVelocity;
 
-        /// <summary>True while the capsule is surface-swimming: submersion has crossed the swim-enter threshold via a
-        /// fluid-medium provider (see the <c>medium</c> parameter of <see cref="Update"/>). Always false when no medium
-        /// is supplied (dry land). Feed this to an <see cref="AnimatedCharacter"/> so a swimming character plays the
+        /// <summary>True while the capsule is surface-swimming. Legacy uses the medium delegate and contact uses
+        /// the certified water field. False when no water provider is supplied. Feed this to an
+        /// <see cref="AnimatedCharacter"/> so a swimming character plays the
         /// swim/tread clips instead of walk/fall.</summary>
         public bool Swimming => _state.Swimming;
 
@@ -51,7 +50,7 @@ namespace KhaozEngine.Game
         public float StepDeltaY => _state.StepDeltaY;
 
         /// <summary>The character's heading this tick in radians (see <see cref="MoveState.FacingYaw"/>), in the SAME
-        /// convention as the <c>cameraYaw</c> handed to <see cref="Update"/>: 0 faces world -Z, canonical range
+        /// convention as the <c>cameraYaw</c> handed to <c>Update</c>: 0 faces world -Z, canonical range
         /// <c>[-pi, pi)</c>. This is what <see cref="FacingTurnSpeed"/> rate-limits, so it is how a local
         /// non-networked game draws a body that leans into its turns instead of snapping. The networked path reads
         /// the same fact off <c>EntityRenderState.FacingYaw</c>. It affects no position output.</summary>
@@ -119,7 +118,7 @@ namespace KhaozEngine.Game
         /// <summary>Pin the heading to the camera instead of to the direction of travel (see
         /// <see cref="MoveCommand.FaceCamera"/>): a strafing character keeps its body pointed where the player is
         /// looking, and a STATIONARY one still turns. Default false, which is the pre-facing behaviour exactly.
-        /// A game holding a strafe-lock button sets this each frame before <see cref="Update"/>, the same way it
+        /// A game holding a strafe-lock button sets this each frame before <c>Update</c>, the same way it
         /// sets any other knob here. This is the target <see cref="FacingTurnSpeed"/> mostly exists to rate-limit,
         /// and it feeds <see cref="StrafeSpeedScale"/> / <see cref="BackpedalSpeedScale"/> as well. Affects no
         /// position output on its own.</summary>
@@ -161,7 +160,19 @@ namespace KhaozEngine.Game
                            Func<float, float, Vector3>? groundNormal = null,
                            IPhysicsWorld? physics = null,
                            Func<float, float, float, MovementMedium>? medium = null)
+            => Update(input, dt, cameraYaw, groundHeight, groundNormal, physics, medium, null, null, null);
+
+        /// <summary>Runs the selected controller over absolute ground providers and a caller-owned physics world.
+        /// Contact movement requires a resident registration and a boundary. A medium delegate requires a certified
+        /// water field. Configuration changes are validated before carried state changes.</summary>
+        public void Update(in InputState input, float dt, float cameraYaw,
+                           Func<float, float, float> groundHeight, Func<float, float, Vector3>? groundNormal,
+                           IPhysicsWorld? physics, Func<float, float, float, MovementMedium>? medium,
+                           IMovementWaterField? movementWaterField, OrdinaryMovementRegistration? movementRegistration,
+                           MovementBoundary? movementBoundary)
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_updating) throw new InvalidOperationException("Character updates cannot overlap or recurse.");
             if (groundHeight is null) throw new ArgumentNullException(nameof(groundHeight));
 
             // Map the input snapshot to a camera-relative move axis + jump and run the shared movement step. The WASD
@@ -191,11 +202,22 @@ namespace KhaozEngine.Game
                 StrafeSpeedScale = StrafeSpeedScale,
                 BackpedalSpeedScale = BackpedalSpeedScale,
                 BackpedalAllowsRun = BackpedalAllowsRun,
+                Controller = Controller,
+                FootRadiusFraction = FootRadiusFraction,
+                Water = Water,
             };
-            _state = CharacterMovement.Step(_state, cmd, dt, groundHeight, tuning, groundNormal, world: physics, medium: medium);
+            ConfigureBinding(tuning, groundHeight, groundNormal, physics, medium, movementWaterField,
+                movementRegistration, movementBoundary);
+            _updating = true;
+            try
+            {
+                if (_binding!.UsesLease) StepContact(cmd, dt, physics!);
+                else _state = CharacterMovement.Step(_state, cmd, dt, groundHeight, tuning, groundNormal, world: physics, medium: medium);
+            }
+            finally { _updating = false; }
         }
 
-        /// <summary>Teleport the character; Y/vertical state re-settle from the ground delegate on the next <see cref="Update"/>.</summary>
+        /// <summary>Teleport the character; Y/vertical state re-settle from the ground delegate on the next <c>Update</c>.</summary>
         public void SetXZ(float x, float z) { _state.Position.X = x; _state.Position.Z = z; }
     }
 }

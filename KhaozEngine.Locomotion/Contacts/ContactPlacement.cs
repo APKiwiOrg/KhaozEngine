@@ -7,20 +7,21 @@ namespace KhaozEngine.Locomotion.Contacts;
 /// <summary>Admission-time footprint and shell placement, without tick clocks, pacing or input effects.</summary>
 internal static class ContactPlacement
 {
-    internal static void Validate(ContactQueryContext queries, Vector3 feet, in MoveTuning tuning)
+    internal static void Validate(ContactQueryContext queries, Vector3 feet, in MoveTuning tuning,
+        in ContactComposition composition)
     {
         queries.ValidatePlacement(feet);
-        if (!Clear(queries, feet, tuning))
+        if (!Clear(queries, feet, tuning, composition))
             throw new ContactQueryFailure(MovementAvailability.Known, MovementStepOutcome.PlacementRefused);
     }
 
     internal static SupportSample Find(ContactQueryContext queries, Vector3 feet, in MoveTuning tuning,
-        float rise, float drop, out MovementContactSupportBinding? binding) =>
-        queries.FindSupport(new(new(feet.X, feet.Z), feet.Y, new GroundCoreSettings().FootRadiusFraction * tuning.CapsuleRadius,
+        in ContactComposition composition, float rise, float drop, out MovementContactSupportBinding? binding) =>
+        queries.FindSupport(new(new(feet.X, feet.Z), feet.Y, composition.Foot.FootRadiusFraction * tuning.CapsuleRadius,
             rise, drop, MathF.Cos(tuning.MaxSlopeRadians)), out binding);
 
     internal static bool TrySeat(ContactQueryContext queries, Vector3 feet, in SupportSample support,
-        in MoveTuning tuning, out Vector3 placed)
+        in MoveTuning tuning, in ContactComposition composition, out Vector3 placed)
     {
         placed = feet;
         if (support.Status != SupportStatus.Walkable) return false;
@@ -29,7 +30,7 @@ internal static class ContactPlacement
         var route = new ContactMotionRoute(queries, feet);
         var seat = new GroundSeatResult(SeatOutcome.Seated, support.Height, support, 0, Vector3.Zero);
         GroundPlacement placement = GroundPlacement.Try(queries, default, feet.Y, new(feet.X, feet.Z),
-            Vector2.Zero, seat, new GroundCoreSettings().FootRadiusFraction * tuning.CapsuleRadius,
+            Vector2.Zero, seat, composition.Foot.FootRadiusFraction * tuning.CapsuleRadius,
             tuning, MathF.Cos(tuning.MaxSlopeRadians),
             double.PositiveInfinity, ref route);
         if (!placement.Valid || !Approach(queries, target, placement.Feet, tuning)) return false;
@@ -37,9 +38,13 @@ internal static class ContactPlacement
         return true;
     }
 
-    internal static bool Clear(ContactQueryContext queries, Vector3 feet, in MoveTuning tuning) =>
-        !queries.PenetrationShell(ShellGeometry.Shape(tuning, queries.Shapes), ShellGeometry.Centre(feet, tuning), out Vector3 mtv) ||
-        mtv == Vector3.Zero;
+    internal static bool Clear(ContactQueryContext queries, Vector3 feet, in MoveTuning tuning,
+        in ContactComposition composition)
+    {
+        ShellGeometry.Validate(tuning, composition.Foot);
+        return !queries.PenetrationShell(ShellGeometry.Shape(tuning, queries.Shapes), ShellGeometry.Centre(feet, tuning), out Vector3 mtv) ||
+            mtv == Vector3.Zero;
+    }
 
     static bool Approach(ContactQueryContext queries, Vector3 from, Vector3 to, in MoveTuning tuning)
     {

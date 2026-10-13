@@ -257,7 +257,7 @@ interval operations followed by binary32 rounding envelopes. Each captured quate
 must lie within its corresponding graph enclosure.
 
 The child offset has its own finite 2048 m component check through child-pose admission. It does not
-borrow the 64 m local-vertex bound. Its root-oriented transform and root translation are enclosed
+borrow the local-vertex admission bound. Its root-oriented transform and root translation are enclosed
 with operation rounding, and the represented captured world position must be contained. The
 quaternion-transform graph moves some doubled factors relative to the matrix graph. Doubling an
 admitted binary32 quaternion component is exact and finite, including subnormals. The corresponding
@@ -280,11 +280,28 @@ using its actual stored centroid offset and centered raw vertices.
 
 ## Remaining limits and verification gate
 
-All original caps remain: 64 convex leaves, 256 faces per convex leaf, 508 vertices and 1524 face
+All original capacity caps remain: 64 convex leaves, 256 faces per convex leaf, 508 vertices and 1524 face
 entries derived from that convex topology, 65536 source mesh triangles, 128 local candidates,
 256 incident faces and 4096 bits per exact predicate operand. Positions remain within 2048 m,
-local vertices within 64 m, capsule radius 0.01 to 2 m, cylinder length 0 to 8 m and separation
+shared local vertices within 2048 m, capsule radius 0.01 to 2 m, cylinder length 0 to 8 m and separation
 band 0 to 0.01 m. Scale, finite source topology and upright-axis requirements are unchanged.
+
+The shared local-vertex admission cap now equals the 2048 m world-position bound. It is a range
+domain, separate from precision acceptance. Common affine coefficient magnitudes are below 2,
+so a local component bound `L` bounds point, edge and cross-normal components before outward
+rounding by `6L+2048`, `12L` and `288L^2`. Their composed polygon, closest-feature and join
+polynomial terms stay finite in binary64 at `L=2048`, as derived in the
+[arithmetic range argument](CAPSULE-FEATURE-NUMERICAL-PROOF-2026-10-07.md#local-vertex-range-admission).
+Every complete world enclosure still passes `world.Within(2048)`. The full-mesh capture retains
+its explicitly checked 64 m local subset, and curved support leaf sizes retain their separate 64 m cap.
+
+Actual precision is enforced per query. The position, separation-width and normal-error ceilings
+remain `1/4000`, `1/10000` and `1/100000`. Support certification propagates the actual boxes.
+`ExactExpansion.InRange`, all 4096-bit dyadic pre-allocation checks, the join band, 256 m
+incidence-shortcut coordinate bound, `2^-80` lattice, minimum lengths and normal component bound
+remain unchanged. In particular the admitted `(128,1,1)` box under `q=(0.6f,0.8f,0,0)` can exceed
+the normal ceiling at its closest corner. That query returns Unresolved with no published prefix.
+The exact identity 192 m floor can instead certify support. Neither outcome follows from `L` alone.
 
 Curves, unknown shapes, nonunit mesh scale and nested/nonconvex compound leaves still refuse.
 Duplicate or nonmanifold source neighborhoods, competing minima and unproved larger vertex fans
@@ -296,6 +313,7 @@ gate, but neither the norm band nor finite arithmetic guarantees Complete for ev
 The source still requires parent-owned first compilation and the meaningful combined installed-pose
 plus affected numerical/geometry verification, followed by the assigned corner/eligibility controls
 and independent source/proof review. Prior 44, 24 and 15 evidence contracts are preserved, not
-relabelled as validation of this candidate. Immutable tests, public APIs, caps and ceilings have not
-been adjusted to obtain an acceptance result. Shared-main integration, runtime consumers, navigation,
+relabelled as validation of this candidate. Public APIs, capacity caps and ceilings have not been
+adjusted to obtain an acceptance result. The range extension has its own large-floor, threshold and
+normal-refusal regressions. Shared-main integration, runtime consumers, navigation,
 engine adoption, releases and the actual bridge proof remain outside this source/document handoff.

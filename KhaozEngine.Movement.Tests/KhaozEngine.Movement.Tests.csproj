@@ -14,6 +14,8 @@
     <ProjectReference Include="../KhaozEngine.Physics.Bepu/KhaozEngine.Physics.Bepu.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Contacts/SupportAllocationRegion.cs" Link="Fixtures/SupportAllocationRegion.cs" />
+    <Compile Include="../KhaozEngine.Server.Tests/NetWorld/Fixtures/ObservedPhysicsWorld.cs" Link="Fixtures/ContactLifecyclePhysics.cs" />
     <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Fixtures/AnalyticMovementEnvironment.cs" Link="Fixtures/AnalyticMovementEnvironment.cs" />
     <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Fixtures/AnalyticMovementEnvironment.ContactSupport.cs" Link="Fixtures/AnalyticMovementEnvironment.ContactSupport.cs" />
     <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Fixtures/AnalyticCapsuleVolume.cs" Link="Fixtures/AnalyticCapsuleVolume.cs" />

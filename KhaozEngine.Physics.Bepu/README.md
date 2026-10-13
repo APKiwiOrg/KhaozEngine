@@ -46,6 +46,9 @@ either value shifts the bit-exact result legitimately.
 - **`Step(dt)`**, **`Raycast`**, **`SweepCapsule`**, **`ComputePenetration`** - the last is one
   CollisionBatcher manifold query over every shape type, deepest contact wins.
 - **Complete capsule contacts** - the owner and restricted views implement `IPhysicsCapsuleContacts`.
+  A bounded empty selection returns a complete empty result with zero error, without capsule/hull
+  face selection. Excessive coordinate spacing still refuses. Every candidate query retains the
+  existing radius-scaled error formula and 0.001 m limit.
   The query selects convex leaves with margin-expanded bounds, bypasses final contact-count reduction, applies mesh seam
   smoothing, then sorts geometric constraints with local provenance. Distinct normals survive even when
   a deeper bed contact exists. Mobility and view exclusions apply before gathering. Nonzero layer masks
@@ -93,6 +96,11 @@ either value shifts the bit-exact result legitimately.
   Static add/remove/replacement and changed rebase invalidate it. Simulation steps and dynamic mutations
   do not. Results still authenticate the global lease generation. No selected-support result is cached.
   See [complete footprint use](../docs/USING-KHAOZENGINE.md#complete-support-footprints).
+  Local vertex components are admitted through 2048 m. This is a range domain, not a precision guarantee.
+  Each query still enforces its position, separation and normal publication ceilings, exact-arithmetic
+  capacity and the 256 m incidence bound. A failed precision certificate refuses rather than widening a budget.
+  `IPhysicsStaticGeometrySource.StaticGeometryGeneration` changes on actual static mutations. Removing an
+  unknown handle is a no-op and leaves ordinary registrations current. Steps and pure rebases preserve them.
 - **`Origin`/`CanRebase`/`Rebase(newOrigin)`** (floating origin) - `CanRebase` is true here. A rebase is a bulk of
   direct pose writes plus broadphase refits, NOT a remove-and-re-add: `BodyReference.Pose` and
   `StaticReference.Pose` are ref-returning in Bepu 2.4 and `UpdateBounds` refits the broadphase for the new pose

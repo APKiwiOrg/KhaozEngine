@@ -687,9 +687,21 @@ threshold arithmetic use double intermediates, with explicit finite-float result
 See the [package README](../KhaozEngine.Movement/README.md) for the exact public contract.
 
 The rest of Movement is the composition seam for absolute ground movement and physics-backed navigation.
+`OrdinaryMovementEnvironment`, its pin, `OrdinaryServedDomain`, `OrdinaryMovementBoundary` and
+`EffectiveMovementBinding` live in Locomotion. They use Locomotion and Physics types only, so NetWorld and
+Game.Render3D gain no Movement dependency. Their public factories and `Preflight` own configuration checks.
+MapDoc's legacy-only context restriction is a public construction option, with no production friend access
+added for the phase 5a heads. Ordinary frames capture the boundary once, retain space-aware analytic delegates
+and pass the physics origin into certified water queries. Owned views dispose with the binding. Supplied views
+and public explicit contexts remain borrowed. Ordinary offset zero and public explicit offset 0.001 share one
+contact kernel. Contact navigation remains refused until phase 5b, with no wire generation or legacy bake change.
 `GroundMoveContext` adapts absolute ground, normal, bounds and medium providers to a caller-owned local-origin
-`IPhysicsWorld`, and changes only the state position's frame during a sequential step. It does not step,
-dispose or rebase that world. `PhysicsNavBake.Capture` samples static columns through
+`IPhysicsWorld`, and changes only the state position's frame during a sequential step. Its ordinary contact overload
+accepts the Locomotion field, registration and boundary, caches tuning validation and owns only an engine-created
+query view. Its public construction restriction keeps resolver-1 MapDoc contexts legacy-only until native G1b.
+It does not step, dispose or rebase the physics source. Movement gains no renderer dependency. The input adapter
+`CharacterController3D` stays in Game.Render3D, uses the same Locomotion binding and owns its created view.
+`PhysicsNavBake.Capture` samples static columns through
 `PhysicsColumnProbe`, freezes absolute surface heights, headroom and caller-defined `uint` area tags, and keeps
 the classifier and world out of the resulting immutable column store. `PhysicsNavBakeOptions` supplies checked
 half-open bounds, probe settings and cell, layer, surface and edge budgets. Missing columns and outer-edge misses
@@ -874,11 +886,12 @@ stays physics-free for a server or a tool that never needs a collider:
 ```
 KhaozEngine.TileWorld.Physics -> KhaozEngine.TileWorld    (the document it reads, plus the ground, water and object placement rules)
 KhaozEngine.TileWorld.Physics -> KhaozEngine.Physics      (IPhysicsWorld and the shapes the static colliders are registered as)
-KhaozEngine.TileWorld.Physics -> KhaozEngine.Locomotion   (MovementMedium, the one Locomotion type the medium sampler returns)
+KhaozEngine.TileWorld.Physics -> KhaozEngine.Locomotion   (MovementMedium, certified water fields and ordinary registration)
 ```
 
 Three forward edges and no backend: the caller picks the `IPhysicsWorld`, and only the test project references
-`Physics.Bepu`. The `Locomotion` edge exists for `MovementMedium` alone. The height and normal delegates are plain
+`Physics.Bepu`. The `Locomotion` edge carries `MovementMedium`, `IMovementWaterField` and captured ordinary
+registration/extent values. Water column candidates are indexed by their actual rounded bounds. The height and normal delegates are plain
 `Func` types, so the floor sampler would need no reference by itself. `KhaozEngine.TileWorld` grants it
 `InternalsVisibleTo` for `TileObjectPlacement.PlanarBasis` and `AnchorPlanar`, so an object's box uses the
 quarter-turn basis its drawn model uses.

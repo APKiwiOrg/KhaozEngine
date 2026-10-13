@@ -20,7 +20,11 @@ static partial class TileColliderBuilder
             .ToArray();
 
     internal static void AddWalls(TileWorldDocument document, TileWorldCatalogs catalogs, TileObject[] placed,
-                                  float thickness, List<TileCollider> into)
+                                  float thickness, List<TileCollider> into) =>
+        AddWalls(document, catalogs, placed, thickness, into, null);
+
+    internal static void AddWalls(TileWorldDocument document, TileWorldCatalogs catalogs, TileObject[] placed,
+        float thickness, List<TileCollider> into, List<TileColliderProvenance>? provenance)
     {
         foreach (TileObject o in placed)
         {
@@ -28,20 +32,23 @@ static partial class TileColliderBuilder
             switch (archetype.CollisionKind)
             {
                 case TileCollisionKind.Wall:
-                    AddEdge(document, archetype, o, TileCollisionBaker.WallFacing(o.Rotation), thickness, into);
+                    AddEdge(document, archetype, o, TileCollisionBaker.WallFacing(o.Rotation), thickness, into, provenance);
                     break;
                 case TileCollisionKind.WallCorner:
                     // The baker's corner table (0 W+N, 1 N+E, 2 E+S, 3 S+W) is the facing of this rotation and the
                     // next one.
-                    AddEdge(document, archetype, o, TileCollisionBaker.WallFacing(o.Rotation), thickness, into);
-                    AddEdge(document, archetype, o, TileCollisionBaker.WallFacing(o.Rotation + 1), thickness, into);
+                    AddEdge(document, archetype, o, TileCollisionBaker.WallFacing(o.Rotation), thickness, into, provenance);
+                    AddEdge(document, archetype, o, TileCollisionBaker.WallFacing(o.Rotation + 1), thickness, into, provenance);
                     break;
             }
         }
     }
 
     internal static void AddObjects(TileWorldDocument document, TileWorldCatalogs catalogs, TileObject[] placed,
-                                    List<TileCollider> into)
+                                    List<TileCollider> into) => AddObjects(document, catalogs, placed, into, null);
+
+    internal static void AddObjects(TileWorldDocument document, TileWorldCatalogs catalogs, TileObject[] placed,
+        List<TileCollider> into, List<TileColliderProvenance>? provenance)
     {
         float tileSize = document.TileSize;
         foreach (TileObject o in placed)
@@ -66,11 +73,16 @@ static partial class TileColliderBuilder
                 TileWorldSpace.WorldZ(tiles.Z + tiles.Height * 0.5f, tileSize),
                 tiles.Width * tileSize * 0.5f, tiles.Height * tileSize * 0.5f,
                 bottom, top));
+            provenance?.Add(TileColliderProvenance.Capture(FormattableString.Invariant($"placed/{o.Id}"), into[^1]));
         }
     }
 
     internal static void AddWalkSurfaces(TileWorldDocument document, TileWorldCatalogs catalogs, TileObject[] placed,
-                                         float thickness, List<TileCollider> into)
+                                         float thickness, List<TileCollider> into) =>
+        AddWalkSurfaces(document, catalogs, placed, thickness, into, null);
+
+    internal static void AddWalkSurfaces(TileWorldDocument document, TileWorldCatalogs catalogs, TileObject[] placed,
+        float thickness, List<TileCollider> into, List<TileColliderProvenance>? provenance)
     {
         float tileSize = document.TileSize;
         foreach (TileObject o in placed)
@@ -108,6 +120,7 @@ static partial class TileColliderBuilder
                 into.Add(new TileCollider(TileColliderKind.WalkSurface,
                     new BoxShape(new Vector3(halfX, thickness * 0.5f, halfZ)),
                     new Pose(new Vector3(centreX, top - thickness * 0.5f, centreZ), orientation)));
+                provenance?.Add(TileColliderProvenance.Capture(FormattableString.Invariant($"placed/{o.Id}"), into[^1]));
             }
         }
     }
@@ -115,7 +128,7 @@ static partial class TileColliderBuilder
     // One box on an edge of the object's anchor tile, centred on the edge and as long as it. The corners named are
     // the two ends of the edge, the ground under the box.
     static void AddEdge(TileWorldDocument document, TileObjectArchetype archetype, TileObject o, TileDirection edge,
-                        float thickness, List<TileCollider> into)
+                        float thickness, List<TileCollider> into, List<TileColliderProvenance>? provenance)
     {
         float tileSize = document.TileSize;
         int x = o.X, z = o.Z;
@@ -131,6 +144,7 @@ static partial class TileColliderBuilder
         (float bottom, float top) = Span(document, archetype, o, LowestCorner(document, x0, z0, x1, z1));
         into.Add(Box(TileColliderKind.Wall, TileWorldSpace.WorldX(centreX, tileSize),
                      TileWorldSpace.WorldZ(centreZ, tileSize), halfX, halfZ, bottom, top));
+        provenance?.Add(TileColliderProvenance.Capture(FormattableString.Invariant($"placed/{o.Id}"), into[^1]));
     }
 
     // The archetype of an object that can carry a wall or object box: defined and not a roof.

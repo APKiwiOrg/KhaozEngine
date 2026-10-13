@@ -94,7 +94,7 @@ namespace KhaozEngine.Game
         public float RenderHeightSnapDistance = 1.5f;
 
         /// <summary>The composed movement body. Read its tuning fields (speeds, capsule size, step-climb) or its state
-        /// directly; do not call its <see cref="CharacterController3D.Update"/> yourself while using the avatar (the
+        /// directly; do not call its <c>CharacterController3D.Update</c> yourself while using the avatar (the
         /// avatar drives it once per frame).</summary>
         public CharacterController3D Controller => _controller;
 
@@ -161,7 +161,7 @@ namespace KhaozEngine.Game
         /// INTENDED move direction (input + camera, never the collision-slid velocity, so a scraped wall cannot spin
         /// the model), and advance the animation from the REAL collision-clamped horizontal speed plus the controller's
         /// grounded / vertical-velocity / swimming state. Parameters mirror
-        /// <see cref="CharacterController3D.Update"/> exactly, plus nothing else - a game swaps its hand-rolled glue for
+        /// the legacy-provider <c>CharacterController3D.Update</c> overload - a game swaps its hand-rolled glue for
         /// this one call. A non-positive <paramref name="dt"/> (a paused or priming tick) still steps the controller
         /// but leaves the animation pose and facing untouched.</summary>
         /// <param name="input">The immutable input snapshot (WASD + shift + space).</param>

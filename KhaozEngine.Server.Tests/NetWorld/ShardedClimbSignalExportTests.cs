@@ -108,7 +108,7 @@ public class ShardedClimbSignalExportTests
             $"run={run}: sharded vs single-World ClimbRateQ diverged by {maxGapUnits} unit(s) (must stay within one wire quantum; is bit-identical today)");
     }
 
-    // No head runs the contact controller before phase 5, so this pins its input instead. The controller reads the
+    // Both controllers consume this carried input. The contact controller reads the
     // carried ClimbRate to continue a run and to own a paced riser's lag, so every head must hand it the same value
     // for the same wire state: the sharded head's rebuilt input equals the client's reconcile basis and the decoded
     // wire rate, and the single-World head's full-precision rate decides the same run state as that decoded value.

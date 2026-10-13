@@ -31,12 +31,29 @@ The five failures under #1382 were subsequently fixed on main at
 `0898a431058bb3d998f2c65daddf6512c01fb3e3`. Its separate
 [native Windows proof](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/38405463669) passed all
 25 artifact cases with no skips, including the five original failures. That issue is closed. The fixture
-and shadow gates under #1316 and #1157 remain separate unresolved integration requirements.
+and shadow failures under #1316 and #1157 remain owned by their separate workstreams.
 
 The subsequent input and GUI merge into `f037fd0fc` leaves the attachment, renderer, backend and headless
 fixture paths unchanged. Its combined local build, suite, Metal proof and packaging were rerun. Later
 foliage work on main is not contained in this checkpoint. Integration must reconcile current main and
 refresh affected verification. No engine release or dependent consumer adoption is authorized here.
+
+## Replacement integration gate, owner decision 2026-10-14
+
+The owner replaced the full Windows matrix gate with a baseline gate. Main and released `v20.36.0`
+fail the same Windows rows in [run 38373207663](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/38373207663).
+The #1157 workstream has had no work since 7 October. This decision supersedes the earlier wait for #1157.
+
+The exact reconciled merge head must have green push `ci` and `cross-platform-gpu` runs, plus one full
+hosted `cross-platform-gpu` dispatch using `legs=all`, `bake=false` and `tier=push`, the route used by
+run 38392043530. All eight attachment cases must pass without skips on Metal, D3D11 and Vulkan.
+Metal, Vulkan and the Vulkan synchronization validation leg must pass. The Windows D3D11 leg may
+fail only the eight #1316 MapDoc path-fixture rows and the #1157 point-shadow boundary assertion.
+Downloaded TRX results must prove the exact failing set. Any other failing row blocks integration.
+
+No shadow code, shader, tolerance, #1316 repair or proof-only workflow change is included. Those
+workstreams retain ownership. Current main `ee6016aae` is being reconciled and released `20.37.0`
+is followed by staged additive version `20.38.0`. Fresh verification is pending. No tag is authorized.
 
 ## Purpose
 

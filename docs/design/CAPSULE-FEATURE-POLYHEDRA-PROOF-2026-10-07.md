@@ -11,7 +11,8 @@ Validated expanded-admission slice: the [installed-pose argument](CAPSULE-FEATUR
 records the closed-band common affine certificate and operational correspondence limits. Independent
 source/math review, 124 arithmetic/geometry cases, 39 movement correspondence/policy cases and scoped
 format passed. Earlier exact-rigid admission restrictions below describe their historical subset.
-Current admission is governed by the linked certificate. APIs, caps and output ceilings are unchanged.
+Current admission is governed by the linked certificate and the range extension below. APIs, topology
+capacities, exact-arithmetic work caps and output ceilings are unchanged.
 
 
 ## Installed authority and read interval
@@ -67,7 +68,7 @@ Binary32 encoding of those endpoints is not an admission condition. Yaw leaves t
 Unresolved endpoint arithmetic or a coordinate enclosure outside the frame refuses.
 
 Installed rigid poses additionally require a proved exact squared quaternion norm of one, exact
-orthonormal matrix rows and positive determinant one. All local vertices lie within 64 m on each
+orthonormal matrix rows and positive determinant one. All local vertices lie within 2048 m on each
 axis. World vertices retain their real represented-matrix affine expressions as `FeaturePoint`
 coordinates, certified exact binary64 values where possible and outward intervals otherwise. Every
 coordinate enclosure must remain within 2048 m. Neither binary32 representability nor equality to a
@@ -89,6 +90,21 @@ The shared `RepresentedGeometryTransforms.PosePoint` still checks the approved d
 the conversion/rounding enclosure. Its potentially wider enclosure does not define a different
 geometry. The exact rigid gate proves the represented matrix is the installed rotation's affine
 map. No independent interval, BigInteger or quaternion transform kernel is introduced.
+
+The current shared local-vertex cap is a range admission domain. With local component bound `L`,
+world bound `W=2048` and common coefficient magnitude below 2, point, edge and cross-normal
+components are bounded before outward rounding by `6L+W`, `12L` and `288L^2`. At `L=2048` these
+and the polygon dot, squared-distance and discriminant polynomial terms stay finite in binary64.
+The [arithmetic range argument](CAPSULE-FEATURE-NUMERICAL-PROOF-2026-10-07.md#local-vertex-range-admission)
+gives the composed bounds. Complete world enclosures must still lie within 2048 m. The separate
+full-mesh capture retains its explicitly checked 64 m local subset.
+
+No uniform precision guarantee follows from this admission. Every query retains the actual position,
+separation-width and normal-error ceilings `1/4000`, `1/10000` and `1/100000`, support error
+propagation, `ExactExpansion.InRange` and every 4096-bit dyadic pre-allocation check. Join shortcuts
+retain their 256 m coordinate bound, `2^-80` lattice, minimum lengths and normal component bound.
+Large rotated geometry with an excessive certificate refuses per query. The admitted `(128,1,1)`
+box under `q=(0.6f,0.8f,0,0)` provides the blocking normal-ceiling example in the arithmetic argument.
 
 ## Expression and enclosure operations
 

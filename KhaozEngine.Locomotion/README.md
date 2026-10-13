@@ -4,6 +4,89 @@ Render-free character locomotion core. `CharacterMovement.Step` is the single mo
 local controller, the authoritative server sim, and client-side prediction - so local and networked movement
 run identical code.
 
+## Movement selector
+
+`MoveTuning` keeps its 30-parameter positional constructor and deconstruction. Three init-only properties
+participate in equality, hashing and `with`: `Controller` (default `MovementControllerKind.Legacy`),
+`FootRadiusFraction` (default 0.5) and `Water` (default `WaterTraversalPolicy`).
+
+Direct stateful `CharacterMovement.Step` and both `StepTowards` overloads dispatch
+`MovementControllerKind.Contact` after resolving the existing camera or world direction. Camera-facing yaw,
+run, jump and precise small magnitudes retain their existing meanings. Contact geometry requires a finite
+foot fraction in (0, 1], a foot radius of at least 0.01 m and a valid knee-height shell.
+A physics world must offer `IPhysicsQueryLeaseSource` and `IPhysicsSupportFootprint`. Null physics supports
+analytic-only dry movement. Clamp and dry medium delegates are allowed. A wet point sample refuses with
+`NotSupportedException` naming the ordinary `IMovementWaterField` route.
+
+The position-only `Step(Vector3, ...)` refuses Contact and names the stateful overload. Legacy requires
+the default foot fraction and the complete default water policy, including zero surface jump speed.
+Undefined selectors throw `ArgumentOutOfRangeException`. Released legacy movement arithmetic is unchanged.
+Phase 5a is implemented and staged in 20.37.0. Network and local heads select the same contact kernel.
+
+Ordinary heads additionally require positive gravity, maximum fall speed and swim-enter depth fraction,
+a non-Legacy water policy, registration, boundary and a view implementing `IPhysicsQueryLeaseSource`,
+`IPhysicsCapsuleContacts`, `IPhysicsSupportFootprint` and `IPhysicsCapsuleSweep`. A point medium delegate
+requires a field. The dry direct path requires only its shell/foot rules and the two physics capabilities
+listed above. Legacy rejects contact-only foot and water settings rather than ignoring them.
+Public explicit configuration selects contact independently of the selector, uses its supplied water policy,
+and accepts tuning water only when default or equal to that policy. Heads reject Contact plus public explicit
+configuration as two selections.
+
+## Ordinary contact environment
+
+`EffectiveMovementBinding.Ordinary` composes the leased contact controller at zero placement offset.
+The static installer publishes an immutable `OrdinaryMovementRegistration` under its source read lease,
+with a finite `OrdinaryMovementExtent`, inclusive feature ranges and authored `MovementSupportKey` owners.
+Several pieces may alias one owner. Ambiguous, missing, excluded and stale features refuse binding.
+Register excluded statics before publication so their provenance participates in portable identity.
+The optional `IPhysicsStaticGeometrySource` marker keeps a registration valid across steps and pure rebases.
+Without it, a fresh physics geometry generation requires a fresh registration.
+
+Supply ground delegates and a `MovementBoundary.Rectangle` or `MovementBoundary.Circle`. Each physics
+frame captures that boundary once in local coordinates with double arithmetic and its configured identity, as
+the explicit heads capture `WorldBounds`. Analytic ground samples the same framed delegate as the dry adapters,
+`groundHeight(x + origin.X, z + origin.Z) - origin.Y` by default. With `groundSpace: OrdinaryGroundSpace.Frame`,
+the delegates receive the original physics-local axes and return local heights and normals directly.
+No frame-local operand rounds through absolute float coordinates. The registration's analytic height range
+remains absolute in both spaces. Ordinary dry movement equals the corresponding direct framed dry path.
+The served query domain includes exterior footprint, signal look-ahead and vertical reach margins,
+independently of commands or replay length.
+`CreateOrdinaryScope(frame)` returns the same cold scope for that frame. Capture the ordinary boundary
+before acquisition, acquire with `TryAcquire`, then use the binding's tick, placement or continuation doors.
+Ground residency holes return Unresolved when a query needs them. Support enumeration always refuses.
+
+`IMovementWaterField` supplies point and complete capsule-path water evidence for a body in physics-local
+coordinates and the frame's physics origin. Producers compare `(double)local + (double)origin` with their
+absolute geometry exactly, so a point's membership has no rounding band across any surface, bed or lateral face.
+`MovementWaterField.Level(worldId, surfaceY, floorY)` supplies an immutable finite bed and strict free
+surface over all XZ. The installer's extent supplies its finite resident horizontal bounds.
+Finite fields must fit that declared extent. Producers report absolute intervals and contact columns. Pins
+convert intervals outward and contact columns to the nearest local value through the captured physics origin,
+so a wet point's local interval contains its local feet. Traces add only that contact conversion to the
+producer's certified error under the 0.001 m budget. Mutable producers advance `Generation` before changing
+answers.
+
+`EffectiveMovementBinding.SampleWaterForPacing(state, queries, out swimming)` reads frame-local point water and
+shares the controller's tick-start swimmer classification, including supported footing and the free-surface flag.
+Use the returned local interval and the carried local feet for approach settling. This point query authorizes no
+motion or placement. A refused point returns its availability with `swimming` false. Movement still requires the
+certified whole-path water trace.
+
+An ordinary binding owns a view created from the source when none is supplied. A supplied view is
+borrowed after source validation and must represent the registration's selected exclusions.
+Dispose the binding after its reads. Owned-view disposal refuses an active read and remains retryable.
+`Legacy` creates no view. `PublicExplicit` borrows the supplied context and retains the 0.001 m offset.
+`EffectiveMovementBinding.Preflight(tuning, kind)` validates tuning and selection before cell allocation.
+Complete factories still validate real views, registration, boundaries and each explicit factory's water policy.
+Every binding execution door requires a lease acquired from its environment context and physical view.
+Sharing a borrowed view does not make leases from different contexts interchangeable.
+
+The [phase 5a allocation proof](../docs/superpowers/plans/proofs/2026-10-13-contact-controller-phase5a-cost.md)
+records the production physics lease, ordinary pin, movement lease plus context release binding and player
+read scope independently. Its three bounded rectangular rows allocate only those tokens when warm.
+The read-release callback is cached per simulator. Timing is recorded evidence, with no SG-12 verdict.
+Contact navigation capture remains refused until phase 5b. Wire generation 14 and legacy v1 bake bytes stay unchanged.
+
 ## API
 
 Two overloads share one horizontal core (camera-relative WASD axis, normalised diagonals, walk/run speed,
@@ -557,8 +640,10 @@ frame mismatch. A refusal holds the recorded pose/frame, clears per-tick effects
 jump buffer. Cold state rebuilds canonical selection through the existing null-hint witness.
 
 Land support stays geometric. The published body uses one vertical 0.001 m placement offset,
-proved before shell and full-body medium queries. Accepted contact routes prove every lift, side
-segment, seat and correction under the same lease. Ground signals come from accepted walking
+proved before shell and full-body medium queries. The tuning's selected `FootRadiusFraction` follows
+ticks, exact validation, settling and continuation under that same placement composition.
+Accepted contact routes prove every lift, side segment, seat and correction under the same lease.
+Ground signals come from accepted walking
 segments only. A final air landing, slide landing or wedge has no walking remainder and clears all
 three ground signals. A land jump stamps its speed after the move and rises next tick, retaining the
 pre-jump support grant and any landing impact. No local query state enters the wire.
@@ -736,6 +821,7 @@ producer acceptance or a playable consumer feature.
   `FacingTurnSpeed` (default `float.PositiveInfinity`, which snaps) /
   `TractionHysteresisRadians` (default 3 degrees) / `SlideFrictionRampRadians` (default 8 degrees) /
   `StrafeSpeedScale` (default 1) / `BackpedalSpeedScale` (default 1) / `BackpedalAllowsRun` (default true).
+  The selector, contact foot fraction and ordinary water policy are init-only properties outside that list.
 - **`MoveSector`** (17.30.0) - which directional sector a command's axis falls in relative to the character's
   facing: `Forward` / `Strafe` / `Reverse`. Returned by `CharacterMovement.Sector(cmd)`, and what the directional
   speed scales are charged by while `MoveCommand.FaceCamera` is held. Public so presentation (which locomotion

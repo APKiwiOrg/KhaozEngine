@@ -12,23 +12,19 @@ namespace KhaozEngine.Tests.Render3D;
 public sealed class FoliageUniformsTests
 {
     [Fact]
-    public void TheShaderBlockMirrorsTheStructWithTheWindFadeLast()
+    public void TheSharedShaderBlockMirrorsTheCurrentAndHistoryStruct()
     {
-        string source = ShaderSources.FoliageVert;
-        int start = source.IndexOf("uniform Foliage {", StringComparison.Ordinal);
-        int end = source.IndexOf("};", start, StringComparison.Ordinal);
-        string[] members = source[(start + "uniform Foliage {".Length)..end]
-            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
+        string[] members = MotionUboLayoutTests.Members(ShaderSources.FoliageVert, "uniform Foliage {");
         Assert.Equal(["vec4 FocusRadius", "vec4 Density", "vec4 FadeWind", "vec4 WindTime", "vec4 Interactors[4]",
-            "vec4 Strengths", "vec4 WindFade"], members);
+            "vec4 Strengths", "vec4 WindFade", "vec4 Agitation", "vec4 PrevFocus", "vec4 PrevInteractors[4]", "vec4 PrevStrengths", "vec4 PrevAgitation"], members);
+        Assert.Equal(members, MotionUboLayoutTests.Members(ShaderSources.FoliageMotionVert, "uniform Foliage {"));
         // Every std140 member is a vec4 or a vec4 array, so each one advances exactly 16 bytes per element.
         Assert.Equal(144, (int)Marshal.OffsetOf<FoliageUniforms>(nameof(FoliageUniforms.WindFade)));
         Assert.Equal(128, (int)Marshal.OffsetOf<FoliageUniforms>(nameof(FoliageUniforms.Strengths)));
-        // The base block is the struct's first 160 bytes. The temporal variant reads the rest (FoliageMotionUniformsTests).
-        Assert.Equal(160, (int)Marshal.OffsetOf<FoliageUniforms>(nameof(FoliageUniforms.PrevFocus)));
-        Assert.Equal(256, Marshal.SizeOf<FoliageUniforms>());
-        Assert.Equal(256u, FoliageUniforms.SizeInBytes);
+        // Both programs declare the complete 288-byte current and history block.
+        Assert.Equal(176, (int)Marshal.OffsetOf<FoliageUniforms>(nameof(FoliageUniforms.PrevFocus)));
+        Assert.Equal(288, Marshal.SizeOf<FoliageUniforms>());
+        Assert.Equal(288u, FoliageUniforms.SizeInBytes);
         Assert.True(FoliageUniforms.SizeInBytes <= FoliageUniforms.SlotBytes);
     }
 

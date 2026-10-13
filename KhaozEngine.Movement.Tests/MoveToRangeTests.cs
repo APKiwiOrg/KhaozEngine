@@ -11,7 +11,9 @@ public class MoveToRangeTests
 {
     internal static readonly MoveTuning Tuning = GroundTraversalProbeTests.Tuning with { WalkSpeed = 2f, RunSpeed = 5f };
     internal static readonly NavSpace Space = NavSpace.Single(NavGrid.FromWalkable(32, 32, 0.25f, -4f, -4f, (_, _) => true));
-    internal static readonly GroundMoveContext Flat = new((_, _) => 0f);
+    // Private because a context guards against overlapping steps and test classes run in parallel. Every class
+    // that imports this fixture keeps its own context.
+    private static readonly GroundMoveContext Flat = new((_, _) => 0f);
     internal static MoveState Body(float x = 0f, float z = 0f) => new() { Position = new(x, 0.75f, z), Grounded = true };
     internal static MovementBody Shape(in MoveState body, in MoveTuning tuning)
         => new(body.Position, tuning.CapsuleRadius, tuning.CapsuleHalfHeight);

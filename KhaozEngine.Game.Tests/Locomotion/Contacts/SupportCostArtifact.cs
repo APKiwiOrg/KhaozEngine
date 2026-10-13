@@ -62,7 +62,7 @@ internal static class SupportCostVerdict
                 m2MaxBaseline["ProcessExitStatus"]?.GetValue<int>() != 0 ||
                 hosted!["ProcessExitStatus"] is { } exit && exit.GetValue<int>() != 0 ||
                 !SameSceneInputs(m2MaxBaseline!["Scenes"], hosted!["Scenes"]) ||
-                m2MaxBaseline["Tuning"] is null || !JsonNode.DeepEquals(m2MaxBaseline["Tuning"], hosted["Tuning"]))
+                !SameTuningInputs(m2MaxBaseline["Tuning"], hosted["Tuning"]))
                 return false;
             SupportCostSample? reference = CalibrationTick(m2MaxBaseline);
             SupportCostSample? current = CalibrationTick(hosted);
@@ -103,6 +103,25 @@ internal static class SupportCostVerdict
             if (!JsonNode.DeepEquals(a, b)) return false;
         }
         return true;
+    }
+
+    static bool SameTuningInputs(JsonNode? reference, JsonNode? hosted)
+    {
+        if (reference is not JsonObject original || hosted is not JsonObject current) return false;
+        JsonObject a = original.DeepClone().AsObject(), b = current.DeepClone().AsObject();
+        // Only the fields added after the committed evidence have implicit defaults.
+        JsonObject defaults = new()
+        {
+            [nameof(MoveTuning.Controller)] = (int)MovementControllerKind.Legacy,
+            [nameof(MoveTuning.FootRadiusFraction)] = 0.5f,
+            [nameof(MoveTuning.Water)] = JsonSerializer.SerializeToNode(default(WaterTraversalPolicy))
+        };
+        foreach (var field in defaults)
+        {
+            if (!a.ContainsKey(field.Key)) a.Add(field.Key, field.Value!.DeepClone());
+            if (!b.ContainsKey(field.Key)) b.Add(field.Key, field.Value!.DeepClone());
+        }
+        return JsonNode.DeepEquals(a, b);
     }
 
     static SupportCostSample? CalibrationTick(JsonObject section)

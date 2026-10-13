@@ -130,13 +130,11 @@ public sealed partial class MoveToRange
     // float line, as an airborne body lands before it is steered.
     private static bool Settling(in MoveState body, in MoveTuning tuning, GroundMoveContext context)
     {
-        if (context.Medium is not { } medium) return true;
-        float feetY = body.Position.Y - tuning.CapsuleHalfHeight;
-        MovementMedium sample = medium(body.Position.X, body.Position.Z, feetY);
-        if (!sample.InWater) return true;
-        float floatLine = sample.WaterSurfaceY - tuning.SwimSurfaceSubmersionFraction * (2f * tuning.CapsuleHalfHeight);
+        var sample = context.SampleWaterForPacing(body, tuning);
+        if (!sample.Medium.InWater || tuning.Controller == MovementControllerKind.Contact && !sample.Swimming) return true;
+        float floatLine = sample.Medium.WaterSurfaceY - tuning.SwimSurfaceSubmersionFraction * (2f * tuning.CapsuleHalfHeight);
         double band = Math.Max(tuning.StepHeight, GroundTraversalProbe.ArrivalTolerance);
-        return !(Math.Abs((double)feetY - floatLine) <= band);
+        return !(Math.Abs((double)sample.FeetY - floatLine) <= band);
     }
 
     private static PathFollowConfig StrictConfig(PathFollowConfig follow, bool carry)

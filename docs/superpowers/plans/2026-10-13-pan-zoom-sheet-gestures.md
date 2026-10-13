@@ -73,7 +73,7 @@ Tests in `KhaozEngine.Render.Tests/Windowing/PointerGestureInputTests.cs` and
   Pointer exposes this immutable mapping for the controller. Include scale/viewport identity for cancellation.
 - `InputManager.PointerInputSuppressed` is read-only. Gesture convenience access honors suppression.
 
-- [ ] Add tests that freeze one frame, collect another, and assert the first frame remains equal.
+- [x] Add tests that freeze one frame, collect another, and assert the first frame remains equal.
   Pin summary behavior and retain the old constructor overload using reflection.
 
 ```csharp
@@ -84,13 +84,13 @@ Assert.DoesNotContain(frame.WithoutScroll().Gestures.Samples, s => s.Kind != Poi
 Assert.Equal(frame.PinchScaleFactor, frame.WithoutScroll().PinchScaleFactor);
 ```
 
-- [ ] Run the new Render test filter through build-slot, expect failure from the missing contract.
-- [ ] Implement payload, point/vector mapping and optional snapshot construction without changing old
+- [x] Run the new Render test filter through build-slot, expect failure from the missing contract.
+- [x] Implement payload, point/vector mapping and optional snapshot construction without changing old
   signatures. Preserve every field through WithoutScroll and automation composition. Clear pending
   gestures at focus/capture transitions. Do not attach native sources yet.
-- [ ] Add mixed-source, nonuniform framebuffer scale, offset viewport, suppressed manager, immutable
+- [x] Add mixed-source, nonuniform framebuffer scale, offset viewport, suppressed manager, immutable
   copy and automation tests. Assert no pixel/point double scaling and no empty-frame allocation.
-- [ ] Run `build-slot --label gesture-input -- dotnet test KhaozEngine.Render.Tests -c Release --filter
+- [x] Run `build-slot --label gesture-input -- dotnet test KhaozEngine.Render.Tests -c Release --filter
   'FullyQualifiedName~PointerGestureInputTests|FullyQualifiedName~InputState|FullyQualifiedName~InputAccumulator|FullyQualifiedName~InputManagerSuppression'`.
   Run `build-slot --label gesture-automation -- dotnet test KhaozEngine.Automation.Tests -c Release`.
   Both must exit zero. Commit explicit files and push.
@@ -119,7 +119,7 @@ Add immutable `NativeGestureFailure` with stage Install/Remove/Release/Callback,
 original exception. Registration retains its first Failure and AppWindow exposes NativeGestureFailure.
 False install/removal must be observable. No attempted backend means normal fallback, not a failure.
 
-- [ ] Add failing normalizer tests for precise scroll units, Cocoa Y inversion, magnify factors,
+- [x] Add failing normalizer tests for precise scroll units, Cocoa Y inversion, magnify factors,
   zero-delta phases, event-time modifiers, native momentum and rejected non-finite events.
   Pin Ctrl+wheel as one compatibility sample even when final KeysDown is empty.
 
@@ -131,22 +131,22 @@ Assert.Equal(PointerGestureSource.ModifierWheelCompatibility, sample.Source);
 Assert.Equal(new Vector2(24, 30), precise.ScrollDelta); // no GLFW 0.1 conversion
 ```
 
-- [ ] Run `build-slot --label gesture-native-red -- dotnet test KhaozEngine.Windowing.Tests -c Release
+- [x] Run `build-slot --label gesture-native-red -- dotnet test KhaozEngine.Windowing.Tests -c Release
   --filter 'FullyQualifiedName~NativeGesture'`, expect failure on the missing delivery contracts.
-- [ ] Implement a window-scoped AppKit local monitor with rooted block storage/delegates, exact
+- [x] Implement a window-scoped AppKit local monitor with rooted block storage/delegates, exact
   NSWindow filtering, original-event return and disposal before input/window teardown. Capture the
   matching event metadata while GLFW dispatches, preserving legacy ScrollDelta without a duplicate
   new gesture. Never replace process-wide Objective-C methods. Add both wheel axes on fallback paths.
-- [ ] Implement a chained Windows procedure using message-time MK_CONTROL for wheel compatibility.
+- [x] Implement a chained Windows procedure using message-time MK_CONTROL for wheel compatibility.
   Restore the procedure safely at teardown. Emit one new sample and retain legacy wheel delivery.
   Other platforms produce unclassified wheel samples, never inferred precision.
-- [ ] Test install failure, partial initialization, disposal twice, callback after disposal, another
+- [x] Test install failure, partial initialization, disposal twice, callback after disposal, another
   window's event and begin/end with zero delta through the actual registration owner and pure decoder.
   Assert first-failure diagnostics for false install/removal and thrown install/remove/release/callback
   errors, while proving roots and storage retain their safe lifetime. Assertions belong outside
   exception-contained callbacks so a failing test cannot be swallowed as a native callback exception.
   Record separately that these tests do not prove physical OS delivery.
-- [ ] Repeat the focused command green. Inspect native ABI and lifetime against Apple/Windows docs
+- [x] Repeat the focused command green. Inspect native ABI and lifetime against Apple/Windows docs
   and existing interop patterns. Commit explicit files and push.
 
 ### Task 3: Deterministic pan/zoom controller and shared drag motion
@@ -199,6 +199,13 @@ Tests in `KhaozEngine.Windowing.Tests/PanZoomControllerTests.cs`,
 - [ ] Implement event-ordered scroll/magnify and wheel animation. Animate log factor over the exact
   configured duration. Coalesce only equal-anchor compatible steps. Native momentum gets no extra
   release inertia. Event modifiers decide behavior even if frame-level modifiers differ.
+  Opposite directions are not compatible for coalescing, because target clamps preserve their order.
+  Partial-animation bookkeeping uses only the remaining factor, never the already-applied prefix.
+  A resolved identity factor consumes no animation time, so saturated snap requests cannot delay
+  a later reversal. The resolver still runs exactly once for each sample.
+  Zero-duration operations drain in order even at zero dt or at an exact timed-operation boundary.
+  Coalescing must leave the resulting factor finite and positive. Otherwise preserve the valid
+  operations separately, including when their combined factor would overflow or underflow.
   Use legacy scalar wheel input only when `input.Gestures.IsAvailable` is false, never merely when
   Samples is empty. Native cancellation can intentionally publish an empty authoritative stream.
   Command+Wheel overrides Pan mode. Command+PreciseScroll uses exp(rawPointY * pointSensitivity),
@@ -210,6 +217,8 @@ Tests in `KhaozEngine.Windowing.Tests/PanZoomControllerTests.cs`,
   qualify for a two-finger tap, subject to the 0.3-second duration and slop for both contacts.
   First tap reports immediately. Second qualifying tap reports double-tap and zooms by factor 2.
   Two-finger tap zooms by factor 0.5. Do not duplicate a touch as a mouse gesture.
+  An active pinch returning to one finger resumes dragging without a jump, a new slop delay or a tap.
+  A pinch candidate that has not committed remains distinguishable for two-finger tap recognition.
 - [ ] Add numeric oracle tests using an affine fake target. Its pan and scale must retain the point
   under cursor/centroid. Add one-frame mixed-anchor wheel/magnify, touch reordering/replacement,
   suppression, resize, focus loss, capture, held-contact restart inhibition and focused keyboard tests.
@@ -312,8 +321,11 @@ Headless tests use the same controller and target adapter contract as the probe.
 - [ ] Build the opt-in probe through build-slot, but do not launch it. Provide the exact absolute
   dotnet run command in the eventual owner handoff. Clearly distinguish headless evidence from
   physical macOS event delivery and Windows compatibility awaiting owner validation.
-- [ ] Publish API examples covering both Flightline targets, full snapshot update, overlay ordering,
+- [ ] Publish API examples covering the generic bounded and wrapping targets, full snapshot update, overlay ordering,
   explicit cancellation, sheet configuration, new versus legacy canvas APIs, units and platform limits.
+  The Flightline handoff uses a Client-side IPanZoomTarget adapter. Its existing viewport Zoom method
+  is centre-based, so the adapter must implement anchored zoom with the game's geographic constraints.
+  Do not imply that forwarding the existing Zoom method provides anchor preservation.
   Run `rg` across Markdown for `PannableCanvas|PinchRecognizer|Touches|ScrollDelta|pinch|trackpad` and
   update every affected living reference. Preserve historical design statements as history.
 - [ ] Run staged guards. Commit explicit files and push. Do not post a consumer completion claim.

@@ -188,3 +188,83 @@ Renderer DLL SHA256 4ca656d53f2fb22d7865d0172fda8674309bdd12b83fef6ee7b074e4d24a
 Logs integration-20261014-{build,focused,suite,render-build,metal,pack,format-fix}.log and
 package-proof JSON retain evidence. No code changes after these proofs are planned. Exact-head
 hosted baseline gate and one Codex merge-resolution review are next. No tag or release.
+
+## Exact-head hosted gate and integration, 2026-10-14
+
+Gated head a80fab6c4caa1de66cb8d643e9ca998a567e993d. Draft PR #1393 to main registered with T3.
+PR merge tree equals head tree eccb02ce8429d5c3aab5ec5a61b1cf52b3126398. PR ci 38461567233, PR GPU
+38461566855 and PR Windows-console 38461566879 all succeeded. Full dispatch 38461600502 ran once
+using legs=all,bake=false,tier=push on the same head. All 24 attachment cases passed without skips.
+Vulkan full 115517954152 succeeded, 37 project summaries, zero failed rows. Sync 115517953624
+succeeded, with the actual armed validation producer and zero errors.
+
+Owner accepted only two additional non-attachment rows after bounded static attribution, with no
+new runs or source fixes. Metal WarmSignalResolveAllocatesNothing(Mesh), 7872 bytes, belongs to
+#1394 in #1391 family. Fixture and reached Locomotion/Physics/Bepu path are unchanged from main,
+with no changed Render3D/attachment type. Windows HTTPS endpoint test's first /admin/online GET
+at line 164 timed out at 20 seconds, recorded in #1396. Numeric tile rig has no asset loader, renderer,
+attachment, physicsFactory or consumer tick hooks. Concrete engine handler returns publishedOnline.
+Its TLS progress and timeout mechanism remain unproven. Earlier retained run 38392043530 TRX
+proves this exact row passed in 0.1387199 seconds. Issue comments retain both attributions and hashes.
+
+Allowed set is eight Windows #1316 path fixtures, Windows #1157 point-shadow boundary, exactly
+one Metal #1394 Mesh allocation row and exactly one Windows #1396 HTTPS row. Nothing else is
+automatically admitted. Any further row requires evidence, static attribution and owner ruling.
+Windows final TRX verifies exactly ten allowed failures, eight attachment passes and no aborted/error/
+runner-timeout counters. Metal actual suite log verifies one allowed failure and eight attachment
+passes. The workflow emits TRX only for Windows, detailed suite logs for Metal/Vulkan. No TRX data
+or hash was invented for those two backends. Full workflow conclusion is failure under this accepted
+baseline gate. Actual main push checks still require green.
+
+Fresh Codex merge reviewer /root/attachment_merge_review approved with no findings. Parent verified
+source preservation claims, both saved diffs, released history identity, workflow equality, proof-only
+commit absence and the whitespace correction. Explorer /root/metal_row_attribution supplied bounded
+static call/type maps for the two additional rows. Parent independently verified critical constructors,
+handlers and project edges. No implementation redispatch, test loop, shader/tolerance edit or rerun.
+
+Final fetch found main/origin ee6016aae, released version 20.37.0 and free 20.38.0. Root main and
+feature trees were clean. Main fast-forwarded and pushed to exact a80fab6c4. PR #1393 is confirmed
+MERGED at that exact commit. Actual main push ci 38473512217, GPU 38473512218 and Windows console
+38473512305 are active. Shared main packaging is active through build-slot heavy. No tag or release.
+
+Windows ZIP 11849231951 SHA256 f4c064afa31b72f0c229a5f0bb96adb072e1cef04c5d8e8a92fd095df858c791.
+Windows Render TRX SHA256 b33801e825350c47adb09d830707c1fbf2e9b2d04c0dd8733558f2133462d50e.
+Windows Server TRX SHA256 e366bd16b6ac881594585e7ca35de0a6c4751ede1ebb7920051b81dc73874130.
+Metal ZIP 11847334337 SHA256 edf77e3805e8664feac9b1d5e5c8d6361991203e78602ac26b74d5ab4f9272e8.
+Metal raw suite log SHA256 0c7b78b44cc26644c570f26eb18bf7eef03506f3f5100d2909bb27aed01ef011.
+Vulkan ZIP 11852652775 SHA256 d1d36ac61bc49dcd1aeb6f661c10a8506782429aa9893e30fafa0e701ecb2459.
+Vulkan raw suite log SHA256 c61eb9edbc5f60973be9eec0022e22c690ea08abaf7bb4e3cc77ecec6906d52d.
+Sync ZIP 11846691378 SHA256 5e60093e64bea1ffeb9f8ed1133fdc989de2ef0386ded15416fb9f218c220642.
+All downloaded current ZIP digests match GitHub metadata.
+
+Pending documentation edits record completed hosted proof and the exact integration, while the
+feature HEAD remains a80fab6c4 for the required main push gates. Commit this audit only after their
+terminal results are recorded. Do not dispatch another full workflow. No tag or release.
+
+Owner release hold, 2026-10-14. Exact v20.38.0 at a80fab6c4 is approved for a separate engine-rooted
+release chat, thread mcp:c5decd51-706e-4ac5-ac59-ad69e2e5255b. This lane remains no-tag/no-release.
+Push nothing further to main before that chat reports the tag. Completion ledger/design edits and
+audit preservation stay on feature/rigid-attachment-sets or held, and land only after that report.
+
+Shared root main pack completed exit 0, 429.936 seconds, refreshed 212 files (107 nupkg, 105 snupkg)
+for 20.38.0. Its exact staging directory .local-feed.pack.n8A6mu is gone. Root clean at a80fab6c4.
+The orchestrator and release chat confirmed root availability, with no active pack/build from this
+lane. Main package proof exit 0, all 107 repository stamps equal a80fab6c4, engine edges 20.38.0,
+core has no direct dependencies, renderer exactly core/Render3D, both umbrella references present.
+Main core DLL SHA256 9424186f7656c18cc5a277d6af171f1caa957617b956a2a1fcd89645f3bd6536.
+Main renderer DLL SHA256 69d0933b4ac624d14541e66fb7b7a4d5c1cc24795585091130482a7aa1aea3d7.
+Actual main ci 38473512217 and Windows console 38473512305 succeeded. Push GPU 38473512218 has
+D3D11/Vulkan success and Metal active. Do not move main or rerun a gate while it is pending.
+
+Actual main push gates completed. ci 38473512217, cross-platform-gpu 38473512218 and Windows
+console 38473512305 all terminal SUCCESS at exact a80fab6c4, independently checked event=push
+and exact head SHA from saved JSON. Release chat and Grimhollow orchestrator notified directly.
+Root main remains held. Audit commit is feature-only until the release chat reports v20.38.0.
+Design checkpoint and docs index now record successful integration and all amended gate evidence.
+Structured audit docs/verification/2026-10-14-rigid-attachment-sets-integration.json preserves
+conclusions, full allowed row mapping, package proof and hashes. This lane created no tag/release.
+
+Broad informational feed scan completed exit 0, 7 staged versions, 0 unsafe, 47 released and 9
+drifted historical versions. Those exact nine older versions are already tracked by open #1211.
+No duplicate issue or repair. Current 20.38.0 alone independently passed all 107 repository stamps,
+DLL/dependency proof and staged-on-origin-main checks. This is not a release blocker for a80fab6c4.

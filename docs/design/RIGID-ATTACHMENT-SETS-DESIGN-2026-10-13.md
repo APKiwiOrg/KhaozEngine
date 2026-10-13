@@ -1,6 +1,6 @@
 # Rigid attachment sets
 
-Status: owner-approved scope, package boundaries and implementation plan, 2026-10-13.
+Status: implemented and integrated into main at `a80fab6c4`, staged for `20.38.0`. The owner approved exact tag `v20.38.0` at that commit for a separate release chat.
 The [implementation plan](../superpowers/plans/2026-10-13-rigid-attachment-sets.md) is the execution contract.
 This document records the design rationale. The package READMEs and consumer guide describe current APIs.
 Package availability is determined by release tags, with consumer adoption gated on an approved release.
@@ -8,7 +8,8 @@ Package availability is determined by release tags, with consumer adoption gated
 ## Implementation checkpoint, 2026-10-14
 
 All four implementation tasks and their scoped reviews are complete. The final review corrections are
-included. The feature remains on `feature/rigid-attachment-sets`, with integration and release gates open.
+included. The feature was fast-forwarded to main and pushed at `a80fab6c4`. Actual main push checks
+passed. The separately approved exact-tag release remains with the engine-rooted release chat.
 
 At `f037fd0fc0448771c9484b1b08111aaf9e5ba6e0`, the combined Release build passed with zero warnings and
 errors. The full solution suite reported 31,031 passed, zero failed and 1,361 conditional skips across
@@ -34,9 +35,9 @@ The five failures under #1382 were subsequently fixed on main at
 and shadow failures under #1316 and #1157 remain owned by their separate workstreams.
 
 The subsequent input and GUI merge into `f037fd0fc` leaves the attachment, renderer, backend and headless
-fixture paths unchanged. Its combined local build, suite, Metal proof and packaging were rerun. Later
-foliage work on main is not contained in this checkpoint. Integration must reconcile current main and
-refresh affected verification. No engine release or dependent consumer adoption is authorized here.
+fixture paths unchanged. Its combined local build, suite, Metal proof and packaging were rerun. This
+historical checkpoint did not contain later foliage work. The subsequent integration below reconciles
+it. No engine release or dependent consumer adoption is authorized here.
 
 ## Replacement integration gate, owner decision 2026-10-14
 
@@ -50,14 +51,29 @@ exact reconciled head. That head must contain current main so its PR merge tree 
 movement requires reconciliation, a push and fresh head checks. One full hosted `cross-platform-gpu`
 dispatch must test that same head using `legs=all`, `bake=false` and `tier=push`, the route used by
 run 38392043530. After the fast-forward and push, actual main push checks must pass. A failed main
-check is reported without a revert or force operation. All eight attachment cases must pass without skips on Metal, D3D11 and Vulkan.
-Metal, Vulkan and the Vulkan synchronization validation leg must pass. The Windows D3D11 leg may
-fail only the eight #1316 MapDoc path-fixture rows and the #1157 point-shadow boundary assertion.
-Downloaded TRX results must prove the exact failing set. Any other failing row blocks integration.
+check is reported without a revert or force operation. All eight attachment cases must pass without
+skips on Metal, D3D11 and Vulkan. Vulkan and its synchronization validation leg must pass.
+
+The owner subsequently admitted two exact non-attachment rows after static attribution. The measured
+Metal `WarmSignalResolveAllocatesNothing(Mesh)` path uses no changed Render3D or attachment type.
+Its per-thread 7,872-byte assertion is documented in [#1394](https://github.com/APKiwiOrg/KhaozEngine/issues/1394),
+in the [#1391](https://github.com/APKiwiOrg/KhaozEngine/issues/1391) allocation family. The Windows
+HTTPS admin row reaches only the unchanged numeric tile server and framework TLS path, with no
+renderer, asset loader, attachment or physics factory. [#1396](https://github.com/APKiwiOrg/KhaozEngine/issues/1396)
+records its 20-second timeout and its pass in earlier run 38392043530. Neither mechanism is claimed
+resolved. Their owning workstreams retain repair responsibility.
+
+The exact allowed set is the eight Windows #1316 path-fixture rows, the Windows #1157 point-shadow
+boundary assertion, that one Metal #1394 Mesh row and that one Windows #1396 HTTPS row. Any further
+non-attachment failure requires static attribution, an issue with evidence and an owner ruling before
+merging. Any attachment failure blocks integration. No rerun or assertion change was used.
+
+The unchanged workflow produces TRX only for Windows. Metal and Vulkan produce detailed
+`suite-output.log` artifacts. Windows TRX and the two actual log artifacts prove their exact row sets.
 
 No shadow code, shader, tolerance, #1316 repair or proof-only workflow change is included. Those
-workstreams retain ownership. Current main `ee6016aae` is being reconciled and released `20.37.0`
-is followed by staged additive version `20.38.0`. No tag is authorized.
+workstreams retain ownership. The integration contains main `ee6016aae` and follows released
+`20.37.0` with staged additive version `20.38.0`. The separate engine-rooted release chat owns the approved exact tag `v20.38.0` at `a80fab6c4`.
 
 ### Reconciled local checkpoint
 
@@ -75,7 +91,74 @@ and both umbrella edges include the renderer arm. Whole-tree guards and doc vers
 format sweep found one initializer whitespace row, corrected without a token change and reverified.
 
 The local Metal TRX SHA256 is `7bd4979285c9ae6009e06265f0c3c2f45be7e1b886660726cd3eebc077231032`.
-The fresh hosted gate and merge-resolution review are pending.
+The fresh hosted gate and merge-resolution review are complete, as recorded below.
+
+## Integrated verification checkpoint, 2026-10-14
+
+[PR #1393](https://github.com/APKiwiOrg/KhaozEngine/pull/1393) is merged. Main was fast-forwarded and
+pushed to `a80fab6c4caa1de66cb8d643e9ca998a567e993d`, the exact gated head. Its PR merge tree equals
+its head tree. Final fetch found no main movement or version collision. The changelog heading is
+`## 20.38.0`, with released `20.37.0` history preserved byte for byte.
+
+| Run | Event and proof | Conclusion |
+| --- | --- | --- |
+| [38461567233](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/38461567233) | PR ci | Success |
+| [38461566855](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/38461566855) | PR cross-platform-gpu | Success |
+| [38461566879](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/38461566879) | PR Windows console regression | Success |
+| [38461600502](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/38461600502) | One full hosted dispatch on the exact head | Failure, accepted only for the documented Metal and Windows rows |
+| [38473512217](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/38473512217) | Actual main push ci | Success |
+| [38473512218](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/38473512218) | Actual main push cross-platform-gpu | Success |
+| [38473512305](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/38473512305) | Actual main push Windows console regression | Success |
+
+Full dispatch 38461600502 passed all eight attachment cases on each backend, 24 total with no skips.
+Vulkan job 115517954152 passed, with 37 successful project summaries and no failed rows. Vulkan sync
+job 115517953624 passed. Its log confirms the armed validation producer with zero validation errors.
+Metal job 115517953708 failed only the documented #1394 Mesh row. Windows job 115517953906 failed
+exactly the ten rows below. Its TRX counters contain no aborted, error or runner-timeout outcomes.
+
+| Issue | Windows failed row |
+| --- | --- |
+| #1316 | `KhaozEngine.Tests.MapDoc.NativeStorageNamespaceTests.NativeStorage_GuardRefusesEveryClosureReferenceBeforeReadingIt(reserved: "mesh", absolute: True)` |
+| #1316 | `KhaozEngine.Tests.MapDoc.NativeStorageOwnershipTests.NativeStorage_TiledOpenRefusesResourceInsideItsNamespaceBeforePublishing(mesh: "tiled-world/tiles/rock.glb", absolute: True)` |
+| #1316 | `KhaozEngine.Tests.MapDoc.NativeManifestAdapterTests.Adapter_RejectsStaleOrMissingMeshAndLodFiles` |
+| #1316 | `KhaozEngine.Tests.MapDoc.NativeLifecycleTests.NativeLifecycle_TiledIdentityAndDecimalTransportSurviveConversionAndReopen` |
+| #1316 | `KhaozEngine.Tests.MapDoc.NativeStorageOwnershipTests.NativeStorage_ConversionChecksTheTiledTargetNamespaceForAMonolithicSource` |
+| #1316 | `KhaozEngine.Tests.MapDoc.NativeLifecycleTests.NativeLifecycle_PartialNativeOpenRefusesWithoutReplacingSession` |
+| #1316 | `KhaozEngine.Tests.MapDoc.NativeStorageOwnershipTests.NativeStorage_MissingTiledStorageRefusesSaveAndRetileWithoutRecreatingIt` |
+| #1316 | `KhaozEngine.Tests.MapDoc.NativeManifestAdapterTests.Adapter_ResolvesResourceIdsToVerifiedPathsNotAssetIds` |
+| #1157 | `KhaozEngine.Tests.Gpu.PointShadowFilterGpuTests.TheSoftEdgeCrossesACubeFaceBoundaryWithoutAStep` |
+| #1396 | `KhaozEngine.Tests.ServerAdminEndpoint.TileWorldServerAdminEndpointTests.The_https_endpoint_serves_a_tile_world_server` |
+
+The single fresh merge-resolution review was approved with no findings. Independent checks confirmed
+inherited foliage and shadow source preservation, unchanged workflows, proof-only commit absence,
+released changelog identity and whitespace-only initializer correction. Static attribution of both
+additional baseline rows was separately verified. No implementation was redispatched.
+
+| Retained artifact | SHA256 |
+| --- | --- |
+| Windows TRX ZIP 11849231951 | `f4c064afa31b72f0c229a5f0bb96adb072e1cef04c5d8e8a92fd095df858c791` |
+| Windows Render TRX | `b33801e825350c47adb09d830707c1fbf2e9b2d04c0dd8733558f2133462d50e` |
+| Windows Server TRX | `e366bd16b6ac881594585e7ca35de0a6c4751ede1ebb7920051b81dc73874130` |
+| Metal log ZIP 11847334337 | `edf77e3805e8664feac9b1d5e5c8d6361991203e78602ac26b74d5ab4f9272e8` |
+| Metal raw suite-output.log | `0c7b78b44cc26644c570f26eb18bf7eef03506f3f5100d2909bb27aed01ef011` |
+| Vulkan log ZIP 11852652775 | `d1d36ac61bc49dcd1aeb6f661c10a8506782429aa9893e30fafa0e701ecb2459` |
+| Vulkan raw suite-output.log | `c61eb9edbc5f60973be9eec0022e22c690ea08abaf7bb4e3cc77ecec6906d52d` |
+| Vulkan sync ZIP 11846691378 | `5e60093e64bea1ffeb9f8ed1133fdc989de2ef0386ded15416fb9f218c220642` |
+
+Artifact ZIP digests match GitHub's recorded digests. The earlier retained Windows TRX shows the
+HTTPS row passed in 0.1387199 seconds in run 38392043530. Its server TRX SHA256 is
+`99c8bc1bead1069ed114fbfd178e4a2763164f69af2cba32e31837fa4f9a79b5`.
+
+Shared main packaging passed through the sanctioned wrapper, refreshing 107 packages and
+105 symbol packages from exact `a80fab6c4`. Its temporary `.local-feed.pack.n8A6mu` directory is gone,
+and the root checkout was confirmed clean. Package provenance and dependency checks passed.
+
+The owner approved tag `v20.38.0` at exact `a80fab6c4` through a separate engine-rooted release chat.
+All three actual main push checks passed at the approved commit. That chat owns the release. Further main pushes are held until its tag report.
+This audit checkpoint remains on `feature/rigid-attachment-sets` during that hold. The structured
+[audit record](../verification/2026-10-14-rigid-attachment-sets-integration.json) retains run conclusions,
+allowed row mappings, package provenance and artifact hashes. The integration
+lane created no tag or release. Consumer adoption remains with the release handoff.
 
 ## Purpose
 

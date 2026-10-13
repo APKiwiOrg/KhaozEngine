@@ -1742,6 +1742,13 @@ Map positions are metres with x east and y north. `MapRect` has a south-west ori
 Use the source's `ToMap` and `ToMapHeading` for live world poses. Headings are radians clockwise from north,
 and marker artwork points north at zero heading. The view handles the screen's downward y axis.
 
+`WorldMapSymbol(Kind, Fill, Outline)` also accepts an optional `Vector2? SizeMetres` init property.
+For a tree crown, set `SizeMetres = new Vector2(3.5f)` on the symbol. These full local dimensions follow the footprint's centre and rotation,
+including building shadows. Sized walls use both dimensions instead of the style's wall width.
+Null keeps the authored dimensions and existing raster bytes. Raster queries and invalidation include
+the largest visible drawn half diagonal at every chunk level. Coarse filtering still uses the authored
+footprint to preserve source-side materialization limits. Icon anchors and hover bounds are unchanged.
+
 Keep the `TileWorldDocument` and `TileWorldCatalogs` unchanged while a `TileWorldMapSource` is in use. Its
 `Revision` stays zero and it never raises `Changed`. After edits or loaded-region changes, stop and dispose
 the old map pipeline and create a new source, cache, worker and view. `surfacePlane` selects terrain, objects
@@ -7924,7 +7931,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.34.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.35.1" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -8220,7 +8227,7 @@ On the dev Mac a 36,864-column flat world wrote 664,689 bytes and loaded in abou
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.34.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.35.1" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -8962,7 +8969,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.34.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.35.1" />
 ```
 
 ```csharp
@@ -12584,8 +12591,8 @@ above), centres the panel horizontally on the composed anchor's X and bottom-anc
 above the visible body). It
 returns `false` on the same cull paths (empty plate, behind camera, off-screen, beyond `maxDistance` - the distance
 predicate is the shared `NameplateRenderer.ShouldCull`, identical to `WorldLabel.ShouldCull`). Like `WorldLabel` it
-is screen-space, not depth-tested. `NameplateBar.Fraction` is clamped to 0..1 at draw; the draw path allocates no
-per-frame heap (bar rects are computed in the loop).
+is screen-space, not depth-tested. `NameplateBar.Fraction` is clamped to 0..1 at draw. Warmed styles with up to four
+bars reuse a cached template and content without heap allocation. Larger plates build an uncached template.
 
 `NameplateStyle` is the look, split from the data. `NameplateStyle.Default` is the unified opaque-plate preset
 (dark rounded panel, subtle border, one-bar geometry). Tweak it with a `with` expression, or start from
@@ -12729,6 +12736,99 @@ foreach (EntityRenderState e in client.Snapshot())
     }
 batch.End();
 ```
+
+#### Component templates (`NameplateTemplate`, 20.35.0)
+
+The `Nameplate` model fixes the layout to a centred title over stacked bars. When a plate needs a different
+arrangement (a name hanging over a health bar with a level badge pinned to its corner, an outlined name with no
+panel) describe it as a **`NameplateTemplate`**: an ordered list of components, each bound to a
+`NameplateSlot`, laid out by attach rules, and filled per entity from a reusable `NameplateContent`.
+
+- **Slots** are string keys (`NameplateSlot.Name`, `.Level` and `.Health` are predefined, `new
+  NameplateSlot("mana")` adds your own). A template says WHERE a slot draws, the content says WHAT it holds.
+- **`NameplateContent`** holds the per-entity values. `SetText(slot, text, color, tint)` stores text (null or
+  empty removes it), `SetBar(slot, fraction, fill, track, border)` stores a bar, and `Clear()` empties every slot
+  and restores `Opacity` to 1. `Opacity` (0..1, a non-finite value drawing opaque) multiplies the alpha of every
+  colour the plate draws, panel included, so a fade in or out needs no second template. Reuse one instance per
+  draw site: warmed slots set and read without allocating.
+- **Three components.** `NameplateTextComponent` draws text with `FontScale`, an optional eight-way outline
+  (`OutlineColor` and `OutlineThickness`), an optional `ShadowColor` at `ShadowOffset`, and its own `MaxWidth`
+  ellipsis cap. `NameplateBadgeComponent` draws centred text on a padded rounded `BaseFill` with a border, and
+  washes the fill toward the content's tint by `TintAlpha` (a disposition accent, say). `NameplateBarComponent`
+  draws a track and a clamped fill. Its `Width` and `Height` are the inner track, a `Width` of 0 takes the
+  template's content width, and its border sits outside the track.
+- **Attach rules.** The first component is the root at the origin. Every later one carries a
+  `NameplateAttach(Self, Target, TargetPoint, Offset)`: its `Self` point (an `AttachPoint` from
+  `KhaozEngine.Primitives`) lands on the `TargetPoint` of the component whose id is `Target`, plus `Offset`. A
+  null `Target` means the root. Targets must name an EARLIER component, and the constructor throws on a blank or
+  duplicate id or a forward target, so a template is validated once at build time and never at draw time.
+- **Empty slots.** A component whose slot is unset or holds the other kind does not draw and takes no space,
+  but keeps its attach point so later components hanging off it still place correctly. A plate whose components
+  all skip is culled (`Draw` returns `false`).
+- **Panel and placement.** The template carries `PanelFill`, `PanelBorder`, `PanelBorderThickness`,
+  `CornerRadius`, `PadX`, `PadY`, `MinContentWidth`, `MaxContentWidth` (0 is unbounded) and the same
+  `EdgeBehavior`, `EdgeMargin` and `EdgeHysteresis` described [above](#edge-aware-placement-nameplateedgebehavior-14190).
+
+```csharp
+// Built once, shared by every hostile plate. The bar is the root, the name hangs above its left edge and the
+// level badge sits on its right end.
+var hostilePlate = new NameplateTemplate(new NameplateComponent[]
+{
+    new NameplateBarComponent("health", NameplateSlot.Health) { Height = 6f, BorderThickness = 1f },
+    new NameplateTextComponent("name", NameplateSlot.Name)
+    {
+        OutlineColor = Color.Black,
+        OutlineThickness = 1f,
+        MaxWidth = 120f,
+        Attach = new NameplateAttach(AttachPoint.BottomLeft, "health", AttachPoint.TopLeft, new Vector2(0f, -2f)),
+    },
+    new NameplateBadgeComponent("level", NameplateSlot.Level)
+    {
+        Attach = new NameplateAttach(AttachPoint.BottomRight, "health", AttachPoint.TopRight, new Vector2(0f, -2f)),
+    },
+})
+{
+    MinContentWidth = 90f,
+    EdgeBehavior = NameplateEdgeBehavior.Deflect,
+};
+
+var content = new NameplateContent();   // one per draw site, refilled for each entity
+batch.Begin(Viewport, SamplerMode.Point);
+foreach (EntityRenderState e in client.Snapshot())
+    if (e.DisplayName is { } name)
+    {
+        content.Clear();
+        content.SetText(NameplateSlot.Name, name, Color.White);
+        content.SetText(NameplateSlot.Level, levelText[e.Id], Color.White, tint: hostileRed);  // cached strings
+        content.SetBar(NameplateSlot.Health, e.Health / e.MaxHealth, green, darkTrack);
+        content.Opacity = fadeFor(e.Id);
+
+        NameplatePlacementState placementState = placementStates.TryGetValue(e.Id, out var s) ? s : default;
+        NameplateRenderer.Draw(batch, font, white, camera, e.Position, new Vector3(0, headHeight, 0),
+            hostilePlate, content, Viewport, ref placementState, maxDistance: 90f, cullFrom: localPlayerPos);
+        placementStates[e.Id] = placementState;
+    }
+batch.End();
+```
+
+The template `Draw` comes in the same two forms as the legacy one, framebuffer ints and `IDesignViewport`, and
+both take a caller-held `NameplatePlacementState` (one per plate, never shared). A warm template draw allocates
+nothing. The render-free halves are public too: `NameplateTemplateLayout.Measure(font, template, content)`
+returns the padded panel size (zero when nothing draws), and `NameplatePlacement.Place(anchor, size,
+viewportWidth, viewportHeight, template, ref state)` places it with the template's edge settings. The outline
+itself is `TextOutline` in `KhaozEngine.Render2D` (`batch.DrawStringOutlined`, `TextOutline.Measure`), and the
+point maths is `Attach.PointOf`, `Attach.Resolve` and `Attach.Union` in `KhaozEngine.Primitives`.
+
+The legacy `Nameplate` and `NameplateStyle` API now runs as a built-in template. Its draw calls are unchanged,
+and a warmed style with up to four bars reuses a cached template without allocating. The cache keys on geometry
+and keeps 16 per thread, so a style that changes only its panel, border or title shadow colour (a panel alpha
+fade, say) keeps its template. Two limits remain on that path. A `MaxWidth` narrower than the "..." glyphs plus
+both paddings lets the panel grow to fit the ellipsis instead of overflowing it. A style whose geometry changes
+every frame (an animated padding or font scale, say) is a new cache key each frame and rebuilds its template, so
+animate such a plate through a template instead.
+
+Template files, an editor and a mod surface for templates are future work, tracked in
+[KhaozEngine#1378](https://github.com/APKiwiOrg/KhaozEngine/issues/1378).
 
 ### Simulating far from the world origin (island frames, ON by default)
 
@@ -16280,7 +16380,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.34.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.35.1" />
 ```
 
 ```csharp
@@ -16316,7 +16416,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.34.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.35.1" />
 ```
 
 ```csharp
@@ -16558,7 +16658,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.34.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.35.1" />
 ```
 
 ```csharp
@@ -20918,7 +21018,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.34.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.35.1" />
 </ItemGroup>
 ```
 

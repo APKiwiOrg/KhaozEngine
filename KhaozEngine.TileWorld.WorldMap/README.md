@@ -72,8 +72,12 @@ object's own tags. An empty tag filter rejects every object. Both filters run be
 footprint or combined tags. No per-object data is precomputed for these filters. Remaining objects
 are filtered by intersection between the rotated footprint's map rectangle and the requested area.
 Unknown archetypes are skipped.
-Rasterization supplies `0.5f / levelPpm` metres with no tags and retains its own sub-pixel skip. Feature
-collection supplies zero and the cached union of footprint icon rule tags to preserve every eligible
+Rasterization supplies `0.5f / levelPpm` metres with no tags and retains its own sub-pixel skip.
+Symbols can set `WorldMapSymbol.SizeMetres` for a drawn crown larger than the trunk footprint.
+The rasterizer widens its query area by the largest visible drawn half diagonal, so crowns from
+neighbouring chunks are included. The adapter still reports the authored footprint and filters coarse
+requests by the archetype size before materialization. Drawn size does not change feature anchors.
+Feature collection supplies zero and the cached union of footprint icon rule tags to preserve every eligible
 anchor. Empty rule requirements disable the tag filter, and no footprint rules skip this collection.
 Every intersecting footprint satisfying both query filters is returned. The source contract permits
 extra records, so consumers still re-check exact rules and raster size budgets.

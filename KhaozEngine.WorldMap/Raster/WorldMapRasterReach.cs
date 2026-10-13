@@ -5,12 +5,13 @@ namespace KhaozEngine.WorldMap.Raster;
 /// <summary>Defines the map-space margins needed by raster sampling and cache invalidation.</summary>
 internal static class WorldMapRasterReach
 {
-    /// <summary>Covers building shadows, widened walls and one raster pixel beyond an authored footprint.</summary>
+    /// <summary>Covers drawn symbol sizes, building shadows, widened walls and one raster pixel beyond an authored footprint.</summary>
     internal static float FootprintMetres(WorldMapStyle style) => FootprintMetres(style, 0);
 
     /// <summary>Covers footprints at the selected level's raster scale.</summary>
     internal static float FootprintMetres(WorldMapStyle style, int level) =>
-        style.BuildingShadowOffsetMetres.Length() + style.WallWidthMetres / 2f + 1f / style.LevelPixelsPerMetre(level);
+        style.BuildingShadowOffsetMetres.Length() + style.WallWidthMetres / 2f + 1f / style.LevelPixelsPerMetre(level) +
+        WorldMapSymbolSizing.MaximumRadius(style);
 
     /// <summary>Covers surface interpolation, relief sampling and shoreline neighbours.</summary>
     internal static float SurfaceMetres(WorldMapStyle style, float cellSize) => SurfaceMetres(style, cellSize, 0);

@@ -12,6 +12,7 @@ internal sealed class FlatTestSource : IWorldMapSource
 
     public MapRect Bounds { get; }
     internal List<WorldMapMarker> Markers { get; } = [];
+    internal List<WorldMapFootprint> Footprints { get; } = [];
     internal Color GroundColor { get; set; } = Color.FromHex("#527448");
     public float SurfaceCellSize => 8f;
     public long Revision { get; private set; }
@@ -36,7 +37,21 @@ internal sealed class FlatTestSource : IWorldMapSource
         return grid;
     }
 
-    public void CollectFootprints(in WorldMapFootprintQuery query, List<WorldMapFootprint> into) { }
+    public void CollectFootprints(in WorldMapFootprintQuery query, List<WorldMapFootprint> into)
+    {
+        foreach (WorldMapFootprint footprint in Footprints)
+        {
+            float cos = MathF.Abs(MathF.Cos(footprint.Rotation));
+            float sin = MathF.Abs(MathF.Sin(footprint.Rotation));
+            var extent = new Vector2(cos * footprint.HalfExtents.X + sin * footprint.HalfExtents.Y,
+                sin * footprint.HalfExtents.X + cos * footprint.HalfExtents.Y);
+            var bounds = new MapRect(footprint.Center.X - extent.X, footprint.Center.Y - extent.Y,
+                extent.X * 2f, extent.Y * 2f);
+            if (bounds.Intersects(query.Area) &&
+                2f * MathF.Max(footprint.HalfExtents.X, footprint.HalfExtents.Y) >= query.MinExtentMetres)
+                into.Add(footprint);
+        }
+    }
     public void CollectMarkers(MapRect area, List<WorldMapMarker> into)
     {
         foreach (WorldMapMarker marker in Markers)

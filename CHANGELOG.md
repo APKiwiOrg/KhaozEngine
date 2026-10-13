@@ -5,8 +5,19 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 20.34.1
+## 20.35.0
 
+- Render3D adds component nameplate templates beside the unchanged legacy plate API. A `NameplateTemplate` orders
+  `NameplateTextComponent`, `NameplateBadgeComponent` and `NameplateBarComponent` parts bound to `NameplateSlot`
+  keys and placed by `NameplateAttach` rules against earlier parts. A reusable `NameplateContent` supplies text,
+  badge tints, bars and a whole-plate `Opacity`. `NameplateTemplateLayout.Measure`, a template
+  `NameplatePlacement.Place` and two template `NameplateRenderer.Draw` overloads (framebuffer and
+  `IDesignViewport`) complete it, and warm draws allocate nothing. The legacy `Nameplate` and `NameplateStyle`
+  API now runs as a cached built-in template, with identical draw calls for every style whose width cap fits the
+  ellipsis. Template files, an editor and a mod surface are tracked in #1378.
+- Primitives adds `AttachPoint` and `Attach` (`PointOf`, `Resolve`, `Union`) for point-to-point rect placement.
+- Render2D adds outlined text: `TextOutline` with eight-way offsets and outline-aware measurement, and the
+  `SpriteBatch.DrawStringOutlined` extension.
 - World map symbols add an optional `SizeMetres` init property for full local width and depth independent
   of the authored footprint. Symbols and building shadows retain the authored centre and rotation.
   Null preserves existing raster bytes. Sized walls use both explicit dimensions.

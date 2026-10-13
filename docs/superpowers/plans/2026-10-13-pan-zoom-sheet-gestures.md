@@ -263,29 +263,41 @@ controller taps. Legacy TryGetTap remains unchanged and is documented as legacy 
 **Files:** Create `KhaozEngine.Gui/DraggableBottomSheet.cs`, `BottomSheetMotion.cs`,
 `BottomSheetDetent.cs`, `BottomSheetOptions.cs`. Tests in
 `KhaozEngine.Gui.Tests/Gui/BottomSheetMotionTests.cs` and `DraggableBottomSheetTests.cs`.
+Integration correction also covers `PanZoomController.cs` and matching Windowing lifecycle tests.
 
 **Interfaces:**
 
 - `BottomSheetDetent` has stable `Id` and a height resolver receiving available height and content
-  height. Provide fixed, fractional and content-capped factories. `Dismissible` is explicit.
+  height including the configured handle. Public Resolve/Update take body-only content height.
+  Provide fixed, fractional and content-capped factories. `Dismissible` is explicit.
 - `BottomSheetMotion` owns detent resolution, current/target heights, content offset and shared drag
   motion. It accepts scalar content movement and returns consumed/residual values for tests.
 - `DraggableBottomSheet.Update(InputManager input, Rect availableBounds, SafeAreaInsets safeArea,
   float contentHeight, float dtSeconds)` and `CancelGestures()`.
 - Expose `Bounds`, `HandleBounds`, `ContentBounds`, `CurrentDetentId`, `TargetDetentId`,
   `ScrollOffset`, `DetentChanged`, `Dismissed`, and `SetDetent(string id, bool animated)`.
+  Current ID is last settled, Target ID is selected. Layout/content changes settle the same Target ID.
+  Events report actual settled identity changes and arrival into explicit dismissal.
+- `ToggleHandle(bool animated = true)` serves pointer taps and caller-focused keyboard actions.
+  An optional configured pair may include dismissal. Default to lowest/highest non-dismissible
+  resolved detents, declaration order breaks ties, and equal geometric extrema mean no-op.
+  An explicit pair may toggle different IDs at equal height.
 - `Draw(SpriteBatch batch, Action<Rect, float> drawContent)` clips caller content. Caller supplies
-  theme/localized labels. No raw player text. Handle height defaults to 32 pointer units.
+  an optional white texture and theme/localized labels. The caller owns that texture. Preserve
+  the caller's batch and clip stack. No raw player text. Handle height defaults to 32 pointer units.
 
-- [ ] Add failing pure tests for fixed/fractional/content detents, exhausted safe areas and resize
+- [x] Add failing pure tests for fixed/fractional/content detents, exhausted safe areas and resize
   retaining detent identity. Reject duplicate IDs, non-finite/negative resolved heights and no detents.
   Clamp valid resolved heights to available bounds and resolve equal-height ties by declaration order.
-- [ ] Run `build-slot --label sheet-red -- dotnet test KhaozEngine.Gui.Tests -c Release
+- [x] Run `build-slot --label sheet-red -- dotnet test KhaozEngine.Gui.Tests -c Release
   --filter 'FullyQualifiedName~BottomSheet'`, expect new contract failure.
-- [ ] Implement the pure sheet model. Content upward movement expands first, then scrolls. Downward
+- [x] Implement the pure sheet model. Content upward movement expands first, then scrolls. Downward
   movement unwinds scroll first, then collapses. Handle input moves only the sheet. At release,
   select the nearest detent to `height - velocityY / 8`, clamped to the valid range. Animate to that
   detent over 0.18 seconds with cubic ease-out. New press stops the snap before movement.
+  An owned native physical/momentum Ended snaps with zero added velocity, including a terminal
+  modifier change. Later momentum interrupts the snap. Rejected streams cannot stop unrelated
+  motion. Phase None does not invent a release timeout.
 
 ```csharp
 Assert.Equal(600f, result.Height);       // starts at 580, expands by 20
@@ -294,13 +306,19 @@ Assert.Equal(570f, reverse.Height);     // starts expanded, downward 50
 Assert.Equal(0f, reverse.ScrollOffset);// first unwinds content offset 20
 ```
 
-- [ ] Add pointer/touch tests for handle ownership, two-finger cancellation, stationary-release
+- [x] Add pointer/touch tests for handle ownership, two-finger cancellation, stationary-release
   velocity, wheel content scrolling only when expanded, handle tap toggle, configured dismissal,
-  blocker removal, no map leak and resize/suppression cancellation. Native precise scroll transfers
-  movement within sheet/content. Discrete wheel only scrolls expanded content, never flings a sheet.
-- [ ] Implement the Gui wrapper using the shared tracker and region reservation, with rendering
+  blocker removal, no map leak and resize/suppression cancellation. Unmodified native precise scroll
+  transfers movement within sheet/content. Discrete wheel only scrolls expanded content, never
+  flings a sheet. Command-modified scroll is zoom intent and does not move the sheet or its content.
+  Keep lifecycle processing and reserve admission/intermediate visible bounds for the current frame,
+  so collapse or dismissal cannot expose its initiating event to a lower map.
+- [x] Implement the Gui wrapper using the shared tracker and region reservation, with rendering
   built from existing Gui primitives. Do not feed the same movement to ScrollablePanel.Update.
-- [ ] Run the filter green, then existing ScrollablePanel tests once if shared math was extracted.
+  Preserve Pointer's left-button-only consumption contract. Mouse recognition checks IsConsumed,
+  while fresh touch, wheel and native streams use their own admission. Prove consumed mouse input
+  cannot disable subsequent sheet or map gestures, and preserve dismissal/release leak prevention.
+- [x] Run the filter green, then existing ScrollablePanel tests once if shared math was extracted.
   Commit explicit files and push.
 
 ### Task 6: Consumer-path proofs, docs and owner-run harness

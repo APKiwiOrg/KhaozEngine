@@ -130,7 +130,9 @@ slop, tap timing, wheel step/duration, inertia decay and keyboard speeds. Keyboa
 unless explicitly enabled and focused. Results expose accepted tap and double-tap events/positions.
 
 One gesture owns a contact sequence. Admission tests its start against viewport, focus, pointer
-capture, consumed state and blocked regions. An optional predicate includes GuiSurface or consumer
+capture and blocked regions. Left-button recognition also respects Pointer's left-gesture consumed
+state. That persistent mouse latch does not block independent touch, wheel or native gestures.
+An optional predicate includes GuiSurface or consumer
 blockers. Overlays update first, the controller admits next, and a canvas reserves its own region
 after admission. A rejected start stays rejected until the entire sequence ends, even if the overlay
 disappears or fingers move out. Touch admission checks every participating contact, not only the

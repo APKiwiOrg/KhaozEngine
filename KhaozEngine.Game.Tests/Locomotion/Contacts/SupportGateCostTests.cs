@@ -479,8 +479,13 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
         Assert.Equal(0, scale);
     }
 
-    [Fact]
-    public void HostedNormalizationMatchesCommittedPhysicalInputs()
+    [Theory]
+    [InlineData("defaults", true)]
+    [InlineData("controller", false)]
+    [InlineData("foot radius", false)]
+    [InlineData("water mode", false)]
+    [InlineData("water launch", false)]
+    public void HostedNormalizationMatchesCommittedPhysicalInputs(string tuning, bool expected)
     {
         string path = Path.Combine(GitOutput("rev-parse --show-toplevel"), "docs", "verification", "2026-10-11-support-gates-cost.json");
         JsonObject baseline = JsonNode.Parse(File.ReadAllText(path))!["baseline"]!.AsObject();
@@ -490,7 +495,39 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
         var inputs = SupportGateCostScenes.Rows().Select(row => (SupportCostRow)row[0]).ToDictionary(row => row.Name);
         hosted["Scenes"] = JsonSerializer.SerializeToNode(inputs, HostedOptions);
         hosted["Tuning"] = JsonSerializer.SerializeToNode(SupportGateCostScenes.Tuning, HostedOptions);
+        switch (tuning)
+        {
+            case "controller": hosted["Tuning"]!["Controller"] = (int)MovementControllerKind.Contact; break;
+            case "foot radius": hosted["Tuning"]!["FootRadiusFraction"] = 0.75f; break;
+            case "water mode": hosted["Tuning"]!["Water"]!["Mode"] = (int)WaterTraversalMode.WadeOnly; break;
+            case "water launch": hosted["Tuning"]!["Water"]!["SurfaceJumpSpeed"] = 1f; break;
+        }
+        Assert.Equal(expected, SupportCostVerdict.TryHostedScale(baseline, hosted, out double scale));
+        Assert.Equal(expected ? 0.5 : 0, scale);
+    }
+
+    [Theory]
+    [InlineData("Controller", "1")]
+    [InlineData("FootRadiusFraction", "0.75")]
+    [InlineData("Water", "{\"Mode\":2}")]
+    public void HostedNormalizationDefaultsOnlyMissingNewBaselineFields(string field, string changedValue)
+    {
+        JsonObject baseline = HostedSection(400, true), hosted = HostedSection(200);
+        baseline["Tuning"] = JsonSerializer.SerializeToNode(SupportGateCostScenes.Tuning, HostedOptions);
+        hosted["Tuning"] = baseline["Tuning"]!.DeepClone();
+        baseline["Tuning"]!.AsObject().Remove(field);
+        JsonNode original = baseline.DeepClone();
+
         Assert.True(SupportCostVerdict.TryHostedScale(baseline, hosted, out double scale));
+        Assert.Equal(0.5, scale);
+        Assert.True(JsonNode.DeepEquals(original, baseline));
+
+        hosted["Tuning"]![field] = JsonNode.Parse(changedValue);
+        Assert.False(SupportCostVerdict.TryHostedScale(baseline, hosted, out scale));
+        Assert.Equal(0, scale);
+
+        baseline["Tuning"]![field] = hosted["Tuning"]![field]!.DeepClone();
+        Assert.True(SupportCostVerdict.TryHostedScale(baseline, hosted, out scale));
         Assert.Equal(0.5, scale);
     }
 

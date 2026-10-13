@@ -7,6 +7,37 @@ namespace KhaozEngine.Tests.Physics;
 
 public class StaticGeometryGenerationTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MissingStaticRemovalPreservesStaticGeneration(bool previouslyRemoved)
+    {
+        using var world = new BepuPhysicsWorld(Vector3.Zero);
+        var handle = world.AddStatic(new BoxShape(Vector3.One), Pose.Identity);
+        if (previouslyRemoved) world.RemoveStatic(handle);
+        long installed = world.StaticGeometryGeneration;
+        long read;
+        using (var lease = world.AcquireQueryReadLease()) read = lease.GeometryGeneration;
+
+        world.RemoveStatic(previouslyRemoved ? handle : new StaticHandle(-1));
+
+        Assert.Equal(installed, world.StaticGeometryGeneration);
+        using (var lease = world.AcquireQueryReadLease()) Assert.True(lease.GeometryGeneration > read);
+    }
+
+    [Fact]
+    public void MissingStaticRemovalIsRefusedDuringReadLease()
+    {
+        using var world = new BepuPhysicsWorld(Vector3.Zero);
+        long installed = world.StaticGeometryGeneration;
+        using var lease = world.AcquireQueryReadLease();
+
+        Assert.Throws<System.InvalidOperationException>(() => world.RemoveStatic(new StaticHandle(-1)));
+
+        lease.AssertCurrent();
+        Assert.Equal(installed, world.StaticGeometryGeneration);
+    }
+
     [Fact]
     public void StaticGenerationSurvivesReadsDynamicsStepsAndRebases()
     {

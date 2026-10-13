@@ -138,10 +138,11 @@ public sealed partial class BepuPhysicsWorld : IPhysicsWorld
 
     public void RemoveStatic(SeamHandle handle)
     {
-        using QueryOperation scope = EnterStaticMutation();
+        using QueryOperation scope = EnterMutation();
         CapsuleSweepEvidence.Mutation evidence = BeginSweepMutation();
         if (_handles.TryGetValue(handle.Value, out var entry))
         {
+            StaticGeometryChanged();
             _sim.Statics.Remove(entry.Handle);
             // Remove the shape from the shape pool. Compound shapes need recursive removal
             // to free child shapes; simple convex shapes (Box, Sphere, Capsule, etc.) use Remove.

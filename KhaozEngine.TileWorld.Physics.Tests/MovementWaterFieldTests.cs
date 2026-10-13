@@ -26,6 +26,69 @@ public class MovementWaterFieldTests
     internal static TileMediumSampler Field(TileWorldDocument doc) =>
         TileWorldColliders.Build(doc, TileWorldPhysicsTestData.Catalogs(), "water-world").Medium;
 
+    internal static TileMediumSampler SingleWaterTile(int tileX, int tileZ, float tileSize)
+    {
+        var region = RegionCoord.Of(tileX, tileZ);
+        var doc = TileWorldPhysicsTestData.FlatWorld(region);
+        doc.TileSize = tileSize;
+        doc.SetUnderlay(tileX, tileZ, 0, TileWorldPhysicsTestData.Water);
+        doc.SetCornerHeightCm(tileX, tileZ, 0, -400);
+        doc.SetCornerHeightCm(tileX + 1, tileZ, 0, 2);
+        return new(doc, TileWorldPhysicsTestData.Catalogs(), new[] { region }, "water-world");
+    }
+
+    [Theory]
+    [InlineData(33554434, 0, 0.125f, 4194304f, 0f, 0f, -0.0625f, true)]
+    [InlineData(33554434, 0, 0.125f, 4194304f, 0f, -0.0001f, -0.0625f, false)]
+    [InlineData(33554434, 0, 0.125f, 4194304f, 0f, 0.5f, -0.0625f, false)]
+    [InlineData(33554434, 0, 0.125f, 4194304f, 0f, 0.5001f, -0.0625f, false)]
+    [InlineData(33554434, 0, 0.125f, 4194304f, 0f, 0.25f, -0.1251f, false)]
+    [InlineData(33554434, 0, 0.125f, 4194304f, 0f, 0.25f, 0.0001f, false)]
+    [InlineData(-33554438, 0, 0.125f, -4194305f, 0f, 0f, -0.0625f, true)]
+    [InlineData(0, 33554434, 0.125f, 0f, -4194304f, 0.0625f, 0f, true)]
+    [InlineData(2, 0, 1f, 0f, 0f, 2f, -0.5f, true)]
+    [InlineData(2, 0, 1f, 0f, 0f, 1.9999f, -0.5f, false)]
+    [InlineData(2, 0, 1f, 0f, 0f, 3f, -0.5f, false)]
+    public void RoundedColumnFacesDetermineMembershipAtLargeAndSmallAddresses(int tileX, int tileZ,
+        float tileSize, float originX, float originZ, float localX, float localZ, bool wet)
+    {
+        var field = SingleWaterTile(tileX, tileZ, tileSize);
+        var point = field.SampleCentreWater(new(new(localX, -1, localZ), 0.03125f, 0.75f, Space, null),
+            new(originX, 0, originZ));
+        Assert.Equal(MovementAvailability.Known, point.Availability);
+        Assert.Equal(wet, point.InWater);
+        if (wet)
+        {
+            Assert.Equal(-4f, point.Interval!.Value.LowerY);
+            Assert.Equal(0f, point.Interval.Value.UpperY);
+            Assert.NotNull(point.Domain);
+        }
+        else
+        {
+            Assert.Null(point.Interval);
+            Assert.Null(point.Domain);
+        }
+    }
+
+    [Fact]
+    public void RoundedMinimumXFacePointAgreesWithTraceCoverage()
+    {
+        var field = SingleWaterTile(33554434, 0, 0.125f);
+        var body = new MovementBodyQuery(new(0, -1, -0.0625f), 0.03125f, 0.75f, Space, null);
+        Vector3 origin = new(4194304, 0, 0);
+        var spans = new MovementCoverageSpan[64];
+        var contacts = new MovementDomainContact[256];
+        var trace = field.TraceWater(new(body, Vector3.Zero), origin, Identity, spans, contacts);
+        Assert.Equal(MovementAvailability.Known, trace.Availability);
+        Assert.True(trace.ContactsWritten > 0);
+        Assert.All(contacts.Take(trace.ContactsWritten), contact =>
+            Assert.Equal(MovementContactOverlap.Overlapping, contact.SpanOverlap));
+        var point = field.SampleCentreWater(body, origin);
+        Assert.Equal(MovementAvailability.Known, point.Availability);
+        Assert.True(point.InWater);
+        Assert.All(contacts.Take(trace.ContactsWritten), contact => Assert.Equal(point.Domain, contact.Domain));
+    }
+
     [Fact]
     public void FullyContainedSweepCertifiesWithZeroAndTinyNonzeroComponents()
     {

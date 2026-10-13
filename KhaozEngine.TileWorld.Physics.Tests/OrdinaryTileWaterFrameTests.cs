@@ -79,6 +79,61 @@ public class OrdinaryTileWaterFrameTests
         Assert.Contains(dry, span => span.EnterFraction == 0 && span.ExitFraction <= crossing);
     }
 
+    [Theory]
+    [InlineData(33554434, 0.125f, 4194304f, 0f, -0.0625f, true)]
+    [InlineData(33554434, 0.125f, 4194304f, -0.0001f, -0.0625f, false)]
+    [InlineData(33554434, 0.125f, 4194304f, 0.5001f, -0.0625f, false)]
+    [InlineData(33554434, 0.125f, 4194304f, 0.25f, -0.1251f, false)]
+    [InlineData(33554434, 0.125f, 4194304f, 0.25f, 0.0001f, false)]
+    [InlineData(2, 1f, 0f, 2f, -0.5f, true)]
+    [InlineData(2, 1f, 0f, 1.9999f, -0.5f, false)]
+    [InlineData(2, 1f, 0f, 3.0001f, -0.5f, false)]
+    public void OrdinaryPinPreservesRoundedColumnMembership(int tileX, float tileSize, float originX,
+        float localX, float localZ, bool wet)
+    {
+        var field = MovementWaterFieldTests.SingleWaterTile(tileX, 0, tileSize);
+        using var physics = new BepuPhysicsWorld(Vector3.Zero);
+        Vector3 origin = new(originX, 0, 0);
+        var extent = new OrdinaryMovementExtent(new(originX - 4, -4, -4), new(originX + 8, 4, 4), -4, -4);
+        var builder = OrdinaryMovementRegistration.CreateBuilder("water-world", physics, extent);
+        physics.Rebase(origin);
+        OrdinaryMovementRegistration registration;
+        using (var read = physics.AcquireQueryReadLease()) registration = builder.Build(read);
+        using var binding = EffectiveMovementBinding.Ordinary(OrdinaryTileWaterTests.Tuning(WaterTraversalMode.SurfaceSwimmer),
+            physics, registration, (_, _) => -4, null,
+            MovementBoundary.Rectangle(originX - 4, -4, originX + 8, 4), field);
+        var frame = new MovementFrameDescriptor(default, origin, 1);
+        Assert.Equal(MovementAvailability.Known, binding.TryAcquire(binding.CreateOrdinaryScope(frame), out var acquired));
+        using var lease = Assert.IsType<MovementQueryLease>(acquired);
+        Vector3 centre = new(localX, -1, localZ);
+        var state = new FramedMovementState(new MoveState { Position = centre }, frame, null);
+        Assert.Equal(MovementAvailability.Known, lease.RebuildSelection(state, out var selection));
+        var body = new MovementBodyQuery(centre, 0.03125f, 0.75f, selection.Space, null);
+        if (wet)
+        {
+            var spans = new MovementCoverageSpan[64];
+            var contacts = new MovementDomainContact[256];
+            var trace = lease.TraceWater(new(body, Vector3.Zero), spans, contacts);
+            Assert.Equal(MovementAvailability.Known, trace.Availability);
+            Assert.True(trace.ContactsWritten > 0);
+            Assert.All(contacts.Take(trace.ContactsWritten), contact =>
+                Assert.Equal(MovementContactOverlap.Overlapping, contact.SpanOverlap));
+        }
+        var point = lease.SampleCentreWater(body);
+        Assert.Equal(MovementAvailability.Known, point.Availability);
+        Assert.Equal(wet, point.InWater);
+        if (wet)
+        {
+            Assert.Equal(-4f, point.Interval!.Value.LowerY);
+            Assert.Equal(0f, point.Interval.Value.UpperY);
+        }
+        else
+        {
+            Assert.Null(point.Interval);
+            Assert.Null(point.Domain);
+        }
+    }
+
     sealed class FramedTileScene : IDisposable
     {
         readonly BepuPhysicsWorld _physics = new(Vector3.Zero);

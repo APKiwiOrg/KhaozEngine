@@ -183,19 +183,25 @@ vec3 sampleSlot(int slot, vec2 uv, vec2 g0, vec2 g1) {
 }
 
 // One material's tinted albedo at this fragment. tw holds the projection weights (x = the side projection along
-// world X, y = top-down, z = the side projection along world Z) and tri says whether any side weight is live.
-// When it is not, this is the single top-down tap the ground has always taken and nothing else runs. The side
-// projections keep v running down world Y, so a texture keeps its up on a cliff. Every gradient is a swizzle of
-// the hoisted dWx/dWy, so each tap stays well defined under the data-dependent branches around it.
+// world X, y = top-down, z = the side projection along world Z), already thresholded and renormalised in main, and
+// tri says whether this fragment is past the triplanar start at all. When it is not, this is the single top-down
+// tap the ground has always taken and nothing else runs. When it is, every positive weight is sampled and nothing
+// else. The side projections keep v running down world Y, so a texture keeps its up on a cliff. Every gradient is
+// a swizzle of the hoisted dWx/dWy, so each tap stays well defined under the data-dependent branches around it.
 vec3 sampleMaterial(int sl, vec3 wpAbs, vec3 dWx, vec3 dWy, vec3 tw, bool tri) {
     float tile = TintTiling[sl].w;
-    vec3 c = sampleSlot(sl, wpAbs.xz * tile, dWx.xz * tile, dWy.xz * tile);
-    if (tri) {
-        c *= tw.y;
-        if (tw.x > 0.001) {
+    vec3 c;
+    if (!tri) {
+        c = sampleSlot(sl, wpAbs.xz * tile, dWx.xz * tile, dWy.xz * tile);
+    } else {
+        c = vec3(0.0);
+        if (tw.y > 0.0) {
+            c += tw.y * sampleSlot(sl, wpAbs.xz * tile, dWx.xz * tile, dWy.xz * tile);
+        }
+        if (tw.x > 0.0) {
             c += tw.x * sampleSlot(sl, vec2(wpAbs.z, -wpAbs.y) * tile, vec2(dWx.z, -dWx.y) * tile, vec2(dWy.z, -dWy.y) * tile);
         }
-        if (tw.z > 0.001) {
+        if (tw.z > 0.0) {
             c += tw.z * sampleSlot(sl, vec2(wpAbs.x, -wpAbs.y) * tile, vec2(dWx.x, -dWx.y) * tile, vec2(dWy.x, -dWy.y) * tile);
         }
     }
@@ -247,6 +253,13 @@ void main() {
         vec3 b = pow(abs(Ngeo), vec3(Triplanar.z));
         b /= max(b.x + b.y + b.z, 1e-5);
         tw = vec3(b.x * triFade, mix(1.0, b.y, triFade), b.z * triFade);
+        // A projection too faint to see is dropped rather than skipped, and the kept weights renormalised once
+        // here, so dropping one never darkens the ground and switching it on never steps. The three sum to 1
+        // before the cut, so at least one survives it.
+        if (tw.x <= 0.001) { tw.x = 0.0; }
+        if (tw.y <= 0.001) { tw.y = 0.0; }
+        if (tw.z <= 0.001) { tw.z = 0.0; }
+        tw /= tw.x + tw.y + tw.z;
     }
 
     vec3 albedo = vec3(0.0);

@@ -169,6 +169,27 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
+        public void Faint_projections_are_dropped_and_the_rest_renormalised_once_in_main()
+        {
+            // Skipping a faint tap inside sampleMaterial without renormalising darkened the ground just past the
+            // start and stepped when the tap switched on. The cut and the one renormalisation live in main, and the
+            // tap samples every positive weight, while a fragment below the start still takes the top tap alone.
+            string frag = ShaderSources.TileGroundFrag;
+            Assert.Contains("if (tw.x <= 0.001) { tw.x = 0.0; }", frag);
+            Assert.Contains("if (tw.y <= 0.001) { tw.y = 0.0; }", frag);
+            Assert.Contains("if (tw.z <= 0.001) { tw.z = 0.0; }", frag);
+            Assert.Contains("tw /= tw.x + tw.y + tw.z;", frag);
+
+            Match body = Regex.Match(frag, @"vec3 sampleMaterial\(.*?\n\}", RegexOptions.Singleline);
+            Assert.True(body.Success, "TileGroundFrag lost sampleMaterial.");
+            Assert.DoesNotContain("0.001", body.Value);
+            Assert.Contains("if (!tri) {", body.Value);
+            Assert.Contains("if (tw.y > 0.0)", body.Value);
+            Assert.Contains("if (tw.x > 0.0)", body.Value);
+            Assert.Contains("if (tw.z > 0.0)", body.Value);
+        }
+
+        [Fact]
         public void The_companion_is_one_hop_and_clamped_to_the_real_layers()
         {
             string frag = ShaderSources.TileGroundFrag;

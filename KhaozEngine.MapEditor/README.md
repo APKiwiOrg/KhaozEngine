@@ -955,8 +955,10 @@ Missing Y retains authored support seating. Floor changes consume that dependenc
 capture the reseated registry and attachment descriptors. Gesture merging captures the final validated
 resource state, so one undo returns to the original state and redo restores the final accepted state.
 Invalidations include pre/post resolved leaves, aliases, attachment surfaces and shared-frame lights,
-with tight reports and conservative spatial bounds. Unknown geometry reports `Unbounded` and does not
-prevent repair or deletion. MapEditor still has no physics package reference.
+with tight reports and conservative spatial bounds. Changed support or prism geometry invalidates Physics,
+Nav and Residency independently of the owner's shape. Changed lights or markers invalidate Residency.
+Unknown resource bounds carry the matching spatial reset. Mesh-only owners without changed spatial
+resources remain placement-only. Unknown geometry reports `Unbounded` and does not prevent repair or deletion. MapEditor still has no physics package reference.
 
 ## Rebuild semantics
 

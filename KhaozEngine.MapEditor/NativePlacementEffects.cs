@@ -142,7 +142,13 @@ internal static class NativePlacementEffects
                 ? placements.Invalidates : placements.Invalidates & ~MapNativeInvalidation.Placements),
             ChildIds = named.ChildIds.Union(placements.ChildIds).Order(StringComparer.Ordinal).ToArray(),
         };
-        if (beforeAssets is null || afterAssets is null || !(writes.Prefabs || writes.BuildingIntent || writes.NativeResourceTransforms || named.LightIds.Count != 0 || named.MarkerIds.Count != 0)) return result;
+        if (!(writes.Prefabs || writes.BuildingIntent || writes.NativeResourceTransforms || named.LightIds.Count != 0 || named.MarkerIds.Count != 0)) return result;
+        // Resolution may refuse old geometry during a repair. Preserve the reset categories of the named resources.
+        var resourceReset = (writes.Patches.Count != 0 || writes.SurfaceIds.Count != 0 || writes.SpaceIds.Count != 0)
+            ? Spatial : MapNativeInvalidation.None;
+        if (named.LightIds.Count != 0 || named.MarkerIds.Count != 0) resourceReset |= MapNativeInvalidation.Residency;
+        if (beforeAssets is null || afterAssets is null)
+            return result with { Invalidates = result.Invalidates | resourceReset | MapNativeInvalidation.Unbounded };
         try
         {
             var a = MapPrefabResolver.Expand(before, beforeAssets); var b = MapPrefabResolver.Expand(after, afterAssets);
@@ -150,15 +156,17 @@ internal static class NativePlacementEffects
             var newExtent = ResourceBounds(b, a, writes, named);
             result = result with
             {
-                OldBounds = Union(result.OldBounds, oldExtent),
-                NewBounds = Union(result.NewBounds, newExtent),
-                OldSpatialBounds = Union(result.OldSpatialBounds, oldExtent),
-                NewSpatialBounds = Union(result.NewSpatialBounds, newExtent),
+                OldBounds = Union(result.OldBounds, oldExtent.Bounds),
+                NewBounds = Union(result.NewBounds, newExtent.Bounds),
+                OldSpatialBounds = Union(result.OldSpatialBounds, oldExtent.Bounds),
+                NewSpatialBounds = Union(result.NewSpatialBounds, newExtent.Bounds),
+                Invalidates = result.Invalidates | oldExtent.Invalidates | newExtent.Invalidates,
             };
             if (mode == MapNativePublicationMode.NamedWriteSet && !placements.Invalidates.HasFlag(MapNativeInvalidation.Unbounded))
                 result = result with { Invalidates = result.Invalidates & ~MapNativeInvalidation.Unbounded };
         }
-        catch (MapDocumentException) { result = result with { Invalidates = result.Invalidates | MapNativeInvalidation.Unbounded }; }
+        catch (MapDocumentException)
+        { result = result with { Invalidates = result.Invalidates | resourceReset | MapNativeInvalidation.Unbounded }; }
         return result;
     }
     internal static MapNativeEditEffects NameResources(MapNativeEditEffects named, MapDocument before, MapDocument after, MapNativeWriteSet writes)
@@ -184,32 +192,53 @@ internal static class NativePlacementEffects
                 a.GetValueOrDefault(k)?.SourceDigest, b.GetValueOrDefault(k)?.SourceDigest))).ToArray(),
         };
     }
-    static MapBox3? ResourceBounds(MapEffectiveResources resources, MapEffectiveResources other, MapNativeWriteSet writes, MapNativeEditEffects named)
+    readonly record struct ResourceExtent(MapBox3? Bounds, MapNativeInvalidation Invalidates);
+
+    static ResourceExtent ResourceBounds(MapEffectiveResources resources, MapEffectiveResources other, MapNativeWriteSet writes, MapNativeEditEffects named)
     {
         MapBox3? box = null;
+        var invalidates = MapNativeInvalidation.None;
         var view = resources.CompleteView();
+        var surfaces = resources.Surfaces;
         var otherSurfaces = other.Surfaces;
-        foreach (var patch in resources.Surfaces.Patches.Values.Where(p => writes.Patches.Contains(p.Key) || writes.SurfaceIds.Contains(p.Key.SurfaceId)))
+        foreach (var patch in surfaces.Patches.Values.Where(p => writes.Patches.Contains(p.Key) || writes.SurfaceIds.Contains(p.Key.SurfaceId)))
         {
             string key = MapEffectiveContext.Key(MapPrefabChildKind.Surface, patch.Key.SurfaceId);
             if (otherSurfaces.Patches.TryGetValue(patch.Key, out var old) && MapSurfaceSemantics.PatchDigest(old) == MapSurfaceSemantics.PatchDigest(patch) &&
                 resources.Transforms.GetValueOrDefault(key) == other.Transforms.GetValueOrDefault(key)) continue;
+            invalidates |= PatchRole(patch.Key.SurfaceId) == MapSurfaceRole.PaintOverride ? MapNativeInvalidation.Residency : Spatial;
             foreach (var point in MapEffectiveGeometry.Patch(view, patch.Key).ExactVertices)
                 box = Union(box, new(point.X.ToDouble(), point.Y.ToDouble(), point.Z.ToDouble(), point.X.ToDouble(), point.Y.ToDouble(), point.Z.ToDouble()));
         }
-        foreach (var prism in resources.Surfaces.AllRecords().OfType<MapPrismDomain>().Where(p => writes.RecordIds.Contains(p.Id) || named.SpaceIds.Contains(p.Space.Id)))
+        var otherPrisms = otherSurfaces.AllRecords().OfType<MapPrismDomain>().ToDictionary(p => p.Id);
+        foreach (var prism in surfaces.AllRecords().OfType<MapPrismDomain>().Where(p => writes.RecordIds.Contains(p.Id) || named.SpaceIds.Contains(p.Space.Id)))
+        {
+            string key = MapEffectiveContext.Key(MapPrefabChildKind.Record, prism.Id);
+            bool changed = !otherPrisms.TryGetValue(prism.Id, out var old) ||
+                MapPrefabJson.Digest("mapeditor/prism-effects/1", prism) != MapPrefabJson.Digest("mapeditor/prism-effects/1", old) ||
+                resources.Transforms.GetValueOrDefault(key) != other.Transforms.GetValueOrDefault(key);
+            if (changed) invalidates |= Spatial;
             box = Union(box, MapPrismGeometry.Bounds(view, prism));
+        }
         // Effective annotation points use MapEffectiveAnnotations.LightFrame, including its explicit-frame priority.
         var otherLights = MapEffectiveAnnotations.Lights(other).ToDictionary(l => l.Id);
         foreach (var light in MapEffectiveAnnotations.Lights(resources).Where(l => named.LightIds.Contains(l.Id)))
             if (!otherLights.TryGetValue(light.Id, out var old) || light.Position != old.Position || light.Radius != old.Radius ||
                 light.Colour != old.Colour || light.Intensity != old.Intensity || light.CastShadows != old.CastShadows)
+            {
+                invalidates |= MapNativeInvalidation.Residency;
                 box = Union(box, MapEffectiveAnnotations.Bounds(light));
+            }
         var otherMarkers = MapEffectiveAnnotations.Markers(other).ToDictionary(m => m.Id);
         foreach (var marker in MapEffectiveAnnotations.Markers(resources).Where(m => named.MarkerIds.Contains(m.Id)))
             if (!otherMarkers.TryGetValue(marker.Id, out var old) || marker.Position != old.Position || marker.YawRadians != old.YawRadians || marker.Enabled != old.Enabled)
+            {
+                invalidates |= MapNativeInvalidation.Residency;
                 box = Union(box, MapEffectiveAnnotations.Bounds(marker));
-        return box;
+            }
+        return new(box, invalidates);
+
+        MapSurfaceRole PatchRole(string id) => surfaces.Refs.Single(s => s.Id == id).Role;
     }
     internal static MapBox3? Union(MapBox3? a, MapBox3? b) => a is { } x ? b is { } y ? x.Union(y) : x : b;
     static Dictionary<string, MapPlacement> ById(MapDocument document) => document.Placements.ToDictionary(p => p.Id, StringComparer.Ordinal);

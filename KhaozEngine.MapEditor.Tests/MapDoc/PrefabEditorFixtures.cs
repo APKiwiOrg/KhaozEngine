@@ -3,6 +3,8 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Collections.Generic;
+using System.Text;
+using System.Text.Json.Nodes;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Editing;
@@ -93,6 +95,36 @@ internal static class PrefabEditorFixtures
             SupportBinding = new(MapSupportBindingKind.Space, null, "alias", -1.5f, 4, 4)
         });
         return (new(f.Document, assets), new MapSetCornerHeights(patch.Key, 0, 0, 17, 17, Enumerable.Repeat(-150, 289).ToArray()));
+    }
+    internal static PrefabFixture MeshOnlyResource(string kind)
+    {
+        var f = PrefabFixtures.CapturedOriginals();
+        var manifest = JsonNode.Parse(f.Assets.GetResource("manifest").Bytes.Span)!.AsObject();
+        var leaf = manifest["assets"]!.AsArray().Single(a => a!["id"]!.GetValue<string>() == "deck")!.AsObject();
+        leaf.Remove("collisionResourceId");
+        leaf.Remove("selectionResourceId");
+        if (kind != "support") leaf["supportResourceIds"] = new JsonArray();
+        if (kind != "light") leaf["lightResourceIds"] = new JsonArray();
+        var asset = f.Assets.GetPrefab("hut");
+        var owner = (MapPrefabPlacementChild)asset.Children.Single();
+        owner.Value.X = 63;
+        owner.Value.Z = -1;
+        var assets = PrefabFixtures.PublishPrefab(f.Assets, asset,
+            new Dictionary<string, byte[]> { ["manifest"] = Encoding.UTF8.GetBytes(manifest.ToJsonString()) });
+        f.Document.NativeAssets = assets.Roots.ToList();
+        f.Document.TileSize = 64;
+        f.Document.Bounds = new() { MinX = -64, MinZ = -64, MaxX = 256, MaxZ = 64 };
+        f.Document.PlayableBounds = f.Document.Bounds;
+        f.Document.Prefabs = new(1, 1, [], []);
+        if (kind == "world-light")
+        {
+            f.Document.Placements.Add(new() { Id = "owner", Kind = "deck", AssetId = "deck", X = 63, Y = 0, Z = -1 });
+            f.Document.BuildingIntent = new(1, [], [], new[] { new MapLocalLightDoc(1, "owned-light",
+                PrefabFixtures.World(MapPrefabChildKind.Placement, "owner"), new(0, 1, 0), Vector3.One, 1, 2, false) }, []);
+            return new(f.Document, assets);
+        }
+        var placed = MapPrefabEdits.Prepare(f.Document, assets, new MapPlacePrefab("only", "hut", new(Vector3.Zero, 0, 1))).After;
+        return new(MapPrefabEdits.Prepare(placed, assets, new MapUnpackPrefab("only")).After, assets);
     }
     internal static PrefabFixture IsolatedStorey()
     {

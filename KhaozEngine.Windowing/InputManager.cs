@@ -44,9 +44,18 @@ namespace KhaozEngine.Windowing
         /// This frame's immutable input snapshot (the value last handed to <see cref="Update"/>;
         /// <see cref="InputState.Empty"/> before the first call). Exposed so a retained widget that drives this
         /// manager can feed the same frame to headless helpers that take an <see cref="InputState"/> (e.g. the
-        /// text-entry editing core) without reaching for the raw window input. Read-only; the snapshot is immutable.
+        /// text-entry editing core) without reaching for the raw window input. Raw State bypasses pointer suppression.
         /// </summary>
         public InputState State => _input;
+
+        /// <summary>Whether pointer delivery was suppressed for the rest of the current frame.</summary>
+        public bool PointerInputSuppressed => _pointerInputSuppressed;
+
+        /// <summary>Ordered pointer samples, filtered by this manager's suppression boundary.</summary>
+        public PointerGestureFrame Gestures => _pointerInputSuppressed ? PointerGestureFrame.Empty : _input.Gestures;
+        public float HorizontalScrollDelta => _pointerInputSuppressed ? 0f : _input.HorizontalScrollDelta;
+        public bool HasPreciseScroll => !_pointerInputSuppressed && _input.HasPreciseScroll;
+        public float PinchScaleFactor => _pointerInputSuppressed ? 1f : _input.PinchScaleFactor;
 
         /// <summary>
         /// Poll input for this frame. Call once, before screens update. Pass <paramref name="viewport"/>
@@ -69,7 +78,7 @@ namespace KhaozEngine.Windowing
             }
         }
 
-        /// <summary>Suppress mouse buttons and wheel input for the rest of this frame. Held buttons stay ignored
+        /// <summary>Suppress mouse buttons, scroll and pointer samples for the rest of this frame. Held buttons stay ignored
         /// until physically released. Keyboard and gamepad input remain available.</summary>
         public void SuppressPointerInput()
         {

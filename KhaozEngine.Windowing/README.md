@@ -188,8 +188,9 @@ Windowing + input foundation for the custom MonoGame-free stack.
   (Cmd) key is held, the one cross-platform check for a "command modifier" keyboard chord (Ctrl+Z / Cmd+Z,
   Ctrl+S / Cmd+S, and so on) so a game or editor tests one property instead of OR-ing all four keys itself.
   `WasReleased(MouseButton)` / `MouseReleased` (since 14.25.0) give the mouse the release edge the keyboard
-  already had. `WithoutScroll()` returns the same snapshot with only `ScrollDelta` cleared, sharing every input
-  collection and preserving every other value. It reuses the original snapshot when scroll is already zero.
+  already had. `WithoutScroll()` clears both `ScrollDelta` and `HorizontalScrollDelta` and removes wheel and
+  precise-scroll samples while retaining magnify. It preserves the other input fields and reuses the snapshot
+  when both axes are zero and no scroll samples remain. `WithoutPointerGestures()` also removes magnify.
   `PointerCaptured` (since 20.17.0) is true while the window holds the pointer captured. While captured,
   `MouseDelta` is in window points, so the same hand movement reads alike on a 1x and a 2x display, and
   `MousePosition` stays in framebuffer pixels, held where capture started until the frame capture ends. The frames
@@ -200,9 +201,26 @@ Windowing + input foundation for the custom MonoGame-free stack.
   into `MouseDeltaPoints`. The new overload takes required `mouseDeltaPoints` and `framebufferScale` before the
   original arguments. `WithoutScroll()` preserves both facts. Legacy `MouseDelta` units and framebuffer positions
   remain unchanged.
+  `Gestures` owns an immutable ordered `PointerGestureFrame`. Each `PointerGestureSample` carries `Kind`,
+  `Source`, `Phase` (`PointerGestureInputPhase`), `PositionPixels`, `ScrollDelta`, `ScaleFactor`, `CommandDown`
+  and `IsMomentum`. Anchors are framebuffer pixels, wheel deltas are wheel units, precise-scroll deltas are
+  window points, and magnify factors are dimensionless. Unused scroll deltas are zero and unused factors are 1.
+  Frames reject nonfinite coordinates, nonfinite deltas, nonpositive or nonfinite factors, default samples
+  and magnify products that overflow or underflow. Rejected accumulation leaves the prior samples intact.
+  `HasPreciseScroll` includes zero-delta lifecycle samples. `PinchScaleFactor` multiplies only magnify factors
+  and defaults to 1. These summaries do not replace the authoritative ordered samples.
+  The additive constructor takes `gestures`, `horizontalScrollDelta`, `mouseDeltaPoints` and `framebufferScale`
+  before the original arguments. Both existing constructor signatures remain available and use the shared empty
+  frame. A snapshot carrying only legacy scroll remains valid for consumers that use that fallback.
 - `InputManager.SuppressPointerInput()` gives an owning surface a frame-level pointer arbitration boundary after
-  `Update`. It clears mouse buttons and wheel input for that frame, quarantines held buttons until their physical
-  release, and keeps keyboard, gamepad, pointer position, and hover available.
+  `Update`. It clears mouse buttons, both scroll axes and gesture convenience access for that frame, quarantines
+  held buttons until their physical release, and keeps keyboard, gamepad, pointer position, and hover available.
+  `PointerInputSuppressed` exposes the boundary for controllers. Raw `State` remains readable and bypasses it.
+  `Gestures`, `HorizontalScrollDelta`, `HasPreciseScroll` and `PinchScaleFactor` honor suppression.
+  `Pointer.Coordinates` snapshots the framebuffer scale, viewport transform, viewport identity and dimensions.
+  `PositionFromPixels` maps event anchors and touches into the pointer's coordinate space. `VectorFromPoints`
+  applies framebuffer scale once and then viewport scale without letterbox translation. `VectorFromPixels`
+  maps pixel vectors directly. `HasSameMapping` detects changes even when a viewport object is reused.
 - `InputAccumulator` (since 14.25.0) - the raw-event to snapshot state machine, split out of `AppWindow` so it is
   headless-testable. It owns the held/pressed/released sets and turns OS callbacks (`OnKeyDown`, `OnMouseUp`,
   `OnScroll`, `OnFocusChanged`, ...) into one immutable `InputState` per `Snapshot(...)` call, with the platform
@@ -213,6 +231,10 @@ Windowing + input foundation for the custom MonoGame-free stack.
   state and the framebuffer pixels per window point. The points baseline remains stable across scale changes.
   New scale metadata treats nonfinite or nonpositive components as 1. Legacy captured `MouseDelta` keeps its
   existing normalization, where nonpositive or NaN components mean 1.
+  `OnPointerGesture(sample)` records an ordered sample independently of legacy totals. `OnScroll(float)` records
+  vertical wheel units, and `OnScroll(Vector2)` records both legacy axes without adding a sample. This lets a
+  native monitor enrich a callback without counting it twice. Focus and capture transitions discard pending
+  gesture samples. Empty accumulation reuses `PointerGestureFrame.Empty`.
 - `AppWindow.SetIcon(params WindowIcon[])` sets the runtime window/taskbar icon. `WindowIcon` is one already-decoded,
   tightly-packed RGBA8 image (top-left origin); pass several sizes (16/32/48...) and GLFW picks per DPI. On Windows
   it sets the title bar + Alt-Tab (`WM_SETICON`) **and** the taskbar button: GLFW only sets `WM_SETICON`, which does

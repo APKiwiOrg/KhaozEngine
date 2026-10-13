@@ -7922,8 +7922,11 @@ For ordinary contact movement, the additional constructor accepts `IMovementWate
 followed by the optional `string? legacyOnlyContactRefusal = null`. Use Contact tuning and a non-Legacy water policy.
 Physics, registration, boundary and certified view capabilities are required. A medium delegate requires a field.
 `SupportsContactController` records the construction's capability. First-use tuning validation is cached by value.
-Contact `Medium` samples the field at absolute centre-feet coordinates using the last admitted tuning, for pacing
-only. Actual movement uses the certified trace. A dry traversal helper cannot bypass that proof.
+Contact `Medium` retains its absolute feet contract and samples the field using the last admitted tuning. Contact
+approach pacing instead uses `EffectiveMovementBinding.SampleWaterForPacing` under the ordinary lease, with the
+carried local centre and actual frame. It shares the controller's tick-start classification, converted interval,
+free-surface flag and support decision. Legacy pacing retains `ResolveSwimming`. Actual movement uses the certified
+trace. A dry traversal helper cannot bypass that proof.
 
 Dispose the context at teardown. Caller-supplied views stay borrowed, while a contact construction without a view
 creates and owns one selected view. The physics source remains caller-owned. Producers that support legacy geometry

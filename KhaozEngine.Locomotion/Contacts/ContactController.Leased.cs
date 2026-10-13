@@ -71,28 +71,7 @@ internal static partial class ContactController
             MovementWaterPoint point = leased.SampleMedium(feet)!.Value;
             if (point.Space != selection.Space)
                 return HoldLeased(state, MovementStepOutcome.EnvironmentInvalid);
-            bool wasSwimming = state.State.Swimming || state.State.WaterExcursion == WaterExcursionState.Surface;
-            float gate = CharacterMovement.TractionGate(state.State.Grounded, tuning);
-            SupportSample initial = leased.FindSupport(new(new(feet.X, feet.Z), feet.Y,
-                foot.FootRadiusFraction * tuning.CapsuleRadius, tuning.StepHeight, tuning.StepHeight, MathF.Cos(gate)));
-            bool footingAllowed = ExplicitCharacterMovement.FootingAllowed(point, wasSwimming,
-                state.State.Position.Y, tuning, water);
-            bool supported = initial.Status == SupportStatus.Walkable && footingAllowed &&
-                (state.State.Grounded || state.State.VerticalVelocity <= 0 &&
-                    MathF.Abs(initial.Height - feet.Y) <= tuning.GroundedEpsilon);
-            MoveState start = state.State;
-            ExplicitCharacterMovement.ClassifyWater(ref start, point, supported, wasSwimming,
-                tuning, water, start.VerticalVelocity < 0);
-            if (supported && state.State.Swimming)
-            {
-                start.Grounded = true;
-                start.VerticalVelocity = 0;
-            }
-            if (water.Mode != WaterTraversalMode.SurfaceSwimmer)
-            {
-                start.Swimming = false;
-                start.WaterExcursion = WaterExcursionState.None;
-            }
+            MoveState start = ClassifyStartWater(state.State, point, feet, tuning, water, leased, foot);
             if (start.Commitment.IsActive) start.JumpBufferRemaining = 0;
             var modes = queries.Workspace.Modes;
             modes.Initialize(leased, start, tuning, water, jump);

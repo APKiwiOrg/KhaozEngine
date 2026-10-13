@@ -85,11 +85,7 @@ public sealed partial class GroundMoveContext
 
     MoveState StepContact(in MoveState local, Vector2 direction, bool run, float dt)
     {
-        if (!_frameCaptured || _contactFrame.PhysicsOrigin != _origin)
-        {
-            _contactFrame = new(default, _origin, _frameCaptured ? checked(_contactFrame.Epoch + 1) : 1);
-            _frameCaptured = true;
-        }
+        CaptureContactFrame();
         var binding = _binding!;
         var scope = binding.CreateOrdinaryScope(_contactFrame);
         EnsureOrigin();
@@ -121,10 +117,6 @@ public sealed partial class GroundMoveContext
             throw new InvalidOperationException("The contact pacing water point is unresolved.");
         return point.InWater ? new(point.Interval!.Value.NominalSurfaceY, true, point.SpeedScale) : MovementMedium.Dry;
     }
-
-    internal bool IsSwimmingForPacing(in MoveState body, in MoveTuning tuning, in MovementMedium medium) =>
-        (tuning.Controller == MovementControllerKind.Legacy || tuning.Water.Mode == WaterTraversalMode.SurfaceSwimmer) &&
-        CharacterMovement.ResolveSwimming(body.Swimming, medium, body.Position.Y - tuning.CapsuleHalfHeight, tuning);
 
     /// <summary>Releases only the query selection created by this context. The physics source and borrowed
     /// selections stay caller-owned. Dispose between sequential steps.</summary>

@@ -114,9 +114,6 @@ public sealed partial class DirectMoveToRange
     private bool AllowsStep(in MoveState body, in MoveState predicted, in MoveTuning tuning)
     {
         if (!predicted.Grounded || predicted.Swimming || !MovementBody.IsFinite(predicted.Position)) return false;
-        Func<float, float, float, MovementMedium>? medium = _stepContext?.Medium;
-        if (medium is null) return true;
-        Vector3 feet = Feet(predicted, tuning);
-        return !_stepContext!.IsSwimmingForPacing(predicted, tuning, medium(feet.X, feet.Z, feet.Y));
+        return !_stepContext!.SampleWaterForPacing(predicted, tuning).Swimming;
     }
 }

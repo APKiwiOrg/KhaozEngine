@@ -115,7 +115,10 @@ Select `MoveTuning.Controller = MovementControllerKind.Contact` and a non-Legacy
 boundary and certified query capabilities are required. `SupportsContactController` records the construction's
 capabilities. Tuning is validated on first use and cached by value. A medium delegate requires a field. For contact
 movement, `Medium` is one absolute-coordinate point delegate derived from that field and the last admitted tuning.
-Approach pacing uses the selected water policy. Actual movement uses the certified water trace under a lease.
+Contact approach pacing samples the ordinary leased query with the carried centre and actual physics frame. It uses
+the controller's swimmer classification, including the converted interval, free-surface flag and support decision.
+The public `Medium` delegate retains its absolute feet contract for legacy consumers. Actual movement uses the
+certified water trace under a lease.
 The dry traversal helper remains legacy-only and cannot bypass contact water proof.
 
 The context implements `IDisposable`. A supplied `MovementQueries` view remains borrowed. Without one, a contact

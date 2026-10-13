@@ -38,12 +38,13 @@ public partial class OrdinaryContactLocalHeadTests
         Assert.Equal(0, sample.WaterSurfaceY);
         var swimmer = new MoveState
         {
-            Position = new(0, -0.15f, 0), Swimming = true,
+            Position = new(0, -0.15f, 0),
+            Swimming = true,
             WaterExcursion = WaterExcursionState.Surface
         };
-        Assert.True(context.IsSwimmingForPacing(swimmer, tuning, sample));
-        Assert.False(context.IsSwimmingForPacing(swimmer, tuning with { Water = new(WaterTraversalMode.WadeOnly) }, sample));
-        Assert.False(context.IsSwimmingForPacing(swimmer, tuning with { Water = new(WaterTraversalMode.DryOnly) }, sample));
+        Assert.True(context.SampleWaterForPacing(swimmer, tuning).Swimming);
+        Assert.False(context.SampleWaterForPacing(swimmer, tuning with { Water = new(WaterTraversalMode.WadeOnly) }).Swimming);
+        Assert.False(context.SampleWaterForPacing(swimmer, tuning with { Water = new(WaterTraversalMode.DryOnly) }).Swimming);
         Assert.Equal(tuning.SwimSpeed * Dt, SwimPace.Bound(swimmer, tuning, false, Dt, context));
         var direct = new DirectMoveToRange(new(20, 0.01f, 20, 0.01f));
         var target = ReachTarget.Point(new(4, -0.15f, 0));

@@ -10,7 +10,7 @@ using LifecycleWorld = KhaozEngine.Tests.NetWorld.Fixtures.ObservedPhysicsWorld;
 
 namespace KhaozEngine.Tests.Game;
 
-public class CharacterController3DContactTests
+public partial class CharacterController3DContactTests
 {
     const float Dt = 0.1f;
     static readonly MovementBoundary Boundary = MovementBoundary.Rectangle(-20, -20, 20, 20);
@@ -41,12 +41,15 @@ public class CharacterController3DContactTests
             var input = Keys(jump, Key.D, Key.LeftShift);
             var command = new MoveCommand(Vector2.UnitX, true, 0.3f, jump);
             var frame = new MovementFrameDescriptor(default, physics.Origin, 1);
+            var local = expected with { Position = expected.Position - physics.Origin };
+            MoveState? dry = !wet ? CharacterMovement.Step(local, command, Dt, (_, _) => -0.9f - originY,
+                Tuning, world: physics) : null;
             Assert.Equal(MovementAvailability.Known, reference.TryAcquire(reference.CreateOrdinaryScope(frame), out var queries));
             using (queries)
             {
-                var local = expected with { Position = expected.Position - physics.Origin };
                 var result = reference.Step(new(local, frame, null), command, Dt, queries!);
                 Assert.Equal(MovementStepOutcome.Advanced, result.Outcome);
+                if (dry.HasValue) Assert.Equal(dry.Value, result.State.State);
                 expected = result.State.State with { Position = result.State.State.Position + physics.Origin };
             }
             controller.Update(input, Dt, 0.3f, ground, null, physics, null, field, registration, boundary);

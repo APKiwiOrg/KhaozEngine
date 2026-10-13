@@ -57,6 +57,12 @@ so a wet point's local interval contains its local feet. Traces add only that co
 producer's certified error under the 0.001 m budget. Mutable producers advance `Generation` before changing
 answers.
 
+`EffectiveMovementBinding.SampleWaterForPacing(state, queries, out swimming)` reads frame-local point water and
+shares the controller's tick-start swimmer classification, including supported footing and the free-surface flag.
+Use the returned local interval and the carried local feet for approach settling. This point query authorizes no
+motion or placement. A refused point returns its availability with `swimming` false. Movement still requires the
+certified whole-path water trace.
+
 An ordinary binding owns a view created from the source when none is supplied. A supplied view is
 borrowed after source validation and must represent the registration's selected exclusions.
 Dispose the binding after its reads. Owned-view disposal refuses an active read and remains retryable.

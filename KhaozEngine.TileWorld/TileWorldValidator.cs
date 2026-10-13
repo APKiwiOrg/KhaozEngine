@@ -14,7 +14,7 @@ public sealed record TileWorldIssue(string Code, string Message, RegionCoord? Re
 /// <c>region.planeCount</c>, <c>material.missing</c>, <c>overlay.shape</c>, <c>archetype.missing</c>,
 /// <c>object.plane</c>, <c>object.footprint</c>, <c>object.duplicateId</c>, <c>object.region</c>,
 /// <c>marker.plane</c>, <c>marker.duplicateName</c>, <c>marker.region</c>,
-/// <c>foliage.archetype</c>, <c>foliage.underlay</c>.</summary>
+/// <c>foliage.archetype</c>, <c>foliage.underlay</c>, <c>material.steep</c>.</summary>
 public static class TileWorldValidator
 {
     /// <summary>Every issue in the document, header first and then region by region in a stable order.</summary>
@@ -26,6 +26,12 @@ public static class TileWorldValidator
         if (doc.PlaneCount < 1) issues.Add(new("header.planeCount", $"planeCount {doc.PlaneCount} must be at least 1", null, null));
         if (!(doc.TileSize > 0f)) issues.Add(new("header.tileSize", $"tileSize {doc.TileSize} must be positive", null, null));
         if (!(doc.PlaneHeight >= 0f)) issues.Add(new("header.planeHeight", $"planeHeight {doc.PlaneHeight} must not be negative", null, null));
+
+        // The loader already refused these per file. A catalog edited in memory since, or merged from parts built
+        // in code, can still carry one, and the save path is where an editor has to hear about it.
+        foreach (GroundMaterial material in catalogs.Materials.Values.OrderBy(m => m.Id))
+            if (GroundMaterialSteepRules.Problem(material, catalogs) is { } problem)
+                issues.Add(new("material.steep", problem, null, null));
 
         var seenIds = new HashSet<long>();
         var seenMarkers = new HashSet<string>(StringComparer.Ordinal);

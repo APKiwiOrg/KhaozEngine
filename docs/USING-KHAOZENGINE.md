@@ -8129,7 +8129,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.35.1" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.36.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -8425,7 +8425,7 @@ On the dev Mac a 36,864-column flat world wrote 664,689 bytes and loaded in abou
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.35.1" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.36.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -9167,7 +9167,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.35.1" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.36.0" />
 ```
 
 ```csharp
@@ -11372,6 +11372,28 @@ the first textured material fixes it. And every layer costs that size whether it
 colour layer is a full-size fill), so a 1024 texture makes each untextured material in the same catalog a 4 MB
 layer. 256 is plenty at this grain. Leave `GroundMaterials` null and the view builds the all-flat set itself,
 which is what a colour-only world wants.
+
+**Cliffs take a steep companion and are drawn from the side.** A ground material can name the material it
+becomes on steep ground. The corner vote is unchanged, so a one-tile cliff of rock beside flat grass still votes
+grass at its foot corners, but every grass tap on the face renders rock:
+
+```jsonc
+{ "materials": [
+  { "id": 1,  "name": "grass", "color": "#4c7a3a", "texture": "ground/grass.png",
+    "steep": { "material": 14, "fromDegrees": 40, "toDegrees": 55 } },
+  { "id": 14, "name": "rock",  "color": "#7a7a7a", "texture": "ground/rock.png" }
+] }
+```
+
+`material` is required and must be another non-Water material of the same catalog file. `fromDegrees` and
+`toDegrees` are optional, default to 40 and 55 (`GroundMaterialSteep.DefaultFromDegrees` and `DefaultToDegrees`),
+and must rise strictly inside (0, 90), wide enough that the two ends differ in cosine. The blend is a smoothstep over that band on the slope of the interpolated
+ground normal, and it belongs to the material in whatever corner or overlay slot it fills. A companion's own
+`steep` is not followed. Separately, and for every material, ground steeper than 45 degrees adds side projections
+to the top-down tap, fully weighted by 60, so a cliff carries its texture up its height instead of streaking.
+The two rules are independent. Below 45 degrees the projection is unchanged for every material, but a material
+with a companion already blends from its `fromDegrees`, 40 by default. A material with no companion renders
+exactly as before below 45 degrees. The triplanar constants are `TileGroundSteepShading`'s in Render3D.
 
 **Water is carved, not placed.** A tile is water when its underlay material's `kind` is `Water`, and you sink the
 bed by lowering the corner heights, so the material's texture is the river BED and the surface height is computed.
@@ -16578,7 +16600,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.35.1" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.36.0" />
 ```
 
 ```csharp
@@ -16614,7 +16636,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.35.1" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.36.0" />
 ```
 
 ```csharp
@@ -16856,7 +16878,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.35.1" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.36.0" />
 ```
 
 ```csharp
@@ -21216,7 +21238,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.35.1" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.36.0" />
 </ItemGroup>
 ```
 

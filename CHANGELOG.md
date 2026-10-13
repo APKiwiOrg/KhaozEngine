@@ -5,8 +5,32 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 20.35.1
+## 20.36.0
 
+- Tile ground is slope aware (#1289). Past 45 degrees of slope every material adds two side projections to its
+  top-down tap, fully weighted by 60 degrees, so cliffs carry their texture up the face instead of streaking.
+  The projection is unchanged below 45 degrees. A material with a steep companion (below) also blends toward it
+  over its own band, which by default starts at 40, so its ground can change below 45 too. Both read the
+  interpolated lattice normal, so the shading needs no new vertex data and is continuous across tiles and
+  regions. The triplanar constants are
+  `TileGroundSteepShading.TriplanarStartDegrees`, `TriplanarFullDegrees` and `TriplanarSharpness` (4).
+- A ground catalog material can name a steep companion,
+  `"steep": { "material": 14, "fromDegrees": 40, "toDegrees": 55 }`. Every tap of the material, in any corner or
+  overlay slot, blends toward the companion by a smoothstep over that slope band, so a one-tile cliff whose foot
+  corners voted for the grass below renders rock on the face. The corner vote is unchanged. The band ends default
+  to `GroundMaterialSteep.DefaultFromDegrees` (40) and `DefaultToDegrees` (55). A companion's own companion is not
+  followed. The loader refuses an unknown companion, one outside the same catalog file, a self reference, a Water
+  companion, a band that does not rise strictly inside (0, 90), and a band too narrow for its two ends to differ
+  in single precision cosine, each by name. `TileWorldValidator` reports a
+  companion edited unsound in memory as `material.steep`. `TileWorldHash.OfCatalogs` digests the companion only
+  when present, so existing catalog digests are unchanged.
+- `TileGroundLayerImage.Steep` (`TileGroundSteepLayer`) carries a companion slot and band into
+  `Scene3D.LoadTileGroundMaterial`. `TileGroundMaterials.Build` fills it from the catalog, and
+  `TileGroundMaterialSet` refuses a companion on, or naming, its reserved missing-material slot.
+  `TileGroundMaterialConfig.ParamsBytes` grows from 1040 to 2080 bytes for the new `Triplanar` vector at
+  `TriplanarIndex` and `SteepBand[64]` at `SteepBandIndex`, both behind `Misc`, which stays at `MiscIndex`.
+- New golden `tileworld_steep_wall` holds a 9 m one-tile cliff. MapDoc ground draws through the splat pipeline,
+  which already has its own triplanar projection, so it is untouched.
 - World map symbols add an optional `SizeMetres` init property for full local width and depth independent
   of the authored footprint. Symbols and building shadows retain the authored centre and rotation.
   Null preserves existing raster bytes. Sized walls use both explicit dimensions.

@@ -23,7 +23,7 @@ namespace KhaozEngine.Tests.Render3D
         {
             Vector4[] tail = TileGroundMaterialConfig.BuildParams(new[] { Layer(Color.White, 0.5f) }, 0.15f);
 
-            Assert.Equal(TileGroundMaterialConfig.MaxMaterials + 1, tail.Length);
+            Assert.Equal(2 * TileGroundMaterialConfig.MaxMaterials + 2, tail.Length);
             Assert.Equal(64, TileGroundMaterialConfig.MaxMaterials);
             Assert.Equal(TileGroundMaterialConfig.ParamsBytes, (uint)(tail.Length * 16));
         }

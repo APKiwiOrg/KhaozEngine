@@ -642,17 +642,17 @@ TexturedBillboardMotion.layout.msl 2dba9fbdcdaf7d21c5e817ddff4169e153dd918959c42
 TexturedBillboardMotion.vertex.hlsl 640de8f553d855800d1bdbb5ab72052db6ed9b4f7f7db48376654131d991a3b2 996
 TexturedBillboardMotion.vertex.msl 360ee4dc1345fb53df34513aee5885161a357ac6c47b73c678b1d2895abc9d46 659
 TexturedBillboardMotion.vertex.spirv 380ca7819d9bd7f5871e1e10e21b418d70d0ec9b498849ce5f05719fd2ecdbc4 1220
-TileGround.fragment.hlsl f7c287e684567a86e9c0bc2eba572079408013ef02c885daee4de74d9098bf5b 78798
-TileGround.fragment.msl b0f18235efe1e73f1e647157ca01163b64cc9336d8be775f5eb032440e1c34b2 79057
-TileGround.fragment.spirv 7e91ef24afc9ea5ac4e9c52869bfa3b975b804e850692b37e3336a20878f6c9b 56008
+TileGround.fragment.hlsl b37d2b0f2c0c430176601f6c09e4d53ba6190fff03c1a3c294df6329137dce76 83897
+TileGround.fragment.msl 0bfdce743fd3d5abd95b8dc69d1451aed7a1091d868fbb98aa1b44dbf10acd09 84666
+TileGround.fragment.spirv d88af0b0b59535580f64859b5f6caa899b896101d0af57140238c937a67c0244 62068
 TileGround.layout.hlsl 35930c8eca20a20b7b46551006fbecdd7bda0d798e365ecde586dd3892369e03 24 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF,<unnamed>:StructuredBufferReadOnly:F,<unnamed>:StructuredBufferReadOnly:F,<unnamed>:UniformBuffer:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]|set1[<unnamed>:UniformBuffer:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F]
 TileGround.layout.msl 35930c8eca20a20b7b46551006fbecdd7bda0d798e365ecde586dd3892369e03 24 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF,<unnamed>:StructuredBufferReadOnly:F,<unnamed>:StructuredBufferReadOnly:F,<unnamed>:UniformBuffer:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]|set1[<unnamed>:UniformBuffer:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F]
 TileGround.vertex.hlsl 11ac56a973ac1d34303b53ad56a9a52433739df265f22d96636da361f179fe40 2969
 TileGround.vertex.msl 487870df9d49becf217dd0afcca1c3124fa825c82dbe703bc016f4054f54b2b3 1752
 TileGround.vertex.spirv f80b45adc3b4958089dd4c1fe8bfadf31ad66918b1962dea9344b2da77516edb 3064
-TileGroundMotion.fragment.hlsl ee18ab7cb17266b921b6c54e176ddac73eddd6a001e25e07c13525b6e12a9575 79339
-TileGroundMotion.fragment.msl 8e299ffcd7ddd48047fb98750e2cc906653c20b59dba51d92da4bcb70f865075 79498
-TileGroundMotion.fragment.spirv cdcc9283f12ad214f1c06ee96b0bab92bdb19c2cd237ff14e5f0f8d5fea008c6 56700
+TileGroundMotion.fragment.hlsl b3b60585eccd9218d3129c4699f6a902556b4f201a801fc1fc1e0ce955fe0b95 84438
+TileGroundMotion.fragment.msl 6635212057fa1bff8bf258a1fd9cee1b5fb19cc4bb663b55d18c8d70e1a58171 85107
+TileGroundMotion.fragment.spirv ef0e0e8cf54049429c0386d3767a86ca8212ec355aa86ff2be477984b227c5ea 62760
 TileGroundMotion.layout.hlsl 6b45db575e529b45d8b861a75476bb4e63d92df3c962d1bc24de7da47b18667e 25 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF,<unnamed>:StructuredBufferReadOnly:F,<unnamed>:StructuredBufferReadOnly:F,<unnamed>:UniformBuffer:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]|set1[<unnamed>:UniformBuffer:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F]|set2[<unnamed>:UniformBuffer:V]
 TileGroundMotion.layout.msl 6b45db575e529b45d8b861a75476bb4e63d92df3c962d1bc24de7da47b18667e 25 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF,<unnamed>:StructuredBufferReadOnly:F,<unnamed>:StructuredBufferReadOnly:F,<unnamed>:UniformBuffer:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]|set1[<unnamed>:UniformBuffer:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F]|set2[<unnamed>:UniformBuffer:V]
 TileGroundMotion.vertex.hlsl d3cb6a45aa8b95cc00401bb348283af36e458bce0fbd54d728ea7070f64b4517 3478

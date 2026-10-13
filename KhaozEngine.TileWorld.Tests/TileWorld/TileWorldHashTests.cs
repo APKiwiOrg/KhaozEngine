@@ -141,6 +141,8 @@ public class TileWorldHashTests
     // nothing for them, so every catalog digested before the field existed keeps the identity a deployed head
     // already compares. The literal is the greybox digest from before walk surfaces landed. Collision height
     // joined the digest the same way later: a null height writes nothing, so this literal did not move then either.
+    // A material's steep companion joined the same way again: the greybox materials carry none, so this pinned
+    // literal is also the proof that a catalog without companions keeps its digest.
     [Fact]
     public void Catalog_hash_of_a_catalog_without_walk_surfaces_did_not_move_when_the_field_landed()
     {

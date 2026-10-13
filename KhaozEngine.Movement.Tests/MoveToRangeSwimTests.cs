@@ -21,8 +21,9 @@ public class MoveToRangeSwimTests
     internal static readonly MoveTuning Duck = SwimTraversalProbeTests.Duck with { WalkSpeed = 2f, RunSpeed = 5f };
     internal static readonly float FloatY = 0f - Duck.SwimSurfaceSubmersionFraction * (2f * Duck.CapsuleHalfHeight);
 
-    // Flat analytic bed at -2 under constant deep water with its surface at 0. A context guards against overlapping
-    // steps and test classes run in parallel, so this class keeps its own instance.
+    // A flat dry bed at 0, and a flat analytic bed at -2 under constant deep water with its surface at 0. A context
+    // guards against overlapping steps and test classes run in parallel, so this class keeps its own instances.
+    private static readonly GroundMoveContext Flat = new((_, _) => 0f);
     private static readonly GroundMoveContext Deep = new((_, _) => -2f, medium: (_, _, feetY) => new MovementMedium(0f, feetY < 0f));
 
     [Fact]

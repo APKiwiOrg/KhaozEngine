@@ -12,6 +12,9 @@ namespace KhaozEngine.Tests.Movement;
 
 public class MoveToRangeAreaTests
 {
+    // A context guards against overlapping steps and test classes run in parallel, so this class keeps its own.
+    static readonly GroundMoveContext Flat = new((_, _) => 0f);
+
     [Theory]
     [InlineData(1f / 30f, 1f)]
     [InlineData(0.1f, 1f)]

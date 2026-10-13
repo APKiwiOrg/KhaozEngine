@@ -11,6 +11,7 @@ using System.Text.Json.Nodes;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Interiors;
+using KhaozEngine.MapDoc.Physics;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Surfaces;
@@ -19,6 +20,7 @@ using KhaozEngine.Physics;
 using KhaozEngine.Tests.MapDoc;
 using KhaozEngine.Tests.MapDocCompatibility;
 using KhaozEngine.TileWorld;
+using KhaozEngine.TileWorld.Physics;
 using Xunit;
 
 namespace KhaozEngine.Tests.MapDocOracle;
@@ -130,6 +132,81 @@ public sealed class ShippedBuildingInputGuardTests
         Assert.Contains("building-parity", failure.Message);
         Assert.Contains("failures", File.ReadAllText(fixture.Environment["KHAOZ_R2_ORACLE_REPORT"]!));
     }
+    [Fact]
+    public void ColliderTopology_WithUnchangedVertexAndNormalBagsIsRefused()
+    {
+        using var fixture = ShippedBuildingGuardFixtures.Create("collider-topology");
+        PrivateOracleInputs entry = PrivateOracleInputs.Require(fixture.Environment);
+        var inputs = ShippedBuildingInputs.Read(entry);
+        var native = Assert.IsType<TriangleMeshShape>(MapAssetShapes.Read(inputs.Assets, "lamp").Collider);
+        var source = Assert.Single(TileWorldColliders.Build(inputs.World, inputs.Catalogs, inputs.CollisionOptions).Colliders,
+            c => c.Kind == TileColliderKind.Object);
+        Assert.IsType<BoxShape>(source.Shape);
+        var corners = new[] { new Vector3(2, -0.1f, -1), new(2, -0.1f, 0), new(2, 0.4f, -1), new(2, 0.4f, 0),
+            new(3, -0.1f, -1), new(3, -0.1f, 0), new(3, 0.4f, -1), new(3, 0.4f, 0) };
+        Assert.Equal(corners, native.Vertices.Select(v => v + new Vector3(2.5f, 0, -0.5f)));
+        var normals = Enumerable.Range(0, native.Indices.Length / 3).Select(i => Vector3.Normalize(Vector3.Cross(
+            native.Vertices[native.Indices[i * 3 + 1]] - native.Vertices[native.Indices[i * 3]],
+            native.Vertices[native.Indices[i * 3 + 2]] - native.Vertices[native.Indices[i * 3]]))).ToArray();
+        Assert.Equal(new[] { -Vector3.UnitX, Vector3.UnitX, -Vector3.UnitY, Vector3.UnitY, -Vector3.UnitZ, Vector3.UnitZ }, normals);
+        ShippedBuildingReport? compared = null;
+        Assert.Throws<PrivateOracleFailure>(() => PrivateOracleEntry.Run(fixture.Environment, (i, report) =>
+        {
+            compared = ShippedBuildingComparison.Compare(ShippedBuildingInputs.Read(i));
+            report.Record("buildings", compared.DetailJson);
+            report.Check("building-parity", compared.Failures.Count == 0, compared.DetailJson);
+        }));
+        Assert.True(compared is not null, File.ReadAllText(fixture.Environment["KHAOZ_R2_ORACLE_REPORT"]!));
+        Assert.Contains(compared.Failures, category => category.StartsWith("physical-collider", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("renumbered", true)]
+    [InlineData("rewired", false)]
+    [InlineData("reversed", false)]
+    public void MeshGeometry_PreservesConnectivityAndOrientedWinding(string variant, bool equivalent)
+    {
+        var vertices = new[] { Vector3.Zero, Vector3.UnitX, new Vector3(1, 1, 0), Vector3.UnitY };
+        var original = new TriangleMeshShape(vertices, new[] { 0, 1, 2, 0, 2, 3 });
+        var candidate = variant switch
+        {
+            "renumbered" => new TriangleMeshShape(vertices.Reverse().ToArray(), new[] { 3, 2, 1, 3, 1, 0 }),
+            "rewired" => new TriangleMeshShape(vertices, new[] { 0, 1, 3, 1, 2, 3 }),
+            "reversed" => new TriangleMeshShape(vertices, new[] { 0, 2, 1, 0, 3, 2 }),
+            _ => throw new InvalidOperationException("unknown public mesh control"),
+        };
+        var failures = new List<string>();
+        ShippedBuildingGeometry.Compare("mesh-guard",
+            ShippedBuildingGeometry.Capture(original, p => p, n => n).ToArray(),
+            ShippedBuildingGeometry.Capture(candidate, p => p, n => n).ToArray(), "invented",
+            (category, ok, _) => { if (!ok) failures.Add(category); }, (_, _, _, _, _) => { });
+        Assert.Equal(equivalent, failures.Count == 0);
+    }
+
+    [Fact]
+    public void SourcePickingDelta_RecordsBothQueriesAndMeasuredNonzeroDifference()
+    {
+        using var fixture = ShippedBuildingGuardFixtures.Create("picking-delta");
+        PrivateOracleEntry.Run(fixture.Environment, (i, report) =>
+        {
+            var result = ShippedBuildingComparison.Compare(ShippedBuildingInputs.Read(i));
+            report.Record("buildings", result.DetailJson);
+            report.Check("building-parity", result.Failures.Count == 0, result.DetailJson);
+        });
+        using var reportJson = JsonDocument.Parse(File.ReadAllText(fixture.Environment["KHAOZ_R2_ORACLE_REPORT"]!));
+        var delta = reportJson.RootElement.GetProperty("detail").GetProperty("records").EnumerateArray()
+            .Single(r => r.GetProperty("category").GetString() == "source-query-delta" && r.GetProperty("detail").GetProperty("sourceId").GetInt64() == 3)
+            .GetProperty("detail");
+        Assert.Equal(0.1f, delta.GetProperty("sourceBounds").GetProperty("MaxY").GetSingle());
+        Assert.Equal("deferred R11 acceptance", delta.GetProperty("acceptance").GetString());
+        Assert.InRange(delta.GetProperty("nativeBounds").GetProperty("MaxY").GetDouble(), 0.899, 0.901);
+        Assert.InRange(delta.GetProperty("boundsDelta").GetProperty("MaxY").GetDouble(), 0.799, 0.801);
+        Assert.Contains(delta.GetProperty("queries").EnumerateArray(), q =>
+            q.GetProperty("source").GetProperty("hit").GetBoolean() != q.GetProperty("native").GetProperty("hit").GetBoolean());
+        Assert.Contains(delta.GetProperty("queries").EnumerateArray(), q => q.GetProperty("distanceDelta").ValueKind == JsonValueKind.Number &&
+            Math.Abs(q.GetProperty("distanceDelta").GetDouble()) > 0.1);
+    }
+
 }
 
 [UnsupportedOSPlatform("windows")]
@@ -194,6 +271,11 @@ internal sealed class ShippedBuildingGuardFixtures : IDisposable
         world.GetOrCreateRegion(new(0, 0));
         for (int z = 0; z < 4; z++)
             for (int x = 0; x < 4; x++) world.SetUnderlay(x, z, 0, 1);
+        if (variant == "collider-topology")
+        {
+            world.SetCornerHeightCm(2, 0, 0, -10); world.SetCornerHeightCm(2, 1, 0, -10);
+            world.SetCornerHeightCm(3, 0, 0, 10); world.SetCornerHeightCm(3, 1, 0, 10);
+        }
         var names = new[] { "wall", "roof", "lamp", "shelter" };
         var objects = names.Select((name, index) => world.AddObject(name, index, 0, 0, variant == "quarter-turn" && name == "wall" ? 1 : 0, new[] { "first", "second" })).ToArray();
         var otherObjects = variant == "shared-concealment" ? names.Select((name, index) => world.AddObject(name, index, 2, 0, 0, new[] { "first", "second" })).ToArray() : [];
@@ -205,6 +287,12 @@ internal sealed class ShippedBuildingGuardFixtures : IDisposable
             {"id":"lamp","name":"Lamp","meshRef":"assets/lamp.mesh"},
             {"id":"shelter","name":"Shelter","meshRef":"assets/shelter.mesh","isRoof":true}]}
             """);
+        if (variant == "collider-topology")
+        {
+            string catalogPath = Path.Combine(root, "catalog.json");
+            File.WriteAllText(catalogPath, File.ReadAllText(catalogPath).Replace("\"id\":\"lamp\",\"name\":\"Lamp\",\"meshRef\":\"assets/lamp.mesh\"",
+                "\"id\":\"lamp\",\"name\":\"Lamp\",\"meshRef\":\"assets/lamp.mesh\",\"collisionKind\":\"Solid\",\"collisionHeight\":0.4", StringComparison.Ordinal));
+        }
         var catalogs = TileWorldCatalogs.Load(new[] { Path.Combine(root, "catalog.json") });
         var sourcePrefab = new TilePrefab
         {
@@ -253,12 +341,19 @@ internal sealed class ShippedBuildingGuardFixtures : IDisposable
             if (id == "wall")
                 Add("wall.collider", Shape(new CompoundShape(new[] { new CompoundChild(new BoxShape(new(0.05f, 1.5f, 0.5f)),
                     new Pose(new(-0.5f, 1.5f, 0), Quaternion.Identity)) })), "Collider");
+            if (id == "lamp" && variant == "collider-topology")
+                Add("lamp.collider", Shape(new TriangleMeshShape(new[]
+                { new Vector3(-0.5f, -0.1f, -0.5f), new(-0.5f, -0.1f, 0.5f), new(-0.5f, 0.4f, -0.5f), new(-0.5f, 0.4f, 0.5f),
+                    new(0.5f, -0.1f, -0.5f), new(0.5f, -0.1f, 0.5f), new(0.5f, 0.4f, -0.5f), new(0.5f, 0.4f, 0.5f) },
+                    new[] { 0, 1, 3, 4, 6, 7, 0, 4, 5, 2, 3, 7, 0, 2, 6, 1, 5, 7 })), "Collider");
             var a = NativeAssetFixtures.Asset();
             a["id"] = id; a["meshResourceId"] = id + ".mesh";
-            a["collisionResourceId"] = id == "wall" ? "wall.collider" : null;
+            a["collisionResourceId"] = id == "wall" ? "wall.collider" : id == "lamp" && variant == "collider-topology" ? "lamp.collider" : null;
             a["selectionResourceId"] = id + ".selection";
             foreach (string field in new[] { "supportResourceIds", "materialResourceIds", "lodResourceIds", "lightResourceIds" }) a[field] = new JsonArray();
             a["sourceUnitsToMetres"] = 1; a["source"] = "invented/" + id; a["textured"] = false;
+            if (id == "lamp" && variant == "picking-delta")
+                a["renderBounds"] = JsonNode.Parse("""{"min":{"x":-0.5,"y":-0.1,"z":-0.5},"max":{"x":0.5,"y":0.1,"z":0.5}}""");
             assets.Add(a);
             Vector3 position = TileObjectPlacement.AnchorPosition(world, catalogs.Archetype(id)!, o);
             children.Add(new MapPrefabPlacementChild(new(MapPrefabChildKind.Placement, id), new MapPlacement
@@ -396,6 +491,8 @@ internal sealed class ShippedBuildingGuardFixtures : IDisposable
             {"kind":"edge","position":[2,1,-0.5],"sourceSpaceId":"exterior","spaceId":"exterior","hiddenRoofIds":[]},
             {"kind":"storey","position":[0.5,3,-0.5],"sourceSpaceId":"exterior","spaceId":"exterior","hiddenRoofIds":[]}]}
             """)!.AsObject();
+        if (variant == "picking-delta")
+            comparison["leaves"]![2]!["metadata"]!["renderBounds"] = JsonNode.Parse("""{"min":[-0.5,-0.1,-0.5],"max":[0.5,0.1,0.5]}""");
         if (variant == "quarter-turn")
         {
             comparison["doorways"]![0]!["clear"] = JsonNode.Parse("[[1.5,0.1,0],[1.5,0.1,-2]]");

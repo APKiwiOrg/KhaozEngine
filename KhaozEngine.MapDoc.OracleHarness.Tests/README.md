@@ -130,7 +130,7 @@ only `ShippedBuildingInputGuardTests` and `PrivateOracleGuardTests`, never the s
 The architecture guard pins exactly five direct engine references. The harness remains outside the
 solution and public CI and is not packable.
 
-The controller authors a fresh extraction and its provenance outside git. Nothing here searches a game
+The controller freezes the source and creates a fresh extraction and its provenance outside git. Nothing here searches a game
 checkout, infers building membership, restamps a nominal definition or repairs incomplete extraction data.
 The extraction contains both the frozen source and an explicit native comparison scaffold. This is a
 comparison procedure, not the R11 lossless importer or game adoption acceptance.
@@ -157,14 +157,22 @@ Use the existing `ShippedSourceProvenance` camel-case object, with every field p
 Sort `paths` ordinally by path. Hash the UTF-8 concatenation of `path`, a tab, its lowercase SHA-256 and
 LF for each file. The provenance's own byte digest is the existing outer environment digest. Include
 exactly one attested `world.json`, all of its listed region files, every catalog named by it, each nominated
-source prefab definition, the native scaffold, every native root manifest and its full resource graph,
+source prefab definition, the retained private generator and helpers, the native scaffold, every native root
+manifest and its full resource graph,
 and each original mesh, LOD, texture, collider, selection and light dependency read by the comparison.
 The extraction may contain unrelated source leaves. The explicit selected inventory limits this comparison.
 All files in the extraction must appear in `paths`, even files outside the selected buildings.
 
 ### Native scaffold
 
-`nativeDocumentPath` names an attested monolithic format-7 MapDoc document. Author it with the released
+The native scaffold is generated mechanically by a private script from the frozen source plus the checked
+membership manifest. Never hand-edit generated scaffold output. Retain the exact generator under
+`generator/build-scaffold.py` in the extraction, together with any imported helper scripts. List each script
+in provenance `paths` with its SHA-256, include those entries in the existing aggregate digest and retain
+the resulting generator digest with the private acceptance evidence. Private script contents never enter
+this public repository. Regenerate and re-attest output after any source, manifest or generator change.
+
+`nativeDocumentPath` names an attested monolithic format-7 MapDoc document. The generator uses the released
 `MapDocumentFile`, payload-1 prefab files and native manifest format. It must declare resolver 2,
 `AuthoredBindingsV2`, its native asset roots, valid bounds and complete surfaces and topology. Its active
 packed prefab instances must exactly match `buildings`. Preserve instance poses, complete bindings and
@@ -311,11 +319,23 @@ Native expansion and query limits remain the released limits. It never truncates
 Expectation mismatches and geometry/semantic differences are failures, not missing-input skips.
 
 Derived vertices compare at 0.00001 m and normal components at 0.000001. Geometry occurrences match
-bijectively within those component tolerances, without depending on exact float sorting at rotations. Every exceeded component is
+bijectively within those component tolerances, without depending on exact float sorting at rotations.
+Collider and selection occurrences retain primitive type. Box primitives retain their oriented quad faces
+and corners together, including within compounds. Meshes retain the shared vertex mapping, triangle
+connectivity and cyclic winding. Cross-shape equivalence is refused. Every exceeded component is
 recorded with its source correspondence and exact tolerance in the private report. Integers, ordered tags,
 identity and metadata compare exactly. Native revised-T4 envelopes compare between heads and after reload.
-The source picking delta is recorded for named R11 acceptance. Legacy visual-AABB picking is never called
-lossless. Doorway checks prove physical apertures only, not walking, route or renderer integration.
+The private generator measures original mesh-local visual bounds from the frozen mesh data and records
+those bounds in each leaf's attested `metadata.renderBounds`, with `sourceUnitsToMetres` applied once.
+Picking evidence uses these source bounds and the released `TileObjectPlacement` transform. It records
+`sourceBounds`, `nativeBounds`, signed `boundsDelta` (native minus source), original local bounds and the
+source matrix. Deterministic unit-axis rays through source, native and union centres record their world
+origin, direction, maximum distance, both hit/distance answers, `hitChanged` and nullable `distanceDelta`.
+Source queries use the released `RayMath.IntersectObbY` seam that `TileObjectRaycast` uses. Native queries
+use `MapShapeQueries.Raycast` against the actual interaction envelope. No rendering assembly is needed.
+The source picking delta is labelled `deferred R11 acceptance` and is recorded separately from parity
+failures. A nonzero picking difference does not make leaf geometry parity fail. Legacy visual-AABB picking
+is never called lossless. Doorway checks prove physical apertures only, not walking, route or renderer integration.
 
 The existing four-variable contract and secure report lifecycle are unchanged. A report needs an existing
 0700 parent outside git and an absent path, created exclusively at 0600. The entry sanitizes exceptions and

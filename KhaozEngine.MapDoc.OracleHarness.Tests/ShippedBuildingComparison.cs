@@ -18,6 +18,7 @@ using KhaozEngine.Tests.MapDocCompatibility;
 using KhaozEngine.TileWorld;
 using KhaozEngine.TileWorld.Physics;
 using static KhaozEngine.Tests.MapDocOracle.ShippedBuildingInputs;
+using Coordinates = KhaozEngine.Tests.MapDocOracle.ShippedBuildingGeometry.Point;
 
 namespace KhaozEngine.Tests.MapDocOracle;
 
@@ -70,10 +71,10 @@ internal static class ShippedBuildingComparison
             var legacyMatrix = TileObjectPlacement.LocalToWorld(inputs.World, archetype, source);
             var sourceColliders = TileWorldColliders.Build(SourceView(inputs.World, new[] { sourceId }), inputs.Catalogs, inputs.CollisionOptions)
                 .Colliders.Where(c => c.Kind is TileColliderKind.Wall or TileColliderKind.Object or TileColliderKind.WalkSurface).ToArray();
-            var expected = sourceColliders.SelectMany(c => Geometry(c.Shape, p => Transform(c.Pose, p), n => Vector3.Transform(n, c.Pose.Orientation))).ToArray();
-            var actual = geometry.Collider is null ? [] : Geometry(geometry.Collider,
+            var expected = sourceColliders.SelectMany(c => ShippedBuildingGeometry.Capture(c.Shape, p => Transform(c.Pose, p), n => Vector3.Transform(n, c.Pose.Orientation))).ToArray();
+            var actual = geometry.Collider is null ? [] : ShippedBuildingGeometry.Capture(geometry.Collider,
                 p => Precise(pose, p), n => new MapResourceTransform(pose).Normal(n)).ToArray();
-            CompareGeometry("physical-collider", expected, actual, evidence, sourceId);
+            ShippedBuildingGeometry.Compare("physical-collider", expected, actual, sourceId, evidence.Check, evidence.Near);
             var sourceSelectionPath = NullableText(leaf, "selectionPath");
             var shapes = MapAssetShapes.Read(inputs.Assets, native.AssetId);
             if (sourceSelectionPath is null)
@@ -86,21 +87,13 @@ internal static class ShippedBuildingComparison
                 using var stream = new MemoryStream(original);
                 var sourceShape = PropCollisionFormat.Read(stream);
                 float units = Number(metadata, "sourceUnitsToMetres");
-                var selectionExpected = Geometry(sourceShape, p => Vector3.Transform(p * units, legacyMatrix),
+                var selectionExpected = ShippedBuildingGeometry.Capture(sourceShape, p => Vector3.Transform(p * units, legacyMatrix),
                     n => Vector3.TransformNormal(n, legacyMatrix)).ToArray();
-                var selectionActual = shapes.Selection is null ? [] : Geometry(shapes.Selection,
+                var selectionActual = shapes.Selection is null ? [] : ShippedBuildingGeometry.Capture(shapes.Selection,
                     p => Precise(pose, p * units * (float)pose.Scale), n => new MapResourceTransform(pose).Normal(n)).ToArray();
-                CompareGeometry("authored-selection", selectionExpected, selectionActual, evidence, sourceId);
+                ShippedBuildingGeometry.Compare("authored-selection", selectionExpected, selectionActual, sourceId, evidence.Check, evidence.Near);
             }
-            evidence.Record("source-query-delta", new
-            {
-                sourceId,
-                acceptance = "R11 required",
-                legacyVisualPicking = "not claimed lossless",
-                nativeEnvelope = geometry.Envelope.Bounds,
-                geometry.Envelope.RaiseMetres,
-                geometry.Envelope.DerivedFromCollider
-            });
+            evidence.Record("source-query-delta", ShippedBuildingPicking.Compare(inputs, leaf, source, archetype, geometry));
         }
         evidence.Check("original-leaves-once", first.Document.Placements.Count == leaves.Length &&
             first.Document.Placements.Select(p => p.NumericId).Order().SequenceEqual(leaves.Select(l => (long?)l.GetProperty("sourceId").GetInt64()).Order()),
@@ -404,51 +397,11 @@ internal static class ShippedBuildingComparison
         return view;
     }
 
-    readonly record struct Coordinates(double X, double Y, double Z)
-    { public static implicit operator Coordinates(Vector3 v) => new(v.X, v.Y, v.Z); }
     readonly record struct Sample(bool Normal, Coordinates Value)
     {
         internal Sample(bool normal, Vector3 value) : this(normal, (Coordinates)value) { }
         internal Sample(bool normal, MapExactPoint value) : this(normal, new Coordinates(value.X.ToDouble(), value.Y.ToDouble(), value.Z.ToDouble())) { }
     }
-    static IEnumerable<Sample> Geometry(PhysicsShape shape, Func<Vector3, Coordinates> point, Func<Vector3, Vector3> normal)
-    {
-        if (shape is CompoundShape compound)
-        {
-            foreach (var child in compound.Children)
-                foreach (var sample in Geometry(child.Shape, p => point(Transform(child.Local, p)), n => normal(Vector3.Transform(n, child.Local.Orientation)))) yield return sample;
-            yield break;
-        }
-        if (shape is BoxShape box)
-        {
-            foreach (float x in new[] { -box.HalfExtents.X, box.HalfExtents.X })
-                foreach (float y in new[] { -box.HalfExtents.Y, box.HalfExtents.Y })
-                    foreach (float z in new[] { -box.HalfExtents.Z, box.HalfExtents.Z }) yield return new(false, point(new(x, y, z)));
-            foreach (var axis in new[] { Vector3.UnitX, Vector3.UnitY, Vector3.UnitZ })
-            { yield return new(true, normal(axis)); yield return new(true, normal(-axis)); }
-            yield break;
-        }
-        if (shape is TriangleMeshShape mesh)
-        {
-            foreach (var p in mesh.Vertices) yield return new(false, point(p));
-            for (int i = 0; i < mesh.Indices.Length; i += 3)
-                yield return new(true, normal(Vector3.Normalize(Vector3.Cross(mesh.Vertices[mesh.Indices[i + 1]] - mesh.Vertices[mesh.Indices[i]], mesh.Vertices[mesh.Indices[i + 2]] - mesh.Vertices[mesh.Indices[i]]))));
-            yield break;
-        }
-        if (shape is CylinderShape cylinder)
-        {
-            foreach (float y in new[] { 0f, cylinder.Length })
-                foreach (var axis in new[] { Vector3.UnitX, -Vector3.UnitX, Vector3.UnitZ, -Vector3.UnitZ })
-                    yield return new(false, point(axis * cylinder.Radius + new Vector3(0, y, 0)));
-            foreach (var axis in new[] { Vector3.UnitX, Vector3.UnitY, Vector3.UnitZ })
-            { yield return new(true, normal(axis)); yield return new(true, normal(-axis)); }
-            yield break;
-        }
-        if (shape is ConvexHullShape hull)
-        { foreach (var p in hull.Points) yield return new(false, point(p)); yield break; }
-        throw new InvalidDataException("unsupported comparison shape");
-    }
-
     static void CompareGeometry(string category, Sample[] expected, Sample[] actual, Evidence evidence, object owner)
     {
         double Error(Sample a, Sample b) => Math.Max(Math.Abs(a.Value.X - b.Value.X),
@@ -459,21 +412,7 @@ internal static class ShippedBuildingComparison
         if (expected.Length == actual.Length && expected.Select((sample, index) => Near(sample, actual[index])).All(value => value)) return;
 
         // Match occurrences bijectively within the fixed component tolerance. Exact sorting is unstable at rotations.
-        var assigned = Enumerable.Repeat(-1, actual.Length).ToArray();
-        var candidates = expected.Select(sample => Enumerable.Range(0, actual.Length).Where(i => Near(sample, actual[i]))
-            .OrderBy(i => Error(sample, actual[i])).ToArray()).ToArray();
-        bool Assign(int index, bool[] visited)
-        {
-            foreach (int candidate in candidates[index])
-            {
-                if (visited[candidate]) continue;
-                visited[candidate] = true;
-                if (assigned[candidate] < 0 || Assign(assigned[candidate], visited))
-                { assigned[candidate] = index; return true; }
-            }
-            return false;
-        }
-        for (int index = 0; index < expected.Length; index++) Assign(index, new bool[actual.Length]);
+        var assigned = ShippedBuildingGeometry.Match(expected, actual, Near);
         var matched = assigned.Where(index => index >= 0).ToHashSet();
         for (int index = 0; index < expected.Length; index++)
         {

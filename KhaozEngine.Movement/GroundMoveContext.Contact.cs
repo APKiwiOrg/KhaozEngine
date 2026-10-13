@@ -14,6 +14,8 @@ public sealed partial class GroundMoveContext
     bool _ownsMovementQueries;
     bool _disposed;
     EffectiveMovementBinding? _binding;
+    MoveTuning _validatedTuning;
+    bool _hasValidatedTuning;
     MovementFrameDescriptor _contactFrame;
     bool _frameCaptured;
 
@@ -62,7 +64,7 @@ public sealed partial class GroundMoveContext
         if (_stepping) throw new InvalidOperationException("Ground movement steps cannot overlap or recurse.");
         if (tuning.Controller == MovementControllerKind.Contact && _legacyOnlyContactRefusal is not null)
             throw new NotSupportedException(_legacyOnlyContactRefusal);
-        if (_binding is not null && _binding.Tuning == tuning) return;
+        if (_hasValidatedTuning && _validatedTuning == tuning) return;
         EffectiveMovementBinding next;
         if (tuning.Controller == MovementControllerKind.Contact)
         {
@@ -77,10 +79,21 @@ public sealed partial class GroundMoveContext
         else
         {
             CheckTuning(tuning);
+            if (_binding is { Kind: EffectiveMovementBindingKind.Legacy })
+            {
+                // Traversal alternates source and unit-speed probe tuning. Legacy owns no
+                // environment resources, so changing its validated values needs no new binding.
+                MovementConfigurationValidation.ValidateLegacy(tuning);
+                _validatedTuning = tuning;
+                _hasValidatedTuning = true;
+                return;
+            }
             next = EffectiveMovementBinding.Legacy(tuning);
         }
         _binding?.Dispose();
         _binding = next;
+        _validatedTuning = tuning;
+        _hasValidatedTuning = true;
     }
 
     MoveState StepContact(in MoveState local, Vector2 direction, bool run, float dt)
@@ -106,7 +119,8 @@ public sealed partial class GroundMoveContext
     MovementMedium FieldMedium(float x, float z, float feetY)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        var tuning = _binding?.Tuning ?? throw new InvalidOperationException("Validate tuning before sampling the contact medium.");
+        if (!_hasValidatedTuning) throw new InvalidOperationException("Validate tuning before sampling the contact medium.");
+        var tuning = _validatedTuning;
         if (tuning.Controller != MovementControllerKind.Contact)
             return _providedMedium?.Invoke(x, z, feetY) ?? MovementMedium.Dry;
         // Keep feet plus half-height as an exact pair. Rounding the centre first can change strict membership.

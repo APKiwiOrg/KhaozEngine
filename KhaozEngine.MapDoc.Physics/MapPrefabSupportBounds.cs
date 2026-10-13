@@ -58,13 +58,8 @@ public static class MapPrefabSupportBounds
                         MapExactValue.FromSingle(p.Y), MapExactValue.FromSingle(p.Z)))).ToArray());
                 }
         }
-        foreach (var light in resources.BuildingIntent.Lights)
-        {
-            var p = resources.LightPoints[light.Id];
-            double radius = light.Radius;
-            yield return new(p.X.ToDouble() - radius, p.Y.ToDouble() - radius, p.Z.ToDouble() - radius,
-                p.X.ToDouble() + radius, p.Y.ToDouble() + radius, p.Z.ToDouble() + radius);
-        }
+        foreach (var light in MapEffectiveAnnotations.Lights(resources)) yield return MapEffectiveAnnotations.Bounds(light);
+        foreach (var marker in MapEffectiveAnnotations.Markers(resources)) yield return MapEffectiveAnnotations.Bounds(marker);
     }
 
     internal static void RefuseCoincidentFloors(MapScopedSurfaces view, IReadOnlyList<MapPlacementGeometry> placements)

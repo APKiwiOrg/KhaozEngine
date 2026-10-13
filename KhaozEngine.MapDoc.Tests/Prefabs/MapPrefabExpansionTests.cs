@@ -269,6 +269,8 @@ public sealed class MapPrefabExpansionTests
     {
         var f = PrefabFixtures.Create("attached");
         var r = PrefabFixtures.Effective(f);
+        Assert.Equal(r.BuildingIntent.Lights.Select(l => l.Id).Order(StringComparer.Ordinal),
+            MapEffectiveAnnotations.Lights(r).Select(l => l.Id).Order(StringComparer.Ordinal));
         Assert.Equal(2, r.BuildingIntent.Lights.Count);
         Assert.Equal(2, r.BuildingIntent.Lights.Select(l => l.Id).Distinct().Count());
         Assert.Equal(new[] { new MapExactPoint(new(-2, 1), new(2, 1), new(-2, 1)), new MapExactPoint(new(2, 1), new(2, 1), new(-2, 1)) }, r.LightPoints.Values.OrderBy(p => p.X));

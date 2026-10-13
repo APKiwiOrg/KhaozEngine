@@ -36,6 +36,10 @@ public static class MapPrefabResolver
         var storeyOwners = new Dictionary<string, string>(StringComparer.Ordinal);
         var attachments = new List<MapPrefabAttachmentTransfer>();
         var owners = new Dictionary<string, string>(StringComparer.Ordinal);
+        var worldLightFrames = new Dictionary<string, MapTransform>(StringComparer.Ordinal);
+        var markerInstances = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var transfer in authored.Prefabs?.Transfers ?? [])
+            if (!transfer.Retired && transfer.Binding.Child.Kind == MapPrefabChildKind.Marker) markerInstances.Add(transfer.Binding.WorldId, transfer.InstanceId);
         var roofs = new List<MapPrefabReference>(authored.BuildingIntent?.Roofs ?? []);
         var digestParts = new List<string> { "kemap/effective-resources/1", "2", assets.Hash, MapSurfaceSemantics.RootDigest(authored) };
         if (nativeSource is not null) { digestParts.Add(nativeSource.RootSha256); digestParts.Add(nativeSource.SnapshotId); }
@@ -101,7 +105,7 @@ public static class MapPrefabResolver
             var liveAsset = reconciled.EffectiveAsset with
             {
                 Children = localChildren,
-                Roofs = reconciled.EffectiveAsset.Roofs.Where(r => !reconciled.Removed.Contains(new(r.Kind, r.Id))).ToArray(),
+                Roofs = reconciled.EffectiveAsset.Roofs.Where(r => r.Scope == MapPrefabReferenceScope.World || !reconciled.Removed.Contains(new(r.Kind, r.Id))).ToArray(),
                 MaterializedAttachments = suppression.Where(r => !reconciled.Removed.Contains(new(MapPrefabChildKind.Placement, r.Placement.Id)))
                     .Select(r => r with { Children = r.Children.Where(c => !reconciled.Removed.Contains(new(c.Child.Kind, c.Child.Id))).ToArray() }).ToArray(),
             };
@@ -141,6 +145,9 @@ public static class MapPrefabResolver
                 }
                 string id = bindings[local.Key];
                 if (world is MapPrefabStoreyChild) storeyOwners[id] = instance.Id;
+                if (world is MapPrefabMarkerChild) markerInstances[id] = instance.Id;
+                if (capturedRow is null && local is MapPrefabLightChild { Value.Owner.Scope: MapPrefabReferenceScope.World })
+                    worldLightFrames[id] = local.LocalTransform;
                 if (world is MapPrefabRecordChild { Value: MapPrismDomain prism } room)
                     world = room with { Value = prism with { InstanceId = instance.Id } };
                 if (capturedRow is not null) owners[MapEffectiveContext.Key(local.Key.Kind, id)] = bindings[new(MapPrefabChildKind.Placement, capturedRow.Placement.Id)];
@@ -161,6 +168,13 @@ public static class MapPrefabResolver
             }
             roofs.AddRange(remapped.Roofs);
             foreach (var roof in remapped.Roofs) digestParts.Add(MapPrefabJson.Digest("kemap/effective-roof/1", roof));
+        }
+        foreach (var (id, local) in worldLightFrames)
+        {
+            string key = MapEffectiveContext.Key(MapPrefabChildKind.Light, id);
+            if (!transforms.TryGetValue(MapEffectiveContext.Key(MapPrefabChildKind.Placement, owners[key]), out var owner))
+                throw new MapDocumentException($"Unknown effective light owner '{owners[key]}'.");
+            transforms[key] = MapEffectiveTransform.Compose(owner, local);
         }
         observer?.EnterStage("Sorts");
         children.Sort((a, b) => { int kind = a.Key.Kind.CompareTo(b.Key.Kind); return kind != 0 ? kind : StringComparer.Ordinal.Compare(a.Key.Key, b.Key.Key); });
@@ -236,26 +250,35 @@ public static class MapPrefabResolver
             lightPoints.Add(light.Value.Id, point);
             lights.Add(light.Value with { Position = new(point.X.ToSingle(), point.Y.ToSingle(), point.Z.ToSingle()), Radius = (float)(light.Value.Radius * kernel.Transform.Scale) });
         }
+        var markerPoints = new Dictionary<string, MapExactPoint>(StringComparer.Ordinal);
         var markers = originalIntent.Markers.Select(marker =>
         {
             var kernel = context.Transform(MapPrefabChildKind.Marker, marker.Id);
+            var point = kernel?.Point(Exact(marker.Position)) ?? Exact(marker.Position);
+            markerPoints.Add(marker.Id, point);
             if (kernel is null) return marker;
-            var point = kernel.Point(Exact(marker.Position));
             return marker with { Position = new(point.X.ToSingle(), point.Y.ToSingle(), point.Z.ToSingle()), YawRadians = (float)(marker.YawRadians + kernel.Transform.YawRadians) };
         }).ToList();
         foreach (var marker in children.OfType<MapPrefabMarkerChild>())
         {
             var kernel = context.Transform(MapPrefabChildKind.Marker, marker.Value.Id)!;
             var point = kernel.Point(Exact(marker.Value.Position));
+            markerPoints.Add(marker.Value.Id, point);
             markers.Add(marker.Value with { Position = new(point.X.ToSingle(), point.Y.ToSingle(), point.Z.ToSingle()), YawRadians = (float)(marker.Value.YawRadians + kernel.Transform.YawRadians) });
         }
+        var livePlacementIds = placements.Select(p => p.PlacementId).ToHashSet(StringComparer.Ordinal);
+        var inactivePlacementIds = (authored.Prefabs?.Instances ?? []).SelectMany(instance => instance.Bindings.Entries
+            .Where(binding => binding.Child.Kind == MapPrefabChildKind.Placement && (instance.Removed || binding.Removed)).Select(binding => binding.WorldId))
+            .Concat((authored.Prefabs?.Transfers ?? []).Where(t => t.Retired && t.Binding.Child.Kind == MapPrefabChildKind.Placement).Select(t => t.Binding.WorldId))
+            .ToHashSet(StringComparer.Ordinal);
         var intent = new MapBuildingIntent(1, originalIntent.RoofLinks.Concat(children.OfType<MapPrefabRoofChild>().Select(c => c.Value)).ToArray(),
             originalIntent.RoofGroups.Concat(children.OfType<MapPrefabRoofGroupChild>().Select(c => c.Value)).ToArray(), lights, markers)
         {
-            Roofs = roofs,
+            // Retained inventory references can name a removed reservation. A live transferred producer still wins.
+            Roofs = roofs.Where(r => r.Scope != MapPrefabReferenceScope.World || !inactivePlacementIds.Contains(r.Id) || livePlacementIds.Contains(r.Id)).ToArray(),
             Storeys = Storeys(),
         };
-        return new(context, source, placements, supports, water, intent, lightPoints, waterCorners, attachments);
+        return new(context, source, placements, supports, water, intent, lightPoints, waterCorners, attachments, markerPoints, markerInstances);
     }
     static MapPrefabChild OwnerPose(MapPrefabChild child, IReadOnlyList<MapPrefabChild> children,
         IReadOnlyDictionary<MapPrefabChildKey, MapPrefabChildKey> owners) =>

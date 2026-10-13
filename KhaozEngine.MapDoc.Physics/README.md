@@ -186,6 +186,22 @@ effective support extents as well as render, LOD, asset light, emitted light and
 Doorway compounds retain their jambs and lintel under one transform. Headless clearance proves a physical opening
 only. Native walking routes remain with G1b, #1355 and #438 phase 5.
 
+## Roof and annotation intent
+
+`MapBuiltWorld.Lights`, `Markers`, `RoofLinks` and `RoofGroups` are immutable captured annotation collections.
+Links carry transformed world-metre heights. `AnnotationDigest` identifies the explicit roof inventory, links,
+groups and effective versioned light and marker values. It also enters `BuildHash` when annotations are present.
+Worlds without annotations keep the released hash path.
+
+Evaluate `MapRoofPolicy` over `world.Document.EffectiveResources` and `world.Surfaces` to obtain independent colour,
+shadow, camera-boom and sky-picking flags. Every mode leaves full static descriptors, registration handles and
+interaction geometry unchanged. These are R8 presentation inputs, rather than a collision hide predicate.
+
+`MapResidencyOwnership.BuildAnnotations(world, grids)` supplies separate `light:{id}` and `marker:{id}` entries.
+Light extents use the effective position and scaled metre radius with outward rounding. Markers occupy their exact
+world point. Both contribute to world bounds and residency invalidation. They never register physics shapes.
+`Build` remains the static-only ownership list and `BuildWater` remains the compiled-water list.
+
 ## Pick, reach and stances
 
 ```csharp

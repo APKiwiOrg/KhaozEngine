@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using KhaozEngine.MapDoc.Editing;
+using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Water;
 
@@ -93,6 +94,29 @@ public static class MapResidencyOwnership
         return entries.AsReadOnly();
     }
 
+    /// <summary>One entry per effective light and marker, sorted by typed owner ID. Light membership includes its
+    /// scaled world-metre radius. Markers occupy their exact point. These entries never install statics.</summary>
+    public static IReadOnlyList<MapResidencyEntry> BuildAnnotations(MapBuiltWorld world, MapWorldGrids grids)
+    {
+        ArgumentNullException.ThrowIfNull(world);
+        ArgumentNullException.ThrowIfNull(grids);
+        grids.Validate(world);
+        var entries = new List<MapResidencyEntry>();
+        foreach (var light in world.Lights) Add("light:" + light.Id, light.Position, MapEffectiveAnnotations.Bounds(light));
+        foreach (var marker in world.Markers) Add("marker:" + marker.Id, marker.Position, MapEffectiveAnnotations.Bounds(marker));
+        return entries.AsReadOnly();
+
+        void Add(string id, MapExactPoint point, MapBox3 bounds)
+        {
+            var tiles = TilesOf(bounds, grids.StorageTileSize);
+            RequireStorageTiles(tiles, $"Annotation '{id}'");
+            var membership = Enumerate(tiles);
+            entries.Add(new(id, TilesOf(new(point.X.ToDouble(), 0, point.Z.ToDouble(), point.X.ToDouble(), 0, point.Z.ToDouble()), grids.StorageTileSize).Min,
+                membership, membership.Select(grids.AlignedNavTileOf).Distinct().OrderBy(c => c.Z).ThenBy(c => c.X).ToArray(),
+                membership.Select(grids.AlignedServerCellOf).Distinct().OrderBy(c => c.Z).ThenBy(c => c.X).ToArray(), bounds));
+        }
+    }
+
     internal static string WaterOwnerId(string bodyId) => "water:" + bodyId;
 
     /// <summary>The storage tiles in (Z, X) order that any region triangle of <paramref name="body"/> reaches with its
@@ -177,6 +201,12 @@ public static class MapResidencyOwnership
             if (patchChunk) tiles.UnionWith(StorageTiles(descriptor.Bounds, grids, $"Chunk '{descriptor.OwnerId}'"));
             if (unbounded || patchChunk || edited.Any(box => Meets(box, descriptor.Bounds))) owners.Add(descriptor.OwnerId);
         }
+        foreach (var annotation in BuildAnnotations(world, grids))
+            if (unbounded || edited.Any(box => Meets(box, annotation.WorldBounds)))
+            {
+                owners.Add(annotation.OwnerId);
+                tiles.UnionWith(annotation.Membership);
+            }
         bool medium = (effects.Invalidates & MapNativeInvalidation.Medium) != 0;
         var named = new HashSet<string>(medium ? effects.WaterBodyIds : Array.Empty<string>(), StringComparer.Ordinal);
         owners.UnionWith(named.Select(WaterOwnerId));
@@ -206,6 +236,12 @@ public static class MapResidencyOwnership
         {
             owners.Add(removed.OwnerId);
             tiles.UnionWith(StorageTiles(removed.Bounds, grids, $"Removed owner '{removed.OwnerId}'"));
+        }
+        var liveAnnotations = BuildAnnotations(after, grids).Select(a => a.OwnerId).ToHashSet(StringComparer.Ordinal);
+        foreach (var removed in BuildAnnotations(before, grids).Where(a => !liveAnnotations.Contains(a.OwnerId)))
+        {
+            owners.Add(removed.OwnerId);
+            tiles.UnionWith(removed.Membership);
         }
         var nav = tiles.Select(grids.AlignedNavTileOf).Distinct().OrderBy(t => t.Z).ThenBy(t => t.X).ToArray();
         return new(owners.ToArray(), tiles.ToArray(), nav);

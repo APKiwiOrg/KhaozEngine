@@ -569,10 +569,33 @@ Placement children use their placement pose and retain identity `LocalTransform`
 
 `MapBuildingIntent` payload 1 owns explicit roof inventory, roof links/groups, local light and XYZ marker payloads,
 and standalone `MapStoreyDoc` payload-1 IDs/names. Roof inventory does not create children or reservations.
+Removed local keys cannot remove same-text World references. Retained inventory entries for removed placement
+reservations are inactive unless a transferred standalone producer is live.
 `MapStandaloneResourceTransform` retains precise binary64 poses for unpacked resources. The prefab transfer registry
 also persists placement-attached support and light descriptors, including precise owner poses and retirement.
 Empty attachment, roof and storey collections and false retirement flags are omitted. `Clone` detaches mutable
 collections and `Digest` hashes the same canonical bytes used by persistence.
+
+`MapRoofPolicy.Evaluate(resources, view, observer, mode)` returns one `MapRoofIntent` per inventoried roof,
+including unlinked shelters. `Auto` uses the acquired R2 room membership and world height. A link matches its
+direct rooms and the union of exactly its attached groups. Groups may join rooms in different instances, but
+unrelated groups, portals and parent membership do not widen a link. Any eligible link may conceal its roof.
+Missing or ambiguous membership retains its status and witness and keeps all Auto roofs visible.
+`AlwaysVisible` and `AlwaysHidden` still enumerate the complete inventory.
+
+The four intent flags have separate consumers. Hidden roofs have `ColourVisible = false`, `CastShadows = true`,
+`CameraBoomBlocks = false` and `SkyPickingBlocks = true`. Visible roofs set all four true. This policy never
+changes collision, interaction geometry or static registration. R8 owns colour, shadows, camera boom and sky-ray
+integration.
+
+`MapEffectiveAnnotations.Lights(resources)` and `Markers(resources)` return immutable records in stable ID order.
+Both carry their own payload version. Light positions and radii are owner-frame metres, independent of leaf
+`SourceUnitsToMetres`. Expansion composes the precise owner pose once, freezes the position once and scales the
+radius once in binary64 before rounding to float. Colour, intensity and shadow intent remain unchanged.
+`LightResourceIds` use the existing scoped and bound implicit Light children. Explicit children coexist under
+distinct keys. Materialized transfers reuse the captured descriptor frame without composing the owner again.
+Markers retain exact XYZ, yaw, name, role, enabled state, ordered tags and optional instance provenance. They do
+not become `MapSpawn`. R6 chooses role registries and spawn projections. R8 renders lights.
 
 `MapPrefabExpansionLimits` supplies finite collection and payload ceilings before codec materialization. Effective
 geometry composition, aggregate expansion charges, remapping and editor lifecycle commands are separate stages.

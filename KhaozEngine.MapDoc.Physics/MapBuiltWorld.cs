@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Linq;
 using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Storage;
@@ -152,6 +153,21 @@ public sealed class MapBuiltWorld
     /// <summary>The resolver-1 global water level, null for a native world.</summary>
     public float? LegacyWaterLevel { get; }
 
+    /// <summary>Immutable world-metre lights in stable ID order, including bound leaf emissions.</summary>
+    public IReadOnlyList<MapEffectiveLight> Lights { get; }
+
+    /// <summary>Immutable XYZ markers in stable ID order, independent of MapSpawn.</summary>
+    public IReadOnlyList<MapEffectiveMarker> Markers { get; }
+
+    /// <summary>Explicit concealment links with world-metre heights and typed attachments.</summary>
+    public IReadOnlyList<MapRoofLinkDoc> RoofLinks { get; }
+
+    /// <summary>Explicit room sets. Only groups attached to a link expand its concealment set.</summary>
+    public IReadOnlyList<MapRoofGroupDoc> RoofGroups { get; }
+
+    /// <summary>The versioned effective annotation digest, empty without annotation intent.</summary>
+    public string AnnotationDigest { get; }
+
     readonly Dictionary<string, MapPlacementGeometry> _byId;
 
     internal MapBuiltWorld(MapResolvedDocument document, MapScopedSurfaces surfaces,
@@ -182,6 +198,14 @@ public sealed class MapBuiltWorld
         WaterMedia = waterMedia;
         WaterDigest = waterDigest;
         LegacyWaterLevel = legacyWaterLevel;
+        var effective = document.EffectiveResources;
+        Lights = effective is null ? Array.Empty<MapEffectiveLight>() : MapEffectiveAnnotations.Lights(effective);
+        Markers = effective is null ? Array.Empty<MapEffectiveMarker>() : MapEffectiveAnnotations.Markers(effective);
+        var intent = effective?.BuildingIntent;
+        RoofLinks = Array.AsReadOnly((intent?.RoofLinks ?? []).Select(link => link with
+        { Rooms = Array.AsReadOnly(link.Rooms.ToArray()), Groups = Array.AsReadOnly(link.Groups.ToArray()) }).ToArray());
+        RoofGroups = Array.AsReadOnly((intent?.RoofGroups ?? []).Select(group => group with { Rooms = Array.AsReadOnly(group.Rooms.ToArray()) }).ToArray());
+        AnnotationDigest = effective?.AnnotationDigest ?? "";
         _byId = new Dictionary<string, MapPlacementGeometry>(placements.Count, StringComparer.Ordinal);
         foreach (MapPlacementGeometry placement in placements) _byId.Add(placement.PlacementId, placement);
     }

@@ -6,6 +6,7 @@ using System.Numerics;
 using System.Text.Json;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Spaces;
+using KhaozEngine.MapDoc.Support;
 using KhaozEngine.MapDoc.Surfaces;
 
 namespace KhaozEngine.MapDoc.Prefabs;
@@ -112,6 +113,7 @@ public static class MapPrefabValidation
             Unique(intent.Markers, m => m.Id, "marker"); foreach (var m in intent.Markers) Marker(m);
             Unique(intent.RoofLinks, r => r.Id, "roof link"); foreach (var r in intent.RoofLinks) Roof(r);
             Unique(intent.RoofGroups, g => g.Id, "roof group"); foreach (var g in intent.RoofGroups) Group(g);
+            Unique(intent.Roofs, r => (r.Scope, r.Kind, r.Id), "roof inventory");
             foreach (var roof in intent.Roofs) RoofReference(roof);
             Unique(intent.Storeys, s => s.Id, "storey");
             foreach (var s in intent.Storeys)
@@ -157,6 +159,7 @@ public static class MapPrefabValidation
                 if (reference.Scope == MapPrefabReferenceScope.Local && !targets.Has(reference.Kind, reference.Id))
                     Fail($"Prefab {child.Key.Kind} '{child.Key.Key}' names undeclared local {reference.Kind} '{reference.Id}'.");
         }
+        Unique(asset.Roofs, r => (r.Scope, r.Kind, r.Id), "roof inventory");
         foreach (MapPrefabReference roof in asset.Roofs)
         {
             RoofReference(roof);
@@ -314,6 +317,40 @@ public static class MapPrefabValidation
         }
     }
 
+    internal static void RequireEffectiveAnnotations(MapBuildingIntent intent, IReadOnlyList<MapResolvedPlacement> placements, MapSurfaceSet surfaces)
+    {
+        if (intent.Roofs.Count == 0 && intent.RoofLinks.Count == 0 && intent.RoofGroups.Count == 0 && intent.Lights.Count == 0 && intent.Markers.Count == 0) return;
+        Unique(intent.Lights, l => l.Id, "effective light");
+        Unique(intent.Markers, m => m.Id, "effective marker");
+        Unique(intent.RoofLinks, r => r.Id, "effective roof link");
+        Unique(intent.RoofGroups, g => g.Id, "effective roof group");
+        var owners = placements.Select(p => p.PlacementId).ToHashSet(StringComparer.Ordinal);
+        var rooms = surfaces.Patches.Values.SelectMany(p => p.Records).OfType<MapSpaceDoc>()
+            .Where(r => r.Kind == MapSpaceKind.Room).Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
+        var roofs = intent.Roofs.Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
+        var groups = intent.RoofGroups.Select(g => g.Id).ToHashSet(StringComparer.Ordinal);
+        void Require(MapPrefabReference reference, MapPrefabChildKind kind, HashSet<string> ids, string what)
+        {
+            if (reference.Scope != MapPrefabReferenceScope.World || reference.Kind != kind || !ids.Contains(reference.Id))
+                Fail($"Unknown effective {what} '{reference.Id}'.");
+        }
+        foreach (var roof in intent.Roofs) Require(roof, MapPrefabChildKind.Placement, owners, "roof placement");
+        foreach (var group in intent.RoofGroups)
+            foreach (var room in group.Rooms) Require(room, MapPrefabChildKind.Record, rooms, "roof room");
+        foreach (var link in intent.RoofLinks)
+        {
+            Require(link.Roof, MapPrefabChildKind.Placement, roofs, "inventoried roof");
+            foreach (var room in link.Rooms) Require(room, MapPrefabChildKind.Record, rooms, "roof room");
+            foreach (var group in link.Groups) Require(group, MapPrefabChildKind.RoofGroup, groups, "roof group");
+        }
+        foreach (var light in intent.Lights)
+        {
+            Light(light);
+            if (light.Owner is { } owner) Require(owner, MapPrefabChildKind.Placement, owners, "light owner");
+        }
+        foreach (var marker in intent.Markers) Marker(marker);
+    }
+
     static void Binding(MapPrefabBinding binding)
     {
         Key(binding.Child); Text(binding.WorldId);
@@ -325,7 +362,8 @@ public static class MapPrefabValidation
         if (l.PayloadVersion != 1) Fail("Unsupported local light payload version.");
         Text(l.Id); Vector(l.Position); Vector(l.Colour);
         if (!float.IsFinite(l.Intensity) || l.Intensity < 0 || !float.IsFinite(l.Radius) || l.Radius <= 0) Fail("Invalid local light intensity/radius.");
-        if (l.Owner is { } owner) Reference(owner);
+        if (l.Colour.X < 0 || l.Colour.Y < 0 || l.Colour.Z < 0) Fail("Light colour must be nonnegative.");
+        if (l.Owner is { } owner) { Reference(owner); if (owner.Kind != MapPrefabChildKind.Placement) Fail("Light owner requires a Placement reference."); }
     }
     static void Marker(MapLocalMarkerDoc m)
     {

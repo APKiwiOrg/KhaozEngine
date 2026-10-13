@@ -33,6 +33,8 @@ internal static partial class PrefabFixtures
 
     internal static PrefabFixture Create(string variant = "basic")
     {
+        if (variant == "linked-buildings") return LinkedBuildings();
+        if (variant == "two-leaf-lamps") return TwoLeafLamps();
         if (TryPaintVariant(variant, out PrefabFixture? paint)) return paint!;
         if (variant == "support-resource") return SupportResourceFixture();
         if (TryIdentityVariant(variant, out PrefabFixture? derived)) return derived!;

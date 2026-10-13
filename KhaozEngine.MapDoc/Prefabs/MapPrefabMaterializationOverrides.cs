@@ -12,7 +12,7 @@ internal sealed record MapPrefabReconciledAsset(MapPrefabAsset EffectiveAsset,
     internal MapPrefabAsset LiveAsset => EffectiveAsset with
     {
         Children = EffectiveAsset.Children.Where(c => !Removed.Contains(c.Key)).ToArray(),
-        Roofs = EffectiveAsset.Roofs.Where(r => !Removed.Contains(new(r.Kind, r.Id))).ToArray(),
+        Roofs = EffectiveAsset.Roofs.Where(r => r.Scope == MapPrefabReferenceScope.World || !Removed.Contains(new(r.Kind, r.Id))).ToArray(),
         MaterializedAttachments = EffectiveAsset.MaterializedAttachments.Where(r => !Removed.Contains(new(MapPrefabChildKind.Placement, r.Placement.Id)))
             .Select(r => r with { Children = r.Children.Where(c => !Removed.Contains(new(c.Child.Kind, c.Child.Id))).ToArray() }).ToArray(),
     };
@@ -74,7 +74,7 @@ internal static class MapPrefabMaterializationOverrides
         {
             Children = children.Values.Where(c => !removed.Contains(c.Key)).ToArray(),
             MaterializedAttachments = [],
-            Roofs = copy.Roofs.Where(r => !removed.Contains(new(r.Kind, r.Id))).ToArray(),
+            Roofs = copy.Roofs.Where(r => r.Scope == MapPrefabReferenceScope.World || !removed.Contains(new(r.Kind, r.Id))).ToArray(),
         });
         var rows = copy.MaterializedAttachments.Select(row => row with
         {

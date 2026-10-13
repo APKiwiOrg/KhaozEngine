@@ -96,7 +96,7 @@ public static class MapWorldBuilder
 
         string waterDigest = water?.Digest() ?? "";
         string buildHash = BuildHash(resolved.AuthoredHash, options, legacyIdentity, placements, terrain,
-            water is null ? null : (waterDigest, bodies));
+            water is null ? null : (waterDigest, bodies), effective?.AnnotationDigest ?? "");
         MapWaterMediumDoc[] media = water?.Media.OrderBy(m => m.Key, StringComparer.Ordinal).ToArray() ?? Array.Empty<MapWaterMediumDoc>();
         MapBox3[] supportBounds = effective is not null && terrain.Chunks.Count != 0
             ? new[] { MapPrefabSupportBounds.Bounds(effective) } : Array.Empty<MapBox3>();
@@ -303,7 +303,7 @@ public static class MapWorldBuilder
     // Water adds hash members only when a section is present. The authored hash already includes the native format.
     static string BuildHash(string authoredHash, MapWorldBuildOptions options, string legacyIdentity,
         IReadOnlyList<MapPlacementGeometry> placements, MapTerrainChunkSet terrain,
-        (string Digest, IReadOnlyList<MapCompiledWaterBody> Bodies)? water) => CanonicalHash(w =>
+        (string Digest, IReadOnlyList<MapCompiledWaterBody> Bodies)? water, string annotationDigest) => CanonicalHash(w =>
     {
         w.WriteStartObject();
         w.WriteString("domain", "kemap/built-world/1");
@@ -313,6 +313,7 @@ public static class MapWorldBuilder
         w.WriteString("interactionPolicyHash", MapInteractionPolicy.Hash);
         w.WriteNumber("maxTrianglesPerChunk", options.Chunks.MaxTrianglesPerChunk);
         w.WriteString("legacyTerrainIdentity", legacyIdentity);
+        if (annotationDigest.Length != 0) w.WriteString("annotationDigest", annotationDigest);
         w.WriteStartArray("placements");
         foreach (MapPlacementGeometry placement in placements) Pair(w, placement.PlacementId, placement.Digest);
         w.WriteEndArray();

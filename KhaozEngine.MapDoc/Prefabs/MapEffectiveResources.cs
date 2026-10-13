@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using KhaozEngine.MapDoc.Storage;
+using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Interiors;
 using KhaozEngine.MapDoc.Support;
 using KhaozEngine.MapDoc.Surfaces;
@@ -28,13 +29,18 @@ public sealed class MapEffectiveResources
     /// <summary>Render-only partitions compiled once per affected physical target at strict expansion.</summary>
     public IReadOnlyDictionary<string, MapPaintRegionSet> PaintRegions { get; }
     internal IReadOnlyDictionary<string, MapExactPoint> LightPoints { get; }
+    internal IReadOnlyList<MapEffectiveLight> EffectiveLights { get; }
+    internal IReadOnlyList<MapEffectiveMarker> EffectiveMarkers { get; }
+    /// <summary>Versioned roof, light and marker intent, empty without annotations.</summary>
+    public string AnnotationDigest { get; }
     internal IReadOnlyDictionary<string, IReadOnlyList<MapExactPoint>> WaterCorners { get; }
     internal IReadOnlyList<MapPrefabAttachmentTransfer> Attachments { get; }
 
     internal MapEffectiveResources(MapEffectiveContext context, IMapSurfaceSource source,
         IReadOnlyList<MapResolvedPlacement> placements, IReadOnlyList<MapPlacementSupport> supports,
         MapWaterSet? water, MapBuildingIntent intent, IReadOnlyDictionary<string, MapExactPoint> lights,
-        IReadOnlyDictionary<string, IReadOnlyList<MapExactPoint>> waterCorners, IReadOnlyList<MapPrefabAttachmentTransfer> attachments)
+        IReadOnlyDictionary<string, IReadOnlyList<MapExactPoint>> waterCorners, IReadOnlyList<MapPrefabAttachmentTransfer> attachments,
+        IReadOnlyDictionary<string, MapExactPoint> markers, IReadOnlyDictionary<string, string> markerInstances)
     {
         _context = context;
         SurfaceSource = source;
@@ -42,6 +48,14 @@ public sealed class MapEffectiveResources
         PlacementSupports = Array.AsReadOnly(supports.ToArray());
         _water = water?.Clone();
         _intent = intent.Clone();
+        _intent = new(_intent.PayloadVersion, _intent.RoofLinks.OrderBy(r => r.Id, StringComparer.Ordinal).Select(link =>
+            link with { AboveY = context.Transform(MapPrefabChildKind.RoofLink, link.Id)?.Height(MapExactValue.FromSingle(link.AboveY)).ToSingle() ?? link.AboveY }).ToArray(),
+            _intent.RoofGroups.OrderBy(g => g.Id, StringComparer.Ordinal).ToArray(), _intent.Lights, _intent.Markers)
+        { Roofs = _intent.Roofs.DistinctBy(r => (r.Kind, r.Id)).OrderBy(r => r.Id, StringComparer.Ordinal).ToArray(), Storeys = _intent.Storeys };
+        MapPrefabValidation.RequireEffectiveAnnotations(_intent, placements, context.Surfaces);
+        EffectiveLights = MapEffectiveAnnotations.CaptureLights(_intent, lights);
+        EffectiveMarkers = MapEffectiveAnnotations.CaptureMarkers(_intent, markers, markerInstances);
+        AnnotationDigest = MapEffectiveAnnotations.Digest(_intent, EffectiveLights, EffectiveMarkers);
         LightPoints = new ReadOnlyDictionary<string, MapExactPoint>(new Dictionary<string, MapExactPoint>(lights, StringComparer.Ordinal));
         WaterCorners = new ReadOnlyDictionary<string, IReadOnlyList<MapExactPoint>>(waterCorners.ToDictionary(p => p.Key,
             p => (IReadOnlyList<MapExactPoint>)Array.AsReadOnly(p.Value.ToArray()), StringComparer.Ordinal));
@@ -61,6 +75,10 @@ public sealed class MapEffectiveResources
             foreach (string target in paintTargets) paintRegions.Add(target, MapPartialPaintCompiler.Compile(view, target));
         }
         PaintRegions = new ReadOnlyDictionary<string, MapPaintRegionSet>(paintRegions);
+    }
+    internal void RequireView(MapScopedSurfaces view)
+    {
+        if (view.EffectiveContext?.Digest != Digest) throw new ArgumentException("Acquired view differs from effective resources.", nameof(view));
     }
     public MapScopedSurfaces CompleteView() => SurfaceSource is MapComposedSurfaceSource
         ? Acquire(MapScopedSurfaces.CompleteEffective(_context).Scope) : MapScopedSurfaces.CompleteEffective(_context);

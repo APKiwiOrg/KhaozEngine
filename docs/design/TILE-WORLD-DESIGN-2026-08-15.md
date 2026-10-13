@@ -531,6 +531,12 @@ The ground CASTS shadows, as it does today through the model path (the splat ter
 out), so the shadow-caster loop treats a tile-ground mesh like a model mesh, and the rebaked goldens move only
 for the texturing.
 
+Later extension (#1289, engine 20.35.0): the top-down `uv` above is now the tap for ground below 45 degrees only.
+Steeper fragments add two side projections, and a catalog material may name a `steep` companion it blends toward
+over a slope band, both read off the interpolated lattice normal. The params block grew a `Triplanar` vector and
+`SteepBand[64]` behind `Misc`. The living reference is the Render3D package README and
+`docs/USING-KHAOZENGINE.md`.
+
 **The material set: `Scene3D.LoadTileGroundMaterial(...) -> TileGroundMaterialHandle`,
 `LoadMesh(mesh, TileGroundMaterialHandle)`.** (As shipped the `Scene3D` call takes the size and the layer list
 rather than a `TileGroundMaterialSet`, because that type lives in `TileWorld.Render3D`, which sits ABOVE

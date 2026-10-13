@@ -122,7 +122,7 @@ collision kind with square and non-square footprints. `Material(id)` and `Archet
 `Archetype` is null-tolerant, so a null archetype id in content is a validator finding rather than a throw.
 Malformed or duplicate content throws a `TileWorldException` naming the source file, and
 `TileWorldSchema.GetCatalogJson()` returns the embedded catalog schema. `GroundMaterial` is
-`{ Id, Name, Color, Texture, Kind, TilesPerMetre }` (`Ground` or `Water`, id 0 reserved for void) and
+`{ Id, Name, Color, Texture, Kind, TilesPerMetre, Steep }` (`Ground` or `Water`, id 0 reserved for void) and
 `TileObjectArchetype` is
 `{ Id, Name, MeshRef, LodMeshRef, SizeX, SizeZ, CollisionKind, IsRoof, Interactive, YawOffsetDegrees, Tags, WalkSurfaces, CollisionHeight }`, with
 `TileCollisionKind` one of `None`, `Solid`, `Wall`, `WallCorner`, `Diagonal`. `TileFootprint.Rotated` and
@@ -187,12 +187,25 @@ FILE a material was loaded from, or null when the catalog came from `LoadJson`, 
 `ArchetypeSource(id)` is the same for an archetype under the same file-only rule, which is how `ke-tileedit`'s
 `archetype_set_collision_heights` finds the one file to write an archetype's height into.
 
+`Steep` is the optional `steep` catalog field, a `GroundMaterialSteep` naming the material this one blends toward
+on steep ground: `{ "material": 14, "fromDegrees": 40, "toDegrees": 55 }`. `material` is required. The band ends
+are optional and default to `GroundMaterialSteep.DefaultFromDegrees` (40) and `DefaultToDegrees` (55), which
+`ResolvedFromDegrees` and `ResolvedToDegrees` apply. The rule is the material's own: the tile ground renderer
+blends every tap of the material toward the companion over that band of the ground normal's slope, whichever corner
+or overlay slot the material fills, so a cliff face renders the companion even where the corner vote picked the
+material at its foot. A companion's own `steep` is never followed. The schema refuses a missing `material`, an
+unknown key, and a band end outside (0, 90). `GroundMaterialSteepRules` then refuses, naming the source file and
+the material, a companion that is not another material of the SAME catalog file, a self reference, a `Water`
+companion, and a band whose resolved start is not below its resolved end. `OfCatalogs` digests it only when
+present, so a catalog without companions keeps its digest.
+
 `TileWorldValidator.Validate(doc, catalogs)` returns `TileWorldIssue(Code, Message, Region, Tile)` records and
 never throws on bad content, while `ValidateOrThrow` throws once quoting the first five. The codes are stable
 and callers may branch on them: `header.planeCount`, `header.tileSize`, `header.planeHeight`,
 `region.planeCount`, `material.missing`, `overlay.shape`, `archetype.missing`, `object.plane`,
 `object.footprint`, `object.duplicateId`, `object.region`, `marker.plane`, `marker.duplicateName`,
-`marker.region`, `foliage.archetype`, `foliage.underlay`.
+`marker.region`, `foliage.archetype`, `foliage.underlay`, `material.steep`. The last reports a steep companion
+edited unsound in memory after the loader accepted it.
 
 ## Collision, derived and never authored
 

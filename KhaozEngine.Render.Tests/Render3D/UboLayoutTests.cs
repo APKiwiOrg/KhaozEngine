@@ -556,11 +556,11 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void TileGroundParamsBytes_MatchesGlslTail_MaxMaterialsPlusMisc()
+        public void TileGroundParamsBytes_MatchesGlslTail_TwoMaterialArraysPlusTwoGlobals()
         {
-            // The TileGroundParams block is TintTiling[MaxMaterials] + Misc, and BuildParams returns exactly that
-            // many vec4. If the two drift, the buffer created for the block is the wrong size for it.
-            Assert.Equal((TileGroundMaterialConfig.MaxMaterials + 1) * 16, (int)TileGroundMaterialConfig.ParamsBytes);
+            // The TileGroundParams block is TintTiling[MaxMaterials] + Misc + Triplanar + SteepBand[MaxMaterials],
+            // and BuildParams returns exactly that many vec4. A drift sizes the block's buffer wrong.
+            Assert.Equal((2 * TileGroundMaterialConfig.MaxMaterials + 2) * 16, (int)TileGroundMaterialConfig.ParamsBytes);
             Assert.Equal(
                 (int)TileGroundMaterialConfig.ParamsBytes / 16,
                 TileGroundMaterialConfig.BuildParams(new[] { new TileGroundLayerImage() }, 0.15f).Length);

@@ -143,6 +143,19 @@ emits slots supplied by the set.
    the texture.
 3. Make every textured file the SAME pixel size. The set is one texture array, so the first textured material
    fixes the size for the whole catalog and any other of a different size throws rather than being resampled.
+4. Optionally give a material a `steep` companion, `{ "material": 14, "fromDegrees": 40, "toDegrees": 55 }`, so
+   it blends toward that material as the ground under it steepens. `Build` turns the companion id into the slot
+   that id occupies and the omitted band ends into `GroundMaterialSteep.DefaultFromDegrees` (40) and
+   `DefaultToDegrees` (55). This is how a cliff whose foot corners voted for the grass below renders rock on the
+   face: the corner vote is untouched, and every grass tap on the face becomes rock instead.
+
+**Steep ground is drawn from the side.** Independently of any companion, a fragment whose ground normal is past
+45 degrees adds two side projections to every material it samples, fully weighted by 60 degrees, so a cliff
+carries its texture up its height rather than one row of it smeared into vertical streaks. Ground below 45 degrees
+takes the same single top-down tap it always did. Both read the interpolated lattice normal, so they are
+continuous across tiles and regions. The shading lives in Render3D, see `TileGroundSteepShading` in that package's
+README. The set refuses a companion on its reserved missing-material layer or one naming it, so the magenta that
+marks a dangling id is never hidden or spread.
 
 **Every layer costs that size, textured or not.** A flat colour layer is a full-size fill, because a texture
 array's slices all match, so one 1024x1024 texture in a catalog makes each of its untextured materials a 4 MB

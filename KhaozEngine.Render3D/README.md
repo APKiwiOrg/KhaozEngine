@@ -209,17 +209,32 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     cannot smear them), `Tangent.z` is a per-vertex brightness multiplier and `Tangent.w` is 0 for the ordinary
     four-layer path. A positive value names an optional overlay slot plus one, whose weight is one minus the
     sum of `Color`. The fragment reads a slot as `int(x + 0.5)` clamped to 0..63, takes up to five `textureGrad`
-    taps at `worldXZ * TilesPerMetre[slot]`, renormalises ordinary weights by their own sum (or preserves the
+    top-down taps at `worldXZ * TilesPerMetre[slot]` (plus side taps on steep ground, see Slope below),
+    renormalises ordinary weights by their own sum (or preserves the
     opted overlay remainder) and
     multiplies by the slot tint and the jitter. **The jitter is a MULTIPLIER, not an offset, so `Tangent.z` of 0
     renders that vertex BLACK**: write 1 for none. A mesh built for the model pipeline, where `Tangent` is a
     tangent frame, is not a tile-ground mesh.
+  - **Slope (since 20.35.0, #1289).** The fragment reads the slope off the interpolated vertex normal, so it needs
+    no vertex data of its own and is continuous wherever the normal is. Two things follow from it, both owned by
+    `TileGroundSteepShading`. TRIPLANAR: past `TriplanarStartDegrees` (45) every material's tap adds two side
+    projections, one along world X (u = world Z) and one along world Z (u = world X), each with v running down world
+    Y so a texture keeps its up. They fade in to their full share at `TriplanarFullDegrees` (60), weighted by the
+    normal's axis components raised to `TriplanarSharpness` (4). Below the start a fragment takes exactly the one
+    top-down tap it always took, so flat and gentle ground is unchanged and costs nothing extra. STEEP COMPANION:
+    `TileGroundLayerImage.Steep` (`TileGroundSteepLayer`: `CompanionSlot`, `FromDegrees`, `ToDegrees`) names
+    another layer of the set. Wherever a tap of that layer is taken, in any corner slot or the overlay slot, it
+    becomes `mix(layer, companion, s)` with `s` a smoothstep over the band on the normal's Y component. The
+    companion's own companion is never followed. `TileGroundMaterialConfig.BuildParams` refuses a companion that
+    names its own layer, names a slot outside the set, or carries a band that does not rise strictly inside
+    (0, 90) degrees. Every derivative stays hoisted into uniform control flow and every side tap is a
+    `textureGrad`.
   - **Constraints worth knowing.** Entries past the layer count are zeroed, while the shader clamps every mesh slot
     to the last real texture layer before reading either resource. A hand-built mesh naming an invalid slot
     therefore shows the set's last material instead of sampling a nonexistent array slice. The pipeline binds TWO
     sets, the same split the splat pipeline has: set 0 is the shared frame block both stages read, and set 1 is the
-    material's own `TileGroundParams` buffer (`vec4 TintTiling[64]` then a `Misc` vector carrying base specular
-    strength and layer count, written once at load),
+    material's own `TileGroundParams` buffer (`vec4 TintTiling[64]`, a `Misc` vector carrying base specular
+    strength and layer count, a `Triplanar` vector and `vec4 SteepBand[64]`, 2080 bytes written once at load),
     then the albedo array, its sampler, and the shadow map and its sampler LAST, which is the binding-order
     convention the terrain pass established. Until 18.1.0 the frame block and the params rode in ONE buffer per
     material, re-uploaded whole every frame, which is what #727 unfolded. Tile ground CASTS shadows, like a model

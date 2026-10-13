@@ -7828,6 +7828,13 @@ var space = NavSpace.Single(grid);
 Later changes to caller arrays or lists cannot change the validated topology. Immutable `NavGrid` instances
 remain shared rather than copied.
 
+`NavGrid.WithRestingHeights(float[])` returns a new immutable grid with copied row-major physical feet heights,
+without changing raw surfaces, clearance, layer bands or transforms. The array must hold `Width * Height`
+entries. Null or wrong-length arrays throw `ArgumentException`, and non-finite open heights throw
+`ArgumentOutOfRangeException`. Blocked values are ignored. `HasRestingHeights` reports whether the field is set.
+`RestingHeightAt(cx, cz)` supplies physical poses and falls back to `SurfaceHeightAt` on legacy grids. Both
+return null on blocked or out-of-bounds cells. Topology and raw surface identity keep `SurfaceHeightAt`.
+
 A cell is blocked when the terrain slope at its center exceeds `maxSlopeRadians`, an optional
 `extraBlocked(x, z)` gameplay exclusion returns true (a scripted no-go zone), or a nearby `WorldCollider`
 overlaps a conservative center-point probe. One bake serves every agent radius: the walkable rasterization
@@ -7946,7 +7953,7 @@ Hand the returned `NavSpace` to `GridPathPlanner` exactly as with any other bake
 `PathFollower` route across the new layers with no new code. A `Stair` crossing is a plain walked waypoint,
 no special follower state. A `Hop` crossing surfaces the existing `PathFollowState.Hopping` seam described
 below: the follower suspends ground steering and hands back both hop endpoints for the game to drive its
-own lunge. Either way, resolve a waypoint's Y from `space.Layers[waypoint.Layer].SurfaceHeightAt`, not from
+own lunge. Either way, resolve a waypoint's Y from `space.Layers[waypoint.Layer].RestingHeightAt`, not from
 `terrain.GroundHeight`, since the waypoint may sit on a layer above or below the ground.
 
 A smooth world, where every adjacent rise stays within `stepHeight`, degenerates to a single layer,
@@ -8058,8 +8065,8 @@ else if (output.State == PathFollowState.Hopping)
     Vector2 to = output.ActiveWaypoint;
     (int fx, int fz) = layer.CellOf(from.X, from.Y);
     (int tx, int tz) = layer.CellOf(to.X, to.Y);
-    float fromY = layer.SurfaceHeightAt(fx, fz) ?? terrain.GroundHeight(from.X, from.Y);
-    float toY = layer.SurfaceHeightAt(tx, tz) ?? terrain.GroundHeight(to.X, to.Y);
+    float fromY = layer.RestingHeightAt(fx, fz) ?? terrain.GroundHeight(from.X, from.Y);
+    float toY = layer.RestingHeightAt(tx, tz) ?? terrain.GroundHeight(to.X, to.Y);
     agent = PlayLunge(agent, from, fromY, to, toY, dt);   // game-owned jump motion + animation
 }
 // Point Arrived: agent.Position is within AcceptRadius of the goal in XZ and within VerticalAcceptTolerance
@@ -8540,7 +8547,8 @@ is refused.
 keeps, from the body's feet, the farthest `Walk` waypoint on the same layer whose centre line and both side lines (just
 under half a cell either side) pass the segment guard, then repeats from there. Waypoints are only dropped, so every
 kept bend is a cell centre the body lands on, and the final waypoint and both ends of every hop and layer change are
-kept. It needs a space with surface heights, and a route over heightless cells (a `NavGrid.FromWalkable` grid) stays
+kept. Feet use `NavGrid.RestingHeightAt`, falling back to raw surfaces when no resting field is set.
+A route over heightless cells (a `NavGrid.FromWalkable` grid) stays
 raw. Beside walls and fences the side lines keep the staircase. When the guard refuses a step on a straightened
 segment, the body holds `Following` for that tick and the next plan is the raw cell route, then straightening resumes.
 Player routed walk-up gets it through the same driver.

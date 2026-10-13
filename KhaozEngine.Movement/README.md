@@ -612,7 +612,7 @@ an `Unreachable` route passes through unchanged:
 - Waypoints are only dropped, never created or moved. Every kept bend is a cell centre the body still lands on
   exactly, and the route keeps its status.
 - The final waypoint, both ends of a hop and both ends of a layer change are always kept.
-- Feet heights come from the space's surface heights, so straightening needs a space with surface heights. A route
+- Feet heights come from `NavGrid.RestingHeightAt`, with raw surface fallback when no resting field is set. A route
   over heightless cells, as on a `NavGrid.FromWalkable` grid, stays raw.
 - The side lines cost shortcuts beside walls and fences, where the staircase remains.
 - One plan costs at most one three-line guard check per raw and kept waypoint, each walking the cells it crosses.

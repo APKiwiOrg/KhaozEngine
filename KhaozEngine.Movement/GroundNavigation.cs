@@ -101,7 +101,7 @@ public sealed class GroundNavigation
         {
             NavGrid grid = Space.Layers[layer];
             (int x, int z) = grid.CellOf(feet.X, feet.Z);
-            float? height = grid.SurfaceHeightAt(x, z);
+            float? height = grid.RestingHeightAt(x, z);
             if (height is not float y) continue;
             double distance = Math.Abs((double)feet.Y - y);
             if (distance >= best) continue;

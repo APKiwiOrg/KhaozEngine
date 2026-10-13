@@ -49,7 +49,7 @@ public sealed partial class NavGrid
     /// (no upper bound). See <see cref="ContainsY"/>.</summary>
     public float YMax { get; }
 
-    NavGrid(byte[] clearance, int width, int height, float cellSize, float originX, float originZ, float yMin, float yMax, float[]? heights = null, float yawRadians = 0)
+    NavGrid(byte[] clearance, int width, int height, float cellSize, float originX, float originZ, float yMin, float yMax, float[]? heights = null, float yawRadians = 0, float[]? restingHeights = null)
     {
         _clearance = clearance;
         Width = width;
@@ -60,6 +60,7 @@ public sealed partial class NavGrid
         YMin = yMin;
         YMax = yMax;
         _heights = heights;
+        _restingHeights = restingHeights;
         YawRadians = yawRadians;
         (_sinYaw, _cosYaw) = MathF.SinCos(yawRadians);
     }
@@ -158,7 +159,8 @@ public sealed partial class NavGrid
     /// <summary>
     /// The baked surface height at (<paramref name="cx"/>, <paramref name="cz"/>) in world Y, or null when
     /// this grid has no height field (<see cref="HasSurfaceHeights"/> is false), the cell is out of bounds,
-    /// or the cell is blocked (clearance 0). A non-null result is the surface an agent stands on there.
+    /// or the cell is blocked (clearance 0). This raw height defines topology and surface identity.
+    /// Physical feet positions use <see cref="RestingHeightAt"/> instead.
     /// </summary>
     public float? SurfaceHeightAt(int cx, int cz)
     {

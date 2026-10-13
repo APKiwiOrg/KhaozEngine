@@ -32,6 +32,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - Navigation bake doors normalize effective profile kinds before identity work or stream reads. Malformed Contact
   selections refuse as arguments, while Contact aquatic profiles name #1389. Captures record and verify leased
   geometry and origin, retain their classifier and require a medium delegate when sampling a contact water field.
+- NavGrid separates optional resting feet heights from raw surface identity. Region goals, layer lookup,
+  ground navigation and bake proof endpoints use the resting pose, with unchanged surface fallback for legacy grids.
 - Legacy ground contexts reuse their resource-free binding when navigation alternates source and unit-speed
   probe tuning. Validation and actual per-call movement tuning stay current, preserving the profile allocation budget.
 

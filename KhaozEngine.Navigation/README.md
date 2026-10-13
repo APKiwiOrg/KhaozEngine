@@ -50,10 +50,10 @@ returns the layer minimizing the distance from `y` to its band center `(YMin + Y
 only layers with a finite band, ties going to the lowest index. If every layer has an infinite band, it
 returns 0.
 
-`NavSpace.LayerAt(position)` resolves a world position to a layer surface-aware, which `LayerOf`'s Y-band
+`NavSpace.LayerAt(position)` resolves a world position using physical feet heights, which `LayerOf`'s Y-band
 test cannot do once bands overlap (a bridge deck's Y sits inside the ground layer's band wherever the
-ground spans valleys to hills). Among the layers that carry surface heights and have a passable surface at
-the position's cell, it picks the one whose surface Y is nearest to `position.Y` (ties to the lowest
+ground spans valleys to hills). Among the layers that carry surface heights and have an open cell at
+the position, it picks the one whose `RestingHeightAt` is nearest to `position.Y` (ties to the lowest
 index), so an agent standing on the deck resolves to the deck layer, not the ground below it. When no layer
 has a surface there, or none carries heights at all (any space built from `NavGrid.FromWalkable`),
 it falls back to `LayerOf(position.Y)`, so every pre-layered space resolves exactly as before. With a
@@ -134,6 +134,14 @@ rises beyond any jump budget by giving the tall side its own layer.
 does not go through an `INavSurfaceProvider`. A grid baked this way records its per-cell surface height,
 readable via `NavGrid.SurfaceHeightAt(cx, cz)` (null when the grid has no height field, the cell is out of
 bounds, or the cell is blocked) and `NavGrid.HasSurfaceHeights` (false for grids from `FromWalkable`).
+
+`NavGrid.WithRestingHeights(restingHeights)` returns a new grid with an owned copy of exactly `Width * Height`
+row-major physical feet heights. Open values must be finite, while blocked values are copied and ignored.
+Null or wrong-length arrays throw `ArgumentException`. Non-finite open heights throw `ArgumentOutOfRangeException`.
+`HasRestingHeights` reports whether that field is set. `RestingHeightAt(cx, cz)` returns it on open cells,
+or falls back to `SurfaceHeightAt` when absent. Blocked and out-of-bounds cells return null. Raw surfaces,
+clearance, layer bands and transforms remain unchanged. Region predicates and physical waypoint endpoints
+use resting heights. Link generation and stored surface identity use raw heights.
 
 `NavGrid.FromBlockedSurfaces(width, height, cellSize, originX, originZ, blocked, heights, yMin, yMax,
 yawRadians)` restores such a grid without its sampler. `blocked` and `heights` are row-major spans of exactly
@@ -462,7 +470,7 @@ returns it. Shared configuration, cooldown, drift, layer, and `Hop` behavior rem
 When the active waypoint is a `NavWaypointKind.Hop` landing, ground steering is suspended instead: the
 tick returns `PathFollowState.Hopping` with `WorldDir` zero and both hop endpoints, `HopStart` (the
 takeoff XZ) to `ActiveWaypoint` (the landing XZ), so the consumer drives its own lunge motion between
-them. Resolve each end's Y from the layer's grid via `NavGrid.SurfaceHeightAt`, the follower stores no Y.
+them. Resolve each end's Y from the layer's grid via `NavGrid.RestingHeightAt`, the follower stores no Y.
 The follower owns no hop timer: if the consumer never moves the agent, the landing never comes within
 `AcceptRadius` and the follower re-emits `Hopping` every tick, the honest report that the agent is still
 at the takeoff. Once the agent reaches the landing, following resumes normally (`Following`, or `Arrived`

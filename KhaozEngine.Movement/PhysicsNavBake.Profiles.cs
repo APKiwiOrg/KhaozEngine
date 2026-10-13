@@ -152,7 +152,7 @@ public sealed partial class PhysicsNavBake
     private static Vector3 Feet(NavGrid grid, int x, int z)
     {
         Vector2 center = grid.CellCenter(x, z);
-        return new Vector3(center.X, grid.SurfaceHeightAt(x, z)!.Value, center.Y);
+        return new Vector3(center.X, grid.RestingHeightAt(x, z)!.Value, center.Y);
     }
 
     private sealed class CandidateColumns(PhysicsNavBake bake, GroundMoveContext context,

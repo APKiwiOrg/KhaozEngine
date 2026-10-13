@@ -63,7 +63,7 @@ public readonly struct PathFollowOutput
     /// <summary>The takeoff position (world XZ) of the hop in progress while <see cref="State"/> is
     /// <see cref="PathFollowState.Hopping"/>, and <see cref="Vector2.Zero"/> otherwise. Paired with
     /// <see cref="ActiveWaypoint"/> (the landing) it gives the consumer both ends of the lunge. Resolve each
-    /// end's Y from the layer's grid via <see cref="NavGrid.SurfaceHeightAt"/>, the follower stores no Y.</summary>
+    /// end's Y from the layer's grid via <see cref="NavGrid.RestingHeightAt"/>, the follower stores no Y.</summary>
     public Vector2 HopStart { get; init; }
 }
 

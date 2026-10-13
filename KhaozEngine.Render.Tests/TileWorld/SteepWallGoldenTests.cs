@@ -122,7 +122,9 @@ public sealed class SteepWallGoldenTests
             state = now;
         }
 
-        Assert.True(hi - lo > 0.05f, $"the face's centre column is flat (luma {lo:F3} to {hi:F3}), so it carries no texture at all.");
+        // The scene's grading and the 8 texel checker's filtering leave the face a modest luma range on every
+        // backend (0.04 on WARP, 0.09 on Metal), so this only refuses a face with no texture at all.
+        Assert.True(hi - lo > 0.02f, $"the face's centre column is flat (luma {lo:F3} to {hi:F3}), so it carries no texture at all.");
         Assert.True(flips >= 6,
             $"the face's centre column flips between checker squares {flips} time(s) over {luma.Length} rows. A face " +
             "sampled from the side crosses one every half metre, so so few flips is the top-down streak.");

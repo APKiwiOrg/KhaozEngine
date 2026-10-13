@@ -2,12 +2,12 @@
 
 Date: 2026-07-28.
 
-Two independent defects in the particle flipbook path, both surfaced by one Ruinborne playtest report
+Two independent defects in the particle flipbook path, both surfaced by one consumer playtest report
 of loot-orb item icons shimmering between neighbouring atlas cells on Windows and never on macOS.
 
 - Engine issues [#389](https://github.com/APKiwiOrg/KhaozEngine/issues/389) (the flip carrier) and
   [#390](https://github.com/APKiwiOrg/KhaozEngine/issues/390) (the mip chain).
-- Consumer report [Ruinborne#365](https://github.com/APKiwiOrg/Ruinborne/issues/365), scoped upstream in
+- Consumer report, scoped upstream in
   that repo's `docs/design/2026-07-28-flipbook-atlas-sampling-engine-scope.md`.
 
 The scoping doc is the report and the arithmetic. This doc is the engine's decisions.
@@ -81,7 +81,7 @@ decisive confirmation is a Windows tester on a real drop, and it belongs to the 
 comes from the UV derivatives.
 
 Mipping an atlas is correct for a tiled albedo and wrong for a grid of independent frames. For
-Ruinborne's 1024x512 four-column atlas the whole texture is 4x2 texels by mip 8, one texel per cell, so
+The reference consumer's 1024x512 four-column atlas the whole texture is 4x2 texels by mip 8, one texel per cell, so
 every cell has become the average of its own icon, and past that the cells have merged into each other.
 The orb icon draws out to 60 m where it covers about 2 px, so it spends the far half of its range in
 that region.
@@ -108,7 +108,7 @@ Four options were weighed. Scores are 1-10, higher is better.
 
 Option 1 wins on the criterion the scoping doc under-weighted: the shader already knows `cols` and
 `rows` from the packed value and can read `textureSize(AtlasTex, 0)`, so it can derive the safe maximum
-LOD per atlas with no consumer involvement at all. Ruinborne adopts by version bump, and any future
+LOD per atlas with no consumer involvement at all. The reference consumer adopts by version bump, and any future
 atlas consumer is correct without knowing this failure mode exists. Option 3 loses because it trades
 cross-cell bleed for the minification sparkle the chain was added to fix, which is a real regression on
 a moving camera. Option 4 loses because it pushes the problem onto every consumer's art pipeline and
@@ -160,7 +160,7 @@ of its own, so a model atlas has no other answer.
   per-layer, so there is no cross-cell fringe at any level. It also changes the resource layout, the
   sampling path and the consumer-facing handle, and the LOD clamp removes the visible artifact without
   any of that. Filed as [#392](https://github.com/APKiwiOrg/KhaozEngine/issues/392) rather than built.
-- Anything on the Ruinborne side. Both affected sites pass `FlipV: true` and neither needs to change.
+- Anything on the reference consumer side. Both affected sites pass `FlipV: true` and neither needs to change.
 
 ## 4. What shipped
 

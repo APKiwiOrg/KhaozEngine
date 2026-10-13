@@ -14,7 +14,7 @@ namespace KhaozEngine.Tests.Render3D
     /// (<c>Scene3D.ShadowDepthPassDirty</c>), so why not skip PER CASCADE, re-rendering only the cascades whose
     /// matrix and caster set actually changed. It would pay if cascade matrices held still frame to frame. They do
     /// not. A cascade's matrix is <see cref="ShadowMapMath.BuildLightViewProj"/> of the light DIRECTION plus the
-    /// fitted slice sphere, and Ruinborne's sun sweeps a 30 minute day, about 0.2 degrees per second. At 60 fps
+    /// fitted slice sphere, and the reference consumer's sun sweeps a 30 minute day, about 0.2 degrees per second. At 60 fps
     /// that is 0.0033 degrees per frame: invisible to look at, and tens of times float32 epsilon, so every entry of
     /// every cascade's view rotation changes every single frame. The texel snap does not help - it quantizes the
     /// focus TRANSLATION in light-view space, and the light-view ROTATION is what the sun moves. Nor does a static
@@ -32,7 +32,7 @@ namespace KhaozEngine.Tests.Render3D
     {
         const int Resolution = 2048;
         const int Frames = 120;                        // two seconds at 60 fps
-        const float SunDegreesPerFrame = 0.2f / 60f;   // Ruinborne: a 30 minute day
+        const float SunDegreesPerFrame = 0.2f / 60f;   // the reference consumer: a 30 minute day
         const float WalkSpeedPerFrame = 5f / 60f;      // a player walking at 5 m/s
 
         readonly ITestOutputHelper _out;
@@ -114,7 +114,7 @@ namespace KhaozEngine.Tests.Render3D
         public void A_moving_sun_re_fits_every_cascade_every_frame()
         {
             // (a) the static-camera, moving-sun case: the one a per-cascade cache would have to survive, and the
-            // normal state of a Ruinborne session, since the world clock never stops.
+            // normal state of a consumer session, since the world clock never stops.
             int[] pct = StableFrames("static camera, moving sun", sunMoves: true, cameraMoves: false);
             foreach (int p in pct)
                 Assert.Equal(0, p);

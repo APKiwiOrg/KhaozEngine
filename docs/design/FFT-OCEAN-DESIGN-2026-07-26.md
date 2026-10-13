@@ -65,7 +65,7 @@ desynchronize their time evolution for nothing.
 
 ### The last stall: the row pass moves a frame ahead (2026-07-29, [#398](https://github.com/APKiwiOrg/KhaozEngine/issues/398))
 
-One stall per frame is still one stall per frame. Ruinborne's frame-cost audit measured it in the field at
+One stall per frame is still one stall per frame. The reference consumer's frame-cost audit measured it in the field at
 **0.93 ms of blocked frame time**, and the position of the drain is what makes it expensive: `WaitForIdle` is a
 whole-device wait, so a drain in the middle of a frame blocks on everything already queued and then leaves the GPU
 idle while the CPU re-encodes. On an idle device the same call costs 0.0001 ms.

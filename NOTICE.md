@@ -54,3 +54,49 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY
 CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 ```
+
+---
+
+## UnrealEngineSkyAtmosphere
+
+- **Project:** [sebh/UnrealEngineSkyAtmosphere](https://github.com/sebh/UnrealEngineSkyAtmosphere),
+  Sebastien Hillaire's Hillaire 2020 reference implementation.
+- **Licence:** [MIT](https://github.com/sebh/UnrealEngineSkyAtmosphere/blob/master/LICENSE).
+- **Used by:** `KhaozEngine.Render3D` physical atmosphere (20.34.0), principally
+  `AtmosphereModel.Scattering.cs`, `AtmosphereModel.cs` and their GLSL mirrors in
+  `Internal/ShaderSources.Atmosphere.cs`.
+- **What was ported:** transport math from `IntegrateScatteredLuminance` and `NewMultiScattCS` in
+  `Resources/RenderSkyRayMarching.hlsl`, including throughput-weighted analytic segment accumulation,
+  source transmittance, direct ground bounce, unit isotropic response, equal-solid-angle directional averaging
+  and the geometric-series multi-scattering closure. `RayleighPhase` and `CornetteShanksMiePhaseFunction` in
+  `Resources/RenderSkyCommon.hlsl` supply the Rayleigh and Mie phase math. The two reference cosine sign
+  inversions are combined so positive cosine denotes forward scattering.
+- **Engine-specific work:** sample counts, quadratic midpoint placement, the 0.999 response clamp and stable
+  zero-extinction handling follow the engine design. Reference compute threading, shared-memory reduction,
+  depth/volume machinery, global illuminance, opaque shadows and debug drawing were not ported.
+
+The copyright and MIT licence text, verbatim from the reference repository's `LICENSE`:
+
+```text
+MIT License
+
+Copyright (c) 2020 Epic Games, Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```

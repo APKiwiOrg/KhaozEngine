@@ -152,6 +152,8 @@ namespace KhaozEngine.Render3D.Rendering
         }
 
         readonly IGpuDevice _gd;
+        readonly AtmosphereBindings _atmosphere;
+        readonly bool _ownsAtmosphere;
         readonly IGpuBuffer _ubo;
         readonly IGpuResourceLayout _layout;
         readonly IGpuSampler _sampler;          // shared linear/wrap sampler (the device built-in, NOT owned here)
@@ -230,8 +232,16 @@ namespace KhaozEngine.Render3D.Rendering
 
         public ModelRenderer(IGpuDevice gd, GpuOutputDescription modelOutputs, int shadowMapResolution,
             int shadowCascadeCount, GpuRetireQueue retired)
+            : this(gd, modelOutputs, shadowMapResolution, shadowCascadeCount, retired, new AtmosphereBindings(gd))
+        {
+            _ownsAtmosphere = true;
+        }
+
+        public ModelRenderer(IGpuDevice gd, GpuOutputDescription modelOutputs, int shadowMapResolution,
+            int shadowCascadeCount, GpuRetireQueue retired, AtmosphereBindings atmosphere)
         {
             _gd = gd;
+            _atmosphere = atmosphere;
             _retired = retired;
             var factory = gd.Factory;
 
@@ -248,7 +258,7 @@ namespace KhaozEngine.Render3D.Rendering
             CreatePointLightBuffer(factory);
             CreatePointLightClusters(factory);
 
-            _layout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(
+            _layout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(AtmosphereBindings.AppendLayout(
                 new GpuResourceLayoutElement("U", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex | GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("PointLights", GpuResourceKind.StructuredBufferReadOnly, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("PointLightClusters", GpuResourceKind.StructuredBufferReadOnly, GpuShaderStages.Fragment),
@@ -259,7 +269,7 @@ namespace KhaozEngine.Render3D.Rendering
                 new GpuResourceLayoutElement("ShadowMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("ShadowSamp", GpuResourceKind.Sampler, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("PointShadowMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
-                new GpuResourceLayoutElement("PointShadowTransientMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment)));
+                new GpuResourceLayoutElement("PointShadowTransientMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment))));
 
             // Use the device's built-in linear sampler (wrap-addressed) - the SAME one Render2D samples its
             // textures (incl. a 1x1 white) through, which verifies correctly on D3D11/WARP. A custom
@@ -300,11 +310,11 @@ namespace KhaozEngine.Render3D.Rendering
             // kept rather than a constraint. Set 1 is the per-mesh material maps + shadow map, fragment only. The default frag
             // (set 1) set uses white/flat/rough defaults + the shadow map, so an untextured skinned mesh is lit
             // exactly like the CPU path's _defaultSet.
-            _skinnedMainLayout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(
+            _skinnedMainLayout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(AtmosphereBindings.AppendLayout(
                 new GpuResourceLayoutElement("U", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex | GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("PointLights", GpuResourceKind.StructuredBufferReadOnly, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("PointLightClusters", GpuResourceKind.StructuredBufferReadOnly, GpuShaderStages.Fragment),
-                new GpuResourceLayoutElement("VBlock", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex, dynamic: true)));
+                new GpuResourceLayoutElement("VBlock", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex, dynamic: true))));
             _skinnedFragLayout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(
                 new GpuResourceLayoutElement("Albedo", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("NormalMap", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
@@ -645,6 +655,7 @@ namespace KhaozEngine.Render3D.Rendering
             _instanceBuffer?.Dispose();
             _skinnedVertexBuffer?.Dispose();
             _skinnedInstanceBuffer?.Dispose();
+            if (_ownsAtmosphere) _atmosphere.Dispose();
         }
     }
 }

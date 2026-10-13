@@ -1,14 +1,16 @@
 # Tiled map document format and document residency (2026-07-27)
 
+Consumer-prefixed paths and `c-consumer.md` citations describe an anonymized historical consumer snapshot.
+
 Status: design approved, implementation pending. Program issues:
 [#334](https://github.com/APKiwiOrg/KhaozEngine/issues/334) (tiled format) and
 [#335](https://github.com/APKiwiOrg/KhaozEngine/issues/335) (residency). Both are engine sub-projects of the
-Ruinborne 100 km world program, [Ruinborne#242](https://github.com/APKiwiOrg/Ruinborne/issues/242).
+The reference consumer 100 km world program, consumer report.
 
 Joint spec because the tile granularity decision is shared: the format's tile is the residency unit, and
 deciding one without the other guarantees two grids.
 
-Measurement evidence: `Ruinborne/docs/design/2026-07-26-world-scale-spike-findings.md` plus the CSV beside it,
+Measurement evidence: `ConsumerGame/docs/design/2026-07-26-world-scale-spike-findings.md` plus the CSV beside it,
 measured on engine 16.3.1 against unmodified production code.
 
 **Revised after an adversarial review, and three areas were redesigned rather than amended.** Section 7's save
@@ -41,7 +43,7 @@ plausible inference rather than a confirmed mechanism. **The arithmetic confirms
 confirmation.** `MapDocumentFile.CreateOptions` sets `WriteIndented = true` on the write path
 (`MapDocumentFile.cs:148`), and `MapTerrainOverridesConverter.Write` emits each of a tile's 1,024 deltas as its
 own `WriteNumberValue` into that writer (`MapTerrainOverridesConverter.cs:118-119`), so every delta lands on its
-own indented line. Check against the real file: Ruinborne's `island.map.json` carries 64 sculpt tiles (65,536
+own indented line. Check against the real file: the reference consumer's `island.map.json` carries 64 sculpt tiles (65,536
 deltas) plus 4,921 placements and is 2,545,747 bytes, which is about 20 bytes per delta line and about 250 bytes
 per placement. Scale that: 64,000 tiles is 65.5 M deltas at roughly 20 bytes, about 1.3 GB, plus 4.93 M
 placements at roughly 250 bytes, about 1.2 GB. At extent-100000m the same arithmetic gives roughly 970 MB,
@@ -59,7 +61,7 @@ twice the final buffer on the way up, so a 3.99 GB cumulative figure is the sign
 
 The other two costs are not ceilings but are paid by both heads at boot before a player sees anything: 6.4 s and
 2.2 GB to parse the 100 km document, and a further full serialize plus roughly three more full-size buffer
-copies to hash it. The engine has no document hash at all today. `RuinborneWorldIdentity.ComputeHash` takes the
+copies to hash it. The engine has no document hash at all today. `ConsumerWorldIdentity.ComputeHash` takes the
 canonical save text as a parameter, so the consumer pays `SaveText` purely to get bytes to hash.
 
 Content count is the variable, not extent. The 100 km extent case passed while a 64,000 tile case in a five
@@ -87,9 +89,9 @@ Every claim below was checked against the code on `main` at 16.5.0 rather than t
 
 Three things in the issues did not survive the check.
 
-- **#334 says "sculpt tiles are 2 m cells today". That is Ruinborne's document, not the engine.**
+- **#334 says "sculpt tiles are 2 m cells today". That is the reference consumer's document, not the engine.**
   `MapTerrainOverrides.DefaultCellSize` is 0.5 m (`MapTerrainOverrides.cs:20`) and `TerrainSculpt.TileSize` is 32
-  cells (`TerrainSculpt.cs:17`), so the engine default sculpt tile spans 16 m. Ruinborne's `island.map.json`
+  cells (`TerrainSculpt.cs:17`), so the engine default sculpt tile spans 16 m. The reference consumer's `island.map.json`
   declares `cellSize: 2`, giving a 64 m span, and the spike's `WorldSynth.SculptCellSize` is also 2. The
   consequence for this design is real: **the sculpt tile has no fixed size in meters**, so a document tile grid
   cannot be derived from it and must be declared independently. Section 3 does that.
@@ -135,7 +137,7 @@ math to drift. An architecture test fuzzes both over positive, negative and exac
 asserts they agree.
 
 **Default `tileSize` is 512 m**, exposed as `MapDocumentFile.DefaultTileSize`. Derivation, not taste: at
-Ruinborne's authored density (77 placements and one 64 m sculpt tile per 64 m cell) a fully authored 512 m tile
+The reference consumer's authored density (77 placements and one 64 m sculpt tile per 64 m cell) a fully authored 512 m tile
 holds 64 sculpt tiles and about 4,900 placements, which by the byte arithmetic in section 1 is about 2.5 MB,
 the size of today's whole `island.map.json`. That file's measured `LoadText` is 37 ms. So the worst realistic
 tile costs about 40 ms to parse, on a worker thread, with a dictionary insert on the frame thread. Smaller tiles
@@ -158,7 +160,7 @@ position and does not care which file a tile arrived in.
 it away.** A resident document tile's low-X and low-Z edges are covered by sculpt owned by the neighbour on
 that side. When the neighbour is not resident, the first `sculptSpan` metres of the resident tile carry no
 authored deltas even though the tile itself is loaded, where `sculptSpan = TerrainSculpt.TileSize *
-sculptCellSize`. At Ruinborne's `cellSize` 2 that is 64 m, at `cellSize` 0.75 it is 24 m, and the validator's
+sculptCellSize`. At the reference consumer's `cellSize` 2 that is 64 m, at `cellSize` 0.75 it is 24 m, and the validator's
 own floor (`tileSize >= sculptSpan`) permits it to be a whole tile wide. The earlier claim that this "sits well
 inside the hysteresis band" was wrong twice over: hysteresis is an UNLOAD-side allowance and buys the load side
 nothing, and at the legal extreme the inset is a full tile. So the inset is subtracted explicitly in two
@@ -222,7 +224,7 @@ Alternatives weighed:
 - **Single file with an internal offset index.** Rejected. It does not fix the save side at all (still one
   serialize), JSON has no seekable framing, and any offset table is invalidated by a hand edit or a comment,
   which is exactly what a diffable dev-authored format invites.
-- **Manifest plus per-sculpt-tile files.** Rejected. At Ruinborne's 64 m sculpt span, a 100 km world is up to
+- **Manifest plus per-sculpt-tile files.** Rejected. At the reference consumer's 64 m sculpt span, a 100 km world is up to
   2.4 M potential files and the measured realistic case is 24,398 occupied ones, each about 10 KB. That is a
   filesystem and git problem with no compensating benefit, since 10 KB is far below any parse cost worth
   streaming.
@@ -276,7 +278,7 @@ descending weight.
    `ScatterConfig` (`MapRuntime.cs:97-111`). A region-scoped scatter config is a different feature with its own
    determinism question and is not in scope here.
 3. They are shapes with extent, so a region can legitimately span the world, and they are not the scaling
-   variable. Ruinborne's island has zero of each. Even a heavily authored world has hundreds.
+   variable. The reference consumer's island has zero of each. Even a heavily authored world has hundreds.
 
 Rejected alternative: bucket shapes into every tile they overlap, with a dedup pass on load. Costs a
 duplication rule, a dedup pass, and an ordering rule, and buys nothing measurable. If a world ever authors
@@ -572,8 +574,8 @@ directory the window came from, and no edited item may land in an indexed-but-un
 
 **Algorithm: SHA-256, lower hex, full 32 bytes.** `System.Security.Cryptography.SHA256.HashData` is in the BCL,
 is byte-identical on every platform and runtime the fleet targets, and is already what the fleet reaches for
-(`UpdateManifest`, `SfxHasher`, `Pkce`, `RuinborneWorldIdentity`). Truncation is the consumer's call.
-`RuinborneWorldIdentity.HashBytes` already truncates to 8 bytes for the wire and can keep doing so.
+(`UpdateManifest`, `SfxHasher`, `Pkce`, `ConsumerWorldIdentity`). Truncation is the consumer's call.
+`ConsumerWorldIdentity.HashBytes` already truncates to 8 bytes for the wire and can keep doing so.
 
 Rejected: xxHash or CRC32. Not in the BCL, and speed is not the constraint because hashing happens once per tile
 at save and never on the load path. Rejected: `string.GetHashCode`, which is randomized per process.
@@ -653,13 +655,13 @@ public static class MapDocumentHash
 
 Composition input is `"kemap/" + SchemeVersion + "\n"`, then the manifest hash and a newline, then one
 `"{x},{z}={hash}\n"` line per occupied tile in ascending (Z, X) order, every integer invariant-formatted.
-Labelled and newline delimited for the same reason `RuinborneWorldIdentity` is: a value can never slide from
+Labelled and newline delimited for the same reason `ConsumerWorldIdentity` is: a value can never slide from
 one field into the next.
 
 **What is in the hash and what is not.** `displayName` and `$schema` are excluded. The hash exists to answer
 "is the ground under this player the same ground", and renaming a zone must not desync a live server from its
 clients. Everything that shapes terrain, scatter, or authored content is included. This is a deliberate
-narrowing relative to Ruinborne's current behaviour, which hashes the entire `SaveText` output including the
+narrowing relative to the reference consumer's current behaviour, which hashes the entire `SaveText` output including the
 display name.
 
 **`tileSize` IS part of world identity, and that has a consequence worth saying out loud.** It is in the
@@ -680,7 +682,7 @@ not 40. That is roughly 2.9 MB of hash input, hashed once, milliseconds. (The 24
 SCULPT tile count from the extent-100000m case, not a document tile count. Different grid, and the numbers are
 not interchangeable.) Either way it replaces the measured 3.34 s and 6.14 GB, so the conclusion is unaffected.
 `OfWorld` on a monolithic document buckets in memory and hashes each bucket with the same canonical writer, so
-**the two forms of the same world produce the same identity**. That is the property that lets Ruinborne convert
+**the two forms of the same world produce the same identity**. That is the property that lets the reference consumer convert
 to tiled without a coordinated client and server flag day.
 
 **What invalidates a tile hash:** any byte of that tile's canonical content. **What invalidates the world hash:**
@@ -729,7 +731,7 @@ of the types now and the rest later, and it lands the entire compat story in a s
 
 - **Source compatibility is total.** Every moved type keeps its namespace, and `Terrain.Render3D` still project
   references `Terrain`, so `using KhaozEngine.Terrain;` in a consumer that references either package resolves
-  exactly as before. Nothing in Ruinborne's `RuinborneWorldView`, the `MapEditor`'s `ViewportWorld`, or
+  exactly as before. Nothing in the reference consumer's `ConsumerWorldView`, the `MapEditor`'s `ViewportWorld`, or
   `Showcase`'s `Room3D` needs a single edit.
 - **Binary compatibility is not free and this spec does not pretend it is.** An assembly compiled against
   16.x's `Terrain.Render3D` resolves `TerrainStreamer` to that assembly and would fail with a `TypeLoadException`
@@ -885,7 +887,7 @@ public static class MapDocumentFile
 `MapEditorOptions` gains `WholeWorldTileLimit` (default 512 occupied tiles) and `EditorWindowRadius` (default 2
 tiles). Below the limit the editor whole-loads, exactly as today. Above it, the editor windows around the first
 enabled player spawn or the restored camera bookmark and shows the window extent in the status strip. Every
-world that opens today keeps opening: Ruinborne's island spans four 512 m tiles because the grid is origin
+world that opens today keeps opening: the reference consumer's island spans four 512 m tiles because the grid is origin
 anchored and the bounds are -256 to 254, well under any limit.
 
 Implementation follow-up (#347): the spawn search is bounded to 32 occupied tile reads by default, nearest
@@ -1140,7 +1142,7 @@ The contract, in two rules, both checked by `ValidateAgainst`:
 >
 > **Ordering.** `MapTileResidency.Update` runs before `TerrainStreamer.Update` in the same frame.
 
-At `StreamerConfig.Default` (LoadRadius 4, UnloadRadius 6, ChunkSize 60 m), `tileSize` 512 m and Ruinborne's
+At `StreamerConfig.Default` (LoadRadius 4, UnloadRadius 6, ChunkSize 60 m), `tileSize` 512 m and the reference consumer's
 `sculptCellSize` 2 (a 64 m sculpt span):
 
 | Quantity | Value |
@@ -1358,8 +1360,8 @@ same handler, which is a bounded, self-correcting outcome rather than a torn rea
 - **Per-tile add and remove of physics bodies is the intended use and nothing in this design forbids, batches,
   defers or wraps it.** A consumer may add and remove bodies from these callbacks freely.
 
-Per-tile physics population itself is consumer work. Ruinborne's `RuinbornePhysics.Populate` reads game-global
-statics today and Ruinborne fixes that on its side.
+Per-tile physics population itself is consumer work. The reference consumer's `ConsumerPhysics.Populate` reads game-global
+statics today and the reference consumer fixes that on its side.
 
 ### The headless server
 
@@ -1428,7 +1430,7 @@ allocation is exactly the shape of that. The GC hypothesis has the same driver: 
 The arithmetic, done honestly: residency holds tiles out to `UnloadRadius`, not `LoadRadius`, so with the
 corrected `MapResidencyConfig.Default` (Chebyshev, LoadRadius 2, UnloadRadius 3) the worst-case resident set is
 `(2*3+1)^2 = 49` document tiles, not the 25 of the load ring and not the 9 an earlier draft claimed. At
-Ruinborne's 2 m cells a fully authored 512 m tile holds 64 sculpt tiles, so the ceiling is **3,136 resident
+The reference consumer's 2 m cells a fully authored 512 m tile holds 64 sculpt tiles, so the ceiling is **3,136 resident
 sculpt tiles against 640,000 in the failing case**, a factor of 204.
 
 What that does to the mechanism is the point, and it is the dictionary and not the delta arrays that matters.
@@ -1452,7 +1454,7 @@ unisolated mechanism.
 
 ### Post-residency measurement and corner lookup decision (#339)
 
-The current Ruinborne resident field uses 4 m sculpt cells and an unload radius of four document tiles.
+The current consumer resident field uses 4 m sculpt cells and an unload radius of four document tiles.
 A fully authored single-focus ring therefore holds at most 1,296 sculpt tiles. Multiple server foci can
 retain more. Its nav boot still builds a separate fully folded field, so document residency alone does
 not bound that bake. The original assumption above does not describe the current boot path.
@@ -1511,7 +1513,7 @@ Packages touched: `KhaozEngine.Terrain`, `KhaozEngine.Terrain.Render3D`, `KhaozE
 them and the editor needs windowed loading. **`MapDocumentSource.FromDocument` is the one member of that pair
 with no release-1 caller**: windowed loading only ever opens a tiled directory, so wrapping an in-memory whole
 document exists purely so a game can adopt residency in release 2 before converting its world. Acknowledged
-rather than hidden, and it is why release 2's Ruinborne adoption can start with a repin and no format change.
+rather than hidden, and it is why release 2's consumer adoption can start with a repin and no format change.
 
 **`schemeVersion` ships here, in release 1**, in the manifest and on `MapTileIndex`. Section 10 has the reason:
 a windowed save mixes stored and recomputed hashes, so the scheme those stored hashes were written under has to
@@ -1536,30 +1538,30 @@ fetch gains a branch. With no `SetSculpt` call and no source-backed layer, all t
 identical to release 1, so a consumer that never touches residency sees no change. That is a real guarantee,
 just not the same guarantee as an untouched implementation.
 
-## 14. Ruinborne adoption
+## 14. The reference consumer adoption
 
 ### After release 1
 
 1. Repin `<KhaozEngineVersion>` and refresh the vendored feed. No source edits are needed for the streamer
-   extraction: `RuinborneWorldView`'s `TerrainStreamer` and `StreamerConfigFor` compile unchanged.
-2. `RuinborneWorld.ComputeWorldHash` (`Ruinborne.Core/RuinborneWorld.cs:46-47`) stops calling
+   extraction: `ConsumerWorldView`'s `TerrainStreamer` and `StreamerConfigFor` compile unchanged.
+2. `ConsumerWorld.ComputeWorldHash` (`Consumer.Core/ConsumerWorld.cs:46-47`) stops calling
    `MapDocumentFile.SaveText`. It passes `MapDocumentHash.OfWorld(Document)` into
-   `RuinborneWorldIdentity.ComputeHash` instead of the canonical text. That is a one-parameter change on the
-   Ruinborne side and it kills the measured 3.34 s and 6.14 GB, plus the separate `SaveText` those numbers sat
+   `ConsumerWorldIdentity.ComputeHash` instead of the canonical text. That is a one-parameter change on the
+   The reference consumer side and it kills the measured 3.34 s and 6.14 GB, plus the separate `SaveText` those numbers sat
    on top of. **The world hash value changes**, so client and server must ship together for that release, which
    they already do.
 3. Convert `island.map.json` to `island.map/` with `ke-mapedit convert_to_tiled`, or leave it monolithic. Either
    works. The island spans four 512 m tiles, so converting is a genuine smoke test of the tiled path against
    real content at zero risk.
-4. `Ruinborne.Editor/EditorMaps.cs:36` switches `MapDocumentFile.Save` to `SaveAuto`.
+4. `Consumer.Editor/EditorMaps.cs:36` switches `MapDocumentFile.Save` to `SaveAuto`.
 5. Re-run the `ScaleSpike` document sweep against the tiled writer. The two OOM cases are the regression target.
 
 ### After release 2
 
-1. Replace `RuinborneWorld.Document`'s eager whole-document `Lazy<MapDocument>`
-   (`Ruinborne.Core/RuinborneWorld.cs:60-71`) with a `MapDocumentSource`. `MapDocumentSource.FromDocument` keeps
+1. Replace `ConsumerWorld.Document`'s eager whole-document `Lazy<MapDocument>`
+   (`Consumer.Core/ConsumerWorld.cs:60-71`) with a `MapDocumentSource`. `MapDocumentSource.FromDocument` keeps
    the current behaviour, so this step can land before the world is tiled.
-2. Client: construct one `MapTileResidency` beside the existing `TerrainStreamer` in `RuinborneWorldView`, run
+2. Client: construct one `MapTileResidency` beside the existing `TerrainStreamer` in `ConsumerWorldView`, run
    `residency.Update` before `_streamer.Update` in the same frame, set
    `_streamer.BuildGate = residency.GateFor(_streamerConfig.ChunkSize, sculptCellSize)`, and call
    `MapResidencyConfig.ValidateAgainst(_streamerConfig, tileSize, sculptCellSize)` at wiring time. The
@@ -1574,9 +1576,9 @@ just not the same guarantee as an untouched implementation.
 5. Server: one `MapTileResidency` per `CellSim`, driven from the cell's own player positions, with
    [#341](https://github.com/APKiwiOrg/KhaozEngine/issues/341)'s two holes understood before this ships to a
    live shard.
-6. Physics: `RuinbornePhysics.Populate` moves off game-global statics and onto `IMapTileSink.TileLoaded` /
-   `TileUnloaded`, adding and removing static bodies per tile. That is the Ruinborne-side work this spec's seam
-   exists to enable and it is tracked on the Ruinborne side.
+6. Physics: `ConsumerPhysics.Populate` moves off game-global statics and onto `IMapTileSink.TileLoaded` /
+   `TileUnloaded`, adding and removing static bodies per tile. That is the consumer-side work this spec's seam
+   exists to enable and it is tracked on the reference consumer side.
 7. Sculpt: the `TileLoaded` handler rebuilds the snapshot with `TerrainSculpt.With`, calls
    `TerrainField.SetSculpt`, and calls `TerrainStreamer.Invalidate` for the tile's rect.
 

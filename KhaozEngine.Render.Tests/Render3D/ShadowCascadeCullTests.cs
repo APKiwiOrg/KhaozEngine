@@ -19,7 +19,7 @@ namespace KhaozEngine.Tests.Render3D
     {
         const int Resolution = 2048;
 
-        // A cascade fitted around the origin with a 20 m radius, lit from a 35 degree sun (the Ruinborne-shaped
+        // A cascade fitted around the origin with a 20 m radius, lit from a 35 degree sun (the consumer-shaped
         // case): the same call Scene3D.FitCascade makes.
         static ShadowCascadeCull Cascade(float radius = 20f, Vector3 focus = default, float elevationDegrees = 35f)
         {

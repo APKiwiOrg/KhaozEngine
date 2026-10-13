@@ -68,7 +68,7 @@ namespace KhaozEngine.Render3D.Internal
         /// the elevation gives a standdown that scales as <c>1/sqrt(r)</c> with cascade 0's CAMERA-derived fitted
         /// radius, so it is about 2.6 degrees on a wide outdoor framing (<c>r</c> around 60 m) and about 5.8
         /// degrees at the 12 m radius <c>ShadowLightHoldTests</c> fits. Wherever it lands, the threshold there IS
-        /// the floor, <c>1e-5</c> radians or about <c>5.7e-4</c> degrees, and Ruinborne's own daylight rate of
+        /// the floor, <c>1e-5</c> radians or about <c>5.7e-4</c> degrees, and the reference consumer's own daylight rate of
         /// <c>0.00333</c> degrees per frame is some six times that, so it crosses on every single frame anyway.
         /// What it buys is that a near-horizon sun degrades to today's re-fit-always behaviour deterministically
         /// rather than holding or releasing on float noise.

@@ -10,7 +10,7 @@ namespace KhaozEngine.Tests.Locomotion;
 // A WALL CONTACT KEEPS ITS ALONG-FACE TRAVEL ON OPEN TERRAIN (#498, 17.32.0). Eighth round of the steep-terrain
 // chain, and like #475 and #486 it comes from a playtest rather than an exploit sweep.
 //
-// WHAT WAS REPORTED. Walking SIDEWAYS along a slope on Ruinborne, pressed lightly against it, stops the character
+// WHAT WAS REPORTED. Walking SIDEWAYS along a slope on the reference consumer, pressed lightly against it, stops the character
 // dead. Not a stutter: the trace is binary (full commanded speed or exactly nothing) and once it stops the geometry
 // under it is unchanged, so the next tick refuses the same move for the same reason forever. Measured on the real
 // island heightfield at engine 17.31.0: 32 of 63 (site, heading) pairs kept under 90 percent of their commanded

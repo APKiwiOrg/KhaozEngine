@@ -1,4 +1,4 @@
-# Ruinborne - Player Changelog
+# Consumer Game - Player Changelog
 
 ---
 
@@ -179,7 +179,7 @@
 ### Build 0.3.1 (Alpha 001)
 
 - **New**
-  - You can swim now. Wade in and the water slows you with depth; past chest deep you switch to a
+  - You can swim now. Wade in and the water slows you with depth, past chest deep you switch to a
     proper surface swim, treading in place or stroking forward. Shallow water still lets you hop out.
     Your `sword` sheathes itself while you swim, and other players see you swimming too.
   - Updates now show up in-game: a themed popup tells you when a new build is available, shows the
@@ -188,7 +188,7 @@
 - **Minor**
   - The wade slowdown is now enforced by the server, and it eases in from ankle depth for a more
     natural feel at the shoreline.
-  - The game window now opens immediately at launch; the update check happens in the background after
+  - The game window now opens immediately at launch, the update check happens in the background after
     you connect.
 
 ---
@@ -348,7 +348,7 @@
 ### Build 0.1.80 (Alpha 001)
 
 - **New**
-  - Ruinborne now shows in your Discord status while you play (`Rich Presence`): what you're doing and how long
+  - the reference consumer now shows in your Discord status while you play (`Rich Presence`): what you're doing and how long
     you've been in. Purely cosmetic, and it does nothing if you don't run Discord. (Engine KhaozEngine 9.14.0.)
 
 ---
@@ -489,7 +489,7 @@
 ### Build 0.1.52 (Alpha 001)
 
 - **Bug**
-  - Restored the square stone house's roof collider (0.1.51's ridge fix accidentally removed its hip roof;
+  - Restored the square stone house's roof collider (0.1.51's ridge fix accidentally removed its hip roof,
     the ridge lines still meet cleanly everywhere).
 
 ---
@@ -586,7 +586,7 @@
 ### Build 0.1.42 (Alpha 001)
 
 - **Minor**
-  - The game window now shows the Ruinborne icon in the title bar and taskbar (Windows and Linux). macOS keeps using the app bundle icon.
+  - The game window now shows the reference consumer icon in the title bar and taskbar (Windows and Linux). macOS keeps using the app bundle icon.
 
 ---
 
@@ -596,7 +596,7 @@
 
 - **Minor**
   - Thinned out the big round dark-green bushes (down to about a tenth as many). The grass, ferns and other
-    ground cover are unchanged; only that one bushy plant is rarer now. Still purely visual.
+    ground cover are unchanged, only that one bushy plant is rarer now. Still purely visual.
 
 ---
 
@@ -633,7 +633,7 @@
 
 - **Bug**
   - Smoother other players. Remote players used to step/teleport a little as they walked (their position updated
-    only at the server's tick rate); they now glide smoothly between updates, matching how their animation already
+    only at the server's tick rate), they now glide smoothly between updates, matching how their animation already
     looked. Your own character was already smooth. (Engine KhaozEngine 7.70.0.)
 
 ---
@@ -653,7 +653,7 @@
 ### Build 0.1.15 (Alpha 001)
 
 - **Minor**
-  - Under the hood: your saved access token now lives next to the rest of Ruinborne's app data, under the same
+  - Under the hood: your saved access token now lives next to the rest of the reference consumer's app data, under the same
     shared folder the other games use, instead of its own separate folder. One-time effect: after this update you
     may be asked to paste your token once more, then it's remembered again as before.
 
@@ -663,7 +663,7 @@
 
 - **Bug**
   - Rocks are grey again. The scattered rocks rendered with an olive/green tint (a bad colour baked into the
-    rock art, left over from how the meshes were imported); they're now a neutral stone grey.
+    rock art, left over from how the meshes were imported), they're now a neutral stone grey.
 
 ---
 
@@ -688,7 +688,7 @@
 ### Build 0.1.11 (Alpha 001)
 
 - **Bug**
-  - Fixed the player animation. Characters were sliding around frozen on the first frame of a pose; they now
+  - Fixed the player animation. Characters were sliding around frozen on the first frame of a pose, they now
     idle/walk/run/jump properly, for you and everyone else. (Engine KhaozEngine 7.67.0.)
 
 ---
@@ -696,9 +696,9 @@
 ### Build 0.1.10 (Alpha 001)
 
 - **New**
-  - Textured ground and mountains. The terrain used to be flat colour bands; it now renders blended
+  - Textured ground and mountains. The terrain used to be flat colour bands, it now renders blended
     grass/dirt/rock/sand/snow surface layers with normal-mapped relief, so the ground and the mountain wall
-    have texture and depth instead of a solid-colour ramp. (First-pass procedural textures; real surface art is
+    have texture and depth instead of a solid-colour ramp. (First-pass procedural textures, real surface art is
     a follow-up. Engine KhaozEngine 7.65.1.)
 
 ---
@@ -707,7 +707,7 @@
 
 - **New**
   - Players have bodies now. Everyone is a proper animated character instead of a capsule - they idle, walk, run,
-    and jump/fall, and turn to face the way they're moving. (CC0 Quaternius art; engine KhaozEngine 7.65.0.)
+    and jump/fall, and turn to face the way they're moving. (CC0 Quaternius art, engine KhaozEngine 7.65.0.)
 
 ---
 
@@ -724,7 +724,7 @@
 
 - **Bug**
   - Fixed the token screen rejecting valid tokens. Newer tokens (the ones that carry your display name) were
-    refused with "that does not look like a valid token"; they're accepted now.
+    refused with "that does not look like a valid token", they're accepted now.
 
 ---
 
@@ -732,7 +732,7 @@
 
 - **New**
   - Player names. Each player now has their name floating above their head. Your name comes from your token (mint
-    one with a name: `Ruinborne.Server mint <account> <name>`); if you don't pick a name it shows your account
+    one with a name: `Consumer.Server mint <account> <name>`), if you don't pick a name it shows your account
     name.
 - **Bug**
   - Smoother movement. Walking and jumping against the live server no longer jitters or stutters: the camera and
@@ -745,7 +745,7 @@
 - **New**
   - Real trees and rocks. The grey placeholder shapes are gone: the world is now scattered with proper pines,
     oaks, and rocks (CC0 Quaternius). Trees and rocks are solid now, you walk around them rather than through.
-  - Jump. Press `Space` to jump; you can run off a ledge and fall, and jump up onto the rocks and walk across the
+  - Jump. Press `Space` to jump, you can run off a ledge and fall, and jump up onto the rocks and walk across the
     top. (Engine KhaozEngine 7.60.0.)
 
 ---
@@ -771,9 +771,9 @@
 - **New**
   - Sign-in. First launch now asks for an alpha access token: paste the token you were sent and it is
     remembered for next time. The server verifies a signed token on connect, so your character is tied to your
-    token rather than to whoever joins first; a wrong or expired token bounces you back to re-enter.
+    token rather than to whoever joins first, a wrong or expired token bounces you back to re-enter.
 - **Minor**
-  - Cloud by default. Release (downloaded) builds connect to the live cloud server with no arguments; Debug
+  - Cloud by default. Release (downloaded) builds connect to the live cloud server with no arguments, Debug
     builds still target a local server.
 - **Bug**
   - Reconnect no longer freezes. Rejoining (or landing on a recycled player slot) used to leave you frozen on a
@@ -785,8 +785,8 @@
 
 - **New**
   - First playable slice. Bootstrapped the repo on KhaozEngine 7.48.0.
-  - Windowed client streams the Ruinborne overworld (sunken ruin flats rising to a broken mountain wall,
+  - Windowed client streams the reference consumer overworld (sunken ruin flats rising to a broken mountain wall,
     a flooded crater pool, a levelled spawn courtyard) with deterministic prop scatter (standing stones,
     broken pillars, rubble). Third-person walk: WASD, mouse-drag orbit, scroll zoom, shift run.
-  - Headless authoritative server over the same terrain; client connects via LiteNetLib on localhost and
+  - Headless authoritative server over the same terrain, client connects via LiteNetLib on localhost and
     renders a capsule per replicated player.

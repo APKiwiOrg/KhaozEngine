@@ -2,8 +2,7 @@
 
 Date: 2026-07-26. Status: complete, shipped 16.0.0.
 Issue: https://github.com/APKiwiOrg/KhaozEngine/issues/320.
-Consumer origin: https://github.com/APKiwiOrg/Ruinborne/issues/203 and
-https://github.com/APKiwiOrg/Ruinborne/issues/225, scoped in Ruinborne's
+Consumer origin: consumer reports scoped in the reference consumer's
 `docs/design/2026-07-26-airborne-momentum-engine-scope.md`.
 
 ## The gap
@@ -17,7 +16,7 @@ float speedScale = (s.Grounded ? 1f : t.AirControl) * wade * s.SpeedScale;
 ```
 
 A character in free flight therefore has no inertia. Two consequences: a mid-air `SpeedScale` change
-collapses a committed arc (Ruinborne's Quicken buff expiring at 30 m/s drops the flight to 6 m/s on
+collapses a committed arc (the reference consumer's Quicken buff expiring at 30 m/s drops the flight to 6 m/s on
 that tick), and releasing input mid-air stops horizontal motion dead.
 
 ## The model

@@ -22,7 +22,7 @@ public class StairGlideRealisticStreamTests
 {
     const float Riser = 0.30f, Tread = 0.40f;   // grade 0.75, the consumer TestStaircase scale
     const int Risers = 33;
-    const float Walk = 3f, Run = 6f;            // Ruinborne consumer tuning
+    const float Walk = 3f, Run = 6f;            // consumer tuning
 
     static MoveTuning Tuning() => MoveTuning.Default with { WalkSpeed = Walk, RunSpeed = Run, CapsuleRadius = 0.4f };
 

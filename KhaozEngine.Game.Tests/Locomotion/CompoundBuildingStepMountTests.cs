@@ -9,19 +9,19 @@ using Xunit;
 namespace KhaozEngine.Tests.Locomotion;
 
 // Regression for the 10.68.0 stair-run tangent co-pace gate (SteepFaceAhead) misfiring on COMPOUND building-step
-// geometry. On two real baked Ruinborne house proxies the entrance doorstep sits close under a wall/wing, so the
+// geometry. On two real baked consumer house proxies the entrance doorstep sits close under a wall/wing, so the
 // co-pace's forward capsule sweep hits that other hull, misclassifies the single-riser mount as a continuous stair
 // run, and throttles the load-bearing seat advance - re-embedding the footprint the monotone-mount block had just
 // committed to clear, so the walking capsule buzzes at flat height (y ~0.90) and never mounts the step. 10.67.0
 // mounted both fine. The clean inn/single-riser fixtures have a clear path behind the step, so they do not exercise
-// the compound case; these drive the real house_1/house_2 proxies at Ruinborne's tuning (walk 3, radius 0.4, 40 deg
-// slope, 1.5x placement scale) with the exact approach poses from Ruinborne's BuildingProxyScanTests.
+// the compound case. These drive the real house_1/house_2 proxies at the reference consumer's tuning (walk 3, radius 0.4, 40 deg
+// slope, 1.5x placement scale) with the exact approach poses from the reference consumer's BuildingProxyScanTests.
 public class CompoundBuildingStepMountTests
 {
     const float Dt = 1f / 60f;
-    const float Scale = 1.5f;   // the Ruinborne in-world building placement scale
+    const float Scale = 1.5f;   // the reference consumer in-world building placement scale
 
-    // Ruinborne's shared movement tuning (RuinborneWorld.MoveTuning): the engine Default with walk/run 3/6, the
+    // The reference consumer's shared movement tuning (ConsumerWorld.MoveTuning): the engine Default with walk/run 3/6, the
     // +50% jump, and the 40 deg slope gate the consumer surfaced the regression at.
     static MoveTuning Tuning => MoveTuning.Default with
     {

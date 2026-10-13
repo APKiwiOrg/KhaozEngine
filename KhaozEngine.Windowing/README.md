@@ -306,7 +306,7 @@ Windowing + input foundation for the custom MonoGame-free stack.
   and drags a held button again on the first unblocked frame. Threshold, replay and continuing `DragDelta` use
   `MouseDeltaPoints`, so they stay in window points before and during capture. The `thresholdPixels` parameter and
   `ThresholdPixels` property names remain for compatibility. `TapPosition` stays in framebuffer pixels.
-  `Advance` allocates nothing. Lifted from Ruinborne's
+  `Advance` allocates nothing. Lifted from the reference consumer's
   `RightMouseGesture`. See docs/USING-KHAOZENGINE.md.
 - `PointerTapTolerance(DistancePoints, GraceSeconds, GraceDistancePoints)` with `CatchUpLimitPoints` - the opt-in tap
   rule for `PointerGesture(button, tapTolerance)`. It judges straight-line distance from the press point (the

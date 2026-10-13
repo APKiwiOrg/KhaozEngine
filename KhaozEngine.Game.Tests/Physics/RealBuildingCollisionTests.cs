@@ -10,7 +10,7 @@ using Xunit;
 namespace KhaozEngine.Tests.Physics;
 
 /// <summary>
-/// Regression against a REAL one-sided building collision mesh (a captured Ruinborne house with eaves/overhangs,
+/// Regression against a REAL one-sided building collision mesh (a captured consumer house with eaves/overhangs,
 /// the shape from the tester screenshots). Synthetic flat-quad fixtures produce ZERO-normal tangent contacts and so do NOT
 /// reproduce the real failure - the real building pockets present ANGLED contact normals (e.g. n=(0.90,0.38,-0.20))
 /// that route a descending capsule to the plain wall-slide projection, which bled the whole downward component and
@@ -20,9 +20,9 @@ namespace KhaozEngine.Tests.Physics;
 /// </summary>
 public class RealBuildingCollisionTests
 {
-    const float Scale = 1.5f;   // RuinborneWorld.BuildingScale
-    // The live Ruinborne movement feel (MaxSlope 40deg, +50% jump height). The engine default JumpSpeed now IS
-    // that Ruinborne value (8 * sqrt(1.5), apex ~1.92m), so this only overrides the slope gate and keeps the
+    const float Scale = 1.5f;   // ConsumerWorld.BuildingScale
+    // The live consumer movement feel (MaxSlope 40deg, +50% jump height). The engine default JumpSpeed now IS
+    // that reference value (8 * sqrt(1.5), apex ~1.92m), so this only overrides the slope gate and keeps the
     // baseline jump, matching the alpha.
     static readonly MoveTuning Tuning = MoveTuning.Default with
     {
@@ -89,7 +89,7 @@ public class RealBuildingCollisionTests
     // <id>_collision.glb. The structural fix for "players get stuck on detailed building geometry": every collision
     // solid is convex, so there is always a unique shortest exit. The metric: scan a grid of stand/jump/walk spots
     // in and around the proxy and find ~0 WEDGES (a settled spot the capsule can neither walk nor jump out of),
-    // while elevated surfaces (building top, furniture) remain standable. Scaled by RuinborneWorld.BuildingScale to
+    // while elevated surfaces (building top, furniture) remain standable. Scaled by ConsumerWorld.BuildingScale to
     // match the alpha, exactly like the one-sided-mesh fixture above.
     // ---------------------------------------------------------------------------------------------------------
 

@@ -1,5 +1,7 @@
 # The auth exchange, the account store and the signing secret
 
+Consumer-prefixed paths and `c-consumer.md` citations describe an anonymized historical consumer snapshot.
+
 Status: implemented, pending release. Engine issue [#707](https://github.com/APKiwiOrg/KhaozEngine/issues/707).
 
 Implementation note: the handler reads the body before it takes a global slot, the reverse of the section 3 sketch, so
@@ -11,29 +13,29 @@ section of [USING-KHAOZENGINE.md](../USING-KHAOZENGINE.md) and the rows of
 
 ## 1. The problem and the evidence
 
-Ruinborne and Grimhollow each run a small ASP.NET Core service that trades a Discord access token for a
+The reference consumer and Grimhollow each run a small ASP.NET Core service that trades a Discord access token for a
 `SignedToken` the game server's `HmacTokenAuthenticator` verifies at the connect door. Grimhollow's R2 copied
-Ruinborne's service file for file. The engine supplies both ends (`IIdentityValidator` and `SignedToken`) but
+The reference consumer's service file for file. The engine supplies both ends (`IIdentityValidator` and `SignedToken`) but
 nothing in the middle, so each game wrote the middle itself.
 
-| Concern | Ruinborne | Grimhollow |
+| Concern | the reference consumer | Grimhollow |
 |---|---|---|
-| Secret loader | `Ruinborne.Core/Auth/HmacTokenSecret.cs:12` | `Grimhollow.Shared/GrimhollowTokenSecret.cs:27` |
-| Exchange decision | `Ruinborne.Auth/AuthExchange.cs:30` | `Grimhollow.Auth/AuthExchange.cs:57` |
-| Body cap, forwarded headers, rate limits | `Ruinborne.Auth/Program.cs:44-126` | `Grimhollow.Auth/Program.cs:16-77` |
-| Status mapping and fault ladder | `Ruinborne.Auth/Program.cs:212-298` | `Grimhollow.Auth/AuthExchangeEndpoint.cs:28-93` |
-| Trusted proxy list | `Ruinborne.Auth/Program.cs:65-71` | `Grimhollow.Auth/TrustedProxyNetworks.cs` |
-| Wire DTOs and status tokens | `Ruinborne.Core/Auth/AuthProtocol.cs` | `Grimhollow.Shared/AuthProtocol.cs` |
-| Account store contract | identity and ban members of `Ruinborne.Core/Persistence/IRuinborneStore.cs:23-40,210-213` | `Grimhollow.Persistence/AccountsStore.cs:58` |
-| Store backends | `Ruinborne.Persistence/SqlRuinborneStore.cs:41-240,422-476` plus `InMemoryRuinborneStore` | `SqliteAccountsStore.cs`, `SqlServerAccountsStore.cs` |
-| Ban seam adapter | `Ruinborne.Persistence/RelationalBanStore.cs` | `Grimhollow.Server/Admin/AccountsBanStore.cs` |
-| Dev composition | `Ruinborne.Auth/Program.cs:132-180` | `Grimhollow.Auth/AuthBoot.cs:41` |
+| Secret loader | `Consumer.Core/Auth/HmacTokenSecret.cs:12` | `Grimhollow.Shared/GrimhollowTokenSecret.cs:27` |
+| Exchange decision | `Consumer.Auth/AuthExchange.cs:30` | `Grimhollow.Auth/AuthExchange.cs:57` |
+| Body cap, forwarded headers, rate limits | `Consumer.Auth/Program.cs:44-126` | `Grimhollow.Auth/Program.cs:16-77` |
+| Status mapping and fault ladder | `Consumer.Auth/Program.cs:212-298` | `Grimhollow.Auth/AuthExchangeEndpoint.cs:28-93` |
+| Trusted proxy list | `Consumer.Auth/Program.cs:65-71` | `Grimhollow.Auth/TrustedProxyNetworks.cs` |
+| Wire DTOs and status tokens | `Consumer.Core/Auth/AuthProtocol.cs` | `Grimhollow.Shared/AuthProtocol.cs` |
+| Account store contract | identity and ban members of `Consumer.Core/Persistence/IConsumerStore.cs:23-40,210-213` | `Grimhollow.Persistence/AccountsStore.cs:58` |
+| Store backends | `Consumer.Persistence/SqlConsumerStore.cs:41-240,422-476` plus `InMemoryConsumerStore` | `SqliteAccountsStore.cs`, `SqlServerAccountsStore.cs` |
+| Ban seam adapter | `Consumer.Persistence/RelationalBanStore.cs` | `Grimhollow.Server/Admin/AccountsBanStore.cs` |
+| Dev composition | `Consumer.Auth/Program.cs:132-180` | `Grimhollow.Auth/AuthBoot.cs:41` |
 
 One correction to the issue. Only Grimhollow has the flat accounts table (four columns, since widened to
-seven) and a SQLite backend. Ruinborne's accounts live in its SSDT game schema (`account`, `account_login`
-and `ban` under `Ruinborne.Database/dbo/Tables/`), the `account_id` surrogate is a foreign key target for
+seven) and a SQLite backend. The reference consumer's accounts live in its SSDT game schema (`account`, `account_login`
+and `ban` under `Consumer.Database/dbo/Tables/`), the `account_id` surrogate is a foreign key target for
 `player_character`, and its backends are SQL Server and in-memory. That fact shapes the migration in
-section 6: Ruinborne adapts the engine seam over its own schema rather than adopting the engine tables.
+section 6: the reference consumer adapts the engine seam over its own schema rather than adopting the engine tables.
 
 ### Identical in both
 
@@ -49,7 +51,7 @@ ladder that turns transport failures, timeouts and store exceptions into the `un
 
 The engine picks one answer for each and both games converge on it.
 
-| Difference | Ruinborne | Grimhollow | Engine |
+| Difference | the reference consumer | Grimhollow | Engine |
 |---|---|---|---|
 | Validation call | `ValidateAsync`, so a Discord 5xx or 429 answers 401 and the client discards a good token | `ValidateDetailedAsync`, outage answers 503 | detailed |
 | Unavailable status code | 502 for a provider transport failure, 503 otherwise | 503 always | 503 always |
@@ -63,19 +65,19 @@ The engine picks one answer for each and both games converge on it.
 
 These stay game policy and the engine must let each game keep them.
 
-- **Subject minting.** Ruinborne mints the provider-neutral `acct:<account_id>` and links provider logins in
+- **Subject minting.** The reference consumer mints the provider-neutral `acct:<account_id>` and links provider logins in
   `account_login`. Grimhollow uses `discord:<snowflake>` as the primary key.
-- **Token claims.** Ruinborne ensures a character identity shell after admission and mints a v3 token with
+- **Token claims.** The reference consumer ensures a character identity shell after admission and mints a v3 token with
   its persistence key. Grimhollow mints v2.
-- **Ban storage and visibility.** Ruinborne keeps bans in their own table and sends the reason and expiry to
+- **Ban storage and visibility.** The reference consumer keeps bans in their own table and sends the reason and expiry to
   the banned client. Grimhollow keeps ban columns on the account row and sends neither.
-- **Account data kept.** Ruinborne stores email, status and who whitelisted the account. Grimhollow stores a
+- **Account data kept.** The reference consumer stores email, status and who whitelisted the account. Grimhollow stores a
   per-account `debug` flag.
-- **Local development.** Ruinborne has `/auth/local-profile`, `LocalDevelopmentMode` and a deep readiness
+- **Local development.** The reference consumer has `/auth/local-profile`, `LocalDevelopmentMode` and a deep readiness
   probe. Grimhollow has a local SQLite accounts file.
-- **Unconfigured start.** Ruinborne boots and reports unready. Grimhollow refuses to start when a hosted
+- **Unconfigured start.** The reference consumer boots and reports unready. Grimhollow refuses to start when a hosted
   database has no secret.
-- **Display name fallback.** Ruinborne stores null when the provider gives no name. Grimhollow stores the
+- **Display name fallback.** The reference consumer stores null when the provider gives no name. Grimhollow stores the
   provider subject. Stored rows depend on this, so it stays a policy hook.
 
 ## 2. Package layout and dependency edges
@@ -149,7 +151,7 @@ public static class SigningSecret
 The issue proposed an `ISigningSecretSource` interface. Every source both games use is a string read from
 configuration (Key Vault reaches both as an environment variable), so the shared part is the validation and
 a delegate carries the source. Key rotation is where an interface would earn its place. Owner question 8.
-The variable names stay game-owned (`RUINBORNE_TOKEN_SECRET`, `GRIMHOLLOW_TOKEN_SECRET`).
+The variable names stay game-owned (`CONSUMER_GAME_TOKEN_SECRET`, `GRIMHOLLOW_TOKEN_SECRET`).
 
 ### Wire contract (`KhaozEngine.Identity`)
 
@@ -190,7 +192,7 @@ public sealed record AccountRecord(string Subject, string? DisplayName, bool Whi
     public bool IsBanActive(DateTimeOffset now) => Ban is { } ban && ban.IsActive(now);
 }
 
-// What a verified sign-in hands the store. The STORE mints the subject: Ruinborne's acct:<id> needs its
+// What a verified sign-in hands the store. The STORE mints the subject: the reference consumer's acct:<id> needs its
 // identity column, and the engine backends mint {ProviderId}:{ProviderSubject}, which is Grimhollow's format.
 public readonly record struct AccountSignIn(
     string ProviderId, string ProviderSubject, string? DisplayName,
@@ -280,7 +282,7 @@ public interface IAuthExchangePolicy
 
 public readonly record struct SessionClaims(string DisplayName, string? PersistenceKey);
 
-// The fixed gate, public so a game's own issuer (Ruinborne's local profile) reuses the same order.
+// The fixed gate, public so a game's own issuer (the reference consumer's local profile) reuses the same order.
 public static class AuthAdmission
 {
     public static AuthExchangeOutcome Decide(AccountRecord account, DateTimeOffset now, bool requireWhitelist);
@@ -309,17 +311,17 @@ propagates. The constructor refuses a secret shorter than `SigningSecret.Minimum
 How each game plugs in:
 
 - **Validator.** Any `IIdentityValidator`, keyed by `ProviderId`. Both games pass one `DiscordTokenValidator`.
-- **Policy.** Ruinborne implements `IAuthExchangePolicy` to pass the provider name through unchanged and to
+- **Policy.** The reference consumer implements `IAuthExchangePolicy` to pass the provider name through unchanged and to
   ensure the character identity shell in `IssueClaimsAsync`, returning its persistence key. Grimhollow uses
   the defaults.
 - **Whitelist.** `whitelistOnCreate` on the store is what a new row says, so every reader of the row (the
   exchange, a join backstop, a console) agrees. `RequireWhitelist = false` is the exchange policy for an open
-  game. Ruinborne's dev bypass becomes `RequireWhitelist = false` bound to its in-memory store instance.
+  game. The reference consumer's dev bypass becomes `RequireWhitelist = false` bound to its in-memory store instance.
 - **The order is not pluggable.** Ban before whitelist is a disclosure property (a banned player never learns
   whether they were whitelisted), so a policy can add claims but cannot reorder the gate.
-- **DTO extensions.** The response is fixed. Ruinborne's ban fields ride `IncludeBanDetails`. Grimhollow's
+- **DTO extensions.** The response is fixed. The reference consumer's ban fields ride `IncludeBanDetails`. Grimhollow's
   client-only `RetryAfterSeconds` stays in its client. A game that needs a different wire maps its own route
-  over the core and the public mapping helpers below, which is also how Ruinborne keeps `/auth/local-profile`.
+  over the core and the public mapping helpers below, which is also how the reference consumer keeps `/auth/local-profile`.
 
 ### HTTP handler (`KhaozEngine.Identity.Exchange.AspNetCore`)
 
@@ -380,13 +382,13 @@ a game hands that one instance to every ban consumer: the `BanGateAuthenticator`
 `WorldServer` or `ShardedWorldServer` as `banStore:`, `TileWorldServerConfig.BanStore`, and
 `ServerAdmin(bans:)`. A `POST /ban` on `Server.Admin` therefore writes the account row, the door refuses at
 once from the cache, and the next exchange reads the same row directly. A game on this seam must not also
-wire `WorldStoreBanStore`, whose `ban:{accountId}` keys would be a second list. Ruinborne already retired
+wire `WorldStoreBanStore`, whose `ban:{accountId}` keys would be a second list. The reference consumer already retired
 those keys, and Grimhollow never used them. The `DEPENDENCY-SEAMS.md` ban row gains that sentence.
 
 **Out-of-band writes.** A console that writes SQL directly, or a second server head, changes rows the door
 cache has not seen. The exchange is unaffected because it reads the store per request. For the door,
 `AccountBanStore.LoadAsync` is an idempotent reload the host may run on a timer. Both games also re-read the
-account row at the join, Grimhollow for the ban and the whitelist and Ruinborne for the whitelist.
+account row at the join, Grimhollow for the ban and the whitelist and the reference consumer for the whitelist.
 
 **Server.Admin's account listing is a different fact.** `ServerAdmin.ListAccountsAsync` and `GET /accounts`
 enumerate `IEnumerableWorldStore` entries, which answer "who has persisted state", not "who may sign in". They
@@ -436,14 +438,14 @@ per-game list gains "name your trusted proxies".
 
 Both games adopt on their next repin, after the engine release. Nothing moves in a game repo before then.
 
-### Ruinborne
+### The reference consumer
 
-Deletes `Ruinborne.Auth/AuthExchange.cs`, the hosting, limiter, mapping and fault code in
-`Ruinborne.Auth/Program.cs`, `Ruinborne.Core/Auth/HmacTokenSecret.cs`, the three exchange types in
-`Ruinborne.Core/Auth/AuthProtocol.cs` (keeping `LocalProfileRequest` and `invalid_profile`), and
-`Ruinborne.Persistence/RelationalBanStore.cs`, with the tests that covered them.
+Deletes `Consumer.Auth/AuthExchange.cs`, the hosting, limiter, mapping and fault code in
+`Consumer.Auth/Program.cs`, `Consumer.Core/Auth/HmacTokenSecret.cs`, the three exchange types in
+`Consumer.Core/Auth/AuthProtocol.cs` (keeping `LocalProfileRequest` and `invalid_profile`), and
+`Consumer.Persistence/RelationalBanStore.cs`, with the tests that covered them.
 
-Adds `RuinborneAccountStore : IAccountStore`, an adapter over `IRuinborneStore` that maps
+Adds `ConsumerAccountStore : IAccountStore`, an adapter over `IConsumerStore` that maps
 `FindOrCreateAccountByLoginAsync` (passing the `email` claim), `GetAccountBySubjectAsync`,
 `ListAccountsAsync`, `SetWhitelistedAsync`, `GetActiveBanAsync`, `ListActiveBansAsync`, `AddBanAsync` and
 `RemoveBanAsync`, and a policy that ensures the character identity shell and returns
@@ -559,7 +561,7 @@ engine backends refuse until a surrogate-id backend exists.
 1. **Five packages or fewer?** Folding the account seam into the exchange saves one package but makes the game
    server and the admin console take the exchange and `Identity` to reach the ban adapter. Recommend the five.
 2. **Engine table layout.** Adopt Grimhollow's `accounts` layout as the engine schema, so Grimhollow migrates
-   in place and Ruinborne adapts over its own schema, or define an engine-owned table and migrate Grimhollow's
+   in place and the reference consumer adapts over its own schema, or define an engine-owned table and migrate Grimhollow's
    rows. Recommend Grimhollow's layout, with the table name configurable.
 3. **Where the wire DTOs live.** In `Identity`, client-safe, so both clients share them, or in the exchange
    package with each client keeping a copy. Recommend `Identity`.
@@ -569,7 +571,7 @@ engine backends refuse until a surrogate-id backend exists.
 6. **Account registry in `Server.Admin`.** Registered actions for list, get and whitelist, the
    `CatalogAdminActions` shape, as step 8. Recommend yes, after both games adopt, and not in the first release.
 7. **Defaults that change behaviour.** `IncludeBanDetails` off and IPv6 grouped by /64. Recommend both as
-   stated, with Ruinborne opting in to ban details.
+   stated, with the reference consumer opting in to ban details.
 8. **Key rotation.** Rotating either game's secret today invalidates every outstanding token. Recommend a
    separate issue for a verify set with one minting key, where an `ISigningSecretSource` would belong, and
    the plain loader now.

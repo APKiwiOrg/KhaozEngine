@@ -9,7 +9,7 @@ namespace KhaozEngine.Tests.Render3D
     /// <summary>
     /// Pure (device-free) coverage of the day/night mapping: the sun-arc geometry (elevation, azimuth,
     /// key-light direction), the elevation-keyed palette blend, the night handling (disc hidden, key dip,
-    /// virtual moon), and the settings write-through in <see cref="SunCycle.Apply"/>.
+    /// virtual moon), and the settings write-through in <see cref="SunCycle.Apply(in SunCycleState, PixelPostProcessSettings)"/>.
     /// </summary>
     public sealed class SunCycleTests
     {

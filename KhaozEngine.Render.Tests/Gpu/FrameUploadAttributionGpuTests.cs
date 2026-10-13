@@ -12,7 +12,7 @@ namespace KhaozEngine.Tests.Gpu
     /// <summary>
     /// What actually composes a streamed MMO frame's per-frame GPU upload, measured rather than assumed.
     /// <para>
-    /// The question this harness was built to answer: a live F1 read on a Ruinborne client reported
+    /// The question this harness was built to answer: a live F1 read on a consumer client reported
     /// <c>BufferUpdateBytes</c> at 19.3 MB per frame on a mostly-static scene (6.4k rasterized instances, 1.2k draw
     /// calls, 447 resident chunks, the player standing still), and the standing assumption was that the rigid
     /// instance stream was re-uploading it. The total alone cannot say: it is one number over four completely

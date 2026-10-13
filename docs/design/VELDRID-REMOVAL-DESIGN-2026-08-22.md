@@ -405,21 +405,21 @@ append-only because a consuming game persists the player's chosen backend, and t
 resolve to a named exception.
 
 **The consumer evidence says the exception message is the whole feature.** No consumer persists a
-`GpuBackendKind` value. Ruinborne persists its own GPU-free `GraphicsBackendSetting` by name, deliberately
+`GpuBackendKind` value. The reference consumer persists its own GPU-free `GraphicsBackendSetting` by name, deliberately
 decoupled from the engine's enum ordering, and `Sanitized()` resets an undefined value to `Automatic` on every
-load. So a stale settings file does not throw and does not corrupt. What breaks is `Ruinborne.Client` at compile
+load. So a stale settings file does not throw and does not corrupt. What breaks is `Consumer.Client` at compile
 time in one file, `Ui/SettingsMapper.cs`, plus four test files, and a compile break is the loud safe failure.
 
 **The genuinely dangerous move is the opposite one, and it is the one that looks tidy.** Repointing the member
 names at the native implementations would silently switch every Windows tester's persisted `"Direct3D11"` onto
-the native backend with no rebuild signal and no player notice, because Ruinborne's label keys are API names and
+the native backend with no rebuild signal and no player notice, because the reference consumer's label keys are API names and
 the UI text stays truthful. **The members throw. They do not forward.**
 
 One real regression path to close in the same row: `GpuDeviceContext.PreflightProvider` calls
 `GpuBackendProviders.Require(backend)` OUTSIDE the fallback catch, deliberately, because every throw out of
 there is a provider bug. A retired kind reaching that path is a hard boot crash where an unreachable preference
 self-heals today through `RecoverFallback`. **So the retired members must be rejected at selection, ahead of
-`Require`, on the path that reports `GpuBackendSource.FallbackAfterFailure`**, which is what makes Ruinborne
+`Require`, on the path that reports `GpuBackendSource.FallbackAfterFailure`**, which is what makes the reference consumer
 clear the setting and tell the player.
 
 ---
@@ -503,7 +503,7 @@ changed" would destroy the claim.
 
 ## 8. Risk register
 
-**R1, and it is the only one that can hurt a person: Ruinborne's Windows testers are the only real players this
+**R1, and it is the only one that can hurt a person: the reference consumer's Windows testers are the only real players this
 fleet has, and native Direct3D 11 has no field hours at the time of writing.** Today one hundred percent of them
 run Veldrid D3D11, because `Automatic` resolves through the OS probe to `GpuBackendKind.Direct3D11` and the
 native kinds are reachable only through `KE_GRAPHICS_BACKEND`. Step A is what changes that, and step A's soak is

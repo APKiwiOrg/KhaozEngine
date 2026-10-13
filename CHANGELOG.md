@@ -7,6 +7,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 20.34.0
 
+- Removed references to a retired consumer game from docs, tests, fixtures and comments.
+
 - Physics adds the optional `IPhysicsSupportFootprint` capability, `SupportFootprintRequest`, raw members with
   axis/footprint witness roles and `SupportFootprintBounds`. Bepu owners and selected views certify the entire
   admitted foot column, both retained proposals and whole-polygon joins under one authenticated read lease.
@@ -30,17 +32,11 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   on .NET 10 arm64. SG-12 retains its time limits, with 96 local time rejections and #1334 open pending an
   owner-approved normalized hosted repeat proof. The hosted one-shot plumbing check passed. Phase 5 navigation
   and phase 6 adoption remain separate gates.
-- Render3D adds component nameplate templates beside the unchanged legacy plate API. A `NameplateTemplate` orders
-  `NameplateTextComponent`, `NameplateBadgeComponent` and `NameplateBarComponent` parts bound to `NameplateSlot`
-  keys and placed by `NameplateAttach` rules against earlier parts. A reusable `NameplateContent` supplies text,
-  badge tints, bars and a whole-plate `Opacity`. `NameplateTemplateLayout.Measure`, a template
-  `NameplatePlacement.Place` and two template `NameplateRenderer.Draw` overloads (framebuffer and
-  `IDesignViewport`) complete it, and warm draws allocate nothing. The legacy `Nameplate` and `NameplateStyle`
-  API now runs as a cached built-in template with identical draw calls. Template files, an editor and a mod
-  surface are tracked in #1378.
-- Primitives adds `AttachPoint` and `Attach` (`PointOf`, `Resolve`, `Union`) for point-to-point rect placement.
-- Render2D adds outlined text: `TextOutline` with eight-way offsets and outline-aware measurement, and the
-  `SpriteBatch.DrawStringOutlined` extension.
+- Render3D adds an opt-in physical atmosphere (`Post.Atmosphere`, off by default): a Hillaire 2020 LUT sky,
+  CPU-derived sun and moon lighting, matching water reflections and analytic height fog across terrain, models
+  and effects. Camera-aware `SunCycle.Apply` returns the physical horizon colour for water. The calibrated Earth
+  preset keeps fixed-exposure nights readable with tinted sky and ambient floors. Existing palette skies remain
+  available. Clouds, cloud shadows and stars under the atmosphere remain later phases (#1367, #1368, #1369).
 
 ## 20.33.0
 
@@ -795,7 +791,7 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   the cursor mode goes through GLFW's `SetInputMode` rather than Silk's `CursorMode` setter, which raises a GLFW
   error on macOS ([consumer contract](docs/USING-KHAOZENGINE.md#pointer-capture-setpointercaptured)).
 - New `PointerGesture(button, thresholdPixels = 4)` splits one mouse button into a tap and a drag, lifted from
-  Ruinborne's `RightMouseGesture`. Travel is path length, crossing the threshold replays the pending travel, a
+  The reference consumer's `RightMouseGesture`. Travel is path length, crossing the threshold replays the pending travel, a
   press that begins under UI or while unfocused never taps or drags, and a focus loss ends a press without a tap.
   A threshold of 0 or less drags at once and never taps, and a button still held drags again on the first
   unblocked frame. The threshold and the crossing replay are in framebuffer pixels until capture starts and window
@@ -1530,9 +1526,9 @@ design in `docs/design/AUTH-EXCHANGE-DESIGN-2026-09-23.md`).
   it is one of the two packages that reference ASP.NET Core, which `ArchitectureTests` now enforces.
 - `POST /admin/unban` answers 400 without echoing the subject when an `AccountBanStore` refuses an unknown subject,
   the same as `POST /admin/ban`.
-- Game adoption: [Ruinborne#553](https://github.com/APKiwiOrg/Ruinborne/issues/553) and
+- Game adoption: consumer report and
   [Grimhollow#334](https://github.com/APKiwiOrg/Grimhollow/issues/334). The design review also found game-side
-  hardening items, filed as [Ruinborne#550](https://github.com/APKiwiOrg/Ruinborne/issues/550) and
+  hardening items, filed as consumer report and
   [Grimhollow#324](https://github.com/APKiwiOrg/Grimhollow/issues/324).
 
 **Water glint and whitecaps.**
@@ -1553,7 +1549,7 @@ design in `docs/design/AUTH-EXCHANGE-DESIGN-2026-09-23.md`).
   percent the per-pixel fold alone gives. `WaterMath.WhitecapFoldAttenuation` is the CPU mirror. FFT-mode foam is
   unchanged.
 - **What a game sees at repin.** Close-up coarse rings now show the fold's true whitecap density, which the
-  per-vertex fold undersampled. A lake tuned against the old look, Ruinborne's inland lake included, reads choppier
+  per-vertex fold undersampled. A lake tuned against the old look, the reference consumer's inland lake included, reads choppier
   and may want its whitecap settings retuned. The attenuation is keyed on the pixel footprint, so at 1080p it starts
   about twice as far away as at the golden resolution.
 - `scene3d_water` and `scene3d_water_grid_focus` were rebaked on all three families.
@@ -1646,7 +1642,7 @@ no game had adopted that unit.
   ([#376](https://github.com/APKiwiOrg/KhaozEngine/issues/376)). Steep rock, shore sand and the snow line still come
   first. The biome then moves part of the grass share those rules leave: Forest 0.30 and Marsh 0.50 to dirt,
   Mountains 0.30 to rock and 0.15 to dirt, Desert 0.80 to sand and 0.15 to dirt, Snow 0.85 to snow. It never takes
-  weight from rock, sand, snow or slope dirt. Meadow is untilted, so an all-Meadow world, Ruinborne's island
+  weight from rock, sand, snow or slope dirt. Meadow is untilted, so an all-Meadow world, the reference consumer's island
   included, bakes bit-identical weights.
 - `TerrainField.SampleBiomeWeights` and `BiomeWeights` are new: each biome's share of the same blend that shapes the
   height, summing to 1, with `Dominant` always equal to `SampleBiome`. `TerrainSplatWeights.FromBlend` bakes over
@@ -1745,8 +1741,8 @@ no game had adopted that unit.
   keeps the whole token for `ContentRefusal.TryParseMismatch` and `TryParseClientTooOld`. NetWorld recognizes the
   two by prefix and does not reference the catalog: the prefixes have one source,
   `HandshakeToken.ContentMismatchPrefix` and `ContentClientTooOldPrefix`, which `ContentRefusal` builds from.
-- At repin, a game that treated these refusals as `RejectedToken` sees the new reasons instead. Ruinborne's
-  `RuinborneConnectionSignals.IsServerRefusal` checks for `RejectedToken`, so it should add the two new members,
+- At repin, a game that treated these refusals as `RejectedToken` sees the new reasons instead. The reference consumer's
+  `ConsumerConnectionSignals.IsServerRefusal` checks for `RejectedToken`, so it should add the two new members,
   or a planned-update status can override the content refusal copy.
 
 **Skinned animation inspection and GPU goldens.**
@@ -1772,11 +1768,11 @@ no game had adopted that unit.
 - The procedural swell's normal is evaluated per pixel rather than interpolated across the surface grid
   ([#381](https://github.com/APKiwiOrg/KhaozEngine/issues/381)). Under `WaterGridMode.Clipmap` the 8 m and 16 m
   outer rings undersample the default 42 m swell, and the interpolated normal shaded them as large flat facets that
-  moved with the waves (a Ruinborne lake field report). The fragment now evaluates the Gerstner normal at its
+  moved with the waves (a consumer lake field report). The fragment now evaluates the Gerstner normal at its
   still-water position through one GLSL block both stages share, mirroring `GerstnerWaves.Evaluate` op for op. The
   displacement and the whitecap fold stay per vertex. The near field does not change: at the innermost ring's 0.5 m
   cells the interpolated normal was already within 0.03 degrees of the evaluated one. No API change, and the CPU
-  mirror math is unchanged. `WaterSwellFacetGpuTests` measures the facet signature on the Ruinborne lake setup,
+  mirror math is unchanged. `WaterSwellFacetGpuTests` measures the facet signature on reference lake setup,
   7.3 and 6.2 before, 0.9 and 1.1 after.
 - Two water issues were closed or re-scoped by measurement rather than code. FFT foam already rides the displaced
   surface, so the proposed foam gather would have counted the displacement twice
@@ -1788,10 +1784,10 @@ no game had adopted that unit.
 
 - `Scene3D.UseGpuSkinning` now defaults to `true` ([#15](https://github.com/APKiwiOrg/KhaozEngine/issues/15)). It
   shipped off because of a windowed swapchain fault on the Veldrid Metal backend, which went with Veldrid in
-  18.0.0, and Ruinborne has run GPU skinning in production since its 0.16.4. The GPU path matches the CPU path
+  18.0.0, and the reference consumer has run GPU skinning in production since its 0.16.4. The GPU path matches the CPU path
   pixel for pixel, including normal and roughness maps (a new parity row holds it there), so the change is where
   the deformation runs, not how a character looks. Set it `false` to keep CPU skinning, which stays supported and
-  can be flipped per frame. Ruinborne's `GpuSkinningOptIn` becomes redundant.
+  can be flipped per frame. The reference consumer's `GpuSkinningOptIn` becomes redundant.
 - MASK casters cut out in the cascaded shadow pass ([#15](https://github.com/APKiwiOrg/KhaozEngine/issues/15)). A
   mesh loaded with `SurfaceMaps.AlphaCutoff` and an albedo casts its silhouette rather than a solid quad, through a
   cutout depth pipeline chosen per span by the new `ShadowDepthSelection`. That pipeline culls nothing, so a
@@ -1913,7 +1909,7 @@ repins, and the notes below say what each game changes when it does.
   `SaveWriteOptions.Encode`, `AcceptLegacyPlaintext` and `TamperPolicy` keep their meaning, with the per-call default
   taken from the posture. `GameStorage.SaveEncoding` reads the posture back and `GameStorage.Encoder` still reads the
   encoder. At repin, Hardpoint, Nullwake and SpaceGame move their encoder out of the options object into
-  `SaveEncoding.Encoded(...)`, and Ruinborne's settings-only storage passes `SaveEncoding.Plaintext`.
+  `SaveEncoding.Encoded(...)`, and the reference consumer's settings-only storage passes `SaveEncoding.Plaintext`.
 
 - The two movement feel timers, `TimeSinceGrounded` and `JumpBufferRemaining`, move off `MovementState` onto a
   new built-in component `MovementOwnerState` (id 6, `MoveProtocol.MovementOwnerTypeId`) registered
@@ -1926,7 +1922,7 @@ repins, and the notes below say what each game changes when it does.
   blob from any older generation still loads: the bring-forward pass cuts the timers out of the old movement payload
   and writes them as an id-6 frame where the live writer would. `PlayerMoveState.From` takes the owner half as a
   required third argument, and `MovementState.From` no longer copies the timers (`MovementOwnerState.From` does).
-  Ruinborne reads none of the moved fields, so its repin is the wire bump alone.
+  The reference consumer reads none of the moved fields, so its repin is the wire bump alone.
 - Every `IContentIdPersistence` write compares inside the transaction that writes it
   ([#1068](https://github.com/APKiwiOrg/KhaozEngine/issues/1068),
   [#1077](https://github.com/APKiwiOrg/KhaozEngine/issues/1077)). Two upgrade runners or two allocators on one
@@ -1944,7 +1940,7 @@ repins, and the notes below say what each game changes when it does.
   publisher that lost the version wrote its pointer after the winner had committed, so the committed version could
   name manifests that never committed. Step 9 now writes only content-addressed files, and `FileSystemPackStore`
   places them create only, keeping an object another writer placed first. That also removes the path-less "Access
-  to the path is denied" two Windows publishers hit replacing the same file. Grimhollow's and Ruinborne's
+  to the path is denied" two Windows publishers hit replacing the same file. Grimhollow's and the reference consumer's
   `ScriptedAuthoringStore` test doubles add the parameter at repin.
 
 **Save posture is now written down.**
@@ -1978,7 +1974,7 @@ repins, and the notes below say what each game changes when it does.
   The member is appended last, so no existing numeric value moves.
 - `ProtocolHandshake.WrapContentIdentity` builds the layer for a bare `NetClient`. An identity must be non-empty,
   carry no `|` and fit the handshake label limit, and the `WorldClient` constructor refuses one that does not.
-- Adopting the slot is a wire change, so a game bumps its own `ProtocolVersion` in the same release. Ruinborne's
+- Adopting the slot is a wire change, so a game bumps its own `ProtocolVersion` in the same release. The reference consumer's
   bespoke world-identity client half is the first adopter ([#677](https://github.com/APKiwiOrg/KhaozEngine/issues/677)).
   Server-side hardening of the gate is [#1071](https://github.com/APKiwiOrg/KhaozEngine/issues/1071).
 
@@ -2259,7 +2255,7 @@ repins, and the notes below say what each game changes when it does.
   container. They previously ran only through a manual leg.
 - Fixed: a map editor viewport click was quadratic in the authored placement count. The View panel's category
   filter resolved each placement's kit through an id lookup inside the pick loop, which cost about 510 ms per
-  click on the 17,281-placement Ruinborne island. `EditorPicking.Pick` gains an overload with a kit-keyed
+  click on the 17,281-placement consumer island. `EditorPicking.Pick` gains an overload with a kit-keyed
   `placementKindVisible` filter, `EditorToolController.PlacementKindVisible` carries it, and the same click now
   takes under 1 ms. A reload also dropped the category filter from picking, so a hidden category became
   clickable again. Both filters are documented as constant-time per element.
@@ -4330,7 +4326,7 @@ restarting the scene or turning render distance into gameplay authority (#397, #
   Disposal clears pending work and frees the current graph once.
 - `PropClusterRenderer` is the shared Terrain.Render3D owner for detached CPU HLOD builds, generation-safe
   scene-thread apply, retained handles, retry, invalidation, draw, unload and disposal. `Scene3DChunkSink` delegates
-  its prop clusters to it without changing existing Ruinborne placement or `PropLayer.WithHlod` wiring.
+  its prop clusters to it without changing existing consumer placement or `PropLayer.WithHlod` wiring.
 - `PropLayer.WithLodCrossfade(width)` and matching `PropRenderer` arguments add deterministic complementary LOD0
   and LOD1 coverage in both colour and shadow paths. Overlapping draw-radius and HLOD fades compose without
   restoring removed coverage. Width zero preserves the prior hard swap.
@@ -5050,7 +5046,7 @@ Wire break, for tile-netcode consumers only (#822):
 - This RENUMBERS every game component registered on the tile wire, which is a protocol break for any
   consumer whose two heads are not upgraded together. In this fleet that is Grimhollow alone, whose
   `MonsterKindTypeId` is written as `TileProtocol.FirstGameTypeId` and therefore moves from 24 to 32 the
-  moment it repins, with both its heads in one binary. Ruinborne never references `TileProtocol` and the
+  moment it repins, with both its heads in one binary. The reference consumer never references `TileProtocol` and the
   other games do not use the tile netcode at all. A consumer that hard-codes 24 rather than naming the
   constant must move it.
 
@@ -5759,7 +5755,7 @@ additive APIs ship: `TerrainLodConfig.SkirtDepthFor` (with `MinSkirtDepth` and `
 TileWorld's consumer program also lands a new Foundation package:
 
 - **`KhaozEngine.Items`**, the item container kernel and the `Stats` split applied to slots (Grimhollow's
-  SP4 R2 is the pinned consumer, Ruinborne the expected second): `ItemStack` (opaque id + count),
+  SP4 R2 is the pinned consumer, the reference consumer the expected second): `ItemStack` (opaque id + count),
   `ItemContainer` (stack-first adds against a game-supplied stackable predicate, one stack per container
   saturating at `int.MaxValue` with no shadow-stack spill, honest overflow answers, first-to-last removes,
   `Swap`, and `SetAt` as the sanitising codec door), and `ItemContainerCodec` (sparse versioned
@@ -6021,8 +6017,8 @@ a title band over a stack of selectable rows anchored at a screen point, the OSR
 everything about it that a caller can get wrong fails loudly rather than quietly: an unset `Viewport` throws in
 `Draw` instead of pinning the menu into the corner, and the measure-only constructor throws there too rather
 than rendering nothing. The overlay gains a dismiss key for the states a player may decline, plus a per-session
-cap so a persistently failing apply stops offering a retry it cannot honour, found from the Ruinborne dev-run
-spam (https://github.com/APKiwiOrg/Ruinborne/issues/464) though the player-reachable case is any install the
+cap so a persistently failing apply stops offering a retry it cannot honour, found from the reference consumer dev-run
+spam (consumer report) though the player-reachable case is any install the
 apply cannot write. Nothing existing changes: consumer wiring is unchanged, existing catalogs render exactly as
 before, and the repin costs a version number and no code.
 
@@ -6818,7 +6814,7 @@ for. BREAKING, hence the major: four
   dispatch-to-dispatch barrier call, so a dependent compute chain still pays `End` + `Submit` + a device wait
   and still needs a command list of its own, and the one-open-recording rule still refuses opening one inside
   the frame's list. Deleting the phase would have left the engine's own FFT ocean with no legal place to run on
-  a windowed frame. Who this reaches: Ruinborne, Hardpoint, SpaceGame and Nullwake all drive their frames
+  a windowed frame. Who this reaches: the reference consumer, Hardpoint, SpaceGame and Nullwake all drive their frames
   through `GameApp` / `GameApp3D`, none overrides `OnPrepareWorld` and none drives a raw `AppWindow` or a
   `Render3DSurface` directly, so the fleet needs no change either way. The one residual, decided rather than
   left to omission: a host driving a `Render3DSurface` off a raw `AppWindow.Run(onFrame)` without passing
@@ -6889,7 +6885,7 @@ for. BREAKING, hence the major: four
   [#593](https://github.com/APKiwiOrg/KhaozEngine/issues/593) and
   [#683](https://github.com/APKiwiOrg/KhaozEngine/issues/683).
 
-**Consumer note (Ruinborne, the only game that names a `GpuBackendKind`).** Its graphics-settings picker carries
+**Consumer note (the reference consumer, the only game that names a `GpuBackendKind`).** Its graphics-settings picker carries
 three incumbent rows, and they go: drop the `Metal` / `Vulkan` / `Direct3D11` rows and their label keys, and
 offer what `GpuBackendSelector.SupportedBackends()` returns, which is the three native kinds. A PERSISTED
 setting naming a retired member must be mapped or dropped in the game's own settings load, before the value
@@ -6899,18 +6895,18 @@ explicit-backend `Create*` call throws `GpuBackendRetiredException`. The backend
 
 Four more things move on the repin, beyond the picker rows:
 
-- `Ruinborne.Tests/Client/GraphicsBackendRegistrationTests.cs:149` calls `GpuBackendSelector.IncumbentFor`,
+- `Consumer.Tests/Client/GraphicsBackendRegistrationTests.cs:149` calls `GpuBackendSelector.IncumbentFor`,
   which is deleted. The replacement is `GpuBackendSelector.ProbeOS`, which is the single per-platform map now
   and is also what a failed request falls back to, so the assertion the row was making still has a home. The
   surrounding comment about the incumbent becoming the fallback target needs rewriting with it.
-- `Ruinborne.Tests/Client/MenuControllerTests.cs:109-121` asserts that
+- `Consumer.Tests/Client/MenuControllerTests.cs:109-121` asserts that
   `RequiresFrameCapWarning(Metal, Vsync, 0)` forces `DefaultFrameCapHz`. The predicate is a constant `false` on
   every backend now (the one that ever answered true was the Veldrid Metal present, and `MetalNative` was
   measured at gate 5 and throttles from vsync alone), so `MenuController.EffectiveFrameCap` becomes a
   pass-through and the test becomes "the requested cap is honoured verbatim on every backend". Keep calling the
   predicate rather than deleting the call: it stays as the question an appended backend answers, and a game
   that stops asking it will silently miss the day one answers true again.
-- `RuinborneGraphicsBackendSettings.DropUnregisteredNativePreference` is no longer needed. It exists because
+- `ConsumerGraphicsBackendSettings.DropUnregisteredNativePreference` is no longer needed. It exists because
   18.0.0 briefly made a stored preference for an unregistered native a hard throw at boot. It does not: a
   stored preference with no provider falls back to the platform default and reports `FallbackAfterFailure`,
   which is the signal the game already clears the setting on, and `AppWindow` now registers a provider for the
@@ -6918,7 +6914,7 @@ Four more things move on the repin, beyond the picker rows:
   keeping it drops a preference the engine would have honoured.
 - **The vendored `Veldrid.4.9.104` fork packages in `vendor/khaozengine` are dead weight, and worse than
   inert.** The engine pins stock `Veldrid 4.9.0` from nuget.org now, purely as `Veldrid.SPIRV`'s dependency, so
-  a stale `4.9.104` sitting in the vendored feed can shadow the restore. Ruinborne carries
+  a stale `4.9.104` sitting in the vendored feed can shadow the restore. The reference consumer carries
   `Veldrid.4.9.104.nupkg`, `Veldrid.MetalBindings.4.9.104.nupkg` and `Veldrid.OpenGLBindings.4.9.104.nupkg`
   there. `refresh-engine.sh` still stages a Veldrid fork on every refresh, which is a `game-template` change
   rather than a per-game one: https://github.com/APKiwiOrg/game-template/issues/42.
@@ -7097,7 +7093,7 @@ closed as not planned). Read those addenda before taking a green run here as evi
   an override. A game rendering `GpuBackendSource` on its own debug overlay should say the same.
 - **A game settings picker needs native rows.** `SupportedBackends()` now returns up to six kinds, and a picker
   that maps only the three incumbents will render a native default as an unknown or blank row.
-  [Ruinborne#451](https://github.com/APKiwiOrg/Ruinborne/issues/451) is exactly that: no native rows, and its
+  consumer report is exactly that: no native rows, and its
   fallback label reads "Unknown" for a native kind. Its adopt of this release has to fix both. The other games
   pin 15.0.0 and are unaffected until they repin.
 - Golden families are UNCHANGED. Each native kind is a guest in its incumbent's family, so a run on the new
@@ -7247,7 +7243,7 @@ one is an APPEND at ordinal 5), the golden family mapping, and both software fra
   codec and the refusal tokens are `HandshakeToken` (`Wrap` / `TryUnwrap`, `MaxLabelBytes`, plus
   `IncompatibleVersionReason` / `WorldMismatchReason` / `BannedReason` and their parsers), which
   `KhaozEngine.NetWorld.ProtocolHandshake` now DELEGATES to, so the engine has one implementation of those bytes
-  and a server that does not reference `NetWorld` can still gate its door. Promoted from Ruinborne, because two
+  and a server that does not reference `NetWorld` can still gate its door. Promoted from the reference consumer, because two
   games need the identical gate.
   - Nothing on the wire moved, and no `NetWorld` surface changed. One observable difference:
     `ProtocolHandshake.WrapToken`'s argument exception now reports the paramName `label`, the forwarded member's
@@ -7256,12 +7252,12 @@ one is an APPEND at ordinal 5), the golden family mapping, and both software fra
     version-gate body rather than two that can drift, with its name, surface and behaviour unchanged.
   - `BanGateAuthenticator` takes a `Func<string,bool>` rather than `NetWorld`'s `IBanStore`, which it cannot
     reference. That leaves the engine with two ban seams that name each other, filed as
-    [#678](https://github.com/APKiwiOrg/KhaozEngine/issues/678). Ruinborne's own gate cannot become an alias until
+    [#678](https://github.com/APKiwiOrg/KhaozEngine/issues/678). The reference consumer's own gate cannot become an alias until
     its `rb:world-mismatch:` wire token can move, filed as
     [#677](https://github.com/APKiwiOrg/KhaozEngine/issues/677). That is not "no action at the repin": with both
-    namespaces imported, `Netcode.ConnectionGate` collides by simple name with `Ruinborne.Server.Auth.ConnectionGate`,
-    so `Ruinborne.Server/Program.cs`, `Ruinborne.Tests/WorldIdentityHandshakeTests.cs` and
-    `Ruinborne.Tests/LoopbackSessionHandshake.cs` each need an alias or a qualified name (CS0104) to build against
+    namespaces imported, `Netcode.ConnectionGate` collides by simple name with `Consumer.Server.Auth.ConnectionGate`,
+    so `Consumer.Server/Program.cs`, `Consumer.Tests/WorldIdentityHandshakeTests.cs` and
+    `Consumer.Tests/LoopbackSessionHandshake.cs` each need an alias or a qualified name (CS0104) to build against
     17.40.0.
   - A `NetWorld` game reaching for `ConnectionGate` must NOT send `BuildToken`'s bytes as the connect token: they
     carry no `ke-wire:` layer, so the always-on `WireGenerationAuthenticator` refuses them before the version gate
@@ -7736,7 +7732,7 @@ quarantined as corrupt.
   geometry, for any coordinate, including one whose cell has been evicted or was never instantiated.
 - Nothing on the wire moved: the marker is unregistered, so a `Replicate` and a `Migrate` capture of a marked entity
   are byte-identical to the same entity unmarked, and no cell-blob migration was touched. Both are pinned by test.
-- Found closing https://github.com/APKiwiOrg/Ruinborne/issues/271, whose game-side workaround (a `ForgetCell` wired
+- Found closing consumer report whose game-side workaround (a `ForgetCell` wired
   to `CellEvicted`, plus a boot `DespawnEntity` sweep) is what the two seams above retire.
 
 - **`CharacterMovement.cs` split into two more domain partials** (`KhaozEngine.Locomotion`): the post-sweep settle
@@ -7856,8 +7852,8 @@ left behind.
   a server any client can evict any other by sending someone else's account id. That is the authenticator's standing
   "never the only gate on an exposed server" with a sharper edge than it had, since a forged subject used to buy a
   second session and now buys somebody else's seat. This is a BEHAVIOUR CHANGE for any game that relied on two live
-  sessions per account. Ruinborne's reconnect screen retries on every reason today, tracked at
-  https://github.com/APKiwiOrg/Ruinborne/issues/454, and will ping-pong until that lands, so the Ruinborne adopt of
+  sessions per account. The reference consumer's reconnect screen retries on every reason today, tracked at
+  consumer report and will ping-pong until that lands, so the reference consumer adopt of
   17.38.0 must carry that change. `ShardedWorldServerConfig` moved to its own file (matching
   `WorldClientConfig`) to make room for the knob. Closes #662.
 - **A load-on-join waits for the account's own outstanding WRITES** (`KhaozEngine.NetWorld`). The join gate made a
@@ -7956,7 +7952,7 @@ left behind.
     generation is being inferred, so a recorded generation is decoded rather than judged.
   - **Ambiguity needs a movement frame, so a live save can carry almost none of the risk.** The 9-to-10 hop is two
     bytes appended to `MovementState`, so a consumer whose server-owned entities carry no `MovementState` at all
-    cannot produce an ambiguous body in the 9..10 range. Ruinborne is that case (its wolves carry none), so its live
+    cannot produce an ambiguous body in the 9..10 range. The reference consumer is that case (its wolves carry none), so its live
     store has effectively no ambiguity risk from this.
 - **What this does to a save already on disk.** It is migrated in place on first load, ONE WAY. A v1, v2 or v3 blob is
   walked forward, restored, and rewritten once as a v4 blob stamped with this build's generation, after which later
@@ -8018,7 +8014,7 @@ TerrainSamplerConfig? = null)` returning a `Scene3D.TileGroundMaterialHandle`, `
 `TilesPerMetre`) and `TileGroundMaterialConfig` (`MaxMaterials` 64, `ParamsBytes`, `MiscIndex`, `MipLevelCount`,
 `BuildParams`). The splat pipeline the continuous terrain draws through could not be widened to do this: its
 layer count is a `const 5`, four weights ride in `ModelVertex.Color` and the fifth is the remainder, and a tile
-world's catalog is open ended. Folding N layers into it was weighed and rejected because it is Ruinborne's live
+world's catalog is open ended. Folding N layers into it was weighed and rejected because it is the reference consumer's live
 terrain path with goldens of its own. What IS reused is everything around the pipeline: the shared
 `LightingCommonGlsl` block, the three MRTs, the mip policy, the terrain sampler, the `ImageRgba` decode and every
 backend constraint the terrain pass already paid for (one uniform buffer per pipeline on Metal, textures sampled
@@ -8125,7 +8121,7 @@ emits (two overlapping planes double-darken, since the blend is depth-write off)
 few long ones would read the same. `Components` and `Rectangles` are public for a caller that wants the
 decomposition without the planes.
 
-**`TileWaterLooks.River`** is a new `static readonly WaterLook`, modelled on Ruinborne's inland lake. Four fields
+**`TileWaterLooks.River`** is a new `static readonly WaterLook`, modelled on the reference consumer's inland lake. Four fields
 are that look unchanged, because they say "not a sea" rather than "not big": procedural waves off the shared FFT
 ocean, zero swell, a 0.05 normal strength and no surf. Every other field differs because of SCALE. A lake is a
 couple of hundred metres across and deep, a river is a few metres wide and under a metre deep, so the sea's 1.6 m
@@ -8237,7 +8233,7 @@ of rotation about the wrong axis, which reads as a limb swinging in an unrelated
 further the rest pose is from identity. A joint whose reference is identity is unaffected, and every additive
 translation and scale offset is unaffected.
 
-**Nothing in the fleet moves on this release.** Ruinborne is the only game on `LayeredAnimator` and it drives every
+**Nothing in the fleet moves on this release.** The reference consumer is the only game on `LayeredAnimator` and it drives every
 layer through `AnimatedCharacter.PlayAction` in its default `LayerMode.Override` (the swing, the arm hold, the NPC
 bite), so it has no additive layer to change. Hardpoint, Nullwake and SpaceGame do not use the layer stack at all.
 No golden moves either: no GPU test in the suite touches `LayeredAnimator`, so there is nothing to rebake on any of
@@ -8459,7 +8455,7 @@ built every rejoiner's entity at the configured spawn, the next `Tick` served it
 took TWO teleports on every reconnect: the reseed onto the spawn, then the restore's epoch advance. That is the
 caveat the #409 section below names as still open, and it is **resolved in this same version by this change**. It
 is also the server-side cause of the reconnect ring-wipe amplifier that the
-[Ruinborne#388](https://github.com/APKiwiOrg/Ruinborne/issues/388) investigation found on the way (the whole terrain
+consumer report investigation found on the way (the whole terrain
 ring rebuilt on every drop while the player stood still), one strand of that issue and not the issue itself:
 #388 is the Windows D3D11 frame-rate decay and stays open on its shadow-pass stall (#410).
 
@@ -8956,11 +8952,11 @@ reconnect attempt, so the next ingest reads as the session's first and calls `Cl
 reseed armed the teleport flag unconditionally. Nothing about that involves the server: a reconnect fired the
 signal with no epoch change at all, and a client on a lossy link fired it on every drop. The contract's reaction
 is expensive by design (warp the camera, run a transition, re-centre everything keyed to the player's position),
-so a consumer honouring it paid a world-scale cost for a session event that moved nobody. Ruinborne rebuilt its
+so a consumer honouring it paid a world-scale cost for a session event that moved nobody. The reference consumer rebuilt its
 whole terrain ring while the player stood still, the amplifier its
-[Ruinborne#388](https://github.com/APKiwiOrg/Ruinborne/issues/388) investigation turned up in 0.16.6 (that issue
+consumer report investigation turned up in 0.16.6 (that issue
 itself is the D3D11 frame-rate decay and is not closed by this). This also corrects the record in
-Ruinborne#341, whose trace concluded only join, respawn, self-rescue and admin teleports advance the epoch: the
+consumer report, whose trace concluded only join, respawn, self-rescue and admin teleports advance the epoch: the
 reconnect reseed path was missed.
 
 **The contract is positional now, and Reseed decides it.** `Teleported` means the local player's world position
@@ -9280,7 +9276,7 @@ engine's own serial callers do (the Sharding owner scans read `Has<Ghost>` per r
 nothing.
 
 **This BREAKS two of the four games on their next adopt, loudly and on frame one.** Nothing breaks today, because
-Hardpoint and SpaceGame both pin 15.0.0 and Ruinborne pins 17.36.1, but the adopt turns a silent skip into a thrown
+Hardpoint and SpaceGame both pin 15.0.0 and the reference consumer pins 17.36.1, but the adopt turns a silent skip into a thrown
 `StructuralChangeDuringIterationException`. Hardpoint has five statements behind two live `Entities()`
 enumerations, all in `Hardpoint.Game/BoardRenderer.cs` (`:313` TurretMotion, `:210` FacingMotion reached through
 the `orient` lambda, and `:395`/`:400`/`:407` Transform3D and MeshInstance inside `SyncRender`, which both the
@@ -9291,7 +9287,7 @@ frames down the call stack rather than in the loop body: `FireProjectileSystem.c
 `BossFireSystem.cs:26` and `TentacleSlamSystem.cs:84` through the volley spawners, `CollisionSystem.cs:180` and
 `PowerupEffectSystem.cs:105` through the kill and loot tail, `DroneSystem.cs:50`, and
 `EnemyShockwaveSystem.cs:49`. The first of those fires seconds into every run, the first time any enemy fires.
-Ruinborne and Nullwake have no `Entities()` or `ForEach` call sites at all. The per-repo evidence is filed at
+The reference consumer and Nullwake have no `Entities()` or `ForEach` call sites at all. The per-repo evidence is filed at
 https://github.com/APKiwiOrg/Hardpoint/issues/20 and https://github.com/APKiwiOrg/SpaceGame/issues/109.
 
 **Both migrations work, and picking the wrong one is its own bug.** Defer through `World.Commands` (or an
@@ -9362,7 +9358,7 @@ session. Every number is a knob on the existing `SocialPresenceOptions` (`Connec
 and re-arms a controller that had given up.
 
 **Consumer note: the games adopt this by upgrading.** A one-shot `Initialize()` at startup plus the per-frame
-`Update()` every game already calls IS the self-healing shape now. Hardpoint, Nullwake, SpaceGame and Ruinborne
+`Update()` every game already calls IS the self-healing shape now. Hardpoint, Nullwake, SpaceGame and the reference consumer
 need no code change at all, and none of their existing presence tests change behaviour. `Retry()` and the new
 state are there for a game that wants a status line or a manual reconnect, not as a migration step.
 
@@ -9576,7 +9572,7 @@ overlap, which was another nine and the whole of that leg's water failures. On t
 draw that aborted the incumbent test host under the API validation layer is attributed to one row and stood down,
 so that suite finishes armed. Away from the backends, the shadow cascade fit gains the rotation half of the texel
 quantization it has always applied to translation: it holds the sun's direction until that sun has moved a shadow
-by a texel, which takes a stationary scene under Ruinborne's daylight rate from re-recording the whole atlas on
+by a texel, which takes a stationary scene under the reference consumer's daylight rate from re-recording the whole atlas on
 every frame to re-recording on one frame in 28.6. Alongside all of that, the engine gains a new GPU-free
 `Foundation` package, `KhaozEngine.TileWorld`: the OSRS-style tile world document, its hash-checked directory file
 form, catalogs, validator, derived collision, deterministic pathfinder, lattice raycast and prefabs.
@@ -9880,7 +9876,7 @@ shipped since the fit was written.
 sun-moving rows fall to the skip floor: `rigid only, daylight sun` reads 0.035 ms mean and 1.113 ms frame median
 against 0.198 and 1.949 before, and `rigid only, 0.001 deg sun` the same, both at 0 spans and 0 draw calls where
 they previously recorded 405 and 404 on all 200 frames. A continuous 400 frame sweep puts the cadence at one
-re-fit every 28.6 frames at Ruinborne's real daylight rate and every 100 frames at a third of it, the same 0.095
+re-fit every 28.6 frames at the reference consumer's real daylight rate and every 100 frames at a third of it, the same 0.095
 to 0.1 degree threshold read two ways, so 96.5 and 99 percent of frames skip the pass entirely. That cadence
 scales with cascade 0's fitted radius and is therefore scene-specific: #410 stays open until a Windows field
 capture confirms it on the reporting machine.
@@ -12495,10 +12491,10 @@ of shader warming is filed as #607 with the crash report pinned.
 
 ### The Showcase gains a telemetry capture lever, and Metal rollout gate 4 takes its baseline and first native reading
 
-`TelemetryRecorder` was armed by Ruinborne and by nothing in this repo, which put every engine-side field reading
+`TelemetryRecorder` was armed by the reference consumer and by nothing in this repo, which put every engine-side field reading
 behind a game checkout. `KE_TELEMETRY_PATH=<file>` now arms it on the Showcase head for a whole run, streaming the
 usual JSON Lines session with the engine's own header and one raw sample row every 100 ms. Unset, nothing is armed
-and nothing is written. The arming shape is Ruinborne's (own the recorder, meter a `FrameStats` every frame,
+and nothing is written. The arming shape is the reference consumer's (own the recorder, meter a `FrameStats` every frame,
 resolve the header once at start, append raw channels on a throttle) minus the in-game arm/confirm UX, it is the
 Showcase's own type, and it widens no engine API: everything it reads is already public on `AppWindow`, and the
 GPU counters go through the existing `GpuTelemetryChannels` bridge. Because SourceLink stamps the commit onto the
@@ -13457,7 +13453,7 @@ state: the default `restartPolicy: Always` never gets there and bills forever, w
 exit 0 land on `Succeeded` and stop the meter, and still restarts a real crash. That is why the host must exit
 0 on this path and must not route a crash through it. The wake half stays per-game and is the other half of
 the feature, because a server that can stop and cannot start is an outage, not a saving:
-https://github.com/APKiwiOrg/Ruinborne/issues/441.
+consumer report
 
 14 headless tests drive it with an explicit clock: the exact boundary, one-shot firing, reset on reconnect, a
 throwing accessor never being read as empty, the disabled path, the countdown flooring at zero, and both
@@ -14739,7 +14735,7 @@ Eighth round of the steep-terrain chain, and like #475 and #486 it comes from a 
 exploit sweep. Walking SIDEWAYS along a slope while leaning lightly on it stopped a character dead, and
 stayed stopped: the trace was binary (full commanded speed or exactly nothing), and because the refusal
 returned the character to where it already was, the next tick refused the same move for the same reason
-forever. Measured on Ruinborne's island heightfield at 17.31.0, 32 of 63 (site, heading) pairs kept under
+forever. Measured on the reference consumer's island heightfield at 17.31.0, 32 of 63 (site, heading) pairs kept under
 90 percent of their commanded sideways travel and the worst kept 6 percent, with ZERO footing flips and
 zero slide ticks anywhere in the trace. The wall contact was eating the along-face travel its own
 documentation promises to leave alone.
@@ -15669,7 +15665,7 @@ refusing. Both are documented in `docs/USING-KHAOZENGINE.md` rather than left fo
 
 ### A wall contact reads its face over the bank, not over a 0.4 m facet of it (#501)
 
-Walking along a bank on Ruinborne stopped the character dead in localised sticky PLACES, and the fix for
+Walking along a bank on the reference consumer stopped the character dead in localised sticky PLACES, and the fix for
 #498 above did not touch them. That was the point of splitting them: the #498 dead stop was the anti-tunnel
 re-test refusing a projected step and it left a trace full of refusals, while about fifteen percent of the
 dead rows in the same sweep had ZERO refusals. There the projection itself was handing the ladder almost
@@ -15938,7 +15934,7 @@ Both halves of that sentence are the same oscillation, one seen at run speed and
 **What it cost**, measured over the sixty rides of the `WallContactTangentialTravelTests` bank sweep on 17.32.0
 as reviewed: 543 footing flips and 5102 airborne ticks, a slide-handover speed boost reaching 158 percent of the
 commanded along-face travel, a climb creep of 2.85e-4 m per tick, and one whole ride parked for 149 of its 150
-ticks. On Ruinborne's own census the same mechanism owned 64.6 percent of all lost tangential travel.
+ticks. On the reference consumer's own census the same mechanism owned 64.6 percent of all lost tangential travel.
 
 **The fix is one projection, and it changes what the contact RESOLVES against rather than what it admits.** The
 face still says which component the wall eats. What survives is then made LEVEL on the plane the walker is
@@ -16422,7 +16418,7 @@ their own files, unchanged apart from the new members. That file was frozen at i
 per file is the split the ratchet asks for rather than a cut at an arbitrary line. It now sits at 576, so its
 baseline entry is dropped (under the cap).
 
-Closes #485. Consumer side: https://github.com/APKiwiOrg/Ruinborne/issues/420.
+Closes #485. Consumer side: consumer report
 
 ### A footed tick takes the wall against past-ceiling ground, so a cliff toe stops being a seat (#486)
 
@@ -16916,7 +16912,7 @@ itself shipped unconditional. Setting either to 0 restores the previous model bi
 round-five section of `docs/design/PHYSICS-LOCOMOTION-DESIGN-2026-08-02.md`.
 
 **What was measured.** `MaxSlopeRadians` was a bare per-tick binary with no reference to the previous tick's answer,
-so terrain whose columns straddle it alternated walk ticks and full-gravity slide ticks: on a Ruinborne bank running
+so terrain whose columns straddle it alternated walk ticks and full-gravity slide ticks: on a consumer bank running
 40.0 to 41.8 degrees against a 40 degree gate, 43 footing flips in 330 ticks and a stall 2.73 m up a 7.6 m climb.
 Re-tuning the gate past that bank moved the identical failure onto banks peaking 0.4 and 2.8 degrees past the new
 one, because any threshold lands inside some terrain's slope distribution. Separately, a surface one degree past the
@@ -17039,8 +17035,8 @@ there is no tolerance to allow. Design reasoning in the 2026-08-03 addendum to
 No-traction ticks stop taking altitude from the ground clamp, wedge support now requires the probe ring's fall
 lines to genuinely oppose, and a footing grant a jump consumes is exported instead of vanishing. Third round of
 the steep-terrain chain (#440 jump ratchet, #442 slide model), and the first one driven by a measured repro
-rather than a hypothesis: a Ruinborne playtest climbed the authored NNE sea cliff, and a climber-bot sweep
-(Ruinborne `feature/climb-repro`, 401 of 2040 input patterns climbing past 3 m, best 20.6 m of a 21 m face)
+rather than a hypothesis: a consumer playtest climbed the authored NNE sea cliff, and a climber-bot sweep
+(the reference consumer `feature/climb-repro`, 401 of 2040 input patterns climbing past 3 m, best 20.6 m of a 21 m face)
 found the reported hypothesis wrong in the specific and the real mechanism simpler and worse.
 
 **What the repro found.** `AdvanceWallSlide` admitted ANY horizontal move whose destination column stood within
@@ -17403,7 +17399,7 @@ moved.
 
 The direction-aware slope gate measures its ascent from the LOWER of the character's feet and the ground under the
 current column, so vertical motion can no longer buy admission onto a too-steep face. This hardens the 17.26.0 gate
-and closes a Ruinborne playtest exploit. Nothing else about the rule changes.
+and closes a consumer playtest exploit. Nothing else about the rule changes.
 
 `AdvanceSlopeGated` (`KhaozEngine.Locomotion`) still blocks a move iff the destination normal reads steep AND
 `rise > max(1 mm, travel * tan(MaxSlopeRadians))`. What changes is `rise`, which was
@@ -17412,7 +17408,7 @@ and closes a Ruinborne playtest exploit. Nothing else about the rule changes.
 The feet alone were the wrong reference because a jump raises them. Near the apex a steep face's local ground sat
 level with the raised feet, the rise read as about zero, the sideways drift onto the face was admitted, the
 analytic ground clamp seated the character on the face, and the next jump repeated. A player reproduced it on
-Ruinborne's 78 degree sea cliff, gaining roughly a jump height per cycle up a face no walk can enter. It was never
+The reference consumer's 78 degree sea cliff, gaining roughly a jump height per cycle up a face no walk can enter. It was never
 jump-specific either: any airtime discounted the face the same way, so a character merely falling past one while
 steering into it was seated partway up it. The floor of the two terms cannot be raised by leaving the ground,
 because a character in the air still measures against the ground it left.
@@ -17581,7 +17577,7 @@ the grounded path, the airborne-momentum path, and the horizontal-only `Step(Vec
 a behaviour change and not an opt-in: a designed drop that previously read as an invisible wall is now walkable,
 jumpable and survivable only as far as the game's own fall rules allow. A game holding players on a plateau needs
 `WorldBounds` (the authoritative clamp) or terrain that does not present a walkable lip, not the slope gate.
-Ruinborne's `MaxSlopeRadians` of 40, tightened specifically to act as that guardrail, is worth revisiting.
+The reference consumer's `MaxSlopeRadians` of 40, tightened specifically to act as that guardrail, is worth revisiting.
 
 **The ascent allowance is a GRADIENT, not a height, and that is what makes it scale-free.** The first cut allowed a
 fixed rise (the skin width) and review found the hole: any mover whose per-tick rise stayed under it climbed an
@@ -17700,7 +17696,7 @@ The first line of every recording is now a `session` envelope, and it deliberate
 reader tells it apart from a sample row on one key in either direction:
 
 ```json
-{"session":{"v":1,"engine":"17.25.0+3f2a1c9","app":{"name":"Ruinborne","version":"0.7.3","build":"Sundered Ground"},"gpu":{"backend":"Direct3D11","backendSource":"FallbackAfterFailure","requestedBackend":"Vulkan","requestedOverride":"vulkan","adapter":"NVIDIA GeForce RTX 4070","injectedModules":["RTSSHooks64.dll"],"threading":{"driverCommandLists":false,"driverConcurrentCreates":true}},"env":{"KE_GRAPHICS_BACKEND":"vulkan"},"game":{"worldSeed":"8812345","zone":"Ashfall"}}}
+{"session":{"v":1,"engine":"17.25.0+3f2a1c9","app":{"name":"ConsumerGame","version":"0.7.3","build":"Sundered Ground"},"gpu":{"backend":"Direct3D11","backendSource":"FallbackAfterFailure","requestedBackend":"Vulkan","requestedOverride":"vulkan","adapter":"NVIDIA GeForce RTX 4070","injectedModules":["RTSSHooks64.dll"],"threading":{"driverCommandLists":false,"driverConcurrentCreates":true}},"env":{"KE_GRAPHICS_BACKEND":"vulkan"},"game":{"worldSeed":"8812345","zone":"Ashfall"}}}
 ```
 
 `session.v` is a schema integer (`TelemetrySessionHeader.SchemaVersion`, currently 1) so a future reader can
@@ -18114,7 +18110,7 @@ test cover both the main and shadow UBOs. Fixes [#408](https://github.com/APKiwi
 
   The merge counters say how much build work happened and how much was thrown away. They cannot
   say why any of it was asked for, which is the only question left when a client rebuilds chunks
-  with its player standing still ([Ruinborne#388](https://github.com/APKiwiOrg/Ruinborne/issues/388)).
+  with its player standing still (consumer report).
   One row on a consuming game's diagnostics panel now separates a ring following a moving player
   from one being wiped by something upstream of the streamer. Frame-thread counters, so plain
   adds rather than the `Interlocked` the sink's merge counters need.
@@ -18135,7 +18131,7 @@ partial box on a constant buffer.
 A reporting client's shadow and model passes were spending 12 to 17 ms each encoding a
 scene that encodes in under 1 ms on Metal, with the draw count flat. Twenty-two of those
 stalls per frame, each waiting out a fraction of however far behind the GPU had fallen.
-Field report: [Ruinborne#388](https://github.com/APKiwiOrg/Ruinborne/issues/388).
+Field report: consumer report.
 
 Each block is now packed into one contiguous image and uploaded once. The model pass's own
 UBO is exactly the block size, so it leaves the staging route entirely; the cascade buffer
@@ -18245,7 +18241,7 @@ A background chunk build that threw propagated out of the streamer's Update into
 game's frame loop and terminated the process. A win-x64 tester hit it mid-play through
 the HLOD prop weld, on a different chunk and LOD each time. Closes
 [#402](https://github.com/APKiwiOrg/KhaozEngine/issues/402), reported from
-[Ruinborne#383](https://github.com/APKiwiOrg/Ruinborne/issues/383).
+consumer report.
 
 Two halves. The weld itself was unguarded: it rebuilt triangles by looking each corner up
 in a table sized by the VERTEX count, with no check that a corner named a vertex that
@@ -18307,7 +18303,7 @@ cache to hold.
 
 ### Four measured frame-cost quick wins
 
-A frame-cost audit (Ruinborne#374) found four small, fidelity-identical engine costs: two per-frame
+A frame-cost audit (consumer report) found four small, fidelity-identical engine costs: two per-frame
 closure allocations in paths documented allocation-free, two water diagnostics numbers a consuming game
 could never read, and one GPU sync stall misattributed as draw-call cost.
 
@@ -18333,7 +18329,7 @@ keeps its exact prior ordering and output.
 Tall casters stopped shadowing the ground in a mid-distance band as the sun got low, evenings only,
 zoom sensitive, identical across render distance tiers. Two defects, both in the cascade path. Closes
 [#394](https://github.com/APKiwiOrg/KhaozEngine/issues/394), for
-[Ruinborne#364](https://github.com/APKiwiOrg/Ruinborne/issues/364).
+consumer report.
 
 **The depth pass clipped instead of clamping.** Each cascade places its light eye 2r up-light of the
 slice-sphere centre with the ortho near plane at the eye, and a caster and the ground it shades sit
@@ -18372,7 +18368,7 @@ multi-megabyte large-object allocation and dropping it on the floor. A player wa
 boundaries triggers those constantly, the large object heap does not compact, and committed heap plus
 background gen2 cost ratchet up with distance travelled and never come back down. Closes
 [#393](https://github.com/APKiwiOrg/KhaozEngine/issues/393), for
-[Ruinborne#373](https://github.com/APKiwiOrg/Ruinborne/issues/373).
+consumer report.
 
 Measured on the cluster shape that found it (41 props, 188,928 pre-weld triangles): a tier flip or ring
 change went from 34.4 MB allocated to nothing at all, because the merge no longer happens. The new
@@ -18409,10 +18405,10 @@ Both are always on and allocation-free.
 ### Particle flipbook atlases stop sampling their neighbouring cells
 
 A flipbook sprite could render fragments of the wrong atlas cell: on Windows constantly, on macOS never.
-Two independent defects, both in the sampling path, found from a Ruinborne report of dropped item icons
+Two independent defects, both in the sampling path, found from a consumer report of dropped item icons
 flickering a staff into a health potion. Design and the weighted option scoring are in
 `docs/design/FLIPBOOK-ATLAS-SAMPLING-DESIGN-2026-07-28.md`. Closes #389 and #390, for
-[Ruinborne#365](https://github.com/APKiwiOrg/Ruinborne/issues/365).
+consumer report.
 
 **The flip carrier went through the interpolator.** `ParticleRenderer.PackFlipGrid` packs columns, rows,
 quantized motion strength and the two flip bits into one 24-bit float, and the fragment shader decodes it
@@ -18465,7 +18461,7 @@ the atlas and motion textures silently swap. That is why each sheet takes its ca
 At `ShadowMode.Blob`, props (trees, rocks) had no shadow at all: blob casters were a pure per-frame
 opt-in (`Scene3D.AddShadowBlob`) and only a character renderer ever called it. Closes
 [#388](https://github.com/APKiwiOrg/KhaozEngine/issues/388), reported from
-[Ruinborne#362](https://github.com/APKiwiOrg/Ruinborne/issues/362).
+consumer report.
 
 `PropLayer.BlobRadii` (default null on every scatter, companion, and placement factory, carried
 through `WithHlod`) is the seam a consumer wires: an optional per-kit ground-footprint radius that
@@ -18484,7 +18480,7 @@ kit in.
 ### Shadows: compare before filtering, and complementary crossfade dithers
 
 Closes [#391](https://github.com/APKiwiOrg/KhaozEngine/issues/391), reported from
-[Ruinborne#364](https://github.com/APKiwiOrg/Ruinborne/issues/364).
+consumer report.
 
 - The key light's shadow atlas is now point-sampled by receivers. It is a
   manual-compare depth map, so filtering belongs after the compare: averaging
@@ -18511,7 +18507,7 @@ boundaries. `Scene3D.UnloadMesh` drained the whole device (`WaitForIdle`) every 
 mesh, and terrain streaming does that constantly: every chunk leaving the ring frees its chunk mesh
 plus every HLOD layer mesh, one full-pipeline stall each, on the frame thread. Closes
 [#99](https://github.com/APKiwiOrg/KhaozEngine/issues/99), reported from
-[Ruinborne#341](https://github.com/APKiwiOrg/Ruinborne/issues/341).
+consumer report.
 
 The drain itself was never the bug. It exists to stop a lavapipe use-after-free (Mesa runs
 submissions on its own queue thread and segfaults on a resource destroyed under it). That rule is
@@ -18566,7 +18562,7 @@ shadow, which then popped out at the hard cull radius, and across an HLOD crossf
 individual props AND the merged mesh both cast at full strength, roughly doubling shadow density.
 The 14.17.0 fade band is what unmasked it: before that, mesh and shadow popped together and read as
 one event. Closes [#287](https://github.com/APKiwiOrg/KhaozEngine/issues/287). The field report is
-[Ruinborne#344](https://github.com/APKiwiOrg/Ruinborne/issues/344): 13,661 ground-cover placements at
+consumer report: 13,661 ground-cover placements at
 a 42 m draw radius put several hundred full-strength cascade-1 shadows on a circle that follows the
 player.
 
@@ -18614,10 +18610,9 @@ single-widget gesture that never leaves the widget it began in. So there was no 
 `SlotGrid` slot and put it down on another slot, another grid, or anything else, and every game wanting an
 inventory had to hand-roll press-origin tracking, a ghost, cross-widget hit testing and drop validation.
 `GuiDragContext` is that primitive. Closes [#315](https://github.com/APKiwiOrg/KhaozEngine/issues/315).
-Consumers are [Ruinborne#295](https://github.com/APKiwiOrg/Ruinborne/issues/295) (drag a stack out of the bag
+Consumers are consumer report (drag a stack out of the bag
 to destroy it, which became the only way to recover a full bag),
-[Ruinborne#262](https://github.com/APKiwiOrg/Ruinborne/issues/262) and
-[Ruinborne#263](https://github.com/APKiwiOrg/Ruinborne/issues/263). Reasoning in
+consumer reports. Reasoning in
 [GUI-DRAG-AND-DROP-DESIGN-2026-07-28.md](docs/design/GUI-DRAG-AND-DROP-DESIGN-2026-07-28.md).
 
 The Gui layer still learns nothing about game items. A payload carries an opaque `object?` the engine only
@@ -18734,7 +18729,7 @@ consumer could move `snowLine` and nothing else, so a world with a SECOND body o
 engine could not see: the lake edge baked as grass running straight into the water, because the only sand band
 in the world was at sea level. `TerrainChunkBuilder` and `Scene3DChunkSink` now take an optional consumer
 splat rule. Closes [#373](https://github.com/APKiwiOrg/KhaozEngine/issues/373). Consumer origin is
-[Ruinborne#305](https://github.com/APKiwiOrg/Ruinborne/issues/305).
+consumer report.
 
 Same shape as 17.7.0's per-plane water look: something derived scene-wide that a world with more than one of
 the thing needs per-instance. It is equally the seam for material work generally - paths, trampled ground,
@@ -18816,7 +18811,7 @@ frame, but the look was scene-wide: `WaterRenderer.Draw` took one `WaterSettings
 one wave source, one sea state, one bathymetry binding and one foam configuration. Queue a calm lake next to an
 FftOcean sea and the lake got the ocean's swell, whitecaps and breaking surf too. Closes
 [#370](https://github.com/APKiwiOrg/KhaozEngine/issues/370). Consumer origin is
-[Ruinborne#293](https://github.com/APKiwiOrg/Ruinborne/issues/293).
+consumer report.
 
 Off by default and off is byte-identical: a plane with no look packs from the caller's own `WaterSettings`
 object exactly as before, so the `scene3d_water` golden passes unbaked.
@@ -18984,7 +18979,7 @@ re-deriving the premise.
 The map editor viewport streamed a 4-chunk (240 m) terrain ring inside a 500 m camera frustum with no
 decor ring at all, so terrain ran out 260 m short of the far clip: the ground ended on a chunk boundary
 and authored props kept drawing over black. The document-sized water plane put its own rim in shot on
-any map smaller than the far clip, reading as a rectangular slab of sea with a visible lip. Ruinborne
+any map smaller than the far clip, reading as a rectangular slab of sea with a visible lip. The reference consumer
 had already solved this on its own side by tying the four view radii together, and that idea is now an
 engine type every game and tool can read.
 
@@ -19091,7 +19086,7 @@ consumers, which changes their default vertex positions and band-limit spacing, 
 measured continuity improvement below (`0` reproduces 16.12.0's grid vertex for vertex). The Metal
 golden suite, both water goldens included, passes unchanged.
 
-Prompted by a Ruinborne playtest of 16.12.0: *"Sea should be a bit calmer around the shore, and there
+Prompted by a consumer playtest of 16.12.0: *"Sea should be a bit calmer around the shore, and there
 is no natural wave crash on the beach/rocks"*, plus *"there is a SLIGHT jump (very slight) when moving
 fast"*. Closes [#355](https://github.com/APKiwiOrg/KhaozEngine/issues/355) and
 [#348](https://github.com/APKiwiOrg/KhaozEngine/issues/348); the amplitude half of
@@ -19241,7 +19236,7 @@ comparing, so a server re-anchor produces no hard snap and no render glide.
 `DeterministicFpScope`, closing the cross-peer FP divergence #197 tracked. Closes #197.
 
 Design in `docs/design/FLOATING-ORIGIN-DESIGN-2026-07-27.md`. Resolves #337 and completes the
-engine side of the 100 km world program (https://github.com/APKiwiOrg/Ruinborne/issues/242).
+engine side of the 100 km world program (consumer report).
 
 ## 16.12.0
 
@@ -19390,7 +19385,7 @@ by the rings instead of the world.
 
 The per-cell server residency pattern (one residency per shard cell, pre-warming across handoffs)
 stays deferred as #341. Design in `docs/design/TILED-MAPDOC-AND-RESIDENCY-DESIGN-2026-07-27.md`.
-Resolves #335, for the 100 km world program (https://github.com/APKiwiOrg/Ruinborne/issues/242).
+Resolves #335, for the 100 km world program (consumer report).
 
 ## 16.9.0
 
@@ -19516,7 +19511,7 @@ at a time, and hashed without ever serializing the document.
 
 Design rationale and the two-release split (residency follows in its own release) in
 `docs/design/TILED-MAPDOC-AND-RESIDENCY-DESIGN-2026-07-27.md`. Resolves #334, for the 100 km world
-program (https://github.com/APKiwiOrg/Ruinborne/issues/242).
+program (consumer report).
 
 ## 16.6.0
 
@@ -19599,7 +19594,7 @@ screenshot.
 
 Gives the FFT ocean a sampling frame: waves can be aimed at a point so they run onshore from every azimuth
 instead of all travelling one heading, and the cascade lattices can be decorrelated and their domain bent so the
-largest cascade's tile stops reading as a repeat from a high vantage. Both come off a Ruinborne playtest of
+largest cascade's tile stops reading as a repeat from a high vantage. Both come off a consumer playtest of
 16.3.1. Everything is opt-in and every default is the exact identity, so a scene that sets none of it renders
 byte-identically to 16.4.0 and no golden was re-baked. Closes #328.
 
@@ -19675,7 +19670,7 @@ Fixes the boot screen showing two differently coloured bars at once during an in
 marquee colour track the bar fill by default instead of being a second independent knob. The determinate fraction
 fill was drawn unconditionally and the marquee was then painted on top of it, so a static fill left over from the
 previous step sat under a bouncing block in a different colour and read as two competing progress indicators in
-one track. Reported from Ruinborne's launch screen. Closes #327.
+one track. Reported from the reference consumer's launch screen. Closes #327.
 
 ### Fixed
 
@@ -19701,7 +19696,7 @@ one track. Reported from Ruinborne's launch screen. Closes #327.
   translucent marquee.
 
 A consumer that overrides only `BarFill` becomes correct with no change on its side, which is the point of the
-default. Ruinborne is exactly that case and needs no edit.
+default. The reference consumer is exactly that case and needs no edit.
 
 ## 16.3.1
 
@@ -19812,9 +19807,9 @@ Generic world pickups: a server spawns a collectible, a player walks over it, th
 player may take it, and it goes away (wire gen 7 -> 8). There was no seam for this at all, so every game
 rebuilt the same thing: spawn an entity, hand-roll a distance loop in `OnBeforeTick`, hand-roll a TTL,
 hand-roll an ownership check, register its own replicated component. Loot drops, resource nodes, health packs,
-quest objectives and capture points are all one shape. Requested by Ruinborne, where a killed enemy scatters
+quest objectives and capture points are all one shape. Requested by the reference consumer, where a killed enemy scatters
 walk-over loot orbs. Closes #303. Consumer scope:
-`Ruinborne/docs/design/2026-07-26-world-pickups-engine-scope.md`.
+`ConsumerGame/docs/design/2026-07-26-world-pickups-engine-scope.md`.
 
 ### Breaking
 
@@ -19892,9 +19887,9 @@ walk-over loot orbs. Closes #303. Consumer scope:
 ## 16.1.0
 
 `SlotGrid` gains a count formatter and a fallback icon, so a game can format the stack count and cover an
-icon-atlas miss without abandoning the widget's built-in content painter. Requested by Ruinborne, whose
+icon-atlas miss without abandoning the widget's built-in content painter. Requested by the reference consumer, whose
 inventory panel had reimplemented `SlotGrid.DrawContent` by hand just to prefix a count with `x`. Consumer
-context: https://github.com/APKiwiOrg/Ruinborne/issues/227.
+context: consumer report
 
 ### Added
 
@@ -19924,11 +19919,11 @@ Docs: `KhaozEngine.Gui/README.md` and `docs/USING-KHAOZENGINE.md`.
 Opt-in airborne horizontal momentum: a jump travels its whole arc at the speed it launched at, through the
 authoritative step, client prediction, reconcile replay, and the anti-cheat (BREAKING API + wire gen 6 -> 7). A
 character in free flight had no inertia, so a mid-air `SpeedScale` change collapsed a committed arc and releasing
-input stopped horizontal travel dead. Requested by Ruinborne, where a Quicken buff expiring at 30 m/s dropped the
+input stopped horizontal travel dead. Requested by the reference consumer, where a Quicken buff expiring at 30 m/s dropped the
 flight to 6 m/s on that tick. Grounded motion is untouched and the feature is off by default, so every existing
 game is unchanged until it opts in. Closes #320. Design doc:
 `docs/design/AIRBORNE-MOMENTUM-DESIGN-2026-07-26.md`. Consumer scope:
-`Ruinborne/docs/design/2026-07-26-airborne-momentum-engine-scope.md`.
+`ConsumerGame/docs/design/2026-07-26-airborne-momentum-engine-scope.md`.
 
 ### Breaking
 
@@ -20200,7 +20195,7 @@ named the wrong body and cost an O(N) scan to produce. Closes #139, #141, #143, 
 Fix: the ocean stops reading as a repeating texture at distance. The ripple normal field, three fixed cosines
 since the surface was first written, becomes a generated ten-component slope spectrum, and the footprint-aware
 band-limiting that 14.24.0 applied only to the specular lobe is extended to the normal FIELD, which is where the
-moire actually came from. Reported from a Ruinborne playtest of 14.24.0: "there are 'lines' over the whole ocean
+moire actually came from. Reported from a consumer playtest of 14.24.0: "there are 'lines' over the whole ocean
 which look very textured/tiled and it looks very basic from even a slight distance. Upclose its masked."
 Closes #299.
 
@@ -20324,11 +20319,11 @@ change (the export rides no codec, so `MoveProtocol.WireProtocolVersion` stays 6
 
 Per-entity horizontal speed scale - haste, slow, snare, root - through the authoritative step, client prediction,
 reconcile replay, and the anti-cheat, so one player can move at a different speed from everyone else on the server
-(BREAKING wire gen 5 -> 6). Requested by Ruinborne for a speed-boost ability, and every KE game that wants a slow, a
+(BREAKING wire gen 5 -> 6). Requested by the reference consumer for a speed-boost ability, and every KE game that wants a slow, a
 snare or a sprint meter hit the same wall, so it is engine plumbing rather than four game workarounds. The engine
 owns the multiplier and NOT the buff: duration, stacking, what granted it and how it is balanced stay in the game,
 exactly as `Teleport` moves a player without owning any concept of why. Closes #302. Scoping doc:
-`Ruinborne/docs/design/2026-07-26-per-entity-speed-scale-engine-scope.md`.
+`ConsumerGame/docs/design/2026-07-26-per-entity-speed-scale-engine-scope.md`.
 
 - **BREAKING - wire generation 5 -> 6.** `MovementState` gains `sbyte SpeedScaleQ`, the speed multiplier quantized
   as the OFFSET FROM 1 at the fixed `MovementState.SpeedScaleQuantum` (1/16). `MovementState` is a built-in (not
@@ -20371,7 +20366,7 @@ exactly as `Teleport` moves a player without owning any concept of why. Closes #
   two heads agree bit-exactly by construction. The cost is 6.25% granularity. Wire cost is 1 byte per entity per
   snapshot. `DecodeSpeedScale` floors at 0 as defence-in-depth, so a corrupt frame can never invert travel.
 - **`MovementAnomaly.CorrectionDistance` folds the scale into `IntendedHorizontalTarget`.** Without this the
-  feature is unusable in practice rather than merely imperfect: at Ruinborne's `MaxCorrectionDistance = 0.25`
+  feature is unusable in practice rather than merely imperfect: at the reference consumer's `MaxCorrectionDistance = 0.25`
   (calibrated for ~0.2 m of run travel per 30 Hz tick) a 5x boost steps ~1 m/tick against an unscaled ~0.2 m
   intended target, so every boosted tick reads as a ~0.8 m correction and the streak fires `OnSuspiciousActivity`
   on a legitimate player within a few frames. The scale is server state and never comes from the command, so
@@ -20590,9 +20585,9 @@ differs from the design aspect. `IIsoCamera3D.WorldToScreen`, `NameplateRenderer
 pass (the documented fleet pattern) called them with the design viewport's own width/height, which
 is only correct when the window happens to be exactly the design aspect. On any other window shape
 the anchor drifted by ndc times the letterbox offset on the loose axis: zero at screen centre,
-sign-flipping across it, and reaching entity size on wide windows. Ruinborne hit it live in a
+sign-flipping across it, and reaching entity size on wide windows. The reference consumer hit it live in a
 resized window (plates swapping side beside wolves while orbiting,
-https://github.com/APKiwiOrg/Ruinborne/issues/192). Closes #294.
+consumer report). Closes #294.
 
 - **`IIsoCamera3D.WorldToScreen(Vector3 world, IDesignViewport designViewport, out Vector2
   designPixel)`, a new default interface member (no implementor breaks).** Remaps the projected NDC
@@ -20623,7 +20618,7 @@ https://github.com/APKiwiOrg/Ruinborne/issues/192). Closes #294.
 
 Feature: the water surface stops tiling. Its two axis-aligned sine octaves are replaced by a domain-warped
 three-layer field at mutually irrational frequencies, the fine layers now fade with camera distance, and the
-body colour blends toward a shallow tint as the seabed rises to meet the surface. Reported from a Ruinborne
+body colour blends toward a shallow tint as the seabed rises to meet the surface. Reported from a consumer
 playtest, where an island world made water a large visible surface for the first time and the shader's
 simplicity showed as a checkerboard repeat at distance. Closes #278.
 
@@ -20691,7 +20686,7 @@ Fix: nameplates and world labels no longer lean sideways off an off-centre entit
   world-vertical offset (the head-height float) projects screen-vertically only when the entity sits on
   the camera's central vertical plane, so an off-centre entity's plate leaned horizontally toward or away
   from it (measured up to 0.54x of a wolf's apparent height at ordinary look-down pitches), and the lean
-  flipped side as the camera orbited past the entity's centre plane. Reported by Ruinborne from its
+  flipped side as the camera orbited past the entity's centre plane. Reported by the reference consumer from its
   0.10.10 tier-adoption playtest. The new internal `NameplateAnchorProjection.Project` composes the anchor
   from two projections instead: the body column (`worldPos` plus only the lateral X/Z part of the offset)
   drives screen X, and the head point (`worldPos` plus the full offset) drives screen Y, so the plate now
@@ -20708,8 +20703,8 @@ Fix: nameplates and world labels no longer lean sideways off an off-centre entit
 ## 14.21.0
 
 Feature: nameplates gain presentation tiers, so a crowd of nearby entities does not draw a stack of full
-plates the player never reads. Companion to 14.19.0's edge-aware placement. Requested by Ruinborne
-(https://github.com/APKiwiOrg/Ruinborne/issues/188). Closes #291.
+plates the player never reads. Companion to 14.19.0's edge-aware placement. Requested by the reference consumer
+(consumer report). Closes #291.
 
 - **`NameplateTier` (KhaozEngine.Render3D), a new public enum.** `Hidden` (draw nothing), `Text` (name
   only, panel-less), `Full` (the whole plate: panel, title, bars).
@@ -20782,7 +20777,7 @@ with the full LOD/HLOD arc instead of hand-drawn whole-zone draw lists. Closes #
 
 Feature: nameplates gain opt-in edge-aware placement so a close-up look-up at a tall target no longer
 runs the plate off the top of the screen. A projected anchor near the viewport top previously had no
-style knob to pull the plate back on-screen. Requested by Ruinborne on a 2.2m NPC. Closes #289.
+style knob to pull the plate back on-screen. Requested by the reference consumer on a 2.2m NPC. Closes #289.
 
 - **`NameplateEdgeBehavior` (KhaozEngine.Render3D), a new public enum.** `None` (value 0, the default) is
   today's unclamped placement, byte-identical for every existing caller. `Clamp` clamps the plate into
@@ -20988,7 +20983,7 @@ phase, #271).
   drift apart on how a dab's writes become tiles. `TerrainSculptRegion` is the new headless region-scale
   core (`ComputeFlattenRegion`, `SelectClearTiles`), GPU-free and document-free like `TerrainSculptBrush`.
 - Every verb is no-op-safe (never dirties the session when nothing changes) and registered in the verb
-  inventory (73 tools total, up from 69). Ruinborne repin and the first valley sculpt pass are tracked
+  inventory (73 tools total, up from 69). The reference consumer repin and the first valley sculpt pass are tracked
   separately by the program issue's game-side follow-up; T3 closes #271 on the engine side.
 
 ## 14.14.0
@@ -21017,7 +21012,7 @@ Feature: the map editor gains a terrain-sculpt toolbar mode with raise/lower/smo
   existing `ViewportWorld.PartialRebuild` dirty-region path) rather than the whole world.
 - **T1 authoring API (KhaozEngine.MapDoc).** `MapTerrainOverrides.PutTile` is now public and a new
   `RemoveTile(tileX, tileZ)` drops a tile, so the stroke command can restore or remove whole tiles on undo.
-- Ships with no `sculpt_*` MCP verbs yet: T3 adds the verbs and the Ruinborne adoption. See
+- Ships with no `sculpt_*` MCP verbs yet: T3 adds the verbs and the reference consumer adoption. See
   `docs/design/TERRAIN-SCULPT-LAYER-DESIGN.md`.
 
 ## 14.13.0
@@ -21049,7 +21044,7 @@ Feature: map document format v2 adds the `terrainOverrides` terrain sculpt layer
   writer refuses a tile whose world extent leaves the document bounds. Composition is pure data over a
   pure function, so the same document loaded twice yields identical heights.
 - Ships with no editor surface: the layer is MCP- and code-authorable only in T1. Editor brushes (T2)
-  and the `sculpt_*` MCP verbs plus Ruinborne adoption (T3) follow. See
+  and the `sculpt_*` MCP verbs plus the reference consumer adoption (T3) follow. See
   `docs/design/TERRAIN-SCULPT-LAYER-DESIGN.md`.
 
 ## 14.12.1
@@ -21073,7 +21068,7 @@ Fix: `PhysicsColumnProbe.Sample` no longer stacks phantom surfaces when its vert
   Verified against BepuPhysics 2.4 for box, convex hull, and compound. The scripted fake-world contract
   tests are unchanged (the fake world never produces an inside-origin hit); new headless tests against the
   real `BepuPhysicsWorld` pin the single-box, stacked-boxes, solid-deck-over-ground, and tall-solid cases.
-  Ruinborne can drop its `ProbeColumnBudget` sweep-buffer + headroom-filter workaround on the next repin.
+  The reference consumer can drop its `ProbeColumnBudget` sweep-buffer + headroom-filter workaround on the next repin.
 
 ## 14.12.0
 
@@ -21097,8 +21092,8 @@ Map editor whole-zone scatter freeze: one undoable command converts a hybrid pro
   ExclusionsRemoved, ScatterOverridesRemoved, Applied)` that never dirties the session on a no-op.
 - KESIZE note: `MapEditorScene`, `EditorToolController`, and `MutationService` became partial with
   all new code in new files, and `MapEditorScene.cs` shrank (shortcut handling relocated), with the
-  baseline ratcheted down to follow. First consumer: Ruinborne's valley freeze
-  (https://github.com/APKiwiOrg/Ruinborne/issues/170).
+  baseline ratcheted down to follow. First consumer: the reference consumer's valley freeze
+  (consumer report).
 
 ## 14.11.0
 
@@ -21141,11 +21136,11 @@ Layered overworld navigation ships: the multi-level bake for bridges, overhangs,
 
 ## 14.10.0
 
-Two consumer-handoff APIs promoted from Ruinborne, each replacing a hand-rolled copy:
+Two consumer-handoff APIs promoted from the reference consumer, each replacing a hand-rolled copy:
 
 - **`BatchedWriter<T>` (KhaozEngine.Persistence, #262).** Bounded async batch-write queue for a
-  server-side append-only log (chat, an economy ledger, admin actions), promoted from Ruinborne's
-  `Ruinborne.Server/Persistence/BatchedWriter.cs` (production since its 0.9.x line, backing three
+  server-side append-only log (chat, an economy ledger, admin actions), promoted from the reference consumer's
+  `Consumer.Server/Persistence/BatchedWriter.cs` (production since its 0.9.x line, backing three
   writers there). `Enqueue` is non-blocking and never does IO; overflow drops the OLDEST queued
   record(s), counted via `DroppedCount`. `Update(dt)`, driven by the host on its own schedule (there
   is no internal timer), drains up to `maxBatch` records on a `flushIntervalSeconds` cadence and
@@ -21154,7 +21149,7 @@ Two consumer-handoff APIs promoted from Ruinborne, each replacing a hand-rolled 
   batch; `FlushAsync()` is the shutdown-drain path (ignores the interval, drains everything queued,
   awaits every in-flight write). A `null` sink makes every member a no-op. Lives next to
   `PersistenceQueue` in `KhaozEngine.Persistence` (already in the `Foundation`/`Server` umbrellas),
-  not a new package. Ruinborne adopts on this release and deletes its local copy.
+  not a new package. The reference consumer adopts on this release and deletes its local copy.
 - **`TerrainRaycast` height-function overload (KhaozEngine.Terrain, #263).** `Raycast` gained a
   sibling overload taking a bare `Func<float, float, float> heightAt(x, z)` instead of a concrete
   `TerrainField`, for a consumer whose height source is not a `TerrainField` (a closed-form plane in
@@ -21195,8 +21190,8 @@ RNG surface (#242), and an opt-in preserve-spaces wrap mode on `TextLayout` (#24
   `StableHash.ToUnitFloat`, so a hashed value and a stream draw share ONE fold with no change to `NextFloat`'s
   observable behaviour. For deterministic procedural content keyed off ids with no shared RNG stream.
 - **`TextLayout.Wrap` opt-in `preserveSpaceRuns` (KhaozEngine.Render2D, #249).** The wrap collapsed every
-  interior space run to a single space, which silently rewrites player-authored text and cost Ruinborne's
-  chat scrollback adopt (https://github.com/APKiwiOrg/Ruinborne/issues/129). A new `bool preserveSpaceRuns`
+  interior space run to a single space, which silently rewrites player-authored text and cost the reference consumer's
+  chat scrollback adopt (consumer report). A new `bool preserveSpaceRuns`
   (default false, path bit-identical to before) keeps a space run as ONE break opportunity but re-emits it
   verbatim when no break is taken there (a break taken at the run still consumes it). The LRU memo key
   includes the mode, and `DrawWrapped` / `MeasureWrappedHeight` forward it. Unblocks the chat adopt. The
@@ -21286,7 +21281,7 @@ confirmation prompt instead of resting on a code review that does not happen in 
 ## 14.7.0
 
 A particle attractor: motes accelerate toward a moving world-space target and are absorbed on
-arrival. Unblocks the Ruinborne essence-drain kill effect (#255), the user-facing half of the
+arrival. Unblocks the reference consumer essence-drain kill effect (#255), the user-facing half of the
 skinned dissolve pass shipped in 14.4.0/14.5.0.
 
 - New public API: `ParticleAttractor` (`Target`, `Strength`, `StrengthCurve`, `KillRadius`,
@@ -21358,8 +21353,8 @@ the shared model pipeline, so a fading prop stays one instanced draw per mesh.
 ## 14.4.0
 
 Downed entry cancels in-flight one-shot actions, and the skinned dissolve is documented for death
-and despawn use. Unblocks the Ruinborne death pass
-(https://github.com/APKiwiOrg/Ruinborne/issues/120).
+and despawn use. Unblocks the reference consumer death pass
+(consumer report).
 
 - New public API: `LayeredAnimator.CancelAllActions(bool immediate = false)` cancels every
   in-flight one-shot action, gracefully fading by default or retiring instantly, with a
@@ -21551,12 +21546,12 @@ unchanged on all three backends).
 ## 14.0.0
 
 Render3D shadows (breaking removal): the orphaned light-direction quantization + temporal step-blend family
-is gone. No consumer fleet-wide ever enabled it (Ruinborne pinned the two knobs to 0/0 then un-adopted,
+is gone. No consumer fleet-wide ever enabled it (the reference consumer pinned the two knobs to 0/0 then un-adopted,
 Hardpoint/Nullwake/SpaceGame never referenced it), and the step-blend carried a structural flaw for any game
 with moving casters: the outgoing atlas is frozen at the step, so a dynamic caster that moves mid-fade ghosts,
 which makes future adoption unlikely. Dormant, it still cost a `mat4[4]` + `vec4` in every Render3D frame UBO,
 a `ShadowMapPrev` texture in every material set, a shader sampling path, the prev-atlas provisioning, and their
-tests and docs. Full record: https://github.com/APKiwiOrg/Ruinborne/issues/105 (final comment) and #227.
+tests and docs. Full record: consumer report (final comment) and #227.
 Closes #233.
 
 - **Removed public API (breaking).** `ShadowSettings.ShadowLightQuantizeDegrees` and
@@ -21581,7 +21576,7 @@ Closes #233.
   removed from inside the construction seam.
 - **Removed tests.** `ShadowStepBlendTests`, `ShadowStepBlendGpuTests`, the freeze/step `ShadowSettingsTests`
   cases, and the `QuantizeDirection` `ShadowMapMathTests`. The `UboLayoutTests` shadow-tail assertions revert
-  to the 992-byte layout. No consumer changes are needed now (none referenced the API). Ruinborne deletes its
+  to the 992-byte layout. No consumer changes are needed now (none referenced the API). The reference consumer deletes its
   two dormant `0f` lines at its next natural engine repin, where the missing fields make the deletion
   self-enforcing.
 
@@ -21738,7 +21733,7 @@ per-frame refit when the sun outruns the frame rate, so a moving-sun shadow edge
 ## 13.4.0
 
 Ground decals: the `MoltenCracks` Voronoi fill pattern and noise-eroded silhouettes (`EdgeErosion`), the
-per-pixel shader work Ruinborne's sunder ground effect commissioned. Closes #228.
+per-pixel shader work the reference consumer's sunder ground effect commissioned. Closes #228.
 
 - **`DecalFillPattern.MoltenCracks` (issue #228).** An animated Voronoi/cellular crack web in decal-local XZ:
   edge distance to the cell borders maps through a heat ramp - a thin near-white core at the border, a
@@ -21762,7 +21757,7 @@ per-pixel shader work Ruinborne's sunder ground effect commissioned. Closes #228
   bytes, locations 0..11 gap-free). Both features are strictly opt-in and zero-neutral: a decal that does not opt in
   packs zero in the new lanes (`AccentColor`/`PatternParam` pack only for `MoltenCracks`, the `VoidDim`
   precedent) and renders byte-identically - the committed decal goldens pin it.
-- **Showcase.** `MoltenCracksShowcaseGpuTests` dumps the human-review grid (plain / eroded / the Ruinborne
+- **Showcase.** `MoltenCracksShowcaseGpuTests` dumps the human-review grid (plain / eroded / the reference consumer
   sunder-beam recipe / wide cracks, plus an erosion sweep) at two effect times and at `Reduced` quality, with
   A/B guards for breathing, the cheap neighbourhood, inward-only erosion, and frame-to-frame stability.
 
@@ -21844,7 +21839,7 @@ full-screen reconnect takeover, so every networked game stops hand-rolling one. 
 - No banner ships. `Mode == Banner` means the consumer draws its own, which is deliberate: consumers
   already have good ones, and standardising the banner into the engine is a separate call.
 - Design rationale in `docs/design/RECONNECT-SCREEN-DESIGN-2026-07-18.md`. Consumer adoption is tracked
-  as APKiwiOrg/Ruinborne#108.
+  as consumer report.
 
 ## 13.1.0
 
@@ -21969,7 +21964,7 @@ it. Closes #128.
   its trigger actually fires (new internal `UpdateOverlayView.TriggeredThisFrame`), instead of the old
   `receivesInput && visible`. The trigger key/button still starts the download, but taps and keypresses now reach the
   game behind an optional prompt instead of being swallowed.
-- Behaviour fix only, no public API change. Consumers (Nullwake, Hardpoint, SpaceGame, Ruinborne) get the corrected
+- Behaviour fix only, no public API change. Consumers (Nullwake, Hardpoint, SpaceGame, the reference consumer) get the corrected
   overlay by repinning to 13.0.1, no code change required.
 
 ## 13.0.0
@@ -21978,9 +21973,9 @@ Security (breaking): `DiscordTokenValidator` now verifies the access token was m
 Discord application, closing an account-takeover vector. The validator previously called `GET /users/@me`,
 which answers for ANY application's access token and never names the issuing app, so it accepted a token
 minted for a *different* Discord app as if it were the consumer's own. A server that exchanges the resulting
-identity for a session token (Ruinborne's `/auth/exchange`) would hand an attacker a session for whichever
-victim their own "Login with Discord" app had authorized. Closes #78; unblocks the Ruinborne adopt
-(APKiwiOrg/Ruinborne#1).
+identity for a session token (the reference consumer's `/auth/exchange`) would hand an attacker a session for whichever
+victim their own "Login with Discord" app had authorized. Closes #78, unblocks the reference consumer adopt
+(consumer report).
 
 - **`DiscordTokenValidator` now validates via `GET https://discord.com/api/oauth2/@me`** (token
   introspection: returns `{ application: { id }, scopes, expires, user }`) instead of `users/@me`, and
@@ -22259,7 +22254,7 @@ Design: `docs/design/BACKGROUND-PASS-VOID-DECALS-DESIGN-2026-07-17.md`.
 
 Navigation: same-grid vertical hop links, so a standable top above the step budget but within a jump
 budget (a rock, a ledge, a crate) stops baking as an unreachable island and NPCs can jump onto and off
-it. Opt-in throughout, Ruinborne's wolves are the first consumer.
+it. Opt-in throughout, the reference consumer's wolves are the first consumer.
 
 - **`NavHopLinks.Generate(grid, stepHeight, jumpHeight, maxHopCells = 2, layer = 0)`.** Generates
   directed `NavLinkKind.Hop` links from a step-baked grid (one carrying a surface height field): for each
@@ -22332,7 +22327,7 @@ Navigation: `PathFollower` exposes the corridor it is actually following read-on
 draw or log the committed path without re-running the planner.
 
 - **`PathFollower.ActivePath` (`NavPath?`) and `PathFollower.ActiveWaypointIndex` (`int`).** A game brain
-  (Ruinborne's NPC path debug overlay is the first) that holds the engine follower could previously only
+  (the reference consumer's NPC path debug overlay is the first) that holds the engine follower could previously only
   read the single `PathFollowOutput.ActiveWaypoint` position, so visualizing the whole corridor meant
   re-running `IPathPlanner.FindPath` and risking a route that diverges from the one the follower committed
   inside its replan cooldown. `ActivePath` now returns the committed `NavPath` itself, a read-only view
@@ -23007,7 +23002,7 @@ consume a route instead of chasing in straight lines and wedging on props. Grid 
 sits behind an `IPathPlanner` seam (navmesh stays a reserved future implementation), with an engine-owned
 `PathFollower` that turns a moving goal into a per-tick steering direction and only replans when it must.
 Overworld and dungeon substrates both ship in v1. Additive minor, nothing existing changes. First consumer:
-Ruinborne wolves (game-repo adoption, out of scope here).
+The reference consumer wolves (game-repo adoption, out of scope here).
 
 - **New `KhaozEngine.Navigation` package.** A clearance-grid pathfinding stack that depends only on
   `Primitives`, `Collision`, and `Terrain`. A `NavGrid` is a uniform XZ grid of per-cell byte clearance
@@ -23354,7 +23349,7 @@ bump: additive public API only.
 
 Removed dead `Screen.InputConsumption` API and sharpened the actual input-routing contract in its place.
 Minor bump: a public enum + field are removed, but a repo-wide + fleet-wide audit (engine, samples,
-showcase, map editor, and all four consumer games - Hardpoint, Nullwake, SpaceGame, Ruinborne) found zero
+showcase, map editor, and all four consumer games - Hardpoint, Nullwake, SpaceGame, the reference consumer) found zero
 readers or writers of either, so no known consumer is affected by pinning this version.
 
 - **`KhaozEngine.Gui`: `InputConsumption` enum and `Screen.InputConsumption` field removed.** They declared
@@ -23820,7 +23815,7 @@ and a positive `FrameCapHz` still means an explicit fixed cap (0 = intentional u
 
 The boot screen now bakes its text at the device-pixel size so the title and step label are texel-crisp on HiDPI
 instead of soft with uneven edges, and it lays out in point space so the content stays centered on Retina. Reported
-as the Ruinborne boot title + "Checking for updates" label rendering "a bit wonky" (soft/blurry) on a Retina Mac,
+as the reference consumer boot title + "Checking for updates" label rendering "a bit wonky" (soft/blurry) on a Retina Mac,
 noticeably below the game's own menus.
 
 - **Root cause.** The boot text was baked once at a fixed `oversample` (never the live DPI scale) and drawn at the
@@ -24269,7 +24264,7 @@ flatten path is opt-in per material and byte-identical when a material has no te
 
 ### Gui flexibility round: ProgressBar orientation and segments, family-wide texture skinning
 
-Three additive Gui capabilities scoped by the first consumer (Ruinborne HUD: segmented cast bars,
+Three additive Gui capabilities scoped by the first consumer (the reference consumer HUD: segmented cast bars,
 charge pips, vertical resource bars, fantasy-skinned frames) but designed family-wide. Defaults
 preserve current rendering byte-for-byte, so existing consumers are untouched.
 
@@ -24450,7 +24445,7 @@ An ISOLATED step (a building doorstep, a curb, the first riser of a run before t
 
 ### Signal-driven stair glide: sim-exported climb signal replaces the render estimator (BREAKING wire gen 4 -> 5)
 
-The stair render-glide no longer ESTIMATES climb state from position deltas. The simulation now EXPORTS what it already knows - a signed step-climb rate - and every downstream consumer reads that fact instead of reconstructing it. This kills a shipped prod bug (a ballistic fall the position-delta estimator misread as a climb buried landing characters ~1.2 m under the floor for ~2 s) by construction, and it makes a remote's climb signal ride the same delayed render timeline as its position. Design: `Ruinborne/docs/design/2026-07-13-stair-glide-signal-redesign.md`.
+The stair render-glide no longer ESTIMATES climb state from position deltas. The simulation now EXPORTS what it already knows - a signed step-climb rate - and every downstream consumer reads that fact instead of reconstructing it. This kills a shipped prod bug (a ballistic fall the position-delta estimator misread as a climb buried landing characters ~1.2 m under the floor for ~2 s) by construction, and it makes a remote's climb signal ride the same delayed render timeline as its position. Design: `ConsumerGame/docs/design/2026-07-13-stair-glide-signal-redesign.md`.
 
 - **BREAKING - wire generation 4 -> 5.** `MovementState` gains `sbyte ClimbRateQ`, the signed step-climb rate quantized at a fixed `MovementState.ClimbRateQuantum` (0.05 m/s, range +/-6.35 m/s; 0 = not climbing, the flag is implicit in the rate). `MovementState` is a built-in (not length-prefixed), so `MoveProtocol.WireProtocolVersion` bumps to 5 and the always-on `WireGenerationAuthenticator` rejects a mismatched peer cleanly at connect (`IncompatibleVersion`). **Server and client must ship together.**
 - **Sim-exported signal (E1).** New `MoveState.ClimbRate` (signed m/s: + ascending a paced stair run, - descending stepped risers, 0 not on a step climb), a state OUTPUT of `CharacterMovement.Step` carried like `VerticalVelocity`. `default` is 0, byte-identical to a pre-feature state. Surfaced (decoded) on `EntityRenderState.ClimbRate` and `CharacterSample.ClimbRate` for the presentation smoother; `PlayerMoveState.From` / `MovementState.From` map it through.
@@ -24460,7 +24455,7 @@ The stair render-glide no longer ESTIMATES climb state from position deltas. The
 - **Ascent signal is the SMOOTHED ACHIEVED rise, not commanded (E4 equilibrium).** The ascent climb rate is an EWMA of the rate the capsule ACTUALLY rose this tick (`(pos.Y - prevY) / dt`, carried sim-local on new `MoveState.ClimbRateEwma`, seeded on a run's first tick and reset to 0 off a run), NOT `commanded-forward * grade`. Because the ascent forward is co-paced (throttled), the commanded rate overstates the emergent rise (a sub-cap walk commands ~2.2 m/s but climbs ~1.34; a run commands the 3.5 cap but climbs ~2.94), which parked the render-glide feed-forward/damp equilibrium `(signal - achieved) / SlopeGlideRate` ABOVE the true feet - a ~0.15 m half-riser feet-float for the whole walk-up (~0.10 m at a run) plus a matching one-frame drop when the signal cut to 0 at the crest. Feeding the ACHIEVED rate converges that offset to ~0 at BOTH walk and run by construction (measured mid-climb hover: ~0-14 mm vs ~150 mm before; crest single-frame drop: ~0 mm vs ~50 mm). DESCENT is unchanged `commanded * grade` (the descent forward is NOT throttled, so commanded already equals the achieved descent rate - descent never had the float). The EWMA is sim-local (no wire change; only `ClimbRateQ` rides the wire) and deterministic, so prediction and every remote agree. It updates only on a continuous-run tick, so a fall / jump / flat / single-riser never accumulates into it - the fall-sink stays correct by construction.
 - **Reconcile continues the ascent EWMA, does not restart it (`PlayerMoveState.From`).** The ascent EWMA (`MoveState.ClimbRateEwma`) is sim-local and does NOT ride the wire, so `ClientPrediction.Reconcile` rebuilding the local basis through `PlayerMoveState.From` used to leave it at 0. Because a pending-command replay window (a few ticks at typical RTT) is SHORTER than the EWMA time constant (tau = 1/5 s = 6 ticks), that restart left the local owner's exported `ClimbRate` reading BELOW the achieved rise for the whole climb, so the render feed-forward/damp equilibrium sat BELOW the true feet (measured render sink ~45 mm mean at walk to ~100 mm at run on a 4-tick ack window, plus a per-reconcile ripple and a spurious re-seed every reconcile). `PlayerMoveState.From` now seeds `ClimbRateEwma` from the wire's decoded rate (`MathF.Max(0f, DecodeClimbRate(ClimbRateQ))`, ascent-only because the descent signal is stateless and must not pollute the ascent average), so replay CONTINUES the average from the authoritative value (quantized to the 0.05 m/s wire step). Post-fix the local reconciled `ClimbRate` tracks the lag-free continuous stream within one wire quantum and the render is indistinguishable from lag-free (mean ~0, no sink). At a genuine run start the decoded rate is 0, so the first-tick seed still applies exactly as before. Sim-local and deterministic (no wire change). Covered by `StairGlideReconcileParityTests`.
 - **Crest ease (render).** When an ASCENT climb signal cuts to 0 while the entity is still grounded and moving (a crest onto the flat top), `ReplicatedCharacterAnimators` eases the drawn feet onto the true tread with the existing critical damp for the last sub-perceptual residual instead of a hard cut. Gated to an ascent glide ONLY (a descent's `ClimbRate == 0` between-riser flicker tick still hard-cuts and tracks the drop; a fall renders raw and never arms the ease, so the fall-sink is untouched; a mid-stair STOP hard-cuts so the feet sit on the true tread immediately). Flat ground never climbs, so it never arms - flat-ground render identity holds. Remaining known limitation: an isolated single-tick large step-down is un-windowable signal-driven (it never sinks below the true feet, but does not glide).
-- **Sharded head exports the signal (`PlayerMovementSystem`).** The single-`World` `WorldServer` keeps the full `PlayerMoveState` per slot and writes `MovementState.From(state)` each tick, so `ClimbRateQ` rode the wire there. The SHARDED head (`ShardedWorldServer` -> per-cell `PlayerMovementSystem`, the head an MMO consumer like Ruinborne runs) reconstructs a fresh `MoveState` from the `MovementState` component every tick and, before this fix, never wrote `ClimbRateQ` back nor carried the ascent EWMA - so a remote on a sharded server saw `ClimbRateQ == 0` for a WHOLE climb (no glide), and the reconcile-seed above decoded a wire 0. `PlayerMovementSystem` now carries the ascent EWMA across ticks on a new SIM-LOCAL `MovementState.ClimbRateEwma` field and writes `ClimbRateQ = QuantizeClimbRate(state.ClimbRate)` every tick. The new field is DELIBERATELY absent from the movement codec (`MoveProtocol.CreateRegistry`): it rides no wire (both heads derive it deterministically from the identical `CharacterMovement.Step`) and is not in the `ReplicationChannels.Migrate` capture, so it RESETS to 0 across a shard handoff (a few-tick re-converge transient) while the wire `ClimbRateQ` itself survives the crossing. The sharded export is now BIT-IDENTICAL to the single-`World` head (pinned within one wire quantum by `ShardedClimbSignalExportTests`). No wire change from this fix (the sim-local field rides no codec); the wire generation 4 -> 5 break above still stands. Flat ground / fall / jump stay 0 by construction.
+- **Sharded head exports the signal (`PlayerMovementSystem`).** The single-`World` `WorldServer` keeps the full `PlayerMoveState` per slot and writes `MovementState.From(state)` each tick, so `ClimbRateQ` rode the wire there. The SHARDED head (`ShardedWorldServer` -> per-cell `PlayerMovementSystem`, the head an MMO consumer like the reference consumer runs) reconstructs a fresh `MoveState` from the `MovementState` component every tick and, before this fix, never wrote `ClimbRateQ` back nor carried the ascent EWMA - so a remote on a sharded server saw `ClimbRateQ == 0` for a WHOLE climb (no glide), and the reconcile-seed above decoded a wire 0. `PlayerMovementSystem` now carries the ascent EWMA across ticks on a new SIM-LOCAL `MovementState.ClimbRateEwma` field and writes `ClimbRateQ = QuantizeClimbRate(state.ClimbRate)` every tick. The new field is DELIBERATELY absent from the movement codec (`MoveProtocol.CreateRegistry`): it rides no wire (both heads derive it deterministically from the identical `CharacterMovement.Step`) and is not in the `ReplicationChannels.Migrate` capture, so it RESETS to 0 across a shard handoff (a few-tick re-converge transient) while the wire `ClimbRateQ` itself survives the crossing. The sharded export is now BIT-IDENTICAL to the single-`World` head (pinned within one wire quantum by `ShardedClimbSignalExportTests`). No wire change from this fix (the sim-local field rides no codec), the wire generation 4 -> 5 break above still stands. Flat ground / fall / jump stay 0 by construction.
 
 ## 10.74.1
 
@@ -24696,7 +24691,7 @@ Teleport + screen-transitions hardening (follow-up to 10.65.0): every client flu
 - **Remote teleports snap the observer's interpolation (`KhaozEngine.NetWorld`, `KhaozEngine.Replication`).** `MovementState.TeleportEpoch` was consumed only by the local owner's prediction, so a remote that teleported was interpolated across the jump and observers saw it streak across the world. `WorldClient` now tracks each remote's replicated teleport epoch and, when it advances, flushes that remote's interpolation buffer to the newest sample via the new `ClientReplicationView.SnapInterpolationToNewest(netId)` - dropping the pre-teleport samples so the observer cuts (never emits an in-between position) and smooth interpolation resumes at the destination. Matches the local prediction hard-cut. No wire or server change; automatic for every consumer that interpolates remotes.
 - **`Scene3D.ClearScreenTransition` / `Transition.Reset` teardown (`KhaozEngine.Render3D`).** A disconnect or scene swap mid-transition could leave `Scene3D.ScreenTransition` assigned and never driven to `Done`, holding the overlay covering the view forever. `Scene3D.ClearScreenTransition()` detaches the overlay and drops the renderer's frozen-frame state; `Transition.Reset()` cancels an effect's state machine back to `Idle` without firing `Swapped` / `Completed`. Both headless-tested (the `Reset` timing; the scene call is renderer-side).
 
-Consumer adoption (Ruinborne and any other wiring the 10.65 transitions):
+Consumer adoption (the reference consumer and any other wiring the 10.65 transitions):
 - **Warp-first is consumer-side.** On a `LocalTeleported` signal, snap the follow camera (`FollowCamera3D.Warp`) onto the post-teleport render state BEFORE rendering the frame, so the frozen-frame capture above sees the origin view. The engine fix only makes the capture read the previous frame; the camera cut ordering is still the consumer's.
 - **`HardBlink` is now reveal-only by default.** If you relied on the old ~0.06s fade-out, pass `coverSeconds` explicitly; otherwise no change is needed and the blink is now a cleaner hard cut.
 - **`CharDissolve` is materialize-in.** Replace `new CharDissolve(dissolveOutSeconds, dissolveInSeconds, ...)` with `new CharDissolve(materializeSeconds, ...)`; there is no origin dissolve-out phase.
@@ -24717,7 +24712,7 @@ Optional explicit facing on the replicated-character animator bridge: a sample c
 A solid single riser (an inn or building doorway step) could still stall a slow walk: the paced step-up's validated-cap discriminator trusted an underfoot support fan that returned a false positive when the capped mount pose sat EMBEDDED in the riser, so it kept the smooth-stair cap instead of committing the probe's landed seat, and the mount was depenetrated straight back off the step every tick (a buzz at flat height).
 
 - **`WalkableFloorUnderFeet` rejects the embedded zero-distance floor-fan hit (`KhaozEngine.Locomotion`).** The underfoot support fan raycasts down from `SkinWidth` ABOVE the feet plane, so a genuine support surface lies at least `SkinWidth` down; a hit CLOSER than that (`hit.Distance < SkinWidth`) means the origin is embedded in solid, which Bepu reports as a degenerate zero-distance up-normal contact. Counting that as floor was the paced step-up's embedded-riser false positive: on the capped mount pose the feet sit inside a solid single riser, the fan reported supported, the validated-cap discriminator kept the smooth stair cap, and the mount was shoved back off the step every tick. The fan now requires `hit.Distance >= SkinWidth`, so an embedded pose reads UNSUPPORTED and the discriminator commits the step-up probe's already-proven landed seat (which sits over the tread, so depenetration lifts the capsule up onto the step). A solid single riser now mounts at any walk speed, monotone, with no vibrate-in-place stall, and a stair run is unaffected (its capped pose is genuinely supported on the treads it spans, well below the feet). New `InnDoorStepMountTests` and the real baked `inn_proxy.coll` fixture pin the regression.
-- **Consumer note (Ruinborne).** This is the fix for the paced step-up regression Ruinborne worked around by pinning `MaxStepClimbSpeed = 0`. With solid single risers now mounting correctly, Ruinborne can drop that override and take the paced step-up on adoption.
+- **Consumer note (the reference consumer).** This is the fix for the paced step-up regression the reference consumer worked around by pinning `MaxStepClimbSpeed = 0`. With solid single risers now mounting correctly, the reference consumer can drop that override and take the paced step-up on adoption.
 
 ## 10.66.0
 
@@ -24767,7 +24762,7 @@ Turnkey animated third-person character (`CharacterAvatar`) that composes moveme
 - **Stair climb feels like a ramp at any angle, and starts cleanly from the flat floor (`KhaozEngine.Locomotion`).** The paced step-climb (`MaxStepClimbSpeed`) capped only the vertical rise, so a step-up mount's forward teleport (up to a capsule radius) raced ahead while the vertical lagged - pulsing a fore-aft LURCH head-on, and on an off-axis approach the leftover horizontal speed leaked sideways along the tread, accumulated into the shaft wall, and WEDGED the climb. Worse, an off-axis approach into the FIRST riser from the flat floor could vibrate on the spot and never ascend. `CharacterMovement` now (a) probes the step PERPENDICULAR to the riser edge (straight up the stairs, not along the raw angled move) so a corner merely shaves the lateral like a flat-ground wall slide, and (b) caps the step-up's forward advance to the intended walk step - killing the lurch - but never below a small clearance floor, so the mount always carries the footprint onto the tread past the swept-collision depenetration pushback (capping too tightly starved that and was the vibrate). Result: uniform forward speed, no sideways push, and a reliable ascent from the flat floor at every approach angle and walk speed. Headless tests pin no head-on lurch/drift, no wedge or lateral amplification at 8/15 degrees, and a clean first-riser start from the flat floor (including the demo's 0.3 m capsule radius).
 - **Smooth stair presentation (`CharacterAvatar`, `KhaozEngine.Game.Render3D`).** Discrete stair geometry snaps the physics height a whole riser per tick (most visible descending, which drops unpaced), bumping the model and the follow camera. `CharacterAvatar` now eases its DRAW height toward the physics height at a bounded rate (`RenderHeightSmoothRate`, default 6 m/s), exposed as `RenderPosition` (physics X/Z + smoothed height) for a follow camera to target, so the model and camera glide up and down stairs. Grounded height only: a jump/fall snaps (crisp arc), horizontal is never smoothed (no input lag), and a teleport-sized jump (`RenderHeightSnapDistance`) snaps rather than crawling.
 - **Showcase demos adopt `CharacterAvatar` (`KhaozEngine.Showcase`).** `Room3D` and `RoomDungeon` drop their duplicated character glue (rig load, `IntendedMoveDirection`/`Wrap` facing, the speed-derive + animation feed, the feet-draw matrix) and drive a single `CharacterAvatar` instead, keeping the greybox-capsule fallback when the rig asset is absent, and target the follow camera at `RenderPosition` so it glides on stairs.
-- **Right-click orbits the follow camera by default (`KhaozEngine.Render3D`).** `FollowCameraController.OrbitButton` now defaults to the right mouse button (was left), matching Ruinborne and the sibling `FlyCameraController`, so every current and future camera orbits on right-drag and leaves the left button free for gameplay. Consumers that set `OrbitButton` explicitly are unaffected.
+- **Right-click orbits the follow camera by default (`KhaozEngine.Render3D`).** `FollowCameraController.OrbitButton` now defaults to the right mouse button (was left), matching the reference consumer and the sibling `FlyCameraController`, so every current and future camera orbits on right-drag and leaves the left button free for gameplay. Consumers that set `OrbitButton` explicitly are unaffected.
 - **Enclosed, roofed dungeon stairwells (`KhaozEngine.Dungeon`).** The wall pass now also walls cells flanking a stair shaft's `StairVoid` headroom column, so the stairwell is a proper enclosed tunnel a player cannot jump out of at the top, and (under `CeilingMode.Roofed`) the shaft is roofed at the upper floor's ceiling height rather than left open to the sky, while keeping head clearance for the climb. Multi-floor layout geometry changes accordingly.
 
 ## 10.61.0
@@ -24784,14 +24779,14 @@ Third-person walk feel: a camera occlusion spring-arm keeps the follow camera ou
 
 - **Camera occlusion spring-arm (`KhaozEngine.Render3D`).** `FollowCamera3D` gains opt-in occlusion: set `Occlusion` to an `IPhysicsWorld` (with optional `OcclusionRadius`, `OcclusionSkin`, `MinOcclusionDistance`) and the `Eye` getter sweeps a sphere probe from the target along the boom and pulls the eye in to the first static hit, so the camera never clips through a wall or ceiling. Off by default, so cameras that do not set it are unchanged. Wired into the Room3D and RoomDungeon Showcase demos.
 - **Default walk and sprint speed doubled (`KhaozEngine.Locomotion`, `KhaozEngine.Game.Render3D`).** `MoveTuning.Default.WalkSpeed` 3 to 6 and `RunSpeed` 6 to 12, parity'd in `CharacterController3D`, and the `LocomotionThresholds.Default` walk-to-run animation threshold moves 4.5 to 9 so the run animation still selects correctly. Every walk demo and every game using the defaults inherits the faster movement.
-- **ADOPTION NOTE (Ruinborne and any consumer using the default speeds).** Walk and sprint speed double on pin-bump. If a game wants its old feel, override `WalkSpeed`/`RunSpeed` back. Ruinborne additionally hardcodes animation clip speeds (`WalkClipSpeed = 3`, `RunClipSpeed = 6`) that must be bumped to 6 and 12 on adoption or the avatar's feet will slide. (The 10.59.0 jump adoption note still applies: drop Ruinborne's `Default.JumpSpeed * sqrt(1.5)` override, since the engine baseline now equals that value.)
+- **ADOPTION NOTE (the reference consumer and any consumer using the default speeds).** Walk and sprint speed double on pin-bump. If a game wants its old feel, override `WalkSpeed`/`RunSpeed` back. The reference consumer additionally hardcodes animation clip speeds (`WalkClipSpeed = 3`, `RunClipSpeed = 6`) that must be bumped to 6 and 12 on adoption or the avatar's feet will slide. (The 10.59.0 jump adoption note still applies: drop the reference consumer's `Default.JumpSpeed * sqrt(1.5)` override, since the engine baseline now equals that value.)
 
 ## 10.59.0
 
-Walk-demo polish: the default jump height rises to match Ruinborne (+50% apex), the Showcase dungeon demo gains real physics collision and the animated character, and the greybox kit is regenerated at the demo's larger scale.
+Walk-demo polish: the default jump height rises to match the reference consumer (+50% apex), the Showcase dungeon demo gains real physics collision and the animated character, and the greybox kit is regenerated at the demo's larger scale.
 
-- **Default jump height raised to match Ruinborne (`KhaozEngine.Locomotion`, `KhaozEngine.Game.Render3D`).** The default `MoveTuning.JumpSpeed` and `CharacterController3D.JumpSpeed` both rise from `8` to `9.79796` (= 8 * sqrt(1.5), apex ~1.28 m to ~1.92 m), matching Ruinborne's deliberate feel. Every walk demo inherits it.
-- **ADOPTION NOTE (breaking for one pattern): any consumer that expresses its jump relative to the engine baseline as `MoveTuning.Default.JumpSpeed * MathF.Sqrt(1.5f)` must DROP that multiplier when adopting this version.** Ruinborne's `RuinborneWorld.cs` does exactly this: the baseline now already equals that value, so leaving the multiplier in place double-compounds the jump to ~11.997 (apex ~2.88 m). The equivalent expression in the engine's own `RealBuildingCollisionTests` was corrected in this release.
+- **Default jump height raised to match the reference consumer (`KhaozEngine.Locomotion`, `KhaozEngine.Game.Render3D`).** The default `MoveTuning.JumpSpeed` and `CharacterController3D.JumpSpeed` both rise from `8` to `9.79796` (= 8 * sqrt(1.5), apex ~1.28 m to ~1.92 m), matching the reference consumer's deliberate feel. Every walk demo inherits it.
+- **ADOPTION NOTE (breaking for one pattern): any consumer that expresses its jump relative to the engine baseline as `MoveTuning.Default.JumpSpeed * MathF.Sqrt(1.5f)` must DROP that multiplier when adopting this version.** The reference consumer's `ConsumerWorld.cs` does exactly this: the baseline now already equals that value, so leaving the multiplier in place double-compounds the jump to ~11.997 (apex ~2.88 m). The equivalent expression in the engine's own `RealBuildingCollisionTests` was corrected in this release.
 - **Dungeon demo collision and animated character (`KhaozEngine.Showcase`).** `RoomDungeon` now registers every `DungeonStamp` static (walls, floor slabs, stair ramps, and, when roofed, ceiling slabs) with a `BepuPhysicsWorld` and drives the character through it, so the player collides with walls and climbs stairs instead of clipping. It also loads the rigged animated character (idle/walk/run/jump/fall) via Room3D's pattern, with a capsule fallback.
 - **Greybox kit regenerated at 3 m / 6 m (`KhaozEngine.Showcase`).** `tools/DungeonKitGen` is parameterized by cell size and floor height (defaults still 2 m / 4 m), and the committed Showcase kit (all pieces including the ceiling) is regenerated at the demo's 3 m / 6 m scale so stairs span floor-to-floor and the roof tiles cover full cells.
 
@@ -25097,7 +25092,7 @@ A three-part consumer-adoption batch: persistent ambient particle fields (a fade
 
 - **Ambient particle fields (`KhaozEngine.Render2D.Vfx.Particle2DSystem`).** `EmitField(in Particle2DEmitterConfig, Rect region, int count)` (+ `tint` / `exitMargin` overloads) registers a persistent field: it fills the region with particles that RESPAWN at a fresh random in-region position when they die or drift more than `exitMargin` px past the region, instead of dying, so a dust / ember / snow field holds a stable population with no re-emission pop - driven by the same `Update(dt)`. The initial fill randomizes each particle's remaining life so the field starts already-populated and mid-envelope (no synchronized fade-in). `SetFieldTint(fieldId, tint)` recolours a live field instantly (the field tint is multiplied at draw time, so a depth / biome palette change propagates immediately); `FieldCount` reports registered fields; `Clear()` now also resets fields. Previously a persistent ambient field could only be built game-side (emit-and-die pools have no respawn and only a monotonic fade-out).
 - **Trapezoid alpha envelope + size jitter (`Particle2DEmitterConfig`).** New `FadeInDuration` / `FadeOutDuration` give a fade-in / hold / fade-out alpha envelope multiplied onto the particle's colour alpha - the fade-IN a monotonic start->end colour lerp could not express - and `SizeJitter` adds per-particle +/- size spread. All three default to 0 (off), so every existing burst is byte-identical: the burst RNG draw order is preserved (a zero `SizeJitter` collapses to no draw, and burst particles still bake the tint at emit while field particles apply it live).
-- **Throttled overlay refresh (`KhaozEngine.Gui.DiagnosticsOverlay`).** `SetSectionsProvider(provider, refreshInterval)` registers a sections builder that `Update` polls on the interval (immediately on the first `Update`, then every interval seconds; interval 0 = every frame; a null provider detaches), replacing the hand-rolled 0.5s timer both Nullwake and Ruinborne wrap around `SetSections` to avoid rebuilding sections every frame. No provider set = existing `SetSections` callers unchanged; the two paths write the same field, so use one or the other.
+- **Throttled overlay refresh (`KhaozEngine.Gui.DiagnosticsOverlay`).** `SetSectionsProvider(provider, refreshInterval)` registers a sections builder that `Update` polls on the interval (immediately on the first `Update`, then every interval seconds, interval 0 = every frame, a null provider detaches), replacing the hand-rolled 0.5s timer both Nullwake and the reference consumer wrap around `SetSections` to avoid rebuilding sections every frame. No provider set = existing `SetSections` callers unchanged, the two paths write the same field, so use one or the other.
 - **Number + duration formatters (`KhaozEngine.Primitives`).** `NumberFormatter` / `NumberNotation` render large idle-game numbers in `Simple` (short suffixes up to 1e33 `Dc`, then scientific), `Scientific`, or `Engineering` notation - a settable process-wide `Notation` default a game binds once plus per-call overrides; NaN -> "0", infinity -> "Inf", culture-invariant. `TimeFormatter` / `DurationStyle` render a duration as a `Clock` (the ticking `1:02:34`, rounds up to the next whole second) or `Coarse` (the two-unit summary `2h 15m`, with a `coarseUnits` knob), non-finite -> "---", non-positive -> "0s". Both pure (BCL only) in the zero-dependency leaf, so a renderer, a headless server, and a balance-sim tool share one implementation; they produce non-localizable value tokens that compose into a localized string.
 - **Tests.** `Particle2DSystemTests` +10 (fade-in / fade-out / trapezoid envelope shape, envelope defaults leave colour alpha unchanged, field fill + population stability under constant death/exit, region-exit respawn, exit-margin drift, live `SetFieldTint`, `Clear` resets fields), `DiagnosticsOverlayTests` +3 (immediate-then-interval poll, zero-interval every-frame, null detach), plus new `NumberFormatterTests` (19 cases: Simple suffixes, scientific fallback beyond the table, negatives, NaN/Inf, `FormatInt`, Scientific / Engineering, the default-notation path) and `TimeFormatterTests` (18 cases: Clock highest-unit-down + ceil rounding, Coarse two-unit + `coarseUnits`, zero / negative -> "0s", non-finite -> "---").
 - **Consumer note (games).** Re-pin to adopt. Nullwake is the motivating consumer: `ParallaxState`'s hand-rolled dust pool collapses onto `EmitField` + the fade envelope + `SetFieldTint`; the `_overlayRefreshTimer` gate around `DiagnosticsOverlay.SetSections` in `NullwakeGame` becomes one `SetSectionsProvider(..., 0.5f)` call; and `Nullwake.Core.UI.NumberFormatter` / `TimeFormatter` plus the ad-hoc `StatsPanelScreen.FormatDuration` delete in favour of the `KhaozEngine.Primitives` formatters (Clock + Coarse styles). Nullwake is untouched in this release and adopts separately; everything defaults to prior behaviour, so a re-pin with no code change is byte-stable.
@@ -25110,7 +25105,7 @@ Held (persistent) masked actions: `LayeredAnimator.PlayAction` / `AnimatedCharac
 - **`AnimatedCharacter.PlayAction(..., bool hold = false)` (`KhaozEngine.Game.Render3D`).** Threads the same `hold` flag to the compositor. A held masked action holds a body-region pose (e.g. a right-arm sword idle) over the running locomotion base until `CancelAction`; a later one-shot action played on a higher slot composites over the hold during a swing and falls back to the held pose as it retires. `CancelAction` already handled any handle, so it is unchanged.
 - **Ordering note.** When a held action and later one-shot actions mask the same bone, the held action must be played FIRST so it sits below (lower slot index) the one-shots that composite over it. This is the existing "higher slot index wins, slot-acquisition order after reuse" rule, restated for the hold+attack case.
 - **Tests.** `LayeredAnimatorActionTests` +4 (held sustains past the clip duration looping at weight 1; an attack composites above a held action then falls back to it while the legs stay on the base; cancel of a held action past its clip duration fades cleanly and retires; a `hold:false` action is bit-identical to a `hold:true` one through fade-in + sustain then diverges as the one-shot retires) and `AnimatedCharacterActionTests` +1 (a held action keeps the character on the compositor path past the clip duration, then `CancelAction` releases it).
-- **Consumer note (games).** Re-pin to adopt. Ruinborne holds the Quaternius `Sword_Idle` arm pose (right-arm mask) over locomotion while a sword is drawn with `PlayAction(swordIdle, rightArmMask, hold: true)`, keeps its existing one-shot `Sword_Attack` for swings (it composites over the hold and falls back), and calls `CancelAction` on sheathe. Default `hold: false` means every existing action call is byte-stable.
+- **Consumer note (games).** Re-pin to adopt. The reference consumer holds the Quaternius `Sword_Idle` arm pose (right-arm mask) over locomotion while a sword is drawn with `PlayAction(swordIdle, rightArmMask, hold: true)`, keeps its existing one-shot `Sword_Attack` for swings (it composites over the hold and falls back), and calls `CancelAction` on sheathe. Default `hold: false` means every existing action call is byte-stable.
 
 ## 10.41.0
 
@@ -25121,7 +25116,7 @@ A `Scene3D` immediate-mode motion-trail primitive: feed an ordered list of recen
 - **`TrailGeometry.Build(...)` (`KhaozEngine.Render3D`).** Pure, GPU-free strip builder (sibling to `BeamGeometry`): N samples -> a triangle-list strip with per-vertex across/along UVs and alpha. The house test surface for the geometry math (taper, tail fade, miter joint continuity, twist override, degenerate tangent/edge-on fallbacks).
 - **`TrailSampler` + `TrailPoint` (`KhaozEngine.Primitives`).** A pure, render-free ring of timed samples bounded by a max age and a max count: `Add(position, nowSeconds)` appends and evicts aged/overflow from the oldest end, `Prune(nowSeconds)` decays the tail while the emitter idles, `Samples` returns the live tail oldest-first to hand straight to `DrawTrail`. No GPU or render dependency; fully headless-testable.
 - **Tests.** `TrailSamplerTests` (7: add/evict by age, cap by count, oldest-first ordering, prune decay, clear), `TrailGeometryTests` (10: vertex count, camera-facing across-direction, shared-corner joint continuity, per-sample taper, tail fade, along-UV span, twist override, sharp-fold + edge-on fallbacks, sub-2 no-op), `Scene3DTrailQueueTests` (3, `[GpuFact]`: queue accounting, sub-2 no-op, sample+style capture), and `Scene3DTrailRenderGpuTests` (2, `[GpuFact]`: additive and alpha trails brighten a dark frame - a cross-platform-robust, non-golden end-to-end draw smoke).
-- **Consumer note (games).** Re-pin to adopt. Ruinborne samples the sword-tip world position per frame during a swing (it already has the socket matrix chain) into a `TrailSampler`, then one `DrawTrail` per swinging character. Nothing forced: no `DrawTrail` call means the trail pass never runs, so existing scenes stay byte-stable.
+- **Consumer note (games).** Re-pin to adopt. The reference consumer samples the sword-tip world position per frame during a swing (it already has the socket matrix chain) into a `TrailSampler`, then one `DrawTrail` per swinging character. Nothing forced: no `DrawTrail` call means the trail pass never runs, so existing scenes stay byte-stable.
 
 ## 10.40.0
 
@@ -25141,7 +25136,7 @@ Three consumer-facing helpers that collapse per-game boilerplate the four games 
 - **`LocalizationContext.WireResx` (`KhaozEngine.App`).** New one-liner that builds a `ResourceStringCatalog` over a `ResourceManager`, installs it as the ambient `LocalizationContext.Catalog`, and returns it - replacing the identically-shaped bridge class each game carried whose whole body was `Catalog = new ResourceStringCatalog(...)`. Two overloads: `WireResx(ResourceManager)` and the convenience `WireResx(string baseName, Assembly assembly)` (which also collapses the `new ResourceManager(baseName, assembly)` step). Culture stays live: the catalog reads `CurrentUICulture` at resolve time (verified), so a runtime `LocalizationManager.SetCulture` shows up on the next draw with nothing captured.
 - **`KhaozEngine.Localization.TestKit` (NEW package, test-only, in NO umbrella).** `LocalizationCoverage.AssertComplete(keysType, resourceManager, satelliteCultures...)` reflects a game's key constants (every `public const string` field value plus every `public static readonly StringId` field's `.Key`), then asserts every key resolves in the neutral resx AND in each shipped satellite with parent fallback disabled (a missing translation fails instead of silently reading the neutral language), plus per-culture placeholder-index integrity between each neutral template and its translation (escaped `{{`/`}}` ignored). A gap throws `LocalizationCoverageException` aggregating every miss; framework-agnostic, so it fails any xUnit / NUnit / MSTest test. `LocalizationCoverage.Keys(keysType)` is exposed for a game that wants to drive a `[Theory]` off the same source. Games reference it from their test project only (depends on `KhaozEngine.App`). This replaces the reflection-based coverage test Hardpoint and SpaceGame each hand-rolled, and gives Nullwake (4 cultures, no guard) a drop-in one.
 - **Tests.** New `SessionLogTests` (prune retention + prefix isolation + missing-dir tolerance, the identity line, crash routing to the session file, the retained-session cap, and the argument guards), `LocalizationContextWireResxTests` (install + same-instance return, live culture re-resolution, the base-name overload, null guard), and `LocalizationCoverageTests` (const + `StringId` key extraction, a complete satellite passing, a broken satellite reporting exactly the missing keys + the placeholder mismatch, an absent satellite reporting no-resource-set, empty-keys + null guards) against embedded resx fixtures.
-- **Consumer note (games).** Re-pin to adopt. `SpaceGame`/`Nullwake`/`Ruinborne` replace their bespoke logging bootstrap (inline block / `LogBootstrap` / `RuinborneLogging`) with a `SessionLog.Configure(...)` call; all four collapse their localization bridge class to `LocalizationContext.WireResx(...)`; `Hardpoint`/`SpaceGame` swap their hand-rolled coverage test for `LocalizationCoverage.AssertComplete(...)` and `Nullwake` adds one. Nothing is forced: the old code still compiles.
+- **Consumer note (games).** Re-pin to adopt. `SpaceGame`/`Nullwake`/`the reference consumer` replace their bespoke logging bootstrap (inline block / `LogBootstrap` / `ConsumerLogging`) with a `SessionLog.Configure(...)` call, all four collapse their localization bridge class to `LocalizationContext.WireResx(...)`, `Hardpoint`/`SpaceGame` swap their hand-rolled coverage test for `LocalizationCoverage.AssertComplete(...)` and `Nullwake` adds one. Nothing is forced: the old code still compiles.
 
 ## 10.38.0
 
@@ -25150,13 +25145,13 @@ Full-window fills (the update overlay's dim scrim, and any `Screen.BackgroundCol
 - **`IDesignViewport.WindowBounds` (`KhaozEngine.Primitives`).** New property: the whole window mapped back into design space, i.e. `DesignBounds` plus the letterbox/pillarbox bars around it (its origin goes negative and its size exceeds the design when there is a bar). It reduces exactly to `DesignBounds` when there is no letterbox (zero offset). Added as a **default interface member** derived from the existing scale + offset (`(-OffsetX/ScaleX, -OffsetY/ScaleY, Width + 2·OffsetX/ScaleX, Height + 2·OffsetY/ScaleY)`), so every existing implementer - including consumer test stubs - gets a correct value for free with no source change (a viewport with an *asymmetric* letterbox would override it). The three engine viewports also declare it concretely so it is reachable through a concrete-typed reference, not only through the interface: `DesignViewport` carries the letterbox formula, while `AdaptiveViewport` and `UiViewport` (which always fill edge-to-edge, offset 0) return `DesignBounds`.
 - **`UpdateOverlayScreen.Draw` + `Screen.DrawBackground` (`KhaozEngine.Gui`).** Both sized their fullscreen fill from `IDesignViewport.Width`/`Height` (the design rect), so under `ScaleMode.Fit` at a non-design aspect the letterbox bars stayed unfilled and the screen below showed through at the window edges (visible live on the update overlay's dim scrim). They now fill `WindowBounds`, covering the whole window. The overlay panel stays centred (the centred letterbox is symmetric, so `WindowBounds` shares the design centre) and an unletterboxed viewport is byte-identical to before (`WindowBounds == DesignBounds`).
 - **Tests.** New `DesignViewportTests` cases assert `WindowBounds`' corners map back to the whole window under Fit/Fill/Stretch, that it equals `DesignBounds` with no bars, and that it extends past the design by exactly the bar size under a letterbox; `AdaptiveViewportTests`/`UiViewportTests` pin `WindowBounds == DesignBounds` for the no-letterbox viewports.
-- **Consumer note (games).** Re-pin to adopt. A game that hand-rolled a full-window rect to fill the bars (e.g. Ruinborne's `MenuScrim.FullWindowRect`, which derived `(-OffsetX/ScaleX, -OffsetY/ScaleY, Width + 2·barX, Height + 2·barY)` from the viewport) can delete it and use `viewport.WindowBounds`. No forced change: existing code compiles and, when unletterboxed, renders identically.
+- **Consumer note (games).** Re-pin to adopt. A game that hand-rolled a full-window rect to fill the bars (e.g. The reference consumer's `MenuScrim.FullWindowRect`, which derived `(-OffsetX/ScaleX, -OffsetY/ScaleY, Width + 2·barX, Height + 2·barY)` from the viewport) can delete it and use `viewport.WindowBounds`. No forced change: existing code compiles and, when unletterboxed, renders identically.
 
 ## 10.37.1
 
 Fixed: the sharded authoritative server dropped the surface-swim flag, so `MovementState.Swimming` was stuck at its dry-land spawn value for every player on a `ShardedWorldServer`.
 
-`PlayerMovementSystem.Update` (the per-cell ECS movement step `ShardedWorldServer` runs for every `CellSim`) rebuilds a `MoveState` from the `MovementState` component each tick and writes five fields back after `CharacterMovement.Step`, but it omitted `Swimming` from both the input reconstruction and the output write-back. The swim state therefore never entered or left on the sharded path: `ShardedWorldServer.TryGetPlayerState(...).Swimming` was always false (breaking consumer water rules that read it, e.g. Ruinborne's force-sheathe), and the wire-replicated swim bit every remote observer decodes was always false (remote swimmers rendered as jumping/falling). The non-sharded `WorldServer` / `PlayerMoveSimulator` path was unaffected because it carries the whole `MoveState` opaquely, which is why the original swim feature and its (non-sharded) tests stayed green. Fix: carry `ms.Swimming` into the reconstructed `MoveState` (restoring the enter/exit hysteresis carry across ticks) and write `state.Swimming` back to the component. Behaviour-only, no wire change (generation 3 already carries the byte). Guarded by a new sharded-server-with-medium round-trip test that drives a player from dry land into water and, on a raised-lakebed shelf whose submersion sits inside the swim hysteresis band, pins the flag at both `TryGetPlayerState` and a second observer's decoded `EntityRenderState` - failing if either the input carry or the write-back is dropped.
+`PlayerMovementSystem.Update` (the per-cell ECS movement step `ShardedWorldServer` runs for every `CellSim`) rebuilds a `MoveState` from the `MovementState` component each tick and writes five fields back after `CharacterMovement.Step`, but it omitted `Swimming` from both the input reconstruction and the output write-back. The swim state therefore never entered or left on the sharded path: `ShardedWorldServer.TryGetPlayerState(...).Swimming` was always false (breaking consumer water rules that read it, e.g. The reference consumer's force-sheathe), and the wire-replicated swim bit every remote observer decodes was always false (remote swimmers rendered as jumping/falling). The non-sharded `WorldServer` / `PlayerMoveSimulator` path was unaffected because it carries the whole `MoveState` opaquely, which is why the original swim feature and its (non-sharded) tests stayed green. Fix: carry `ms.Swimming` into the reconstructed `MoveState` (restoring the enter/exit hysteresis carry across ticks) and write `state.Swimming` back to the component. Behaviour-only, no wire change (generation 3 already carries the byte). Guarded by a new sharded-server-with-medium round-trip test that drives a player from dry land into water and, on a raised-lakebed shelf whose submersion sits inside the swim hysteresis band, pins the flag at both `TryGetPlayerState` and a second observer's decoded `EntityRenderState` - failing if either the input carry or the write-back is dropped.
 
 ## 10.37.0
 
@@ -25179,7 +25174,7 @@ The required-update flag is now wired end to end: a build whose SIGNED manifest 
 - **`UpdateOverlayActions.AutoAdvanceRequired(UpdateService)` (`KhaozEngine.Updates`).** A new auto-advance policy that drives a required update to completion with no keypress: `UpdateAvailable` -> `StartDownloadAsync`, `ReadyToApply` -> `ApplyUpdate`. It is a no-op unless `UpdateService.IsRequired` (optional updates stay player-driven via `Trigger`), and it deliberately does NOT auto-retry a `Failed` update (that would hot-loop; the overlay still offers the player a keypress retry). It is idempotent and cheap (it acts only at an actionable transition), designed to be called once per frame from the game loop, which also keeps `ApplyUpdate` and its forced process exit on the caller's thread rather than the background check thread. `UpdateService.required` is now `volatile` for a consistent cross-thread read.
 - **Required-aware overlay text (`UpdateOverlayStrings`, `UpdateOverlayTheme`, `UpdateOverlayView`, `KhaozEngine.Gui`).** Seven new `update.overlay.*.required` `StringId` keys (with built-in English fallbacks) convey mandatoriness and drop the now-inapplicable keypress prompt. A new additive virtual overload `UpdateOverlayTheme.TitleFor(UpdateState, IUpdateStatus)` branches on `IUpdateStatus.IsRequired` to the required titles and otherwise delegates to the existing `TitleFor(UpdateState, string?)` (so a theme that only overrides that keeps working); the existing `BodyFor(UpdateState, IUpdateStatus)` now branches its available/ready bodies on `IsRequired`. `UpdateOverlayView` renders titles through the new overload. Back-compat note: adding the `TitleFor` overload makes a direct call `TitleFor(state, null)` with a bare `null` literal ambiguous (string-literal calls are unaffected); no engine consumer calls it that way (the view uses the status overload, games override `TitleFor`), so this is a source-only edge with no real break.
 - **Docs.** `docs/UPDATER.md` gains a required-update section (signed-manifest trust, `--required`, `AutoAdvanceRequired` wiring). `KhaozEngine.Updates.Tool/README.md`, `KhaozEngine.Updates/README.md`, and `KhaozEngine.Gui/README.md` document the flag, the policy, and the required overlay text.
-- **Consumer note (games).** To make a build mandatory, publish its manifest with `ke-updater manifest --required` (so the signed manifest carries it) and call `UpdateOverlayActions.AutoAdvanceRequired(updateService)` once per frame alongside the existing `overlay.OnTrigger += _ => UpdateOverlayActions.Trigger(service)` wiring. A game with a custom overlay theme that overrides `TitleFor`/`BodyFor` adds its own `IsRequired` branch + localized `*.required` catalog entries to localize the required text. Ruinborne adopts this to plumb `UPDATE_REQUIRED` into the signed manifest and enable in-session mandatory updates.
+- **Consumer note (games).** To make a build mandatory, publish its manifest with `ke-updater manifest --required` (so the signed manifest carries it) and call `UpdateOverlayActions.AutoAdvanceRequired(updateService)` once per frame alongside the existing `overlay.OnTrigger += _ => UpdateOverlayActions.Trigger(service)` wiring. A game with a custom overlay theme that overrides `TitleFor`/`BodyFor` adds its own `IsRequired` branch + localized `*.required` catalog entries to localize the required text. The reference consumer adopts this to plumb `UPDATE_REQUIRED` into the signed manifest and enable in-session mandatory updates.
 
 ## 10.35.0
 
@@ -25187,24 +25182,24 @@ Blob shadows are now ground-receiver-only: a caster's own body is never repainte
 
 - **Blob decals draw before the skinned character pass (`Scene3D`).** The `ShadowMode.Blob` ground decals were drawn after the whole model pass, so their world-Y band (`groundY - BlobGroundYTolerance .. groundY + BlobGroundMaxStep`) repainted the lower ~0.4 m of a caster's own mesh: a dark, world-anchored line up a character's legs and shins, most visible while swimming where the caster is continuously grounded. They now draw between the opaque RECEIVER geometry (terrain, splat, rigid props) and the skinned character pass, so each character opaquely occludes its own blob and the band never lands on a body. Slope conformity is unchanged (the blob still rides terrain across the full `BlobGroundMaxStep`), so a consumer that clamped `BlobGroundMaxStep` to hide the leg-repaint can restore the default. Receivers are unchanged: terrain and rigid props still take the blob (they are drawn before the blob pass). Under MSAA the receiver depth is resolved once more before the blob pass and the model framebuffer is re-bound to continue with the characters; a no-blob frame is byte-identical (the pass is skipped entirely - same framebuffer binding, no extra resolve), so existing goldens stay byte-stable.
 - **Tests.** New backend-independent `BlobShadowReceiverGoldenTests` renders a tall skinned box over a floor with a blob under it and asserts, through the camera projection, that the box's lower face (inside the band) is not darker than its upper face - it fails on the pre-fix draw order (ratio ~0.52) and passes after. The committed `scene3d_shadow_blob` golden is unchanged: its casters are rigid props, which legitimately still receive the blob.
-- **Consumer note (games).** Ruinborne adopts by pinning `10.35.0`, removing its `BlobGroundMaxStep` clamp workaround (restore the default), and re-testing swim camera feel. No other code change is required.
+- **Consumer note (games).** The reference consumer adopts by pinning `10.35.0`, removing its `BlobGroundMaxStep` clamp workaround (restore the default), and re-testing swim camera feel. No other code change is required.
 
 ## 10.34.0
 
 The default update overlay localizes its own text, and the shim window palette can be derived from the overlay theme. Two additive Gui features, no breaking change: existing game code compiles and renders identically until it opts in. Minor bump.
 
-- **Localization-aware default overlay text (`UpdateOverlayStrings`, `KhaozEngine.Gui`).** `UpdateOverlayTheme.TitleFor`/`BodyFor` now resolve each line through the ambient `LocalizationContext.Catalog` against ten engine-owned `StringId` keys (`update.overlay.available.title`/`.body`, `.downloading.*`, `.ready.*`, `.applying.*`, `.failed.*`), falling back to the built-in English (`UpdateOverlayStrings.EnglishDefaults`) whenever no catalog is wired OR a key is absent. A game now gets a localized update popup just by adding those keys to its catalog, with no theme subclass, closing the founding-principle gap where the default theme shipped English-only. The keys match the `update.overlay.*` set Ruinborne already authored, so Ruinborne can drop its `RuinborneUpdateTheme` text overrides and keep only its catalog entries. Back-compat is exact: the English fallback formats invariantly and is byte-identical to the previous hardcoded strings, a catalog missing the keys still renders English (never a raw key), and an existing `TitleFor`/`BodyFor` override still fully wins (it never routes through the catalog). `AccentFor` and every colour/layout field are unchanged.
-- **Shim-window palette derivation (`UpdateOverlayTheme.ToUpdaterUiOptions`, `KhaozEngine.Gui`).** A new extension builds an `UpdaterUiOptions` (in `KhaozEngine.Updates`) from an overlay theme, so a game themes the in-game overlay and the native apply window from ONE palette instead of hand-syncing two colour sets. It maps accent from `ProgressFill`, background from `PanelFill`, and text from `BodyText` (alpha dropped, the native window is opaque), converting the theme's RGBA floats to the `(R, G, B)` byte tuples the shim takes. The window title, heading, logo, and already-localized status lines stay the game's, passed as optional arguments. The helper lives on the Gui side because `KhaozEngine.Updates` has no Gui dependency (Gui already references Updates), so no dependency edge is inverted. The public `ToRgb(Vector4)` conversion is exposed too, replacing the per-game byte converters SpaceGame and Ruinborne each wrote.
+- **Localization-aware default overlay text (`UpdateOverlayStrings`, `KhaozEngine.Gui`).** `UpdateOverlayTheme.TitleFor`/`BodyFor` now resolve each line through the ambient `LocalizationContext.Catalog` against ten engine-owned `StringId` keys (`update.overlay.available.title`/`.body`, `.downloading.*`, `.ready.*`, `.applying.*`, `.failed.*`), falling back to the built-in English (`UpdateOverlayStrings.EnglishDefaults`) whenever no catalog is wired OR a key is absent. A game now gets a localized update popup just by adding those keys to its catalog, with no theme subclass, closing the founding-principle gap where the default theme shipped English-only. The keys match the `update.overlay.*` set the reference consumer already authored, so the reference consumer can drop its `ConsumerUpdateTheme` text overrides and keep only its catalog entries. Back-compat is exact: the English fallback formats invariantly and is byte-identical to the previous hardcoded strings, a catalog missing the keys still renders English (never a raw key), and an existing `TitleFor`/`BodyFor` override still fully wins (it never routes through the catalog). `AccentFor` and every colour/layout field are unchanged.
+- **Shim-window palette derivation (`UpdateOverlayTheme.ToUpdaterUiOptions`, `KhaozEngine.Gui`).** A new extension builds an `UpdaterUiOptions` (in `KhaozEngine.Updates`) from an overlay theme, so a game themes the in-game overlay and the native apply window from ONE palette instead of hand-syncing two colour sets. It maps accent from `ProgressFill`, background from `PanelFill`, and text from `BodyText` (alpha dropped, the native window is opaque), converting the theme's RGBA floats to the `(R, G, B)` byte tuples the shim takes. The window title, heading, logo, and already-localized status lines stay the game's, passed as optional arguments. The helper lives on the Gui side because `KhaozEngine.Updates` has no Gui dependency (Gui already references Updates), so no dependency edge is inverted. The public `ToRgb(Vector4)` conversion is exposed too, replacing the per-game byte converters SpaceGame and the reference consumer each wrote.
 - **Docs.** `docs/UPDATER.md` gains an overlay-text section with the standard `StringId` key + format-argument table and the palette-derivation helper. `KhaozEngine.Gui/README.md` documents the localized default overlay and `ToUpdaterUiOptions`.
-- **Consumer note (games).** Optional, no forced change. To localize the update overlay with the default theme: add the ten `update.overlay.*` keys to your catalog (see the table in `docs/UPDATER.md`) and wire `LocalizationContext.Catalog`. To collapse a hand-synced shim palette: pass your overlay theme through `theme.ToUpdaterUiOptions(windowTitle: ..., installingText: ..., finishingText: ...)` where you build `UpdateServiceOptions.UpdaterUi`. Ruinborne can additionally delete the text overrides in `RuinborneUpdateTheme` and rely on the default theme resolving its existing catalog entries.
+- **Consumer note (games).** Optional, no forced change. To localize the update overlay with the default theme: add the ten `update.overlay.*` keys to your catalog (see the table in `docs/UPDATER.md`) and wire `LocalizationContext.Catalog`. To collapse a hand-synced shim palette: pass your overlay theme through `theme.ToUpdaterUiOptions(windowTitle: ..., installingText: ..., finishingText: ...)` where you build `UpdateServiceOptions.UpdaterUi`. The reference consumer can additionally delete the text overrides in `ConsumerUpdateTheme` and rely on the default theme resolving its existing catalog entries.
 
 ## 10.33.0
 
 `ClientPrediction`'s vertical render offset now decays with the same critically-damped, velocity-carrying filter as the planar axis, so the surface-swim buoyancy stream of small vertical corrections eases instead of jerking the camera. Behaviour change, no public API change, minor bump (same family as 9.23.0 / 10.7.0).
 
-- **Vertical offset critical damping (behaviour change, no public API change).** The reconciliation render offset's vertical axis switched from a first-order exponential decay to the critically-damped (velocity-carrying) `SmoothDampToZero` filter the planar axis has used since 10.7.0, with its smoothing velocity reset on each re-anchor exactly like the planar axis. 10.7.0 deliberately left the vertical first-order because vertical corrections were then rare one-off jumps/falls with no transient-dip failure mode. 10.32.0's surface swim changed that: the buoyancy spring emits a CONTINUOUS stream of small vertical reconciliation corrections, and the first-order decay chased each one, producing a fast, jerky camera bob for any consumer following `RenderedState`'s vertical (e.g. Ruinborne's feet-anchored camera at damping rate 20/s). The inertia now rides over the correction stream while a sustained vertical bias still fully resolves, mirroring the planar decel-to-stop fix. The reconcile rebase semantics (translate the inter-tick segment, re-anchor the offset to preserve rendered continuity) are unchanged. `SmoothDampToZero`'s closed form is now a single scalar primitive that the planar `Vector2` overload delegates to componentwise: the decay is fully component-separable (omega/exp depend only on `smoothTime` and `dt`), so the planar path is bit-identical and all existing prediction tests are unchanged. A new `ClientPredictionTests` case drives a sustained stream of small vertical corrections (the swim profile) and asserts the first presentation frame after each stays within the inertial, sub-first-order response.
+- **Vertical offset critical damping (behaviour change, no public API change).** The reconciliation render offset's vertical axis switched from a first-order exponential decay to the critically-damped (velocity-carrying) `SmoothDampToZero` filter the planar axis has used since 10.7.0, with its smoothing velocity reset on each re-anchor exactly like the planar axis. 10.7.0 deliberately left the vertical first-order because vertical corrections were then rare one-off jumps/falls with no transient-dip failure mode. 10.32.0's surface swim changed that: the buoyancy spring emits a CONTINUOUS stream of small vertical reconciliation corrections, and the first-order decay chased each one, producing a fast, jerky camera bob for any consumer following `RenderedState`'s vertical (e.g. The reference consumer's feet-anchored camera at damping rate 20/s). The inertia now rides over the correction stream while a sustained vertical bias still fully resolves, mirroring the planar decel-to-stop fix. The reconcile rebase semantics (translate the inter-tick segment, re-anchor the offset to preserve rendered continuity) are unchanged. `SmoothDampToZero`'s closed form is now a single scalar primitive that the planar `Vector2` overload delegates to componentwise: the decay is fully component-separable (omega/exp depend only on `smoothTime` and `dt`), so the planar path is bit-identical and all existing prediction tests are unchanged. A new `ClientPredictionTests` case drives a sustained stream of small vertical corrections (the swim profile) and asserts the first presentation frame after each stays within the inertial, sub-first-order response.
 - **Docs.** `docs/USING-KHAOZENGINE.md`'s `ReplicatedCharacterAnimators` example now anchors each `CharacterSample` at the feet (capsule centre minus its half-height on Y), matching the engine's own `Showcase/RoomNet.cs`, instead of passing the raw capsule-centre position (which sinks a ground-aligned model to its waist).
-- **Consumer note (Ruinborne):** re-pin to adopt. No code change required: the smoother swim camera bob comes through `RenderedState` for free. If your animator sampling passed the raw capsule-centre position, switch it to the feet anchor per the updated doc.
+- **Consumer note (the reference consumer):** re-pin to adopt. No code change required: the smoother swim camera bob comes through `RenderedState` for free. If your animator sampling passed the raw capsule-centre position, switch it to the feet anchor per the updated doc.
 
 ## 10.32.1
 
@@ -25223,7 +25218,7 @@ Water movement and swim locomotion: the character stack gains a water concept. A
 - **Surface swim v1:** past chest depth the character swims: enter at 0.65 submersion, exit at 0.55 (hysteresis, no flicker on a gentle slope, test-traced tick by tick), an analytic critically-damped buoyancy settle holds a tunable body fraction at the surface (unconditionally stable, at most a single bounded settle dip under adverse entry velocity), gravity and ground snap suspended, horizontal travel at `MoveTuning.SwimSpeed`, jump ignored in deep water and the ordinary jump hops out in near-shore shallows (gated on the exit threshold at the settled position). No diving in v1.
 - **Wire:** `MovementState` gains the `Swimming` flag and `MoveProtocol.WireProtocolVersion` bumps 2 to 3 through the standing `WireGenerationAuthenticator` gate (the 10.0.0 NetId-widening precedent): mismatched clients get a clean `IncompatibleVersion` rejection.
 - **Swim animation:** `LocomotionState.Swim` with tread (`SwimIdle`) and forward (`Swim`) split by `LocomotionThresholds.SwimForwardThreshold`, selected purely from the movement flag (the animation layer never queries water) and crossfaded like every other state. Remotes derive from the replicated flag on the exact path `Grounded` flows (position-only samples never swim). Clip mapping stays name-based with the existing missing-clip degradation (an unbaked rig treads on Idle, no crash). Non-swimming characters take bit-identical animation paths and all goldens are unchanged: the swim-state golden arrives when a consumer bakes the two clips.
-- **Consumer note (Ruinborne):** supply the medium from the shared `RuinborneWorld.LakeWaterLevel`/`LakeCenter`/`LakeRadius` on both heads, delete the interim client-side wade input-scaling (this seam supersedes it), and map the `Swim`/`SwimIdle` clips on adoption (the avatar rebake from the CC0 Quaternius Universal Animation Library carries them).
+- **Consumer note (the reference consumer):** supply the medium from the shared `ConsumerWorld.LakeWaterLevel`/`LakeCenter`/`LakeRadius` on both heads, delete the interim client-side wade input-scaling (this seam supersedes it), and map the `Swim`/`SwimIdle` clips on adoption (the avatar rebake from the CC0 Quaternius Universal Animation Library carries them).
 
 ## 10.31.0
 
@@ -25480,7 +25475,7 @@ Fixes the decel-to-stop FACING glitch that the 10.7.0 position fix left behind: 
 
 ## 10.7.0
 
-Fixes the decel-to-stop reconcile shake: when the local player stopped (walk or sprint) the avatar and follow camera visibly jittered back-and-forth for a moment as the position settled, and the locomotion animation flickered walk<->idle. Reproducible on loopback, so it was local-prediction render-continuity on the stop transition, not latency. `KhaozEngine.Netcode`'s render smoothing is the source fix (behaviour-only, no API change); `KhaozEngine.Game.Render3D` adds an optional exact-speed input so the animation state can be driven off the clean commanded speed (additive API, so a minor bump; consumers re-pin to adopt - Ruinborne bundles it into its held player update).
+Fixes the decel-to-stop reconcile shake: when the local player stopped (walk or sprint) the avatar and follow camera visibly jittered back-and-forth for a moment as the position settled, and the locomotion animation flickered walk<->idle. Reproducible on loopback, so it was local-prediction render-continuity on the stop transition, not latency. `KhaozEngine.Netcode`'s render smoothing is the source fix (behaviour-only, no API change), `KhaozEngine.Game.Render3D` adds an optional exact-speed input so the animation state can be driven off the clean commanded speed (additive API, so a minor bump, consumers re-pin to adopt - the reference consumer bundles it into its held player update).
 
 - **Root cause.** A client running ahead of the server crosses a genuine authority dip at a velocity transition: it stops instantly in its own prediction, but the authority is an input-RTT (~1-2 ticks, even on loopback) behind and is still applying the pre-stop moves, so the basis the client reconciles against dips BACKWARD for a tick or two and then catches up (a real per-tick correction, not jitter). The `9.23.0` C1 reconcile kept `previousPredictedPosition` pinned while only the target rebased, which was correct for a STEADY (matching) rebase but, on a backward rebase, left the inter-tick lerp interpolating toward the dipped-back target - dragging the rendered position backward within half a tick. The decaying render offset added a second, overshooting reversal on the recovery.
 - **`ClientPrediction` render smoothing (behaviour change, no public API change).** The C1 reconcile now TRANSLATES the whole inter-tick segment (`previousPredictedPosition -> predictedState`) by the rebase delta, so the segment's VELOCITY is preserved (zero for a stopped player) and the entire target jump is absorbed into the render offset instead of being chased by the interpolation. A matching rebase has a zero delta, so the `9.23.0` steady-run behaviour (the fixed 30 Hz camera sawtooth) is unchanged. The planar render offset now decays with a critically-damped (velocity-carrying) filter instead of a first-order exponential, with its velocity reset on each re-anchor: the inertia holds the render steady through the transient authority dip, and the reset kills a secondary overshoot when the target recovers and the offset flips sign. The vertical axis (jump/fall) keeps its first-order decay (no comparable transient-dip failure mode). Net: the reversal (~55% of a tick, a sharp two-frame back-and-forth) becomes a smooth sag under ~13% of a tick, within the existing 0.03 m correction dead-zone, at every render:tick ratio. `LocalHorizontalSpeed` / `PredictedHorizontalSpeed` were already clean (commanded-path only) and are unaffected.
@@ -25495,7 +25490,7 @@ Fixes the decel-to-stop reconcile shake: when the local player stopped (walk or 
 - **Strengthened pre-relaunch gate.** Delivered by the combination: the atomic swap guarantees the image is never half-written, the existing settle poll (`CanOpenExclusively`) proves it is no longer locked, and the new launch-verify-and-retry proves it is actually executable. The settle poll is documented as a necessary-but-insufficient first-line pre-filter; the relaunch retry is the real gate.
 - **Relaunch is logged.** Every attempt (`Relaunch attempt n/8: <exe>`), its outcome, each back-off wait, and the final give-up now go to `updater.log`. The relaunch was previously an unlogged blind spot, making the whole failure invisible in logs.
 - **The "Finishing" progress window stays visible across the relaunch-retry wait** (Windows), so the user sees the marquee instead of a bare OS error dialog; it closes once the game is launched or the retry budget is spent. New default interface members (`ReplaceFile`, `TryRelaunch`) keep external `IUpdaterEnvironment` implementers source-compatible.
-- Ships in Hardpoint, SpaceGame, Ruinborne, Nullwake (all pin their own version and re-pin to adopt).
+- Ships in Hardpoint, SpaceGame, the reference consumer, Nullwake (all pin their own version and re-pin to adopt).
 
 ## 10.5.0
 
@@ -25538,7 +25533,7 @@ KELOC now guards the low-level `SpriteBatch.DrawString` text sink, not just the 
 
 - **New diagnostic `KELOC003` (Warning): a bare string literal drawn straight to `Render2D.SpriteBatch.DrawString`.** It fires on a call to the engine primitive `KhaozEngine.Render2D.SpriteBatch.DrawString(font, "text", ...)` whose text argument is a non-interpolated, non-verbatim string literal of length > 1 that contains a letter. Interpolated text (`$"Score {n}"`), variables, numbers, format tokens (`"{0}"`), and single-character glyphs are deliberately left alone, so `DrawString`'s constant use for numbers, names, and debug output does not become a false positive. `DrawString` keeps its `string` parameter (retyping such a hot primitive to `LocalizedText`, and resolving a catalog at draw time, is not its job), so this is a Roslyn diagnostic rather than a compile error, mirroring how `KELOC002` already keys off `LocalizedText.Raw` by name. It keys off the fully-qualified `SpriteBatch.DrawString` name and its `string` parameter, so it needs no runtime dependency and covers only the engine primitive - a game's own `SpriteBatch`-based text helpers stay the game's to guard.
 - **Escape hatches match the existing contract.** Localize the literal (resolve a `StringId` through the catalog), use `LocalizedText.Raw("...").Resolve()` for genuinely non-localizable text (then governed by `KELOC002`), or mark the enclosing scope `[LocalizationExempt]` / `[Conditional("DEBUG")]` / `#if DEBUG` (the same `IsExempt` + active-`#if DEBUG` walk `KELOC002` uses).
-- **Ships as a warning across all Render2D consumers.** Default severity is Warning so no consumer build (Hardpoint, Nullwake, SpaceGame, Ruinborne) breaks on day one; a game raises it to error in `.editorconfig` (`dotnet_diagnostic.KELOC003.severity = error`) once it has cleaned its own `DrawString` literals.
+- **Ships as a warning across all Render2D consumers.** Default severity is Warning so no consumer build (Hardpoint, Nullwake, SpaceGame, the reference consumer) breaks on day one, a game raises it to error in `.editorconfig` (`dotnet_diagnostic.KELOC003.severity = error`) once it has cleaned its own `DrawString` literals.
 - **Showcase cleaned as the worked example.** The demo captions in `Room2D` / `RoomInput` / `RoomMiniGame` (engine-feature labels, "CATCHER", "GAME OVER", the controls hint) are developer-facing chrome, so their draw methods gain `[LocalizationExempt]` with a note, the same way `RoomGui` already marks its `LocalizedText.Raw` demo screens. The Showcase builds KELOC-clean again and now demonstrates the `KELOC003` escape hatch.
 - **Tests.** Nine new `KELOC003_*` cases in `LocalizationAnalyzerTests` (fires on both `DrawString` overloads; stays silent on interpolation, variables, verbatim literals, numeric/letter-free literals, single-character glyphs, `[LocalizationExempt]` scopes, and an active `#if DEBUG` region), with a `KhaozEngine.Render2D.SpriteBatch` stub added to `AnalyzerHarness`.
 - Docs: `docs/USING-KHAOZENGINE.md` gains a "low-level `SpriteBatch.DrawString` sink" subsection under the localization-enforcement contract (the three fixes, the default severity, and the opt-in knob); the analyzer's own `README.md`, the `README.md` package-table row, and the `CLAUDE.md` layering note all list `KELOC003`.
@@ -25583,7 +25578,7 @@ Release build is warning-clean again: cleaned up the 5 pre-existing warnings the
 - **Save migration (the machinery's first real engine-provided migration).** `NetIdBlobMigration.WidenV1ToV2` (`KhaozEngine.NetWorld`) is a `CellSnapshotMigration` that rewrites a stored 32-bit-id snapshot body (schema v1) to 64-bit (schema v2), leaving every component byte identical - only the per-entity id field grows 4 -> 8 bytes (node 0, so id 42 stays 42). The default `CellPersistenceConfig.SchemaVersion` advances to 2, and `CellPersistence` folds the engine widening into any config at schema >= 2 (new `CellPersistenceConfig.IncludeEngineMigrations`, default true, consumer migrations override an engine step), so a server on the default config brings a 9.x cell blob forward with no wiring. A malformed body throws and is quarantined as before.
 - **Wire-version gate (the compatibility posture - decided loudly).** There is NO dual-format wire: 10.0.0 speaks 64-bit only. New `MoveProtocol.WireProtocolVersion` (= 2; the pre-10.0.0 32-bit line was 1) labels the incompatible generations. A consumer folds it into its `WorldClientConfig.ProtocolVersion` and rejects a mismatch in its `VersionCheckingAuthenticator` rule, so a 10.0.0 peer and a pre-10.0.0 peer disconnect cleanly at connect (`DisconnectReason.IncompatibleVersion`) instead of misparsing a 64-bit frame as 32-bit. A 10.0.0 server that has written 64-bit cell blobs cannot be downgraded (a v2 blob is `SkippedTooNew` -> quarantined on an old build, so nothing is destroyed, but it will not load).
 - **Sharding under 64-bit ids:** `CellSim`'s owned index, `ShardHost`'s netId -> cell map, the AoI interest sets, and the handoff/ghost path all carry `long`; the `MigrateAck` inter-cell payload grew from a 4-byte to an 8-byte netId.
-- **Consumers pin and adopt on their own schedule. Ruinborne must adopt client and server together** (the wire break is not one-sided) and gate the connect on the `ProtocolVersion` handshake so a stale client is turned away rather than admitted onto a wire it cannot parse.
+- **Consumers pin and adopt on their own schedule. The reference consumer must adopt client and server together** (the wire break is not one-sided) and gate the connect on the `ProtocolVersion` handshake so a stale client is turned away rather than admitted onto a wire it cannot parse.
 - Tests: `NetIdAllocatorTests` (monotonicity, pack/unpack + node-prefix invariants, cross-node non-collision, high-water resume, ctor bounds), `NetIdWireBoundaryTests` (snapshot / delta / blob / frame-header round trips at 0, `int.MaxValue`, a value past 2^32, and a high-node-bits id), `NetIdBlobMigrationTests` (the widening + boundary ids, a truncated-body throw, and the full `CellPersistence` boot path against a committed real 9.x blob fixture `NetWorld/Fixtures/cell-v1-32bit.blob`), and `VersionHandshakeTests` gains both skew directions producing a clean `IncompatibleVersion` (not a misparse) plus a wire-version match. The existing replication / sharding / persistence suites run green under 64-bit ids.
 - Docs: `docs/USING-KHAOZENGINE.md` (a NetId / `NetIdAllocator` / wire-version section), `docs/DEPENDENCY-SEAMS.md` (the id-allocation seam), `KhaozEngine.Replication/README.md` (64-bit `NetId` + `NetIdAllocator`), `KhaozEngine.NetWorld/README.md` (the frame-header width, `WireProtocolVersion`, the engine migration + `IncludeEngineMigrations`, the `long` high-water), and `KhaozEngine.Sharding/README.md` (64-bit ownership + the widened ack payload).
 ## 9.34.0
@@ -25604,7 +25599,7 @@ The cell persistence blob (`KhaozEngine.NetWorld`) gains a migration path, a non
 - **Migration hooks (deliverable 1).** `CellPersistenceConfig.RegisterMigration(fromVersion, migrate)` registers a `CellSnapshotMigration` (`byte[] snapshotBody -> byte[]`) applied in order on load when the stored version is older than `SchemaVersion`, before restore. The chain is validated at `CellPersistence` construction (contiguous, no gaps, no step at or beyond `SchemaVersion`), mirroring `KhaozEngine.Persistence.MigrationChain` semantics without adding a package edge. A blob older than the earliest migration is skipped with a `SkippedTooOld` event (never misread); a blob newer than this build is skipped with `SkippedTooNew`. Author migrations with the new `SnapshotBlobReader` / `SnapshotBlobWriter` (below), which walk `[count][per entity: netId + component frames]` so a consumer maps / drops / transforms per-component payloads without hand-parsing. Engine-owned built-in layout changes ship engine-provided migrations; consumer extension changes ship consumer migrations.
 - **Non-throwing quarantining restore (deliverable 2).** Restore now runs through `CellSim.TryRestoreOwned` (via the new `ICellPersistenceHost.TryRestoreCell`), which uses `TryApply` semantics and rolls back a partial apply. A blob that fails to decode (bad header, corrupt frame, a migration threw, restore rejected it) is QUARANTINED, not thrown: the cell starts fresh, the original bytes are copied to `quarantine:cell:{x}:{y}` (nothing destroyed), and the failure is surfaced as `QuarantinedCorrupt`. A poisoned key can no longer crash-loop the server on every boot.
 - **Unknown-extension retention (deliverable 3).** An extension frame whose id the current registry does not know is now retained per-entity in the cell's persistence bookkeeping and re-emitted verbatim on the next save (retain-and-rewrite), so a temporary registry regression (a rollback, a build missing a registration) no longer permanently strips data at rest. Under the full registry the component reappears intact. Documented limitation: a retained frame does not follow a cell handoff during a regression (there is no live component to migrate), so retention protects the restart load/save cycle, which is the stated goal.
-- **Surfaced diagnostics (deliverable 4).** New `CellPersistence.Issue` (`event Action<CellPersistenceIssue>`), raised on the server thread inside the load-apply drain, reports `Migrated` (from -> to), `SkippedTooOld`, `SkippedTooNew`, `QuarantinedCorrupt` (with the decode error), and `RetainedUnknownExtensions` (with the count). Consumers (Ruinborne ops) can SEE what was silent before.
+- **Surfaced diagnostics (deliverable 4).** New `CellPersistence.Issue` (`event Action<CellPersistenceIssue>`), raised on the server thread inside the load-apply drain, reports `Migrated` (from -> to), `SkippedTooOld`, `SkippedTooNew`, `QuarantinedCorrupt` (with the decode error), and `RetainedUnknownExtensions` (with the count). Consumers (the reference consumer ops) can SEE what was silent before.
 - **New public API (additive):** `KhaozEngine.Replication`: `SnapshotBlobReader` (+ `SnapshotBlobEntity` / `SnapshotBlobComponent`), `SnapshotBlobWriter`, `RetainedComponent`, `ClientReplicationView.TryApplyRetainingUnknown`, and a `SnapshotWriter.WriteFiltered` overload taking a per-netId retained-frames provider. `KhaozEngine.Sharding`: `CellSim.TryRestoreOwned` returning `CellRestoreResult` (`RestoreOwned` kept, now non-throwing, delegating to it). `KhaozEngine.NetWorld`: `CellSnapshotMigration`, `CellPersistenceConfig.RegisterMigration` + `QuarantineKeyPrefix`, `CellPersistenceIssue` / `CellPersistenceIssueKind`, `CellPersistence.Issue`, and `ICellPersistenceHost.TryRestoreCell` (a default interface method, so existing implementers are unaffected).
 - **A migrated blob is rewritten once** with the current header on the next dirty pass, upgrading the on-disk schema version so a later boot does not re-migrate. A clean or retention-only current-version restore seeds the dirty baseline so an unchanged cell is not re-saved.
 - Tests: `SnapshotBlobTests` (reader/writer byte-identical round trip, built-in-length resolver, corrupt-frame guard), `ClientReplicationViewRetentionTests` (retain unknown extension, apply known, unknown built-in fails non-throwing, re-emit overload), `CellSimRetentionTests` (unknown extension survives a reduced-registry round trip and reappears under the full registry, corrupt snapshot rolls back), `CellPersistenceConfigTests` (register/duplicate/null), and `CellPersistenceMigrationTests` (single-step migrate + restore, two-step chain composes, chain gap throws at construction, corrupt / migration-threw / decode-failure quarantine with the bytes preserved and the server still ticking, too-old / too-new skip, current-version byte-identical restore, retained-unknown and migrated events surfaced).
@@ -25612,7 +25607,7 @@ The cell persistence blob (`KhaozEngine.NetWorld`) gains a migration path, a non
 
 ## 9.32.1
 
-Fixes a data-loss race in `WorldPersistence` (`KhaozEngine.NetWorld`) where a periodic save or a quick leave firing while a load-on-join was still in flight overwrote the stored record with default-spawn state - erasing the durable per-player game blob 9.32.0 added (position had the same race, but a null blob made it destructive). Ruinborne, running the async `SqlServerWorldStore` in the cloud, was the exposure: the four existing game-state tests used a synchronous `InMemoryWorldStore`, so the in-flight window never opened. `WorldPersistence` now guards each account across its load-on-join exactly as `CellPersistence` already did for cells. Bug-fix + behaviour hardening; no API change beyond the additive `OnStoreError` event.
+Fixes a data-loss race in `WorldPersistence` (`KhaozEngine.NetWorld`) where a periodic save or a quick leave firing while a load-on-join was still in flight overwrote the stored record with default-spawn state - erasing the durable per-player game blob 9.32.0 added (position had the same race, but a null blob made it destructive). The reference consumer, running the async `SqlServerWorldStore` in the cloud, was the exposure: the four existing game-state tests used a synchronous `InMemoryWorldStore`, so the in-flight window never opened. `WorldPersistence` now guards each account across its load-on-join exactly as `CellPersistence` already did for cells. Bug-fix + behaviour hardening, no API change beyond the additive `OnStoreError` event.
 
 - **In-flight load guard (the fix).** An account with an outstanding load-on-join is tracked from `OnPlayerJoined` until the loaded record is applied on the server thread (the `DrainApplyQueue` apply, not mere task completion), or dropped immediately if the load found no saved record. Both the periodic dirty pass (`SaveDirtyPass`) and save-on-leave (`OnPlayerLeaving`) skip a guarded account, so a save landing mid-load can no longer capture the default spawn + a null blob and clobber the stored record. Skipping the leave-save is correct: the stored record was never applied, so it - not the pre-restore live state - is the truth worth keeping. A faulted load deliberately leaves the guard set so the intact stored record stays protected (a later rejoin retries the load). Mirrors `CellPersistence.loadsInFlight`.
 - **New public API (additive): `WorldPersistence.OnStoreError`** (`event Action<Exception>`). `Update` now prunes *faulted and canceled* tracked tasks too, not only `RanToCompletion` - a store outage no longer grows the pending list unbounded until `FlushAsync` - and surfaces each failure through this hook (raised on the server thread, outside the pending lock). The failed save's state stays dirty and retries on the next pass.
@@ -25756,7 +25751,7 @@ Gui overlay chrome: `ScrollablePanel`, `Dropdown`, and `Tooltip` gain opt-in pan
 - **`GuiDraw`** (`KhaozEngine.Gui`, internal) - added shared primitives behind the above: `WithOpacity(color, opacity)` (alpha fade), `CaretGeometry`/`Caret` (the chevron), and `Line` (a rotated-quad line via the 1x1 white texture, since Render2D has no line primitive).
 ## 9.20.0
 
-Speed-synced locomotion playback: an animated character's Walk/Run clip now advances in proportion to how fast it actually moves, so its feet stop sliding ("gliding") when the world speed differs from the speed the clip was authored to move at. A locomotion clip previously played at its authored rate no matter the character's real speed, so any character whose movement speed did not match the clip's authored ground speed slid its feet (Ruinborne's wolf glided, worked around by forcing the gallop clip; the player avatar had the same latent slide). Opt in per model by telling the brain the m/s each ground MOVE clip was authored to move at; it then advances that clip at `clamp(horizontalSpeed / referenceSpeed, min, max)`. Idle and the air states (Jump/Fall) always play at 1x. Additive minor, new public API only. **Default OFF** - every existing consumer is byte-identical until it opts in (new fields default to the current behaviour; `AnimationPlayer.Update(dt)` is exactly `Update(dt, 1f)`, an exact-`* 1` no-op).
+Speed-synced locomotion playback: an animated character's Walk/Run clip now advances in proportion to how fast it actually moves, so its feet stop sliding ("gliding") when the world speed differs from the speed the clip was authored to move at. A locomotion clip previously played at its authored rate no matter the character's real speed, so any character whose movement speed did not match the clip's authored ground speed slid its feet (the reference consumer's wolf glided, worked around by forcing the gallop clip, the player avatar had the same latent slide). Opt in per model by telling the brain the m/s each ground MOVE clip was authored to move at, it then advances that clip at `clamp(horizontalSpeed / referenceSpeed, min, max)`. Idle and the air states (Jump/Fall) always play at 1x. Additive minor, new public API only. **Default OFF** - every existing consumer is byte-identical until it opts in (new fields default to the current behaviour, `AnimationPlayer.Update(dt)` is exactly `Update(dt, 1f)`, an exact-`* 1` no-op).
 
 - **`LocomotionSpeedSync`** (`KhaozEngine.Game.Render3D`) - new config struct describing speed-synced playback: `Enabled`, per-move-state reference speeds `WalkClipSpeed` / `RunClipSpeed` (m/s the clip was authored to move at), and clamp bounds `MinMultiplier` / `MaxMultiplier` (default `[0.25, 3.0]` via `DefaultMinMultiplier` / `DefaultMaxMultiplier`). `LocomotionSpeedSync.Enable(walkClipSpeed, runClipSpeed, minMultiplier?, maxMultiplier?)` builds an enabled config; `Disabled` (== `default`) is off. `RateFor(state, horizontalSpeed)` returns the playback multiplier: 1 when disabled, for Idle/Jump/Fall, or when the state's reference speed is `<= 0` (avoids divide-by-zero); otherwise `clamp(horizontalSpeed / referenceSpeed, min, max)`. Zero clamp bounds fall back to the defaults, so a field-initialised config never clamps to zero.
 - **`AnimatedCharacter`** (`KhaozEngine.Game.Render3D`) - new final ctor parameter `LocomotionSpeedSync speedSync = default` (OFF by default, so the existing 5-arg ctor calls are unchanged). When enabled, a committed Walk/Run state advances its clip by `dt * speedSync.RateFor(State, horizontalSpeed)`; Idle and air states stay at 1x. Crossfade duration is unaffected.
@@ -25792,7 +25787,7 @@ Per-client, area-of-interest-scoped **delta replication** on the live serving pa
 
 ## 9.17.0
 
-World-space **nameplate** widget in `KhaozEngine.Render3D`: an MMO-style plate (a rounded panel holding a centred name and one or more health/resource bars) that supersedes the text-only `WorldLabel`, driven by a data-model so a game ships one bar now and adds more (or badges/subtitle/level) later without a rewrite. Additive minor, new public API only, no breaking changes: `WorldLabel` is untouched. Lives beside `WorldLabel`, projects the head via `IIsoCamera3D.WorldToScreen`, draws screen-space (not depth-tested) after the 3D pass, and reuses `SpriteBatch.DrawRounded` on the white texture (the `DiagnosticsOverlay` convention). Bundled in the `Game3D` umbrella, so a `Game3D` consumer (Ruinborne) reaches it with no new reference.
+World-space **nameplate** widget in `KhaozEngine.Render3D`: an MMO-style plate (a rounded panel holding a centred name and one or more health/resource bars) that supersedes the text-only `WorldLabel`, driven by a data-model so a game ships one bar now and adds more (or badges/subtitle/level) later without a rewrite. Additive minor, new public API only, no breaking changes: `WorldLabel` is untouched. Lives beside `WorldLabel`, projects the head via `IIsoCamera3D.WorldToScreen`, draws screen-space (not depth-tested) after the 3D pass, and reuses `SpriteBatch.DrawRounded` on the white texture (the `DiagnosticsOverlay` convention). Bundled in the `Game3D` umbrella, so a `Game3D` consumer (the reference consumer) reaches it with no new reference.
 
 - **`Nameplate`** (`KhaozEngine.Render3D`) - the data model: `Title` + `TitleColor` + `Bars` (an `IReadOnlyList<NameplateBar>`, may be empty for a title-only plate). `Nameplate.IsEmpty` (blank title AND no bars) is the render-free cull predicate. `badges` / `subtitle` / `level` are called out as future additive fields, deliberately not added yet.
 - **`NameplateBar`** (readonly struct) - one bar: `Fraction`, `Fill`, `Track`, and a reserved `Overlay` string (e.g. "100/100", NOT drawn in v1). `NameplateBar.ClampedFraction` exposes the 0..1-clamped fill the renderer draws with.
@@ -25985,7 +25980,7 @@ Terrain/splat materials can now override how the ground samples its detail textu
 
 ## 9.6.2
 
-`SpriteBatch` no longer tears its 2D draws for a frame when a widget moves or resizes: the per-flush vertex buffers are now ring-buffered across frames instead of one buffer reused every frame. Render-only bug fix, no public API change. Fixes the F2 collision legend in Ruinborne flickering out for a single frame as the adjacent DIAG panel resized.
+`SpriteBatch` no longer tears its 2D draws for a frame when a widget moves or resizes: the per-flush vertex buffers are now ring-buffered across frames instead of one buffer reused every frame. Render-only bug fix, no public API change. Fixes the F2 collision legend in the reference consumer flickering out for a single frame as the adjacent DIAG panel resized.
 
 - **`SpriteBatch`** (`KhaozEngine.Render2D`, internal) kept one growable vertex buffer per flush and rewrote it
   every frame with a device-level `UpdateBuffer`, while the frame loop (`AppWindow.Run`) submits + presents with no
@@ -26096,7 +26091,7 @@ moves" aliasing.** Additive minor, render-only bug fix, one new public API membe
   through it) now creates each texture with a full mip chain (`floor(log2(max(w,h))) + 1` levels) and generates
   it, mirroring the splat-terrain path. Before this, model/prop/glTF-surface textures were single-level, so the
   trilinear model sampler had nothing to blend between and distant surfaces point-minified into sparkly
-  "pixely" noise the moment the camera moved (trees, props, and any non-splat ground in Ruinborne's testers'
+  "pixely" noise the moment the camera moved (trees, props, and any non-splat ground in the reference consumer's testers'
   reports). Splat terrain was already mipped + anisotropic, which is why floors were only affected "to an extent"
   (the scattered props on them, not the ground). A 1x1 / single-level texture (e.g. the model pass's white
   default) is left untouched, so that path is byte-for-byte unchanged and the D3D11 white-darkening sampler
@@ -26451,7 +26446,7 @@ Mid-session reconnect + a server->client notice channel in NetWorld, so a client
 
 ## 8.2.0
 
-Additive: a reusable diagnostics/telemetry overlay banner - an F1-toggled corner HUD widget, a frame-time meter, a JSON-Lines session recorder, and a client network-stats seam. Drives Ruinborne's alpha telemetry HUD; every game gets the same pieces. No breaking changes; the new `INetTransport.Stats` is a default interface method so existing transports are untouched. The shared `ClientNetStats` snapshot lives in `KhaozEngine.Diagnostics` (the low telemetry leaf) so the Gui overlay can name it without `KhaozEngine.Gui` taking a dependency on the server/netcode stack; `KhaozEngine.Gui` and `KhaozEngine.NetWorld` each gain a cheap project reference to `KhaozEngine.Diagnostics`.
+Additive: a reusable diagnostics/telemetry overlay banner - an F1-toggled corner HUD widget, a frame-time meter, a JSON-Lines session recorder, and a client network-stats seam. Drives the reference consumer's alpha telemetry HUD, every game gets the same pieces. No breaking changes, the new `INetTransport.Stats` is a default interface method so existing transports are untouched. The shared `ClientNetStats` snapshot lives in `KhaozEngine.Diagnostics` (the low telemetry leaf) so the Gui overlay can name it without `KhaozEngine.Gui` taking a dependency on the server/netcode stack, `KhaozEngine.Gui` and `KhaozEngine.NetWorld` each gain a cheap project reference to `KhaozEngine.Diagnostics`.
 
 - Diagnostics - new **`FrameStats`**: a headless frame-time meter. `Sample(dt)` once per frame, then read `Fps`, `FrameMsAvg`/`FrameMsMin`/`FrameMsMax` over a rolling window (default ~1s; `new FrameStats(windowSeconds)`), and `ManagedBytes` (`GC.GetTotalMemory(false)`). Non-positive / NaN / infinite `dt` are ignored. Pure managed, unit-testable from a synthetic dt stream.
 - Diagnostics - new **`TelemetryRecorder`** + **`TelemetryChannel(string Name, double Value)`**: streams a session to a JSON Lines file, one object per `Sample(elapsedSeconds, channels)` call (`{"t":12.34,"fps":59.7,...}`), flushed after every line so a crash leaves a valid partial file. `Start(path)` (creates parent dirs, truncates), `Stop()` (flush + close), `IsRecording`/`CurrentPath`; `IDisposable`. Records raw numbers, not formatted strings; non-finite values serialize as JSON `null` so every line stays parseable. No renderer dependency.
@@ -26462,7 +26457,7 @@ Additive: a reusable diagnostics/telemetry overlay banner - an F1-toggled corner
 
 ## 8.1.0
 
-Additive: a headless, render-free loader for baked `.coll` collision shapes, so an authoritative server with no GPU/windowing can load the same shapes a client predicts against. The KECL `.coll` format reader/writer moves into the dependency-free `KhaozEngine.Physics` package; the `KhaozEngine.Render3D` loader/bake API delegates to it and is byte-identical (no behaviour change), and the offline `Bake(GltfMesh)` path stays in Render3D / `ke-propbake`. No version-pin change is forced on consumers; Ruinborne adopts to make static props/buildings solid on its client/server split.
+Additive: a headless, render-free loader for baked `.coll` collision shapes, so an authoritative server with no GPU/windowing can load the same shapes a client predicts against. The KECL `.coll` format reader/writer moves into the dependency-free `KhaozEngine.Physics` package, the `KhaozEngine.Render3D` loader/bake API delegates to it and is byte-identical (no behaviour change), and the offline `Bake(GltfMesh)` path stays in Render3D / `ke-propbake`. No version-pin change is forced on consumers, the reference consumer adopts to make static props/buildings solid on its client/server split.
 
 - Physics - new **`KhaozEngine.Physics.PropCollisionFormat`** (in the dependency-free `KhaozEngine.Physics` package, reachable from the `Server` umbrella): the render-free KECL `.coll` format. `Write(PhysicsShape, Stream)` and `Read(Stream)` (the encoder/decoder, moved here verbatim so the bytes are unchanged) plus a `Read(string path)` convenience and two manifest-free bulk loaders for a headless server: `LoadDirectory(string dir)` maps every `<id>.coll` directly under a directory to its shape (keyed by file name, exact `.coll` extension, top-level only), and `Load(IEnumerable<(string id, string collPath)>)` loads explicit id/path pairs. Needs only `System.IO` + `PhysicsShape`, so a server referencing just `KhaozEngine.Physics` (+ the opt-in `KhaozEngine.Physics.Bepu` backend) can build the same `BepuPhysicsWorld` the client does, with no `Render3D`/`Gpu`/`Windowing` dependency.
 - Render3D - `PropCollisionBake.Write` and `PropCollisionLoader.Read` now delegate to `PropCollisionFormat`; `PropCollisionBake.Magic`/`Version` are single-sourced from it. The public API of both render-side types is unchanged, and `PropCollisionLoader.LoadAll(AssetManifest)` (the manifest-driven path) is unchanged. The shape-producing `PropCollisionBake.Bake(GltfMesh)` and the `ke-propbake` tool stay in Render3D (they need the mesh). The `.coll` byte format is unchanged.
@@ -26662,7 +26657,7 @@ additive; the local predicted avatar is untouched.
   jitter, doesn't desync the ramp; a late snapshot holds the remote at the current value (alpha pinned at 1) until
   the next arrives.
 - NetWorld - new `WorldClientConfig.InterpolateRemotes` (default `true`). This is a behaviour change for ALL
-  NetWorld consumers (Hardpoint, Nullwake, SpaceGame, Ruinborne): every remote gains ~one tick (~33 ms) of render
+  NetWorld consumers (Hardpoint, Nullwake, SpaceGame, the reference consumer): every remote gains ~one tick (~33 ms) of render
   latency in exchange for smooth motion - universally wanted for an avatar walking around, and all four are
   server-authoritative (no client-side hit-test on a remote's position that the delay would break). Set it `false`
   to restore the raw-latest-position behaviour (no delay, steppy remotes). `MovementState` is deliberately still
@@ -26914,7 +26909,7 @@ new `WorldLabel.Draw(...)` static helper projects a world anchor + offset and dr
 
 Additive across the board (new component + type id, new optional `EntityRenderState` field, new token format/overloads
 + companion interface, new camera method + label helper), so minor. Bumps the `NetWorld`/`Server` and `Game3D`
-umbrellas. A consumer (Ruinborne) sets each player's display name server-side and draws it above the avatar head.
+umbrellas. A consumer (the reference consumer) sets each player's display name server-side and draws it above the avatar head.
 
 ## 7.61.0
 
@@ -27391,7 +27386,7 @@ pulled `Microsoft.Data.Sqlite` -> SQLitePCLRaw (high-sev `NU1903` / `GHSA-2m69-g
 -backend design. The umbrella now carries only the dependency-free `KhaozEngine.WorldStore` core (`IWorldStore`
 + `InMemoryWorldStore`); consumers add the backend package they want (`KhaozEngine.WorldStore.Sqlite` or
 `.SqlServer`) explicitly. Non-breaking in practice: the demo `NetworkedWalkServer` references `WorldStore.Sqlite`
-directly and Ruinborne references `WorldStore.SqlServer` directly, so nothing relied on the umbrella for a
+directly and the reference consumer references `WorldStore.SqlServer` directly, so nothing relied on the umbrella for a
 backend. A project referencing only `KhaozEngine.Server` no longer pulls SQLitePCLRaw / Microsoft.Data.Sqlite.
 Patch.
 

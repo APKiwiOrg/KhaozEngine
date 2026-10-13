@@ -7,8 +7,8 @@ Status: shipped in 14.6.0, revised in 14.8.0 (see "14.8.0 revision" at the end).
 The fleet's file-size ratchet (scripts/check-file-size.sh in game-template and the four games) is
 shell-layer only. Every local layer is bypassable (FILESIZE_OK=1, --no-verify, another IDE), so the
 first unbypassable gate is CI, which is also the most expensive place to find out. Origin incident:
-Ruinborne v0.9.4's release tag died in CI on Program.cs 1478 vs baseline 1469 after four commits
-passed the local hook (https://github.com/APKiwiOrg/Ruinborne/issues/138).
+The reference consumer v0.9.4's release tag died in CI on Program.cs 1478 vs baseline 1469 after four commits
+passed the local hook (consumer report).
 
 ## Decision
 
@@ -53,7 +53,7 @@ A repo that does must set both.
   KhaozEngine.Localization.Analyzers.
 - All FOUR umbrellas (Foundation, Game2D, Game3D, Server) reference it with PrivateAssets="none".
   KELOC rides only Game2D/Game3D, which would have missed the exact head that motivated this work
-  (Ruinborne.Server references the Server umbrella). A direct include-all edge from every umbrella
+  (Consumer.Server references the Server umbrella). A direct include-all edge from every umbrella
   also removes any dependence on multi-hop transitive analyzer-asset flow.
 - Zero-touch consumer adoption: the package ships buildTransitive/KhaozEngine.CodeHealth.Analyzers.props,
   which discovers the consuming repo's .filesize-baseline with GetDirectoryNameOfFileAbove from each

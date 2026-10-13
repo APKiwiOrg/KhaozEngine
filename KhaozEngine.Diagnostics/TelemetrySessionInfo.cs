@@ -30,7 +30,7 @@ public sealed class TelemetrySessionInfo
     /// <summary>Create an empty session info. Every field on it is optional.</summary>
     public TelemetrySessionInfo() => _gameView = _game.AsReadOnly();
 
-    /// <summary>The consuming app's name, e.g. <c>"Ruinborne"</c>. Null or blank omits it.</summary>
+    /// <summary>The consuming app's name, e.g. <c>"ConsumerGame"</c>. Null or blank omits it.</summary>
     public string? AppName { get; set; }
 
     /// <summary>The consuming app's build/display version, e.g. <c>"0.7.3"</c>. Null or blank omits it.</summary>

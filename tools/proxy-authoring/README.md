@@ -57,7 +57,7 @@ deterministic and reproducible (a committed box spec re-bakes the same proxy). R
 Author in WORLD metres and convert to the building's raw units via `heightMeters / rawHeight * placementScale`
 (each building has its OWN scale, so identical raw geometry needs different specs per building). For the default
 r=0.4 capsule, StepHeight 0.4, MaxSlope 40 deg, all limits below are world metres. Violating any of these read
-as fine in an overlay render but fails live (measured on the Ruinborne town set):
+as fine in an overlay render but fails live (measured on the reference consumer town set):
 
 - **Bodies**: hug the wall PLANES measured from the mesh (a z-band through the walls), never the full bbox
   (that wraps roof/eave/jetty overhangs into an invisible fat edge). Drop overhangs, porch posts, rails, and

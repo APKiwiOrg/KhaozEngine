@@ -164,7 +164,7 @@ public class VersionHandshakeTests
     // into its handshake version, so a 10.0.0 (wire 2) peer and a pre-10.0.0 (wire 1) peer reject each other cleanly at
     // connect instead of misparsing a 64-bit frame as 32-bit. Both skew directions must produce the clean disconnect.
 
-    private static string WireTag(int wire) => $"ruinborne-1.0;wire{wire}";
+    private static string WireTag(int wire) => $"consumer-game-1.0;wire{wire}";
 
     [Fact]
     public void Wire_version_match_joins()

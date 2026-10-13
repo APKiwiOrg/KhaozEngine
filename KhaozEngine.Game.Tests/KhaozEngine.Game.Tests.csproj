@@ -15,7 +15,7 @@
     <PackageReference Include="BepuPhysics" />
   </ItemGroup>
   <ItemGroup>
-    <!-- A captured real one-sided building collision mesh (a Ruinborne house with eaves/overhangs), used as a
+    <!-- A captured real one-sided building collision mesh (a consumer house with eaves/overhangs), used as a
          realistic regression fixture for the swept resolver: complex one-sided geometry with eaves is exactly where
          the resolver's one-sided-mesh handling must not pin or float the capsule. -->
     <None Include="Physics/Fixtures/building_with_eaves.coll" CopyToOutputDirectory="PreserveNewest" />
@@ -23,12 +23,12 @@
          <id>_collision.glb. The goal-metric fixture for the collision-proxy pipeline: a convex proxy must be
          wedge-free (the capsule can always walk or jump out) while keeping the body + furniture standable. -->
     <None Include="Physics/Fixtures/blacksmith_proxy.coll" CopyToOutputDirectory="PreserveNewest" />
-    <!-- A REAL baked building-entrance proxy (the Ruinborne inn: a compound of solid convex boxes, one of which is
+    <!-- A REAL baked building-entrance proxy (reference inn: a compound of solid convex boxes, one of which is
          the door step in front of the hall wall). The regression fixture for the paced step-up's embedded-riser
          mount: a walking capsule must climb this single solid door step, not buzz at flat height. Only the SOLID
          (convex-box) proxy reproduces it - a one-sided mesh riser has no solid under the tread to embed the feet. -->
     <None Include="Physics/Fixtures/inn_proxy.coll" CopyToOutputDirectory="PreserveNewest" />
-    <!-- Two REAL baked Ruinborne house proxies (compounds of solid convex boxes) whose doorstep sits close under a
+    <!-- Two REAL baked consumer house proxies (compounds of solid convex boxes) whose doorstep sits close under a
          wall/wing: house_1 (0.25 m step, approached -Z with a wall behind the step) and house_2 (0.32 m step under a
          building wing, approached +Z). The regression fixtures for the 10.68.0 stair-run tangent co-pace gate
          misfiring on compound geometry: SteepFaceAhead's forward sweep hits the wall/wing behind the doorstep, the

@@ -203,7 +203,7 @@ contributes, one per rectangle of each body `TileWaterBodies.Collect` returns, i
 
 `TileWaterLooks.River` is the shipped per-plane `WaterLook`: procedural waves off the shared FFT ocean, no swell,
 a small normal strength, no surf, foam only in a narrow shore band, silty colours and a 0.8 m `ShallowDepth` so a
-60 to 80 cm bed still darkens. It is modelled on Ruinborne's inland lake, and every value that differs from it
+60 to 80 cm bed still darkens. It is modelled on the reference consumer's inland lake, and every value that differs from it
 differs because of SCALE (the sea's 1.6 m foam band and 2.5 m ripple wavelength would each consume a river whole).
 **It is one shared instance of a class of public fields, so do not mutate it**: copy it, or pass a look of your
 own through `TileWorldViewOptions.WaterLook`.

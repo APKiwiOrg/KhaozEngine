@@ -37,7 +37,7 @@ controller properly instead of patching the stepper further.
 
 A kinematic controller in which support, slopes, walls, ceilings, step-up, step-down and ledges follow
 from classified contacts rather than from a gate per case. It replaces the whole `StepCore` pipeline when a
-game opts in. Grimhollow adopts first. Ruinborne (pinned at 20.2.0) adopts in its own release.
+game opts in. Grimhollow adopts first. Other consumers adopt in their own releases.
 
 Success is the new controller passing a fresh first-principles suite, then each adopting game's own
 playtest. The suite must include the measured defects above and the #1270 resting route.

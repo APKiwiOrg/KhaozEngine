@@ -1,12 +1,12 @@
 # Player persistence key resolver design
 
 Status: implemented in 18.37.0 under [#856](https://github.com/APKiwiOrg/KhaozEngine/issues/856).
-Ruinborne [#467](https://github.com/APKiwiOrg/Ruinborne/issues/467) is the pinned and waiting consumer.
+The reference consumer required separate account and persistence identities.
 
 ## Problem
 
 The server correctly authenticates and deduplicates live sessions by the verified account subject. Checkpoint
-persistence currently reuses that subject as its durable record key. Ruinborne keeps account identity and character
+persistence currently reuses that subject as its durable record key. The reference consumer keeps account identity and character
 identity separate even while it allows exactly one character per account. Its movement checkpoint must therefore
 be `player:character:<character-id>`, while bans, whitelist policy, duplicate-session policy, admin identity, and
 the signed-token subject remain `acct:<account-id>`.
@@ -15,7 +15,7 @@ the signed-token subject remain `acct:<account-id>`.
 hints before the entity exists. A resolver that runs after spawn would restore the correct record eventually but
 would seed the first snapshot from the account key, reopening the reconnect teleport defect.
 
-Ruinborne also cannot perform a database lookup in a synchronous pre-spawn callback. The character identity must
+The reference consumer also cannot perform a database lookup in a synchronous pre-spawn callback. The character identity must
 arrive as a server-verified claim without changing the authenticated subject.
 
 ## Goals
@@ -117,13 +117,13 @@ Two live authenticated sessions may have different subjects but resolve to one c
 reverse persistence-key map and refuses the newer join. It does not kick the existing character. This collision
 gate is separate from `DuplicateSessionPolicy`, which continues to govern one subject on two connections.
 
-## Ruinborne adoption
+## The reference consumer adoption
 
-Ruinborne.Auth ensures the whitelisted account's single character identity shell before minting the session token.
+Consumer.Auth ensures the whitelisted account's single character identity shell before minting the session token.
 It mints a v3 token whose subject remains `acct:<account-id>` and whose persistence-key claim is
 `character:<character-id>`. The identity-shell procedure stays unable to update journal-owned character fields.
 
-Ruinborne.Server configures the resolver to require the verified `character:` claim. It verifies that the numeric
+Consumer.Server configures the resolver to require the verified `character:` claim. It verifies that the numeric
 character belongs to the authenticated account before journal admission. `WorldPersistence` then loads, hints, and
 saves `player:character:<character-id>`.
 
@@ -141,10 +141,10 @@ the source rows, then opens only the named-staff canary. No game-local persisten
 - `StatePersistence<TState>` uses the bound key for load, periodic save, leave save, prewarm, hints, quarantine,
   game-state contexts, and in-flight guards while checking authenticated account identity on apply.
 - TileWorld passes through the core resolver seam without changing its default behavior.
-- Full Release tests, documentation guards, file-size guard, local package pack, and the waiting Ruinborne consumer
+- Full Release tests, documentation guards, file-size guard, local package pack, and the consumer
   build against the packed release.
 
 ## Release
 
-The change shipped in 18.37.0 after concurrent radial-menu work claimed 18.36.0. Ruinborne remained pinned and
+The change shipped in 18.37.0 after concurrent radial-menu work claimed 18.36.0. The reference consumer remained pinned and
 waiting, so the release was tagged immediately after the full verification and local-feed pack.

@@ -22,7 +22,7 @@ namespace KhaozEngine.Tests.Render3D
         public ShadowDissolveNoiseTests(ITestOutputHelper o) => _out = o;
 
         // A representative in-game framing: a wide third-person perspective camera over the ground, and the shadow
-        // profile a shipping consumer runs (4 cascades, 2048 per cascade, 250 m reach - Ruinborne's pinned tier).
+        // profile a shipping consumer runs (4 cascades, 2048 per cascade, 250 m reach - the reference consumer's pinned tier).
         const int CascadeCount = 4, Resolution = 2048;
         const float NearDistance = 16f, MaxDistance = 250f;
 

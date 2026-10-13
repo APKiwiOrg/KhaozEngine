@@ -11,11 +11,11 @@ namespace KhaozEngine.Tests.Locomotion;
 // the model does to ground sitting right ON the walkable threshold.
 //
 // Two failures, one boundary. MaxSlopeRadians was a bare per-tick binary, so terrain whose columns straddle it
-// alternated walk ticks and slide ticks (measured on a Ruinborne bank: 43 footing flips in 330 ticks, stalled 2.73 m
+// alternated walk ticks and slide ticks (measured on a consumer bank: 43 footing flips in 330 ticks, stalled 2.73 m
 // up a 7.6 m climb). And ResolveSlide committed the full fall-line projection of gravity the instant a surface
 // crossed the gate, so one degree too steep behaved exactly like eighty.
 //
-// The fixtures here are synthetic rather than Ruinborne data, and they are built to the SHAPE the issue measured: a
+// The fixtures here are synthetic rather than consumer data, and they are built to the SHAPE the issue measured: a
 // bank whose slope oscillates about two degrees either side of the gate, and uniform planar faces at chosen offsets
 // past it. Every case that measures the fix also runs its own CONTROL with the knobs at zero, which is the
 // pre-17.30.0 model bit for bit - so the red is in the suite permanently instead of only in a commit message.
@@ -108,7 +108,7 @@ public class TractionHysteresisTests
         // straddle it, and this bank's very first column is 46.9 degrees against a 45 degree gate. What changed is
         // the SYMPTOM it produces. Until #486 the character was admitted onto that column (the rise is well inside
         // StepHeight), refused traction there, and slid back off, so the measurement was a chatter: 43 flips in 330
-        // ticks on the reported Ruinborne bank, 112 on this one over 600. #486 stopped a footed tick from seating
+        // ticks on the reported reference bank, 112 on this one over 600. #486 stopped a footed tick from seating
         // itself onto ground past its own traction ceiling at all, so the same character is now simply STOPPED at
         // the toe of the bank - no flicker, no slide, and no climb either.
         //

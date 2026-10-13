@@ -56,7 +56,7 @@ namespace KhaozEngine.Showcase
         const float TownRadius = 24f, TownBlend = 0.25f;
 
         // Draw radius for the 7 hand-placed town buildings: few in count and always meant to be visible from
-        // across the clearing, so this is a much wider cull ring than PropDrawRadius (matches Ruinborne's high
+        // across the clearing, so this is a much wider cull ring than PropDrawRadius (matches the reference consumer's high
         // draw radius for its landmark buildings).
         const float BuildingDrawRadius = 320f;
 
@@ -107,7 +107,7 @@ namespace KhaozEngine.Showcase
         Scene3DChunkSink _sink = null!;
         TerrainStreamer _streamer = null!;
 
-        // Prop collision proxies (authored mesh-baked .coll, imported from Ruinborne) keyed by prop id, and the
+        // Prop collision proxies (authored mesh-baked .coll, imported from the reference consumer) keyed by prop id, and the
         // scatter rule - both retained so the F2 overlay can recompute the streamed tree/rock proxies for the
         // currently-loaded ring (see RebuildCollisionOverlay).
         IReadOnlyDictionary<string, PhysicsShape> _collisionShapes = null!;
@@ -202,9 +202,9 @@ namespace KhaozEngine.Showcase
             _capsule = _scene.LoadMesh(MeshPrimitives.Capsule(radius: CapsuleRadius, height: 1.2f, segments: 16, rings: 6));
 
             // --- Physics world setup ----------------------------------------------------------
-            // Prop collision uses the authored, mesh-baked .coll proxies imported from Ruinborne (thin trunk
+            // Prop collision uses the authored, mesh-baked .coll proxies imported from the reference consumer (thin trunk
             // cylinders for trees, hulls for rocks), loaded headless by filename id via
-            // PropCollisionFormat.LoadDirectory - the same shapes Ruinborne collides + predicts against, so the F2
+            // PropCollisionFormat.LoadDirectory - the same shapes the reference consumer collides + predicts against, so the F2
             // overlay draws the same trunk cylinders rather than an auto-baked hull. The shapes dictionary is
             // passed to Scene3DChunkSink, which on each chunk load/unload adds/removes the per-placement statics so
             // the character collides against exactly the props in the currently-loaded ring.
@@ -291,12 +291,12 @@ namespace KhaozEngine.Showcase
             // --- Collision-shape debug overlay (F2) ---------------------------------------------
             // Fixed (non-streamed) collision statics the overlay draws translucent proxies over. Town buildings
             // are appended just below; the streamed tree/rock proxies are added per-rebuild from the loaded chunk
-            // ring (RebuildCollisionOverlay), matching Ruinborne's overlay.
+            // ring (RebuildCollisionOverlay), matching the reference consumer's overlay.
             _overlayStatics = new List<CollisionStatic>();
 
             // Building collision: load the baked .coll per building id (offline-baked by the proxy-authoring tool
             // in the KECL format) and add each as a scaled static at its placement pose, so the 7 town buildings
-            // are solid instead of walk-through. Mirrors Ruinborne's RuinbornePhysics.AddPlacement (LoadDirectory
+            // are solid instead of walk-through. Mirrors the reference consumer's ConsumerPhysics.AddPlacement (LoadDirectory
             // + PhysicsShapeScale.Uniform + AddStatic). Also registered in _overlayStatics so F2 shows the building
             // collision proxies too.
             string buildingCollDir = Path.Combine(AppContext.BaseDirectory, "assets", "buildings");
@@ -527,7 +527,7 @@ namespace KhaozEngine.Showcase
 
         // Rebuilds the F2 overlay's proxy set from the fixed statics (town buildings) plus the tree/rock collision
         // statics of every currently-loaded chunk, so streamed props show the same translucent trunk-cylinder /
-        // hull proxies Ruinborne draws. Each streamed prop's scaled shape + world pose are computed exactly as the
+        // hull proxies the reference consumer draws. Each streamed prop's scaled shape + world pose are computed exactly as the
         // streamer's ChunkStatics.AddAll builds them (PropScatter.Generate over the chunk area -> per-placement
         // PhysicsShapeScale.Uniform + a yaw-only pose at the placement's baked ground Y), so the proxies line up
         // with the real collision. Records the loaded ring it built for so OnUpdate only re-runs on a chunk crossing.

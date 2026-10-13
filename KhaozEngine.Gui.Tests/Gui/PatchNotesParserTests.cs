@@ -9,8 +9,8 @@ namespace KhaozEngine.Tests.Gui;
 /// <summary>
 /// Covers <see cref="PatchNotesParser"/> against the canonical shape from
 /// <c>docs/CHANGELOG-STYLE.md</c>, its tolerance edge cases (unknown categories, stray bullets,
-/// unbalanced backticks, missing dates, garbage input), and a real fixture (Ruinborne's own
-/// <c>PLAY_CHANGELOG.md</c>, embedded as <c>Gui/Fixtures/RuinbornePlayChangelog.md</c>).
+/// unbalanced backticks, missing dates, garbage input), and a real fixture (the reference consumer's own
+/// <c>PLAY_CHANGELOG.md</c>, embedded as <c>Gui/Fixtures/ConsumerPlayChangelog.md</c>).
 /// </summary>
 public class PatchNotesParserTests
 {
@@ -135,9 +135,9 @@ public class PatchNotesParserTests
     }
 
     [Fact]
-    public void RealFixture_RuinborneChangelog_ParsesEveryBuildWithNonEmptyGroups()
+    public void RealFixture_ConsumerChangelog_ParsesEveryBuildWithNonEmptyGroups()
     {
-        var fixture = LoadFixture("RuinbornePlayChangelog.md");
+        var fixture = LoadFixture("ConsumerPlayChangelog.md");
         var real = PatchNotesParser.Parse(fixture);
         int expected = fixture.Split('\n').Count(l => l.StartsWith("### Build "));
 

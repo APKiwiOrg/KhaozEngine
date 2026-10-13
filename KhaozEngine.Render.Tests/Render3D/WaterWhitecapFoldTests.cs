@@ -102,7 +102,7 @@ namespace KhaozEngine.Tests.Render3D
 
         /// <summary>
         /// The floor's strength, off the CPU mirror. Fully attenuated, the fold is 73% of itself, and at the shipped
-        /// coverage that leaves about a quarter of the whitecap area the unattenuated fold has on the Ruinborne lake's
+        /// coverage that leaves about a quarter of the whitecap area the unattenuated fold has on reference lake's
         /// swell, the same order as the share of the near field's coverage the per-vertex fold used to leave in the
         /// far field.
         /// </summary>

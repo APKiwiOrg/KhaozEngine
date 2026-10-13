@@ -118,13 +118,13 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void WithGpu_ReturnsTheSameInstanceSoCallsChain()
         {
-            var info = new TelemetrySessionInfo { AppName = "Ruinborne" };
+            var info = new TelemetrySessionInfo { AppName = "ConsumerGame" };
             var selection = new GpuBackendSelection(GpuBackendKind.Vulkan, GpuBackendSource.EnvironmentOverride, "vulkan");
 
             TelemetrySessionInfo returned = info.WithGpu(selection, "llvmpipe", null, null);
 
             Assert.Same(info, returned);
-            Assert.Equal("Ruinborne", returned.AppName);
+            Assert.Equal("ConsumerGame", returned.AppName);
         }
     }
 }

@@ -65,7 +65,7 @@ configuration pays. That 0.774 is the re-record plus an unrelated per-frame cost
 frame, over every caster, because the signature it builds is what the compare needs. That is the floor. No option
 in this doc removes it, and at the field machine's 2,200 candidates it is proportionally larger.
 
-**Movement size does not change the price.** Ruinborne's real daylight rate (0.00333 deg/frame) and a rate one
+**Movement size does not change the price.** The reference consumer's real daylight rate (0.00333 deg/frame) and a rate one
 third of it (0.001 deg/frame) cost 0.198 and 0.189 ms mean and record 405 and 404 draws. The cascade compare is
 exact matrix equality (`ShadowCascadeVpsChanged`), so there is no sun movement small enough to be ignored, and the
 bench asserts that: `LightMatrixChanged` is true on all 200 frames of the 0.001 deg configuration.
@@ -188,7 +188,7 @@ the ghosting paragraph below for what it has to cover.
 re-recording, dropping the re-record's encode and the roughly 0.41 ms around it to the 0.042 ms skip floor. The
 skinned row's own encode premium is 0.226 - 0.042 = 0.184 ms (medians), a little above the rigid-only pair's
 0.149 ms because the pass also draws and packs the limb. It saves nothing at all once a character animates, which
-in Ruinborne is most of the time, because an idle animation moves the palette every frame.
+in the reference consumer is most of the time, because an idle animation moves the palette every frame.
 
 **Ghosting risk: real, and it is what sets the SCOPE of the compare.** Hashing the palettes ALONE is wrong, and
 wrong in exactly the way #410 forbids. The palette is bones and nothing else: `ComposeBonesIntoSlot`
@@ -250,7 +250,7 @@ foot `h * cot(e)` from its base. An azimuth step `dPhi` sweeps that foot by `h *
 `dE` is great-circle: an azimuth step of `dPhi` is only `cos(e) * dPhi` of great-circle travel. Per great-circle
 radian the pair is `h / sin(e)` for azimuth and `h / sin^2(e)` for elevation, so both exceed the naive
 `h * dTheta` at every elevation and the elevation term is the larger by `1 / sin(e) >= 1`. At this bench's
-35 degree sun the two factors are 1.74x and 3.04x `h * dTheta`. At 5 degrees, which Ruinborne's 30 minute day
+35 degree sun the two factors are 1.74x and 3.04x `h * dTheta`. At 5 degrees, which the reference consumer's 30 minute day
 passes through twice a cycle, they are 11x and 131x. A threshold derived from `h * dTheta` alone would be 131x too
 loose at dawn and dusk, which is precisely when a slow low sun makes the freeze most attractive.
 
@@ -332,7 +332,7 @@ fixed sun angle: solving `budget * (2r/res) * sin^2(e) / h = 1e-5` for the eleva
 `1/sqrt(r)` with cascade 0's CAMERA-derived fitted radius, so it is about 2.6 degrees on this bench's wide framing
 (`r` around 60 m) and about 5.8 degrees at the 12 m radius `ShadowLightHoldTests` fits. It costs nothing real
 wherever it lands, because this section's own arithmetic had already made the hold worthless there: at the
-standdown the threshold IS the floor, `1e-5` radians or about `5.7e-4` degrees, and Ruinborne's `0.00333` degrees
+standdown the threshold IS the floor, `1e-5` radians or about `5.7e-4` degrees, and the reference consumer's `0.00333` degrees
 per frame is some six times that, so it crosses every single frame anyway. What it buys is that dusk degrades
 deterministically rather than holding or releasing on noise.
 
@@ -365,7 +365,7 @@ read off those rows, because each interleaved block's measured window opens four
 re-adopts, so a threshold wider than the window reads as a flat 200 skips whatever its real width is. The new
 `The_hold_releases_on_a_cadence_the_threshold_predicts` sweeps 400 continuous frames per rate instead: one re-fit
 every 28.6 frames at the daylight rate and every 100 at a third of it, which is the same 0.095 to 0.1 degree
-threshold read two ways, so 96.5 and 99 percent of frames skip. **Ruinborne's real daylight rate lands well below
+threshold read two ways, so 96.5 and 99 percent of frames skip. **the reference consumer's real daylight rate lands well below
 the threshold**, which section 3.3 left open. Note that this cadence scales with cascade 0's fitted radius, which
 on this bench's wide 60 x 20 x 60 framing is around 60 m: a tighter game camera fits a smaller cascade 0 and holds
 proportionally less, so section 5's field capture remains the confirmation and #410 stays open until it lands.
@@ -458,17 +458,17 @@ stationary scene re-recording 400 spans and 1,500 casters every frame for no vis
 
 ## 5. What the Windows F3 capture must show to confirm it
 
-Ruinborne forwards `ShadowPassDiagnostics` to F3 telemetry, so the confirmation is four readings on the reporting
+The reference consumer forwards `ShadowPassDiagnostics` to F3 telemetry, so the confirmation is four readings on the reporting
 machine, same scene, same stationary pose, before and after.
 
 1. **The reason bits change, and in the right direction.** Today every sample reads
    `AnySkinnedCaster=1, LightMatrixChanged=1`. After B plus A-lite, a stationary AFK window must read
    `LightMatrixChanged=0` on most frames with an occasional 1 at the re-fit cadence, and `AnySkinnedCaster=0`
    whenever the character is genuinely still in BOTH senses A-lite has to compare, pose and world position. A
-   capture where `LightMatrixChanged` is still 1 every frame means the threshold is smaller than Ruinborne's
+   capture where `LightMatrixChanged` is still 1 every frame means the threshold is smaller than the reference consumer's
    per-frame sun step and the change bought nothing.
 2. **The re-fit cadence matches the threshold.** Count the frames between `LightMatrixChanged=1` samples. It must
-   equal the texel threshold divided by Ruinborne's per-frame sun rotation, within a frame or two. If it does not,
+   equal the texel threshold divided by the reference consumer's per-frame sun rotation, within a frame or two. If it does not,
    something else is re-fitting the cascades and the epsilon is not the thing being measured.
 3. **`shadowMs` falls to the skip floor on the non-re-fit frames**, and the floor scales with candidate count, not
    with span count. On that machine at about 2,200 candidates expect a floor above this bench's 0.042 ms.

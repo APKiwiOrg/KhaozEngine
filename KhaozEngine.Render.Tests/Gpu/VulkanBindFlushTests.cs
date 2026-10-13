@@ -210,11 +210,10 @@ namespace KhaozEngine.Tests.Gpu
             using var harness = new VulkanBindHarness();
 
             // Four sets over ONE layout content, so any permutation across the four slots still satisfies the
-            // pipeline layout and the run cutting is the only thing under test. "Trail", "Overlay" and "DepthLine"
-            // are three shipped names for the same single-vertex-uniform shape, which content dedup collapses to
-            // one VkDescriptorSetLayout.
+            // pipeline layout and the run cutting is the only thing under test. Trail, Billboard and Beam share
+            // the same fogged-effect layout, which content dedup collapses to one VkDescriptorSetLayout.
             VulkanResourceSet[] sets =
-                [harness.Set("Trail"), harness.Set("Overlay"), harness.Set("DepthLine"), harness.Set("Trail")];
+                [harness.Set("Trail"), harness.Set("Billboard"), harness.Set("Beam"), harness.Set("Trail")];
             VulkanBoundPipeline pipeline = harness.PipelineFor(sets);
             Assert.Single(pipeline.SetLayouts.Distinct());
 

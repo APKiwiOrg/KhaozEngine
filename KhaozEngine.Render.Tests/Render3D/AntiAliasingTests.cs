@@ -118,7 +118,7 @@ namespace KhaozEngine.Tests.Render3D
             Assert.False(s.EffectiveFxaa);
             Assert.Equal(1, s.EffectiveMsaaSamples);
 
-            // A consumer setting the LOW-LEVEL fields directly with AA Off is unchanged (Ruinborne's current path).
+            // A consumer setting the LOW-LEVEL fields directly with AA Off is unchanged (the reference consumer's current path).
             var raw = new PixelPostProcessSettings { RenderScale = RenderScale.MatchViewport, Supersample = 2f };
             Assert.Equal(RenderScale.MatchViewport, raw.EffectiveRenderScale);
             Assert.Equal(2f, raw.EffectiveSupersample);

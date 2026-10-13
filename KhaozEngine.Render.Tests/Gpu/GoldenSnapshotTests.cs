@@ -10,23 +10,18 @@ using KhaozEngine.Telegraphs;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// Gated GPU image-regression net. Renders a FIXED asymmetric 3D scene and a FIXED 2D scene to CPU RGBA via
-    /// the headless snapshot helpers, downsamples to a coarse grid, and compares to committed reference grids
-    /// with a per-channel tolerance. Catches shader/UBO/blend/winding/orientation regressions that a headless
-    /// geometry test cannot. Skipped unless KE_GPU_TESTS=1 (needs a Metal device).
+    /// Gated GPU grid regressions for fixed asymmetric 2D and 3D scenes. Requires KE_GPU_TESTS=1.
     /// </summary>
+    [Collection("NativeDeviceLifecycle")]
     public sealed class GoldenSnapshotTests
     {
         const int W = 480, H = 320;
 
-        // Bundled libre font (copied next to the test assembly), so the 2D golden's glyph input is identical on
-        // macOS / Windows / Linux runners. A hard-coded OS system-font path would only exist on one platform.
+        // Bundled libre font keeps the glyph input identical across backends.
         static readonly string FontPath = System.IO.Path.Combine(
             System.AppContext.BaseDirectory, "Assets", "Roboto-Regular.ttf");
 
-        // The FIXED asymmetric scene3d scene, single-sourced so the HDR-default golden (Golden3D_FixedAsymmetricScene)
-        // and the legacy opt-out golden (Golden3D_HdrOff_MatchesLegacyChain) render the exact same content and cannot
-        // drift apart. extraSetup runs last, after the shared camera/outline/mesh setup, so a test can flip a post knob.
+        // Shared content for default HDR and opt-out rows. extraSetup runs after camera and mesh setup.
         static byte[] CaptureScene3dScene(Action<Scene3D> extraSetup)
         {
             MeshHandle floor = default, sphere = default, box = default;
@@ -63,10 +58,17 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuFact]
+        public void Golden_AtmosphereOffMatchesExistingScene()
+        {
+            byte[] defaults = CaptureScene3dScene(scene => Assert.False(scene.Post.Atmosphere.Enabled));
+            byte[] disabled = CaptureScene3dScene(scene => scene.Post.Atmosphere.Enabled = false);
+            Assert.Equal(defaults, disabled);
+            GoldenCompare.AssertOrUpdate("scene3d", disabled, W, H);
+        }
+        [GpuFact]
         public void Golden3D_FixedAsymmetricScene()
         {
-            // HDR-default chain (float16 + ACES). Committed grids match it (worst 0.0001 on Metal in the golden audit).
-            // Starfield, debug ring and outline deleted moved it 0.0355, 0.0461, 0.0483 (green at 0.06, red at 0.01).
+            // Default float16 + ACES chain, pinned by the historical scene3d grids.
             byte[] rgba = CaptureScene3dScene(_ => { });
             GoldenCompare.AssertOrUpdate("scene3d", rgba, W, H);
         }
@@ -74,9 +76,7 @@ namespace KhaozEngine.Tests.Gpu
         [GpuFact]
         public void Golden3D_HdrOff_MatchesLegacyChain()
         {
-            // The exact scene3d scene (shared helper) with the HDR chain opted out. The coordinator pre-seeds
-            // scene3d_hdr_off by copying the committed legacy scene3d grids, proving the escape hatch is byte-identical
-            // to the pre-HDR output on all three backends. Not baked in this stage.
+            // Historical legacy-chain grids prove the HDR escape hatch on all three backends.
             byte[] rgba = CaptureScene3dScene(scene => scene.Post.Hdr.Enabled = false);
             GoldenCompare.AssertOrUpdate("scene3d_hdr_off", rgba, W, H);
         }

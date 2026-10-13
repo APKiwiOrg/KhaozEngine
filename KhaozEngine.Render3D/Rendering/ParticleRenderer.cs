@@ -46,6 +46,8 @@ namespace KhaozEngine.Render3D.Rendering
             public Vector4 Params;          // x soft-fade distance (0 off), y quality (1 full / 0 reduced), z background depth marker, w reserved
         }
 
+        readonly AtmosphereBindings _atmosphere;
+        readonly bool _ownsAtmosphere;
         readonly IGpuDevice _gd;
         readonly IGpuShaderSet _shaders;
         readonly IGpuResourceLayout _layout;
@@ -82,22 +84,24 @@ namespace KhaozEngine.Render3D.Rendering
             GpuBlendFactor.One, GpuBlendFactor.InverseSourceAlpha, GpuBlendFunction.Add,
             GpuBlendFactor.One, GpuBlendFactor.InverseSourceAlpha, GpuBlendFunction.Add);
 
-        public ParticleRenderer(IGpuDevice gd, GpuOutputDescription colorOutput, GpuRetireQueue retired)
+        public ParticleRenderer(IGpuDevice gd, GpuOutputDescription colorOutput, GpuRetireQueue retired, AtmosphereBindings? atmosphere = null)
         {
             _gd = gd;
+            _ownsAtmosphere = atmosphere is null;
+            _atmosphere = atmosphere ?? new AtmosphereBindings(gd);
             _retired = retired;
             var f = gd.Factory;
             _shaders = f.CreateShadersFromSpirv(ShaderSources.ParticleVert, ShaderSources.ParticleFrag);
             // Binding order matches the fragment shader exactly: Frame(0), DepthTex(1), Samp(2), MotionTex(3),
             // AtlasTex(4), AtlasSamp(5). Motion precedes atlas so the Metal static-sample order (binding order) lets
             // the two-tap warp read the motion vectors before offsetting the atlas taps.
-            _layout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
+            _layout = f.CreateResourceLayout(new GpuResourceLayoutDescription(AtmosphereBindings.AppendLayout(
                 new GpuResourceLayoutElement("Frame", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex | GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("DepthTex", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("Samp", GpuResourceKind.Sampler, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("MotionTex", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("AtlasTex", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
-                new GpuResourceLayoutElement("AtlasSamp", GpuResourceKind.Sampler, GpuShaderStages.Fragment)));
+                new GpuResourceLayoutElement("AtlasSamp", GpuResourceKind.Sampler, GpuShaderStages.Fragment))));
             _frameUbo = f.CreateBuffer(new GpuBufferDescription(192, GpuBufferUsage.UniformBuffer));
             _dummyAtlas = MakeSolid1x1(f, gd, 255, 255, 255, 255);
             _dummyMv = MakeSolid1x1(f, gd, 128, 128, 0, 255);
@@ -195,7 +199,7 @@ namespace KhaozEngine.Render3D.Rendering
             IGpuTexture atlas = (atlasIdx < 0 ? null : resolveTexture(atlasIdx)) ?? _dummyAtlas;
             IGpuTexture mv = (mvIdx < 0 ? null : resolveTexture(mvIdx)) ?? _dummyMv;
             set = _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(
-                _layout, _frameUbo, res.DepthColorTex, _gd.PointSampler, mv, atlas, _gd.LinearSampler));
+                _layout, _atmosphere.AppendResources(_frameUbo, res.DepthColorTex, _gd.PointSampler, mv, atlas, _gd.LinearSampler)));
             _sets[key] = set;
             return set;
         }
@@ -333,7 +337,8 @@ namespace KhaozEngine.Render3D.Rendering
                 CamRight = new Vector4(right, 0f),
                 CamUp = new Vector4(up, 0f),
                 CamPosTime = new Vector4(eye, timeSeconds),
-                Params = new Vector4(MathF.Max(softFade, 0f), quality == ParticleQuality.Full ? 1f : 0f, backgroundDepthMarker, 0f),
+                Params = new Vector4(MathF.Max(softFade, 0f), quality == ParticleQuality.Full ? 1f : 0f,
+                    backgroundDepthMarker, _atmosphere.Enabled ? 1f : 0f),
             };
             cl.UpdateBuffer(_frameUbo, 0, in frame);
 
@@ -364,6 +369,7 @@ namespace KhaozEngine.Render3D.Rendering
             _layout.Dispose(); _shaders.Dispose();
             _frameUbo.Dispose();
             _instances?.Dispose();
+            if (_ownsAtmosphere) _atmosphere.Dispose();
         }
     }
 }

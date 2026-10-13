@@ -36,6 +36,8 @@ namespace KhaozEngine.Render3D.Rendering
         [StructLayout(LayoutKind.Sequential)]
         struct FrameUniforms { public Matrix4x4 ViewProj; public Vector4 Time; }
 
+        readonly AtmosphereBindings _atmosphere;
+        readonly bool _ownsAtmosphere;
         readonly IGpuDevice _gd;
         readonly IGpuBuffer _ubo;              // mat4 ViewProj + vec4 Time (80 bytes)
         readonly IGpuResourceLayout _layout;   // UBO (vertex + fragment)
@@ -46,15 +48,17 @@ namespace KhaozEngine.Render3D.Rendering
         IGpuBuffer? _vb;
         uint _vbCapacity;                      // capacity in vertices
 
-        public BeamRenderer(IGpuDevice gd, GpuOutputDescription modelOutputs)
+        public BeamRenderer(IGpuDevice gd, GpuOutputDescription modelOutputs, AtmosphereBindings? atmosphere = null)
         {
             _gd = gd;
+            _ownsAtmosphere = atmosphere is null;
+            _atmosphere = atmosphere ?? new AtmosphereBindings(gd);
             var factory = gd.Factory;
 
             _ubo = factory.CreateBuffer(new GpuBufferDescription(80, GpuBufferUsage.UniformBuffer)); // mat4 + vec4
-            _layout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(
-                new GpuResourceLayoutElement("U", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex | GpuShaderStages.Fragment)));
-            _set = factory.CreateResourceSet(new GpuResourceSetDescription(_layout, _ubo));
+            _layout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(AtmosphereBindings.AppendLayout(
+                new GpuResourceLayoutElement("U", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex | GpuShaderStages.Fragment))));
+            _set = factory.CreateResourceSet(new GpuResourceSetDescription(_layout, _atmosphere.AppendResources(_ubo)));
             _shaders = factory.CreateShadersFromSpirv(ShaderSources.BeamVert, ShaderSources.BeamFrag);
 
             _pipeline = BuildPipeline(factory, modelOutputs);
@@ -114,7 +118,7 @@ namespace KhaozEngine.Render3D.Rendering
             var u = new FrameUniforms
             {
                 ViewProj = GpuClip.Correct(viewProj, _gd.Capabilities),
-                Time = new Vector4(timeSeconds, 0f, 0f, 0f),
+                Time = new Vector4(timeSeconds, 0f, _atmosphere.Enabled ? 1f : 0f, 1f),
             };
             cl.UpdateBuffer(_ubo, 0, in u);
         }
@@ -152,6 +156,7 @@ namespace KhaozEngine.Render3D.Rendering
             _layout.Dispose();
             _ubo.Dispose();
             _vb?.Dispose();
+            if (_ownsAtmosphere) _atmosphere.Dispose();
         }
     }
 }

@@ -1446,7 +1446,7 @@ in the client-side bytes is refused by `KEC0014`.
 - [ ] **Step 4: Write the manifest stability test, which is contracts 4.3's direct test.**
 
 Register the same five types in a SHUFFLED order, publish the same content, and assert the manifest hashes
-are byte identical. Ten shuffles from a seeded source. This is the test Ruinborne's wire index would have
+are byte identical. Ten shuffles from a seeded source. This is the test the reference consumer's wire index would have
 failed, since the same item has a different byte index depending on whether the catalog loaded from SQL or
 from code defaults.
 

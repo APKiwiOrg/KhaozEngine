@@ -6053,6 +6053,39 @@ scale or shear that skinning blends across vertices but a one-joint attachment w
 reflected joint stays reflected. A non-finite, collapsed, or linearly dependent basis throws `ArgumentException`
 because no rigid orientation can be recovered.
 
+### Rigid attachment sets
+
+`KhaozEngine.Attachments` contains GPU-free immutable definitions, canonical format-1 JSON, strict mesh
+references and embedded rigid GLB validation. Reference it explicitly from headless publishers. The
+`KhaozEngine.Attachments.Render3D` renderer arm ships in Game3D and binds each named part to a
+`ContractJointMap`. Mesh node transforms are baked during import. Part-local corrections compose with
+the joint's body alignment and the body's current skin-bone palette.
+
+```csharp
+using var cache = new RigidAttachmentSetCache(scene, new DirectoryAttachmentAssetSource(assetRoot));
+BoundRigidAttachmentSet bound = cache.Get(definitionKey, definitionSha256).Bind(map);
+// Every frame, using the exact bound skeleton and the body's current palette.
+bound.Queue(map.Skeleton, jointPalette, characterWorld, visualIncarnationKey);
+```
+
+One cache owns uploads for one scene and shares verified mesh revisions across its sets. Dispose it
+before the scene. Loaded and bound views borrow resources and throw `ObjectDisposedException` after
+cache disposal. Use the cache and its views on the scene's render thread without overlapping calls.
+Binding allocates scratch once. Valid frame calls load, hash and allocate nothing.
+
+The convenience `Queue` overload uses opaque white tint, `Material.None`, no dissolve and shadow casting.
+Its template overload replaces `Mesh`, `World` and `Motion` and preserves every other `RigidInstanceDraw`
+field. `WriteDraws` writes the same borrowed descriptors into a caller-owned span for a recording scene
+or outline pass and returns `DrawCount`. Parts follow ascending stable ID and material groups follow
+their GLB order. Insufficient capacity or an invalid pose changes no descriptor and queues no prefix.
+
+Each material group gets its own temporal key, nested from the caller key, semantic definition revision,
+part ID and material ordinal. Source-array reordering preserves keys. Changed mesh bytes change the
+revision and keys. Keep `visualIncarnationKey` stable for one visual lifetime and replace it when that
+incarnation changes, including a replacement with identical asset bytes. `MotionKey.None` stays untracked.
+The optional `IRigidAttachmentScene` capability accepts uploads and complete descriptors. Its default
+Scene3D adapter and the native tile-world scene facade forward to the same renderer path.
+
 ### Skinned body contracts (any body shape)
 
 A game with more than one skinned body states each body's joints once as a `SkeletonContract` and checks every

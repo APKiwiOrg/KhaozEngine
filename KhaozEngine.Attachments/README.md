@@ -33,6 +33,9 @@ Invalid constructor arguments throw `ArgumentException`.
 
 `Write(definition)` emits canonical UTF-8 with a fixed property order. Its SHA-256 is
 `SemanticSha256`. Source whitespace and part-array order do not change that revision.
+Keep each part ID stable across source reordering. The renderer derives temporal identities from
+that semantic revision, the part ID and material ordinal. A changed declared mesh hash changes
+the revision, including changes to embedded material images.
 
 Implement `IAttachmentAssetSource.Read(key)` for another byte source. The directory implementation
 returns a fresh snapshot and refuses symlinks or reparse points, including in root ancestors.

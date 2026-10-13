@@ -65,3 +65,47 @@ consumers. `Scene3DAttachmentScene` uploads through Scene3D and forwards complet
 descriptors. `UploadAttachment(parts)` returns an `IAttachmentMeshLease` whose immutable handles remain
 borrowed until lease disposal. The shipped `Scene3DTileWorldScene` also offers this optional capability.
 `ITileWorldScene` has no attachment member.
+
+## Submission
+
+Use the body's current palette and the exact bound skeleton each frame:
+
+```csharp
+bound.Queue(map.Skeleton, jointPalette, characterWorld, visualIncarnationKey);
+var template = new RigidInstanceDraw(default, Matrix4x4.Identity)
+{
+    Tint = tint,
+    CastsShadows = false,
+};
+bound.Queue(map.Skeleton, jointPalette, characterWorld, visualIncarnationKey, template);
+```
+
+The convenience overload constructs opaque white, matte, solid, visible descriptors with shadow
+casting enabled. The template overload replaces `Mesh`, `World` and `Motion` and preserves every
+other descriptor field, including dissolve and shadow options. The whole pose is validated before
+the first scene call, so an invalid later joint cannot queue a prefix.
+
+For a recording scene or outline pass, allocate a descriptor buffer once after binding:
+
+```csharp
+var draws = new RigidInstanceDraw[bound.DrawCount];
+int count = bound.WriteDraws(map.Skeleton, jointPalette, characterWorld,
+    visualIncarnationKey, template, draws);
+for (int i = 0; i < count; i++)
+    scene.DrawMeshOutline(outlineGroup, draws[i].Mesh, draws[i].World);
+```
+
+`WriteDraws` returns `DrawCount` descriptors in ascending part-ID order and stable material order.
+They borrow cache-owned mesh handles. An insufficient buffer or invalid pose throws before writing
+any descriptor, and the unused buffer suffix stays untouched. Submission and descriptor writing
+throw `ObjectDisposedException` after cache disposal.
+
+Temporal keys nest the caller key, the semantic revision's first 64 bits as two little-endian `uint`
+values, stable part ID and material ordinal with `MotionKey.Combine`. Source reordering preserves
+keys. Mesh replacement changes keys. `MotionKey.None` stays untracked. Keep the caller key stable
+while one visual incarnation lives and change it when replacing that incarnation, even if the
+replacement uses the same asset bytes.
+
+Binding allocates all submission scratch. Valid frame calls perform no loading, hashing or managed
+allocation. One cache belongs to one scene, and its views belong to that scene's render thread.
+Calls on the same bound view must not overlap.

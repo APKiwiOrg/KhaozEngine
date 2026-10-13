@@ -30,6 +30,7 @@ public sealed class LoadedRigidAttachmentSet
         get { _owner.ThrowIfDisposed(); return _definitionSha256; }
     }
 
+    /// <summary>Resolve every joint and allocate submission scratch once for the scene's render thread.</summary>
     public BoundRigidAttachmentSet Bind(ContractJointMap map)
     {
         _owner.ThrowIfDisposed();

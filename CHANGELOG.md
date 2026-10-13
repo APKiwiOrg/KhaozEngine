@@ -7,6 +7,10 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 20.34.0
 
+- TileWorld certifies immutable finite water columns with rounded capsule coverage, exposed union boundaries,
+  dry volume and atomic capacity refusals. Ordinary registrations retain installer support owners and captured
+  analytic terrain, including truthful query refusal inside non-resident holes. Legacy collider hashes and
+  surface-only medium sampling remain unchanged.
 - Ordinary water point facts refuse lossy frame conversions. Every effective movement binding execution
   door authenticates the acquiring environment context, including when bindings share a borrowed view.
 - Ordinary contact environments provide immutable installer provenance, fixed resident served scopes,

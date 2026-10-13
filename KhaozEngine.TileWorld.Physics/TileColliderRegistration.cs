@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.ExceptionServices;
 using KhaozEngine.Physics;
+using KhaozEngine.Locomotion;
 
 namespace KhaozEngine.TileWorld.Physics;
 
@@ -11,13 +12,16 @@ namespace KhaozEngine.TileWorld.Physics;
 /// be scoped with <c>using</c>. A rebuilt world is swapped in by removing the old registration and adding the new
 /// colliders.
 /// </summary>
-public sealed class TileColliderRegistration : IDisposable
+public sealed partial class TileColliderRegistration : IDisposable
 {
     readonly IPhysicsWorld _world;
     readonly StaticHandle[] _handles;
     readonly StaticHandle[] _groundHandles;
     // Which handles the world has taken back, so a retry after a failed removal skips them.
     readonly bool[] _removed;
+    readonly TileColliderProvenance[]? _provenance;
+    readonly string? _worldId;
+    readonly OrdinaryMovementExtent _extent;
 
     internal TileColliderRegistration(IPhysicsWorld world, StaticHandle[] handles)
         : this(world, handles, Array.Empty<StaticHandle>())
@@ -25,7 +29,16 @@ public sealed class TileColliderRegistration : IDisposable
     }
 
     internal TileColliderRegistration(IPhysicsWorld world, StaticHandle[] handles, StaticHandle[] groundHandles)
+        : this(world, handles, groundHandles, null, null, default)
     {
+    }
+
+    internal TileColliderRegistration(IPhysicsWorld world, StaticHandle[] handles, StaticHandle[] groundHandles,
+        TileColliderProvenance[]? provenance, string? worldId, OrdinaryMovementExtent extent)
+    {
+        _provenance = provenance;
+        _worldId = worldId;
+        _extent = extent;
         _world = world;
         _handles = handles;
         _groundHandles = groundHandles;

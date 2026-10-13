@@ -6,6 +6,7 @@ using System.Linq;
 using System.Numerics;
 using System.Security.Cryptography;
 using KhaozEngine.Physics;
+using KhaozEngine.Locomotion;
 
 namespace KhaozEngine.TileWorld.Physics;
 
@@ -13,16 +14,22 @@ namespace KhaozEngine.TileWorld.Physics;
 /// A tile world described as static colliders: data only, registered with no physics world. Build it once per
 /// loaded world and catalog set, and build it again after an edit.
 /// </summary>
-public sealed class TileWorldColliders
+public sealed partial class TileWorldColliders
 {
     readonly byte[] _hash;
 
-    TileWorldColliders(TileCollider[] colliders, byte[] hash, TileGroundSampler ground, TileMediumSampler medium)
+    TileWorldColliders(TileCollider[] colliders, byte[] hash, TileGroundSampler ground, TileMediumSampler medium,
+        TileColliderProvenance[] provenance, string worldId, TileMovementSnapshot captured, OrdinaryMovementExtent extent)
     {
         Colliders = Array.AsReadOnly(colliders);
         _hash = hash;
         Ground = ground;
         Medium = medium;
+        _provenance = provenance;
+        MovementWorldId = worldId;
+        MovementGroundHeight = captured.Height;
+        MovementGroundNormal = captured.Normal;
+        MovementExtent = extent;
     }
 
     /// <summary>
@@ -93,6 +100,16 @@ public sealed class TileWorldColliders
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(catalogs);
+        return Build(document, catalogs, TileMovementSnapshot.ContentWorldId(document, document.Regions.Keys.ToArray()), options);
+    }
+
+    /// <summary>Builds a captured ordinary movement world under the installer's authoritative world identity.</summary>
+    public static TileWorldColliders Build(TileWorldDocument document, TileWorldCatalogs catalogs,
+        string worldId, TileColliderOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(catalogs);
+        if (string.IsNullOrWhiteSpace(worldId)) throw new ArgumentException("A movement world identity is required.", nameof(worldId));
         options ??= new TileColliderOptions();
         RequirePositive(options.WallThickness, nameof(TileColliderOptions.WallThickness));
         RequirePositive(options.WalkSurfaceThickness, nameof(TileColliderOptions.WalkSurfaceThickness));
@@ -102,15 +119,19 @@ public sealed class TileWorldColliders
         RegionCoord[] regions = document.Regions.Keys.OrderBy(c => c.Rz).ThenBy(c => c.Rx).ToArray();
         TileObject[] placed = TileColliderBuilder.PlacedObjects(document, regions);
         var colliders = new List<TileCollider>();
-        TileColliderBuilder.AddGround(document, regions, colliders);
-        TileColliderBuilder.AddWalls(document, catalogs, placed, options.WallThickness, colliders);
-        TileColliderBuilder.AddBlocked(document, regions, options.BlockedHeight ?? document.PlaneHeight, colliders);
-        TileColliderBuilder.AddObjects(document, catalogs, placed, colliders);
-        TileColliderBuilder.AddWalkSurfaces(document, catalogs, placed, options.WalkSurfaceThickness, colliders);
+        var provenance = new List<TileColliderProvenance>();
+        TileColliderBuilder.AddGround(document, regions, colliders, provenance);
+        TileColliderBuilder.AddWalls(document, catalogs, placed, options.WallThickness, colliders, provenance);
+        TileColliderBuilder.AddBlocked(document, regions, options.BlockedHeight ?? document.PlaneHeight, colliders, provenance);
+        TileColliderBuilder.AddObjects(document, catalogs, placed, colliders, provenance);
+        TileColliderBuilder.AddWalkSurfaces(document, catalogs, placed, options.WalkSurfaceThickness, colliders, provenance);
 
         TileCollider[] ordered = colliders.ToArray();
-        return new TileWorldColliders(ordered, HashOf(ordered), new TileGroundSampler(document, regions),
-                                      new TileMediumSampler(document, catalogs, regions));
+        var medium = new TileMediumSampler(document, catalogs, regions, worldId);
+        var captured = new TileMovementSnapshot(document, regions);
+        TileColliderProvenance[] owners = provenance.ToArray();
+        return new TileWorldColliders(ordered, HashOf(ordered), new TileGroundSampler(document, regions), medium,
+            owners, worldId, captured, DescribeExtent(document, regions, owners, captured, medium));
     }
 
     /// <summary>
@@ -157,7 +178,7 @@ public sealed class TileWorldColliders
             }
             throw;
         }
-        return new TileColliderRegistration(world, handles, groundHandles.ToArray());
+        return new TileColliderRegistration(world, handles, groundHandles.ToArray(), _provenance, MovementWorldId, MovementExtent);
     }
 
     static void RequirePositive(float value, string option)

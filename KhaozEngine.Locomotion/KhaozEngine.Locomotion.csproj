@@ -7,6 +7,7 @@
   </PropertyGroup>
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />
+    <InternalsVisibleTo Include="KhaozEngine.TileWorld.Physics.Tests" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />

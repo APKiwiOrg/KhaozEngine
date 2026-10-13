@@ -227,8 +227,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     another layer of the set. Wherever a tap of that layer is taken, in any corner slot or the overlay slot, it
     becomes `mix(layer, companion, s)` with `s` a smoothstep over the band on the normal's Y component. The
     companion's own companion is never followed. `TileGroundMaterialConfig.BuildParams` refuses a companion that
-    names its own layer, names a slot outside the set, or carries a band that does not rise strictly inside
-    (0, 90) degrees. Every derivative stays hoisted into uniform control flow and every side tap is a
+    names its own layer, names a slot outside the set, carries a band that does not rise strictly inside
+    (0, 90) degrees, or carries one whose two ends pack to the same cosine. `Scene3D.LoadTileGroundMaterial` packs
+    the params before it creates any GPU resource, so a refused set leaks nothing. Every derivative stays hoisted into uniform control flow and every side tap is a
     `textureGrad`.
   - **Constraints worth knowing.** Entries past the layer count are zeroed, while the shader clamps every mesh slot
     to the last real texture layer before reading either resource. A hand-built mesh naming an invalid slot

@@ -11189,7 +11189,7 @@ grass at its foot corners, but every grass tap on the face renders rock:
 
 `material` is required and must be another non-Water material of the same catalog file. `fromDegrees` and
 `toDegrees` are optional, default to 40 and 55 (`GroundMaterialSteep.DefaultFromDegrees` and `DefaultToDegrees`),
-and must rise strictly inside (0, 90). The blend is a smoothstep over that band on the slope of the interpolated
+and must rise strictly inside (0, 90), wide enough that the two ends differ in cosine. The blend is a smoothstep over that band on the slope of the interpolated
 ground normal, and it belongs to the material in whatever corner or overlay slot it fills. A companion's own
 `steep` is not followed. Separately, and for every material, ground steeper than 45 degrees adds side projections
 to the top-down tap, fully weighted by 60, so a cliff carries its texture up its height instead of streaking.

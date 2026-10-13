@@ -20,7 +20,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   corners voted for the grass below renders rock on the face. The corner vote is unchanged. The band ends default
   to `GroundMaterialSteep.DefaultFromDegrees` (40) and `DefaultToDegrees` (55). A companion's own companion is not
   followed. The loader refuses an unknown companion, one outside the same catalog file, a self reference, a Water
-  companion, and a band that does not rise strictly inside (0, 90), each by name. `TileWorldValidator` reports a
+  companion, a band that does not rise strictly inside (0, 90), and a band too narrow for its two ends to differ
+  in single precision cosine, each by name. `TileWorldValidator` reports a
   companion edited unsound in memory as `material.steep`. `TileWorldHash.OfCatalogs` digests the companion only
   when present, so existing catalog digests are unchanged.
 - `TileGroundLayerImage.Steep` (`TileGroundSteepLayer`) carries a companion slot and band into

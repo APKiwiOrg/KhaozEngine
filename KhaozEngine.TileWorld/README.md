@@ -196,7 +196,8 @@ or overlay slot the material fills, so a cliff face renders the companion even w
 material at its foot. A companion's own `steep` is never followed. The schema refuses a missing `material`, an
 unknown key, and a band end outside (0, 90). `GroundMaterialSteepRules` then refuses, naming the source file and
 the material, a companion that is not another material of the SAME catalog file, a self reference, a `Water`
-companion, and a band whose resolved start is not below its resolved end. `OfCatalogs` digests it only when
+companion, a band whose resolved start is not below its resolved end, and a band too narrow for its ends to differ
+in single precision cosine, which is what the renderer blends on. `OfCatalogs` digests it only when
 present, so a catalog without companions keeps its digest.
 
 `TileWorldValidator.Validate(doc, catalogs)` returns `TileWorldIssue(Code, Message, Region, Tile)` records and

@@ -9,7 +9,8 @@ namespace KhaozEngine.TileWorld;
 // on their effective style before any replacement maps become visible to the renderer.
 internal sealed class AnimatedFoliageStyleSnapshot
 {
-    readonly HashSet<string> _selection;
+    readonly List<string> _archetypeIds;
+    readonly HashSet<string> _selectedArchetypes;
     readonly Dictionary<string, AnimatedFoliageStyle> _styles;
 
     public IReadOnlyDictionary<string, FoliageMotionProfile> MotionProfiles { get; }
@@ -23,17 +24,21 @@ internal sealed class AnimatedFoliageStyleSnapshot
         ArgumentNullException.ThrowIfNull(styles);
         ArgumentNullException.ThrowIfNull(catalogs);
         ArgumentNullException.ThrowIfNull(meshes);
-        _selection = new HashSet<string>(selection, StringComparer.Ordinal);
+        _archetypeIds = new List<string>(catalogs.Archetypes.Keys);
+        _selectedArchetypes = new HashSet<string>(StringComparer.Ordinal);
+        // Query the caller's set for authored ids instead of changing its matching semantics by copying it.
+        foreach (string id in _archetypeIds)
+            if (selection.Contains(id)) _selectedArchetypes.Add(id);
         _styles = new Dictionary<string, AnimatedFoliageStyle>(styles, StringComparer.Ordinal);
 
         var styleIds = new List<string>(_styles.Keys);
         styleIds.Sort(StringComparer.Ordinal);
         foreach (string id in styleIds)
-            if (!_selection.Contains(id))
-                throw new ArgumentException($"Animated foliage style '{id}' is outside the selection.",
+            if (!_selectedArchetypes.Contains(id))
+                throw new ArgumentException($"Animated foliage style '{id}' does not exactly name a selected archetype.",
                     nameof(TileWorldViewOptions.AnimatedFoliageStyles));
 
-        var ids = new List<string>(_selection);
+        var ids = new List<string>(_selectedArchetypes);
         ids.Sort(StringComparer.Ordinal);
         var meshRefs = new Dictionary<string, string>(StringComparer.Ordinal);
         var partHandles = new Dictionary<MeshHandle, string>();
@@ -57,9 +62,9 @@ internal sealed class AnimatedFoliageStyleSnapshot
     {
         ArgumentNullException.ThrowIfNull(selection);
         ArgumentNullException.ThrowIfNull(styles);
-        if (_selection.Count != selection.Count || _styles.Count != styles.Count) return false;
-        foreach (string id in selection)
-            if (!_selection.Contains(id)) return false;
+        if (_styles.Count != styles.Count) return false;
+        foreach (string id in _archetypeIds)
+            if (_selectedArchetypes.Contains(id) != selection.Contains(id)) return false;
         foreach (KeyValuePair<string, AnimatedFoliageStyle> entry in styles)
             if (!_styles.TryGetValue(entry.Key, out AnimatedFoliageStyle old) || old != entry.Value) return false;
         return true;

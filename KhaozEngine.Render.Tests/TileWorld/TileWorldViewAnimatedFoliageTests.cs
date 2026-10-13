@@ -30,13 +30,16 @@ public sealed class TileWorldViewAnimatedFoliageTests
     static TileWorldView View(RecordingTileWorldScene scene, TileWorldDocument doc, TileWorldViewOptions options) =>
         new(scene, doc, TileRenderTestData.Catalogs, new GreyboxMeshResolver(), options);
 
-    [Fact]
-    public void SelectedIdWithoutStyleKeepsLegacyBehavior()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SelectedIdWithoutStyleKeepsLegacyBehavior(bool ignoreCase)
     {
         TileWorldDocument doc = World();
         TileObject[] authored = doc.GetRegion(TileRenderTestData.Region)!.Objects.ToArray();
         var scene = new RecordingTileWorldScene();
         TileWorldViewOptions options = Options();
+        if (ignoreCase) options.AnimatedFoliageArchetypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "BUSH" };
         options.GroundCover.CastsShadows = true;
         options.GroundCover.MotionProfiles = new Dictionary<string, FoliageMotionProfile>(StringComparer.Ordinal)
         {
@@ -353,11 +356,14 @@ public sealed class TileWorldViewAnimatedFoliageTests
         Assert.Single(scene.FoliageReleases, batch => ReferenceEquals(before, batch));
     }
 
-    [Fact]
-    public void InPlaceSelectionChangesRebuildTheSplitAndRestoreOrdinaryPropsWhenEmpty()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void InPlaceSelectionChangesRebuildTheSplitAndRestoreOrdinaryPropsWhenEmpty(bool ignoreCase)
     {
         var scene = new RecordingTileWorldScene();
         TileWorldViewOptions options = Options();
+        if (ignoreCase) options.AnimatedFoliageArchetypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "BUSH" };
         var selection = (HashSet<string>)options.AnimatedFoliageArchetypes;
         using TileWorldView view = View(scene, World(), options);
         view.LoadRegion(TileRenderTestData.Region);
@@ -379,6 +385,54 @@ public sealed class TileWorldViewAnimatedFoliageTests
         Assert.Empty(scene.FoliageDraws);
         Assert.Equal(3, Assert.Single(scene.PropDraws).Placements.Count);
         Assert.Contains(scene.FoliageReleases, batch => ReferenceEquals(after.Instances, batch));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SelectorComparerChangesReleaseAndRebuildTheSplit(bool initiallyIgnoreCase)
+    {
+        var scene = new RecordingTileWorldScene();
+        TileWorldViewOptions options = Options();
+        options.AnimatedFoliageArchetypes = new HashSet<string>(
+            initiallyIgnoreCase ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal) { "bush", "TREE" };
+        using TileWorldView view = View(scene, World(), options);
+        view.LoadRegion(TileRenderTestData.Region);
+        view.Draw(Vector3.Zero);
+        TileFoliageDrawRecord before = Assert.Single(scene.FoliageDraws);
+        Assert.Equal(initiallyIgnoreCase ? 3 : 2, before.Drawn);
+        options.AnimatedFoliageArchetypes = new HashSet<string>(options.AnimatedFoliageArchetypes,
+            initiallyIgnoreCase ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase);
+        scene.ClearFrame();
+
+        view.Draw(Vector3.Zero);
+
+        TileFoliageDrawRecord after = Assert.Single(scene.FoliageDraws);
+        Assert.Equal(initiallyIgnoreCase ? 2 : 3, after.Drawn);
+        Assert.NotSame(before.Instances, after.Instances);
+        Assert.Single(scene.FoliageReleases, batch => ReferenceEquals(before.Instances, batch));
+        if (initiallyIgnoreCase) Assert.Equal("tree", Assert.Single(Assert.Single(scene.PropDraws).Placements).Id);
+        else Assert.Empty(scene.PropDraws);
+    }
+
+    [Fact]
+    public void SelectorChangesWithTheSameEffectiveMembershipKeepTheSplit()
+    {
+        var scene = new RecordingTileWorldScene();
+        TileWorldViewOptions options = Options();
+        using TileWorldView view = View(scene, World(), options);
+        view.LoadRegion(TileRenderTestData.Region);
+        view.Draw(Vector3.Zero);
+        TileFoliageDrawRecord before = Assert.Single(scene.FoliageDraws);
+        options.AnimatedFoliageArchetypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "BUSH", "unused" };
+        scene.ClearFrame();
+
+        view.Draw(Vector3.Zero);
+
+        TileFoliageDrawRecord after = Assert.Single(scene.FoliageDraws);
+        Assert.Equal(2, after.Drawn);
+        Assert.Same(before.Instances, after.Instances);
+        Assert.Empty(scene.FoliageReleases);
     }
 
     [Fact]

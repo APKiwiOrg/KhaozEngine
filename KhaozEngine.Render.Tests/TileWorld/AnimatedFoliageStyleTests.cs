@@ -150,6 +150,64 @@ public sealed class AnimatedFoliageStyleTests
     }
 
     [Fact]
+    public void SnapshotUsesAndDetachesEffectiveSelectorMembership()
+    {
+        var selection = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "BUSH" };
+        var styles = new Dictionary<string, AnimatedFoliageStyle>(StringComparer.Ordinal) { ["bush"] = Shrub };
+        AnimatedFoliageStyleSnapshot snapshot = CreateSnapshot(selection, styles, TileRenderTestData.Catalogs,
+            new Dictionary<string, IReadOnlyList<MeshHandle>>());
+
+        Assert.Equal(Shrub.Motion, snapshot.MotionProfiles["bush"]);
+        Assert.True(snapshot.ModelCastsShadows["bush"]);
+        Assert.False(snapshot.MotionProfiles.ContainsKey("BUSH"));
+        Assert.False(snapshot.Matches(new HashSet<string>(selection, StringComparer.Ordinal), styles));
+        Assert.True(snapshot.Matches(new HashSet<string>(StringComparer.Ordinal) { "bush", "unused" }, styles));
+        selection.Remove("BUSH");
+        selection.Add("TREE");
+        Assert.False(snapshot.Matches(selection, styles));
+        Assert.Equal(Shrub.Motion, snapshot.MotionProfiles["bush"]);
+        Assert.False(snapshot.MotionProfiles.ContainsKey("tree"));
+    }
+
+    [Fact]
+    public void DifferentlyCasedStyleKeyIsRejectedEvenWhenSelectorAcceptsIt()
+    {
+        var selection = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "BUSH" };
+        var styles = new Dictionary<string, AnimatedFoliageStyle>(StringComparer.OrdinalIgnoreCase) { ["BUSH"] = Shrub };
+
+        ArgumentException ambiguous = Assert.Throws<ArgumentException>(() => CreateSnapshot(selection, styles,
+            TileRenderTestData.Catalogs, new Dictionary<string, IReadOnlyList<MeshHandle>>()));
+
+        Assert.Equal("AnimatedFoliageStyles", ambiguous.ParamName);
+        Assert.Contains("BUSH", ambiguous.Message);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SharedMeshConflictsUseEffectiveSelectorMembership(bool sharedHandle)
+    {
+        TileWorldCatalogs catalogs = SharedCatalogs();
+        var meshes = new Dictionary<string, IReadOnlyList<MeshHandle>>(StringComparer.Ordinal);
+        if (sharedHandle)
+        {
+            catalogs.Archetypes["bush_alias"].MeshRef = "other/bush.glb";
+            meshes["bush"] = [new MeshHandle(7)];
+            meshes["bush_alias"] = [new MeshHandle(7)];
+        }
+        var selection = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "BUSH", "BUSH_ALIAS" };
+        var styles = new Dictionary<string, AnimatedFoliageStyle>(StringComparer.Ordinal) { ["bush"] = Shrub };
+
+        ArgumentException conflict = Assert.Throws<ArgumentException>(() => CreateSnapshot(selection, styles, catalogs, meshes));
+
+        Assert.Equal("AnimatedFoliageStyles", conflict.ParamName);
+        Assert.Contains("bush_alias", conflict.Message);
+        Assert.Contains("bush", conflict.Message);
+        styles["bush_alias"] = Shrub;
+        Assert.True(CreateSnapshot(selection, styles, catalogs, meshes).ModelCastsShadows["bush_alias"]);
+    }
+
+    [Fact]
     public void EmptySelectionStillRejectsEveryStyle()
     {
         ArgumentException outside = Assert.Throws<ArgumentException>(() => CreateSnapshot(

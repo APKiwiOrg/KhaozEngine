@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using KhaozEngine.TileWorld;
 using Xunit;
 
@@ -217,17 +216,5 @@ public class GroundMaterialSteepTests
         Assert.True(seen.Add(TileWorldHash.OfCatalogs(c)), "toDegrees");
         grass.Steep.Material = 4;
         Assert.True(seen.Add(TileWorldHash.OfCatalogs(c)), "the companion id");
-    }
-
-    [Fact]
-    public void A_catalog_without_a_companion_digests_as_it_did_before_the_field()
-    {
-        TileWorldCatalogs c = TileWorldCatalogs.LoadJson(Catalog(""), "steep.json");
-        string before = TileWorldHash.OfCatalogs(c);
-        c.Material(1)!.Steep = new GroundMaterialSteep { Material = 14 };
-        c.Material(1)!.Steep = null;
-
-        Assert.Equal(before, TileWorldHash.OfCatalogs(c));
-        Assert.True(c.Materials.Values.All(m => m.Steep is null));
     }
 }

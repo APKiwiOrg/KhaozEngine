@@ -2,12 +2,12 @@
 
 Status: implemented for staged 19.10.0. Living API and usage instructions are in the package README and
 consumer guide. [CPU measurements](MAP-EDITOR-RESPONSIVENESS-2026-09-20.md) record the performance boundary.
-Engine and Ruinborne integration and validation are recorded in the [implementation plan](MAP-EDITOR-REFRESH-IMPLEMENTATION-2026-09-20.md).
+Engine and the reference consumer integration and validation are recorded in the [implementation plan](MAP-EDITOR-REFRESH-IMPLEMENTATION-2026-09-20.md).
 
 ## Purpose
 
 Make terrain authoring comfortable in the shared engine editor and its consumer heads, including
-Ruinborne. Improve navigation, terrain feedback, visibility access and measured responsiveness while
+Consumer. Improve navigation, terrain feedback, visibility access and measured responsiveness while
 preserving map data, undo semantics and the existing consumer integration.
 
 ## Current evidence
@@ -18,7 +18,7 @@ preserving map data, undo semantics and the existing consumer integration.
   replaces that inspector, so visibility is not continuously accessible during terrain work.
 - Scatter visibility calls `RebuildWorldForVisibility`, which rebuilds `ViewportWorld`.
 - `SculptCursor` samples a 64-segment terrain-following ring. The scene renders it with debug lines.
-- Ruinborne's editor head constructs the shared `MapEditorScene`.
+- the reference consumer's editor head constructs the shared `MapEditorScene`.
 
 These are code observations. No frame-time measurements or visual reproduction have been captured yet.
 
@@ -89,7 +89,7 @@ for fast restoration. Hiding is not a promise to reclaim memory or stop all back
 
 ## Performance and validation
 
-Capture a repeatable route on a representative Ruinborne map with fixed camera poses, viewport size,
+Capture a repeatable route on a representative consumer map with fixed camera poses, viewport size,
 render distance and warm-up. Compare idle, orbit, pan, sculpt, visibility toggles and undo separately.
 Record median and p95 frame times, allocation rate, rebuild counts and stroke-to-visible latency.
 Keep benchmark map copies separate from authored content and record the tested engine build.

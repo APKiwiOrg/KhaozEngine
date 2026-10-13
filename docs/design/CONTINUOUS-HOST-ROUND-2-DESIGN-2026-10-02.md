@@ -34,7 +34,7 @@ The round is complete when headless acceptance tests drive both paths over real 
 the requested shape range, route around thin walls, respect traversal areas and distinguish a failed
 route from arrival. The owner then releases the engine. Grimhollow adopts that released pin on
 `feature/continuous-movement`, never on its released tile `main` during the pivot.
-Ruinborne adopting these helpers is optional. This round changes no game repository.
+The reference consumer adopting these helpers is optional. This round changes no game repository.
 
 This document is a design artifact. The owner released Grimhollow P3's build slot and authorized Plan A execution.
 Plan A's final full Release verification, including the precise-intent helper fix, built with zero warnings and ran
@@ -402,8 +402,8 @@ public static class PlayerPathMovement
 ```
 
 The ground context forwards height, normal, physics, bounds and medium through StepTowards's new
-precise-direction overload. Ruinborne's NpcGroundMove currently omits the medium argument despite its
-documentation. That mismatch is tracked at https://github.com/APKiwiOrg/Ruinborne/issues/561.
+precise-direction overload. The reference consumer's NpcGroundMove currently omits the medium argument despite its
+documentation. That mismatch is tracked at consumer report
 Lift the useful shape, not that omission, its FrostChill tuning or its NpcAgent type.
 The game passes per-archetype and per-effect tuning. Neither adapter mutates facing to a target.
 Hold calls the core with zero steering and still settles gravity and support.
@@ -423,7 +423,7 @@ active. A planner-less unrestricted press is not the default of this API.
 
 Shrink the requested direction magnitude on the last approach to the nominal stop ring. Use a
 conservative per-tick travel bound that includes the body's speed scale and the ground core's pace,
-rather than copying Ruinborne's bare tuning-speed formula. Medium slowing may make a step shorter,
+rather than copying the reference consumer's bare tuning-speed formula. Medium slowing may make a step shorter,
 which is safe. Retest shape reach after movement at the consumer boundary. `InRange` describes the
 observed position, not the proposed command's expected destination. A server check can still reject
 a target that moved after the client stopped, using its catalog tolerance exactly once.
@@ -438,7 +438,7 @@ PlayerPathMovement uses the inverse of the engine's existing camera basis, where
 world -Z. It preserves direction magnitude through `ScaleSpeedByAxis=true`, sets `Jump=false` and
 `FaceCamera=false`, and passes the requested pace. Test the result through
 `CharacterMovement.CameraRelativeDir`, real command encode/decode and both prediction and server
-simulation. Do not use Ruinborne's separate visual-yaw convention as the command basis.
+simulation. Do not use the reference consumer's separate visual-yaw convention as the command basis.
 
 Waiting, unreachable, unsupported transition and exhausted partial corridors waiting on cooldown return zero
 requested input and preserve normal follower cooldowns. A valid partial corridor continues bounded travel until
@@ -533,7 +533,7 @@ rules and server tolerance in the game. Report those integration inputs on epic 
 ## Out of scope
 
 - Grimhollow P3, P5 or P6 implementation and any Grimhollow file change.
-- Ruinborne brain, FrostChill, lunge, archetype or nav adoption changes.
+- the reference consumer brain, FrostChill, lunge, archetype or nav adoption changes.
 - Dynamic avoidance, body-to-body collision, crowds and automatic hopping or jumping.
 - Nav streaming, incremental edit-time rebakes, navigation persistence and large-world stress work. Persistence of
   physics-checked ground profiles was later lifted by

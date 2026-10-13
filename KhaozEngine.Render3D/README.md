@@ -487,10 +487,11 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   Fullscreen post blits are not itemized (their encode time is the Pass-timings `PostMs`). Aggregate it with a
   2D batch's `FrameStats` via `+` for a whole-frame total.
 - Background: `PixelPostProcessSettings.Background` (a `BackgroundMode`: `Solid`, `Starfield` (default), `Sky`) is
-  the one knob for what fills a pixel no scene geometry drew. It is a DERIVED view over the existing
-  `Starfield`/`Sky.Enabled` booleans, not new state: the getter encodes the long-standing `Sky` over `Starfield`
-  over `Solid` precedence in one place, the setter clears the modes it did not select. Nothing is `[Obsolete]` and
-  the booleans keep working unchanged. Since 11.9.0 the starfield is a real background pass, `StarfieldRenderer`
+  the one knob for what fills a pixel no scene geometry drew. It is a derived view over `Starfield`,
+  `Sky.Enabled` and `Atmosphere.Enabled`. Either sky flag resolves to `Sky`, ahead of `Starfield` and `Solid`,
+  with the physical atmosphere taking precedence over the legacy sky. Selecting `Solid` or `Starfield` disables
+  atmosphere. Selecting `Sky` enables the legacy sky without opting into atmosphere.
+  Since 11.9.0 the starfield is a real background pass, `StarfieldRenderer`
   (an internal `SkyRenderer` sibling): a fullscreen triangle at the far plane with a read-only `Equal` depth test
   paints ONLY where the stored depth still equals the cleared far plane, i.e. background where no geometry drew,
   writing `alpha = 1` before the ground decals. Procedural stars therefore flow through the whole post chain like
@@ -529,12 +530,13 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   noise thresholded against a margin rising toward the edge, biting inward up to ~35% of the
   shape's half-thickness), then `FeatherWidth` feathers the survivors. See
   `docs/USING-KHAOZENGINE.md`.
-- Sky: `PixelPostProcessSettings.Sky` (a `SkySettings`, **default off**) draws an opt-in procedural sky behind all
-  geometry - a vertical `HorizonColor`->`ZenithColor` gradient plus an optional sun disc + halo (`SunColor`,
+- Legacy palette sky: `PixelPostProcessSettings.Sky` (a `SkySettings`, **default off**) draws an opt-in procedural
+  sky behind all geometry, a vertical `HorizonColor`->`ZenithColor` gradient plus an optional sun disc and halo (`SunColor`,
   `SunRadius`, `HaloStrength`, `HaloFalloff`). Rendered as a far-plane background pass into the lit colour + read-only
   scene depth, so it fills only where no mesh drew, never touches the MRT normal/depth the outline pass reads, and
-  costs nothing when off (`Sky.Enabled == false`, existing scenes byte-stable). The sun direction **defaults to the
-  key light** (`Post.LightDirection`) so the sky and lighting agree (sun opposite the shadows). Override with
+  costs nothing when off (`Sky.Enabled == false` and atmosphere off, existing scenes byte-stable).
+  The sun direction **defaults to the key light** (`Post.LightDirection`) so sky and lighting agree
+  (sun opposite the shadows). Override with
   `Sky.SunDirectionOverride`. `Sky.Horizon` (a `SkyHorizon`, default `Screen`) chooses where the horizon is: `World`
   anchors the gradient to the world horizon and paints `Sky.GroundColor` below it (blend depth
   `Sky.HorizonSoftness`), so a finite world runs on to the horizon and the sun disc sets through that line. It needs
@@ -550,7 +552,8 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   under both cameras and is the pick for the iso look. The pure math is `SkyMath` (gradient + sun falloff +
   `ProjectSunToNdc`, which dispatches on the anchor to `ProjectSunWorldToNdc` / `ProjectSunStylizedToNdc`).
 - `SunCycle` - a pure day/night mapping from a caller-supplied normalized time of day to the sky and lighting
-  above. `SunCycle.Evaluate(timeOfDay, SunCycleSettings)` walks a latitude/declination/heading sun arc and
+  above. The palette and disc-slot descriptions here apply with atmosphere off.
+  `SunCycle.Evaluate(timeOfDay, SunCycleSettings)` walks a latitude/declination/heading sun arc and
   returns a `SunCycleState` blended between `SunCycleSettings.DayPalette`/`DuskPalette`/`NightPalette`
   (three `SunCyclePalette` anchors) keyed on sun elevation, not time, so the same settings work at any
   latitude or day length. `SunCycle.Apply(state, scene.Post)` writes it onto `Post.LightDirection`/
@@ -577,8 +580,63 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   // each frame, timeOfDay in [0,1) comes from YOUR game clock:
   SunCycle.Apply(SunCycle.Evaluate(timeOfDay, cycle), scene.Post);
   ```
-- `EnvironmentPresets` + `EnvironmentPresetKind` (17.6.0) - ready-made sky plus lighting bundles for a "pick a
-  look" dropdown. `EnvironmentPresets.Apply(kind, scene.Post)` writes one coherent group of fields for
+- Physical atmosphere: `PixelPostProcessSettings.Atmosphere` (`AtmosphereSettings`, **opt-in, default off**)
+  replaces the palette sky with Hillaire 2020 scattering, derives key, ambient and fill lighting on the CPU,
+  reflects the same sky in water and applies analytic height fog to terrain, models and effects.
+  `AtmosphereSettings.Earth()` returns the default preset, also disabled. Use the camera-aware returning overload:
+
+  ```csharp
+  var cycle = new SunCycleSettings { NightKey = NightKeyMode.Moon };
+  scene.Post.Atmosphere.Enabled = true;
+  SunCycleState state = SunCycle.Apply(
+      SunCycle.Evaluate(timeOfDay, cycle), scene.Post, scene.ActiveCamera.Eye);
+  scene.Post.Water.HorizonColor = state.HorizonColor;
+  ```
+
+  `SunCycle.Apply(in SunCycleState, PixelPostProcessSettings, Vector3 cameraWorldPosition) -> SunCycleState`
+  uses absolute camera Y for lighting and returns the physical horizon colour. The void overload remains and
+  evaluates at world height zero. Both require an evaluated state in physical mode, throwing
+  `InvalidOperationException` for a manually constructed one. Palette colours, `MoonKeyColor` and `MoonDiscColor`
+  are ignored. The primary disc remains the true sun and the moon uses an extra disc. `Moon` keeps its independent
+  track, `AntiSolarMoon` supplies an opposite-sun source, and `None` disables moon illumination.
+
+  Earth defaults are planet radius 6360 km, atmosphere height 100 km, Rayleigh scattering
+  `(0.005802, 0.013558, 0.0331)` per km with an 8 km scale height, Mie scattering/extinction
+  `0.003996`/`0.004440` per km with a 1.2 km scale height and anisotropy 0.8, ozone absorption
+  `(0.000650, 0.001881, 0.000085)` per km in a tent centred at 25 km with width 30 km, and ground albedo 0.3.
+  Calibrated `SunIlluminance = 2.7` keeps noon blue, `MoonIlluminanceFraction = 0.04` keeps the moon visible,
+  `NightAmbientFloor = 0.05` keeps receivers readable, `NightSkyFloor = 0.09` keeps moonless sky above black,
+  and `NightTint = (0.45, 0.65, 1)` keeps night dark blue at the existing fixed exposure. Eye adaptation is
+  [#1365](https://github.com/APKiwiOrg/KhaozEngine/issues/1365).
+
+  Day and dusk tints default to white. The blended tint applies once to sky, fog and lighting. The floors always
+  carry night hue, including at twilight, with per-channel `max(S * pi * L * Tint, NightSkyFloor * NightTint)`
+  for sky and `max(S * E * AmbientScale * Tint, NightAmbientFloor * NightTint)` for ambient. `L` and `E` include
+  sun and moon. Ambient and fill scales default to 1 and affect lighting only.
+  `WorldUnitsPerKilometre = 1000` maps absolute Y = 0 to the planet surface. Lighting interpolates physical
+  altitude across eight cached quadratic slices. `AerialDistanceScale = 20` compresses fog distance and endpoint
+  heights together, without changing sky or lighting altitude. Zero disables fog. `HazeDensityPerKm = 0`
+  defaults to no extra mist, with `HazeScaleHeightKm = 0.25`. Physical sky follows world view rays regardless of
+  `SkyHorizon`. Static half-float LUTs are transmittance 256 by 64 and multi-scattering 32 by 32. Sky-view is
+  192 by 108, rebuilt each enabled frame with separate horizon endpoints for sky and ground.
+
+  `AtmosphereModel` is GPU-free. `CreateFrame` consumes a `SunCycle.Evaluate` state and returns `AtmosphereFrame`,
+  with body directions, moon fraction, tint and key visibility. `EvaluateLighting(heightKm, frame)` returns
+  `AtmosphereLighting` with `Key`, `Ambient`, `Fill`, `Horizon` and untinted source transmittances. `SkyValue`
+  supplies controlled sky values, while `SkyRadiance` exposes unit-source radiance. The model snapshots settings,
+  so call `UpdateSettings` after edits. `AtmosphereFog` is the CPU height-fog oracle, exposing transmission and
+  composition with alpha-aware and additive handling. Additive effects attenuate without adding fog glow.
+
+  Phase 1 fog can be too bright in deep valleys under a low sun. The aerial perspective volume remains
+  [#1364](https://github.com/APKiwiOrg/KhaozEngine/issues/1364). Diffuse sky light reflected off the transport's
+  ground boundary and its feedback into multi-scattering are omitted, while scene receivers still get ambient.
+  Clouds, cloud shadows and stars under atmosphere remain phases 2 to 4 (#1367, #1368, #1369).
+  The one-shot completed-frame timing was inconclusive, with an on-minus-off delta of -3.752200 ms.
+  It does not establish the 0.3 ms target. See the [consumer guide](../docs/USING-KHAOZENGINE.md) for controls
+  and [phase 1 evidence](../docs/design/PHYSICAL-ATMOSPHERE-PHASE-1-EVIDENCE.md) for calibration, timing and
+  pending hosted validation.
+- `EnvironmentPresets` + `EnvironmentPresetKind` (17.6.0) - ready-made legacy sky and lighting bundles for a
+  look dropdown. `EnvironmentPresets.Apply(kind, scene.Post)` writes one coherent group of fields for
   `Day`/`Sunset`/`Night`/`Starfield`: the sky palette (`Sky.HorizonColor`/`ZenithColor`/`SunColor`/`SunEnabled`),
   the background mode (`Sky.Enabled` + `Starfield` + `BackgroundColor`), and the five lighting fields
   (`LightDirection`, `LightColor`, `AmbientColor`, `FillLightDirection`, `FillLightColor`). `Starfield` pulls the
@@ -647,9 +705,11 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     concentrated toward the camera by `GridFocusBias`
     (1 = uniform), since a consumer plane can be 1200 units across.
   - **Analytic sky reflection** (`SkyReflectionStrength`/`SkyReflectionSunStrength`): the fresnel term blends
-    toward the sky evaluated along the reflected view ray (`Internal.SkyMath.ShadeDirection`, the same gradient +
-    sun the background sky pass paints, in per-direction form) using `PixelPostProcessSettings.Sky`'s palette
-    whether or not the sky PASS is enabled. `SkyReflectionStrength = 0` restores the flat `HorizonColor`.
+    toward the sky evaluated along the reflected view ray. With atmosphere off, `Internal.SkyMath.ShadeDirection`
+    uses `PixelPostProcessSettings.Sky`'s gradient and sun even when the legacy sky pass is disabled. With atmosphere
+    enabled, water samples the same physical sky-view LUT as the background, mirrored by `AtmosphereModel` on the
+    CPU. Feed the returning camera-aware `SunCycle.Apply` horizon to `Post.Water.HorizonColor`.
+    `SkyReflectionStrength = 0` restores that flat horizon colour.
   - **GGX sun glint** (`GlintStrength`/`GlintRoughness`/`GlintDistantRoughness`): a peak-normalized GGX lobe held
     at or above a roughness floor that widens toward `GlintDistantRoughness` wherever the surface is under-sampled,
     by camera distance over `DetailFadeDistance` OR by the pixel's world footprint against the ripple wavelength,
@@ -1049,7 +1109,8 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     via the `Nameplate` model (title + `Bars` list, add more bars without a rewrite) and styled by `NameplateStyle`
     (`.Default` = the opaque unified plate, `.TextOnly` = the panel-less name-only preset for the `Text` tier).
     `NameplateLayout.Measure` is the pure, GPU-free panel-size math (headless-testable); `NameplateBar.Fraction` is
-    clamped 0..1 at draw; `NameplateRenderer.ShouldCull` shares `WorldLabel`'s cull. No per-frame heap allocation.
+    clamped 0..1 at draw; `NameplateRenderer.ShouldCull` shares `WorldLabel`'s cull. Warmed styles with up to four
+    bars draw without heap allocation. Larger plates build an uncached template.
     Opt-in edge-aware placement via `NameplateStyle.EdgeBehavior` (a `NameplateEdgeBehavior`: `None` is the
     default, byte-identical to before):
     `Clamp` insets the plate into the viewport by `EdgeMargin` on both axes, `Deflect` also moves it beside the
@@ -1067,6 +1128,27 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     stability contract as the placement hysteresis above. `NameplateTierState` is the caller-held per-entity state
     (one per plate, exposing `Tier`). `.TextOnly` pairs with `NameplateTier.Text`: zero panel alpha, zero border,
     zero `MinBarWidth`, a black `TitleShadow`, drawn against a `Nameplate` carrying no `Bars`.
+  - Component nameplate templates (20.35.0), the modular form of the plate above. A `NameplateTemplate` is an
+    ordered list of components, each bound to a `NameplateSlot` (`Name`, `Level`, `Health`, or any string key):
+    `NameplateTextComponent` (font scale, optional eight-way outline, optional shadow, its own `MaxWidth`
+    ellipsis cap), `NameplateBadgeComponent` (padded text on a rounded base fill, washed by the content's
+    optional tint) and `NameplateBarComponent` (inner track width and height, zero width meaning the template's
+    content width, border outside the track). Each component after the first carries a `NameplateAttach` rule
+    (`Self` point, `Target` id, `TargetPoint`, `Offset`) that pins it to an earlier component or, with a null
+    target, to the root. The constructor validates unique ids and backward-only targets. The template also
+    carries the panel look, content width bounds and the same `EdgeBehavior`, `EdgeMargin` and `EdgeHysteresis`
+    as `NameplateStyle`. Per-entity values live in a reusable `NameplateContent` (`SetText`, `SetBar`, `Clear`)
+    whose `Opacity` multiplies every colour of the plate, so a fade needs no new template. A component whose slot
+    is empty or holds the wrong kind does not draw. `NameplateTemplateLayout.Measure` is the GPU-free panel
+    size, `NameplatePlacement.Place` has a template overload, and `NameplateRenderer.Draw` takes a template and
+    content in a framebuffer-int and an `IDesignViewport` overload, both with a caller-held
+    `NameplatePlacementState`. Warm template draws allocate nothing. The legacy `Nameplate` and `NameplateStyle`
+    API is now a built-in template with unchanged draw calls. A legacy panel capped narrower than the "..."
+    glyphs grows to fit them. The legacy cache keys on geometry, so a colour fade keeps its template, but a style
+    whose geometry changes every frame rebuilds its template each frame, so animate that through a template
+    instead. The point rules come from
+    `AttachPoint` and `Attach` in Primitives, the outline from `TextOutline` in Render2D. Template files, an
+    editor and a mod surface are tracked in https://github.com/APKiwiOrg/KhaozEngine/issues/1378.
 
 - Animation (`Animation/`, pure + GPU-free, driven off a `Skeleton` + glTF `AnimationClip`s):
   - `BoneSocket.Compose(local, jointModel, model)` attaches a rigid piece with the row-vector order

@@ -14,7 +14,7 @@ namespace KhaozEngine.Tests.NetWorld;
 /// it records per render frame the internal signals a consumer cannot otherwise see - the render time, the fixed
 /// interpolation delay, seconds since the last snapshot, the per-remote starvation-hold flag, snapshot-arrival marks,
 /// and the local reconcile-error - for the local avatar and every remote, dumpable to CSV. Off by default (null, zero
-/// overhead). This is the headless promotion of the throwaway Ruinborne client-side position logger.
+/// overhead). This is the headless promotion of the throwaway consumer client-side position logger.
 /// </summary>
 public class PresentationTraceTests
 {

@@ -2,7 +2,7 @@
 
 Design approved 2026-07-23 (direction set by the user: the far world stays VISIBLE, no fog and no
 distance hiding, and the arc was pulled forward from data-gated to active). Roadmap issue #276.
-Interim bridge while this ships: Ruinborne brute-forces full-island residency, affordable at 450 m
+Interim bridge while this ships: the reference consumer brute-forces full-island residency, affordable at 450 m
 world scale and explicitly not at continent scale.
 
 **Status: Complete.** All three phases shipped: L1 (14.16.0, far-field terrain tiers + decor ring +
@@ -63,7 +63,7 @@ The target is a continent-scale world whose far field renders for real.
 ## Phasing (each releasable, consumer adopts per phase)
 
 - **L1, terrain far field.** Data-driven tiers, far tiers, far radius, decor ring, collision
-  decouple and re-LOD churn fixes. This alone gives Ruinborne a real horizon and retires the
+  decouple and re-LOD churn fixes. This alone gives the reference consumer a real horizon and retires the
   full-island residency bridge.
 - **L2, prop presentation.** Dissolve fade band (#44), then manifest LOD mesh variants and
   distance selection.

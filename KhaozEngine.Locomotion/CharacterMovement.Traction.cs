@@ -9,7 +9,7 @@ namespace KhaozEngine.Locomotion;
 //
 // WHAT WAS MEASURED. MoveTuning.MaxSlopeRadians was a bare per-tick binary, re-decided from scratch every tick, and
 // ResolveSlide committed the full fall-line projection of gravity the instant a surface crossed it. Both halves of
-// that fail on real ground. A Ruinborne beach-to-plateau bank whose columns run 40.0 to 41.8 degrees against a
+// that fail on real ground. A consumer beach-to-plateau bank whose columns run 40.0 to 41.8 degrees against a
 // 40 degree gate flipped footing 43 times in 330 ticks and stalled 2.73 m up a 7.6 m bank, gaining and losing the
 // same ground. Widening the gate past that bank fixed that bank (330/330 footing, 0 flips) and moved the boundary
 // onto the next feature: at a 46 degree gate, banks peaking at 46.4 and 48.8 degrees chattered the same way (24 and

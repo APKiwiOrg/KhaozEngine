@@ -1,7 +1,7 @@
 # Nav Step-Surface Bake Design (KhaozEngine.Navigation)
 
 Design approved 2026-07-16. Roadmap item "NPC navigation: vertical worlds", phase 1 of 2. The
-follow-on to the 10.123.0 navigation release. First consumer: Ruinborne wolves chasing players onto
+follow-on to the 10.123.0 navigation release. First consumer: the reference consumer wolves chasing players onto
 rocks, platforms, and stairs. Closes the recorded standable-top-props non-goal from
 [NPC-NAVIGATION-DESIGN.md](NPC-NAVIGATION-DESIGN.md).
 
@@ -66,7 +66,7 @@ a point. Neither is wired into the nav bake.
    fit beneath. The default provider reports open-sky (`PositiveInfinity`) headroom, so headroom never
    blocks until a game supplies a provider that measures it (a physics up-ray, phase 2 layering).
 
-5. **Full backward compatibility: the existing `BakeOverworld` is untouched.** Ruinborne and every
+5. **Full backward compatibility: the existing `BakeOverworld` is untouched.** The reference consumer and every
    other consumer keep calling `BakeOverworld(terrain, colliders, ...)` with identical behavior. The
    step-surface path is a new method (`BakeOverworldSteps`) plus a new `NavGrid` factory
    (`FromSurfaces`), never a change to the existing signatures. A terrain-only provider with no props
@@ -132,7 +132,7 @@ referencing `Locomotion`.
 serves every agent size, unchanged). It gains an optional parallel `float[] _heights`, one surface
 height per cell, populated only by `FromSurfaces`. `HasSurfaceHeights` reports whether it is present.
 `SurfaceHeightAt` returns the stored height, or null for a blocked cell or a grid with no height
-field. Memory: a 520x520 grid (Ruinborne's zone at 0.5 m cells) adds ~1.08 MB of float heights on top
+field. Memory: a 520x520 grid (the reference consumer's zone at 0.5 m cells) adds ~1.08 MB of float heights on top
 of the ~270 KB clearance grid, paid only on the step path.
 
 ## Baking (step-surface path)
@@ -178,9 +178,9 @@ provider's determinism is the game's responsibility, documented on the seam.
   today. The step test adds a one-cell safety rim at the cliff top, which is harmless and arguably
   desirable (NPCs do not toe the edge).
 
-## Consumer wiring (Ruinborne, game-side, separate work)
+## Consumer wiring (the reference consumer, game-side, separate work)
 
-After the engine release ships, Ruinborne swaps its `NavGridBaker.BakeOverworld` call at server boot
+After the engine release ships, the reference consumer swaps its `NavGridBaker.BakeOverworld` call at server boot
 for `BakeOverworldSteps`, passing a `TerrainSurfaceProvider` built from its terrain plus the
 `WorldSurfaces` it already builds via `PropSurfaces.FromScatter`, with `stepHeight` and `agentHeight`
 from its wolf `MoveTuning`. If it prefers the unified physics path, it implements `INavSurfaceProvider`

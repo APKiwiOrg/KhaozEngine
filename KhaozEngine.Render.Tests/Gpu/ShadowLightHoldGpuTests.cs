@@ -48,7 +48,7 @@ namespace KhaozEngine.Tests.Gpu
             scene.Camera.Frame(new Vector3(2f, 0f, 0f), new Vector3(14f, 8f, 14f));
         }
 
-        // A sun step small enough that many frames of it stay inside the shipped one-texel threshold. Ruinborne's own
+        // A sun step small enough that many frames of it stay inside the shipped one-texel threshold. The reference consumer's own
         // daylight rate is 0.00333 deg/frame, so this is about a seventeenth of it and the whole 40 frame run below
         // covers less than 0.008 deg, which is well inside the threshold this scene's cascade 0 implies.
         const float SubThresholdDegreesPerFrame = 0.0002f;

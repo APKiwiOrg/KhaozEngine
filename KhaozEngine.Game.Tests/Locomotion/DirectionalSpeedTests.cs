@@ -21,7 +21,7 @@ public class DirectionalSpeedTests
 
     static readonly Func<float, float, float> Flat = (x, z) => 0f;
 
-    // The reference feel: a slow sidestep, a much slower retreat, and no sprinting backwards. Ruinborne's opening
+    // The reference feel: a slow sidestep, a much slower retreat, and no sprinting backwards. The reference consumer's opening
     // numbers from the playtest that raised #479.
     static MoveTuning Tuned => MoveTuning.Default with
     {

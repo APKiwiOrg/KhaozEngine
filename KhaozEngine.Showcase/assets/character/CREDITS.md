@@ -13,7 +13,7 @@ Both share one 65-bone universal rig, so the body and the clips compose without 
 
 ## Bake (how this was prepared)
 
-Produced offline by Ruinborne's `scripts/bake-character.py`, which merges the Superhero Male body
+Produced offline by the reference consumer's `scripts/bake-character.py`, which merges the Superhero Male body
 with the Universal Animation Library onto the shared rig and exports one glb containing the body plus
 exactly five clips named `Idle` / `Walk` / `Run` / `Jump` / `Fall` (in-place; the engine drives world
 position, there is no root motion). Textures are 1024. It is ingested through the engine's SKINNED

@@ -114,7 +114,7 @@ public class WorldPersistenceTests
     [Fact]
     public async Task PeriodicSnapshot_DuringInFlightLoad_DoesNotClobberStoredRecord()
     {
-        // Ruinborne runs the async SqlServerWorldStore: reproduce the load-on-join window through the real WorldServer
+        // The reference consumer runs the async SqlServerWorldStore: reproduce the load-on-join window through the real WorldServer
         // with a gated store. A periodic dirty pass firing while the load is still in flight must not overwrite the
         // stored record (position + game blob) with the default-spawn state the player currently holds.
         var inner = new InMemoryWorldStore();

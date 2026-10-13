@@ -4,11 +4,11 @@ Date: 2026-09-08.
 
 Status: Implemented in 18.35.0.
 
-Grimhollow is waiting on two capabilities that already exist in pieces across the engine and Ruinborne:
+Grimhollow is waiting on two capabilities that already exist in pieces across the engine and the reference consumer:
 
 - full directional shadow maps can be configured at arbitrary resolutions, but the engine offers no named
   detail profiles
-- `SunCycle` owns the lighting curve, while Ruinborne still owns a bespoke authoritative clock, wire codec,
+- `SunCycle` owns the lighting curve, while the reference consumer still owns a bespoke authoritative clock, wire codec,
   client mirror, command queue, and persisted anchor
 
 Grimhollow is the second game that needs the clock stack. Copying it would create two protocol and persistence
@@ -59,7 +59,7 @@ The public surface is:
 authenticated operator can change it live. It must remain positive. Time scale accepts zero to freeze time and
 otherwise remains non-negative.
 
-`WorldClockHostOptions` owns operational bounds and cadence. Defaults match the Ruinborne behavior that has
+`WorldClockHostOptions` owns operational bounds and cadence. Defaults match the reference consumer behavior that has
 already been exercised in production:
 
 - state broadcast every 5 real seconds
@@ -118,14 +118,14 @@ depend on `WorldStore`, and `WorldStore` must remain a general keyed blob store 
 type. A consumer periodically saves the anchor and saves once more during its shutdown drain.
 
 The anchor continues time across downtime at the boot day length and a scale of 1. Time scale and live day-length
-changes are operational controls and reset to server configuration after restart. This matches Ruinborne's
+changes are operational controls and reset to server configuration after restart. This matches the reference consumer's
 existing time-scale behavior and avoids a forgotten accelerated test clock surviving a deployment.
 
 ## Alternatives considered
 
 ### Keep both features in Grimhollow
 
-This is the smallest immediate diff, but it contradicts the explicit engine request and would copy Ruinborne's
+This is the smallest immediate diff, but it contradicts the explicit engine request and would copy the reference consumer's
 clock into a second game. Every later correction would need to land twice. Rejected.
 
 ### Put the world clock in Render3D beside `SunCycle`

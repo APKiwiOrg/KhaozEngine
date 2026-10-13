@@ -12,7 +12,7 @@ namespace KhaozEngine.Gui;
 /// A game localizes the overlay by adding these keys to its own catalog and wiring it as
 /// <see cref="LocalizationContext.Catalog"/>; the default theme then resolves through it, and falls back to
 /// the English values here whenever a key is absent or no catalog is wired (see <see cref="UpdateOverlayTheme"/>).
-/// The keys match the <c>update.overlay.*</c> set Ruinborne already authored, so a game can drop a bespoke
+/// The keys match the <c>update.overlay.*</c> set the reference consumer already authored, so a game can drop a bespoke
 /// theme override and just supply catalog entries.
 /// </summary>
 /// <remarks>

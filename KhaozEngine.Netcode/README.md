@@ -506,7 +506,7 @@ own variable. The engine validates it and stores nothing.
 
 ## Connect-time gate: ConnectionGate + HandshakeToken (17.40.0)
 
-Promoted out of Ruinborne, because two games need the identical door and a tile server cannot reference
+Promoted out of the reference consumer, because two games need the identical door and a tile server cannot reference
 `KhaozEngine.NetWorld`, where the codec used to live.
 
 **`HandshakeToken`** is the connect-token LAYER codec. A connect token is a nest of labelled layers, outermost
@@ -618,13 +618,11 @@ and pass the auth token alone, so the layers arrive as `[ke-wire:N][ProtocolVers
 `WorldClient` reads a `ke:world-mismatch:` refusal as `DisconnectReason.ContentMismatch`, with both hashes on
 `WorldClient.ContentMismatch`.
 
-Ruinborne still emits its own `rb:world-mismatch:` reason token (`Ruinborne.Shared.RuinborneWorldIdentity`), so its
-gate is NOT yet an alias of this one. Swapping it over changes a wire reason token its shipped clients already
-match on, which needs a Ruinborne protocol-version bump plus a client-side reason mapping. The engine side of that
-mapping now exists: `WorldClient` reads the engine token as `DisconnectReason.ContentMismatch`. The promoted parser is
-also the stricter of the two: `RuinborneWorldIdentity` reads a body with no pipe as all-server-hash, where
-`TryParseWorldMismatch` returns false. The engine's own producer always writes the pipe, so nothing breaks today,
-but the swap has to account for the dropped tolerance.
+A consumer with a custom world-mismatch reason token must update its client-side reason mapping and bump its
+protocol version when switching to this gate. `WorldClient` reads the engine token as
+`DisconnectReason.ContentMismatch`. The promoted `TryParseWorldMismatch` parser requires a pipe between the
+server and client hashes. A legacy parser that treats an unseparated body as the server hash must account for
+that stricter validation when adopting. The engine producer always writes the pipe.
 
 ## NetEndpoint: parsing the address a player typed
 

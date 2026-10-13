@@ -19,6 +19,10 @@ namespace KhaozEngine.Tests.Render3D
     public class UboLayoutTests
     {
         [Fact]
+        public void AtmosphereUbo_Is320BytesAndAllOffsetsMatch()
+            => AtmosphereRendererTests.VerifyUboLayout();
+
+        [Fact]
         public void Skinned_target_outline_vertex_has_contiguous_inputs_outputs_and_palette()
         {
             string source = ShaderSources.TargetOutlineSkinnedMaskVert;
@@ -617,17 +621,22 @@ namespace KhaozEngine.Tests.Render3D
             Assert.Contains("vOverlaySlot > 0.5 ? clamp(1.0 - wsum, 0.0, 1.0) : 0.0", ShaderSources.TileGroundFrag);
         }
 
+        [Fact]
+        public void FogBlendBlocks_AppendOneVec4WithoutChangingMatrixPrefix()
+            => AtmosphereRendererTests.VerifyFogBlendLayout();
+
         // ---- Sky background pass UBO (SkyRenderer) ----
 
         [Fact]
-        public void SkyUbo_MarshalSize_EqualsUboBytesConstant_And_GlslBlock()
+        public void SkyUbo_AppendsDirectionsAt480()
         {
-            // GLSL Sky block: 6 vec4 (Horizon, Zenith, Res, Ground, HorizonRay, HorizonUp) + three vec4[8] disc arrays
-            // (DiscColor, DiscPlace, DiscHalo) = 480 bytes. If the struct or
-            // the shader block drift apart, the per-frame sky UBO upload smears the colours / sun params. The other
-            // half lives in ShaderSources.SkyFrag.
+            Assert.Equal(608, Marshal.SizeOf<SkyRenderer.SkyUbo>());
             Assert.Equal((int)SkyRenderer.UboBytes, Marshal.SizeOf<SkyRenderer.SkyUbo>());
-            Assert.Equal((6 + 3 * SkySettings.MaxDiscs) * 16, (int)SkyRenderer.UboBytes);
+            Assert.Equal(480, (int)Marshal.OffsetOf<SkyRenderer.SkyUbo>("DiscDirection"));
+            Assert.Equal(0, (int)Marshal.OffsetOf<SkyRenderer.SkyUbo>("Horizon"));
+            Assert.Equal(96, (int)Marshal.OffsetOf<SkyRenderer.SkyUbo>("DiscColor"));
+            Assert.Equal(224, (int)Marshal.OffsetOf<SkyRenderer.SkyUbo>("DiscPlace"));
+            Assert.Equal(352, (int)Marshal.OffsetOf<SkyRenderer.SkyUbo>("DiscHalo"));
         }
 
         [Fact]
@@ -636,7 +645,7 @@ namespace KhaozEngine.Tests.Render3D
             // Assert every member of the Sky block is present (in the fragment that reads it), so a rename/reorder on
             // the shader side that silently changes the layout trips here. Other half: ShaderSources.SkyFrag.
             foreach (var member in new[] { "vec4 Horizon;", "vec4 Zenith;", "vec4 Res;", "vec4 Ground;",
-                "vec4 HorizonRay;", "vec4 HorizonUp;", "vec4 DiscColor[8];", "vec4 DiscPlace[8];", "vec4 DiscHalo[8];" })
+                "vec4 HorizonRay;", "vec4 HorizonUp;", "vec4 DiscColor[8];", "vec4 DiscPlace[8];", "vec4 DiscHalo[8];", "vec4 DiscDirection[8];" })
                 Assert.True(ShaderSources.SkyFrag.Contains(member),
                     $"SkyFrag lost '{member}': the Sky UBO block drifted from SkyRenderer.SkyUbo. Fix ShaderSources.SkyFrag or the struct.");
         }
@@ -644,38 +653,33 @@ namespace KhaozEngine.Tests.Render3D
         // ---- Water surface pass UBO (WaterRenderer) ----
 
         [Fact]
-        public void WaterUbo_MarshalSize_EqualsPayloadBytesConstant_And_GlslBlock()
+        public void WaterBlock_Preserves1056Bytes()
         {
-            // GLSL Water block: 2 mat4 (ViewProj, InvViewProj) + 34 vec4 (LightDir, LightColor, CameraPos,
-            // DeepColor, ShallowColor, HorizonColor, WaveParams, ShoreGlint, DetailParams, SkyHorizon, SkyZenith,
-            // SkyParams, ReflectGlint, SwellParams, SwellShape, Absorption, FoamColor, FoamParams,
-            // RippleSpectrum, FootprintParams, FftParams, FftTiles, FftVariance, FftFocus, FftRotCos, FftRotSin,
-            // FftSector, FftWave, BathyRect, BathyParams, SurfParams, SurfShape, RenderOrigin, SkyGround) + three vec4[8] disc arrays (SkyDiscColor, SkyDiscDir, SkyDiscHalo)
-            // = 128 + 544 + 384 = 1056
-            // bytes. If the struct or the shader block drift apart, the per-plane water UBO upload smears the
-            // colours/wave/swell/foam params. Other half: ShaderSources.WaterFrag.
+            Assert.Equal(1056, Marshal.SizeOf<WaterRenderer.WaterUbo>());
+            Assert.Equal(1280u, WaterRenderer.SlotBytes);
+            // Two mat4, 34 vec4 and three vec4[8] arrays. The GLSL declarations are checked below.
             Assert.Equal((int)WaterRenderer.PayloadBytes, Marshal.SizeOf<WaterRenderer.WaterUbo>());
             Assert.Equal(2 * 64 + (34 + 3 * SkySettings.MaxDiscs) * 16, (int)WaterRenderer.PayloadBytes);
-        }
-
-        [Fact]
-        public void WaterUbo_BoundRangeAndStride_SatisfyTheD3D11ConstantCountRule()
-        {
-            // D3D11's PSSetConstantBuffers1 requires FirstConstant AND NumConstants to be multiples of 16 constants,
-            // and Veldrid 4.9.0 derived them as offset/16 and max(size, 256)/16 with NO rounding. So a bound size
-            // under 256 is padded to 256 and is fine, an exact multiple of 256 is fine, and ANYTHING IN BETWEEN
-            // yields a non-multiple-of-16 count that D3D11 rejects outright - leaving the whole cbuffer unbound, so
-            // the shader reads zeros. That is not hypothetical: 14.22.0 grew this payload to 272 and binding 272
-            // made every water fragment read opacity 0 and discard, so D3D11/WARP rendered NO WATER while Metal and
-            // Vulkan were perfect. Only the cross-backend bake caught it.
-            //
-            // This asserts the fix as an invariant on the two numbers rather than on the backend: the bound range
-            // (SlotBytes, not PayloadBytes) is 256-aligned, and it covers the payload so a plane's params are whole.
-            Assert.True(WaterRenderer.SlotBytes % 256 == 0,
-                $"water UBO bound range {WaterRenderer.SlotBytes} is not a multiple of 256: D3D11 will reject the " +
-                "constant-buffer binding and the water pass will silently render nothing on that backend.");
-            Assert.True(WaterRenderer.SlotBytes >= WaterRenderer.PayloadBytes,
-                $"water UBO slot stride {WaterRenderer.SlotBytes} is smaller than its {WaterRenderer.PayloadBytes}-byte payload: adjacent planes would overwrite each other.");
+            // D3D11 requires bound ranges and offsets in multiples of 16 constants (256 bytes).
+            // Binding the 272-byte payload in 14.22.0 left water invisible on WARP. Bind SlotBytes instead.
+            Assert.True(WaterRenderer.SlotBytes % 256 == 0);
+            Assert.True(WaterRenderer.SlotBytes >= WaterRenderer.PayloadBytes);
+            var matrix = System.Numerics.Matrix4x4.Identity;
+            var sky = new SkySettings();
+            var water = new WaterSettings();
+            var legacy = WaterRenderer.PackUbo(matrix, matrix, -System.Numerics.Vector3.UnitY,
+                KhaozEngine.Primitives.Color.White, System.Numerics.Vector3.UnitY, water, sky, 0);
+            var disabled = WaterRenderer.PackUbo(matrix, matrix, -System.Numerics.Vector3.UnitY,
+                KhaozEngine.Primitives.Color.White, System.Numerics.Vector3.UnitY, water, sky, 0,
+                default, atmosphereEnabled: false);
+            Assert.Equal(MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref legacy, 1)).ToArray(),
+                MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref disabled, 1)).ToArray());
+            var enabled = WaterRenderer.PackUbo(matrix, matrix, -System.Numerics.Vector3.UnitY,
+                KhaozEngine.Primitives.Color.White, System.Numerics.Vector3.UnitY, water, sky, 0,
+                default, atmosphereEnabled: true);
+            Assert.Equal(0, legacy.SkyParams.Y);
+            Assert.Equal(1, enabled.SkyParams.Y);
+            Assert.Equal(sky.SunEnabled ? 1 : 0, enabled.SkyDiscHalo[0].Z);
         }
 
         [Fact]

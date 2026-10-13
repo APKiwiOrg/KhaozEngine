@@ -8,7 +8,7 @@ namespace KhaozEngine.Tests.NetWorld;
 
 /// <summary>
 /// An <see cref="IWorldStore"/> that holds every load open until the test explicitly releases it, wrapping a real
-/// inner store. Reproduces a genuinely-async backend (Ruinborne's SqlServerWorldStore) so a test can drive the exact
+/// inner store. Reproduces a genuinely-async backend (the reference consumer's SqlServerWorldStore) so a test can drive the exact
 /// window a synchronous InMemoryWorldStore cannot: a periodic save or a leave that fires while a load-on-join is
 /// still in flight. Saves pass straight through and are recorded, so a clobbering write is observable.
 /// </summary>

@@ -1,6 +1,10 @@
+using System.Linq;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Internal;
+using KhaozEngine.Gpu.Metal.Internal;
 using KhaozEngine.Render2D;
 using KhaozEngine.Render3D.Internal;
+using KhaozEngine.Render3D.Rendering;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
@@ -48,6 +52,10 @@ namespace KhaozEngine.Tests.Gpu
             => ShaderValidation.ValidatePair(ShaderSources.ModelVert, ShaderSources.ModelFrag, "Model");
 
         [Fact]
+        public void Foliage()
+            => ShaderValidation.ValidatePair(ShaderSources.FoliageVert, ShaderSources.ModelFrag, "Foliage");
+
+        [Fact]
         public void Splat()
             => ShaderValidation.ValidatePair(ShaderSources.SplatVert, ShaderSources.SplatFrag, "Splat");
 
@@ -90,6 +98,10 @@ namespace KhaozEngine.Tests.Gpu
             => ShaderValidation.ValidatePair(ShaderSources.DistortionVert, ShaderSources.DistortionFrag, "Distortion");
 
         [Fact]
+        public void Trail()
+            => ShaderValidation.ValidatePair(ShaderSources.TrailVert, ShaderSources.TrailFrag, "Trail");
+
+        [Fact]
         public void Beam()
             => ShaderValidation.ValidatePair(ShaderSources.BeamVert, ShaderSources.BeamFrag, "Beam");
 
@@ -104,6 +116,42 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void Sky()
             => ShaderValidation.ValidatePair(ShaderSources.SkyVert, ShaderSources.SkyFrag, "Sky");
+
+        [Fact]
+        public void Sky_SolarClippingMirrorsCpuHorizonCosine()
+        {
+            Assert.Contains("float planetRatio = Atmo.Planet.x / cameraRadius;", ShaderSources.AtmosphereSkyConsumersGlsl);
+            Assert.Contains("float horizonCosine = -sqrt(max(0.0, 1.0 - planetRatio * planetRatio));",
+                ShaderSources.AtmosphereSkyConsumersGlsl);
+            Assert.Contains("edge <= 0.0 || d.y <= horizonCosine", ShaderSources.AtmosphereSkyConsumersGlsl);
+            Assert.DoesNotContain("AtmoPlanetOccludes", ShaderSources.AtmosphereSkyConsumersGlsl);
+        }
+
+        [Fact]
+        public void Sky_ReflectsDenseUsedAtmosphereSuffix()
+        {
+            var pair = SpirvCrossCompile.GlslPairToHlsl(ShaderSources.SkyVert, ShaderSources.SkyFrag);
+            var elements = Assert.Single(pair.Reflection.ResourceLayouts).Elements;
+            var layout = AtmosphereBindings.AppendLayout(
+                new GpuResourceLayoutElement("Sky", GpuResourceKind.UniformBuffer, GpuShaderStages.Fragment));
+            Assert.Equal(4, elements.Length);
+            Assert.Equal(layout.Select(e => e.Kind), elements.Select(e => e.Kind));
+            Assert.All(elements, e => Assert.Equal(GpuShaderStages.Fragment, e.Stages));
+            var metal = MetalShaderBuild.Pair(ShaderSources.SkyVert, ShaderSources.SkyFrag, null, "Sky");
+            metal.Table.RequireLayoutShape(new[] { new GpuResourceLayoutDescription(layout) }, "Sky");
+        }
+
+        [Fact]
+        public void AtmosphereTransmittance()
+            => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.AtmosphereTransmittanceFrag, "AtmosphereTransmittance");
+
+        [Fact]
+        public void AtmosphereMultiScattering()
+            => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.AtmosphereMultiScatteringFrag, "AtmosphereMultiScattering");
+
+        [Fact]
+        public void AtmosphereSkyView()
+            => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.AtmosphereSkyViewFrag, "AtmosphereSkyView");
 
         [Fact]
         public void Starfield()

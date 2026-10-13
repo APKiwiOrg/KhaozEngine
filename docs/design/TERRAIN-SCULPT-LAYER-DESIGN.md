@@ -1,7 +1,7 @@
 # Terrain sculpt layer: authored height deltas over the analytic base
 
 Design approved 2026-07-23. Roadmap item #271, part of the authored-world program
-(https://github.com/APKiwiOrg/Ruinborne/issues/169). Implements the seam map format v1 reserved:
+(consumer report). Implements the seam map format v1 reserved:
 `MapDocument.TerrainOverrides`, null-only until now, becomes the sculpt-delta layer in format v2.
 
 ## Problem
@@ -69,7 +69,7 @@ empty, so unsculpted zones pay nothing.
   `TerrainField` composition and normals, `MapRuntime` wiring, headless determinism and migration
   tests. Ships with no editor surface, the layer is MCP- and code-authorable only.
 - **T2, editor brushes.** Toolbar mode, brush commands, stroke undo, dirty-region viewport rebuild.
-- **T3, verbs and adoption.** `sculpt_*` MCP verbs, then Ruinborne repin and first sculpt pass on
+- **T3, verbs and adoption.** `sculpt_*` MCP verbs, then the reference consumer repin and first sculpt pass on
   the valley (program issue tracks the game side).
 
 ## Non-goals

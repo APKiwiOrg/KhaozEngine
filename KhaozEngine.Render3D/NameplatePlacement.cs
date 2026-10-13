@@ -7,7 +7,7 @@ namespace KhaozEngine.Render3D
     /// Caller-held state for one plate/entity's <see cref="NameplateEdgeBehavior.Deflect"/> hysteresis, carried
     /// across frames by <see cref="NameplateRenderer"/>'s stateful <c>Draw</c> overload. A default instance means
     /// not deflected, so a freshly introduced plate starts in the normal above-anchor placement. Mutable: pass by
-    /// <c>ref</c> so <see cref="NameplatePlacement.Place"/> can update it in place without a per-frame allocation.
+    /// <c>ref</c> so <see cref="NameplatePlacement.Place(Vector2,Vector2,int,int,in NameplateStyle,ref NameplatePlacementState)"/> can update it in place without a per-frame allocation.
     /// </summary>
     /// <remarks>
     /// One instance belongs to exactly one plate. Sharing an instance across plates would let one plate's
@@ -33,7 +33,7 @@ namespace KhaozEngine.Render3D
     /// Pure, GPU-free placement math for a <see cref="Nameplate"/> panel: the baseline centred-above-anchor rect
     /// <see cref="NameplateRenderer"/> has always used, plus the two opt-in <see cref="NameplateEdgeBehavior"/>
     /// modes that keep it inside the viewport. No camera, no device, so it is headless-testable like <see
-    /// cref="NameplateLayout"/>. The renderer projects the world point and calls <see cref="Place"/> with the
+    /// cref="NameplateLayout"/>. The renderer projects the world point and calls <see cref="Place(Vector2,Vector2,int,int,in NameplateStyle,ref NameplatePlacementState)"/> with the
     /// resulting pixel to get the final panel rect.
     /// </summary>
     /// <remarks>
@@ -60,23 +60,36 @@ namespace KhaozEngine.Render3D
         public static Vector4 Place(
             Vector2 anchor, Vector2 size, int viewportWidth, int viewportHeight,
             in NameplateStyle style, ref NameplatePlacementState state)
+            => PlaceCore(anchor, size, viewportWidth, viewportHeight,
+                style.EdgeBehavior, style.EdgeMargin, style.EdgeHysteresis, ref state);
+
+        /// <summary>Places a component template panel using its edge margin, behavior and hysteresis.</summary>
+        public static Vector4 Place(
+            Vector2 anchor, Vector2 size, int viewportWidth, int viewportHeight,
+            NameplateTemplate template, ref NameplatePlacementState state)
+            => PlaceCore(anchor, size, viewportWidth, viewportHeight,
+                template.EdgeBehavior, template.EdgeMargin, template.EdgeHysteresis, ref state);
+
+        private static Vector4 PlaceCore(
+            Vector2 anchor, Vector2 size, int viewportWidth, int viewportHeight,
+            NameplateEdgeBehavior edgeBehavior, float edgeMargin, float edgeHysteresis, ref NameplatePlacementState state)
         {
             float baselineLeft = anchor.X - size.X * 0.5f;
             float baselineTop = anchor.Y - size.Y;
 
-            if (style.EdgeBehavior == NameplateEdgeBehavior.None)
+            if (edgeBehavior == NameplateEdgeBehavior.None)
             {
                 state = default;
                 return new Vector4(baselineLeft, baselineTop, size.X, size.Y);
             }
 
-            float m = style.EdgeMargin;
+            float m = edgeMargin;
             float w = size.X;
             float h = size.Y;
             float maxLeft = viewportWidth - m - w;
             float maxTop = viewportHeight - m - h;
 
-            if (style.EdgeBehavior == NameplateEdgeBehavior.Clamp)
+            if (edgeBehavior == NameplateEdgeBehavior.Clamp)
             {
                 state = default;
                 return new Vector4(ClampAxis(baselineLeft, m, maxLeft), ClampAxis(baselineTop, m, maxTop), w, h);
@@ -84,7 +97,7 @@ namespace KhaozEngine.Render3D
 
             // Deflect: clamp horizontally like Clamp, but move beside the anchor instead of clamping down over
             // it when the normal above-anchor placement overflows the top edge.
-            float band = style.EdgeHysteresis > 0f ? style.EdgeHysteresis : h * 0.5f;
+            float band = edgeHysteresis > 0f ? edgeHysteresis : h * 0.5f;
 
             if (!state.IsDeflected)
             {

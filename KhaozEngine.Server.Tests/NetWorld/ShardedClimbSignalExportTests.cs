@@ -15,7 +15,7 @@ namespace KhaozEngine.Tests.NetWorld;
 // The SHARDED-head climb-signal EXPORT regression + cross-head parity. The single-World WorldServer keeps the full
 // PlayerMoveState per slot and writes MovementState.From(state) every tick, so ClimbRateQ (the quantized step-climb
 // rate a remote reads to glide) rides the wire. The SHARDED head (ShardedWorldServer -> PlayerMovementSystem, the head
-// Ruinborne actually runs) reconstructs a MoveState per tick from the MovementState component and, before this fix,
+// The reference consumer actually runs) reconstructs a MoveState per tick from the MovementState component and, before this fix,
 // never wrote ClimbRateQ back nor carried the sim-local ascent EWMA across ticks - so a remote player on a sharded
 // server saw ClimbRateQ == 0 for a whole stair climb (no glide), and the reconcile-seed fix decoded a wire 0.
 //

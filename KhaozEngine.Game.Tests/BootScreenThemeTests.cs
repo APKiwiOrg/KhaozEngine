@@ -24,7 +24,7 @@ public class BootScreenThemeTests
     [Fact]
     public void AssigningBarFillAfterConstructionMovesMarqueeColorWithIt()
     {
-        // The Ruinborne case: a game restyles only BarFill after construction. MarqueeColor is resolved on read,
+        // The reference consumer case: a game restyles only BarFill after construction. MarqueeColor is resolved on read,
         // so it tracks the new fill without needing to be reassigned too.
         var theme = BootScreenTheme.Default;
         var fill = new Vector4(0.2f, 0.6f, 0.9f, 0.8f);

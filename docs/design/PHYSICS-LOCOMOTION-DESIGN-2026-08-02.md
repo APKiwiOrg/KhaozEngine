@@ -2,7 +2,7 @@
 
 Date: 2026-08-02. Decides [#371](https://github.com/APKiwiOrg/KhaozEngine/issues/371), ships the fix
 for [#369](https://github.com/APKiwiOrg/KhaozEngine/issues/369), and provides the engine seams for
-Ruinborne fall damage ([Ruinborne#292](https://github.com/APKiwiOrg/Ruinborne/issues/292)) and
+The reference consumer fall damage (consumer report) and
 camera-locked player facing (previously unfiled anywhere).
 
 ## The ask
@@ -54,7 +54,7 @@ Three candidate ends, weighted. Criteria scored 1-10, higher is better.
 | Prediction/reconcile compatibility (x3) | 10 | 9 | 1 (no Bepu rewind API, hidden solver state) |
 | Determinism posture (x2) | 10 | 9 | 3 (warm-started iterative solver) |
 | Delivers the user-visible asks (x3) | 9 | 9 | 7 (delivers them late, after solving rollback) |
-| Risk to Ruinborne's tuned feel (x2) | 9 | 5 | 2 |
+| Risk to the reference consumer's tuned feel (x2) | 9 | 5 | 2 |
 | Long-term extensibility, ends the per-case accretion (x2) | 3 | 9 | 8 |
 | Cost (x1) | 9 | 4 | 1 |
 | **Weighted total (max 130)** | **111** | **102** | **44** |
@@ -92,7 +92,7 @@ destination ground normal exceeds `MaxSlopeRadians`, regardless of direction. Ne
 - Grounded walk toward a cliff edge now proceeds, the support-floor logic finds no walkable floor,
   the character goes airborne, and gravity does the rest. This is the same asymmetry the Bepu-backed
   collide-and-slide already applies (`CharacterMovement.Collision.cs:232-252`), extended to the
-  analytic-terrain path that Ruinborne's cliffs actually use.
+  analytic-terrain path that the reference consumer's cliffs actually use.
 - The airborne check against feet height (not current ground height) keeps the anti-tunnel property:
   flying into a cliff face whose ground is above your feet is still blocked, so the XZ position can
   never end up under terrain waiting for a ground clamp to pop it up the cliff.
@@ -100,7 +100,7 @@ destination ground normal exceeds `MaxSlopeRadians`, regardless of direction. Ne
 - Pure scalar math, fixed operation order, same delegates on both heads: prediction-safe.
 
 **Addendum, 17.26.1** ([#440](https://github.com/APKiwiOrg/KhaozEngine/issues/440)). The feet turned out to be
-the wrong reference on their own, because vertical motion inflates them. A Ruinborne playtest climbed a 78
+the wrong reference on their own, because vertical motion inflates them. A consumer playtest climbed a 78
 degree sea cliff by jumping at it repeatedly: near the apex the face's local ground sits level with the raised
 feet, so the rise reads about zero, the drift onto the face is admitted, the ground clamp seats the character
 on the face, and the next jump repeats. Nor was it jump-specific, since any airtime discounted the face the
@@ -109,7 +109,7 @@ LOWER of the feet and the ground under the current column, which airtime cannot 
 grounded motion, genuine descents, and the anti-tunnel property exactly as specified above (the gate only ever
 became more conservative). The rest of the rule, the gradient allowance included, is unchanged.
 
-### 2. Landing-impact seam (unblocks Ruinborne#292)
+### 2. Landing-impact seam (unblocks consumer report)
 
 - `MoveState.LandingImpactSpeed`: float, meters per second, set to the downward speed on exactly the
   tick the character transitions airborne to grounded (captured before `VerticalVelocity` is zeroed),
@@ -121,7 +121,7 @@ became more conservative). The rest of the rule, the gradient allowance included
   authoritative step. Remote clients that want landing VFX already receive `Grounded` and
   `VerticalVelocity` and can derive the transition.
 - `WorldServer.OnAfterTick(float dt)` and `ShardedWorldServer.OnAfterTick(float dt)`: a
-  post-movement hook, the mirror of `OnBeforeTick`. This is a genuine missing seam (Ruinborne's
+  post-movement hook, the mirror of `OnBeforeTick`. This is a genuine missing seam (the reference consumer's
   `DeadPlayerMovementLock.cs:8-13` documents working around its absence) and is where a game reads
   landing impacts, applies fall damage, and generally observes post-step state without waiting a tick.
   One semantic on both heads: it fires after frames in which authoritative movement RAN. That is
@@ -141,7 +141,7 @@ became more conservative). The rest of the rule, the gradient allowance included
   (`MoveProtocol.cs:356-372`) is untouched.
 - `MoveState.FacingYaw`: carried float, radians, same convention as `MoveCommand.CameraYaw` (when
   `FaceCamera` is held with no movement input, `FacingYaw` converges to `CameraYaw` exactly).
-  Consumers using an opposite gameplay basis convert at their own boundary, as Ruinborne's
+  Consumers using an opposite gameplay basis convert at their own boundary, as the reference consumer's
   `FacingConventions` already does.
 - Update rule, applied on every step path (grounded, airborne, swim, and the NPC `StepTowards`,
   where the target is the steering direction): the facing target is `CameraYaw` when `FaceCamera`
@@ -165,7 +165,7 @@ contacts from the physics world, classify ground, wall, and ceiling by normal, r
 against the contact set. Descend-vs-climb, ledges, and step-up then fall out of classification
 instead of needing a gate per case. Still kinematic, still a pure function, so the netcode model is
 untouched. Lands opt-in behind a `MoveTuning` switch with parity fixtures against the legacy stepper,
-and flips per game only after that game's own playtest. Acceptance bar is Ruinborne's tuned feel:
+and flips per game only after that game's own playtest. Acceptance bar is the reference consumer's tuned feel:
 `WalkSpeed`, `RunSpeed`, `MaxSlopeRadians`, `JumpSpeed`, `AirMomentum` keep their meaning, and the
 `ClimbRate`/`ClimbRateEwma`/`StepDeltaY`/`Swimming` signal exports survive unchanged.
 
@@ -180,7 +180,7 @@ authoritative step (a post-step write, never sim input, so purity is preserved),
 ## Wire compatibility
 
 One `WireProtocolVersion` bump, 9 to 10, covering the flags byte and `FacingYawQ` together. Both
-heads ship together in every consumer (Ruinborne pins one engine version for client and server), so
+heads ship together in every consumer (the reference consumer pins one engine version for client and server), so
 generation bumps are the established, tested path (generations 3 through 7 all added `MovementState`
 fields this way).
 
@@ -206,7 +206,7 @@ Headless, in the existing per-area projects, following the both-heads parity idi
 - Cliff integration: walk off, fall, land: slope gate releases, gravity integrates, landing impact
   reports, facing held throughout. One test chaining all three features.
 
-## Consumer adoption sketch (Ruinborne, its own repo and release)
+## Consumer adoption sketch (the reference consumer, its own repo and release)
 
 - Wire right-click hold to `FaceCamera` alongside the existing orbit (the button already orbits, the
   flag makes the character follow), one line at the `SendInput` site.
@@ -260,8 +260,8 @@ The model, replacing `AdvanceSlopeGated` entirely on the analytic-terrain path:
    existing fields, that is a finding to surface, not to improvise around.
 
 Compatibility call: unconditional, not a knob. The gate semantics this replaces were themselves
-17.26.0 behavior changes, the Locomotion blast radius is Ruinborne-only, and the requesting
-playtest is Ruinborne. `MaxSlopeRadians` keeps its exact meaning as the traction threshold. The
+17.26.0 behavior changes, the Locomotion blast radius is consumer-only, and the requesting
+playtest is Consumer. `MaxSlopeRadians` keeps its exact meaning as the traction threshold. The
 #369 and #440 test suites' refusal assertions are rewritten to slide semantics with their intent
 preserved: no net ascent by any input pattern, no tunnel, descent free, and the new invariants
 (lateral air control along a face survives, a slide always terminates on walkable ground, water,
@@ -381,8 +381,8 @@ nothing to the carry and takes nothing from it, and only geometry sheds it.
 
 The first round-two corrections were reasoned from fixtures. This one is the first correction in the chain
 driven by a MEASURED repro, and it says the model above was still missing an invariant rather than a
-constant. A Ruinborne playtest climbed the authored sea cliff on the shipped 17.28.0 slide, and a
-climber-bot sweep against the real terrain (Ruinborne `feature/climb-repro`, 401 of 2040 input patterns
+constant. A consumer playtest climbed the authored sea cliff on the shipped 17.28.0 slide, and a
+climber-bot sweep against the real terrain (the reference consumer `feature/climb-repro`, 401 of 2040 input patterns
 climbing past 3 m, best 20.6 m of a 21 m face) found the hypothesis this issue was filed on - transient
 walkable pawls at column resolution, banked by drifting laterally - wrong in the specific.
 
@@ -506,7 +506,7 @@ playtest rather than an exploit sweep. What does the model do to ground sitting 
 **Two failures, one boundary, and both were measured before they were designed for.** `MaxSlopeRadians` was a bare
 per-tick binary, re-decided from scratch every tick with no reference to what the previous tick decided. So terrain
 whose columns straddle it does not read as "marginally too steep", it reads as an alternating sequence of walk ticks
-and full-gravity slide ticks. On a Ruinborne beach-to-plateau bank whose columns run 40.0 to 41.8 degrees against a
+and full-gravity slide ticks. On a consumer beach-to-plateau bank whose columns run 40.0 to 41.8 degrees against a
 40 degree gate, a walking bot flipped footing 43 times in 330 ticks and ended 2.73 m up a 7.6 m bank having
 repeatedly gained and lost the same ground. Re-tuning the gate past that bank fixed that bank (330 of 330 ticks with
 footing, zero flips) and moved the identical failure onto the next feature: at a 46 degree gate, banks peaking at
@@ -600,7 +600,7 @@ grants, 0 jumps, worst peak 0.000 m, every ride ending 226 to 579 m below its st
 ### Correction, round six (2026-08-03, 17.31.0, #486): a footed tick may not seat itself on ground it cannot stand on
 
 Round five widened the gate for a character that already has footing and softened what a marginal slide costs. It did
-not touch the OTHER decision a footed tick makes about steep ground, and a Ruinborne playtest of the shipped band
+not touch the OTHER decision a footed tick makes about steep ground, and a consumer playtest of the shipped band
 found it immediately: walking into the bottom of a steep face flickers the character into the falling pose instead of
 simply refusing to walk up. The band was never going to help. It fixes flip-flopping on marginal ground, and a cliff
 toe is a step function from walkable beach to a face far past gate plus band.
@@ -649,7 +649,7 @@ Phase 1 above gave the character an authoritative facing and stated, correctly f
 "affects no position output, so existing games are bit-identical". This addendum is the consequence that statement
 did not anticipate: once `FaceCamera` pins the body to the camera, the character HAS a front that does not turn
 with its travel, and "which way is it moving relative to where it is looking" becomes a question the sim can answer.
-Every third-person game answers it by charging for the answer. The Ruinborne playtest of the 0.16.16 facing wiring
+Every third-person game answers it by charging for the answer. The reference consumer playtest of the 0.16.16 facing wiring
 raised it immediately: a player who strafes and backpedals at full run speed does not read as a character, it reads
 as a hovering camera rig.
 

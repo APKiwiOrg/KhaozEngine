@@ -46,7 +46,7 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         /// <summary>
-        /// Why per pixel, in numbers. The Ruinborne lake's swell (42 m, four components, shortest 13.5 m) on the
+        /// Why per pixel, in numbers. The reference consumer lake's swell (42 m, four components, shortest 13.5 m) on the
         /// clipmap's own cell sizes: at the innermost ring's half-metre cells an interpolated vertex normal is already
         /// within a few hundredths of a degree of the evaluated one, so moving the evaluation into the fragment changes
         /// nothing the near field could show. At an outer ring's 16 m cells the interpolated normal's error is larger

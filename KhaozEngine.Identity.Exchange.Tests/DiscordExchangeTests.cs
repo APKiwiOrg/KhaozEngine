@@ -12,7 +12,7 @@ namespace KhaozEngine.Tests.Identity.Exchange;
 
 /// <summary>
 /// The validator both games pass, answering through a stub handler. A Discord 5xx, 429 or 408, or a request that never
-/// completed, is an outage and answers Unavailable: the defect in Ruinborne's exchange, which read every one of them
+/// completed, is an outage and answers Unavailable: the defect in the reference consumer's exchange, which read every one of them
 /// as a refused credential and sent the player back through sign-in against a provider that was already down.
 /// </summary>
 public class DiscordExchangeTests

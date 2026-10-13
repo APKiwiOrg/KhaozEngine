@@ -10,7 +10,7 @@ epic is https://github.com/APKiwiOrg/Grimhollow/issues/399. The engine issues ar
 ## Why this round exists
 
 Grimhollow keeps its authored `KhaozEngine.TileWorld` document as the world and moves its movement, server
-host and camera to the continuous stack Ruinborne already ships on (`NetWorld`, `Locomotion`, `Physics.Bepu`,
+host and camera to the continuous stack the reference consumer already ships on (`NetWorld`, `Locomotion`, `Physics.Bepu`,
 `Navigation`). That stack has no way to turn a tile world into colliders, no pointer capture for mouse-look,
 no host-neutral home for message fragments, and no per-viewer visibility on NetWorld. Grimhollow's phase P3
 (the continuous host replacing its tile host on an integration branch) needs all four. Each is useful to a second game, so each
@@ -151,7 +151,7 @@ geometry, which is a defect, not a golden to refresh.
 
 ### Gestures
 
-Ruinborne's `RightMouseGesture` becomes the engine's `PointerGesture` (in `KhaozEngine.Windowing`), per
+The reference consumer's `RightMouseGesture` becomes the engine's `PointerGesture` (in `KhaozEngine.Windowing`), per
 button, unchanged in behaviour: travel is path length over the press, crossing the threshold replays the
 accumulated delta with no dead zone, a release below the threshold is a tap at the press origin, and a press
 that starts while the UI owns the pointer stays inert.
@@ -169,13 +169,13 @@ that starts while the UI owns the pointer stays inert.
   during that press.
 
 With neither gesture set, the controller behaves exactly as today: `OrbitButton` orbits from the first frame
-of the press. Grimhollow's middle-button orbit, the Showcase rooms and Ruinborne's masked snapshot all keep
-working unchanged. Ruinborne can drop its own gesture later. "Both buttons run forward" is a game rule and
+of the press. Grimhollow's middle-button orbit, the Showcase rooms and the reference consumer's masked snapshot all keep
+working unchanged. The reference consumer can drop its own gesture later. "Both buttons run forward" is a game rule and
 stays in the game.
 
 ### Verification
 
-Gesture, controller and capture policy logic are headless-tested, lifting Ruinborne's gesture tests. The
+Gesture, controller and capture policy logic are headless-tested, lifting the reference consumer's gesture tests. The
 GLFW behaviour (macOS raw motion, cursor restore, focus loss, Retina scale) cannot be tested headlessly. It
 gets one manual check per desktop platform, recorded in the release notes.
 

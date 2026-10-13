@@ -97,7 +97,7 @@ public class AuthExchangeTokenTests
     [Fact]
     public async Task TheResponseName_IsTheStoredName_WhileTheTokenCarriesThePolicyClaim()
     {
-        // Ruinborne stores null for a nameless provider and signs the subject as the token's name claim.
+        // The reference consumer stores null for a nameless provider and signs the subject as the token's name claim.
         byte[] key = ExchangeFixture.Key();
         AuthExchangeResult result = await SignInAsync(new PassThroughPolicy(), key, name: null);
 

@@ -27,9 +27,13 @@ namespace KhaozEngine.Render3D.Rendering
         const int AdditivePipeline = 1;
 
         readonly OverlayRenderer<BillboardVertex> _overlay;
+        readonly AtmosphereBindings _atmosphere;
+        readonly bool _ownsAtmosphere;
 
-        public BillboardRenderer(IGpuDevice gd, GpuOutputDescription targetOutput)
+        public BillboardRenderer(IGpuDevice gd, GpuOutputDescription targetOutput, AtmosphereBindings? atmosphere = null)
         {
+            _ownsAtmosphere = atmosphere is null;
+            _atmosphere = atmosphere ?? new AtmosphereBindings(gd);
             var vertexLayout = new GpuVertexLayoutDescription(
                 new GpuVertexElement("Position", GpuVertexElementFormat.Float3),
                 new GpuVertexElement("Uv", GpuVertexElementFormat.Float2),
@@ -40,7 +44,7 @@ namespace KhaozEngine.Render3D.Rendering
             _overlay = new OverlayRenderer<BillboardVertex>(gd, targetOutput,
                 ShaderSources.BillboardVert, ShaderSources.BillboardFrag,
                 vertexLayout, BillboardVertex.SizeInBytes, GpuPrimitiveTopology.TriangleList,
-                GpuBlendAttachment.AlphaBlend, GpuBlendAttachment.Additive);
+                _atmosphere, GpuBlendAttachment.AlphaBlend, GpuBlendAttachment.Additive);
         }
 
         /// <summary>Draw <paramref name="verts"/> as a triangle list into <paramref name="target"/> (no clear;
@@ -49,6 +53,10 @@ namespace KhaozEngine.Render3D.Rendering
         public void Draw(IGpuCommandList cl, Matrix4x4 viewProj, ReadOnlySpan<BillboardVertex> verts, IGpuFramebuffer target, bool additive) =>
             _overlay.Draw(cl, viewProj, verts, target, additive ? AdditivePipeline : AlphaPipeline);
 
-        public void Dispose() => _overlay.Dispose();
+        public void Dispose()
+        {
+            _overlay.Dispose();
+            if (_ownsAtmosphere) _atmosphere.Dispose();
+        }
     }
 }

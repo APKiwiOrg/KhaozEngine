@@ -19,7 +19,7 @@ namespace KhaozEngine.Tests.Locomotion;
 //
 // These drive CharacterMovement.Step against the EXACT consumer geometry: a convex-BoxShape staircase (riser 0.30,
 // tread 0.40, width 2.0, each column buried 1.5 m so its riser fronts and tread tops match) built exactly like
-// Ruinborne's TestStaircase.Generate + BuildStairWorld, seated on an ANALYTIC flat approach (Ground = 0, no physics
+// The reference consumer's TestStaircase.Generate + BuildStairWorld, seated on an ANALYTIC flat approach (Ground = 0, no physics
 // floor - as a placed staircase sits on the consumer's analytic terrain), with the shipped consumer tuning (walk 3 /
 // run 6, radius 0.4, half-height 0.9, StepHeight 0.4, GroundedEpsilon 0.3, MaxStepClimbSpeed 3.5). A full sweep of
 // arrival phases (startZ 1.00..1.60, 0.01 steps = 61 phases) x walk/run at dt 1/30 covers every sub-tick offset at
@@ -44,7 +44,7 @@ public class ConsumerStairBaseMountTests
     const int Steps = 15;
     const int Ticks = 160;
 
-    // Consumer tuning (Ruinborne): walk 3, run 6, and the MoveTuning defaults radius 0.4 / half-height 0.9 /
+    // Consumer tuning (the reference consumer): walk 3, run 6, and the MoveTuning defaults radius 0.4 / half-height 0.9 /
     // StepHeight 0.4 / GroundedEpsilon 0.3 / MaxStepClimbSpeed 3.5 - the same tuning StairRunTangentPacingTests uses.
     static MoveTuning Consumer => MoveTuning.Default with { WalkSpeed = 3f, RunSpeed = 6f };
 

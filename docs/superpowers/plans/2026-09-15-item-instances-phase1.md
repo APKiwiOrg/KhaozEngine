@@ -352,13 +352,13 @@ grep -rn 'ItemStack' --include='*.cs' . | wc -l
 
 - [ ] **Step 2: Sweep every consumer repository, read only, and record the numbers.** The four pinned
   consumers are in AGENTS.md's table plus Grimhollow. Run the same two greps in each of `~/Hardpoint`,
-  `~/Nullwake`, `~/SpaceGame`, `~/Ruinborne` and `~/Grimhollow`, excluding `obj`, `bin`, `vendor` and
+  `~/Nullwake`, `~/SpaceGame`, `~/ConsumerGame` and `~/Grimhollow`, excluding `obj`, `bin`, `vendor` and
   nested worktrees. Do NOT edit a consumer repository from this worktree.
 
   Known at the time of writing: Grimhollow is the only consumer on `KhaozEngine.Items`, with about 166
   files referencing `ItemStack` and at least one positional deconstruction
   (`Grimhollow.Tests/Server/ProcessingCamp.Masonry.cs:59`, `(int itemId, int count) = items[index];`).
-  Nullwake, SpaceGame, Ruinborne and Hardpoint had zero `KhaozEngine.Items` references. Verify all five
+  Nullwake, SpaceGame, the reference consumer and Hardpoint had zero `KhaozEngine.Items` references. Verify all five
   again rather than trusting this paragraph, because the fleet moves.
 
 - [ ] **Step 3: File ONE issue per affected consumer, as a full URL cross-reference.** AGENTS.md's rule:

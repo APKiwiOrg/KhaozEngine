@@ -10,7 +10,7 @@ Status: Complete. Implemented in `18.38.0`. Program issue
 shadow atlas. A later write throws, which is correct because silently accepting an ignored setting was worse.
 The engine still has no supported way to resize that atlas while a scene is alive.
 
-Ruinborne can change shadow mode live, but its resolution tiers remain restart-only. Grimhollow exposes only
+The reference consumer can change shadow mode live, but its resolution tiers remain restart-only. Grimhollow exposes only
 directional shadow-map tiers, so every quality change currently needs a restart. The requested contract is that
 Low, Default, and High apply from the settings screen without rebuilding the game process.
 

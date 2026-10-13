@@ -7,8 +7,8 @@
 
 A shared, game-agnostic, **MonoGame-free** 2D/3D engine: windowing + input, a GPU abstraction, 2D and 3D
 renderers, an immediate-mode + screen-stack GUI, audio, particles, an ECS, netcode, and the usual foundation
-(content, persistence, localization, diagnostics). One implementation, used by five games (Hardpoint,
-Nullwake, SpaceGame, Ruinborne, Grimhollow), so a fix written once propagates to all of them.
+(content, persistence, localization, diagnostics). One implementation, used by four games (Hardpoint,
+Nullwake, SpaceGame, Grimhollow), so a fix written once propagates to all of them.
 
 KhaozEngine is split into focused, independently-referenceable NuGet packages plus a few umbrella metapackages,
 so a game pulls in just what it needs (and a logic library or headless server can pull a renderer-free subset).
@@ -231,10 +231,10 @@ The repo is public, so the Packages feed needs no authentication to restore from
 ```
 ```xml
 <!-- One reference per project via an umbrella metapackage. Pick the bundle that fits: -->
-<PackageReference Include="KhaozEngine.Game2D"     Version="20.34.0" />  <!-- desktop 2D: 2D runtime + GameApp/SceneManager + foundation -->
-<PackageReference Include="KhaozEngine.Game3D"     Version="20.34.0" />  <!-- desktop 3D: Game2D + Render3D + the 3D scene bridge -->
-<PackageReference Include="KhaozEngine.Server"     Version="20.34.0" />  <!-- headless: foundation + netcode, no graphics -->
-<PackageReference Include="KhaozEngine.Foundation" Version="20.34.0" />  <!-- gameplay-logic lib: foundation only, no renderer/netcode -->
+<PackageReference Include="KhaozEngine.Game2D"     Version="20.35.1" />  <!-- desktop 2D: 2D runtime + GameApp/SceneManager + foundation -->
+<PackageReference Include="KhaozEngine.Game3D"     Version="20.35.1" />  <!-- desktop 3D: Game2D + Render3D + the 3D scene bridge -->
+<PackageReference Include="KhaozEngine.Server"     Version="20.35.1" />  <!-- headless: foundation + netcode, no graphics -->
+<PackageReference Include="KhaozEngine.Foundation" Version="20.35.1" />  <!-- gameplay-logic lib: foundation only, no renderer/netcode -->
 ```
 
 The metapackages have no code; they just pull in the granular packages. You can still reference those
@@ -392,7 +392,6 @@ Author-time dotnet tools that ship as packages on the shared version line (not r
 | **Hardpoint** (3D) | `KhaozEngine.Game3D` (head) + `KhaozEngine.Foundation` (logic) | Fully off MonoGame. |
 | **Nullwake** (2D) | `KhaozEngine.Game2D` | Fully off MonoGame. Source of the widgets, transitions, and the click-through fix. |
 | **SpaceGame** (2D) | `KhaozEngine.Game2D` (head) + foundation pins on `SpaceGame.Sim` | Fully off MonoGame. Deterministic lockstep sim split into `SpaceGame.Sim`. |
-| **Ruinborne** (3D MMO) | `KhaozEngine.Game3D` + `NetWorld` (client) + `KhaozEngine.Server` + `WorldStore.SqlServer` (server) | Authoritative networked overworld, Azure SQL persistence. |
 | **Grimhollow** (3D MMO) | Client and shared: `Game3D`, `Foundation`, `TileWorld.Netcode`, `Netcode.LiteNetLib`, `Catalog.Netcode`, `App`, `Items`, `Catalog`, the `Identity` and `Social` families, and `Http`. Server: `Server`, `WorldStore`, `Netcode`, the SQLite and SQL Server WorldStore and Catalog providers, `Catalog.Authoring`, `ServerStatus` and `Server.Admin`. Tools: `Updates`, `Snapshot` and `Automation`. | Tile-grid MMO with stacked planes, click-to-walk movement and SQLite or Azure SQL persistence. |
 
 Each consumer pins its own engine version (its `Directory.Build.props` `<KhaozEngineVersion>`) and adopts new releases on its own schedule.

@@ -32,9 +32,9 @@ namespace KhaozEngine.Tests.Gui
         }
 
         [Fact]
-        public void Reproduces_ruinborne_hand_synced_palette()
+        public void Reproduces_consumer_hand_synced_palette()
         {
-            // Ruinborne's RuinborneUpdateTheme + its Program.cs UpdaterUiOptions block used to be hand-synced.
+            // The reference consumer's ConsumerUpdateTheme + its Program.cs UpdaterUiOptions block used to be hand-synced.
             // The derived palette must match the values the game wrote by hand.
             var accent = Color.FromBytes(153, 179, 217);
             var theme = new UpdateOverlayTheme
@@ -45,7 +45,7 @@ namespace KhaozEngine.Tests.Gui
             };
 
             UpdaterUiOptions ui = theme.ToUpdaterUiOptions(
-                windowTitle: "Ruinborne",
+                windowTitle: "ConsumerGame",
                 logoPath: "Content/WindowIcon/icon_128.png",
                 installingText: "Installing update",
                 finishingText: "Finishing up");
@@ -53,7 +53,7 @@ namespace KhaozEngine.Tests.Gui
             Assert.Equal<(byte, byte, byte)?>((153, 179, 217), ui.AccentColor);
             Assert.Equal<(byte, byte, byte)?>((13, 16, 22), ui.BackgroundColor);
             Assert.Equal<(byte, byte, byte)?>((230, 235, 242), ui.TextColor);
-            Assert.Equal("Ruinborne", ui.WindowTitle);
+            Assert.Equal("ConsumerGame", ui.WindowTitle);
             Assert.Equal("Content/WindowIcon/icon_128.png", ui.LogoPath);
             Assert.Equal("Installing update", ui.InstallingText);
             Assert.Equal("Finishing up", ui.FinishingText);

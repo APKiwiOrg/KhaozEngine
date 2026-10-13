@@ -30,7 +30,7 @@ namespace KhaozEngine.Tests.Gpu
     public sealed class VulkanLayoutCompatibilityTests
     {
         /// <summary>
-        /// THE GUARD ITSELF, over every ORDERED PAIR of the thirty-six shipped pipelines: 1296 pairs, and for
+        /// THE GUARD ITSELF, over every ORDERED PAIR of shipped pipelines, and for
         /// every one of them the computed compatible prefix is no longer than the true prefix of identically
         /// defined set layouts. The invalidation can therefore only ever be CONSERVATIVE.
         /// <para>
@@ -45,7 +45,7 @@ namespace KhaozEngine.Tests.Gpu
             using var harness = new VulkanBindHarness();
             IReadOnlyList<(string Name, string[] Slots, VulkanBoundPipeline Bound)> pipelines = Build(harness);
 
-            Assert.Equal(63, pipelines.Count);   // Includes target outlines, point-skinned and foliage depth pipelines.
+            Assert.Equal(67, pipelines.Count);   // Includes atmosphere, target outlines, point-skinned and foliage depth.
 
             int pairs = 0;
             var seen = new HashSet<int>();
@@ -70,7 +70,7 @@ namespace KhaozEngine.Tests.Gpu
                 }
             }
 
-            Assert.Equal(63 * 63, pairs);
+            Assert.Equal(67 * 67, pairs);
 
             // AND THE GUARD IS NOT VACUOUS. A walk over pairs that were all incompatible would pass an
             // always-answer-zero implementation, so the shipped table has to actually contain compatible pairs.
@@ -101,25 +101,21 @@ namespace KhaozEngine.Tests.Gpu
             }
         }
 
-        /// <summary>
-        /// THREE SHIPPED NAMES FOR ONE SHAPE REALLY DO SHARE ONE HANDLE, which is the concrete thing the exactness
-        /// above rests on. <c>DepthLineRenderer</c>, <c>OverlayRenderer</c> and <c>TrailRenderer</c> each declare a
-        /// single vertex-stage uniform buffer, so their pipelines are mutually compatible for their whole array
-        /// and switching between them invalidates nothing at all. Without dedup all three would be distinct
-        /// objects and every switch would rebind.
-        /// </summary>
+        /// <summary>Fogged effects share their dense layout, while debug overlays retain their smaller shape.</summary>
         [Fact]
-        public void ThreeShippedRenderersDeclaringOneShape_AreMutuallyCompatible()
+        public void FoggedEffectLayoutsAreCompatibleAndSeparateFromDebugOverlays()
         {
             using var harness = new VulkanBindHarness();
-
+            VulkanBoundPipeline beam = harness.Pipeline("Beam");
+            VulkanBoundPipeline billboard = harness.Pipeline("Billboard");
+            VulkanBoundPipeline trail = harness.Pipeline("Trail");
+            Assert.Equal(beam.Layout, billboard.Layout);
+            Assert.Equal(beam.Layout, trail.Layout);
+            Assert.Equal(1, VulkanLayoutCompatibility.CompatiblePrefix(beam.SetLayouts, trail.SetLayouts));
             VulkanBoundPipeline depthLine = harness.Pipeline("DepthLine");
             VulkanBoundPipeline overlay = harness.Pipeline("Overlay");
-            VulkanBoundPipeline trail = harness.Pipeline("Trail");
-
             Assert.Equal(depthLine.Layout, overlay.Layout);
-            Assert.Equal(depthLine.Layout, trail.Layout);
-            Assert.Equal(1, VulkanLayoutCompatibility.CompatiblePrefix(depthLine.SetLayouts, trail.SetLayouts));
+            Assert.Equal(0, VulkanLayoutCompatibility.CompatiblePrefix(depthLine.SetLayouts, trail.SetLayouts));
         }
 
         /// <summary>
@@ -334,8 +330,7 @@ namespace KhaozEngine.Tests.Gpu
             using var harness = new VulkanBindHarness();
             VulkanResourceSet set = harness.Set("Beam");
 
-            // Two pipelines, one shared layout: "Trail" and "Overlay" are one content, and so is "Beam" with
-            // itself through two separately created layout objects.
+            // Beam's separately created layout objects share the same content and pipeline handle.
             VulkanBoundPipeline first = harness.Pipeline("Beam");
             VulkanBoundPipeline second = harness.Pipeline("Beam");
             Assert.Equal(first.Layout, second.Layout);

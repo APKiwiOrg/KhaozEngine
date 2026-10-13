@@ -8,8 +8,8 @@ public class BaselineFileTests
     [Fact]
     public void Parses_LinesAndPath()
     {
-        var entries = ParseEntries("1478 Ruinborne.Server/Program.cs\n900 Src/Game.cs\n");
-        Assert.Equal(1478, entries["Ruinborne.Server/Program.cs"]);
+        var entries = ParseEntries("1478 Consumer.Server/Program.cs\n900 Src/Game.cs\n");
+        Assert.Equal(1478, entries["Consumer.Server/Program.cs"]);
         Assert.Equal(900, entries["Src/Game.cs"]);
     }
 

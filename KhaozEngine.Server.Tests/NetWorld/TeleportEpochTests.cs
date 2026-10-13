@@ -162,7 +162,7 @@ public class TeleportEpochTests
     [Fact]
     public void Self_rescue_advances_the_epoch_on_the_sharded_server()
     {
-        // Ruinborne runs on the sharded stack, and self-rescue funnels through the same admin Teleport path. The epoch
+        // The reference consumer runs on the sharded stack, and self-rescue funnels through the same admin Teleport path. The epoch
         // must advance and reach the client there too (the sharded head stores it in the cell world's MovementState).
         var config = new ShardedWorldServerConfig
         {

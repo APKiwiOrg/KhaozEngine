@@ -4,13 +4,13 @@ Date: 2026-07-18
 Status: shipped.
 
 A reusable connection-outage UI primitive: a headless policy controller that decides banner vs full
-screen vs nothing, plus an asset-free themeable screen that renders the full-screen case. Ruinborne
+screen vs nothing, plus an asset-free themeable screen that renders the full-screen case. The reference consumer
 drove the requirement (replacing a thin "server is updating" overlay banner with a proper screen), but
 both pieces are game-agnostic and every networked KE game reuses them.
 
 The product decisions (scope, placement, escape hatch, look) were locked with the user before this work
 started and are recorded in the consumer's design doc
-(`~/Ruinborne/docs/superpowers/specs/2026-07-18-reconnecting-screen-design.md`). This doc covers only
+(`~/ConsumerGame/docs/superpowers/specs/2026-07-18-reconnecting-screen-design.md`). This doc covers only
 the engine-side API decisions, which were delegated here.
 
 ## What ships
@@ -54,8 +54,8 @@ The brief allowed an optional `WorldConnectionState` + `ServerStatusView` to `Co
 adapter in some package that already depends on both. Skipped, on purpose.
 
 The mapping carries game policy, not engine policy: which server-status states count as a *planned*
-update, and whether an ETA is trustworthy enough to show a countdown, are per-game calls. Ruinborne
-already writes and unit-tests its own mapper (`RuinborneConnectionSignals`). An engine adapter would add
+update, and whether an ETA is trustworthy enough to show a countdown, are per-game calls. The reference consumer
+already writes and unit-tests its own mapper (`ConsumerConnectionSignals`). An engine adapter would add
 a package that depends on both netcode and status for one speculative second consumer, and would bake one
 game's policy into the engine. Left out until a second game actually wants the same mapping.
 
@@ -82,7 +82,7 @@ The spec sketched `StringId` theme fields. The engine is moving player-facing Gu
 `LocalizedText`.
 
 This is not a break for the consumer: `LocalizedText` has an implicit conversion from `StringId`, so
-`theme.ReconnectingTitle = new StringId(RuinborneStrings.ReconnectTitle)` compiles unchanged. Typing the
+`theme.ReconnectingTitle = new StringId(ConsumerStrings.ReconnectTitle)` compiles unchanged. Typing the
 field as `LocalizedText` additionally buys the format-args path (`LocalizedText.Of`) and the greppable
 `LocalizedText.Raw` escape hatch, which the status lines need.
 
@@ -160,4 +160,4 @@ working is not a ledger anyone reads):
 - #220: standardising the thin banner into the engine, so consumers stop hand-rolling one. Parked until a
   second game wants it.
 - #221: a `DpiFont` overload for the screen if HiDPI text crispness proves to matter. Unmeasured, so check
-  it during the Ruinborne adoption before building anything.
+  it during the reference consumer adoption before building anything.

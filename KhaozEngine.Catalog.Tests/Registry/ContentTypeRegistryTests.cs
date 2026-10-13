@@ -302,7 +302,7 @@ public class ContentTypeRegistryTests
     [Fact]
     public void RegistrationOrderIsNotAnOrdinal()
     {
-        // Contracts 4.3: nothing anywhere derives an ordinal from registration order, because Ruinborne's
+        // Contracts 4.3: nothing anywhere derives an ordinal from registration order, because the reference consumer's
         // wire index is a list POSITION and differs between its two sources for the same five items.
         (ContentRegistrationBand Band, ushort Id, string Key)[] types =
         {

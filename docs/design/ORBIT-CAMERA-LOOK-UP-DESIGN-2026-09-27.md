@@ -20,7 +20,7 @@ the ground and looking up at the sky.
 
 Extend `FollowCamera3D` with opt-in members and add a tile-world implementation of a new boom probe seam. Every
 new member defaults to today's behaviour. A camera that never touches them produces the same `Eye`, `View` and
-`Forward` bit for bit, so Ruinborne and the showcase are unaffected.
+`Forward` bit for bit, so the reference consumer and the showcase are unaffected.
 
 ### Pivot
 
@@ -125,7 +125,7 @@ selection, and every consumer that leaves the new members at their defaults.
 
 - **A new orbit camera type beside `FollowCamera3D`.** A cleaner model from scratch, but two orbit cameras would
   duplicate the projection, render-origin and eye-cache code the engine then maintains twice, unless
-  `FollowCamera3D` is retired and Ruinborne migrated. That is a larger decision than this feature.
+  `FollowCamera3D` is retired and the reference consumer migrated. That is a larger decision than this feature.
 - **Game-side camera in Grimhollow.** Violates the engine-first boundary, and no other game would get pivot,
   look-up or tile-world collision.
 

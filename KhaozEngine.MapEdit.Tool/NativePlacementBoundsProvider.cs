@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Physics;
+using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapEditor;
 using KhaozEngine.Terrain;
 
@@ -35,8 +37,18 @@ public sealed class NativePlacementBoundsProvider : INativePlacementBounds
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(placementIds);
         if (placementIds.Count == 0) return default;
-        var authored = new Dictionary<string, MapPlacement>(StringComparer.Ordinal);
-        foreach (MapPlacement placement in document.Placements) authored.TryAdd(placement.Id, placement);
+        var authored = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (MapPlacement placement in document.Placements)
+            if (placement.AssetId is { } assetId) authored.TryAdd(placement.Id, assetId);
+        if (document.Prefabs is not null && placementIds.Any(id => !authored.ContainsKey(id)))
+        {
+            try
+            {
+                foreach (var placement in MapPrefabResolver.Expand(document, assets).Placements)
+                    authored[placement.PlacementId] = placement.AssetId;
+            }
+            catch (MapDocumentException) { return new(null, true); }
+        }
         bool unknown = false;
         // Only placements with a collider or a selection volume have bounds, so only they are resolved. A placement
         // without either never reaches support resolution.
@@ -44,7 +56,7 @@ public sealed class NativePlacementBoundsProvider : INativePlacementBounds
         var shaped = new List<string>(placementIds.Count);
         foreach (string id in placementIds)
         {
-            string assetId = (authored.TryGetValue(id, out MapPlacement? placement) ? placement.AssetId : null)
+            string assetId = (authored.TryGetValue(id, out string? declaredAsset) ? declaredAsset : null)
                 ?? throw new ArgumentException($"No placement with id '{id}' and an asset.", nameof(placementIds));
             if (!shapes.TryGetValue(assetId, out (bool Refused, MapAssetShapes? Shapes) asset))
                 shapes.Add(assetId, asset = ReadShapes(assets, assetId));

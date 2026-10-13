@@ -9,6 +9,7 @@ using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using KhaozEngine.MapDoc.Surfaces;
+using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Water;
 
 namespace KhaozEngine.MapDoc.Prefabs;
@@ -18,6 +19,13 @@ internal static class MapPrefabJson
 {
     internal static readonly MapPrefabExpansionLimits Limits = new();
     static readonly JsonSerializerOptions Options = CreateOptions();
+    internal static JsonSerializerOptions ToolOptions { get; } = CreateToolOptions();
+    static JsonSerializerOptions CreateToolOptions()
+    {
+        var options = new JsonSerializerOptions(Options);
+        options.Converters.Insert(0, new InvalidationConverter());
+        return options;
+    }
 
     static JsonSerializerOptions CreateOptions()
     {
@@ -78,6 +86,21 @@ internal static class MapPrefabJson
         }
     }
 
+    internal static MapPrefabChild ReadChild(string json) => ReadText<MapPrefabChild>(json);
+    internal static MapPrefabOverride ReadOverride(string json) => ReadText<MapPrefabOverride>(json);
+    internal static IReadOnlyList<MapPrefabReference> ReadReferences(string json) => ReadText<MapPrefabReference[]>(json);
+    internal static MapRecordRef ReadRecordRef(string json) => ReadText<MapRecordRef>(json);
+    internal static MapPrismDomain ReadDomain(string json) => ReadText<MapTopologyRecord>(json) as MapPrismDomain
+        ?? throw new MapDocumentException("Interior volume JSON requires a prism domain.");
+    internal static MapRoofLinkDoc ReadRoofLink(string json) => ReadText<MapRoofLinkDoc>(json);
+    static T ReadText<T>(string json)
+    {
+        ArgumentNullException.ThrowIfNull(json);
+        if (Encoding.UTF8.GetByteCount(json) > Limits.MaxPayloadBytes) throw new MapDocumentException("Prefab payload byte limit exceeded.");
+        try { using var parsed = JsonDocument.Parse(json); return Read<T>(parsed.RootElement); }
+        catch (JsonException ex) { throw new MapDocumentException("Invalid prefab JSON: " + ex.Message, ex); }
+    }
+
     internal static T Copy<T>(T value)
     {
         using JsonDocument json = JsonDocument.Parse(Bytes(value));
@@ -102,6 +125,16 @@ internal static class MapPrefabJson
         if (value is MapPrefabChild child)
         {
             JsonSerializer.Serialize(w, child, typeof(MapPrefabChild), Options);
+            return;
+        }
+        if (value is MapPrefabOverride prefabOverride)
+        {
+            JsonSerializer.Serialize(w, prefabOverride, typeof(MapPrefabOverride), Options);
+            return;
+        }
+        if (value is MapTopologyRecord record)
+        {
+            JsonSerializer.Serialize(w, record, typeof(MapTopologyRecord), Options);
             return;
         }
         object? normalized = value switch
@@ -385,6 +418,13 @@ internal static class MapPrefabJson
             return MapWaterJson.Read(set.RootElement).Bodies.Single();
         }
         public override void Write(Utf8JsonWriter w, MapWaterBodyDoc value, JsonSerializerOptions options) => MapWaterJson.WriteBody(w, value);
+    }
+
+    sealed class InvalidationConverter : JsonConverter<Editing.MapNativeInvalidation>
+    {
+        public override Editing.MapNativeInvalidation Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+            (Editing.MapNativeInvalidation)reader.GetInt32();
+        public override void Write(Utf8JsonWriter writer, Editing.MapNativeInvalidation value, JsonSerializerOptions options) => writer.WriteNumberValue((int)value);
     }
 
     sealed class ExactEnumConverter : JsonConverterFactory

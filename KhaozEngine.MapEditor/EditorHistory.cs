@@ -12,7 +12,7 @@ namespace KhaozEngine.MapEditor;
 /// after any undo or redo guarantees the next edit starts a fresh step rather than coalescing into a
 /// reactivated one, and <see cref="SealGesture"/> raises the same barrier at explicit gesture boundaries
 /// (drag release, focus loss, save).</summary>
-public sealed class EditorHistory
+public sealed partial class EditorHistory
 {
     readonly List<IEditorCommand> _undo = new();
     readonly List<IEditorCommand> _redo = new();
@@ -37,17 +37,9 @@ public sealed class EditorHistory
         _placementBounds = placementBounds;
     }
 
-    void Apply(MapDocument doc, IEditorCommand command, bool undo)
+    static void Apply(MapDocument doc, IEditorCommand command, bool undo)
     {
-        if (doc.ResolverIdentity is not null)
-        {
-            var staged = NativeDocumentTransaction.Stage(doc, command, undo, _nativeAssets, Registry, placementBounds: _placementBounds);
-            NativeDocumentTransaction.Publish(doc, staged);
-            staged.Accept();
-            _nativeAssets = staged.Assets;
-            LastNativeEffects = staged.Effects;
-        }
-        else if (undo) command.Revert(doc);
+        if (undo) command.Revert(doc);
         else command.Apply(doc);
     }
 
@@ -84,24 +76,15 @@ public sealed class EditorHistory
     /// When the command coalesces into the current top (same gesture, no barrier), no new step is pushed.</summary>
     public void Execute(MapDocument doc, IEditorCommand command)
     {
-        bool merged;
         if (doc.ResolverIdentity is not null)
         {
-            var staged = NativeDocumentTransaction.Stage(doc, command, false, _nativeAssets, Registry, placementBounds: _placementBounds);
-            Action? adopt = !_mergeBarrier && _undo.Count != 0 && _undo[^1] is INativePlacementHistoryMerge merge
-                ? merge.PrepareMerge(command, staged) : null;
+            var staged = StageExecute(doc, command);
             NativeDocumentTransaction.Publish(doc, staged);
             staged.Accept();
-            adopt?.Invoke();
-            _nativeAssets = staged.Assets;
-            LastNativeEffects = staged.Effects;
-            merged = adopt is not null;
+            return;
         }
-        else
-        {
-            Apply(doc, command, false);
-            merged = !_mergeBarrier && _undo.Count != 0 && _undo[^1].TryMerge(command);
-        }
+        Apply(doc, command, false);
+        bool merged = !_mergeBarrier && _undo.Count != 0 && _undo[^1].TryMerge(command);
         if (!merged)
             _undo.Add(command);
         _mergeBarrier = false;
@@ -111,6 +94,14 @@ public sealed class EditorHistory
     /// <summary>Reverts the top command and moves it to the redo stack. Returns false when nothing to undo.</summary>
     public bool Undo(MapDocument doc)
     {
+        if (doc.ResolverIdentity is not null)
+        {
+            var staged = StageUndo(doc);
+            if (staged is null) return false;
+            NativeDocumentTransaction.Publish(doc, staged);
+            staged.Accept();
+            return true;
+        }
         if (_undo.Count == 0) return false;
         IEditorCommand c = _undo[^1];
         Apply(doc, c, true);
@@ -124,6 +115,14 @@ public sealed class EditorHistory
     /// nothing to redo.</summary>
     public bool Redo(MapDocument doc)
     {
+        if (doc.ResolverIdentity is not null)
+        {
+            var staged = StageRedo(doc);
+            if (staged is null) return false;
+            NativeDocumentTransaction.Publish(doc, staged);
+            staged.Accept();
+            return true;
+        }
         if (_redo.Count == 0) return false;
         IEditorCommand c = _redo[^1];
         Apply(doc, c, false);

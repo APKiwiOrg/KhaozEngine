@@ -561,11 +561,20 @@ acyclic declared dependencies, decodes bounded prefab snapshots and validates ev
 publishing. `GetPrefab` returns a detached copy of that verified snapshot. Prefabs have no mesh of their own and
 cannot contain nested instances. Mesh, collider, selection, LOD, material, support and light resources belong to leaves.
 
-`MapPrefabFile.Read` and `Write` use a closed codec. Children have a typed stable key, one local pose and scoped
+`MapPrefabFile.Read` and `Write` use a closed codec. The payload keeps its logical asset ID. A resource ID
+may be that bare ID or exactly `prefab/<escaped-logical-id>/<sha256>`. The escape is the world-ID UTF-8
+percent escape, and the version suffix is 64 lowercase hex characters. Read independently verifies the
+suffix against the bytes, preserving the released ID-mismatch refusal for every other identity. Children have a typed stable key, one local pose and scoped
 reference slots. Explicit Surface children contain geometry with empty `Records`. Topology is persisted in separate
 Record children with declared anchors. Each reference occurrence requires its own supported typed slot. A local
 anchor or geometry reference must agree with the record pose. A World reference retains its standalone meaning.
 Placement children use their placement pose and retain identity `LocalTransform`. Ordered tags remain ordered.
+
+`MapSetInterior` creates a missing standalone Room and its prism in one prepared edit. The room uses
+`Domain.Space.Id` and anchor, its explicit `Domain.Parent`, and empty authored tags/walls/portals/links.
+Both records enter the affected write set. An existing non-alias Room keeps its fields and replaces the
+prism with the same record ID. Alias rooms and non-Room spaces refuse. `MapRemoveInterior` removes
+the Room and prism together, with ordinary dependency validation still required.
 
 `MapBuildingIntent` payload 1 owns explicit roof inventory, roof links/groups, local light and XYZ marker payloads,
 and standalone `MapStoreyDoc` payload-1 IDs/names. Roof inventory does not create children or reservations.

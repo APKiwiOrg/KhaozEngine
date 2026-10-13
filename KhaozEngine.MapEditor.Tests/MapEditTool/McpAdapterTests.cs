@@ -28,7 +28,7 @@ namespace KhaozEngine.Tests.MapEditTool
     /// end, not just the service methods in isolation.</summary>
     public partial class McpAdapterTests
     {
-        /// <summary>All 78 verb names, spelled exactly as the plan header's verb table: the original 39 (including
+        /// <summary>All 92 verb names, spelled exactly as the plan header's verb table: the original 39 (including
         /// the two render verbs added in Task 6) plus the Task 5 naming, layer-targeting, and procedural-setup
         /// verbs (feature/exclusion rename, exclusion layer targeting, the biome band and scatter/companion layer
         /// triads plus their rename verbs, and the procedural_info read verb), the scatter_rule
@@ -90,6 +90,10 @@ namespace KhaozEngine.Tests.MapEditTool
             "element_duplicate",
             // Renders
             "render_topdown", "render_view",
+            // R5 prefab and standalone interior authoring, additive to every released verb.
+            "prefab_open", "prefab_edit", "prefab_save", "prefab_extract", "prefab_place", "prefab_list",
+            "prefab_override", "prefab_unpack", "prefab_undo", "prefab_redo",
+            "interior_volume_add", "interior_volume_set", "interior_volume_remove", "roof_link_set",
         };
 
         [Fact]
@@ -412,7 +416,7 @@ namespace KhaozEngine.Tests.MapEditTool
 
         /// <summary>A live in-process MCP client and server, wired over a pair of pipes through the same
         /// composition path the stdio host uses. Disposing tears the client down first, then the host.</summary>
-        sealed class McpHarness : IAsyncDisposable
+        internal sealed class McpHarness : IAsyncDisposable
         {
             readonly IHost _host;
 

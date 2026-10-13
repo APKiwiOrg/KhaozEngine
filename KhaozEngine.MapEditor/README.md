@@ -949,6 +949,25 @@ without changing the live document or accepting command state. Publication prece
 rebinding and prepared history adoption. Partial documents refuse either mode. Complete undo retains
 removed instance inventories and retired transfers without recreating live standalone owners.
 
+`PrefabAssetEditCommand(edit, beforeAssets, afterAssets)` switches an immutable prefab version using
+`MapUpdatePrefabAsset`. Its first preparation receives both captured closures. Accepted undo and redo
+restore their matching roots and closures without looking up ambient files.
+
+`MapPrefabLocalSession(asset, assets, authoringContext, parentSpace)` edits a detached native document.
+Its `Document` property returns a detached snapshot whose transfer bindings map stable local keys to
+command document IDs. A captured referring instance supplies the detached placement and export origin,
+so explicit parents remain valid at far sites and under free yaw/scale. Export returns asset-local values
+through the existing wide extraction path. Existing placement, `TerrainEditCommand` and `WaterEditCommand` commands run
+through `Apply`, `Undo` and `Redo`. `Export` captures current definitions and precise frames under the
+same local keys. Materialized support and light rows retain their original resource pins, local scopes
+and empty suppression edges. Removing an owner removes its exported row. Undo restores captured
+values rather than regenerating children from the resource bytes. `Cancel` changes no world or file.
+
+The history staging seam prepares command acceptance, stack capacity and gesture adoption before an
+outer publisher runs. The publisher validates and publishes first, then accepts the prepared history
+movement. Callback snapshots delegate to the complete-snapshot command and capture every semantic
+root. Failed outer publication leaves both stacks and command retry state unchanged.
+
 Unpacked placement commands preserve binary64 pose components outside the explicit edit intent. Moves
 replace XZ and supplied Y, rotations replace yaw, scales replace scale, and label edits retain the pose.
 Missing Y retains authored support seating. Floor changes consume that dependency using precise XZ and

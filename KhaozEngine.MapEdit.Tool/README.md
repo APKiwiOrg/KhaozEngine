@@ -99,9 +99,11 @@ absolute path at open, so later working directory changes never move it.
   false.
 
 `MapEditSession.BindNativeAssets(closure)` remains for an explicit rebind. It is validated without dirtying
-the session. Native mutation callbacks edit a detached candidate and publish only after full bound validation,
-preserving the public document instance. Native placement commands additionally preserve their retry state on
-rejection. `PlacementRename` changes the native display label and returns the unchanged placement ID. The
+the session. Rebinding identical roots and closure hash preserves history. A different accepted binding
+clears history after validation. Native mutations edit a detached candidate and stage one `EditorHistory`
+entry, preserving the public document instance. Command acceptance and stack movement follow successful
+outer validation and publication. Rejection leaves roots, closure, reservations, stacks, effects, events and
+dirty state untouched. A genuine no-op creates no history entry or dirty transition. `PlacementRename` changes the native display label and returns the unchanged placement ID. The
 explicit service APIs `PlacementLabel` and `PlacementRemapId` distinguish label edits from stable-ID
 remapping. These are service APIs, not additional MCP registrations.
 
@@ -125,6 +127,38 @@ It returns `MapWaterMutationResult` with the mutation and accepted effects, and 
 and effects as the editor command. Publication checks the complete water set's containment and bound material
 closure before changing the session. Analytic and resolver-1 documents refuse water edits.
 These are service APIs. Water MCP registrations remain with R10, so the registered verb count is unchanged.
+
+## Prefab assets and native history
+
+`PrefabService(session)` provides `List`, `Open`, `Edit`, `Cancel`, `Save` and `Extract`. Open and Extract
+create a detached local asset session. Parent-dependent assets require an explicit authored parent, or
+use a referring instance's explicit parent in ordinal instance order. No exterior is inferred. Edit
+replaces, adds or removes one closed keyed child. Extract consumes typed World references and a free
+origin transform. Local edits and cancellation leave the open map untouched.
+
+Save publishes canonical prefab bytes at `prefab/<escaped-logical-id>/<sha256>` beneath the requested
+relative directory, followed by an immutable replacement manifest. Existing addresses must contain
+identical bytes. Every resource stays under the guarded map resource root, outside writer-owned map
+storage. The old declarations and leaf pins remain available, including those used by standalone
+placements, removed sources and materialized rows. A complete verified closure precedes one accepted
+map switch. Failed switches may leave unreachable immutable files. They do not overwrite or remove
+old files, and other maps retain their old pins. `updateOpenMap: false` performs file-only publication
+without a world history entry.
+
+`MutationService.PrefabApply` and `InteriorApply` return `MapPrefabMutationResult` with the accepted
+command effects. `interior_volume_add` requires an absent domain ID and an absent space or a space
+without a prism. It creates the Room and prism atomically when the space is absent. `interior_volume_set`
+requires a present domain ID. Alias rooms and non-Room spaces refuse. `UndoNative` and `RedoNative`, also exposed as `prefab_undo` and `prefab_redo`, use one
+whole native history for placements, prefab/interior edits, terrain, water and collider versions.
+Generic terrain, scatter, bake, sculpt and freeze callbacks capture complete documents rather than
+replaying their callbacks. Save preserves history and clears dirty only on success. Open, Create,
+SetWindow, conversion and retile clear both stacks only after successful replacement or storage
+publication. Every accepted undo or redo marks dirty, including a return to saved geometry.
+
+The new prefab/interior tool classes use the closed prefab serializer, including child discriminators,
+scoped references and decimal-string int64 IDs. Existing tool registrations and wire shapes stay the
+same. Coordinates are metres and yaw is radians. The GUI host and remaining verb parity belong to R9
+and R10.
 
 ## Native colliders
 
@@ -167,7 +201,8 @@ A dry run, the default, computes the new collider bytes, digest and effects over
 file and no session state. Apply writes the new collider and a new root manifest through `MapAssetFileWriter`,
 reloads and verifies the closure from disk, then swaps the root reference in one native transaction whose
 `MapNativeWriteSet.NativeAssets` flag publishes the roots. It binds the new closure and marks the session dirty, and
-`Save` persists the document. The mesh resource and every placement transform stay unchanged. The asset and its
+`Save` persists the document. Collider edits share the whole native history and undo or redo with their
+captured old or new verified closure. The mesh resource and every placement transform stay unchanged. The asset and its
 collider must be declared in one root manifest, and no other asset may share the collider resource. An edit that
 leaves the collider bytes unchanged reports `Applied` false with no invalidation.
 
@@ -200,8 +235,7 @@ coordinate ordering, and falls back to the bounds center if that search finds no
 tile and world rect plus the occupied/loaded tile counts, `Tiled` false for a monolithic or in-memory
 document. `set_window(minX, minZ, maxX, maxZ, discard?)` moves the window (a world rect, the same
 convention `sculpt_flatten_region` takes): it refuses with unsaved changes unless `discard` is passed, and
-on success discards whatever this session held before (there is no undo stack across calls to replay) and
-reloads fresh from the manifest. Writing content that moved into a tile the window never loaded throws a
+on success clears native history and reloads fresh from the manifest. Writing content that moved into a tile the window never loaded throws a
 precise `MapDocumentException` naming the item and the target tile instead of silently dropping it, the
 same guard `SaveTiled` states on the document itself, inherited automatically. `convert_to_tiled(directory)`
 / `convert_to_single(path)` change the on-disk FORM explicitly (`MapDocumentFile.SaveAs`, no extension
@@ -255,7 +289,7 @@ GPU with a scatter-free document (flat terrain and a single marker placement), a
 to 1.4 s (the higher figure includes first device start-up) and a capped 2 km square about 0.9 s. A document with
 dense scatter layers pays for every scattered prop inside the widened ring as well, so expect longer renders.
 
-## Verb surface (78 tools)
+## Verb surface (92 tools)
 
 | Group | Verbs |
 |---|---|
@@ -270,6 +304,8 @@ dense scatter layers pays for every scattered prop inside the widened ring as we
 | Sculpt | `sculpt_apply`, `sculpt_flatten_region`, `sculpt_clear` |
 | Duplicate | `element_duplicate` |
 | Renders | `render_topdown`, `render_view` |
+| Prefabs | `prefab_open`, `prefab_edit`, `prefab_save`, `prefab_extract`, `prefab_place`, `prefab_list`, `prefab_override`, `prefab_unpack`, `prefab_undo`, `prefab_redo` |
+| Interiors | `interior_volume_add`, `interior_volume_set`, `interior_volume_remove`, `roof_link_set` |
 
 `scatter_override_rename(index, name?)` renames the scatter override at `index`, a null or empty name
 clearing it back to unnamed. `scatter_override_reorder(fromIndex, toIndex)` moves a scatter override

@@ -29,14 +29,25 @@ public static class MapInteriorEdits
             case MapSetInterior set:
                 ArgumentNullException.ThrowIfNull(set.Domain);
                 if (set.Domain.InstanceId != "") throw new MapDocumentException("Standalone interior edits require standalone ownership.");
-                if (!after.Surfaces.TryGetRecord(set.Domain.Space, out var space) || space is not MapSpaceDoc)
-                    throw new MapDocumentException("Interior names an undeclared standalone room.");
+                if (!after.Surfaces.Patches.TryGetValue(set.Domain.Space.Anchor, out var anchor))
+                    throw new MapDocumentException("Interior space anchor must name an authored patch.");
+                if (!after.Surfaces.TryGetRecord(set.Domain.Space, out var space))
+                {
+                    if (after.Surfaces.AllRecords().Any(r => r.Id == set.Domain.Space.Id))
+                        throw new MapDocumentException("Interior space ID is declared at a different anchor.");
+                    space = new MapSpaceDoc(set.Domain.Space.Id, MapSpaceKind.Room, set.Domain.Parent, null, [], [], [], []);
+                    anchor.Records.Add(space);
+                }
+                if (space is not MapSpaceDoc { Kind: MapSpaceKind.Room } room)
+                    throw new MapDocumentException("Interior edits require a Room space.");
+                if (room.AliasOf is not null)
+                    throw new MapDocumentException("Interior edits refuse alias rooms.");
                 var old = after.Surfaces.Patches.Values.SelectMany(p => p.Records).OfType<MapPrismDomain>()
                     .SingleOrDefault(p => p.Space.Id == set.Domain.Space.Id);
                 if (old is not null && old.Id != set.Domain.Id) throw new MapDocumentException("Interior replacement must retain its record ID.");
                 foreach (var patch in after.Surfaces.Patches.Values) patch.Records.RemoveAll(r => r.Id == set.Domain.Id);
                 after.Surfaces.Patches[set.Domain.Space.Anchor].Records.Add(set.Domain);
-                Record(set.Domain); Record(space);
+                Record(set.Domain); Record(room);
                 break;
             case MapRemoveInterior remove:
                 var records = after.Surfaces.AllRecords().Where(r => r is MapSpaceDoc s && s.Id == remove.SpaceId ||

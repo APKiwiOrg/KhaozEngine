@@ -20,7 +20,7 @@ internal sealed record NativeAssetContext(MapDocument Document, MapAssetClosure 
 /// manifest paths, a shared default registry, a dirty flag, and a cached <see cref="TerrainField"/> rebuilt
 /// after world-affecting mutations. The in-session document is kept valid by convention (mutations validate at
 /// a higher layer). This core exposes the primitives those higher layers build on.</remarks>
-public sealed class MapEditSession
+public sealed partial class MapEditSession
 {
     readonly object _lock = new();
     readonly MapDocRegistry _registry = MapDocRegistry.CreateDefault();
@@ -46,14 +46,9 @@ public sealed class MapEditSession
         {
             RequireDocumentLocked();
             MapBoundDocumentValidation.Validate(_doc!, assets, _registry);
-            _nativeAssets = assets;
+            BindNativeAssetsLocked(assets);
         }
     }
-
-    // Every native transaction here sizes placement edits through the session's placement bounds.
-    internal MapNativeEditEffects ApplyNative(EditorCommand command, MapDocument document, MapDocRegistry registry) =>
-        NativeDocumentTransaction.Run(document, command, false, _nativeAssets, registry,
-            placementBounds: NativePlacementBoundsProvider.Instance);
 
     /// <summary>Runs <paramref name="fn"/> under the session lock with the open native document, its bound closure, its
     /// resource root and a source that reads under that root and refuses writer-owned storage. Throws
@@ -69,24 +64,6 @@ public sealed class MapEditSession
             string storagePath = Path.GetFullPath(_storagePath);
             return fn(new NativeAssetContext(_doc!, _nativeAssets, MapDocumentStorage.ResourceRoot(storagePath, _storageForm),
                 new MapStorageGuardedAssetSource(storagePath, _storageForm), _registry));
-        }
-    }
-
-    /// <summary>Publishes <paramref name="command"/>, which replaces native asset roots, through one native transaction
-    /// validated against <paramref name="assets"/>, then binds that closure and marks the session dirty. A refused
-    /// transaction changes nothing.</summary>
-    internal MapNativeEditEffects ApplyNativeAssets(IEditorCommand command, MapAssetClosure assets)
-    {
-        ArgumentNullException.ThrowIfNull(command);
-        ArgumentNullException.ThrowIfNull(assets);
-        lock (_lock)
-        {
-            RequireDocumentLocked();
-            MapNativeEditEffects effects = NativeDocumentTransaction.Run(_doc!, command, false, assets, _registry,
-                placementBounds: NativePlacementBoundsProvider.Instance);
-            _nativeAssets = assets;
-            _dirty = true;
-            return effects;
         }
     }
 
@@ -126,6 +103,7 @@ public sealed class MapEditSession
             _storagePath = fullPath;
             _storageForm = form;
             _manifests = CopyManifests(manifestPaths);
+            ResetNativeHistory();
             _dirty = false;
             _field = null;
             _window = window;
@@ -185,6 +163,7 @@ public sealed class MapEditSession
             _storagePath = Path.GetFullPath(path);
             _storageForm = MapDocumentForm.Monolithic;
             _manifests = CopyManifests(manifestPaths);
+            ResetNativeHistory();
             _dirty = false;
             _field = null;
             _window = null;
@@ -210,6 +189,8 @@ public sealed class MapEditSession
                 MapResolvedDocument resolved = NativeDocumentService.Verify(_doc!, _storagePath!, _storageForm, _path!);
                 NativeDocumentService.Save(_doc!, _storagePath!, _storageForm, _registry);
                 _nativeAssets = resolved.AssetClosure;
+                _nativeHistory.RebindNativeAssets(_nativeAssets, NativePlacementBoundsProvider.Instance);
+                _nativeHistory.SealGesture();
             }
             else if (MapDocumentFile.DetectForm(_path!) == MapDocumentForm.None)
                 MapDocumentFile.Save(_doc!, _path!, _registry);
@@ -224,10 +205,8 @@ public sealed class MapEditSession
     /// before and reloading the manifest plus only the tiles inside the new window (world coordinates, the
     /// same rect a query verb like <c>sculpt_flatten_region</c> takes). With unsaved changes and
     /// <paramref name="discard"/> false this throws rather than losing them. Pass <paramref name="discard"/>
-    /// true to move anyway. This session keeps no undo stack of its own (each mutation's <c>EditorCommand</c>
-    /// is applied, validated, and discarded within one call, per <see cref="Mutate{T}"/>, never retained across
-    /// calls the way the GUI editor's history is), so a window move has nothing to replay: the cached field and
-    /// the dirty flag are what actually need resetting, and this does both. A native candidate must load whole
+    /// true to move anyway. A successful replacement clears native history, the cached field and the dirty flag.
+    /// A native candidate must load whole
     /// and verify against the directory's resources before it replaces the session, then binds that closure.</summary>
     /// <exception cref="InvalidOperationException">No document is open, the open document is not a tiled
     /// directory, or it is dirty and <paramref name="discard"/> is false.</exception>
@@ -258,6 +237,7 @@ public sealed class MapEditSession
             _storagePath = storage;
             _storageForm = MapDocumentForm.Tiled;
             _window = rect;
+            ResetNativeHistory();
             _dirty = false;
             _field = null;
             return BuildWindowStatusLocked();
@@ -318,6 +298,7 @@ public sealed class MapEditSession
             _path = target;
             _storagePath = storage;
             _storageForm = MapDocumentForm.Tiled;
+            ResetNativeHistory();
             _dirty = false;
             _field = null;
             _window = null;   // SaveTiled just refreshed doc.Tiles as a whole (unwindowed) index.
@@ -355,6 +336,7 @@ public sealed class MapEditSession
             _path = target;
             _storagePath = storage;
             _storageForm = MapDocumentForm.Monolithic;
+            ResetNativeHistory();
             _dirty = false;
             _field = null;
             _window = null;
@@ -410,6 +392,7 @@ public sealed class MapEditSession
                 throw;
             }
             if (assets is not null) _nativeAssets = assets;
+            ResetNativeHistory();
             _dirty = false;
             _field = null;
             _window = null;
@@ -521,24 +504,17 @@ public sealed class MapEditSession
         }
     }
 
-    /// <summary>Mutation entry: runs fn under the lock, marks dirty, invalidates the cached field when
-    /// worldChanged, always leaving validation to the caller-provided fn.</summary>
+    /// <summary>Runs fn under the lock. Native callbacks stage detached state and history before validated
+    /// publication. Analytic callbacks validate their own writes. Accepted edits dirty the session and invalidate
+    /// the field when worldChanged.</summary>
     public T Mutate<T>(Func<MapDocument, MapDocRegistry, T> fn, bool worldChanged)
     {
         ArgumentNullException.ThrowIfNull(fn);
         lock (_lock)
         {
             RequireDocumentLocked();
-            T result;
-            if (_doc!.ResolverIdentity is not null)
-            {
-                if (_nativeAssets is null) throw new MapDocumentException("Native editing requires an explicit asset closure binding.");
-                MapDocument candidate = NativeDocumentSnapshot.Clone(_doc, _registry);
-                result = fn(candidate, _registry);
-                MapBoundDocumentValidation.Validate(candidate, _nativeAssets, _registry);
-                NativeDocumentSnapshot.Publish(_doc, candidate);
-            }
-            else result = fn(_doc, _registry);
+            if (_doc!.ResolverIdentity is not null) return MutateNative(fn, worldChanged);
+            T result = fn(_doc, _registry);
             _dirty = true;
             if (worldChanged) _field = null;
             return result;

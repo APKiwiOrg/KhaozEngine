@@ -11848,8 +11848,7 @@ center and uses that center if no enabled spawn is found. `map_save` always writ
 document came from (`MapDocumentFile.SaveAuto`), never converting implicitly. `window_status` reports the
 loaded window's tile and world rect plus the occupied/loaded tile counts (`Tiled` false for a monolithic
 document). `set_window(minX, minZ, maxX, maxZ, discard?)` moves the window: it refuses with unsaved
-changes unless `discard` is passed, and on success discards whatever was loaded before (this session keeps
-no undo stack across calls, so there is nothing to replay) and reloads fresh from the manifest. Writing
+changes unless `discard` is passed, and on success clears native history and reloads fresh from the manifest. Writing
 content that moved into a tile the window never loaded throws a precise `MapDocumentException` naming the
 item and the target tile rather than silently dropping it, the same guard `SaveTiled` states on the
 document itself. `convert_to_tiled(directory)` / `convert_to_single(path)` change the on-disk FORM
@@ -11862,6 +11861,14 @@ outside the reserved namespace, and is refused only when that directory already 
 re-saves: `tileSize` IS part of world identity (`MapDocumentHash.OfWorld`), so this changes the world hash
 on purpose, and the result's `Warning` states the before/after digests plainly rather than leaving a caller
 to notice a coordinated client/server release is now needed.
+
+**Prefab authoring and history.** Native sessions retain one history for placement, terrain, water,
+prefab, interior, generic callback and collider-root edits. `prefab_undo` and `prefab_redo` restore the
+captured document and matching verified closure. Save preserves history. Successful open, window
+replacement, conversion and retile clear it. Rejected publication changes no history or dirty state.
+`PrefabService` edits detached local asset sessions and publishes digest-addressed immutable versions
+before one complete map switch. Other maps and materialized leaf pins retain their old bytes. See the
+[ke-mapedit prefab workflow](../KhaozEngine.MapEdit.Tool/README.md#prefab-assets-and-native-history).
 
 **Validation scope.** `map_validate()` validates the document structure and schema, including each loaded
 tile of a windowed document against the tile schema. `SchemaScope` reports `document`, `loadedTiles`, or
@@ -11877,7 +11884,7 @@ the MCP boundary as raw JSON strings parsed with the open document's own seriali
 typed parameters. A lake feature: `{"type": "lake", "centerX": 34, "centerZ": -14, "radius": 22,
 "depth": 6}`. A disc shape: `{"type": "disc", "centerX": 0, "centerZ": 0, "radius": 26}`.
 
-**Verb surface (78 tools).**
+**Verb surface (92 tools).**
 
 | Group | Verbs |
 |---|---|
@@ -11892,6 +11899,8 @@ typed parameters. A lake feature: `{"type": "lake", "centerX": 34, "centerZ": -1
 | Sculpt | `sculpt_apply`, `sculpt_flatten_region`, `sculpt_clear` |
 | Duplicate | `element_duplicate` |
 | Renders | `render_topdown`, `render_view` |
+| Prefabs | `prefab_open`, `prefab_edit`, `prefab_save`, `prefab_extract`, `prefab_place`, `prefab_list`, `prefab_override`, `prefab_unpack`, `prefab_undo`, `prefab_redo` |
+| Interiors | `interior_volume_add`, `interior_volume_set`, `interior_volume_remove`, `roof_link_set` |
 
 `sculpt_apply(brush, x, z, radius, strength, dt, targetHeight?)` applies one terrain-sculpt brush dab
 (`raise`/`lower`/`smooth`/`flatten`/`set_height`) at a world point as a single `TerrainSculptStrokeCommand`

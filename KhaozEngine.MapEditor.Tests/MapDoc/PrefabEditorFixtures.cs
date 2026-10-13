@@ -23,11 +23,28 @@ internal static class PrefabEditorFixtures
     internal static readonly MapTransform Far = new(new(30000.25f, -450, -29999.75f), 0.371f, 1.2f);
     internal static PrefabFixture Create(string variant)
     {
+        if (variant is "two-instances" or "mixed-history")
+        {
+            var f = PrefabFixtures.Create("all-resources");
+            f.Document.Placements.Add(new() { Id = "collider-control", Kind = "roof", AssetId = "roof", X = 12, Y = 0, Z = -12 });
+            var placed = MapPrefabEdits.Prepare(f.Document, f.Assets,
+                new MapPlacePrefab("b", "hut", new(new(8, 0, 0), 0, 1), ParentRef(f))).After;
+            if (variant == "two-instances") return new(placed, f.Assets);
+            return new(MapPrefabEdits.Prepare(placed, f.Assets, new MapUnpackPrefab("b")).After, f.Assets);
+        }
+        if (variant == "native-generic")
+        {
+            var f = PrefabFixtures.Create("roomless");
+            f.Document.ScatterLayers.Add(new() { Name = "native-bake", Rules = new() { new() { Density = 0, Kinds = new() { new() { Id = "tree-pine", Weight = 1 } } } } });
+            f.Document.ScatterOverrides.Add(new() { Shape = new RectShapeDoc { MinX = 0, MinZ = 0, MaxX = 1, MaxZ = 1 }, DensityMultiplier = 1 });
+            f.Document.Regions.Add(new() { Name = "unrelated", Shape = new RectShapeDoc { MinX = 2, MinZ = 2, MaxX = 3, MaxZ = 3 } });
+            return f;
+        }
         if (variant != "empty-map") return PrefabFixtures.Create(variant);
-        var f = PrefabFixtures.Create();
-        PrefabFixtures.AuthorWorldParent(f, new(new(10.25f, 5, -3.125f), 0.371f, 1.2f));
-        f.Document.Prefabs = new(1, 1, [], []);
-        return f;
+        var empty = PrefabFixtures.Create();
+        PrefabFixtures.AuthorWorldParent(empty, new(new(10.25f, 5, -3.125f), 0.371f, 1.2f));
+        empty.Document.Prefabs = new(1, 1, [], []);
+        return empty;
     }
     internal static MapRecordRef ParentRef(PrefabFixture f) => new("exterior",
         f.Document.Surfaces.Patches.Values.Single(p => p.Records.OfType<MapSpaceDoc>().Any(s => s.Id == "exterior")).Key);
@@ -146,12 +163,147 @@ internal static class PrefabEditorFixtures
         var asset = MapPrefabExtraction.Extract(unpack, f.Assets, selected, new(Vector3.Zero, 0, 1), "captured");
         return PrefabFixtures.ExtractedFixture(asset, f.Assets, new(Vector3.Zero, 0, 1));
     }
+    internal static PrefabFixture LocalCapturedFixture()
+    {
+        var f = PrefabFixtures.MaterializedExtraction();
+        var asset = MapPrefabExtraction.Extract(f.Document, f.Assets, f.Selection, f.Origin, "captured");
+        return PrefabFixtures.ExtractedFixture(asset, f.Assets, new(Vector3.Zero, 0, 1));
+    }
+    internal static PrefabFixture StandaloneInterior(bool domainPresent)
+    {
+        var f = PrefabFixtures.Create();
+        var doc = MapPrefabEdits.Prepare(f.Document, f.Assets, new MapUnpackPrefab("a")).After;
+        var removed = doc.Surfaces.AllRecords().Where(r => r is MapCavePortal or MapBoundaryChain || !domainPresent && r is MapPrismDomain)
+            .Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
+        foreach (var patch in doc.Surfaces.Patches.Values) patch.Records.RemoveAll(r => removed.Contains(r.Id));
+        var intent = doc.BuildingIntent!;
+        doc.BuildingIntent = new(1, [], [], intent.Lights, intent.Markers) { Roofs = intent.Roofs, Storeys = intent.Storeys };
+        doc.NativeResourceTransforms = doc.NativeResourceTransforms!.Where(t => !removed.Contains(t.OwnerId) && t.Kind != MapPrefabChildKind.RoofLink).ToArray();
+        var set = doc.Prefabs!;
+        doc.Prefabs = new(set.PayloadVersion, set.ExpansionVersion, set.Instances,
+            set.Transfers.Select(t => removed.Contains(t.Binding.WorldId) || t.Binding.Child.Kind == MapPrefabChildKind.RoofLink ? t with { Retired = true } : t).ToArray())
+        { Attachments = set.Attachments };
+        return new(doc, f.Assets);
+    }
     internal static void Reload(MapDocument document, MapAssetClosure assets)
     {
         var reload = MapDocumentFile.LoadText(MapDocumentFile.SaveText(document));
         MapBoundDocumentValidation.Validate(reload, assets);
         AssertEqualEffective(document, reload, assets);
     }
+    internal static MapEditSession Session(PrefabFixture fixture)
+    {
+        string dir = PrefabFixtures.TempDirectory();
+        foreach (var resource in fixture.Assets.CapturedResources)
+        {
+            string target = Path.Combine(dir, resource.Reference.Path);
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.WriteAllBytes(target, resource.Bytes.ToArray());
+        }
+        string path = Path.Combine(dir, "world.map.json");
+        MapDocumentFile.Save(fixture.Document, path);
+        File.Copy(path, Path.Combine(dir, "other.map.json"));
+        var session = new MapEditSession();
+        session.Open(path);
+        return session;
+    }
+    internal static MapDocument Document(MapEditSession session) => session.WithDocument((d, r) => NativeDocumentSnapshot.Clone(d, r));
+    internal static PrefabSessionState State(MapEditSession session) => session.WithNativeAssets<PrefabSessionState>(c => new(
+        MapNativeResolution.Resolve(c.Document, c.Assets, NativeDocumentService.SessionOptionsV2).AuthoredHash,
+        MapDocumentFile.SaveText(c.Document), string.Join("|", c.Document.NativeAssets.Select(r => r.ToString())),
+        c.Document.Prefabs?.Digest() ?? "", c.Assets.Hash, session.NativeHistoryState.Cursor,
+        session.NativeHistoryState.Depth, session.NativeHistoryState.Events, session.IsDirty, session.LastNativeEffects?.Describe()));
+    internal static string OtherMapBefore(MapEditSession session) => File.ReadAllText(Path.Combine(Path.GetDirectoryName(session.DocumentPath)!, "other.map.json"));
+    internal static string OtherMapNow(MapEditSession session) => OtherMapBefore(session);
+    internal static MapPrefabMarkerChild Marker(MapPrefabAsset asset) => (MapPrefabMarkerChild)asset.Children.Single(c => c.Key.Kind == MapPrefabChildKind.Marker);
+    internal static void PublishMarkerChange(MapEditSession session, string checkpoint)
+    {
+        var service = new PrefabService(session);
+        var asset = service.Open("hut");
+        var marker = Marker(asset);
+        service.Edit(marker with { Value = marker.Value with { Name = "Changed" } });
+        new PrefabAssetPublisher(session, new FaultFiles(checkpoint)).Publish(service.Export(), "hut", "published", true);
+    }
+    sealed class FaultFiles(string checkpoint) : IMapPrefabPublicationFiles
+    {
+        public void PublishNew(string path, ReadOnlyMemory<byte> bytes)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            if (!File.Exists(path)) File.WriteAllBytes(path, bytes.ToArray());
+        }
+        public void Checkpoint(string name) { if (name == checkpoint) throw new MapDocumentException("publication fault " + name); }
+    }
+    internal static IReadOnlyList<PrefabSessionState> ApplyMixedHistory(MapEditSession session, bool water = false)
+    {
+        var states = new List<PrefabSessionState> { State(session) };
+        var service = new PrefabService(session);
+        var asset = service.Open("hut");
+        var marker = Marker(asset);
+        service.Edit(marker with { Value = marker.Value with { Name = "Changed" } });
+        service.Save("hut", "published");
+        states.Add(State(session));
+        var mutation = new MutationService(session);
+        var current = Document(session);
+        if (water) mutation.WaterApply(new MapUpsertWaterBody(current.Water!.Bodies.Single() with { SurfaceY = 0.75f }));
+        else
+        {
+            var floor = current.Surfaces.Patches.Values.Single(p => p.Key.SurfaceId == current.Prefabs!.Transfers.Single(t =>
+                t.InstanceId == "b" && t.Binding.Child == new MapPrefabChildKey(MapPrefabChildKind.Surface, "pool-floor")).Binding.WorldId);
+            mutation.TerrainApply(new MapSetCornerHeights(floor.Key, 0, 0, floor.Width + 1, floor.Depth + 1, Enumerable.Repeat(-75, floor.Heights.Length).ToArray()));
+        }
+        states.Add(State(session));
+        new NativeCollisionService(session).SetHeights("roof", -0.25f, 0.25f, false);
+        states.Add(State(session));
+        return states;
+    }
+    internal static void AssertPublishedState(MapEditSession session, PrefabSessionState expected)
+    {
+        var actual = State(session);
+        Xunit.Assert.Equal(expected.Identity, actual.Identity);
+        Xunit.Assert.Equal(expected.DocumentBytes, actual.DocumentBytes);
+        Xunit.Assert.Equal(expected.RootPins, actual.RootPins);
+        Xunit.Assert.Equal(expected.Bindings, actual.Bindings);
+        Xunit.Assert.Equal(expected.ClosureHash, actual.ClosureHash);
+        Xunit.Assert.Equal(expected.Cursor, actual.Cursor);
+        Xunit.Assert.Equal(3, actual.Depth);
+        Xunit.Assert.True(actual.Dirty);
+        session.WithNativeAssets(c => { MapBoundDocumentValidation.ValidateEffectiveWater(MapPrefabResolver.Expand(c.Document, c.Assets), c.Assets); return 0; });
+    }
+    internal static void ApplyGeneric(MapEditSession session, string variant)
+    {
+        var mutation = new MutationService(session);
+        if (variant == "scatter") mutation.ScatterOverrideEdit(0, densityMultiplier: 2);
+        else mutation.BakeRegion("native-bake", 0, 0, 1, 1);
+    }
+    internal static void AssertGenericRoots(MapEditSession session, string variant, bool applied)
+    {
+        var doc = Document(session);
+        Xunit.Assert.Equal(variant == "scatter" && applied ? 2 : 1, doc.ScatterOverrides.Single().DensityMultiplier);
+        Xunit.Assert.Equal(variant == "bake" && applied ? 1 : 0, doc.Exclusions.Count);
+        if (variant == "bake" && applied)
+        {
+            var exclusion = Xunit.Assert.Single(doc.Exclusions);
+            Xunit.Assert.Equal(new[] { "native-bake" }, exclusion.Layers);
+            var rect = Xunit.Assert.IsType<RectShapeDoc>(exclusion.Shape);
+            Xunit.Assert.Equal((0f, 0f, 1f, 1f), (rect.MinX, rect.MinZ, rect.MaxX, rect.MaxZ));
+            Xunit.Assert.Empty(doc.Placements);
+        }
+        Xunit.Assert.Equal("unrelated", Xunit.Assert.Single(doc.Regions).Name);
+    }
+    internal static void AssertSavedGenericRoots(MapEditSession session, string variant, bool applied)
+    {
+        string saved = Path.Combine(Path.GetDirectoryName(session.DocumentPath)!, "reloaded-" + Guid.NewGuid().ToString("N") + ".map.json");
+        MapDocumentFile.Save(Document(session), saved);
+        var reopened = new MapEditSession();
+        reopened.Open(saved);
+        AssertGenericRoots(reopened, variant, applied);
+        Xunit.Assert.Equal(State(session).Identity, State(reopened).Identity);
+        Xunit.Assert.Equal(State(session).RootPins, State(reopened).RootPins);
+        Xunit.Assert.Equal(0, reopened.NativeHistoryState.Depth);
+    }
     static void AssertEqualEffective(MapDocument a, MapDocument b, MapAssetClosure assets) =>
         Xunit.Assert.Equal(MapPrefabResolver.Expand(a, assets).Digest, MapPrefabResolver.Expand(b, assets).Digest);
 }
+
+internal sealed record PrefabSessionState(string Identity, string DocumentBytes, string RootPins, string Bindings,
+    string ClosureHash, int Cursor, int Depth, long EventCount, bool Dirty, string? Effects);

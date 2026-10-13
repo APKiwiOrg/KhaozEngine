@@ -317,7 +317,10 @@ Assert.Equal(0f, reverse.ScrollOffset);// first unwinds content offset 20
   built from existing Gui primitives. Do not feed the same movement to ScrollablePanel.Update.
   Preserve Pointer's left-button-only consumption contract. Mouse recognition checks IsConsumed,
   while fresh touch, wheel and native streams use their own admission. Prove consumed mouse input
-  cannot disable subsequent sheet or map gestures, and preserve dismissal/release leak prevention.
+  cannot disable independent sheet or map gestures while left remains held, and preserve
+  dismissal/release leak prevention. Pending body taps must reach child controls after sheet Update.
+  Consume handles, committed body drags and cancelled contacts through release, including emulated
+  left mouse input associated with touch. Region reservation continues to protect the lower map.
 - [x] Run the filter green, then existing ScrollablePanel tests once if shared math was extracted.
   Commit explicit files and push.
 

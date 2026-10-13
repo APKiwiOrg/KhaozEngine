@@ -131,7 +131,8 @@ unless explicitly enabled and focused. Results expose accepted tap and double-ta
 
 One gesture owns a contact sequence. Admission tests its start against viewport, focus, pointer
 capture and blocked regions. Left-button recognition also respects Pointer's left-gesture consumed
-state. That persistent mouse latch does not block independent touch, wheel or native gestures.
+state. Consuming an active mouse gesture rejects that mouse sequence through release. That
+persistent mouse latch does not block independent touch, wheel or native gestures while held.
 An optional predicate includes GuiSurface or consumer
 blockers. Overlays update first, the controller admits next, and a canvas reserves its own region
 after admission. A rejected start stays rejected until the entire sequence ends, even if the overlay
@@ -208,7 +209,11 @@ The sheet owns a headless scroll/handoff model and can render caller content thr
 callback. It does not require a ScrollablePanel to process the same drag again. Shared panel geometry
 or scroll math may be extracted only where it is actually reused. Existing ScrollablePanel callers
 retain their current behavior. The sheet reserves its visible region before lower map input updates,
-keeps its admitted gesture through release, and never hands residual motion to the map.
+keeps its admitted gesture through release, and never hands residual motion to the map. Pending body
+taps remain available to child controls after the sheet update. Handle gestures, committed body
+drags and cancelled contacts consume their corresponding left mouse gesture through release,
+including emulated mouse input associated with touch. Region reservation protects the lower map
+while child controls receive body taps.
 
 ## Verification and delivery
 

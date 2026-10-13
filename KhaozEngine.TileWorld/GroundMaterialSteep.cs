@@ -14,8 +14,9 @@ namespace KhaozEngine.TileWorld;
 /// the material renders alone, past <see cref="ResolvedToDegrees"/> the companion does. So a grass foot whose
 /// corners voted Grass up a cliff face still renders rock on the face itself.</para>
 /// <para>The companion's own <c>steep</c> is never followed: one hop, no chains. The catalog loader refuses an
-/// unknown companion, a self reference, a Water companion, a band outside (0, 90) degrees and a band whose start is
-/// not below its end, each by name. See <see cref="GroundMaterialSteepRules"/>.</para>
+/// unknown companion, a self reference, a Water companion, a band outside (0, 90) degrees, a band whose start is
+/// not below its end and a band too narrow for its two ends to differ in cosine, each by name. See
+/// <see cref="GroundMaterialSteepRules"/>.</para>
 /// </summary>
 public sealed class GroundMaterialSteep
 {
@@ -84,6 +85,12 @@ public static class GroundMaterialSteepRules
         if (!(from < to))
             return $"{at} fromDegrees {GroundMaterialSteep.Degrees(from)}{DefaultNote(steep.FromDegrees)} is not below " +
                 $"toDegrees {GroundMaterialSteep.Degrees(to)}{DefaultNote(steep.ToDegrees)}.";
+        // The renderer blends on the cosines of the two ends, so a band they cannot tell apart has no blend at all.
+        // The expression is the renderer's own (TileGroundSteepShading in Render3D), in plain float maths so this
+        // package takes no render dependency.
+        if (!(CosOf(to) < CosOf(from)))
+            return $"{at} band {GroundMaterialSteep.Degrees(from)} to {GroundMaterialSteep.Degrees(to)} degrees is too " +
+                "narrow to render: both ends have the same cosine in single precision. Widen the band.";
         return null;
     }
 
@@ -100,6 +107,8 @@ public static class GroundMaterialSteepRules
     }
 
     // Strictly inside, and false for NaN, which no comparison passes.
+    static float CosOf(float degrees) => MathF.Cos(degrees * (MathF.PI / 180f));
+
     static bool InsideRightAngle(float degrees) => degrees > 0f && degrees < 90f;
 
     static string DefaultNote(float? authored) => authored is null ? " (the default)" : "";

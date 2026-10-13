@@ -127,6 +127,16 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
+        public void A_band_whose_ends_pack_to_the_same_cosine_is_refused()
+        {
+            // 0.001 and 0.002 degrees both pack to cos 1f, and smoothstep(1, 1, ny) is undefined in GLSL.
+            Assert.Equal(Cos(0.001f), Cos(0.002f));
+            var layers = new[] { Layer(new TileGroundSteepLayer { CompanionSlot = 1, FromDegrees = 0.001f, ToDegrees = 0.002f }), Layer() };
+            var ex = Assert.Throws<ArgumentException>(() => TileGroundMaterialConfig.BuildParams(layers, 0.15f));
+            Assert.Contains("pack to the same cosine", ex.Message);
+        }
+
+        [Fact]
         public void The_glsl_block_declares_the_arrays_in_packing_order()
         {
             string frag = ShaderSources.TileGroundFrag;

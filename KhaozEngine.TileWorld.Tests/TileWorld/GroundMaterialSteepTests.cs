@@ -92,6 +92,24 @@ public class GroundMaterialSteepTests
         Assert.Contains(expected, Refused(steep).Message);
     }
 
+    // Both ends pack to cos 1 in single precision, so the renderer's smoothstep would have equal edges, which GLSL
+    // leaves undefined. The catalog refuses it at load rather than leaving it to the GPU material load.
+    [Fact]
+    public void A_band_whose_ends_share_a_cosine_is_refused_at_load()
+    {
+        TileWorldException ex = Refused("""{ "material": 14, "fromDegrees": 0.001, "toDegrees": 0.002 }""");
+        Assert.Contains("steep.json", ex.Message);
+        Assert.Contains("band 0.001 to 0.002 degrees is too narrow to render", ex.Message);
+    }
+
+    [Fact]
+    public void A_narrow_band_that_still_resolves_loads()
+    {
+        TileWorldCatalogs c = TileWorldCatalogs.LoadJson(
+            Catalog("""{ "material": 14, "fromDegrees": 40, "toDegrees": 40.5 }"""), "steep.json");
+        Assert.Equal(40.5f, c.Material(1)!.Steep!.ResolvedToDegrees);
+    }
+
     // The schema refuses these before the rules see them, so the message is the schema's, naming the field.
     [Theory]
     [InlineData("""{ "material": 14, "fromDegrees": 0 }""", "fromDegrees")]

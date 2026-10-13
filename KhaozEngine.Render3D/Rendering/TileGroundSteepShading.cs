@@ -66,8 +66,8 @@ namespace KhaozEngine.Render3D
             : new Vector4(steep.CompanionSlot + 1, Cos(steep.ToDegrees), Cos(steep.FromDegrees), 0f);
 
         /// <summary>Throws <see cref="ArgumentException"/> naming the first layer whose companion is unsound: one
-        /// that names itself, names a slot outside <paramref name="layers"/>, or carries a band that does not rise
-        /// strictly inside (0, 90) degrees. Run by <see cref="TileGroundMaterialConfig.BuildParams"/>.</summary>
+        /// that names itself, names a slot outside <paramref name="layers"/>, carries a band that does not rise
+        /// strictly inside (0, 90) degrees, or carries one whose two ends pack to the same cosine. Run by <see cref="TileGroundMaterialConfig.BuildParams"/>.</summary>
         public static void Validate(IReadOnlyList<TileGroundLayerImage> layers)
         {
             ArgumentNullException.ThrowIfNull(layers);
@@ -97,6 +97,13 @@ namespace KhaozEngine.Render3D
                 throw new ArgumentException(
                     $"tile-ground layer {slot} has the steep band {Text(steep.FromDegrees)} to {Text(steep.ToDegrees)} " +
                     "degrees, which must rise strictly inside (0, 90).", "layers");
+            // The shader smoothsteps between the two packed cosines, and smoothstep is undefined unless its low
+            // edge sits strictly below its high one. A band narrow enough, or close enough to 0 degrees, packs both
+            // ends to the same float. GroundMaterialSteepRules makes the same check with the same expression.
+            if (!(Cos(steep.ToDegrees) < Cos(steep.FromDegrees)))
+                throw new ArgumentException(
+                    $"tile-ground layer {slot} has the steep band {Text(steep.FromDegrees)} to {Text(steep.ToDegrees)} " +
+                    "degrees, whose ends pack to the same cosine. Widen the band.", "layers");
         }
 
         static float Cos(float degrees) => MathF.Cos(degrees * (MathF.PI / 180f));

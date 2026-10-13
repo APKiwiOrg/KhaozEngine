@@ -9,7 +9,7 @@ namespace GestureInputProbe;
 
 internal sealed class ProbeScene
 {
-    const float HeaderHeight = 180;
+    const float HeaderHeight = 200;
     const float BodyHeight = 1200;
     readonly AppWindow _window;
     readonly Render2DSurface _surface;
@@ -29,6 +29,8 @@ internal sealed class ProbeScene
     }, "peek", new() { HandleToggleDetentIds = new[] { "peek", "full" } });
     SpriteFont? _frameFont;
     bool _sheetFocus, _initialized;
+    long _mapTaps, _mapDoubleTaps;
+    Vector2? _lastMapTapWorld, _lastMapDoubleTapWorld;
 
     public ProbeScene(AppWindow window, Render2DSurface surface, Texture2D white, DpiFont font)
     {
@@ -63,6 +65,16 @@ internal sealed class ProbeScene
         _input.BlockInputRegion(new(0, 0, _viewport.Width, HeaderHeight));
         _sheet.Update(_input, _canvas.Viewport, default, BodyHeight, frame.Dt);
         _canvas.Update(_input, frame.Dt, hasKeyboardFocus: !_sheetFocus);
+        if (_canvas.TryGetGestureTap(out var world))
+        {
+            _mapTaps++;
+            _lastMapTapWorld = world;
+        }
+        if (_canvas.GestureController.DoubleTapped)
+        {
+            _mapDoubleTaps++;
+            _lastMapDoubleTapWorld = _canvas.ScreenToWorld(_canvas.GestureController.DoubleTapPosition);
+        }
         _diagnostics.Update(_window, frame, _input);
         if (!frame.RenderSuppressed) _frameFont = _font.For(frame.DpiScale);
     }
@@ -89,6 +101,9 @@ internal sealed class ProbeScene
                 TextHelper.Draw(batch, font, line, 8, 84 + 18 * row++, Color.White);
             TextHelper.Draw(batch, font, $"focus={(_sheetFocus ? "sheet" : "map")} zoom={_canvas.Camera.Zoom:0.###} "
                 + $"sheet={_sheet.CurrentDetentId}->{_sheet.TargetDetentId} scroll={_sheet.ScrollOffset:0.##}", 8, 158, Color.White);
+            TextHelper.Draw(batch, font, $"mapTaps={_mapTaps} lastWorld={_lastMapTapWorld?.ToString() ?? "none"} "
+                + $"mapDoubleTaps={_mapDoubleTaps} lastDoubleWorld={_lastMapDoubleTapWorld?.ToString() ?? "none"}",
+                8, 178, Color.White);
         }
         finally { batch.End(); }
     }

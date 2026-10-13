@@ -158,10 +158,16 @@ public sealed class PanZoomController
             if (held) return false;
         }
         if (!_mouseSequence) return false;
-        if (_mouseAdmitted && (!DragMotionTracker.IsFinite(pointer.Position) || pointer.IsConsumed))
+        if (_mouseAdmitted && !DragMotionTracker.IsFinite(pointer.Position))
         {
             Cancel();
             return true;
+        }
+        if (_mouseAdmitted && pointer.IsConsumed)
+        {
+            _mouseAdmitted = _hasLastTap = false;
+            _drag.Reset();
+            _velocity = Vector2.Zero;
         }
         if (held)
         {

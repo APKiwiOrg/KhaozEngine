@@ -28,6 +28,8 @@ public sealed class BottomSheetMotion
     public bool IsDragging => _drag.IsDragging;
     public bool IsActive => _drag.IsActive;
     public bool TapEligible => _drag.TapEligible;
+    // Release clears the tracker before snapping, so retain its committed movement for input ownership.
+    internal bool ReleasedDrag { get; private set; }
     /// <summary>Fires when a different ID settles, including an immediate SetDetent.</summary>
     public event Action<string>? DetentChanged;
     /// <summary>Fires on arrival from a non-dismissible ID into an explicitly dismissible ID.</summary>
@@ -126,6 +128,7 @@ public sealed class BottomSheetMotion
     public void Begin(Vector2 position, bool handle)
     {
         IsAnimating = false;
+        ReleasedDrag = false;
         _handle = handle;
         _drag.Begin(position);
     }
@@ -143,7 +146,9 @@ public sealed class BottomSheetMotion
     /// A declined activation keeps an already-valid selected detent. Intermediate heights still settle.</summary>
     public void Release(Vector2 position, float dtSeconds, bool activateHandleTap)
     {
+        ReleasedDrag = _drag.IsDragging;
         _drag.Release(position, dtSeconds);
+        ReleasedDrag |= _drag.DragDelta != Vector2.Zero;
         ApplyDrag();
         if (_handle && _drag.TapEligible && activateHandleTap)
         {

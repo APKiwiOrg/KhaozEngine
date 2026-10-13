@@ -1140,10 +1140,13 @@ Only an unavailable gesture stream uses legacy scalar fallback. An available emp
 
 `Pointer.IsConsumed` is the persistent left-button latch. It gates mouse admission and active mouse
 recognition, while touch, wheel and native streams still use geometric admission and reservations.
+Consumption of an admitted mouse gesture rejects its continuation, tap and inertia through release.
+Fresh touch, wheel, precise scroll and magnify remain available while the consumed button is still held.
 `InputManager.SuppressPointerInput()` is the global pointer boundary. Controllers honor it even though
 raw `State` remains readable. A rejected start stays rejected through its entire sequence, including native
 momentum. Every participating touch must start inside admitted bounds, and a previously unobserved touch ID
 must arrive as `TouchPhase.Began`. Desktop hosts do not synthesize touch contacts from trackpad events.
+Undefined phases, nonfinite coordinates and duplicate IDs reject the entire touch sequence until release.
 
 Call `controller.Cancel()`, `canvas.CancelGestures()` and `sheet.CancelGestures()` when hiding, replacing,
 resetting or changing ownership of a view. Automatic cancellation covers focus loss, capture, suppression
@@ -1252,8 +1255,12 @@ sheet.Draw(batch, (bodyViewport, offset) => DrawLocalizedBody(bodyViewport, offs
 Update the sheet before maps. Its handle owns resize. Body drag expands first, then scrolls residual upward
 movement. Downward movement unwinds scroll before collapsing. Residual never reaches the map. Precise scroll
 can move the sheet/body with native ownership through momentum. Wheel scrolls an expanded body only, without
-fling. Magnify and Ctrl/Cmd scroll reserve zoom intent over the visible sheet without moving it. Touch/native
-ownership does not consume the left latch. Actual mouse ownership consumes it through physical release.
+fling. Magnify and Ctrl/Cmd scroll reserve zoom intent over the visible sheet without moving it.
+Pending body contacts preserve child button taps, including stationary holds beyond the sheet tap duration.
+Handles, committed drags and cancellation consume associated left input through physical release, including
+touch-emulated mouse contacts and movement first observed at release. Pure touch and native ownership use
+region reservation. Visible, admission and intermediate sheet regions reserve lower maps, whose rejected
+starts stay rejected through release even after dismissal.
 
 `Bounds`, `HandleBounds`, `ContentBounds` and positive `ScrollOffset` describe the current presentation.
 `CurrentDetentId` is last settled, `TargetDetentId` is selected. `SetDetent(id, animated)` selects without

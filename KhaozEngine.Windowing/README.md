@@ -219,8 +219,9 @@ Windowing + input foundation for the custom MonoGame-free stack.
   and optional focused keyboard navigation over `IPanZoomTarget`. Targets own anchoring, bounds and wrapping.
   Use the full `InputManager` update, overlays before admission and own-region reservation afterward.
   `Cancel()` discards motion, queued zoom and tap history, inhibiting held contacts until release. New touch IDs
-  require `TouchPhase.Began`. `Pointer.IsConsumed` gates the left mouse channel, while touch and native samples
-  use region admission. It is separate from global manager suppression. Single taps report immediately, and a
+  require `TouchPhase.Began`. Undefined phases, nonfinite positions and duplicate IDs reject the touch sequence
+  until release. `Pointer.IsConsumed` rejects the left mouse sequence through release, while fresh touch, wheel
+  and native samples use region admission even while that button stays held. Single taps report immediately, and a
   qualifying second tap zooms instead of reporting another single. See the
   [consumer contract](../docs/USING-KHAOZENGINE.md#pan-and-zoom) for units, policy defaults and target examples.
   Native macOS precise pan/magnify and Windows Ctrl+wheel compatibility require device validation through the

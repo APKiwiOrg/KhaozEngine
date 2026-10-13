@@ -25,6 +25,8 @@ factor, event source and phase, event-time command modifier, native momentum, ra
 anchors and mapped anchors. It retains four recent samples and logs a summary at most twice per
 second. `AppWindow.NativeGestureFailure` is shown and logged when it changes. Empty available
 frames are normal. Scalar summaries are diagnostics and are never applied alongside samples.
+`mapTaps` and `lastWorld` show accepted canvas taps and their last world position. `mapDoubleTaps`
+and `lastDoubleWorld` show accepted double taps separately. These counters retain no event history.
 
 Mouse drag pans the grid. Plain wheel pans, Ctrl/Cmd+wheel zooms, precise scroll pans and magnify
 zooms at its event anchor. The sheet updates before the canvas. Drag its handle to resize, or drag
@@ -41,8 +43,11 @@ Device checks, awaiting owner validation:
   `MacOSNative` magnify samples with scale factors around 1.
 - macOS two-finger pan in both axes, then release into momentum. Confirm `PreciseScroll`, phases,
   window-point deltas and momentum flags, with no second engine fling after native momentum ends.
-- Begin on the sheet, then move outside it. Confirm no grid movement or map tap. Expand fully,
-  scroll body content, unwind its offset and collapse. Confirm exact boundary handoff and handle taps.
+- Tap the exposed map and confirm `mapTaps` increments with a `lastWorld` position. A qualifying
+  rapid second tap increments `mapDoubleTaps` and updates `lastDoubleWorld` instead.
+- Begin on the sheet, then move outside it. Confirm no grid movement and unchanged `mapTaps` and
+  `mapDoubleTaps`. Expand fully, scroll body content, unwind its offset and collapse. Confirm exact
+  boundary handoff and handle taps.
 - While dragging or zooming, lose focus, resize or press C. Held contacts must release before
   restarting. Return to the map with a fresh sequence. Move across DPI scales and inspect mapping.
 - Windows Ctrl+wheel over an off-centre intersection. Confirm `ModifierWheelCompatibility`, the

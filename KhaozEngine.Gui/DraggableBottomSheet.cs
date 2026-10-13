@@ -16,7 +16,7 @@ public sealed class DraggableBottomSheet
     Rect _safeBounds;
     PointerCoordinates _coordinates;
     InputManager? _lastInput;
-    bool _hasLayout, _contactsHeld, _inhibited, _consumeLeftUntilRelease;
+    bool _hasLayout, _contactsHeld, _inhibited, _ownsLeftUntilRelease, _consumeLeftUntilRelease;
     bool _mouseSequence, _touchSequence, _admitted, _handle, _mouseIgnored;
     bool _nativeSequence, _nativeAdmitted, _nativeEnded, _nativeHandle;
     long _touchId;
@@ -123,7 +123,7 @@ public sealed class DraggableBottomSheet
     public void CancelGestures()
     {
         _inhibited |= _contactsHeld;
-        _consumeLeftUntilRelease |= _admitted && _mouseSequence;
+        _consumeLeftUntilRelease |= _ownsLeftUntilRelease;
         if (_consumeLeftUntilRelease) _lastInput?.Pointer.ConsumeGesture();
         _motion.Cancel();
         _mouseSequence = _touchSequence = _admitted = false;
@@ -154,9 +154,8 @@ public sealed class DraggableBottomSheet
             _handle = HandleBounds.Contains(pointer.PressOrigin);
             if (_admitted)
             {
-                _consumeLeftUntilRelease = true;
                 _motion.Begin(pointer.PressOrigin, _handle);
-                pointer.ConsumeGesture();
+                OwnLeftContact(pointer, _handle);
             }
             if (held) return _admitted;
         }
@@ -169,14 +168,18 @@ public sealed class DraggableBottomSheet
         }
         if (held)
         {
-            if (_admitted) _motion.Move(pointer.Position, dt);
+            if (_admitted)
+            {
+                _motion.Move(pointer.Position, dt);
+                OwnLeftContact(pointer, _motion.IsDragging);
+            }
             return _admitted;
         }
         if (_admitted)
         {
             _motion.Release(pointer.Position, sameFrameTap ? 0 : dt,
                 _handle && HandleBounds.Contains(pointer.Position));
-            pointer.ConsumeGesture();
+            OwnLeftContact(pointer, _handle || _motion.ReleasedDrag);
         }
         _mouseSequence = _admitted = false;
         return admitted;
@@ -205,28 +208,33 @@ public sealed class DraggableBottomSheet
             if (_admitted)
             {
                 _motion.Begin(_touchPosition, _handle);
-                ConsumeEmulatedLeft(pointer);
+                OwnLeftContact(pointer, _handle);
             }
             return _admitted;
         }
         if (!valid || (active.HasValue && (active.Value.Id != _touchId || active.Value.Phase == TouchPhase.Began)))
         {
+            if (_admitted) OwnLeftContact(pointer, true);
             _motion.Cancel();
             _admitted = false;
         }
         bool admitted = _admitted;
-        if (_admitted) ConsumeEmulatedLeft(pointer);
+        if (_admitted) OwnLeftContact(pointer, _handle);
         if (active.HasValue)
         {
             _touchPosition = _coordinates.PositionFromPixels(active.Value.Position);
-            if (_admitted) _motion.Move(_touchPosition, dt);
+            if (_admitted)
+            {
+                _motion.Move(_touchPosition, dt);
+                OwnLeftContact(pointer, _motion.IsDragging);
+            }
             return _admitted;
         }
         if (_admitted)
         {
             if (ended.HasValue) _touchPosition = _coordinates.PositionFromPixels(ended.Value.Position);
             _motion.Release(_touchPosition, dt, _handle && HandleBounds.Contains(_touchPosition));
-            if (_consumeLeftUntilRelease) pointer.ConsumeGesture();
+            OwnLeftContact(pointer, _handle || _motion.ReleasedDrag);
         }
         _touchSequence = _admitted = false;
         return admitted;
@@ -301,9 +309,10 @@ public sealed class DraggableBottomSheet
     void ResetNative() => _nativeSequence = _nativeAdmitted = _nativeEnded = _nativeHandle = false;
     bool Admits(Pointer pointer, Vector2 position) => Finite(position) && Bounds.Width > 0 && Bounds.Height > 0
         && Bounds.Contains(position) && !pointer.IsBlocked(position);
-    void ConsumeEmulatedLeft(Pointer pointer)
+    void OwnLeftContact(Pointer pointer, bool consume)
     {
-        if (!pointer.IsDown && !pointer.IsPressOriginFresh) return;
+        _ownsLeftUntilRelease |= pointer.IsDown || pointer.IsPressOriginFresh;
+        if (!_ownsLeftUntilRelease || !consume) return;
         _consumeLeftUntilRelease = true;
         pointer.ConsumeGesture();
     }
@@ -314,7 +323,7 @@ public sealed class DraggableBottomSheet
         if (Bounds.Width > 0 && Bounds.Height > 0) pointer.BlockRegion(Bounds);
         if (_consumeLeftUntilRelease) pointer.ConsumeGesture();
         if (_lastInput?.State.WindowFocused == true && !_lastInput.State.IsDown(MouseButton.Left))
-            _consumeLeftUntilRelease = false;
+            _ownsLeftUntilRelease = _consumeLeftUntilRelease = false;
     }
 
     /// <summary>Draw optional caller-textured chrome and invoke the body callback with its viewport and offset.

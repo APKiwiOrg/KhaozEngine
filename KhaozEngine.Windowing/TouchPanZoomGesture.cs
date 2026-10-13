@@ -47,7 +47,8 @@ internal sealed class TouchPanZoomGesture
         {
             if (contact.Phase != TouchPhase.Ended) activeContacts++;
             Vector2 position = coordinates.PositionFromPixels(contact.Position);
-            if (!DragMotionTracker.IsFinite(position) || !positions.TryAdd(contact.Id, position))
+            if (!Enum.IsDefined(contact.Phase) || !DragMotionTracker.IsFinite(position)
+                || !positions.TryAdd(contact.Id, position))
             {
                 frameValid = false;
                 continue;

@@ -103,7 +103,7 @@ public class ContactNavigationAdmissionTests
     }
 
     [Fact]
-    public void StackedLiftRefusesRatherThanIterating()
+    public void HigherTreadOutsideSearchBandRefusesAnchor()
     {
         using var scene = new OrdinaryContactScene(Tuning with { CapsuleRadius = 0.3f }, install: (world, builder) =>
         {
@@ -124,7 +124,7 @@ public class ContactNavigationAdmissionTests
     }
 
     [Fact]
-    public void SidewaysSeatRefuses()
+    public void PenetratingShellRefusesPlacement()
     {
         using var scene = new OrdinaryContactScene(Tuning, install: (world, builder) =>
         {
@@ -132,6 +132,18 @@ public class ContactNavigationAdmissionTests
             Box(world, builder, "wall", new(0.05f, 0, -2), new(0.1f, 2, 2));
         });
         using var context = Context(scene);
+        RestingAnchor anchor;
+        using (var queries = scene.Acquire())
+        {
+            Assert.Equal(MovementAvailability.Known, scene.Binding.TryFindRestingAnchor(
+                scene.State(new(-0.075f, 0.75f, 0.125f)), queries, out anchor));
+            Assert.Equal(SupportStatus.Walkable, anchor.Support.Status);
+        }
+        var state = scene.State(anchor.Feet + Vector3.UnitY * scene.Tuning.CapsuleHalfHeight);
+        MovementStepResult placed;
+        using (var queries = scene.Acquire()) placed = scene.Binding.SettlePlacement(state, queries);
+        Assert.Equal(MovementStepOutcome.PlacementRefused, placed.Outcome);
+        Assert.Equal(state.State.Position, placed.State.State.Position);
         using var capture = PhysicsNavBake.Capture(context, Options, _ => 0);
         Assert.Null(Resting(capture.BuildProfile(Tuning, default), new(-0.075f, 0, 0.125f)));
     }

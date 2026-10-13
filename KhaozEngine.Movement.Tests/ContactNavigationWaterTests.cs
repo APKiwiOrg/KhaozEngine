@@ -81,6 +81,23 @@ public class ContactNavigationWaterTests
         using var context = Context(world, PoolHeight, MovementWaterField.Level("world", 0, -4));
         using var capture = PhysicsNavBake.Capture(context, PoolOptions, _ => 0);
         Assert.Null(Resting(capture.BuildProfile(Tuning, default), new(0.25f, -2, 0.25f)));
+
+        var water = MovementWaterField.Level("world", 0, -4);
+        using var scene = new OrdinaryContactScene(Tuning, (x, _) => x < 0 ? -0.5f : 0.125f,
+            extent: new(new(-20, -4, -20), new(20, 4, 20), -0.5f, 0.125f),
+            water: water, install: (physics, builder) =>
+            {
+                Box(physics, builder, "shallow", new(-8, -0.75f, -8), new(0, -0.5f, 8));
+                Box(physics, builder, "dry", new(0, -0.125f, -8), new(8, 0.125f, 8));
+            });
+        using var shallowContext = Context(scene, water);
+        using var shallowCapture = PhysicsNavBake.Capture(shallowContext, Options, _ => 0);
+        foreach (var mode in new[] { WaterTraversalMode.SurfaceSwimmer, WaterTraversalMode.WadeOnly, WaterTraversalMode.DryOnly })
+        {
+            GroundNavigation nav = shallowCapture.BuildProfile(Tuning with { Water = new(mode) }, default);
+            Assert.Equal(mode != WaterTraversalMode.DryOnly, Resting(nav, new(-0.575f, -0.5f, 0.125f)).HasValue);
+            Assert.Equal(0.125f, Resting(nav, new(0.675f, 0.125f, 0.125f)));
+        }
     }
 
     [Fact]

@@ -374,14 +374,15 @@ Design/plan status and consumer handoff documentation. No Flightline paths.
   Full suite runs once at finish unless new failures/changes require another verification.
 - [x] Run whole-tree dash, prose, file-size, agent-instruction and doc-version guards. Check the
   explicit diff and commit the validated finish. Push the branch before integration.
-- [ ] The root orchestrator fast-forwards clean main, pushes main, verifies origin/main containment,
+- [x] The root orchestrator fast-forwards clean main, pushes main, verifies origin/main containment,
   then runs `build-slot --heavy --label gestures-pack -- scripts/pack-local-feed.sh` from main.
   Verify the guarded feed. No bare pack, no tag, no release.
-- [ ] Close engine #1328 only when its agreed engine scope is complete. Provide the resolving sha,
+- [x] Close engine #1328 only when its agreed engine scope is complete. Provide the resolving sha,
   exact APIs and required release version to the owner. Preserve the cross-repo consumer issue URL.
-  Remove the worktree/feature branch only after both ancestry and unique-commit checks prove safety.
-  Owner validation starts from the merged main probe command. If it fails, keep the release untagged
-  and fix the observed defect. If it passes, a separate explicit release approval is still required.
+
+Cleanup removes the worktree and feature branch only after ancestry and unique-commit checks prove safety.
+Owner validation starts from the merged main probe command. If it fails, keep the release untagged
+and fix the observed defect. If it passes, a separate explicit release approval is still required.
 
 ## Verified implementation checkpoint
 
@@ -392,3 +393,23 @@ and malformed touch-phase rejection. Native device delivery and rendering remain
 The reconciled Release build has zero warnings or errors. The complete headless suite excluding
 `LiveSocket` passed 30,869 tests with 1,355 explicit skips and no failures. Current main carries tagged
 20.36.0, so this additive API stages 20.37.0. Integration and package proof are recorded below when done.
+
+## Integration and consumer handoff
+
+The reviewed implementation is integrated and pushed on main as
+`ca9cb259f8d8151a7d39e122a66a86d91793a7f6`. The guarded pack ran from that stable main commit after
+origin/main contained it. It produced 105 packages and 103 symbol packages for staged 20.37.0.
+The strict current-version feed check passed with no unsafe or drifted artifacts. The complete historical
+feed check reported only the nine older drifted versions already tracked in
+https://github.com/APKiwiOrg/KhaozEngine/issues/1211. Those artifacts were not changed.
+
+Engine issue https://github.com/APKiwiOrg/KhaozEngine/issues/1328 is closed. No release tag was created.
+Physical macOS magnify/precise-pan delivery, Windows Ctrl+wheel compatibility and sheet feel still require
+the owner-run probe described in `tools/GestureInputProbe/README.md`.
+
+Flightline remains unchanged at its reported 20.31.0 pin. It needs a released 20.37.0 or a later release
+containing this commit before adoption through https://github.com/APKiwiOrg/Flightline/issues/3.
+Its Client-side `IPanZoomTarget` adapter must preserve the cursor anchor after geographic span clamping,
+then use one `PanZoomController.Update(InputManager, target, bounds, dtSeconds, ...)` path with overlay
+admission and existing lifecycle cancellation. The full contract and target examples are in
+`docs/USING-KHAOZENGINE.md`. Existing touch-only recognition must not run alongside that controller.

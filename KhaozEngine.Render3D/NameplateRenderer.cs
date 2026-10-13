@@ -224,7 +224,8 @@ namespace KhaozEngine.Render3D
             NameplateContent content = _legacyContent ??= new NameplateContent();
             NameplateLegacyTemplate.Fill(content, plate);
             NameplateTemplate template = NameplateLegacyTemplate.For(style, plate.Bars?.Count ?? 0);
-            return DrawTemplateAt(ref canvas, pixel, template, content, viewportWidth, viewportHeight, ref placementState);
+            return DrawTemplateAt(ref canvas, pixel, template, content, NameplateTemplateColors.Of(style),
+                viewportWidth, viewportHeight, ref placementState);
         }
     }
 }

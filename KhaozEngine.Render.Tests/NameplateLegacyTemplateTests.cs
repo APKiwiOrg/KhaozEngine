@@ -58,10 +58,10 @@ public sealed class NameplateLegacyTemplateTests
     }
 
     [Fact]
-    public void ANinthStyleEvictsTheOldestCachedTemplate()
+    public void ASeventeenthGeometryEvictsTheOldestCachedTemplate()
     {
-        var styles = new NameplateStyle[9];
-        var templates = new NameplateTemplate[9];
+        var styles = new NameplateStyle[17];
+        var templates = new NameplateTemplate[17];
         for (int i = 0; i < styles.Length; i++)
         {
             styles[i] = NameplateStyle.Default with { PadX = 200f + i };
@@ -84,7 +84,7 @@ public sealed class NameplateLegacyTemplateTests
             style = NameplateStyle.Default with { PanelFill = NameplateStyle.Default.PanelFill.WithAlpha(frame / 100f) };
             canvas.Calls.Clear();
             Assert.True(Draw(canvas, plate, style));
-            Assert.InRange(CacheCount(), 1, 8);
+            Assert.InRange(CacheCount(), 1, 16);
         }
 
         NameplateTemplate cached = LegacyFor(style, 1);
@@ -102,6 +102,50 @@ public sealed class NameplateLegacyTemplateTests
             content, 1000, 1000, ref state));
         Assert.Equal(freshCanvas.Calls, canvas.Calls);
         Assert.Equal("fill 447.000 470.000 106.000 30.000 0.080 0.090 0.110 0.990 6.000", canvas.Calls[0]);
+    }
+
+    [Fact]
+    public void AStyleDifferingOnlyInColourAlphaReusesItsTemplate()
+    {
+        NameplateStyle style = NameplateStyle.Default with { TitleShadow = Color.Black };
+        NameplateStyle faded = style with
+        {
+            PanelFill = style.PanelFill.WithAlpha(0.25f),
+            PanelBorder = style.PanelBorder.WithAlpha(0.25f),
+            TitleShadow = Color.Black.WithAlpha(0.25f),
+        };
+
+        Assert.Same(LegacyFor(style, 1), LegacyFor(faded, 1));
+        Assert.NotSame(LegacyFor(style, 1), LegacyFor(style with { TitleShadow = null }, 1));
+
+        var canvas = Canvas();
+        Assert.True(Draw(canvas, Plate(1), faded));
+        Assert.Equal("fill 447.000 470.000 106.000 30.000 0.080 0.090 0.110 0.250 6.000", canvas.Calls[0]);
+        Assert.Equal("stroke 447.000 470.000 106.000 30.000 1.000 1.000 1.000 0.250 6.000 1.000", canvas.Calls[1]);
+        Assert.Equal("text \"Goblin\" 483.000 476.000 0.000 0.000 0.000 0.250 1.000", canvas.Calls[2]);
+    }
+
+    [Fact]
+    public void AWarmCycleOfTwelveGeometriesAllocatesNothing()
+    {
+        var canvas = new CountingCanvas(new FixedGlyphFont(6f, 10f));
+        Nameplate plate = Plate(1);
+        var styles = new NameplateStyle[12];
+        for (int i = 0; i < styles.Length; i++)
+            styles[i] = NameplateStyle.Default with { PadX = 100f + i };
+        NameplatePlacementState state = default;
+        var anchor = new Vector2(500f, 500f);
+        for (int pass = 0; pass < 2; pass++)
+            foreach (NameplateStyle style in styles)
+                Assert.True(NameplateRenderer.DrawAt(ref canvas, anchor, plate, style, 1000, 1000, ref state));
+        GC.GetAllocatedBytesForCurrentThread();
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < styles.Length; i++)
+            NameplateRenderer.DrawAt(ref canvas, anchor, plate, styles[i], 1000, 1000, ref state);
+        long after = GC.GetAllocatedBytesForCurrentThread();
+
+        Assert.Equal(before, after);
     }
 
     [Theory]

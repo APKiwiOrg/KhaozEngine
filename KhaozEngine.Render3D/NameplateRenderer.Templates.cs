@@ -50,6 +50,15 @@ public static partial class NameplateRenderer
     internal static bool DrawTemplateAt<TCanvas>(
         ref TCanvas canvas, Vector2 pixel, NameplateTemplate template, NameplateContent content,
         int viewportWidth, int viewportHeight, ref NameplatePlacementState placementState)
+        where TCanvas : INameplateCanvas =>
+        DrawTemplateAt(ref canvas, pixel, template, content, NameplateTemplateColors.Of(template),
+            viewportWidth, viewportHeight, ref placementState);
+
+    // The colours replace the template's panel colours, and its text shadows when they override them.
+    internal static bool DrawTemplateAt<TCanvas>(
+        ref TCanvas canvas, Vector2 pixel, NameplateTemplate template, NameplateContent content,
+        in NameplateTemplateColors colors,
+        int viewportWidth, int viewportHeight, ref NameplatePlacementState placementState)
         where TCanvas : INameplateCanvas
     {
         NameplateResolution resolution = NameplateResolution.Shared;
@@ -61,10 +70,10 @@ public static partial class NameplateRenderer
 
         Vector4 panelRect = NameplatePlacement.Place(pixel, size, viewportWidth, viewportHeight, template, ref placementState);
         float opacity = Math.Clamp(content.Opacity, 0f, 1f);
-        if (template.PanelFill.A > 0f)
-            canvas.FillRounded(panelRect, WithOpacity(template.PanelFill, opacity), template.CornerRadius);
-        if (template.PanelBorderThickness > 0f && template.PanelBorder.A > 0f)
-            canvas.StrokeRounded(panelRect, WithOpacity(template.PanelBorder, opacity), template.CornerRadius, template.PanelBorderThickness);
+        if (colors.PanelFill.A > 0f)
+            canvas.FillRounded(panelRect, WithOpacity(colors.PanelFill, opacity), template.CornerRadius);
+        if (template.PanelBorderThickness > 0f && colors.PanelBorder.A > 0f)
+            canvas.StrokeRounded(panelRect, WithOpacity(colors.PanelBorder, opacity), template.CornerRadius, template.PanelBorderThickness);
 
         Vector2 screenOffset = new(panelRect.X + template.PadX - resolution.Bounds.X,
             panelRect.Y + template.PadY - resolution.Bounds.Y);
@@ -78,7 +87,7 @@ public static partial class NameplateRenderer
             switch (template.Components[i])
             {
                 case NameplateTextComponent text when content.TryGetText(text.Slot, out var value):
-                    DrawTemplateText(ref canvas, rect, resolved.Text, text, value, opacity);
+                    DrawTemplateText(ref canvas, rect, resolved.Text, text, colors.ShadowFor(text), value, opacity);
                     break;
                 case NameplateBadgeComponent badge when content.TryGetText(badge.Slot, out var value):
                     DrawTemplateBadge(ref canvas, rect, resolved.Text, badge, value, opacity);
@@ -92,11 +101,11 @@ public static partial class NameplateRenderer
     }
 
     private static void DrawTemplateText<TCanvas>(ref TCanvas canvas, Vector4 rect, string text,
-        NameplateTextComponent component, NameplateTextValue value, float opacity)
+        NameplateTextComponent component, Color? shadowColor, NameplateTextValue value, float opacity)
         where TCanvas : INameplateCanvas
     {
         Vector2 position = new(rect.X + component.OutlineThickness, rect.Y + component.OutlineThickness);
-        if (component.ShadowColor is Color shadow)
+        if (shadowColor is Color shadow)
             canvas.Text(text, position + component.ShadowOffset, WithOpacity(shadow, opacity), component.FontScale);
         if (component.OutlineThickness > 0f && component.OutlineColor is Color outline)
             canvas.OutlinedText(text, position, WithOpacity(value.Color, opacity), WithOpacity(outline, opacity),

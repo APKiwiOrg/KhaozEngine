@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text.RegularExpressions;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Xunit;
 
 namespace KhaozEngine.Tests.Navigation;
@@ -27,6 +29,7 @@ public class SurfaceHeightCallSiteTests
             "KhaozEngine.Navigation/NavHopLinks.cs:Generate:SurfaceHeightAt",
         };
         var actual = new List<string>();
+        int productionFiles = 0;
         string root = RepositoryRoot();
         foreach (string project in new[] { "KhaozEngine.Navigation", "KhaozEngine.Movement" })
         {
@@ -38,62 +41,78 @@ public class SurfaceHeightCallSiteTests
                 string name = Path.GetFileName(path);
                 if (name == "NavGrid.cs" || name.StartsWith("NavGrid.", StringComparison.Ordinal)) continue;
 
-                string source = WithoutComments(File.ReadAllText(path));
-                Match[] methods = Regex.Matches(source,
-                    @"(?m)^[ \t]*(?!(?:else|return|throw|new)\b)(?:(?:public|private|protected|internal|static|async|sealed|override|virtual|partial)\s+)*[\w.<>,?\[\]]+\s+(?<method>\w+)\s*\([^;{}]*\)\s*(?:\{|=>)")
-                    .Cast<Match>().ToArray();
-                foreach (Match call in Regex.Matches(source, @"\b(?<reader>SurfaceHeightAt|RestingHeightAt)\s*\("))
-                {
-                    Match? method = methods.LastOrDefault(candidate => candidate.Index < call.Index &&
-                        call.Index < MethodEnd(source, candidate));
-                    Assert.NotNull(method);
-                    actual.Add($"{relative}:{method.Groups["method"].Value}:{call.Groups["reader"].Value}");
-                }
+                productionFiles++;
+                actual.AddRange(ScanCallSites(File.ReadAllText(path), relative).Select(call => call.Site));
             }
         }
 
+        Assert.True(productionFiles > 0, "The height call-site sweep found no production source files.");
+        Assert.NotEmpty(actual);
         // Keep duplicates so both raw reads in each link generator are pinned.
         Assert.Equal(expected.OrderBy(site => site, StringComparer.Ordinal),
             actual.OrderBy(site => site, StringComparer.Ordinal));
     }
 
-    static int MethodEnd(string source, Match method)
+    [Fact]
+    public void ScannerFindsCallAfterBlockCommentMarkerInString()
     {
-        int start = method.Index + method.Length - 1;
-        if (source[start] != '{') return source.IndexOf(';', start);
-        int depth = 0;
-        for (int index = start; index < source.Length; index++)
-        {
-            if (source[index] == '{') depth++;
-            if (source[index] == '}' && --depth == 0) return index;
-        }
-        throw new InvalidOperationException("A source method has no closing brace.");
+        const string source = """
+            internal static class HeightReaderProbe
+            {
+                public static float? Read(KhaozEngine.Navigation.NavGrid grid)
+                {
+                    _ = "/*";
+                    return grid.SurfaceHeightAt(0, 0);
+                }
+            }
+            """;
+
+        var call = Assert.Single(ScanCallSites(source, "HeightReaderProbe.cs"));
+        Assert.Equal("HeightReaderProbe", call.Type);
+        Assert.Equal("HeightReaderProbe.cs:Read:SurfaceHeightAt", call.Site);
     }
 
-    // Reuse SourceSweep's comment blanking and source-only enumeration pattern from the render tests.
-    static string WithoutComments(string source)
+    [Fact]
+    public void ScannerFindsCallOnSameLineAsLineCommentMarkerInString()
     {
-        char[] chars = source.ToCharArray();
-        for (int index = 0; index < chars.Length - 1; index++)
-        {
-            if (chars[index] != '/') continue;
-            if (chars[index + 1] == '/')
+        const string source = """
+            internal static class HeightReaderProbe
             {
-                while (index < chars.Length && chars[index] != '\n') chars[index++] = ' ';
-            }
-            else if (chars[index + 1] == '*')
-            {
-                while (index < chars.Length && !(chars[index] == '*' && index + 1 < chars.Length && chars[index + 1] == '/'))
+                public static float? Read(KhaozEngine.Navigation.NavGrid grid)
                 {
-                    if (chars[index] != '\n') chars[index] = ' ';
-                    index++;
+                    _ = "//"; return grid.SurfaceHeightAt(0, 0);
                 }
-                if (index < chars.Length) chars[index] = ' ';
-                if (index + 1 < chars.Length) chars[index + 1] = ' ';
-                index++;
             }
+            """;
+
+        var call = Assert.Single(ScanCallSites(source, "HeightReaderProbe.cs"));
+        Assert.Equal("HeightReaderProbe", call.Type);
+        Assert.Equal("HeightReaderProbe.cs:Read:SurfaceHeightAt", call.Site);
+    }
+
+    static IEnumerable<(string Type, string Site)> ScanCallSites(string source, string relative)
+    {
+        SyntaxNode root = CSharpSyntaxTree.ParseText(source,
+            new CSharpParseOptions(LanguageVersion.Latest), path: relative).GetRoot();
+        Assert.DoesNotContain(root.GetDiagnostics(), diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        foreach (InvocationExpressionSyntax call in root.DescendantNodes().OfType<InvocationExpressionSyntax>())
+        {
+            SimpleNameSyntax? name = call.Expression switch
+            {
+                SimpleNameSyntax direct => direct,
+                MemberAccessExpressionSyntax member => member.Name,
+                MemberBindingExpressionSyntax member => member.Name,
+                _ => null,
+            };
+            string? reader = name?.Identifier.ValueText;
+            if (reader is not ("SurfaceHeightAt" or "RestingHeightAt")) continue;
+
+            BaseTypeDeclarationSyntax? type = call.Ancestors().OfType<BaseTypeDeclarationSyntax>().FirstOrDefault();
+            MethodDeclarationSyntax? method = call.Ancestors().OfType<MethodDeclarationSyntax>().FirstOrDefault();
+            Assert.NotNull(type);
+            Assert.NotNull(method);
+            yield return (type.Identifier.ValueText, $"{relative}:{method.Identifier.ValueText}:{reader}");
         }
-        return new string(chars);
     }
 
     static string RepositoryRoot()

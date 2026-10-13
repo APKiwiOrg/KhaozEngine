@@ -20,7 +20,7 @@
 - Every build and test runs through `build-slot` (`--heavy` for the full suite). Format check: `dotnet format whitespace KhaozEngine.slnx --verify-no-changes --no-restore`, judged only on files the task touched (ten unchanged files fail on main, #1387).
 - `TreatWarningsAsErrors` stays on. Zero warnings.
 - No em dashes, en dashes or prose semicolons in docs, comments or messages.
-- Version rides staged 20.37.0. Append to its `CHANGELOG.md` entry, never bump.
+- Version is staged 20.38.0 (v20.37.0 is released). Append to its `CHANGELOG.md` entry, never bump, never edit a released entry.
 - Commit subjects use `area(scope): summary`.
 
 ## Review Focus
@@ -291,7 +291,7 @@ One cold and one warm local measurement, through `build-slot --heavy`, of a cont
 
 - [ ] **Step 2: Documentation and changelog**
 
-Movement README: contact navigation profiles, anchors, resting heights, format 2, `Validate`, the deferred selections naming #1389. Status lines in both phase 5 designs and `docs/INDEX.md` say 5b is implemented in staged 20.37.0. Append the player-neutral engine changelog lines to the 20.37.0 entry.
+Movement README: contact navigation profiles, anchors, resting heights, format 2, `Validate`, the deferred selections naming #1389. Status lines in both phase 5 designs and `docs/INDEX.md` say 5b is implemented in staged 20.38.0. Append the engine changelog lines to the 20.38.0 entry.
 
 - [ ] **Step 3: Full verification**
 

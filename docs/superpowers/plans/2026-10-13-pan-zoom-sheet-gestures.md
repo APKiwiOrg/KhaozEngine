@@ -60,7 +60,7 @@ Tests in `KhaozEngine.Render.Tests/Windowing/PointerGestureInputTests.cs` and
 **Interfaces:**
 
 - `PointerGestureKind` values `Wheel`, `PreciseScroll`, `Magnify`.
-- `PointerGesturePhase` values `None`, `Began`, `Changed`, `Ended`, `Cancelled`.
+- `PointerGestureInputPhase` values `None`, `Began`, `Changed`, `Ended`, `Cancelled`.
 - `PointerGestureSource` values `UnknownWheel`, `MacOSNative`, `ModifierWheelCompatibility`, `Synthetic`.
 - `PointerGestureSample` immutable value with `Kind`, `Source`, `Phase`, `PositionPixels`,
   `ScrollDelta`, `ScaleFactor`, `CommandDown`, `IsMomentum`. ScrollDelta is wheel units for Wheel
@@ -80,7 +80,7 @@ Tests in `KhaozEngine.Render.Tests/Windowing/PointerGestureInputTests.cs` and
 Assert.Equal(1f, InputState.Empty.PinchScaleFactor);
 Assert.Equal(1.32f, frame.PinchScaleFactor, 5); // factors 1.1 then 1.2
 Assert.Equal(2, first.Gestures.Samples.Count); // unchanged after next collection
-Assert.Empty(frame.WithoutScroll().Gestures.Samples.Where(s => s.Kind != PointerGestureKind.Magnify));
+Assert.DoesNotContain(frame.WithoutScroll().Gestures.Samples, s => s.Kind != PointerGestureKind.Magnify);
 Assert.Equal(frame.PinchScaleFactor, frame.WithoutScroll().PinchScaleFactor);
 ```
 
@@ -100,13 +100,21 @@ Assert.Equal(frame.PinchScaleFactor, frame.WithoutScroll().PinchScaleFactor);
 **Files:** Create `KhaozEngine.Windowing/AppWindow.MacOSGestures.cs`,
 `AppWindow.WindowsGestures.cs`, `NativeGestureNormalization.cs`.
 Modify AppWindow construction, WireInput, BuildInput and Dispose only at the wiring points.
-Tests in `KhaozEngine.Render.Tests/Windowing/NativeGestureNormalizationTests.cs` and
-`NativeGestureLifetimeTests.cs`.
+Create `KhaozEngine.Windowing.Tests/KhaozEngine.Windowing.Tests.csproj`, referencing only Windowing
+and the repository's existing test packages, with IsPackable false and namespaces under
+`KhaozEngine.Tests.Windowing`. Add the project to KhaozEngine.slnx and grant its internal access in
+Windowing.csproj. Tests are `KhaozEngine.Windowing.Tests/NativeGestureNormalizationTests.cs` and
+`NativeGestureLifetimeTests.cs`. Keep existing Render.Tests regression coverage in place.
 
 **Interfaces:** Consume Task 1 samples/accumulator. AppWindow platform wiring owns install/remove and
 per-event forwarding. `NativeGestureNormalization` is pure conversion of plain values, with no native
 calls. A narrowly scoped internal registration abstraction permits a fake lifecycle test without
 constructing AppWindow or loading a native library. Raw AppKit/Win32 calls remain inside AppWindow.
+Extend PointerGestureFrame with `IsAvailable`. Its public Empty and constructed frames represent
+an authoritative stream, even with no samples. An internal unavailable empty singleton is the
+default for old InputState constructors. Existing snapshot copies preserve that frame identity.
+Task 3 uses legacy wheel fallback only when IsAvailable is false. Add tests that cleared native
+samples cannot revive retained legacy scroll, while copied old synthetic frames retain fallback.
 
 - [ ] Add failing normalizer tests for precise scroll units, Cocoa Y inversion, magnify factors,
   zero-delta phases, event-time modifiers, native momentum and rejected non-finite events.
@@ -120,7 +128,7 @@ Assert.Equal(PointerGestureSource.ModifierWheelCompatibility, sample.Source);
 Assert.Equal(new Vector2(24, 30), precise.ScrollDelta); // no GLFW 0.1 conversion
 ```
 
-- [ ] Run `build-slot --label gesture-native-red -- dotnet test KhaozEngine.Render.Tests -c Release
+- [ ] Run `build-slot --label gesture-native-red -- dotnet test KhaozEngine.Windowing.Tests -c Release
   --filter 'FullyQualifiedName~NativeGesture'`, expect failure on the missing delivery contracts.
 - [ ] Implement a window-scoped AppKit local monitor with rooted block storage/delegates, exact
   NSWindow filtering, original-event return and disposal before input/window teardown. Capture the
@@ -140,7 +148,7 @@ Assert.Equal(new Vector2(24, 30), precise.ScrollDelta); // no GLFW 0.1 conversio
 **Files:** Create `KhaozEngine.Windowing/IPanZoomTarget.cs`, `PanZoomController.cs`,
 `PanZoomOptions.cs`, `DragMotionTracker.cs`, `WheelZoomAnimation.cs`, `TouchPanZoomGesture.cs`.
 Extend existing recognizers only for additive reset/cancel support where reused.
-Tests in `KhaozEngine.Render.Tests/Windowing/PanZoomControllerTests.cs`,
+Tests in `KhaozEngine.Windowing.Tests/PanZoomControllerTests.cs`,
 `PanZoomTouchTests.cs`, `PanZoomLifecycleTests.cs`, `DragMotionTrackerTests.cs`.
 
 **Interfaces:**
@@ -162,7 +170,7 @@ Tests in `KhaozEngine.Render.Tests/Windowing/PanZoomControllerTests.cs`,
 - [ ] Add failing single-pointer tests: from origin (20,20), move to (26,20), then (30,20), and assert
   zero followed by (10,0). Release after 0.08 seconds stationary has zero inertia. New press cancels
   existing inertia before movement. Blocked start stays inert after blocker removal.
-- [ ] Run `build-slot --label pan-zoom-red -- dotnet test KhaozEngine.Render.Tests -c Release
+- [ ] Run `build-slot --label pan-zoom-red -- dotnet test KhaozEngine.Windowing.Tests -c Release
   --filter 'FullyQualifiedName~PanZoom|FullyQualifiedName~DragMotionTracker'` and inspect failure.
 - [ ] Implement drag/admission/cancellation and analytic inertia. With velocity v and decay k,
   displacement over dt is `v * (1 - exp(-k*dt)) / k`, then velocity is `v * exp(-k*dt)`.
@@ -170,6 +178,8 @@ Tests in `KhaozEngine.Render.Tests/Windowing/PanZoomControllerTests.cs`,
 - [ ] Implement event-ordered scroll/magnify and wheel animation. Animate log factor over the exact
   configured duration. Coalesce only equal-anchor compatible steps. Native momentum gets no extra
   release inertia. Event modifiers decide behavior even if frame-level modifiers differ.
+  Use legacy scalar wheel input only when `input.Gestures.IsAvailable` is false, never merely when
+  Samples is empty. Native cancellation can intentionally publish an empty authoritative stream.
 - [ ] Implement touch arbitration with stable IDs. More than two contacts cancels until all release.
   Rebase coincident pairs and contact replacement. A second touch arriving within 0.1 seconds may
   qualify for a two-finger tap, subject to the 0.3-second duration and slop for both contacts.

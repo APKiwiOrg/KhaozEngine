@@ -1,6 +1,6 @@
 # Pan, zoom and bottom-sheet gestures
 
-Status: engine design approved by the owner on 2026-10-13. Implementation planning is in progress.
+Status: engine design and implementation plan approved by the owner on 2026-10-13. Implementation is in progress.
 
 Engine issue: [#1328](https://github.com/APKiwiOrg/KhaozEngine/issues/1328).
 Consumer adoption: [Flightline #3](https://github.com/APKiwiOrg/Flightline/issues/3).
@@ -66,6 +66,8 @@ is authoritative for the new controller. Summaries are compatibility convenience
 applied in addition to their samples. Preserve the numeric meaning of existing ScrollDelta.
 Do not change the existing public constructor signatures. Add overloads or a typed payload overload.
 Old synthetic snapshots with only ScrollDelta still work through one documented fallback path.
+The payload exposes stream availability so an intentionally empty native stream never falls back
+to legacy scroll that was retained only for existing consumers.
 
 Anchors use framebuffer pixels like MousePosition. Precise pan deltas are window points, discrete
 wheel deltas are wheel units and scale is dimensionless with identity 1. Transform event anchors and

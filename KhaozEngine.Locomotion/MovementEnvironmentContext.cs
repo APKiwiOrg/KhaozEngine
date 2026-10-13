@@ -104,6 +104,10 @@ public sealed class MovementEnvironmentContext
         }
     }
 
+    // Each context owns one workspace. Equal scopes or a shared view do not share that acquisition identity.
+    internal bool OwnsLease(MovementQueryLease lease) =>
+        lease.UsesPhysicsView(_physics) && ReferenceEquals(lease.Workspace, _workspace);
+
     void Release()
     {
         _workspace.EndInterval();

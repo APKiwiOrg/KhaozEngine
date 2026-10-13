@@ -35,15 +35,15 @@ internal sealed class OrdinaryMovementEnvironmentPin : IMovementEnvironmentPin, 
         AssertCurrent();
         if (!ValidSpace(body.CurrentSpace)) return NoPoint(MovementAvailability.Invalid);
         if (_owner.WaterField is null) return new(MovementAvailability.Known, body.CurrentSpace, null, false, 1, null);
-        Vector3 absolute = OrdinaryMovementEnvironment.Translate(body.Centre, Frame.PhysicsOrigin, out double inputError);
-        if (inputError > MovementQueryLease.CoverageSkinMetres) return NoPoint(MovementAvailability.Unresolved);
+        if (!OrdinaryMovementEnvironment.TryTranslateExact(body.Centre, Frame.PhysicsOrigin, out Vector3 absolute))
+            return NoPoint(MovementAvailability.Unresolved);
         var point = _owner.WaterField.SampleCentreWater(new(absolute, body.Radius, body.HalfHeight, body.CurrentSpace, body.CurrentSupport));
         AssertCurrent();
         if (!point.IsValid || point.Availability == MovementAvailability.Known && point.Space != body.CurrentSpace)
             return NoPoint(MovementAvailability.Invalid);
         if (point.Availability != MovementAvailability.Known || point.Interval is null) return point;
-        MovementWaterInterval interval = OrdinaryMovementEnvironment.Translate(point.Interval.Value, -Frame.PhysicsOrigin.Y, out double error);
-        if (inputError + error > MovementQueryLease.CoverageSkinMetres) return NoPoint(MovementAvailability.Unresolved);
+        if (!OrdinaryMovementEnvironment.TryTranslateExact(point.Interval.Value, -Frame.PhysicsOrigin.Y, out MovementWaterInterval interval))
+            return NoPoint(MovementAvailability.Unresolved);
         return new(point.Availability, point.Space, point.Domain, point.InWater, point.SpeedScale, interval);
     }
 

@@ -30,8 +30,9 @@ public sealed partial class EffectiveMovementBinding
         AssertUsable();
         ArgumentNullException.ThrowIfNull(queries);
         if (!UsesLease) throw new InvalidOperationException("A Legacy binding does not execute leased movement.");
-        if (_view is not null && !queries.UsesPhysicsView(_view))
-            throw new ArgumentException("The movement lease belongs to another binding view.", nameof(queries));
+        if (_context is null || !_context.OwnsLease(queries) ||
+            _view is not null && !queries.UsesPhysicsView(_view))
+            throw new ArgumentException("The movement lease belongs to another binding environment context or view.", nameof(queries));
         return supplied ?? _ordinary?.CaptureBoundary(queries.Frame);
     }
 }

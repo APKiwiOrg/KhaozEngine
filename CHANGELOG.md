@@ -7,6 +7,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 20.34.0
 
+- Ordinary water point facts refuse lossy frame conversions. Every effective movement binding execution
+  door authenticates the acquiring environment context, including when bindings share a borrowed view.
 - Ordinary contact environments provide immutable installer provenance, fixed resident served scopes,
   framed analytic ground and certified Level water through an effective movement binding. Owned views
   have explicit read lifetimes, and registrations survive steps and pure rebases through the existing

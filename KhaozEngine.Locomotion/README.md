@@ -43,12 +43,16 @@ Ground residency holes return Unresolved when a query needs them. Support enumer
 `MovementWaterField.Level(worldId, surfaceY, floorY)` supplies an immutable finite bed and strict free
 surface over all XZ. The installer's extent supplies its finite resident horizontal bounds.
 Finite fields must fit that declared extent. Pins convert interval heights and contact columns through
-the captured physics origin. Mutable producers advance `Generation` before changing answers.
+the captured physics origin. Point facts require exact centre and interval conversions, including dry
+membership, and return Unresolved when a conversion loses precision. Mutable producers advance
+`Generation` before changing answers.
 
 An ordinary binding owns a view created from the source when none is supplied. A supplied view is
 borrowed after source validation and must represent the registration's selected exclusions.
 Dispose the binding after its reads. Owned-view disposal refuses an active read and remains retryable.
 `Legacy` creates no view. `PublicExplicit` borrows the supplied context and retains the 0.001 m offset.
+Every binding execution door requires a lease acquired from its environment context and physical view.
+Sharing a borrowed view does not make leases from different contexts interchangeable.
 
 ## API
 

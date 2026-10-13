@@ -12488,8 +12488,8 @@ above), centres the panel horizontally on the composed anchor's X and bottom-anc
 above the visible body). It
 returns `false` on the same cull paths (empty plate, behind camera, off-screen, beyond `maxDistance` - the distance
 predicate is the shared `NameplateRenderer.ShouldCull`, identical to `WorldLabel.ShouldCull`). Like `WorldLabel` it
-is screen-space, not depth-tested. `NameplateBar.Fraction` is clamped to 0..1 at draw; the draw path allocates no
-per-frame heap (bar rects are computed in the loop).
+is screen-space, not depth-tested. `NameplateBar.Fraction` is clamped to 0..1 at draw. Warmed styles with up to four
+bars reuse a cached template and content without heap allocation. Larger plates build an uncached template.
 
 `NameplateStyle` is the look, split from the data. `NameplateStyle.Default` is the unified opaque-plate preset
 (dark rounded panel, subtle border, one-bar geometry). Tweak it with a `with` expression, or start from

@@ -20,7 +20,8 @@ namespace KhaozEngine.Render3D
     /// Call it from the consumer's 2D pass, BETWEEN the <see cref="SpriteBatch"/>'s <c>Begin</c>/<c>End</c> and after
     /// the 3D scene is drawn. Like <see cref="WorldLabel"/> it is screen-space and NOT depth-tested, so a plate is not
     /// hidden behind terrain or props (occlusion is out of scope). Plates that are empty, behind the camera, off the
-    /// depth range, or beyond <c>maxDistance</c> are skipped (returns <c>false</c>). No per-frame heap allocation.
+    /// depth range, or beyond <c>maxDistance</c> are skipped (returns <c>false</c>). Warmed styles with at most
+    /// four bars draw without per-frame heap allocation. Larger plates build an uncached template.
     /// <see cref="NameplateEdgeBehavior.Deflect"/>'s hysteresis only works through the stateful overload below: the
     /// stateless <see cref="Draw(SpriteBatch,SpriteFont,Texture2D,IIsoCamera3D,Vector3,Vector3,in Nameplate,in NameplateStyle,int,int,float,Vector3?)"/>
     /// re-evaluates from a fresh <see cref="NameplatePlacementState"/> every call, which is fine for <see
@@ -35,6 +36,9 @@ namespace KhaozEngine.Render3D
     /// </remarks>
     public static partial class NameplateRenderer
     {
+        [System.ThreadStatic]
+        private static NameplateContent? _legacyContent;
+
         /// <summary>
         /// The distance cull predicate, shared with <see cref="WorldLabel.ShouldCull"/> so nameplates and labels cull
         /// identically. Returns <c>true</c> when <paramref name="maxDistance"/> &gt; 0 and <paramref name="worldPos"/>
@@ -211,71 +215,16 @@ namespace KhaozEngine.Render3D
             return DrawAt(ref canvas, pixel, plate, style, designViewport.Width, designViewport.Height, ref placementState);
         }
 
-        // Shared draw body for every Draw overload once the anchor pixel and the viewport dims it places against
-        // (framebuffer pixels or a design viewport's own Width/Height) are known: measures the plate, places the
-        // panel rect (NameplatePlacement.Place, including the optional edge clamp/deflect), then draws the panel,
-        // title, and bars. Returns false when the plate measures to nothing (e.g. an empty title with no bars,
-        // since Nameplate.IsEmpty already filtered the fully-empty case before this runs).
+        // Every legacy overload fills reusable content and draws through the component renderer.
         internal static bool DrawAt<TCanvas>(
             ref TCanvas canvas, Vector2 pixel, in Nameplate plate, in NameplateStyle style,
             int viewportWidth, int viewportHeight, ref NameplatePlacementState placementState)
             where TCanvas : INameplateCanvas
         {
-            ITextMeasurer font = canvas.Font;
-            Vector2 size = NameplateLayout.Measure(font, plate, style);
-            if (size.X <= 0f || size.Y <= 0f) return false;
-
-            // NameplatePlacement centres the panel horizontally on the projected pixel and bottom-anchors it
-            // there by default (so it floats above the head), then applies style.EdgeBehavior on top.
-            Vector4 panelRect = NameplatePlacement.Place(pixel, size, viewportWidth, viewportHeight, style, ref placementState);
-            float left = panelRect.X;
-            float top = panelRect.Y;
-
-            // Panel fill (skip when transparent -> panel-less look) then optional border.
-            if (style.PanelFill.A > 0f)
-                canvas.FillRounded(panelRect, style.PanelFill, style.CornerRadius);
-            if (style.PanelBorderThickness > 0f && style.PanelBorder.A > 0f)
-                canvas.StrokeRounded(panelRect, style.PanelBorder, style.CornerRadius, style.PanelBorderThickness);
-
-            float innerLeft = left + style.PadX;
-            float innerTop = top + style.PadY;
-            float innerW = size.X - 2f * style.PadX;
-
-            // Title, centred in the top padded row. Shadow pass first (if configured), then the title colour.
-            float titleH = 0f;
-            if (!string.IsNullOrEmpty(plate.Title))
-            {
-                string title = style.MaxWidth > 0f
-                    ? NameplateLayout.Ellipsize(font, plate.Title, innerW, style.FontScale)
-                    : plate.Title;
-                Vector2 tm = font.Measure(title) * style.FontScale;
-                titleH = tm.Y;
-                float titleX = innerLeft + (innerW - tm.X) * 0.5f;
-                if (style.TitleShadow is Color shadow)
-                    canvas.Text(title,
-                        new Vector2(titleX + style.TitleShadowOffset.X, innerTop + style.TitleShadowOffset.Y),
-                        shadow, style.FontScale);
-                canvas.Text(title, new Vector2(titleX, innerTop), plate.TitleColor, style.FontScale);
-            }
-
-            // Bars stacked full inner width below the title. Compute each rect in the loop (no per-frame list alloc).
-            float y = innerTop + titleH;
-            bool contentAbove = titleH > 0f;
-            if (plate.Bars is { } bars)
-            {
-                for (int i = 0; i < bars.Count; i++)
-                {
-                    if (contentAbove) y += style.BarSpacing;
-                    NameplateBar bar = bars[i];
-                    canvas.FillRounded(new Vector4(innerLeft, y, innerW, style.BarHeight), bar.Track, style.BarCornerRadius);
-                    float f = bar.ClampedFraction;
-                    if (f > 0f)
-                        canvas.FillRounded(new Vector4(innerLeft, y, innerW * f, style.BarHeight), bar.Fill, style.BarCornerRadius);
-                    y += style.BarHeight;
-                    contentAbove = true;
-                }
-            }
-            return true;
+            NameplateContent content = _legacyContent ??= new NameplateContent();
+            NameplateLegacyTemplate.Fill(content, plate);
+            NameplateTemplate template = NameplateLegacyTemplate.For(style, plate.Bars?.Count ?? 0);
+            return DrawTemplateAt(ref canvas, pixel, template, content, viewportWidth, viewportHeight, ref placementState);
         }
     }
 }

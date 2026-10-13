@@ -43,6 +43,9 @@ public sealed record NameplateBadgeComponent(string Id, NameplateSlot Slot) : Na
 /// <summary>A bar whose width and height describe the inner track. Its border sits outside the track.</summary>
 public sealed record NameplateBarComponent(string Id, NameplateSlot Slot) : NameplateComponent(Id, Slot)
 {
+    /// <summary>Legacy bars omit the fill call when their clamped fraction is not positive.</summary>
+    internal bool SkipEmptyFill { get; init; }
+
     /// <summary>Zero uses the template's content width.</summary>
     public float Width { get; init; } = 0f;
     public float Height { get; init; } = 7f;

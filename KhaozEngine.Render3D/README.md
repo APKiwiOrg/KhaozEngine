@@ -1049,7 +1049,8 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     via the `Nameplate` model (title + `Bars` list, add more bars without a rewrite) and styled by `NameplateStyle`
     (`.Default` = the opaque unified plate, `.TextOnly` = the panel-less name-only preset for the `Text` tier).
     `NameplateLayout.Measure` is the pure, GPU-free panel-size math (headless-testable); `NameplateBar.Fraction` is
-    clamped 0..1 at draw; `NameplateRenderer.ShouldCull` shares `WorldLabel`'s cull. No per-frame heap allocation.
+    clamped 0..1 at draw; `NameplateRenderer.ShouldCull` shares `WorldLabel`'s cull. Warmed styles with up to four
+    bars draw without heap allocation. Larger plates build an uncached template.
     Opt-in edge-aware placement via `NameplateStyle.EdgeBehavior` (a `NameplateEdgeBehavior`: `None` is the
     default, byte-identical to before):
     `Clamp` insets the plate into the viewport by `EdgeMargin` on both axes, `Deflect` also moves it beside the

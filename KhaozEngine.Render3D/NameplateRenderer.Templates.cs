@@ -132,8 +132,12 @@ public static partial class NameplateRenderer
         Vector4 inner = new(rect.X + component.BorderThickness, rect.Y + component.BorderThickness,
             rect.Z - 2f * component.BorderThickness, rect.W - 2f * component.BorderThickness);
         canvas.FillRounded(inner, WithOpacity(value.Track, opacity), component.CornerRadius);
-        Vector4 fill = inner with { Z = inner.Z * Math.Clamp(value.Fraction, 0f, 1f) };
-        canvas.FillRounded(fill, WithOpacity(value.Fill, opacity), component.CornerRadius);
+        float fraction = Math.Clamp(value.Fraction, 0f, 1f);
+        if (!component.SkipEmptyFill || fraction > 0f)
+        {
+            Vector4 fill = inner with { Z = inner.Z * fraction };
+            canvas.FillRounded(fill, WithOpacity(value.Fill, opacity), component.CornerRadius);
+        }
         if (component.BorderThickness > 0f)
             canvas.StrokeRounded(rect, WithOpacity(value.Border ?? component.BorderColor, opacity),
                 component.CornerRadius, component.BorderThickness);

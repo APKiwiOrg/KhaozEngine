@@ -37,6 +37,56 @@ public class ContactMoveToRangeTests
     [InlineData(false, true)]
     [InlineData(true, false)]
     [InlineData(true, true)]
+    public void ReusedContextAcceptsSignedZeroSurfaceJumpSpeed(bool reverse, bool loaded)
+    {
+        float negativeZero = BitConverter.UInt32BitsToSingle(0x80000000);
+        MoveTuning priming = Tuning with { Water = new(Tuning.Water.Mode, reverse ? negativeZero : 0f) };
+        MoveTuning runtime = Tuning with { Water = new(Tuning.Water.Mode, reverse ? 0f : negativeZero) };
+        using var world = GroundTraversalProbeTests.FlatWorld();
+        using var bakeContext = Context(world);
+        GroundNavigation Graph(MoveTuning tuning)
+        {
+            var profile = new NavBakeProfile("player", tuning, default);
+            var bake = Bake(bakeContext, FlatOptions, profile);
+            return (loaded ? Load(Write(bake), new(FlatOptions, Sources(), [profile])) : bake).GetProfile("player");
+        }
+        GroundNavigation primingGraph = Graph(priming), graph = Graph(runtime);
+        using var context = Context(world);
+        var body = new MoveState { Position = new(0, runtime.CapsuleHalfHeight, 0), Grounded = true };
+        var target = ReachTarget.Point(body.Position);
+        Assert.Equal(RangeMoveStatus.InRange,
+            new MoveToRange(primingGraph).Tick(body, priming, target, 0, false, 1f / 30f, context).Status);
+        graph.Validate(runtime);
+        Assert.Equal(RangeMoveStatus.InRange,
+            new MoveToRange(graph).Tick(body, runtime, target, 0, false, 1f / 30f, context).Status);
+        graph.Validate(context.ResolvedBinding);
+        graph.Validate(priming);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ReusedContextRefusesDifferentSurfaceJumpSpeed(bool loaded)
+    {
+        using var world = GroundTraversalProbeTests.FlatWorld();
+        using var context = Context(world);
+        var profile = new NavBakeProfile("player", Tuning, default);
+        var bake = Bake(context, FlatOptions, profile);
+        var graph = (loaded ? Load(Write(bake), new(FlatOptions, Sources(), [profile])) : bake).GetProfile("player");
+        var move = new MoveToRange(graph);
+        var body = new MoveState { Position = new(0, Tuning.CapsuleHalfHeight, 0), Grounded = true };
+        var target = ReachTarget.Point(body.Position);
+        Assert.Equal(RangeMoveStatus.InRange, move.Tick(body, Tuning, target, 0, false, 1f / 30f, context).Status);
+        MoveTuning wrong = Tuning with { Water = new(Tuning.Water.Mode, 1f) };
+        Assert.Contains("Water.SurfaceJumpSpeed", Assert.Throws<ArgumentException>(() =>
+            move.Tick(body, wrong, target, 0, false, 1f / 30f, context)).Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
     public void CrossesLowLipBankBothWays(bool reverse, bool loaded)
     {
         using var world = LowLipTraversalTests.LipWorld();

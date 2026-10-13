@@ -100,6 +100,26 @@ public class GroundNavigationValidateTests
         Validate(graph, runtime);
     }
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void RetainedJumpSpeedSignedZeroIsCompatible(bool reverse, bool loaded)
+    {
+        float negativeZero = BitConverter.UInt32BitsToSingle(0x80000000);
+        MoveTuning baked = Tuning with { JumpSpeed = reverse ? negativeZero : 0f };
+        MoveTuning runtime = Tuning with { JumpSpeed = reverse ? 0f : negativeZero };
+        using var world = GroundTraversalProbeTests.FlatWorld();
+        using var context = Context(world);
+        var profile = new NavBakeProfile("player", baked, default);
+        var bake = Bake(context, FlatOptions, profile);
+        var graph = (loaded ? Load(Write(bake), new(FlatOptions, Sources(), [profile])) : bake).GetProfile("player");
+        using var binding = context.CreateNavigationBinding(runtime);
+        graph.Validate(binding);
+        graph.Validate(runtime);
+    }
+
     static MoveTuning Changed(MoveTuning tuning, string field)
     {
         if (field == "Water.Mode") return tuning with { Water = new(WaterTraversalMode.WadeOnly) };

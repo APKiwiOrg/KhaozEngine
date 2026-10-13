@@ -45,8 +45,7 @@ public sealed partial class GroundNavigation
             return;
         }
         MoveTuning runtime = tuning with { Water = water };
-        string? difference = NavBakeIdentity.FirstTuningDifference(Identity.Tuning, runtime) ??
-            NavBakeIdentity.FirstContactDifference(Identity.Tuning, runtime);
+        string? difference = NavBakeIdentity.FirstRuntimeDifference(Identity.Tuning, runtime);
         if (difference is not null) throw new ArgumentException($"Movement {difference}.", parameter);
         if (placementOffset != Identity.PlacementOffset)
             throw new ArgumentException("Movement PlacementOffset must equal the baked profile's.", parameter);

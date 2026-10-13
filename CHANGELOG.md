@@ -23,6 +23,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - KENB format 2 persists contact profile identities and resting feet heights. Mixed contact and legacy aquatic
   profiles load without new physics proofs, while all-legacy bakes retain their format 1 bytes. GroundNavigation
   exposes binding and tuning compatibility checks, and MoveToRange validates its resolved binding before routing.
+- Runtime ground navigation accepts numerically equal signed-zero tuning fields, including reused contact bindings.
+  Stored navigation identities retain their bitwise comparisons and deterministic bytes.
 
 ## 20.37.0
 

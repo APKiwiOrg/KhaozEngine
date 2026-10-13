@@ -11,9 +11,11 @@ internal static partial class ShaderSources
     vec4 Interactors[4];
     vec4 Strengths;
     vec4 WindFade;          // x = blade pixels where wind stops, y = metres per pixel now, z = the same last frame
+    vec4 Agitation;
     vec4 PrevFocus;         // xyz = last frame's focus, w = last frame's wind time
     vec4 PrevInteractors[4];
     vec4 PrevStrengths;
+    vec4 PrevAgitation;
 };
 ";
 
@@ -50,6 +52,7 @@ internal static partial class ShaderSources
         float fadeHeight = max((fadeViewProj * vec4(root, 1.0)).w, 0.0) * metresPerPixel * WindFade.x;
         bend *= fadeHeight > 0.0 ? smoothstep(1.0, 2.0, bladeHeight / fadeHeight) : 1.0;
     }
+    float shiverIntensity = 0.0;
     for (int i = 0; i < 4; i++) {
         vec4 interactor = previous ? PrevInteractors[i] : Interactors[i];
         float strength = previous ? PrevStrengths[i] : Strengths[i];
@@ -57,12 +60,22 @@ internal static partial class ShaderSources
         vec3 delta = root - (interactor.xyz - RenderOrigin.xyz);
         float falloff = 1.0 - smoothstep(0.0, interactor.w, length(delta));
         bend += delta.xz / max(length(delta.xz), 0.05) * falloff * strength * bladeHeight * FoliageMotion.x;
+        float agitation = previous ? PrevAgitation[i] : Agitation[i];
+        shiverIntensity = max(shiverIntensity, falloff * strength * agitation);
     }
     float bendLength = length(bend);
     float cap = bladeHeight * FoliageMotion.y;
     if (bendLength > cap && bendLength > 0.0) bend *= cap / bendLength;
     world.xz += bend * rootWeight;
     world.y -= (bladeHeight - sqrt(max(0.0, bladeHeight * bladeHeight - dot(bend, bend)))) * rootWeight;
+    if (FoliageMotion.w > 0.0 && shiverIntensity > 0.0) {
+        float leafPhase = windTime * 14.0
+            + dot(IModel3.xz, vec2(0.73, 1.17))
+            + dot(Position, vec3(3.1, 2.7, 4.3));
+        vec2 shiver = vec2(sin(leafPhase), cos(leafPhase))
+            * FoliageMotion.w * bladeHeight * shiverIntensity;
+        world.xz += shiver * rootWeight;
+    }
     return world.xyz;
 }
 ";

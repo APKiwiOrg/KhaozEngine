@@ -24,12 +24,14 @@ internal sealed partial class ModelRenderer
         public Vector4 Interactor0, Interactor1, Interactor2, Interactor3, Strengths;
         // x = blade pixels where wind stops, y = metres per internal pixel at clip w of 1, z = the same last frame
         public Vector4 WindFade;
+        public Vector4 Agitation;
         // Last frame's state for FoliageMotionVert, zero while temporal rendering is off. Both programs declare
-        // the complete block, which fills the 256-byte slot.
+        // the complete 288-byte block. Dynamic offsets require 256-byte alignment (D3D11UniformRing), so slots are 512.
         public Vector4 PrevFocus;   // xyz = last frame's focus, w = last frame's wind time
         public Vector4 PrevInteractor0, PrevInteractor1, PrevInteractor2, PrevInteractor3, PrevStrengths;
-        public const uint SizeInBytes = 256;
-        public const uint SlotBytes = 256;
+        public Vector4 PrevAgitation;
+        public const uint SizeInBytes = 288;
+        public const uint SlotBytes = 512;
 
         /// <summary>Metres one internal pixel covers vertically at clip w of 1. Perspective clip w is view depth.
         /// Orthographic clip w is 1, which gives view height over render height. Zero when degenerate.</summary>
@@ -58,7 +60,7 @@ internal sealed partial class ModelRenderer
             }
         }
 
-        /// <summary>This submission with <paramref name="previous"/>'s focus, clock, interactors and strengths as
+        /// <summary>This submission with <paramref name="previous"/>'s focus, clock, interactors, strengths and agitation as
         /// last frame's.</summary>
         public readonly FoliageUniforms WithPrevious(in FoliageUniforms previous)
         {
@@ -70,6 +72,7 @@ internal sealed partial class ModelRenderer
             data.PrevInteractor2 = previous.Interactor2;
             data.PrevInteractor3 = previous.Interactor3;
             data.PrevStrengths = previous.Strengths;
+            data.PrevAgitation = previous.Agitation;
             return data;
         }
 
@@ -91,10 +94,12 @@ internal sealed partial class ModelRenderer
             };
             Span<Vector4> locations = MemoryMarshal.CreateSpan(ref data.Interactor0, 4);
             Span<float> strengths = MemoryMarshal.CreateSpan(ref data.Strengths.X, 4);
+            Span<float> agitation = MemoryMarshal.CreateSpan(ref data.Agitation.X, 4);
             for (int i = 0; i < interactors.Length; i++)
             {
                 locations[i] = new Vector4(interactors[i].Position, interactors[i].Radius);
                 strengths[i] = interactors[i].Strength;
+                agitation[i] = interactors[i].Agitation;
             }
             return data;
         }

@@ -28,8 +28,8 @@ public sealed partial class Scene3D
     /// <summary>This frame's foliage uniform slots. For tests.</summary>
     internal ReadOnlySpan<ModelRenderer.FoliageUniforms> FoliageUniformsForTests => CollectionsMarshal.AsSpan(_foliageUniforms);
 
-    /// <summary>This submission with its batch's last frame folded in. The first submission of a batch in a frame rolls
-    /// the batch's current into previous, so every submission in a frame measures against the batch's last submission
+    /// <summary>This submission with its batch's last frame, including agitation, folded in. The first submission
+    /// of a batch in a frame rolls the batch's current into previous, so every submission measures against its last submission
     /// of the frame before. A batch not submitted last frame has no previous and reads its own current.</summary>
     ModelRenderer.FoliageUniforms WithFoliageMotion(FoliageBatch batch, in ModelRenderer.FoliageUniforms current)
     {
@@ -177,7 +177,7 @@ public sealed partial class Scene3D
     /// <summary>FoliageMotionVert's last frame, once the frame's history is known. With valid history
     /// (<see cref="MotionHistoryValid"/>) each slot keeps the state its submission folded in and takes last frame's
     /// pixel scale, or this frame's when no foliage uploaded last frame. Without it, or when a batch was submitted before
-    /// temporal rendering turned on this frame, every slot's last frame is its own,
+    /// temporal rendering turned on this frame, every slot's last frame is its own, including agitation,
     /// scale included, so the recomputed displacement cancels and the variant writes the motion the other paths write
     /// with no previous state.</summary>
     void PrepareFoliageMotion(Span<ModelRenderer.FoliageUniforms> slots, float metresPerPixel)

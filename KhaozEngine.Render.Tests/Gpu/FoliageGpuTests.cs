@@ -29,7 +29,7 @@ public sealed class FoliageGpuTests(FoliageGpuScene fixture) : IClassFixture<Fol
         Assert.Equal(0, scene.LastFrameStats.InstanceUploadBytes);
         Assert.Equal(2, scene.LastFoliageStats.CandidateInstances);
         Assert.Equal(1, scene.LastFoliageStats.SubmittedPatches);
-        Assert.InRange(scene.LastFoliageStats.UniformUploadBytes, 144, 1024);
+        Assert.InRange(scene.LastFoliageStats.UniformUploadBytes, 144, 2048);
     }
 
     [GpuFact]

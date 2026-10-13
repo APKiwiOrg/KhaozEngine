@@ -16,15 +16,15 @@ public sealed class FoliageUniformsTests
     {
         string[] members = MotionUboLayoutTests.Members(ShaderSources.FoliageVert, "uniform Foliage {");
         Assert.Equal(["vec4 FocusRadius", "vec4 Density", "vec4 FadeWind", "vec4 WindTime", "vec4 Interactors[4]",
-            "vec4 Strengths", "vec4 WindFade", "vec4 PrevFocus", "vec4 PrevInteractors[4]", "vec4 PrevStrengths"], members);
+            "vec4 Strengths", "vec4 WindFade", "vec4 Agitation", "vec4 PrevFocus", "vec4 PrevInteractors[4]", "vec4 PrevStrengths", "vec4 PrevAgitation"], members);
         Assert.Equal(members, MotionUboLayoutTests.Members(ShaderSources.FoliageMotionVert, "uniform Foliage {"));
         // Every std140 member is a vec4 or a vec4 array, so each one advances exactly 16 bytes per element.
         Assert.Equal(144, (int)Marshal.OffsetOf<FoliageUniforms>(nameof(FoliageUniforms.WindFade)));
         Assert.Equal(128, (int)Marshal.OffsetOf<FoliageUniforms>(nameof(FoliageUniforms.Strengths)));
-        // Both programs declare the complete 256-byte current and history block.
-        Assert.Equal(160, (int)Marshal.OffsetOf<FoliageUniforms>(nameof(FoliageUniforms.PrevFocus)));
-        Assert.Equal(256, Marshal.SizeOf<FoliageUniforms>());
-        Assert.Equal(256u, FoliageUniforms.SizeInBytes);
+        // Both programs declare the complete 288-byte current and history block.
+        Assert.Equal(176, (int)Marshal.OffsetOf<FoliageUniforms>(nameof(FoliageUniforms.PrevFocus)));
+        Assert.Equal(288, Marshal.SizeOf<FoliageUniforms>());
+        Assert.Equal(288u, FoliageUniforms.SizeInBytes);
         Assert.True(FoliageUniforms.SizeInBytes <= FoliageUniforms.SlotBytes);
     }
 

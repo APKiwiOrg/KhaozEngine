@@ -47,17 +47,17 @@ Foliage.fragment.msl d848c389e0e4efd0368c038b5e2bf94ec9f29e233ef990102ed13ac00bf
 Foliage.fragment.spirv efad2dba3cc117e26c849052640f1553f83e37cec2ee70cca1575a6d50892ccd 47648
 Foliage.layout.hlsl a443752431f8e7df504ad8c1214f1b2e93cc91affb8131256f1a5df93bee6e43 23 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF,<unnamed>:StructuredBufferReadOnly:F,<unnamed>:StructuredBufferReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F]|set1[<unnamed>:UniformBuffer:V]
 Foliage.layout.msl a443752431f8e7df504ad8c1214f1b2e93cc91affb8131256f1a5df93bee6e43 23 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF,<unnamed>:StructuredBufferReadOnly:F,<unnamed>:StructuredBufferReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F]|set1[<unnamed>:UniformBuffer:V]
-Foliage.vertex.hlsl 81741ab81a1ec3fe1a02418f0348156ed208477fcb61fcbe70f1dfb9672d408c 7250
-Foliage.vertex.msl 87e8e66748082a3b26a19b67e4a44c13bbfa68c9ee5fb51197ca2c3ae507bce2 5781
-Foliage.vertex.spirv 933f8912bf2fc5f47cab283c9f9bfd9a40b3de8774fe823b0f2498131dea23cc 9288
+Foliage.vertex.hlsl 1d14a96ee42879082e2b1bc7597da6e0f2372b4612f23091ab76c2c433fdf206 8172
+Foliage.vertex.msl 49ef099bacd5208e7df4e26c695ba49ea10409e755629f839913039be5e8463e 6684
+Foliage.vertex.spirv 944b09000d24574ebd121b1b264cc7bbd9cb9376f34ad4fd7c468c8e9d979452 10352
 FoliageMotion.fragment.hlsl de2b53d5063f0f02982f46a19d7e3f48e2e9f723cc750a65edc0fc4fda2b0872 70833
 FoliageMotion.fragment.msl f58829ee3ad1436a9371008f70cb5feb2d13065c91662252945c00c881bc2afc 70236
 FoliageMotion.fragment.spirv 6612ab68756dd9bb94873aadb4a081152f9a28e09b337208abd12ba5248d6ffd 48340
 FoliageMotion.layout.hlsl 0e4834ffc94209f59b82f5f38671ef2effd8b4e51896a163221f296a47acd38c 24 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF,<unnamed>:StructuredBufferReadOnly:F,<unnamed>:StructuredBufferReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F]|set1[<unnamed>:UniformBuffer:V]|set2[<unnamed>:UniformBuffer:V]
 FoliageMotion.layout.msl 0e4834ffc94209f59b82f5f38671ef2effd8b4e51896a163221f296a47acd38c 24 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:VF,<unnamed>:StructuredBufferReadOnly:F,<unnamed>:StructuredBufferReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F,<unnamed>:TextureReadOnly:F,<unnamed>:TextureReadOnly:F]|set1[<unnamed>:UniformBuffer:V]|set2[<unnamed>:UniformBuffer:V]
-FoliageMotion.vertex.hlsl c7776930b14505fa1bd30ee2e815bfd82b68c7d6062e85e90e3fb47567e963d6 10795
-FoliageMotion.vertex.msl 405d16b478e689e6fde49e991846e9792bb1a9424be0e44af5e5e9dd6f09e3e8 9246
-FoliageMotion.vertex.spirv 4553728068c7b95dcc59a6f87b67e475d8c9f33d84f24dd79332bf348023e997 13640
+FoliageMotion.vertex.hlsl 781c64448da1462602b027a8cf81ada848e1dca03dcbea805395be845b91953c 12534
+FoliageMotion.vertex.msl 6335c950113804b88c9f194adec9571bb0063bc9d2c6f777af944864c73f6183 10979
+FoliageMotion.vertex.spirv a7d1f46c1bd9fd1afc0ecd4f4e56227aa3dd5d60d7c6bf6be2948e4aa73ed462 15512
 GroundDecal.fragment.hlsl a1fcf07e2d3b9419607030d5a36565c6344f608c6cb003afee6aab614c791873 31736
 GroundDecal.fragment.msl 5132cb5126e3019cc082d26b7049dfc6f16dc95f54f6e78d485c27b211f89b73 31588
 GroundDecal.fragment.spirv f9c5ad3158dc260af8e32eaedc864a136ceb26a779326ebbf4a565fe57e53d27 32028

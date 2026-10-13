@@ -30,8 +30,11 @@ internal static class FoliageWindMirror
         Assert.True(Vector2.Distance(new Vector2(root.X, root.Z), new Vector2(u.FocusRadius.X, u.FocusRadius.Z)) <= fadeStart,
             "the mirror models a blade fully faded in");
         float phase = (root.X * u.WindTime.X + root.Z * u.WindTime.Y) * u.FadeWind.W - u.WindTime.Z * u.FadeWind.Z;
-        Vector2 bend = Bend(u, root, phase, BladeHeight, rootClipW, u.WindFade.Y, Vector3.Zero, false, motion.ToVector4());
-        return Displacement(bend, BladeHeight);
+        Vector2 bend = Bend(u, root, phase, BladeHeight, rootClipW, u.WindFade.Y, Vector3.Zero, false, motion.ToVector4(), out float intensity);
+        Vector3 displacement = Displacement(bend, BladeHeight);
+        if (motion.Shiver <= 0f || intensity <= 0f) return displacement;
+        Vector2 shiver = Shiver(u.WindTime.Z, root, Vector3.UnitY, BladeHeight, intensity, motion.Shiver);
+        return displacement + new Vector3(shiver.X, 0f, shiver.Y);
     }
 
     /// <summary>Evaluates an authored vertex with the requested frame's focus, clock, interactors and pixel scale.
@@ -76,12 +79,18 @@ internal static class FoliageWindMirror
         Vector3 root = Vector3.Transform(new Vector3(0f, instance.Parameters.Y, 0f), model);
         float rootClipW = Vector4.Transform(new Vector4(root, 1f), fadeViewProjection).W;
         float metresPerPixel = previous ? u.WindFade.Z : u.WindFade.Y;
-        Vector2 bend = Bend(u, root, phase, bladeHeight, rootClipW, metresPerPixel, renderOrigin, previous, instance.Motion);
-        return world + Displacement(bend, bladeHeight) * rootWeight;
+        Vector2 bend = Bend(u, root, phase, bladeHeight, rootClipW, metresPerPixel, renderOrigin, previous, instance.Motion, out float intensity);
+        world += Displacement(bend, bladeHeight) * rootWeight;
+        if (instance.Motion.W <= 0f || intensity <= 0f) return world;
+        Vector2 shiver = Shiver(windTime, new Vector3(instance.Model.M41, instance.Model.M42, instance.Model.M43),
+            localPosition, bladeHeight, intensity, instance.Motion.W);
+        world.X += shiver.X * rootWeight;
+        world.Z += shiver.Y * rootWeight;
+        return world;
     }
 
     static Vector2 Bend(in FoliageUniforms u, Vector3 root, float phase, float bladeHeight, float rootClipW,
-        float metresPerPixel, Vector3 renderOrigin, bool previous, Vector4 motion)
+        float metresPerPixel, Vector3 renderOrigin, bool previous, Vector4 motion, out float shiverIntensity)
     {
         var direction = new Vector2(u.WindTime.X, u.WindTime.Y);
         Vector2 bend = direction * (MathF.Sin(phase) * .7f + MathF.Sin(phase * .43f + 1.7f) * .3f)
@@ -96,6 +105,8 @@ internal static class FoliageWindMirror
             : [u.Interactor0, u.Interactor1, u.Interactor2, u.Interactor3];
         Vector4 packedStrengths = previous ? u.PrevStrengths : u.Strengths;
         ReadOnlySpan<float> strengths = [packedStrengths.X, packedStrengths.Y, packedStrengths.Z, packedStrengths.W];
+        Vector4 agitation = previous ? u.PrevAgitation : u.Agitation;
+        shiverIntensity = 0f;
         for (int i = 0; i < 4; i++)
         {
             if (interactors[i].W <= 0f || strengths[i] <= 0f) continue;
@@ -103,11 +114,20 @@ internal static class FoliageWindMirror
             float falloff = 1f - SmoothStep(0f, interactors[i].W, delta.Length());
             var across = new Vector2(delta.X, delta.Z);
             bend += across / MathF.Max(across.Length(), .05f) * falloff * strengths[i] * bladeHeight * motion.X;
+            shiverIntensity = MathF.Max(shiverIntensity, falloff * strengths[i] * agitation[i]);
         }
         float length = bend.Length();
         float cap = bladeHeight * motion.Y;
         if (length > cap && length > 0f) bend *= cap / length;
         return bend;
+    }
+
+    static Vector2 Shiver(float windTime, Vector3 translation, Vector3 position, float bladeHeight, float intensity, float amplitude)
+    {
+        if (amplitude <= 0f || intensity <= 0f) return Vector2.Zero;
+        float leafPhase = windTime * 14f + (translation.X * .73f + translation.Z * 1.17f)
+            + (position.X * 3.1f + position.Y * 2.7f + position.Z * 4.3f);
+        return new Vector2(MathF.Sin(leafPhase), MathF.Cos(leafPhase)) * amplitude * bladeHeight * intensity;
     }
 
     static Vector3 Displacement(Vector2 bend, float bladeHeight)

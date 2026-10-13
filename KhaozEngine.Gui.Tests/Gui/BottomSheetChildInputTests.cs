@@ -120,6 +120,65 @@ public sealed class BottomSheetChildInputTests
         Assert.False(Step(Frame(y: 850, touch: touch, phase: TouchPhase.Ended), child: Available));
     }
 
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(false, false, true)]
+    [InlineData(false, true, false)]
+    [InlineData(false, true, true)]
+    [InlineData(true, false, false)]
+    [InlineData(true, false, true)]
+    public void Child_action_consumes_same_release_before_exposed_control(bool touch, bool sameFrame, bool close)
+    {
+        if (!sameFrame) Step(Frame(down: true, press: true, touch: touch, phase: TouchPhase.Began));
+        _input.Update(Frame(press: sameFrame, touch: touch, phase: TouchPhase.Ended));
+        _sheet.Update(_input, Available, default, 1000, .01f);
+        _surface.Begin(null, _input.Pointer);
+        bool clicked = _surface.Button(null!, Child, LocalizedText.Raw("Close"));
+        if (clicked)
+        {
+            if (close) _sheet.SetDetent("closed", false);
+            else _sheet.CancelGestures();
+        }
+        Assert.True(clicked);
+        Assert.False(_surface.Button(null!, Available, LocalizedText.Raw("Exposed")));
+        Assert.False(_surface.IconButton(Available, "exposed", GuiStyle.Default));
+        Assert.True(_input.Pointer.IsConsumed);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void Release_association_cannot_consume_fresh_input_before_or_after_sheet_update(bool touch, bool updateFirst)
+    {
+        Step(Frame(down: true, press: true, touch: touch, phase: TouchPhase.Began));
+        Assert.True(Step(Frame(touch: touch, phase: TouchPhase.Ended)));
+        _input.Update(Frame(y: 200, down: true, press: true));
+        if (updateFirst) _sheet.Update(_input, Available, default, 1000, .01f);
+        _sheet.SetDetent("closed", false);
+        Assert.False(_input.Pointer.IsConsumed);
+        if (!updateFirst) _sheet.Update(_input, Available, default, 1000, .01f);
+        var independent = new Rect(350, 150, 100, 100);
+        _surface.Begin(null, _input.Pointer);
+        Assert.False(_surface.Button(null!, independent, LocalizedText.Raw("Independent")));
+        _input.Update(Frame(y: 200));
+        _sheet.Update(_input, Available, default, 1000, .01f);
+        _surface.Begin(null, _input.Pointer);
+        Assert.True(_surface.Button(null!, independent, LocalizedText.Raw("Independent")));
+        Assert.False(_input.Pointer.IsConsumed);
+    }
+
+    [Fact]
+    public void Release_association_expires_on_next_idle_sample()
+    {
+        Step(Frame(down: true, press: true));
+        Assert.True(Step(Frame()));
+        Step(Frame());
+        _sheet.CancelGestures();
+        Assert.False(_input.Pointer.IsConsumed);
+    }
+
     bool Step(InputState frame, float dt = .01f, Rect? child = null)
     {
         _input.Update(frame);

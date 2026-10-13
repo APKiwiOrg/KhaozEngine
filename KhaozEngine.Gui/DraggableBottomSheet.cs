@@ -16,6 +16,7 @@ public sealed class DraggableBottomSheet
     Rect _safeBounds;
     PointerCoordinates _coordinates;
     InputManager? _lastInput;
+    InputState? _leftReleaseState;
     bool _hasLayout, _contactsHeld, _inhibited, _ownsLeftUntilRelease, _consumeLeftUntilRelease;
     bool _mouseSequence, _touchSequence, _admitted, _handle, _mouseIgnored;
     bool _nativeSequence, _nativeAdmitted, _nativeEnded, _nativeHandle;
@@ -59,6 +60,7 @@ public sealed class DraggableBottomSheet
         _frameRegions.Clear();
         var state = input.State;
         var pointer = input.Pointer;
+        ExpireReleasedLeft(input);
         Rect safe = safeArea.Apply(availableBounds);
         bool changed = _hasLayout && (_safeBounds != safe || _contentHeight != contentHeight
             || !_coordinates.HasSameMapping(pointer.Coordinates));
@@ -122,6 +124,7 @@ public sealed class DraggableBottomSheet
     /// An owned left mouse gesture remains consumed through its physical release.</summary>
     public void CancelGestures()
     {
+        if (_lastInput is { } input) ExpireReleasedLeft(input);
         _inhibited |= _contactsHeld;
         _consumeLeftUntilRelease |= _ownsLeftUntilRelease;
         if (_consumeLeftUntilRelease) _lastInput?.Pointer.ConsumeGesture();
@@ -316,14 +319,22 @@ public sealed class DraggableBottomSheet
         _consumeLeftUntilRelease = true;
         pointer.ConsumeGesture();
     }
+    void ExpireReleasedLeft(InputManager input)
+    {
+        if (_leftReleaseState == null || (ReferenceEquals(_lastInput, input)
+            && ReferenceEquals(_leftReleaseState, input.State))) return;
+        _leftReleaseState = null;
+        _ownsLeftUntilRelease = _consumeLeftUntilRelease = false;
+    }
     void Reserve(Pointer pointer)
     {
         foreach (var bounds in _frameRegions)
             if (bounds.Width > 0 && bounds.Height > 0) pointer.BlockRegion(bounds);
         if (Bounds.Width > 0 && Bounds.Height > 0) pointer.BlockRegion(Bounds);
         if (_consumeLeftUntilRelease) pointer.ConsumeGesture();
-        if (_lastInput?.State.WindowFocused == true && !_lastInput.State.IsDown(MouseButton.Left))
-            _ownsLeftUntilRelease = _consumeLeftUntilRelease = false;
+        if (_ownsLeftUntilRelease && _lastInput?.State.WindowFocused == true
+            && !_lastInput.State.IsDown(MouseButton.Left))
+            _leftReleaseState = _lastInput.State;
     }
 
     /// <summary>Draw optional caller-textured chrome and invoke the body callback with its viewport and offset.

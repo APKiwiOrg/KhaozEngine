@@ -3,6 +3,9 @@
 The opt-in world map widget over `WorldMapChunkCache` and `PannableCanvas`.
 References only `KhaozEngine.WorldMap` and `KhaozEngine.Gui` and stays outside every umbrella.
 
+`WorldMapSymbol.SizeMetres` changes raster geometry only. Icon and label anchors, fixed screen sizes
+and hover bounds continue to come from the feature rules and overlay layout.
+
 ## Use in an existing UI
 
 ```csharp

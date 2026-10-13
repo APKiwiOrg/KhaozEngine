@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Numerics;
 using KhaozEngine.Primitives;
 
 namespace KhaozEngine.WorldMap;
@@ -26,6 +27,16 @@ public enum WorldMapSymbolKind
 /// <param name="Outline">The outline colour.</param>
 public sealed record WorldMapSymbol(WorldMapSymbolKind Kind, Color Fill, Color Outline)
 {
+    /// <summary>Optional full local width and depth in map metres, centred and rotated with the authored footprint.</summary>
+    /// <remarks>
+    /// Components must be finite and positive, with a finite half-diagonal reach. Null preserves the authored
+    /// dimensions and existing raster bytes. Building shadows use the same size. Sized walls use both dimensions
+    /// instead of the style's wall width. Coarse filtering still uses the authored footprint size so sources can
+    /// reject sub-pixel objects before materialization without collecting every small prop to resolve symbol rules.
+    /// Feature anchors and hover targets are unaffected.
+    /// </remarks>
+    public Vector2? SizeMetres { get; init; }
+
     /// <summary>The non-drawing symbol with transparent colours.</summary>
     public static WorldMapSymbol Hidden { get; } = new(WorldMapSymbolKind.Hidden, Color.Transparent, Color.Transparent);
 }

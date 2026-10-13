@@ -26,14 +26,14 @@ internal sealed class FootprintPainter(RasterCanvas canvas, WorldMapStyle style)
 
         foreach (var item in resolved)
             if (item.Symbol.Kind == WorldMapSymbolKind.Building)
-                PaintShape(new CoverageSampler(item.Footprint, item.Symbol.Kind, style.WallWidthMetres,
+                PaintShape(new CoverageSampler(item.Footprint, item.Symbol, style.WallWidthMetres,
                     style.BuildingShadowOffsetMetres), style.BuildingShadow, Color.Transparent, 0f);
 
         foreach (var item in resolved)
         {
             float inset = item.Symbol.Kind == WorldMapSymbolKind.Wall ? 0f :
                 MathF.Max(0f, style.OutlinePixels / canvas.EffectivePixelsPerMetre);
-            PaintShape(new CoverageSampler(item.Footprint, item.Symbol.Kind, style.WallWidthMetres, Vector2.Zero),
+            PaintShape(new CoverageSampler(item.Footprint, item.Symbol, style.WallWidthMetres, Vector2.Zero),
                 item.Symbol.Fill, item.Symbol.Outline, inset);
         }
     }

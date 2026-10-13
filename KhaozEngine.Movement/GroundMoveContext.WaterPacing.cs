@@ -7,7 +7,12 @@ namespace KhaozEngine.Movement;
 public sealed partial class GroundMoveContext
 {
     internal (MovementMedium Medium, bool Swimming, float FeetY) SampleWaterForPacing(in MoveState body, in MoveTuning tuning)
+        => SampleWaterForPacing(body, tuning, out _);
+
+    internal (MovementMedium Medium, bool Swimming, float FeetY) SampleWaterForPacing(in MoveState body, in MoveTuning tuning,
+        out float landSpeedScale)
     {
+        landSpeedScale = 1f;
         if (tuning.Controller == MovementControllerKind.Legacy)
         {
             float feetY = body.Position.Y - tuning.CapsuleHalfHeight;
@@ -30,7 +35,7 @@ public sealed partial class GroundMoveContext
             using (queries)
             {
                 var local = body with { Position = body.Position - _origin };
-                var point = binding.SampleWaterForPacing(new(local, _contactFrame, null), queries!, out bool swimming);
+                var point = binding.SampleWaterForPacing(new(local, _contactFrame, null), queries!, out bool swimming, out landSpeedScale);
                 EnsureOrigin();
                 if (point.Availability != MovementAvailability.Known)
                     throw new InvalidOperationException("The contact pacing water point is unresolved.");

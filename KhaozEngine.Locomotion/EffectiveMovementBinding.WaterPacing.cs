@@ -8,8 +8,13 @@ public sealed partial class EffectiveMovementBinding
     /// <summary>Samples certified frame-local water and applies the controller's tick-start swimmer classification
     /// for approach pacing. This does not authorize motion or placement. A refused point never grants swimming.</summary>
     public MovementWaterPoint SampleWaterForPacing(in FramedMovementState state, MovementQueryLease queries, out bool swimming)
+        => SampleWaterForPacing(state, queries, out swimming, out _);
+
+    internal MovementWaterPoint SampleWaterForPacing(in FramedMovementState state, MovementQueryLease queries,
+        out bool swimming, out float landSpeedScale)
     {
         swimming = false;
+        landSpeedScale = 1f;
         var boundary = Boundary(queries, null);
         if (!state.IsValid || !ExplicitCharacterMovement.ValidCarriedState(state.State) || state.Frame != queries.Frame)
             return NoPacingWater(MovementAvailability.Invalid);
@@ -32,6 +37,7 @@ public sealed partial class EffectiveMovementBinding
             var classified = ContactController.ClassifyStartWater(state.State, point, feet, Tuning, Water, leased, _composition.Foot);
             queries.AssertCurrent();
             swimming = classified.Swimming;
+            landSpeedScale = ExplicitCharacterMovement.MediumSpeed(point, leased.BodyCentre(feet).Y, false, Tuning);
             return point;
         }
         catch (ContactQueryFailure failure) { return NoPacingWater(failure.Availability); }

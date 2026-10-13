@@ -13,13 +13,15 @@ internal static class SwimPace
     /// <exception cref="ArgumentOutOfRangeException">The swim bound is not finite.</exception>
     internal static float Bound(in MoveState body, in MoveTuning tuning, bool run, float dt, GroundMoveContext context)
     {
-        var sample = context.SampleWaterForPacing(body, tuning);
+        var sample = context.SampleWaterForPacing(body, tuning, out float landSpeedScale);
         if (sample.Swimming)
         {
             float bound = tuning.SwimSpeed * MathF.Max(0f, sample.Medium.WadeSpeedScale) * body.SpeedScale * dt;
             if (!float.IsFinite(bound)) throw new ArgumentOutOfRangeException(nameof(context), "Swim travel must be finite.");
             return bound;
         }
-        return RangeApproachCore.TravelBound(body, tuning, run, dt, context);
+        return tuning.Controller == MovementControllerKind.Contact
+            ? RangeApproachCore.LandTravelBound(body, tuning, run, dt, context, landSpeedScale)
+            : RangeApproachCore.TravelBound(body, tuning, run, dt, context);
     }
 }

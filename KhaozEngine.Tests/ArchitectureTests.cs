@@ -244,12 +244,14 @@ public partial class ArchitectureTests
             "Linux Consumption (which has no .NET 10) can reference them. Keep that set exact: " + string.Join("; ", violations));
     }
 
-    [Fact]
-    public void Primitives_IsTheZeroDependencyLeaf()
+    [Theory]
+    [InlineData("KhaozEngine.Primitives")]
+    [InlineData("KhaozEngine.Attachments")]
+    public void ZeroDependencyLeaves_CarryNoProjectReferences(string package)
     {
-        IReadOnlySet<string> refs = LoadGraph()["KhaozEngine.Primitives"].ProjectRefs;
+        IReadOnlySet<string> refs = LoadGraph()[package].ProjectRefs;
         bool leaf = refs.Count == 0;
-        Assert.True(leaf, "Primitives is the zero-dependency leaf at the bottom of the graph but references: " + string.Join(", ", refs));
+        Assert.True(leaf, package + " is a zero-dependency leaf but references: " + string.Join(", ", refs));
     }
 
     [Fact]

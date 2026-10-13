@@ -508,6 +508,17 @@ exposes the property. `World.DefaultScheduler` itself is the per-world seam in `
 `SingleThreadedJobScheduler`, so a world stays byte-identical until a game opts in, and an explicit per-call
 scheduler still wins over it.
 
+## Rigid attachment definitions: a GPU-free leaf
+
+`KhaozEngine.Attachments` has no project or third-party dependency. It owns immutable definitions,
+canonical JSON, reference checks, the `IAttachmentAssetSource` byte seam, directory source policy and
+embedded rigid GLB preflight. JSON uses `System.Text.Json` from the BCL. No renderer or particular
+skeleton type appears in its API. Publishers reference it directly. Foundation and Server do not
+gain an attachment dependency.
+
+`ArchitectureTests.ZeroDependencyLeaves_CarryNoProjectReferences` pins the leaf alongside Primitives.
+The renderer's existing dependency allowlist and ECS-free closure remain unchanged.
+
 ## Render3D ECS arm: the renderer carries no Ecs edge
 
 `KhaozEngine.Render3D` references no ECS. Entity rendering is its own arm, split off exactly as

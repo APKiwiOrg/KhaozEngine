@@ -54,6 +54,7 @@ public class JsonTests
     [InlineData("empty-parts")]
     [InlineData("malformed-hash")]
     [InlineData("uppercase-hash")]
+    [InlineData("malformed-string")]
     [InlineData("nan")]
     [InlineData("overflow")]
     [InlineData("singular")]
@@ -116,6 +117,7 @@ public class JsonTests
             "empty-parts" => AttachmentFixtures.SetJson(""),
             "malformed-hash" => AttachmentFixtures.SetJson(part.Replace(AttachmentFixtures.Hash, "abcd", StringComparison.Ordinal)),
             "uppercase-hash" => AttachmentFixtures.SetJson(part.Replace(AttachmentFixtures.Hash, AttachmentFixtures.Hash.ToUpperInvariant(), StringComparison.Ordinal)),
+            "malformed-string" => AttachmentFixtures.SetJson(part.Replace("\"hip\"", "\"\\uD800\"", StringComparison.Ordinal)),
             "nan" => AttachmentFixtures.SetJson(part.Replace(AttachmentFixtures.Identity, "[NaN,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]", StringComparison.Ordinal)),
             "overflow" => AttachmentFixtures.SetJson(part.Replace(AttachmentFixtures.Identity, "[1e100,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]", StringComparison.Ordinal)),
             "singular" => AttachmentFixtures.SetJson(part.Replace(AttachmentFixtures.Identity, "[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]", StringComparison.Ordinal)),

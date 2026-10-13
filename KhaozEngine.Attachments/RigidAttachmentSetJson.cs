@@ -56,7 +56,7 @@ public static class RigidAttachmentSetJson
             }
             return new RigidAttachmentSetDefinition(parts);
         }
-        catch (Exception error) when (error is JsonException or InvalidDataException or ArgumentException)
+        catch (Exception error) when (error is JsonException or InvalidDataException or ArgumentException or InvalidOperationException)
         {
             throw new InvalidDataException($"{sourceName}: {error.Message}", error);
         }

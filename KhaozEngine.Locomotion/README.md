@@ -678,7 +678,11 @@ certified surface-contact band derives swimming without first sinking below the 
 `ValidatePlacement`, `SettlePlacement` and `ReclassifyContinuation` share contact footprint and shell
 placement, with full-body medium proofs under the captured lease. Exact correction keeps its carried
 state and pose. Cold settlement may approach a nearby eligible seat without running a tick, then
-rebinds support at the published axis. Live continuation rebuilds destination footing/water facts
+rebinds support at the published axis. It publishes the seat and clears vertical velocity only when
+the seated pose grants footing. A body denied footing keeps its supplied pose and vertical velocity,
+with water classified at that pose. Spawn and teleport clear swimming history, so a cold body in the
+swim hysteresis band keeps the existing fresh classification and stands on the bed with footing.
+Live continuation rebuilds destination footing/water facts
 without seating, advancing timers or consuming an accepted land jump buffer. Water reclassification
 still clears an ineligible land buffer. Below-knee solid overlap belongs to the footprint, while a
 shell overlap refuses exact admission. Late proof failure holds the complete input pose.

@@ -7,6 +7,10 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 20.37.0
 
+- Locomotion exposes internal contact navigation proof bindings and certified resting anchors without
+  water admission or motion routes. Cold placement seats only with footing, preserving a swimmer's float
+  pose and a falling body's vertical velocity when footing is denied. Explicit grounded arrival uses the
+  shared 1 mm sphere at Hold and destination, with route proof recipe 2 and unchanged swimming tolerance.
 - Locomotion adds ordinary contact selection through `MoveTuning.Controller`, `FootRadiusFraction` and `Water`,
   retaining its 30-parameter constructor and Legacy defaults. Network heads, prediction/replay, ground movement
   drivers and the local 3D controller share the leased kernel through one effective binding. Spawn, restore,

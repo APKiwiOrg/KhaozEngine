@@ -895,7 +895,9 @@ The driver has no wall following or local avoidance. It walks straight and repor
 [phase 4b handoff](../docs/design/CONTACT-CONTROLLER-PHASE-4B-SWIMMING-HANDOFF-2026-10-11.md)
 uses #438 shell solids and certified footprint support for explicit land motion, with swimming's
 full-body medium and route proofs. The fingerprint includes `MoveTuning.FootRadiusFraction` (default 0.5),
-vertical placement offset 0.001 m, handoff recipe version 1 and route-proof recipe version 1.
+vertical placement offset 0.001 m, handoff recipe version 1 and route-proof recipe version 2.
+Grounded arrival at Hold and destination uses the shared 3D 1 mm sphere. Swimming retains its
+horizontal 1 mm and surface-contact vertical tolerances.
 Earlier `f3-full-capsule-v1` proofs cannot certify this behavior. It also includes all
 positional MoveTuning inputs, water capability and launch tuning, area masks, captured boundary identity,
 probe cadence and budget, finite resolver limits and versions, engine version, and ordinal-sorted

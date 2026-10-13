@@ -13,7 +13,7 @@ public sealed class ExplicitMovementProfile
 {
     public const string ControllerModel = "contact-shell-footprint-swim-v1";
     const uint HandoffRecipeVersion = 1;
-    const uint RouteProofRecipeVersion = 1;
+    const uint RouteProofRecipeVersion = 2;
     public const int MaximumProbeSteps = 65536;
     public string Name { get; }
     public MoveTuning Tuning { get; }

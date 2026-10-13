@@ -23,7 +23,7 @@ public sealed partial class EffectiveMovementBinding : IDisposable
 
     EffectiveMovementBinding(EffectiveMovementBindingKind kind, in MoveTuning tuning, in WaterTraversalPolicy water,
         MovementEnvironmentContext? context = null, OrdinaryMovementEnvironment? ordinary = null,
-        IPhysicsWorldQueryView? view = null, bool ownsView = false)
+        IPhysicsWorldQueryView? view = null, bool ownsView = false, ContactComposition? composition = null)
     {
         Kind = kind;
         Tuning = tuning;
@@ -32,8 +32,8 @@ public sealed partial class EffectiveMovementBinding : IDisposable
         _ordinary = ordinary;
         _view = view;
         _ownsView = ownsView;
-        _composition = kind == EffectiveMovementBindingKind.OrdinaryContact ?
-            ContactComposition.Ordinary(tuning) : ContactComposition.PublicExplicit(tuning);
+        _composition = composition ?? (kind == EffectiveMovementBindingKind.OrdinaryContact ?
+            ContactComposition.Ordinary(tuning) : ContactComposition.PublicExplicit(tuning));
     }
 
     public static EffectiveMovementBinding Legacy(in MoveTuning tuning)
@@ -80,6 +80,15 @@ public sealed partial class EffectiveMovementBinding : IDisposable
             throw new ArgumentException("A public explicit environment and the Contact selector are two movement selections.", nameof(tuning));
         MovementConfigurationValidation.ValidateExplicit(tuning, water);
         return new(EffectiveMovementBindingKind.PublicExplicit, tuning, water, environment);
+    }
+
+    internal EffectiveMovementBinding CreateProofBinding()
+    {
+        AssertUsable();
+        if (Kind != EffectiveMovementBindingKind.OrdinaryContact)
+            throw new InvalidOperationException("A navigation proof binding requires ordinary contact movement.");
+        var tuning = Tuning with { WalkSpeed = 1, RunSpeed = 1, AirMomentum = false };
+        return new(Kind, tuning, Water, _context, _ordinary, _view, composition: _composition);
     }
 
     public MovementQueryScope CreateOrdinaryScope(in MovementFrameDescriptor frame)

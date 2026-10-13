@@ -4,11 +4,13 @@ using System.Numerics;
 using System.Reflection;
 using System.Threading;
 using KhaozEngine.Primitives;
+using KhaozEngine.Render2D;
 using KhaozEngine.Render3D;
 using Xunit;
 
 namespace KhaozEngine.Tests;
 
+[Collection("AllocSensitive")]
 public sealed class NameplateLegacyTemplateTests
 {
     [Fact]
@@ -84,6 +86,31 @@ public sealed class NameplateLegacyTemplateTests
             content, 1000, 1000, ref state));
         Assert.Equal(freshCanvas.Calls, canvas.Calls);
         Assert.Equal("fill 447.000 470.000 106.000 30.000 0.080 0.090 0.110 0.990 6.000", canvas.Calls[0]);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(4)]
+    public void AWarmLegacyDrawAllocatesNothing(int barCount)
+    {
+        var canvas = new CountingCanvas(new FixedGlyphFont(6f, 10f));
+        Nameplate plate = Plate(barCount);
+        NameplateStyle style = NameplateStyle.Default;
+        NameplatePlacementState state = default;
+        var anchor = new Vector2(500f, 500f);
+        Assert.True(NameplateRenderer.DrawAt(ref canvas, anchor, plate, style, 1000, 1000, ref state));
+        Assert.True(NameplateRenderer.DrawAt(ref canvas, anchor, plate, style, 1000, 1000, ref state));
+        int warmCalls = canvas.Calls;
+        GC.GetAllocatedBytesForCurrentThread();
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        bool drawn = NameplateRenderer.DrawAt(ref canvas, anchor, plate, style, 1000, 1000, ref state);
+        long after = GC.GetAllocatedBytesForCurrentThread();
+
+        Assert.True(drawn);
+        Assert.Equal(warmCalls + warmCalls / 2, canvas.Calls);
+        Assert.Equal(before, after);
     }
 
     [Fact]
@@ -165,6 +192,18 @@ public sealed class NameplateLegacyTemplateTests
         Assert.Equal(3, canvas.Calls.Count);
         Assert.Equal("fill 447.000 480.000 106.000 20.000 0.080 0.090 0.110 0.920 6.000", canvas.Calls[0]);
         Assert.Equal("text \"Ox\" 494.000 485.000 1.000 1.000 1.000 1.000 1.000", canvas.Calls[2]);
+    }
+
+    private struct CountingCanvas(ITextMeasurer font) : INameplateCanvas
+    {
+        public ITextMeasurer Font => font;
+        public int Calls { get; private set; }
+
+        public void FillRounded(Vector4 rect, Color color, float cornerRadius) => Calls++;
+        public void StrokeRounded(Vector4 rect, Color color, float cornerRadius, float thickness) => Calls++;
+        public void Text(string text, Vector2 position, Color color, float scale) => Calls++;
+        public void OutlinedText(string text, Vector2 position, Color color, Color outline, float thickness, float scale) =>
+            Calls++;
     }
 
     private static object? ChangedValue(Type type, object? value)

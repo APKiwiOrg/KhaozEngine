@@ -601,6 +601,39 @@ not become `MapSpawn`. R6 chooses role registries and spawn projections. R8 rend
 geometry composition, aggregate expansion charges, remapping and editor lifecycle commands are separate stages.
 This payload layer adds no rendering, physics or editor dependency.
 
+## Pure prefab and interior preparation
+
+`MapPrefabEdits.Prepare(document, assets, edit)` returns a detached `MapPrefabEditResult` with `After`, a named
+`MapNativeWriteSet` and `MapNativeEditEffects`. Place, move, keyed override, child restore, remove and unpack prepare
+one complete candidate against the matching captured closure. The input document and allocator never advance.
+New numeric reservations belong to the candidate until publication accepts it. Remove overrides retain `Previous`,
+so restore preserves customization and reuses the original typed and numeric bindings.
+
+`PrepareAssetUpdate(document, beforeAssets, afterAssets, edit)` reads both pinned definitions explicitly and updates
+every live referring instance in one candidate. It selects `afterAssets.Roots` in `After.NativeAssets` and marks the
+native asset write. Removed source tombstones and their transferred descriptors are historical owners and remain
+unchanged. The caller publishes immutable asset bytes before accepting the document and closure switch.
+
+`MapUnpackPrefab` moves every live child to its standalone home with the same world ID and numeric ID. It retains
+precise binary64 poses, explicit storeys with standalone ownership, authored roof inventory and scoped references.
+The removed source keeps dormant reservations. Transfer rows capture each support and light edge, its verified
+resource pin, live children, record anchors and owner-relative poses. Empty rows suppress the whole advertised edge.
+Standalone expansion validates and reuses these descriptors without reading or regenerating the attached payload.
+
+`MapPrefabExtraction.Extract(document, assets, selected, origin, assetId)` refuses partial room, floor, roof or
+materialized-owner selections. Selected references become explicit Local slots and external references remain World.
+Captured attachments become asset-local materialization rows with precise rebased owner frames, captured definitions
+and fresh local descriptor pins. Extraction preserves edited support heights and emissions rather than reading their
+original leaf payloads. `MapPrefabAssetEdits.Replace(asset, child, remove)` prepares immutable add, replace and remove
+edits through the same captured-frame reconciliation. Value-only replacements preserve precise frames, and removal
+keeps an empty suppression row. Local history restores the captured asset snapshot and its mapping.
+
+`MapInteriorEdits.Prepare` handles standalone prism domains and roof links/groups through the same complete candidate
+gate. Preparation validates authored parents, room coverage and complete effective water containment. Effects name
+instances, children and the effective roof, light and marker inventories. Empty additions are omitted from `Describe`,
+and the released positional write-set and effect constructors remain unchanged. Physical bounds and editor publication
+are later stages. These APIs have no editor, tool, rendering or physics dependency.
+
 ## Format versioning
 
 `MapDocumentFile.CurrentFormatVersion` is the version this engine build reads and writes, currently 7.

@@ -65,6 +65,12 @@ public sealed record MapNativeEditEffects(MapBox3? OldBounds, MapBox3? NewBounds
     /// <summary>The water bodies the edit changes, empty when it changes none.</summary>
     public IReadOnlyList<string> WaterBodyIds { get; init; } = Array.Empty<string>();
 
+    public IReadOnlyList<string> InstanceIds { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> ChildIds { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> RoofIds { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> LightIds { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> MarkerIds { get; init; } = Array.Empty<string>();
+
     /// <summary>Compact canonical JSON with fixed field order, ordinal IDs and invariant numbers. <c>waterBodyIds</c>
     /// follows <c>dependencyIds</c> only when <see cref="WaterBodyIds"/> is not empty. Spatial bounds follow the reported
     /// bounds only when they differ, preserving descriptions whose extents already agree.</summary>
@@ -92,6 +98,11 @@ public sealed record MapNativeEditEffects(MapBox3? OldBounds, MapBox3? NewBounds
             WriteIds(writer, "dependencyIds", DependencyIds);
             // Written only when present, so every description without water keeps its bytes.
             if (WaterBodyIds.Count != 0) WriteIds(writer, "waterBodyIds", WaterBodyIds);
+            if (InstanceIds.Count != 0) WriteIds(writer, "instanceIds", InstanceIds);
+            if (ChildIds.Count != 0) WriteIds(writer, "childIds", ChildIds);
+            if (RoofIds.Count != 0) WriteIds(writer, "roofIds", RoofIds);
+            if (LightIds.Count != 0) WriteIds(writer, "lightIds", LightIds);
+            if (MarkerIds.Count != 0) WriteIds(writer, "markerIds", MarkerIds);
             writer.WriteStartArray("digestChanges");
             foreach (MapDigestChange change in DigestChanges.OrderBy(c => c.Key, StringComparer.Ordinal)
                 .ThenBy(c => c.Before, StringComparer.Ordinal).ThenBy(c => c.After, StringComparer.Ordinal))

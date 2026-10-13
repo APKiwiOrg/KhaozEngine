@@ -3,6 +3,7 @@ using System.Linq;
 using System.Numerics;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Physics;
+using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.Physics;
@@ -14,6 +15,23 @@ namespace KhaozEngine.Tests.MapDoc.Physics;
 
 public class MapPrefabSupportTests
 {
+    [Fact]
+    public void UnpackedSupport_StaticsAndFaceOwnersStaySingle()
+    {
+        var f = PrefabFixtures.SupportWithEmbeddedRecord();
+        var before = PrefabPhysicsFixtures.Build(f);
+        var prepared = MapPrefabEdits.Prepare(f.Document, f.Assets, new MapUnpackPrefab("a"));
+        foreach (var document in new[] { prepared.After, MapDocumentFile.LoadText(MapDocumentFile.SaveText(prepared.After)) })
+        {
+            var after = PrefabPhysicsFixtures.Build(new(document, f.Assets));
+            Assert.NotEmpty(before.Statics);
+            Assert.Equal(before.Statics.Select(s => (s.OwnerId, s.Digest)), after.Statics.Select(s => (s.OwnerId, s.Digest)));
+            Assert.NotEmpty(before.Terrain.Chunks.SelectMany(c => c.TriangleOwners));
+            Assert.Equal(before.Terrain.Chunks.SelectMany(c => c.TriangleOwners), after.Terrain.Chunks.SelectMany(c => c.TriangleOwners));
+            Assert.Single(after.Surfaces.Surfaces, s => s.Id == PrefabFixtures.SupportFloorId);
+        }
+    }
+
     [Fact]
     public void LocalFloor_HasCanonicalFaceAndOccupiedRoomOwner()
     {

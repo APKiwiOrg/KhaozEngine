@@ -52,7 +52,18 @@ public static class MapPrefabValidation
                 foreach (MapPrefabBinding binding in instance.Bindings.Entries) Binding(binding);
                 Unique(instance.Overrides, o => o.Child, "override");
                 foreach (MapPrefabOverride value in instance.Overrides) Override(value);
+                // A removed source owns reservations only. Its immutable version is historical and may no longer
+                // be selected by the current closure after an asset update. Transfers validate their standalone homes.
                 if (assets is null) continue;
+                if (instance.Removed)
+                {
+                    if (assets.TryGetResource(instance.ResourceId, out var captured) && captured!.Reference.Sha256 == instance.ResourceSha256)
+                    {
+                        var source = assets.GetPrefab(instance.ResourceId);
+                        RequireBindings(instance, MapPrefabChildSet.Compute(source, assets, instance.Overrides), set.Transfers);
+                    }
+                    continue;
+                }
                 MapResolvedResource resource = assets.GetResource(instance.ResourceId);
                 if (resource.Kind != MapResourceKind.Prefab || resource.Reference.Sha256 != instance.ResourceSha256)
                     Fail("Instance '" + instance.Id + "' does not match its verified Prefab resource.");
@@ -64,8 +75,9 @@ public static class MapPrefabValidation
                     if (!keys.Add(add.Child)) Fail("Add override duplicates a declared child.");
                 foreach (MapPrefabOverride value in instance.Overrides)
                     if (!keys.Contains(value.Child)) Fail("Override names an undeclared child.");
-                RequireBindings(instance, MapPrefabChildSet.Compute(asset, assets, instance.Overrides), set.Transfers);
                 var reconciled = MapPrefabMaterializationOverrides.Reconcile(asset, instance.Overrides);
+                var childSet = MapPrefabChildSet.Compute(asset, assets, instance.Overrides);
+                RequireBindings(instance, childSet, set.Transfers);
                 var effective = reconciled.EffectiveAsset.Children.ToDictionary(c => c.Key);
                 foreach (MapPrefabOverride retained in Intents(instance.Overrides))
                 {

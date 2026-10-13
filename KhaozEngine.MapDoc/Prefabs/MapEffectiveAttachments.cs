@@ -57,7 +57,8 @@ internal static class MapEffectiveAttachments
                 case MapPrefabChildKind.Surface:
                     var surface = document.Surfaces.Refs.SingleOrDefault(s => s.Id == child.WorldId)
                         ?? throw new MapDocumentException("Missing captured support surface.");
-                    result.Add(new MapPrefabSurfaceChild(key, surface, document.Surfaces.Patches.Values.Where(p => p.Key.SurfaceId == child.WorldId).ToArray()));
+                    result.Add(new MapPrefabSurfaceChild(key, surface, document.Surfaces.Patches.Values.Where(p => p.Key.SurfaceId == child.WorldId).Select(p =>
+                    { var copy = p.Clone(); copy.Records.Clear(); return copy; }).ToArray()));
                     break;
                 case MapPrefabChildKind.Record:
                     if (child.Anchor is not { } anchor || !document.Surfaces.TryGetRecord(new(child.WorldId, anchor), out var record))
@@ -71,6 +72,10 @@ internal static class MapEffectiveAttachments
                     break;
                 default: throw new MapDocumentException("Invalid captured attachment child kind.");
             }
+            var descriptor = result[^1];
+            var frame = document.NativeResourceTransforms!.Single(t => t.Kind == child.LocalChild.Kind && t.OwnerId == child.WorldId).Transform;
+            if (MapPrefabAttachmentDescriptors.Digest(descriptor, frame) != child.SourceDigest)
+                throw new MapDocumentException($"Captured descriptor '{child.WorldId}' differs from its persisted digest.");
         }
         return result.AsReadOnly();
     }

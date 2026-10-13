@@ -18,6 +18,11 @@ public sealed record MapNativeWriteSet(IReadOnlyList<MapPatchKey> Patches, IRead
     /// <summary>True when publication replaces the complete bounded water set, including a null legacy section.</summary>
     public bool Water { get; init; }
 
+    public bool Prefabs { get; init; }
+    public bool BuildingIntent { get; init; }
+    public bool NativeResourceTransforms { get; init; }
+    public bool NumericReservations { get; init; }
+
     public static MapNativeWriteSet PlacementsOnly { get; } = new(Array.Empty<MapPatchKey>(),
         Array.Empty<string>(), Array.Empty<string>(), Array.Empty<string>(), Array.Empty<MapCornerOwnerChange>(),
         Array.Empty<ushort>(), true);

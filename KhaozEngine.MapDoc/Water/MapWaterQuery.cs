@@ -34,6 +34,7 @@ public sealed class MapWaterQuery
         WaterDigest = _bodies.Any(b => b.Effective is not null) ? MapWaterJson.Hash("kemap/effective-water-query/1", w =>
         {
             w.WriteStartArray();
+            w.WriteStringValue(snapshot.Digest());
             foreach (var body in _bodies.OrderBy(b => b.Doc.Id, StringComparer.Ordinal))
             { w.WriteStringValue(body.Doc.Id); w.WriteStringValue(body.Effective?.Digest ?? MapWaterSet.BodyDigest(body.Doc)); }
             w.WriteEndArray();

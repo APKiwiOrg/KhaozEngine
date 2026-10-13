@@ -370,6 +370,37 @@ public class MapPrefabWaterTests
         Assert.All(a.Regions, r => Assert.Null(r.Fragment));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void EffectiveQueryDigest_IncludesCapturedWorldMedia(bool unused)
+    {
+        var r = PrefabFixtures.Effective(PrefabFixtures.WorldAndLocalWater());
+        var view = r.CompleteView();
+        var water = r.Water!;
+        string key = unused ? "unused-water" : "world-water";
+        if (unused) water.Media.Add(new(key, MapWaterMediumKind.Water, 1));
+        var captured = new MapWaterQuery(view, water);
+        string digest = captured.WaterDigest;
+        string setDigest = water.Digest();
+        string worldDigest = MapWaterSet.BodyDigest(water.Bodies.Single(b => b.Id == "world-ocean"));
+        var local = MapWaterCompiler.Compile(view, water).Single(b => b.BodyId == "a/pool-water");
+        Assert.Equal(MapWaterCompileStatus.Complete, local.Status);
+
+        int medium = water.Media.FindIndex(m => m.Key == key);
+        water.Media[medium] = water.Media[medium] with { WadeSpeedScale = 0.25f };
+        var changedLocal = MapWaterCompiler.Compile(view, water).Single(b => b.BodyId == "a/pool-water");
+        Assert.Equal(MapWaterCompileStatus.Complete, changedLocal.Status);
+        Assert.Equal(local.Digest, changedLocal.Digest);
+        Assert.Equal(worldDigest, MapWaterSet.BodyDigest(water.Bodies.Single(b => b.Id == "world-ocean")));
+        Assert.NotEqual(setDigest, water.Digest());
+        var changed = new MapWaterQuery(view, water);
+        Assert.NotEqual(digest, changed.WaterDigest);
+        Assert.Equal(digest, captured.WaterDigest);
+        Assert.Equal(digest, captured.Sample(new(default, new(20, -1, -20))).WaterDigest);
+        Assert.Equal(changed.WaterDigest, changed.Sample(new(default, new(20, -1, -20))).WaterDigest);
+    }
+
     [Fact]
     public void RefusedAcquisition_PreservesCapacityInCompilerAndQuery()
     {
@@ -384,6 +415,27 @@ public class MapPrefabWaterTests
         Assert.Contains("capacity", body.Detail);
         var sample = new MapWaterQuery(refused, r.Water!).Sample(PrefabFixtures.PoolProbe(r));
         Assert.Equal(MapWaterStatus.CapacityExceeded, sample.Status);
+    }
+
+    [Fact]
+    public void ContainmentCapacity_ReturnsPublicReportAndKeepsCompileStatus()
+    {
+        var r = PrefabFixtures.Effective(PrefabFixtures.Create("all-resources"));
+        var view = r.CompleteView();
+        var water = r.Water!.Clone();
+        water.Bodies[0] = water.Bodies[0] with { Domain = PrefabFixtures.Domain(0, 0, 5000, 5000) };
+        var body = Assert.Single(MapWaterCompiler.Compile(view, water));
+        Assert.Equal(MapWaterCompileStatus.CapacityExceeded, body.Status);
+        Assert.Equal("water bound cells", body.Detail);
+        Assert.Empty(body.Regions);
+        Assert.Empty(body.ClosedContours);
+        Assert.Empty(body.FragmentBounds);
+        var sample = new MapWaterQuery(view, water).Sample(PrefabFixtures.PoolProbe(r));
+        Assert.Equal((MapWaterStatus.CapacityExceeded, "water bound cells"), (sample.Status, sample.Detail));
+
+        var report = MapWaterContainment.Validate(view, water);
+        Assert.False(report.Complete);
+        Assert.Equal("water body 'a/pool-water': unverified (water bound cells)", Assert.Single(report.Errors));
     }
 
     [Theory]

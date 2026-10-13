@@ -13,8 +13,8 @@ internal sealed class MapWaterWorkBudget
 
     public MapWaterWorkBudget(long limit = MapWaterDomain.MaxPairChecks) : this(limit, compile: false) { }
 
-    /// <summary>A compile budget throws <see cref="MapWaterCapacityException"/> instead, which no validation step
-    /// catches, so the compile refuses with its limit rather than reporting the overrun as unverified.</summary>
+    /// <summary>A compile budget throws <see cref="MapWaterCapacityException"/> instead, which prepared containment
+    /// propagates, so the compile refuses with its limit rather than reporting the overrun as unverified.</summary>
     internal MapWaterWorkBudget(long limit, bool compile, MapWaterWorkBudget? parent = null)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(limit);

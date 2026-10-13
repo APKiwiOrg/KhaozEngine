@@ -15,6 +15,21 @@ public class MapWaterQueryTests
     static MapWaterSample At(float x, float y, float z) => WaterFixtures.Query(Doc).Sample(WaterFixtures.Point(x, y, z));
 
     [Fact]
+    public void EmptyDomain_KeepsReleasedQueryRefusalDetail()
+    {
+        var doc = WaterFixtures.OceanOverCaves();
+        int ocean = doc.Water!.Bodies.FindIndex(b => b.Id == "ocean");
+        var body = doc.Water.Bodies[ocean];
+        doc.Water.Bodies[ocean] = body with { Domain = body.Domain with { Rects = [], Rings = [] } };
+        var query = WaterFixtures.Query(doc);
+        var sample = query.Sample(WaterFixtures.Point(4, -1, -2));
+        var column = Assert.Single(query.Column(WaterFixtures.Point(9, 0, -2)));
+        const string detail = "water body 'ocean': water domain: domain is empty.";
+        Assert.Equal((MapWaterStatus.Invalid, detail), (sample.Status, sample.Detail));
+        Assert.Equal((MapWaterStatus.Invalid, detail), (column.Status, column.Detail));
+    }
+
+    [Fact]
     public void Ocean_DoesNotWetTheDryCaveBelowIt()
     {
         MapWaterSample s = At(2, -55, -2);
@@ -124,6 +139,20 @@ public class MapWaterQueryTests
         Assert.Same(view.ReadWitness, s.Witness);
         Assert.Equal((digest, digest), (query.WaterDigest, s.WaterDigest));
         Assert.Equal((MapWaterStatus.Wet, "cave-lake", -34f), (s.Status, s.BodyId, s.NominalSurfaceY));
+    }
+
+    [Fact]
+    public void WorldMediumEdit_KeepsReleasedWaterSetDigest()
+    {
+        var doc = WaterFixtures.OceanOverCaves();
+        var captured = WaterFixtures.Query(doc);
+        string digest = doc.Water!.Digest();
+        Assert.Equal(digest, captured.WaterDigest);
+        doc.Water.Media[0] = doc.Water.Media[0] with { WadeSpeedScale = 0.25f };
+        var changed = WaterFixtures.Query(doc);
+        Assert.Equal(doc.Water.Digest(), changed.WaterDigest);
+        Assert.NotEqual(digest, changed.WaterDigest);
+        Assert.Equal(digest, captured.WaterDigest);
     }
 
     [Fact]

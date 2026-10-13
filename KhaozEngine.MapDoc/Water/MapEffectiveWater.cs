@@ -29,7 +29,7 @@ internal static class MapEffectiveWater
         if (transform is not null) level = transform.Height(level);
         var errors = new List<string>();
         var domain = MapWaterDomain.TryCompileEffective(source.Domain, transform, errors, budget)
-            ?? throw new MapDocumentException(errors[0]);
+            ?? throw new MapDocumentException(transform is null ? "water domain: " + errors[0] + "." : errors[0]);
         string digest = transform is null ? "" : MapPrefabJson.Digest("kemap/effective-water/1", new
         { Definition = MapWaterSet.BodyDigest(source), Pose = transform.Transform, QueryPolicy = 2 });
         return new(source, domain, level, body.Id, Array.AsReadOnly(body.Covers.ToArray()), digest);

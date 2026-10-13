@@ -66,6 +66,7 @@ public static class MapWaterContainment
         string? unverified;
         try { unverified = ValidateBody(view, body, prepared, errors, ref graph, work); }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException) { unverified = "not representable"; }
+        catch (MapWaterCapacityException error) when (prepared is null) { unverified = error.Message; }
         catch (MapDocumentException error) when (Invalid(error))
         {
             errors.Add($"water body '{body.Id}': {error.Message}");

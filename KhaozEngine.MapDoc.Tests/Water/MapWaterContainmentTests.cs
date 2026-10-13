@@ -16,6 +16,18 @@ public class MapWaterContainmentTests
     static MapWaterContainmentReport Check(MapDocument doc) => MapWaterContainment.Validate(CaveFixtures.View(doc), doc.Water!);
 
     [Fact]
+    public void EmptyDomain_KeepsReleasedContainmentRefusalDetail()
+    {
+        var doc = WaterFixtures.OceanOverCaves();
+        int ocean = doc.Water!.Bodies.FindIndex(b => b.Id == "ocean");
+        var body = doc.Water.Bodies[ocean];
+        doc.Water.Bodies[ocean] = body with { Domain = body.Domain with { Rects = [], Rings = [] } };
+        var report = Check(doc);
+        Assert.True(report.Complete);
+        Assert.Equal("water body 'ocean': water domain: domain is empty.", Assert.Single(report.Errors));
+    }
+
+    [Fact]
     public void SharedFixtures_Validate()
     {
         MapWaterContainmentReport ocean = Check(WaterFixtures.OceanOverCaves());

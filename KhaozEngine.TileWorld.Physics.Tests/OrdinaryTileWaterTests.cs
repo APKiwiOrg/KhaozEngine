@@ -22,12 +22,50 @@ public class OrdinaryTileWaterTests
     {
         using var scene = new TileScene(WaterTraversalMode.SurfaceSwimmer);
         using var lease = scene.Acquire();
-        var state = scene.State(new(10, scenario == "SurfaceExit" ? 1 : -1, -10), false);
+        var state = scene.State(new(scenario == "SurfaceExit" ? 8.3f : 10, -1, -10), false);
         var result = scene.Binding.StepTowards(state, Vector2.Zero, false, 1f / 30, lease);
         Assert.Equal(MovementStepOutcome.Advanced, result.Outcome);
-        if (scenario == "SurfaceExit") { Assert.False(result.State.State.Swimming); return; }
         Assert.True(result.State.State.Swimming);
         Assert.True(result.State.State.Position.Y > -1);
+        if (scenario == "SurfaceExit")
+        {
+            var swimming = result.State;
+            var body = new MovementBodyQuery(swimming.State.Position, scene.Tuning.CapsuleRadius,
+                scene.Tuning.CapsuleHalfHeight, swimming.Selection!.Value.Space, null);
+            var point = lease.SampleCentreWater(body);
+            Assert.Equal(MovementAvailability.Known, point.Availability);
+            Assert.True(point.InWater);
+            Assert.Equal(0, point.Interval!.Value.UpperY);
+            var spans = new MovementCoverageSpan[64];
+            var contacts = new MovementDomainContact[256];
+            var wetCoverage = lease.TraceWater(new(body, Vector3.Zero), spans, contacts);
+            Assert.Equal(MovementAvailability.Known, wetCoverage.Availability);
+            Assert.All(spans[..wetCoverage.SpansWritten], span => Assert.False(span.HasDryCoverage));
+
+            var exit = scene.Binding.StepTowards(swimming, -Vector2.UnitX, false, 0.3f, lease);
+            Assert.Equal(MovementStepOutcome.Advanced, exit.Outcome);
+            Assert.False(exit.State.State.Swimming);
+            Assert.False(exit.State.State.Grounded);
+            Assert.Equal(WaterExcursionState.AirborneFromWater, exit.State.State.WaterExcursion);
+            Assert.True(exit.State.State.Position.X + scene.Tuning.CapsuleRadius < 8);
+            Assert.Equal(-10, exit.State.State.Position.Z);
+            Assert.True(exit.State.State.Position.Y - scene.Tuning.CapsuleHalfHeight < 0);
+            Assert.Equal(Vector3.Zero, exit.State.Frame.PhysicsOrigin);
+            Assert.Equal(scene.Frame, exit.State.Frame);
+            Assert.Equal(0, exit.State.State.StepDeltaY);
+            var dryBody = new MovementBodyQuery(exit.State.State.Position, body.Radius, body.HalfHeight, body.CurrentSpace, null);
+            var dryCoverage = lease.TraceWater(new(dryBody, Vector3.Zero), spans, contacts);
+            Assert.Equal(MovementAvailability.Known, dryCoverage.Availability);
+            Assert.True(dryCoverage.IsValid);
+            Assert.Equal(lease.Identity, dryCoverage.Identity);
+            Assert.InRange(dryCoverage.CertifiedErrorMetres, 0f, 0.001f);
+            Assert.Equal(0, dryCoverage.ContactsWritten);
+            var drySpan = Assert.Single(spans[..dryCoverage.SpansWritten]);
+            Assert.Equal(0, drySpan.EnterFraction);
+            Assert.Equal(1, drySpan.ExitFraction);
+            Assert.True(drySpan.HasDryCoverage);
+            return;
+        }
         if (scenario != "BuoyancyAndHop") return;
         var surface = new MoveState { Position = new(10, -0.15f, -10), Swimming = true, WaterExcursion = WaterExcursionState.Surface };
         var hop = scene.Binding.Step(new(surface, scene.Frame, null), new(Vector2.Zero, false, 0, jump: true), 1f / 30, lease);
@@ -61,8 +99,12 @@ public class OrdinaryTileWaterTests
         Assert.Equal("BedAndDownSeat", scenario);
         using var scene = new TileScene(WaterTraversalMode.SurfaceSwimmer, scenario);
         using var lease = scene.Acquire();
-        var fallingState = new MoveState { Position = new(16, -3, -10), VerticalVelocity = -20,
-            WaterExcursion = WaterExcursionState.AirborneFromWater };
+        var fallingState = new MoveState
+        {
+            Position = new(16, -3, -10),
+            VerticalVelocity = -20,
+            WaterExcursion = WaterExcursionState.AirborneFromWater
+        };
         var falling = new FramedMovementState(fallingState, scene.Frame, null);
         var result = scene.Binding.Step(falling, new(Vector2.Zero, false, 0), 0.2f, lease);
         Assert.Equal(MovementStepOutcome.Advanced, result.Outcome);

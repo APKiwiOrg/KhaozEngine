@@ -143,6 +143,7 @@ internal static class TileCapsuleBoxPath
 
     static void Insert(I at, double enter, double exit, Span<Cut> cuts, ref int count, ref double error, double length)
     {
+        if (at.High < enter || at.Low > exit) return;
         error = Math.Max(error, (at.High - at.Low) * length);
         double value = Math.Clamp(Mid(at), enter, exit);
         if (value <= enter || value >= exit) return;

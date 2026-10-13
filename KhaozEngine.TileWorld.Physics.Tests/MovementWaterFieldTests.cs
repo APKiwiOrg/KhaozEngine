@@ -27,6 +27,36 @@ public class MovementWaterFieldTests
         TileWorldColliders.Build(doc, TileWorldPhysicsTestData.Catalogs(), "water-world").Medium;
 
     [Fact]
+    public void FullyContainedSweepCertifiesWithZeroAndTinyNonzeroComponents()
+    {
+        var field = Field(WaterWorld());
+        var body = new MovementBodyQuery(new(0.5f, -0.5f, 0.5f), 0.1f, 0.25f, Space, null);
+        foreach (float dx in new[] { 0f, 1e-15f })
+        {
+            var spans = new MovementCoverageSpan[64];
+            var contacts = new MovementDomainContact[256];
+            var result = field.TraceWater(new(body, new(dx, 0, 0.1f)), Identity, spans, contacts);
+            Assert.Equal(MovementAvailability.Known, result.Availability);
+            Assert.True(result.IsValid);
+            Assert.Equal(Identity, result.Identity);
+            Assert.InRange(result.CertifiedErrorMetres, 0f, 0.001f);
+            var span = Assert.Single(spans.Take(result.SpansWritten));
+            Assert.True(span.IsValid);
+            Assert.Equal(0, span.EnterFraction);
+            Assert.Equal(1, span.ExitFraction);
+            Assert.False(span.HasDryCoverage);
+            Assert.True(span.ContactCount > 0);
+            Assert.Equal(result.ContactsWritten, span.ContactCount);
+            Assert.All(contacts.Take(result.ContactsWritten), contact =>
+            {
+                Assert.True(contact.IsValid);
+                Assert.Equal(Space, contact.Space);
+                Assert.Equal(MovementContactOverlap.Overlapping, contact.SpanOverlap);
+            });
+        }
+    }
+
+    [Fact]
     public void RoundedCornerDoesNotUseAnExpandedBox()
     {
         var field = Field(WaterWorld());

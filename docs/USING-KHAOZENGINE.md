@@ -1742,6 +1742,13 @@ Map positions are metres with x east and y north. `MapRect` has a south-west ori
 Use the source's `ToMap` and `ToMapHeading` for live world poses. Headings are radians clockwise from north,
 and marker artwork points north at zero heading. The view handles the screen's downward y axis.
 
+`WorldMapSymbol(Kind, Fill, Outline)` also accepts an optional `Vector2? SizeMetres` init property.
+For a tree crown, set `SizeMetres = new Vector2(3.5f)` on the symbol. These full local dimensions follow the footprint's centre and rotation,
+including building shadows. Sized walls use both dimensions instead of the style's wall width.
+Null keeps the authored dimensions and existing raster bytes. Raster queries and invalidation include
+the largest visible drawn half diagonal at every chunk level. Coarse filtering still uses the authored
+footprint to preserve source-side materialization limits. Icon anchors and hover bounds are unchanged.
+
 Keep the `TileWorldDocument` and `TileWorldCatalogs` unchanged while a `TileWorldMapSource` is in use. Its
 `Revision` stays zero and it never raises `Changed`. After edits or loaded-region changes, stop and dispose
 the old map pipeline and create a new source, cache, worker and view. `surfacePlane` selects terrain, objects
@@ -7924,7 +7931,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.34.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.34.1" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -8220,7 +8227,7 @@ On the dev Mac a 36,864-column flat world wrote 664,689 bytes and loaded in abou
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.34.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.34.1" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -8962,7 +8969,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.34.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.34.1" />
 ```
 
 ```csharp
@@ -16280,7 +16287,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.34.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.34.1" />
 ```
 
 ```csharp
@@ -16316,7 +16323,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.34.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.34.1" />
 ```
 
 ```csharp
@@ -16558,7 +16565,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.34.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.34.1" />
 ```
 
 ```csharp
@@ -20918,7 +20925,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.34.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.34.1" />
 </ItemGroup>
 ```
 

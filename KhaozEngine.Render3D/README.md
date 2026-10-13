@@ -1128,7 +1128,7 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     stability contract as the placement hysteresis above. `NameplateTierState` is the caller-held per-entity state
     (one per plate, exposing `Tier`). `.TextOnly` pairs with `NameplateTier.Text`: zero panel alpha, zero border,
     zero `MinBarWidth`, a black `TitleShadow`, drawn against a `Nameplate` carrying no `Bars`.
-  - Component nameplate templates (20.34.0), the modular form of the plate above. A `NameplateTemplate` is an
+  - Component nameplate templates (20.35.0), the modular form of the plate above. A `NameplateTemplate` is an
     ordered list of components, each bound to a `NameplateSlot` (`Name`, `Level`, `Health`, or any string key):
     `NameplateTextComponent` (font scale, optional eight-way outline, optional shadow, its own `MaxWidth`
     ellipsis cap), `NameplateBadgeComponent` (padded text on a rounded base fill, washed by the content's

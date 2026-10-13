@@ -4,7 +4,7 @@ Date: 2026-10-08, revised 2026-10-09 for ground ownership. Specifies [#438](http
 direction chosen in [PHYSICS-LOCOMOTION-DESIGN-2026-08-02.md](PHYSICS-LOCOMOTION-DESIGN-2026-08-02.md).
 Status: phases 1 and 2 are implemented and released in 20.30.0, phase 2b is released in 20.31.0, phases 3 and 4a are released in
 20.32.0, phase 4b is released in 20.33.0, complete footprint support is released in 20.34.0, and phase 5a ordinary
-runtime selection is implemented and staged in 20.37.0. Opt-in explicit locomotion uses the shared contact controller
+runtime selection is released in 20.37.0. Opt-in explicit locomotion uses the shared contact controller
 for land and placement, composed with swimming's medium proofs. Legacy movement is unchanged.
 Phase 5b navigation is next. Phase 6 game adoption remains separate. No game adopts before
 #1355 certified sweep shapes, #1334 cost, #1347 hidden support and #1344 small bodies are resolved.

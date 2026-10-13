@@ -5,17 +5,24 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 20.37.0
+## 20.38.0
 
-- Ordinary contact navigation admits captured surfaces at certified resting anchors, preserving raw layers,
-  headroom and areas. Wet unit-pace bindings prove Holds, directed edges and Stair links from movement outcomes.
-  Fresh grids publish resting feet heights, and unknown anchor queries or changed lease bases refuse the bake.
-- Contact navigation converts local certified anchors to absolute captured feet once, preserving resting heights
-  and traversal graphs when physics has a nonzero horizontal or vertical origin.
+- Navigation bake doors normalize effective profile kinds before identity work or stream reads. Malformed Contact
+  selections refuse as arguments, while Contact aquatic profiles name #1389. Captures record and verify leased
+  geometry and origin, retain their classifier and require a medium delegate when sampling a contact water field.
+- NavGrid separates optional resting feet heights from raw surface identity. Region goals, layer lookup,
+  ground navigation and bake proof endpoints use the resting pose, with unchanged surface fallback for legacy grids.
 - Locomotion exposes internal contact navigation proof bindings and certified resting anchors without
   water admission or motion routes. Cold placement seats only with footing, preserving a swimmer's float
   pose and a falling body's vertical velocity when footing is denied. Explicit grounded arrival uses the
   shared 1 mm sphere at Hold and destination, with route proof recipe 2 and unchanged swimming tolerance.
+- Ordinary contact ground navigation admits captured surfaces at certified resting anchors, preserving raw layers,
+  headroom and areas. Wet unit-pace bindings prove Holds, directed edges and Stair links from movement outcomes.
+  Fresh grids publish resting feet heights in the capture frame, and unknown anchor queries or changed lease bases
+  refuse the bake.
+
+## 20.37.0
+
 - Locomotion adds ordinary contact selection through `MoveTuning.Controller`, `FootRadiusFraction` and `Water`,
   retaining its 30-parameter constructor and Legacy defaults. Network heads, prediction/replay, ground movement
   drivers and the local 3D controller share the leased kernel through one effective binding. Spawn, restore,
@@ -36,13 +43,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   the player read-release callback is cached. Older support-cost evidence supplies defaults for absent selector,
   foot and water fields without changing committed baselines.
 - Resolver-1 MapDoc contexts record their G1b refusal through public construction options. Contact approach
-  pacing uses the controller's own water classification. Ordinary contact ground navigation now proves resting anchors.
+  pacing uses the controller's own water classification. Contact navigation capture refuses until phase 5b.
   Native G1b, #1299 navigation acceptance and the remaining adoption and hosted cost gates stay open.
-- Navigation bake doors normalize effective profile kinds before identity work or stream reads. Malformed Contact
-  selections refuse as arguments, while Contact aquatic profiles name #1389. Captures record and verify leased
-  geometry and origin, retain their classifier and require a medium delegate when sampling a contact water field.
-- NavGrid separates optional resting feet heights from raw surface identity. Region goals, layer lookup,
-  ground navigation and bake proof endpoints use the resting pose, with unchanged surface fallback for legacy grids.
 - Legacy ground contexts reuse their resource-free binding when navigation alternates source and unit-speed
   probe tuning. Validation and actual per-call movement tuning stay current, preserving the profile allocation budget.
 

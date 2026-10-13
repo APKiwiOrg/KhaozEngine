@@ -21,7 +21,7 @@ analytic-only dry movement. Clamp and dry medium delegates are allowed. A wet po
 The position-only `Step(Vector3, ...)` refuses Contact and names the stateful overload. Legacy requires
 the default foot fraction and the complete default water policy, including zero surface jump speed.
 Undefined selectors throw `ArgumentOutOfRangeException`. Released legacy movement arithmetic is unchanged.
-Phase 5a is implemented and staged in 20.37.0. Network and local heads select the same contact kernel.
+Phase 5a is released in 20.37.0. Network and local heads select the same contact kernel.
 
 Ordinary heads additionally require positive gravity, maximum fall speed and swim-enter depth fraction,
 a non-Legacy water policy, registration, boundary and a view implementing `IPhysicsQueryLeaseSource`,

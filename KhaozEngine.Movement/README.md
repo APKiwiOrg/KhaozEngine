@@ -909,7 +909,7 @@ The profile's supplied water policy governs. `MoveTuning.Water` must be default 
 Both defined `Controller` values produce the same explicit fingerprint. Undefined selectors refuse.
 Construction validates the selected foot geometry and every explicit kernel requirement, including positive
 gravity, maximum fall speed and swim-enter depth fraction. Default foot and water inputs retain their fingerprints.
-Ordinary runtime selection is implemented in phase 5a, staged in 20.37.0. Navigation doors validate Contact
+Ordinary runtime selection is implemented in phase 5a, released in 20.37.0. Navigation doors validate Contact
 configuration, refuse aquatic selection for #1389 and require a leased capture basis for ground construction.
 Ordinary contact ground profiles prove each captured surface at its certified resting anchor. The anchor must keep
 its raw surface's ownership band, fit captured headroom and pass both raw and resting area footprints. Placement and

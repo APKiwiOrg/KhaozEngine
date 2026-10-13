@@ -1,7 +1,7 @@
 # Contact controller phase 5b: navigation
 
 Design for [#438](https://github.com/APKiwiOrg/KhaozEngine/issues/438) phase 5b and the navigation half of
-[#1299](https://github.com/APKiwiOrg/KhaozEngine/issues/1299). Source baseline: `ee6016aae` on `main`, staged 20.37.0
+[#1299](https://github.com/APKiwiOrg/KhaozEngine/issues/1299). Source baseline: `ee6016aae` on `main`, released as v20.37.0
 with phase 5a. The binding inputs are the [phase 5 design](CONTACT-CONTROLLER-PHASE-5-SELECTOR-AND-NAVIGATION-2026-10-13.md#phase-5b-binding-inputs),
 as amended by ruling P5B-1 below. Written under the owner's instruction to continue the program to completion, so every
 choice below is a recorded ruling for the owner's review. Revision 6 answers review rounds 1 to 5.
@@ -298,7 +298,8 @@ is fixed here under P5B-6.
 
 ### P5B-12 Version, placement, determinism and test dispositions
 
-The phase rides staged 20.37.0, because it is ahead of v20.36.0 and its entry is untagged. Navigation types stay in
+The phase cuts 20.38.0, a minor version for the new public navigation API and KENB format 2, because v20.37.0 was
+tagged at `ee6016aae` with phase 5a. Navigation types stay in
 `KhaozEngine.Movement` beside the bake code. The proof binding factory, the anchor query and the settlement rule live in
 `KhaozEngine.Locomotion` beside the code they extend. `KhaozEngine.Navigation` stays free of Locomotion.
 

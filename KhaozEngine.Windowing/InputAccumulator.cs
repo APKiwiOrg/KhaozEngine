@@ -51,6 +51,7 @@ namespace KhaozEngine.Windowing
         float _wheelAccum;
         float _horizontalWheelAccum;
         readonly PointerGestureAccumulator _gestures = new();
+        bool _pointerGesturesAvailable;
         bool _focused = true;   // windows open focused, and OnFocusChanged keeps this in sync.
         readonly StringBuilder _textInput = new();
         bool _textInputAvailable;
@@ -88,6 +89,9 @@ namespace KhaozEngine.Windowing
         /// <summary>Mark a window as supplying OS committed text events, including frames with no text.</summary>
         public void EnableTextInput() => _textInputAvailable = true;
 
+        /// <summary>Declare an authoritative pointer gesture producer for this accumulator's lifetime.</summary>
+        public void EnablePointerGestures() => _pointerGesturesAvailable = true;
+
         /// <summary>Record one committed Unicode scalar value from the OS text callback.</summary>
         public void OnTextInput(uint codepoint)
         {
@@ -122,6 +126,7 @@ namespace KhaozEngine.Windowing
         /// <summary>Record an event-time sample without changing legacy scroll totals.</summary>
         public void OnPointerGesture(PointerGestureSample sample)
         {
+            EnablePointerGestures();
             if (_focused && !_lastCaptured) _gestures.Add(sample);
         }
 
@@ -189,7 +194,8 @@ namespace KhaozEngine.Windowing
             if (!_focused || pointerCaptured || pointerCaptured != _lastCaptured) _gestures.Clear();
 
             var input = new InputState(
-                _gestures.Snapshot(), _horizontalWheelAccum, pointsDelta, scale,
+                _pointerGesturesAvailable ? _gestures.Snapshot() : PointerGestureFrame.Unavailable,
+                _horizontalWheelAccum, pointsDelta, scale,
                 new HashSet<Key>(_keysDown), new HashSet<Key>(_pressed), new HashSet<Key>(_released),
                 new HashSet<MouseButton>(_mouseDown), new HashSet<MouseButton>(_mousePressed),
                 position, delta, _wheelAccum, width, height,

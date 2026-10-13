@@ -35,6 +35,7 @@ internal sealed class NativeGestureRegistration : IDisposable
         _backend = backend;
         _input = input;
         _acceptsInput = acceptsInput;
+        input.EnablePointerGestures();
         if (backend == null) return;
         // Native pointers cannot keep the managed delegate and its storage owner alive.
         _root = GCHandle.Alloc(this);

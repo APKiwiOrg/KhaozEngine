@@ -25,6 +25,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   exposes binding and tuning compatibility checks, and MoveToRange validates its resolved binding before routing.
 - Runtime ground navigation accepts numerically equal signed-zero tuning fields, including reused contact bindings.
   Stored navigation identities retain their bitwise comparisons and deterministic bytes.
+- Disposing a physics navigation capture releases its retained physics source and classifier without disposing
+  caller-owned providers. Immutable columns, options and origin remain available as data.
 
 ## 20.37.0
 

@@ -7,10 +7,12 @@ namespace KhaozEngine.Movement;
 
 /// <summary>Captures bounded immutable absolute columns from caller-owned static physics.
 /// Capture and later profile construction are sequential. Keep statics and origin unchanged until
-/// profile construction finishes, then dispose the builder to release its context references.</summary>
+/// profile construction finishes, then dispose the builder to release its provider references.</summary>
 public sealed partial class PhysicsNavBake : IDisposable
 {
     private GroundMoveContext? _context;
+    private PhysicsNavCaptureBasis? _basis;
+    private NavAreaClassifier? _classifier;
 
     private PhysicsNavBake(GroundMoveContext context, PhysicsNavBakeOptions options,
         Vector3 origin, PhysicsNavColumns columns, PhysicsNavCaptureBasis? basis, NavAreaClassifier classifier)
@@ -19,15 +21,22 @@ public sealed partial class PhysicsNavBake : IDisposable
         Options = options;
         Origin = origin;
         Columns = columns;
-        Basis = basis;
-        Classifier = classifier;
+        _basis = basis;
+        _classifier = classifier;
     }
 
     internal PhysicsNavBakeOptions Options { get; }
     internal Vector3 Origin { get; }
     internal PhysicsNavColumns Columns { get; }
-    internal PhysicsNavCaptureBasis? Basis { get; }
-    internal NavAreaClassifier Classifier { get; }
+    internal PhysicsNavCaptureBasis? Basis
+    {
+        get
+        {
+            if (_context is null) throw new ObjectDisposedException(nameof(PhysicsNavBake));
+            return _basis;
+        }
+    }
+    internal NavAreaClassifier Classifier => _classifier ?? throw new ObjectDisposedException(nameof(PhysicsNavBake));
     internal GroundMoveContext Context
     {
         get
@@ -125,7 +134,12 @@ public sealed partial class PhysicsNavBake : IDisposable
     }
 
     /// <summary>Releases retained builder providers without disposing or changing caller-owned physics.</summary>
-    public void Dispose() => _context = null;
+    public void Dispose()
+    {
+        _context = null;
+        _basis = null;
+        _classifier = null;
+    }
 
     private static void EnsureOrigin(IPhysicsWorld world, Vector3 origin)
     {

@@ -282,5 +282,20 @@ namespace KhaozEngine.Tests.Gui
             Assert.True(Vector2.Distance(c.Camera.Position, new Vector2(1000, 1000)) < 1e-2f,
                 c.Camera.Position.ToString());
         }
+
+        [Fact]
+        public void Legacy_wheel_zoom_remains_immediate_after_gesture_options_are_created()
+        {
+            var c = Canvas();
+            c.Wheel = CanvasWheelMode.Zoom;
+            c.Camera.Position = new Vector2(1000, 1000);
+            c.GestureOptions.WheelZoomDuration = 10f;
+            var p = new Pointer();
+            p.Update(Frame(new Vector2(400, 300), false));
+
+            c.Update(p, 1f);
+
+            Assert.InRange(c.Camera.Zoom, 1.0999f, 1.1001f);
+        }
     }
 }

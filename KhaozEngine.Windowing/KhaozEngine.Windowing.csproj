@@ -33,6 +33,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="KhaozEngine.Render.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.Game.Tests" />
+    <InternalsVisibleTo Include="KhaozEngine.Windowing.Tests" />
   </ItemGroup>
   <!-- THE LINUX HOST-NATIVE FLATTEN, shipped by this package as well as by KhaozEngine.Foundation
        (https://github.com/APKiwiOrg/KhaozEngine/issues/723). This package carries Silk.NET natives, so a

@@ -128,7 +128,7 @@ namespace KhaozEngine.Automation
             _lastComposedPositionPoints = points;
 
             return new InputState(
-                pointsDelta, real.FramebufferScale,
+                real.Gestures, real.HorizontalScrollDelta, pointsDelta, real.FramebufferScale,
                 Union(real.KeysDown, _keysDown),
                 Union(real.KeysPressed, _keysPressed),
                 Union(real.KeysReleased, _keysReleased),

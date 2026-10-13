@@ -28,6 +28,8 @@ namespace KhaozEngine.Windowing
 
         /// <summary>Current pointer position (pixels).</summary>
         public Vector2 Position => _pos;
+        /// <summary>This frame's immutable mapping for positions and pointer gesture vectors.</summary>
+        public PointerCoordinates Coordinates { get; private set; } = new(Vector2.One);
         /// <summary>Where the current press began (valid while down and on the release frame).</summary>
         public Vector2 PressOrigin => _pressOrigin;
         /// <summary>Where the current RIGHT press began (valid while the right button is down and on its release
@@ -96,7 +98,8 @@ namespace KhaozEngine.Windowing
             bool inWindow = input.Width <= 0
                 || (screen.X >= 0 && screen.Y >= 0 && screen.X < input.Width && screen.Y < input.Height);
 
-            _pos = viewport != null ? viewport.ScreenToDesign(screen) : screen;
+            Coordinates = new PointerCoordinates(input.FramebufferScale, viewport, input.Width, input.Height);
+            _pos = Coordinates.PositionFromPixels(screen);
 
             // Gate inWindow only on the frame a button first latches down, then sustain the latch
             // purely from the held read regardless of where the cursor has since strayed

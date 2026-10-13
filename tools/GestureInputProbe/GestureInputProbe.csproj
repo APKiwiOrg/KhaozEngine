@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>GestureInputProbe</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../KhaozEngine.Gui/KhaozEngine.Gui.csproj" />
+    <ProjectReference Include="../../KhaozEngine.Primitives/KhaozEngine.Primitives.csproj" />
+    <ProjectReference Include="../../KhaozEngine.Render2D/KhaozEngine.Render2D.csproj" />
+    <ProjectReference Include="../../KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />
+  </ItemGroup>
+</Project>

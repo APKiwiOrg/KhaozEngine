@@ -12,6 +12,18 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   binding, shared scene uploads, stable part/material motion identities and allocation-free submission.
 - The tile scene exposes attachment uploads through an optional capability. Render3D adds material-part
   import from GLB bytes, transactional surface-map loading and explicit release of owned maps.
+- Windowing delivers native macOS trackpad magnify and precise two-axis scroll through immutable,
+  ordered `InputState.Gestures` samples, with event anchors, modifiers, phases and momentum.
+  Windows adds Ctrl+wheel pinch compatibility. Full native Windows precision-touchpad pan is not included.
+  `AppWindow.NativeGestureFailure` exposes the first native registration or callback failure (#1328).
+- `PanZoomController` applies admitted mouse, touch, wheel and native gestures to `IPanZoomTarget`,
+  with anchored zoom, deterministic wheel animation and inertia, tap results and explicit cancellation.
+  `DragMotionTracker` shares slop, tap timing and release velocity between controls.
+- Gui adds `PannableCanvas.Update(InputManager, ...)` and gesture tap results while preserving its
+  legacy pointer overload. `DraggableBottomSheet` adds named detents, safe-area layout, handle toggles,
+  content-scroll handoff, child-control taps and ownership that prevents input leaking into lower maps.
+- The opt-in `GestureInputProbe` and public API examples support owner device validation and consumer
+  adoption. Flightline adoption remains separate at https://github.com/APKiwiOrg/Flightline/issues/3.
 
 ## 20.36.0
 

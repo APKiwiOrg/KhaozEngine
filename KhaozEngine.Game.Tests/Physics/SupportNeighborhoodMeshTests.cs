@@ -180,19 +180,29 @@ public class SupportNeighborhoodMeshTests
         using var scene = new Scene();
         StaticHandle mesh = AddMesh(scene, [.. vertices]);
         List<OracleFace> faces = SupportNeighborhoodOracle.InstalledMesh(scene.World, mesh);
-        for (int sample = 0; sample < 6; sample++)
+        SupportQueryDiagnostics.Enable(true);
+        try
         {
-            CapsuleShape probe = sample % 2 == 0 ? AxisProbe : FootProbe;
-            OracleFace face = faces[random.Next(20_000)];
-            Pose pose = Against(random, face, probe, out double gap);
-            Query query = scene.Query(scene.World, pose, probe: probe);
-            Assert.Equal(CapsuleFeatureStatus.Complete, query.Result.Status);
-            (OracleVector lower, OracleVector upper) = Segment(pose);
-            SupportNeighborhoodOracle.AssertMatches(query.Elements, faces, lower, upper, probe.Radius, Band);
-            if (gap <= Band - SupportNeighborhoodOracle.Geometry)
-                Assert.True(SupportNeighborhoodOracle.IndexOf(query.Elements, face) >= 0,
-                    $"Sample {sample}: the face the probe was placed against is a member.");
+            for (int sample = 0; sample < 6; sample++)
+            {
+                CapsuleShape probe = sample % 2 == 0 ? AxisProbe : FootProbe;
+                OracleFace face = faces[random.Next(20_000)];
+                Pose pose = Against(random, face, probe, out double gap);
+                SupportQueryDiagnostics.Reset();
+                Query query = scene.Query(scene.World, pose, probe: probe);
+                int candidates = SupportQueryDiagnostics.Snapshot().MeshLeaves;
+                Assert.Equal(CapsuleFeatureStatus.Complete, query.Result.Status);
+                (OracleVector lower, OracleVector upper) = Segment(pose);
+                SupportNeighborhoodOracle.AssertMatches(query.Elements, faces, lower, upper, probe.Radius, Band);
+                if (gap <= Band - SupportNeighborhoodOracle.Geometry)
+                    Assert.True(SupportNeighborhoodOracle.IndexOf(query.Elements, face) >= 0,
+                        $"Sample {sample}: the face the probe was placed against is a member.");
+                // The largest probe and query margin span at most four 0.2 m cells on each horizontal axis,
+                // with two triangles per cell. Count candidates before the outlier can be discarded by BoxGap.
+                Assert.InRange(candidates, 1, 32);
+            }
         }
+        finally { SupportQueryDiagnostics.Enable(false); }
     }
 
     [Fact]

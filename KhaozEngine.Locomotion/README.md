@@ -85,7 +85,8 @@ The [phase 5a allocation proof](../docs/superpowers/plans/proofs/2026-10-13-cont
 records the production physics lease, ordinary pin, movement lease plus context release binding and player
 read scope independently. Its three bounded rectangular rows allocate only those tokens when warm.
 The read-release callback is cached per simulator. Timing is recorded evidence, with no SG-12 verdict.
-Contact navigation capture remains refused until phase 5b. Wire generation 14 and legacy v1 bake bytes stay unchanged.
+Contact navigation profile construction remains refused until the phase 5b proofs land.
+Wire generation 14 and legacy v1 bake bytes stay unchanged.
 
 ## API
 

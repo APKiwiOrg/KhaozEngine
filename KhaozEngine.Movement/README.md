@@ -234,8 +234,15 @@ public sealed class GroundNavigation
 ```
 
 The two-argument `BuildProfile` builds a ground profile and equals the overload with `GroundProfileOptions.Default`.
-Both overloads and `GroundNavigationBake.Create` refuse Contact profiles with `NotSupportedException` naming
-phase 5b. Bake creation checks every profile before identity encoding. Legacy v1 bytes remain unchanged.
+Both overloads, `GroundNavigationBake.Create` and every `GroundNavigationBake.Load` expectation normalize the
+controller and water selection before other profile work or stream reads. Malformed Contact selections throw
+`ArgumentException`. Contact aquatic profiles throw `NotSupportedException` naming #1389. Contact ground profiles
+require an ordinary-constructed context and an unchanged leased capture basis. Valid Contact ground construction
+remains refused until the profile proofs land. Legacy v1 bytes remain unchanged.
+
+Capture records a lease's geometry generation and origin when physics supports `IPhysicsQueryLeaseSource`, then
+checks that basis after classification and sampling. The leases do not span sampling or caller delegates.
+With `SampleWater`, a contact water field requires a supplied medium delegate and capture samples that delegate.
 
 `AgentRadius` and `AgentHeight` are the baked radius and full capsule height. Profile geometry must match
 `CapsuleRadius`, `CapsuleHalfHeight`, `MaxSlopeRadians` and `StepHeight` exactly when a context validates a
@@ -900,9 +907,10 @@ The profile's supplied water policy governs. `MoveTuning.Water` must be default 
 Both defined `Controller` values produce the same explicit fingerprint. Undefined selectors refuse.
 Construction validates the selected foot geometry and every explicit kernel requirement, including positive
 gravity, maximum fall speed and swim-enter depth fraction. Default foot and water inputs retain their fingerprints.
-Ordinary runtime selection is implemented in phase 5a, staged in 20.37.0. `PhysicsNavBake.BuildProfile` and
-`GroundNavigationBake.Create` still refuse Contact before encoding, naming phase 5b. The frozen v1 fingerprint
-and legacy bake bytes are unchanged. Native G1b, #1299 navigation acceptance and the remaining adoption gates
+Ordinary runtime selection is implemented in phase 5a, staged in 20.37.0. Navigation doors validate Contact
+configuration, refuse aquatic selection for #1389 and require a leased capture basis for ground construction.
+Contact profile proofs remain deferred. The frozen v1 fingerprint and legacy bake bytes are unchanged.
+Native G1b, #1299 navigation acceptance and the remaining adoption gates
 stay open. Local timing in the [5a proof](../docs/superpowers/plans/proofs/2026-10-13-contact-controller-phase5a-cost.md)
 does not establish the hosted cost gate.
 

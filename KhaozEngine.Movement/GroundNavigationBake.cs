@@ -65,13 +65,13 @@ public sealed partial class GroundNavigationBake
         ArgumentNullException.ThrowIfNull(capture);
         ArgumentNullException.ThrowIfNull(sources);
         ArgumentNullException.ThrowIfNull(profiles);
+        NavBakeProfile[] snapshot = [.. profiles];
+        foreach (NavBakeProfile profile in snapshot)
+            if (profile is not null) _ = profile.ResolveKind();
         _ = capture.Context;
         PhysicsNavBakeOptions options = capture.Options;
         if (options.MaxSurfacesPerColumn > MaxStoredSurfacesPerColumn)
             throw new ArgumentOutOfRangeException(nameof(capture), "A bake stores at most 255 surfaces per column.");
-        NavBakeProfile[] snapshot = [.. profiles];
-        foreach (NavBakeProfile profile in snapshot)
-            if (profile is not null) PhysicsNavBake.ValidateProfileController(profile.Tuning);
         byte[] identity = NavBakeIdentity.Encode(new NavBakeExpectation(options, sources, snapshot),
             NavBakeIdentity.CurrentEngineVersion);
         if (identity.Length > MaxIdentityLength)

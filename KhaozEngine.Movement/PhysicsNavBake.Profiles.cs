@@ -37,9 +37,17 @@ public sealed partial class PhysicsNavBake
     public GroundNavigation BuildProfile(in MoveTuning tuning, NavAreaFilter areas, GroundProfileOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
-        ValidateProfileController(tuning);
+        EffectiveMovementBindingKind kind = new NavBakeProfile("", tuning, areas) { Aquatic = options.Aquatic }.ResolveKind();
         GroundMoveContext context = Context;
+        if (kind == EffectiveMovementBindingKind.OrdinaryContact)
+        {
+            PhysicsNavCaptureBasis basis = Basis
+                ?? throw new InvalidOperationException("Contact navigation requires a capture from an IPhysicsQueryLeaseSource.");
+            basis.AssertCurrent();
+        }
         context.ValidateTuning(tuning);
+        if (kind == EffectiveMovementBindingKind.OrdinaryContact)
+            throw new NotSupportedException("Contact navigation profiles land in task 4.");
         if (tuning.MaxSlopeRadians != Options.MaxSlopeRadians)
             throw new ArgumentException("Profile slope must equal the capture slope.", nameof(tuning));
         float height = 2f * tuning.CapsuleHalfHeight;
@@ -113,13 +121,6 @@ public sealed partial class PhysicsNavBake
         _ = Context;
         var graph = new NavTraversalGraph(space, tuning.CapsuleRadius, height, layers, links);
         return new GroundNavigation(graph, tuning, footprint, aquatic);
-    }
-
-    internal static void ValidateProfileController(in MoveTuning tuning)
-    {
-        if (tuning.Controller == MovementControllerKind.Contact)
-            throw new NotSupportedException("Contact navigation profiles require phase 5b.");
-        MovementConfigurationValidation.ValidateLegacy(tuning);
     }
 
     private bool Prove(GroundMoveContext context, in MoveTuning tuning, Vector3 from, bool fromFloats,

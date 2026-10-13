@@ -27,8 +27,11 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   the player read-release callback is cached. Older support-cost evidence supplies defaults for absent selector,
   foot and water fields without changing committed baselines.
 - Resolver-1 MapDoc contexts record their G1b refusal through public construction options. Contact approach
-  pacing uses the controller's own water classification. Contact navigation capture refuses until phase 5b.
+  pacing uses the controller's own water classification. Contact navigation profile proofs remain deferred.
   Native G1b, #1299 navigation acceptance and the remaining adoption and hosted cost gates stay open.
+- Navigation bake doors normalize effective profile kinds before identity work or stream reads. Malformed Contact
+  selections refuse as arguments, while Contact aquatic profiles name #1389. Captures record and verify leased
+  geometry and origin, retain their classifier and require a medium delegate when sampling a contact water field.
 - Legacy ground contexts reuse their resource-free binding when navigation alternates source and unit-speed
   probe tuning. Validation and actual per-call movement tuning stay current, preserving the profile allocation budget.
 

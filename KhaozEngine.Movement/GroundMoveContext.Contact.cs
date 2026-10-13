@@ -42,6 +42,11 @@ public sealed partial class GroundMoveContext
     /// Tuning validation and live field, registration and frame authentication still run before movement.</summary>
     public bool SupportsContactController { get; }
 
+    internal Func<float, float, float, MovementMedium>? CaptureMedium => MovementWaterField is null
+        ? Medium
+        : _providedMedium ?? throw new InvalidOperationException(
+            "Water sampling with a contact water field requires a medium delegate.");
+
     IPhysicsWorldQueryView? CreateMovementView(IPhysicsWorldQueryView? supplied)
     {
         if (MovementRegistration is { } registration && !ReferenceEquals(registration.SourceWorld, Physics))

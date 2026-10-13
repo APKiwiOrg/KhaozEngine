@@ -8309,8 +8309,13 @@ clearance check sees only the deepest contact, so a route may clip a bank within
 steps, so larger cells than 0.25 m or slow zones must raise `MaxEdgeProbeSteps`. The Movement README states the full
 rules.
 
-Both `BuildProfile` overloads and `GroundNavigationBake.Create` refuse Contact profiles before identity encoding,
-with `NotSupportedException` naming phase 5b. Legacy v1 bake bytes remain unchanged.
+Both `BuildProfile` overloads, `GroundNavigationBake.Create` and every `GroundNavigationBake.Load` expectation
+validate Contact selection before other profile work or stream reads. Malformed configurations throw
+`ArgumentException`, and Contact aquatic profiles throw `NotSupportedException` naming #1389. Ground construction
+requires an ordinary-constructed context and a leased capture whose geometry and origin remain unchanged.
+Valid Contact ground profiles remain refused until their proofs land. Legacy v1 bake bytes remain unchanged.
+Capture checks its leased basis after classification and sampling. With `SampleWater`, a contact water field
+requires a supplied medium delegate, which capture samples without requiring contact tuning validation.
 
 Radius, full height, slope class and step class must match the capture profile's
 `CapsuleRadius`, `CapsuleHalfHeight`, `MaxSlopeRadians` and `StepHeight` exactly. Walk and run pace, climb pace

@@ -28,10 +28,7 @@ public sealed partial class GroundNavigationBake
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(expected);
         NavBakeProfile[]? snapshot = expected.Profiles is null ? null : [.. expected.Profiles];
-        byte[] encoded = NavBakeIdentity.Encode(expected with { Profiles = snapshot! }, engineVersion);
-        if (encoded.Length > MaxIdentityLength)
-            throw new ArgumentException("The expected identity block exceeds 1 MiB.", nameof(expected));
-        LoadPlan plan = Plan(expected, snapshot!);
+        LoadPlan plan = Plan(expected, snapshot, engineVersion, out byte[] encoded);
 
         Span<byte> header = stackalloc byte[HeaderLength];
         int read = source.ReadAtLeast(header, HeaderLength, throwOnEndOfStream: false);
@@ -93,13 +90,20 @@ public sealed partial class GroundNavigationBake
     }
 
     // Validates the expectation as Create would, so invalid options or tuning never size a buffer.
-    private static LoadPlan Plan(NavBakeExpectation expected, NavBakeProfile[] profiles)
+    private static LoadPlan Plan(NavBakeExpectation expected, NavBakeProfile[]? profiles,
+        string engineVersion, out byte[] encoded)
     {
+        if (profiles is not null)
+            foreach (NavBakeProfile profile in profiles)
+                if (profile is not null) _ = profile.ResolveKind();
+        encoded = NavBakeIdentity.Encode(expected with { Profiles = profiles! }, engineVersion);
+        if (encoded.Length > MaxIdentityLength)
+            throw new ArgumentException("The expected identity block exceeds 1 MiB.", nameof(expected));
         PhysicsNavBakeOptions options = expected.Options;
         (int width, int height, int cells, _) = options.ValidateWithoutOrigin();
         if (options.MaxSurfacesPerColumn > MaxStoredSurfacesPerColumn)
             throw new ArgumentOutOfRangeException(nameof(expected), "A bake stores at most 255 surfaces per column.");
-        NavBakeProfile[] sorted = SortedByName(profiles);
+        NavBakeProfile[] sorted = SortedByName(profiles!);
         foreach (NavBakeProfile profile in sorted)
         {
             GroundMoveContext.CheckTuning(profile.Tuning);

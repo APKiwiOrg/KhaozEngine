@@ -75,6 +75,8 @@ namespace KhaozEngine.Tests.Gpu
                 // All three depth variants are built into the same single-set pipeline: the dissolve fragment
                 // shaders read the instance's dissolve amount out of the SAME uniform block rather than adding a
                 // resource of their own.
+                ["FoliageDepth"] = "FoliageShadowRenderer depth",
+                ["FoliageDepthCutout"] = "FoliageShadowRenderer cutout depth",
                 ["ShadowDepth"] = "ShadowMapRenderer depth",
                 ["ShadowDepthDissolve"] = "ShadowMapRenderer depth",
                 ["ShadowDepthDissolveInverted"] = "ShadowMapRenderer depth",
@@ -100,7 +102,7 @@ namespace KhaozEngine.Tests.Gpu
                 // The Line pair has three call sites and two of them go through OverlayRenderer, whose layout is
                 // the same single uniform block. Its primary one is named here, as in the catalog.
                 ["Line"] = "DepthLineRenderer",
-                ["Billboard"] = "OverlayRenderer",
+                ["Billboard"] = "BillboardRenderer",
                 ["TexturedBillboard"] = "TexturedBillboardRenderer",
                 ["Particle"] = "ParticleRenderer",
                 ["Trail"] = "TrailRenderer",
@@ -115,6 +117,9 @@ namespace KhaozEngine.Tests.Gpu
                 ["TargetOutlineSkinnedVisible"] = "TargetOutlineRenderer skinned visible",
 
                 ["Sky"] = "SkyRenderer",
+                ["AtmosphereTransmittance"] = "AtmosphereRenderer transmittance",
+                ["AtmosphereMultiScattering"] = "AtmosphereRenderer multi-scattering",
+                ["AtmosphereSkyView"] = "AtmosphereRenderer sky-view",
                 ["Starfield"] = "StarfieldRenderer",
                 ["Water"] = "WaterRenderer",
                 ["WaterClipmap"] = "WaterRenderer",
@@ -171,6 +176,48 @@ namespace KhaozEngine.Tests.Gpu
             }
 
             Assert.True(problems.Count == 0, Report(problems));
+        }
+
+        [Fact]
+        public void OpaqueReceivers_AppendAtmosphereAfterTheirOwnSetZeroPrefix()
+        {
+            foreach (var program in ShippedShaderPrograms.GraphicsPrograms())
+            {
+                int prefix = program.Name switch
+                {
+                    "Model" or "ModelDissolve" or "Foliage" or "ModelMotion" or "ModelCpuSkinnedMotion"
+                        or "ModelCpuSkinnedDissolveMotion" or "FoliageMotion" => 11,
+                    "SkinnedModel" or "SkinnedModelDissolve" or "SkinnedModelMotion"
+                        or "SkinnedModelDissolveMotion" => 4,
+                    "Splat" or "TileGround" or "SplatMotion" or "TileGroundMotion" => 3,
+                    _ => -1,
+                };
+                if (prefix < 0) continue;
+                Declaration[] atmosphere =
+                [
+                    new(0, prefix, GpuResourceKind.UniformBuffer, "Atmosphere"),
+                    new(0, prefix + 1, GpuResourceKind.TextureReadOnly, "AtmoSkyView"),
+                    new(0, prefix + 2, GpuResourceKind.Sampler, "AtmoSkySampler"),
+                ];
+                Assert.Equal(atmosphere, Parse(program.FragmentGlsl).Where(d => d.Set == 0 && d.Binding >= prefix).ToArray());
+            }
+        }
+
+        [Fact]
+        public void WaterAndClipmap_AppendAtmosphereAfterTheDynamicWaterUniform()
+        {
+            var elements = VulkanDescriptorLimitTests.ShippedLayouts["Water"].Elements!;
+            Assert.Equal(10, elements.Length);
+            Assert.Equal("Water", elements[6].Name);
+            Assert.True(elements[6].Dynamic);
+            Declaration[] atmosphere =
+            [
+                new(0, 7, GpuResourceKind.UniformBuffer, "Atmosphere"),
+                new(0, 8, GpuResourceKind.TextureReadOnly, "AtmoSkyView"),
+                new(0, 9, GpuResourceKind.Sampler, "AtmoSkySampler"),
+            ];
+            foreach (var program in ShippedShaderPrograms.GraphicsPrograms().Where(p => p.Name is "Water" or "WaterClipmap"))
+                Assert.Equal(atmosphere, Parse(program.FragmentGlsl).Where(d => d.Set == 0 && d.Binding >= 7).ToArray());
         }
 
         /// <summary>The compute half, over all four cascade resolutions of both ocean kernels.</summary>
@@ -238,7 +285,7 @@ namespace KhaozEngine.Tests.Gpu
                 .Select(p => p.Pipeline)
                 .ToHashSet(StringComparer.Ordinal);
 
-            Assert.Equal(79, catalog.Length);
+            Assert.Equal(84, catalog.Length);
             Assert.Equal(catalog.Length, ProgramPipelines.Count);
 
             foreach (string program in catalog)

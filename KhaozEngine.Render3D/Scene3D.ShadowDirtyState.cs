@@ -34,6 +34,7 @@ namespace KhaozEngine.Render3D
         // atlas it would otherwise reuse still holds their shadows. Only a commit writes it, and a commit also sets
         // _shadowPassRendered, so a true value already implies there is a previous pass to have baked them in.
         bool _lastAnySkinnedCaster;
+        bool _lastAnyFoliageCaster;
 
         /// <summary>
         /// Whether this frame's skinned casters went from SOME to NONE since the last rendered pass, which is the
@@ -53,7 +54,7 @@ namespace KhaozEngine.Render3D
         /// check allocation-free. Called only from the dirty branch, so every field here describes a pass that
         /// really did put pixels in the atlas.
         /// </summary>
-        void CommitShadowDirtyState(bool anySkinnedCaster)
+        void CommitShadowDirtyState(bool anySkinnedCaster, bool anyFoliageCaster)
         {
             (_lastShadowCasterRuns, _shadowCasterRunsScratch) = (_shadowCasterRunsScratch, _lastShadowCasterRuns);
             (_lastShadowCasterModels, _shadowCasterModelsScratch) = (_shadowCasterModelsScratch, _lastShadowCasterModels);
@@ -61,6 +62,7 @@ namespace KhaozEngine.Render3D
             _lastShadowCascadeCount = _cascadeCount;
             _lastShadowResolution = _model.ShadowMap.Resolution;
             _lastAnySkinnedCaster = anySkinnedCaster;
+            _lastAnyFoliageCaster = anyFoliageCaster;
             _shadowPassRendered = true;
         }
     }

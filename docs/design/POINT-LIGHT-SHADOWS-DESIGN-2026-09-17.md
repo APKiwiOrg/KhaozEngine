@@ -8,13 +8,13 @@ Status: ships in 19.2.0. Issue #1002. Owner decision 2026-09-17.
 `Internal/ShaderSources.Lighting.cs` adds `colour * max(N.L, 0) * falloff` to every fragment inside a
 light's radius. Only the key light has a shadow map. In Grimhollow a door lantern outside a wall lights the
 inner faces of the side walls through the wall, and its light pools radially around the flame instead of
-fanning through the doorway. In Ruinborne a fireball lights the far side of a pillar.
+fanning through the doorway. In the reference consumer a fireball lights the far side of a pillar.
 
 ## Alternatives weighed
 
 - **Tile-world polar occlusion.** One 1D distance-to-wall map per light built from the tile collision.
   Cheapest and nearly exact for axis-aligned full-height walls, but it knows nothing about height, furniture
-  or any world that is not a tile grid, and Ruinborne's effect lights move every frame. Rejected as the
+  or any world that is not a tile grid, and the reference consumer's effect lights move every frame. Rejected as the
   engine answer, kept as the note it was.
 - **Spot lights.** A cone facing out of the mounting face stops the bleed behind a wall lantern and lets no
   light through the door either. Rejected: the door wedge is the thing being asked for.

@@ -490,7 +490,7 @@ mistaken for an unset one. `WindowLaunch` holds all of that parsing (`TryParseMo
 
 **How a game remembers its window, and the one flag it must honour.** The engine does no settings IO: a game
 serialises `Display.CurrentDisplay` (mode, size, position) into its own settings file on exit and hands it back
-through `ApplyDisplay` in `OnLoad`, which clamps a stale position on-screen for it. Ruinborne's `MenuController`
+through `ApplyDisplay` in `OnLoad`, which clamps a stale position on-screen for it. The reference consumer's `MenuController`
 is the reference shape, with `BuildDisplaySnapshot` mapping its persisted settings to a `DisplaySettings` and
 `PositionUnspecified` standing in for "no saved position yet". Do not rebuild any of that.
 
@@ -877,6 +877,24 @@ captured `MouseDelta` keeps its existing nonpositive-or-NaN fallback to 1. Snaps
 preserve both added facts. `WithoutScroll()` does so, and `AutomationInputInjector.Compose` preserves real motion
 or computes injected points motion from framebuffer coordinates and its own logical baseline.
 
+`InputState.Gestures` carries ordered event-time pointer samples. Native macOS input supplies precise scroll
+in window points and magnify with scale identity 1, preserving phases, momentum and Ctrl/Cmd state. Windows
+captures Ctrl+wheel at message time as `ModifierWheelCompatibility`. Plain wheel values remain wheel units.
+Anchors use framebuffer pixels. Silk wheel totals remain independent, so apply the samples once without also
+applying the scalar summaries. `WithoutScroll()` clears both wheel axes and scroll samples while retaining
+magnify. `WithoutPointerGestures()` clears all pointer samples and both scalar wheel axes.
+
+Public `PointerGestureFrame` values and `PointerGestureFrame.Empty` have `IsAvailable == true`, including an
+intentionally empty native frame. Legacy scalar fallback applies only when `IsAvailable == false`, which is
+the default for the two older `InputState` constructors. The additive overload takes `PointerGestureFrame`,
+horizontal scroll, points motion and framebuffer scale before the original arguments. Copies and automation
+preserve stream availability, so cleared native samples cannot revive retained legacy scroll.
+
+For developer diagnostics, `AppWindow.NativeGestureFailure` retains the first native failure and its stage
+(`Install`, `Remove`, `Release` or `Callback`), message and optional original exception. Failed installation
+continues wheel fallback. Failed removal retains callback roots. Later failures do not replace the first,
+and no automatic logging occurs. A platform with no native backend is normal fallback and reports no failure.
+
 ### InputManager + Pointer - the higher-level read
 
 `Pointer` (the unified pointer) and `InputManager` (pointer + keyboard/gamepad/menu-nav) derive per-frame state
@@ -1092,6 +1110,186 @@ A scene cannot reach the protected member, so an app whose camera lives in a sce
 itself. The Showcase does this for its 3D room: `IShowcaseRoom.WantsPointerCapture` defaults to false, and
 `ShowcaseApp` forwards the active room's value after the scenes update.
 
+### Pan and zoom
+
+`PanZoomController` interprets mouse drag, wheel, precise scroll, magnify and stable-ID touches through
+`IPanZoomTarget`. Its `PanByScreenDelta(Vector2)` moves displayed content in the positive screen direction.
+`ZoomByFactor(float, Vector2 anchor)` enlarges content for factors above 1 and keeps the material point under
+the anchor fixed. Targets own bounds, zoom limits, projection and wrapping. Hard bounds can take priority
+over anchoring at an edge. No geographic camera is supplied by Windowing.
+
+Update the manager once with the complete `Frame.Input` and the same viewport used for presentation.
+Update overlays first, then admit map gestures, then reserve the map's own region. Region reservations reset
+each manager update. Include separate GuiSurface or consumer reservations through `isBlocked`.
+
+```csharp
+input.Update(frame.Input, uiViewport);
+UpdateOverlays(input); // caller updates and reserves controls
+sheet.Update(input, mapBounds, safeArea, bodyContentHeight, frame.Dt);
+controller.Update(input, target, mapBounds, frame.Dt,
+    hasKeyboardFocus: mapFocused, isBlocked: ReservedBySurface);
+input.BlockInputRegion(mapBounds); // reserve only after admission
+```
+
+Positions, bounds, slop and target deltas use Pointer coordinates. Raw sample anchors and touch positions
+are framebuffer pixels. Precise-scroll vectors are window points, wheel deltas are wheel units and scale
+identity is 1. The controller uses `Pointer.Coordinates.PositionFromPixels` for positions and
+`VectorFromPoints` for precise deltas, including framebuffer scale and viewport mapping. Do not preconvert
+samples or replay `ScrollDelta`, `HorizontalScrollDelta` or `PinchScaleFactor` alongside their ordered batch.
+Only an unavailable gesture stream uses legacy scalar fallback. An available empty stream does nothing.
+
+`Pointer.IsConsumed` is the persistent left-button latch. It gates mouse admission and active mouse
+recognition, while touch, wheel and native streams still use geometric admission and reservations.
+Consumption of an admitted mouse gesture rejects its continuation, tap and inertia through release.
+Fresh touch, wheel, precise scroll and magnify remain available while the consumed button is still held.
+`InputManager.SuppressPointerInput()` is the global pointer boundary. Controllers honor it even though
+raw `State` remains readable. A rejected start stays rejected through its entire sequence, including native
+momentum. Every participating touch must start inside admitted bounds, and a previously unobserved touch ID
+must arrive as `TouchPhase.Began`. Desktop hosts do not synthesize touch contacts from trackpad events.
+Undefined phases, nonfinite coordinates and duplicate IDs reject the entire touch sequence until release.
+
+Call `controller.Cancel()`, `canvas.CancelGestures()` and `sheet.CancelGestures()` when hiding, replacing,
+resetting or changing ownership of a view. Automatic cancellation covers focus loss, capture, suppression
+and bounds or coordinate mapping changes. Cancellation discards inertia, pending wheel animation and tap
+history. Held contacts cannot restart until physically released. A native momentum tail cannot revive a
+cancelled sequence. Continue lifecycle sampling while a view is inactive, or retain inhibition until release.
+
+`Tapped`/`TapPosition` and `DoubleTapped`/`DoubleTapPosition` are results of the latest controller update.
+A single tap reports immediately. A qualifying second tap zooms at its position and reports double-tap
+instead of a second single tap. Selection can therefore happen on the first tap before zooming. A two-finger
+tap zooms out at its centroid. Drag releases and cancelled sequences never select.
+
+`PanZoomOptions` validates mutable policy at each update. Defaults include slop 8, tap/double-tap timing
+0.3 seconds, double-tap radius 24, wheel factor 1.1 and duration 0.12 seconds, inertia decay 8 and stationary
+release cutoff 0.08 seconds. Wheel defaults to Zoom, with optional Pan and speed 40. Ctrl/Cmd scrolling
+always requests zoom. Precise-scroll zoom uses `PreciseScrollZoomLogFactorPerPoint` (default 0.01) in raw
+window points. Native magnify is immediate. Native momentum is applied directly without a second fling.
+Keyboard navigation is off by default and requires both `KeyboardEnabled` and caller-owned focus.
+Pass real elapsed seconds. Zero time advances no animation or velocity estimate, while direct samples remain
+immediate. Negative or nonfinite time is rejected. Ordered wheel operations finish before later direct effects.
+
+#### Bounded canvas
+
+`PannableCanvas` supplies an actual bounded Camera2D adapter. Set its viewport and world content bounds,
+then use the full-frame update after overlays:
+
+```csharp
+var canvas = new PannableCanvas
+{
+    ContentBounds = new Rect(0, 0, 2000, 2000),
+    MinZoom = .5f, MaxZoom = 4, Wheel = CanvasWheelMode.Zoom
+};
+canvas.Camera.Position = new Vector2(1000, 1000);
+canvas.Viewport = mapBounds;
+canvas.Update(input, frame.Dt, hasKeyboardFocus: mapFocused, isBlocked: ReservedBySurface);
+if (canvas.TryGetGestureTap(out var world)) SelectWorldPoint(world);
+```
+
+Both canvas paths clamp to `ContentBounds` plus `Padding`. The legacy `Update(Pointer, float wheelDelta)`
+keeps immediate vertical wheel behavior, Pan default and `TryGetTap` release geometry, which also reports
+drag releases. The new `Update(InputManager, float, bool, Func<Vector2, bool>?)` uses
+`GestureController`/`GestureOptions`, ordered gestures, inertia and `TryGetGestureTap` accepted single taps.
+Choose one path per frame. Canvas `Wheel`, `ScrollPanSpeed`, `ZoomStep` and `SnapZoomLevels` configure its
+controller on update. Wheel snap stops choose one adjacent stop per ordered event, including Ctrl/Cmd+wheel
+in Pan mode. Native magnify and command+precise zoom stay continuous. The canvas reserves itself after
+admission when `BlockInput` is true. `EnablePan = false` cancels the full-frame path.
+
+#### Wrapping target example
+
+A generic geographic fixture can preserve the anchor by measuring its material coordinate before and after
+the clamped scale change. Wrap longitude differences, then clamp latitude. This is consumer adapter math,
+not an engine camera API:
+
+```csharp
+sealed class WrappingTarget(Rect bounds) : IPanZoomTarget
+{
+    float longitude = 179, latitude = -5, span = 40;
+    Vector2 Centre => new(bounds.X + bounds.Width / 2, bounds.Y + bounds.Height / 2);
+    static float Wrap(float x) => ((x + 180) % 360 + 360) % 360 - 180;
+    Vector2 Unproject(Vector2 p) => new(
+        Wrap(longitude + (p.X - Centre.X) * span / bounds.Width),
+        latitude - (p.Y - Centre.Y) * span / bounds.Width);
+    public void PanByScreenDelta(Vector2 delta)
+    {
+        longitude = Wrap(longitude - delta.X * span / bounds.Width);
+        latitude = Math.Clamp(latitude + delta.Y * span / bounds.Width, -85, 85);
+    }
+    public void ZoomByFactor(float factor, Vector2 anchor)
+    {
+        var before = Unproject(anchor);
+        span = Math.Clamp(span / factor, 1, 360);
+        var after = Unproject(anchor);
+        longitude = Wrap(longitude + Wrap(before.X - after.X));
+        latitude = Math.Clamp(latitude + before.Y - after.Y, -85, 85);
+    }
+}
+```
+
+With bounds `(100,100,800,600)`, factor 2 at `(700,250)` changes centre longitude 179 to -176 and span 40
+to 20. The anchored longitude -171 remains under `(700,250)` across the date line. The headless
+`PanZoomConsumerContractTests` exercise this target and the real bounded canvas through InputManager,
+overlay/sheet reservations and cancellation.
+
+#### Draggable bottom sheet
+
+The host supplies bounds excluding HUD/tab bars and `SafeAreaInsets`. All heights use Pointer coordinates.
+Detents have stable IDs and caller-owned height policies. `Update` takes body-only measured content height.
+Custom detent resolvers receive safe available height and total desired sheet height, including the handle.
+
+```csharp
+var sheet = new DraggableBottomSheet(new[]
+{
+    BottomSheetDetent.Fixed("dismissed", 0, dismissible: true),
+    BottomSheetDetent.ContentCapped("peek", .45f),
+    BottomSheetDetent.Fraction("expanded", 1)
+}, "peek", new BottomSheetOptions
+{
+    HandleToggleDetentIds = new[] { "peek", "expanded" }
+});
+sheet.DetentChanged += OnSettledDetent; // Action<string>
+sheet.Dismissed += OnDismissed;         // Action
+sheet.Update(input, mapBounds, safeArea, bodyContentHeight, frame.Dt);
+sheet.Draw(batch, (bodyViewport, offset) => DrawLocalizedBody(bodyViewport, offset));
+```
+
+Update the sheet before maps. Its handle owns resize. Body drag expands first, then scrolls residual upward
+movement. Downward movement unwinds scroll before collapsing. Residual never reaches the map. Precise scroll
+can move the sheet/body with native ownership through momentum. Wheel scrolls an expanded body only, without
+fling. Magnify and Ctrl/Cmd scroll reserve zoom intent over the visible sheet without moving it.
+Pending body contacts preserve child button taps, including stationary holds beyond the sheet tap duration.
+Handles, committed drags and cancellation consume associated left input through physical release, including
+touch-emulated mouse contacts and movement first observed at release. Pure touch and native ownership use
+region reservation. Visible, admission and intermediate sheet regions reserve lower maps, whose rejected
+starts stay rejected through release even after dismissal.
+
+`Bounds`, `HandleBounds`, `ContentBounds` and positive `ScrollOffset` describe the current presentation.
+`CurrentDetentId` is last settled, `TargetDetentId` is selected. `SetDetent(id, animated)` selects without
+resetting identity on selection changes. Layout/content/mapping changes cancel motion and settle the same
+target ID. `DetentChanged` fires on an actual settled/immediate ID change. `Dismissed` fires on arrival from
+a non-dismissible ID into an explicitly dismissible ID. Repeated selection/resize does not repeat events.
+`ToggleHandle(animated = true)` is also a caller-driven keyboard action with caller-owned focus. An explicit
+pair can include dismissal or equal-height IDs. Without one, it uses the lowest/highest non-dismissible IDs,
+with declaration order breaking ties. Fewer than two distinct eligible IDs or equal extrema is a no-op.
+
+The host owns optional `WhiteTexture`, theme colors and batch Begin/End. `Draw` clips its body callback and
+restores the enclosing scissor even if the callback throws. It does not process a second ScrollablePanel drag.
+Resolve player-facing body labels through `StringId`/`LocalizedText` as usual.
+
+#### Platform validation and consumer adoption
+
+macOS uses native precise scroll and magnify with event phases, modifiers and momentum. Windows Ctrl+wheel
+is `ModifierWheelCompatibility`, not proof of native pinch. Other desktop backends retain wheel support.
+Full native Windows precision-touchpad pan is outside this delivery. The opt-in
+[GestureInputProbe](../tools/GestureInputProbe/README.md) shows payload/mapping/failure diagnostics and a grid
+with a sheet. Its device checks require an owner run. Headless results cannot prove physical delivery or feel.
+
+[Flightline #3](https://github.com/APKiwiOrg/Flightline/issues/3) owns consumer adoption. The verified junction
+is Client-side `WorldLayer.Interact`, using its existing manager, current bounds and reservations. Implement
+an `IPanZoomTarget` adapter there and preserve existing lifecycle cancellation hooks. Its current
+`NetworkViewport.Zoom(factor)` is centre-only, so forwarding alone cannot preserve an anchor. Compensation
+can use the actual clamped old/new span and existing pan operation, or the generic before/after method above.
+Replace the old Touches-only recognition with one full-frame controller. Release/pin adoption remains separate.
+
 ### Tap or drag (`PointerGesture`)
 
 `PointerGesture(button, thresholdPixels = 4)` (since 20.17.0) splits one mouse button into a tap and a drag. It is
@@ -1153,7 +1351,7 @@ gesture.Advance(input, uiBlocked, dt);   // the two-argument Advance throws on a
   `Advance` throws `ArgumentOutOfRangeException`. `TapTolerance` is null on a gesture built with a threshold, and its
   three-argument `Advance` neither uses nor checks the time, so it matches the two-argument one for any value.
 
-It is lifted from Ruinborne's `RightMouseGesture` and watches any button. `FollowCameraController` takes two of
+It is lifted from the reference consumer's `RightMouseGesture` and watches any button. `FollowCameraController` takes two of
 them (see "Tap-or-drag gestures" in the follow camera chapter).
 
 ### Rect, viewport, clock
@@ -1741,6 +1939,13 @@ The world map packages are opt-in and outside every umbrella. A TileWorld client
 Map positions are metres with x east and y north. `MapRect` has a south-west origin and half-open bounds.
 Use the source's `ToMap` and `ToMapHeading` for live world poses. Headings are radians clockwise from north,
 and marker artwork points north at zero heading. The view handles the screen's downward y axis.
+
+`WorldMapSymbol(Kind, Fill, Outline)` also accepts an optional `Vector2? SizeMetres` init property.
+For a tree crown, set `SizeMetres = new Vector2(3.5f)` on the symbol. These full local dimensions follow the footprint's centre and rotation,
+including building shadows. Sized walls use both dimensions instead of the style's wall width.
+Null keeps the authored dimensions and existing raster bytes. Raster queries and invalidation include
+the largest visible drawn half diagonal at every chunk level. Coarse filtering still uses the authored
+footprint to preserve source-side materialization limits. Icon anchors and hover bounds are unchanged.
 
 Keep the `TileWorldDocument` and `TileWorldCatalogs` unchanged while a `TileWorldMapSource` is in use. Its
 `Revision` stays zero and it never raises `Changed`. After edits or loaded-region changes, stop and dispose
@@ -3605,7 +3810,7 @@ scene.Draw(gun, sockets["socket_nose"] * shipWorld, Color.White);
   props occlude the buried parts (and it flows through the post chain like the meshes). `DebugDepthMode.AlwaysOnTop`
   draws it crisp over the finished frame with no depth test, for a fully buried volume you still need to see. All
   four clear each `Begin()` (immediate mode) and carry no player-facing text. The game owns which volumes to draw
-  and when (a hotkey, colours per volume type). A Ruinborne-style NPC combat-volume overlay behind an F-key toggle:
+  and when (a hotkey, colours per volume type). A consumer-shaped NPC combat-volume overlay behind an F-key toggle:
 
   ```csharp
   // Colours per volume type, owned by the game.
@@ -4133,7 +4338,7 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
   - The flip side of `FixedInternal`: a window SMALLER than the fixed target is a genuine downscale on the final
     blit, and by default that downscale is a single bilinear tap (kept exactly as-is so every existing consumer
     and GPU golden stays byte-identical) - which under-samples the same way an un-mip-filtered `Supersample`
-    factor above 2 would (the historical Ruinborne shimmer on a window under 1600x900). Opt into the correct
+    factor above 2 would (the historical consumer shimmer on a window under 1600x900). Opt into the correct
     mip-filtered blit for THIS case too with `Post.MipFilterFixedInternalDownscale = true` (default `false`). It
     reuses the exact mip-chain + trilinear-blit machinery `MatchViewport`'s `Supersample` downscale already uses,
     at whatever ratio the window ends up smaller by. Prefer `RenderScale.MatchViewport` outright if the small
@@ -4381,7 +4586,7 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       does not move it. This is the same quantization for ROTATION. The cascade fit keeps using the light direction it
       last adopted until the sun has turned far enough to drag a worst-case caster's shadow by
       `ShadowLightHoldTexels` shadow texels, and only then adopts the new one, so a stationary scene under a day/night
-      cycle stops repainting the whole atlas every frame for a displacement nobody can see. Under Ruinborne's
+      cycle stops repainting the whole atlas every frame for a displacement nobody can see. Under the reference consumer's
       30 minute day (0.00333 deg/frame) a wide outdoor camera re-fits about once every 29 frames instead of every
       frame. Set `ShadowLightHoldTexels = 0` to disable it, which restores the pre-17.36.1 fit byte for byte.
       Three things to know. The threshold is elevation-corrected and recomputed every frame
@@ -4582,11 +4787,11 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     jump). Read the win from `Scene3D.DrawnSkinnedInstances` / `Scene3D.CulledSkinnedInstances`, the skinned
     counterpart of `DrawnInstances`/`CulledInstances` above.
 - **Background** (`Post.Background`, a `BackgroundMode`: `Solid`, `Starfield`, `Sky`, **default `Starfield`**): one
-  knob for what fills a pixel no scene geometry drew. It is a DERIVED view over the existing `Post.Starfield` and
-  `Post.Sky.Enabled` booleans, not new state, so both keep working exactly as before and nothing is `[Obsolete]`.
-  The getter encodes the engine's long-standing precedence, `Sky` over `Starfield` over `Solid`, in one place:
-  reading `Background` after setting both booleans tells you which one actually wins. The setter clears the modes
-  it did not select, so `Post.Background = BackgroundMode.Sky` also turns `Starfield` off.
+  knob for what fills a pixel no scene geometry drew. It is a derived view over `Post.Starfield`,
+  `Post.Sky.Enabled` and `Post.Atmosphere.Enabled`. Either sky flag resolves to `Sky`, ahead of `Starfield`
+  and `Solid`, with the physical atmosphere taking precedence over the legacy palette sky. The setter clears
+  modes it did not select. `Post.Background = BackgroundMode.Sky` enables the legacy sky and turns `Starfield`
+  off, but does not opt into atmosphere. Selecting `Solid` or `Starfield` also disables atmosphere.
   - **Since 11.9.0 the starfield is a real background pass**, not a final-blit trick. `StarfieldRenderer` (a
     `SkyRenderer` sibling) draws a fullscreen triangle at the far plane with a read-only `Equal` depth test, so it
     paints ONLY background pixels (where the stored depth still equals the cleared far plane) and writes
@@ -4601,11 +4806,12 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     because the background pass writes `alpha = 1`. `Render3DPreview` and `UseSmoothPreset` already force
     `Starfield` off and are unaffected. A consumer building `Scene3D` directly with `TransparentBackground = true`
     is not, and needs the explicit `Background = BackgroundMode.Solid` above.
-- **Sky** (`Post.Sky`, a `SkySettings`, **default off**): an opt-in procedural sky drawn as a background pass behind
-  all geometry - a vertical horizon-to-zenith gradient plus an optional sun disc + halo. Default `Sky.Enabled = false`,
-  so the background stays the clear colour + starfield and existing scenes are byte-stable; set `Post.Sky.Enabled = true`
-  to turn it on. It renders only where no mesh drew (a far-plane pass with a read-only depth test), never touches the
-  MRT normal/depth the outline pass reads, and costs nothing when off (the pass is skipped). The cohesive-look pairing
+- **Legacy palette sky** (`Post.Sky`, a `SkySettings`, **default off**): an opt-in procedural background behind
+  all geometry, a vertical horizon-to-zenith gradient plus an optional sun disc and halo. With atmosphere off,
+  default `Sky.Enabled = false` keeps the clear colour and starfield, leaving existing scenes byte-stable.
+  Set `Post.Sky.Enabled = true` to turn on the legacy sky. It renders only where no mesh drew (a far-plane pass
+  with a read-only depth test), never touches the MRT normal/depth the outline pass reads, and skips its pass
+  when off. The cohesive-look pairing
   for the semi-realistic outdoor preset: turn it on with `Post.UseSmoothPreset()` and `Shadows.Mode = ShadowMode.ShadowMap`.
   - Gradient: `Sky.HorizonColor` (bottom of the sky) and `Sky.ZenithColor` (top); the gradient is vertical in screen
     space, so it reads correctly under BOTH the orthographic `IsoCamera3D` (where all view rays are parallel) and the
@@ -4666,8 +4872,8 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       directly as screen NDC, visible whenever the sun is above the view horizon. Not a physical projection, but it
       places the disc under BOTH the ortho iso camera and the perspective camera, which is what a decorative backdrop
       wants. Pick it for a stylized sky, or for the orthographic iso camera where `World` degenerates.
-- **Day/night cycle** (`KhaozEngine.Render3D.SunCycle`, a pure mapping, no shader/UBO change): drives the sky and
-  lighting above from a caller-supplied normalized time of day.
+- **Day/night cycle** (`KhaozEngine.Render3D.SunCycle`): drives the sky and lighting from a caller-supplied
+  normalized time of day. This example uses the legacy palette sky. The physical mode is described below.
   ```csharp
   var cycle = new SunCycleSettings();
   scene.Post.Sky.Enabled = true;
@@ -4679,7 +4885,8 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     twilight/night elevation bands). The game owns the clock, ticks it, and decides how it advances, and in an MMO
     the server replicates the time to clients so every player sees the same sky.
   - **Night handling (`NightKeyMode`, on `SunCycleSettings.NightKey`).** How the key light behaves below the
-    sun's horizon. `AmbientColor` never reaches pure black in any mode, so night stays playable.
+    sun's horizon. The following palette colours and disc-slot rules describe the legacy sky. Physical mode
+    keeps the source directions and key handovers, with atmosphere colours and night floors instead.
     - `AntiSolarMoon` (**default**, byte-stable): the key switches to a virtual moon placed exactly opposite
       the sun, so `Post.LightDirection` still points somewhere downward instead of flipping to darkness, and
       the key dips to zero across the horizon crossing so the 180-degree azimuth flip is never visible. The
@@ -4700,15 +4907,105 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
         appearing at sunset on a long day. `HorizonKeyDipDegrees` controls the solar envelope. Setting it
         to zero leaves only the 0.001-degree numerical floor, so the transition is effectively immediate.
         `MoonKeyColor = black` still gives a decorative moon with no night key light (#223).
-  - **Palettes are calibrated, not fixed.** `SunCycleSettings.DayPalette`/`DuskPalette`/`NightPalette` (each a
+  - **Legacy palettes are calibrated, not fixed.** `SunCycleSettings.DayPalette`/`DuskPalette`/`NightPalette` (each a
     `SunCyclePalette`) default to the engine's existing look (`DefaultDay()` reproduces the stock `Sky`/`Post`
     defaults exactly), blended by sun elevation rather than time of day so one setup works at any latitude or day
     length. Calibrate `DayPalette` to your own midday lighting rig rather than relying on the defaults for a
-    stylized scene.
+    stylized scene. These colours are ignored while `Post.Atmosphere.Enabled` is true.
   - **Re-tie anything you derived from the sky.** `SunCycle.Apply` writes `Post.Sky`'s gradient/sun colors and
     `Post.LightDirection`/`LightColor`/`AmbientColor`/`FillLightColor` every call. If your game reads those values
     to drive something else (for example a water horizon tint sampled from `Sky.HorizonColor`), re-tie it after
     `Apply` runs so it does not read a stale value from before the time of day advanced.
+- **Physical atmosphere** (`Post.Atmosphere`, an `AtmosphereSettings`, **default off**): an opt-in Hillaire 2020
+  scattering sky with CPU-derived key, ambient and fill light, matching water reflections and analytic height
+  fog. `AtmosphereSettings.Earth()` returns the default Earth preset with `Enabled = false`. Enable it explicitly:
+
+  ```csharp
+  var cycle = new SunCycleSettings { NightKey = NightKeyMode.Moon };
+  scene.Post.Atmosphere.Enabled = true;
+  // Each frame, use the game clock and the camera's absolute world position.
+  SunCycleState state = SunCycle.Apply(
+      SunCycle.Evaluate(timeOfDay, cycle), scene.Post, scene.ActiveCamera.Eye);
+  scene.Post.Water.HorizonColor = state.HorizonColor;
+  ```
+
+  `SunCycle.Apply(in SunCycleState, PixelPostProcessSettings, Vector3 cameraWorldPosition) -> SunCycleState`
+  returns the applied colours, including the physical `HorizonColor`. Always feed that returned value to water.
+  The existing void `Apply(state, post)` remains compatible and evaluates at world height zero. In physical mode,
+  both overloads require a state produced by `SunCycle.Evaluate`, and reject manually constructed states with
+  `InvalidOperationException`. `DayPalette`, `DuskPalette`, `NightPalette`, `MoonKeyColor` and `MoonDiscColor`
+  are ignored. Time, latitude, declination, heading, key directions and source handover still belong to `SunCycle`.
+  The primary physical disc remains the true sun, with the moon in an extra-disc slot. `NightKeyMode.Moon` uses
+  the independent moon track, `AntiSolarMoon` uses an opposite-sun moon source, and `None` disables moon lighting.
+
+  - **Earth parameters.** Planet radius 6360 km and atmosphere height 100 km (top radius 6460 km).
+    `RayleighScatteringPerKm = (0.005802, 0.013558, 0.0331)`, `RayleighScaleHeightKm = 8`,
+    `MieScatteringPerKm = 0.003996`, `MieExtinctionPerKm = 0.004440`, `MieScaleHeightKm = 1.2`,
+    `MieAnisotropy = 0.8`, and `GroundAlbedo = 0.3`. `OzoneAbsorptionPerKm = (0.000650, 0.001881, 0.000085)`
+    has a tent profile centred at `OzoneCenterKm = 25`, with `OzoneWidthKm = 30` and support from 10 to 40 km.
+  - **Fixed-exposure calibration.** The preset uses the existing ACES pass at exposure 1. The moon is an art
+    fraction of solar illuminance so one fixed exposure can show both day and night. Eye adaptation remains
+    [#1365](https://github.com/APKiwiOrg/KhaozEngine/issues/1365).
+
+    | Control | Default | Calibration reason |
+    | --- | --- | --- |
+    | `SunIlluminance` | 2.7 | Noon sky blue reaches 155 in the inspected capture without an extra gamma or scattering gain. |
+    | `MoonIlluminanceFraction` | 0.04 | A visible moon and reflections without raising night to daylight. |
+    | `NightAmbientFloor` | 0.05 | Night receivers remain visible and distinct from the sky. |
+    | `NightSkyFloor` | 0.09 | Moonlit sky blue reaches 23 and moonless directions stay above black. |
+    | `NightTint` | `(0.45, 0.65, 1)` | The inspected night sky reads dark blue at RGB `(9, 14, 23)`. |
+
+    `DayTint` and `DuskTint` default to white. `SunCycle` blends the day, dusk and night tints by its elevation
+    weights, then applies that tint once to sky, fog colour, key, ambient and fill. `AmbientScale` and `FillScale`
+    default to 1 and affect lighting only. The floors retain the hue of `NightTint` at every time of day,
+    independently of the current blended tint. With `S` the solar illuminance, `L` sky radiance and `E` sky
+    irradiance (each including the moon contribution), the per-channel controls are:
+
+    ```text
+    Sky = max(S * pi * L * Tint, NightSkyFloor * NightTint)
+    Ambient = max(S * E * AmbientScale * Tint, NightAmbientFloor * NightTint)
+    ```
+
+    Key light uses source illuminance times source transmittance and tint, with the existing key fade.
+    These values use the engine's Lambert lighting convention. Surface lighting has no extra `1/pi`.
+  - **World mapping and altitude.** `WorldUnitsPerKilometre = 1000` means one world unit is one metre.
+    `HeightKm(absoluteWorldY)` maps absolute Y, with Y = 0 at the planet surface. CPU lighting clamps underground
+    camera heights to the surface. Its cached unit-source lighting interpolates by solar elevation and physical
+    altitude across eight quadratic altitude slices. GPU sky-view uses the camera's physical altitude, with
+    nonlinear angular mapping for horizon detail and separate sky/ground endpoints that prevent seam blending.
+    Render-origin shifts preserve absolute heights. Physical sky follows the view ray regardless of `SkyHorizon`.
+  - **Compressed height fog.** `AerialDistanceScale = 20` maps both segment distance and endpoint heights into
+    fog kilometres, compressing the atmosphere's scale heights into the playable world. It does not scale the
+    sky or lighting altitude. Set it to 0 to disable fog while retaining atmosphere. `HazeDensityPerKm = 0`
+    adds no extra mist by default, with `HazeScaleHeightKm = 0.25` available for an additional exponential layer.
+    Rayleigh and Mie extinction plus haze use a closed-form height integral. Opaque and alpha draws blend toward
+    directional sky colour, with downward directions clamped to the geometric horizon. Additive effects lose
+    transmitted energy only. Models, dissolved and skinned models, splat and tile terrain, foliage, water, decals,
+    billboards, particles, trails and beams participate. Debug lines and distortion draws retain their own paths.
+  - **GPU-free model and fog oracle.** `AtmosphereModel` needs no device. It snapshots validated settings and
+    exposes `Transmittance`, `SingleScattering`, `MultiScattering`, `SkyRadiance`, `CreateFrame`, `EvaluateLighting`
+    and `SkyValue`. `CreateFrame(SunCycle.Evaluate(timeOfDay, cycle))` produces an `AtmosphereFrame` with independent
+    body directions, moon fraction, tint and key visibility. `EvaluateLighting(cameraHeightKm, frame)` returns
+    `AtmosphereLighting` (`Key`, `Ambient`, `Fill`, `Horizon`, and untinted source transmittances). `SkyValue` applies
+    illuminance, pi, tint and the sky floor, whereas `SkyRadiance` is unit-source radiance. Transport positions are
+    planet-centred kilometres. `AtmosphereFog.Transmittance` accepts world distance and absolute endpoint heights.
+    `Shade` accepts camera-relative positions plus the render origin, and `Compose`/`ComposePremultiplied` expose
+    the blend oracle. Call `model.UpdateSettings(settings)` after changing the caller's settings.
+  - **GPU work and precedence.** Half-float transmittance (256 by 64) and multi-scattering (32 by 32) LUTs rebuild
+    on physical-settings changes. Sky-view (192 by 108) rebuilds every enabled frame before scene draws. Physical
+    atmosphere wins over the palette sky and starfield and retains the far-plane background pass. Setting
+    `Background` to `Solid` or `Starfield` disables it. Clouds, cloud shadows and stars under the atmosphere remain
+    phases 2 to 4 ([#1367](https://github.com/APKiwiOrg/KhaozEngine/issues/1367),
+    [#1368](https://github.com/APKiwiOrg/KhaozEngine/issues/1368), [#1369](https://github.com/APKiwiOrg/KhaozEngine/issues/1369)).
+  - **Phase 1 limits and evidence.** Analytic fog can be too bright in deep valleys under a low sun. The aerial
+    perspective volume is deferred to [#1364](https://github.com/APKiwiOrg/KhaozEngine/issues/1364). The transport's
+    ground boundary reflects direct source illumination only. Diffuse sky light reflected off that boundary and
+    its feedback into multi-scattering are omitted. Scene receivers still get the separate ambient term.
+    The calibrated one-shot completed-frame timing on Apple M2 Max was 8.225700 ms off and 4.473500 ms on,
+    delta -3.752200 ms, with a 463.707700 ms cold enabled frame. It is inconclusive and does not establish the
+    0.3 ms target. It measured the earlier uniformly scaled floor fixture, before the final height correction.
+    See [phase 1 evidence](design/PHYSICAL-ATMOSPHERE-PHASE-1-EVIDENCE.md) for timing boundaries, historical
+    measurements, calibration and the controller-owned hosted validation.
 - **Environment presets** (`KhaozEngine.Render3D.EnvironmentPresets` + `EnvironmentPresetKind`, since 17.6.0):
   the fixed-snapshot counterpart to `SunCycle`, for a tool or a settings menu that wants a "pick a look"
   dropdown rather than a live arc.
@@ -4722,6 +5019,7 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
   `LightColor`, `AmbientColor`, `FillLightDirection`, `FillLightColor`) as one coherent bundle.
   - **Do not mix it with `SunCycle` on the same scene.** They own the same fields and mean different things:
     these are snapshots a user picks, `SunCycle` is an arc your clock drives. Pick one per scene.
+    These presets describe the legacy palette look. Use the atmosphere settings and cycle above for physical sky.
   - **`Starfield` pulls the sky palette down on purpose.** Water reflects `Sky.HorizonColor`/`ZenithColor`
     whether or not the sky PASS is enabled, so leaving the palette at its bright defaults behind a near-black
     starfield background paints a bright horizon into reflective water that nothing else in the frame matches.
@@ -4840,10 +5138,12 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
 - **Water** (`Scene3D.DrawWater(in WaterPlane)` + `Post.Water`, a `WaterSettings`, **default off/no-op**): an opt-in
   stylized ocean surface - a Gerstner swell displacing the surface grid, a domain-warped three-layer procedural
   ripple normal on top, a camera-distance detail fade, per-channel Beer-Lambert depth grading of the body colour, a
-  fresnel blend toward the analytically reflected sky, a GGX sun glint with distance/footprint roughness widening,
+  fresnel blend toward the reflected sky, a GGX sun glint with distance/footprint roughness widening,
   procedural whitecap and shoreline foam, and a depth-sampled shore fade at the waterline.
-  **No refraction, no screen-space reflections, no caustics, no submerged view** - the reflection is the analytic
-  sky only (issue #54 records probes/SSR as not planned at the current bar). This is a stylized LDR surface, not a
+  **No refraction, no screen-space reflections, no caustics, no submerged view** - the reflection is the
+  sky only (the legacy gradient or the enabled atmosphere's sky-view LUT, with a CPU mirror through
+  `AtmosphereModel`). Feed the returning camera-aware `SunCycle.Apply` horizon to `Post.Water.HorizonColor`.
+  Issue #54 records probes/SSR as not planned at the current bar. This is a stylized LDR surface, not a
   physically accurate one.
   - **Request** (per-frame, WHERE to draw): call `scene.DrawWater(new WaterPlane(centerX, surfaceY, centerZ,
     halfExtentX, halfExtentZ))` once per body of water each frame (several lakes/ponds queue one `WaterPlane` each).
@@ -5101,8 +5401,10 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     the same measure, leaving its crest geometry untouched. This is the physics half of the anti-aliasing and it
     is why distance banding cannot come back through a knob: `DetailFadeDistance` is an artistic extra on top.
   - **Reflection**: the fresnel term blends the body colour toward the sky evaluated along the REFLECTED view ray
-    (`SkyMath.ShadeDirection`, the same gradient + disc the background sky pass paints, evaluated per-direction
-    rather than per-screen-pixel), using `Post.Sky`'s palette whether or not the sky PASS is enabled. This is what
+    using the physical sky-view LUT when atmosphere is enabled. The CPU mirror uses `AtmosphereModel`.
+    With atmosphere off, `SkyMath.ShadeDirection` evaluates the legacy gradient and disc per direction, using
+    `Post.Sky`'s palette whether or not the legacy sky pass is enabled. Both reflection paths match their sky.
+    Copy the camera-aware `SunCycle.Apply` return value's horizon to `Post.Water.HorizonColor`. This is what
     removes the two-tone banding a single flat `HorizonColor` produces: every fragment gets the colour of the sky
     it is actually pointing at. `SkyReflectionSunStrength` defaults below 1 because the sharp part of the reflected
     sun is already supplied by the glint lobe, and carrying both at full strength double-counts it.
@@ -7835,7 +8137,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.34.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.37.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -8150,7 +8452,7 @@ On the dev Mac a 36,864-column flat world wrote 664,689 bytes and loaded in abou
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.34.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.37.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -8543,7 +8845,7 @@ rules replace it, both unconditional and neither a knob:
 
 **The gate has a MEMORY and the slide has FRICTION (17.30.0, [#475](https://github.com/APKiwiOrg/KhaozEngine/issues/475)).**
 A bare threshold chatters on real terrain: ground whose columns straddle it flips grip and slide every tick. Measured
-on a Ruinborne bank running 40.0 to 41.8 degrees against a 40 degree gate, 43 footing flips in 330 ticks and a stall
+on a consumer bank running 40.0 to 41.8 degrees against a 40 degree gate, 43 footing flips in 330 ticks and a stall
 2.73 m up a 7.6 m climb - and widening the gate past that bank simply moved the same failure onto the next feature,
 because any threshold lands inside some terrain's slope distribution. Two knobs, both **default-on**:
 
@@ -8751,9 +9053,8 @@ to a land character.
 `AnimatedCharacter` plays the forward `Swim` clip (speed-blended above `LocomotionThresholds.SwimForwardThreshold`) or the
 tread `SwimIdle` clip below it, threaded from `MoveState.Swimming` / the replicated `MovementState.Swimming` -
 never a water query of the animator's own. Remotes ride the same replicated bit via `EntityRenderState.Swimming`
--> `CharacterSample.Swimming`. Consumers bake two clips named `Swim` and `SwimIdle`; a rig without them degrades
-to `Idle` while swimming. Ruinborne's avatar is being rebaked with these two clips from the CC0 Quaternius
-Universal Animation Library and maps them on adoption.
+-> `CharacterSample.Swimming`. Consumers bake and map two clips named `Swim` and `SwimIdle`.
+A rig without them falls back to `Idle` while swimming.
 
 ---
 
@@ -8904,7 +9205,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.34.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.37.0" />
 ```
 
 ```csharp
@@ -9725,7 +10026,7 @@ fadeBandWidth = 0, lodMeshes = null, lodDistance = 0, colliders = true)` (issue 
 layer, with no procedural generation at load time. The multi-part overload takes `partMeshes`/`lodPartMeshes`
 the same way `ScatterLayer` does.
 
-Ruinborne-shaped: one baked list per source scatter layer, one `PlacementLayer` each, the tree layer keeping
+consumer-shaped: one baked list per source scatter layer, one `PlacementLayer` each, the tree layer keeping
 its far HLOD cluster:
 
 ```csharp
@@ -9808,7 +10109,7 @@ the remainder, so this pipeline cannot take a material palette that is content r
 there is a sibling, `Scene3D.LoadTileGroundMaterial` / `LoadMesh(mesh, TileGroundMaterialHandle)`: up to 64 albedo
 layers in one texture array, four material SLOTS per triangle instead of five fixed layers, and no normal maps.
 It is what a tile world's ground draws through (see "Tile world rendering"), and the two are separate pipelines on
-purpose, since widening this one would move Ruinborne's live terrain path and its goldens.
+purpose, since widening this one would move the reference consumer's live terrain path and its goldens.
 
 **1. Load the material.** `TerrainMaterialPresets.Procedural()` returns a ready-made `TerrainLayeredMaterial`
 built from five `TerrainMaterialLayer`s (one per biome layer). Each layer carries an albedo image, a normal map,
@@ -10857,27 +11158,97 @@ lighting and defaults to no shadow casting. `MarkDirty` includes every loaded re
 same-plane door clearance. Streaming loads and unloads also rebuild caches affected by solid footprints, upper
 roofs and tagged doors.
 
-**Persistent GPU grass and shader wind (18.29.0).** Keep the existing authored placements and enable:
+**Persistent GPU foliage and shader wind.** Keep the existing authored placements and enable:
 
 ```csharp
 options.GroundCover.UseGpuBatches = true;
 options.GroundCover.FadeMode = GroundCoverFadeMode.HeightScale;
 options.GroundCover.CastsShadows = false;
 options.GroundCover.WindStrength = 0.1f;
-options.AnimatedFoliageArchetypes = new HashSet<string> { "grass_tall" };
-// Advance the scene clock in Update. Reuse the interactor array each frame.
+options.AnimatedFoliageArchetypes = new HashSet<string> { "grass_tall", "bush" };
+options.AnimatedFoliageStyles = new Dictionary<string, AnimatedFoliageStyle>
+{
+    ["bush"] = new(new FoliageMotionProfile(0.3f, 0.15f, 0.4f, 0.035f), CastsShadows: true),
+};
+var agitation = new FoliageAgitation(); // Retain one helper per actor between frames.
+options.GroundCover.Interactors = interactors; // Reuse this array each frame.
+
+// Each frame, advance the render clock and sample the actor's movement.
 scene.EffectTimeSeconds += dt;
-interactors[0] = new FoliageInteractor(playerPosition, 0.8f, 0.8f);
-options.GroundCover.Interactors = interactors;
+interactors[0] = new FoliageInteractor(playerPosition, 0.8f, 0.8f,
+    Agitation: agitation.Update(playerPosition, dt));
 ```
 
 The renderer retains immutable buffers until placements or model bindings change. CPU work culls patches,
 while the GPU fades and bends blades. Short grass and selected tall props share wind and interactions, but
 tall props keep full density and ordinary prop distance. This adds no collision. Wind is height-relative,
 roots stay planted, and the shader uses at most four nearby interaction positions with vertical separation.
-Other fade and shadow policies keep the existing CPU path. `LastDrawnCover` on the retained path is a
-conservative candidate count, including placements rejected by the shader. `Scene3D.LastFoliageStats`
-separates instance upload bytes, uniform bytes and submitted patch counts.
+Retention requires an immutable `GroundCoverBatch`, `UseGpuBatches` and `HeightScale` fading. It supports
+casting. Other fade modes and mutable placement lists keep the existing CPU path. `LastDrawnCover` on the
+retained path is a conservative candidate count, including placements rejected by the shader.
+`Scene3D.LastFoliageStats` separates instance upload bytes, uniform bytes and submitted patch counts.
+
+`GroundCoverRenderOptions.MotionProfiles` and `ModelCastsShadows` map ground-cover model IDs to motion
+and casting overrides. Both start empty and refuse null. A missing motion uses `FoliageMotionProfile.Blade`.
+A missing casting entry follows global `CastsShadows`, false by default. The renderer resolves policies
+before multipart expansion so all parts share them. Effective values and mesh handles are snapshotted at submission and
+compared by value on later draws. Changing or removing an entry recreates retained data when needed.
+Removal restores Blade motion or global casting. The CPU path ignores the maps and applies only global
+casting. For example, configure a short-cover model separately from the authored prop styles:
+
+```csharp
+options.GroundCover.MotionProfiles = new Dictionary<string, FoliageMotionProfile>
+{
+    ["reeds"] = new(0.3f, 0.15f, 0.4f, 0.035f),
+};
+options.GroundCover.ModelCastsShadows = new Dictionary<string, bool> { ["reeds"] = true };
+```
+
+`AnimatedFoliageArchetypes` is the only selection for authored ground props. `AnimatedFoliageStyles`
+starts empty and maps exact authored selected archetype IDs to `AnimatedFoliageStyle(Motion, CastsShadows)`.
+Use IDs from your catalogs. An omitted style is Blade with casting off, independent of short-cover
+casting. Entries outside the selection or not exactly naming an authored selected archetype throw
+`ArgumentException` naming the ID. Selected archetypes sharing a catalog mesh reference or any resolved
+mesh part must agree on their effective style, including omitted defaults. Conflicts name both IDs.
+Styles are detached snapshots validated before submission and compared by value each draw. A changed
+selection or style, including an in-place map edit, invalidates affected splits. Removing a style restores
+Blade motion and casting off. Short-cover maps do not override these styles.
+
+`FoliageMotionProfile(BendScale, MaxLean, WindScale, Shiver)` has these finite inclusive ranges:
+
+| Coefficient | Blade default | Range | Meaning |
+|---|---|---|---|
+| `BendScale` | 1 | 0 to 4 | Interactor lean multiplier |
+| `MaxLean` | 0.65 | 0 to 1 | Combined wind and lean cap as a fraction of instance height |
+| `WindScale` | 1 | 0 to 4 | Wind sway multiplier |
+| `Shiver` | 0 | 0 to 0.25 | Leaf shiver amplitude as a fraction of instance height |
+
+An invalid coefficient throws `ArgumentOutOfRangeException` naming the field. Both an omitted profile
+and `default(FoliageMotionProfile)` resolve to Blade. Profiles travel in each 96-byte GPU instance and
+do not add draws or regroup meshes by motion. Casting is part of the patch grouping. Foliage uniform
+payloads are 288 bytes in 512-byte aligned slots, with current and previous interactor agitation.
+Temporal history resets use previous equals current. Colour, motion vectors and cascade depth use one
+shared displacement function.
+
+`FoliageInteractor(Position, Radius, Strength = 1f, Agitation = 0f)` accepts finite positions,
+finite non-negative radii and finite strength and agitation in `[0, 1]`. `FoliageAgitation` is an
+allocation-free retained helper whose configurable `referenceSpeed`, `settleTime` and
+`teleportResetDistance` default to 2 m/s, 0.6 s and 5 m. Settings must be finite and strictly positive.
+`Update(position, deltaTime)` uses horizontal speed, capped at full agitation, and linearly settles
+when movement stops. A full 3D jump beyond the reset distance resets it to rest. First samples seed at
+rest. Zero time rebases without changing agitation. `Reset()` clears the value and sampled position.
+Update rejects non-finite positions and non-finite or negative frame times. Shiver takes the strongest
+single interactor's `falloff * Strength * Agitation`, never their sum, at a fixed 14 rad/s (about
+2.2 Hz). Its vertex-dependent phase and squared height weight keep roots fixed. It is added after
+the lean cap, and is zero at zero agitation.
+
+Casting is opt-in. Animated cascade shadows follow the visible displacement, camera wind-fade scale
+and material alpha cutout. Casters are gathered before camera culling. Animated casters redraw the atlas
+every frame, with one clearing render when the last is removed before static reuse. Point-light shadows
+draw casting animated foliage at its authored rest pose through the existing rigid path, preserving
+static point-shadow caching. Point proxies are lazy and caster-only, with 128 GPU bytes per casting
+instance when point shadows need them. They upload once and after a render-origin change, and retire
+on batch release. Non-casting foliage pays no point-proxy cost.
 
 `WindFadeBladePixels` on `GroundCoverRenderOptions` and `FoliageRenderSettings` stops wind on blades that
 are only a few pixels tall on screen. It is a blade height in internal render target pixels. Wind is off
@@ -10898,8 +11269,15 @@ on-screen height is lower by about the cosine of the view elevation, roughly 11%
 elevation.
 
 For a non-tile game, create `FoliageBatch` through `Scene3D.CreateFoliageBatch` once from authored
-`FoliageInstance` values and call `DrawFoliage` each frame with `FoliageRenderSettings`. Dispose the batch
-on unload. A terrain caller using `DrawGroundCover` instead releases its source with
+`FoliageInstance` values and call `DrawFoliage` each frame with `FoliageRenderSettings` and the interactor
+span. The instance constructor's optional `Motion` defaults to Blade and `CastsShadows` to false:
+
+```csharp
+var instance = new FoliageInstance(mesh, transform, thinningRank,
+    Motion: new FoliageMotionProfile(0.3f, 0.15f, 0.4f, 0.035f), CastsShadows: true);
+```
+
+Dispose the batch on unload. A terrain caller using `DrawGroundCover` instead releases its source with
 `scene.ReleaseGroundCover(batch)`. See the Render3D and Terrain.Render3D package READMEs.
 
 **Roofs come off one building at a time.** `Observer` is the tile the roof rule is judged from, and
@@ -11112,6 +11490,28 @@ the first textured material fixes it. And every layer costs that size whether it
 colour layer is a full-size fill), so a 1024 texture makes each untextured material in the same catalog a 4 MB
 layer. 256 is plenty at this grain. Leave `GroundMaterials` null and the view builds the all-flat set itself,
 which is what a colour-only world wants.
+
+**Cliffs take a steep companion and are drawn from the side.** A ground material can name the material it
+becomes on steep ground. The corner vote is unchanged, so a one-tile cliff of rock beside flat grass still votes
+grass at its foot corners, but every grass tap on the face renders rock:
+
+```jsonc
+{ "materials": [
+  { "id": 1,  "name": "grass", "color": "#4c7a3a", "texture": "ground/grass.png",
+    "steep": { "material": 14, "fromDegrees": 40, "toDegrees": 55 } },
+  { "id": 14, "name": "rock",  "color": "#7a7a7a", "texture": "ground/rock.png" }
+] }
+```
+
+`material` is required and must be another non-Water material of the same catalog file. `fromDegrees` and
+`toDegrees` are optional, default to 40 and 55 (`GroundMaterialSteep.DefaultFromDegrees` and `DefaultToDegrees`),
+and must rise strictly inside (0, 90), wide enough that the two ends differ in cosine. The blend is a smoothstep over that band on the slope of the interpolated
+ground normal, and it belongs to the material in whatever corner or overlay slot it fills. A companion's own
+`steep` is not followed. Separately, and for every material, ground steeper than 45 degrees adds side projections
+to the top-down tap, fully weighted by 60, so a cliff carries its texture up its height instead of streaking.
+The two rules are independent. Below 45 degrees the projection is unchanged for every material, but a material
+with a companion already blends from its `fromDegrees`, 40 by default. A material with no companion renders
+exactly as before below 45 degrees. The triplanar constants are `TileGroundSteepShading`'s in Render3D.
 
 **Water is carved, not placed.** A tile is water when its underlay material's `kind` is `Water`, and you sink the
 bed by lowering the corner heights, so the material's texture is the river BED and the surface height is computed.
@@ -12546,8 +12946,8 @@ above), centres the panel horizontally on the composed anchor's X and bottom-anc
 above the visible body). It
 returns `false` on the same cull paths (empty plate, behind camera, off-screen, beyond `maxDistance` - the distance
 predicate is the shared `NameplateRenderer.ShouldCull`, identical to `WorldLabel.ShouldCull`). Like `WorldLabel` it
-is screen-space, not depth-tested. `NameplateBar.Fraction` is clamped to 0..1 at draw; the draw path allocates no
-per-frame heap (bar rects are computed in the loop).
+is screen-space, not depth-tested. `NameplateBar.Fraction` is clamped to 0..1 at draw. Warmed styles with up to four
+bars reuse a cached template and content without heap allocation. Larger plates build an uncached template.
 
 `NameplateStyle` is the look, split from the data. `NameplateStyle.Default` is the unified opaque-plate preset
 (dark rounded panel, subtle border, one-bar geometry). Tweak it with a `with` expression, or start from
@@ -12691,6 +13091,99 @@ foreach (EntityRenderState e in client.Snapshot())
     }
 batch.End();
 ```
+
+#### Component templates (`NameplateTemplate`, 20.35.0)
+
+The `Nameplate` model fixes the layout to a centred title over stacked bars. When a plate needs a different
+arrangement (a name hanging over a health bar with a level badge pinned to its corner, an outlined name with no
+panel) describe it as a **`NameplateTemplate`**: an ordered list of components, each bound to a
+`NameplateSlot`, laid out by attach rules, and filled per entity from a reusable `NameplateContent`.
+
+- **Slots** are string keys (`NameplateSlot.Name`, `.Level` and `.Health` are predefined, `new
+  NameplateSlot("mana")` adds your own). A template says WHERE a slot draws, the content says WHAT it holds.
+- **`NameplateContent`** holds the per-entity values. `SetText(slot, text, color, tint)` stores text (null or
+  empty removes it), `SetBar(slot, fraction, fill, track, border)` stores a bar, and `Clear()` empties every slot
+  and restores `Opacity` to 1. `Opacity` (0..1, a non-finite value drawing opaque) multiplies the alpha of every
+  colour the plate draws, panel included, so a fade in or out needs no second template. Reuse one instance per
+  draw site: warmed slots set and read without allocating.
+- **Three components.** `NameplateTextComponent` draws text with `FontScale`, an optional eight-way outline
+  (`OutlineColor` and `OutlineThickness`), an optional `ShadowColor` at `ShadowOffset`, and its own `MaxWidth`
+  ellipsis cap. `NameplateBadgeComponent` draws centred text on a padded rounded `BaseFill` with a border, and
+  washes the fill toward the content's tint by `TintAlpha` (a disposition accent, say). `NameplateBarComponent`
+  draws a track and a clamped fill. Its `Width` and `Height` are the inner track, a `Width` of 0 takes the
+  template's content width, and its border sits outside the track.
+- **Attach rules.** The first component is the root at the origin. Every later one carries a
+  `NameplateAttach(Self, Target, TargetPoint, Offset)`: its `Self` point (an `AttachPoint` from
+  `KhaozEngine.Primitives`) lands on the `TargetPoint` of the component whose id is `Target`, plus `Offset`. A
+  null `Target` means the root. Targets must name an EARLIER component, and the constructor throws on a blank or
+  duplicate id or a forward target, so a template is validated once at build time and never at draw time.
+- **Empty slots.** A component whose slot is unset or holds the other kind does not draw and takes no space,
+  but keeps its attach point so later components hanging off it still place correctly. A plate whose components
+  all skip is culled (`Draw` returns `false`).
+- **Panel and placement.** The template carries `PanelFill`, `PanelBorder`, `PanelBorderThickness`,
+  `CornerRadius`, `PadX`, `PadY`, `MinContentWidth`, `MaxContentWidth` (0 is unbounded) and the same
+  `EdgeBehavior`, `EdgeMargin` and `EdgeHysteresis` described [above](#edge-aware-placement-nameplateedgebehavior-14190).
+
+```csharp
+// Built once, shared by every hostile plate. The bar is the root, the name hangs above its left edge and the
+// level badge sits on its right end.
+var hostilePlate = new NameplateTemplate(new NameplateComponent[]
+{
+    new NameplateBarComponent("health", NameplateSlot.Health) { Height = 6f, BorderThickness = 1f },
+    new NameplateTextComponent("name", NameplateSlot.Name)
+    {
+        OutlineColor = Color.Black,
+        OutlineThickness = 1f,
+        MaxWidth = 120f,
+        Attach = new NameplateAttach(AttachPoint.BottomLeft, "health", AttachPoint.TopLeft, new Vector2(0f, -2f)),
+    },
+    new NameplateBadgeComponent("level", NameplateSlot.Level)
+    {
+        Attach = new NameplateAttach(AttachPoint.BottomRight, "health", AttachPoint.TopRight, new Vector2(0f, -2f)),
+    },
+})
+{
+    MinContentWidth = 90f,
+    EdgeBehavior = NameplateEdgeBehavior.Deflect,
+};
+
+var content = new NameplateContent();   // one per draw site, refilled for each entity
+batch.Begin(Viewport, SamplerMode.Point);
+foreach (EntityRenderState e in client.Snapshot())
+    if (e.DisplayName is { } name)
+    {
+        content.Clear();
+        content.SetText(NameplateSlot.Name, name, Color.White);
+        content.SetText(NameplateSlot.Level, levelText[e.Id], Color.White, tint: hostileRed);  // cached strings
+        content.SetBar(NameplateSlot.Health, e.Health / e.MaxHealth, green, darkTrack);
+        content.Opacity = fadeFor(e.Id);
+
+        NameplatePlacementState placementState = placementStates.TryGetValue(e.Id, out var s) ? s : default;
+        NameplateRenderer.Draw(batch, font, white, camera, e.Position, new Vector3(0, headHeight, 0),
+            hostilePlate, content, Viewport, ref placementState, maxDistance: 90f, cullFrom: localPlayerPos);
+        placementStates[e.Id] = placementState;
+    }
+batch.End();
+```
+
+The template `Draw` comes in the same two forms as the legacy one, framebuffer ints and `IDesignViewport`, and
+both take a caller-held `NameplatePlacementState` (one per plate, never shared). A warm template draw allocates
+nothing. The render-free halves are public too: `NameplateTemplateLayout.Measure(font, template, content)`
+returns the padded panel size (zero when nothing draws), and `NameplatePlacement.Place(anchor, size,
+viewportWidth, viewportHeight, template, ref state)` places it with the template's edge settings. The outline
+itself is `TextOutline` in `KhaozEngine.Render2D` (`batch.DrawStringOutlined`, `TextOutline.Measure`), and the
+point maths is `Attach.PointOf`, `Attach.Resolve` and `Attach.Union` in `KhaozEngine.Primitives`.
+
+The legacy `Nameplate` and `NameplateStyle` API now runs as a built-in template. Its draw calls are unchanged,
+and a warmed style with up to four bars reuses a cached template without allocating. The cache keys on geometry
+and keeps 16 per thread, so a style that changes only its panel, border or title shadow colour (a panel alpha
+fade, say) keeps its template. Two limits remain on that path. A `MaxWidth` narrower than the "..." glyphs plus
+both paddings lets the panel grow to fit the ellipsis instead of overflowing it. A style whose geometry changes
+every frame (an animated padding or font scale, say) is a new cache key each frame and rebuilds its template, so
+animate such a plate through a template instead.
+
+Template files, an editor and a mod surface for templates are future work, tracked in
+[KhaozEngine#1378](https://github.com/APKiwiOrg/KhaozEngine/issues/1378).
 
 ### Simulating far from the world origin (island frames, ON by default)
 
@@ -15741,7 +16234,7 @@ itself.
 ```csharp
 var session = new TelemetrySessionInfo
 {
-    AppName    = "Ruinborne",         // handed in: the engine does not know the game's identity
+    AppName    = "ConsumerGame",         // handed in: the engine does not know the game's identity
     AppVersion = "0.7.3",             // your <Version>
     BuildName  = "Sundered Ground",   // your <BuildName>, the minor-series codename
 }
@@ -15754,7 +16247,7 @@ _recorder.Start(path, session);       // header first, then Sample() rows as bef
 The line that lands:
 
 ```json
-{"session":{"v":1,"engine":"17.25.0+3f2a1c9","app":{"name":"Ruinborne","version":"0.7.3","build":"Sundered Ground"},"gpu":{"backend":"Direct3D11","backendSource":"FallbackAfterFailure","requestedBackend":"Vulkan","requestedOverride":"vulkan","adapter":"NVIDIA GeForce RTX 4070","injectedModules":["RTSSHooks64.dll"],"threading":{"driverCommandLists":false,"driverConcurrentCreates":true}},"env":{"KE_GRAPHICS_BACKEND":"vulkan"},"game":{"worldSeed":"8812345","zone":"Ashfall"}}}
+{"session":{"v":1,"engine":"17.25.0+3f2a1c9","app":{"name":"ConsumerGame","version":"0.7.3","build":"Sundered Ground"},"gpu":{"backend":"Direct3D11","backendSource":"FallbackAfterFailure","requestedBackend":"Vulkan","requestedOverride":"vulkan","adapter":"NVIDIA GeForce RTX 4070","injectedModules":["RTSSHooks64.dll"],"threading":{"driverCommandLists":false,"driverConcurrentCreates":true}},"env":{"KE_GRAPHICS_BACKEND":"vulkan"},"game":{"worldSeed":"8812345","zone":"Ashfall"}}}
 ```
 
 **Telling the header from a sample row is one key test.** The header has a `session` envelope and no `t`. Every
@@ -16242,7 +16735,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.34.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.37.0" />
 ```
 
 ```csharp
@@ -16278,7 +16771,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.34.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.37.0" />
 ```
 
 ```csharp
@@ -16520,7 +17013,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.34.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.37.0" />
 ```
 
 ```csharp
@@ -20769,7 +21262,7 @@ pre-migration save, so it should never look like one. `StampCurrent` is what mak
 `KhaozEngine.Persistence.BatchedWriter<T>` is a bounded async batch-write queue for server-side
 telemetry: chat transcripts, operational samples, non-authoritative diagnostics, and similar record streams
 where losing the odd row under load is acceptable but blocking the sim tick on IO is not. Promoted
-from Ruinborne, which had run it in production behind three writers since its 0.9.x line.
+from the reference consumer, which had run it in production behind three writers since its 0.9.x line.
 
 ```csharp
 using KhaozEngine.Persistence;
@@ -20880,7 +21373,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.34.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.37.0" />
 </ItemGroup>
 ```
 
@@ -23023,7 +23516,7 @@ var client = new WorldClient(transport, groundHeight, MoveTuning.Default,
     token: System.Text.Encoding.UTF8.GetBytes(accountId));   // dev: raw id; prod: SignedToken.Mint(...) bytes
 ```
 
-**Azure SQL (Ruinborne).** For production, swap the backend - same `IWorldStore`, so `WorldPersistence` is
+**Azure SQL (the reference consumer).** For production, swap the backend - same `IWorldStore`, so `WorldPersistence` is
 unchanged:
 
 ```csharp
@@ -23098,7 +23591,7 @@ Both live in the one `player:{persistenceKey}` record, so position and the game 
 to *either* re-saves. Because the record is player-keyed, the blob is **unaffected by cell handoff** (unlike
 registered components, which migrate cell-to-cell with the entity).
 
-**Load-on-join guards the SESSION against a clobbering save.** On a genuinely-async store (Azure SQL / Ruinborne),
+**Load-on-join guards the SESSION against a clobbering save.** On a genuinely-async store (Azure SQL / the reference consumer),
 a load-on-join runs in the background while the tick loop keeps going. Until the loaded record is applied on the
 server thread, `WorldPersistence` guards that account: the periodic dirty pass and save-on-leave both skip it, so a
 save firing mid-load can't overwrite the stored record (position **and** the game blob) with the default-spawn state

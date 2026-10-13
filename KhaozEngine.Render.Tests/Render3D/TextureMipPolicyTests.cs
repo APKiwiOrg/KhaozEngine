@@ -38,7 +38,7 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void AtlasGrid_RuinborneSheet_StopsAtFourTexelCells()
+        public void AtlasGrid_ConsumerSheet_StopsAtFourTexelCells()
         {
             // 1024x512 packed 4 across and 2 down is a 256-texel cell. Levels 0..6 keep the cell at 256..4 texels,
             // and level 7 would halve it to 2, so the chain is 7 levels deep instead of the full 11.

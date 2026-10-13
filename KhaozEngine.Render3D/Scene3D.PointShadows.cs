@@ -70,6 +70,7 @@ namespace KhaozEngine.Render3D
         {
             PointShadowedLights = 0;
             int frame = ++_pointShadowFrame;
+            BeginFoliagePointShadowFrame();
             PointShadowSettings settings = Post.Quality.Shadows.PointShadows;
 
             if (_pointRequests.Count == 0)
@@ -291,8 +292,9 @@ namespace KhaozEngine.Render3D
         /// <summary>
         /// A 64-bit signature of everything that would be drawn into one static light's map: every rigid caster
         /// standing inside the light sphere, by mesh identity, world matrix, cast kind and dissolve (its threshold in
-        /// sixteen steps and its complement phase), combined with the light's own position, radius, near radius and
-        /// exclusion box quantised to a millimetre.
+        /// sixteen steps and its complement phase), then every rest-pose casting foliage proxy by mesh identity and
+        /// rest transform, combined with the light's own position, radius, near radius and exclusion box quantised
+        /// to a millimetre.
         /// <para>
         /// THE TWO CLEARANCES BELONG HERE because they decide what the map CONTAINS: either one takes the light's
         /// own fixture out of its own shadow. A row rendered at one clearance is not the map the same key asks for
@@ -343,6 +345,9 @@ namespace KhaozEngine.Render3D
                 MixPointSignature(ref hash, SignatureWord(PointDissolveWord(data), (uint)PointCasterKind(slot)));
                 MixPointSignature(ref hash, data.Model);
             }
+            // Casting foliage joins at its rest pose (Scene3D.FoliagePointShadows.cs), so its motion never
+            // dirties a row.
+            MixFoliagePointSignature(ref hash, lightPosAbsolute, radius, nearRadius, exclusionMin, exclusionMax);
             return unchecked((long)hash);
         }
 

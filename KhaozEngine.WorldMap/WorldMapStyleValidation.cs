@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.WorldMap.Raster;
 
 namespace KhaozEngine.WorldMap;
 
@@ -24,6 +25,9 @@ internal static class WorldMapStyleValidation
         Require(NonNegative(style.OutlinePixels), nameof(style.OutlinePixels), "must be finite and non-negative");
         Require(float.IsFinite(style.BuildingShadowOffsetMetres.X) && float.IsFinite(style.BuildingShadowOffsetMetres.Y),
             nameof(style.BuildingShadowOffsetMetres), "must have finite components");
+        WorldMapSymbolSizing.Validate(style.FallbackBlocking);
+        foreach (WorldMapSymbolRule rule in style.SymbolRules)
+            WorldMapSymbolSizing.Validate(rule.Symbol);
     }
 
     static bool UnitInterval(float value) => float.IsFinite(value) && value >= 0f && value <= 1f;

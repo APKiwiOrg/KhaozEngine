@@ -20,8 +20,8 @@ namespace KhaozEngine.Tests.NetWorld;
 ///
 /// That window produced TWO teleports for anyone away from the spawn: the client reseeds onto the spawn (a
 /// discontinuity of however far they were from it) and then takes the restore's teleport epoch advance as a second
-/// one. It is the server-side cause of Ruinborne rebuilding its whole terrain ring on every reconnect
-/// (https://github.com/APKiwiOrg/Ruinborne/issues/388), which #409's client-side fix could not reach.
+/// one. It is the server-side cause of the reference consumer rebuilding its whole terrain ring on every reconnect
+/// (consumer report), which #409's client-side fix could not reach.
 ///
 /// The rows below drive the real loopback stack (a <see cref="WorldClient"/> with auto-reconnect, a
 /// <see cref="WorldServer"/> or <see cref="ShardedWorldServer"/>, a <see cref="WorldPersistence"/> over an

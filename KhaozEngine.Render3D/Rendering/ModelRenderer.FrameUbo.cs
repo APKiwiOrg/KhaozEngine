@@ -38,7 +38,7 @@ namespace KhaozEngine.Render3D.Rendering
         {
             int count = BuildLightArrays(lights, _lightPosRadius, _lightColorIntensity, renderOrigin);
             UploadPointLights(cl, lights, renderOrigin);
-            _renderOrigin = new Vector4(renderOrigin, 0f);
+            _renderOrigin = new Vector4(renderOrigin, s.Atmosphere.Enabled ? 1f : 0f);
 
             // Clip-space-Y correction is derived from the live backend (GpuClip), not baked for Metal: it is the
             // identity on Metal/D3D (byte-identical render) and flips clip-Y on inverted-Y backends (Vulkan).
@@ -68,7 +68,7 @@ namespace KhaozEngine.Render3D.Rendering
         // same block, so every pass that binds it receives shadows from one upload.
         ShadowUbo _shadow;
         // Cached this-frame render origin (set in SetFrameUniforms, default = zero = the absolute path), written at
-        // RenderOriginOffset by WriteFrameUniformsTo. Only the world-anchored patterns read it.
+        // RenderOriginOffset by WriteFrameUniformsTo. W gates atmosphere reads from this frame's upload.
         Vector4 _renderOrigin;
 
         /// <summary>Set this frame's cascaded shadow tail (per-cascade RECEIVER matrices + PCF/bias/strength/fade

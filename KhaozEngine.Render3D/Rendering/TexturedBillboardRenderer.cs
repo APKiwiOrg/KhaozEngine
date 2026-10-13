@@ -19,8 +19,12 @@ namespace KhaozEngine.Render3D.Rendering
         const int AlphaPipeline = 0;
         const int AdditivePipeline = 1;
 
+        readonly AtmosphereBindings _atmosphere;
+        readonly bool _ownsAtmosphere;
         readonly IGpuDevice _gd;
-        readonly IGpuBuffer _ubo;              // one mat4 ViewProj (64 bytes)
+        readonly IGpuBuffer _ubo;              // two aligned ViewProj + FogBlend windows
+        internal const uint FramePayloadBytes = 80;
+        internal const uint FrameSlotBytes = 256;
         readonly IGpuResourceLayout _layout;   // UBO(vert) + texture(frag) + sampler(frag)
         readonly IGpuSampler _sampler;         // device built-in linear sampler (non-owning)
         readonly IGpuShaderSet _shaders;
@@ -29,17 +33,23 @@ namespace KhaozEngine.Render3D.Rendering
         IGpuBuffer? _vb;
         uint _vbCapacity;                      // capacity in vertices
 
-        public TexturedBillboardRenderer(IGpuDevice gd, GpuOutputDescription modelOutputs)
+        public TexturedBillboardRenderer(IGpuDevice gd, GpuOutputDescription modelOutputs, AtmosphereBindings? atmosphere = null)
         {
             _gd = gd;
+            _ownsAtmosphere = atmosphere is null;
+            _atmosphere = atmosphere ?? new AtmosphereBindings(gd);
             var factory = gd.Factory;
 
-            _ubo = factory.CreateBuffer(new GpuBufferDescription(64, GpuBufferUsage.UniformBuffer)); // mat4 ViewProj
+            _ubo = factory.CreateBuffer(new GpuBufferDescription(2 * FrameSlotBytes, GpuBufferUsage.UniformBuffer));
+            var uniforms = new AtmosphereBindings.FogBlendUniforms { ViewProj = Matrix4x4.Identity, FogBlend = Vector4.Zero };
+            gd.UpdateBuffer(_ubo, 0, in uniforms);
+            uniforms.FogBlend = Vector4.UnitX;
+            gd.UpdateBuffer(_ubo, FrameSlotBytes, in uniforms);
 
-            _layout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(
-                new GpuResourceLayoutElement("U", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex),
+            _layout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(AtmosphereBindings.AppendLayout(
+                new GpuResourceLayoutElement("U", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex | GpuShaderStages.Fragment, dynamic: true),
                 new GpuResourceLayoutElement("Tex", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
-                new GpuResourceLayoutElement("Samp", GpuResourceKind.Sampler, GpuShaderStages.Fragment)));
+                new GpuResourceLayoutElement("Samp", GpuResourceKind.Sampler, GpuShaderStages.Fragment))));
 
             // The same built-in linear sampler the model pass / Render2D use (verified on D3D11/WARP). Non-owning.
             _sampler = gd.LinearSampler;
@@ -107,14 +117,19 @@ namespace KhaozEngine.Render3D.Rendering
         /// <summary>Build a per-texture resource set (the shared ViewProj UBO + <paramref name="albedo"/> + sampler).
         /// Owned by the caller (Scene3D caches one per texture and disposes them).</summary>
         public IGpuResourceSet CreateTextureSet(IGpuTexture albedo) =>
-            _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(_layout, _ubo, albedo, _sampler));
+            _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(_layout, _atmosphere.AppendResources(new GpuBufferRange(_ubo, 0, FrameSlotBytes), albedo, _sampler)));
 
         /// <summary>Upload the frame's view-projection once (clip-Y corrected for the live backend) before the draw
         /// runs. The same matrix the model pass uses, so quad depth is comparable to mesh depth.</summary>
         public void SetViewProj(IGpuCommandList cl, Matrix4x4 viewProj)
         {
-            var clipVp = GpuClip.Correct(viewProj, _gd.Capabilities);
-            cl.UpdateBuffer(_ubo, 0, in clipVp);
+            var frame = _atmosphere.PackFogBlendFrame(GpuClip.Correct(viewProj, _gd.Capabilities));
+            cl.UpdateBuffer(_ubo, 0, in frame);
+            if (_atmosphere.Enabled)
+            {
+                frame.FogBlend.X = 1f;
+                cl.UpdateBuffer(_ubo, FrameSlotBytes, in frame);
+            }
         }
 
         /// <summary>Draw <paramref name="verts"/> (a run of one texture's quads) into <paramref name="target"/>
@@ -130,7 +145,7 @@ namespace KhaozEngine.Render3D.Rendering
 
             cl.SetFramebuffer(target);
             cl.SetPipeline(_pipelines[additive ? AdditivePipeline : AlphaPipeline]);
-            cl.SetGraphicsResourceSet(0, textureSet);
+            cl.SetGraphicsResourceSet(0, textureSet, additive && _atmosphere.Enabled ? FrameSlotBytes : 0u);
             cl.SetVertexBuffer(0, _vb!);
             cl.Draw((uint)verts.Length, 1, 0, 0);
         }
@@ -152,6 +167,7 @@ namespace KhaozEngine.Render3D.Rendering
             _ubo.Dispose();
             _vb?.Dispose();
             // _sampler is the device built-in (non-owning); do not dispose it.
+            if (_ownsAtmosphere) _atmosphere.Dispose();
         }
     }
 }

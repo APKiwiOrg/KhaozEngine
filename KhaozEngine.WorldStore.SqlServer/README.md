@@ -7,7 +7,7 @@ authoritative world; identical `IWorldStore` contract to the SQLite dev/test bac
 using KhaozEngine.WorldStore.SqlServer;
 
 IWorldStore store = new SqlServerWorldStore(
-    "Server=tcp:my.database.windows.net,1433;Database=ruinborne;Authentication=Active Directory Default;Encrypt=True;");
+    "Server=tcp:my.database.windows.net,1433;Database=consumer_game;Authentication=Active Directory Default;Encrypt=True;");
 await store.SaveAsync("player:42", bytes);
 byte[]? loaded = await store.LoadAsync("player:42");
 ```

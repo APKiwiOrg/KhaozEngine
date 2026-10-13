@@ -14,7 +14,7 @@ namespace KhaozEngine.Tests.NetWorld;
 /// Acceptance for the presentation-layer jitter fix, run headless on loopback (zero network jitter). At both an
 /// integer (60 fps vs 30 Hz) and a non-integer (~178 fps vs 30 Hz) render:tick ratio the per-frame RENDERED
 /// position of a remote and of the local player must be smooth: no hold frames (near-zero steps), no catch-up snaps
-/// (multiple-of-norm steps), no direction reversals. This is exactly the signature the throwaway Ruinborne position
+/// (multiple-of-norm steps), no direction reversals. This is exactly the signature the throwaway consumer position
 /// trace measured (docs/diagnostics/presentation-trace.md); asserted here so it can never regress.
 /// </summary>
 public class PresentationJitterTests

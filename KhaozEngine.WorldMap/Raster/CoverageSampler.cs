@@ -13,17 +13,13 @@ internal sealed class CoverageSampler
     readonly float _sin;
     readonly bool _ellipse;
 
-    internal CoverageSampler(WorldMapFootprint footprint, WorldMapSymbolKind kind, float wallWidth, Vector2 offset)
+    internal CoverageSampler(WorldMapFootprint footprint, WorldMapSymbol symbol, float wallWidth, Vector2 offset)
     {
         _center = footprint.Center + offset;
-        _halfExtents = kind == WorldMapSymbolKind.Wall
-            ? footprint.HalfExtents.X >= footprint.HalfExtents.Y
-                ? new Vector2(footprint.HalfExtents.X, wallWidth * 0.5f)
-                : new Vector2(wallWidth * 0.5f, footprint.HalfExtents.Y)
-            : footprint.HalfExtents;
+        _halfExtents = WorldMapSymbolSizing.HalfExtents(footprint, symbol, wallWidth);
         _cos = MathF.Cos(footprint.Rotation);
         _sin = MathF.Sin(footprint.Rotation);
-        _ellipse = kind is WorldMapSymbolKind.Tree or WorldMapSymbolKind.Obstacle;
+        _ellipse = symbol.Kind is WorldMapSymbolKind.Tree or WorldMapSymbolKind.Obstacle;
         Vector2 extent = _ellipse
             ? new Vector2(MathF.Sqrt(Square(_cos * _halfExtents.X) + Square(_sin * _halfExtents.Y)),
                 MathF.Sqrt(Square(_sin * _halfExtents.X) + Square(_cos * _halfExtents.Y)))

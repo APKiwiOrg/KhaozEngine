@@ -13,9 +13,9 @@ public sealed class GroundCoverGpuOptionsTests
     [InlineData(false, true, GroundCoverFadeMode.HeightScale, false, false)]
     [InlineData(true, false, GroundCoverFadeMode.HeightScale, false, false)]
     [InlineData(true, true, GroundCoverFadeMode.Dissolve, false, false)]
-    [InlineData(true, true, GroundCoverFadeMode.HeightScale, true, false)]
+    [InlineData(true, true, GroundCoverFadeMode.HeightScale, true, true)]
     [InlineData(true, true, GroundCoverFadeMode.HeightScale, false, true)]
-    public void RetentionRequiresImmutableHeightScaledUnshadowedCover(
+    public void RetentionRequiresImmutableHeightScaledCover(
         bool requested, bool immutable, GroundCoverFadeMode fadeMode, bool shadows, bool expected)
     {
         IReadOnlyList<GroundCoverInstance> cover = Array.Empty<GroundCoverInstance>();
@@ -49,14 +49,36 @@ public sealed class GroundCoverGpuOptionsTests
             DrawRadius = 20f,
             FadeBandWidth = 10f,
             DistantDensity = 1f,
+            WindStrength = .5f,
+            Interactors = [new FoliageInteractor(new Vector3(15f, 0f, 0f), 2f, 1f, 1f)],
+            MotionProfiles = new Dictionary<string, FoliageMotionProfile> { ["grass"] = new(.3f, .15f, .4f, .035f) },
+            ModelCastsShadows = new Dictionary<string, bool> { ["grass"] = !shadows },
         });
 
         Assert.Equal(1, drawn);
         SceneInstances.Instance submitted = Assert.Single(queue.Items);
         Assert.Equal(shadows, submitted.CastsShadows);
         Assert.Equal(mode == GroundCoverFadeMode.Dissolve ? .5f : 0f, submitted.DissolveThreshold);
-        Assert.Equal(mode == GroundCoverFadeMode.HeightScale ? .5f : 1f, submitted.World.M22);
-        Assert.Equal(new Vector3(15f, 0f, 0f), submitted.World.Translation);
+        Matrix4x4 rooted = Matrix4x4.CreateTranslation(15f, 0f, 0f);
+        rooted.M22 = mode == GroundCoverFadeMode.HeightScale ? .5f : 1f;
+        Assert.Equal(rooted, submitted.World);
+    }
+
+    [Fact]
+    public void ModelPolicyMapsDefaultToSeparateEmptyMapsAndRefuseNull()
+    {
+        var options = new GroundCoverRenderOptions();
+        Assert.Empty(options.MotionProfiles);
+        Assert.Empty(options.ModelCastsShadows);
+        Assert.NotSame(options.MotionProfiles, new GroundCoverRenderOptions().MotionProfiles);
+        Assert.NotSame(options.ModelCastsShadows, new GroundCoverRenderOptions().ModelCastsShadows);
+
+        Assert.Equal(nameof(GroundCoverRenderOptions.MotionProfiles),
+            Assert.Throws<ArgumentNullException>(() => options.MotionProfiles = null!).ParamName);
+        Assert.Equal(nameof(GroundCoverRenderOptions.ModelCastsShadows),
+            Assert.Throws<ArgumentNullException>(() => options.ModelCastsShadows = null!).ParamName);
+        Assert.Empty(options.MotionProfiles);
+        Assert.Empty(options.ModelCastsShadows);
     }
 
     [Fact]

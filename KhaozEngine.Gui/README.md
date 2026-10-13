@@ -17,6 +17,32 @@ The opt-in rich-text adapters take `MarkupText`, built only from a `StringId`. I
 Non-localizable names, numbers and input labels enter as `MarkupText.Of` arguments, which are formatted and
 markup-escaped before insertion into the trusted catalog template.
 
+## Pan, zoom and draggable sheets
+
+`PannableCanvas.Update(InputManager, dtSeconds, hasKeyboardFocus, isBlocked)` consumes the full-frame
+gesture contract through `GestureController` and `GestureOptions`. Update overlays first. The canvas
+reserves itself after admission, clamps its Camera2D and reports accepted single taps through
+`TryGetGestureTap(out world)`. Call `CancelGestures()` on view lifecycle changes. Its legacy
+`Update(Pointer, wheelDelta)` retains immediate vertical wheel input and `TryGetTap` release hit testing.
+Choose one path per frame. Both default canvas wheel policy to Pan. Full-frame Ctrl/Cmd+wheel requests
+zoom, including wheel snap stops, while native magnify and command+precise zoom stay continuous.
+
+`DraggableBottomSheet` accepts named `BottomSheetDetent` policies and `BottomSheetOptions`. Its
+`Update(input, availableBounds, safeArea, bodyContentHeight, dtSeconds)` runs before lower maps and
+owns body expand/scroll/collapse handoff without passing residual to them. Content height is body-only.
+Detent resolvers receive total desired height including the handle. `CurrentDetentId` is settled,
+`TargetDetentId` is selected, and `SetDetent`, `ToggleHandle` and `CancelGestures` expose caller control.
+`DetentChanged` is `Action<string>`, `Dismissed` is `Action`, and dismissal requires an explicit detent.
+The host owns keyboard focus, localized body content, optional white texture, theme and batch lifecycle.
+`Draw(batch, Action<Rect, float>)` clips the body and restores enclosing clips.
+Pending body taps remain available to child buttons after the sheet update. Handles, committed drags and
+cancellation consume associated left input through physical release, including emulated mouse contacts.
+Visible and admitted sheet regions reserve lower maps, whose rejected starts stay rejected through release.
+
+See [the authoritative consumer contract](../docs/USING-KHAOZENGINE.md#pan-and-zoom) for configuration,
+source policies, units, ownership, examples and event/toggle details. The opt-in
+[GestureInputProbe](../tools/GestureInputProbe/README.md) supplies owner-run device checks.
+
 ## Radial menu and source-target use
 
 `RadialMenu` is a retained interaction menu anchored to a pointer or projected world position. It accepts one

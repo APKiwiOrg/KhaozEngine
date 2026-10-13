@@ -103,7 +103,7 @@ internal sealed class ScriptedValidator(string providerId, Func<string, Cancella
 
 /// <summary>
 /// A validator written against the older contract: only <see cref="ValidateAsync"/>, so the default detailed member
-/// maps its null to a refusal and lets its exceptions through. Ruinborne's exchange called this path directly.
+/// maps its null to a refusal and lets its exceptions through. The reference consumer's exchange called this path directly.
 /// </summary>
 internal sealed class LegacyValidator(Func<VerifiedIdentity?> answer) : IIdentityValidator
 {
@@ -172,7 +172,7 @@ internal sealed class CountingAccountStore(IAccountStore inner) : IAccountStore
 }
 
 /// <summary>
-/// Ruinborne's policy shape: the provider's name passes through unchanged (null stays null), and admission issues a
+/// The reference consumer's policy shape: the provider's name passes through unchanged (null stays null), and admission issues a
 /// persistence key. Counts claim issues, so a test proves nothing is issued for a refused account.
 /// </summary>
 internal sealed class PassThroughPolicy(string? persistenceKey = null) : IAuthExchangePolicy

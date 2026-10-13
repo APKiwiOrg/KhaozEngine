@@ -12,7 +12,7 @@ namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
     /// Visual showcase of <see cref="DecalFillPattern.MoltenCracks"/> and <see cref="GroundDecal.EdgeErosion"/>
-    /// on the real GPU: a 4x2 grid pairing the molten variants (plain, eroded, the Ruinborne sunder-beam recipe,
+    /// on the real GPU: a 4x2 grid pairing the molten variants (plain, eroded, the reference consumer sunder-beam recipe,
     /// wide cracks) with an erosion sweep over a solid circle, dumped to PNG at two effect times so the molten
     /// breathing is visible across the pair. This test does not lock pixels beyond its A/B guards - it is a
     /// human-reviewed showcase, the demo scene issue #228 asks for.
@@ -79,7 +79,7 @@ namespace KhaozEngine.Tests.Gpu
             // Dark neutral floor, the same "so the pattern reads" staging as TelegraphShowcaseGpuTests.
             s.Draw(floor, Matrix4x4.CreateTranslation(0f, 0f, 0f), new Color(0.12f, 0.12f, 0.15f, 1f));
 
-            // Top row: the molten variants. Plain, eroded, the Ruinborne sunder recipe (a beam, the issue's
+            // Top row: the molten variants. Plain, eroded, the reference consumer sunder recipe (a beam, the issue's
             // consumer preview: PatternScale 1.2, EdgeErosion 0.6, FlashAdd riding a damage tick), wide cracks.
             s.DrawGroundDecal(Molten(Cell(0)));
             s.DrawGroundDecal(Molten(Cell(1), erosion: 0.6f));

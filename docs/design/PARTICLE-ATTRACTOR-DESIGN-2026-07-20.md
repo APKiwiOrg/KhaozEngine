@@ -1,8 +1,8 @@
 # Particle attractor, design (2026-07-20)
 
-Status: shipped 14.7.0 (issue #255). Second half of the Ruinborne death pass: the skinned corpse
+Status: shipped 14.7.0 (issue #255). Second half of the reference consumer death pass: the skinned corpse
 dissolve shipped in 14.4.0/14.5.0, this capability lets the dissolving corpse's essence visibly
-drain into the killer. Consumer: https://github.com/APKiwiOrg/Ruinborne/issues/120.
+drain into the killer. Consumer: consumer report
 
 ## Problem
 
@@ -50,7 +50,7 @@ flat for the whole effect.
 4. **Bool opt-out (`IgnoreAttractor`), not a float influence weight.** The considered alternative was
    a per-config `float AttractorInfluence` (0 = ignore, 1 = full pull, in between a partial pull), so
    a phase could be, say, half-pulled for a softer look. No consumer wanted partial influence: the
-   Ruinborne drain wants motes fully pulled and haze fully free, a binary split. A float default of 1
+   The reference consumer drain wants motes fully pulled and haze fully free, a binary split. A float default of 1
    (full pull) reproduces the bool's "not opted out" case, so adding graduated influence later is a
    backward-compatible field addition (default 1f keeps every existing config identical), not a
    breaking change to what shipped. Building the graduated version now would be a knob with no

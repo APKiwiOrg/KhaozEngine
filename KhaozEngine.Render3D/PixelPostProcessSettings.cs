@@ -57,6 +57,24 @@ namespace KhaozEngine.Render3D
         /// <see cref="UseSmoothPreset"/> and shadows).</summary>
         public SkySettings Sky = new();
 
+        /// <summary>Physical atmosphere settings. Default disabled, so the existing sky and lighting path is
+        /// unchanged. See <see cref="AtmosphereSettings"/> for the Earth preset, world height mapping and art controls.</summary>
+        public AtmosphereSettings Atmosphere = new();
+
+        AtmosphereModel? _atmosphereModel;
+
+        /// <summary>Latest evaluated cycle applied while enabled or disabled, including untinted geometry and fades.
+        /// A manually constructed legacy state invalidates it.</summary>
+        internal SunCycleState? AtmosphereCycle;
+
+        /// <summary>Refreshes the retained model from the live settings bag. Only physical changes rebuild tables.</summary>
+        internal AtmosphereModel ResolveAtmosphereModel()
+        {
+            _atmosphereModel ??= new AtmosphereModel(Atmosphere);
+            _atmosphereModel.UpdateSettings(Atmosphere);
+            return _atmosphereModel;
+        }
+
         /// <summary>LDR threshold + separable-blur bloom (beams, emissive materials, bright billboards read as a
         /// glow instead of flat). Default disabled, so the post chain runs no extra passes and existing scenes are
         /// byte-stable; set <c>Bloom.Enabled = true</c> to turn it on. See <see cref="BloomSettings"/> for the knobs
@@ -122,7 +140,7 @@ namespace KhaozEngine.Render3D
         /// in either axis (a genuine downscale). Default <c>false</c> keeps the historical single bilinear tap on
         /// that downscale, so every existing consumer and GPU golden stays byte-identical. FixedInternal's fixed
         /// target does not track the window, so a window smaller than it under-samples on that bilinear tap (the
-        /// historical Ruinborne shimmer on a window under the 1600x900 default). Turning this on reuses the SAME
+        /// historical consumer shimmer on a window under the 1600x900 default). Turning this on reuses the SAME
         /// mip-chain + trilinear-sampled blit machinery <see cref="Render3D.RenderScale.MatchViewport"/> already
         /// uses for its own supersample downscale (see <see cref="Supersample"/>), so a correct multi-tap box
         /// replaces the single tap at any downscale ratio. Ignored (no effect) under
@@ -148,19 +166,20 @@ namespace KhaozEngine.Render3D
 
         /// <summary>
         /// What fills the background, as one mutually-exclusive knob. DERIVED from <see cref="Starfield"/> and
-        /// <see cref="SkySettings.Enabled"/> rather than stored, so it can never drift from them: the getter encodes
+        /// <see cref="SkySettings.Enabled"/> and <see cref="AtmosphereSettings.Enabled"/> rather than stored: the getter encodes
         /// the engine's long-standing sky-over-starfield-over-solid precedence, and the setter clears the modes it
         /// did not select. Prefer this over setting the booleans directly.
         /// </summary>
         public BackgroundMode Background
         {
-            get => Sky.Enabled ? BackgroundMode.Sky
+            get => Atmosphere.Enabled || Sky.Enabled ? BackgroundMode.Sky
                  : Starfield ? BackgroundMode.Starfield
                  : BackgroundMode.Solid;
             set
             {
                 Sky.Enabled = value == BackgroundMode.Sky;
                 Starfield = value == BackgroundMode.Starfield;
+                if (value != BackgroundMode.Sky) Atmosphere.Enabled = false;
             }
         }
 

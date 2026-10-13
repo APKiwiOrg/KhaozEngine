@@ -14,7 +14,7 @@ namespace KhaozEngine.NetWorld;
 /// interpolation delay, the render time (<c>clock - delay</c>), seconds since the last snapshot, whether a snapshot
 /// arrived this frame, the local reconcile-error magnitude, and the per-remote snapshot-starvation hold flag. Dump
 /// it to CSV (<see cref="WriteCsv"/>) and characterise a stutter by its signature. Zero cost when disabled (the
-/// property is null). This is the engine-side promotion of the throwaway Ruinborne client-side position logger.
+/// property is null). This is the engine-side promotion of the throwaway consumer client-side position logger.
 /// </summary>
 public sealed class PresentationTrace
 {

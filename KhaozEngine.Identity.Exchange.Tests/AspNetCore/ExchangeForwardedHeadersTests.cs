@@ -17,7 +17,7 @@ namespace KhaozEngine.Tests.Identity.Exchange.AspNetCore;
 /// <summary>
 /// <c>X-Forwarded-For</c> is believed from the named proxy networks and from nothing else, loopback included, and a
 /// proxy is trusted whichever address family it shows up in: the plain IPv4 peer a host with IPv6 disabled reports, and
-/// the IPv4-mapped IPv6 peer a dual-mode socket reports. A list typed in one family only (the Ruinborne defect) still
+/// the IPv4-mapped IPv6 peer a dual-mode socket reports. A list typed in one family only (the reference consumer defect) still
 /// trusts the proxy in the other.
 /// </summary>
 [Collection(ExchangeKestrelCollection.Name)]
@@ -46,7 +46,7 @@ public class ExchangeForwardedHeadersTests
     [Fact]
     public async Task APlainIPv4Proxy_InANetworkTypedOnlyAsMappedIPv6_IsStillBelieved()
     {
-        // Ruinborne typed its list in the mapped form only, which distrusts the proxy the moment the host reports it plain.
+        // The reference consumer typed its list in the mapped form only, which distrusts the proxy the moment the host reports it plain.
         await using ExchangeHttpHost host = await StartAsync(new IPNetwork(IPAddress.Parse("::ffff:127.0.0.0"), 104));
 
         Assert.True(await ForwardedHeaderIsBelievedAsync(host));

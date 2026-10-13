@@ -202,7 +202,9 @@ namespace KhaozEngine.Render3D
         internal void UploadPointShadowFaces(IGpuCommandList cl)
         {
             ArgumentNullException.ThrowIfNull(cl);
-            _pointShadows?.UploadFaces(cl);
+            if (_pointShadows is null) return;
+            _pointShadows.UploadFaces(cl);
+            UploadFoliagePointShadowStreams(cl);
         }
 
         /// <summary>
@@ -234,7 +236,8 @@ namespace KhaozEngine.Render3D
                 }
                 renderer.ClearRow(cl, packed.Atlas, packed.Row);
 
-                bool drawRigid = (packed.Casters & PointShadowCasterSet.Rigid) != 0 && instances is not null;
+                bool rigidSet = (packed.Casters & PointShadowCasterSet.Rigid) != 0;
+                bool drawRigid = rigidSet && instances is not null;
                 if (drawRigid)
                     BuildPointCasterSpans(packed.LightPosAbsolute, packed.Radius, packed.NearRadius,
                         packed.ExclusionMin, packed.ExclusionMax);
@@ -259,6 +262,11 @@ namespace KhaozEngine.Render3D
                             draws++;
                         }
                     }
+                    // Casting foliage at rest rides the rigid set only, from its own proxy stream.
+                    if (rigidSet)
+                        draws += DrawFoliagePointShadowFace(cl, renderer, packed.Atlas, packed.PackedIndex, face,
+                            packed.Row, packed.LightPosAbsolute, packed.Radius, packed.NearRadius,
+                            packed.ExclusionMin, packed.ExclusionMax);
                     if ((packed.Casters & PointShadowCasterSet.Skinned) != 0 && packed.RequestIndex >= 0)
                         draws += DrawPointSkinnedCastersForFace(cl, renderer, packed, face);
                 }
@@ -368,6 +376,7 @@ namespace KhaozEngine.Render3D
         {
             DisposeTileGroundMaterials();
             DisposePointShadows();
+            DisposeFoliagePointShadows();
         }
 
         /// <summary>Release the atlas and its pass. Called from

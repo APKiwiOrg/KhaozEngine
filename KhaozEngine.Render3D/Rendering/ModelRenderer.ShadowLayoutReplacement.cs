@@ -97,7 +97,8 @@ internal sealed partial class ModelRenderer
     IGpuResourceSet CreateShadowSamplingSet(IGpuResourceLayout layout, IGpuTexture shadowTexture,
         bool includesPointLights, params IGpuBindableResource[] materialResources)
     {
-        var binding = new ShadowSamplingBinding(layout, materialResources, includesPointLights);
+        var binding = new ShadowSamplingBinding(layout, materialResources, includesPointLights,
+            includesAtmosphere: ReferenceEquals(layout, _layout));
         IGpuResourceSet set = BuildShadowSamplingSet(
             binding, shadowTexture, _pointShadowTexture, _pointShadowTransientTexture, _pointLightBuffer);
         _shadowSamplingBindings.Add(set, binding);
@@ -115,7 +116,7 @@ internal sealed partial class ModelRenderer
         CreateShadowSamplingSet(_splatMaterialLayout, _shadowMap.ShadowTexture,
             paramsUbo, albedoArray, normalArray, sampler ?? _terrainSampler);
 
-    // Every receiver layout ends in the cascade atlas, shared sampler, base point atlas, and transient point atlas.
+    // Shadow resources end each material prefix. Only the rigid set 0 appends atmosphere after that prefix.
     IGpuResourceSet BuildShadowSamplingSet(ShadowSamplingBinding binding, IGpuTexture shadowTexture,
         IGpuTexture pointShadowTexture, IGpuTexture pointShadowTransientTexture, IGpuBuffer pointLightBuffer)
     {
@@ -136,21 +137,24 @@ internal sealed partial class ModelRenderer
         resources[^3] = _shadowMap.ShadowSampler;
         resources[^2] = pointShadowTexture;
         resources[^1] = pointShadowTransientTexture;
+        if (binding.IncludesAtmosphere) resources = _atmosphere.AppendResources(resources);
         return _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(binding.Layout, resources));
     }
 
     sealed class ShadowSamplingBinding
     {
         internal ShadowSamplingBinding(IGpuResourceLayout layout, IGpuBindableResource[] materialResources,
-            bool includesPointLights)
+            bool includesPointLights, bool includesAtmosphere)
         {
             Layout = layout;
             MaterialResources = materialResources;
             IncludesPointLights = includesPointLights;
+            IncludesAtmosphere = includesAtmosphere;
         }
 
         internal IGpuResourceLayout Layout { get; }
         internal IGpuBindableResource[] MaterialResources { get; }
         internal bool IncludesPointLights { get; }
+        internal bool IncludesAtmosphere { get; }
     }
 }

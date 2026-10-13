@@ -9,7 +9,7 @@ using Xunit;
 namespace KhaozEngine.Tests.Locomotion;
 
 // A discrete single riser - one hand-placed static step on flat analytic ground - is the engine-side stand-in for
-// the Ruinborne building-entrance risers that surfaced the slow-walk mount stall the user hit in play: walking
+// The reference consumer building-entrance risers that surfaced the slow-walk mount stall the user hit in play: walking
 // head-on into the step at walk speed, the paced step-up's capped forward advance sat below the depenetration
 // pushback, so the capsule rose a little, lost the tread, fell back, and buzzed at flat height forever instead of
 // climbing. These drive CharacterMovement.Step against hand-built Bepu geometry (no dungeon generation, no seed

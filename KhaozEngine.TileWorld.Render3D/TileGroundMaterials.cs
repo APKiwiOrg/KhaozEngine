@@ -58,6 +58,7 @@ public sealed class TileGroundMaterialSet : ITileGroundSlotMap
                     nameof(layers));
             copy[slot] = layer;
         }
+        TileGroundSteepCompanions.CheckSet(copy, copy.Length - 1);
 
         _slots = new Dictionary<ushort, int>(materialIds.Count);
         var ids = new ushort[materialIds.Count];
@@ -99,7 +100,8 @@ public sealed class TileGroundMaterialSet : ITileGroundSlotMap
 /// <summary>Turns a tile world's ground catalog into the <see cref="TileGroundMaterialSet"/> its meshes are drawn
 /// with: one layer per material in ascending id order, then the reserved magenta layer. A material with a texture
 /// is decoded and takes a white tint (the texture IS the colour), one with no texture becomes a flat layer of its
-/// catalog colour, so a colour-only world renders through the same pipeline as a textured one.</summary>
+/// catalog colour, so a colour-only world renders through the same pipeline as a textured one. A material's steep
+/// companion becomes its layer's <see cref="TileGroundSteepLayer"/>, naming the companion's slot.</summary>
 public static class TileGroundMaterials
 {
     /// <summary>Texture repeats per world metre for a material that names none: a 2 m repeat, which at 1 unit =
@@ -169,6 +171,7 @@ public static class TileGroundMaterials
                 : Flat(TileColors.Parse(material), width, height, tiles);
         }
         layers[^1] = Flat(TileGroundMesher.MissingMaterialColor, width, height, DefaultTilesPerMetre);
+        TileGroundSteepCompanions.Apply(catalogs, ids, layers);
         return new TileGroundMaterialSet(width, height, ids, layers);
     }
 

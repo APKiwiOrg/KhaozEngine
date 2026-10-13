@@ -56,7 +56,7 @@ namespace KhaozEngine.Tests.Render3D
         [InlineData(60f)]
         [InlineData(35f)]   // the shadow benches' sun
         [InlineData(15f)]
-        [InlineData(5f)]    // a dusk Ruinborne's 30 minute day passes through twice a cycle
+        [InlineData(5f)]    // a dusk elevation reached twice per 30 minute day
         [InlineData(1f)]
         public void Threshold_is_the_designs_elevation_corrected_rule(float elevationDegrees)
         {

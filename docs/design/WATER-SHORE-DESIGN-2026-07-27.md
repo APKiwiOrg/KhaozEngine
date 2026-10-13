@@ -9,7 +9,7 @@ why.
 
 ## The complaint
 
-Ruinborne playtest of 16.12.0, verbatim: *"Sea should be a bit calmer around the shore, and there is no
+The reference consumer playtest of 16.12.0, verbatim: *"Sea should be a bit calmer around the shore, and there is no
 natural wave crash on the beach/rocks."* Plus, separately, *"there is a SLIGHT jump (very slight) when
 moving fast"*, which is the ring-boundary residual #348 already had measured.
 

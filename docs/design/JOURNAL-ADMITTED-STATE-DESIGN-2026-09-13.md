@@ -36,7 +36,7 @@ per-stream reservation means a second click inside that window is refused with `
 experience award is in flight loses the chop. The consumer worked around the same wait once already with a
 per-blow combat suspension ([Grimhollow #166](https://github.com/APKiwiOrg/Grimhollow/issues/166)), and it reloads
 a whole player journal to build a loot claim because the committed copy is the only copy it can read
-([Grimhollow #169](https://github.com/APKiwiOrg/Grimhollow/issues/169)). Ruinborne runs the same host shape and
+([Grimhollow #169](https://github.com/APKiwiOrg/Grimhollow/issues/169)). The reference consumer runs the same host shape and
 inherits the same lag.
 
 The source game this lineage comes from does not wait. It shows the item, then persists. The gap it accepts is a

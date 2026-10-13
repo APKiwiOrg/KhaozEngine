@@ -441,11 +441,12 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// THE TILE-GROUND PASS COSTS THE SAME NUMBER OF UPLOADS WITH TWO MATERIALS LOADED AS WITH ONE, which is
         /// the whole of what #727 bought and is asserted as a COUNT rather than by destination size on purpose.
-        /// The material's params buffer is <c>TileGroundMaterialConfig.ParamsBytes</c> = 1040 bytes, which is also
-        /// <c>PixelPostProcess.PaletteBufferBytes</c>, so size does not identify it and the helpers above would be
-        /// asserting about the palette half the time. The count does identify it: before the unfold this frame
-        /// wrote a 2048-byte copy of the frame block once per LOADED tile-ground material, so a second material
-        /// added a second upload whether or not anything was drawn with it.
+        /// The material's params buffer is <c>TileGroundMaterialConfig.ParamsBytes</c>. When this row was written
+        /// that was 1040 bytes, which is also <c>PixelPostProcess.PaletteBufferBytes</c>, so size could not identify
+        /// it and the helpers above would have been asserting about the palette half the time. The slope params grew
+        /// it to 2080, and a size is still no identity worth leaning on. The count does identify it: before the
+        /// unfold this frame wrote a 2048-byte copy of the frame block once per LOADED tile-ground material, so a
+        /// second material added a second upload whether or not anything was drawn with it.
         /// </summary>
         [Fact]
         public void A_tile_ground_frame_costs_no_upload_per_loaded_material()

@@ -14,11 +14,11 @@ namespace KhaozEngine.Showcase
     /// <para>
     /// WHY THE TESTBED NEEDS ONE. A GPU backend's rollout gates are stated against FIELD numbers, and the
     /// showcase is the engine's own windowed testbed, so those numbers have to be obtainable here rather than
-    /// only inside a consuming game. Before this, <c>TelemetryRecorder</c> was armed by Ruinborne and by nothing
+    /// only inside a consuming game. Before this, <c>TelemetryRecorder</c> was armed by the reference consumer and by nothing
     /// in this repo, which put every engine-side field reading behind a game checkout.
     /// </para>
     /// <para>
-    /// THE ARMING SHAPE IS RUINBORNE'S, deliberately: own the recorder, own a <see cref="FrameStats"/> and meter
+    /// THE ARMING SHAPE IS CONSUMER_GAME'S, deliberately: own the recorder, own a <see cref="FrameStats"/> and meter
     /// it every frame, resolve the session header ONCE at start so it describes the run being recorded, then
     /// append raw numeric channels on a throttle. What is dropped is the in-game arm/confirm UX and the F3
     /// chord, which are player-facing concerns a testbed has no use for, and the timestamped filename, because a
@@ -29,7 +29,7 @@ namespace KhaozEngine.Showcase
     /// <see cref="AppWindow.BackendSelection"/> and its siblings for the header, and
     /// <see cref="AppWindow.Counters"/> through <see cref="GpuTelemetryChannels"/> for the per-sample GPU
     /// numbers. Nothing here belongs at the <c>GameAppOptions</c> level, since a game that wants a capture arms
-    /// the same public recorder its own way, exactly as Ruinborne does.
+    /// the same public recorder its own way, exactly as the reference consumer does.
     /// </para>
     /// <para>
     /// ONE RECORDING PER PROCESS, opened at load and closed on dispose. There is no start/stop chord on purpose:
@@ -48,7 +48,7 @@ namespace KhaozEngine.Showcase
         public const string PathVariable = "KE_TELEMETRY_PATH";
 
         /// <summary>
-        /// Seconds between sample rows, matching Ruinborne's capture cadence so files off the two are read the
+        /// Seconds between sample rows, matching the reference consumer's capture cadence so files off the two are read the
         /// same way. The GPU counters are CUMULATIVE, so the cadence never loses a count: a window's total is the
         /// last row minus the first, whatever rate the rows came at.
         /// </summary>

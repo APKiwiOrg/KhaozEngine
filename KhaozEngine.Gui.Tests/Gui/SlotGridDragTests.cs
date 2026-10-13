@@ -288,7 +288,7 @@ namespace KhaozEngine.Tests.Gui
         [Fact]
         public void Dragging_out_of_the_panel_onto_a_bare_rect_target_commits_there()
         {
-            // The Ruinborne bag-destroy shape: a trash rect that is not a widget at all.
+            // The reference consumer bag-destroy shape: a trash rect that is not a widget at all.
             (SlotGrid g, GuiDragContext drag, Pointer p) = Carrying(new Vector2(700, 480));
             var trash = new Rect(660, 440, 80, 80);
             object? destroyed = null;

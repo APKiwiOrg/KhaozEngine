@@ -77,7 +77,7 @@ namespace KhaozEngine.Render3D
     /// widget covers the archetypes: the opaque unified plate (<see cref="Default"/>), and the panel-less
     /// name-only look (<see cref="TextOnly"/>) that pairs with <see cref="NameplateTier.Text"/>.
     /// </summary>
-    public readonly struct NameplateStyle
+    public readonly struct NameplateStyle : IEquatable<NameplateStyle>
     {
         /// <summary>Panel background fill. Alpha 0 =&gt; panel-less look (the fill draw is skipped).</summary>
         public Color PanelFill { get; init; }
@@ -107,7 +107,7 @@ namespace KhaozEngine.Render3D
         public Color? TitleShadow { get; init; }
         /// <summary>Pixel offset of the <see cref="TitleShadow"/> pass.</summary>
         public Vector2 TitleShadowOffset { get; init; }
-        /// <summary>Which edge handling <see cref="NameplateRenderer"/> applies via <see cref="NameplatePlacement.Place"/>.
+        /// <summary>Which edge handling <see cref="NameplateRenderer"/> applies via <see cref="NameplatePlacement.Place(Vector2,Vector2,int,int,in NameplateStyle,ref NameplatePlacementState)"/>.
         /// <see cref="NameplateEdgeBehavior.None"/> is today's placement, unchanged.</summary>
         public NameplateEdgeBehavior EdgeBehavior { get; init; }
         /// <summary>Inset in pixels from every viewport edge the plate must respect when <see cref="EdgeBehavior"/>
@@ -118,6 +118,50 @@ namespace KhaozEngine.Render3D
         /// must regain before a deflected plate returns above the anchor. Values &lt;= 0 mean half the plate
         /// height, so the exit threshold scales with plate size instead of needing a per-style tune.</summary>
         public float EdgeHysteresis { get; init; }
+
+        /// <inheritdoc/>
+        public bool Equals(NameplateStyle other) =>
+            PanelFill.Equals(other.PanelFill) && PanelBorder.Equals(other.PanelBorder)
+            && PanelBorderThickness.Equals(other.PanelBorderThickness) && CornerRadius.Equals(other.CornerRadius)
+            && PadX.Equals(other.PadX) && PadY.Equals(other.PadY)
+            && BarHeight.Equals(other.BarHeight) && BarSpacing.Equals(other.BarSpacing)
+            && BarCornerRadius.Equals(other.BarCornerRadius) && MinBarWidth.Equals(other.MinBarWidth)
+            && FontScale.Equals(other.FontScale) && MaxWidth.Equals(other.MaxWidth)
+            && Nullable.Equals(TitleShadow, other.TitleShadow) && TitleShadowOffset.Equals(other.TitleShadowOffset)
+            && EdgeBehavior == other.EdgeBehavior && EdgeMargin.Equals(other.EdgeMargin)
+            && EdgeHysteresis.Equals(other.EdgeHysteresis);
+
+        /// <inheritdoc/>
+        public override bool Equals(object? obj) => obj is NameplateStyle other && Equals(other);
+
+        /// <inheritdoc/>
+        public override int GetHashCode()
+        {
+            var hash = new HashCode();
+            hash.Add(PanelFill);
+            hash.Add(PanelBorder);
+            hash.Add(PanelBorderThickness);
+            hash.Add(CornerRadius);
+            hash.Add(PadX);
+            hash.Add(PadY);
+            hash.Add(BarHeight);
+            hash.Add(BarSpacing);
+            hash.Add(BarCornerRadius);
+            hash.Add(MinBarWidth);
+            hash.Add(FontScale);
+            hash.Add(MaxWidth);
+            hash.Add(TitleShadow);
+            hash.Add(TitleShadowOffset);
+            hash.Add(EdgeBehavior);
+            hash.Add(EdgeMargin);
+            hash.Add(EdgeHysteresis);
+            return hash.ToHashCode();
+        }
+
+        /// <summary>Whether two styles have equal values in every property.</summary>
+        public static bool operator ==(NameplateStyle left, NameplateStyle right) => left.Equals(right);
+        /// <summary>Whether two styles differ in any property.</summary>
+        public static bool operator !=(NameplateStyle left, NameplateStyle right) => !left.Equals(right);
 
         /// <summary>
         /// The unified-plate preset: an opaque dark rounded panel, a subtle light border, one-bar geometry, no title

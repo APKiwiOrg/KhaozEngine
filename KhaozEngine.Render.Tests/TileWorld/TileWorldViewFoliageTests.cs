@@ -42,12 +42,28 @@ public class TileWorldViewFoliageTests
 
         Assert.True(view.LastDrawnCover > 0);
         TileFoliageDrawRecord draw = Assert.Single(scene.FoliageDraws);
-        Assert.Same(options.GroundCover, draw.Options);
+        Assert.NotSame(options.GroundCover, draw.Options);
+        Assert.Equal(200f, draw.Options.DrawRadius);
+        Assert.Equal(1f, draw.Options.QualityDensity);
+        Assert.False(draw.Options.CastsShadows);
         Assert.All(draw.Instances, p =>
         {
             Vector3 up = Vector3.Normalize(Vector3.TransformNormal(Vector3.UnitY, p.Transform));
             Assert.True(up.Y > 0f);
         });
+        options.GroundCover.DrawRadius = 150f;
+        options.GroundCover.QualityDensity = 0f;
+        scene.ClearFrame();
+
+        view.Draw(Vector3.Zero);
+
+        TileFoliageDrawRecord after = Assert.Single(scene.FoliageDraws);
+        Assert.Same(draw.Instances, after.Instances);
+        Assert.Equal(150f, after.Options.DrawRadius);
+        Assert.Equal(0f, after.Options.QualityDensity);
+        Assert.Equal(0, view.LastDrawnCover);
+        Assert.Equal(200f, draw.Options.DrawRadius);
+        Assert.Equal(1f, draw.Options.QualityDensity);
     }
 
     [Fact]

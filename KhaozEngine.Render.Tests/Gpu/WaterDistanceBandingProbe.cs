@@ -14,7 +14,7 @@ namespace KhaozEngine.Tests.Gpu
     /// <see cref="WaterSettings"/> defaults on purpose - the artifact under investigation is what the defaults do,
     /// so a scene that tuned it away would prove nothing.
     /// <para>
-    /// The reported look, from a Ruinborne playtest of 14.24.0: "there are 'lines' over the whole ocean which look
+    /// The reported look, from a consumer playtest of 14.24.0: "there are 'lines' over the whole ocean which look
     /// very textured/tiled and it looks very basic from even a slight distance. Upclose its masked." Two shots, one
     /// at beach eye height showing parallel crest bands in the mid field, one from slight elevation where the whole
     /// surface reads as dense parallel wavy stripes with moire.
@@ -31,7 +31,7 @@ namespace KhaozEngine.Tests.Gpu
     {
         const int W = 960, H = 540;
 
-        /// <summary>Half-extent of the probe ocean, matching Ruinborne's Far render-distance tier.</summary>
+        /// <summary>Half-extent of the probe ocean, matching the reference consumer's Far render-distance tier.</summary>
         const float OceanHalfExtent = 600f;
 
         /// <summary>Still-water height. The seabed sits far enough below that every fragment is deep water, so the

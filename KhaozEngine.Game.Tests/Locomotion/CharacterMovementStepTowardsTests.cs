@@ -19,7 +19,7 @@ namespace KhaozEngine.Tests.Locomotion;
 /// </summary>
 public class CharacterMovementStepTowardsTests
 {
-    const float Scale = 1.5f;   // RuinborneWorld.BuildingScale, matching the other real-collider fixtures.
+    const float Scale = 1.5f;   // ConsumerWorld.BuildingScale, matching the other real-collider fixtures.
     static readonly MoveTuning Tuning = MoveTuning.Default;   // walk 6 / run 12, half-height 0.9, radius 0.4, 45 deg slope
     static readonly Func<float, float, float> Flat = (x, z) => 0f;
     const float Dt = 1f / 60f;

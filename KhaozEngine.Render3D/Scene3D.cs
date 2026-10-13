@@ -391,54 +391,52 @@ namespace KhaozEngine.Render3D
             // drain everywhere else, valve sized off the backend's frames-in-flight knob. See Create (#424, #661).
             _retired = GpuRetireQueue.Create(gd, maxSealedBatches: GpuRetireQueue.SealedBatchCapFor(gd));
             _targetOutput = targetOutput;
-            // Construction seam (issue #27): the shadow atlas is sized ONCE here (resolution x cascade count), and its
-            // handle is bound into every material set, so those knobs can only be honoured if supplied BEFORE this
-            // point. A caller seeds them by passing an initialShadows through the
-            // Render3DSurface/Render3DPreview/Render3DSnapshot ctor. After the atlas is built we commit the settings, so
-            // a later write to a construction-time knob throws instead of silently no-opping (the old inert behaviour).
+            // Construction seam (#27): surface/preview/snapshot callers seed atlas resolution and cascade count here.
+            // Material sets retain its handles. CommitAtlas makes later construction-time edits throw.
             if (initialShadows != null) Post.Quality.Shadows = initialShadows;
             _res = new RenderResources(gd, Post.RenderWidth, Post.RenderHeight, Post.Hdr.Enabled);
+            _atmosphere = new AtmosphereRenderer(gd);
             ShadowSettings shadow0 = Post.Quality.Shadows;
             _model = new ModelRenderer(gd, _res.ModelFB.Outputs,
-                shadow0.ShadowMapResolution, shadow0.ResolvedCascadeCount, _retired);
+                shadow0.ShadowMapResolution, shadow0.ResolvedCascadeCount, _retired, _atmosphere.Bindings);
             shadow0.CommitAtlas();
             _post = new PixelPostProcess(gd, _res.PingAFB.Outputs, targetOutput);
             _post.BindTargets(_res);
             _lines = new LineRenderer(gd, targetOutput);
             _fills = new FillRenderer(gd, targetOutput);
-            _billboards = new BillboardRenderer(gd, targetOutput);
+            _billboards = new BillboardRenderer(gd, targetOutput, _atmosphere.Bindings);
             _transitions = new TransitionRenderer(gd, targetOutput);
             _transitions.BindTargets(_res);
             // Textured billboards draw INTO the model MRT (depth-interleaved with meshes), so they target the model
             // framebuffer's output description, not the final target like the overlay renderers above.
-            _texBillboards = new TexturedBillboardRenderer(gd, _res.ModelFB.Outputs);
+            _texBillboards = new TexturedBillboardRenderer(gd, _res.ModelFB.Outputs, _atmosphere.Bindings);
             // Beams draw into the same model MRT as the textured billboards (depth-interleaved), so they target the
             // model framebuffer's output description.
-            _beams = new BeamRenderer(gd, _res.ModelFB.Outputs);
+            _beams = new BeamRenderer(gd, _res.ModelFB.Outputs, _atmosphere.Bindings);
             // Trails draw into the same model MRT as the beams (depth-interleaved), so they target the model
             // framebuffer's output description too.
-            _trails = new TrailRenderer(gd, _res.ModelFB.Outputs);
+            _trails = new TrailRenderer(gd, _res.ModelFB.Outputs, _atmosphere.Bindings);
             // Ground decals render into the lit color attachment + read-only scene depth (ColorDepthFB) before the
             // post chain, so they pass that framebuffer's output description (color format + depth format).
-            _decalRenderer = new Rendering.GroundDecalRenderer(gd, _res.ColorDepthFB.Outputs, _retired);
+            _decalRenderer = new Rendering.GroundDecalRenderer(gd, _res.ColorDepthFB.Outputs, _retired, _atmosphere.Bindings);
             // Modern particle sprites render into the same ColorDepthFB (lit colour + read-only scene depth)
             // after the water pass, sampling the resolved scene depth for the soft fade. Default empty (no
             // DrawParticle call queued == the pass never runs, existing scenes byte-stable).
-            _particleRenderer = new Rendering.ParticleRenderer(gd, _res.ColorDepthFB.Outputs, _retired);
+            _particleRenderer = new Rendering.ParticleRenderer(gd, _res.ColorDepthFB.Outputs, _retired, _atmosphere.Bindings);
             // Screen-space distortion writes into its own lazily allocated half/quarter-res offset field (a fixed
             // R16G16Float output, never multisampled, so it needs no SetOutputs), re-sampled by the post apply pass.
             // Default empty (no DrawDistortion call queued == nothing allocated, no apply pass, existing scenes byte-stable).
             _distortionRenderer = new Rendering.DistortionRenderer(gd, _retired);
             // The procedural sky renders into the same ColorDepthFB (lit colour + read-only scene depth) as the
             // decals, as a far-plane background pass behind the geometry. Default off (Post.Sky.Enabled == false).
-            _sky = new Rendering.SkyRenderer(gd, _res.ColorDepthFB.Outputs);
+            _sky = new Rendering.SkyRenderer(gd, _res.ColorDepthFB.Outputs, _atmosphere.Bindings);
             // Procedural starfield: a background pass at the same slot as the sky (before the decals), so the stars
             // are part of the scene and anything drawn over the void composites over them. Default on
             // (Post.Background == BackgroundMode.Starfield).
             _starfield = new Rendering.StarfieldRenderer(gd, _res.ColorDepthFB.Outputs);
             // Animated water draws into the same ColorDepthFB, AFTER the sky + decals (see RenderInternal). Default
             // off (no DrawWater request queued == the pass never runs, existing scenes byte-stable).
-            _water = new Rendering.WaterRenderer(gd, _res.ColorDepthFB.Outputs, _retired);
+            _water = new Rendering.WaterRenderer(gd, _res.ColorDepthFB.Outputs, _retired, _atmosphere.Bindings);
             // Depth-tested debug wire volumes draw into the same ColorDepthFB (lit colour + read-only scene depth)
             // after the water pass, before the post chain, so scene geometry occludes their buried parts.
             _depthLines = new Rendering.DepthLineRenderer(gd, _res.ColorDepthFB.Outputs);
@@ -1448,6 +1446,7 @@ namespace KhaozEngine.Render3D
             Matrix4x4 vp = _currentFrameView.JitteredViewProjection, absVp = _currentFrameView.AbsoluteViewProjection;
             Matrix4x4 displayVp = _currentFrameView.ViewProjection;
             Vector3 eye = ToRender(ActiveCamera.Eye);
+            RecordAtmosphere(cl, eye);
             FrustumPlanes camFrustum = FrustumCulling ? FrustumPlanes.Extract(absVp) : default;
 
             // GPU instancing: group queued instances by mesh into a flat instance array (ordered by mesh) + a
@@ -1560,66 +1559,9 @@ namespace KhaozEngine.Render3D
             }
             int skinnedCasterCount = CountSkinnedCasters();   // opted-out skinned draws neither cast nor dirty the atlas
 
-            // Key-light cascaded shadow map (ShadowMode.ShadowMap): a depth-only pass over the SAME instanced casters
-            // into the ortho light-space cascade atlas, BEFORE the model pass, so the model + splat fragments sample it.
-            // Off/Blob leave the shadow tail at strength 0, so the frame is byte-stable (no depth pass, the shader never
-            // taps the atlas). Set the shadow tail BEFORE SetFrameUniforms (which uploads the whole frame UBO incl. that
-            // tail). shadowMapActive + the cascade fit were resolved above (before the skinned recording), so this reuses
-            // the exact same matrices the skinned-visibility split was computed against.
-            float shadowDepthMs = 0f, modelMs = 0f, transparentsMs = 0f, waterSyncMs = 0f, postMs = 0f;
+            float shadowDepthMs = RenderCascadeShadowPass(cl, shadowMapActive, skinnedCasterCount);
+            float modelMs = 0f, transparentsMs = 0f, waterSyncMs = 0f, postMs = 0f;
             long timingStart = 0;
-            _shadowPassSkippedLastFrame = false;
-            _lastShadowPassDiagnostics = default;
-            if (shadowMapActive)
-            {
-                timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;
-                // Always set the receiver tail so the model + splat fragments sample the atlas (whether or not its depth
-                // is re-rendered this frame). Then decide whether the depth pass must actually re-run: the atlas
-                // persists across frames, so an unchanged static scene reuses it and skips every caster draw.
-                SetShadowReceiverTail();
-                BuildShadowCasterSpans(_shadowCasterRunsScratch, _shadowCasterModelsScratch);
-                bool hadPrevious = _shadowPassRendered;
-                bool anySkinnedCaster = skinnedCasterCount > 0;
-                // A skinned caster dirties the pass while it EXISTS, so the frame the last one vanishes on is the
-                // frame that has to lift its shadow off the atlas (issue #23). Nothing else here can see that: the
-                // skinned casters are not in the rigid signature, and a frozen camera under a held sun leaves every
-                // other input clean, so without this the atlas would be reused with the character still on it.
-                bool skinnedCastersCleared = SkinnedCastersCleared(anySkinnedCaster);
-                bool resolutionChanged = hadPrevious && _model.ShadowMap.Resolution != _lastShadowResolution;
-                bool lightMatrixChanged = hadPrevious && ShadowCascadeVpsChanged(
-                    _cascadeCpuVps, _cascadeCount, _lastCascadeCpuVps, _lastShadowCascadeCount);
-                bool casterDataChanged = hadPrevious && ShadowCastersChanged(
-                    _shadowCasterRunsScratch, _shadowCasterModelsScratch, _lastShadowCasterRuns, _lastShadowCasterModels);
-                bool dirty = ShadowDepthPassDirty(
-                    hadPrevious: hadPrevious,
-                    anySkinnedCaster: anySkinnedCaster,
-                    skinnedCastersCleared: skinnedCastersCleared,
-                    resolutionChanged: resolutionChanged,
-                    lightMatrixChanged: lightMatrixChanged,
-                    casterDataChanged: casterDataChanged);
-                if (dirty)
-                {
-                    // Split the one caster list into the sub-spans each cascade actually reaches, then draw. Only on
-                    // a dirty pass: a skipped frame draws nothing, so it must not pay for the split either. The
-                    // SIGNATURE above stays the FULL list on purpose - the cull is a pure function of the caster
-                    // transforms (already in that signature) and the cascade matrices (already in the light-matrix
-                    // compare), so it can never change the drawn set without one of those dirtying the pass first.
-                    BuildCascadeCasterSpans(_cascadeCount);
-                    RenderShadowDepthPass(cl, _cascadeCasterSpans);
-                    // What this pass just drew becomes next frame's reference (see Scene3D.ShadowDirtyState.cs).
-                    CommitShadowDirtyState(anySkinnedCaster);
-                }
-                else
-                    _shadowPassSkippedLastFrame = true;
-                // Recorded AFTER the decision so one snapshot describes one frame: the per-cascade rigid span counts
-                // and the raw draw calls only exist once the pass has walked them, and a skipped frame must report
-                // zero of both rather than the last rendered pass's numbers (issue #410).
-                RecordShadowPassDiagnostics(dirty, hadPrevious, anySkinnedCaster, skinnedCastersCleared,
-                    resolutionChanged, lightMatrixChanged, casterDataChanged, skinnedCasterCount, _cascadeCount);
-                if (EnableTiming) shadowDepthMs = ElapsedMs(timingStart);
-            }
-            else
-                _model.ClearShadowUniforms();
 
             // Point-light shadow maps (Scene3D.PointShadows.cs): after the key light's pass, because it reuses the
             // same uploaded instances, and before the model pass, which binds the material sets a first atlas
@@ -1769,7 +1711,7 @@ namespace KhaozEngine.Render3D
             if (_waterPlanes.Count > 0)
             {
                 _water.Draw(cl, _res, RelativeWaterPlanes(), vp, displayVp,
-                    Post.LightDirection, Post.LightColor, eye, Post.Water, Post.Sky, EffectTimeSeconds, _frameOrigin);
+                    Post.LightDirection, Post.LightColor, eye, Post.Water, Post.Sky, EffectTimeSeconds, _frameOrigin, Post.Atmosphere.Enabled);
                 _frameStats.DrawCalls++;
                 // The ocean FFT's remaining GPU drain (the one a frame pays to PRIME its cascades, since #398
                 // ping-ponged the per-frame one away) is a Submit+WaitForIdle stall, not draw-call encode cost, so
@@ -2168,6 +2110,7 @@ namespace KhaozEngine.Render3D
             DisposeMotionVectorsView();
             DisposeTileGroundAndPointShadowResources();
             DisposeTemporalResolve();
+            _atmosphere.Dispose();
         }
 
         /// <summary>A contiguous run of instances of one mesh handle inside the flat instance array.</summary>

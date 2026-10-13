@@ -40,6 +40,17 @@ public sealed class TileWorldViewOptions
     /// Selected props keep their full density and PropDrawRadius, independent of short-grass quality.</summary>
     public IReadOnlySet<string> AnimatedFoliageArchetypes { get; set; } = new HashSet<string>(StringComparer.Ordinal);
 
+    /// <summary>Live motion and casting for selected animated archetypes. An omitted style uses Blade motion
+    /// without casting. Entries outside AnimatedFoliageArchetypes and conflicting styles on shared meshes are refused.</summary>
+    public IReadOnlyDictionary<string, AnimatedFoliageStyle> AnimatedFoliageStyles
+    {
+        get => _animatedFoliageStyles;
+        set => _animatedFoliageStyles = value ?? throw new ArgumentNullException(nameof(AnimatedFoliageStyles));
+    }
+
+    IReadOnlyDictionary<string, AnimatedFoliageStyle> _animatedFoliageStyles =
+        new Dictionary<string, AnimatedFoliageStyle>(StringComparer.Ordinal);
+
     /// <summary>The settings every region-plane ground mesh is built with. The view SETS
     /// <see cref="TileGroundMesherOptions.Slots"/> on this object when it is constructed, to the material set it
     /// is about to upload, because the slots a vertex names only mean anything against that set.
@@ -174,6 +185,8 @@ public sealed partial class TileWorldView : IDisposable
         _doc = doc;
         _catalogs = catalogs;
         _options = options ?? new TileWorldViewOptions();
+        _animatedFoliageStyles = new AnimatedFoliageStyleSnapshot(_options.AnimatedFoliageArchetypes,
+            _options.AnimatedFoliageStyles, catalogs, _propMeshes);
         ArgumentNullException.ThrowIfNull(_options.PropLayers);
         TileWorldPropClusters.ValidatedLayers validatedPropLayers =
             TileWorldPropClusters.Validate(catalogs, _options.PropLayers);
@@ -209,6 +222,8 @@ public sealed partial class TileWorldView : IDisposable
                 }
                 _propMeshes[entry.Key] = scene.LoadPropMeshes(parts);
             }
+            _animatedFoliageStyles = new AnimatedFoliageStyleSnapshot(_options.AnimatedFoliageArchetypes,
+                _options.AnimatedFoliageStyles, catalogs, _propMeshes);
             _propClusters = new TileWorldPropClusters(scene, catalogs, resolver, _propMeshes, validatedPropLayers,
                 doc.TileSize, buildQueueOptions, dispatcher);
         }
@@ -471,6 +486,7 @@ public sealed partial class TileWorldView : IDisposable
     public void Draw(Vector3 focus)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        ValidateAnimatedFoliageStyles();
         Flush();
         PumpProfileBuilds(focus);
         _propClusters.Pump(focus);

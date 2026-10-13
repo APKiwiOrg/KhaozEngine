@@ -125,16 +125,11 @@ namespace KhaozEngine.Windowing
         }
 
         /// <summary>
-        /// Return this snapshot with only <see cref="ScrollDelta"/> cleared. All input collection references
-        /// and every other per-frame value are preserved. A snapshot already carrying no scroll is returned as-is.
+        /// Clear both legacy scroll axes and scroll samples, retaining magnify and all other input values.
+        /// A snapshot already carrying no scroll totals or samples is returned as-is.
         /// </summary>
-        public InputState WithoutScroll() => ScrollDelta == 0f
-            ? this
-            : new InputState(
-                MouseDeltaPoints, FramebufferScale,
-                KeysDown, KeysPressed, KeysReleased, MouseDown, MousePressed,
-                MousePosition, MouseDelta, 0f, Width, Height, Gamepads, Touches,
-                WindowFocused, KeysRepeated, MouseReleased, TextInput, TextInputAvailable, PointerCaptured);
+        public InputState WithoutScroll() => ScrollDelta == 0f && HorizontalScrollDelta == 0f && !Gestures.HasScroll
+            ? this : CopyPointerGestures(Gestures.WithoutScroll(), 0f, 0f);
 
         /// <summary>The gamepad at <paramref name="index"/>, or <see cref="GamepadState.Disconnected"/> if absent.</summary>
         public GamepadState Gamepad(int index = 0) =>

@@ -9,7 +9,7 @@ using Xunit;
 namespace KhaozEngine.Tests.Locomotion;
 
 // Regression for the paced step-up's embedded-riser mount stall on a REAL baked building-entrance proxy (the
-// Ruinborne inn door step: a solid convex box in front of the hall wall, scaled 1.5 like the game places it). At
+// The reference consumer inn door step: a solid convex box in front of the hall wall, scaled 1.5 like the game places it). At
 // the shipped default walk speed the capsule buzzed at flat height and never climbed the ~0.32 m step: on the
 // paced step-up's capped (throttled) pose the feet sit embedded inside the solid riser box, so the support feel-fan's
 // downward ray STARTS inside the solid and Bepu returns a zero-distance up-normal "floor" hit. That false "supported"
@@ -28,7 +28,7 @@ public class InnDoorStepMountTests
         return PhysicsShapeScale.Uniform(PropCollisionFormat.Read(path), Scale);
     }
 
-    // The shipped default tuning (radius 0.4, walk 6, climb 3.5) with Ruinborne's 40 deg slope gate. The stall
+    // The shipped default tuning (radius 0.4, walk 6, climb 3.5) with the reference consumer's 40 deg slope gate. The stall
     // reproduces at the engine default 45 deg gate too; 40 deg matches the consumer that surfaced it.
     static MoveTuning Tuning => MoveTuning.Default with { MaxSlopeRadians = MathF.PI * 40f / 180f };
 

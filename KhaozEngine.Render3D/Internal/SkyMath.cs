@@ -261,10 +261,37 @@ namespace KhaozEngine.Render3D.Internal
 
         /// <summary>The sky along a world direction with any number of discs (unit <see cref="SkyDisc.Direction"/>s,
         /// as <see cref="SkyDiscs.Resolve"/> leaves them). Each disc carries <paramref name="sunStrength"/> times
-        /// its own opacity. The water's <c>skyAlongDirection</c> mirrors this loop exactly.</summary>
+        /// its own opacity. Physical reflections add discs over directional radiance, with
+        /// <paramref name="primaryDiscIndex"/> identifying the solar disc from the GPU packing's primary marker
+        /// (-1 when absent). The water's <c>skyAlongDirection</c> mirrors this loop.</summary>
         public static Vector3 ShadeDirectionDiscs(Vector3 direction, Vector3 horizon, Vector3 zenith,
-            ReadOnlySpan<SkyDisc> discs, float sunStrength, SkyGround ground = default)
+            ReadOnlySpan<SkyDisc> discs, float sunStrength, SkyGround ground = default,
+            AtmosphereModel? atmosphere = null, AtmosphereFrame atmosphereFrame = default, float cameraHeightKm = 0f,
+            int primaryDiscIndex = -1)
         {
+            if (atmosphere is not null)
+            {
+                var view = Vector3.Normalize(direction);
+                var physical = atmosphere.SkyValue(cameraHeightKm, view, atmosphereFrame);
+                for (int i = 0; i < discs.Length; i++)
+                {
+                    ref readonly SkyDisc body = ref discs[i];
+                    if (i == primaryDiscIndex)
+                    {
+                        physical += atmosphere.SunDiscValue(cameraHeightKm, view, atmosphereFrame)
+                            * Math.Clamp(sunStrength, 0f, 1f);
+                    }
+                    else if (atmosphere.IsSkyDirectionVisible(cameraHeightKm, view))
+                    {
+                        float angle = MathF.Atan2(Vector3.Cross(view, body.Direction).Length(),
+                            Math.Clamp(Vector3.Dot(view, body.Direction), -1f, 1f));
+                        if (angle <= body.Radius)
+                            physical += new Vector3(body.Color.R, body.Color.G, body.Color.B)
+                                * Math.Clamp(sunStrength * body.Color.A, 0f, 1f);
+                    }
+                }
+                return physical;
+            }
             float up = Math.Clamp(direction.Y, 0f, 1f);
             float t = Smoothstep(0f, 1f, up);
             Vector3 col = Vector3.Lerp(horizon, zenith, t);

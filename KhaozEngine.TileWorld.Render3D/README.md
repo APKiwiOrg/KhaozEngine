@@ -143,6 +143,21 @@ emits slots supplied by the set.
    the texture.
 3. Make every textured file the SAME pixel size. The set is one texture array, so the first textured material
    fixes the size for the whole catalog and any other of a different size throws rather than being resampled.
+4. Optionally give a material a `steep` companion, `{ "material": 14, "fromDegrees": 40, "toDegrees": 55 }`, so
+   it blends toward that material as the ground under it steepens. `Build` turns the companion id into the slot
+   that id occupies and the omitted band ends into `GroundMaterialSteep.DefaultFromDegrees` (40) and
+   `DefaultToDegrees` (55). This is how a cliff whose foot corners voted for the grass below renders rock on the
+   face: the corner vote is untouched, and every grass tap on the face becomes rock instead.
+
+**Steep ground is drawn from the side.** Independently of any companion, a fragment whose ground normal is past
+45 degrees adds two side projections to every material it samples, fully weighted by 60 degrees, so a cliff
+carries its texture up its height rather than one row of it smeared into vertical streaks. Below 45 degrees the
+projection is the single top-down tap it always was. That is the projection only: a material with a `steep`
+companion starts blending toward it at its own `fromDegrees`, 40 by default, so its ground can change below 45.
+Materials without one are unchanged there. Both read the interpolated lattice normal, so they are
+continuous across tiles and regions. The shading lives in Render3D, see `TileGroundSteepShading` in that package's
+README. The set refuses a companion on its reserved missing-material layer or one naming it, so the magenta that
+marks a dangling id is never hidden or spread.
 
 **Every layer costs that size, textured or not.** A flat colour layer is a full-size fill, because a texture
 array's slices all match, so one 1024x1024 texture in a catalog makes each of its untextured materials a 4 MB
@@ -203,7 +218,7 @@ contributes, one per rectangle of each body `TileWaterBodies.Collect` returns, i
 
 `TileWaterLooks.River` is the shipped per-plane `WaterLook`: procedural waves off the shared FFT ocean, no swell,
 a small normal strength, no surf, foam only in a narrow shore band, silty colours and a 0.8 m `ShallowDepth` so a
-60 to 80 cm bed still darkens. It is modelled on Ruinborne's inland lake, and every value that differs from it
+60 to 80 cm bed still darkens. It is modelled on the reference consumer's inland lake, and every value that differs from it
 differs because of SCALE (the sea's 1.6 m foam band and 2.5 m ripple wavelength would each consume a river whole).
 **It is one shared instance of a class of public fields, so do not mutate it**: copy it, or pass a look of your
 own through `TileWorldViewOptions.WaterLook`.
@@ -531,18 +546,52 @@ catalog archetype up front, so a region load is placements alone.
 - `Dispose` cancels and drains the background queues, releases region ground, cover and cluster state, frees the
   optional LOD uploads and every archetype mesh set, and disposes the shared cluster owner. The scene is not owned.
 
-## Animated authored grass
+## Animated authored foliage
 
-`TileWorldViewOptions.GroundCover.UseGpuBatches` enables persistent GPU cover when height fading and
-no-shadow drawing are selected. The view releases retained batches on rebuild, unload and disposal through
+`TileWorldViewOptions.GroundCover.UseGpuBatches` enables persistent GPU cover with
+`FadeMode = GroundCoverFadeMode.HeightScale`, including casting cover. `GroundCover.MotionProfiles`
+and `GroundCover.ModelCastsShadows` are model-keyed overrides for short cover. Missing entries use
+Blade motion and global `GroundCover.CastsShadows` (false by default). The CPU fallback ignores these
+maps. The view releases retained batches on rebuild, unload and disposal through
 `ITileWorldScene.ReleaseGroundCover`, whose default is a no-op for existing scene implementations.
 
-`AnimatedFoliageArchetypes` selects placed ground-prop model IDs for the same wind and bending shader.
-Selected props keep their authored transforms, ordinary prop draw radius and full density. Turning short
-cover off does not hide them. Wind settings, including `WindFadeBladePixels`, and up to four
-`GroundCover.Interactors` are shared with short cover. The host advances `Scene3D.EffectTimeSeconds`.
-Selection, overrides and dirty rebuilds invalidate only affected cached splits. This changes presentation
-only, with picking and collision left to world data.
+`AnimatedFoliageArchetypes` selects authored ground-prop archetype IDs for the same foliage shader.
+It remains the only selection, and is empty by default. Selected props keep their authored transforms,
+ordinary `PropDrawRadius` and full density. Turning short cover off does not hide them. Wind settings,
+including `WindFadeBladePixels`, and up to four `GroundCover.Interactors` are shared with short cover.
+The host advances `Scene3D.EffectTimeSeconds`.
+
+`AnimatedFoliageStyles` maps exact authored IDs in that selection to
+`AnimatedFoliageStyle(FoliageMotionProfile Motion, bool CastsShadows)`. It starts empty and refuses
+null. A selected archetype without a style uses `FoliageMotionProfile.Blade` `(1, 0.65, 1, 0)` with
+casting off, independently of short cover's global casting. A style outside the selection or not
+exactly naming an authored selected archetype throws `ArgumentException` naming its ID. Selected
+archetypes sharing a catalog mesh reference or any resolved multipart mesh handle must have the same
+effective motion and casting style, including omitted defaults. A conflict names both IDs.
+
+```csharp
+options.AnimatedFoliageArchetypes = new HashSet<string> { "grass_tall", "bush" };
+options.AnimatedFoliageStyles = new Dictionary<string, AnimatedFoliageStyle>
+{
+    ["bush"] = new(new FoliageMotionProfile(0.3f, 0.15f, 0.4f, 0.035f), CastsShadows: true),
+};
+```
+
+Use IDs from your own catalogs. Styles are detached snapshots, validated before submission and
+compared by value each draw. Changing the selection or a style, including mutating a supplied map,
+invalidates affected cached splits. Removing a style restores Blade motion and casting off. Overrides
+and dirty rebuilds also invalidate affected splits. Short-cover motion/casting maps do not override
+selected props' styles. This changes presentation only, with picking and collision left to world data.
+
+Feed `FoliageInteractor.Agitation` from one retained `FoliageAgitation.Update(position, deltaTime)`
+tracker per actor. Agitation defaults to 0 and accepts finite values in `[0, 1]`. The helper defaults
+are 2 m/s reference speed, 0.6 s settle time and 5 m teleport reset distance. Shiver runs at 14 rad/s
+and uses the strongest single interactor, settling to rest when movement stops. Profiles and their
+coefficient ranges are in [Render3D's foliage reference](../KhaozEngine.Render3D/README.md#persistent-grass-and-foliage).
+Retained instances use 96 GPU bytes each, with 288-byte uniform payloads in 512-byte slots.
+Casting cascade shadows follow animation and alpha cutout. Point-light shadows draw at the authored
+rest pose, lazily allocating 128 GPU bytes per casting instance for the caster-only proxy stream when
+point shadows need it. Non-casting foliage allocates no such stream.
 
 ## Streaming (`TileRegionResidency`, `TileResidencyConfig`)
 

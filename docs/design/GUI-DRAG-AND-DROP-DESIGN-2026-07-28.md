@@ -12,10 +12,10 @@ single-widget gesture that never leaves the widget it started in. So there was n
 one `SlotGrid` slot and put it down somewhere else, and every game that wanted an inventory had to hand-roll
 press-origin tracking, a ghost, cross-widget hit testing, and drop validation.
 
-Three Ruinborne features were blocked on it, one of them load-bearing:
-[295](https://github.com/APKiwiOrg/Ruinborne/issues/295) (drag a stack out of the bag to destroy it, the only
+Three consumer features were blocked on it, one of them load-bearing:
+consumer report (drag a stack out of the bag to destroy it, the only
 intended way to free a slot now that a full bag refuses pickups),
-[262](https://github.com/APKiwiOrg/Ruinborne/issues/262), [263](https://github.com/APKiwiOrg/Ruinborne/issues/263).
+consumer report, consumer report.
 
 ## Decision 1: a standalone context object, not widget-base-class members
 
@@ -93,7 +93,7 @@ structural reason drag was, which is why #315's 2026-07-28 comment raised it her
 
 Folded in rather than split out. It is the same class, the same press-origin invariant, and the same headless
 harness that the drag work already stands up, and splitting it would cost a whole engine release for three
-helpers. Ruinborne gets both halves off one pin bump.
+helpers. The reference consumer gets both halves off one pin bump.
 
 `IsRightTapIn` needed real state, not an alias: `_pressOrigin` was only latched on the LEFT press edge, so the
 right button had no origin to enforce the invariant against. It gets `_rightPressOrigin`, and its own

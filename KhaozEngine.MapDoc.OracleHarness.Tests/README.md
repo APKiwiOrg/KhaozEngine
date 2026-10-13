@@ -121,3 +121,201 @@ only the synthetic harness guards, leaving the shipped comparison to the control
 The harness requires its own explicit build, test and format verification because the solution
 does not include it. An unfiltered harness run is not a substitute for the separately gated
 recorder, synthetic guard and private inventory runs.
+
+## Building extraction contract
+
+`ShippedBuildingInputs.Read` and `ShippedBuildingComparison.Compare` are test-only. The shipped building
+entry runs through the existing private entry boundary. It has no discovery-time reads. Implementers select
+only `ShippedBuildingInputGuardTests` and `PrivateOracleGuardTests`, never the shipped building fact.
+The architecture guard pins exactly five direct engine references. The harness remains outside the
+solution and public CI and is not packable.
+
+The controller authors a fresh extraction and its provenance outside git. Nothing here searches a game
+checkout, infers building membership, restamps a nominal definition or repairs incomplete extraction data.
+The extraction contains both the frozen source and an explicit native comparison scaffold. This is a
+comparison procedure, not the R11 lossless importer or game adoption acceptance.
+
+### Provenance
+
+Use the existing `ShippedSourceProvenance` camel-case object, with every field present:
+
+| Field | Required value |
+|---|---|
+| `sourceRepository` | Nonempty source repository identity |
+| `tag` | Exact source tag, or an explicitly empty string for an untagged checkpoint |
+| `commit` | Full lowercase 40-character source commit |
+| `sourceEnginePin` | Nonempty frozen engine pin |
+| `extractionPathspec` | Nonempty relative extraction pathspec list |
+| `paths` | Complete list of `{ "path": "relative/file", "sha256": "lowercase hash" }` |
+| `aggregateSha256` | SHA-256 of the aggregate manifest defined below |
+| `aggregateRule` | `sha256 of UTF-8 lines path TAB sha256 LF, ordinal by path` |
+| `units` | Non-null JSON describing the source units |
+| `rowOrientation` | Nonempty source row orientation |
+| `comparison` | The building object described below |
+| `oracleEquivalence` | Non-null JSON describing the claimed comparison scope and deferred acceptance |
+
+Sort `paths` ordinally by path. Hash the UTF-8 concatenation of `path`, a tab, its lowercase SHA-256 and
+LF for each file. The provenance's own byte digest is the existing outer environment digest. Include
+exactly one attested `world.json`, all of its listed region files, every catalog named by it, each nominated
+source prefab definition, the native scaffold, every native root manifest and its full resource graph,
+and each original mesh, LOD, texture, collider, selection and light dependency read by the comparison.
+The extraction may contain unrelated source leaves. The explicit selected inventory limits this comparison.
+All files in the extraction must appear in `paths`, even files outside the selected buildings.
+
+### Native scaffold
+
+`nativeDocumentPath` names an attested monolithic format-7 MapDoc document. Author it with the released
+`MapDocumentFile`, payload-1 prefab files and native manifest format. It must declare resolver 2,
+`AuthoredBindingsV2`, its native asset roots, valid bounds and complete surfaces and topology. Its active
+packed prefab instances must exactly match `buildings`. Preserve instance poses, complete bindings and
+actual overrides. `Removed` and `Unpacked` instances are refused in this packed comparison. Every active
+placement binding has the original numeric source ID. New parent instances have separate string IDs.
+There are no extra native placement leaves outside the selected inventory.
+
+The scaffold supplies the native geometry to compare and the authored semantic conversion that the old
+world does not carry. Local rooms and storeys belong to their instances. Record children have declared
+local anchor surfaces and complete typed reference slots. Empty local anchor patches are allowed when
+parent support supplies the physical floor. World exterior records and explicit shared concealment groups
+stay in the scaffold. Do not merge occupied room owners to express a concealment group.
+
+For each selected floor's region and plane, include the `plane-<plane>` surface and patch produced by
+`LegacyOracleConverter.ToNative`. Its stored lattice, cell bytes, presence and untransformed geometry must
+match that conversion. The comparator checks the candidate floor before regenerating its source floor
+bytes with R2, retaining the scaffold's topology records and recomputing semantic digests. It compares
+source ground triangles separately with the fixed vertex and normal tolerances. It then builds reloaded,
+independent native heads through `MapWorldBuilder`.
+
+The native root closure includes immutable original mesh bytes and independently declared collider and
+selection resources. Native physical shells are compared against `TileWorldColliders.Build` with the
+pinned source options. At least one checked doorway leaf supplies a native compound shell. A doorway can
+name several original frame leaves, and one opening can correspond to several source records. No source
+collision algorithm is copied into this harness.
+
+### Comparison object
+
+Property names are case-sensitive. All properties in each described object are required, including
+nullable properties. Unknown and duplicate comparison properties are refused. Arrays may be empty where
+that concern has no authored records, except selected leaves, doorway correspondences and the required
+probe classes. Counts below are invented examples, not acceptance values. Supply the real expectations
+only in private provenance.
+
+```json
+{
+  "schemaVersion": 1,
+  "nativeDocumentPath": "native.json",
+  "sourceCollisionOptions": {
+    "wallThickness": 0.1,
+    "blockedHeight": 3,
+    "walkSurfaceThickness": 0.1
+  },
+  "expectations": {
+    "definitions": 1, "buildings": 1, "originalLeaves": 4,
+    "connectedInteriors": 1, "roofs": 2, "openings": 1,
+    "doorwayRecords": 1, "dedicatedLights": 1
+  },
+  "definitions": [{
+    "id": "cabin", "path": "definitions/cabin.json", "resourceId": "cabin",
+    "keys": [
+      { "key": "wall", "objectIndex": 0 },
+      { "key": "roof", "objectIndex": 1 },
+      { "key": "lamp", "objectIndex": 2 },
+      { "key": "shelter", "objectIndex": 3 }
+    ]
+  }],
+  "selectedLeafIds": [1, 2, 3, 4],
+  "buildings": [{
+    "id": "b", "definitionId": "cabin", "leafIds": [1, 2, 3, 4],
+    "roomIds": ["b/room"], "storeyIds": ["b/ground"], "overrides": []
+  }],
+  "leaves": [], "floors": [], "rooms": [], "groups": [],
+  "roofs": [], "lights": [], "doorwayRecords": [], "doorways": [], "probes": []
+}
+```
+
+The empty arrays in this header example are filled with the rows below. The complete executable invented
+extraction is `ShippedBuildingGuardFixtures.Create("valid")`. The `actual-override` fixture adds a named
+placement tag override while keeping the nominal source prefab unchanged. `shared-concealment` proves two
+instance-owned rooms joined by one explicit group, with emitting props counted separately from indoor lights.
+`curved-selection` preserves an original KECL cylinder selection, including its base-aligned geometry.
+
+`definitions[].path` is a source `TilePrefabFile` definition. `resourceId` identifies the matching verified
+native prefab resource. Logical IDs and verified `prefab/<escape(id)>/<sha256>` IDs are both accepted by
+the released reader. `keys` bijectively maps every zero-based source prefab object index to its native
+Placement child key. Removed or customized members are represented by the actual instance's overrides,
+not guessed by restamping the definition. `buildings[].leafIds` is that actual instance's exhaustive original
+leaf list. Its `roomIds` and `storeyIds` are effective world IDs. Its `overrides` is the exhaustive list of
+`{ "kind": "Placement", "key": "lamp", "operation": "placement" }` rows. Kinds use the exact native child
+enum names. Operations are `replace`, `placement`, `transform`, `add` or `remove`. Full typed override
+values live in the native document. The reader verifies the inventory against those values.
+
+Each `leaves` row has this shape:
+
+```json
+{
+  "sourceId": 3, "buildingId": "b", "key": "lamp", "worldId": "b/lamp",
+  "assetId": "lamp", "meshPath": "assets/lamp.mesh",
+  "selectionPath": "assets/lamp.selection",
+  "metadata": {
+    "source": "invented/lamp", "license": "CC0", "category": "props",
+    "textured": false, "sourceUnitsToMetres": 1,
+    "renderBounds": { "min": [-1, 0, -1], "max": [1, 2, 1] },
+    "lodBounds": null, "lightBounds": null
+  }
+}
+```
+
+`sourceId` is a positive signed 64-bit JSON integer. It must occur exactly once in `selectedLeafIds`,
+`leaves`, the owning building list and its native numeric binding. `worldId`, `key` and `assetId` identify
+that effective leaf without changing its original ID. `meshPath` must equal the source archetype's
+`meshRef`. `selectionPath` is the original authored KECL selection, or null when no selection was authored.
+Metadata is the frozen original asset metadata. Bounds use finite XYZ arrays in asset source units.
+`category`, `lodBounds` and `lightBounds` may be null. `renderBounds` is required. Mesh bytes, metadata,
+ordered tags, kind, asset and IDs compare independently. Source furniture differences require an explicit
+actual-instance override. The original light-emitting placement remains in this leaf list.
+
+| Array | Exact row fields and meaning |
+|---|---|
+| `floors` | `{ "buildingId": "b", "x": 0, "z": 0, "plane": 0, "underlay": 1, "overlay": 0, "paintId": null }`. Source tile indices and exact ushort material IDs. `paintId` is an effective paint ID, or null for an unset outdoor notch. The corresponding native canonical cell must retain world material where paint is unset |
+| `rooms` | `{ "id": "b/room", "buildingId": "b", "storeyId": "b/ground", "cells": [{ "x": 0, "z": 0, "plane": 0, "y": 1 }] }`. Exhaustive original cell-centre membership for every supplied plane/Y layer. Y is a finite world height. Each layer must exactly cover the effective occupied room's cell centres, including transformed or polygon footprints |
+| `groups` | `{ "id": "shared", "rooms": ["b/room", "c/room"] }`. Explicit effective concealment component links. Connected-interior count measures these room components, not merged occupied owners or portal traversal |
+| `roofs` | `{ "leafId": 2, "linkId": "b/roof-link", "rooms": ["b/room"], "groups": [], "aboveY": 3 }`. Exhaustive original roof inventory. References and effective world above-height compare exactly. An unlinked shelter uses null `linkId` and empty room/group lists |
+| `lights` | `{ "id": "b/indoor", "ownerLeafId": 3, "dedicated": true, "position": [2.5, 1, -0.5], "colour": [1, 1, 1], "intensity": 1, "radius": 2, "castShadows": false }`. Exhaustive effective world emissions. `dedicated` controls only the dedicated-light expectation. Emitting props use false and are still fully compared. Owner leaves must survive |
+| `doorwayRecords` | `{ "id": "frame", "leafId": 1, "key": "wall" }`. Exhaustive original frame-record inventory, tied to the exact source leaf and definition key. Each record belongs to exactly one checked opening |
+| `doorways` | `{ "id": "opening", "buildingId": "b", "leafIds": [1], "recordIds": ["frame"], "radius": 0.1, "length": 1, "clear": [[-1, 0.1, -1.5], [1, 0.1, -1.5]], "jamb": [[-1, 0.1, -0.5], [1, 0.1, -0.5]] }`. One distinct physical opening, its original frame leaves and source record correspondences. Paths contain at least two world XYZ foot positions. `length` is the capsule cylindrical segment. Source opening must be clear, jamb must block, and both native answers must match |
+| `probes` | `{ "kind": "centre", "position": [0.5, 1, -0.5], "sourceSpaceId": "b/room", "spaceId": "b/room", "hiddenRoofIds": [2] }`. World point, original semantic correspondence, expected native occupied owner and exact Auto-concealed roof leaf IDs. Either space ID may be null for Outside |
+
+Supply `centre`, `edge` and `storey` probe rows. A `boundary` row separately names an exact ownership
+change under the one-owner policy. A changed source/native owner on any other probe fails. Boundary
+changes are recorded privately as awaiting R11 acceptance. The native owner must still equal `spaceId`.
+The roof policy checks Auto, AlwaysVisible and AlwaysHidden, including colour, caster, camera boom and
+sky picking flags. Auto keeps unlinked shelters visible. Statics and head results must remain unchanged.
+
+### Resolution and refusals
+
+All provenance file names use `/`, are relative to the extraction root and contain no empty, dot or
+parent segments, absolute roots, backslashes, colons or control characters. Prefab, mesh, native resource,
+selection and native document paths use that same root. Catalog paths in `world.json` resolve relative to
+its directory. A catalog may use `../catalog.json` only when normalization stays within the extraction and
+the normalized file is attested. Every component of a dependency path must be free of symlinks, including
+dangling links. There is no fallback search. The reader snapshots and hashes every attested file, checks
+manifest dependencies before source loaders, and checks the extraction again after those loaders finish.
+Native closure reloads use captured bytes rather than rereading files.
+
+The reader refuses missing, stale, unattested, escaped or linked input, incomplete native dependency graphs,
+wrong schema/format/payload, unsupported shape data, duplicate JSON members or identities, unknown definition
+keys, unassigned leaves, incomplete instance binding/override lists, missing rooms/storeys, partial room
+layers, dangling roofs/groups/lights/doorways and missing probe classes. The R2 floor adapter requires
+metre-sized source tiles. Room closure refuses more than 1,048,576 candidate cells per layer before scanning.
+Native expansion and query limits remain the released limits. It never truncates a room to pass a limit.
+Expectation mismatches and geometry/semantic differences are failures, not missing-input skips.
+
+Derived vertices compare at 0.00001 m and normal components at 0.000001. Every exceeded component is
+recorded with its source correspondence and exact tolerance in the private report. Integers, ordered tags,
+identity and metadata compare exactly. Native revised-T4 envelopes compare between heads and after reload.
+The source picking delta is recorded for named R11 acceptance. Legacy visual-AABB picking is never called
+lossless. Doorway checks prove physical apertures only, not walking, route or renderer integration.
+
+The existing four-variable contract and secure report lifecycle are unchanged. A report needs an existing
+0700 parent outside git and an absent path, created exclusively at 0600. The entry sanitizes exceptions and
+final failure text. Only synthetic guard fixtures may expose their invented detail while diagnosing a
+failed public guard. Actual source IDs, geometry, inventory, digests and report contents remain private.

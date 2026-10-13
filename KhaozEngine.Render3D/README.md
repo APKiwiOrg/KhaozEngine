@@ -215,7 +215,7 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     multiplies by the slot tint and the jitter. **The jitter is a MULTIPLIER, not an offset, so `Tangent.z` of 0
     renders that vertex BLACK**: write 1 for none. A mesh built for the model pipeline, where `Tangent` is a
     tangent frame, is not a tile-ground mesh.
-  - **Slope (since 20.35.0, #1289).** The fragment reads the slope off the interpolated vertex normal, so it needs
+  - **Slope (since 20.36.0, #1289).** The fragment reads the slope off the interpolated vertex normal, so it needs
     no vertex data of its own and is continuous wherever the normal is. Two things follow from it, both owned by
     `TileGroundSteepShading`. TRIPLANAR: past `TriplanarStartDegrees` (45) every material's tap adds two side
     projections, one along world X (u = world Z) and one along world Z (u = world X), each with v running down world
@@ -1124,7 +1124,8 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     via the `Nameplate` model (title + `Bars` list, add more bars without a rewrite) and styled by `NameplateStyle`
     (`.Default` = the opaque unified plate, `.TextOnly` = the panel-less name-only preset for the `Text` tier).
     `NameplateLayout.Measure` is the pure, GPU-free panel-size math (headless-testable); `NameplateBar.Fraction` is
-    clamped 0..1 at draw; `NameplateRenderer.ShouldCull` shares `WorldLabel`'s cull. No per-frame heap allocation.
+    clamped 0..1 at draw; `NameplateRenderer.ShouldCull` shares `WorldLabel`'s cull. Warmed styles with up to four
+    bars draw without heap allocation. Larger plates build an uncached template.
     Opt-in edge-aware placement via `NameplateStyle.EdgeBehavior` (a `NameplateEdgeBehavior`: `None` is the
     default, byte-identical to before):
     `Clamp` insets the plate into the viewport by `EdgeMargin` on both axes, `Deflect` also moves it beside the
@@ -1142,6 +1143,27 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     stability contract as the placement hysteresis above. `NameplateTierState` is the caller-held per-entity state
     (one per plate, exposing `Tier`). `.TextOnly` pairs with `NameplateTier.Text`: zero panel alpha, zero border,
     zero `MinBarWidth`, a black `TitleShadow`, drawn against a `Nameplate` carrying no `Bars`.
+  - Component nameplate templates (20.35.0), the modular form of the plate above. A `NameplateTemplate` is an
+    ordered list of components, each bound to a `NameplateSlot` (`Name`, `Level`, `Health`, or any string key):
+    `NameplateTextComponent` (font scale, optional eight-way outline, optional shadow, its own `MaxWidth`
+    ellipsis cap), `NameplateBadgeComponent` (padded text on a rounded base fill, washed by the content's
+    optional tint) and `NameplateBarComponent` (inner track width and height, zero width meaning the template's
+    content width, border outside the track). Each component after the first carries a `NameplateAttach` rule
+    (`Self` point, `Target` id, `TargetPoint`, `Offset`) that pins it to an earlier component or, with a null
+    target, to the root. The constructor validates unique ids and backward-only targets. The template also
+    carries the panel look, content width bounds and the same `EdgeBehavior`, `EdgeMargin` and `EdgeHysteresis`
+    as `NameplateStyle`. Per-entity values live in a reusable `NameplateContent` (`SetText`, `SetBar`, `Clear`)
+    whose `Opacity` multiplies every colour of the plate, so a fade needs no new template. A component whose slot
+    is empty or holds the wrong kind does not draw. `NameplateTemplateLayout.Measure` is the GPU-free panel
+    size, `NameplatePlacement.Place` has a template overload, and `NameplateRenderer.Draw` takes a template and
+    content in a framebuffer-int and an `IDesignViewport` overload, both with a caller-held
+    `NameplatePlacementState`. Warm template draws allocate nothing. The legacy `Nameplate` and `NameplateStyle`
+    API is now a built-in template with unchanged draw calls. A legacy panel capped narrower than the "..."
+    glyphs grows to fit them. The legacy cache keys on geometry, so a colour fade keeps its template, but a style
+    whose geometry changes every frame rebuilds its template each frame, so animate that through a template
+    instead. The point rules come from
+    `AttachPoint` and `Attach` in Primitives, the outline from `TextOutline` in Render2D. Template files, an
+    editor and a mod surface are tracked in https://github.com/APKiwiOrg/KhaozEngine/issues/1378.
 
 - Animation (`Animation/`, pure + GPU-free, driven off a `Skeleton` + glTF `AnimationClip`s):
   - `BoneSocket.Compose(local, jointModel, model)` attaches a rigid piece with the row-vector order

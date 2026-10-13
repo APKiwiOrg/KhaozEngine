@@ -77,6 +77,14 @@ carries neither levels nor top heights, and this round supports oriented rectang
 - Symbols draw in declaration order after `Hidden`: `Bridge`, `Obstacle`, `Wall`, `Building`, `Tree`.
   Building shadows use black at alpha 0.35 and offset (0.6, -0.6) metres, east and south.
   Walls are 0.4 metres wide, and outlines are one raster pixel wide.
+- `WorldMapSymbol(Kind, Fill, Outline)` has an optional `Vector2? SizeMetres` init property. Set the
+  full local width and depth in map metres, for example `SizeMetres = new Vector2(3.5f)` for a tree crown.
+  The symbol stays centred on its footprint and
+  follows its rotation. Building shadows use the same size. Sized walls use both explicit dimensions
+  instead of `WallWidthMetres`. Null preserves the authored footprint dimensions and existing raster bytes.
+  Coarse admission still uses the authored footprint, not this drawn size. This keeps source filtering
+  before materialization bounded without requiring every small prop to be collected to resolve style rules.
+  Icons, labels and hover targets remain unchanged.
 - `IconRules` default to an empty array. Rules select footprint or marker tags, an icon key, a priority
   and a merge radius, defaulting to 24 screen pixels. `Labels` defaults to null. When enabled,
   `WorldMapLabelRules` selects a label tag and tagged tiers with rank, zoom range and text scale.
@@ -90,6 +98,7 @@ pixel. Relief altitude is finite in `(0, 90]`, strength and steep darkening are 
 and the steep slope threshold is finite and non-negative. Deep water depth is finite and positive.
 Shoreline pixels, wall width and outline width are non-negative, with finite floating-point widths.
 Both shadow offset components must be finite.
+Symbol size components must be finite and positive, with a finite half-diagonal reach.
 `Coord` identifies the chunk, `Size` is its pixel edge length, and `Rgba` holds `Size * Size * 4`
 opaque RGBA8 bytes. Raster row zero is north, and column zero is west. `Revision` is captured before
 sampling, so a consumer can discard an image when the source changes during the read.
@@ -105,7 +114,10 @@ then receives shoreline colour when dry, non-void pixels lie within the configur
 including across chunk edges.
 
 Footprints are collected over the chunk expanded by `BuildingShadowOffsetMetres.Length()` plus
-half of `WallWidthMetres` and one raster pixel. Surface sampling and footprint collection use the
+half of `WallWidthMetres`, one raster pixel and the largest visible symbol's drawn half diagonal.
+This includes the blocking fallback and excludes hidden symbols. The half diagonal covers any rotation,
+including rectangles whose corners extend beyond their largest local half extent. The same margin widens
+cache invalidation at every level. Surface sampling and footprint collection use the
 shared internal `WorldMapRasterReach` margins. `WorldMapSymbolResolver.Matches` tests every non-null
 rule field with ordinal archetype and all-of tag matching. `SymbolFor` selects the first matching rule,
 then the blocking fallback or hidden symbol. All building shadows draw first. Symbols then draw by kind in declaration

@@ -14,7 +14,7 @@ namespace KhaozEngine.Render3D
     /// draws the panel, title and bars screen-space via <see cref="SpriteBatch.DrawRounded(Texture2D, Vector4, Color, float, float, float, float)"/> and
     /// <see cref="SpriteBatch.DrawString(SpriteFont,string,Vector2,Color,float)"/> on the shared white texture.
     /// The placement itself (baseline, plus the optional <see cref="NameplateStyle.EdgeBehavior"/> clamp/deflect)
-    /// is <see cref="NameplatePlacement.Place"/>. This class projects the anchor and draws the result.
+    /// is <see cref="NameplatePlacement.Place(Vector2,Vector2,int,int,in NameplateStyle,ref NameplatePlacementState)"/>. This class projects the anchor and draws the result.
     /// </summary>
     /// <remarks>
     /// Call it from the consumer's 2D pass, BETWEEN the <see cref="SpriteBatch"/>'s <c>Begin</c>/<c>End</c> and after
@@ -33,7 +33,7 @@ namespace KhaozEngine.Render3D
     /// call the stateful overload, and must not share that state across plates: doing so lets one plate's
     /// deflection leak into another's.
     /// </remarks>
-    public static class NameplateRenderer
+    public static partial class NameplateRenderer
     {
         /// <summary>
         /// The distance cull predicate, shared with <see cref="WorldLabel.ShouldCull"/> so nameplates and labels cull
@@ -48,7 +48,7 @@ namespace KhaozEngine.Render3D
         /// the camera, off-screen/off the depth range, or beyond <paramref name="maxDistance"/>).
         /// </summary>
         /// <remarks>
-        /// Stateless convenience overload: it evaluates <see cref="NameplatePlacement.Place"/> from a fresh <see
+        /// Stateless convenience overload: it evaluates <see cref="NameplatePlacement.Place(Vector2,Vector2,int,int,in NameplateStyle,ref NameplatePlacementState)"/> from a fresh <see
         /// cref="NameplatePlacementState"/> every call, so <see cref="NameplateStyle.EdgeBehavior"/> of <see
         /// cref="NameplateEdgeBehavior.None"/> or <see cref="NameplateEdgeBehavior.Clamp"/> behave identically to
         /// the stateful overload. <see cref="NameplateEdgeBehavior.Deflect"/>'s hysteresis needs state carried

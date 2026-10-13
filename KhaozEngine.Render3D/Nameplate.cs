@@ -107,7 +107,7 @@ namespace KhaozEngine.Render3D
         public Color? TitleShadow { get; init; }
         /// <summary>Pixel offset of the <see cref="TitleShadow"/> pass.</summary>
         public Vector2 TitleShadowOffset { get; init; }
-        /// <summary>Which edge handling <see cref="NameplateRenderer"/> applies via <see cref="NameplatePlacement.Place"/>.
+        /// <summary>Which edge handling <see cref="NameplateRenderer"/> applies via <see cref="NameplatePlacement.Place(Vector2,Vector2,int,int,in NameplateStyle,ref NameplatePlacementState)"/>.
         /// <see cref="NameplateEdgeBehavior.None"/> is today's placement, unchanged.</summary>
         public NameplateEdgeBehavior EdgeBehavior { get; init; }
         /// <summary>Inset in pixels from every viewport edge the plate must respect when <see cref="EdgeBehavior"/>

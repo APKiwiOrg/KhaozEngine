@@ -37,8 +37,12 @@ public partial class OrdinaryContactConfigurationTests
                 (_, _) => 0, ExplicitPlayerEnvironment.Tuning, physics: environment.Physics));
             Assert.Throws<ArgumentException>(() => new WorldClient(ct, (_, _) => 0,
                 ExplicitPlayerEnvironment.Tuning, new()
-                { FrameAnchoring = false, ExplicitMovement = settings, ReceiveServerTick = true,
-                    RequestUnreliableDeltaReplication = true }, physics: environment.Physics));
+                {
+                    FrameAnchoring = false,
+                    ExplicitMovement = settings,
+                    ReceiveServerTick = true,
+                    RequestUnreliableDeltaReplication = true
+                }, physics: environment.Physics));
         }
         var first = new PlayerMoveSimulator((_, _) => 0, ExplicitPlayerEnvironment.Tuning, null, null,
             environment.Physics, null, SamplerSpace.World, settings);
@@ -62,14 +66,19 @@ public partial class OrdinaryContactConfigurationTests
             int before = world.Physics.ViewDisposals;
             Assert.Throws<ArgumentOutOfRangeException>(() => new WorldServer(st, new()
             {
-                FrameAnchoring = false, MaxPlayers = 0,
-                MovementRegistration = world.Registration, MovementBoundary = world.Boundary
+                FrameAnchoring = false,
+                MaxPlayers = 0,
+                MovementRegistration = world.Registration,
+                MovementBoundary = world.Boundary
             }, world.Ground, OrdinaryPlayerWorld.Tuning, physics: world.Physics));
             Assert.Equal(before + 1, world.Physics.ViewDisposals);
             Assert.Throws<ArgumentException>(() => new WorldClient(ct, world.Ground, OrdinaryPlayerWorld.Tuning, new()
             {
-                FrameAnchoring = false, ReceiveServerTick = true, RequestUnreliableDeltaReplication = true,
-                MovementRegistration = world.Registration, MovementBoundary = world.Boundary
+                FrameAnchoring = false,
+                ReceiveServerTick = true,
+                RequestUnreliableDeltaReplication = true,
+                MovementRegistration = world.Registration,
+                MovementBoundary = world.Boundary
             }, physics: world.Physics));
             Assert.Equal(before + 2, world.Physics.ViewDisposals);
             Assert.Equal(0, world.Physics.SourceDisposals);

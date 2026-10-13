@@ -42,7 +42,8 @@ public sealed partial class PlayerMoveSimulator : ITickSimulator<PlayerMoveState
         Func<float, float, Vector3>? groundNormal = null, WorldBounds? bounds = null, IPhysicsWorld? physics = null,
         Func<float, float, float, MovementMedium>? medium = null, SamplerSpace samplerSpace = SamplerSpace.World)
         : this(groundHeight, tuning, groundNormal, bounds, physics, medium, samplerSpace,
-            null, null, null, null, null) { }
+            null, null, null, null, null)
+    { }
 
     private PlayerMoveSimulator(Func<float, float, float> groundHeight, MoveTuning tuning,
         Func<float, float, Vector3>? groundNormal, WorldBounds? bounds, IPhysicsWorld? physics,

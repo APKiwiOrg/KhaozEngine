@@ -18,7 +18,8 @@ public sealed partial class PlayerMoveSimulator
         Func<float, float, float, MovementMedium>? medium, SamplerSpace samplerSpace,
         ExplicitPlayerMovement? explicitMovement)
         : this(groundHeight, tuning, groundNormal, bounds, physics, medium, samplerSpace,
-            explicitMovement, null, null, null, null) { }
+            explicitMovement, null, null, null, null)
+    { }
 
     public MovementStepOutcome? LastExplicitOutcome { get; private set; }
 

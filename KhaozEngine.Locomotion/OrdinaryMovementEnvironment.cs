@@ -13,6 +13,7 @@ public sealed partial class OrdinaryMovementEnvironment : IMovementEnvironmentPr
     internal OrdinaryMovementRegistration Registration { get; }
     internal Func<float, float, float> GroundHeight { get; }
     internal Func<float, float, Vector3>? GroundNormal { get; }
+    internal OrdinaryGroundSpace GroundSpace { get; }
     internal IMovementWaterField? WaterField { get; }
     internal MovementSpaceKey Space { get; }
     internal MovementSupportKey AnalyticOwner { get; }
@@ -33,10 +34,12 @@ public sealed partial class OrdinaryMovementEnvironment : IMovementEnvironmentPr
 
     public OrdinaryMovementEnvironment(IPhysicsWorldQueryView physics, OrdinaryMovementRegistration registration,
         in MoveTuning tuning, Func<float, float, float> groundHeight, Func<float, float, Vector3>? groundNormal,
-        MovementBoundary boundary, IMovementWaterField? waterField = null)
+        MovementBoundary boundary, IMovementWaterField? waterField = null, OrdinaryGroundSpace groundSpace = OrdinaryGroundSpace.World)
     {
         ArgumentNullException.ThrowIfNull(registration);
         ArgumentNullException.ThrowIfNull(groundHeight);
+        if (groundSpace is not (OrdinaryGroundSpace.World or OrdinaryGroundSpace.Frame))
+            throw new ArgumentOutOfRangeException(nameof(groundSpace));
         OrdinaryMovementBoundary.Validate(boundary);
         MovementConfigurationValidation.ValidateOrdinaryContact(tuning, physics, true, true, false, waterField is not null);
         if (!ReferenceEquals(physics.SourceWorld, registration.SourceWorld))
@@ -46,6 +49,7 @@ public sealed partial class OrdinaryMovementEnvironment : IMovementEnvironmentPr
         _tuning = tuning;
         GroundHeight = groundHeight;
         GroundNormal = groundNormal;
+        GroundSpace = groundSpace;
         _boundary = boundary;
         WaterField = waterField;
         _waterSemanticIdentity = waterField?.SemanticIdentity;
@@ -66,6 +70,7 @@ public sealed partial class OrdinaryMovementEnvironment : IMovementEnvironmentPr
             OrdinaryMovementRegistration.Bits(tuning.TractionHysteresisRadians), OrdinaryMovementRegistration.Bits(tuning.FootRadiusFraction),
             OrdinaryMovementRegistration.Bits(tuning.JumpSpeed), OrdinaryMovementRegistration.Bits(tuning.Gravity),
             (int)tuning.Water.Mode, OrdinaryMovementRegistration.Bits(tuning.Water.SurfaceJumpSpeed));
+        if (groundSpace == OrdinaryGroundSpace.Frame) text += "/frame-analytic-ground";
         string digest = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
         Identity = new("ordinary-contact-v1", 1, digest);
         _resources = ["physics-selection/" + registration.SemanticDigest, "registration/" + registration.SemanticDigest,

@@ -56,11 +56,15 @@ internal sealed class OrdinaryPlayerWorld : IDisposable
     }
     public PlayerMoveSimulator Simulator(MoveTuning? tuning = null, SamplerSpace space = SamplerSpace.World,
         WorldBounds? bounds = null, MovementBoundary? boundary = null) => new(Ground, tuning ?? Tuning,
-        null, bounds, Physics, null, space, null, Field, Registration, boundary ?? Boundary) { Frame = Frame };
+        null, bounds, Physics, null, space, null, Field, Registration, boundary ?? Boundary)
+        { Frame = Frame };
     public EffectiveMovementBinding Reference(MoveTuning? tuning = null) => EffectiveMovementBinding.Ordinary(
         tuning ?? Tuning, Physics, Registration, Ground, null, Boundary, Field);
     public PlayerMoveState Initial(float x = 0, float z = 0, float? y = null) =>
-        new() { Move = new() { Position = new(x, y ?? Ground(x, z) + 0.75f, z), Grounded = true },
-            FrameAnchor = new(Frame.Anchor.X, Frame.Anchor.Z) };
+        new()
+        {
+            Move = new() { Position = new(x, y ?? Ground(x, z) + 0.75f, z), Grounded = true },
+            FrameAnchor = new(Frame.Anchor.X, Frame.Anchor.Z)
+        };
     public void Dispose() => Physics.Dispose();
 }

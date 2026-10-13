@@ -56,7 +56,8 @@ public sealed partial class PlayerMovementSystem : ISystem, IDisposable
         Func<float, float, float, MovementMedium>? medium = null, WorldFrame frame = default,
         SamplerSpace samplerSpace = SamplerSpace.World)
         : this(groundHeight, tuning, groundNormal, bounds, physics, medium, frame, samplerSpace,
-            null, null, null, null, null) { }
+            null, null, null, null, null)
+    { }
 
     private PlayerMovementSystem(Func<float, float, float> groundHeight, MoveTuning tuning,
         Func<float, float, Vector3>? groundNormal, WorldBounds? bounds, IPhysicsWorld? physics,
@@ -89,7 +90,8 @@ public sealed partial class PlayerMovementSystem : ISystem, IDisposable
         {
             if (Binding.UsesLease)
                 explicitSimulator = new(groundHeight, tuning, groundNormal, bounds, physics, medium,
-                    samplerSpace, Binding, explicitMovement) { Frame = frame };
+                    samplerSpace, Binding, explicitMovement)
+                { Frame = frame };
         }
         catch { if (ownsBinding) Binding.Dispose(); throw; }
     }

@@ -40,22 +40,13 @@ internal static class OrdinaryPlayerMovement
         if (publicExplicit is not null)
             return EffectiveMovementBinding.PublicExplicit(tuning, publicExplicit.Environment, publicExplicit.Water);
         if (tuning.Controller == MovementControllerKind.Legacy) return EffectiveMovementBinding.Legacy(tuning);
-        MovementConfigurationValidation.ValidateExplicit(tuning, tuning.Water);
         if (physics is null || registration is null)
             throw new ArgumentException("Ordinary contact movement requires physics and a movement registration.");
         if (boundary is null && bounds?.TryCaptureExplicit(Vector3.Zero, out boundary) != MovementAvailability.Known)
             throw new ArgumentException("Ordinary contact movement requires an absolute MovementBoundary or certified WorldBounds.");
-        if (samplerSpace == SamplerSpace.Frame)
-        {
-            var localHeight = groundHeight;
-            var localNormal = groundNormal;
-            var localMedium = medium;
-            groundHeight = (x, z) => localHeight(x - physics.Origin.X, z - physics.Origin.Z) + physics.Origin.Y;
-            groundNormal = localNormal is null ? null : (x, z) => localNormal(x - physics.Origin.X, z - physics.Origin.Z);
-            medium = localMedium is null ? null : (x, z, y) => localMedium(x - physics.Origin.X, z - physics.Origin.Z, y - physics.Origin.Y);
-        }
+        var groundSpace = samplerSpace == SamplerSpace.Frame ? OrdinaryGroundSpace.Frame : OrdinaryGroundSpace.World;
         return EffectiveMovementBinding.Ordinary(tuning, physics, registration, groundHeight, groundNormal,
-            boundary!, field, medium);
+            boundary!, field, medium, groundSpace: groundSpace);
     }
 
     internal static void ValidateSharded(ShardedWorldServerConfig config, MoveTuning tuning,
@@ -63,19 +54,15 @@ internal static class OrdinaryPlayerMovement
     {
         if (config.ExplicitMovementFactory is not null)
         {
-            if (tuning.Controller == MovementControllerKind.Contact)
-                throw new ArgumentException("Contact and public explicit movement are two selections.", nameof(config));
-            MovementConfigurationValidation.ValidateContactGeometry(tuning);
-            if (!ExplicitCharacterMovement.Valid(tuning))
-                throw new ArgumentException("Public explicit cell movement requires valid kernel tuning.", nameof(tuning));
+            EffectiveMovementBinding.Preflight(tuning, EffectiveMovementBindingKind.PublicExplicit);
             return;
         }
         if (tuning.Controller == MovementControllerKind.Legacy)
         {
-            MovementConfigurationValidation.ValidateLegacy(tuning);
+            EffectiveMovementBinding.Preflight(tuning, EffectiveMovementBindingKind.Legacy);
             return;
         }
-        MovementConfigurationValidation.ValidateExplicit(tuning, tuning.Water);
+        EffectiveMovementBinding.Preflight(tuning, EffectiveMovementBindingKind.OrdinaryContact);
         if (config.PhysicsWorldFactory is null || config.MovementRegistrationFactory is null ||
             config.MovementBoundaryFactory is null && bounds?.TryCaptureExplicit(Vector3.Zero, out _) != MovementAvailability.Known ||
             hasMedium && config.MovementWaterFieldFactory is null)

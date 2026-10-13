@@ -114,7 +114,7 @@ public partial class OrdinaryContactHeadTests
     }
 
     [Fact]
-    public void FrameSamplersBecomeAbsoluteProvidersIncludingPhysicsYOrigin()
+    public void FrameSamplersKeepLocalGroundIncludingPhysicsYOrigin()
     {
         using var world = new OrdinaryPlayerWorld(new(256, 4, 128));
         float Sample(float x, float z)
@@ -124,7 +124,8 @@ public partial class OrdinaryContactHeadTests
             return -4;
         }
         using var sim = new PlayerMoveSimulator(Sample, OrdinaryPlayerWorld.Tuning, null, null, world.Physics,
-            null, SamplerSpace.Frame, null, null, world.Registration, world.Boundary) { Frame = world.Frame };
+            null, SamplerSpace.Frame, null, null, world.Registration, world.Boundary)
+        { Frame = world.Frame };
         var basis = world.Initial();
         using var read = sim.BeginExplicitRead(basis);
         Assert.True(read!.BasisValid);

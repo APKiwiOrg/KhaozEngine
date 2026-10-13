@@ -31,7 +31,11 @@ internal sealed class OrdinaryNetworkHeads : IDisposable
             ShardedWorldServer? created = null;
             Sharded = created = new(serverTransport, new()
             {
-                CellSize = 128, OverlapMargin = 4, InterestRadius = 2, TickSeconds = 0.1f, MaxPlayers = 2,
+                CellSize = 128,
+                OverlapMargin = 4,
+                InterestRadius = 2,
+                TickSeconds = 0.1f,
+                MaxPlayers = 2,
                 SpawnPosition = _ => spawn ?? new(4, h + 0.75f, 4),
                 PhysicsWorldFactory = coord =>
                 {
@@ -50,16 +54,23 @@ internal sealed class OrdinaryNetworkHeads : IDisposable
         {
             Single = new(serverTransport, new()
             {
-                FrameAnchoring = false, TickSeconds = 0.1f, MaxPlayers = 2,
-                SpawnPosition = _ => spawn ?? new(0, h + 0.75f, 0), MovementRegistration = ServerWorld.Registration,
-                MovementBoundary = boundary ?? ServerWorld.Boundary, MovementWaterField = ServerWorld.Field
+                FrameAnchoring = false,
+                TickSeconds = 0.1f,
+                MaxPlayers = 2,
+                SpawnPosition = _ => spawn ?? new(0, h + 0.75f, 0),
+                MovementRegistration = ServerWorld.Registration,
+                MovementBoundary = boundary ?? ServerWorld.Boundary,
+                MovementWaterField = ServerWorld.Field
             }, ServerWorld.Ground, selected, bounds: bounds, physics: ServerWorld.Physics);
             if (resumeY is { } saved) Single.SetResumePositionProvider((string _, out Vector3 p) => { p = new(0, saved, 0); return true; });
         }
         Client = new(clientTransport, ClientWorld.Ground, selected, new()
         {
-            FrameAnchoring = false, TickSeconds = 0.1f, MovementRegistration = ClientWorld.Registration,
-            MovementBoundary = boundary ?? ClientWorld.Boundary, MovementWaterField = ClientWorld.Field
+            FrameAnchoring = false,
+            TickSeconds = 0.1f,
+            MovementRegistration = ClientWorld.Registration,
+            MovementBoundary = boundary ?? ClientWorld.Boundary,
+            MovementWaterField = ClientWorld.Field
         }, bounds: bounds, physics: ClientWorld.Physics);
         if (pump) Pump(6);
     }

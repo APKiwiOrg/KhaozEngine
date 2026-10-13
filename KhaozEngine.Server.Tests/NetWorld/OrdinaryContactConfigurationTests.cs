@@ -48,11 +48,17 @@ public partial class OrdinaryContactConfigurationTests
         {
             Assert.Throws<ArgumentException>(() => new WorldServer(st, new()
             {
-                FrameAnchoring = false, MovementRegistration = registration, MovementBoundary = boundary, ExplicitMovement = settings
+                FrameAnchoring = false,
+                MovementRegistration = registration,
+                MovementBoundary = boundary,
+                ExplicitMovement = settings
             }, world.Ground, tuning, bounds: bounds, physics: world.Physics, medium: medium));
             Assert.Throws<ArgumentException>(() => new WorldClient(ct, world.Ground, tuning, new()
             {
-                FrameAnchoring = false, MovementRegistration = registration, MovementBoundary = boundary, ExplicitMovement = settings
+                FrameAnchoring = false,
+                MovementRegistration = registration,
+                MovementBoundary = boundary,
+                ExplicitMovement = settings
             }, bounds: bounds, physics: world.Physics, medium: medium));
         }
     }
@@ -134,7 +140,8 @@ public partial class OrdinaryContactConfigurationTests
         using (var source = new ObservedPhysicsWorld { CertifiedSweep = row != "view" })
         using (var server = new ShardedWorldServer(st, new()
         {
-            FrameAnchoring = false, PhysicsWorldFactory = _ => source,
+            FrameAnchoring = false,
+            PhysicsWorldFactory = _ => source,
             MovementRegistrationFactory = cell => row == "registration" ? null! : OrdinaryContactLifecycleTests.Register(cell.Physics!),
             MovementBoundaryFactory = _ => row == "boundary" ? null! : MovementBoundary.Rectangle(-20, -20, 20, 20)
         }, (_, _) => 0, OrdinaryPlayerWorld.Tuning))
@@ -144,8 +151,9 @@ public partial class OrdinaryContactConfigurationTests
             if (row == "view") Assert.Throws<NotSupportedException>(() => server.Host.EnsureCell(new(0, 0)));
             else Assert.Throws<InvalidOperationException>(() => server.Host.EnsureCell(new(0, 0)));
             Assert.Equal(0, notifications);
-            if (server.Host.TryGetCell(new(0, 0), out var cell)) Assert.Null(cell.ImportAdmission);
+            Assert.False(server.Host.TryGetCell(new(0, 0), out _));
             Assert.Equal(row == "view" ? 1 : 0, source.ViewDisposals);
+            Assert.Equal(1, source.SourceDisposals);
         }
     }
 

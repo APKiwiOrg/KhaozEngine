@@ -128,15 +128,18 @@ internal sealed class OrdinaryMovementEnvironmentPin : IMovementEnvironmentPin, 
         if (!request.IsValid || !ValidSpace(request.Body.CurrentSpace)) return MovementAvailability.Invalid;
         Vector2 axis = new(request.Body.Centre.X, request.Body.Centre.Z);
         Vector3 origin = Frame.PhysicsOrigin;
-        // The framed delegate the dry path uses. Its rounded axes define this field, so they are exact.
-        float x = axis.X + origin.X, z = axis.Y + origin.Z;
+        bool localGround = _owner.GroundSpace == OrdinaryGroundSpace.Frame;
+        // World delegates keep the dry adapter's rounded translation. Frame delegates keep the original operands.
+        float x = localGround ? axis.X : axis.X + origin.X;
+        float z = localGround ? axis.Y : axis.Y + origin.Z;
         float height = _owner.GroundHeight(x, z);
         if (!float.IsFinite(height)) return MovementAvailability.Unresolved;
-        float local = height - origin.Y;
+        float local = localGround ? height : height - origin.Y;
         if (local > Witness.Scope.EnvelopeMax.Y) return MovementAvailability.Unresolved;
         if (local < Witness.Scope.EnvelopeMin.Y) return MovementAvailability.Known;
         OrdinaryMovementExtent extent = _owner.Registration.Extent;
-        if (extent.AnalyticMinimumY is not { } lower || extent.AnalyticMaximumY is not { } upper || height < lower || height > upper)
+        double absoluteHeight = localGround ? (double)height + origin.Y : height;
+        if (extent.AnalyticMinimumY is not { } lower || extent.AnalyticMaximumY is not { } upper || absoluteHeight < lower || absoluteHeight > upper)
             return MovementAvailability.Unresolved;
         Vector3 normal = _owner.GroundNormal?.Invoke(x, z) ?? Vector3.UnitY;
         if (!MovementEnvironmentValidation.Unit(normal)) return MovementAvailability.Unresolved;

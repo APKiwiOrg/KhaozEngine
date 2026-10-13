@@ -33,11 +33,14 @@ Register excluded statics before publication so their provenance participates in
 The optional `IPhysicsStaticGeometrySource` marker keeps a registration valid across steps and pure rebases.
 Without it, a fresh physics geometry generation requires a fresh registration.
 
-Supply absolute ground delegates and a `MovementBoundary.Rectangle` or `MovementBoundary.Circle`. Each physics
+Supply ground delegates and a `MovementBoundary.Rectangle` or `MovementBoundary.Circle`. Each physics
 frame captures that boundary once in local coordinates with double arithmetic and its configured identity, as
 the explicit heads capture `WorldBounds`. Analytic ground samples the same framed delegate as the dry adapters,
-`groundHeight(x + origin.X, z + origin.Z) - origin.Y`, so ordinary dry movement equals direct dry movement in any
-frame. The served query domain includes exterior footprint, signal look-ahead and vertical reach margins,
+`groundHeight(x + origin.X, z + origin.Z) - origin.Y` by default. With `groundSpace: OrdinaryGroundSpace.Frame`,
+the delegates receive the original physics-local axes and return local heights and normals directly.
+No frame-local operand rounds through absolute float coordinates. The registration's analytic height range
+remains absolute in both spaces. Ordinary dry movement equals the corresponding direct framed dry path.
+The served query domain includes exterior footprint, signal look-ahead and vertical reach margins,
 independently of commands or replay length.
 `CreateOrdinaryScope(frame)` returns the same cold scope for that frame. Capture the ordinary boundary
 before acquisition, acquire with `TryAcquire`, then use the binding's tick, placement or continuation doors.
@@ -58,6 +61,8 @@ An ordinary binding owns a view created from the source when none is supplied. A
 borrowed after source validation and must represent the registration's selected exclusions.
 Dispose the binding after its reads. Owned-view disposal refuses an active read and remains retryable.
 `Legacy` creates no view. `PublicExplicit` borrows the supplied context and retains the 0.001 m offset.
+`EffectiveMovementBinding.Preflight(tuning, kind)` validates tuning and selection before cell allocation.
+Complete factories still validate real views, registration, boundaries and each explicit factory's water policy.
 Every binding execution door requires a lease acquired from its environment context and physical view.
 Sharing a borrowed view does not make leases from different contexts interchangeable.
 

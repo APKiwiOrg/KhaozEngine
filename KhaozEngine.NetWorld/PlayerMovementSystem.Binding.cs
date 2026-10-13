@@ -18,14 +18,16 @@ public sealed partial class PlayerMovementSystem
         ExplicitPlayerMovement? explicitMovement, IMovementWaterField? movementWaterField,
         OrdinaryMovementRegistration? movementRegistration, MovementBoundary? movementBoundary)
         : this(groundHeight, tuning, groundNormal, bounds, physics, medium, frame, samplerSpace,
-            explicitMovement, movementWaterField, movementRegistration, movementBoundary, null) { }
+            explicitMovement, movementWaterField, movementRegistration, movementBoundary, null)
+    { }
 
     internal PlayerMovementSystem(Func<float, float, float> groundHeight, MoveTuning tuning,
         Func<float, float, Vector3>? groundNormal, WorldBounds? bounds, IPhysicsWorld? physics,
         Func<float, float, float, MovementMedium>? medium, WorldFrame frame, SamplerSpace samplerSpace,
         EffectiveMovementBinding binding, ExplicitPlayerMovement? publicExplicit)
         : this(groundHeight, tuning, groundNormal, bounds, physics, medium, frame, samplerSpace,
-            publicExplicit, null, null, null, binding) { }
+            publicExplicit, null, null, null, binding)
+    { }
 
     public void Dispose()
     {

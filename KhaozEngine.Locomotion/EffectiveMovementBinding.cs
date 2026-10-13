@@ -48,7 +48,7 @@ public sealed partial class EffectiveMovementBinding : IDisposable
         OrdinaryMovementRegistration registration, Func<float, float, float> groundHeight,
         Func<float, float, Vector3>? groundNormal, MovementBoundary boundary,
         IMovementWaterField? waterField = null, Func<float, float, float, MovementMedium>? medium = null,
-        IPhysicsWorldQueryView? movementQueries = null)
+        IPhysicsWorldQueryView? movementQueries = null, OrdinaryGroundSpace groundSpace = OrdinaryGroundSpace.World)
     {
         ArgumentNullException.ThrowIfNull(physics);
         ArgumentNullException.ThrowIfNull(registration);
@@ -65,7 +65,7 @@ public sealed partial class EffectiveMovementBinding : IDisposable
             if (!ReferenceEquals(view.SourceWorld, physics))
                 throw new ArgumentException("The movement view must name the configured physical source.", nameof(movementQueries));
             MovementConfigurationValidation.ValidateOrdinaryContact(tuning, view, true, true, medium is not null, waterField is not null);
-            var environment = new OrdinaryMovementEnvironment(view, registration, tuning, groundHeight, groundNormal, boundary, waterField);
+            var environment = new OrdinaryMovementEnvironment(view, registration, tuning, groundHeight, groundNormal, boundary, waterField, groundSpace);
             var context = new MovementEnvironmentContext(view, environment, environment.Identity);
             return new(EffectiveMovementBindingKind.OrdinaryContact, tuning, tuning.Water, context, environment, view, owned);
         }

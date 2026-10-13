@@ -197,7 +197,8 @@ public sealed partial class ShardHost : IDisposable
     /// that cell's saved state. Fired synchronously on the creating thread, before the new cell can tick or
     /// receive a migrated entity, so a synchronous restore is guaranteed to land first. A coordinate unloaded by
     /// <see cref="RemoveCell"/> raises this again when it is next instantiated, with a genuinely fresh
-    /// <see cref="CellSim"/>, so a subscriber must tolerate more than one event per coordinate.
+    /// <see cref="CellSim"/>, so a subscriber must tolerate more than one event per coordinate. If initialization
+    /// throws, the cell is detached and removed callbacks run before its source physics is disposed.
     /// </summary>
     public event Action<CellSim>? CellCreated;
 
@@ -264,7 +265,13 @@ public sealed partial class ShardHost : IDisposable
             cells[coord] = cell;
             ordered.Add(cell);
             cellsVersion++;
-            CellCreated?.Invoke(cell);
+            try { CellCreated?.Invoke(cell); }
+            catch
+            {
+                // A failed synchronous initializer must never leave an unconfigured cell discoverable.
+                RemoveCellCore(cell);
+                throw;
+            }
         }
         return cell;
     }

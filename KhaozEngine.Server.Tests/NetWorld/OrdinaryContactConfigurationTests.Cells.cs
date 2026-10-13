@@ -70,7 +70,8 @@ public partial class OrdinaryContactConfigurationTests
         using (var source = new ObservedPhysicsWorld())
         using (var server = new ShardedWorldServer(st, new()
         {
-            FrameAnchoring = false, PhysicsWorldFactory = _ => source,
+            FrameAnchoring = false,
+            PhysicsWorldFactory = _ => source,
             MovementRegistrationFactory = _ => wrong.Registration,
             MovementBoundaryFactory = _ => MovementBoundary.Rectangle(-20, -20, 20, 20)
         }, (_, _) => 0, OrdinaryPlayerWorld.Tuning))

@@ -21,7 +21,8 @@ public sealed partial class PlayerMovementSystem
         Func<float, float, float, MovementMedium>? medium, WorldFrame frame, SamplerSpace samplerSpace,
         ExplicitPlayerMovement? explicitMovement)
         : this(groundHeight, tuning, groundNormal, bounds, physics, medium, frame, samplerSpace,
-            explicitMovement, null, null, null, null) { }
+            explicitMovement, null, null, null, null)
+    { }
 
     static void PrepareExplicitOwners(World world)
     {

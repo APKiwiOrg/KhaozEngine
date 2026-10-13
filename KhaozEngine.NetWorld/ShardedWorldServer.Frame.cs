@@ -163,10 +163,14 @@ public sealed partial class ShardedWorldServer
             movement = new(cellGroundHeight, tuning, cellGroundNormal, cellBounds, cell.Physics, cellMedium,
                 cell.Frame, config.SamplerSpace, binding, explicitMovement);
             clamp = new(cellGroundHeight, tuning, cellGroundNormal, cellBounds, cell.Physics, cellMedium,
-                config.SamplerSpace, binding, explicitMovement) { Frame = cell.Frame };
+                config.SamplerSpace, binding, explicitMovement)
+            { Frame = cell.Frame };
             runtime = new CellRuntime
             {
-                Movement = movement, Clamp = clamp, Frame = cell.Frame, Binding = binding
+                Movement = movement,
+                Clamp = clamp,
+                Frame = cell.Frame,
+                Binding = binding
             };
             if (binding.UsesLease)
                 cell.ImportAdmission = new ExplicitCellAdmission(binding, explicitMovement, tuning, cell.Frame, cell.Physics, cellBounds);

@@ -10,7 +10,8 @@ internal sealed class OrdinaryShoreField : IMovementWaterField, IDisposable
 {
     readonly AnalyticMovementEnvironment oracle = new(
         [new("ordinary", new(new(-16), new(16)))],
-        [new("lake", "ordinary", new(new(1, -4, -8), new(8, 1, 8)), 1)]) { CertifyAxisSeparation = true };
+        [new("lake", "ordinary", new(new(1, -4, -8), new(8, 1, 8)), 1)])
+    { CertifyAxisSeparation = true };
     public string SemanticIdentity => "ordinary-shore";
     public long Generation => 0;
     public MovementWaterExtent Extent => new(new(1, -4, -8), new(8, 1, 8));

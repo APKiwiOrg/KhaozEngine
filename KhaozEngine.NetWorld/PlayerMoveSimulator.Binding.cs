@@ -19,14 +19,16 @@ public sealed partial class PlayerMoveSimulator
         ExplicitPlayerMovement? explicitMovement, IMovementWaterField? movementWaterField,
         OrdinaryMovementRegistration? movementRegistration, MovementBoundary? movementBoundary)
         : this(groundHeight, tuning, groundNormal, bounds, physics, medium, samplerSpace,
-            explicitMovement, movementWaterField, movementRegistration, movementBoundary, null) { }
+            explicitMovement, movementWaterField, movementRegistration, movementBoundary, null)
+    { }
 
     internal PlayerMoveSimulator(Func<float, float, float> groundHeight, MoveTuning tuning,
         Func<float, float, Vector3>? groundNormal, WorldBounds? bounds, IPhysicsWorld? physics,
         Func<float, float, float, MovementMedium>? medium, SamplerSpace samplerSpace,
         EffectiveMovementBinding binding, ExplicitPlayerMovement? publicExplicit)
         : this(groundHeight, tuning, groundNormal, bounds, physics, medium, samplerSpace,
-            publicExplicit, null, null, null, binding) { }
+            publicExplicit, null, null, null, binding)
+    { }
 
     MovementFrameDescriptor OrdinaryFrame()
     {

@@ -56,8 +56,11 @@ public partial class OrdinaryContactReplayTests
         field.Ready = true;
         Assert.True(heads.Client.SendInput(MoveCommand.Idle) >= 0);
         using var simulator = heads.ClientWorld.Simulator();
-        var basis = new PlayerMoveState { Move = OrdinaryContactHeadTests.WirePublication(authority.Move),
-            TeleportEpoch = authority.TeleportEpoch };
+        var basis = new PlayerMoveState
+        {
+            Move = OrdinaryContactHeadTests.WirePublication(authority.Move),
+            TeleportEpoch = authority.TeleportEpoch
+        };
         using var read = simulator.BeginExplicitRead(basis);
         Assert.True(read!.BasisValid);
         Assert.Equal(simulator.Step(basis, MoveCommand.Idle, 0.1f), heads.Client.LocalPredictedState);

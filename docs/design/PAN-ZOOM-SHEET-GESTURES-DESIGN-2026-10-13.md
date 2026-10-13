@@ -135,6 +135,8 @@ blockers. Overlays update first, the controller admits next, and a canvas reserv
 after admission. A rejected start stays rejected until the entire sequence ends, even if the overlay
 disappears or fingers move out. Touch admission checks every participating contact, not only the
 centroid. New contacts cannot rescue a rejected sequence.
+Previously unobserved touch IDs require Began. Malformed or duplicate contact data rejects the
+sequence until all contacts release, including when the malformed contact later disappears.
 
 Cancel on focus loss, capture, suppression, viewport/scale change or explicit lifecycle cancellation.
 Discard inertia, pending zoom and tap history. Held contacts remain inhibited until released.
@@ -158,6 +160,8 @@ Callers cancel when hiding or replacing a view. No synthetic release may become 
 - Two touches zoom about the previous centroid, then pan by centroid movement, preserving the
   material point under the fingers. Coincident fingers, reordered IDs and contact replacement rebase
   without singular scale or jumps. Lifting one finger rebases the remaining drag and cannot tap.
+  An applied nonidentity pair transform commits the gesture and disqualifies its two-finger tap,
+  even when each contact moved less than drag slop. Continuing one finger then has no new slop.
 - A double tap zooms in at the second tap. A two-finger tap zooms out at its centroid. Movement,
   cancellation or extra contacts disqualify taps. Single taps are reported immediately, the second
   qualifying tap reports double-tap instead of another single. Document this selection tradeoff.

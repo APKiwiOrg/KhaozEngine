@@ -184,19 +184,22 @@ Tests in `KhaozEngine.Windowing.Tests/PanZoomControllerTests.cs`,
   Do not coalesce custom-resolver samples. Reject non-finite/non-positive resolved factors.
   Reset pending wheel animation when mode/resolver policy changes.
 
-- [ ] Add failing single-pointer tests: from origin (20,20), move to (26,20), then (30,20), and assert
+- [x] Add failing single-pointer tests: from origin (20,20), move to (26,20), then (30,20), and assert
   zero followed by (10,0). Release after 0.08 seconds stationary has zero inertia. New press cancels
   existing inertia before movement. Blocked start stays inert after blocker removal.
   Preserve Pointer's existing same-frame press/release tap contract. A snapshot containing both
   button edges with no held button must still tap once when admitted, and never tap when blocked.
   Prove legacy OnScroll + Snapshot input zooms through fallback, while an enabled native source
   whose samples were cleared never revives retained scalar scroll.
-- [ ] Run `build-slot --label pan-zoom-red -- dotnet test KhaozEngine.Windowing.Tests -c Release
+  Clear the synthesized-mouse latch when release is observed, including terminal-touch and focused
+  suppressed frames. Do not mistake an unfocused synthetic clear for physical release. Previously
+  unobserved touch IDs require Began, so an already-held contact cannot acquire a newly visible view.
+- [x] Run `build-slot --label pan-zoom-red -- dotnet test KhaozEngine.Windowing.Tests -c Release
   --filter 'FullyQualifiedName~PanZoom|FullyQualifiedName~DragMotionTracker'` and inspect failure.
-- [ ] Implement drag/admission/cancellation and analytic inertia. With velocity v and decay k,
+- [x] Implement drag/admission/cancellation and analytic inertia. With velocity v and decay k,
   displacement over dt is `v * (1 - exp(-k*dt)) / k`, then velocity is `v * exp(-k*dt)`.
   Reject invalid options/time. Zero dt applies input without advancing velocity estimates or animation.
-- [ ] Implement event-ordered scroll/magnify and wheel animation. Animate log factor over the exact
+- [x] Implement event-ordered scroll/magnify and wheel animation. Animate log factor over the exact
   configured duration. Coalesce only equal-anchor compatible steps. Native momentum gets no extra
   release inertia. Event modifiers decide behavior even if frame-level modifiers differ.
   Opposite directions are not compatible for coalescing, because target clamps preserve their order.
@@ -212,14 +215,14 @@ Tests in `KhaozEngine.Windowing.Tests/PanZoomControllerTests.cs`,
   independently of DPI, viewport scale and notch factor. Before a subsequent direct pan/magnify
   operation, complete pending wheel remainders in order, including at zero dt. This is input-driven
   completion, not idle animation advancement. Cancellation instead discards remaining wheel effects.
-- [ ] Implement touch arbitration with stable IDs. More than two contacts cancels until all release.
+- [x] Implement touch arbitration with stable IDs. More than two contacts cancels until all release.
   Rebase coincident pairs and contact replacement. A second touch arriving within 0.1 seconds may
   qualify for a two-finger tap, subject to the 0.3-second duration and slop for both contacts.
   First tap reports immediately. Second qualifying tap reports double-tap and zooms by factor 2.
   Two-finger tap zooms by factor 0.5. Do not duplicate a touch as a mouse gesture.
   An active pinch returning to one finger resumes dragging without a jump, a new slop delay or a tap.
   A pinch candidate that has not committed remains distinguishable for two-finger tap recognition.
-- [ ] Add numeric oracle tests using an affine fake target. Its pan and scale must retain the point
+- [x] Add numeric oracle tests using an affine fake target. Its pan and scale must retain the point
   under cursor/centroid. Add one-frame mixed-anchor wheel/magnify, touch reordering/replacement,
   suppression, resize, focus loss, capture, held-contact restart inhibition and focused keyboard tests.
   Compare inertia at 0.1 versus 0.04+0.06 seconds within 1e-4. Compare same-anchor animation final
@@ -228,7 +231,7 @@ Tests in `KhaozEngine.Windowing.Tests/PanZoomControllerTests.cs`,
   A. Test the wheel resolver receives each wheel sample once and never native/touch pinch. Two
   samples select two stops while one magnitude-100 sample selects one. Precise command zoom must
   have equal factors across DPI/design scales and remain continuous between snap stops.
-- [ ] Run the focused command green, then existing GestureRecognizer/PointerGesture/PinchRecognizer
+- [x] Run the focused command green, then existing GestureRecognizer/PointerGesture/PinchRecognizer
   filters once if those types changed. Commit explicit files and push.
 
 ### Task 4: PannableCanvas adoption with compatibility tests

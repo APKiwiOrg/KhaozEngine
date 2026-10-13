@@ -237,6 +237,7 @@ extraction is `ShippedBuildingGuardFixtures.Create("valid")`. The `actual-overri
 placement tag override while keeping the nominal source prefab unchanged. `shared-concealment` proves two
 instance-owned rooms joined by one explicit group, with emitting props counted separately from indoor lights.
 `curved-selection` preserves an original KECL cylinder selection, including its base-aligned geometry.
+`quarter-turn` checks equivalent source boxes and native compound geometry under a rotated original leaf.
 
 `definitions[].path` is a source `TilePrefabFile` definition. `resourceId` identifies the matching verified
 native prefab resource. Logical IDs and verified `prefab/<escape(id)>/<sha256>` IDs are both accepted by
@@ -309,7 +310,8 @@ metre-sized source tiles. Room closure refuses more than 1,048,576 candidate cel
 Native expansion and query limits remain the released limits. It never truncates a room to pass a limit.
 Expectation mismatches and geometry/semantic differences are failures, not missing-input skips.
 
-Derived vertices compare at 0.00001 m and normal components at 0.000001. Every exceeded component is
+Derived vertices compare at 0.00001 m and normal components at 0.000001. Geometry occurrences match
+bijectively within those component tolerances, without depending on exact float sorting at rotations. Every exceeded component is
 recorded with its source correspondence and exact tolerance in the private report. Integers, ordered tags,
 identity and metadata compare exactly. Native revised-T4 envelopes compare between heads and after reload.
 The source picking delta is recorded for named R11 acceptance. Legacy visual-AABB picking is never called

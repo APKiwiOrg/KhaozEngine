@@ -62,6 +62,7 @@ public sealed class ShippedBuildingInputGuardTests
     [InlineData("actual-override")]
     [InlineData("shared-concealment")]
     [InlineData("curved-selection")]
+    [InlineData("quarter-turn")]
     public void CompleteInventedBuilding_ClosesInputsAndComparesBothHeads(string variant)
     {
         using var fixture = ShippedBuildingGuardFixtures.Create(variant);
@@ -194,7 +195,7 @@ internal sealed class ShippedBuildingGuardFixtures : IDisposable
         for (int z = 0; z < 4; z++)
             for (int x = 0; x < 4; x++) world.SetUnderlay(x, z, 0, 1);
         var names = new[] { "wall", "roof", "lamp", "shelter" };
-        var objects = names.Select((name, index) => world.AddObject(name, index, 0, 0, 0, new[] { "first", "second" })).ToArray();
+        var objects = names.Select((name, index) => world.AddObject(name, index, 0, 0, variant == "quarter-turn" && name == "wall" ? 1 : 0, new[] { "first", "second" })).ToArray();
         var otherObjects = variant == "shared-concealment" ? names.Select((name, index) => world.AddObject(name, index, 2, 0, 0, new[] { "first", "second" })).ToArray() : [];
         TileWorldFile.Save(world, Path.Combine(root, "world"));
         File.WriteAllText(Path.Combine(root, "catalog.json"), """
@@ -268,6 +269,7 @@ internal sealed class ShippedBuildingGuardFixtures : IDisposable
                 X = position.X,
                 Y = position.Y,
                 Z = position.Z,
+                Yaw = TileObjectPlacement.YawRadians(catalogs.Archetype(id)!, o.Rotation),
                 Scale = 1,
                 Tags = variant == "native-tags" && id == "lamp" ? new() { "second", "first" } : new() { "first", "second" }
             }));
@@ -394,6 +396,11 @@ internal sealed class ShippedBuildingGuardFixtures : IDisposable
             {"kind":"edge","position":[2,1,-0.5],"sourceSpaceId":"exterior","spaceId":"exterior","hiddenRoofIds":[]},
             {"kind":"storey","position":[0.5,3,-0.5],"sourceSpaceId":"exterior","spaceId":"exterior","hiddenRoofIds":[]}]}
             """)!.AsObject();
+        if (variant == "quarter-turn")
+        {
+            comparison["doorways"]![0]!["clear"] = JsonNode.Parse("[[1.5,0.1,0],[1.5,0.1,-2]]");
+            comparison["doorways"]![0]!["jamb"] = JsonNode.Parse("[[0.5,0.1,0],[0.5,0.1,-2]]");
+        }
         if (variant == "shared-concealment")
         {
             var secondBuilding = comparison["buildings"]![0]!.DeepClone();

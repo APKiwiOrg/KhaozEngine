@@ -451,15 +451,41 @@ internal static class ShippedBuildingComparison
 
     static void CompareGeometry(string category, Sample[] expected, Sample[] actual, Evidence evidence, object owner)
     {
-        // Sort geometry, not ownership. Source boxes and native compound children may have different enumeration order.
-        static Sample[] Sort(Sample[] samples) => samples.OrderBy(s => s.Normal).ThenBy(s => s.Value.X).ThenBy(s => s.Value.Y).ThenBy(s => s.Value.Z).ToArray();
-        var a = Sort(expected); var b = Sort(actual);
-        evidence.Check(category + "-count", a.Length == b.Length, new { owner, expected = a.Length, actual = b.Length });
-        for (int i = 0; i < Math.Min(a.Length, b.Length); i++)
+        double Error(Sample a, Sample b) => Math.Max(Math.Abs(a.Value.X - b.Value.X),
+            Math.Max(Math.Abs(a.Value.Y - b.Value.Y), Math.Abs(a.Value.Z - b.Value.Z)));
+        bool Near(Sample a, Sample b) => a.Normal == b.Normal &&
+            double.IsFinite(Error(a, b)) && Error(a, b) <= (a.Normal ? NormalTolerance : VertexTolerance);
+        evidence.Check(category + "-count", expected.Length == actual.Length, new { owner, expected = expected.Length, actual = actual.Length });
+        if (expected.Length == actual.Length && expected.Select((sample, index) => Near(sample, actual[index])).All(value => value)) return;
+
+        // Match occurrences bijectively within the fixed component tolerance. Exact sorting is unstable at rotations.
+        var assigned = Enumerable.Repeat(-1, actual.Length).ToArray();
+        var candidates = expected.Select(sample => Enumerable.Range(0, actual.Length).Where(i => Near(sample, actual[i]))
+            .OrderBy(i => Error(sample, actual[i])).ToArray()).ToArray();
+        bool Assign(int index, bool[] visited)
         {
-            evidence.Check(category + "-role", a[i].Normal == b[i].Normal, new { owner, index = i });
-            evidence.Near(category, Components(a[i].Value), Components(b[i].Value), a[i].Normal ? NormalTolerance : VertexTolerance, new { owner, index = i, a[i].Normal });
+            foreach (int candidate in candidates[index])
+            {
+                if (visited[candidate]) continue;
+                visited[candidate] = true;
+                if (assigned[candidate] < 0 || Assign(assigned[candidate], visited))
+                { assigned[candidate] = index; return true; }
+            }
+            return false;
         }
+        for (int index = 0; index < expected.Length; index++) Assign(index, new bool[actual.Length]);
+        var matched = assigned.Where(index => index >= 0).ToHashSet();
+        for (int index = 0; index < expected.Length; index++)
+        {
+            if (matched.Contains(index)) continue;
+            evidence.Check(category + "-correspondence", false, new { owner, index, expected = expected[index] });
+            int closest = Enumerable.Range(0, actual.Length).Where(i => actual[i].Normal == expected[index].Normal)
+                .OrderBy(i => Error(expected[index], actual[i])).FirstOrDefault(-1);
+            if (closest >= 0) evidence.Near(category, Components(expected[index].Value), Components(actual[closest].Value),
+                expected[index].Normal ? NormalTolerance : VertexTolerance, new { owner, index, actualIndex = closest, expected[index].Normal });
+        }
+        for (int index = 0; index < actual.Length; index++)
+            if (assigned[index] < 0) evidence.Check(category + "-unexpected", false, new { owner, index, actual = actual[index] });
     }
     static Vector3 Transform(Pose pose, Vector3 p) => pose.Position + Vector3.Transform(p, pose.Orientation);
     static Coordinates Precise(MapEffectiveTransform pose, Vector3 p)

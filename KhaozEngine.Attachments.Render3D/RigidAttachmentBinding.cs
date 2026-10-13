@@ -1,5 +1,4 @@
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
@@ -8,9 +7,12 @@ using KhaozEngine.Render3D;
 namespace KhaozEngine.Attachments.Render3D;
 
 /// <summary>Rigid parts resolved once against a contract map and composed from the body's current pose.</summary>
+/// <remarks>Scratch storage is allocated at construction. Use each binding on its owning render thread.
+/// Calls to ComposeWorlds on the same binding must not overlap.</remarks>
 public sealed class RigidAttachmentBinding
 {
     readonly ResolvedPart[] _parts;
+    readonly Matrix4x4[] _worlds;
 
     public RigidAttachmentBinding(RigidAttachmentSetDefinition definition, ContractJointMap map)
     {
@@ -33,12 +35,14 @@ public sealed class RigidAttachmentBinding
                 throw new InvalidDataException($"Attachment part {part.Id}: joint '{part.Joint}' cannot bind to the contract skin.", error);
             }
         }
+        _worlds = new Matrix4x4[_parts.Length];
     }
 
     public Skeleton Skeleton { get; }
     public int PartCount => _parts.Length;
 
     /// <summary>Write canonical part-ID order after validating the whole result. Output may overlap the palette.</summary>
+    /// <remarks>Valid calls allocate no managed memory. Calls on the same binding must not overlap.</remarks>
     /// <exception cref="ArgumentException">The skeleton, palette, capacity or pose matrices are invalid.</exception>
     public void ComposeWorlds(Skeleton skeleton, ReadOnlySpan<Matrix4x4> palette,
         in Matrix4x4 model, Span<Matrix4x4> destination)
@@ -52,36 +56,26 @@ public sealed class RigidAttachmentBinding
         if (!ValidMatrix(model))
             throw new ArgumentException("The model matrix must be finite, affine and invertible.", nameof(model));
 
-        Matrix4x4[]? rented = null;
-        Span<Matrix4x4> worlds = PartCount <= 128
-            ? stackalloc Matrix4x4[PartCount]
-            : (rented = ArrayPool<Matrix4x4>.Shared.Rent(PartCount)).AsSpan(0, PartCount);
-        try
+        Span<Matrix4x4> worlds = _worlds;
+        for (int i = 0; i < _parts.Length; i++)
         {
-            for (int i = 0; i < _parts.Length; i++)
+            ResolvedPart part = _parts[i];
+            Matrix4x4 joint = palette[part.Bone];
+            try
             {
-                ResolvedPart part = _parts[i];
-                Matrix4x4 joint = palette[part.Bone];
-                try
-                {
-                    if (!ValidMatrix(joint))
-                        throw new ArgumentException("The joint matrix must be finite, affine and invertible.");
-                    worlds[i] = BoneSocket.ComposeRigid(part.LocalAligned, joint, model);
-                    if (!ValidMatrix(worlds[i]))
-                        throw new ArgumentException("The composed world matrix must be finite, affine and invertible.");
-                }
-                catch (ArgumentException error)
-                {
-                    throw new ArgumentException($"Attachment part {part.Id}: joint '{part.Joint}' has an invalid pose or world transform.",
-                        nameof(palette), error);
-                }
+                if (!ValidMatrix(joint))
+                    throw new ArgumentException("The joint matrix must be finite, affine and invertible.");
+                worlds[i] = BoneSocket.ComposeRigid(part.LocalAligned, joint, model);
+                if (!ValidMatrix(worlds[i]))
+                    throw new ArgumentException("The composed world matrix must be finite, affine and invertible.");
             }
-            worlds.CopyTo(destination);
+            catch (ArgumentException error)
+            {
+                throw new ArgumentException($"Attachment part {part.Id}: joint '{part.Joint}' has an invalid pose or world transform.",
+                    nameof(palette), error);
+            }
         }
-        finally
-        {
-            if (rented is not null) ArrayPool<Matrix4x4>.Shared.Return(rented);
-        }
+        worlds.CopyTo(destination);
     }
 
     static bool ValidMatrix(in Matrix4x4 matrix) => Finite(matrix)

@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Numerics;
 using KhaozEngine.Attachments;
 using KhaozEngine.Attachments.Render3D;
@@ -9,8 +10,32 @@ using static KhaozEngine.Tests.Render3D.RigidAttachmentTestRig;
 
 namespace KhaozEngine.Tests.Render3D;
 
+[Collection("AllocSensitive")]
 public sealed class RigidAttachmentBindingTests
 {
+    [Fact]
+    public void First_composition_of_a_large_set_allocates_no_managed_memory()
+    {
+        Skeleton skeleton = Create();
+        Matrix4x4[] palette = skeleton.ComposeRestPose();
+        var model = Matrix4x4.CreateTranslation(10, 0, 0);
+        RigidAttachmentPartDefinition[] parts = Enumerable.Range(1, 129)
+            .Select(id => Part((uint)id, "hip", Matrix4x4.CreateTranslation(id, 0, 0))).ToArray();
+        var binding = Bind(skeleton, parts);
+        var worlds = new Matrix4x4[129];
+
+        // Warm composition and matrix math without touching the large-set scratch path.
+        Bind(skeleton, Part(1, "hip")).ComposeWorlds(skeleton, palette, model, new Matrix4x4[1]);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        binding.ComposeWorlds(skeleton, palette, model, worlds);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.Equal(0L, allocated);
+        Assert.Equal(129, binding.PartCount);
+        Assert.Equal(new Vector3(11, 2, 0), worlds[0].Translation);
+        Assert.Equal(new Vector3(139, 2, 0), worlds[128].Translation);
+    }
+
     [Fact]
     public void Reordered_skin_uses_hip_bone_not_node_index()
     {

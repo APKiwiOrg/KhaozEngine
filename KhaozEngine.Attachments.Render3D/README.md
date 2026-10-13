@@ -8,6 +8,10 @@ name a contract joint in the skin. Unresolved references throw `InvalidDataExcep
 part and joint. The binding retains the exact `Skeleton` instance and resolves node, skin-bone
 index and body alignment at construction.
 
+Scratch storage is allocated at binding construction. Valid `ComposeWorlds` calls allocate no
+managed memory. Use each binding on its owning render thread. Calls on the same binding must not
+overlap.
+
 ```csharp
 var binding = new RigidAttachmentBinding(definition, map);
 var worlds = new Matrix4x4[binding.PartCount];

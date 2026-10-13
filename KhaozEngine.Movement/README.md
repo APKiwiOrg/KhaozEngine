@@ -400,9 +400,10 @@ public sealed class GroundNavigationBake
 profile is exactly the fresh build. An aquatic profile from a capture without `SampleWater` is refused there.
 `WriteTo` writes a little-endian `KENB` file. All-Legacy sets retain format 1 and their exact bytes. Any contact
 profile selects format 2 for the whole set, including mixed contact ground and legacy aquatic profiles. Format 2
-adds each profile's effective kind, foot fraction, water policy and zero placement offset to the identity, and one
-resting feet height per open cell after each layer's raw heights and exits. Legacy layers in mixed sets store raw
-heights as their resting values. Load restores resting heights only for contact layers. Two writes of one bake
+adds each profile's effective kind, foot fraction, water policy and zero placement offset to the identity. Only
+OrdinaryContact layers append one resting float per open cell after that layer's exits, in clear-bit order. Legacy
+layers keep the format 1 layout, store no resting section and get their resting height from the raw surface at runtime.
+Load restores resting heights only for contact layers. Two writes of one bake
 are byte-identical. A loaded profile is a `GroundNavigation` like any other, and its `Space`, graph, columns, `AllowsSegment` and `Planner`
 answers equal the fresh build as bits. `GetProfile` throws `KeyNotFoundException` for
 an unknown name. `Fingerprint` is the SHA-256 of the identity block, for logs and build manifests.

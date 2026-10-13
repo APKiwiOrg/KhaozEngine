@@ -12267,6 +12267,13 @@ MoveState s = CharacterMovement.Step(s, new MoveCommand(move, run, cameraYaw, ju
 MoveCommand precise = new(move, run, cameraYaw, jump: false, faceCamera: false, scaleSpeedByAxis: true);
 ```
 
+Network heads resolve one movement binding at configuration. Contact tuning uses ordinary leased queries
+at offset zero. Supply the installer's `MovementRegistration`, an absolute `MovementBoundary` and optional
+`MovementWaterField` on `WorldServerConfig` and `WorldClientConfig`. Sharded servers use the corresponding
+per-cell factories. Standalone simulators and movement systems, single servers and clients release their
+owned binding on disposal. See [ordinary contact configuration](../KhaozEngine.NetWorld/README.md#ordinary-contact-configuration)
+for configuration, resident scopes, replay and view lifetime.
+
 `KhaozEngine.NetWorld` (`Server` umbrella; deps Locomotion/Netcode/Replication/Ecs, render-free) wires that
 core to the shipped authoritative netcode for a **single authoritative `World`** (multi-cell `Sharding` folds
 in with streaming later):
@@ -12809,7 +12816,7 @@ while (running)   // per fixed tick:
 ```
 
 Each tick routes every client's `MoveCommand` to the cell that **owns** its player, steps each cell's
-`PlayerMovementSystem` (the shared `CharacterMovement.Step`, ground-clamped) via `ShardHost.Tick`, transfers
+`PlayerMovementSystem` (the shared movement binding) via `ShardHost.Tick`, transfers
 authority for boundary crossers exactly-once, refreshes border ghosts, then serves each client its single
 home-cell area-of-interest (owned + ghosts). Walking across a boundary hands off with no hitch; two players in
 adjacent cells see each other via ghosting. `WorldServer` stays the single-`World` option for a modest player

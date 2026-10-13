@@ -30,7 +30,7 @@ public sealed partial class ShardedWorldServer
         if (teleport)
         {
             next.Move.Commitment = default;
-            if (config.ExplicitMovementFactory is not null)
+            if (RuntimeFor(source).Binding.UsesLease)
             {
                 next.Move = MovementStepResult.HoldState(next.Move);
                 next.Move.WaterExcursion = WaterExcursionState.None;
@@ -42,7 +42,7 @@ public sealed partial class ShardedWorldServer
         }
         next.TeleportEpoch = teleport ? epoch + 1u : epoch;
         bool hadCurrent = TryGetPlayerState(slot, out PlayerMoveState current);
-        if (config.ExplicitMovementFactory is null)
+        if (!RuntimeFor(source).Binding.UsesLease)
         {
             source.World.Set(entity, ReplicatedPosition.FromWorld(next.Position, source.Frame));
             MovementComponents.Set(source.World, entity, next);

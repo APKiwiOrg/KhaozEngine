@@ -4,8 +4,8 @@ Render-free networked-world layer that wires the [KhaozEngine.Locomotion](../Kha
 movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netcode) +
 [Replication](../KhaozEngine.Replication)).
 
-- **`PlayerMoveSimulator`** (`ITickSimulator`) runs `CharacterMovement.Step` both server-authoritatively
-  and inside client prediction, so the two stay in lockstep. Three read surfaces past the constructor:
+- **`PlayerMoveSimulator`** (`ITickSimulator`, `IDisposable`) resolves one movement binding for authority
+  and prediction. Legacy uses `CharacterMovement.Step`. Contact uses the leased ordinary environment. Three read surfaces past the constructor:
   **`Frame`** (settable, `WorldFrame.Origin` by default) is the island frame this instance steps in - every
   state `Step` returns is stamped with its anchor, and only the owning island sets it, together with its
   physics world's rebase, never mid-step and never per entity. **`SamplerSpace`** (read-only, fixed at
@@ -1057,6 +1057,54 @@ cold environment reconstruction. Refused steps consume their input and clear tic
 callers default the new excursion to None. Native producer acceptance and game adoption remain
 separate from these generic movement and transport proofs.
 
+## Ordinary contact configuration
+
+`MoveTuning.Controller = MovementControllerKind.Contact` selects the ordinary leased composition at placement
+offset zero. `WorldServerConfig` and `WorldClientConfig` carry `MovementRegistration`, `MovementBoundary` and
+`MovementWaterField`. The registration names the installed physical source and its finite resident extent.
+`MovementBoundary` is absolute and takes precedence over constructor `WorldBounds`. Without it, rectangular
+or circular `WorldBounds` provide the complete-path certificate. A custom point-only bound is refused.
+The water field is optional for dry worlds. A point medium delegate requires a field.
+
+```csharp
+var tuning = MoveTuning.Default with
+{
+    Controller = MovementControllerKind.Contact,
+    Water = new(WaterTraversalMode.SurfaceSwimmer, 7)
+};
+var config = new WorldServerConfig
+{
+    MovementRegistration = registration,
+    MovementBoundary = MovementBoundary.Rectangle(minX, minZ, maxX, maxZ),
+    MovementWaterField = waterField
+};
+using var server = new WorldServer(transport, config, groundHeight, tuning, physics: physics);
+```
+
+Clients supply their own resident registration and field for the same authored world. A command requiring
+queries outside that resident island holds, even when the server has a larger resident extent. The full
+`PlayerMoveSimulator` and `PlayerMovementSystem` overloads take these same three inputs after the existing
+public explicit configuration. All overloads validate at construction. Contact together with public explicit
+configuration is refused as two selections.
+
+Sharded contact servers supply `MovementRegistrationFactory`, `MovementBoundaryFactory` and optional
+`MovementWaterFieldFactory`, against the physics installed by `PhysicsWorldFactory`. Certified `WorldBounds`
+can replace the boundary factory. Tuning and required factories validate before cells are allocated. Returned
+cell config validates before wiring or admission. Install and snapshot inside these factories because the
+server's public `CellCreated` notification runs afterwards.
+
+Each cell owns one binding shared by stepping, settlement and import admission. Runtime removal and host
+teardown release its adapters and owned query view before source physics. Standalone simulators and systems,
+and single-world servers, are disposable. A single head releases its movement view without disposing injected
+physics or transport. Public explicit environments and views remain caller-owned.
+
+Ordinary scopes are constant per binding and frame. `BeginExplicitRead` opens both leased kinds and returns
+null only for Legacy. Hold one read through a replay batch and publication. Exact corrected bases validate
+without settlement, and unavailable bases remain deferred. Ordinary frame descriptors use the actual physics
+origin, including Y, and advance their epoch when the frame or origin changes. Player states retain their planar
+frame stamp and absolute Y. Frame-local sampler heights become absolute providers using the physics Y origin.
+The wire generation, codecs and persistence payloads remain unchanged.
+
 ## Explicit player simulation read scope
 
 The opt-in `PlayerMoveSimulator` overload accepts `ExplicitPlayerMovement`, comprising the caller's
@@ -1068,9 +1116,9 @@ Call `BeginExplicitRead(basis)` and retain its `PlayerMoveReadScope` through `St
 reconciliation and pure state publication. A corrected/restored basis may be published only when
 `BasisValid` is true. `ExplicitCharacterMovement.ValidatePlacement` classifies that exact pose
 without simulating a tick. Disposal releases the environment pin before the physics lease, including
-when publication throws. Unconfigured simulators return a null read scope and keep legacy behavior.
+when publication throws. Legacy bindings return a null read scope and keep legacy behavior.
 Configured simulators called without a read scope hold and clear refused-step effects rather than
-falling back to legacy sampling. `LastExplicitOutcome` reports the last explicit simulation result.
+falling back to legacy sampling. `LastExplicitOutcome` reports the last leased simulation result for either composition.
 
 Real Bepu/prediction tests cover publication fencing, corrected pending-command replay, acknowledged
 refused presses and frame mismatch. WorldServerConfig and WorldClientConfig expose ExplicitMovement. Single-world ticks, prediction,
@@ -1087,7 +1135,7 @@ footing/water facts. Cold restore and relocation use placement settlement. Unkno
 retain saved or transferred state for retry, with no live prefix, corrupt-blob quarantine or empty
 replacement save. Cached freezes retain their transient marks. Reads remain held through publication.
 Both heads expose `TrySetPlayerState` and `TryResetToConfiguredSpawn`. A refused placement leaves
-pose, epoch, ownership and movement events unchanged. Explicit sharded cross-cell placement uses
+pose, epoch, ownership and movement events unchanged. Leased sharded cross-cell placement uses
 typed staging and immediately publishes in the admitted destination frame, never a far pose inside
 the source frame. Teleport clears the old water arc before destination classification.
 Player persistence retains refused records and their save guards, retries once per drain, and applies

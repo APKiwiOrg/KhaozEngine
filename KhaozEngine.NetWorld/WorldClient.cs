@@ -99,17 +99,17 @@ public sealed partial class WorldClient : IDisposable
         WorldClientConfig? config = null, byte[]? token = null, Func<float, float, Vector3>? groundNormal = null,
         WorldBounds? bounds = null, IPhysicsWorld? physics = null, ReplicationRegistry? registry = null,
         Func<float, float, float, MovementMedium>? medium = null)
-        : this(connect ?? throw new ArgumentNullException(nameof(connect)), connect(), groundHeight, tuning, config,
+        : this(connect ?? throw new ArgumentNullException(nameof(connect)), null, groundHeight, tuning, config,
                token, groundNormal, bounds, physics, registry, medium)
     {
     }
 
-    private WorldClient(Func<INetTransport>? connectFactory, INetTransport transport,
+    private WorldClient(Func<INetTransport>? connectFactory, INetTransport? transport,
         Func<float, float, float> groundHeight, MoveTuning tuning, WorldClientConfig? config, byte[]? token,
         Func<float, float, Vector3>? groundNormal, WorldBounds? bounds, IPhysicsWorld? physics,
         ReplicationRegistry? registry, Func<float, float, float, MovementMedium>? medium)
     {
-        ArgumentNullException.ThrowIfNull(transport);
+        if (connectFactory is null) ArgumentNullException.ThrowIfNull(transport);
         if (groundHeight is null) throw new ArgumentNullException(nameof(groundHeight));
         config ??= new WorldClientConfig();
         this.connectFactory = connectFactory;
@@ -122,9 +122,6 @@ public sealed partial class WorldClient : IDisposable
         // VersionCheckingAuthenticator, the opt-in ContentIdentity just inside it. Stored wrapped for each reconnect.
         this.token = ProtocolHandshake.BuildClientToken(MoveProtocol.WireProtocolVersion, config.ProtocolVersion,
             ProtocolHandshake.WrapContentIdentity(config.ContentIdentity, token));
-        ownedTransport = connectFactory is not null ? transport : null;   // we dispose only what we built
-        net = new NetClient(transport, this.token);
-        view = new ClientReplicationView(this.registry);
         // Predict against the SAME physics world the server is authoritative over (mirrors WorldServer),
         // so a solid-prop consumer predicts straight rather than rubber-banding. Defaults null = terrain-only.
         frameAnchoring = config.FrameAnchoring;
@@ -135,21 +132,37 @@ public sealed partial class WorldClient : IDisposable
         if (frameAnchoring) RequireRebasablePhysics(physics);
         islandPhysics = physics;
         simulator = new PlayerMoveSimulator(groundHeight, tuning, groundNormal, bounds, physics, medium,
-            config.SamplerSpace, config.ExplicitMovement);
-        PredictionSettings settings = config.Prediction ?? (PredictionSettings.Default with { TickSeconds = config.TickSeconds });
-        prediction = new ClientPrediction<PlayerMoveState, MoveCommand>(simulator, settings);
-        interpolateRemotes = config.InterpolateRemotes;
-        requestDeltaReplication = config.RequestDeltaReplication;
-        tickSeconds = config.TickSeconds;
-        serverTicks = StartServerTickTimeline(config);   // refuses the format 2 combination, null without the opt-in
-        rebuild = StartRebuildStream(config);   // validates the format 2 opt-in, null without it
-        interpolationDelaySeconds = MathF.Max(0f, config.InterpolationDelayTicks) * config.TickSeconds;
-        presentationTrace = config.PresentationTraceEnabled ? new PresentationTrace() : null;
-        disconnectTimeout = config.DisconnectTimeoutSeconds;
-        autoReconnect = config.AutoReconnect;
-        retryOnReject = config.RetryOnReject;
-        backoff = config.Reconnect;
-        attemptDeadlineRemaining = disconnectTimeout;   // also bound the initial connect
+            config.SamplerSpace, config.ExplicitMovement, config.MovementWaterField,
+            config.MovementRegistration, config.MovementBoundary);
+        try
+        {
+            // Resolve movement before opening a connection. A failed head releases only resources it owns.
+            transport ??= connectFactory!();
+            ArgumentNullException.ThrowIfNull(transport);
+            ownedTransport = connectFactory is not null ? transport : null;
+            net = new NetClient(transport, this.token);
+            view = new ClientReplicationView(this.registry);
+            PredictionSettings settings = config.Prediction ?? (PredictionSettings.Default with { TickSeconds = config.TickSeconds });
+            prediction = new ClientPrediction<PlayerMoveState, MoveCommand>(simulator, settings);
+            interpolateRemotes = config.InterpolateRemotes;
+            requestDeltaReplication = config.RequestDeltaReplication;
+            tickSeconds = config.TickSeconds;
+            serverTicks = StartServerTickTimeline(config);   // refuses the format 2 combination, null without the opt-in
+            rebuild = StartRebuildStream(config);   // validates the format 2 opt-in, null without it
+            interpolationDelaySeconds = MathF.Max(0f, config.InterpolationDelayTicks) * config.TickSeconds;
+            presentationTrace = config.PresentationTraceEnabled ? new PresentationTrace() : null;
+            disconnectTimeout = config.DisconnectTimeoutSeconds;
+            autoReconnect = config.AutoReconnect;
+            retryOnReject = config.RetryOnReject;
+            backoff = config.Reconnect;
+            attemptDeadlineRemaining = disconnectTimeout;   // also bound the initial connect
+        }
+        catch
+        {
+            simulator.Dispose();
+            DisposeCurrentTransport();
+            throw;
+        }
     }
 
     /// <summary>Net id of the local player, or -1 until the first snapshot identifies it (64-bit since 10.0.0).</summary>
@@ -411,6 +424,7 @@ public sealed partial class WorldClient : IDisposable
     /// <summary>Closes the current transport (if this client built it). Idempotent.</summary>
     public void Dispose()
     {
+        simulator.Dispose();
         DisposeCurrentTransport();
         SetState(WorldConnectionState.Disconnected);
     }

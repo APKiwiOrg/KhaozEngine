@@ -17,5 +17,6 @@
     <InternalsVisibleTo Include="KhaozEngine.Game.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.Movement.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.Movement" />
+    <InternalsVisibleTo Include="KhaozEngine.NetWorld" />
   </ItemGroup>
 </Project>

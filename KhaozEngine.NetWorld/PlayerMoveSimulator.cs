@@ -20,7 +20,7 @@ namespace KhaozEngine.NetWorld;
 /// What this class adds is the adaptation that puts the samplers in that frame.
 /// </para>
 /// </summary>
-public sealed partial class PlayerMoveSimulator : ITickSimulator<PlayerMoveState, MoveCommand>
+public sealed partial class PlayerMoveSimulator : ITickSimulator<PlayerMoveState, MoveCommand>, IDisposable
 {
     private readonly Func<float, float, float> groundHeight;
     private readonly Func<float, float, Vector3>? groundNormal;
@@ -41,6 +41,15 @@ public sealed partial class PlayerMoveSimulator : ITickSimulator<PlayerMoveState
     public PlayerMoveSimulator(Func<float, float, float> groundHeight, MoveTuning tuning,
         Func<float, float, Vector3>? groundNormal = null, WorldBounds? bounds = null, IPhysicsWorld? physics = null,
         Func<float, float, float, MovementMedium>? medium = null, SamplerSpace samplerSpace = SamplerSpace.World)
+        : this(groundHeight, tuning, groundNormal, bounds, physics, medium, samplerSpace,
+            null, null, null, null, null) { }
+
+    private PlayerMoveSimulator(Func<float, float, float> groundHeight, MoveTuning tuning,
+        Func<float, float, Vector3>? groundNormal, WorldBounds? bounds, IPhysicsWorld? physics,
+        Func<float, float, float, MovementMedium>? medium, SamplerSpace samplerSpace,
+        ExplicitPlayerMovement? explicitMovement, IMovementWaterField? movementWaterField,
+        OrdinaryMovementRegistration? movementRegistration, MovementBoundary? movementBoundary,
+        EffectiveMovementBinding? borrowedBinding)
     {
         this.groundHeight = groundHeight ?? throw new ArgumentNullException(nameof(groundHeight));
         this.tuning = tuning;
@@ -59,6 +68,10 @@ public sealed partial class PlayerMoveSimulator : ITickSimulator<PlayerMoveState
         groundNormalAdapter = groundNormal is null ? null : GroundNormalIn;
         clampXzAdapter = bounds is null ? null : ClampXzIn;
         mediumAdapter = medium is null ? null : MediumIn;
+        this.explicitMovement = explicitMovement;
+        Binding = borrowedBinding ?? OrdinaryPlayerMovement.Resolve(this.groundHeight, tuning, groundNormal, bounds,
+            physics, medium, samplerSpace, explicitMovement, movementWaterField, movementRegistration, movementBoundary);
+        ownsBinding = borrowedBinding is null;
     }
 
     /// <summary>
@@ -141,7 +154,8 @@ public sealed partial class PlayerMoveSimulator : ITickSimulator<PlayerMoveState
     /// always says which space its position is in.</para></summary>
     public PlayerMoveState Step(in PlayerMoveState state, in MoveCommand command, float dt)
     {
-        if (explicitMovement is not null) return StepExplicit(state, command, dt);
+        ObjectDisposedException.ThrowIf(disposed, this);
+        if (Binding.UsesLease) return StepExplicit(state, command, dt);
         MoveState m = CharacterMovement.Step(state.Move, command, dt, groundHeightAdapter, tuning, groundNormalAdapter,
             physics, clampXzAdapter, mediumAdapter);
         // Carry the teleport epoch through unchanged: it is a networking marker, not a movement quantity, so a step

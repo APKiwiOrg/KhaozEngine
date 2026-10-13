@@ -97,13 +97,19 @@ public sealed partial class ShardedWorldServer
     /// spawn ground-clamp that runs in the same space. Both are constructed against the cell's OWN physics world and
     /// frame, so nothing mutable is shared across the parallel cell fan-out.
     /// </summary>
-    private sealed class CellRuntime
+    private sealed class CellRuntime : IDisposable
     {
         public required PlayerMovementSystem Movement { get; init; }
         public required PlayerMoveSimulator Clamp { get; init; }
         public required WorldFrame Frame { get; init; }
-        public required MoveTuning Tuning { get; init; }
-        public ExplicitPlayerMovement? Explicit { get; init; }
+        public required EffectiveMovementBinding Binding { get; init; }
+
+        public void Dispose()
+        {
+            Movement.Dispose();
+            Clamp.Dispose();
+            Binding.Dispose();
+        }
 
         /// <summary>Ground-clamps an ABSOLUTE spawn position and hands back an ABSOLUTE state: the clamp steps in
         /// the cell's frame (so it queries the cell's own colliders in their own space) and the conversion happens on
@@ -122,10 +128,9 @@ public sealed partial class ShardedWorldServer
             }
             placed = default;
             accepted = false;
-            if (read.BasisValid && read.Queries is { } queries)
+            if (read.BasisValid && read.Queries is not null)
             {
-                var result = ExplicitCharacterMovement.SettlePlacement(new(seeded.Move, queries.Frame, null),
-                    Tuning, Explicit!.Water, queries, read.Boundary);
+                var result = Clamp.SettlePlacement(seeded, read);
                 if (result.Outcome == MovementStepOutcome.Advanced)
                 {
                     seeded.Move = result.State.State;
@@ -144,21 +149,37 @@ public sealed partial class ShardedWorldServer
         if (cellRuntime.TryGetValue(cell.Coord, out CellRuntime? runtime)) return runtime;
         ExplicitPlayerMovement? explicitMovement = config.ExplicitMovementFactory is { } factory
             ? factory(cell) ?? throw new InvalidOperationException("The explicit cell movement factory returned null.") : null;
-        runtime = new CellRuntime
+        OrdinaryMovementRegistration? registration = config.MovementRegistrationFactory is { } registrationFactory
+            ? registrationFactory(cell) ?? throw new InvalidOperationException("The cell movement registration factory returned null.") : null;
+        MovementBoundary? boundary = config.MovementBoundaryFactory is { } boundaryFactory
+            ? boundaryFactory(cell) ?? throw new InvalidOperationException("The cell movement boundary factory returned null.") : null;
+        var binding = OrdinaryPlayerMovement.Resolve(cellGroundHeight, tuning, cellGroundNormal, cellBounds,
+            cell.Physics, cellMedium, config.SamplerSpace, explicitMovement,
+            config.MovementWaterFieldFactory?.Invoke(cell), registration, boundary);
+        PlayerMovementSystem? movement = null;
+        PlayerMoveSimulator? clamp = null;
+        try
         {
-            Movement = new PlayerMovementSystem(cellGroundHeight, tuning, cellGroundNormal, cellBounds,
-                cell.Physics, cellMedium, cell.Frame, config.SamplerSpace, explicitMovement),
-            Clamp = new PlayerMoveSimulator(cellGroundHeight, tuning, cellGroundNormal, cellBounds,
-                cell.Physics, cellMedium, config.SamplerSpace, explicitMovement)
-            { Frame = cell.Frame },
-            Frame = cell.Frame,
-            Tuning = tuning,
-            Explicit = explicitMovement,
-        };
-        if (explicitMovement is not null)
-            cell.ImportAdmission = new ExplicitCellAdmission(explicitMovement, tuning, cell.Frame, cell.Physics, cellBounds);
-        cellRuntime[cell.Coord] = runtime;
-        cell.World.AddSystem(runtime.Movement);
+            movement = new(cellGroundHeight, tuning, cellGroundNormal, cellBounds, cell.Physics, cellMedium,
+                cell.Frame, config.SamplerSpace, binding, explicitMovement);
+            clamp = new(cellGroundHeight, tuning, cellGroundNormal, cellBounds, cell.Physics, cellMedium,
+                config.SamplerSpace, binding, explicitMovement) { Frame = cell.Frame };
+            runtime = new CellRuntime
+            {
+                Movement = movement, Clamp = clamp, Frame = cell.Frame, Binding = binding
+            };
+            if (binding.UsesLease)
+                cell.ImportAdmission = new ExplicitCellAdmission(binding, explicitMovement, tuning, cell.Frame, cell.Physics, cellBounds);
+            cell.World.AddSystem(runtime.Movement);
+            cellRuntime[cell.Coord] = runtime;
+        }
+        catch
+        {
+            clamp?.Dispose();
+            movement?.Dispose();
+            binding.Dispose();
+            throw;
+        }
         return runtime;
     }
 

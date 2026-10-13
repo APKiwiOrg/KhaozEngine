@@ -934,7 +934,29 @@ an otherwise empty history dirty. `MarkSaved` acknowledges both the history posi
 For native placements `RenamePlacementCommand` and the inspector edit `DisplayName`, leaving selection
 and both identities unchanged. `SetPlacementLabelCommand` names that behavior explicitly.
 `RemapPlacementIdCommand` is the separate stable-ID operation. Its reference visitor visits only typed
-placement references, of which format 4 has none. Tags and asset/resource IDs are never rewritten.
+placement references, including unpacked binding inventories, transfers, precise owner frames and light
+owners. Tags and asset/resource IDs are never rewritten.
+
+`PrefabEditCommand(MapPrefabEdit)` and `InteriorEditCommand(MapInteriorEdit)` prepare pure edits against the
+closure bound to `EditorHistory`. Fresh commands need no constructor capture. Direct `Apply` or `Revert`
+without a closure refuses before preparation. Accepted undo and redo restore captured roots, child IDs,
+storeys and frames, retaining the numeric high-water mark and dormant reservations.
+
+Native publication has two internal modes. Focused commands project their named write sets before
+validation, so unlisted edits cannot leak or satisfy dependencies. Complete snapshot commands clone and
+validate every semantic root and publish the captured document with its matching closure. Both stage
+without changing the live document or accepting command state. Publication precedes acceptance, closure
+rebinding and prepared history adoption. Partial documents refuse either mode. Complete undo retains
+removed instance inventories and retired transfers without recreating live standalone owners.
+
+Unpacked placement commands preserve binary64 pose components outside the explicit edit intent. Moves
+replace XZ and supplied Y, rotations replace yaw, scales replace scale, and label edits retain the pose.
+Missing Y retains authored support seating. Floor changes consume that dependency using precise XZ and
+capture the reseated registry and attachment descriptors. Gesture merging captures the final validated
+resource state, so one undo returns to the original state and redo restores the final accepted state.
+Invalidations include pre/post resolved leaves, aliases, attachment surfaces and shared-frame lights,
+with tight reports and conservative spatial bounds. Unknown geometry reports `Unbounded` and does not
+prevent repair or deletion. MapEditor still has no physics package reference.
 
 ## Rebuild semantics
 

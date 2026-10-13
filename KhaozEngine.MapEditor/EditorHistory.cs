@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc;
@@ -39,8 +40,13 @@ public sealed class EditorHistory
     void Apply(MapDocument doc, IEditorCommand command, bool undo)
     {
         if (doc.ResolverIdentity is not null)
-            LastNativeEffects = NativeDocumentTransaction.Run(doc, command, undo, _nativeAssets, Registry,
-                placementBounds: _placementBounds);
+        {
+            var staged = NativeDocumentTransaction.Stage(doc, command, undo, _nativeAssets, Registry, placementBounds: _placementBounds);
+            NativeDocumentTransaction.Publish(doc, staged);
+            staged.Accept();
+            _nativeAssets = staged.Assets;
+            LastNativeEffects = staged.Effects;
+        }
         else if (undo) command.Revert(doc);
         else command.Apply(doc);
     }
@@ -78,8 +84,25 @@ public sealed class EditorHistory
     /// When the command coalesces into the current top (same gesture, no barrier), no new step is pushed.</summary>
     public void Execute(MapDocument doc, IEditorCommand command)
     {
-        Apply(doc, command, false);
-        if (_mergeBarrier || _undo.Count == 0 || !_undo[^1].TryMerge(command))
+        bool merged;
+        if (doc.ResolverIdentity is not null)
+        {
+            var staged = NativeDocumentTransaction.Stage(doc, command, false, _nativeAssets, Registry, placementBounds: _placementBounds);
+            Action? adopt = !_mergeBarrier && _undo.Count != 0 && _undo[^1] is INativePlacementHistoryMerge merge
+                ? merge.PrepareMerge(command, staged) : null;
+            NativeDocumentTransaction.Publish(doc, staged);
+            staged.Accept();
+            adopt?.Invoke();
+            _nativeAssets = staged.Assets;
+            LastNativeEffects = staged.Effects;
+            merged = adopt is not null;
+        }
+        else
+        {
+            Apply(doc, command, false);
+            merged = !_mergeBarrier && _undo.Count != 0 && _undo[^1].TryMerge(command);
+        }
+        if (!merged)
             _undo.Add(command);
         _mergeBarrier = false;
         _redo.Clear();

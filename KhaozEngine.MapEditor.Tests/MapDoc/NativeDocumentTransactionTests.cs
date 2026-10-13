@@ -49,6 +49,38 @@ public sealed class NativeDocumentTransactionTests
         }
     }
     [Fact]
+    public void StagedAllocation_DefersAcceptanceAndCanRetry()
+    {
+        using var f = new NativePlacementHistoryFixture();
+        var command = new AllocateNativePlacementCommand(f.NewProp("staged"), true);
+        var staged = NativeDocumentTransaction.Stage(f.Document, command, false, null, localOnly: true);
+        Assert.Null(command.AcceptedId);
+        Assert.DoesNotContain(f.Document.Placements, p => p.Id == "staged");
+        Assert.Equal(11L, staged.Candidate.Placements.Single(p => p.Id == "staged").NumericId);
+        Assert.Null(command.AcceptedId);
+        NativeDocumentSnapshot.PublishWriteSet(f.Document, staged.Candidate, staged.WriteSet);
+        staged.Accept();
+        Assert.Equal("staged", command.AcceptedId);
+    }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MissingPlacement_ReplayRefusesAndCanRetry(bool redo)
+    {
+        using var f = new NativePlacementHistoryFixture();
+        f.Editor.Execute(new MovePlacementCommand("existing", 3, -4, 5));
+        if (redo) Assert.True(f.Editor.Undo());
+        var owner = f.Document.Placements.Single();
+        f.Document.Placements.Remove(owner);
+        string before = MapDocumentFile.SaveText(f.Document);
+        var effects = f.Editor.LastNativeEffects;
+        Assert.Throws<MapDocumentException>(() => { if (redo) f.Editor.Redo(); else f.Editor.Undo(); });
+        Assert.Equal(before, MapDocumentFile.SaveText(f.Document));
+        Assert.Same(effects, f.Editor.LastNativeEffects);
+        f.Document.Placements.Add(owner);
+        Assert.True(redo ? f.Editor.Redo() : f.Editor.Undo());
+    }
+    [Fact]
     public void PartialDocument_NativeTerrainCommandRefuses() => TiledDocFixture.InDirectory(dir =>
     {
         MapDocumentFile.SaveTiled(SurfaceStorageFixtures.ThreeSurfaces(), dir);

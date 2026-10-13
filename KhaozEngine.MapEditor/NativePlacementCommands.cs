@@ -1,5 +1,7 @@
 using System;
 using KhaozEngine.MapDoc;
+using KhaozEngine.MapDoc.Assets;
+using KhaozEngine.MapDoc.Editing;
 
 namespace KhaozEngine.MapEditor;
 
@@ -21,7 +23,7 @@ public sealed class AllocateNativePlacementCommand : EditorCommand, INativePlace
     public override void Apply(MapDocument doc) => NativePlacementTransaction.Run(doc, this, false, null, localOnly: true);
     public override void Revert(MapDocument doc) => NativePlacementTransaction.Run(doc, this, true, null, localOnly: true);
 
-    Action INativePlacementCommand.Prepare(MapDocument doc, bool undo)
+    Action INativePlacementCommand.Prepare(MapDocument doc, bool undo, MapAssetClosure? assets)
     {
         if (undo)
         {
@@ -52,11 +54,12 @@ public sealed class AllocateNativePlacementCommand : EditorCommand, INativePlace
 }
 
 /// <summary>Changes only a native display label. Direct Apply/Revert validate locally, not against an asset closure.</summary>
-public sealed class SetPlacementLabelCommand : EditorCommand, INativePlacementCommand
+public sealed class SetPlacementLabelCommand : EditorCommand, INativePlacementCommand, INativePlacementWriteSetCommand
 {
     readonly string _id;
     readonly string _label;
     readonly NativePlacementEdit _edit = new();
+    MapNativeWriteSet? INativePlacementWriteSetCommand.AcceptedWrites => _edit.Writes;
     public SetPlacementLabelCommand(string placementId, string label)
     {
         _id = placementId ?? throw new ArgumentNullException(nameof(placementId));
@@ -67,16 +70,17 @@ public sealed class SetPlacementLabelCommand : EditorCommand, INativePlacementCo
     internal override bool ChangesPlacements => true;
     public override void Apply(MapDocument doc) => NativePlacementTransaction.Run(doc, this, false, null, localOnly: true);
     public override void Revert(MapDocument doc) => NativePlacementTransaction.Run(doc, this, true, null, localOnly: true);
-    Action INativePlacementCommand.Prepare(MapDocument doc, bool undo) =>
+    Action INativePlacementCommand.Prepare(MapDocument doc, bool undo, MapAssetClosure? assets) =>
         _edit.Change(doc, _id, undo, p => p.DisplayName = _label);
 }
 
 /// <summary>Explicit stable-ID remap. Numeric identity is unchanged. Full asset checks belong to bound transactions.</summary>
-public sealed class RemapPlacementIdCommand : EditorCommand, INativePlacementCommand, IVisibilityEffect
+public sealed class RemapPlacementIdCommand : EditorCommand, INativePlacementCommand, IVisibilityEffect, INativePlacementWriteSetCommand
 {
     readonly string _oldId;
     readonly string _newId;
     readonly NativePlacementEdit _edit = new();
+    MapNativeWriteSet? INativePlacementWriteSetCommand.AcceptedWrites => _edit.Writes;
     public RemapPlacementIdCommand(string oldId, string newId)
     {
         _oldId = oldId ?? throw new ArgumentNullException(nameof(oldId));
@@ -88,11 +92,10 @@ public sealed class RemapPlacementIdCommand : EditorCommand, INativePlacementCom
     VisibilityOp IVisibilityEffect.Effect => VisibilityOp.Rename(SelectionKind.Placement, _oldId, _newId);
     public override void Apply(MapDocument doc) => NativePlacementTransaction.Run(doc, this, false, null, localOnly: true);
     public override void Revert(MapDocument doc) => NativePlacementTransaction.Run(doc, this, true, null, localOnly: true);
-    Action INativePlacementCommand.Prepare(MapDocument doc, bool undo)
+    Action INativePlacementCommand.Prepare(MapDocument doc, bool undo, MapAssetClosure? assets)
     {
         NativePlacementTransaction.RequireAbsent(doc, undo ? _oldId : _newId);
         Action accept = _edit.Change(doc, _oldId, undo, p => p.Id = _newId);
-        NativePlacementReferences.Remap(doc, undo ? _newId : _oldId, undo ? _oldId : _newId);
         return accept;
     }
 }

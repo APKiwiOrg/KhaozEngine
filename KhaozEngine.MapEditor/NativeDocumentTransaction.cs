@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Assets;
+using KhaozEngine.MapDoc.Prefabs;
+using KhaozEngine.MapDoc.Interiors;
 using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Storage;
@@ -17,7 +19,17 @@ internal interface INativeDocumentCommand
     NativeDocumentPreparation Prepare(MapDocument candidate, bool undo);
 }
 
-internal sealed record NativeDocumentPreparation(MapNativeWriteSet WriteSet, MapNativeEditEffects Effects, Action Accept);
+internal interface INativeBoundDocumentCommand
+{
+    NativeDocumentPreparation Prepare(MapDocument candidate, bool undo, MapAssetClosure assets);
+}
+internal enum MapNativePublicationMode { NamedWriteSet, CompleteSnapshot }
+internal sealed record NativeDocumentPreparation(MapNativeWriteSet WriteSet, MapNativeEditEffects Effects, Action Accept)
+{
+    internal MapNativePublicationMode Mode { get; init; } = MapNativePublicationMode.NamedWriteSet;
+}
+internal sealed record NativeStagedPublication(MapDocument Candidate, MapNativeWriteSet WriteSet,
+    MapNativePublicationMode Mode, MapAssetClosure? Assets, MapNativeEditEffects Effects, Action Accept);
 
 /// <summary>Validates and publishes exactly one native document write set.</summary>
 internal static class NativeDocumentTransaction
@@ -32,52 +44,111 @@ internal static class NativeDocumentTransaction
         MapAssetClosure? assets, MapDocRegistry? registry = null, bool localOnly = false,
         INativePlacementBounds? placementBounds = null)
     {
+        var staged = Stage(document, command, undo, assets, registry, localOnly, placementBounds);
+        Publish(document, staged);
+        staged.Accept();
+        return staged.Effects;
+    }
+
+    internal static void Publish(MapDocument document, NativeStagedPublication staged)
+    {
+        if (staged.Mode == MapNativePublicationMode.CompleteSnapshot) NativeDocumentSnapshot.Publish(document, staged.Candidate);
+        else NativeDocumentSnapshot.PublishWriteSet(document, staged.Candidate, staged.WriteSet);
+    }
+
+    internal static NativeStagedPublication Stage(MapDocument document, IEditorCommand command, bool undo,
+        MapAssetClosure? assets, MapDocRegistry? registry = null, bool localOnly = false,
+        INativePlacementBounds? placementBounds = null)
+    {
         ArgumentNullException.ThrowIfNull(document);
         if (document.Tiles is { IsPartial: true })
             throw new MapDocumentException("Native editing requires a complete document, not a windowed document.");
-        if (!localOnly && assets is null)
+        MapAssetClosure? selected = command is INativeAssetClosureCommand closures ? closures.Closure(undo) : assets;
+        if (command is INativeBoundDocumentCommand && selected is null)
+            throw new MapDocumentException("Prefab editing requires a verified asset closure.");
+        if (!localOnly && selected is null)
             throw new MapDocumentException("Native editing requires an explicit asset closure binding.");
-        INativeDocumentCommand native = command switch
-        {
-            INativeDocumentCommand typed => typed,
-            INativePlacementCommand placement => new PlacementAdapter(placement),
-            _ => throw new MapDocumentException("This command does not support atomic native document editing."),
-        };
         registry ??= MapDocRegistry.CreateDefault();
         MapDocument candidate = NativeDocumentSnapshot.Clone(document, registry);
-        NativeDocumentPreparation preparation = native.Prepare(candidate, undo);
-        // Validate the state publication will produce. Unlisted candidate edits cannot satisfy dependencies.
-        MapDocument publication = NativeDocumentSnapshot.Clone(document, registry);
-        NativeDocumentSnapshot.PublishWriteSet(publication, candidate, preparation.WriteSet);
+        NativeDocumentPreparation preparation = command switch
+        {
+            INativeBoundDocumentCommand bound => bound.Prepare(candidate, undo, selected!),
+            TerrainEditCommand terrain => terrain.Prepare(candidate, undo, selected, registry),
+            INativeDocumentCommand native => native.Prepare(candidate, undo),
+            INativePlacementCommand placement => PreparePlacement(document, candidate, placement, undo, selected),
+            _ => throw new MapDocumentException("This command does not support atomic native document editing."),
+        };
+        MapDocument publication;
+        if (preparation.Mode == MapNativePublicationMode.CompleteSnapshot) publication = NativeDocumentSnapshot.Clone(candidate, registry);
+        else
+        {
+            publication = NativeDocumentSnapshot.Clone(document, registry);
+            NativeDocumentSnapshot.PublishWriteSet(publication, candidate, preparation.WriteSet);
+        }
         if (localOnly) MapBoundDocumentValidation.ValidateLocal(publication, registry);
-        else MapBoundDocumentValidation.Validate(publication, assets!, registry);
-        ValidateSurfaces(publication, preparation.WriteSet);
-        // Placement effects need the document before publication and the validated state after it.
-        MapNativeEditEffects effects = native is PlacementAdapter
-            ? NativePlacementEffects.Describe(document, publication, assets, registry, placementBounds)
-            : preparation.Effects;
-        NativeDocumentSnapshot.PublishWriteSet(document, publication, preparation.WriteSet);
-        preparation.Accept();
-        return effects;
+        else MapBoundDocumentValidation.Validate(publication, selected!, registry);
+        ValidateSurfaces(publication, preparation.WriteSet, preparation.Mode, selected);
+        if (selected is not null && (publication.Prefabs is not null || publication.NativeResourceTransforms is not null || publication.BuildingIntent is not null))
+        {
+            var effective = MapPrefabResolver.Expand(publication, selected);
+            RequireValid(MapPrismCoverage.Validate(effective.CompleteView(), new()));
+            MapBoundDocumentValidation.ValidateEffectiveWater(effective, selected);
+        }
+        var beforeAssets = command is INativeAssetClosureCommand pair ? pair.Closure(!undo) : assets;
+        var effects = NativePlacementEffects.Describe(document, publication, selected, registry, placementBounds, beforeAssets);
+        var named = NativePlacementEffects.NameResources(preparation.Effects, document, publication, preparation.WriteSet);
+        effects = NativePlacementEffects.Combine(named, effects,
+            document, publication, beforeAssets, selected, preparation.WriteSet, preparation.Mode);
+        return new(publication, preparation.WriteSet, preparation.Mode, selected, effects, preparation.Accept);
     }
 
-    static void ValidateSurfaces(MapDocument publication, MapNativeWriteSet writeSet)
+    static NativeDocumentPreparation PreparePlacement(MapDocument before, MapDocument candidate,
+        INativePlacementCommand placement, bool undo, MapAssetClosure? assets)
+    {
+        Action accept = placement.Prepare(candidate, undo, assets);
+        var patches = before.Surfaces.Patches.Keys.Union(candidate.Surfaces.Patches.Keys).Where(k =>
+            !before.Surfaces.Patches.TryGetValue(k, out var a) || !candidate.Surfaces.Patches.TryGetValue(k, out var b) ||
+            MapSurfaceSemantics.PatchDigest(a) != MapSurfaceSemantics.PatchDigest(b)).ToArray();
+        var transformed = (before.NativeResourceTransforms ?? []).Concat(candidate.NativeResourceTransforms ?? [])
+            .Where(p => before.NativeResourceTransforms?.FirstOrDefault(t => t.Kind == p.Kind && t.OwnerId == p.OwnerId)?.Transform !=
+                candidate.NativeResourceTransforms?.FirstOrDefault(t => t.Kind == p.Kind && t.OwnerId == p.OwnerId)?.Transform).ToArray();
+        patches = patches.Union(before.Surfaces.Patches.Values.Concat(candidate.Surfaces.Patches.Values).Where(p =>
+            transformed.Any(t => t.Kind == MapPrefabChildKind.Surface && t.OwnerId == p.Key.SurfaceId ||
+                t.Kind == MapPrefabChildKind.Record && p.Records.Any(r => r.Id == t.OwnerId))).Select(p => p.Key)).ToArray();
+        var surfaces = before.Surfaces.Refs.Union(candidate.Surfaces.Refs).Where(s =>
+            before.Surfaces.Refs.Find(r => r.Id == s.Id) != candidate.Surfaces.Refs.Find(r => r.Id == s.Id)).Select(s => s.Id).Distinct().ToArray();
+        surfaces = surfaces.Union(transformed.Where(t => t.Kind == MapPrefabChildKind.Surface).Select(t => t.OwnerId)).ToArray();
+        var writes = new MapNativeWriteSet(patches, surfaces, [], [], [], [], true)
+        {
+            Prefabs = before.Prefabs?.Digest() != candidate.Prefabs?.Digest(),
+            BuildingIntent = before.BuildingIntent?.Digest() != candidate.BuildingIntent?.Digest(),
+            NativeResourceTransforms = !(before.NativeResourceTransforms ?? []).SequenceEqual(candidate.NativeResourceTransforms ?? []),
+            NumericReservations = true,
+        };
+        if (placement is INativePlacementWriteSetCommand { AcceptedWrites: { } acceptedWrites })
+            writes = NativePlacementResourceState.Union(writes, acceptedWrites);
+        return new(writes, new(null, null, [], [], [], [], MapNativeInvalidation.Placements), accept);
+    }
+
+    static void ValidateSurfaces(MapDocument publication, MapNativeWriteSet writeSet, MapNativePublicationMode mode, MapAssetClosure? assets)
     {
         MapSurfaceSet surfaces = publication.Surfaces;
-        foreach (MapPatchKey key in writeSet.Patches)
+        foreach (MapPatchKey key in mode == MapNativePublicationMode.CompleteSnapshot ? (IEnumerable<MapPatchKey>)surfaces.Patches.Keys : writeSet.Patches)
             if (surfaces.Patches.TryGetValue(key, out MapSurfacePatch? patch)) RequireValid(patch.ValidateLocal());
-        MapScopedSurfaces view = MapScopedSurfaces.CompleteView(surfaces);
+        MapScopedSurfaces view = assets is not null && (publication.Prefabs is not null || publication.NativeResourceTransforms is not null)
+            ? MapPrefabResolver.Expand(publication, assets).CompleteView() : MapScopedSurfaces.CompleteView(surfaces);
         foreach (MapSurfaceSeam seam in surfaces.AllRecords().OfType<MapSurfaceSeam>())
             RequireValid(MapSeamValidator.Validate(seam, view));
         // An edited owner can invalidate a dependency in an otherwise untouched patch.
         foreach (MapSurfacePatch patch in surfaces.Patches.Values.Where(p => p.CornerDependencies.Count != 0))
             RequireValid(MapSeamValidator.ValidateCornerDependencies(patch, view));
         // Payloads contain records, and surface geometry can also change a space's bound coverage.
-        if (writeSet.Patches.Count != 0 || writeSet.SurfaceIds.Count != 0 ||
+        if (mode == MapNativePublicationMode.CompleteSnapshot || writeSet.Prefabs || writeSet.BuildingIntent || writeSet.NativeResourceTransforms ||
+            writeSet.Patches.Count != 0 || writeSet.SurfaceIds.Count != 0 ||
             writeSet.RecordIds.Count != 0 || writeSet.SpaceIds.Count != 0)
             RequireValid(MapSpaceCoverageValidator.Validate(view));
         // A loaded document carries no containment certificate, so even placement-only publications recheck water.
-        if (publication.Water is { } water)
+        if (publication.Water is { } water && (assets is null || publication.Prefabs is null && publication.NativeResourceTransforms is null))
         {
             MapWaterContainmentReport containment = MapWaterContainment.Validate(view, water);
             if (containment.Errors.Count != 0) throw new MapDocumentException(containment.Errors[0]);
@@ -90,15 +161,4 @@ internal static class NativeDocumentTransaction
         if (findings.Count != 0) throw new MapDocumentException(string.Join("\n", findings));
     }
 
-    // Run replaces the placeholder effects with the placement diff once the publication has validated.
-    sealed class PlacementAdapter(INativePlacementCommand command) : INativeDocumentCommand
-    {
-        public NativeDocumentPreparation Prepare(MapDocument candidate, bool undo)
-        {
-            Action accept = command.Prepare(candidate, undo);
-            var effects = new MapNativeEditEffects(null, null, Array.Empty<MapPatchKey>(), Array.Empty<string>(),
-                Array.Empty<string>(), Array.Empty<MapDigestChange>(), MapNativeInvalidation.Placements);
-            return new(MapNativeWriteSet.PlacementsOnly, effects, accept);
-        }
-    }
 }

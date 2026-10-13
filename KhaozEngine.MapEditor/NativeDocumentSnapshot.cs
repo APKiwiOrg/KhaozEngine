@@ -38,6 +38,9 @@ internal static class NativeDocumentSnapshot
             NumericIdHighWaterMark = document.NumericIdHighWaterMark,
             ResolverIdentity = document.ResolverIdentity,
             SupportRecipe = document.SupportRecipe,
+            Prefabs = document.Prefabs?.Clone(),
+            BuildingIntent = document.BuildingIntent?.Clone(),
+            NativeResourceTransforms = document.NativeResourceTransforms?.ToArray(),
         };
         var metadata = new MapSurfaceSet();
         // Metadata has no payload references to resolve during the temporary root round trip.
@@ -72,8 +75,13 @@ internal static class NativeDocumentSnapshot
         if (writeSet.Placements)
         {
             target.Placements = candidate.Placements;
-            target.NumericIdHighWaterMark = candidate.NumericIdHighWaterMark;
+            target.NumericIdHighWaterMark = Math.Max(target.NumericIdHighWaterMark, candidate.NumericIdHighWaterMark);
         }
+        if (writeSet.Prefabs) target.Prefabs = candidate.Prefabs?.Clone();
+        if (writeSet.BuildingIntent) target.BuildingIntent = candidate.BuildingIntent?.Clone();
+        if (writeSet.NativeResourceTransforms) target.NativeResourceTransforms = candidate.NativeResourceTransforms?.ToArray();
+        if (writeSet.NumericReservations)
+            target.NumericIdHighWaterMark = Math.Max(target.NumericIdHighWaterMark, candidate.NumericIdHighWaterMark);
         if (writeSet.NativeAssets) target.NativeAssets = new List<MapAssetRef>(candidate.NativeAssets);
         if (writeSet.Water) target.Water = candidate.Water?.Clone();
     }
@@ -122,10 +130,13 @@ internal static class NativeDocumentSnapshot
         target.Tiles = candidate.Tiles;
         target.PlayableBounds = candidate.PlayableBounds;
         target.NativeAssets = candidate.NativeAssets;
-        target.NumericIdHighWaterMark = candidate.NumericIdHighWaterMark;
+        target.NumericIdHighWaterMark = Math.Max(target.NumericIdHighWaterMark, candidate.NumericIdHighWaterMark);
         target.ResolverIdentity = candidate.ResolverIdentity;
         target.SupportRecipe = candidate.SupportRecipe;
         target.Surfaces = candidate.Surfaces;
         target.Water = candidate.Water?.Clone();
+        target.Prefabs = candidate.Prefabs?.Clone();
+        target.BuildingIntent = candidate.BuildingIntent?.Clone();
+        target.NativeResourceTransforms = candidate.NativeResourceTransforms?.ToArray();
     }
 }

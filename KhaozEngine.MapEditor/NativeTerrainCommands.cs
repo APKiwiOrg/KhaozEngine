@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.MapDoc;
+using KhaozEngine.MapDoc.Assets;
+using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Surfaces;
 
@@ -11,8 +13,8 @@ namespace KhaozEngine.MapEditor;
 public sealed class TerrainEditCommand : EditorCommand, INativeDocumentCommand
 {
     readonly MapTerrainEdit _edit;
-    Snapshot? _before;
-    Snapshot? _after;
+    MapDocument? _before;
+    MapDocument? _after;
     MapNativeWriteSet? _writeSet;
     MapNativeWriteSet? _undoWriteSet;
     MapNativeEditEffects? _effects;
@@ -23,11 +25,13 @@ public sealed class TerrainEditCommand : EditorCommand, INativeDocumentCommand
     public override void Apply(MapDocument doc) => NativeDocumentTransaction.Run(doc, this, false, null, localOnly: true);
     public override void Revert(MapDocument doc) => NativeDocumentTransaction.Run(doc, this, true, null, localOnly: true);
 
-    NativeDocumentPreparation INativeDocumentCommand.Prepare(MapDocument candidate, bool undo)
+    NativeDocumentPreparation INativeDocumentCommand.Prepare(MapDocument candidate, bool undo) => Prepare(candidate, undo, null);
+    internal NativeDocumentPreparation Prepare(MapDocument candidate, bool undo, MapAssetClosure? assets, MapDocRegistry? registry = null)
     {
+        registry ??= MapDocRegistry.CreateDefault();
         if (_writeSet is { } writes)
         {
-            Restore(candidate.Surfaces, (undo ? _before : _after)!, writes);
+            NativeDocumentSnapshot.PublishWriteSet(candidate, NativeDocumentSnapshot.Clone((undo ? _before : _after)!, registry), writes);
             MapNativeEditEffects accepted = _effects!;
             MapNativeEditEffects effects = undo ? accepted with
             {
@@ -40,50 +44,27 @@ public sealed class TerrainEditCommand : EditorCommand, INativeDocumentCommand
             return new(undo ? _undoWriteSet! : writes, MapWaterEdits.NameAffectedBodies(candidate.Water, effects, candidate.Surfaces), () => { });
         }
         if (undo) throw new InvalidOperationException("Revert called before Apply.");
+        var before = NativeDocumentSnapshot.Clone(candidate, registry);
         MapTerrainEditResult prepared = MapTerrainEdits.Prepare(candidate.Surfaces, _edit);
-        Snapshot before = Capture(candidate.Surfaces, prepared.WriteSet), after = Capture(prepared.Candidate, prepared.WriteSet);
-        MapNativeWriteSet undoWrites = prepared.WriteSet with
-        {
-            OwnerChanges = Array.AsReadOnly(prepared.WriteSet.OwnerChanges.Select(c => Invert(c, before.Set, after.Set)).ToArray()),
-        };
         candidate.Surfaces = prepared.Candidate;
-        MapNativeEditEffects named = MapWaterEdits.NameAffectedBodies(candidate.Water, prepared.Effects, candidate.Surfaces);
-        return new(prepared.WriteSet, named, () =>
+        MapPrefabAttachmentDescriptors.Refresh(candidate);
+        var reseat = assets is null ? NativeCompleteSnapshotCommand.EmptyWrites : NativePlacementResourceState.Reseat(candidate, assets);
+        var writeset = NativePlacementResourceState.Union(prepared.WriteSet, reseat) with
         {
-            _before = before;
-            _after = after;
-            _writeSet = prepared.WriteSet;
-            _undoWriteSet = undoWrites;
-            _effects = prepared.Effects;
+            Prefabs = reseat.Prefabs || before.Prefabs?.Digest() != candidate.Prefabs?.Digest(),
+            NativeResourceTransforms = reseat.NativeResourceTransforms || !(before.NativeResourceTransforms ?? []).SequenceEqual(candidate.NativeResourceTransforms ?? []),
+        };
+        var after = NativeDocumentSnapshot.Clone(candidate, registry);
+        var undoWrites = writeset with
+        {
+            OwnerChanges = prepared.WriteSet.OwnerChanges.Select(c => Invert(c, before.Surfaces, after.Surfaces)).ToArray(),
+        };
+        var named = MapWaterEdits.NameAffectedBodies(candidate.Water, prepared.Effects, candidate.Surfaces);
+        return new(writeset, named, () =>
+        {
+            _before = before; _after = after; _writeSet = writeset;
+            _undoWriteSet = undoWrites; _effects = prepared.Effects;
         });
-    }
-
-    // The write set's patches and refs, plus the whole set's ref order so a restored ref regains its position.
-    sealed record Snapshot(MapSurfaceSet Set, IReadOnlyList<string> RefOrder);
-
-    static Snapshot Capture(MapSurfaceSet set, MapNativeWriteSet writes)
-    {
-        var snapshot = new MapSurfaceSet();
-        foreach (MapPatchKey key in writes.Patches)
-            if (set.Patches.TryGetValue(key, out MapSurfacePatch? patch)) snapshot.Patches.Add(key, patch.Clone());
-        foreach (MapSurfaceRef surface in set.Refs.Where(s => writes.SurfaceIds.Contains(s.Id))) snapshot.Refs.Add(surface);
-        return new(snapshot.Clone(), Array.AsReadOnly(set.Refs.Select(s => s.Id).ToArray()));
-    }
-
-    static void Restore(MapSurfaceSet set, Snapshot snapshot, MapNativeWriteSet writes)
-    {
-        MapSurfaceSet copy = snapshot.Set.Clone();
-        foreach (MapPatchKey key in writes.Patches)
-        {
-            if (copy.Patches.TryGetValue(key, out MapSurfacePatch? patch)) set.Patches[key] = patch;
-            else set.Patches.Remove(key);
-        }
-        foreach (string id in writes.SurfaceIds)
-        {
-            MapSurfaceRef? surface = copy.Refs.Find(s => s.Id == id);
-            if (surface is not null) NativeDocumentSnapshot.PlaceRef(set.Refs, surface, snapshot.RefOrder);
-            else if (set.Refs.FindIndex(s => s.Id == id) is var index and >= 0) set.Refs.RemoveAt(index);
-        }
     }
 
     // Undo reports new to old. A self-owned corner is a null old owner and the dependent's own address as new owner.

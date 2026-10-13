@@ -13,6 +13,7 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="KhaozEngine.MapEdit.Tool" />
+    <InternalsVisibleTo Include="KhaozEngine.MapEditor" />
     <InternalsVisibleTo Include="KhaozEngine.MapDoc.Physics" />
     <InternalsVisibleTo Include="KhaozEngine.MapEditor.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.MapDoc.Tests" />

@@ -4,7 +4,7 @@ Design for [#438](https://github.com/APKiwiOrg/KhaozEngine/issues/438) phase 5b 
 [#1299](https://github.com/APKiwiOrg/KhaozEngine/issues/1299). Source baseline: `ee6016aae` on `main`, staged 20.37.0
 with phase 5a. The binding inputs are the [phase 5 design](CONTACT-CONTROLLER-PHASE-5-SELECTOR-AND-NAVIGATION-2026-10-13.md#phase-5b-binding-inputs),
 as amended by ruling P5B-1 below. Written under the owner's instruction to continue the program to completion, so every
-choice below is a recorded ruling for the owner's review. Revision 5 answers review rounds 1 to 4.
+choice below is a recorded ruling for the owner's review. Revision 6 answers review rounds 1 to 5.
 
 Program row exit: legacy bakes still load, a new-controller bake round-trips, #1299 closes.
 
@@ -62,9 +62,11 @@ Facts verified against `ee6016aae`:
 8. `IPhysicsQueryLeaseSource.AcquireQueryReadLease` returns an `IPhysicsQueryLease` whose `GeometryGeneration` reports
    the static geometry generation. `PhysicsNavBake` records only the origin.
 9. The only v1 byte pin is the identity fingerprint golden. No full-file golden exists.
-10. Runtime consumers read a node's height through `NavGrid.SurfaceHeightAt`: region goal membership
-    (`GridPathPlanner.CellFeet`), `GroundNavigation.Resolve`, `RouteStraightener`, the path follower's end height and
-    `NavSpace` layer lookup. Topology builders read it too: `StepMask`, `NavLayerLinks`, `NavHopLinks` and layer bands.
+10. Eleven production call sites read `NavGrid.SurfaceHeightAt`. Pose readers: `GroundNavigation.Resolve`,
+    `RouteStraightener.TryFeet`, `PhysicsNavBake.Feet`, `GridPathPlanner.CellFeet` and `NavSpace.LayerAt`, which the
+    path follower uses. Raw identity readers: `PhysicsNavBake.IsFloatNode`, `GroundNavigationBake.WriteProfile`,
+    `NavLayerLinks.GenerateCore` and `NavHopLinks.Generate`. `StepMask`, layer extraction and layer bands read the raw
+    sample arrays directly, and `NavAreaFootprint` reads captured columns.
 
 ## Rulings
 
@@ -112,8 +114,9 @@ every `Load` expectation, before any stream read:
   end. They are separate from the binding `GroundMoveContext` caches for its own steps, and a borrowed view is never
   disposed by the bake.
 - When the physics world implements `IPhysicsQueryLeaseSource`, `Capture` acquires a read lease before sampling and
-  records its basis: the source, the lease's `GeometryGeneration` and the origin. After sampling and every classifier
-  call it acquires a second lease and throws if the generation or origin changed, so a classifier that mutates geometry
+  records its basis: the source, the lease's `GeometryGeneration` and the origin, then disposes that lease before
+  sampling, because leases do not nest. After sampling and every classifier call it acquires a second lease and throws
+  if the generation or origin changed, so a classifier that mutates geometry
   is refused. A contact `BuildProfile` refuses with `InvalidOperationException` when its own lease basis differs from
   the recorded one, or when the capture recorded no basis because the world lacks the capability. Legacy capture and
   legacy profiles on such worlds are unchanged.
@@ -136,7 +139,9 @@ proof. A raw surface becomes a candidate only when all of these hold:
    `ContactPlacement.Find` from a grounded body with feet at the raw height, with the reach `SettlePlacement` uses for a
    grounded body. It decides no water or footing and runs no motion route. A Walkable result gives the anchor: the
    composition's resting feet for that support (offset 0 for ordinary). Steep, None, Refused or a non-Known
-   availability admits nothing.
+   availability admits nothing. The anchor must lie inside the search band, from raw height minus `GroundedEpsilon` to
+   raw height plus `StepHeight` inclusive. A certified midpoint published outside that band admits nothing, so the
+   stored value and the file check in P5B-9 always agree.
 2. **Ownership.** The anchor lies below the next raw surface above in the column and the raised body fits the captured
    headroom: anchor plus body height at most raw height plus headroom. A deck or rooftop never becomes another surface's
    anchor.
@@ -238,13 +243,19 @@ The format 2 identity is the format 1 identity with these fields added to each p
 `WaterTraversalPolicy` stores only its mode and surface jump speed. Its other members are engine constants that the
 engine version covers. Any other combination is `Corrupt`.
 
-The format 2 payload is the format 1 layout, with one addition for each contact profile. After each of its layers, it
-stores one f32 resting height per open cell, in the same order as that layer's stored open heights. The count is the
-already decoded open-cell count, so no new length field or unbounded allocation exists. A resting height must be finite
-and inside the anchor search band of its raw height (raw minus the grounded reach, up to raw plus `StepHeight`), else the
-file is `Corrupt`. Raw heights, legacy layers, Stair candidate counts and acceptance bits are stored as format 1 stores
-them, so the existing reader bounds and fresh, load and rewrite rules apply. A loaded contact graph is rebuilt from its
-stored layers, resting heights and the shared columns, never recaptured, and rewriting it reproduces its bytes.
+The format 2 payload is the format 1 layout, with one addition for each contact profile. Each of its layers is written
+as the layer header, blocked mask, raw open heights and open exit bytes, exactly as format 1 writes them, followed by one
+f32 resting height per open cell in the same Z then X clear-bit order. The count is the already decoded open-cell count,
+so no new length field exists. A resting height must be finite and inside the P5B-4 search band of its raw height
+(`GroundedEpsilon` below to `StepHeight` above, inclusive), else the file is `Corrupt`. Raw heights, legacy layers,
+Stair candidate counts and acceptance bits are stored as format 1 stores them.
+
+Bounds: the format 1 payload bound is unchanged. Format 2 adds `4 * C * Lmax * Nc` to it, where `C` is the cell count,
+`Lmax` the layer cap and `Nc` the number of contact profiles, with the existing saturating arithmetic and `Array.MaxLength`
+applied after the total. Legacy profiles in a mixed bake add nothing. Before reading a contact layer's cell payload the
+reader requires `9 * open` remaining bytes, where a legacy layer requires `5 * open`. A loaded contact graph is rebuilt
+from its stored layers, resting heights and the shared columns, never recaptured, and rewriting it reproduces its
+bytes.
 
 ### P5B-10 Runtime graph compatibility
 
@@ -311,12 +322,14 @@ Every other legacy behavioural, round-trip and byte-identity test passes unchang
 returns the resting height where one is set and the surface height otherwise, so legacy grids behave and serialize
 exactly as today.
 
-- Physical pose consumers read `RestingHeightAt`: region goal membership (`GridPathPlanner.CellFeet`),
-  `GroundNavigation.Resolve`, `RouteStraightener`, the path follower's end height and `NavSpace` layer lookup.
-- Topology builders keep `SurfaceHeightAt`: `StepMask`, `NavLayerLinks`, `NavHopLinks`, layer bands, Stair candidates
-  and the footprint facts.
-- The plan's first task classifies every `SurfaceHeightAt` caller into one of those two groups, and a test pins the
-  classification so a new caller has to choose.
+- Pose readers move to `RestingHeightAt`: `GroundNavigation.Resolve`, `RouteStraightener.TryFeet`,
+  `PhysicsNavBake.Feet` (proof endpoints), `GridPathPlanner.CellFeet` (goal membership and search progress) and
+  `NavSpace.LayerAt` (used by the planners and the path follower).
+- Raw identity readers keep `SurfaceHeightAt`: `PhysicsNavBake.IsFloatNode`, `GroundNavigationBake.WriteProfile`,
+  `NavLayerLinks.GenerateCore` and `NavHopLinks.Generate`. `StepMask`, layer extraction and bands keep their raw sample
+  arrays, `NavSpace.LayerOf` keeps its raw band fallback and `NavAreaFootprint` keeps the captured columns.
+- The hop endpoint documentation in `PathFollower` names `RestingHeightAt` for physical Y.
+- A test pins the classification per call site, so a new caller has to choose.
 
 Fresh contact graphs set resting heights from admission. Loaded ones read them from format 2. Both therefore hand region
 predicates, `Resolve` and the follower the pose the body actually holds.
@@ -371,6 +384,9 @@ Physical pose:
 - `Resolve` picks the node's own layer for a body resting at its anchor, at the edge of the anchor search band.
 - Contact `MoveToRange` traverses and stops across the low-lip waypoints in both directions.
 - Legacy grids report resting height equal to surface height, and every legacy byte stays the same.
+- A fully open sampled-water contact payload larger than the format 1 bound round-trips. Mixed legacy and contact profile
+  order, a missing resting byte, a trailing byte and a resting height just outside the search band are `Corrupt` or
+  refused as stated. Anchors exactly at the lower and upper band ends round-trip.
 
 Traversal and runtime:
 
@@ -432,3 +448,13 @@ Round 4 (`review-4.md`, Not ready, 0 Critical, 1 Important, 3 Minor, every earli
 - J2: capture basis acquired from a read lease before and after sampling (P5B-3).
 - J3: the settlement fallback applies only after successful validation and Known seat and water decisions (P5B-6).
 - J4: #1389 no longer lists the settlement fix.
+
+Round 5 (`review-5.md`, Not ready, 0 Critical, 1 Important, 1 Minor, J1 to J4 resolved):
+
+- K1: format 2 bound and per-layer preflight count the resting bytes (P5B-9).
+- K2: full call-site inventory, including `PhysicsNavBake.Feet`, `IsFloatNode` and the writer (P5B-13).
+- Unverified items: the anchor band is inclusive and an out-of-band midpoint admits nothing (P5B-4), and the capture
+  lease is disposed before sampling (P5B-3).
+
+Both round 5 changes apply the reviewer's recommended text. The controller rules the design ready for planning at
+revision 6 without a further design round, because no ruling changed.

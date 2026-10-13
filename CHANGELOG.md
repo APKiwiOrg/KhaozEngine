@@ -5,6 +5,11 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.37.1
+
+- Physical atmosphere fog samples only the sky hemisphere and meets its horizon colour with zero slope.
+  Rounded tangent directions no longer produce a colour jump in the CPU fog oracle.
+
 ## 20.37.0
 
 - Locomotion adds ordinary contact selection through `MoveTuning.Controller`, `FootRadiusFraction` and `Water`,

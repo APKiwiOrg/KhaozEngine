@@ -92,7 +92,7 @@ public static class AtmosphereFog
 
     /// <summary>Shades a camera-relative segment with absolute heights recovered from renderOrigin.Y.
     /// Displacement remains relative. Sky colour uses the unscaled physical camera altitude and view
-    /// direction clamped to the geometric horizon, preserving azimuth or using +X at the nadir.</summary>
+    /// direction joined smoothly to the sky-side geometric horizon, preserving azimuth or using +X at the nadir.</summary>
     public static Vector3 Shade(AtmosphereSettings settings, AtmosphereModel model, in AtmosphereFrame frame,
         Vector3 colour, Vector3 cameraRelative, Vector3 fragmentRelative, Vector3 renderOrigin, bool additive = false)
     {
@@ -110,7 +110,7 @@ public static class AtmosphereFog
         if (transmittance == Vector3.One) return colour;
 
         float cameraHeightKm = Math.Max(settings.HeightKm(cameraAbsoluteHeight), 0);
-        var skyDirection = ClampDirectionToGeometricHorizon(view, cameraHeightKm, settings.PlanetRadiusKm);
+        var skyDirection = AtmosphereFogSampling.SkyDirection(view, cameraHeightKm, settings.PlanetRadiusKm);
         var haze = model.SkyValue(cameraHeightKm, skyDirection, frame);
         return Compose(colour, transmittance, haze);
     }
@@ -132,18 +132,6 @@ public static class AtmosphereFog
         double length = Math.Sqrt(x * x + y * y + z * z);
         distanceWorld = (float)length;
         return length == 0 ? Vector3.UnitX : new Vector3((float)(x / length), (float)(y / length), (float)(z / length));
-    }
-
-    static Vector3 ClampDirectionToGeometricHorizon(Vector3 view, float cameraHeightKm, float planetRadiusKm)
-    {
-        double radiusRatio = planetRadiusKm / (planetRadiusKm + (double)cameraHeightKm);
-        float horizonY = (float)-Math.Sqrt(Math.Max(0, 1 - radiusRatio * radiusRatio));
-        if (view.Y >= horizonY) return view;
-        double horizontalLength = Math.Sqrt((double)view.X * view.X + (double)view.Z * view.Z);
-        float horizonHorizontal = MathF.Sqrt(Math.Max(0, 1 - horizonY * horizonY));
-        return horizontalLength == 0 ? new Vector3(horizonHorizontal, horizonY, 0)
-            : new Vector3((float)(view.X / horizontalLength) * horizonHorizontal, horizonY,
-                (float)(view.Z / horizontalLength) * horizonHorizontal);
     }
 
     static void ValidateDistance(double distance, string name)

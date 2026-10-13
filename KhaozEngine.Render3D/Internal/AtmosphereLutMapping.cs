@@ -10,7 +10,7 @@ internal static class AtmosphereLutMapping
     const int TransmittanceWidth = 256;
     const int TransmittanceHeight = 64;
     const int MultiSize = 32;
-    const int SkyHeight = 108;
+    internal const int SkyHeight = 108;
 
     /// <summary>Maps radius and zenith cosine for a ray that is not blocked by the planet.</summary>
     public static Vector2 TransmittanceUv(float radiusKm, float mu, float bottomKm, float topKm)

@@ -60,23 +60,24 @@ vec3 atmosphereTransmittance(vec3 fragmentRelative) {
         atmosphereCoefficientDepth(Atmo.Rayleigh.b, rayleighDepth) + greyDepth);
     return exp(-tau);
 }
-// Mirrors AtmosphereFog.ClampDirectionToGeometricHorizon. Height here is physical, without the aerial scale.
-vec3 atmosphereFogSkyDirection(vec3 view, float cameraHeightKm) {
-    float radiusRatio = Atmo.Planet.x / (Atmo.Planet.x + cameraHeightKm);
-    float horizonY = -sqrt(max(0.0, 1.0 - radiusRatio * radiusRatio));
-    if (view.y >= horizonY) return view;
-    float horizontalLength = length(view.xz);
-    vec2 azimuth = horizontalLength == 0.0 ? vec2(1.0, 0.0) : view.xz / horizontalLength;
-    float horizontal = sqrt(max(0.0, 1.0 - horizonY * horizonY));
-    return vec3(azimuth.x * horizontal, horizonY, azimuth.y * horizontal);
+// Mirrors AtmosphereFogSampling.SkyUv. Select the sky endpoint directly, never reconstruct a rounded
+// tangent that could enter the ground hemisphere. The final sky cell has a zero-slope horizon join.
+vec2 atmosphereFogSkyUv(vec3 view, float radius) {
+    float horizon = AtmoHorizonAngle(radius);
+    float theta = acos(clamp(view.y, -1.0, 1.0));
+    float t = max(horizon - theta, 0.0) * (53.0 * 53.0) / horizon;
+    float weight = t < 1.0 ? t * t * t * (3.5 - 2.5 * t) : sqrt(t);
+    float u = all(equal(view.xz, vec2(0.0))) ? 0.0 : fract(atan(view.z, view.x) / (2.0 * ATMO_PI));
+    return vec2(u, (53.5 - weight) / 108.0);
 }
 // Mirrors AtmosphereFog.Shade's physical sky lookup.
 vec3 atmosphereFogColour(vec3 fragmentRelative) {
     float distanceWorld;
     vec3 view = atmosphereSegmentView(fragmentRelative, distanceWorld);
     float cameraHeightKm = max((Atmo.Camera.y + Atmo.Origin.y) / Atmo.Planet.z, 0.0);
-    vec3 skyDirection = atmosphereFogSkyDirection(view, cameraHeightKm);
-    return atmosphereSkyValue(skyDirection);
+    float radius = Atmo.Planet.x + cameraHeightKm;
+    vec3 radiance = textureLod(sampler2D(AtmoSkyView, AtmoSkySampler), atmosphereFogSkyUv(view, radius), 0.0).rgb;
+    return max(radiance * (Atmo.Sun.w * ATMO_PI) * Atmo.Tint.rgb, Atmo.Floors.w * Atmo.NightTint.rgb);
 }
 // Mirrors AtmosphereFog.Shade and AtmosphereFog.Compose. SkyValue already applies tint exactly once.
 // Enabled comes from the consumer's current frame upload, never a retained atmosphere ring segment.

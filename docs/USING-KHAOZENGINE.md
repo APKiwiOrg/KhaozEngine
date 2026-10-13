@@ -4979,7 +4979,8 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     sky or lighting altitude. Set it to 0 to disable fog while retaining atmosphere. `HazeDensityPerKm = 0`
     adds no extra mist by default, with `HazeScaleHeightKm = 0.25` available for an additional exponential layer.
     Rayleigh and Mie extinction plus haze use a closed-form height integral. Opaque and alpha draws blend toward
-    directional sky colour, with downward directions clamped to the geometric horizon. Additive effects lose
+    directional sky colour using only the sky hemisphere. The final sky texel eases into the constant downward
+    geometric-horizon colour with zero slope. Sky and reflection mappings remain unchanged. Additive effects lose
     transmitted energy only. Models, dissolved and skinned models, splat and tile terrain, foliage, water, decals,
     billboards, particles, trails and beams participate. Debug lines and distortion draws retain their own paths.
   - **GPU-free model and fog oracle.** `AtmosphereModel` needs no device. It snapshots validated settings and
@@ -8137,7 +8138,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.37.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.37.1" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -8452,7 +8453,7 @@ On the dev Mac a 36,864-column flat world wrote 664,689 bytes and loaded in abou
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.37.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.37.1" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -9210,7 +9211,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.37.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.37.1" />
 ```
 
 ```csharp
@@ -16754,7 +16755,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.37.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.37.1" />
 ```
 
 ```csharp
@@ -16790,7 +16791,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.37.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.37.1" />
 ```
 
 ```csharp
@@ -17032,7 +17033,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.37.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.37.1" />
 ```
 
 ```csharp
@@ -21392,7 +21393,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.37.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.37.1" />
 </ItemGroup>
 ```
 

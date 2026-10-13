@@ -642,7 +642,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   `AtmosphereLighting` with `Key`, `Ambient`, `Fill`, `Horizon` and untinted source transmittances. `SkyValue`
   supplies controlled sky values, while `SkyRadiance` exposes unit-source radiance. The model snapshots settings,
   so call `UpdateSettings` after edits. `AtmosphereFog` is the CPU height-fog oracle, exposing transmission and
-  composition with alpha-aware and additive handling. Additive effects attenuate without adding fog glow.
+  composition with alpha-aware and additive handling. Fog samples only the sky hemisphere. Its final sky texel
+  eases into the constant downward horizon colour with zero slope, without changing the sky or reflection LUT
+  mapping. Additive effects attenuate without adding fog glow.
 
   Phase 1 fog can be too bright in deep valleys under a low sun. The aerial perspective volume remains
   [#1364](https://github.com/APKiwiOrg/KhaozEngine/issues/1364). Diffuse sky light reflected off the transport's

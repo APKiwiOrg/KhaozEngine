@@ -32,6 +32,39 @@ public class ContactNavigationAdmissionTests
     }
 
     [Fact]
+    public void RebasedCapturePublishesTheSameAbsoluteAnchorsAndGraph()
+    {
+        MoveTuning tuning = Tuning with { CapsuleRadius = 0.3f };
+        using var zero = Scene(Vector3.Zero);
+        using var rebased = Scene(new(8, 2, -4));
+        using var zeroContext = Context(zero);
+        using var rebasedContext = Context(rebased);
+        var options = Options with { MinX = -1.5f, MaxX = 1.5f };
+        using var zeroCapture = PhysicsNavBake.Capture(zeroContext, options, _ => 0);
+        using var rebasedCapture = PhysicsNavBake.Capture(rebasedContext, options, _ => 0);
+        GroundNavigation expected = zeroCapture.BuildProfile(tuning, default);
+        GroundNavigation actual = rebasedCapture.BuildProfile(tuning, default);
+        Vector3 bank = new(-0.125f, 0, 0.125f);
+        Assert.Equal(0.03125f, Resting(expected, bank));
+        Assert.Equal(0.03125f, Resting(actual, bank));
+        SameGraph(expected, actual);
+        for (int layer = 0; layer < expected.Space.Layers.Count; layer++)
+        {
+            NavGrid grid = expected.Space.Layers[layer];
+            for (int z = 0; z < grid.Height; z++)
+                for (int x = 0; x < grid.Width; x++)
+                    Assert.Equal(grid.RestingHeightAt(x, z), actual.Space.Layers[layer].RestingHeightAt(x, z));
+        }
+        Assert.True(actual.AllowsSegment(new(-0.125f, 0.03125f, 0.125f), new(0.125f, 0.03125f, 0.125f)));
+
+        OrdinaryContactScene Scene(Vector3 origin) => new(tuning, origin: origin, install: (world, builder) =>
+        {
+            Box(world, builder, "floor", new(-8, -0.25f, -8), new(8, 0, 8));
+            Box(world, builder, "lip", new(0, 0, -2), new(2, 0.03125f, 2));
+        });
+    }
+
+    [Fact]
     public void DeckAndGroundKeepTheirOwnAnchors()
     {
         using var scene = new OrdinaryContactScene(Tuning, install: (world, builder) =>

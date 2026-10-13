@@ -10,6 +10,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - Ordinary contact navigation admits captured surfaces at certified resting anchors, preserving raw layers,
   headroom and areas. Wet unit-pace bindings prove Holds, directed edges and Stair links from movement outcomes.
   Fresh grids publish resting feet heights, and unknown anchor queries or changed lease bases refuse the bake.
+- Contact navigation converts local certified anchors to absolute captured feet once, preserving resting heights
+  and traversal graphs when physics has a nonzero horizontal or vertical origin.
 - Locomotion exposes internal contact navigation proof bindings and certified resting anchors without
   water admission or motion routes. Cold placement seats only with footing, preserving a swimmer's float
   pose and a falling body's vertical velocity when footing is denied. Explicit grounded arrival uses the

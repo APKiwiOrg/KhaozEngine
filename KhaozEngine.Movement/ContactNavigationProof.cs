@@ -52,23 +52,24 @@ internal sealed class ContactNavigationProof : IDisposable
             queries.AssertCurrent();
         }
         MoveTuning tuning = _proof.Tuning;
-        if (anchor.Support.Status != SupportStatus.Walkable || !Finite(anchor.Feet) ||
-            (double)anchor.Feet.Y < (double)rawFeet.Y - tuning.GroundedEpsilon ||
-            (double)anchor.Feet.Y > (double)rawFeet.Y + tuning.StepHeight ||
-            anchor.Feet.Y >= nextSurface ||
-            (double)anchor.Feet.Y + 2d * tuning.CapsuleHalfHeight > (double)rawFeet.Y + headroom ||
-            !_footprint.Accepts(rawFeet) || !_footprint.Accepts(anchor.Feet)) return false;
+        Vector3 anchorFeet = anchor.Feet + _frame.PhysicsOrigin;
+        if (anchor.Support.Status != SupportStatus.Walkable || !Finite(anchorFeet) ||
+            (double)anchorFeet.Y < (double)rawFeet.Y - tuning.GroundedEpsilon ||
+            (double)anchorFeet.Y > (double)rawFeet.Y + tuning.StepHeight ||
+            anchorFeet.Y >= nextSurface ||
+            (double)anchorFeet.Y + 2d * tuning.CapsuleHalfHeight > (double)rawFeet.Y + headroom ||
+            !_footprint.Accepts(rawFeet) || !_footprint.Accepts(anchorFeet)) return false;
 
         MovementStepResult placed;
         using (var queries = Acquire(rawFeet))
         {
-            placed = _proof.SettlePlacement(State(anchor.Feet), queries);
+            placed = _proof.SettlePlacement(State(anchorFeet), queries);
             queries.AssertCurrent();
         }
         if (placed.Outcome != MovementStepOutcome.Advanced || !placed.State.State.Grounded ||
-            placed.State.Selection?.Support is null || !Near(Feet(placed), anchor.Feet)) return false;
-        if (!TryEdge(anchor.Feet, anchor.Feet)) return false;
-        _anchors.Add(rawFeet, anchor.Feet.Y);
+            placed.State.Selection?.Support is null || !Near(Feet(placed), anchorFeet)) return false;
+        if (!TryEdge(anchorFeet, anchorFeet)) return false;
+        _anchors.Add(rawFeet, anchorFeet.Y);
         return true;
     }
 

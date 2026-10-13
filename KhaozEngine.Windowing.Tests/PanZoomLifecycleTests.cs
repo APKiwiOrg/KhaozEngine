@@ -9,6 +9,53 @@ namespace KhaozEngine.Tests.Windowing;
 
 public sealed class PanZoomLifecycleTests
 {
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    public void Channel_consumed_left_release_does_not_block_independent_pointer_streams(int kind)
+    {
+        var rig = new PanZoomTestRig(new() { WheelMode = PanZoomWheelMode.Pan });
+        rig.Input.Update(Frame(down: true));
+        rig.Input.Pointer.ConsumeGesture();
+        rig.Controller.Update(rig.Input, rig.Target, Bounds, 0);
+        rig.Step(Frame());
+        Assert.True(rig.Input.Pointer.IsConsumed);
+        switch (kind)
+        {
+            case 0: rig.Step(Frame(samples: new[] { Wheel(1, new(20, 20)) })); break;
+            case 1: rig.Step(Frame(samples: new[] { Precise(new(3, 4), new(20, 20)) })); break;
+            case 2: rig.Step(Frame(samples: new[] { Magnify(2, new(20, 20)) })); break;
+            case 3:
+                rig.Step(Frame(touches: new[] { StartTouch(1, 20, 20) }));
+                rig.Step(Frame(touches: new[] { Touch(1, 40, 20) }));
+                break;
+            default: rig.Step(Frame(scroll: 1)); break;
+        }
+        Near(kind == 2 ? 2 : 1, rig.Target.Scale);
+        Near(kind switch
+        {
+            1 => new(3, 4), 2 => new(-20, -20), 3 => new(20, 0), _ => new Vector2(0, 40)
+        }, rig.Target.Translation);
+    }
+
+    [Fact]
+    public void Channel_consumed_active_left_gesture_still_cannot_move_or_tap()
+    {
+        var rig = new PanZoomTestRig();
+        rig.Step(Frame(down: true));
+        rig.Input.Update(Frame(new(50, 20), down: true));
+        rig.Input.Pointer.ConsumeGesture();
+        rig.Controller.Update(rig.Input, rig.Target, Bounds, .01f);
+        rig.Step(Frame(new(80, 20), down: true));
+        rig.Step(Frame(new(80, 20)));
+        rig.Step(Frame(), .18f);
+        Assert.Empty(rig.Target.Operations);
+        Assert.False(rig.Controller.Tapped);
+    }
+
     [Fact]
     public void Blocked_start_stays_inert_after_blocker_removal()
     {

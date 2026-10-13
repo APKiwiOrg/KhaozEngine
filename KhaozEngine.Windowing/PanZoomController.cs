@@ -94,7 +94,7 @@ public sealed class PanZoomController
         }
 
         bool admits(Vector2 position) => DragMotionTracker.IsFinite(position) && viewport.Contains(position)
-            && !pointer.IsConsumed && !pointer.IsBlocked(position) && !(isBlocked?.Invoke(position) ?? false);
+            && !pointer.IsBlocked(position) && !(isBlocked?.Invoke(position) ?? false);
         void pan(Vector2 delta) => DirectPan(target, delta);
         void zoom(float factor, Vector2 anchor) => DirectZoom(target, factor, anchor);
 
@@ -149,7 +149,7 @@ public sealed class PanZoomController
         {
             _velocity = Vector2.Zero;
             _mouseSequence = true;
-            _mouseAdmitted = pointer.IsPressOriginFresh && admits(pointer.PressOrigin);
+            _mouseAdmitted = pointer.IsPressOriginFresh && !pointer.IsConsumed && admits(pointer.PressOrigin);
             if (_mouseAdmitted)
             {
                 _drag = CreateDrag();

@@ -215,6 +215,16 @@ Windowing + input foundation for the custom MonoGame-free stack.
   Both existing constructor signatures use an unavailable empty frame, so legacy-only snapshots retain their
   scalar fallback. Copies and automation preserve availability. An available empty stream never falls back to
   retained legacy scroll after native samples were cleared.
+- `PanZoomController` interprets admitted mouse drag, stable-ID touches, ordered wheel/precise-scroll/magnify
+  and optional focused keyboard navigation over `IPanZoomTarget`. Targets own anchoring, bounds and wrapping.
+  Use the full `InputManager` update, overlays before admission and own-region reservation afterward.
+  `Cancel()` discards motion, queued zoom and tap history, inhibiting held contacts until release. New touch IDs
+  require `TouchPhase.Began`. `Pointer.IsConsumed` gates the left mouse channel, while touch and native samples
+  use region admission. It is separate from global manager suppression. Single taps report immediately, and a
+  qualifying second tap zooms instead of reporting another single. See the
+  [consumer contract](../docs/USING-KHAOZENGINE.md#pan-and-zoom) for units, policy defaults and target examples.
+  Native macOS precise pan/magnify and Windows Ctrl+wheel compatibility require device validation through the
+  [probe](../tools/GestureInputProbe/README.md). Full native Windows precision pan is outside scope.
 - `InputManager.SuppressPointerInput()` gives an owning surface a frame-level pointer arbitration boundary after
   `Update`. It clears mouse buttons, both scroll axes and gesture convenience access for that frame, quarantines
   held buttons until their physical release, and keeps keyboard, gamepad, pointer position, and hover available.

@@ -36,8 +36,11 @@ up and east is right. `MapToScreen` and `ScreenToMap` include the viewport offse
 - The first update with a usable viewport fits and centres the world. Calling `CenterOn` or `ZoomBy`
   before that update preserves explicit positioning. Before automatic fitting, zoom starts at the
   cache style's raster resolution, clamped to the maximum.
-- Drag pans, and the wheel zooms toward the cursor. Navigation composes `PannableCanvas` and clamps
-  the view to the source bounds. `Update` reserves the viewport through `Pointer.BlockRegion`.
+- Drag pans, and the wheel zooms toward the cursor. Navigation composes the legacy
+  `PannableCanvas.Update(Pointer, wheelDelta)` path and clamps the view to the source bounds.
+  `Update` reserves the viewport through `Pointer.BlockRegion`. This wrapper does not expose the
+  new full-frame canvas gesture path. See the [consumer contract](../docs/USING-KHAOZENGINE.md#pan-and-zoom)
+  for direct canvas use with native gestures and accepted taps.
 - `CenterOn(mapPosition)` keeps zoom. `ZoomBy(factor)` multiplies zoom about the viewport centre and
   re-clamps. The factor must be finite and positive. `FitWorld()` restores whole-world fitting.
 - `PixelsPerMetre` is the current screen zoom. Its minimum is

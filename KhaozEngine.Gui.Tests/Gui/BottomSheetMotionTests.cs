@@ -7,6 +7,43 @@ namespace KhaozEngine.Tests.Gui;
 
 public sealed class BottomSheetMotionTests
 {
+    [Fact]
+    public void Review_content_tap_release_resumes_bounded_settlement_after_interrupting_snap()
+    {
+        var model = Model();
+        model.SetDetent("full", true);
+        model.Advance(.09f);
+        Assert.Equal(550, model.Height, 3);
+        model.Begin(new(0, 100), false);
+        model.Release(new(0, 100), .01f);
+        Assert.True(model.IsAnimating);
+        model.Advance(.18f);
+        Assert.Equal(600, model.Height);
+        Assert.Equal("full", model.CurrentDetentId);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Review_equal_resolved_extrema_only_toggle_an_explicit_pair(bool explicitPair)
+    {
+        var model = new BottomSheetMotion(new[]
+        {
+            BottomSheetDetent.Fixed("first", 300), BottomSheetDetent.Fixed("second", 500)
+        }, "first", new() { HandleToggleDetentIds = explicitPair ? new[] { "first", "second" } : null });
+        model.Resolve(200, 1000);
+        int changes = 0;
+        model.DetentChanged += _ => changes++;
+        model.ToggleHandle(false);
+        Assert.Equal(explicitPair ? "second" : "first", model.TargetDetentId);
+        Assert.Equal(explicitPair ? "second" : "first", model.CurrentDetentId);
+        Assert.Equal(explicitPair ? 1 : 0, changes);
+        Assert.Equal(200, model.Height);
+        model.ToggleHandle(false);
+        Assert.Equal("first", model.CurrentDetentId);
+        Assert.Equal(explicitPair ? 2 : 0, changes);
+    }
+
     static BottomSheetDetent[] Detents() => new[]
     {
         BottomSheetDetent.Fixed("peek", 200), BottomSheetDetent.Fixed("full", 600)

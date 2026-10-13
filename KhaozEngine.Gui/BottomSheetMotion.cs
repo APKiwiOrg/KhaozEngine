@@ -102,8 +102,11 @@ public sealed class BottomSheetMotion
         }
     }
 
-    /// <summary>Caller-driven handle action for keyboard accessibility without global focus ownership.</summary>
-    public void ToggleHandle(bool animated = true)
+    /// <summary>Caller-driven handle action for keyboard accessibility without global focus ownership.
+    /// Equal default geometric extrema are a no-op. An explicit pair can toggle equal-height IDs.</summary>
+    public void ToggleHandle(bool animated = true) => TryToggleHandle(animated);
+
+    bool TryToggleHandle(bool animated)
     {
         string? low = _toggleIds?[0], high = _toggleIds?[1];
         if (_toggleIds == null)
@@ -114,12 +117,10 @@ public sealed class BottomSheetMotion
                 if (low == null || _heights[i] < _heights[Index(low)]) low = _detents[i].Id;
                 if (high == null || _heights[i] > _heights[Index(high)]) high = _detents[i].Id;
             }
-            if (low == high && low != null)
-                foreach (var detent in _detents)
-                    if (!detent.Dismissible && detent.Id != low) { high = detent.Id; break; }
         }
-        if (low == null || high == null || low == high) return;
+        if (low == null || high == null || low == high) return false;
         SetDetent(TargetDetentId == high ? low : high, animated);
+        return true;
     }
 
     public void Begin(Vector2 position, bool handle)
@@ -135,11 +136,25 @@ public sealed class BottomSheetMotion
         ApplyDrag();
     }
 
-    public void Release(Vector2 position, float dtSeconds)
+    /// <summary>Release and snap to a bounded detent without activating a handle tap.</summary>
+    public void Release(Vector2 position, float dtSeconds) => Release(position, dtSeconds, false);
+
+    /// <summary>Release and optionally activate an eligible handle tap before choosing a snap.
+    /// A declined activation keeps an already-valid selected detent. Intermediate heights still settle.</summary>
+    public void Release(Vector2 position, float dtSeconds, bool activateHandleTap)
     {
         _drag.Release(position, dtSeconds);
         ApplyDrag();
-        if (!_drag.TapEligible) Snap(_drag.ReleaseVelocity.Y);
+        if (_handle && _drag.TapEligible && activateHandleTap)
+        {
+            if (TryToggleHandle(true)) return;
+            if (Height == TargetHeight)
+            {
+                SetDetent(TargetDetentId, false);
+                return;
+            }
+        }
+        Snap(_drag.ReleaseVelocity.Y);
     }
 
     void ApplyDrag()

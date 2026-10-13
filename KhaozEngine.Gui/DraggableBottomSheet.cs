@@ -174,8 +174,8 @@ public sealed class DraggableBottomSheet
         }
         if (_admitted)
         {
-            _motion.Release(pointer.Position, dt);
-            if (_handle && _motion.TapEligible && HandleBounds.Contains(pointer.Position)) _motion.ToggleHandle();
+            _motion.Release(pointer.Position, sameFrameTap ? 0 : dt,
+                _handle && HandleBounds.Contains(pointer.Position));
             pointer.ConsumeGesture();
         }
         _mouseSequence = _admitted = false;
@@ -225,8 +225,7 @@ public sealed class DraggableBottomSheet
         if (_admitted)
         {
             if (ended.HasValue) _touchPosition = _coordinates.PositionFromPixels(ended.Value.Position);
-            _motion.Release(_touchPosition, dt);
-            if (_handle && _motion.TapEligible && HandleBounds.Contains(_touchPosition)) _motion.ToggleHandle();
+            _motion.Release(_touchPosition, dt, _handle && HandleBounds.Contains(_touchPosition));
             if (_consumeLeftUntilRelease) pointer.ConsumeGesture();
         }
         _touchSequence = _admitted = false;

@@ -20,6 +20,121 @@ public sealed class DraggableBottomSheetTests
 
     public DraggableBottomSheetTests() => Step(Frame(), 0);
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Review_content_tap_settles_interrupted_snap_for_mouse_and_touch(bool touch)
+    {
+        _sheet.SetDetent("full", true);
+        Step(Frame(), .09f);
+        int changes = 0;
+        _sheet.DetentChanged += _ => changes++;
+        ReviewTap(touch, 420, 420);
+        Assert.Equal(550, _sheet.Bounds.Height, 3);
+        Step(Frame(), 0);
+        Assert.Equal(550, _sheet.Bounds.Height, 3);
+        Step(Frame(), .18f);
+        Assert.Equal(600, _sheet.Bounds.Height);
+        Assert.Equal("full", _sheet.CurrentDetentId);
+        Assert.Equal(1, changes);
+    }
+
+    [Fact]
+    public void Review_same_frame_handle_tap_on_long_frame_still_toggles()
+    {
+        Step(Frame(new(400, 710), press: true), .5f);
+        Assert.Equal("full", _sheet.TargetDetentId);
+        Assert.Equal(200, _sheet.Bounds.Height);
+        Step(Frame(), .18f);
+        Assert.Equal(600, _sheet.Bounds.Height);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Review_early_handle_tap_toggles_from_selected_target_before_nearest_snap(bool touch)
+    {
+        _sheet.SetDetent("full", true);
+        Step(Frame(), .018f);
+        Assert.Equal(308.4f, _sheet.Bounds.Height, 2);
+        float y = _sheet.HandleBounds.Y + 10;
+        ReviewTap(touch, y, y);
+        Assert.Equal("peek", _sheet.TargetDetentId);
+        Step(Frame(), .18f);
+        Assert.Equal(200, _sheet.Bounds.Height);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Review_tap_eligible_handle_release_outside_handle_still_settles(bool touch)
+    {
+        _sheet.SetDetent("full", true);
+        Step(Frame(), .09f);
+        float bottom = _sheet.HandleBounds.Bottom;
+        ReviewTap(touch, bottom - 1, bottom + 2);
+        Assert.Equal(550, _sheet.Bounds.Height, 3);
+        Step(Frame(), .18f);
+        Assert.Equal(600, _sheet.Bounds.Height);
+        Assert.Equal("full", _sheet.CurrentDetentId);
+    }
+
+    [Fact]
+    public void Review_handle_tap_without_default_toggle_endpoint_still_settles()
+    {
+        var sheet = new DraggableBottomSheet(new[]
+        {
+            BottomSheetDetent.Fixed("closed", 0, true), BottomSheetDetent.Fixed("peek", 200)
+        }, "peek");
+        sheet.Update(_input, Available, default, 1000, 0);
+        sheet.SetDetent("closed", true);
+        _input.Update(Frame());
+        sheet.Update(_input, Available, default, 1000, .01f);
+        float y = sheet.HandleBounds.Y + 10;
+        _input.Update(Frame(new(400, y), press: true));
+        sheet.Update(_input, Available, default, 1000, .01f);
+        _input.Update(Frame());
+        sheet.Update(_input, Available, default, 1000, .18f);
+        Assert.Equal(200, sheet.Bounds.Height);
+        Assert.Equal("peek", sheet.CurrentDetentId);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Review_equal_height_handle_tap_preserves_second_id_unless_pair_is_explicit(bool explicitPair)
+    {
+        var sheet = new DraggableBottomSheet(new[]
+        {
+            BottomSheetDetent.Fixed("first", 200), BottomSheetDetent.Fixed("second", 200)
+        }, "second", new() { HandleToggleDetentIds = explicitPair ? new[] { "first", "second" } : null });
+        sheet.Update(_input, Available, default, 1000, 0);
+        int changes = 0;
+        sheet.DetentChanged += _ => changes++;
+        _input.Update(Frame(new(400, 710), press: true));
+        sheet.Update(_input, Available, default, 1000, .01f);
+        _input.Update(Frame());
+        sheet.Update(_input, Available, default, 1000, .18f);
+        Assert.Equal(explicitPair ? "first" : "second", sheet.CurrentDetentId);
+        Assert.Equal(explicitPair ? "first" : "second", sheet.TargetDetentId);
+        Assert.Equal(explicitPair ? 1 : 0, changes);
+        Assert.Equal(200, sheet.Bounds.Height);
+    }
+
+    void ReviewTap(bool touch, float startY, float endY)
+    {
+        if (touch)
+        {
+            Step(Frame(touches: new[] { Touch(1, startY, TouchPhase.Began) }));
+            Step(Frame(touches: new[] { Touch(1, endY, TouchPhase.Ended) }));
+        }
+        else
+        {
+            Step(Frame(new(400, startY), down: true, press: true));
+            Step(Frame(new(400, endY)));
+        }
+    }
+
     [Fact]
     public void Safe_area_and_handle_content_rectangles_use_pointer_units()
     {

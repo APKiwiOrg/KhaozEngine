@@ -20,11 +20,11 @@ The existing Flightline design already settles its sheet policy: content-sized p
 45 percent of available height, expanded below the HUD, content scrolling only when expanded,
 and preserved detent across selection changes. These are consumer configuration, not engine defaults.
 
-## Verified failure and existing contracts
+## Verified pre-implementation baseline
 
-- `AppWindow.WireInput` forwards only `wheel.Y` to `InputAccumulator.OnScroll`.
-  `BuildInput` never supplies touch points. `InputState.Touches` is empty on desktop.
-  No native magnify signal reaches a consumer reading that snapshot.
+- `AppWindow.WireInput` forwarded only `wheel.Y` to `InputAccumulator.OnScroll`.
+  `BuildInput` supplied no touch points. `InputState.Touches` was empty on desktop.
+  No native magnify signal reached a consumer reading that snapshot.
 - `InputState.ScrollDelta` is the existing vertical wheel quantity. `MousePosition` is framebuffer
   pixels. `MouseDeltaPoints` is window points. `Pointer` maps positions into its supplied viewport.
 - GLFW's Cocoa scroll callback scales precise deltas by 0.1, then exposes only X and Y.
@@ -32,7 +32,7 @@ and preserved detent across selection changes. These are consumer configuration,
 - `GestureRecognizer` preserves movement from the press origin when slop is crossed.
   `PinchRecognizer` supplies two-point scale and centroid motion. Neither owns the full lifecycle,
   admission, inertia or gesture arbitration required here.
-- `PannableCanvas` currently applies drag and wheel immediately. Its public docs explicitly defer pinch.
+- `PannableCanvas` applied drag and wheel immediately. Its public docs explicitly deferred pinch.
 - `ScrollablePanel` clamps wheel and drag scrolling internally, returning no residual movement.
   Header resize is latched to avoid also scrolling content under a moving header.
 - Pointer reservations and GuiSurface reservations are separate. Bounds helpers do not implicitly
@@ -48,7 +48,7 @@ Scores are 1 to 10, higher is better. Criteria have equal weight.
 | Add gestures directly to PannableCanvas and ScrollablePanel | 5 | 7 | 8 | 9 | 29 |
 | Deliver native input only, keep recognition in consumers | 3 | 9 | 6 | 10 | 28 |
 
-Recommend the first approach. It gives both Flightline cameras one contract and keeps sheet motion
+Recommend the first approach. It gives consumer cameras one contract and keeps sheet motion
 consistent without introducing a dependency on a camera or GUI package into Windowing. It costs an
 explicit input payload and gesture state machine. Direct GUI changes would leave non-canvas cameras
 reimplementing recognition. Native input alone would not satisfy the agreed engine ownership.
@@ -239,8 +239,10 @@ implementation, select 20.35.0. Recheck main and tags before editing the version
 does not bump it. Integrate and push validated implementation, then pack from main through the guarded
 wrapper. No tag or release is authorized in this thread without a separate owner instruction.
 
-Flightline must later adopt the released Windowing and Gui APIs, implement IPanZoomTarget for each
-view, use the full snapshot path instead of a Touches-only UpdatePinch, update overlays before map
+Flightline must later adopt the released Windowing and Gui APIs and implement a Client-side
+IPanZoomTarget adapter around its existing viewport. The adapter must preserve the zoom anchor and
+the game's geographic constraints, rather than only forwarding its centre-based Zoom method.
+Use the full snapshot path instead of a Touches-only UpdatePinch, update overlays before map
 admission, configure the sheet, and cancel on view lifecycle changes. This thread edits no Flightline
 files and performs no pin adoption. Engine #1328 stays open until its agreed engine work is complete.
 

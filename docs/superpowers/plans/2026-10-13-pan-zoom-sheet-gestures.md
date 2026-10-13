@@ -332,24 +332,24 @@ Update `docs/USING-KHAOZENGINE.md`, Windowing/Gui READMEs and all Markdown match
 grid plus draggable sheet. It logs developer diagnostics and uses no game assets or Flightline code.
 Headless tests use the same controller and target adapter contract as the probe.
 
-- [ ] Add failing consumer tests for a wrapping geographic target and a bounded camera target,
+- [x] Add failing consumer tests for a wrapping geographic target and a bounded camera target,
   driven through InputManager, overlays, then controller. Assert cursor-fixed date-line wrap and
   sheet-start cancellation through actual public APIs. These targets remain fixtures, not engine
   geographic camera APIs.
-- [ ] Run `build-slot --label gesture-consumer -- dotnet test KhaozEngine.Gui.Tests -c Release
+- [x] Run `build-slot --label gesture-consumer -- dotnet test KhaozEngine.Gui.Tests -c Release
   --filter 'FullyQualifiedName~PanZoomConsumerContract'`, confirm red then implement fixture wiring
   and correct integration defects. Run green.
-- [ ] Build the opt-in probe through build-slot, but do not launch it. Provide the exact absolute
+- [x] Build the opt-in probe through build-slot, but do not launch it. Provide the exact absolute
   dotnet run command in the eventual owner handoff. Clearly distinguish headless evidence from
   physical macOS event delivery and Windows compatibility awaiting owner validation.
-- [ ] Publish API examples covering the generic bounded and wrapping targets, full snapshot update, overlay ordering,
+- [x] Publish API examples covering the generic bounded and wrapping targets, full snapshot update, overlay ordering,
   explicit cancellation, sheet configuration, new versus legacy canvas APIs, units and platform limits.
   The Flightline handoff uses a Client-side IPanZoomTarget adapter. Its existing viewport Zoom method
   is centre-based, so the adapter must implement anchored zoom with the game's geographic constraints.
   Do not imply that forwarding the existing Zoom method provides anchor preservation.
   Run `rg` across Markdown for `PannableCanvas|PinchRecognizer|Touches|ScrollDelta|pinch|trackpad` and
   update every affected living reference. Preserve historical design statements as history.
-- [ ] Run staged guards. Commit explicit files and push. Do not post a consumer completion claim.
+- [x] Run staged guards. Commit explicit files and push. Do not post a consumer completion claim.
 
 ### Task 7: Independent review, version reconciliation and engine finish
 

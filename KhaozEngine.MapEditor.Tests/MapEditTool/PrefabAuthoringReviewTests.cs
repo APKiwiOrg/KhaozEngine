@@ -57,7 +57,7 @@ public sealed class PrefabAuthoringReviewTests
     [InlineData(true, false)]
     [InlineData(false, true)]
     [InlineData(true, true)]
-    public void UnpackedRoomSource_OpensInDependencySliceAndKeepsWorldUntouched(bool far, bool save)
+    public void UnpackedRoomSource_OpensInCapturedContextAndKeepsWorldUntouched(bool far, bool save)
     {
         var f = far ? PrefabFixtures.Transformed(0.371f, 1.2f, new(30000.25f, -450, -29999.75f)) : PrefabFixtures.Create("all-resources");
         var session = PrefabEditorFixtures.Session(f);

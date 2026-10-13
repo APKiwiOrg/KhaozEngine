@@ -45,7 +45,7 @@ public sealed class MapPrefabLocalSession
             .OrderBy(i => i.Id, StringComparer.Ordinal).FirstOrDefault();
         _origin = origin ?? source?.Transform ?? new(Vector3.Zero, 0, 1);
         _excluded = excluded ?? (source?.Bindings.Entries ?? []).Select(b => new MapPrefabChildKey(b.Child.Kind, b.WorldId)).ToHashSet();
-        _localInstance = MapPrefabAuthoringSlice.InstanceId(_context);
+        _localInstance = MapPrefabAuthoringContext.InstanceId(_context);
         (_document, _assets) = Detach(asset);
         _history.BindNativeAssets(_document, _assets);
     }
@@ -137,7 +137,7 @@ public sealed class MapPrefabLocalSession
         roots[0] = root with { Sha256 = Convert.ToHexStringLower(SHA256.HashData(manifestBytes)) };
         var source = new CapturedSource(_sourceAssets, roots[0], manifestBytes, reference, prefabBytes);
         MapAssetClosure assets = MapAssetClosure.Load(roots, source);
-        var document = MapPrefabAuthoringSlice.Create(_context, _sourceAssets, asset, _parent, _excluded);
+        var document = MapPrefabAuthoringContext.Create(_context, _sourceAssets, _excluded);
         document.NativeAssets = roots.ToList();
         // Context supplies authored world references and the explicit parent. Local payloads get their own typed IDs.
         var placed = MapPrefabEdits.Prepare(document, assets,

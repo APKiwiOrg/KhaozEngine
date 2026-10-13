@@ -10919,27 +10919,97 @@ lighting and defaults to no shadow casting. `MarkDirty` includes every loaded re
 same-plane door clearance. Streaming loads and unloads also rebuild caches affected by solid footprints, upper
 roofs and tagged doors.
 
-**Persistent GPU grass and shader wind (18.29.0).** Keep the existing authored placements and enable:
+**Persistent GPU foliage and shader wind.** Keep the existing authored placements and enable:
 
 ```csharp
 options.GroundCover.UseGpuBatches = true;
 options.GroundCover.FadeMode = GroundCoverFadeMode.HeightScale;
 options.GroundCover.CastsShadows = false;
 options.GroundCover.WindStrength = 0.1f;
-options.AnimatedFoliageArchetypes = new HashSet<string> { "grass_tall" };
-// Advance the scene clock in Update. Reuse the interactor array each frame.
+options.AnimatedFoliageArchetypes = new HashSet<string> { "grass_tall", "bush" };
+options.AnimatedFoliageStyles = new Dictionary<string, AnimatedFoliageStyle>
+{
+    ["bush"] = new(new FoliageMotionProfile(0.3f, 0.15f, 0.4f, 0.035f), CastsShadows: true),
+};
+var agitation = new FoliageAgitation(); // Retain one helper per actor between frames.
+options.GroundCover.Interactors = interactors; // Reuse this array each frame.
+
+// Each frame, advance the render clock and sample the actor's movement.
 scene.EffectTimeSeconds += dt;
-interactors[0] = new FoliageInteractor(playerPosition, 0.8f, 0.8f);
-options.GroundCover.Interactors = interactors;
+interactors[0] = new FoliageInteractor(playerPosition, 0.8f, 0.8f,
+    Agitation: agitation.Update(playerPosition, dt));
 ```
 
 The renderer retains immutable buffers until placements or model bindings change. CPU work culls patches,
 while the GPU fades and bends blades. Short grass and selected tall props share wind and interactions, but
 tall props keep full density and ordinary prop distance. This adds no collision. Wind is height-relative,
 roots stay planted, and the shader uses at most four nearby interaction positions with vertical separation.
-Other fade and shadow policies keep the existing CPU path. `LastDrawnCover` on the retained path is a
-conservative candidate count, including placements rejected by the shader. `Scene3D.LastFoliageStats`
-separates instance upload bytes, uniform bytes and submitted patch counts.
+Retention requires an immutable `GroundCoverBatch`, `UseGpuBatches` and `HeightScale` fading. It supports
+casting. Other fade modes and mutable placement lists keep the existing CPU path. `LastDrawnCover` on the
+retained path is a conservative candidate count, including placements rejected by the shader.
+`Scene3D.LastFoliageStats` separates instance upload bytes, uniform bytes and submitted patch counts.
+
+`GroundCoverRenderOptions.MotionProfiles` and `ModelCastsShadows` map ground-cover model IDs to motion
+and casting overrides. Both start empty and refuse null. A missing motion uses `FoliageMotionProfile.Blade`.
+A missing casting entry follows global `CastsShadows`, false by default. The renderer resolves policies
+before multipart expansion so all parts share them. Effective values and mesh handles are snapshotted at submission and
+compared by value on later draws. Changing or removing an entry recreates retained data when needed.
+Removal restores Blade motion or global casting. The CPU path ignores the maps and applies only global
+casting. For example, configure a short-cover model separately from the authored prop styles:
+
+```csharp
+options.GroundCover.MotionProfiles = new Dictionary<string, FoliageMotionProfile>
+{
+    ["reeds"] = new(0.3f, 0.15f, 0.4f, 0.035f),
+};
+options.GroundCover.ModelCastsShadows = new Dictionary<string, bool> { ["reeds"] = true };
+```
+
+`AnimatedFoliageArchetypes` is the only selection for authored ground props. `AnimatedFoliageStyles`
+starts empty and maps exact authored selected archetype IDs to `AnimatedFoliageStyle(Motion, CastsShadows)`.
+Use IDs from your catalogs. An omitted style is Blade with casting off, independent of short-cover
+casting. Entries outside the selection or not exactly naming an authored selected archetype throw
+`ArgumentException` naming the ID. Selected archetypes sharing a catalog mesh reference or any resolved
+mesh part must agree on their effective style, including omitted defaults. Conflicts name both IDs.
+Styles are detached snapshots validated before submission and compared by value each draw. A changed
+selection or style, including an in-place map edit, invalidates affected splits. Removing a style restores
+Blade motion and casting off. Short-cover maps do not override these styles.
+
+`FoliageMotionProfile(BendScale, MaxLean, WindScale, Shiver)` has these finite inclusive ranges:
+
+| Coefficient | Blade default | Range | Meaning |
+|---|---|---|---|
+| `BendScale` | 1 | 0 to 4 | Interactor lean multiplier |
+| `MaxLean` | 0.65 | 0 to 1 | Combined wind and lean cap as a fraction of instance height |
+| `WindScale` | 1 | 0 to 4 | Wind sway multiplier |
+| `Shiver` | 0 | 0 to 0.25 | Leaf shiver amplitude as a fraction of instance height |
+
+An invalid coefficient throws `ArgumentOutOfRangeException` naming the field. Both an omitted profile
+and `default(FoliageMotionProfile)` resolve to Blade. Profiles travel in each 96-byte GPU instance and
+do not add draws or regroup meshes by motion. Casting is part of the patch grouping. Foliage uniform
+payloads are 288 bytes in 512-byte aligned slots, with current and previous interactor agitation.
+Temporal history resets use previous equals current. Colour, motion vectors and cascade depth use one
+shared displacement function.
+
+`FoliageInteractor(Position, Radius, Strength = 1f, Agitation = 0f)` accepts finite positions,
+finite non-negative radii and finite strength and agitation in `[0, 1]`. `FoliageAgitation` is an
+allocation-free retained helper whose configurable `referenceSpeed`, `settleTime` and
+`teleportResetDistance` default to 2 m/s, 0.6 s and 5 m. Settings must be finite and strictly positive.
+`Update(position, deltaTime)` uses horizontal speed, capped at full agitation, and linearly settles
+when movement stops. A full 3D jump beyond the reset distance resets it to rest. First samples seed at
+rest. Zero time rebases without changing agitation. `Reset()` clears the value and sampled position.
+Update rejects non-finite positions and non-finite or negative frame times. Shiver takes the strongest
+single interactor's `falloff * Strength * Agitation`, never their sum, at a fixed 14 rad/s (about
+2.2 Hz). Its vertex-dependent phase and squared height weight keep roots fixed. It is added after
+the lean cap, and is zero at zero agitation.
+
+Casting is opt-in. Animated cascade shadows follow the visible displacement, camera wind-fade scale
+and material alpha cutout. Casters are gathered before camera culling. Animated casters redraw the atlas
+every frame, with one clearing render when the last is removed before static reuse. Point-light shadows
+draw casting animated foliage at its authored rest pose through the existing rigid path, preserving
+static point-shadow caching. Point proxies are lazy and caster-only, with 128 GPU bytes per casting
+instance when point shadows need them. They upload once and after a render-origin change, and retire
+on batch release. Non-casting foliage pays no point-proxy cost.
 
 `WindFadeBladePixels` on `GroundCoverRenderOptions` and `FoliageRenderSettings` stops wind on blades that
 are only a few pixels tall on screen. It is a blade height in internal render target pixels. Wind is off
@@ -10960,8 +11030,15 @@ on-screen height is lower by about the cosine of the view elevation, roughly 11%
 elevation.
 
 For a non-tile game, create `FoliageBatch` through `Scene3D.CreateFoliageBatch` once from authored
-`FoliageInstance` values and call `DrawFoliage` each frame with `FoliageRenderSettings`. Dispose the batch
-on unload. A terrain caller using `DrawGroundCover` instead releases its source with
+`FoliageInstance` values and call `DrawFoliage` each frame with `FoliageRenderSettings` and the interactor
+span. The instance constructor's optional `Motion` defaults to Blade and `CastsShadows` to false:
+
+```csharp
+var instance = new FoliageInstance(mesh, transform, thinningRank,
+    Motion: new FoliageMotionProfile(0.3f, 0.15f, 0.4f, 0.035f), CastsShadows: true);
+```
+
+Dispose the batch on unload. A terrain caller using `DrawGroundCover` instead releases its source with
 `scene.ReleaseGroundCover(batch)`. See the Render3D and Terrain.Render3D package READMEs.
 
 **Roofs come off one building at a time.** `Observer` is the tile the roof rule is judged from, and

@@ -7,6 +7,15 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 20.35.1
 
+- Render3D adds per-instance `FoliageMotionProfile` coefficients, movement-driven leaf shiver through
+  `FoliageAgitation` and `FoliageInteractor.Agitation`, and opt-in animated cascade shadows. The default
+  `Blade` profile preserves existing grass motion. Casting defaults to off. Point-light shadows use the
+  authored rest pose. Terrain exposes model-keyed motion and casting maps, and TileWorld exposes
+  `AnimatedFoliageStyles` for selected archetypes.
+- Retained GPU ground cover no longer refuses `CastsShadows`. A consumer using eligible `UseGpuBatches`
+  cover with global casting enabled now gets retained, animated, casting cover instead of the CPU path.
+  No current consumer sets that combination. Grimhollow keeps ground-cover casting off.
+
 - World map symbols add an optional `SizeMetres` init property for full local width and depth independent
   of the authored footprint. Symbols and building shadows retain the authored centre and rotation.
   Null preserves existing raster bytes. Sized walls use both explicit dimensions.

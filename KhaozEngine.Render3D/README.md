@@ -1278,9 +1278,60 @@ orthographic `IsoCamera3D` gives every blade the same pixel size, view height ov
 blades calm together at one zoom threshold. The height is world height over the pixel size at the root and
 ignores view pitch, so the true on-screen height is about 11% lower at the default iso elevation. Zero, the
 default, keeps wind at every size. Advance `Scene3D.EffectTimeSeconds` from the render clock. Supply up to
-four `FoliageInteractor` positions, radii and strengths for cosmetic bending. Vertical separation prevents
-a different floor from pushing the grass. All inputs are copied at submission. Grass is lit, supports
-material alpha masks and casts no dynamic shadow. It adds no collision or world state.
+four `FoliageInteractor` positions, radii, strengths and agitation values for cosmetic bending and shiver.
+Vertical separation prevents a different floor from pushing the foliage. Position must be finite, radius
+finite and non-negative, and strength and agitation finite in `[0, 1]`. Strength defaults to 1 and
+agitation to 0. All submission inputs are copied by value. Foliage is lit and supports material alpha
+masks. It adds no collision or world state.
+
+`FoliageInstance(Mesh, Transform, ThinningRank, Motion = default, CastsShadows = false)` stores motion
+and casting per instance. Both `default(FoliageMotionProfile)` and `FoliageMotionProfile.Blade` resolve
+to the legacy coefficients, including when a profile is omitted:
+
+| Coefficient | Meaning | Blade default | Inclusive range |
+|---|---|---|---|
+| `BendScale` | Interactor lean multiplier | 1 | 0 to 4 |
+| `MaxLean` | Combined wind and lean cap as a fraction of instance height | 0.65 | 0 to 1 |
+| `WindScale` | Wind sway multiplier | 1 | 0 to 4 |
+| `Shiver` | Leaf shiver amplitude as a fraction of instance height | 0 | 0 to 0.25 |
+
+`new FoliageMotionProfile(BendScale, MaxLean, WindScale, Shiver)` rejects non-finite or out-of-range
+coefficients with `ArgumentOutOfRangeException` naming the field. Motion differences do not split
+patches or add draws. Casting differences do. Each retained GPU instance is 96 bytes. Each foliage
+uniform payload is 288 bytes in a 512-byte aligned slot, including current and previous agitation.
+Colour, temporal motion vectors and cascade depth share one displacement function. Temporal resets
+use the current state as the previous state.
+
+Create one `FoliageAgitation` tracker per moving actor and retain it between frames:
+
+```csharp
+// Once per tracked actor, not inside the frame loop.
+var agitation = new FoliageAgitation();
+// Each frame, reuse the interactor array and advance the scene clock.
+scene.EffectTimeSeconds += dt;
+interactors[0] = new FoliageInteractor(playerPosition, 0.8f, 0.8f,
+    Agitation: agitation.Update(playerPosition, dt));
+```
+
+The helper is allocation-free. Its configurable `referenceSpeed`, `settleTime` and
+`teleportResetDistance` default to 2 m/s, 0.6 s and 5 m. Each must be finite and strictly positive.
+Horizontal speed sets agitation, clamped to `[0, 1]`, with linear settling to rest once movement stops.
+A full 3D jump beyond the reset distance resets to zero. The first sample seeds at rest. A zero frame
+time rebases without changing agitation, and `Reset()` clears the value and sampled position.
+`Update(position, deltaTime)` rejects non-finite positions and non-finite or negative frame times.
+Shiver uses the strongest single interactor's `falloff * Strength * Agitation`, never their sum.
+Its fixed angular frequency is 14 rad/s (about 2.2 Hz). It is added after the lean cap, varies across
+vertices and uses the squared height weight so roots remain anchored. Zero agitation gives no shiver.
+
+Casting is opt-in through `FoliageInstance.CastsShadows`. Cascade shadows follow animated displacement,
+including the camera's wind-fade pixel scale and material alpha cutout. Casting patches are gathered
+before camera culling, so off-camera foliage can shadow visible ground. An animated caster redraws the
+cascade atlas every frame. Removing the last one causes one clearing render before static reuse.
+Point-light shadows draw casting animated foliage at its authored rest pose through the rigid caster
+path, preserving static point-shadow caching. A rest-pose proxy stream is created lazily only for
+casting batches when point shadows need it, with 128 GPU bytes per casting instance. It uploads at
+first use and after a render-origin change, and is retired when its batch is released. Non-casting
+foliage pays no point-proxy cost.
 
 Dispose the batch when placements change or unload. The scene owns GPU buffers and retires them safely.
 Mesh handles remain caller-owned and must belong to that scene. `LastFoliageStats` reports workload and

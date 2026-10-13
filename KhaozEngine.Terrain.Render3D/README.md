@@ -229,13 +229,28 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   or replaced models, with no warmed per-frame allocation. Tile-world views build these batches once when
   foliage changes, with no scene or camera work during generation.
 - **Retained GPU cover** - set `GroundCoverRenderOptions.UseGpuBatches = true` on an immutable
-  `GroundCoverBatch`, with `FadeMode = HeightScale` and `CastsShadows = false`. Transforms upload once,
-  patch selection stays on the CPU, and the GPU handles exact rooted fading, wind and `Interactors`.
-  Wind strength is relative to mesh height. `WindFadeBladePixels` stops wind on blades only a few internal
-  pixels tall on screen, where sway reads as shimmer. Zero, the default, keeps wind at every size. Advance
-  `Scene3D.EffectTimeSeconds` each frame. Other cover policies keep the CPU path described above.
-  `scene.ReleaseGroundCover(batch)` retires retained data when that source is no longer needed. Changed
-  model bindings recreate the buffer automatically.
+  `GroundCoverBatch`, with `FadeMode = HeightScale`. Casting is supported on this retained path.
+  Transforms upload once, patch selection stays on the CPU, and the GPU handles exact rooted fading,
+  wind and `Interactors`. Wind strength is relative to mesh height. `WindFadeBladePixels` stops wind
+  on blades only a few internal pixels tall on screen, where sway reads as shimmer. Zero, the default,
+  keeps wind at every size. Advance `Scene3D.EffectTimeSeconds` each frame. Other fade modes and mutable
+  placement lists keep the CPU path described above.
+  `MotionProfiles` maps ground-cover model IDs to `FoliageMotionProfile`. An absent entry uses `Blade`
+  `(1, 0.65, 1, 0)`. `ModelCastsShadows` maps those same IDs to bools, falling back to the global
+  `CastsShadows` value (false by default). Both maps start empty and refuse null. Policies are resolved
+  before multipart expansion, so every model part receives the same motion and casting values.
+  Effective policies and mesh bindings are snapshotted and compared by value each submission. Changing
+  a value or removing an entry recreates the retained buffer as needed. Removal restores Blade motion
+  or global casting. The CPU path ignores both maps and applies only global casting.
+  `Interactors` support `Agitation` in `[0, 1]`, default 0. Retain a `FoliageAgitation` helper and feed
+  `Update(position, deltaTime)` into it for movement-driven shiver. Defaults are 2 m/s reference speed,
+  0.6 s settle time and 5 m teleport reset distance. Shiver takes the strongest single interactor at
+  14 rad/s, with zero shiver at zero agitation. Profiles and their coefficient ranges are documented
+  in [Render3D's foliage reference](../KhaozEngine.Render3D/README.md#persistent-grass-and-foliage).
+  Retained instances cost 96 GPU bytes each, with 288-byte uniform payloads in 512-byte slots.
+  Casting cascade shadows follow motion. Point-light shadows use the authored rest pose and lazily
+  allocate a caster-only proxy stream, 128 GPU bytes per casting instance when needed.
+  `scene.ReleaseGroundCover(batch)` retires retained data when that source is no longer needed.
 - **`PropClusterRenderer`** - the shared runtime owner for terrain and TileWorld prop clusters.
   `BuildCpu(PropClusterBuildRequest)` accepts detached placements, a stable `PropClusterKey`, a content
   generation, a cluster area and its `PropLayer`. It performs the pure `PropHlod` merge on a worker with no GPU

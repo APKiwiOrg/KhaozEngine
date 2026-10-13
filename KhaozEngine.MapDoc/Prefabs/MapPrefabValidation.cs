@@ -52,18 +52,15 @@ public static class MapPrefabValidation
                 foreach (MapPrefabBinding binding in instance.Bindings.Entries) Binding(binding);
                 Unique(instance.Overrides, o => o.Child, "override");
                 foreach (MapPrefabOverride value in instance.Overrides) Override(value);
-                // A removed source owns reservations only. Its immutable version is historical and may no longer
-                // be selected by the current closure after an asset update. Transfers validate their standalone homes.
-                if (assets is null) continue;
+                if (instance.Unpacked && !instance.Removed) Fail("An unpacked source must remain a removed instance.");
+                // Unpacked inventory is historical. Ordinary deleted instances retain their existing reservation semantics.
                 if (instance.Removed)
                 {
-                    if (assets.TryGetResource(instance.ResourceId, out var captured) && captured!.Reference.Sha256 == instance.ResourceSha256)
-                    {
-                        var source = assets.GetPrefab(instance.ResourceId);
-                        RequireBindings(instance, MapPrefabChildSet.Compute(source, assets, instance.Overrides), set.Transfers);
-                    }
+                    if (instance.Unpacked) RequireRemovedBindings(instance, set.Transfers);
+                    else if (set.Transfers.Any(t => t.InstanceId == instance.Id)) Fail("A source with transfers must be marked unpacked.");
                     continue;
                 }
+                if (assets is null) continue;
                 MapResolvedResource resource = assets.GetResource(instance.ResourceId);
                 if (resource.Kind != MapResourceKind.Prefab || resource.Reference.Sha256 != instance.ResourceSha256)
                     Fail("Instance '" + instance.Id + "' does not match its verified Prefab resource.");
@@ -77,7 +74,7 @@ public static class MapPrefabValidation
                     if (!keys.Contains(value.Child)) Fail("Override names an undeclared child.");
                 var reconciled = MapPrefabMaterializationOverrides.Reconcile(asset, instance.Overrides);
                 var childSet = MapPrefabChildSet.Compute(asset, assets, instance.Overrides);
-                RequireBindings(instance, childSet, set.Transfers);
+                RequireBindings(instance, childSet);
                 var effective = reconciled.EffectiveAsset.Children.ToDictionary(c => c.Key);
                 foreach (MapPrefabOverride retained in Intents(instance.Overrides))
                 {
@@ -254,15 +251,28 @@ public static class MapPrefabValidation
     // Every key in the effective child set has a binding, live keys are not Removed and every other binding is.
     // A removed instance keeps its reservations without a live child set. On that tombstone a key may instead be
     // covered by a transfer from this source instance, which then owns the identity alone.
-    static void RequireBindings(MapPrefabInstance instance, MapPrefabChildSet children, IReadOnlyList<MapPrefabBindingTransfer> transfers)
+    static void RequireRemovedBindings(MapPrefabInstance instance, IReadOnlyList<MapPrefabBindingTransfer> transfers)
+    {
+        var inventory = instance.Bindings.Entries.ToDictionary(b => b.Child);
+        var owned = transfers.Where(t => t.InstanceId == instance.Id).ToDictionary(t => t.Binding.Child);
+        foreach (var binding in inventory.Values)
+        {
+            if (binding.Removed)
+            {
+                if (owned.ContainsKey(binding.Child)) Fail("Dormant source bindings must remain reserved without a transfer.");
+            }
+            else if (!owned.TryGetValue(binding.Child, out var transfer) || transfer.Binding != binding)
+                Fail("The source inventory requires exactly one matching transfer for every transferred child.");
+        }
+        foreach (var transfer in owned.Values)
+            if (!inventory.ContainsKey(transfer.Binding.Child)) Fail("A transfer must belong to its retained source inventory.");
+    }
+
+    static void RequireBindings(MapPrefabInstance instance, MapPrefabChildSet children)
     {
         var bindings = instance.Bindings.Entries.ToDictionary(b => b.Child);
-        var transferred = instance.Removed
-            ? transfers.Where(t => t.InstanceId == instance.Id).Select(t => t.Binding.Child).ToHashSet()
-            : new HashSet<MapPrefabChildKey>();
         foreach (MapPrefabChildKey key in children.Known.Concat(children.Live.Keys))
-            if (!bindings.ContainsKey(key) && !transferred.Contains(key)) Fail("Prefab bindings must completely describe every child.");
-        if (instance.Removed) return;
+            if (!bindings.ContainsKey(key)) Fail("Prefab bindings must completely describe every child.");
         foreach (MapPrefabBinding binding in instance.Bindings.Entries)
             if (binding.Removed == children.Live.ContainsKey(binding.Child))
                 Fail($"Binding for {binding.Child.Kind} '{binding.Child.Key}' must be Removed exactly when its child is absent.");

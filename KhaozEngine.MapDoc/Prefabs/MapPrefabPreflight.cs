@@ -56,14 +56,18 @@ internal static class MapPrefabPreflight
                     count.Bindings = checked(count.Bindings + instance.Bindings.Entries.Count);
                     count.ReferenceEdges = checked(count.ReferenceEdges + 1 + (instance.ParentSpace is null ? 0 : 2));
                     count.Check();
-                    MapPrefabAsset asset = assets.BorrowPrefab(instance.ResourceId);
-                    foreach (var child in asset.Children) count.Child(assets, child, asset.MaterializedAttachments);
-                    count.ReferenceEdges = checked(count.ReferenceEdges + asset.Roofs.Count);
-                    foreach (var row in asset.MaterializedAttachments)
+                    // Transferred sources charge only their persisted inventory. Ordinary deletion retains its existing work budget.
+                    MapPrefabAsset? asset = instance.Unpacked ? null : assets.BorrowPrefab(instance.ResourceId);
+                    if (asset is not null)
                     {
-                        count.Transfers = checked(count.Transfers + 1 + row.Children.Count);
-                        count.ReferenceEdges = checked(count.ReferenceEdges + 2 + row.Children.Count);
-                        count.Check();
+                        foreach (var child in asset.Children) count.Child(assets, child, asset.MaterializedAttachments);
+                        count.ReferenceEdges = checked(count.ReferenceEdges + asset.Roofs.Count);
+                        foreach (var row in asset.MaterializedAttachments)
+                        {
+                            count.Transfers = checked(count.Transfers + 1 + row.Children.Count);
+                            count.ReferenceEdges = checked(count.ReferenceEdges + 2 + row.Children.Count);
+                            count.Check();
+                        }
                     }
                     foreach (var value in instance.Overrides)
                         for (MapPrefabOverride? retained = value; retained is not null; retained = (retained as MapPrefabRemoveOverride)?.Previous)
@@ -73,9 +77,9 @@ internal static class MapPrefabPreflight
                             count.Overrides = checked(count.Overrides + 1);
                             count.ReferenceEdges = checked(count.ReferenceEdges + 1);
                             count.Check();
-                            if (retained is MapPrefabReplaceOverride replace) count.Child(assets, replace.Value, asset.MaterializedAttachments);
-                            if (retained is MapPrefabAddOverride add) count.Child(assets, add.Value, asset.MaterializedAttachments);
-                            if (retained is MapPrefabPlacementOverride { AssetId: { } id }) count.PlacementAsset(assets, id, retained.Child.Key, false, asset.MaterializedAttachments);
+                            if (retained is MapPrefabReplaceOverride replace) count.Child(assets, replace.Value, asset?.MaterializedAttachments, expandResources: !instance.Unpacked);
+                            if (retained is MapPrefabAddOverride add) count.Child(assets, add.Value, asset?.MaterializedAttachments, expandResources: !instance.Unpacked);
+                            if (!instance.Unpacked && retained is MapPrefabPlacementOverride { AssetId: { } id }) count.PlacementAsset(assets, id, retained.Child.Key, false, asset!.MaterializedAttachments);
                         }
                 }
             }
@@ -129,7 +133,7 @@ internal static class MapPrefabPreflight
                 Bindings > limits.MaxBindings || Overrides > limits.MaxOverrides || Transfers > limits.MaxTransfers || PayloadBytes > limits.MaxPayloadBytes)
                 throw new MapDocumentException("Prefab expansion preflight limit exceeded.");
         }
-        internal void Child(MapAssetClosure assets, MapPrefabChild child, IReadOnlyList<MapPrefabLocalMaterialization>? rows)
+        internal void Child(MapAssetClosure assets, MapPrefabChild child, IReadOnlyList<MapPrefabLocalMaterialization>? rows, bool expandResources = true)
         {
             Children = checked(Children + 1);
             Text(child.Key.Key);
@@ -142,7 +146,11 @@ internal static class MapPrefabPreflight
                     foreach (var patch in surface.Patches) Patch(patch, surface.Surface);
                     break;
                 case MapPrefabRecordChild record: Record(record.Value); break;
-                case MapPrefabPlacementChild placement: foreach (var tag in placement.Value.Tags) Text(tag); Placement(assets, placement.Value, rows); break;
+                case MapPrefabPlacementChild placement:
+                    foreach (var tag in placement.Value.Tags) Text(tag);
+                    if (expandResources) Placement(assets, placement.Value, rows);
+                    else { Text(placement.Value.AssetId); ReferenceEdges = checked(ReferenceEdges + 1 + (placement.Value.SupportBinding is null ? 0 : 1)); }
+                    break;
                 case MapPrefabWaterChild water:
                     GeometryElements = checked(GeometryElements + 4L * water.Value.Domain.Rects.Count);
                     foreach (var ring in water.Value.Domain.Rings) GeometryElements = checked(GeometryElements + ring.Vertices.Count);

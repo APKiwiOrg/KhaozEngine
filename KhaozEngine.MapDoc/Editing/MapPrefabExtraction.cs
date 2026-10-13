@@ -51,7 +51,9 @@ public static class MapPrefabExtraction
             string id = names[key];
             var localKey = new MapPrefabChildKey(key.Kind, id);
             var frame = resources.Transforms.GetValueOrDefault(MapEffectiveContext.Key(key.Kind, key.Key), MapPrefabEditPreparation.Identity);
-            var local = MapPrefabEditPreparation.Relative(originFrame, frame);
+            var basis = !captured.Contains(key) && snapshot[key] is MapPrefabLightChild { Value.Owner: { } effectiveOwner }
+                ? resources.Transforms[MapEffectiveContext.Key(effectiveOwner.Kind, effectiveOwner.Id)] : originFrame;
+            var local = MapPrefabEditPreparation.Relative(basis, frame);
             var pose = MapPrefabEditPreparation.Presentation(local);
             MapPrefabChild child = walked switch
             {

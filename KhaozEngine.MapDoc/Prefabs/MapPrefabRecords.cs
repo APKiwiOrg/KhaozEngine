@@ -24,6 +24,9 @@ public sealed record MapPrefabInstance(string Id, string ResourceId, string Reso
 {
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool Removed { get; init; }
+    /// <summary>Distinguishes a complete transferred-child inventory from an ordinary deleted instance.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Unpacked { get; init; }
 }
 
 public sealed record MapPrefabAsset(int PayloadVersion, string Id, IReadOnlyList<MapPrefabChild> Children)

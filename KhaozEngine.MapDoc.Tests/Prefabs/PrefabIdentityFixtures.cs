@@ -216,9 +216,9 @@ internal static partial class PrefabFixtures
         return f;
     }
 
-    /// <summary>Instance a is a tombstone whose first child of a kind moved to a transfer from source instance a. Kinds
-    /// with a standalone home get an active transfer and that owner, the others a retired reservation. Variant
-    /// kept also leaves the binding on the tombstone, and lost drops it without a transfer.</summary>
+    /// <summary>Instance a retains its complete inventory. Only the first child of a kind was transferred, while
+    /// the others are dormant reservations. Kinds with a standalone home get an active transfer and that owner.
+    /// Variant kept preserves a live source producer, and lost drops the required transfer.</summary>
     static PrefabFixture Unpacked(PrefabFixture f, string variant)
     {
         MapDocument d = f.Document;
@@ -241,9 +241,9 @@ internal static partial class PrefabFixtures
                 break;
         }
         if (intent.RoofGroups.Count + intent.Lights.Count + intent.Markers.Count + intent.Storeys.Count > 0) d.BuildingIntent = intent;
-        var kept = variant == "kept" ? instance.Bindings.Entries : instance.Bindings.Entries.Where(b => b != moved).ToArray();
+        var kept = variant == "kept" ? instance.Bindings.Entries : instance.Bindings.Entries.Select(b => b with { Removed = b != moved }).ToArray();
         IReadOnlyList<MapPrefabBindingTransfer> transfers = variant == "lost" ? [] : new[] { new MapPrefabBindingTransfer("a", moved with { Removed = false }) { Retired = !active } };
-        d.Prefabs = new(1, 1, new[] { instance with { Removed = true, Bindings = new(kept.ToArray()) } }, transfers);
+        d.Prefabs = new(1, 1, new[] { instance with { Removed = variant != "kept", Unpacked = variant != "kept", Bindings = new(kept.ToArray()) } }, transfers);
         return f;
     }
 

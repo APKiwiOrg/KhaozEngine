@@ -46,6 +46,25 @@ internal static partial class PrefabFixtures
         return f;
     }
 
+    internal static PrefabFixture UnownedExplicitLight()
+    {
+        var f = Create();
+        var asset = f.Assets.GetPrefab("hut");
+        asset = asset with
+        {
+            Children = asset.Children.Select(c => c is MapPrefabLightChild light
+            ? light with { Value = light.Value with { Owner = null } } : c).ToArray()
+        };
+        return Reasset(f, asset);
+    }
+
+    internal static PrefabFixture SingleExplicitMarker()
+    {
+        var f = Create();
+        var marker = f.Assets.GetPrefab("hut").Children.OfType<MapPrefabMarkerChild>().Single();
+        return Reasset(f, new(1, "hut", new[] { marker }));
+    }
+
     internal static PrefabFixture SupportWithEmbeddedRecord()
     {
         var f = Create("support-resource");
@@ -60,6 +79,25 @@ internal static partial class PrefabFixtures
             Surf("/patches/0/records/0/vertices/0/vertex/surfaceId", "floor"),
             Surf("/patches/0/records/0/vertices/1/vertex/surfaceId", "floor")));
         return Reasset(f, f.Assets.GetPrefab("hut"), captured: SupportAssets(f.Assets.GetPrefab("hut"), resource));
+    }
+
+    internal static MapAssetClosure SupportWithAdditionalRecord(PrefabFixture f)
+    {
+        var support = MapSupportResourceFile.Read(f.Assets.GetResource("deck-support").Bytes, "deck-support");
+        var patch = support.Surfaces.Patches.Values.Single();
+        patch.Records.Add(new MapBoundaryChain("later-edge", MapChainKind.Authored, null, new[]
+        {
+            new MapChainVertex(new("floor", MapLatticeAddress.Corner(0, 0)), 0),
+            new MapChainVertex(new("floor", MapLatticeAddress.Corner(4, 0)), 0),
+        }));
+        support = support with
+        {
+            References = support.References.Concat(Slots(
+            Surf("/patches/0/records/1/vertices/0/vertex/surfaceId", "floor"),
+            Surf("/patches/0/records/1/vertices/1/vertex/surfaceId", "floor"))).ToArray()
+        };
+        return PublishPrefab(f.Assets, f.Assets.GetPrefab("hut"), new Dictionary<string, byte[]>
+        { ["deck-support"] = MapSupportResourceFile.Write(support) });
     }
 
     internal static PrefabFixture CapturedOriginals()

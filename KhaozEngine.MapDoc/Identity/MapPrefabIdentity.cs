@@ -59,7 +59,7 @@ internal sealed class MapPrefabIdentityRegistry
     readonly bool _active;
     readonly MapPrefabSet? _set;
     readonly IReadOnlyList<MapStandaloneResourceTransform> _poses;
-    readonly Dictionary<(MapPrefabChildKind, string), string> _bound = new();
+    readonly Dictionary<(MapPrefabChildKind, string), (MapPrefabInstance Instance, MapPrefabBinding Binding)> _bound = new();
     readonly Dictionary<(MapPrefabChildKind, string), MapPrefabBindingTransfer> _transfers = new();
     readonly Dictionary<(MapPrefabChildKind, string), int> _owners = new();
     readonly Dictionary<string, MapPatchKey> _anchors = new(StringComparer.Ordinal);
@@ -73,12 +73,14 @@ internal sealed class MapPrefabIdentityRegistry
         if (_set is null) return;
         foreach (MapPrefabInstance instance in _set.Instances.OrderBy(i => i.Id, StringComparer.Ordinal))
             foreach (MapPrefabBinding binding in instance.Bindings.Entries)
-                if (!_bound.TryAdd((binding.Child.Kind, binding.WorldId), instance.Id))
+                if (!_bound.TryAdd((binding.Child.Kind, binding.WorldId), (instance, binding)))
                     Fail($"Prefab world {binding.Child.Kind} ID '{binding.WorldId}' is bound more than once.");
         foreach (MapPrefabBindingTransfer transfer in _set.Transfers)
         {
             var key = (transfer.Binding.Child.Kind, transfer.Binding.WorldId);
-            if (_bound.ContainsKey(key) || !_transfers.TryAdd(key, transfer))
+            if (_bound.TryGetValue(key, out var reserved) &&
+                (!reserved.Instance.Removed || !reserved.Instance.Unpacked || reserved.Instance.Id != transfer.InstanceId || reserved.Binding.Removed || reserved.Binding != transfer.Binding) ||
+                !_transfers.TryAdd(key, transfer))
                 Fail($"Prefab world {key.Kind} ID '{key.WorldId}' is reserved more than once.");
         }
         foreach (var (kind, id) in GlobalStandalone(globals)) Add(kind, id);
@@ -159,8 +161,8 @@ internal sealed class MapPrefabIdentityRegistry
 
     void Add(MapPrefabChildKind kind, string id)
     {
-        if (_bound.TryGetValue((kind, id), out string? instance))
-            Fail($"Standalone {kind} '{id}' collides with a binding of prefab instance '{instance}'.");
+        if (_bound.TryGetValue((kind, id), out var reserved) && !_transfers.ContainsKey((kind, id)))
+            Fail($"Standalone {kind} '{id}' collides with a binding of prefab instance '{reserved.Instance.Id}'.");
         if (!_transfers.TryGetValue((kind, id), out var transfer)) return;
         if (transfer.Retired) Fail($"Retired transfer '{id}' still has a live standalone {kind} owner.");
         _owners[(kind, id)] = _owners.GetValueOrDefault((kind, id)) + 1;

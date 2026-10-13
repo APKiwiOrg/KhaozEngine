@@ -615,13 +615,18 @@ native asset write. Removed source tombstones and their transferred descriptors 
 unchanged. The caller publishes immutable asset bytes before accepting the document and closure switch.
 
 `MapUnpackPrefab` moves every live child to its standalone home with the same world ID and numeric ID. It retains
-precise binary64 poses, explicit storeys with standalone ownership, authored roof inventory and scoped references.
-The removed source keeps dormant reservations. Transfer rows capture each support and light edge, its verified
+precise binary64 poses, authored nullable-Y support requests, explicit storeys with standalone ownership, authored
+roof inventory and scoped references. The source keeps its complete binding inventory and persists `unpacked: true`.
+This optional flag distinguishes transferred inventory from ordinary deletion and is omitted otherwise. Removed bindings
+are dormant reservations, while every other entry requires its matching transfer. Validation uses this persisted
+inventory without enumerating the current prefab or dependency versions, and counts each identity once.
+Transfer rows capture each support and light edge, its verified
 resource pin, live children, record anchors and owner-relative poses. Empty rows suppress the whole advertised edge.
 Standalone expansion validates and reuses these descriptors without reading or regenerating the attached payload.
 
 `MapPrefabExtraction.Extract(document, assets, selected, origin, assetId)` refuses partial room, floor, roof or
 materialized-owner selections. Selected references become explicit Local slots and external references remain World.
+Explicit owned lights retain owner-relative transforms in either scope. Unowned lights rebase against the asset origin.
 Captured attachments become asset-local materialization rows with precise rebased owner frames, captured definitions
 and fresh local descriptor pins. Extraction preserves edited support heights and emissions rather than reading their
 original leaf payloads. `MapPrefabAssetEdits.Replace(asset, child, remove)` prepares immutable add, replace and remove

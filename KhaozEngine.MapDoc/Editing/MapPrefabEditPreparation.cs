@@ -166,7 +166,7 @@ internal static class MapPrefabEditPreparation
                 case MapPrefabPlacementChild p:
                     var copy = MapPrefabReferenceWalker.Copy(p.Value, id, p.Value.SupportBinding);
                     var frame = resources.Transforms[MapEffectiveContext.Key(child.Key.Kind, id)];
-                    copy.X = (float)frame.X; copy.Y = (float)frame.Y; copy.Z = (float)frame.Z;
+                    copy.X = (float)frame.X; copy.Y = p.Value.Y is null ? null : (float)frame.Y; copy.Z = (float)frame.Z;
                     copy.Yaw = (float)frame.YawRadians; copy.Scale = (float)frame.Scale;
                     copy.NumericId = bindings.Single(b => b.WorldId == id && b.Child.Kind == MapPrefabChildKind.Placement).NumericId;
                     document.Placements.Add(copy);
@@ -225,7 +225,7 @@ internal static class MapPrefabEditPreparation
         }).ToList();
         var transferred = bindings.Select(b => b.Child).ToHashSet();
         var tombstone = instance with
-        { Removed = true, Bindings = new(instance.Bindings.Entries.Where(b => !transferred.Contains(b.Child)).Select(b => b with { Removed = true }).ToArray()) };
+        { Removed = true, Unpacked = true, Bindings = new(instance.Bindings.Entries.Select(b => b with { Removed = !transferred.Contains(b.Child) }).ToArray()) };
         document.Prefabs = new(set.PayloadVersion, set.ExpansionVersion,
             set.Instances.Select(i => i.Id == instance.Id ? tombstone : i).ToArray(),
             set.Transfers.Concat(bindings.Select(b => new MapPrefabBindingTransfer(instance.Id, b))).ToArray())

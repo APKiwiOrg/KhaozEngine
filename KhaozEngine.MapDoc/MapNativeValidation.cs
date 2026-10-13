@@ -138,14 +138,16 @@ internal static class MapNativeValidation
         return maximum;
     }
 
-    /// <summary>The numeric IDs prefab state reserves: every instance binding, live or removed, and every retired
-    /// transfer. An active transfer shares the numeric ID of its standalone placement and reserves nothing more.</summary>
+    /// <summary>Counts each reservation once. A matching transfer owns a tombstone binding's numeric identity.
+    /// Active transfers share their standalone placement's ID, and retired transfers reserve it themselves.</summary>
     internal static IEnumerable<(string Owner, long Id)> PrefabNumericIds(MapDocument doc)
     {
         if (doc.Prefabs is not { } set) yield break;
+        var transferred = (set.Transfers ?? []).Where(t => t is not null).Select(t => (t.InstanceId, t.Binding)).ToHashSet();
         foreach (var instance in set.Instances ?? [])
             foreach (var binding in instance?.Bindings?.Entries ?? [])
-                if (binding?.NumericId is { } id) yield return ($"prefab binding '{binding.WorldId}'", id);
+                if (binding?.NumericId is { } id && !(instance!.Removed && instance.Unpacked && !binding.Removed && transferred.Contains((instance.Id, binding))))
+                    yield return ($"prefab binding '{binding.WorldId}'", id);
         foreach (var transfer in set.Transfers ?? [])
             if (transfer is { Retired: true, Binding.NumericId: { } id }) yield return ($"retired transfer '{transfer.Binding.WorldId}'", id);
     }

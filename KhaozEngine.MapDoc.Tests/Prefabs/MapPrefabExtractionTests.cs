@@ -84,7 +84,7 @@ public class MapPrefabExtractionTests
         var removed = MapPrefabEdits.Prepare(f.Document, f.Assets, new MapSetPrefabOverride("copy", new MapPrefabRemoveOverride(key))).After;
         var unpacked = MapPrefabEdits.Prepare(removed, f.Assets, new MapUnpackPrefab("copy")).After;
         Assert.True(unpacked.Prefabs!.Instances.Single().Removed);
-        Assert.True(Assert.Single(unpacked.Prefabs.Instances.Single().Bindings.Entries).Removed);
+        Assert.True(Assert.Single(unpacked.Prefabs.Instances.Single().Bindings.Entries, b => b.Removed).Removed);
         Assert.Empty(unpacked.Prefabs.Attachments.Single(r => r.Kind == MapPrefabAttachmentKind.Light).Children);
         Assert.Empty(MapEffectiveAnnotations.Lights(MapPrefabResolver.Expand(unpacked, f.Assets)));
         var selection = unpacked.Prefabs.Transfers.Select(t => PrefabFixtures.World(t.Binding.Child.Kind, t.Binding.WorldId)).ToArray();

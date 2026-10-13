@@ -27,7 +27,7 @@ public class MapPrefabEditTests
         Assert.Equal(before.BuildingIntent.Storeys.Select(x => (x.Id, x.Name)), after.BuildingIntent.Storeys.Select(x => (x.Id, x.Name)));
         Assert.Equal(before.Placements.Count, after.Placements.Count);
         Assert.True(result.After.Prefabs!.Instances.Single().Removed);
-        Assert.Empty(result.After.Prefabs.Instances.Single().Bindings.Entries);
+        Assert.Equal(f.Document.Prefabs!.Instances.Single().Bindings.Entries, result.After.Prefabs.Instances.Single().Bindings.Entries);
         Assert.Equal(PrefabFixtures.LiveBindings(f.Document).Count, result.After.Prefabs.Transfers.Count);
         Assert.True(result.WriteSet.Prefabs && result.WriteSet.BuildingIntent && result.WriteSet.NativeResourceTransforms && result.WriteSet.NumericReservations);
         Assert.NotEmpty(result.Effects.RoofIds);

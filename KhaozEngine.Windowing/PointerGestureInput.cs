@@ -57,10 +57,19 @@ public readonly record struct PointerGestureSample
 public sealed class PointerGestureFrame
 {
     public static readonly PointerGestureFrame Empty = new(Array.Empty<PointerGestureSample>());
+    internal static readonly PointerGestureFrame Unavailable = new(false);
+    /// <summary>True for an authoritative stream, including an intentionally empty frame.</summary>
+    public bool IsAvailable { get; } = true;
     public IReadOnlyList<PointerGestureSample> Samples { get; }
     internal bool HasScroll { get; }
     internal bool HasPreciseScroll { get; }
     internal float PinchScaleFactor { get; } = 1f;
+
+    PointerGestureFrame(bool isAvailable)
+    {
+        IsAvailable = isAvailable;
+        Samples = Array.Empty<PointerGestureSample>();
+    }
 
     public PointerGestureFrame(IEnumerable<PointerGestureSample> samples)
     {

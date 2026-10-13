@@ -210,8 +210,11 @@ Windowing + input foundation for the custom MonoGame-free stack.
   `HasPreciseScroll` includes zero-delta lifecycle samples. `PinchScaleFactor` multiplies only magnify factors
   and defaults to 1. These summaries do not replace the authoritative ordered samples.
   The additive constructor takes `gestures`, `horizontalScrollDelta`, `mouseDeltaPoints` and `framebufferScale`
-  before the original arguments. Both existing constructor signatures remain available and use the shared empty
-  frame. A snapshot carrying only legacy scroll remains valid for consumers that use that fallback.
+  before the original arguments. `PointerGestureFrame.IsAvailable` distinguishes an authoritative stream from
+  old synthetic snapshots. Public frames and `PointerGestureFrame.Empty` are available even with no samples.
+  Both existing constructor signatures use an unavailable empty frame, so legacy-only snapshots retain their
+  scalar fallback. Copies and automation preserve availability. An available empty stream never falls back to
+  retained legacy scroll after native samples were cleared.
 - `InputManager.SuppressPointerInput()` gives an owning surface a frame-level pointer arbitration boundary after
   `Update`. It clears mouse buttons, both scroll axes and gesture convenience access for that frame, quarantines
   held buttons until their physical release, and keeps keyboard, gamepad, pointer position, and hover available.
@@ -235,6 +238,17 @@ Windowing + input foundation for the custom MonoGame-free stack.
   vertical wheel units, and `OnScroll(Vector2)` records both legacy axes without adding a sample. This lets a
   native monitor enrich a callback without counting it twice. Focus and capture transitions discard pending
   gesture samples. Empty accumulation reuses `PointerGestureFrame.Empty`.
+- `AppWindow` supplies native macOS precise scroll and magnify through a window-filtered AppKit monitor.
+  It preserves event-time anchors, Ctrl/Cmd modifiers, phase and momentum, returns the original event to GLFW,
+  and keeps Silk's legacy wheel units independently. Windows wheel messages supply event-time Ctrl and both
+  wheel axes through a chained window subclass. Ctrl+wheel is `ModifierWheelCompatibility`, while fractional
+  wheel values alone never imply precision. Other platforms and unavailable native registrations use
+  unclassified wheel samples with event-time Ctrl/Cmd compatibility. Native registration is removed before
+  input and window teardown. Native delivery and device feel still require physical platform validation.
+  `AppWindow.NativeGestureFailure` exposes the first failure with `Stage` (`Install`, `Remove`, `Release`
+  or `Callback`), a developer `Message` and the original `Exception` when present. Failed native installation
+  remains wheel fallback, and failed removal retains callback roots. Both failures stay queryable without
+  automatic logging. A platform with no native backend is normal fallback and reports no failure.
 - `AppWindow.SetIcon(params WindowIcon[])` sets the runtime window/taskbar icon. `WindowIcon` is one already-decoded,
   tightly-packed RGBA8 image (top-left origin); pass several sizes (16/32/48...) and GLFW picks per DPI. On Windows
   it sets the title bar + Alt-Tab (`WM_SETICON`) **and** the taskbar button: GLFW only sets `WM_SETICON`, which does

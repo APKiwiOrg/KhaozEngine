@@ -20,7 +20,7 @@ public sealed partial class InputState
             repeated, mouseReleased, textInput, textInputAvailable, pointerCaptured)
     {
         System.ArgumentNullException.ThrowIfNull(gestures);
-        Gestures = gestures.Samples.Count == 0 ? PointerGestureFrame.Empty : gestures;
+        Gestures = gestures;
         HorizontalScrollDelta = horizontalScrollDelta;
     }
 

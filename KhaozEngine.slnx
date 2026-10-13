@@ -140,6 +140,7 @@
   <Project Path="KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj" />
   <Project Path="KhaozEngine.Showcase.Tests/KhaozEngine.Showcase.Tests.csproj" />
   <Project Path="KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />
+  <Project Path="KhaozEngine.Windowing.Tests/KhaozEngine.Windowing.Tests.csproj" />
   <Project Path="KhaozEngine.Updates/KhaozEngine.Updates.csproj" />
   <Project Path="KhaozEngine.Updates.Tool/KhaozEngine.Updates.Tool.csproj" />
   <Project Path="KhaozEngine.Showcase/KhaozEngine.Showcase.csproj" />

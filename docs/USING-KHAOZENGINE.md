@@ -877,6 +877,24 @@ captured `MouseDelta` keeps its existing nonpositive-or-NaN fallback to 1. Snaps
 preserve both added facts. `WithoutScroll()` does so, and `AutomationInputInjector.Compose` preserves real motion
 or computes injected points motion from framebuffer coordinates and its own logical baseline.
 
+`InputState.Gestures` carries ordered event-time pointer samples. Native macOS input supplies precise scroll
+in window points and magnify with scale identity 1, preserving phases, momentum and Ctrl/Cmd state. Windows
+captures Ctrl+wheel at message time as `ModifierWheelCompatibility`. Plain wheel values remain wheel units.
+Anchors use framebuffer pixels. Silk wheel totals remain independent, so apply the samples once without also
+applying the scalar summaries. `WithoutScroll()` clears both wheel axes and scroll samples while retaining
+magnify. `WithoutPointerGestures()` clears all pointer samples and both scalar wheel axes.
+
+Public `PointerGestureFrame` values and `PointerGestureFrame.Empty` have `IsAvailable == true`, including an
+intentionally empty native frame. Legacy scalar fallback applies only when `IsAvailable == false`, which is
+the default for the two older `InputState` constructors. The additive overload takes `PointerGestureFrame`,
+horizontal scroll, points motion and framebuffer scale before the original arguments. Copies and automation
+preserve stream availability, so cleared native samples cannot revive retained legacy scroll.
+
+For developer diagnostics, `AppWindow.NativeGestureFailure` retains the first native failure and its stage
+(`Install`, `Remove`, `Release` or `Callback`), message and optional original exception. Failed installation
+continues wheel fallback. Failed removal retains callback roots. Later failures do not replace the first,
+and no automatic logging occurs. A platform with no native backend is normal fallback and reports no failure.
+
 ### InputManager + Pointer - the higher-level read
 
 `Pointer` (the unified pointer) and `InputManager` (pointer + keyboard/gamepad/menu-nav) derive per-frame state

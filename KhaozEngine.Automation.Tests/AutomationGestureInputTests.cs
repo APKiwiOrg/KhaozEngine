@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Automation;
 using KhaozEngine.Windowing;
@@ -44,10 +45,34 @@ public sealed class AutomationGestureInputTests
     }
 
     [Fact]
-    public void Composition_reuses_shared_empty_gesture_frame()
+    public void Composition_preserves_old_snapshot_fallback_identity()
     {
-        var composed = new AutomationInputInjector().Compose(InputState.Empty);
-        Assert.Same(PointerGestureFrame.Empty, composed.Gestures);
+        var old = new InputState(new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
+            new HashSet<MouseButton>(), new HashSet<MouseButton>(), Vector2.Zero, Vector2.Zero, 5, 800, 600);
+        var injector = new AutomationInputInjector();
+        injector.SetPointer(new Vector2(10, 20));
+        var composed = injector.Compose(old);
+        Assert.Same(old.Gestures, composed.Gestures);
+        Assert.False(composed.Gestures.IsAvailable);
+        Assert.Equal(5, composed.ScrollDelta);
         Assert.Equal(1f, composed.PinchScaleFactor);
+        Assert.Same(InputState.Empty.Gestures, injector.Compose(InputState.Empty).Gestures);
+    }
+
+    [Fact]
+    public void Composition_preserves_authoritative_empty_with_retained_scroll()
+    {
+        var input = new InputAccumulator();
+        input.OnPointerGesture(new PointerGestureSample(PointerGestureKind.Magnify,
+            PointerGestureSource.MacOSNative, PointerGestureInputPhase.Ended, Vector2.Zero));
+        input.OnFocusChanged(false);
+        input.OnScroll(3);
+        var real = input.Snapshot(Vector2.Zero, true, 800, 600);
+        var injector = new AutomationInputInjector();
+        injector.SetPointer(new Vector2(10, 20));
+        var composed = injector.Compose(real);
+        Assert.True(composed.Gestures.IsAvailable);
+        Assert.Empty(composed.Gestures.Samples);
+        Assert.Equal(3, composed.ScrollDelta);
     }
 }

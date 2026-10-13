@@ -74,7 +74,8 @@ public sealed class PointerGestureInputTests
             PointerGestureSource.MacOSNative, PointerGestureInputPhase.Ended, Vector2.Zero);
         var frame = State(new PointerGestureFrame(new[] { Scroll(), Magnify(), Magnify(1.2f), ended }));
         Assert.Equal(1f, InputState.Empty.PinchScaleFactor);
-        Assert.Same(PointerGestureFrame.Empty, InputState.Empty.Gestures);
+        Assert.False(InputState.Empty.Gestures.IsAvailable);
+        Assert.Empty(InputState.Empty.Gestures.Samples);
         Assert.Equal(1.32f, frame.PinchScaleFactor, 5);
         Assert.True(frame.HasPreciseScroll);
         Assert.Equal(1f, frame.Gestures.Samples[0].ScaleFactor);

@@ -4,7 +4,7 @@ Design for [#438](https://github.com/APKiwiOrg/KhaozEngine/issues/438) phase 5b 
 [#1299](https://github.com/APKiwiOrg/KhaozEngine/issues/1299). Source baseline: `ee6016aae` on `main`, staged 20.37.0
 with phase 5a. The binding inputs are the [phase 5 design](CONTACT-CONTROLLER-PHASE-5-SELECTOR-AND-NAVIGATION-2026-10-13.md#phase-5b-binding-inputs).
 Written under the owner's instruction to continue the program to completion, so every choice below is a recorded
-ruling for the owner's review.
+ruling for the owner's review. Revision 2 answers review round 1 (F1 to F18, U1, U2).
 
 Program row exit: legacy bakes still load, a new-controller bake round-trips, #1299 closes.
 
@@ -14,8 +14,9 @@ In scope:
 
 - Navigation profiles on the ordinary contact controller and on public explicit profiles, built through the
   profile's own effective movement binding.
-- Contact column capture by the footprint rule, contact traversal proofs and contact water classification.
-- KENB format 2, the v1 compatibility contract and load-time validation of every profile.
+- Footprint column enumeration, contact node admission, contact water classification and contact traversal proofs.
+- The Locomotion placement and binding extensions those need.
+- KENB format 2, the v1 compatibility contract and validation of every profile on every door.
 - Runtime graph compatibility against the effective binding for fresh and loaded graphs.
 - The #1299 navigation acceptance.
 
@@ -31,212 +32,330 @@ budget, any hosted or local load run, engine release, tag, game pin, Grimhollow 
 
 ## Current state
 
-The code digest for this design is kept with the spec review ledger. The facts that drive the rulings:
+The facts that drive the rulings, verified against `ee6016aae`:
 
-1. `PhysicsNavBake.Capture` takes no tuning. It casts `PhysicsColumnProbe` axis rays per cell and keeps standable hits
-   as surfaces. Non-standable hits only set the headroom of the surface below.
-2. `BuildProfile` filters surfaces by headroom and keeps a surface only when its own Hold proof passes. Edge proofs step
-   `GroundMoveContext.DryContext`, which is always constructed with the legacy constructor, so a contact context cannot
-   prove an edge today.
-3. `ValidateProfileController` refuses Contact profiles and non-default `FootRadiusFraction` or `Water` at `Create` and
-   `BuildProfile`. `Load` runs only `CheckTuning` and the slope check. `Controller`, `FootRadiusFraction` and `Water`
-   are outside the v1 identity, so a contact expectation compares equal to a legacy file and loads a legacy graph.
-4. `GroundNavigation.ValidateTuning` compares radius, half height, slope, step height and, for aquatic graphs, the
-   three swim fractions. Nothing compares the controller, foot fraction, water policy, placement offset or explicit
-   identity.
-5. Deep water in an aquatic legacy profile is a scalar test in `AquaticColumns.Derive`: depth from the highest captured
-   surface below the water against `SwimEnterDepthFraction`. Non-aquatic graphs have no deep rule.
-6. `ExplicitMotionProbe` proves grounded arrival with a 1 mm XZ circle plus a separate 1 mm vertical bound, not the
-   shared 3D 1 mm sphere `GroundTraversalProbe.Near` uses.
-7. Every contact binding has a non-Legacy water mode (`ValidateExplicit`). `EffectiveMovementBinding.SettlePlacement`
-   is the runtime's own placement operation. It seats a grounded body on certified walkable support through
-   `ContactPlacement`, validates the full shell, samples water and decides footing under the water policy.
-8. The only v1 byte pin is the identity fingerprint golden in `NavBakeIdentityTests`. No full-file golden exists.
+1. `PhysicsNavBake.Capture` takes no tuning. It casts `PhysicsColumnProbe` axis rays and keeps standable hits as
+   surfaces. Inside-solid descent samples and undersides only shape headroom. A support that only the foot disc
+   touches, such as the SG-23 sphere at X 0.35 with foot radius 0.2, has no axis hit at all.
+2. `BuildProfile` keeps a surface only when its own Hold proof passes. Ground edges step `DryContext`, which is always
+   legacy constructed. `GroundMoveContext.StepContact` returns the held input on acquisition failure and drops the
+   movement outcome, so a MoveState-only proof cannot see an unresolved step.
+3. `ValidateProfileController` refuses Contact profiles at `Create` and `BuildProfile`. `Load` runs only `CheckTuning`
+   and the slope check, and `Controller`, `FootRadiusFraction` and `Water` are outside the v1 identity, so a contact
+   expectation loads a legacy file.
+4. `GroundNavigation.ValidateTuning` is internal, takes only `MoveTuning` and compares geometry plus the aquatic swim
+   fractions. `MoveToRange.Tick` is its only caller.
+5. `SettlePlacement` runs `ValidatePlacement` (including the water placement refusal) at the supplied pose before it
+   seats, and seats any non-rising body, a swimmer included, before deciding footing. A swimmer at its float line can
+   be seated on a bed that grants no footing and then rise by more than 1 mm on its next Hold.
+6. `PublicExplicit` bindings hold a `MovementEnvironmentContext` and no ordinary provider, so `CreateOrdinaryScope` and
+   `CaptureOrdinaryBoundary` throw for them. `OrdinaryMovementEnvironment` is a public `IMovementEnvironmentProvider`.
+7. The water field answers membership at a body's feet and certified body sweeps. It has no column surface query.
+8. `SwimTraversalProbe.Arrived` picks its rule from the stepped body's mode rather than the target's. That legacy
+   defect is filed as #1388 and stays out of 5b, because 5b guarantees unchanged legacy bytes.
+9. `ExplicitMotionProbe` proves grounded arrival with a 1 mm XZ circle plus a separate 1 mm vertical bound, and takes
+   its budget and timing from the explicit profile.
+10. With `SampleWater` set, `PhysicsNavBake.Capture` reads `context.Medium`. On a contact-constructed context with a
+    water field and no medium delegate that adapter needs validated tuning, so shared capture fails before any profile
+    is built. The builder does not keep the area classifier.
+11. The only v1 byte pin is the identity fingerprint golden. No full-file golden exists.
 
 ## Rulings
 
 ### P5B-1 Effective bake profiles
 
-`NavBakeProfile` resolves to exactly one effective bake profile, of the same three kinds as
-`EffectiveMovementBindingKind`:
+`NavBakeProfile` resolves to one effective bake profile of the three `EffectiveMovementBindingKind` kinds:
 
 - **Legacy** when `Tuning.Controller` is Legacy and no explicit profile is attached. Behaviour, identity and bytes are
   unchanged.
 - **OrdinaryContact** when `Tuning.Controller` is Contact. `EffectiveMovementBinding.Preflight` runs for that kind.
-- **PublicExplicit** when an `ExplicitMovementProfile` is attached through a new init property
-  `NavBakeProfile.Explicit`. The explicit profile's tuning geometry (radius, half height, slope, step height, foot
-  fraction) and areas must equal the bake profile's, otherwise construction refuses with `ArgumentException`. The bake
-  profile's `Tuning` must not select Contact.
+- **PublicExplicit** when an `ExplicitMovementProfile` is attached through a new init property `NavBakeProfile.Explicit`.
+  The bake profile's `Tuning` and `Areas` must equal the explicit profile's exactly, and the explicit profile's step
+  seconds and step budget must equal the bake options' `EdgeProbeSeconds` and `MaxEdgeProbeSteps`. The explicit
+  profile is the single owner of every movement field. The bake options own nothing a mismatch could hide.
 
-`Aquatic` is allowed on a non-legacy profile only when its water mode is SurfaceSwimmer. Every other combination refuses
-at construction. Validation runs at `NavBakeProfile` construction, `BuildProfile`, `Create` and every `Load`
-expectation, so no path admits a profile that another path refuses. `ValidateProfileController` and its "phase 5b"
-refusal are removed.
+`Aquatic` on a non-legacy profile requires the SurfaceSwimmer water mode.
 
-**Why:** one normalized profile per kind mirrors the runtime's binding kinds, and validating on every door closes the
-load gap in current state item 3.
+The constructor keeps only selection-independent checks. Complete normalization runs at `BuildProfile`, `Create` and
+every `Load` expectation, so initializer order and `with` copies are judged where they are used. No door admits a
+profile another door refuses. `ValidateProfileController` and its "phase 5b" refusal are removed.
 
-### P5B-2 Capture runs per non-legacy profile through its own binding
+### P5B-2 Bake bindings and acquisition
 
-Legacy profiles keep the shared column capture. A non-legacy profile captures its own columns during `BuildProfile`,
-because its resting heights depend on its foot radius, composition offset and water policy.
+A non-legacy profile is captured and proved through a binding over the bake context's ordinary environment.
 
-- The bake context for a non-legacy profile must be a contact-constructed `GroundMoveContext` (registration, boundary
-  and water field). A legacy-constructed context refuses a non-legacy profile with `NotSupportedException`.
-- Every query goes through the profile's effective binding and a lease from its ordinary scope. No parallel query path
-  exists for navigation.
-- The shared capture options (bounds, cell size, probe height and range, slope, surface cap, edge budget) apply
-  unchanged. `SampleWater` governs legacy water entries only. Non-legacy water facts come from the binding's water
-  field.
+- The bake context must be contact constructed (registration, boundary, water field). A legacy-constructed context
+  refuses a non-legacy profile with `NotSupportedException`.
+- OrdinaryContact uses `EffectiveMovementBinding.Ordinary` over that environment.
+- PublicExplicit uses `EffectiveMovementBinding.PublicExplicit` with a `MovementEnvironmentContext` that wraps the same
+  `OrdinaryMovementEnvironment`. Locomotion gains the extension that lets a public explicit binding over an ordinary
+  provider create ordinary scopes and capture the ordinary boundary. Both kinds then read one world through one
+  provider, with the explicit composition and water policy.
+- Work runs in the context's local frame. Each column acquires one lease from the binding's ordinary scope and holds it
+  across the column's enumeration, admission and proofs. Results are published only while that lease is current.
+- An acquisition or query availability other than Known (`Unresolved`, `Invalid`, `FrameMismatch` and the other
+  non-Known `MovementAvailability` values) marks the affected facts Unknown. Unknown facts never admit a node or edge.
+- Support evidence comes from the lease's `FindContactSupport`, which returns the certified `SupportSample` with its
+  height error and binding. No navigation-only physics query path exists.
 
-### P5B-3 Footprint column probe
+### P5B-3 Capture lifecycle
 
-For each cell the contact capture takes every axis ray hit, standable or not, as a raw seed. Each seed keeps its raw
-index in the column and its ownership band, which runs from the seed's height to the next raw hit above (unbounded for
-the top hit).
+`PhysicsNavBake.Capture` stays the shared legacy capture and keeps its signature. It now retains the area classifier
+for later non-legacy capture. With `SampleWater` set it reads the context's medium delegate. A contact-constructed
+context supplied with a water field but no medium delegate refuses `SampleWater` at `Capture` with a message naming
+the missing delegate, instead of failing inside the field adapter. Non-legacy profiles do not need `SampleWater`,
+because their water facts come from the field. Non-legacy capture runs inside `BuildProfile`.
 
-Each seed becomes a candidate node only when all of these hold:
+### P5B-4 Footprint column enumeration
 
-1. `SettlePlacement` from a grounded state with feet at the seed height returns `Advanced` with footing, through the
-   profile's binding. The settled feet are the candidate's resting feet, and the certified support under them is its
-   geometric support.
-2. The resting feet lie inside the seed's ownership band, at or above the seed height less the certified support
-   height error, and the resting body fits below the band's ceiling. A seed that settles into another seed's band
-   produces no node. That seed's own capture owns the position.
-3. The candidate passes its own Hold proof under P5B-5 (stationary within the unchanged 1 mm arrival).
+Each column is enumerated with the profile's foot disc (radius `FootRadiusFraction * CapsuleRadius`) at the cell axis.
 
-Unresolved, invalid, refused or steep outcomes produce no node. Areas come from the classifier at the resting feet.
-Headroom is the axis gap from the resting feet to the next raw hit above, walkable or not, so non-walkable ceilings
-stay. The full-shell clearance of the resting body is certified by the placement proof itself.
+1. A bounded broad-phase pass finds the vertical intervals of the column, between probe floor and probe top, that
+   hold static geometry overlapping the foot disc column, plus the analytic ground height at the axis. Empty intervals
+   are skipped. If the physics view has no query that answers this, the physics layer gains one.
+2. Inside each occupied interval, certified support queries run top down with a band of `StepHeight`, the kernel's own
+   reach. Each returns the highest certified support in its band. A found support is recorded as a raw footprint seed
+   with its status (Walkable, Steep or Refused), height, height error, owner and raw index (descending order in the
+   column). The next query starts strictly below the found support's certified lower bound. A band with no support
+   moves down one band.
+3. Enumeration stops at the probe floor or at `MaxSurfacesPerColumn` recorded seeds. Exceeding the cap throws, as
+   capture does today.
 
-Candidates are layered once by the existing `NavLayerBaker` in raw seed order. No second layering pass runs, and a
-settled height never reassigns a node to another seed.
+Each seed owns the half-open band from its height up to the next seed above (unbounded for the top seed). A tie in
+height goes to the upper seed.
 
-**Why:** settled heights are the runtime's resting heights by construction, so the Hold proof passes without widening
-the 1 mm rule. Non-standable seeds let footprint-only support such as the SG-23 sphere flank seed nodes. The ownership
-band is the raw layer identity rule from the low-lip resting design: a different deck or rooftop never becomes a seed's
-node.
+### P5B-5 Ground node admission
 
-### P5B-4 Float slots and water classification (#1299)
+A Walkable seed becomes a ground node only when all of these hold:
 
-Solid and float slots are discriminated before any certification runs on a column.
+1. The candidate pose is a grounded body with feet at the composition's resting feet for the seed support (support
+   plus 0 for ordinary, plus 0.001 m for explicit). `SettlePlacement` from that pose, through the profile's binding,
+   returns `Advanced` with footing.
+2. The settled support is the seed's own support within its certified height error. A settle that moves to another
+   seed refuses this seed. That other seed owns the position and is judged on its own.
+3. The Hold proof under P5B-8 passes at the settled pose: one stationary step returns `Advanced`, grounded, within the
+   unchanged 3D 1 mm rule.
 
-- The binding's water field reports the free surface over a column at the axis. A column with no water, or an
-  `Unknown` water answer, has no float slot. `Unknown` refuses every node in that column.
-- A float slot exists only for SurfaceSwimmer profiles marked `Aquatic`. Its candidate pose is the runtime float pose
-  under the surface (`SwimSurfaceSubmersionFraction`). It becomes a node when `SettlePlacement` from a swimming state at
-  that pose returns `Advanced` with the body swimming and its Hold proof passes.
-- Solid seeds under water follow P5B-3. The water policy decides footing inside `SettlePlacement`, so a WadeOnly body
-  past the deep line, a DryOnly body in any water and a SurfaceSwimmer body deep enough to swim all fail footing and
-  produce no ground node.
-- A deep column's solid seeds below the float slot produce no node for an aquatic profile, as the legacy aquatic view
-  replaces sub-surface surfaces today.
+The node's height is the seed's resting feet. Layering runs once through the existing `NavLayerBaker` on those heights,
+in raw seed order, and no second layering pass runs. Because a node exists only where its seed is its own resting
+support, raw identity and resting identity coincide and no node can be reassigned to a deck or rooftop above it.
 
-No scalar depth formula decides a non-legacy node. Legacy aquatic derivation is unchanged.
+Headroom for a non-legacy node is a certified lower bound. The placement proof certifies the full resting shell clear
+of every static, walkable or not, so the stored headroom is the body height. Navigation only ever compares headroom
+against the body height, so the bound answers every consumer exactly. Off-axis overhangs and undersides are covered by
+the shell proof rather than by an axis gap. Areas come from the classifier at the resting feet.
 
-**Why:** the runtime's own full-body placement proof under the profile's water policy is the binding input for #1299.
-Using `SettlePlacement` means the navigation deep line and the movement deep line are the same computation.
+Steep, Refused and refused-admission seeds produce no node and stay as recorded facts (P5B-10).
 
-### P5B-5 Traversal steps the selected binding
+### P5B-6 Placement fixes
 
-`GroundTraversalProbe` and `SwimTraversalProbe` keep their hold, slices, budget, unit-speed probe tuning and the 3D
-1 mm `GroundArrived` and `SwimArrived` rules. For a non-legacy profile they step the profile's own binding:
+Two Locomotion fixes make placement a resting constructor rather than a guess:
 
-- Edges step the wet binding with the profile's water policy, so the WadeOnly wall and swim transitions shape edges
-  exactly as at runtime. A legacy profile still steps its dry context for ground edges.
-- The contact `GroundMoveContext` gains a dry counterpart for the contact constructor (same registration and boundary,
-  no water field). It is used only where a legacy profile would use `DryContext`, which for non-legacy profiles is
-  nowhere in this phase.
-- Footprint acceptance on every slice is unchanged.
-- Stair links are proved with the same probe.
+- `SettlePlacement` seats a non-rising body only when the seated pose grants footing under the water policy.
+  Otherwise the supplied pose stands and is classified by water. A swimmer at its float line therefore stays there.
+  Spawn, restore, teleport, transfer and continuation all take this rule, with tests for each door that seats.
+- A settled grounded pose must be a Hold fixed point. Any fixture where a settled pose moves by more than 1 mm on its
+  next Hold is a placement defect and is fixed in the placement code, never by repeating settlement or widening the
+  Hold.
 
-### P5B-6 Explicit profiles
+### P5B-7 Water classification (#1299)
 
-A PublicExplicit bake profile captures like P5B-3 through its public explicit binding, so its resting feet sit 0.001 m
-above geometric support. Its edges use a bake-specific explicit traversal adapter over `ExplicitMotionProbe` that adds
-capsule-area admission on every slice and the shared 3D 1 mm arrival for grounded endpoints.
+- **Ground nodes under water.** P5B-5 already runs the runtime placement and water admission at the resting candidate.
+  A WadeOnly body past the deep line, a DryOnly body in water and a body deep enough to swim fail footing and produce
+  no ground node. A submerged lip whose resting pose is admissible keeps its node even when the ground beside it is
+  past the line.
+- **Column water discovery.** For SurfaceSwimmer aquatic profiles, a bounded vertical water trace along the axis
+  through the lease, from probe top to probe floor, reports each water interval the axis crosses with its free or
+  closed upper boundary. Unknown or conflicting answers refuse float candidates in that column. The field is never read
+  outside the lease.
+- **Float nodes.** Each interval with a free surface yields one float candidate at the runtime float pose under it
+  (`SwimSurfaceSubmersionFraction`). It becomes a node when `ValidatePlacement` from a swimming state at that pose
+  returns `Advanced` with the body swimming and its swim Hold passes.
+- **Both modes.** A column keeps its ground node and its float node when the runtime admits both, as in the swim
+  hysteresis band. No node is removed because the other mode is admissible, and no scalar depth formula decides a
+  non-legacy node.
 
-`ExplicitMotionProbe` itself takes the shared 3D 1 mm predicate for grounded arrival. Swimming arrival keeps the
-explicit water surface-contact tolerance, which is a different predicate. The change only refuses arrivals the old
-per-axis rule accepted outside the sphere, so it tightens and never widens.
+Legacy aquatic derivation is unchanged.
 
-### P5B-7 KENB format 2
+### P5B-8 Traversal over movement results
 
-- An all-legacy bake writes format 1, byte for byte as today under the same engine version. A full-file golden for a
-  small all-legacy fixture under the golden engine string pins it.
-- Any non-legacy profile makes the bake format 2. The format 2 identity adds per profile: effective kind, foot radius
-  fraction, every `WaterTraversalPolicy` field, placement offset and, for explicit profiles, the explicit fingerprint.
-- The format 2 payload keeps the format 1 shared columns, then for each non-legacy profile its own columns. Each node
-  stores raw seed index, geometric support height, resting feet height, headroom, areas and a float flag, followed by
-  the profile's layers, exits and links as format 1 writes them.
-- Load decodes format first. Versions other than 1 and 2 stay `UnsupportedFormat`. An expectation with any non-legacy
-  profile against a format 1 file, or an all-legacy expectation against a format 2 file, is `ProfilesChanged`. Inside
-  one format the existing order applies: engine, options, sources, profiles. Another engine's file stays
-  `EngineChanged` in both formats.
-- A loaded format 2 graph is rebuilt from the stored nodes, never recaptured, and rewriting it reproduces its bytes.
+Non-legacy proofs step the profile's binding with `StepTowards` and read every `MovementStepResult`.
 
-### P5B-8 Runtime graph compatibility
+- Any outcome other than `Advanced` at the Hold or any slice refuses the node or edge. An unchanged pose is never
+  evidence that a query succeeded. No prefix of a refused proof is published.
+- The bake options own timing and budget. Ground slices use unit-speed probe tuning. Swim slices keep the existing
+  swim pace bound. Edges step the wet binding, so the WadeOnly wall and swim transitions shape them as at runtime.
+- Every slice passes the per-slice footprint admission against the profile's recorded facts (P5B-10).
+- Grounded arrival is the shared 3D 1 mm sphere with the body grounded. Float arrival is the body swimming, within 1 mm
+  in XZ and within the policy's surface-contact tolerance vertically. The final mode must equal the target node's mode.
+  An accepted end state must satisfy the start contract of every edge leaving the target node, so consecutive edges
+  compose.
+- Stair links use the same proof.
 
-A `GroundNavigation` carries the effective identity of the profile that built it, fresh or loaded. Its
-`ValidateTuning` additionally compares:
+Legacy proofs, including `SwimArrived`, are unchanged.
 
-- controller and effective kind,
-- `FootRadiusFraction` and placement offset,
-- every `WaterTraversalPolicy` field,
-- `SwimEnterDepthFraction` for a non-aquatic graph built with water facts,
-- the explicit fingerprint for an explicit graph, through an overload that takes the consumer's
-  `ExplicitMovementProfile`.
+### P5B-9 Explicit profiles
 
-Mismatch throws `ArgumentException` with a message naming the differing input, as the geometry checks do.
+PublicExplicit profiles use the same enumeration, admission, water and traversal core as OrdinaryContact, through
+their binding from P5B-2 and with the explicit composition. `ExplicitMotionProbe` is not used by the bake.
 
-### P5B-9 Version and placement
+`ExplicitMotionProbe` takes the shared 3D 1 mm sphere for grounded arrival at both Hold and destination, while its
+swimming rule keeps the surface-contact tolerance. This only refuses arrivals the old per-axis rule accepted outside
+the sphere. The explicit route proof recipe version moves from 1 to 2, so explicit fingerprints change once, and its
+pinned test moves with it.
 
-The phase rides staged 20.37.0, because it is ahead of v20.36.0 and its entry is untagged. All new types stay in
-`KhaozEngine.Movement` beside the bake code. Movement already sees the Locomotion internals it needs. Navigation stays
-free of Locomotion.
+### P5B-10 KENB format 2
+
+An all-legacy bake writes format 1, byte for byte as today. A full-file golden for a small all-legacy fixture under the
+golden engine string pins it. Any non-legacy profile makes the bake format 2.
+
+The load matrix, with format-directed decoding first and refusal precedence after it:
+
+| Stored file | Expected profiles | Same engine | Other engine |
+| --- | --- | --- | --- |
+| Format 1 | All legacy | Existing comparison, Loaded if equal | EngineChanged |
+| Format 1 | Any non-legacy | ProfilesChanged | EngineChanged |
+| Format 2 | All legacy | ProfilesChanged | EngineChanged |
+| Format 2 | Any non-legacy | Format 2 comparison, Loaded if equal | EngineChanged |
+
+Versions other than 1 and 2 and nonzero flags stay `UnsupportedFormat`. A malformed identity in a supported format
+stays `Corrupt`. An invalid expectation throws `ArgumentException` before the stream is read, as today. Inside one
+format the order stays engine, options, sources, profiles.
+
+The format 2 identity adds per profile: effective kind, foot radius fraction, every `WaterTraversalPolicy` field,
+placement offset and, for explicit profiles, the explicit fingerprint.
+
+The format 2 payload has two stages per non-legacy profile, after the format 1 shared columns:
+
+- **Facts.** Every recorded seed and float candidate per column with raw index, status, disposition (node, steep,
+  refused, unknown, settled away, water refused), support height, height error, resting feet, headroom and areas.
+  Per-slice footprint admission reads these facts, so a refused upper surface or an Unknown neighbour still blocks a
+  footprint after load exactly as before it.
+- **Graph.** Nodes reference facts by column and raw index. Layers, exits and links follow as format 1 writes them.
+
+Field widths and order are fixed, every count is bounded before allocation (including the float slot and the aggregate
+per-profile storage), and invalid raw references are `Corrupt`. A loaded format 2 graph is rebuilt from the stored
+facts and nodes, never recaptured, and rewriting it reproduces its bytes.
+
+### P5B-11 Runtime graph compatibility
+
+`GroundNavigation` carries the effective identity of the profile that built it. `BuildProfile` and the format 2 decoder
+both populate it, and format 1 graphs carry the Legacy identity.
+
+- A new public `GroundNavigation.Validate(EffectiveMovementBinding binding)` and an overload adding the consumer's
+  `ExplicitMovementProfile` check the graph against the binding. Legacy graphs keep today's comparisons. Non-legacy
+  graphs compare every field their format 2 identity encodes: the 27 retained tuning fields, controller, kind, foot
+  fraction, placement offset, every water policy field and, for explicit graphs, the explicit fingerprint. A mismatch
+  throws `ArgumentException` naming the differing input.
+- `MoveToRange` validates against its context's binding before planning and before prediction.
+- Callers that use `Planner` or `AllowsSegment` directly own the call. The public documentation says so.
+- `DirectMoveToRange` owns no graph and is unchanged.
+
+### P5B-12 Version, placement and test dispositions
+
+The phase rides staged 20.37.0, because it is ahead of v20.36.0 and its entry is untagged. Navigation types stay in
+`KhaozEngine.Movement` beside the bake code. The binding and placement extensions live in `KhaozEngine.Locomotion`
+beside the code they extend. `KhaozEngine.Navigation` stays free of Locomotion.
+
+Intentional test dispositions:
+
+- `ContactNavigationRefusalTests` rows that require the "phase 5b" refusal become capability and configuration refusals
+  (legacy-constructed context, Aquatic without SurfaceSwimmer, mismatched explicit tuning or timing), keeping their
+  validation-order controls, plus valid contact construction rows.
+- The `GroundNavigationBakeRefusalTests` row that declares version 2 unsupported moves to version 3.
+- The explicit profile fingerprint pin moves with the recipe version.
+
+Every other legacy behavioural, round-trip and byte-identity test passes unchanged.
 
 ## Acceptance
 
 Compatibility:
 
-- The all-legacy full-file golden matches, and every existing round-trip, refusal and identity golden passes unchanged.
-- Every row of the P5B-7 load matrix returns its named status.
-- A contact profile and an explicit profile each round-trip: write, load and rewrite are byte-identical, and the loaded
-  graph is equivalent to the fresh one.
-- `Load` refuses a contact expectation against a format 1 file.
+- The all-legacy full-file golden matches.
+- Every cell of the P5B-10 matrix, a combined engine and profile mismatch, and the corruption rows (bad counts, invalid
+  raw references, truncated facts) return their named status.
+- A contact profile and an explicit profile each round-trip. Write, load and rewrite are byte-identical, and the loaded
+  graph and its footprint admission equal the fresh ones, including near forbidden upper surfaces, low roofs and
+  Unknown neighbouring cells.
+- A mixed legacy aquatic and contact bake with `SampleWater` round-trips, a non-legacy aquatic profile works with
+  `SampleWater` off, and a water-field-only context with `SampleWater` refuses at `Capture`.
 
-Capture:
+Capture and admission:
 
-- A low-lip bank fixture (the #1270 geometry) yields contact nodes at resting height whose Hold proof passes at the
-  unchanged 1 mm rule, where the raw axis height would have moved by more.
-- The SG-23 sphere flank seeds a contact node where the legacy capture has none.
-- A deck over ground keeps both nodes in their own raw layers, and a seed that settles onto the deck produces no
-  duplicate.
-- A low roof that the body does not fit under produces no node, and a non-walkable ceiling sets headroom.
+- The actual SG-23 geometry yields a contact node where the axis has no hit.
+- The #1270 low-lip bank yields nodes at resting height whose Hold passes at the unchanged 1 mm rule.
+- A deck over ground, a thick slab, stacked props, a compound gap, two supports at a shared height and an off-axis
+  overhang each keep their nodes in their own raw bands, with no duplicate and no wrong-layer node.
+- A low roof the body does not fit under produces no node.
+- Hold refusal after a successful placement, acquisition failure at the Hold and a late support refusal on a slice
+  each refuse without publishing a prefix.
 
 Water and #1299:
 
-- On a pool with a deep middle, a WadeOnly contact bake marks the deep cells unwalkable and a route plans around them,
+- A WadeOnly contact bake over a pool with a deep middle marks the deep cells unwalkable and a route plans around them,
   matching where the runtime walker stops.
-- A DryOnly bake has no node in any water. A SurfaceSwimmer aquatic bake has float nodes over deep water and swim edges.
+- A submerged lip whose resting pose crosses the WadeOnly threshold keeps its node, and the inverse control whose
+  certified resting pose is past the line has none.
+- Just below, at and just above the enter and exit fractions, plus one row inside the hysteresis band where both a
+  ground node and a float node exist.
+- Empty-column water, a dry deck over water, a closed upper boundary, conflicting intervals and Unknown water each
+  produce their stated float result.
+- A DryOnly bake has no node in water. A SurfaceSwimmer aquatic bake has float nodes and swim edges in both bank
+  directions, including a near-waterline ground target that refuses a still-swimming arrival.
 - Legacy bakes over the same pool, with and without `Aquatic`, are byte-identical to today's.
 
-Traversal and runtime:
+Placement fixes:
 
-- Contact edges are proved by stepping the contact binding, and the explicit adapter refuses an arrival the old per-axis
-  rule accepted outside the 1 mm sphere.
-- `GroundNavigation.ValidateTuning` refuses each P5B-8 mismatch for fresh and loaded graphs.
+- A swimmer settled at its float line over a bed that grants no footing keeps its pose and holds within 1 mm, on every
+  placement door that seats.
 
-Cost: one cold and one warm local measurement of contact capture and contact edge proofs on the round-trip fixtures,
-recorded with per-node and per-edge figures and a Hollowmere-scale extrapolation for the owner's phase 6 decision. No
-load or repeat run.
+Explicit and runtime:
+
+- Mismatched explicit timing, budget, tuning or areas refuse. An excluded area reached only on an intermediate slice
+  refuses the edge.
+- Public `ProbeExplicitMotion` accepts at the 1 mm sphere boundary and refuses the old corner case (0.8 mm in X and
+  0.8 mm in Y), at the Hold and at the destination.
+- `MoveToRange` with a mismatched binding throws before planning, for fresh and loaded graphs, and `Validate` refuses
+  each P5B-11 mismatch.
+
+Cost record, from single local measurements only (no load or repeat run):
+
+- calls and time per column, per raw seed and per admitted node, per float candidate and per edge proof,
+- profile count, refused contributions, water traces, peak resident arrays and payload size per profile,
+- a conservative static upper bound and aggregate storage limits beside a Hollowmere-scale extrapolation, for the
+  owner's phase 6 decision.
 
 ## Tasks
 
-1. Effective bake profiles and validation on every door (P5B-1), including the load gap.
-2. KENB format 2 and the compatibility matrix (P5B-7), with the v1 full-file golden.
-3. Contact column capture (P5B-2, P5B-3).
-4. Contact traversal and the contact dry counterpart (P5B-5).
-5. Float slots, water classification and the #1299 rows (P5B-4).
-6. Explicit bake profiles and the arrival correction (P5B-6).
-7. Runtime graph compatibility (P5B-8), cost record, documentation, changelog and full verification.
+1. Effective bake profiles, door validation and the capture lifecycle (P5B-1, P5B-3).
+2. Locomotion extensions: explicit ordinary scopes and the placement fixes (P5B-2, P5B-6).
+3. Footprint column enumeration and ground node admission (P5B-4, P5B-5).
+4. Traversal over movement results (P5B-8).
+5. Water classification, float nodes and the #1299 rows (P5B-7).
+6. Explicit bake profiles and the arrival correction (P5B-9).
+7. KENB format 2 and the compatibility matrix (P5B-10).
+8. Runtime graph compatibility, cost record, documentation, changelog and full verification (P5B-11, P5B-12).
+
+## Review response
+
+Round 1 (`review-1.md`, Not ready, 2 Critical, 12 Important, 4 Minor):
+
+- F1: axis seeds replaced by footprint column enumeration (P5B-4).
+- F2: admission runs at the resting candidate, which is the seed itself (P5B-5, P5B-7).
+- F3, U1: placement fixes (P5B-6).
+- F4: seeds are certified supports, not ray samples, and headroom is a certified lower bound (P5B-4, P5B-5).
+- F5: binding and acquisition contract for both kinds (P5B-2).
+- F6: column water discovery by a bounded trace through the lease (P5B-7).
+- F7: both modes kept where admissible (P5B-7).
+- F8: separate predicates, target mode required, legacy unchanged and #1388 filed (P5B-8).
+- F9: proofs over `MovementStepResult` (P5B-8).
+- F10: one normalized explicit recipe and a shared core (P5B-1, P5B-9).
+- F11: public validation door and consumer wiring (P5B-11).
+- F12: explicit load matrix (P5B-10).
+- F13: two-stage format 2 payload (P5B-10).
+- F14: capture lifecycle (P5B-3).
+- F15: door-time normalization (P5B-1).
+- F16: public probe rows and recipe version (P5B-9).
+- F17: named test dispositions (P5B-12).
+- F18: expanded cost record (Acceptance).
+- U2: layer heights are seed resting heights, so raw and resting identity coincide (P5B-5).

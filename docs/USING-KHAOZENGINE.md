@@ -11193,7 +11193,9 @@ and must rise strictly inside (0, 90). The blend is a smoothstep over that band 
 ground normal, and it belongs to the material in whatever corner or overlay slot it fills. A companion's own
 `steep` is not followed. Separately, and for every material, ground steeper than 45 degrees adds side projections
 to the top-down tap, fully weighted by 60, so a cliff carries its texture up its height instead of streaking.
-Ground below 45 degrees renders exactly as before. The constants are `TileGroundSteepShading`'s in Render3D.
+The two rules are independent. Below 45 degrees the projection is unchanged for every material, but a material
+with a companion already blends from its `fromDegrees`, 40 by default. A material with no companion renders
+exactly as before below 45 degrees. The triplanar constants are `TileGroundSteepShading`'s in Render3D.
 
 **Water is carved, not placed.** A tile is water when its underlay material's `kind` is `Water`, and you sink the
 bed by lowering the corner heights, so the material's texture is the river BED and the surface height is computed.

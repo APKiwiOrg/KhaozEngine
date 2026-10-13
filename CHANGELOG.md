@@ -9,8 +9,10 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 - Tile ground is slope aware (#1289). Past 45 degrees of slope every material adds two side projections to its
   top-down tap, fully weighted by 60 degrees, so cliffs carry their texture up the face instead of streaking.
-  Ground below 45 degrees takes the same single tap as before. Both read the interpolated lattice normal, so the
-  shading needs no new vertex data and is continuous across tiles and regions. The constants are
+  The projection is unchanged below 45 degrees. A material with a steep companion (below) also blends toward it
+  over its own band, which by default starts at 40, so its ground can change below 45 too. Both read the
+  interpolated lattice normal, so the shading needs no new vertex data and is continuous across tiles and
+  regions. The triplanar constants are
   `TileGroundSteepShading.TriplanarStartDegrees`, `TriplanarFullDegrees` and `TriplanarSharpness` (4).
 - A ground catalog material can name a steep companion,
   `"steep": { "material": 14, "fromDegrees": 40, "toDegrees": 55 }`. Every tap of the material, in any corner or

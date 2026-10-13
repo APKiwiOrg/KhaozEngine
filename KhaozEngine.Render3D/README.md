@@ -220,8 +220,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     `TileGroundSteepShading`. TRIPLANAR: past `TriplanarStartDegrees` (45) every material's tap adds two side
     projections, one along world X (u = world Z) and one along world Z (u = world X), each with v running down world
     Y so a texture keeps its up. They fade in to their full share at `TriplanarFullDegrees` (60), weighted by the
-    normal's axis components raised to `TriplanarSharpness` (4). Below the start a fragment takes exactly the one
-    top-down tap it always took, so flat and gentle ground is unchanged and costs nothing extra. STEEP COMPANION:
+    normal's axis components raised to `TriplanarSharpness` (4), and a projection whose weight falls to 0.001 or
+    less is dropped and the rest renormalised. Below the start the projection is the one top-down tap it always
+    was and costs nothing extra. That holds for every material. STEEP COMPANION, for layers that carry one only:
     `TileGroundLayerImage.Steep` (`TileGroundSteepLayer`: `CompanionSlot`, `FromDegrees`, `ToDegrees`) names
     another layer of the set. Wherever a tap of that layer is taken, in any corner slot or the overlay slot, it
     becomes `mix(layer, companion, s)` with `s` a smoothstep over the band on the normal's Y component. The

@@ -151,8 +151,10 @@ emits slots supplied by the set.
 
 **Steep ground is drawn from the side.** Independently of any companion, a fragment whose ground normal is past
 45 degrees adds two side projections to every material it samples, fully weighted by 60 degrees, so a cliff
-carries its texture up its height rather than one row of it smeared into vertical streaks. Ground below 45 degrees
-takes the same single top-down tap it always did. Both read the interpolated lattice normal, so they are
+carries its texture up its height rather than one row of it smeared into vertical streaks. Below 45 degrees the
+projection is the single top-down tap it always was. That is the projection only: a material with a `steep`
+companion starts blending toward it at its own `fromDegrees`, 40 by default, so its ground can change below 45.
+Materials without one are unchanged there. Both read the interpolated lattice normal, so they are
 continuous across tiles and regions. The shading lives in Render3D, see `TileGroundSteepShading` in that package's
 README. The set refuses a companion on its reserved missing-material layer or one naming it, so the magenta that
 marks a dangling id is never hidden or spread.

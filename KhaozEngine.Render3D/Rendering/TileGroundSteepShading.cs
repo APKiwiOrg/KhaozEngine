@@ -27,13 +27,14 @@ namespace KhaozEngine.Render3D
     /// <summary>
     /// The slope-aware half of the tile-ground pipeline: the engine constants of its triplanar projection and the
     /// packing of each layer's <see cref="TileGroundSteepLayer"/> into the material's params block. Pure, no GPU.
-    /// <para>TRIPLANAR. Every layer is sampled top-down (world XZ) on flat and gentle ground, exactly as the
-    /// pipeline always has. Once the ground normal tilts past <see cref="TriplanarStartDegrees"/> two side
-    /// projections fade in, one along world X (u = world Z) and one along world Z (u = world X), each with v
-    /// running down world Y so a texture keeps its up. They reach their full normal-weighted share at
-    /// <see cref="TriplanarFullDegrees"/>, weighted by the normal's axis components raised to
-    /// <see cref="TriplanarSharpness"/>. A fragment below the start takes no side tap at all.</para>
-    /// <para>STEEP COMPANION. Wherever a tap of a layer with a companion is taken, the tap becomes
+    /// <para>TRIPLANAR, for every layer. Each is sampled top-down (world XZ) below the start, exactly as the
+    /// pipeline always has, though a layer's companion may already blend in there. Once the ground normal tilts
+    /// past <see cref="TriplanarStartDegrees"/> two side projections fade in, one along world X (u = world Z) and
+    /// one along world Z (u = world X), each with v running down world Y so a texture keeps its up. They reach
+    /// their full normal-weighted share at <see cref="TriplanarFullDegrees"/>, weighted by the normal's axis
+    /// components raised to <see cref="TriplanarSharpness"/>. A projection weighted 0.001 or less is dropped and
+    /// the rest renormalised. A fragment below the start takes no side tap at all.</para>
+    /// <para>STEEP COMPANION, only for layers that carry one. Wherever a tap of a layer with a companion is taken, the tap becomes
     /// mix(layer, companion, s), s a smoothstep over the layer's band on the normal's Y component.</para>
     /// </summary>
     public static class TileGroundSteepShading

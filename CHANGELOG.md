@@ -30,6 +30,17 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   on .NET 10 arm64. SG-12 retains its time limits, with 96 local time rejections and #1334 open pending an
   owner-approved normalized hosted repeat proof. The hosted one-shot plumbing check passed. Phase 5 navigation
   and phase 6 adoption remain separate gates.
+- Render3D adds component nameplate templates beside the unchanged legacy plate API. A `NameplateTemplate` orders
+  `NameplateTextComponent`, `NameplateBadgeComponent` and `NameplateBarComponent` parts bound to `NameplateSlot`
+  keys and placed by `NameplateAttach` rules against earlier parts. A reusable `NameplateContent` supplies text,
+  badge tints, bars and a whole-plate `Opacity`. `NameplateTemplateLayout.Measure`, a template
+  `NameplatePlacement.Place` and two template `NameplateRenderer.Draw` overloads (framebuffer and
+  `IDesignViewport`) complete it, and warm draws allocate nothing. The legacy `Nameplate` and `NameplateStyle`
+  API now runs as a cached built-in template with identical draw calls. Template files, an editor and a mod
+  surface are tracked in #1378.
+- Primitives adds `AttachPoint` and `Attach` (`PointOf`, `Resolve`, `Union`) for point-to-point rect placement.
+- Render2D adds outlined text: `TextOutline` with eight-way offsets and outline-aware measurement, and the
+  `SpriteBatch.DrawStringOutlined` extension.
 
 ## 20.33.0
 

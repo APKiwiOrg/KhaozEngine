@@ -34,3 +34,34 @@ Import verified, self-contained rigid GLB bytes with
 `AttachmentGlb.ValidateRigidEmbedded(bytes, identity)` first for attachment asset policy. Each
 returned `GltfMeshPart` carries its welded geometry and decoded material maps, with node transforms
 already baked. Material groups retain first-use order. The importer creates no GPU resources.
+
+## Loading and ownership
+
+Create one `RigidAttachmentSetCache` per scene with an `IAttachmentAssetSource`. `Get(key, expectedSha256)`
+checks the exact definition bytes and every distinct mesh revision, applies embedded rigid GLB policy,
+and decodes all new assets before uploading. The cache copies source memory and shares each `(key, hash)`
+upload across its sets. A failure releases newly acquired resources and preserves earlier cached assets.
+
+```csharp
+using var scene = new Scene3D(device, output);
+using var cache = new RigidAttachmentSetCache(scene, new DirectoryAttachmentAssetSource(assetRoot));
+LoadedRigidAttachmentSet loaded = cache.Get(definitionKey, definitionHash);
+BoundRigidAttachmentSet bound = loaded.Bind(map);
+```
+
+`DefinitionSha256` records the exact source bytes. `Definition.SemanticSha256` records canonical content.
+Binding resolves every joint before returning a view. `Skeleton` retains the exact bound skeleton and
+`DrawCount` counts every material group of every part. Loaded and bound views borrow resources and expose
+no disposal operation. Their properties and binding operations throw `ObjectDisposedException` after
+cache disposal.
+
+Dispose the cache before its scene and stop using its views first. The declaration order above enforces
+that disposal order. Cache disposal is idempotent and releases each unique upload once, meshes before
+textures, through Scene3D's deferred retirement APIs. Use the cache and its bindings on their owning
+render thread, with no overlapping calls.
+
+The `IRigidAttachmentScene` overload accepts an optional scene capability for recording or headless
+consumers. `Scene3DAttachmentScene` uploads through Scene3D and forwards complete `RigidInstanceDraw`
+descriptors. `UploadAttachment(parts)` returns an `IAttachmentMeshLease` whose immutable handles remain
+borrowed until lease disposal. The shipped `Scene3DTileWorldScene` also offers this optional capability.
+`ITileWorldScene` has no attachment member.

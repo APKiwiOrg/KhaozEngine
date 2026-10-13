@@ -599,21 +599,6 @@ namespace KhaozEngine.Render3D
             return new TextureHandle(_textures.Count - 1);
         }
 
-        /// <summary>Upload a glTF material's auto-read <see cref="GltfMaterialMaps"/> (from
-        /// <see cref="GltfLoader.LoadWithMaterial"/> / <see cref="GltfLoader.LoadSkinnedWithMaterial"/>) into a
-        /// <see cref="SurfaceMaps"/>: one <see cref="LoadTexture(byte[],int,int,TextureMipPolicy)"/> per present map. An absent map
-        /// stays a <c>default</c> handle (the renderer falls back to its default for that slot - white albedo, flat
-        /// normal, zero roughness), so an all-absent <paramref name="maps"/> yields an all-default
-        /// <see cref="SurfaceMaps"/>. The uploaded textures are owned by the scene and freed in
-        /// <see cref="Dispose"/>. Pass the result to <see cref="LoadMesh(GltfMesh,SurfaceMaps)"/> /
-        /// <see cref="LoadSkinnedMesh(SkinnedGltfMesh,SurfaceMaps)"/>.</summary>
-        public SurfaceMaps LoadSurfaceMaps(GltfMaterialMaps maps)
-        {
-            TextureHandle Upload(DecodedImage? img) =>
-                img is { } i ? LoadTexture(i.Rgba, i.Width, i.Height) : default;
-            return new SurfaceMaps(Upload(maps.Albedo), Upload(maps.Normal), Upload(maps.Roughness), maps.AlphaCutoff);
-        }
-
         /// <summary>Opt-in convenience: upload a mesh and bind a glTF material's auto-read
         /// <see cref="GltfMaterialMaps"/> in one call - equivalent to
         /// <c>LoadMesh(mesh, LoadSurfaceMaps(maps))</c>. Absent maps fall back to the renderer defaults; an

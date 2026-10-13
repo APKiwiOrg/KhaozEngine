@@ -14,7 +14,8 @@ Pulls in:
 - `KhaozEngine.Render3D` - the stylized 3D renderer: `Scene3D`, glTF + procedural meshes,
   materials/lighting, skinning, billboards, ground decals.
 - `KhaozEngine.Attachments.Render3D` - rigid part definitions bound to the body's posed skeleton,
-  with contract-joint resolution, body alignment and canonical world-transform output.
+  with contract-joint resolution, body alignment, canonical world-transform output and a per-scene
+  cache of verified snapshots and transactional upload leases.
 - `KhaozEngine.Render3D.Ecs` - the ECS arm of the renderer: the `Transform3D` and `MeshInstance`
   components and `Scene3DBinder.Submit`, which draws every entity carrying both into a `Scene3D`.
 - `KhaozEngine.Game.Render3D` - the Game framework's 3D bridge: `GameApp3D`, `IGameScene3D`,

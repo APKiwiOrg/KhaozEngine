@@ -525,6 +525,12 @@ Game3D carries this arm. `RendererArms_ReferenceOnlyTheirOwnerAndRender3D` pins 
 alongside the Render3D.Ecs arm, and the umbrella membership lock includes it. Foundation and Server
 remain unchanged. Render3D's material-part memory importer reuses its existing glTF decoding.
 
+The arm also owns verified byte snapshots, per-scene upload sharing and transactional resource leases.
+`IRigidAttachmentScene` is an optional upload and full-descriptor draw capability. Its Scene3D adapter
+uses the renderer's deferred unload APIs. The shipped tile-world scene implements this capability
+without adding attachment members to `ITileWorldScene`. The tile renderer references the attachment arm,
+and the attachment arm has no dependency back to TileWorld. Dispose attachment caches before their scene.
+
 ## Render3D ECS arm: the renderer carries no Ecs edge
 
 `KhaozEngine.Render3D` references no ECS. Entity rendering is its own arm, split off exactly as
@@ -745,10 +751,12 @@ KhaozEngine.TileWorld.Render3D -> KhaozEngine.Render3D           (Scene3D, GltfM
 KhaozEngine.TileWorld.Render3D -> KhaozEngine.Render2D           (ImageRgba, to decode a catalog material's texture into a ground material layer)
 KhaozEngine.TileWorld.Render3D -> KhaozEngine.Terrain            (GroundCoverDistribution and its render-free sample contract)
 KhaozEngine.TileWorld.Render3D -> KhaozEngine.Terrain.Render3D   (prop and ground-cover instancing paths)
+KhaozEngine.TileWorld.Render3D -> KhaozEngine.Attachments.Render3D (optional attachment upload leases and rigid draws)
 KhaozEngine.Game3D -> KhaozEngine.TileWorld.Render3D             (umbrella ProjectReference, like every other Game3D package)
 ```
 
-All six are forward edges onto packages that already sit below it, and nothing references back. The
+All seven are forward edges onto packages that already sit below it, and nothing references back.
+`TileWorldRenderer_ReferencesTheOptionalAttachmentCapability` pins the tile renderer's reference set. The
 `Terrain.Render3D` edge is the one worth naming: the tile world reuses `PropRenderer` for instancing and
 complementary LOD transitions, `PropClusterRenderer` for generation-safe HLOD build, apply, draw and lifetime,
 and the ground-cover renderer rather than growing a second placement path. `Scene3DChunkSink` and TileWorld now

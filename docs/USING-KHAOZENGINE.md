@@ -3570,7 +3570,9 @@ scene.Draw(gun, sockets["socket_nose"] * shipWorld, Color.White);
   `GltfMaterialMaps`). Embedded GLB images and external image files are both read; a material with no textures - or
   a missing/undecodable image - yields an all-absent bundle (`maps.IsEmpty`) and falls back to the renderer
   defaults, never a throw. The default explicit-`SurfaceMaps` path is unchanged, so this is purely a convenience
-  on top.
+  on top. `LoadSurfaceMaps` retires already uploaded maps if a later texture creation fails.
+  An owning caller can unload its meshes, then call `UnloadSurfaceMaps(in maps)` to retire each distinct
+  valid texture handle. All-absent bundles retain invalid handles and never unload scene defaults.
 - Alpha cutout (foliage / leaf cards): `GltfMaterialMaps.AlphaCutoff` (and `SurfaceMaps.AlphaCutoff`) carries the
   glTF material's `alphaMode`: `0` for OPAQUE (the default when absent - no clip, byte-identical render), else the
   material's `alphaCutoff` (default 0.5 per spec) for MASK. glTF BLEND is out of scope for the mesh pass and is

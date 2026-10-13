@@ -126,6 +126,10 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   model, shadow, decal, particle, distortion, water and overlay renderers. Those renderers keep no private retired
   lists, so a grow survives until the same fence or frame boundary and teardown drains the queue once before GPU
   resources are destroyed.
+- `Scene3D.LoadSurfaceMaps` uploads each present glTF material map transactionally. A later upload failure
+  retires the maps already created. `UnloadSurfaceMaps(in maps)` releases each distinct valid map handle
+  through the same deferred queue. Unload the meshes that reference a map bundle first. All-absent bundles
+  neither upload textures nor release scene defaults.
 - `RigidInstanceDraw` / `SkinnedInstanceDraw` / `MotionKey` - draw descriptors and motion keys. A descriptor carries
   every knob of one draw (mesh, absolute transform, tint, material, dissolve and edge, shadow casting, and for a
   rigid draw the shadow-only flag, the inverted shadow dither and the complement phase) plus a `Motion` key.

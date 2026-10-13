@@ -13,8 +13,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   badge tints, bars and a whole-plate `Opacity`. `NameplateTemplateLayout.Measure`, a template
   `NameplatePlacement.Place` and two template `NameplateRenderer.Draw` overloads (framebuffer and
   `IDesignViewport`) complete it, and warm draws allocate nothing. The legacy `Nameplate` and `NameplateStyle`
-  API now runs as a cached built-in template with identical draw calls. Template files, an editor and a mod
-  surface are tracked in #1378.
+  API now runs as a cached built-in template, with identical draw calls for every style whose width cap fits the
+  ellipsis. Template files, an editor and a mod surface are tracked in #1378.
 - Primitives adds `AttachPoint` and `Attach` (`PointOf`, `Resolve`, `Union`) for point-to-point rect placement.
 - Render2D adds outlined text: `TextOutline` with eight-way offsets and outline-aware measurement, and the
   `SpriteBatch.DrawStringOutlined` extension.

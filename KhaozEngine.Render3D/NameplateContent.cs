@@ -15,6 +15,7 @@ public sealed class NameplateContent
     private Entry[] _entries = new Entry[8];
     private int _count;
 
+    /// <summary>Multiplies every colour alpha on the plate. Clamped to 0..1 at draw, and a non-finite value draws opaque.</summary>
     public float Opacity { get; set; } = 1f;
 
     /// <summary>Empties every slot and restores full opacity, retaining storage for the next fill.</summary>
@@ -54,6 +55,7 @@ public sealed class NameplateContent
         };
     }
 
+    /// <summary>Reads a slot's text value. False when the slot is empty or holds a bar.</summary>
     public bool TryGetText(NameplateSlot slot, out NameplateTextValue value)
     {
         int index = Find(slot);
@@ -67,6 +69,7 @@ public sealed class NameplateContent
         return false;
     }
 
+    /// <summary>Reads a slot's bar value. False when the slot is empty or holds text.</summary>
     public bool TryGetBar(NameplateSlot slot, out NameplateBarValue value)
     {
         int index = Find(slot);

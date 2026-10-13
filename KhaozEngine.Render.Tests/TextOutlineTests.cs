@@ -40,6 +40,14 @@ public sealed class TextOutlineTests
 
         Assert.Equal(new Vector2(38f, 12f), size);
     }
+
+    [Fact]
+    public void Measure_treatsANegativeThicknessAsNone()
+    {
+        Vector2 size = TextOutline.Measure(new FixedGlyphFont(), "Zombie", 1f, -2f);
+
+        Assert.Equal(new Vector2(36f, 10f), size);
+    }
 }
 
 internal sealed class FixedGlyphFont(float charWidth = 6f, float lineHeight = 10f) : ITextMeasurer

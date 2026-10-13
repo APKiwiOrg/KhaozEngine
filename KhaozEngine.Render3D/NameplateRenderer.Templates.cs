@@ -69,7 +69,7 @@ public static partial class NameplateRenderer
         if (size.X <= 0f || size.Y <= 0f) return false;
 
         Vector4 panelRect = NameplatePlacement.Place(pixel, size, viewportWidth, viewportHeight, template, ref placementState);
-        float opacity = Math.Clamp(content.Opacity, 0f, 1f);
+        float opacity = float.IsFinite(content.Opacity) ? Math.Clamp(content.Opacity, 0f, 1f) : 1f;
         if (colors.PanelFill.A > 0f)
             canvas.FillRounded(panelRect, WithOpacity(colors.PanelFill, opacity), template.CornerRadius);
         if (template.PanelBorderThickness > 0f && colors.PanelBorder.A > 0f)
@@ -142,7 +142,7 @@ public static partial class NameplateRenderer
             rect.Z - 2f * component.BorderThickness, rect.W - 2f * component.BorderThickness);
         canvas.FillRounded(inner, WithOpacity(value.Track, opacity), component.CornerRadius);
         float fraction = Math.Clamp(value.Fraction, 0f, 1f);
-        if (!component.SkipEmptyFill || fraction > 0f)
+        if (float.IsFinite(value.Fraction) && (!component.SkipEmptyFill || fraction > 0f))
         {
             Vector4 fill = inner with { Z = inner.Z * fraction };
             canvas.FillRounded(fill, WithOpacity(value.Fill, opacity), component.CornerRadius);

@@ -1,3 +1,4 @@
+using System;
 using System.Globalization;
 using System.Numerics;
 using KhaozEngine.Primitives;
@@ -6,6 +7,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests;
 
+[Collection("AllocSensitive")]
 public sealed class NameplateTemplateDrawTests
 {
     [Fact]
@@ -110,6 +112,9 @@ public sealed class NameplateTemplateDrawTests
     [Theory]
     [InlineData(-1f, 0f)]
     [InlineData(2f, 1f)]
+    [InlineData(float.NaN, 1f)]
+    [InlineData(float.PositiveInfinity, 1f)]
+    [InlineData(float.NegativeInfinity, 1f)]
     public void OpacityOutsideTheRangeIsClamped(float opacity, float expectedAlpha)
     {
         var template = new NameplateTemplate(new NameplateComponent[]
@@ -235,6 +240,45 @@ public sealed class NameplateTemplateDrawTests
             Assert.Equal(test.Deflected, templateState.IsDeflected);
             Assert.Equal(legacyState.Side, templateState.Side);
         }
+    }
+
+    [Theory]
+    [InlineData(float.NaN)]
+    [InlineData(float.PositiveInfinity)]
+    [InlineData(float.NegativeInfinity)]
+    public void ANonFiniteFractionDrawsNoFill(float fraction)
+    {
+        var content = FullHeader();
+        content.SetBar(NameplateSlot.Health, fraction, Color.White, Color.Black);
+        var canvas = Canvas();
+
+        Assert.True(Draw(canvas, HeaderTemplate(), content));
+
+        Assert.Equal(6, canvas.Calls.Count);
+        Assert.Equal("fill 444.000 490.000 112.000 9.000 0.000 0.000 0.000 1.000 0.000", canvas.Calls[0]);
+        Assert.StartsWith("stroke ", canvas.Calls[1]);
+    }
+
+    [Fact]
+    public void AWarmDrawWithAnOutlinedNameAndABadgeAllocatesNothing()
+    {
+        NameplateTemplate template = PanelAndShadowTemplate();
+        NameplateContent content = FullHeader();
+        var canvas = new CountingNameplateCanvas(new FixedGlyphFont(6f, 10f));
+        NameplatePlacementState state = default;
+        var anchor = new Vector2(500f, 500f);
+        Assert.True(NameplateRenderer.DrawTemplateAt(ref canvas, anchor, template, content, 1000, 1000, ref state));
+        Assert.True(NameplateRenderer.DrawTemplateAt(ref canvas, anchor, template, content, 1000, 1000, ref state));
+        int warmCalls = canvas.Calls;
+        GC.GetAllocatedBytesForCurrentThread();
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        bool drawn = NameplateRenderer.DrawTemplateAt(ref canvas, anchor, template, content, 1000, 1000, ref state);
+        long after = GC.GetAllocatedBytesForCurrentThread();
+
+        Assert.True(drawn);
+        Assert.Equal(warmCalls + 10, canvas.Calls);
+        Assert.Equal(before, after);
     }
 
     private static RecordingNameplateCanvas Canvas() => new(new FixedGlyphFont(6f, 10f));

@@ -69,7 +69,7 @@ public static class NameplateTemplateLayout
             float componentCap = text.MaxWidth - 2f * text.OutlineThickness;
             float glyphCap = componentCap > 0f ? componentCap : float.PositiveInfinity;
             if (template.MaxContentWidth > 0f)
-                glyphCap = MathF.Min(glyphCap, template.MaxContentWidth);
+                glyphCap = MathF.Min(glyphCap, template.MaxContentWidth - 2f * text.OutlineThickness);
 
             if (resolved.Rect.Width - 2f * text.OutlineThickness > glyphCap)
             {

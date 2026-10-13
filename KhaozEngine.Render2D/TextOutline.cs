@@ -24,9 +24,12 @@ namespace KhaozEngine.Render2D
             destination[7] = new Vector2(thickness, thickness);
         }
 
-        /// <summary>Measures scaled text with the outline thickness added on both sides of each axis.</summary>
+        /// <summary>
+        /// Measures scaled text with the outline thickness added on both sides of each axis. A negative thickness
+        /// draws no outline, so it measures as zero.
+        /// </summary>
         public static Vector2 Measure(ITextMeasurer font, string text, float scale, float thickness) =>
-            font.Measure(text) * scale + new Vector2(2f * thickness);
+            font.Measure(text) * scale + new Vector2(2f * MathF.Max(0f, thickness));
 
         /// <summary>
         /// Draws the eight outline passes before the fill at <paramref name="position"/>.

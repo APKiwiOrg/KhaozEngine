@@ -16,6 +16,24 @@ public sealed class NameplateTemplateTests
         Assert.Throws<ArgumentException>(() => new NameplateTemplate(Array.Empty<NameplateComponent>()));
     }
 
+    [Fact]
+    public void ANullComponentListIsRefused()
+    {
+        Assert.Throws<ArgumentNullException>(() => new NameplateTemplate(null!));
+    }
+
+    [Fact]
+    public void ANullComponentIsRefused()
+    {
+        var error = Assert.Throws<ArgumentException>(() => new NameplateTemplate(new NameplateComponent[]
+        {
+            new NameplateTextComponent("name", NameplateSlot.Name),
+            null!,
+        }));
+
+        Assert.Equal("components", error.ParamName);
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]

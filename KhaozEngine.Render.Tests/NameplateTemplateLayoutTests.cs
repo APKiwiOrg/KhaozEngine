@@ -269,6 +269,7 @@ public sealed class NameplateTemplateLayoutTests
     [InlineData(60f, 40f, "Abc...", 38f)]
     [InlineData(40f, 60f, "Abc...", 38f)]
     [InlineData(2f, 50f, "Abcde...", 50f)]
+    [InlineData(0f, 49f, "Abcd...", 44f)]
     public void TextUsesTheSmallestPositiveGlyphCap(float maxWidth, float contentCap, string text, float width)
     {
         var template = new NameplateTemplate(new NameplateComponent[]

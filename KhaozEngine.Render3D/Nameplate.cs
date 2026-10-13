@@ -158,9 +158,9 @@ namespace KhaozEngine.Render3D
             return hash.ToHashCode();
         }
 
-        /// <inheritdoc/>
+        /// <summary>Whether two styles have equal values in every property.</summary>
         public static bool operator ==(NameplateStyle left, NameplateStyle right) => left.Equals(right);
-        /// <inheritdoc/>
+        /// <summary>Whether two styles differ in any property.</summary>
         public static bool operator !=(NameplateStyle left, NameplateStyle right) => !left.Equals(right);
 
         /// <summary>

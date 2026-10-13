@@ -4,7 +4,6 @@ using System.Numerics;
 using System.Reflection;
 using System.Threading;
 using KhaozEngine.Primitives;
-using KhaozEngine.Render2D;
 using KhaozEngine.Render3D;
 using Xunit;
 
@@ -128,7 +127,7 @@ public sealed class NameplateLegacyTemplateTests
     [Fact]
     public void AWarmCycleOfTwelveGeometriesAllocatesNothing()
     {
-        var canvas = new CountingCanvas(new FixedGlyphFont(6f, 10f));
+        var canvas = new CountingNameplateCanvas(new FixedGlyphFont(6f, 10f));
         Nameplate plate = Plate(1);
         var styles = new NameplateStyle[12];
         for (int i = 0; i < styles.Length; i++)
@@ -154,7 +153,7 @@ public sealed class NameplateLegacyTemplateTests
     [InlineData(4)]
     public void AWarmLegacyDrawAllocatesNothing(int barCount)
     {
-        var canvas = new CountingCanvas(new FixedGlyphFont(6f, 10f));
+        var canvas = new CountingNameplateCanvas(new FixedGlyphFont(6f, 10f));
         Nameplate plate = Plate(barCount);
         NameplateStyle style = NameplateStyle.Default;
         NameplatePlacementState state = default;
@@ -252,18 +251,6 @@ public sealed class NameplateLegacyTemplateTests
         Assert.Equal(3, canvas.Calls.Count);
         Assert.Equal("fill 447.000 480.000 106.000 20.000 0.080 0.090 0.110 0.920 6.000", canvas.Calls[0]);
         Assert.Equal("text \"Ox\" 494.000 485.000 1.000 1.000 1.000 1.000 1.000", canvas.Calls[2]);
-    }
-
-    private struct CountingCanvas(ITextMeasurer font) : INameplateCanvas
-    {
-        public ITextMeasurer Font => font;
-        public int Calls { get; private set; }
-
-        public void FillRounded(Vector4 rect, Color color, float cornerRadius) => Calls++;
-        public void StrokeRounded(Vector4 rect, Color color, float cornerRadius, float thickness) => Calls++;
-        public void Text(string text, Vector2 position, Color color, float scale) => Calls++;
-        public void OutlinedText(string text, Vector2 position, Color color, Color outline, float thickness, float scale) =>
-            Calls++;
     }
 
     private static object? ChangedValue(Type type, object? value)

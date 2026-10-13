@@ -12741,9 +12741,9 @@ panel) describe it as a **`NameplateTemplate`**: an ordered list of components, 
   NameplateSlot("mana")` adds your own). A template says WHERE a slot draws, the content says WHAT it holds.
 - **`NameplateContent`** holds the per-entity values. `SetText(slot, text, color, tint)` stores text (null or
   empty removes it), `SetBar(slot, fraction, fill, track, border)` stores a bar, and `Clear()` empties every slot
-  and restores `Opacity` to 1. `Opacity` (0..1) multiplies the alpha of every colour the plate draws, panel
-  included, so a fade in or out needs no second template. Reuse one instance per draw site: warmed slots set and
-  read without allocating.
+  and restores `Opacity` to 1. `Opacity` (0..1, a non-finite value drawing opaque) multiplies the alpha of every
+  colour the plate draws, panel included, so a fade in or out needs no second template. Reuse one instance per
+  draw site: warmed slots set and read without allocating.
 - **Three components.** `NameplateTextComponent` draws text with `FontScale`, an optional eight-way outline
   (`OutlineColor` and `OutlineThickness`), an optional `ShadowColor` at `ShadowOffset`, and its own `MaxWidth`
   ellipsis cap. `NameplateBadgeComponent` draws centred text on a padded rounded `BaseFill` with a border, and

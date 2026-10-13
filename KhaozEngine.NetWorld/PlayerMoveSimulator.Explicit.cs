@@ -10,6 +10,7 @@ namespace KhaozEngine.NetWorld;
 public sealed partial class PlayerMoveSimulator
 {
     readonly ExplicitPlayerMovement? explicitMovement;
+    readonly Action<PlayerMoveReadScope> releaseRead;
     PlayerMoveReadScope? explicitRead;
     int explicitReadActive;
 
@@ -78,7 +79,7 @@ public sealed partial class PlayerMoveSimulator
                     }
                 }
             }
-            explicitRead = new PlayerMoveReadScope(queries, outcome, EndExplicitRead, boundary);
+            explicitRead = new PlayerMoveReadScope(queries, outcome, releaseRead, boundary);
             return explicitRead;
         }
         catch

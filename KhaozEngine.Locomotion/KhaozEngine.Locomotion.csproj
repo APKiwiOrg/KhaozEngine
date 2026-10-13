@@ -15,6 +15,7 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="KhaozEngine.Game.Tests" />
+    <InternalsVisibleTo Include="KhaozEngine.Server.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.Movement.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.Movement" />
   </ItemGroup>

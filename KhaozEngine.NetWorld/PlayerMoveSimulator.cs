@@ -70,6 +70,7 @@ public sealed partial class PlayerMoveSimulator : ITickSimulator<PlayerMoveState
         clampXzAdapter = bounds is null ? null : ClampXzIn;
         mediumAdapter = medium is null ? null : MediumIn;
         this.explicitMovement = explicitMovement;
+        releaseRead = EndExplicitRead;
         Binding = borrowedBinding ?? OrdinaryPlayerMovement.Resolve(this.groundHeight, tuning, groundNormal, bounds,
             physics, medium, samplerSpace, explicitMovement, movementWaterField, movementRegistration, movementBoundary);
         ownsBinding = borrowedBinding is null;

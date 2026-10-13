@@ -172,11 +172,14 @@ public sealed class PanZoomControllerTests
     public void Resolver_runs_once_per_active_sample_and_never_for_native_pinch()
     {
         var deltas = new List<float>();
-        var rig = new PanZoomTestRig(new() { WheelZoomFactorResolver = (delta, _) =>
+        var rig = new PanZoomTestRig(new()
+        {
+            WheelZoomFactorResolver = (delta, _) =>
         {
             deltas.Add(delta);
             return 2;
-        } });
+        }
+        });
         rig.Step(Frame(samples: new[] { Wheel(1, new(20, 20)), Wheel(1, new(20, 20)) }), 0.12f);
         Assert.Equal(new[] { 1f, 1f }, deltas);
         Near(2, rig.Target.Scale);
@@ -248,11 +251,14 @@ public sealed class PanZoomControllerTests
     public void Identity_resolver_operations_consume_no_animation_time()
     {
         var deltas = new List<float>();
-        var rig = new PanZoomTestRig(new() { WheelZoomFactorResolver = (delta, _) =>
+        var rig = new PanZoomTestRig(new()
+        {
+            WheelZoomFactorResolver = (delta, _) =>
         {
             deltas.Add(delta);
             return delta > 0 ? 1 : 0.5f;
-        } });
+        }
+        });
         rig.Step(Frame(samples: new[] { Wheel(1, new(20, 20)), Wheel(1, new(20, 20)),
             Wheel(-1, new(20, 20)) }), 0.12f);
         Near(0.5f, rig.Target.Scale);
@@ -266,8 +272,11 @@ public sealed class PanZoomControllerTests
     public void Zero_duration_custom_steps_all_complete_in_order_at_zero_time()
     {
         int resolved = 0;
-        var rig = new PanZoomTestRig(new() { WheelZoomDuration = 0,
-            WheelZoomFactorResolver = (_, _) => { resolved++; return 2; } });
+        var rig = new PanZoomTestRig(new()
+        {
+            WheelZoomDuration = 0,
+            WheelZoomFactorResolver = (_, _) => { resolved++; return 2; }
+        });
         rig.Step(Frame(samples: new[] { Wheel(1, new(20, 20)), Wheel(1, new(80, 80)) }), 0);
         Near(4, rig.Target.Scale);
         Near(new(-120, -120), rig.Target.Translation);
@@ -292,11 +301,14 @@ public sealed class PanZoomControllerTests
     public void Boundary_identity_operations_do_not_delay_following_immediate_step()
     {
         var deltas = new List<float>();
-        var options = new PanZoomOptions { WheelZoomFactorResolver = (delta, _) =>
+        var options = new PanZoomOptions
+        {
+            WheelZoomFactorResolver = (delta, _) =>
         {
             deltas.Add(delta);
             return delta == 2 ? 1 : 2;
-        } };
+        }
+        };
         var rig = new PanZoomTestRig(options);
         rig.Step(Frame(samples: new[] { Wheel(1, new(20, 20)), Wheel(2, new(80, 80)) }), 0.06f);
         options.WheelZoomDuration = 0;

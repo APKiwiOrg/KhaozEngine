@@ -210,7 +210,10 @@ public sealed class PanZoomConsumerContractTests
     {
         var canvas = new PannableCanvas
         {
-            Viewport = Bounds, ContentBounds = new(0, 0, 2000, 2000), MinZoom = .5f, MaxZoom = 4
+            Viewport = Bounds,
+            ContentBounds = new(0, 0, 2000, 2000),
+            MinZoom = .5f,
+            MaxZoom = 4
         };
         canvas.Camera.Position = new(1000, 1000);
         return canvas;

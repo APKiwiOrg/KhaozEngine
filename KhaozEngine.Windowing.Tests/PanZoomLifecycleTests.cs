@@ -37,7 +37,10 @@ public sealed class PanZoomLifecycleTests
         Near(kind == 2 ? 2 : 1, rig.Target.Scale);
         Near(kind switch
         {
-            1 => new(3, 4), 2 => new(-20, -20), 3 => new(20, 0), _ => new Vector2(0, 40)
+            1 => new(3, 4),
+            2 => new(-20, -20),
+            3 => new(20, 0),
+            _ => new Vector2(0, 40)
         }, rig.Target.Translation);
     }
 

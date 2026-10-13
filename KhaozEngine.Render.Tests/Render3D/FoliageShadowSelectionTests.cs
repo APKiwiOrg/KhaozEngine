@@ -61,7 +61,9 @@ public sealed class FoliageShadowSelectionTests
             [new FoliageInstance(new MeshHandle(4, 1), transform, .1f, motion, true)], _ => local).Patches);
         var instance = new ModelRenderer.FoliageInstanceData
         {
-            Model = transform, Motion = motion.ToVector4(), Parameters = new Vector4(.1f, 0f, .5f, 0f),
+            Model = transform,
+            Motion = motion.ToVector4(),
+            Parameters = new Vector4(.1f, 0f, .5f, 0f),
         };
         FoliageInteractor[] actors =
         [

@@ -235,8 +235,11 @@ public sealed class FoliagePointShadowTests
         var meshes = new Dictionary<string, IReadOnlyList<MeshHandle>> { ["shrub"] = [box] };
         var options = new GroundCoverRenderOptions
         {
-            UseGpuBatches = true, FadeMode = GroundCoverFadeMode.HeightScale,
-            CastsShadows = true, DistantDensity = 1f, DrawRadius = 100f,
+            UseGpuBatches = true,
+            FadeMode = GroundCoverFadeMode.HeightScale,
+            CastsShadows = true,
+            DistantDensity = 1f,
+            DrawRadius = 100f,
             MotionProfiles = new Dictionary<string, FoliageMotionProfile> { ["shrub"] = Shrub },
         };
         ShadowPassDiagnostics Frame(float time)

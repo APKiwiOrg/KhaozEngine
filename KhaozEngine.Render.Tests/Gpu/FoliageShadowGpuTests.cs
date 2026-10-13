@@ -62,7 +62,9 @@ public sealed class FoliageShadowGpuTests(FoliageShadowGpuScene fixture) : IClas
             [new(fixture.Shrub, Matrix4x4.Identity, .1f, Shrub, true)]);
         var camera = new FlyCamera3D
         {
-            Position = new Vector3(0f, 3f, 9f), Yaw = MathF.PI, Pitch = -.25f,
+            Position = new Vector3(0f, 3f, 9f),
+            Yaw = MathF.PI,
+            Pitch = -.25f,
             AspectRatio = (float)FoliageShadowGpuScene.Width / FoliageShadowGpuScene.Height,
         };
         var faded = Wind with { WindFadeBladePixels = 200f };
@@ -203,8 +205,11 @@ public sealed class FoliageShadowGpuTests(FoliageShadowGpuScene fixture) : IClas
         var meshes = new Dictionary<string, IReadOnlyList<MeshHandle>> { ["shrub"] = [fixture.Shrub] };
         var options = new GroundCoverRenderOptions
         {
-            UseGpuBatches = true, FadeMode = GroundCoverFadeMode.HeightScale,
-            CastsShadows = true, DistantDensity = 1f, DrawRadius = 100f,
+            UseGpuBatches = true,
+            FadeMode = GroundCoverFadeMode.HeightScale,
+            CastsShadows = true,
+            DistantDensity = 1f,
+            DrawRadius = 100f,
             MotionProfiles = new Dictionary<string, FoliageMotionProfile> { ["shrub"] = Shrub },
         };
         try
@@ -307,7 +312,8 @@ public sealed class FoliageShadowGpuTests(FoliageShadowGpuScene fixture) : IClas
         MeshBounds bounds = MeshBounds.FromVertices(mesh.Vertices);
         var instance = new ModelRenderer.FoliageInstanceData
         {
-            Model = transform, Motion = Shrub.ToVector4(),
+            Model = transform,
+            Motion = Shrub.ToVector4(),
             Parameters = new Vector4(.1f, bounds.Min.Y,
                 bounds.Max.Y > bounds.Min.Y ? 1f / (bounds.Max.Y - bounds.Min.Y) : 0f, maps?.AlphaCutoff ?? 0f),
         };

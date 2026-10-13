@@ -33,24 +33,24 @@ public static class NameplateTemplateLayout
             switch (template.Components[i])
             {
                 case NameplateTextComponent text when content.TryGetText(text.Slot, out var value):
-                {
-                    Vector2 size = TextOutline.Measure(font, value.Text, text.FontScale, text.OutlineThickness);
-                    resolved.Drawn = true;
-                    resolved.Text = value.Text;
-                    resolved.Rect = new Rect(0f, 0f, size.X, size.Y);
-                    naturalWidth = MathF.Max(naturalWidth, size.X);
-                    break;
-                }
+                    {
+                        Vector2 size = TextOutline.Measure(font, value.Text, text.FontScale, text.OutlineThickness);
+                        resolved.Drawn = true;
+                        resolved.Text = value.Text;
+                        resolved.Rect = new Rect(0f, 0f, size.X, size.Y);
+                        naturalWidth = MathF.Max(naturalWidth, size.X);
+                        break;
+                    }
                 case NameplateBadgeComponent badge when content.TryGetText(badge.Slot, out var value):
-                {
-                    Vector2 glyph = TextOutline.Measure(font, value.Text, badge.FontScale, badge.OutlineThickness);
-                    float width = MathF.Max(badge.MinWidth, glyph.X + 2f * badge.PadX);
-                    resolved.Drawn = true;
-                    resolved.Text = value.Text;
-                    resolved.Rect = new Rect(0f, 0f, width, glyph.Y + 2f * badge.PadY);
-                    naturalWidth = MathF.Max(naturalWidth, width);
-                    break;
-                }
+                    {
+                        Vector2 glyph = TextOutline.Measure(font, value.Text, badge.FontScale, badge.OutlineThickness);
+                        float width = MathF.Max(badge.MinWidth, glyph.X + 2f * badge.PadX);
+                        resolved.Drawn = true;
+                        resolved.Text = value.Text;
+                        resolved.Rect = new Rect(0f, 0f, width, glyph.Y + 2f * badge.PadY);
+                        naturalWidth = MathF.Max(naturalWidth, width);
+                        break;
+                    }
                 case NameplateBarComponent bar:
                     resolved.Drawn = content.TryGetBar(bar.Slot, out _);
                     break;

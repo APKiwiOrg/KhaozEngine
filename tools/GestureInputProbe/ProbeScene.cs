@@ -20,8 +20,11 @@ internal sealed class ProbeScene
     readonly ProbeDiagnostics _diagnostics = new();
     readonly PannableCanvas _canvas = new()
     {
-        ContentBounds = new(0, 0, 2000, 2000), MinZoom = .25f, MaxZoom = 8,
-        Wheel = CanvasWheelMode.Pan, ScrollPanSpeed = 40
+        ContentBounds = new(0, 0, 2000, 2000),
+        MinZoom = .25f,
+        MaxZoom = 8,
+        Wheel = CanvasWheelMode.Pan,
+        ScrollPanSpeed = 40
     };
     readonly DraggableBottomSheet _sheet = new(new[]
     {

@@ -164,7 +164,8 @@ public sealed class NameplateTemplateLayoutTests
                 Height = 7f,
                 Attach = new NameplateAttach(AttachPoint.Top, null, AttachPoint.Bottom, new Vector2(0f, 3f)),
             },
-        }) { MinContentWidth = 90f };
+        })
+        { MinContentWidth = 90f };
         var content = FullHeader();
         content.SetText(NameplateSlot.Name, "Goblin", Color.White);
         var resolution = new NameplateResolution();
@@ -279,7 +280,8 @@ public sealed class NameplateTemplateLayoutTests
                 OutlineThickness = 1f,
                 MaxWidth = maxWidth,
             },
-        }) { MaxContentWidth = contentCap };
+        })
+        { MaxContentWidth = contentCap };
         var content = new NameplateContent();
         content.SetText(NameplateSlot.Name, "Abcdefghijkl", Color.White);
         var resolution = new NameplateResolution();
@@ -303,7 +305,8 @@ public sealed class NameplateTemplateLayoutTests
                 PadX = 3f,
                 PadY = 2f,
             },
-        }) { MaxContentWidth = 10f };
+        })
+        { MaxContentWidth = 10f };
         var content = new NameplateContent();
         content.SetText(NameplateSlot.Level, "123", Color.White);
         var resolution = new NameplateResolution();

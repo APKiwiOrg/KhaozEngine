@@ -32,7 +32,11 @@ public sealed class FoliageShiverMotionGpuTests
         using FoliageBatch batch = fx.Scene.CreateFoliageBatch([new FoliageInstance(mesh, Matrix4x4.Identity, .1f, profile)]);
         var settings = new FoliageRenderSettings
         {
-            DrawRadius = 100f, DistantDensity = 1f, WindStrength = .3f, WindDirection = Vector2.UnitX, WindFadeBladePixels = 30f,
+            DrawRadius = 100f,
+            DistantDensity = 1f,
+            WindStrength = .3f,
+            WindDirection = Vector2.UnitX,
+            WindFadeBladePixels = 30f,
         };
         void Draw(Scene3D scene, int n)
         {
@@ -51,7 +55,9 @@ public sealed class FoliageShiverMotionGpuTests
         Assert.NotEqual(last.WindFade.Y, current.WindFade.Y);
         var instance = new ModelRenderer.FoliageInstanceData
         {
-            Model = Matrix4x4.Identity, Parameters = new Vector4(.1f, 0f, 1f, 0f), Motion = profile.ToVector4(),
+            Model = Matrix4x4.Identity,
+            Parameters = new Vector4(.1f, 0f, 1f, 0f),
+            Motion = profile.ToVector4(),
         };
         var rasterClip = new Vector4[3];
         var currentClip = new Vector4[3];

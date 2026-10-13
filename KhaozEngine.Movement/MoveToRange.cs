@@ -69,7 +69,7 @@ public sealed partial class MoveToRange
     {
         ArgumentNullException.ThrowIfNull(context);
         context.ValidateTuning(tuning);
-        _navigation?.ValidateTuning(tuning);
+        _navigation?.Validate(context.ResolvedBinding);
         ValidateBody(body);
         if (!float.IsFinite(dt) || dt <= 0f) throw new ArgumentOutOfRangeException(nameof(dt));
         MovementBody shape = Body(body, tuning);

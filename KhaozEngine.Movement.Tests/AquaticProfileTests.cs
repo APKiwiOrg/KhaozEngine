@@ -157,11 +157,11 @@ public class AquaticProfileTests
             Duck with { SwimSurfaceSubmersionFraction = 0.61f },
         ];
 
-        aquatic.ValidateTuning(Duck);
+        aquatic.Validate(Duck);
         foreach (MoveTuning tuning in mismatched)
         {
-            Assert.Throws<ArgumentException>(() => aquatic.ValidateTuning(tuning));
-            ground.ValidateTuning(tuning);
+            Assert.Throws<ArgumentException>(() => aquatic.Validate(tuning));
+            ground.Validate(tuning);
         }
     }
 

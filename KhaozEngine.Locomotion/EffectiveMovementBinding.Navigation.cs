@@ -8,6 +8,8 @@ internal readonly record struct RestingAnchor(Vector3 Feet, SupportSample Suppor
 
 public sealed partial class EffectiveMovementBinding
 {
+    internal float PlacementOffset => _composition.PlacementOffset;
+
     internal MovementAvailability TryFindRestingAnchor(in FramedMovementState state,
         MovementQueryLease queries, out RestingAnchor anchor)
     {

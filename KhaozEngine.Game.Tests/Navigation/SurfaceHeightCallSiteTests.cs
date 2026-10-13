@@ -23,6 +23,8 @@ public class SurfaceHeightCallSiteTests
             "KhaozEngine.Navigation/NavSpace.cs:LayerAt:RestingHeightAt",
             "KhaozEngine.Movement/PhysicsNavBake.Profiles.cs:IsFloatNode:SurfaceHeightAt",
             "KhaozEngine.Movement/GroundNavigationBake.Writer.cs:WriteProfile:SurfaceHeightAt",
+            // Format 2 appends physical feet separately, preserving the raw topology section.
+            "KhaozEngine.Movement/GroundNavigationBake.Writer.cs:WriteRestingHeights:RestingHeightAt",
             "KhaozEngine.Navigation/NavLayerLinks.cs:GenerateCore:SurfaceHeightAt",
             "KhaozEngine.Navigation/NavLayerLinks.cs:GenerateCore:SurfaceHeightAt",
             "KhaozEngine.Navigation/NavHopLinks.cs:Generate:SurfaceHeightAt",

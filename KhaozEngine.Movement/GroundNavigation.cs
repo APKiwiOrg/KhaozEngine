@@ -6,7 +6,7 @@ using KhaozEngine.Navigation;
 namespace KhaozEngine.Movement;
 
 /// <summary>Immutable capsule and area checked ground routes, independent of the capture and physics world.</summary>
-public sealed class GroundNavigation
+public sealed partial class GroundNavigation
 {
     private readonly ProfileTuning _tuning;
     private readonly SwimFractions _swim;
@@ -37,7 +37,7 @@ public sealed class GroundNavigation
 
     /// <summary>Guarded region and point search with exact radius matching and unsmoothed cell-center routes.
     /// <see cref="RouteApproachOptions.StraightenRoutes"/> opts a <see cref="MoveToRange"/> into straightened
-    /// routes.</summary>
+    /// routes. Direct callers first call <see cref="Validate(EffectiveMovementBinding)"/> with their runtime binding.</summary>
     public IRegionPathPlanner Planner { get; }
 
     /// <summary>The baked capsule radius in metres.</summary>
@@ -53,20 +53,10 @@ public sealed class GroundNavigation
     /// <summary>The area footprint over the captured columns, which a bake writes and shares across profiles.</summary>
     internal NavAreaFootprint Footprint => _footprint;
 
-    internal void ValidateTuning(in MoveTuning tuning)
-    {
-        if (tuning.CapsuleRadius != _tuning.Radius || tuning.CapsuleHalfHeight != _tuning.HalfHeight ||
-            tuning.MaxSlopeRadians != _tuning.Slope || tuning.StepHeight != _tuning.Step)
-            throw new ArgumentException("Movement geometry must equal the baked profile geometry.", nameof(tuning));
-        // The swim fractions place an aquatic profile's float nodes.
-        if (Aquatic && (tuning.SwimEnterDepthFraction != _swim.Enter || tuning.SwimExitDepthFraction != _swim.Exit ||
-            tuning.SwimSurfaceSubmersionFraction != _swim.Submersion))
-            throw new ArgumentException("Swim fractions must equal the baked aquatic profile's.", nameof(tuning));
-    }
-
     /// <summary>Checks captured footprint areas and every directed crossed graph edge.
     /// Unknown, padded, off-grid and incompatible-height endpoints fail. Cross-layer segments must
-    /// be one accepted Stair link. This pure guard does not replace live collision resolution.</summary>
+    /// be one accepted Stair link. This pure guard does not replace live collision resolution. Direct callers first
+    /// call <see cref="Validate(EffectiveMovementBinding)"/> with their runtime binding.</summary>
     public bool AllowsSegment(Vector3 fromFeet, Vector3 toFeet)
     {
         if (!Resolve(fromFeet, out Node from) || !Resolve(toFeet, out Node to) ||

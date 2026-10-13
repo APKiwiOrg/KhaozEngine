@@ -20,6 +20,9 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   headroom and areas. Wet unit-pace bindings prove Holds, directed edges and Stair links from movement outcomes.
   Fresh grids publish resting feet heights in the capture frame, and unknown anchor queries or changed lease bases
   refuse the bake.
+- KENB format 2 persists contact profile identities and resting feet heights. Mixed contact and legacy aquatic
+  profiles load without new physics proofs, while all-legacy bakes retain their format 1 bytes. GroundNavigation
+  exposes binding and tuning compatibility checks, and MoveToRange validates its resolved binding before routing.
 
 ## 20.37.0
 

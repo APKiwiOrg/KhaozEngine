@@ -46,6 +46,21 @@ internal static partial class PrefabFixtures
         return f;
     }
 
+    internal static PrefabFixture NativeOwnedLight(float yaw, float scale, bool persistedFrame)
+    {
+        var f = SpacelessRoomless();
+        f.Document.Placements.Add(new() { Id = "owner", Kind = "doorway", AssetId = "doorway", X = 2, Y = 0, Z = 0, Yaw = yaw, Scale = scale });
+        var light = new MapLocalLightDoc(1, "lamp", World(MapPrefabChildKind.Placement, "owner"), new(2, 2, 0), Vector3.One, 1, 4, false);
+        f.Document.BuildingIntent = new(1, [], [], new[] { light }, []);
+        if (persistedFrame)
+        {
+            var frame = new MapEffectiveTransform(4, 1, -1, 0.17f, 0.8f);
+            f.Document.NativeResourceTransforms = new[] { new MapStandaloneResourceTransform(MapPrefabChildKind.Light, light.Id, frame,
+                MapPrefabAttachmentDescriptors.Digest(new MapPrefabLightChild(new(MapPrefabChildKind.Light, light.Id), light), frame)) };
+        }
+        return f;
+    }
+
     internal static PrefabFixture UnownedExplicitLight()
     {
         var f = Create();

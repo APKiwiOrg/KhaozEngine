@@ -17,6 +17,85 @@ namespace KhaozEngine.Tests.MapDoc.Prefabs;
 public class MapPrefabReviewRegressionTests
 {
     [Theory]
+    [InlineData(true, 0, 1, false)]
+    [InlineData(false, 0, 1, false)]
+    [InlineData(true, 0.371f, 1.2f, false)]
+    [InlineData(false, 0.371f, 1.2f, false)]
+    [InlineData(true, 0.371f, 1.2f, true)]
+    [InlineData(false, 0.371f, 1.2f, true)]
+    public void NativeOwnedLight_ExtractRoundTripAndPlacePreservesEffectiveFrame(bool selectOwner, float yaw, float scale, bool persistedFrame)
+    {
+        var f = PrefabFixtures.NativeOwnedLight(yaw, scale, persistedFrame);
+        Assert.Equal(persistedFrame, f.Document.NativeResourceTransforms?.Any(p => p.Kind == MapPrefabChildKind.Light) == true);
+        var before = Assert.Single(MapEffectiveAnnotations.Lights(PrefabFixtures.Effective(f)));
+        if (yaw == 0)
+        {
+            Assert.Equal(4, before.Position.X.ToSingle());
+            Assert.Equal(2, before.Position.Y.ToSingle());
+            Assert.Equal(4, before.Radius);
+        }
+        if (persistedFrame) Assert.Equal(3.2f, before.Radius, 5);
+        var selection = new List<MapPrefabReference> { PrefabFixtures.World(MapPrefabChildKind.Light, "lamp") };
+        if (selectOwner) selection.Add(PrefabFixtures.World(MapPrefabChildKind.Placement, "owner"));
+        var origin = new MapTransform(Vector3.Zero, 0, 1);
+        var asset = MapPrefabExtraction.Extract(f.Document, f.Assets, selection, origin, "native-lamp");
+        asset = MapPrefabFile.Read(MapPrefabFile.Write(asset), asset.Id);
+        Assert.Equal(selectOwner ? MapPrefabReferenceScope.Local : MapPrefabReferenceScope.World,
+            asset.Children.OfType<MapPrefabLightChild>().Single().Value.Owner!.Scope);
+        var assets = PrefabFixtures.PublishPrefab(f.Assets, asset);
+        var document = selectOwner ? PrefabFixtures.SpacelessRoomless().Document : f.Document;
+        document.NativeAssets = assets.Roots.ToList();
+        var placed = MapPrefabEdits.Prepare(document, assets, new MapPlacePrefab("copy", asset.Id, origin)).After;
+        string lamp = placed.Prefabs!.Instances.Single(i => i.Id == "copy").Bindings.Entries.Single(b => b.Child.Kind == MapPrefabChildKind.Light).WorldId;
+        var after = MapEffectiveAnnotations.Lights(MapPrefabResolver.Expand(placed, assets)).Single(l => l.Id == lamp);
+        Assert.Equal(before.Position.X.ToSingle(), after.Position.X.ToSingle(), 5);
+        Assert.Equal(before.Position.Y.ToSingle(), after.Position.Y.ToSingle(), 5);
+        Assert.Equal(before.Position.Z.ToSingle(), after.Position.Z.ToSingle(), 5);
+        Assert.Equal(before.Radius, after.Radius, 5);
+    }
+
+    [Fact]
+    public void UnpackedFlag_AloneChangesPrefabDigestAndManifestHash()
+    {
+        var f = PrefabFixtures.Create();
+        var set = f.Document.Prefabs!;
+        string digest = set.Digest();
+        string manifest = MapDocumentHash.OfManifest(f.Document);
+        f.Document.Prefabs = new(set.PayloadVersion, set.ExpansionVersion,
+            set.Instances.Select(i => i with { Unpacked = !i.Unpacked }).ToArray(), set.Transfers)
+        { Attachments = set.Attachments };
+        Assert.NotEqual(digest, f.Document.Prefabs.Digest());
+        Assert.NotEqual(manifest, MapDocumentHash.OfManifest(f.Document));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void UnpackedFlag_OnLiveInstanceRefusesBothIdentityPaths(bool stored)
+    {
+        var f = PrefabFixtures.Create();
+        string? directory = null;
+        if (stored)
+        {
+            directory = PrefabFixtures.TempDirectory();
+            MapDocumentFile.SaveTiled(f.Document, directory);
+        }
+        var set = f.Document.Prefabs!;
+        f.Document.Prefabs = new(set.PayloadVersion, set.ExpansionVersion,
+            set.Instances.Select(i => i with { Unpacked = true }).ToArray(), set.Transfers)
+        { Attachments = set.Attachments };
+        Assert.False(f.Document.Prefabs.Instances.Single().Removed);
+        if (stored)
+        {
+            var manifest = MapTiledFile.ReadManifest(directory!, new(), out var tiles);
+            manifest.Prefabs = f.Document.Prefabs;
+            var candidate = MapStoredSurfaceSource.FromManifest(directory!, manifest, tiles);
+            Assert.Throws<MapDocumentException>(() => MapAuthoredIdentityV2.Compute(candidate, f.Assets, PrefabFixtures.Options()));
+        }
+        else Assert.Throws<MapDocumentException>(() => Identity(f.Document, f.Assets, false));
+    }
+
+    [Theory]
     [InlineData(false, false)]
     [InlineData(true, false)]
     [InlineData(false, true)]

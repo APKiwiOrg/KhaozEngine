@@ -26,6 +26,14 @@ public static class MapEffectiveAnnotations
     public static IReadOnlyList<MapEffectiveMarker> Markers(MapEffectiveResources resources)
     { ArgumentNullException.ThrowIfNull(resources); return resources.EffectiveMarkers; }
 
+    /// <summary>An explicit light frame takes precedence over its placement owner's frame.</summary>
+    internal static MapEffectiveTransform? LightFrame(IReadOnlyDictionary<string, MapEffectiveTransform> transforms, MapLocalLightDoc light)
+    {
+        if (transforms.TryGetValue(MapEffectiveContext.Key(MapPrefabChildKind.Light, light.Id), out var frame)) return frame;
+        return light.Owner is { Kind: MapPrefabChildKind.Placement } owner &&
+            transforms.TryGetValue(MapEffectiveContext.Key(MapPrefabChildKind.Placement, owner.Id), out frame) ? frame : null;
+    }
+
     internal static IReadOnlyList<MapEffectiveLight> CaptureLights(MapBuildingIntent intent, IReadOnlyDictionary<string, MapExactPoint> points) =>
         Array.AsReadOnly(intent.Lights.OrderBy(l => l.Id, StringComparer.Ordinal).Select(l =>
             new MapEffectiveLight(l.PayloadVersion, l.Id, l.Owner?.Id, points[l.Id], l.Colour, l.Intensity, l.Radius, l.CastShadows)).ToArray());

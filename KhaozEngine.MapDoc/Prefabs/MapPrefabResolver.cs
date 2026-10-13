@@ -236,9 +236,8 @@ public static class MapPrefabResolver
         var lights = new List<MapLocalLightDoc>();
         foreach (var light in originalIntent.Lights)
         {
-            var kernel = context.Transform(MapPrefabChildKind.Light, light.Id);
-            if (kernel is null && light.Owner is { Kind: MapPrefabChildKind.Placement } owner)
-                kernel = context.Transform(MapPrefabChildKind.Placement, owner.Id);
+            var frame = MapEffectiveAnnotations.LightFrame(context.Transforms, light);
+            var kernel = frame is { } pose ? new MapResourceTransform(pose) : null;
             var point = kernel?.Point(Exact(light.Position)) ?? Exact(light.Position);
             lightPoints.Add(light.Id, point);
             lights.Add(light with { Position = new(point.X.ToSingle(), point.Y.ToSingle(), point.Z.ToSingle()), Radius = kernel is null ? light.Radius : (float)(light.Radius * kernel.Transform.Scale) });

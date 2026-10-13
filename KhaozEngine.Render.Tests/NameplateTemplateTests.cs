@@ -229,6 +229,10 @@ public sealed class NameplateTemplateTests
             constructor => constructor.GetParameters() is not [{ ParameterType: var type }] || type != typeof(NameplateComponent));
 
         Assert.True(creating.IsFamilyAndAssembly);
+        MethodInfo engineOwned = Assert.Single(typeof(NameplateComponent).GetMethods(
+            BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly),
+            method => method.Name == "EngineOwned");
+        Assert.True(engineOwned.IsAssembly && engineOwned.IsAbstract);
         string[] properties = Array.ConvertAll(
             typeof(NameplateComponent).GetProperties(BindingFlags.Instance | BindingFlags.Public), property => property.Name);
         Array.Sort(properties, StringComparer.Ordinal);

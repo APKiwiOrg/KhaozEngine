@@ -243,10 +243,10 @@ public sealed class NameplateTemplateDrawTests
     }
 
     [Theory]
-    [InlineData(float.NaN)]
-    [InlineData(float.PositiveInfinity)]
-    [InlineData(float.NegativeInfinity)]
-    public void ANonFiniteFractionDrawsNoFill(float fraction)
+    [InlineData(float.NaN, 6, null)]
+    [InlineData(float.PositiveInfinity, 7, "112.000")]
+    [InlineData(float.NegativeInfinity, 7, "0.000")]
+    public void ANaNFractionDrawsNoFillAndInfinitiesClamp(float fraction, int expectedCallCount, string? expectedFillWidth)
     {
         var content = FullHeader();
         content.SetBar(NameplateSlot.Health, fraction, Color.White, Color.Black);
@@ -254,9 +254,12 @@ public sealed class NameplateTemplateDrawTests
 
         Assert.True(Draw(canvas, HeaderTemplate(), content));
 
-        Assert.Equal(6, canvas.Calls.Count);
         Assert.Equal("fill 444.000 490.000 112.000 9.000 0.000 0.000 0.000 1.000 0.000", canvas.Calls[0]);
-        Assert.StartsWith("stroke ", canvas.Calls[1]);
+        Assert.Equal(expectedCallCount, canvas.Calls.Count);
+        if (expectedFillWidth is null)
+            Assert.StartsWith("stroke ", canvas.Calls[1]);
+        else
+            Assert.Equal($"fill 444.000 490.000 {expectedFillWidth} 9.000 1.000 1.000 1.000 1.000 0.000", canvas.Calls[1]);
     }
 
     [Fact]

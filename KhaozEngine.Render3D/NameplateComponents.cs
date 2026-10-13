@@ -19,6 +19,9 @@ public abstract record NameplateComponent
         Slot = slot;
     }
 
+    /// <summary>Seals the component kinds to the engine: code outside this assembly cannot override an internal abstract member, so it cannot subclass NameplateComponent.</summary>
+    internal abstract void EngineOwned();
+
     /// <summary>The component's unique name within its template, used as an attachment target.</summary>
     public string Id { get; init; }
 
@@ -32,6 +35,8 @@ public abstract record NameplateComponent
 /// <summary>Text with optional outline, shadow and an independent width cap.</summary>
 public sealed record NameplateTextComponent(string Id, NameplateSlot Slot) : NameplateComponent(Id, Slot)
 {
+    internal override void EngineOwned() { }
+
     /// <summary>Constant on-screen text scale.</summary>
     public float FontScale { get; init; } = 1f;
     /// <summary>The outline colour. Null, or a thickness of zero or less, draws plain text.</summary>
@@ -50,6 +55,8 @@ public sealed record NameplateTextComponent(string Id, NameplateSlot Slot) : Nam
 /// <summary>Text within a padded badge, with an optional content tint over its base fill.</summary>
 public sealed record NameplateBadgeComponent(string Id, NameplateSlot Slot) : NameplateComponent(Id, Slot)
 {
+    internal override void EngineOwned() { }
+
     /// <summary>Constant on-screen text scale.</summary>
     public float FontScale { get; init; } = 1f;
     /// <summary>The outline colour. Null, or a thickness of zero or less, draws plain text.</summary>
@@ -77,6 +84,8 @@ public sealed record NameplateBadgeComponent(string Id, NameplateSlot Slot) : Na
 /// <summary>A bar whose width and height describe the inner track. Its border sits outside the track.</summary>
 public sealed record NameplateBarComponent(string Id, NameplateSlot Slot) : NameplateComponent(Id, Slot)
 {
+    internal override void EngineOwned() { }
+
     /// <summary>Legacy bars omit the fill call when their clamped fraction is not positive.</summary>
     internal bool SkipEmptyFill { get; init; }
 

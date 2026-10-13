@@ -58,6 +58,22 @@ public sealed class NameplateLegacyTemplateTests
     }
 
     [Fact]
+    public void ANinthStyleEvictsTheOldestCachedTemplate()
+    {
+        var styles = new NameplateStyle[9];
+        var templates = new NameplateTemplate[9];
+        for (int i = 0; i < styles.Length; i++)
+        {
+            styles[i] = NameplateStyle.Default with { PadX = 200f + i };
+            templates[i] = LegacyFor(styles[i], 1);
+        }
+
+        for (int i = 1; i < styles.Length; i++)
+            Assert.Same(templates[i], LegacyFor(styles[i], 1));
+        Assert.NotSame(templates[0], LegacyFor(styles[0], 1));
+    }
+
+    [Fact]
     public void AStyleFadingEveryFrameKeepsTheCacheBounded()
     {
         var canvas = Canvas();

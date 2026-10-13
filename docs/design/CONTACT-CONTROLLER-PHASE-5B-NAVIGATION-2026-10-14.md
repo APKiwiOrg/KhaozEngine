@@ -4,7 +4,7 @@ Design for [#438](https://github.com/APKiwiOrg/KhaozEngine/issues/438) phase 5b 
 [#1299](https://github.com/APKiwiOrg/KhaozEngine/issues/1299). Source baseline: `ee6016aae` on `main`, staged 20.37.0
 with phase 5a. The binding inputs are the [phase 5 design](CONTACT-CONTROLLER-PHASE-5-SELECTOR-AND-NAVIGATION-2026-10-13.md#phase-5b-binding-inputs),
 as amended by ruling P5B-1 below. Written under the owner's instruction to continue the program to completion, so every
-choice below is a recorded ruling for the owner's review. Revision 4 answers review rounds 1 to 3.
+choice below is a recorded ruling for the owner's review. Revision 5 answers review rounds 1 to 4.
 
 Program row exit: legacy bakes still load, a new-controller bake round-trips, #1299 closes.
 
@@ -12,7 +12,7 @@ Program row exit: legacy bakes still load, a new-controller bake round-trips, #1
 
 In scope: ground navigation profiles on the ordinary contact controller. Capture, layering and footprint facts stay the
 legacy ones. Every node and edge is proved at its contact resting anchor through the profile's own effective movement
-binding. The phase also covers KENB format 2, validation on every door, runtime graph compatibility, the #1299
+binding, and the anchor is the node's physical pose for every runtime consumer. The phase also covers KENB format 2, validation on every door, runtime graph compatibility, the #1299
 navigation acceptance, the #1270 resting route on the engine side and one independent placement fix.
 
 Out of scope:
@@ -59,16 +59,20 @@ Facts verified against `ee6016aae`:
 7. `GroundNavigation.ValidateTuning` is internal and compares geometry and aquatic swim fractions only. A public
    explicit binding uses the Legacy selector with its water policy supplied separately, so no tuning-only check can
    tell it from Legacy.
-8. `IPhysicsQueryLeaseSource.GeometryGeneration` reports the static geometry generation. `PhysicsNavBake` records only
-   the origin.
+8. `IPhysicsQueryLeaseSource.AcquireQueryReadLease` returns an `IPhysicsQueryLease` whose `GeometryGeneration` reports
+   the static geometry generation. `PhysicsNavBake` records only the origin.
 9. The only v1 byte pin is the identity fingerprint golden. No full-file golden exists.
+10. Runtime consumers read a node's height through `NavGrid.SurfaceHeightAt`: region goal membership
+    (`GridPathPlanner.CellFeet`), `GroundNavigation.Resolve`, `RouteStraightener`, the path follower's end height and
+    `NavSpace` layer lookup. Topology builders read it too: `StepMask`, `NavLayerLinks`, `NavHopLinks` and layer bands.
 
 ## Rulings
 
 ### P5B-1 Resting anchors instead of footprint capture
 
 The phase 5a binding input "capture by the footprint rule" is superseded. Contact profiles keep the legacy raw capture,
-layering and footprint facts, and prove every node and edge at its contact resting anchor.
+layering and footprint facts, prove every node and edge at its contact resting anchor, and publish the anchor as the
+node's physical pose (P5B-13). Raw heights stay the topology identity.
 
 **Why:**
 
@@ -107,9 +111,12 @@ every `Load` expectation, before any stream read:
   served domain, so sharing is sound. The bake owns both bindings for one `BuildProfile` call and disposes them at its
   end. They are separate from the binding `GroundMoveContext` caches for its own steps, and a borrowed view is never
   disposed by the bake.
-- `Capture` records its basis: the physics world's `GeometryGeneration`, its origin and the classifier. A contact
-  `BuildProfile` refuses with `InvalidOperationException` when the current basis differs, so geometry changed after
-  capture, including by a classifier callback during capture, never mixes old axis facts with new contact facts.
+- When the physics world implements `IPhysicsQueryLeaseSource`, `Capture` acquires a read lease before sampling and
+  records its basis: the source, the lease's `GeometryGeneration` and the origin. After sampling and every classifier
+  call it acquires a second lease and throws if the generation or origin changed, so a classifier that mutates geometry
+  is refused. A contact `BuildProfile` refuses with `InvalidOperationException` when its own lease basis differs from
+  the recorded one, or when the capture recorded no basis because the world lacks the capability. Legacy capture and
+  legacy profiles on such worlds are unchanged.
 - `BuildProfile` preflights, with outward bounds, the full envelope its queries need (capture bounds, the body at the
   highest and lowest captured surfaces, the support search reach and footprint bounds) against the ordinary served
   scope and refuses an envelope the scope does not contain.
@@ -140,8 +147,8 @@ proof. A raw surface becomes a candidate only when all of these hold:
 5. **Hold.** One stationary step through the proof binding returns `Advanced`, grounded, within 3D 1 mm (P5B-7).
 
 The candidate keeps its raw height. Layering, grids, Stair candidates, layer bands and footprint facts are exactly the
-legacy ones built from raw heights, so no representation changes and nothing is re-layered. Anchors live only inside
-proofs and are recomputed by the same function wherever a proof needs them.
+legacy ones built from raw heights, so nothing is re-layered. The admitted anchor is recorded on the node as its resting
+height (P5B-13), and every proof reads that recorded value.
 
 A placement that seats away from its anchor, or a settled pose that moves by more than 1 mm on its next Hold, refuses
 the candidate. Where that happens on a reachable fixture it is a placement defect, fixed in the placement code, never
@@ -163,9 +170,12 @@ the raw ground point is past the line, because water is judged at the anchor. Le
 
 ### P5B-6 Settlement seats only with footing
 
-`SettlePlacement` seats a non-rising body only when the seated pose grants footing under the water policy. Otherwise it
-keeps the supplied position and vertical velocity, classifies water there and returns `Advanced`. A swimmer at its
-float line therefore stays at its float line.
+`SettlePlacement` seats a non-rising body only when the seated pose grants footing under the water policy. When initial
+placement validation succeeded and the provisional seat and its water decision are Known but footing is denied, it
+keeps the supplied position and vertical velocity, classifies water there and returns `Advanced`. It publishes neither
+the provisional seat nor its downward-velocity reset. A swimmer at its float line therefore stays at its float line.
+Initial shell, boundary, water-policy, Unknown, stale and owner-binding failures keep their existing non-Advanced
+outcomes, so the existing forbidden-initial-pose controls, including the three-door DryOnly row, are unchanged.
 
 Door matrix:
 
@@ -228,10 +238,13 @@ The format 2 identity is the format 1 identity with these fields added to each p
 `WaterTraversalPolicy` stores only its mode and surface jump speed. Its other members are engine constants that the
 engine version covers. Any other combination is `Corrupt`.
 
-The format 2 payload has exactly the format 1 layout. Contact profiles store raw heights, legacy layers, Stair
-candidate counts and acceptance bits, so the existing reader bounds and the existing fresh, load and rewrite rules apply
-unchanged. A loaded contact graph is rebuilt from its stored layers and the shared columns as legacy graphs are, never
-recaptured, and rewriting it reproduces its bytes.
+The format 2 payload is the format 1 layout, with one addition for each contact profile. After each of its layers, it
+stores one f32 resting height per open cell, in the same order as that layer's stored open heights. The count is the
+already decoded open-cell count, so no new length field or unbounded allocation exists. A resting height must be finite
+and inside the anchor search band of its raw height (raw minus the grounded reach, up to raw plus `StepHeight`), else the
+file is `Corrupt`. Raw heights, legacy layers, Stair candidate counts and acceptance bits are stored as format 1 stores
+them, so the existing reader bounds and fresh, load and rewrite rules apply. A loaded contact graph is rebuilt from its
+stored layers, resting heights and the shared columns, never recaptured, and rewriting it reproduces its bytes.
 
 ### P5B-10 Runtime graph compatibility
 
@@ -292,6 +305,22 @@ Intentional test dispositions:
 
 Every other legacy behavioural, round-trip and byte-identity test passes unchanged.
 
+### P5B-13 Physical node pose
+
+`NavGrid` gains optional per-cell resting heights, plain floats with no Locomotion dependency. `RestingHeightAt(x, z)`
+returns the resting height where one is set and the surface height otherwise, so legacy grids behave and serialize
+exactly as today.
+
+- Physical pose consumers read `RestingHeightAt`: region goal membership (`GridPathPlanner.CellFeet`),
+  `GroundNavigation.Resolve`, `RouteStraightener`, the path follower's end height and `NavSpace` layer lookup.
+- Topology builders keep `SurfaceHeightAt`: `StepMask`, `NavLayerLinks`, `NavHopLinks`, layer bands, Stair candidates
+  and the footprint facts.
+- The plan's first task classifies every `SurfaceHeightAt` caller into one of those two groups, and a test pins the
+  classification so a new caller has to choose.
+
+Fresh contact graphs set resting heights from admission. Loaded ones read them from format 2. Both therefore hand region
+predicates, `Resolve` and the follower the pose the body actually holds.
+
 ## Acceptance
 
 Compatibility:
@@ -335,6 +364,14 @@ Placement fix:
 - A swimmer settled at its float line over a bed within seating reach that grants no footing keeps its pose and holds
   within 1 mm, at spawn, cold restore and teleport. Transfer and continuation rows keep their no-seat assertions.
 
+Physical pose:
+
+- A region goal restricted to the low-lip cell that accepts feet within 1 mm of the anchor finds the node, and the
+  inverse goal at the raw height does not, for fresh and loaded graphs.
+- `Resolve` picks the node's own layer for a body resting at its anchor, at the edge of the anchor search band.
+- Contact `MoveToRange` traverses and stops across the low-lip waypoints in both directions.
+- Legacy grids report resting height equal to surface height, and every legacy byte stays the same.
+
 Traversal and runtime:
 
 - Contact edges step the proof binding. An edge whose Hold or slice returns a non-Advanced outcome is refused, and an
@@ -353,12 +390,13 @@ Cost record, from single local measurements only (no load or repeat run):
 
 ## Tasks
 
-1. Effective profiles, door validation, capture basis and runtime compatibility (P5B-2, P5B-3, P5B-10).
+1. Effective profiles, door validation, capture basis, runtime compatibility and the pose and topology split of
+   `NavGrid` heights (P5B-2, P5B-3, P5B-10, P5B-13).
 2. Locomotion seams: the proof binding factory, the anchor query, the settlement rule and the explicit arrival
    correction (P5B-3, P5B-4, P5B-6, P5B-8).
 3. Contact candidate admission and water policy (P5B-4, P5B-5).
 4. Contact traversal over movement results (P5B-7).
-5. KENB format 2 and the compatibility matrix (P5B-9).
+5. KENB format 2, resting heights and the compatibility matrix (P5B-9).
 6. Cost record, documentation, changelog and full verification (P5B-12).
 
 ## Review response
@@ -386,3 +424,11 @@ Rounds 1 to 3 (`review-1.md`, `review-2.md`, `review-3.md`, all Not ready):
 - F18: cost record (Acceptance).
 - H9: format 2 adds no payload section. The existing format 1 decode amplification is filed as #1390.
 - U1, U3: placement defects are fixed in placement, and sideways pushes refuse (P5B-4).
+
+Round 4 (`review-4.md`, Not ready, 0 Critical, 1 Important, 3 Minor, every earlier finding resolved):
+
+- J1: anchors become the node's physical pose for runtime consumers, stored in format 2 (P5B-13, P5B-9). This is the
+  format change the low-lip design said must come back for review, recorded here as a ruling.
+- J2: capture basis acquired from a read lease before and after sampling (P5B-3).
+- J3: the settlement fallback applies only after successful validation and Known seat and water decisions (P5B-6).
+- J4: #1389 no longer lists the settlement fix.

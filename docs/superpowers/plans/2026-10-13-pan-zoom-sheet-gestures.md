@@ -241,21 +241,21 @@ the cohesive Camera2D target adapter and frame-aware gesture owner. Modify
 `KhaozEngine.Gui.Tests/Gui/PannableCanvasTests.cs`, add `PannableCanvasGestureTests.cs`.
 
 **Interfaces:** `PannableCanvas.Update(InputManager input, float dtSeconds, bool hasKeyboardFocus = false,
-Func<Vector2, bool>? isBlocked = null)`, `CancelGestures()`, and read-only controller/config access.
+Func<Vector2, bool>? isBlocked = null)`, `CancelGestures()`, and read-only GestureController/GestureOptions access.
 Keep `Update(Pointer, float)` unchanged. A new `TryGetGestureTap(out Vector2 world)` returns accepted
 controller taps. Legacy TryGetTap remains unchanged and is documented as legacy release hit testing.
 
-- [ ] Add tests retaining all existing wheel Pan/Zoom and snap-stop assertions. New overload receives
+- [x] Add tests retaining all existing wheel Pan/Zoom and snap-stop assertions. New overload receives
   native magnify, mapped precise scroll and touch pinch. Assert a blocked start never moves the camera.
-- [ ] Run `build-slot --label canvas-red -- dotnet test KhaozEngine.Gui.Tests -c Release
+- [x] Run `build-slot --label canvas-red -- dotnet test KhaozEngine.Gui.Tests -c Release
   --filter 'FullyQualifiedName~PannableCanvas'`, expect new-test failure.
-- [ ] Implement the adapter, admitting before self-reservation. Retain clamps, EnablePan semantics
+- [x] Implement the adapter, admitting before self-reservation. Retain clamps, EnablePan semantics
   and legacy defaults. Frame-aware mode uses the configured wheel policy and zoom stops, while
   precise pan and native pinch remain distinct sources. Avoid applying raw wheel after the controller.
   Map CanvasWheelMode and ScrollPanSpeed to wheel options. For snap stops, supply the resolver using
   the existing adjacent-stop calculation, clamp the destination, then divide by current camera zoom.
   Native magnify and command+precise zoom bypass snapping. Keep the legacy overload immediate.
-- [ ] Add offset/scaled viewport, clamp-at-edge, drag-release-not-tap and lifecycle tests. Run the same
+- [x] Add offset/scaled viewport, clamp-at-edge, drag-release-not-tap and lifecycle tests. Run the same
   filter green. Commit explicit files and push.
 
 ### Task 5: Draggable sheet, detents and exact content handoff

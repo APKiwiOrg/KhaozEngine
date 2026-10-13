@@ -119,6 +119,7 @@ namespace KhaozEngine.Render3D
         /// height, so the exit threshold scales with plate size instead of needing a per-style tune.</summary>
         public float EdgeHysteresis { get; init; }
 
+        /// <inheritdoc/>
         public bool Equals(NameplateStyle other) =>
             PanelFill.Equals(other.PanelFill) && PanelBorder.Equals(other.PanelBorder)
             && PanelBorderThickness.Equals(other.PanelBorderThickness) && CornerRadius.Equals(other.CornerRadius)
@@ -130,8 +131,10 @@ namespace KhaozEngine.Render3D
             && EdgeBehavior == other.EdgeBehavior && EdgeMargin.Equals(other.EdgeMargin)
             && EdgeHysteresis.Equals(other.EdgeHysteresis);
 
+        /// <inheritdoc/>
         public override bool Equals(object? obj) => obj is NameplateStyle other && Equals(other);
 
+        /// <inheritdoc/>
         public override int GetHashCode()
         {
             var hash = new HashCode();
@@ -155,7 +158,9 @@ namespace KhaozEngine.Render3D
             return hash.ToHashCode();
         }
 
+        /// <inheritdoc/>
         public static bool operator ==(NameplateStyle left, NameplateStyle right) => left.Equals(right);
+        /// <inheritdoc/>
         public static bool operator !=(NameplateStyle left, NameplateStyle right) => !left.Equals(right);
 
         /// <summary>

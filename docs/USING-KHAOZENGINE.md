@@ -10510,13 +10510,16 @@ supplies no medium, and native worlds refuse either legacy move context.
 (`IPhysicsCapsuleFeatures`) a static meets, without refusing the static, which still collides and blocks:
 `LeafCapacity` (a compound of more than 64 leaves), `CurvedLeaf` (a sphere, capsule or cylinder leaf, which that query
 does not capture), `MeshTriangleCapacity` (a mesh over 65,536 triangles), `LocalExtent` (a leaf reaching more than
-64 m from its origin) and `HullCapacity`. `HullCapacity` is conservative: any convex hull over 130 points is flagged,
+64 m from its origin) and `HullCapacity`. `LocalExtent` remains a conservative diagnostic for boxes and hulls,
+whose shared vertex admission now allows 2048 m per axis with precision enforced per query. Full capsule-feature
+mesh capture retains its explicit 64 m subset. `HullCapacity` is conservative: any convex hull over 130 points is flagged,
 because 130 points always fit the backend's 256 faces and 1,524 face entries, even though a larger hull may still be
 captured. Every diagnostic predicts `IPhysicsCapsuleFeatures` capture only. The #438 contact controller's
 foot-support primitive certifies movement through `IPhysicsSupportFootprint`, which has different
 limits: it captures curved leaves, reads mesh triangles in the full admitted footprint column and caps one query at 256 relevant raw members,
-while it shares the 64 leaf and hull face limits. It applies its own 64 m local bound to curved leaf sizes and to the
-admitted mesh triangles, which `LocalExtent` does not predict, and one unsupported static in the column refuses
+while it shares the 64 leaf and hull face limits. Curved leaf sizes retain their own 64 m bound. Admitted mesh
+triangles use the shared 2048 m vertex range and world-enclosure gates, with error propagation and acceptance
+checked per query. `LocalExtent` does not predict those footprint decisions, and one unsupported static in the column refuses
 the whole footprint query.
 
 **Refusals.** `MapAssetShapes.Read` throws `MapDocumentException` for an asset that declares a `Surface` (support)

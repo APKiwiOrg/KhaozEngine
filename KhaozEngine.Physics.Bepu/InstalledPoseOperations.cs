@@ -68,7 +68,7 @@ internal static class InstalledPoseOperations
         GeometryInterval w = Subtract(Subtract(Subtract(Multiply(aw, bw), Multiply(ax, bx)), Multiply(ay, by)), Multiply(az, bz));
         if (!InstalledPoseOperator.Contains(x, world.Orientation.X) || !InstalledPoseOperator.Contains(y, world.Orientation.Y) ||
             !InstalledPoseOperator.Contains(z, world.Orientation.Z) || !InstalledPoseOperator.Contains(w, world.Orientation.W)) return false;
-        // Child offsets have their own finite 2048 m input bound. The 64 m vertex cap is not a
+        // Child offsets have their own finite 2048 m input bound. Vertex admission is not a
         // proof of an offset. QuaternionEx's doubled-factor placements are equivalent here:
         // doubling any admitted binary32 component is exact, finite, and multiplication commutes.
         GeometryVector position = Add(rootOperator.RoundedDirection(FeaturePoint.Exact(child.Position).Bounds),

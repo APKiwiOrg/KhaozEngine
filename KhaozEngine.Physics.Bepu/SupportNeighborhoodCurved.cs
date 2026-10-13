@@ -62,7 +62,7 @@ internal static class SupportNeighborhoodCurved
     }
 
     // The axis is the normalized enclosure of the installed operator's Y column, which holds both the real
-    // quaternion polynomial and the represented maps. Sizes share the local bound of captured polyhedron vertices.
+    // quaternion polynomial and the represented maps. Curved sizes retain their independent 64 m domain.
     internal static CapsuleFeatureStatus Leaf(Simulation simulation, TypedIndex index, in RigidPose pose, int leafId,
         List<SupportCurvedLeaf> leaves)
     {
@@ -88,7 +88,7 @@ internal static class SupportNeighborhoodCurved
             shape = SupportCurvedShape.Cylinder;
             (radius, half) = (cylinder.Radius, cylinder.HalfLength);
         }
-        const float local = RepresentedGeometryTransforms.MaximumLocalMagnitude;
+        const float local = 64f;
         if (!(radius > 0 && radius <= local) || !(half >= 0 && half <= local) ||
             (shape == SupportCurvedShape.Cylinder && half == 0))
             return CapsuleFeatureStatus.Unsupported;

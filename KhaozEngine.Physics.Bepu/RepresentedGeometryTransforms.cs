@@ -28,7 +28,11 @@ internal readonly struct GeometryVector
 internal static class RepresentedGeometryTransforms
 {
     internal const float MaximumPositionMagnitude = 2048f;
-    internal const float MaximumLocalMagnitude = 64f;
+    // Range admission, not a precision guarantee. Coefficients have magnitude below 2,
+    // so points, edges and cross normals are bounded by 6L+2048, 12L and 288L^2.
+    // At L=2048 their polynomial terms stay finite in binary64. Exact-arithmetic
+    // work caps and per-query publication and support error checks remain independent.
+    internal const float MaximumLocalMagnitude = MaximumPositionMagnitude;
     internal const double SquaredUnitTolerance = 1d / (1 << 20);
 
     /// <summary>Encloses the pinned backend quaternion polynomial and its binary32 evaluation.

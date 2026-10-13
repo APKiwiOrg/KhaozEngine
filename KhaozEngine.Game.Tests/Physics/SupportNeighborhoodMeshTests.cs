@@ -171,9 +171,8 @@ public class SupportNeighborhoodMeshTests
     [Fact]
     public void LargeMeshQueryReadsOnlyNearbyTriangles()
     {
-        // A 100 by 100 cell grid, 20,000 triangles over 20 m, plus one triangle 100 m out. That triangle lies past the
-        // 64 m local coordinate bound, so reading it would refuse the query. Read only near the probe, the mesh
-        // certifies, and its members match the oracle over every triangle.
+        // A 100 by 100 cell grid, 20,000 triangles over 20 m, plus one triangle 100 m out.
+        // Read only near the probe. The mesh certifies, and its members match the oracle over every triangle.
         var random = new Random(4438);
         var vertices = new List<Vector3>(Heightfield(random, 100, 0.2f, 0.05f, flat: false));
         Assert.Equal(60_000, vertices.Count);

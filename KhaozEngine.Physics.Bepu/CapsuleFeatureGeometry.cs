@@ -170,7 +170,7 @@ internal static class CapsuleFeatureGeometry
         in InstalledPoseOperator transform, out FeaturePoint world, bool exactZeroProducts = false)
     {
         world = default;
-        if (!Within(point, 64)) return CapsuleFeatureStatus.Unsupported;
+        if (!Within(point, RepresentedGeometryTransforms.MaximumLocalMagnitude)) return CapsuleFeatureStatus.Unsupported;
         GeometryVector enclosure = RepresentedGeometryTransforms.PosePoint(seamPose, point);
         if (!enclosure.IsResolved) return CapsuleFeatureStatus.Unsupported;
         // PosePoint is an operation correspondence record only. The common certified affine

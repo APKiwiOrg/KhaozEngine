@@ -95,6 +95,9 @@ Reject non-finite values and non-positive scale factors before they enter the sn
 Root callback delegates and block storage for the monitor lifetime. Remove the monitor before input
 or window teardown, including partial-initialization failure. Filter other windows and ignore input
 while unfocused or captured. Native begin/end/cancel events must survive even when their delta is zero.
+Contain managed exceptions at native callback boundaries, but retain the first setup, callback,
+removal or storage-release failure as a queryable AppWindow diagnostic. False native registration
+or removal results are failures too. A backend that is intentionally unsupported is normal fallback.
 
 ### Windows and other desktop backends
 
@@ -147,6 +150,9 @@ Callers cancel when hiding or replacing a view. No synthetic release may become 
 - Discrete wheel zoom is anchored to the event cursor and animated over a short configured duration.
   Preserve order when anchors differ. Coalesce only compatible adjacent steps. Cancellation clears
   remaining steps. Total factors compose multiplicatively rather than by summing scale deltas.
+  Before a later direct pan or magnify event, finish the pending wheel remainder in event order.
+  This input-driven completion also applies at zero dt, keeping direct gestures immediate without
+  moving an earlier wheel effect after them. Idle zero-dt updates still advance no animation.
 - Precise scrolling pans directly. Magnify zooms directly. Ctrl/Cmd scrolling zooms once instead of
   also panning. Mixed events in one frame retain their order and event-time modifiers.
 - Two touches zoom about the previous centroid, then pan by centroid movement, preserving the
@@ -170,6 +176,10 @@ legacy `Update(Pointer, float)` overload's immediate wheel behavior, Pan default
 SnapZoomLevels. The adapter owns clamp and cursor anchoring. Both paths share camera transform math.
 The new path exposes inertia and gesture configuration, consumes full input, and reports accepted
 taps instead of treating drag release as a tap. Document which update and tap APIs form each path.
+Wheel policy is explicit in controller options. An optional wheel-factor resolver lets the canvas
+choose adjacent snap stops when each ordered wheel operation becomes active, without exposing camera
+state to Windowing. Custom-resolver samples are not coalesced. Native pinch and precise-scroll zoom
+bypass that resolver. Command+precise-scroll zoom has a separate sensitivity in raw window points.
 
 ## DraggableBottomSheet
 

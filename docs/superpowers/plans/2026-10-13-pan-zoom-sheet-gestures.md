@@ -115,6 +115,9 @@ an authoritative stream, even with no samples. An internal unavailable empty sin
 default for old InputState constructors. Existing snapshot copies preserve that frame identity.
 Task 3 uses legacy wheel fallback only when IsAvailable is false. Add tests that cleared native
 samples cannot revive retained legacy scroll, while copied old synthetic frames retain fallback.
+Add immutable `NativeGestureFailure` with stage Install/Remove/Release/Callback, message and optional
+original exception. Registration retains its first Failure and AppWindow exposes NativeGestureFailure.
+False install/removal must be observable. No attempted backend means normal fallback, not a failure.
 
 - [ ] Add failing normalizer tests for precise scroll units, Cocoa Y inversion, magnify factors,
   zero-delta phases, event-time modifiers, native momentum and rejected non-finite events.
@@ -139,6 +142,9 @@ Assert.Equal(new Vector2(24, 30), precise.ScrollDelta); // no GLFW 0.1 conversio
   Other platforms produce unclassified wheel samples, never inferred precision.
 - [ ] Test install failure, partial initialization, disposal twice, callback after disposal, another
   window's event and begin/end with zero delta through the actual registration owner and pure decoder.
+  Assert first-failure diagnostics for false install/removal and thrown install/remove/release/callback
+  errors, while proving roots and storage retain their safe lifetime. Assertions belong outside
+  exception-contained callbacks so a failing test cannot be swallowed as a native callback exception.
   Record separately that these tests do not prove physical OS delivery.
 - [ ] Repeat the focused command green. Inspect native ABI and lifetime against Apple/Windows docs
   and existing interop patterns. Commit explicit files and push.
@@ -147,6 +153,7 @@ Assert.Equal(new Vector2(24, 30), precise.ScrollDelta); // no GLFW 0.1 conversio
 
 **Files:** Create `KhaozEngine.Windowing/IPanZoomTarget.cs`, `PanZoomController.cs`,
 `PanZoomOptions.cs`, `DragMotionTracker.cs`, `WheelZoomAnimation.cs`, `TouchPanZoomGesture.cs`.
+Modify `InputAccumulator.cs` and `NativeGestureRegistration.cs` for explicit stream capability.
 Extend existing recognizers only for additive reset/cancel support where reused.
 Tests in `KhaozEngine.Windowing.Tests/PanZoomControllerTests.cs`,
 `PanZoomTouchTests.cs`, `PanZoomLifecycleTests.cs`, `DragMotionTrackerTests.cs`.
@@ -164,12 +171,26 @@ Tests in `KhaozEngine.Windowing.Tests/PanZoomControllerTests.cs`,
   double-tap radius 24 units, wheel factor 1.1 per unit, wheel duration 0.12 seconds,
   inertia decay 8 per second, stationary-release cutoff 0.08 seconds. Keyboard disabled by default,
   with 400 units/second pan and factor 2 per second zoom when enabled.
-- Internal DragMotionTracker exposes accepted drag delta, release velocity, tap eligibility and reset.
+- Public DragMotionTracker exposes accepted drag delta, release velocity, tap eligibility and reset.
   Sheet and controller consume its outcomes, with no public camera dependency.
+- `InputAccumulator.EnablePointerGestures()` declares an authoritative source for its lifetime.
+  NativeGestureRegistration calls it on construction, including managed wheel fallback. Calling
+  OnPointerGesture also declares the source before focus/capture filtering. A legacy accumulator
+  using only OnScroll keeps an unavailable stream so the controller can use its scalar fallback.
+- Wheel options: `WheelMode` (`PanZoomWheelMode.Pan`/`Zoom`, default Zoom), `WheelPanSpeed`
+  (40 target screen units per wheel unit), nullable `Func<float, float, float> WheelZoomFactorResolver`
+  (wheel delta and proposed factor to resolved factor), and `PreciseScrollZoomLogFactorPerPoint`
+  (0.01f). Resolve custom wheel factors once when their queued operation becomes active.
+  Do not coalesce custom-resolver samples. Reject non-finite/non-positive resolved factors.
+  Reset pending wheel animation when mode/resolver policy changes.
 
 - [ ] Add failing single-pointer tests: from origin (20,20), move to (26,20), then (30,20), and assert
   zero followed by (10,0). Release after 0.08 seconds stationary has zero inertia. New press cancels
   existing inertia before movement. Blocked start stays inert after blocker removal.
+  Preserve Pointer's existing same-frame press/release tap contract. A snapshot containing both
+  button edges with no held button must still tap once when admitted, and never tap when blocked.
+  Prove legacy OnScroll + Snapshot input zooms through fallback, while an enabled native source
+  whose samples were cleared never revives retained scalar scroll.
 - [ ] Run `build-slot --label pan-zoom-red -- dotnet test KhaozEngine.Windowing.Tests -c Release
   --filter 'FullyQualifiedName~PanZoom|FullyQualifiedName~DragMotionTracker'` and inspect failure.
 - [ ] Implement drag/admission/cancellation and analytic inertia. With velocity v and decay k,
@@ -180,6 +201,10 @@ Tests in `KhaozEngine.Windowing.Tests/PanZoomControllerTests.cs`,
   release inertia. Event modifiers decide behavior even if frame-level modifiers differ.
   Use legacy scalar wheel input only when `input.Gestures.IsAvailable` is false, never merely when
   Samples is empty. Native cancellation can intentionally publish an empty authoritative stream.
+  Command+Wheel overrides Pan mode. Command+PreciseScroll uses exp(rawPointY * pointSensitivity),
+  independently of DPI, viewport scale and notch factor. Before a subsequent direct pan/magnify
+  operation, complete pending wheel remainders in order, including at zero dt. This is input-driven
+  completion, not idle animation advancement. Cancellation instead discards remaining wheel effects.
 - [ ] Implement touch arbitration with stable IDs. More than two contacts cancels until all release.
   Rebase coincident pairs and contact replacement. A second touch arriving within 0.1 seconds may
   qualify for a two-finger tap, subject to the 0.3-second duration and slop for both contacts.
@@ -190,6 +215,10 @@ Tests in `KhaozEngine.Windowing.Tests/PanZoomControllerTests.cs`,
   suppression, resize, focus loss, capture, held-contact restart inhibition and focused keyboard tests.
   Compare inertia at 0.1 versus 0.04+0.06 seconds within 1e-4. Compare same-anchor animation final
   factors across representative time partitions. Zero/invalid input must never emit NaN.
+  Assert Wheel(A), Magnify(B), Wheel(C) against an ordered affine oracle, including partially animated
+  A. Test the wheel resolver receives each wheel sample once and never native/touch pinch. Two
+  samples select two stops while one magnitude-100 sample selects one. Precise command zoom must
+  have equal factors across DPI/design scales and remain continuous between snap stops.
 - [ ] Run the focused command green, then existing GestureRecognizer/PointerGesture/PinchRecognizer
   filters once if those types changed. Commit explicit files and push.
 
@@ -211,6 +240,9 @@ controller taps. Legacy TryGetTap remains unchanged and is documented as legacy 
 - [ ] Implement the adapter, admitting before self-reservation. Retain clamps, EnablePan semantics
   and legacy defaults. Frame-aware mode uses the configured wheel policy and zoom stops, while
   precise pan and native pinch remain distinct sources. Avoid applying raw wheel after the controller.
+  Map CanvasWheelMode and ScrollPanSpeed to wheel options. For snap stops, supply the resolver using
+  the existing adjacent-stop calculation, clamp the destination, then divide by current camera zoom.
+  Native magnify and command+precise zoom bypass snapping. Keep the legacy overload immediate.
 - [ ] Add offset/scaled viewport, clamp-at-edge, drag-release-not-tap and lifecycle tests. Run the same
   filter green. Commit explicit files and push.
 

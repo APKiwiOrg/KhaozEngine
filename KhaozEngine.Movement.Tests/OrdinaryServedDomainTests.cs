@@ -68,8 +68,13 @@ public class OrdinaryServedDomainTests
     {
         var field = MovementWaterField.Level("world", 1000, -2000);
         var tuning = OrdinaryContactScene.DefaultTuning with
-        { CapsuleRadius = 1, CapsuleHalfHeight = 2, SwimSurfaceSubmersionFraction = 0.5f,
-            SwimBuoyancyStiffness = 10, Water = new(WaterTraversalMode.SurfaceSwimmer) };
+        {
+            CapsuleRadius = 1,
+            CapsuleHalfHeight = 2,
+            SwimSurfaceSubmersionFraction = 0.5f,
+            SwimBuoyancyStiffness = 10,
+            Water = new(WaterTraversalMode.SurfaceSwimmer)
+        };
         using var scene = new OrdinaryContactScene(tuning, (_, _) => -2000,
             extent: new(new(-20, -2000, -20), new(20, 1000, 20), -2000, -2000), water: field);
         var swimmer = new MoveState { Position = Vector3.Zero, Swimming = true, WaterExcursion = WaterExcursionState.Surface };
@@ -90,8 +95,12 @@ public class OrdinaryServedDomainTests
     public void ReplayCommitmentAndContinuationUseOneResidentScope()
     {
         using var scene = new OrdinaryContactScene();
-        var input = new MoveState { Position = new(0, 0.75f, 0), Grounded = true,
-            Commitment = new(1, Vector2.UnitX, 4, 7, scene.Tuning.Gravity, 0.15f, 0, 3) };
+        var input = new MoveState
+        {
+            Position = new(0, 0.75f, 0),
+            Grounded = true,
+            Commitment = new(1, Vector2.UnitX, 4, 7, scene.Tuning.Gravity, 0.15f, 0, 3)
+        };
         var commands = new[] { new MoveCommand(Vector2.UnitY, false, 0), new MoveCommand(-Vector2.UnitX, true, 1),
             new MoveCommand(Vector2.One, false, 2) };
         var dry = input;
@@ -138,8 +147,12 @@ public class OrdinaryServedDomainTests
         var tuning = OrdinaryContactScene.DefaultTuning with { Water = new(WaterTraversalMode.SurfaceSwimmer, 7) };
         using var scene = new OrdinaryContactScene(tuning, (_, _) => -4,
             extent: new(new(-20, -4, -20), new(20, 4, 20), -4, -4), water: new FastField());
-        var input = new MoveState { Position = new(0, -0.15f, 0), Swimming = true,
-            WaterExcursion = WaterExcursionState.Surface };
+        var input = new MoveState
+        {
+            Position = new(0, -0.15f, 0),
+            Swimming = true,
+            WaterExcursion = WaterExcursionState.Surface
+        };
         using var lease = scene.Acquire();
         var moved = scene.Binding.StepTowards(new(input, scene.Frame, null), Vector2.UnitX, false, 0.1f, lease);
         Assert.Equal(MovementStepOutcome.Advanced, moved.Outcome);

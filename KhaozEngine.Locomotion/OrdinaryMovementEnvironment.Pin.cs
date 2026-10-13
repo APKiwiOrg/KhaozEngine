@@ -35,16 +35,61 @@ internal sealed class OrdinaryMovementEnvironmentPin : IMovementEnvironmentPin, 
         AssertCurrent();
         if (!ValidSpace(body.CurrentSpace)) return NoPoint(MovementAvailability.Invalid);
         if (_owner.WaterField is null) return new(MovementAvailability.Known, body.CurrentSpace, null, false, 1, null);
-        if (!OrdinaryMovementEnvironment.TryTranslateExact(body.Centre, Frame.PhysicsOrigin, out Vector3 absolute))
+        Vector3 origin = Frame.PhysicsOrigin;
+        // The framed composition of the dry adapters. Horizontal rounding belongs to that composition.
+        Vector3 absolute = body.Centre + origin;
+        if (!MovementEnvironmentValidation.Finite(absolute)) return NoPoint(MovementAvailability.Unresolved);
+        MovementWaterPoint point = SampleField(body, absolute);
+        if (point.Availability != MovementAvailability.Known) return point;
+        int residual = OrdinaryMovementEnvironment.ExactSign(body.Centre.Y, origin.Y, -absolute.Y);
+        if (residual != 0 && VerticalRoundingStraddles(body, absolute, point, residual, out MovementWaterPoint probe))
+            return probe.Availability == MovementAvailability.Invalid ? probe : NoPoint(MovementAvailability.Unresolved);
+        if (point.Interval is not { } wet) return point;
+        float lower = wet.LowerY - origin.Y, upper = wet.UpperY - origin.Y, surface = wet.NominalSurfaceY - origin.Y;
+        double feet = (double)body.Centre.Y - body.HalfHeight;
+        // The local interval is rounded too. It may not move a boundary across the local centre feet.
+        if (!float.IsFinite(lower) || !float.IsFinite(surface) || !(lower < upper) || feet < lower || feet >= upper)
             return NoPoint(MovementAvailability.Unresolved);
-        var point = _owner.WaterField.SampleCentreWater(new(absolute, body.Radius, body.HalfHeight, body.CurrentSpace, body.CurrentSupport));
+        var interval = new MovementWaterInterval(lower, upper, surface, wet.UpperIsFreeSurface,
+            wet.LowerBoundaryId, wet.UpperBoundaryId);
+        return new(point.Availability, point.Space, point.Domain, point.InWater, point.SpeedScale, interval);
+    }
+
+    /// <summary>True when the exact absolute centre and its rounded binary32 value lie on different sides of a
+    /// surface or bed. The adjacent value beyond the exact centre bounds the rounding interval.</summary>
+    bool VerticalRoundingStraddles(in MovementBodyQuery body, Vector3 absolute, in MovementWaterPoint point,
+        int residual, out MovementWaterPoint probe)
+    {
+        probe = point;
+        if (point.Interval is { } wet) return !ExactFeetInside(body, wet);
+        float beyond = residual > 0 ? MathF.BitIncrement(absolute.Y) : MathF.BitDecrement(absolute.Y);
+        if (!float.IsFinite(beyond)) return true;
+        probe = SampleField(body, absolute with { Y = beyond });
+        if (probe.Availability != MovementAvailability.Known) return true;
+        if (probe.Interval is { } entered) return ExactFeetInside(body, entered);
+        // Both neighbours are dry. Water could only hide between them inside the field's vertical extent.
+        MovementWaterExtent extent = _owner.WaterField!.Extent;
+        float low = Math.Min(absolute.Y, beyond), high = Math.Max(absolute.Y, beyond);
+        return OrdinaryMovementEnvironment.ExactSign(high, -body.HalfHeight, -extent.Minimum.Y) > 0 &&
+            OrdinaryMovementEnvironment.ExactSign(low, -body.HalfHeight, -extent.Maximum.Y) < 0;
+    }
+
+    // Canonical centre-feet membership of the exact absolute centre: lower <= centre - halfHeight < upper.
+    bool ExactFeetInside(in MovementBodyQuery body, in MovementWaterInterval interval)
+    {
+        float originY = Frame.PhysicsOrigin.Y;
+        return OrdinaryMovementEnvironment.ExactSign(body.Centre.Y, originY, -body.HalfHeight, -interval.LowerY) >= 0 &&
+            OrdinaryMovementEnvironment.ExactSign(body.Centre.Y, originY, -body.HalfHeight, -interval.UpperY) < 0;
+    }
+
+    MovementWaterPoint SampleField(in MovementBodyQuery body, Vector3 absolute)
+    {
+        var point = _owner.WaterField!.SampleCentreWater(new(absolute, body.Radius, body.HalfHeight, body.CurrentSpace,
+            body.CurrentSupport));
         AssertCurrent();
         if (!point.IsValid || point.Availability == MovementAvailability.Known && point.Space != body.CurrentSpace)
             return NoPoint(MovementAvailability.Invalid);
-        if (point.Availability != MovementAvailability.Known || point.Interval is null) return point;
-        if (!OrdinaryMovementEnvironment.TryTranslateExact(point.Interval.Value, -Frame.PhysicsOrigin.Y, out MovementWaterInterval interval))
-            return NoPoint(MovementAvailability.Unresolved);
-        return new(point.Availability, point.Space, point.Domain, point.InWater, point.SpeedScale, interval);
+        return point;
     }
 
     public MovementSupportSet EnumerateSupport(in MovementSupportRequest request, Span<MovementSupportCandidate> candidates)
@@ -124,19 +169,20 @@ internal sealed class OrdinaryMovementEnvironmentPin : IMovementEnvironmentPin, 
         ground = null;
         if (!request.IsValid || !ValidSpace(request.Body.CurrentSpace)) return MovementAvailability.Invalid;
         Vector2 axis = new(request.Body.Centre.X, request.Body.Centre.Z);
-        Vector3 absolute = OrdinaryMovementEnvironment.Translate(new(axis.X, 0, axis.Y),
-            new(Frame.PhysicsOrigin.X, 0, Frame.PhysicsOrigin.Z), out double axisError);
-        if (axisError != 0) return MovementAvailability.Unresolved;
-        float height = _owner.GroundHeight(absolute.X, absolute.Z);
-        double local = (double)height - Frame.PhysicsOrigin.Y;
-        if (!float.IsFinite(height) || local > Witness.Scope.EnvelopeMax.Y) return MovementAvailability.Unresolved;
+        Vector3 origin = Frame.PhysicsOrigin;
+        // The framed delegate the dry path uses. Its rounded axes define this field, so they are exact.
+        float x = axis.X + origin.X, z = axis.Y + origin.Z;
+        float height = _owner.GroundHeight(x, z);
+        if (!float.IsFinite(height)) return MovementAvailability.Unresolved;
+        float local = height - origin.Y;
+        if (local > Witness.Scope.EnvelopeMax.Y) return MovementAvailability.Unresolved;
         if (local < Witness.Scope.EnvelopeMin.Y) return MovementAvailability.Known;
         OrdinaryMovementExtent extent = _owner.Registration.Extent;
         if (extent.AnalyticMinimumY is not { } lower || extent.AnalyticMaximumY is not { } upper || height < lower || height > upper)
             return MovementAvailability.Unresolved;
-        Vector3 normal = _owner.GroundNormal?.Invoke(absolute.X, absolute.Z) ?? Vector3.UnitY;
+        Vector3 normal = _owner.GroundNormal?.Invoke(x, z) ?? Vector3.UnitY;
         if (!MovementEnvironmentValidation.Unit(normal)) return MovementAvailability.Unresolved;
-        ground = new(axis, (float)local, normal, _owner.AnalyticOwner, _owner.Space, null, _owner.Identity);
+        ground = new(axis, local, normal, _owner.AnalyticOwner, _owner.Space, null, _owner.Identity);
         return MovementAvailability.Known;
     }
 

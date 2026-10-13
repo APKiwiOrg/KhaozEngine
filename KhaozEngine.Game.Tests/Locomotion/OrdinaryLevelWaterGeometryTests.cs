@@ -52,16 +52,32 @@ public class OrdinaryLevelWaterGeometryTests
         switch (row)
         {
             case "exit": initial = new() { Position = new(0, 0.85f, 0), Grounded = true, Swimming = true }; break;
-            case "hop": initial = new() { Position = new(0, -0.15f, 0), Swimming = true,
-                WaterExcursion = WaterExcursionState.Surface }; jump = true; break;
+            case "hop":
+                initial = new()
+                {
+                    Position = new(0, -0.15f, 0),
+                    Swimming = true,
+                    WaterExcursion = WaterExcursionState.Surface
+                }; jump = true; break;
             case "buoyancy": initial = initial with { Swimming = true, WaterExcursion = WaterExcursionState.Surface }; break;
             case "shore":
             case "corner": initial = new() { Position = new(0, high + 0.75f, 0), Grounded = true }; direction = Vector2.One; break;
-            case "bed": initial = new() { Position = new(0, -3.2f, 0), Swimming = true,
-                WaterExcursion = WaterExcursionState.Surface, VerticalVelocity = -100 }; break;
+            case "bed":
+                initial = new()
+                {
+                    Position = new(0, -3.2f, 0),
+                    Swimming = true,
+                    WaterExcursion = WaterExcursionState.Surface,
+                    VerticalVelocity = -100
+                }; break;
             case "down-seat": initial = new() { Position = new(0, high + 0.75f, 0), Grounded = true }; direction = Vector2.UnitX; break;
-            case "dry-band": initial = new() { Position = new(0, -0.15f, 0), Swimming = true,
-                WaterExcursion = WaterExcursionState.Surface }; direction = Vector2.UnitX; break;
+            case "dry-band":
+                initial = new()
+                {
+                    Position = new(0, -0.15f, 0),
+                    Swimming = true,
+                    WaterExcursion = WaterExcursionState.Surface
+                }; direction = Vector2.UnitX; break;
             case "lag": initial = new() { Position = new(0, 0.45f, 0), Grounded = true }; direction = Vector2.UnitX; break;
         }
         using var expected = new AnalyticMovementEnvironment([new("room", new(new(-32), new(32)))],
@@ -117,19 +133,23 @@ public class OrdinaryLevelWaterGeometryTests
                 case "entry": Assert.True(result.State.State.Swimming); break;
                 case "exit": Assert.False(result.State.State.Swimming); break;
                 case "buoyancy": Assert.True(result.State.State.Position.Y > initial.Position.Y); break;
-                case "hop": Assert.Equal(WaterExcursionState.AirborneFromWater, result.State.State.WaterExcursion);
+                case "hop":
+                    Assert.Equal(WaterExcursionState.AirborneFromWater, result.State.State.WaterExcursion);
                     Assert.Equal((float)(7d - (double)tuning.Gravity * Dt), result.State.State.VerticalVelocity); break;
-                case "shore": Assert.Equal(MovementStepOutcome.Blocked, result.Outcome);
+                case "shore":
+                    Assert.Equal(MovementStepOutcome.Blocked, result.Outcome);
                     Assert.False(result.State.State.Swimming);
                     Assert.Equal(initial.Position.X, result.State.State.Position.X);
                     Assert.True(result.State.State.Position.Z > initial.Position.Z);
                     Assert.True(result.State.State.Position.Y - 0.75f > deepLine); break;
                 case "bed": Assert.True(result.State.State.Position.Y - 0.75f >= -4); break;
                 case "down-seat": Assert.True(result.State.State.Swimming); break;
-                case "corner": Assert.Equal(MovementStepOutcome.Blocked, result.Outcome);
+                case "corner":
+                    Assert.Equal(MovementStepOutcome.Blocked, result.Outcome);
                     Assert.True(result.State.State.Position.X + 0.25f <= 0.28f);
                     Assert.True(result.State.State.Position.Y - 0.75f > deepLine); break;
-                case "forbidden": Assert.Equal(MovementStepOutcome.PlacementRefused, result.Outcome);
+                case "forbidden":
+                    Assert.Equal(MovementStepOutcome.PlacementRefused, result.Outcome);
                     Assert.Equal(initial.Position, result.State.State.Position); break;
                 case "lag": Assert.True(result.State.State.Position.Y > initial.Position.Y); break;
             }

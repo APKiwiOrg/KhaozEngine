@@ -33,8 +33,12 @@ Register excluded statics before publication so their provenance participates in
 The optional `IPhysicsStaticGeometrySource` marker keeps a registration valid across steps and pure rebases.
 Without it, a fresh physics geometry generation requires a fresh registration.
 
-Supply absolute ground delegates and a `MovementBoundary`. The served query domain includes exterior
-footprint, signal look-ahead and vertical reach margins, independently of commands or replay length.
+Supply absolute ground delegates and a `MovementBoundary.Rectangle` or `MovementBoundary.Circle`. Each physics
+frame captures that boundary once in local coordinates with double arithmetic and its configured identity, as
+the explicit heads capture `WorldBounds`. Analytic ground samples the same framed delegate as the dry adapters,
+`groundHeight(x + origin.X, z + origin.Z) - origin.Y`, so ordinary dry movement equals direct dry movement in any
+frame. The served query domain includes exterior footprint, signal look-ahead and vertical reach margins,
+independently of commands or replay length.
 `CreateOrdinaryScope(frame)` returns the same cold scope for that frame. Capture the ordinary boundary
 before acquisition, acquire with `TryAcquire`, then use the binding's tick, placement or continuation doors.
 Ground residency holes return Unresolved when a query needs them. Support enumeration always refuses.
@@ -43,9 +47,9 @@ Ground residency holes return Unresolved when a query needs them. Support enumer
 `MovementWaterField.Level(worldId, surfaceY, floorY)` supplies an immutable finite bed and strict free
 surface over all XZ. The installer's extent supplies its finite resident horizontal bounds.
 Finite fields must fit that declared extent. Pins convert interval heights and contact columns through
-the captured physics origin. Point facts require exact centre and interval conversions, including dry
-membership, and return Unresolved when a conversion loses precision. Mutable producers advance
-`Generation` before changing answers.
+the captured physics origin. A point answers Unresolved only when rounding its centre or its local interval
+moves the centre feet across a surface or bed. Traces add their conversion error to the certified error under
+the 0.001 m budget. Mutable producers advance `Generation` before changing answers.
 
 An ordinary binding owns a view created from the source when none is supplied. A supplied view is
 borrowed after source validation and must represent the registration's selected exclusions.

@@ -5,23 +5,33 @@ namespace KhaozEngine.Locomotion;
 
 public sealed partial class OrdinaryMovementEnvironment
 {
-    internal static bool TryTranslateExact(Vector3 value, Vector3 origin, out Vector3 translated)
+    /// <summary>The exact sign of a + b + c + d for binary32 operands, through a nonoverlapping
+    /// binary64 expansion. Its largest nonzero component carries the sign of the whole sum.</summary>
+    internal static int ExactSign(float a, float b, float c, float d = 0)
     {
-        translated = Translate(value, origin, out _);
-        return ExactSum(value.X, origin.X, translated.X) && ExactSum(value.Y, origin.Y, translated.Y) &&
-            ExactSum(value.Z, origin.Z, translated.Z);
+        Span<double> expansion = stackalloc double[4];
+        int count = 0;
+        Grow(expansion, ref count, a);
+        Grow(expansion, ref count, b);
+        Grow(expansion, ref count, c);
+        Grow(expansion, ref count, d);
+        for (int i = count - 1; i >= 0; i--)
+            if (expansion[i] != 0) return Math.Sign(expansion[i]);
+        return 0;
     }
 
-    internal static bool TryTranslateExact(in MovementWaterInterval interval, float originY, out MovementWaterInterval translated)
+    static void Grow(Span<double> expansion, ref int count, double value)
     {
-        translated = Translate(interval, originY, out _);
-        return ExactSum(interval.LowerY, originY, translated.LowerY) && ExactSum(interval.UpperY, originY, translated.UpperY) &&
-            ExactSum(interval.NominalSurfaceY, originY, translated.NominalSurfaceY);
+        double carry = value;
+        for (int i = 0; i < count; i++)
+        {
+            double sum = carry + expansion[i];
+            double virtualPart = sum - carry;
+            expansion[i] = (carry - (sum - virtualPart)) + (expansion[i] - virtualPart);
+            carry = sum;
+        }
+        expansion[count++] = carry;
     }
-
-    // Both inverse differences are needed because a binary64 sum can also lose a small binary32 addend.
-    static bool ExactSum(float value, float origin, float sum) =>
-        (double)sum - value == origin && (double)sum - origin == value;
 
     internal static Vector3 Translate(Vector3 value, Vector3 origin, out double error)
     {

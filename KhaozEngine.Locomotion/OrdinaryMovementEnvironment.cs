@@ -24,7 +24,7 @@ public sealed partial class OrdinaryMovementEnvironment : IMovementEnvironmentPr
     readonly object _cacheGate = new();
     MovementQueryScope _scope;
     MovementScopeWitness? _witness;
-    OrdinaryMovementBoundary? _localBoundary;
+    MovementBoundary? _localBoundary;
     (long Physics, long Registration, long Water) _tuple;
     bool _hasTuple;
     long _generation;
@@ -37,7 +37,7 @@ public sealed partial class OrdinaryMovementEnvironment : IMovementEnvironmentPr
     {
         ArgumentNullException.ThrowIfNull(registration);
         ArgumentNullException.ThrowIfNull(groundHeight);
-        ArgumentNullException.ThrowIfNull(boundary);
+        OrdinaryMovementBoundary.Validate(boundary);
         MovementConfigurationValidation.ValidateOrdinaryContact(tuning, physics, true, true, false, waterField is not null);
         if (!ReferenceEquals(physics.SourceWorld, registration.SourceWorld))
             throw new ArgumentException("The ordinary view and registration must share their source world.", nameof(physics));
@@ -84,7 +84,7 @@ public sealed partial class OrdinaryMovementEnvironment : IMovementEnvironmentPr
             if (result != MovementAvailability.Known) throw new ArgumentException("The ordinary domain cannot be witnessed.", nameof(frame));
             _scope = scope;
             _witness = witness;
-            _localBoundary = new(_boundary, frame);
+            _localBoundary = OrdinaryMovementBoundary.Capture(_boundary, frame);
             return scope;
         }
     }

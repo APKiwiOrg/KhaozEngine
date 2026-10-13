@@ -102,8 +102,12 @@ public class OrdinaryLevelWaterTests
         Assert.Equal(MovementStepOutcome.Advanced, entry.Outcome);
         Assert.True(entry.State.State.Swimming);
         Assert.True(entry.State.State.Position.Y > submerged.State.Position.Y);
-        var atSurface = new MoveState { Position = new(0, -0.15f, 0), Swimming = true,
-            WaterExcursion = WaterExcursionState.Surface };
+        var atSurface = new MoveState
+        {
+            Position = new(0, -0.15f, 0),
+            Swimming = true,
+            WaterExcursion = WaterExcursionState.Surface
+        };
         var hop = scene.Binding.Step(new(atSurface, scene.Frame, null), new(Vector2.Zero, false, 0, jump: true), dt, lease);
         Assert.Equal(WaterExcursionState.AirborneFromWater, hop.State.State.WaterExcursion);
         Assert.Equal((float)(7d - (double)tuning.Gravity * dt), hop.State.State.VerticalVelocity);

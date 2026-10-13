@@ -80,15 +80,57 @@ public class OrdinaryAnalyticGroundTests
     }
 
     [Fact]
-    public void AnalyticAxesThatCannotBeConvertedExactlyRefuse()
+    public void AnalyticAxesUseTheFramedDryTranslation()
     {
-        using var scene = new OrdinaryContactScene(origin: new(16777216, 0, 0),
-            extent: new(new(16777196, -4, -20), new(16777236, 4, 20), 0, 0));
+        Vector3 origin = new(16777216, 0, 0);
+        float sampledX = float.NaN, sampledZ = float.NaN;
+        using var scene = new OrdinaryContactScene(origin: origin,
+            height: (x, z) => { sampledX = x; sampledZ = z; return 0; },
+            extent: new(new(16777196, -4, -20), new(16777236, 4, 20), 0, 0),
+            boundary: MovementBoundary.Rectangle(16777196, -20, 16777236, 20));
         using var lease = scene.Acquire();
-        var state = scene.State(new(1, 0.75f, 0));
+        Vector3 centre = new(1, 0.75f, 0.5f);
+        var state = scene.State(centre);
         Assert.Equal(MovementAvailability.Known, lease.RebuildSelection(state, out var selection));
-        var body = new MovementBodyQuery(state.State.Position, 0.25f, 0.75f, selection.Space, null);
-        Assert.Equal(MovementAvailability.Unresolved, lease.SampleAnalyticGround(new(body, 0, 0, 0,
-            new(selection.Space, body.Feet)), out _));
+        var body = new MovementBodyQuery(centre, 0.25f, 0.75f, selection.Space, null);
+        Assert.Equal(MovementAvailability.Known, lease.SampleAnalyticGround(new(body, 0, 0, 0,
+            new(selection.Space, body.Feet)), out var ground));
+        Assert.Equal(centre.X + origin.X, sampledX);
+        Assert.Equal(centre.Z + origin.Z, sampledZ);
+        Assert.Equal(0f, ground!.Value.Height);
+        Assert.Equal(new Vector2(centre.X, centre.Z), ground.Value.Axis);
+    }
+
+    [Theory]
+    [InlineData(0f, 0f, 0f)]
+    [InlineData(256f, 0f, 0f)]
+    [InlineData(256f, 3.3f, -128f)]
+    [InlineData(4096f, 0f, 0f)]
+    public void FramedSlopedAnalyticStepsEqualTheFramedDirectDryPath(float originX, float originY, float originZ)
+    {
+        Func<float, float, float> height = (x, z) => 0.2f * (x - originX) + 0.1f * (z - originZ);
+        Vector3 slopeNormal = Vector3.Normalize(new(-0.2f, 1, -0.1f));
+        Func<float, float, Vector3> normal = (_, _) => slopeNormal;
+        using var scene = new OrdinaryContactScene(height: height, normal: normal, origin: new(originX, originY, originZ),
+            extent: new(new(originX - 20, -8, originZ - 20), new(originX + 20, 8, originZ + 20), -6, 6),
+            boundary: MovementBoundary.Rectangle(originX - 20, originZ - 20, originX + 20, originZ + 20));
+        // The dry adapter's framed delegates: local axes plus the origin, absolute height minus its Y.
+        Func<float, float, float> framedHeight = (x, z) => height(x + originX, z + originZ) - originY;
+        Func<float, float, Vector3> framedNormal = (x, z) => normal(x + originX, z + originZ);
+        var direction = new Vector2(0.6f, 0.8f);
+        var state = new MoveState { Position = new(0.3f, framedHeight(0.3f, -0.2f) + 0.75f, -0.2f), Grounded = true };
+        float startX = state.Position.X;
+        for (int tick = 0; tick < 6; tick++)
+        {
+            var direct = CharacterMovement.StepTowards(state, direction, false, 0.1f, framedHeight, scene.Tuning,
+                framedNormal, scene.Physics);
+            using var lease = scene.Acquire();
+            var ordinary = scene.Binding.StepTowards(new(state, scene.Frame, null), direction, false, 0.1f, lease);
+            Assert.Equal(MovementStepOutcome.Advanced, ordinary.Outcome);
+            Assert.Equal(direct, ordinary.State.State);
+            state = direct;
+        }
+        Assert.True(state.Position.X > startX + 0.5f);
+        Assert.True(state.Grounded);
     }
 }

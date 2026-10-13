@@ -26,7 +26,8 @@ internal sealed class OrdinaryContactScene : IDisposable
     internal OrdinaryContactScene(MoveTuning? tuning = null, Func<float, float, float>? height = null,
         Func<float, float, Vector3>? normal = null, OrdinaryMovementExtent? extent = null,
         IMovementWaterField? water = null, Vector3? origin = null,
-        Action<BepuPhysicsWorld, OrdinaryMovementRegistration.Builder>? install = null)
+        Action<BepuPhysicsWorld, OrdinaryMovementRegistration.Builder>? install = null,
+        MovementBoundary? boundary = null)
     {
         Tuning = tuning ?? DefaultTuning;
         Height = height ?? ((_, _) => 0f);
@@ -37,7 +38,7 @@ internal sealed class OrdinaryContactScene : IDisposable
         if (origin.HasValue) Physics.Rebase(origin.Value);
         using (var lease = Physics.AcquireQueryReadLease()) Registration = builder.Build(lease);
         Binding = EffectiveMovementBinding.Ordinary(Tuning, Physics, Registration, Height, Normal,
-            MovementBoundary.Rectangle(-20, -20, 20, 20), water);
+            boundary ?? MovementBoundary.Rectangle(-20, -20, 20, 20), water);
         Frame = new(WorldFrame.Origin, Physics.Origin, 1);
         Scope = Binding.CreateOrdinaryScope(Frame);
     }

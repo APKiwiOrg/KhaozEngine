@@ -70,6 +70,34 @@ public class OrdinaryMovementEnvironmentTests
     }
 
     [Fact]
+    public void TraceAtOrigin256CertifiesItsConversionErrorWithinTheBudget()
+    {
+        var field = new ObservedField(MovementWaterField.Level("world", 0, -4));
+        using var scene = new OrdinaryContactScene(height: (_, _) => -4, water: field, origin: new(256, 0, 0),
+            extent: new(new(236, -5, -20), new(276, 4, 20), -4, -4),
+            boundary: MovementBoundary.Rectangle(236, -20, 276, 20));
+        using var lease = scene.Acquire();
+        Vector3 centre = new(0.4f, -2.1f, 0.3f);
+        Assert.Equal(MovementAvailability.Known, lease.RebuildSelection(scene.State(centre), out var selection));
+        var body = new MovementBodyQuery(centre, 0.25f, 0.75f, selection.Space, null);
+        var spans = new MovementCoverageSpan[64];
+        var contacts = new MovementDomainContact[256];
+        var result = lease.TraceWater(new(body, new(0.1f, 0, 0)), spans, contacts);
+        Assert.Equal(MovementAvailability.Known, result.Availability);
+        Vector3 observed = field.ObservedQuery.Body.Centre;
+        double inputError = Math.Abs(observed.X - ((double)centre.X + 256));
+        Assert.True(inputError > 0);
+        var reference = MovementWaterField.Level("world", 0, -4).TraceWater(field.ObservedQuery, new("reference", 1, "reference"),
+            new MovementCoverageSpan[64], new MovementDomainContact[256]);
+        Assert.Equal(MovementAvailability.Known, reference.Availability);
+        Assert.True(result.CertifiedErrorMetres >= reference.CertifiedErrorMetres + inputError);
+        Assert.True(result.CertifiedErrorMetres <= MovementQueryLease.CoverageSkinMetres);
+        Assert.True(result.ContactsWritten > 0);
+        Assert.Equal(-4f, contacts[0].Interval.LowerY);
+        Assert.Equal(0f, contacts[0].Interval.UpperY);
+    }
+
+    [Fact]
     public void BorrowedViewsSurviveDisposalAndOwnedReadsRefuseDisposal()
     {
         using var world = new BepuPhysicsWorld(Vector3.Zero);

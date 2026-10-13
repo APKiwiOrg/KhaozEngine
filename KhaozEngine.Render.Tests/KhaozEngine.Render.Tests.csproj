@@ -36,6 +36,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.App/KhaozEngine.App.csproj" />
+    <ProjectReference Include="../KhaozEngine.Attachments.Render3D/KhaozEngine.Attachments.Render3D.csproj" />
     <ProjectReference Include="../KhaozEngine.Collision/KhaozEngine.Collision.csproj" />
     <!-- Gpu/GpuTelemetryTests.cs names TelemetrySessionInfo, the telemetry session header's options type. -->
     <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />

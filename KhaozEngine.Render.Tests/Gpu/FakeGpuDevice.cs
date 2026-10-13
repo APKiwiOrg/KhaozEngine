@@ -108,6 +108,11 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>Absolute 1-based buffer creation to fail, or zero for no injected failure.</summary>
         internal int ThrowOnBufferCreate { get; set; }
 
+        internal void FailBufferCreationAfter(int successfulCreates) =>
+            ThrowOnBufferCreate = Buffers.Count + successfulCreates + 1;
+        internal void FailTextureCreationAfter(int successfulCreates) =>
+            ThrowOnTextureCreate = Textures.Count + successfulCreates + 1;
+
         /// <summary>Every buffer this factory has handed out, in creation order. See <see cref="Textures"/>.</summary>
         internal List<FakeBuffer> Buffers { get; } = new();
         internal List<FakeFramebuffer> Framebuffers { get; } = new();

@@ -599,21 +599,6 @@ namespace KhaozEngine.Render3D
             return new TextureHandle(_textures.Count - 1);
         }
 
-        /// <summary>Upload a glTF material's auto-read <see cref="GltfMaterialMaps"/> (from
-        /// <see cref="GltfLoader.LoadWithMaterial"/> / <see cref="GltfLoader.LoadSkinnedWithMaterial"/>) into a
-        /// <see cref="SurfaceMaps"/>: one <see cref="LoadTexture(byte[],int,int,TextureMipPolicy)"/> per present map. An absent map
-        /// stays a <c>default</c> handle (the renderer falls back to its default for that slot - white albedo, flat
-        /// normal, zero roughness), so an all-absent <paramref name="maps"/> yields an all-default
-        /// <see cref="SurfaceMaps"/>. The uploaded textures are owned by the scene and freed in
-        /// <see cref="Dispose"/>. Pass the result to <see cref="LoadMesh(GltfMesh,SurfaceMaps)"/> /
-        /// <see cref="LoadSkinnedMesh(SkinnedGltfMesh,SurfaceMaps)"/>.</summary>
-        public SurfaceMaps LoadSurfaceMaps(GltfMaterialMaps maps)
-        {
-            TextureHandle Upload(DecodedImage? img) =>
-                img is { } i ? LoadTexture(i.Rgba, i.Width, i.Height) : default;
-            return new SurfaceMaps(Upload(maps.Albedo), Upload(maps.Normal), Upload(maps.Roughness), maps.AlphaCutoff);
-        }
-
         /// <summary>Opt-in convenience: upload a mesh and bind a glTF material's auto-read
         /// <see cref="GltfMaterialMaps"/> in one call - equivalent to
         /// <c>LoadMesh(mesh, LoadSurfaceMaps(maps))</c>. Absent maps fall back to the renderer defaults; an
@@ -642,7 +627,7 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>Upload a multi-material prop (one textured sub-mesh per source material, from
-        /// <see cref="PropLoader.LoadPropParts"/> or <see cref="GltfLoader.LoadPartsWithMaterials"/>) and return a
+        /// <see cref="PropLoader.LoadPropParts"/> or <see cref="GltfLoader.LoadPartsWithMaterials(string)"/>) and return a
         /// <see cref="PropHandle"/> that draws them as one unit. Each part is a normal textured mesh
         /// (<see cref="LoadMesh(GltfMesh,GltfMaterialMaps)"/>), so it flows through the same instanced draw path -
         /// this is the multi-texture-per-primitive render path: distinct textures on distinct sub-ranges, instanced
@@ -650,7 +635,7 @@ namespace KhaozEngine.Render3D
         public PropHandle LoadProp(IReadOnlyList<GltfMeshPart> parts) => new PropHandle(LoadPartHandles(parts));
 
         /// <summary>Upload a multi-material prop's parts (from <see cref="PropLoader.LoadPropParts"/> /
-        /// <see cref="PropLoader.LoadPropAuto"/> / <see cref="GltfLoader.LoadPartsWithMaterials"/>) and return the raw
+        /// <see cref="PropLoader.LoadPropAuto"/> / <see cref="GltfLoader.LoadPartsWithMaterials(string)"/>) and return the raw
         /// per-part <see cref="MeshHandle"/> list, one textured sub-mesh per source material. This is the multi-part
         /// scatter form: drop the list into a <c>id -&gt; parts</c> map for
         /// <c>KhaozEngine.Terrain.PropRenderer</c>'s multi-part draw path, where each part instances at the shared

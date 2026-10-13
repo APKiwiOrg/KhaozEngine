@@ -5,7 +5,7 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 20.38.0
+## 20.39.0
 
 - Navigation bake doors normalize effective profile kinds before identity work or stream reads. Malformed Contact
   selections refuse as arguments, while Contact aquatic profiles name #1389. Captures record and verify leased
@@ -27,6 +27,14 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   Stored navigation identities retain their bitwise comparisons and deterministic bytes.
 - Disposing a physics navigation capture releases its retained physics source and classifier without disposing
   caller-owned providers. Immutable columns, options and origin remain available as data.
+
+## 20.38.0
+
+- Added GPU-free rigid attachment definitions, strict JSON and embedded GLB validation in
+  `KhaozEngine.Attachments`. The separate renderer arm is included in Game3D and provides named-joint
+  binding, shared scene uploads, stable part/material motion identities and allocation-free submission.
+- The tile scene exposes attachment uploads through an optional capability. Render3D adds material-part
+  import from GLB bytes, transactional surface-map loading and explicit release of owned maps.
 
 ## 20.37.0
 

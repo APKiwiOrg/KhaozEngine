@@ -373,6 +373,12 @@ material base colour. So a palette-painted kit needs neither textures nor a mate
 
 ## The scene seam (`ITileWorldScene`, `Scene3DTileWorldScene`)
 
+`Scene3DTileWorldScene` also implements the optional `IRigidAttachmentScene` capability from
+`KhaozEngine.Attachments.Render3D`. `UploadAttachment(parts)` delegates transactional upload to
+`Scene3DAttachmentScene`, returns an owning `IAttachmentMeshLease`, and retains the full-descriptor
+`DrawMesh` path. Headless scenes may implement the same optional capability with recording leases.
+`ITileWorldScene` does not require it. Dispose attachment caches or leases before disposing the scene.
+
 Everything the view does to a scene goes through `ITileWorldScene`: `LoadMesh`, `UnloadMesh`, `DrawMesh`,
 `DrawOverlayMesh`,
 `LoadPropMeshes`, `UnloadPropMeshes`, `DrawProps`, plus the ground-material trio `LoadTileGroundMaterial`,

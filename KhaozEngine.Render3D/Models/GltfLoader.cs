@@ -57,7 +57,7 @@ namespace KhaozEngine.Render3D
     }
 
     /// <summary>One material sub-range of a multi-material prop loaded by
-    /// <see cref="GltfLoader.LoadPartsWithMaterials"/> (and normalized by <see cref="PropLoader.LoadPropParts"/>):
+    /// <see cref="GltfLoader.LoadPartsWithMaterials(string)"/> (and normalized by <see cref="PropLoader.LoadPropParts"/>):
     /// the welded geometry of the primitives that reference a single glTF material (<see cref="Mesh"/>) paired with
     /// that material's decoded <see cref="Maps"/>. A whole prop is a list of these - a tree trunk part (bark
     /// texture) + a leaf part (foliage texture), each drawn with its own texture binding. Upload each part with
@@ -152,7 +152,7 @@ namespace KhaozEngine.Render3D
         /// except each source material that carries a <c>baseColorTexture</c> has that texture's alpha-weighted
         /// average albedo (<see cref="AverageAlbedo"/>) multiplied into its flattened per-vertex base colour. This is
         /// the flat path for a textured prop: it bakes a sensible single colour from the texture so the same
-        /// textures-ON glb can render either textured (via <see cref="LoadPartsWithMaterials"/>) or flat (here) with
+        /// textures-ON glb can render either textured (via <see cref="LoadPartsWithMaterials(string)"/>) or flat (here) with
         /// no separate flattened asset. A material with NO baseColorTexture is untouched, so the whole-scene weld,
         /// topology, and every vertex attribute are byte-identical to <see cref="Load"/> for an untextured asset (the
         /// existing-goldens-hold guarantee). Throws <see cref="InvalidOperationException"/> if the glTF has no
@@ -173,61 +173,6 @@ namespace KhaozEngine.Render3D
             ArgumentException.ThrowIfNullOrWhiteSpace(identity);
             ModelRoot root = LoadModel(glb, identity);
             return BuildRigid(root, identity, MakeAlbedoFlattenResolver());
-        }
-
-        /// <summary>Load a rigid glb/glTF as one welded <see cref="GltfMeshPart"/> per source material, each part
-        /// carrying that material's geometry (node world transforms baked exactly as <see cref="Load"/>) plus its
-        /// auto-read <see cref="GltfMaterialMaps"/> (baseColor/normal/metallicRoughness, decoded to raw RGBA8, no
-        /// GPU). This is the multi-texture-per-primitive path: a tree whose bark and leaves are separate
-        /// primitives/materials returns two parts, each drawable with its own texture, instead of the single
-        /// flattened mesh <see cref="Load"/> / <see cref="LoadWithMaterial"/> produce. Parts are in stable
-        /// first-use material order (the order materials are first referenced walking meshes then primitives), so a
-        /// re-load is reproducible. A single-material asset yields exactly one part whose mesh is byte-identical to
-        /// <see cref="Load"/>'s and whose maps equal <see cref="LoadWithMaterial"/>'s. Primitives with no material
-        /// form their own (untextured) part. Throws <see cref="InvalidOperationException"/> if the glTF has no
-        /// triangles. Upload with <see cref="Scene3D.LoadProp"/> (or one
-        /// <see cref="Scene3D.LoadMesh(GltfMesh,GltfMaterialMaps)"/> per part); normalize a prop kit asset to its
-        /// real-world height first with <see cref="PropLoader.LoadPropParts"/>.</summary>
-        public static IReadOnlyList<GltfMeshPart> LoadPartsWithMaterials(string path)
-            => BuildParts(LoadModel(path), path);
-
-        static IReadOnlyList<GltfMeshPart> BuildParts(ModelRoot root, string path)
-        {
-            // Distinct materials in first-use order (a null material - primitives with none - is a valid key). Walk
-            // meshes then primitives, the same traversal BuildRigid uses, so the single-material part's corner order
-            // (and thus its weld) matches Load exactly.
-            var order = new List<GltfMaterial?>();
-            bool sawNull = false;
-            foreach (var mesh in root.LogicalMeshes)
-                foreach (var prim in mesh.Primitives)
-                {
-                    GltfMaterial? mat = prim.Material;
-                    if (mat == null) { if (!sawNull) { sawNull = true; order.Add(null); } continue; }
-                    if (!order.Contains(mat)) order.Add(mat);
-                }
-
-            var parts = new List<GltfMeshPart>(order.Count);
-            foreach (GltfMaterial? material in order)
-            {
-                var corners = new List<MeshCorner>();
-                // Same scene-graph walk as BuildRigid (a mesh referenced by several nodes emits one copy per node;
-                // an un-noded mesh loads once at identity), but restricted to this material's primitives.
-                foreach (var mesh in root.LogicalMeshes)
-                {
-                    bool placed = false;
-                    foreach (var node in root.LogicalNodes)
-                    {
-                        if (node.Mesh != mesh) continue;
-                        placed = true;
-                        AppendMaterialCorners(corners, mesh, node.WorldMatrix, path, material);
-                    }
-                    if (!placed) AppendMaterialCorners(corners, mesh, Matrix4x4.Identity, path, material);
-                }
-                if (corners.Count > 0) parts.Add(new GltfMeshPart(MeshAssembler.Build(corners), ReadMaterialMaps(material)));
-            }
-
-            if (parts.Count == 0) throw new InvalidOperationException("glTF has no triangles: " + path);
-            return parts;
         }
 
         // The flat scene weld. <paramref name="baseColorFor"/> resolves a primitive's per-vertex base colour. When
@@ -272,20 +217,6 @@ namespace KhaozEngine.Render3D
             (bool identity, Matrix4x4 normalMatrix) = TransformFor(world);
             foreach (var prim in mesh.Primitives)
                 AppendPrimitiveCorners(corners, prim, world, normalMatrix, identity, path, baseColorFor);
-        }
-
-        // As AppendMeshCorners, but only primitives that reference exactly <paramref name="material"/>
-        // (reference-equality; a null target matches primitives with no material) contribute. Used by
-        // LoadPartsWithMaterials to split a multi-material prop into one welded sub-mesh per source material,
-        // reusing the identical transform + corner-emit math, so a single-material part is byte-identical to the
-        // flattened Load path.
-        static void AppendMaterialCorners(List<MeshCorner> corners, Mesh mesh, Matrix4x4 world, string path,
-                                          GltfMaterial? material)
-        {
-            (bool identity, Matrix4x4 normalMatrix) = TransformFor(world);
-            foreach (var prim in mesh.Primitives)
-                if (ReferenceEquals(prim.Material, material))
-                    AppendPrimitiveCorners(corners, prim, world, normalMatrix, identity, path);
         }
 
         // The identity fast-path flag + normal matrix for a node world transform. Normal matrix =

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using KhaozEngine.Attachments.Render3D;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
 using KhaozEngine.Terrain;
@@ -238,19 +239,25 @@ public interface ITileWorldScene
 
 /// <summary>The shipped <see cref="ITileWorldScene"/>: every member forwards straight to a <see cref="Scene3D"/>
 /// and its prop-renderer extension, so the seam costs one virtual call and adds no behaviour of its own.</summary>
-public sealed class Scene3DTileWorldScene : ITileWorldScene
+public sealed class Scene3DTileWorldScene : ITileWorldScene, IRigidAttachmentScene
 {
     readonly Scene3D _scene;
+    readonly Scene3DAttachmentScene _attachments;
 
     /// <summary>Wraps a scene. The scene stays owned by its creator, so disposing a view never disposes it.</summary>
     public Scene3DTileWorldScene(Scene3D scene)
     {
         ArgumentNullException.ThrowIfNull(scene);
         _scene = scene;
+        _attachments = new Scene3DAttachmentScene(scene);
     }
 
     /// <summary>The wrapped scene, for a caller that needs the full surface alongside the seam.</summary>
     public Scene3D Scene => _scene;
+
+    /// <summary>Upload owned attachment resources through the optional scene capability.</summary>
+    public IAttachmentMeshLease UploadAttachment(IReadOnlyList<GltfMeshPart> parts) =>
+        _attachments.UploadAttachment(parts);
 
     /// <inheritdoc />
     public ITileWorldPropClusterOwner CreatePropClusterOwner() => new ScenePropClusterOwner(_scene);

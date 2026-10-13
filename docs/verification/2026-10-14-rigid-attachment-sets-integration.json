@@ -1,0 +1,397 @@
+{
+  "schemaVersion": 1,
+  "integratedMain": "a80fab6c4caa1de66cb8d643e9ca998a567e993d",
+  "baseMain": "ee6016aae2473dadcb1c8a3fdcdaff4bc2371392",
+  "engineVersion": "20.38.0",
+  "changelogHeading": "## 20.38.0",
+  "pullRequest": {
+    "url": "https://github.com/APKiwiOrg/KhaozEngine/pull/1393",
+    "state": "MERGED",
+    "mergeCommit": "a80fab6c4caa1de66cb8d643e9ca998a567e993d"
+  },
+  "releaseBoundary": {
+    "approvedTag": "v20.38.0",
+    "approvedCommit": "a80fab6c4caa1de66cb8d643e9ca998a567e993d",
+    "ownerThread": "mcp:c5decd51-706e-4ac5-ac59-ad69e2e5255b",
+    "integrationLaneTagged": false,
+    "mainAuditHold": "until release chat reports tag"
+  },
+  "localVerification": {
+    "buildWarnings": 0,
+    "buildErrors": 0,
+    "focusedPasses": 159,
+    "fullSuitePasses": 31573,
+    "fullSuiteFailures": 0,
+    "fullSuiteConditionalSkips": 1374,
+    "fullSuiteProjects": 37,
+    "strictMetalPasses": 8,
+    "strictMetalSkips": 0,
+    "formatCorrection": "one initializer line split, token-identical, verified",
+    "guards": "passed"
+  },
+  "mergeReview": {
+    "verdict": "APPROVED",
+    "findings": [],
+    "mergeCommit": "d18bb66c2280a70b93b40b9ee7525d97b2fd2905",
+    "head": "a80fab6c4caa1de66cb8d643e9ca998a567e993d",
+    "independentChecks": [
+      "released history unchanged",
+      "inherited foliage and shadow paths preserved",
+      "workflows equal main",
+      "proof-only commits absent",
+      "initializer correction whitespace-only"
+    ]
+  },
+  "runs": {
+    "pr-ci": {
+      "event": "pull_request",
+      "headSha": "a80fab6c4caa1de66cb8d643e9ca998a567e993d",
+      "status": "completed",
+      "conclusion": "success",
+      "jobs": [
+        {
+          "name": "server-sqlserver",
+          "conclusion": "success"
+        },
+        {
+          "name": "catalog-sqlserver",
+          "conclusion": "success"
+        },
+        {
+          "name": "accounts-sqlserver",
+          "conclusion": "success"
+        },
+        {
+          "name": "build-test-pack",
+          "conclusion": "success"
+        }
+      ],
+      "id": 38461567233
+    },
+    "pr-gpu": {
+      "event": "pull_request",
+      "headSha": "a80fab6c4caa1de66cb8d643e9ca998a567e993d",
+      "status": "completed",
+      "conclusion": "success",
+      "jobs": [
+        {
+          "name": "select legs",
+          "conclusion": "success"
+        },
+        {
+          "name": "windows-latest / direct3d11-native",
+          "conclusion": "success"
+        },
+        {
+          "name": "macos-26 / metal-native",
+          "conclusion": "success"
+        },
+        {
+          "name": "ubuntu-latest / vulkan-native",
+          "conclusion": "success"
+        },
+        {
+          "name": "ubuntu-latest / vulkan-native (sync validation)",
+          "conclusion": "skipped"
+        }
+      ],
+      "id": 38461566855
+    },
+    "full-gate": {
+      "event": "workflow_dispatch",
+      "headSha": "a80fab6c4caa1de66cb8d643e9ca998a567e993d",
+      "status": "completed",
+      "conclusion": "failure",
+      "jobs": [
+        {
+          "name": "select legs",
+          "conclusion": "success"
+        },
+        {
+          "name": "ubuntu-latest / vulkan-native (sync validation)",
+          "conclusion": "success"
+        },
+        {
+          "name": "macos-26 / metal-native",
+          "conclusion": "failure"
+        },
+        {
+          "name": "windows-latest / direct3d11-native",
+          "conclusion": "failure"
+        },
+        {
+          "name": "ubuntu-latest / vulkan-native",
+          "conclusion": "success"
+        }
+      ],
+      "id": 38461600502
+    },
+    "main-ci": {
+      "event": "push",
+      "headSha": "a80fab6c4caa1de66cb8d643e9ca998a567e993d",
+      "status": "completed",
+      "conclusion": "success",
+      "jobs": [
+        {
+          "name": "build-test-pack",
+          "conclusion": "success"
+        },
+        {
+          "name": "catalog-sqlserver",
+          "conclusion": "success"
+        },
+        {
+          "name": "accounts-sqlserver",
+          "conclusion": "success"
+        },
+        {
+          "name": "server-sqlserver",
+          "conclusion": "success"
+        }
+      ],
+      "id": 38473512217
+    },
+    "main-gpu": {
+      "event": "push",
+      "headSha": "a80fab6c4caa1de66cb8d643e9ca998a567e993d",
+      "status": "completed",
+      "conclusion": "success",
+      "jobs": [
+        {
+          "name": "select legs",
+          "conclusion": "success"
+        },
+        {
+          "name": "macos-26 / metal-native",
+          "conclusion": "success"
+        },
+        {
+          "name": "ubuntu-latest / vulkan-native",
+          "conclusion": "success"
+        },
+        {
+          "name": "windows-latest / direct3d11-native",
+          "conclusion": "success"
+        },
+        {
+          "name": "ubuntu-latest / vulkan-native (sync validation)",
+          "conclusion": "skipped"
+        }
+      ],
+      "id": 38473512218
+    },
+    "main-console": {
+      "event": "push",
+      "headSha": "a80fab6c4caa1de66cb8d643e9ca998a567e993d",
+      "status": "completed",
+      "conclusion": "success",
+      "jobs": [
+        {
+          "name": "native-console",
+          "conclusion": "success"
+        }
+      ],
+      "id": 38473512305
+    },
+    "pr-console": {
+      "id": 38461566879,
+      "event": "pull_request",
+      "headSha": "a80fab6c4caa1de66cb8d643e9ca998a567e993d",
+      "status": "completed",
+      "conclusion": "success"
+    }
+  },
+  "fullAttachmentProof": {
+    "metal": 8,
+    "direct3d11": 8,
+    "vulkan": 8,
+    "skipped": 0
+  },
+  "allowedFailures": {
+    "windows": [
+      {
+        "issue": 1316,
+        "name": "KhaozEngine.Tests.MapDoc.NativeStorageNamespaceTests.NativeStorage_GuardRefusesEveryClosureReferenceBeforeReadingIt",
+        "row": "KhaozEngine.Tests.MapDoc.NativeStorageNamespaceTests.NativeStorage_GuardRefusesEveryClosureReferenceBeforeReadingIt(reserved: \"mesh\", absolute: True)"
+      },
+      {
+        "issue": 1316,
+        "name": "KhaozEngine.Tests.MapDoc.NativeStorageOwnershipTests.NativeStorage_TiledOpenRefusesResourceInsideItsNamespaceBeforePublishing",
+        "row": "KhaozEngine.Tests.MapDoc.NativeStorageOwnershipTests.NativeStorage_TiledOpenRefusesResourceInsideItsNamespaceBeforePublishing(mesh: \"tiled-world/tiles/rock.glb\", absolute: True)"
+      },
+      {
+        "issue": 1316,
+        "name": "KhaozEngine.Tests.MapDoc.NativeManifestAdapterTests.Adapter_RejectsStaleOrMissingMeshAndLodFiles",
+        "row": "KhaozEngine.Tests.MapDoc.NativeManifestAdapterTests.Adapter_RejectsStaleOrMissingMeshAndLodFiles"
+      },
+      {
+        "issue": 1316,
+        "name": "KhaozEngine.Tests.MapDoc.NativeLifecycleTests.NativeLifecycle_TiledIdentityAndDecimalTransportSurviveConversionAndReopen",
+        "row": "KhaozEngine.Tests.MapDoc.NativeLifecycleTests.NativeLifecycle_TiledIdentityAndDecimalTransportSurviveConversionAndReopen"
+      },
+      {
+        "issue": 1316,
+        "name": "KhaozEngine.Tests.MapDoc.NativeStorageOwnershipTests.NativeStorage_ConversionChecksTheTiledTargetNamespaceForAMonolithicSource",
+        "row": "KhaozEngine.Tests.MapDoc.NativeStorageOwnershipTests.NativeStorage_ConversionChecksTheTiledTargetNamespaceForAMonolithicSource"
+      },
+      {
+        "issue": 1316,
+        "name": "KhaozEngine.Tests.MapDoc.NativeLifecycleTests.NativeLifecycle_PartialNativeOpenRefusesWithoutReplacingSession",
+        "row": "KhaozEngine.Tests.MapDoc.NativeLifecycleTests.NativeLifecycle_PartialNativeOpenRefusesWithoutReplacingSession"
+      },
+      {
+        "issue": 1316,
+        "name": "KhaozEngine.Tests.MapDoc.NativeStorageOwnershipTests.NativeStorage_MissingTiledStorageRefusesSaveAndRetileWithoutRecreatingIt",
+        "row": "KhaozEngine.Tests.MapDoc.NativeStorageOwnershipTests.NativeStorage_MissingTiledStorageRefusesSaveAndRetileWithoutRecreatingIt"
+      },
+      {
+        "issue": 1316,
+        "name": "KhaozEngine.Tests.MapDoc.NativeManifestAdapterTests.Adapter_ResolvesResourceIdsToVerifiedPathsNotAssetIds",
+        "row": "KhaozEngine.Tests.MapDoc.NativeManifestAdapterTests.Adapter_ResolvesResourceIdsToVerifiedPathsNotAssetIds"
+      },
+      {
+        "issue": 1157,
+        "name": "KhaozEngine.Tests.Gpu.PointShadowFilterGpuTests.TheSoftEdgeCrossesACubeFaceBoundaryWithoutAStep",
+        "row": "KhaozEngine.Tests.Gpu.PointShadowFilterGpuTests.TheSoftEdgeCrossesACubeFaceBoundaryWithoutAStep"
+      },
+      {
+        "issue": 1396,
+        "name": "KhaozEngine.Tests.ServerAdminEndpoint.TileWorldServerAdminEndpointTests.The_https_endpoint_serves_a_tile_world_server",
+        "row": "KhaozEngine.Tests.ServerAdminEndpoint.TileWorldServerAdminEndpointTests.The_https_endpoint_serves_a_tile_world_server"
+      }
+    ],
+    "metal": [
+      {
+        "issue": 1394,
+        "familyIssue": 1391,
+        "row": "ContactControllerTests.WarmSignalResolveAllocatesNothing(variant: Mesh)",
+        "allocationDeltaBytes": 7872
+      }
+    ]
+  },
+  "attribution": {
+    "metal": "numeric fixture, dry support query and Bepu certification, no changed renderer or attachment type",
+    "windowsHttps": "numeric tile rig, no physics factory/assets/renderer/attachments/hooks, first online handler returns publishedOnline",
+    "mechanismsEstablished": false,
+    "issueComments": [
+      "https://github.com/APKiwiOrg/KhaozEngine/issues/1394#issuecomment-6155127192",
+      "https://github.com/APKiwiOrg/KhaozEngine/issues/1396#issuecomment-6155341430"
+    ]
+  },
+  "artifacts": {
+    "windows": {
+      "id": 11849231951,
+      "zipSha256": "f4c064afa31b72f0c229a5f0bb96adb072e1cef04c5d8e8a92fd095df858c791",
+      "renderTrxSha256": "b33801e825350c47adb09d830707c1fbf2e9b2d04c0dd8733558f2133462d50e",
+      "trxHashes": {
+        "runneradmin_runnervmfi6oq_2026-10-13_20_23_06_net10.0.trx": "1d0363178c48a7b10df1e794bbb8a3d973903004c133afa228a3959859aad91b",
+        "runneradmin_runnervmfi6oq_2026-10-13_20_23_06_net10.0[1].trx": "93f73aa21b3cf2d303587182176873f4d9e20bc92a543e8d23ac3079478308e6",
+        "runneradmin_runnervmfi6oq_2026-10-13_20_23_07_net10.0.trx": "820093d8db544d1f255b6c844e9b9e89d2d9506004d6834291d8d6ba6cb9de3b",
+        "runneradmin_runnervmfi6oq_2026-10-13_20_23_08_net10.0.trx": "b618674523cbcdceb23997248926d8087a7d6b971a82034d3fbeafabaa4abdab",
+        "runneradmin_runnervmfi6oq_2026-10-13_20_23_10_net10.0.trx": "29d035b9e1e7cf8f44a920b7ea37c08af1fc4b8364a217136f92adebebc2c2d0",
+        "runneradmin_runnervmfi6oq_2026-10-13_20_23_12_net10.0.trx": "49e8fa6cbd4f856ac51ff6fcacdfa6cbdbbb4833cf28b6f059aae4b9797614f8",
+        "runneradmin_runnervmfi6oq_2026-10-13_20_23_12_net10.0[1].trx": "f8629614b478ad1a234eb5907b0a982af2d29820ed37c3217d468209dad6bb5c",
+        "runneradmin_runnervmfi6oq_2026-10-13_20_23_15_net10.0.trx": "c27c59e5e6891dc9d7f6ba97c59a725eee841f08ac6db2d3c6b10513ac792cff",
+        "runneradmin_runnervmfi6oq_2026-10-13_20_23_16_net10.0.trx": "7cf43582976bde299e14bbbaef796394a30319b965a730901cd1c573cc560bf4",
+        "runneradmin_runnervmfi6oq_2026-10-13_20_24_35_net10.0.trx": "19f805d4f915570b36df9acf98e9f4051f3b891a2ab14f1e8546ad889f0bdd74",
+        "runneradmin_runnervmfi6oq_2026-10-13_20_24_38_net10.0.trx": "5480600c4a0775a3034c9755eb74f2ae49f3286eb45a1db739af44cad0dd6478",
+        "runneradmin_runnervmfi6oq_2026-10-13_20_24_41_net10.0.trx": "e115e28a73311a9ef76ef0157af9c581483cd7da234bf657d69e044e73ee9cdb",
+        "runneradmin_runnervmfi6oq_2026-10-13_20_24_45_net10.0.trx": "271a38d993c0bafa7776001d6086b23e947c9acbe9b88d5e6275458fe959c9f6",
+        "runneradmin_runnervmfi6oq_2026-10-13_20_24_48_net10.0.trx": "ffdc2e0c42bc9656302552756fe323ccc0fc1a291e5922da2416586185939a54",
+        "runneradmin_runnervmfi6oq_2026-10-13_20_24_51_net10.0.trx": "41e612c091e5e132ccb9f669183682beb5d0848d778554469e185957ad8daf34",
+        "runneradmin_runnervmfi6oq_2026-10-13_20_25_15_net10.0.trx": "435c058bf8a70939142a3f036ac61a071ec975193b01f723ed8a5113bdc56ece",
+        "runneradmin_runnervmfi6oq_2026-10-13_20_25_49_net10.0.trx": "3db70b74489f94031a1bb734039ea06033d3106af1fc78b7411fd8a8f5455900",
+        "runneradmin_runnervmfi6oq_2026-10-13_20_26_08_net10.0.trx": "83f2444c413e0fce3dcbe900d3e201e90e151d5c39e5d7379d6cb6cc425e7285",
+        "runneradmin_runnervmfi6oq_2026-10-13_20_26_25_net10.0.trx": "a91db417a0e274e7997402e4d0a567d3c3ad9e8775a9dc05a6b079201240b36d",
+        "runneradmin_runnervmfi6oq_2026-10-13_20_26_26_net10.0.trx": "0ff2a1cd9364d625b37fd1076ae8aaf9ed94d4fee326b6b8319f8775aca8a704",
+        "runneradmin_runnervmfi6oq_2026-10-13_20_26_29_net10.0.trx": "17cc0cae1e69871efa0c25c587540ef2c7d039a0d3b3787c0190a978da89305e",
+        "runneradmin_runnervmfi6oq_2026-10-13_20_26_31_net10.0.trx": "a4ab0cf5d4b4bdc4a6cf5cac0b814be22f5e27dc6e65fc03d799883d1a5968b7",
+        "runneradmin_runnervmfi6oq_2026-10-13_20_26_35_net10.0.trx": "b33801e825350c47adb09d830707c1fbf2e9b2d04c0dd8733558f2133462d50e",
+        "runneradmin_runnervmfi6oq_2026-10-13_20_36_20_net10.0.trx": "cf7163e165722819add86186ce042e0822140afa4575f34d4d276735d4aa7941",
+        "runneradmin_runnervmfi6oq_2026-10-13_20_36_30_net10.0.trx": "a8acec84364866f1eb7e8296f761cef7ea3aea58b33f360fb18745105ea9ea6b",
+        "runneradmin_runnervmfi6oq_2026-10-13_20_37_03_net10.0.trx": "71300825426e7bd350a18d7be167150c81de8b9c48bd9a905941f2dcacebb305",
+        "runneradmin_runnervmfi6oq_2026-10-13_20_37_14_net10.0.trx": "e234a02aa17a8283e2c18be3b5264d0da52cfb53e81468d5a5ed04926e74b41f",
+        "runneradmin_runnervmfi6oq_2026-10-13_20_37_43_net10.0.trx": "e366bd16b6ac881594585e7ca35de0a6c4751ede1ebb7920051b81dc73874130",
+        "runneradmin_runnervmfi6oq_2026-10-13_20_37_45_net10.0.trx": "bfd86cb7d3d2060292405c54a94850576a5d14e7eae50d4eebec2bbf5dff6d23",
+        "runneradmin_runnervmfi6oq_2026-10-13_20_37_57_net10.0.trx": "bc2f6b478bdf688cfe5d44e6531ed7fc570ae4f54a5df33bcd46419e5f17352e",
+        "runneradmin_runnervmfi6oq_2026-10-13_20_38_24_net10.0.trx": "918cffc3f575982b0e554a217b5a43da3bd7f19055360f9eb5f2013fff4806b5",
+        "runneradmin_runnervmfi6oq_2026-10-13_20_38_24_net10.0[1].trx": "a262daeeff7dd4960adf3176fe1938e98b9d6de9e597923ec06f553821ea0c65",
+        "runneradmin_runnervmfi6oq_2026-10-13_20_38_41_net10.0.trx": "1a27cfe42f7360e687f63bff1e054d555bf5957f7987874e40cacecc0438e9fd",
+        "runneradmin_runnervmfi6oq_2026-10-13_20_38_45_net10.0.trx": "e6109d6983669130bba960f3d8ba6c5b2efc5138856c1d516e7284a89a1cd37e",
+        "runneradmin_runnervmfi6oq_2026-10-13_20_38_50_net10.0.trx": "32fd27d0c22c35ba0e3141118d31a52ebad48e533c9bdaf0a0c610da54784e99",
+        "runneradmin_runnervmfi6oq_2026-10-13_20_39_09_net10.0.trx": "84bc99ff05fdc45f3166f49518c04ff4f603a405aab9790e704e9de478e635f6",
+        "runneradmin_runnervmfi6oq_2026-10-13_20_39_15_net10.0.trx": "ae02a323b8dcddf41ee415d67f13834c9c9065afd14550b76188512deae880c6"
+      }
+    },
+    "metal": {
+      "id": 11847334337,
+      "zipSha256": "edf77e3805e8664feac9b1d5e5c8d6361991203e78602ac26b74d5ab4f9272e8",
+      "rawLogSha256": "0c7b78b44cc26644c570f26eb18bf7eef03506f3f5100d2909bb27aed01ef011"
+    },
+    "vulkan": {
+      "id": 11852652775,
+      "zipSha256": "d1d36ac61bc49dcd1aeb6f661c10a8506782429aa9893e30fafa0e701ecb2459",
+      "rawLogSha256": "c61eb9edbc5f60973be9eec0022e22c690ea08abaf7bb4e3cc77ecec6906d52d"
+    },
+    "vulkanSync": {
+      "id": 11846691378,
+      "zipSha256": "5e60093e64bea1ffeb9f8ed1133fdc989de2ef0386ded15416fb9f218c220642",
+      "producerArmed": true,
+      "validationErrors": 0
+    }
+  },
+  "historicalHttps": {
+    "run": 38392043530,
+    "artifact": 11813015971,
+    "archiveSha256": "dd5aa2921dafefecd0bf2f24f5a0cd79bf92daf958d91daa501dc20f40b96e83",
+    "rows": [
+      {
+        "file": "runneradmin_runnervmfi6oq_2026-10-13_11_51_33_net10.0.trx",
+        "trxSha256": "99c8bc1bead1069ed114fbfd178e4a2763164f69af2cba32e31837fa4f9a79b5",
+        "row": "KhaozEngine.Tests.ServerAdminEndpoint.TileWorldServerAdminEndpointTests.The_https_endpoint_serves_a_tile_world_server",
+        "outcome": "Passed",
+        "duration": "00:00:00.1387199"
+      }
+    ]
+  },
+  "mainPackages": {
+    "commit": "a80fab6c4caa1de66cb8d643e9ca998a567e993d",
+    "version": "20.38.0",
+    "packages": 107,
+    "symbolPackages": 105,
+    "attachmentProof": {
+      "KhaozEngine.Attachments": {
+        "dllSha256": "9424186f7656c18cc5a277d6af171f1caa957617b956a2a1fcd89645f3bd6536",
+        "nupkgSha256": "627a1c5591e8697d6ee145a75e54465dccd8652ddcc5253f11e1739262ce22c4",
+        "dependencies": {}
+      },
+      "KhaozEngine.Attachments.Render3D": {
+        "dllSha256": "69d0933b4ac624d14541e66fb7b7a4d5c1cc24795585091130482a7aa1aea3d7",
+        "nupkgSha256": "25f4f7bc51c17ffb453d6bd23afa7b4fda9d422e2de60be8930361c60755b054",
+        "dependencies": {
+          "KhaozEngine.Attachments": "20.38.0",
+          "KhaozEngine.Render3D": "20.38.0"
+        }
+      }
+    },
+    "umbrellaEdges": {
+      "KhaozEngine.Game3D": "20.38.0",
+      "KhaozEngine.TileWorld.Render3D": "20.38.0"
+    }
+  },
+  "rootPack": {
+    "exitCode": 0,
+    "packages": 107,
+    "symbols": 105,
+    "stagingDirectoryRemoved": true
+  },
+  "feedScan": {
+    "exitCode": 0,
+    "stagedVersions": 7,
+    "unsafeVersions": 0,
+    "releasedVersions": 47,
+    "driftedHistoricalVersions": 9,
+    "existingIssue": "https://github.com/APKiwiOrg/KhaozEngine/issues/1211",
+    "current20_38_0": "all 107 package commits and dependencies verified"
+  }
+}

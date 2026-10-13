@@ -1117,7 +1117,7 @@ use their supplied scope and water policy, and retain the 0.001 m resting offset
 Phase 5a is released in 20.37.0. The [allocation and local cost proof](../docs/superpowers/plans/proofs/2026-10-13-contact-controller-phase5a-cost.md)
 records one cold/warm read-and-step pair per row, including the production ordinary pin and player read scope.
 The head release callback is cached. Phase 5b contact ground navigation, KENB format 2 serialization and public
-runtime validation, including #1299 ground navigation acceptance, are implemented in staged 20.38.0. Contact aquatic
+runtime validation, including #1299 ground navigation acceptance, are implemented in staged 20.39.0. Contact aquatic
 navigation, footprint-only seeds and public explicit bake profiles remain deferred to
 [#1389](https://github.com/APKiwiOrg/KhaozEngine/issues/1389). Phase 6 game adoption remains separate.
 

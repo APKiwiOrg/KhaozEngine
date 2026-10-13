@@ -6,7 +6,7 @@ with phase 5a. The binding inputs are the [phase 5 design](CONTACT-CONTROLLER-PH
 as amended by ruling P5B-1 below. Written under the owner's instruction to continue the program to completion, so every
 choice below is a recorded ruling for the owner's review. Revision 6 answers review rounds 1 to 5.
 
-Status: phase 5b ground navigation is implemented in staged 20.38.0. Contact aquatic navigation, footprint-only
+Status: phase 5b ground navigation is implemented in staged 20.39.0. Contact aquatic navigation, footprint-only
 seeds and public explicit bake profiles are deferred to [#1389](https://github.com/APKiwiOrg/KhaozEngine/issues/1389).
 The [cost record](../superpowers/plans/proofs/2026-10-14-contact-controller-phase5b-cost.md) records the local evidence.
 
@@ -302,8 +302,8 @@ is fixed here under P5B-6.
 
 ### P5B-12 Version, placement, determinism and test dispositions
 
-The phase cuts 20.38.0, a minor version for the new public navigation API and KENB format 2, because v20.37.0 was
-tagged at `ee6016aae` with phase 5a. Navigation types stay in
+The phase cuts 20.39.0, a minor version for the new public navigation API and KENB format 2, because v20.37.0 (phase
+5a) and v20.38.0 (rigid attachment sets) were both released while it ran. Navigation types stay in
 `KhaozEngine.Movement` beside the bake code. The proof binding factory, the anchor query and the settlement rule live in
 `KhaozEngine.Locomotion` beside the code they extend. `KhaozEngine.Navigation` stays free of Locomotion.
 

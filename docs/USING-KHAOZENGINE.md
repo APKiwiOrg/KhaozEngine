@@ -3768,7 +3768,9 @@ scene.Draw(gun, sockets["socket_nose"] * shipWorld, Color.White);
   `GltfMaterialMaps`). Embedded GLB images and external image files are both read; a material with no textures - or
   a missing/undecodable image - yields an all-absent bundle (`maps.IsEmpty`) and falls back to the renderer
   defaults, never a throw. The default explicit-`SurfaceMaps` path is unchanged, so this is purely a convenience
-  on top.
+  on top. `LoadSurfaceMaps` retires already uploaded maps if a later texture creation fails.
+  An owning caller can unload its meshes, then call `UnloadSurfaceMaps(in maps)` to retire each distinct
+  valid texture handle. All-absent bundles retain invalid handles and never unload scene defaults.
 - Alpha cutout (foliage / leaf cards): `GltfMaterialMaps.AlphaCutoff` (and `SurfaceMaps.AlphaCutoff`) carries the
   glTF material's `alphaMode`: `0` for OPAQUE (the default when absent - no clip, byte-identical render), else the
   material's `alphaCutoff` (default 0.5 per spec) for MASK. glTF BLEND is out of scope for the mesh pass and is
@@ -6249,6 +6251,39 @@ scale or shear that skinning blends across vertices but a one-joint attachment w
 reflected joint stays reflected. A non-finite, collapsed, or linearly dependent basis throws `ArgumentException`
 because no rigid orientation can be recovered.
 
+### Rigid attachment sets
+
+`KhaozEngine.Attachments` contains GPU-free immutable definitions, canonical format-1 JSON, strict mesh
+references and embedded rigid GLB validation. Reference it explicitly from headless publishers. The
+`KhaozEngine.Attachments.Render3D` renderer arm ships in Game3D and binds each named part to a
+`ContractJointMap`. Mesh node transforms are baked during import. Part-local corrections compose with
+the joint's body alignment and the body's current skin-bone palette.
+
+```csharp
+using var cache = new RigidAttachmentSetCache(scene, new DirectoryAttachmentAssetSource(assetRoot));
+BoundRigidAttachmentSet bound = cache.Get(definitionKey, definitionSha256).Bind(map);
+// Every frame, using the exact bound skeleton and the body's current palette.
+bound.Queue(map.Skeleton, jointPalette, characterWorld, visualIncarnationKey);
+```
+
+One cache owns uploads for one scene and shares verified mesh revisions across its sets. Dispose it
+before the scene. Loaded and bound views borrow resources and throw `ObjectDisposedException` after
+cache disposal. Use the cache and its views on the scene's render thread without overlapping calls.
+Binding allocates scratch once. Valid frame calls load, hash and allocate nothing.
+
+The convenience `Queue` overload uses opaque white tint, `Material.None`, no dissolve and shadow casting.
+Its template overload replaces `Mesh`, `World` and `Motion` and preserves every other `RigidInstanceDraw`
+field. `WriteDraws` writes the same borrowed descriptors into a caller-owned span for a recording scene
+or outline pass and returns `DrawCount`. Parts follow ascending stable ID and material groups follow
+their GLB order. Insufficient capacity or an invalid pose changes no descriptor and queues no prefix.
+
+Each material group gets its own temporal key, nested from the caller key, semantic definition revision,
+part ID and material ordinal. Source-array reordering preserves keys. Changed mesh bytes change the
+revision and keys. Keep `visualIncarnationKey` stable for one visual lifetime and replace it when that
+incarnation changes, including a replacement with identical asset bytes. `MotionKey.None` stays untracked.
+The optional `IRigidAttachmentScene` capability accepts uploads and complete descriptors. Its default
+Scene3D adapter and the native tile-world scene facade forward to the same renderer path.
+
 ### Skinned body contracts (any body shape)
 
 A game with more than one skinned body states each body's joints once as a `SkeletonContract` and checks every
@@ -8144,7 +8179,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.38.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.39.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -8322,7 +8357,7 @@ Both `BuildProfile` overloads, `GroundNavigationBake.Create` and every `GroundNa
 validate Contact selection before other profile work or stream reads. Malformed configurations throw
 `ArgumentException`, and Contact aquatic profiles throw `NotSupportedException` naming #1389. Ground construction
 requires an ordinary-constructed context and a leased capture whose geometry and origin remain unchanged.
-Phase 5b ground navigation is implemented in staged 20.38.0. Contact aquatic navigation, footprint-only seeds and
+Phase 5b ground navigation is implemented in staged 20.39.0. Contact aquatic navigation, footprint-only seeds and
 public explicit bake profiles are deferred to [#1389](https://github.com/APKiwiOrg/KhaozEngine/issues/1389).
 Raw surfaces retain layer and area identity. Certified resting anchors supply physical node poses through
 `NavGrid.RestingHeightAt`. Placement and Hold require grounded `Advanced` outcomes within 1 mm, and directed
@@ -8478,7 +8513,7 @@ On the dev Mac a 36,864-column flat world wrote 664,689 bytes and loaded in abou
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.38.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.39.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -9237,7 +9272,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.38.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.39.0" />
 ```
 
 ```csharp
@@ -12700,7 +12735,7 @@ maximum fall speed and swim-enter depth fraction, a non-Legacy water policy, reg
 with query leases, capsule contacts, complete support footprints and certified capsule sweeps. A medium
 delegate requires a field. Public explicit configuration governs its own water policy and rejects conflicting
 tuning water. Contact plus public explicit configuration is refused as two selections.
-Phase 5a is released in 20.37.0. Phase 5b ground navigation is staged in 20.38.0.
+Phase 5a is released in 20.37.0. Phase 5b ground navigation is staged in 20.39.0.
 
 The retained `MoveCommand(move, run, cameraYaw, jump, faceCamera)` constructor and `default(MoveCommand)` leave
 `ScaleSpeedByAxis` false. They keep nonzero player axes normalized to full speed and keep the legacy dead zone. The
@@ -16781,7 +16816,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.38.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.39.0" />
 ```
 
 ```csharp
@@ -16817,7 +16852,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.38.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.39.0" />
 ```
 
 ```csharp
@@ -17059,7 +17094,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.38.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.39.0" />
 ```
 
 ```csharp
@@ -21419,7 +21454,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.38.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.39.0" />
 </ItemGroup>
 ```
 

@@ -143,7 +143,7 @@ or falls back to `SurfaceHeightAt` when absent. Blocked and out-of-bounds cells 
 clearance, layer bands and transforms remain unchanged. Region predicates and physical waypoint endpoints
 use resting heights. Link generation and stored surface identity use raw heights.
 
-`KhaozEngine.Movement` implements phase 5b ordinary contact ground navigation in staged 20.38.0, persists these
+`KhaozEngine.Movement` implements phase 5b ordinary contact ground navigation in staged 20.39.0, persists these
 resting heights in KENB format 2 and validates runtime bindings before routing. This package keeps no Locomotion
 dependency. Contact aquatic navigation, footprint-only seeds and public explicit bake profiles are deferred to
 [#1389](https://github.com/APKiwiOrg/KhaozEngine/issues/1389). See the

@@ -240,7 +240,7 @@ Both overloads, `GroundNavigationBake.Create` and every `GroundNavigationBake.Lo
 controller and water selection before other profile work or stream reads. Malformed Contact selections throw
 `ArgumentException`. Contact aquatic profiles throw `NotSupportedException` naming #1389. Contact ground profiles
 require an ordinary-constructed context and an unchanged leased capture basis. Phase 5b ground navigation is
-implemented in staged 20.38.0. Contact aquatic navigation, footprint-only seeds and public explicit bake profiles
+implemented in staged 20.39.0. Contact aquatic navigation, footprint-only seeds and public explicit bake profiles
 are deferred to [#1389](https://github.com/APKiwiOrg/KhaozEngine/issues/1389). Legacy v1 bytes remain unchanged.
 
 Capture records a lease's geometry generation and origin when physics supports `IPhysicsQueryLeaseSource`, then
@@ -951,7 +951,7 @@ The bake owns separate source and proof bindings for each profile, preserving th
 and borrowed view. Its full outward query envelope must fit the ordinary served scope. Every anchor, placement and
 step takes a fresh lease, and a non-Known anchor query or changed physics, environment or frame basis throws without
 publishing a partial graph. Phase 5b ground navigation, KENB format 2 and public runtime `Validate` are implemented
-in staged 20.38.0. Contact aquatic navigation, footprint-only seeds and public explicit bake profiles remain deferred
+in staged 20.39.0. Contact aquatic navigation, footprint-only seeds and public explicit bake profiles remain deferred
 to [#1389](https://github.com/APKiwiOrg/KhaozEngine/issues/1389). The frozen v1 fingerprint and legacy bake bytes
 are unchanged. Native G1b and the remaining adoption gates stay open. Local timing in the
 [5a proof](../docs/superpowers/plans/proofs/2026-10-13-contact-controller-phase5a-cost.md) and the

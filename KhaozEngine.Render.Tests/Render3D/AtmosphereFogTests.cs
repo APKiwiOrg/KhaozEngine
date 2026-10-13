@@ -161,7 +161,7 @@ public sealed class AtmosphereFogTests
     {
         var s = Earth();
         var model = new AtmosphereModel(s);
-        Close(model.SkyValue(0, Vector3.UnitX, Noon),
+        Close(model.SkyViewValue(0, new Vector2(0, 53.5f / 108), Noon),
             AtmosphereFog.Shade(s, model, Noon, Vector3.One, Vector3.Zero, new Vector3(1e9f, 0, 0), Vector3.Zero));
     }
 
@@ -191,14 +191,11 @@ public sealed class AtmosphereFogTests
         s.HazeDensityPerKm = 100;
         var model = new AtmosphereModel(s);
         float heightKm = Math.Max(heightWorld, 0) / 1000;
-        double ratio = 6360 / (6360 + (double)heightKm);
-        float horizonY = (float)-Math.Sqrt(1 - ratio * ratio);
-        float horizontal = MathF.Sqrt(1 - horizonY * horizonY);
-        var azimuth = x == 0 && z == 0 ? Vector3.UnitX : Vector3.Normalize(new Vector3(x, 0, z));
-        var horizon = azimuth * horizontal + Vector3.UnitY * horizonY;
+        double azimuth = x == 0 && z == 0 ? 0 : Math.Atan2(z, x) / (2 * Math.PI);
+        var horizonUv = new Vector2((float)(azimuth - Math.Floor(azimuth)), 53.5f / 108);
         var eye = new Vector3(0, heightWorld, 0);
         var displacement = new Vector3(x, -10, z) * 1e6f;
-        Close(model.SkyValue(heightKm, horizon, Noon),
+        Close(model.SkyViewValue(heightKm, horizonUv, Noon),
             AtmosphereFog.Shade(s, model, Noon, Vector3.One, eye, eye + displacement, Vector3.Zero));
     }
 
@@ -212,7 +209,8 @@ public sealed class AtmosphereFogTests
         var eye = new Vector3(0, 2000, 0);
         var displacement = new Vector3(3000, 4000, 0);
         var transmission = AtmosphereFog.Transmittance(s, 5000, 2000, 6000);
-        var sky = model.SkyValue(2, new Vector3(.6f, .8f, 0), Noon);
+        var skyUv = AtmosphereLutMapping.SkyUv(new Vector3(.6f, .8f, 0), 6362, 6360);
+        var sky = model.SkyViewValue(2, skyUv, Noon);
         var expected = new Vector3(.2f, .3f, .4f) * transmission + sky * (Vector3.One - transmission);
         Close(expected, AtmosphereFog.Shade(s, model, Noon, new Vector3(.2f, .3f, .4f),
             eye, eye + displacement, Vector3.Zero));

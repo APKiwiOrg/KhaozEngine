@@ -92,7 +92,7 @@ public static class AtmosphereFog
 
     /// <summary>Shades a camera-relative segment with absolute heights recovered from renderOrigin.Y.
     /// Displacement remains relative. Sky colour uses the unscaled physical camera altitude and view
-    /// direction joined smoothly to the sky-side geometric horizon, preserving azimuth or using +X at the nadir.</summary>
+    /// UV joined smoothly to the sky-side geometric horizon, preserving azimuth or using +X at the nadir.</summary>
     public static Vector3 Shade(AtmosphereSettings settings, AtmosphereModel model, in AtmosphereFrame frame,
         Vector3 colour, Vector3 cameraRelative, Vector3 fragmentRelative, Vector3 renderOrigin, bool additive = false)
     {
@@ -110,8 +110,9 @@ public static class AtmosphereFog
         if (transmittance == Vector3.One) return colour;
 
         float cameraHeightKm = Math.Max(settings.HeightKm(cameraAbsoluteHeight), 0);
-        var skyDirection = AtmosphereFogSampling.SkyDirection(view, cameraHeightKm, settings.PlanetRadiusKm);
-        var haze = model.SkyValue(cameraHeightKm, skyDirection, frame);
+        double radius = settings.PlanetRadiusKm + (double)cameraHeightKm;
+        var skyUv = AtmosphereFogSampling.SkyUv(view, radius, settings.PlanetRadiusKm);
+        var haze = model.SkyViewValue(cameraHeightKm, skyUv, frame);
         return Compose(colour, transmittance, haze);
     }
 

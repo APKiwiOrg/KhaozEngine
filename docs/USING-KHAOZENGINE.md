@@ -4980,7 +4980,9 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     adds no extra mist by default, with `HazeScaleHeightKm = 0.25` available for an additional exponential layer.
     Rayleigh and Mie extinction plus haze use a closed-form height integral. Opaque and alpha draws blend toward
     directional sky colour using only the sky hemisphere. The final sky texel eases into the constant downward
-    geometric-horizon colour with zero slope. Sky and reflection mappings remain unchanged. Additive effects lose
+    geometric-horizon colour with zero slope. The CPU oracle samples sky-view texels at the fog UV directly,
+    including bilinear filtering and periodic azimuth, without reconstructing a tangent for the ordinary sky
+    lookup. Sky and reflection mappings remain unchanged. Additive effects lose
     transmitted energy only. Models, dissolved and skinned models, splat and tile terrain, foliage, water, decals,
     billboards, particles, trails and beams participate. Debug lines and distortion draws retain their own paths.
   - **GPU-free model and fog oracle.** `AtmosphereModel` needs no device. It snapshots validated settings and

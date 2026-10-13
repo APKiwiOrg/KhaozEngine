@@ -96,9 +96,9 @@ public sealed partial class AtmosphereModel
     internal (Vector3 Radiance, Vector3 Response) IntegrateScattering(
         (double X, double Y, double Z) position, (double X, double Y, double Z) view,
         (double X, double Y, double Z) light, AtmosphereTables tables, int steps,
-        bool isotropic, bool includeMultiScattering)
+        bool isotropic, bool includeMultiScattering, bool skyOnly = false)
     {
-        if (!ScatteringInterval(position, view, out double start, out double end, out bool groundHit))
+        if (!ScatteringInterval(position, view, skyOnly, out double start, out double end, out bool groundHit))
             return (Vector3.Zero, Vector3.Zero);
 
         ScatteringIntegrationCount++;
@@ -146,7 +146,7 @@ public sealed partial class AtmosphereModel
             (float)Math.Exp(-(double)extinction.Y * distanceKm),
             (float)Math.Exp(-(double)extinction.Z * distanceKm));
 
-    bool ScatteringInterval((double X, double Y, double Z) position, (double X, double Y, double Z) direction,
+    bool ScatteringInterval((double X, double Y, double Z) position, (double X, double Y, double Z) direction, bool skyOnly,
         out double start, out double end, out bool groundHit)
     {
         start = end = 0;
@@ -160,7 +160,7 @@ public sealed partial class AtmosphereModel
             return false;
         start = Math.Max(entry, 0);
         end = exit;
-        if (SphereRoots(position.X, position.Y, position.Z, direction.X, direction.Y, direction.Z,
+        if (!skyOnly && SphereRoots(position.X, position.Y, position.Z, direction.X, direction.Y, direction.Z,
                 bottom, out double groundEntry, out double groundExit)
             && groundEntry >= start && groundEntry <= end && groundExit > groundEntry)
         {

@@ -642,7 +642,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   `AtmosphereLighting` with `Key`, `Ambient`, `Fill`, `Horizon` and untinted source transmittances. `SkyValue`
   supplies controlled sky values, while `SkyRadiance` exposes unit-source radiance. The model snapshots settings,
   so call `UpdateSettings` after edits. `AtmosphereFog` is the CPU height-fog oracle, exposing transmission and
-  composition with alpha-aware and additive handling. Fog samples only the sky hemisphere. Its final sky texel
+  composition with alpha-aware and additive handling. CPU fog samples sky-view texels directly at the same UV
+  as GPU fog, with bilinear filtering and periodic azimuth. Sky texel membership prevents a rounded tangent
+  from entering the ground branch. Fog samples only the sky hemisphere. Its final sky texel
   eases into the constant downward horizon colour with zero slope, without changing the sky or reflection LUT
   mapping. Additive effects attenuate without adding fog glow.
 

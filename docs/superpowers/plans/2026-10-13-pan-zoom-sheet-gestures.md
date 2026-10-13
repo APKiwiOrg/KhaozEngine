@@ -359,20 +359,20 @@ Headless tests use the same controller and target adapter contract as the probe.
 **Files:** Directory.Build.props, CHANGELOG.md and all guarded version declarations as needed.
 Design/plan status and consumer handoff documentation. No Flightline paths.
 
-- [ ] Review the entire branch against the approved spec with one fresh reviewer. Verify every
+- [x] Review the entire branch against the approved spec with one fresh reviewer. Verify every
   reported finding against reachable code before acting. Native callback lifetime, duplicate input,
   blocked-start behavior and test oracle independence receive explicit attention. Fix confirmed
   findings, rerun focused tests and obtain a targeted re-review.
-- [ ] Fetch and inspect current main, origin/main, tags and worktrees. Ride an existing unreleased
-  version. Otherwise select the next additive minor, expected 20.35.0 from the observed 20.34.0 tag.
+- [x] Fetch and inspect current main, origin/main, tags and worktrees. Ride an existing unreleased
+  version. Otherwise select the next additive minor from the current tags.
   Update version and changelog together plus all guarded declarations. Never create a tag.
-- [ ] Merge current main into the feature branch and resolve conflicts here. Re-run focused tests
+- [x] Merge current main into the feature branch and resolve conflicts here. Re-run focused tests
   affected by reconciliation. Do not claim validation from an earlier branch state.
-- [ ] Create local-feed before restore. Run `build-slot --label gestures-release-build -- dotnet build
+- [x] Create local-feed before restore. Run `build-slot --label gestures-release-build -- dotnet build
   KhaozEngine.slnx -c Release`, then `build-slot --heavy --label gestures-release-suite -- dotnet test
   KhaozEngine.slnx -c Release --no-build --filter 'Category!=LiveSocket'`. Both must exit zero.
   Full suite runs once at finish unless new failures/changes require another verification.
-- [ ] Run whole-tree dash, prose, file-size, agent-instruction and doc-version guards. Check the
+- [x] Run whole-tree dash, prose, file-size, agent-instruction and doc-version guards. Check the
   explicit diff and commit the validated finish. Push the branch before integration.
 - [ ] The root orchestrator fast-forwards clean main, pushes main, verifies origin/main containment,
   then runs `build-slot --heavy --label gestures-pack -- scripts/pack-local-feed.sh` from main.
@@ -382,3 +382,13 @@ Design/plan status and consumer handoff documentation. No Flightline paths.
   Remove the worktree/feature branch only after both ancestry and unique-commit checks prove safety.
   Owner validation starts from the merged main probe command. If it fails, keep the release untagged
   and fix the observed defect. If it passes, a separate explicit release approval is still required.
+
+## Verified implementation checkpoint
+
+All six implementation tasks and the independent whole-branch review are complete. Review fixes include
+child-control taps, release-frame cancellation ownership, independent input during a consumed mouse hold
+and malformed touch-phase rejection. Native device delivery and rendering remain owner-run checks.
+
+The reconciled Release build has zero warnings or errors. The complete headless suite excluding
+`LiveSocket` passed 30,869 tests with 1,355 explicit skips and no failures. Current main carries tagged
+20.36.0, so this additive API stages 20.37.0. Integration and package proof are recorded below when done.

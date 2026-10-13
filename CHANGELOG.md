@@ -5,6 +5,21 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.37.0
+
+- Windowing delivers native macOS trackpad magnify and precise two-axis scroll through immutable,
+  ordered `InputState.Gestures` samples, with event anchors, modifiers, phases and momentum.
+  Windows adds Ctrl+wheel pinch compatibility. Full native Windows precision-touchpad pan is not included.
+  `AppWindow.NativeGestureFailure` exposes the first native registration or callback failure (#1328).
+- `PanZoomController` applies admitted mouse, touch, wheel and native gestures to `IPanZoomTarget`,
+  with anchored zoom, deterministic wheel animation and inertia, tap results and explicit cancellation.
+  `DragMotionTracker` shares slop, tap timing and release velocity between controls.
+- Gui adds `PannableCanvas.Update(InputManager, ...)` and gesture tap results while preserving its
+  legacy pointer overload. `DraggableBottomSheet` adds named detents, safe-area layout, handle toggles,
+  content-scroll handoff, child-control taps and ownership that prevents input leaking into lower maps.
+- The opt-in `GestureInputProbe` and public API examples support owner device validation and consumer
+  adoption. Flightline adoption remains separate at https://github.com/APKiwiOrg/Flightline/issues/3.
+
 ## 20.36.0
 
 - Tile ground is slope aware (#1289). Past 45 degrees of slope every material adds two side projections to its

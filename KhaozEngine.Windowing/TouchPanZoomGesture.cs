@@ -41,22 +41,27 @@ internal sealed class TouchPanZoomGesture
         var positions = new Dictionary<long, Vector2>();
         var current = new Dictionary<long, Vector2>();
         var begun = new HashSet<long>();
+        bool frameValid = true;
+        int activeContacts = 0;
         foreach (TouchPoint contact in touches)
         {
+            if (contact.Phase != TouchPhase.Ended) activeContacts++;
             Vector2 position = coordinates.PositionFromPixels(contact.Position);
             if (!DragMotionTracker.IsFinite(position) || !positions.TryAdd(contact.Id, position))
             {
-                _admitted = _twoTapEligible = false;
+                frameValid = false;
                 continue;
             }
             if (contact.Phase == TouchPhase.Began) begun.Add(contact.Id);
             if (contact.Phase != TouchPhase.Ended) current.Add(contact.Id, position);
         }
+        _admitted &= frameValid;
+        _twoTapEligible &= frameValid;
         if (!IsActive)
         {
-            if (current.Count == 0) return;
+            if (activeContacts == 0) return;
             Started = IsActive = true;
-            _admitted = current.Count <= 2;
+            _admitted = frameValid && activeContacts <= 2;
             foreach (var point in current)
             {
                 _admitted &= begun.Contains(point.Key) && admits(point.Value);
@@ -107,7 +112,7 @@ internal sealed class TouchPanZoomGesture
             pan(_drag.DragDelta);
         }
 
-        if (current.Count == 0)
+        if (activeContacts == 0)
         {
             if (_admitted && _twoTapEligible) zoom(0.5f, _twoTapCentre);
             else if (_admitted && _previous.Count == 1 && _drag != null)
@@ -150,8 +155,15 @@ internal sealed class TouchPanZoomGesture
             || oldDistance <= 1e-5f || nextDistance <= 1e-5f) return;
         Vector2 centre = a * 0.5f + b * 0.5f;
         Vector2 nextCentre = nextA * 0.5f + nextB * 0.5f;
-        zoom(nextDistance / oldDistance, centre);
-        pan(nextCentre - centre);
+        float factor = nextDistance / oldDistance;
+        Vector2 delta = nextCentre - centre;
+        bool zooms = float.IsFinite(factor) && factor > 0 && factor != 1 && DragMotionTracker.IsFinite(centre);
+        bool pans = DragMotionTracker.IsFinite(delta) && delta != Vector2.Zero;
+        if (!zooms && !pans) return;
+        _pairCommitted = true;
+        _twoTapEligible = false;
+        if (zooms) zoom(factor, centre);
+        if (pans) pan(delta);
     }
 
     void BeginSingle(Dictionary<long, Vector2> current, PanZoomOptions options, bool alreadyDragging)

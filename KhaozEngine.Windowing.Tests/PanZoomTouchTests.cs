@@ -150,4 +150,71 @@ public sealed class PanZoomTouchTests
         Assert.Empty(rig.Target.Operations);
         Assert.False(rig.Controller.Tapped);
     }
+
+    [Fact]
+    public void Review_close_pair_pinch_continues_one_finger_without_fresh_slop()
+    {
+        var rig = new PanZoomTestRig();
+        rig.Step(Frame(touches: new[] { StartTouch(1, 20, 20), StartTouch(2, 21, 20) }));
+        rig.Step(Frame(touches: new[] { Touch(1, 19.5f, 20), Touch(2, 21.5f, 20) }));
+        Near(2, rig.Target.Scale);
+        Near(new(-20.5f, -20), rig.Target.Translation);
+        rig.Step(Frame(touches: new[] { Touch(1, 19.5f, 20), Touch(2, 21.5f, 20, TouchPhase.Ended) }));
+        Near(new(-20.5f, -20), rig.Target.Translation);
+        rig.Step(Frame(touches: new[] { Touch(1, 20.5f, 20) }));
+        Near(new(-19.5f, -20), rig.Target.Translation);
+        rig.Step(Frame(touches: new[] { Touch(1, 20.5f, 20, TouchPhase.Ended) }));
+        Assert.False(rig.Controller.Tapped);
+        Assert.False(rig.Controller.DoubleTapped);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Review_sub_slop_pair_effect_cannot_become_two_finger_tap(bool pinch)
+    {
+        var rig = new PanZoomTestRig();
+        rig.Step(Frame(touches: new[] { StartTouch(1, 20, 20), StartTouch(2, 21, 20) }));
+        float firstX = pinch ? 19.5f : 20.5f;
+        rig.Step(Frame(touches: new[] { Touch(1, firstX, 20), Touch(2, 21.5f, 20) }));
+        Near(pinch ? 2 : 1, rig.Target.Scale);
+        Near(pinch ? new(-20.5f, -20) : new(0.5f, 0), rig.Target.Translation);
+        rig.Step(Frame(touches: new[] { Touch(1, firstX, 20, TouchPhase.Ended),
+            Touch(2, 21.5f, 20, TouchPhase.Ended) }));
+        Near(pinch ? 2 : 1, rig.Target.Scale);
+        Assert.Single(rig.Target.Operations);
+        Assert.False(rig.Controller.Tapped);
+        Assert.False(rig.Controller.DoubleTapped);
+    }
+
+    [Theory]
+    [InlineData(false, float.NaN)]
+    [InlineData(false, float.PositiveInfinity)]
+    [InlineData(true, 20)]
+    public void Review_invalid_initial_contact_stays_rejected_after_its_disappearance(bool duplicate, float x)
+    {
+        var rig = new PanZoomTestRig();
+        rig.Step(Frame(touches: new[] { StartTouch(1, 20, 20), StartTouch(duplicate ? 1 : 2, x, 20) }));
+        rig.Step(Frame(touches: new[] { Touch(1, 40, 20) }));
+        Assert.Empty(rig.Target.Operations);
+        rig.Step(Frame(touches: new[] { Touch(1, 40, 20, TouchPhase.Ended) }));
+        rig.Step(Frame(), 0.1f);
+        Assert.Empty(rig.Target.Operations);
+        Assert.False(rig.Controller.Tapped);
+        rig.Step(Frame(touches: new[] { StartTouch(3, 20, 20) }));
+        rig.Step(Frame(touches: new[] { Touch(3, 30, 20) }));
+        Near(new(10, 0), rig.Target.Translation);
+    }
+
+    [Fact]
+    public void Review_fully_invalid_start_cannot_be_rescued_by_a_later_valid_contact()
+    {
+        var rig = new PanZoomTestRig();
+        rig.Step(Frame(touches: new[] { StartTouch(1, float.NaN, 20) }));
+        rig.Step(Frame(touches: new[] { Touch(1, float.NaN, 20), StartTouch(2, 20, 20) }));
+        rig.Step(Frame(touches: new[] { Touch(2, 40, 20) }));
+        Assert.Empty(rig.Target.Operations);
+        rig.Step(Frame(touches: new[] { Touch(2, 40, 20, TouchPhase.Ended) }));
+        Assert.False(rig.Controller.Tapped);
+    }
 }

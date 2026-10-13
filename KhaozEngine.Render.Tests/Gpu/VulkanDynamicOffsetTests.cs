@@ -54,8 +54,8 @@ namespace KhaozEngine.Tests.Gpu
             }
 
             // Includes the four target-outline layouts, the point-skinned caster header, the split resolve's two and
-            // the outline ahead of the temporal resolve.
-            Assert.Equal(57, shapes.Count);
+            // the outline ahead of the temporal resolve and the foliage cascade block.
+            Assert.Equal(58, shapes.Count);
 
             for (int segment = 0; segment < harness.Rings.FramesInFlight; segment++)
             {

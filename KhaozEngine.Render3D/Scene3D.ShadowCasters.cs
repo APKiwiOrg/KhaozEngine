@@ -354,6 +354,7 @@ namespace KhaozEngine.Render3D
             // rasterizes the whole world to fill a 19 m footprint.
             int count = _cascadeCount;
             ResetShadowPassCounters();
+            UploadFoliageShadowCascades(cl);
             _model.BeginShadowPass(cl, _cascadeDepthVps.AsSpan(0, count), count, _frameOrigin,
                 _cascadeNoiseScales.AsSpan(0, count));
 
@@ -407,6 +408,8 @@ namespace KhaozEngine.Render3D
                     }
                 }
             }
+
+            for (int c = 0; c < count; c++) DrawFoliageShadowCascade(cl, c);
 
             // GPU-skinned casters (the default path): one LIGHT-MATRIX slot per (cascade, caster), folding that
             // cascade's column-transformed matrix. The caster's bones are NOT here: they were packed once per caster

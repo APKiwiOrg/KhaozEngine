@@ -105,6 +105,9 @@ internal sealed partial class ModelRenderer
         }
     }
 
+    internal IGpuResourceLayout FoliageLayout => _foliageLayout!;
+    internal IGpuResourceSet FoliageSet => _foliageSet!;
+
     IGpuPipeline? _foliagePipeline;
     IGpuShaderSet? _foliageShaders;
     IGpuResourceLayout? _foliageLayout;

@@ -122,6 +122,60 @@ public sealed class FoliagePatchLayoutTests
         Assert.Equal(patch.Bounds.Radius, patch.CullingRadius(false));
     }
 
+    [Fact]
+    public void PatchesSeparateCastingButDoNotSeparateProfiles()
+    {
+        var shrub = new FoliageMotionProfile(.3f, .15f, .4f, .035f);
+        FoliagePatchLayout layout = FoliagePatchLayout.Build(
+            [At(1f) with { CastsShadows = true, Motion = shrub },
+             At(2f) with { CastsShadows = true }, At(3f)], _ => GrassBounds);
+
+        Assert.Equal(2, layout.Patches.Length);
+        Assert.Equal(2, Assert.Single(layout.Patches, p => p.CastsShadows).Count);
+        Assert.Equal(1, Assert.Single(layout.Patches, p => !p.CastsShadows).Count);
+    }
+
+    [Fact]
+    public void AnimatedBoundsUseTheApprovedAllowance()
+    {
+        var shrub = new FoliageMotionProfile(.3f, .15f, .4f, .035f);
+        FoliagePatch patch = Assert.Single(FoliagePatchLayout.Build(
+            [At(1f) with { Motion = shrub, CastsShadows = true }], _ => GrassBounds).Patches);
+        float padding = (.15f + .035f + .4f * .5f) * 2f;
+        Assert.Equal(.77f, padding, 1e-6f);
+        Assert.Equal(patch.Bounds.Min - new Vector3(padding), patch.AnimatedBounds(.5f).Min);
+        Assert.Equal(patch.Bounds.Max + new Vector3(padding), patch.AnimatedBounds(.5f).Max);
+        Assert.Equal(.3f, patch.MaxLeanHeight, 1e-6f);
+        Assert.Equal(.07f, patch.ShiverHeight, 1e-6f);
+        Assert.Equal(.8f, patch.WindScaleHeight, 1e-6f);
+        Assert.Equal(new MeshBounds(patch.AnimatedBounds(.5f).Min, patch.AnimatedBounds(.5f).Max).Radius,
+            patch.AnimatedBounds(.5f).Radius);
+    }
+
+    [Fact]
+    public void MixedProfilesAggregateCoefficientTimesScaledTiltedHeight()
+    {
+        var shortProfile = new FoliageMotionProfile(.3f, .8f, .2f, .1f);
+        var tallProfile = new FoliageMotionProfile(.3f, .1f, .9f, .02f);
+        Matrix4x4 tilted = Matrix4x4.CreateScale(3f) * Matrix4x4.CreateRotationZ(.5f);
+        FoliagePatch patch = Assert.Single(FoliagePatchLayout.Build(
+            [At(1f) with { Motion = shortProfile },
+             new FoliageInstance(new MeshHandle(4, 1), tilted, .2f, tallProfile)], _ => GrassBounds).Patches);
+        Assert.Equal(1.6f, patch.MaxLeanHeight, 1e-5f);
+        Assert.Equal(.2f, patch.ShiverHeight, 1e-5f);
+        Assert.Equal(5.4f, patch.WindScaleHeight, 1e-5f);
+        float padding = patch.MaxLeanHeight + patch.ShiverHeight + patch.WindScaleHeight * .5f;
+        Assert.Equal(patch.Bounds.Min - new Vector3(padding), patch.AnimatedBounds(.5f).Min);
+    }
+
+    [Fact]
+    public void ZeroHeightMeshesNeedNoAnimatedAllowance()
+    {
+        FoliagePatch patch = Assert.Single(FoliagePatchLayout.Build([At(1f)],
+            _ => new MeshBounds(-Vector3.UnitX, Vector3.UnitX)).Patches);
+        Assert.Equal(patch.Bounds, patch.AnimatedBounds(4f));
+    }
+
     [Theory]
     [InlineData(0f)]
     [InlineData(-1f)]

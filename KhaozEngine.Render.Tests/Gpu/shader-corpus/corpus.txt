@@ -9,7 +9,7 @@
 # corpus.veldrid-spirv.txt sibling are that comparison, taken in two processes.
 #
 # Rebuild: KE_WRITE_SHADER_CORPUS=1 dotnet test KhaozEngine.Render.Tests --filter ShaderCorpus
-# Rows: 672
+# Rows: 688
 Beam.fragment.hlsl 763e8e2481a2a78f468f6d62ed5e3a24df6ffd7ad4d0e8c280ac5ad953b177fe 1809
 Beam.fragment.msl f8bb4e895ae8c1794baa7115089311abef23c86d22b47d85f68e225dae39ad99 1493
 Beam.fragment.spirv 7023f2b860be99c43999b4be78b8fe5cbdba1e201d451dd77c137a80224eba79 2724
@@ -50,6 +50,22 @@ Foliage.layout.msl a443752431f8e7df504ad8c1214f1b2e93cc91affb8131256f1a5df93bee6
 Foliage.vertex.hlsl 1d14a96ee42879082e2b1bc7597da6e0f2372b4612f23091ab76c2c433fdf206 8172
 Foliage.vertex.msl 49ef099bacd5208e7df4e26c695ba49ea10409e755629f839913039be5e8463e 6684
 Foliage.vertex.spirv 944b09000d24574ebd121b1b264cc7bbd9cb9376f34ad4fd7c468c8e9d979452 10352
+FoliageDepth.fragment.hlsl fe25680158d32541b71f9b25acd31950e87083e6b0ec1827ca8f90071c42ae8e 419
+FoliageDepth.fragment.msl 1c08c344e56821da4b766bce31185c34fb66bbd295d90e9772f8b83af9373675 336
+FoliageDepth.fragment.spirv 475068619bbc72bb527dfc6846b3340f7b95fdb130ab0dd827f60fb8a24b79c7 400
+FoliageDepth.layout.hlsl f07f6752baea677e66ccc5c808f6e7d4c24549a46c9696834396edd508951333 13 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:V]|set1[<unnamed>:UniformBuffer:V]
+FoliageDepth.layout.msl f07f6752baea677e66ccc5c808f6e7d4c24549a46c9696834396edd508951333 13 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:V]|set1[<unnamed>:UniformBuffer:V]
+FoliageDepth.vertex.hlsl b9fc07facd9a99260d68472eeb338c92f3e0081347415474807828bf50beb9b1 6823
+FoliageDepth.vertex.msl e662624cbcc2bd21c769007c88fbe1272c893600c4e7f17067dbf47d1d6a6c3c 5855
+FoliageDepth.vertex.spirv 9f747a28e02d78106528ea667eb0c394b08ef3d9a4f100eede10d270b0ea0e57 9180
+FoliageDepthCutout.fragment.hlsl cffe58409b656d5941ebc7afb4c5b0024367f15536ba51f33eddc6924b9e9092 828
+FoliageDepthCutout.fragment.msl 0e9eab4fcc6d97d5d44fbbb77e9794b8b085940f2a3efe26f4080fcb75e1f68a 679
+FoliageDepthCutout.fragment.spirv 8525e5660ba54d16b73eff4cf54a7db7ed5d18d2c8c3c261f704043b3a8242bb 988
+FoliageDepthCutout.layout.hlsl d0dd5f39fb09c902fe923867754afa11a1fe4456e701e1a58b801b3c390236a7 15 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:V]|set1[<unnamed>:UniformBuffer:V]|set2[<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]
+FoliageDepthCutout.layout.msl d0dd5f39fb09c902fe923867754afa11a1fe4456e701e1a58b801b3c390236a7 15 in[<unnamed>:Float3,<unnamed>:Float3,<unnamed>:Float4,<unnamed>:Float2,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4,<unnamed>:Float4]|set0[<unnamed>:UniformBuffer:V]|set1[<unnamed>:UniformBuffer:V]|set2[<unnamed>:TextureReadOnly:F,<unnamed>:Sampler:F]
+FoliageDepthCutout.vertex.hlsl b9fc07facd9a99260d68472eeb338c92f3e0081347415474807828bf50beb9b1 6823
+FoliageDepthCutout.vertex.msl e662624cbcc2bd21c769007c88fbe1272c893600c4e7f17067dbf47d1d6a6c3c 5855
+FoliageDepthCutout.vertex.spirv 9f747a28e02d78106528ea667eb0c394b08ef3d9a4f100eede10d270b0ea0e57 9180
 FoliageMotion.fragment.hlsl de2b53d5063f0f02982f46a19d7e3f48e2e9f723cc750a65edc0fc4fda2b0872 70833
 FoliageMotion.fragment.msl f58829ee3ad1436a9371008f70cb5feb2d13065c91662252945c00c881bc2afc 70236
 FoliageMotion.fragment.spirv 6612ab68756dd9bb94873aadb4a081152f9a28e09b337208abd12ba5248d6ffd 48340

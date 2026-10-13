@@ -5,10 +5,18 @@ namespace KhaozEngine.Render3D.Internal;
 
 /// <summary>One mesh's immutable rank-sorted run in a spatial cell, with absolute world-space bounds.</summary>
 internal readonly record struct FoliagePatch(MeshHandle Mesh, int Start, int Count, MeshBounds Bounds,
-    Vector2 RootMin, Vector2 RootMax, float MaxHeight)
+    Vector2 RootMin, Vector2 RootMax, float MaxHeight, bool CastsShadows,
+    float MaxLeanHeight, float ShiverHeight, float WindScaleHeight, bool HasCustomMotion)
 {
-    // The shader's horizontal bend and tip drop together move a vertex by at most 0.693 blade heights.
+    // Legacy Blade bend and tip drop together move a vertex by at most 0.693 blade heights.
     internal float CullingRadius(bool bending) => Bounds.Radius + (bending ? .7f * MaxHeight : 0f);
+
+    /// <summary>Pad all axes by the approved motion allowance and derive a new bounding sphere from that box.</summary>
+    internal MeshBounds AnimatedBounds(float windStrength)
+    {
+        float padding = MaxLeanHeight + ShiverHeight + WindScaleHeight * windStrength;
+        return new MeshBounds(Bounds.Min - new Vector3(padding), Bounds.Max + new Vector3(padding));
+    }
 
     /// <summary>Selects a conservative rank prefix in logarithmic time. Exact blade fading stays on the GPU.</summary>
     internal int CandidateCount(FoliageInstance[] ordered, Vector3 focus, in FoliageRenderSettings settings)

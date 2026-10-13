@@ -43,12 +43,13 @@ public sealed partial class Scene3D
         return current.WithPrevious(batch.MotionPreviousValid ? batch.MotionPrevious : current);
     }
 
-    readonly record struct FoliageDraw(FoliageBatch Batch, FoliagePatch Patch, int Count, int UniformSlot, float CullRadius);
+    readonly record struct FoliageDraw(FoliageBatch Batch, FoliagePatch Patch, int Count, int UniformSlot,
+        MeshBounds Bounds, float CullRadius);
 
     /// <summary>Last completed foliage submission counters. These are workload counts, not GPU timings.</summary>
     public FoliageFrameStats LastFoliageStats { get; private set; }
 
-    /// <summary>Copy authored placements into immutable spatial patches. The first visible frame uploads
+    /// <summary>Copy authored placements into immutable spatial patches. The first visible or casting frame uploads
     /// their instance stream once. Later frames update only draw constants. Meshes remain scene-owned.</summary>
     public FoliageBatch CreateFoliageBatch(ReadOnlySpan<FoliageInstance> instances, float patchSize = 8f)
     {
@@ -105,8 +106,14 @@ public sealed partial class Scene3D
             _foliagePatchTests++;
             int count = patch.CandidateCount(batch.Layout.Instances, focus, settings);
             if (count == 0) continue;
-            float radius = patch.CullingRadius(settings.WindStrength > 0f || interactors.Length > 0);
-            _foliageDraws.Add(new FoliageDraw(batch, patch, count, slot, radius));
+            bool legacy = !patch.CastsShadows && !patch.HasCustomMotion;
+            MeshBounds bounds = legacy ? patch.Bounds : patch.AnimatedBounds(settings.WindStrength);
+            float radius = legacy
+                ? patch.CullingRadius(settings.WindStrength > 0f || interactors.Length > 0)
+                : bounds.Radius;
+            var draw = new FoliageDraw(batch, patch, count, slot, bounds, radius);
+            _foliageDraws.Add(draw);
+            if (patch.CastsShadows) _foliageShadowDraws.Add(draw);
             candidates = checked(candidates + count);
         }
         if (candidates > 0)
@@ -133,6 +140,7 @@ public sealed partial class Scene3D
     void BeginFoliageFrame()
     {
         _foliageDraws.Clear();
+        _foliageShadowDraws.Clear();
         _foliageUniforms.Clear();
         _foliagePatchTests = 0;
         _foliageDrawnWithoutMotion = false;
@@ -145,24 +153,17 @@ public sealed partial class Scene3D
         for (int i = 0; i < _foliageDraws.Count; i++)
         {
             FoliageDraw draw = _foliageDraws[i];
-            if (draw.Batch.IsDisposed || (FrustumCulling &&
-                !frustum.IntersectsSphere(draw.Patch.Bounds.Center, draw.CullRadius))) continue;
+            if (!FoliageDrawValid(draw) || (FrustumCulling &&
+                !frustum.IntersectsSphere(draw.Bounds.Center, draw.CullRadius))) continue;
             _foliageDraws[kept++] = draw;
         }
         _foliageDraws.RemoveRange(kept, _foliageDraws.Count - kept);
+        PrepareFoliageShadowDraws();
         long uploaded = 0;
-        foreach (FoliageDraw draw in _foliageDraws)
-        {
-            FoliageBatch batch = draw.Batch;
-            if (batch.IsDisposed || batch.Pending is not { } data) continue;
-            uint bytes = checked((uint)data.Length * ModelRenderer.FoliageInstanceData.SizeInBytes);
-            batch.Buffer = _gd.Factory.CreateBuffer(new GpuBufferDescription(bytes, GpuBufferUsage.VertexBuffer));
-            cl.UpdateBuffer<ModelRenderer.FoliageInstanceData>(batch.Buffer, 0, data);
-            batch.Pending = null;
-            uploaded += bytes;
-        }
+        foreach (FoliageDraw draw in _foliageDraws) uploaded += draw.Batch.UploadPending(_gd, cl);
+        foreach (FoliageDraw draw in _foliageShadowDraws) uploaded += draw.Batch.UploadPending(_gd, cl);
         long uniforms = 0;
-        if (kept > 0)
+        if (kept > 0 || _foliageShadowDraws.Count > 0)
         {
             Span<ModelRenderer.FoliageUniforms> slots = CollectionsMarshal.AsSpan(_foliageUniforms);
             float metresPerPixel = ModelRenderer.FoliageUniforms.MetresPerPixel(_currentFrameView.Projection, _res.Height);
@@ -217,6 +218,8 @@ public sealed partial class Scene3D
     void DisposeFoliage()
     {
         _foliageDisposed = true;
+        _foliageShadowRenderer?.Dispose();
+        _foliageShadowRenderer = null;
         foreach (FoliageBatch batch in _foliageBatches)
         {
             batch.IsDisposed = true;

@@ -175,6 +175,8 @@ namespace KhaozEngine.Tests.Gpu
 
                 // Render3D/Rendering/ShadowMapRenderer.cs:125 and :141
                 ["Shadow"] = L(U("U", V, dynamic: true)),
+                // Render3D/Rendering/FoliageShadowRenderer.cs. Cascade matrices, camera fade matrix and origin.
+                ["FoliageShadow"] = L(U("U", V, dynamic: true)),
                 ["Shadow.skinned"] = L(U("VBlock", V, dynamic: true)),
                 // The per-mesh albedo the cutout depth fragments alpha-test (issue #15), fragment only.
                 ["Shadow.cutout"] = L(T("Albedo"), S("Samp")),
@@ -280,6 +282,8 @@ namespace KhaozEngine.Tests.Gpu
             ("PointShadowRenderer skinned", ["PointShadow", "PointShadow.skinnedCaster", "SkinnedBonePalette"]),
             ("PointShadowRenderer skinned dissolve", ["PointShadow", "PointShadow.skinnedCaster", "SkinnedBonePalette"]),
             ("PointShadowRenderer skinned dissolve inverted", ["PointShadow", "PointShadow.skinnedCaster", "SkinnedBonePalette"]),
+            ("FoliageShadowRenderer depth", ["FoliageShadow", "Foliage"]),
+            ("FoliageShadowRenderer cutout depth", ["FoliageShadow", "Foliage", "Shadow.cutout"]),
             ("ShadowMapRenderer depth", ["Shadow"]),
             ("ShadowMapRenderer skinned depth", ["Shadow.skinned", "SkinnedBonePalette"]),
             ("ShadowMapRenderer cutout depth", ["Shadow", "Shadow.cutout"]),
@@ -303,8 +307,8 @@ namespace KhaozEngine.Tests.Gpu
         {
             // The cascade cutout depth pipeline adds one layout and one pipeline beside the shared depth layout.
             // Both counts are stated so an emptied table cannot pass by agreeing with itself.
-            Assert.Equal(57, ShippedLayouts.Count);
-            Assert.Equal(61, ShippedPipelines.Count);
+            Assert.Equal(58, ShippedLayouts.Count);
+            Assert.Equal(63, ShippedPipelines.Count);
 
             foreach ((string pipeline, string[] slots) in ShippedPipelines)
             {

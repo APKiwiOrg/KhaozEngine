@@ -44,6 +44,7 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(scene.EnsurePointShadowAtlas(PointShadowAtlas.MinFaceResolution, 1));
             CaptureTargetOutlinePipelines(scene, framebuffer, commands);
             CaptureTemporalPipelines(device, commands);
+            CaptureFoliageShadowPipelines(scene, framebuffer, commands);
 
             ShippedGraphicsProgram[] expectedPrograms = ShippedShaderPrograms.GraphicsPrograms()
                 .Where(program => Parse(program.VertexGlsl).Count > 0)
@@ -162,6 +163,26 @@ namespace KhaozEngine.Tests.Gpu
             using var trails = new TrailRenderer(device, ModelTargets.Temporal);
             using var overlays = new OverlayMeshRenderer(device, ModelTargets.Temporal);
             using var silhouettes = new SilhouetteRenderer(device, ModelTargets.Temporal);
+        }
+
+        static void CaptureFoliageShadowPipelines(Scene3D scene, IGpuFramebuffer framebuffer,
+            IGpuCommandList commands)
+        {
+            MeshHandle opaque = scene.LoadMesh(MeshPrimitives.Tile(.8f, 2f));
+            var texture = scene.LoadTexture([255, 255, 255, 255], 1, 1);
+            MeshHandle cutout = scene.LoadMesh(MeshPrimitives.Tile(.8f, 2f),
+                new Scene3D.SurfaceMaps(texture, alphaCutoff: .5f));
+            using FoliageBatch casters = scene.CreateFoliageBatch(
+                [new(opaque, Matrix4x4.Identity, .1f, CastsShadows: true),
+                 new(cutout, Matrix4x4.Identity, .1f, CastsShadows: true)]);
+            scene.Post.Quality.Shadows.Mode = ShadowMode.ShadowMap;
+            scene.Camera.Frame(Vector3.Zero, new Vector3(4f));
+            scene.Begin();
+            scene.DrawFoliage(casters, Vector3.Zero,
+                new FoliageRenderSettings { DrawRadius = 100f, DistantDensity = 1f });
+            scene.PrepareFrame();
+            scene.RenderInternal(commands, 64, 64, framebuffer);
+            Assert.True(scene.FoliageShadowDrawCalls > 0);
         }
 
         static IReadOnlyList<VertexDeclaration> Parse(string glsl)

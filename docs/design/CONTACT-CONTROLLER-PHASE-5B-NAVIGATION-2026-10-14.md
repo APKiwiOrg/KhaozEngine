@@ -188,8 +188,9 @@ Door matrix:
 - Live transfer, continuation and sharded handoff go through `ReclassifyContinuation`, which never seats. Its pose,
   timer and buffered-press contract is unchanged.
 
-The intentional behaviour change is cold placement of a swimmer, or any body denied footing, above a bed within seating
-reach: it keeps its supplied position rather than being moved onto the bed.
+The intentional behaviour change is placement of a body denied footing, such as a swimmer carrying its history, above
+a bed within seating reach: it keeps its supplied position rather than being moved onto the bed. Doors that clear
+swimming history (spawn and teleport) keep the existing fresh classification and its hysteresis.
 
 ### P5B-7 Traversal over movement results
 
@@ -374,8 +375,10 @@ Water and #1299:
 
 Placement fix:
 
-- A swimmer settled at its float line over a bed within seating reach that grants no footing keeps its pose and holds
-  within 1 mm, at spawn, cold restore and teleport. Transfer and continuation rows keep their no-seat assertions.
+- A body carrying swimming history, settled at its float line over a bed within seating reach that grants it no
+  footing, keeps its pose and holds within 1 mm. Spawn and teleport clear swimming history by design, so a cold body
+  there is classified fresh and wades on a bed shallower than the enter fraction, as today. Transfer and continuation
+  rows keep their no-seat assertions.
 
 Physical pose:
 

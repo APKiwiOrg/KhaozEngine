@@ -519,6 +519,12 @@ gain an attachment dependency.
 `ArchitectureTests.ZeroDependencyLeaves_CarryNoProjectReferences` pins the leaf alongside Primitives.
 The renderer's existing dependency allowlist and ECS-free closure remain unchanged.
 
+`KhaozEngine.Attachments.Render3D` references only Attachments and Render3D. It resolves contract
+joints to skin-bone indices and composes rigid part transforms from the body's current palette.
+Game3D carries this arm. `RendererArms_ReferenceOnlyTheirOwnerAndRender3D` pins its two edges
+alongside the Render3D.Ecs arm, and the umbrella membership lock includes it. Foundation and Server
+remain unchanged. Render3D's material-part memory importer reuses its existing glTF decoding.
+
 ## Render3D ECS arm: the renderer carries no Ecs edge
 
 `KhaozEngine.Render3D` references no ECS. Entity rendering is its own arm, split off exactly as
@@ -537,7 +543,7 @@ from a kit manifest, and `SnapshotTool` compares rendered PNGs, and neither touc
 base namespace `KhaozEngine.Render3D`, so source compiles unchanged once the package is referenced. It uses only
 public `Render3D` surface and needs no `InternalsVisibleTo`. `Render3D_StaysSeamsOnly` no longer allows `Ecs`,
 `Render3D_ClosureStaysEcsFree` refuses `Ecs`, `Simulation` and `Serialization` anywhere in the `Render3D` closure,
-and `Render3DEcs_ReferencesOnlyEcsAndRender3D` pins the arm's two edges.
+and `RendererArms_ReferenceOnlyTheirOwnerAndRender3D` pins the arm's two edges.
 
 ## Determinism at the scheduling boundary: Simulation references Determinism
 

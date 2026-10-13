@@ -642,7 +642,7 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>Upload a multi-material prop (one textured sub-mesh per source material, from
-        /// <see cref="PropLoader.LoadPropParts"/> or <see cref="GltfLoader.LoadPartsWithMaterials"/>) and return a
+        /// <see cref="PropLoader.LoadPropParts"/> or <see cref="GltfLoader.LoadPartsWithMaterials(string)"/>) and return a
         /// <see cref="PropHandle"/> that draws them as one unit. Each part is a normal textured mesh
         /// (<see cref="LoadMesh(GltfMesh,GltfMaterialMaps)"/>), so it flows through the same instanced draw path -
         /// this is the multi-texture-per-primitive render path: distinct textures on distinct sub-ranges, instanced
@@ -650,7 +650,7 @@ namespace KhaozEngine.Render3D
         public PropHandle LoadProp(IReadOnlyList<GltfMeshPart> parts) => new PropHandle(LoadPartHandles(parts));
 
         /// <summary>Upload a multi-material prop's parts (from <see cref="PropLoader.LoadPropParts"/> /
-        /// <see cref="PropLoader.LoadPropAuto"/> / <see cref="GltfLoader.LoadPartsWithMaterials"/>) and return the raw
+        /// <see cref="PropLoader.LoadPropAuto"/> / <see cref="GltfLoader.LoadPartsWithMaterials(string)"/>) and return the raw
         /// per-part <see cref="MeshHandle"/> list, one textured sub-mesh per source material. This is the multi-part
         /// scatter form: drop the list into a <c>id -&gt; parts</c> map for
         /// <c>KhaozEngine.Terrain.PropRenderer</c>'s multi-part draw path, where each part instances at the shared

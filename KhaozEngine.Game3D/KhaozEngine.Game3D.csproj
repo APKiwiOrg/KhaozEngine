@@ -23,6 +23,7 @@
                       PrivateAssets="contentfiles;analyzers" />
     <!-- ...plus the 3D renderer and the Game<->Render3D bridge -->
     <ProjectReference Include="../KhaozEngine.Render3D/KhaozEngine.Render3D.csproj" />
+    <ProjectReference Include="../KhaozEngine.Attachments.Render3D/KhaozEngine.Attachments.Render3D.csproj" />
     <!-- the ECS arm of Render3D: Transform3D, MeshInstance and Scene3DBinder -->
     <ProjectReference Include="../KhaozEngine.Render3D.Ecs/KhaozEngine.Render3D.Ecs.csproj" />
     <ProjectReference Include="../KhaozEngine.Game.Render3D/KhaozEngine.Game.Render3D.csproj" />

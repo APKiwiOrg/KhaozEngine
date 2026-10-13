@@ -5,6 +5,16 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.35.1
+
+- World map symbols add an optional `SizeMetres` init property for full local width and depth independent
+  of the authored footprint. Symbols and building shadows retain the authored centre and rotation.
+  Null preserves existing raster bytes. Sized walls use both explicit dimensions.
+- Raster queries and cache invalidation include the largest visible drawn half diagonal at every level,
+  including the blocking fallback, to preserve coverage across chunk edges.
+- Coarse filtering continues to use authored footprint size before materialization. Drawn size leaves
+  feature anchors, hover targets and retained-image caps unchanged.
+
 ## 20.35.0
 
 - Render3D adds component nameplate templates beside the unchanged legacy plate API. A `NameplateTemplate` orders
@@ -18,13 +28,6 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - Primitives adds `AttachPoint` and `Attach` (`PointOf`, `Resolve`, `Union`) for point-to-point rect placement.
 - Render2D adds outlined text: `TextOutline` with eight-way offsets and outline-aware measurement, and the
   `SpriteBatch.DrawStringOutlined` extension.
-- World map symbols add an optional `SizeMetres` init property for full local width and depth independent
-  of the authored footprint. Symbols and building shadows retain the authored centre and rotation.
-  Null preserves existing raster bytes. Sized walls use both explicit dimensions.
-- Raster queries and cache invalidation include the largest visible drawn half diagonal at every level,
-  including the blocking fallback, to preserve coverage across chunk edges.
-- Coarse filtering continues to use authored footprint size before materialization. Drawn size leaves
-  feature anchors, hover targets and retained-image caps unchanged.
 
 ## 20.34.0
 

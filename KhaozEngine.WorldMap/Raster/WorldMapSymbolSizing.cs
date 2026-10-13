@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 
 namespace KhaozEngine.WorldMap.Raster;
@@ -18,8 +19,10 @@ internal static class WorldMapSymbolSizing
     internal static float MaximumRadius(WorldMapStyle style)
     {
         float maximum = Radius(style.FallbackBlocking);
-        foreach (WorldMapSymbolRule rule in style.SymbolRules)
-            maximum = MathF.Max(maximum, Radius(rule.Symbol));
+        // Indexed so the per-chunk reach never boxes an interface enumerator.
+        IReadOnlyList<WorldMapSymbolRule> rules = style.SymbolRules;
+        for (int i = 0; i < rules.Count; i++)
+            maximum = MathF.Max(maximum, Radius(rules[i].Symbol));
         return maximum;
     }
 

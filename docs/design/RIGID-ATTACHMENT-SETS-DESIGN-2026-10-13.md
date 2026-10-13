@@ -19,12 +19,19 @@ the package contract.
 
 [Hosted run 38392043530](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/38392043530) tested
 `fcf49bf5d3f94ddfbcacd25e426af3c8da267eef`. All eight attachment GPU cases passed on Metal, Direct3D 11
-and Vulkan. The Metal job and Vulkan synchronization validation job passed. The primary Vulkan job is
-still running at this checkpoint. The Windows job failed 14 existing rows tracked by
+and Vulkan. The complete Metal, primary Vulkan and Vulkan synchronization validation jobs passed.
+The synchronization log contains the armed validation producer, confirming the meaning of its
+no-validation-message annotation. The run failed because the Windows job failed 14 existing rows tracked by
 [#1382](https://github.com/APKiwiOrg/KhaozEngine/issues/1382),
 [#1316](https://github.com/APKiwiOrg/KhaozEngine/issues/1316) and
 [#1157](https://github.com/APKiwiOrg/KhaozEngine/issues/1157). This is feature-specific proof, not a green
 full matrix or a waiver of those failures.
+
+The five failures under #1382 were subsequently fixed on main at
+`0898a431058bb3d998f2c65daddf6512c01fb3e3`. Its separate
+[native Windows proof](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/38405463669) passed all
+25 artifact cases with no skips, including the five original failures. That issue is closed. The fixture
+and shadow gates under #1316 and #1157 remain separate unresolved integration requirements.
 
 The subsequent input and GUI merge into `f037fd0fc` leaves the attachment, renderer, backend and headless
 fixture paths unchanged. Its combined local build, suite, Metal proof and packaging were rerun. Later

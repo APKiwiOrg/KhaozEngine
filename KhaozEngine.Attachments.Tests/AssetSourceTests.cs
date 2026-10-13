@@ -43,6 +43,31 @@ public sealed class AssetSourceTests : IDisposable
     [InlineData("https://example.test/plate.glb")]
     public void Read_RejectsInvalidKeys(string key) => Assert.Throws<InvalidDataException>(() => new DirectoryAttachmentAssetSource(root).Read(key));
 
+    [Theory]
+    [InlineData('\uD800')]
+    [InlineData('\uDC00')]
+    public void Read_RejectsMalformedUtf16BeforeFilesystemAccess(char surrogate)
+    {
+        File.WriteAllBytes(Path.Combine(root, "plate\uFFFD.glb"), new byte[] { 1 });
+        var source = new DirectoryAttachmentAssetSource(root);
+        string key = "plate" + surrogate + ".glb";
+
+        InvalidDataException error = Assert.Throws<InvalidDataException>(() => source.Read(key));
+
+        Assert.Contains(key, error.Message);
+        Assert.Null(error.InnerException);
+    }
+
+    [Theory]
+    [InlineData("plate\U0001F9B4.glb")]
+    [InlineData("plate\uFFFD.glb")]
+    public void Read_PreservesValidUnicodeKeys(string key)
+    {
+        File.WriteAllBytes(Path.Combine(root, key), new byte[] { 1, 2, 3 });
+
+        Assert.Equal(new byte[] { 1, 2, 3 }, new DirectoryAttachmentAssetSource(root).Read(key).ToArray());
+    }
+
     [Fact]
     public void Read_RejectsLinkedDirectoryAndLinkedFile()
     {

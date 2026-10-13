@@ -35,6 +35,8 @@ public sealed class RigidAttachmentSetDefinition
                 throw new ArgumentException($"{context}: mesh '{part.Mesh.Key}' requires a lowercase SHA-256.", nameof(parts));
             if (string.IsNullOrWhiteSpace(part.Joint))
                 throw new ArgumentException($"{context}: a joint name is required.", nameof(parts));
+            if (!AttachmentText.IsWellFormedUtf16(part.Joint))
+                throw new ArgumentException($"{context}: joint '{part.Joint}' must contain well-formed UTF-16.", nameof(parts));
             if (!ValidMatrix(part.Local))
                 throw new ArgumentException($"{context}: local must be finite, affine and invertible.", nameof(parts));
             if (meshes.TryGetValue(part.Mesh.Key, out AttachmentMeshRef existing) && existing.Sha256 != part.Mesh.Sha256)

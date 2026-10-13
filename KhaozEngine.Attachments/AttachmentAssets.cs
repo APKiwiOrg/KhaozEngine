@@ -59,6 +59,8 @@ internal static class AttachmentAssetKey
     {
         if (string.IsNullOrWhiteSpace(key))
             return "must not be empty";
+        if (!AttachmentText.IsWellFormedUtf16(key))
+            return "must contain well-formed UTF-16";
         if (key[0] == '/' || key.Contains('\\') || key.Contains(':') || Path.IsPathRooted(key))
             return "must be a relative forward-slash path without a URI";
         foreach (char c in key)

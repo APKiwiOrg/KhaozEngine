@@ -6,6 +6,8 @@ explicitly from headless publishers or consumers. It is not included in Foundati
 `RigidAttachmentSetDefinition` copies parts, orders them by positive stable ID and exposes read-only
 parts and distinct mesh references. Repeated mesh keys must declare the same lowercase SHA-256.
 `ValidateReferences` requires every joint and exact mesh hash to resolve.
+Joint names and mesh keys require well-formed UTF-16 and retain their ordinal identity without
+Unicode normalization. Supplementary characters and literal U+FFFD remain valid.
 
 `RigidAttachmentSetJson.Parse(utf8, sourceName)` accepts format 1 with these fields:
 

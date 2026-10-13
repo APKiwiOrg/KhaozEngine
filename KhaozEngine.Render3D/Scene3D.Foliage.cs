@@ -63,6 +63,7 @@ public sealed partial class Scene3D
             data[i] = new ModelRenderer.FoliageInstanceData
             {
                 Model = item.Transform,
+                Motion = item.Motion.ToVector4(),
                 Parameters = new Vector4(item.ThinningRank, mesh.Bounds.Min.Y,
                     height > .00001f ? 1f / height : 0f, mesh.AlphaCutoff),
             };

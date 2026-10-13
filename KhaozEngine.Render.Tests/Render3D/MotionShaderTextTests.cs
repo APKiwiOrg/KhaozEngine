@@ -108,40 +108,20 @@ public sealed class MotionShaderTextTests
         .Where(line => !IsClip(line))
         .ToArray();
 
-    /// <summary>FoliageVert's statements up to gl_Position, with the renames foliageWorld makes (the focus, clock,
-    /// pixel scale and fade matrix become parameters, and the interactor reads go through the current-or-previous
-    /// locals), equal foliageWorld's body line for line. The inputs, the outputs and the rest of main match too.</summary>
+    /// <summary>The foliage programs evaluate the same displacement function, with the temporal variant also
+    /// evaluating last frame. Their inputs, fragment outputs and current-frame main tail remain identical.</summary>
     [Fact]
-    public void TheFoliageVariantRestatesFoliageVertLineForLine()
+    public void TheFoliageVariantCallsTheSharedFunctionForCurrentAndPreviousFrames()
     {
         string[] baseline = Lines(ShaderSources.FoliageVert);
         string[] variant = Lines(ShaderSources.FoliageMotionVert);
-        string[] deformation = baseline
-            .SkipWhile(line => line != "void main() {").Skip(1)
-            .TakeWhile(line => !line.TrimStart().StartsWith("gl_Position", StringComparison.Ordinal))
-            .Where(line => !line.TrimStart().StartsWith("//", StringComparison.Ordinal))
-            .Select(line => line
-                .Replace("FocusRadius.xz", "focus.xz", StringComparison.Ordinal)
-                .Replace("bool rejected =", "rejected =", StringComparison.Ordinal)
-                .Replace("mat4 Model =", "Model =", StringComparison.Ordinal)
-                .Replace("WindTime.z * FadeWind.z", "windTime * FadeWind.z", StringComparison.Ordinal)
-                .Replace("(ViewProj * vec4(root, 1.0)).w, 0.0) * WindFade.y",
-                    "(fadeViewProj * vec4(root, 1.0)).w, 0.0) * metresPerPixel", StringComparison.Ordinal)
-                .Replace("Interactors[i]", "interactor", StringComparison.Ordinal)
-                .Replace("Strengths[i]", "strength", StringComparison.Ordinal))
-            .ToArray();
-        string[] function = variant
-            .SkipWhile(line => !line.StartsWith("vec3 foliageWorld(", StringComparison.Ordinal)).Skip(2)
-            .TakeWhile(line => line != "    return world.xyz;")
-            .Where(line => !line.Contains("previous ? Prev", StringComparison.Ordinal))
-            .ToArray();
-
-        Assert.Equal(deformation, function);
-        // The lines that give the variant its last-frame meaning, which the comparison above leaves out.
-        Assert.Contains("        vec4 interactor = previous ? PrevInteractors[i] : Interactors[i];", variant);
-        Assert.Contains("        float strength = previous ? PrevStrengths[i] : Strengths[i];", variant);
-        Assert.Contains("    vec4 world = vec4(foliageWorld(FocusRadius.xyz, WindTime.z, WindFade.y, ViewProj, false, Model, "
-            + "rejected), 1.0);", variant);
+        foreach (string source in new[] { ShaderSources.FoliageVert, ShaderSources.FoliageMotionVert })
+        {
+            Assert.Equal(2, source.Split(ShaderSources.FoliageDisplacementGlsl, StringSplitOptions.None).Length);
+            Assert.Single(Lines(source), line => line.StartsWith("vec3 foliageWorld(", StringComparison.Ordinal));
+            Assert.Contains("    vec4 world = vec4(foliageWorld(FocusRadius.xyz, WindTime.z, WindFade.y, ViewProj, false, Model, "
+                + "rejected), 1.0);", Lines(source));
+        }
         Assert.Contains("    vec3 lastWorld = foliageWorld(PrevFocus.xyz, PrevFocus.w, WindFade.z, PrevViewProj, true, lastModel, "
             + "lastRejected);", variant);
         Assert.Equal(Inputs(baseline), Inputs(variant));

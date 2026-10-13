@@ -22,7 +22,7 @@ public sealed class FoliageGpuTests(FoliageGpuScene fixture) : IClassFixture<Fol
             new FoliageInstance(fixture.Blade, Matrix4x4.CreateTranslation(1f, 0f, 0f), .8f),
         });
         byte[] first = fixture.Capture(s => s.DrawFoliage(batch, Vector3.Zero, Solid));
-        Assert.Equal(160, scene.LastFoliageStats.InstanceUploadBytes);
+        Assert.Equal(192, scene.LastFoliageStats.InstanceUploadBytes);
         byte[] second = fixture.Capture(s => s.DrawFoliage(batch, Vector3.Zero, Solid));
         Assert.Equal(first, second);
         Assert.Equal(0, scene.LastFoliageStats.InstanceUploadBytes);

@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
@@ -14,7 +13,8 @@ internal sealed partial class ModelRenderer
     {
         public Matrix4x4 Model;
         public Vector4 Parameters; // rank, local root Y, inverse local height, alpha cutoff
-        public const uint SizeInBytes = 80;
+        public Vector4 Motion; // interactor bend scale, maximum lean, wind scale, shiver
+        public const uint SizeInBytes = 96;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -24,8 +24,8 @@ internal sealed partial class ModelRenderer
         public Vector4 Interactor0, Interactor1, Interactor2, Interactor3, Strengths;
         // x = blade pixels where wind stops, y = metres per internal pixel at clip w of 1, z = the same last frame
         public Vector4 WindFade;
-        // Last frame's state for FoliageMotionVert, zero while temporal rendering is off. FoliageVert's block is the 160
-        // bytes above, and these fill the rest of the slot it always had.
+        // Last frame's state for FoliageMotionVert, zero while temporal rendering is off. Both programs declare
+        // the complete block, which fills the 256-byte slot.
         public Vector4 PrevFocus;   // xyz = last frame's focus, w = last frame's wind time
         public Vector4 PrevInteractor0, PrevInteractor1, PrevInteractor2, PrevInteractor3, PrevStrengths;
         public const uint SizeInBytes = 256;
@@ -140,23 +140,7 @@ internal sealed partial class ModelRenderer
                 ? new[] { _layout, _foliageLayout }
                 : new[] { _layout, _foliageLayout, motion.FrameLayout },
             ShaderSet = shaders,
-            VertexLayouts = new List<GpuVertexLayoutDescription>
-            {
-                new GpuVertexLayoutDescription(
-                    new GpuVertexElement("Position", GpuVertexElementFormat.Float3),
-                    new GpuVertexElement("Normal", GpuVertexElementFormat.Float3),
-                    new GpuVertexElement("Color", GpuVertexElementFormat.Float4),
-                    new GpuVertexElement("TexCoord", GpuVertexElementFormat.Float2),
-                    new GpuVertexElement("Tangent", GpuVertexElementFormat.Float4)),
-                new GpuVertexLayoutDescription(FoliageInstanceData.SizeInBytes, 1, new[]
-                {
-                    new GpuVertexElement("IModel0", GpuVertexElementFormat.Float4),
-                    new GpuVertexElement("IModel1", GpuVertexElementFormat.Float4),
-                    new GpuVertexElement("IModel2", GpuVertexElementFormat.Float4),
-                    new GpuVertexElement("IModel3", GpuVertexElementFormat.Float4),
-                    new GpuVertexElement("FoliageParameters", GpuVertexElementFormat.Float4),
-                }),
-            },
+            VertexLayouts = new(FoliageVertexLayouts.Create()),
             Outputs = _foliageOutputs,
         });
     }

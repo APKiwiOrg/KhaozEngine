@@ -66,12 +66,16 @@ internal sealed class ContactNavigationProof : IDisposable
             placed = _proof.SettlePlacement(State(anchorFeet), queries);
             queries.AssertCurrent();
         }
-        if (placed.Outcome != MovementStepOutcome.Advanced || !placed.State.State.Grounded ||
-            placed.State.Selection?.Support is null || !Near(Feet(placed), anchorFeet)) return false;
+        if (!AdmitsPlacement(anchorFeet, Feet(placed), placed.Outcome, placed.State.State.Grounded,
+            placed.State.Selection?.Support is not null)) return false;
         if (!TryEdge(anchorFeet, anchorFeet)) return false;
         _anchors.Add(rawFeet, anchorFeet.Y);
         return true;
     }
+
+    internal static bool AdmitsPlacement(Vector3 anchorFeet, Vector3 settledFeet, MovementStepOutcome outcome,
+        bool grounded, bool hasFooting) => outcome == MovementStepOutcome.Advanced && grounded && hasFooting &&
+        GroundTraversalProbe.Near(settledFeet, anchorFeet);
 
     internal NavSpace WithRestingHeights(NavSpace space)
     {
@@ -170,11 +174,7 @@ internal sealed class ContactNavigationProof : IDisposable
         return new($"Contact navigation cell ({x}, {z}): {message}");
     }
 
-    static bool Near(Vector3 a, Vector3 b)
-    {
-        double x = (double)a.X - b.X, y = (double)a.Y - b.Y, z = (double)a.Z - b.Z;
-        return x * x + y * y + z * z <= (double)GroundTraversalProbe.ArrivalTolerance * GroundTraversalProbe.ArrivalTolerance;
-    }
+    static bool Near(Vector3 a, Vector3 b) => GroundTraversalProbe.Near(a, b);
 
     static bool Finite(Vector3 value) => float.IsFinite(value.X) && float.IsFinite(value.Y) && float.IsFinite(value.Z);
 

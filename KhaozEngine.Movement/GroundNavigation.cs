@@ -25,6 +25,7 @@ public sealed class GroundNavigation
             tuning.SwimSurfaceSubmersionFraction);
         _footprint = footprint;
         Aquatic = aquatic;
+        Identity = new(new NavBakeProfile("", tuning, footprint.Areas) { Aquatic = aquatic }.ResolveKind(), tuning);
         Planner = new ProfilePlanner(this, new GridPathPlanner(graph.Space, graph));
     }
 
@@ -46,6 +47,8 @@ public sealed class GroundNavigation
     public float AgentHeight => Graph.AgentHeight;
 
     internal NavTraversalGraph Graph { get; }
+
+    internal NavProfileIdentity Identity { get; }
 
     /// <summary>The area footprint over the captured columns, which a bake writes and shares across profiles.</summary>
     internal NavAreaFootprint Footprint => _footprint;

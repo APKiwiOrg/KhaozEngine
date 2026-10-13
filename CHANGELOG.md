@@ -7,6 +7,9 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 20.37.0
 
+- Ordinary contact navigation admits captured surfaces at certified resting anchors, preserving raw layers,
+  headroom and areas. Wet unit-pace bindings prove Holds, directed edges and Stair links from movement outcomes.
+  Fresh grids publish resting feet heights, and unknown anchor queries or changed lease bases refuse the bake.
 - Locomotion exposes internal contact navigation proof bindings and certified resting anchors without
   water admission or motion routes. Cold placement seats only with footing, preserving a swimmer's float
   pose and a falling body's vertical velocity when footing is denied. Explicit grounded arrival uses the
@@ -31,7 +34,7 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   the player read-release callback is cached. Older support-cost evidence supplies defaults for absent selector,
   foot and water fields without changing committed baselines.
 - Resolver-1 MapDoc contexts record their G1b refusal through public construction options. Contact approach
-  pacing uses the controller's own water classification. Contact navigation profile proofs remain deferred.
+  pacing uses the controller's own water classification. Ordinary contact ground navigation now proves resting anchors.
   Native G1b, #1299 navigation acceptance and the remaining adoption and hosted cost gates stay open.
 - Navigation bake doors normalize effective profile kinds before identity work or stream reads. Malformed Contact
   selections refuse as arguments, while Contact aquatic profiles name #1389. Captures record and verify leased

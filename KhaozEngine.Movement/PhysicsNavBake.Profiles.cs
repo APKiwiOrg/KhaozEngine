@@ -13,7 +13,8 @@ public sealed partial class PhysicsNavBake
 
     /// <summary>Bakes one capsule class against the captured area tags and unchanged static physics.
     /// The slope must equal the capture slope. Every admitted hold, directed neighbor and Stair link
-    /// is proved through the movement core with dry medium and unit pace. The result owns pure data.</summary>
+    /// is proved through the movement core at unit pace. Legacy proofs use dry medium and raw feet. Ordinary contact
+    /// proofs use their water policy and certified resting anchors. The result owns pure data.</summary>
     public GroundNavigation BuildProfile(in MoveTuning tuning, NavAreaFilter areas)
         => BuildProfile(tuning, areas, GroundProfileOptions.Default);
 
@@ -45,9 +46,9 @@ public sealed partial class PhysicsNavBake
                 ?? throw new InvalidOperationException("Contact navigation requires a capture from an IPhysicsQueryLeaseSource.");
             basis.AssertCurrent();
         }
-        context.ValidateTuning(tuning);
-        if (kind == EffectiveMovementBindingKind.OrdinaryContact)
-            throw new NotSupportedException("Contact navigation profiles land in task 4.");
+        using EffectiveMovementBinding? source = kind == EffectiveMovementBindingKind.OrdinaryContact
+            ? context.CreateNavigationBinding(tuning) : null;
+        if (kind == EffectiveMovementBindingKind.Legacy) context.ValidateTuning(tuning);
         if (tuning.MaxSlopeRadians != Options.MaxSlopeRadians)
             throw new ArgumentException("Profile slope must equal the capture slope.", nameof(tuning));
         float height = 2f * tuning.CapsuleHalfHeight;
@@ -61,12 +62,15 @@ public sealed partial class PhysicsNavBake
             throw new ArgumentException("An aquatic profile needs swim fractions ordered exit, submersion, enter.", nameof(tuning));
         PhysicsNavColumns columns = aquatic ? AquaticColumns.Derive(Columns, tuning) : Columns;
         var footprint = new NavAreaFootprint(columns, Options, tuning, areas);
-        var candidates = new CandidateColumns(this, context, tuning, footprint, columns);
+        using ContactNavigationProof? contact = kind == EffectiveMovementBindingKind.OrdinaryContact
+            ? new(this, context, source!, footprint) : null;
+        var candidates = new CandidateColumns(this, context, tuning, footprint, columns, contact);
         // A swim-deep column with no surface below the water gains one surface.
         int maxSurfaces = aquatic ? Options.MaxSurfacesPerColumn + 1 : Options.MaxSurfacesPerColumn;
         NavSpace space = NavLayerBaker.BakeGroundedLayered(candidates,
             Options.MinX, Options.MinZ, Options.MaxX, Options.MaxZ, Options.CellSize,
             tuning.StepHeight, height, maxSurfaces, maxLayerCells: Options.MaxLayerCells);
+        if (contact is not null) space = contact.WithRestingHeights(space);
 
         var nodes = new bool[space.Layers.Count][];
         var exits = new byte[space.Layers.Count][];
@@ -99,8 +103,9 @@ public sealed partial class PhysicsNavBake
                     {
                         int nx = x + ProfileNeighbors[direction].X, nz = z + ProfileNeighbors[direction].Z;
                         if (!grid.InBounds(nx, nz) || !nodes[layer][nz * grid.Width + nx]) continue;
-                        if (Prove(context, tuning, Feet(grid, x, z), Floats(floats, layer, grid, x, z),
-                            Feet(grid, nx, nz), Floats(floats, layer, grid, nx, nz), footprint))
+                        if (contact is not null ? contact.TryEdge(Feet(grid, x, z), Feet(grid, nx, nz)) :
+                            Prove(context, tuning, Feet(grid, x, z), Floats(floats, layer, grid, x, z),
+                                Feet(grid, nx, nz), Floats(floats, layer, grid, nx, nz), footprint))
                             exits[layer][z * grid.Width + x] |= (byte)(1 << direction);
                     }
                 }
@@ -115,8 +120,10 @@ public sealed partial class PhysicsNavBake
             NavGrid fromGrid = space.Layers[link.FromLayer], toGrid = space.Layers[link.ToLayer];
             bool fromFloats = Floats(floats, link.FromLayer, fromGrid, link.FromX, link.FromZ);
             bool toFloats = Floats(floats, link.ToLayer, toGrid, link.ToX, link.ToZ);
-            if (Prove(context, tuning, Feet(fromGrid, link.FromX, link.FromZ), fromFloats,
-                Feet(toGrid, link.ToX, link.ToZ), toFloats, footprint)) links.Add(link);
+            if (contact is not null ? contact.TryEdge(Feet(fromGrid, link.FromX, link.FromZ),
+                Feet(toGrid, link.ToX, link.ToZ)) :
+                Prove(context, tuning, Feet(fromGrid, link.FromX, link.FromZ), fromFloats,
+                    Feet(toGrid, link.ToX, link.ToZ), toFloats, footprint)) links.Add(link);
         }
         _ = Context;
         var graph = new NavTraversalGraph(space, tuning.CapsuleRadius, height, layers, links);
@@ -156,7 +163,8 @@ public sealed partial class PhysicsNavBake
     }
 
     private sealed class CandidateColumns(PhysicsNavBake bake, GroundMoveContext context,
-        MoveTuning tuning, NavAreaFootprint footprint, PhysicsNavColumns columns) : INavColumnProvider
+        MoveTuning tuning, NavAreaFootprint footprint, PhysicsNavColumns columns,
+        ContactNavigationProof? contact) : INavColumnProvider
     {
         public int SampleColumn(float x, float z, Span<NavSurfaceSample> surfaces)
         {
@@ -167,7 +175,9 @@ public sealed partial class PhysicsNavBake
                 if (surface.Headroom < 2f * tuning.CapsuleHalfHeight) continue;
                 Vector3 feet = new(x, surface.Height, z);
                 bool floats = columns.IsFloatAt(x, z, i);
-                if (bake.Prove(context, tuning, feet, floats, feet, floats, footprint)) surfaces[accepted++] = surface;
+                float next = i + 1 < count ? surfaces[i + 1].Height : float.PositiveInfinity;
+                if (contact is not null ? contact.Admit(feet, surface.Headroom, next) :
+                    bake.Prove(context, tuning, feet, floats, feet, floats, footprint)) surfaces[accepted++] = surface;
             }
             return accepted;
         }

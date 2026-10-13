@@ -6,6 +6,10 @@ public sealed partial class NavGrid
 {
     readonly float[]? _restingHeights;
 
+    // Bake projection starts with the entire raw field, including values hidden by the blocked mask.
+    internal float[] CopySurfaceHeights() => _heights is { } heights ? (float[])heights.Clone()
+        : throw new InvalidOperationException("A resting-height projection requires raw surface heights.");
+
     /// <summary>True when this grid carries per-cell physical feet heights supplied through
     /// <see cref="WithRestingHeights"/>.</summary>
     public bool HasRestingHeights => _restingHeights is not null;

@@ -73,13 +73,7 @@ public sealed partial class GroundMoveContext
         EffectiveMovementBinding next;
         if (tuning.Controller == MovementControllerKind.Contact)
         {
-            if (!_contactConstruction)
-                throw new NotSupportedException("Contact movement requires a GroundMoveContext constructed with its ordinary environment.");
-            EffectiveMovementBinding.Preflight(tuning, EffectiveMovementBindingKind.OrdinaryContact);
-            if (Physics is null || MovementRegistration is null || MovementBoundary is null)
-                throw new ArgumentException("Ordinary contact movement requires physics, a registration and a MovementBoundary.");
-            next = EffectiveMovementBinding.Ordinary(tuning, Physics, MovementRegistration, GroundHeight, GroundNormal,
-                MovementBoundary, MovementWaterField, _providedMedium, MovementQueries);
+            next = CreateNavigationBinding(tuning);
         }
         else
         {
@@ -99,6 +93,32 @@ public sealed partial class GroundMoveContext
         _binding = next;
         _validatedTuning = tuning;
         _hasValidatedTuning = true;
+    }
+
+    internal EffectiveMovementBinding CreateNavigationBinding(in MoveTuning tuning)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_stepping) throw new InvalidOperationException("Ground movement steps cannot overlap or recurse.");
+        if (_legacyOnlyContactRefusal is not null) throw new NotSupportedException(_legacyOnlyContactRefusal);
+        if (!_contactConstruction)
+            throw new NotSupportedException("Contact movement requires a GroundMoveContext constructed with its ordinary environment.");
+        EffectiveMovementBinding.Preflight(tuning, EffectiveMovementBindingKind.OrdinaryContact);
+        if (Physics is null || MovementRegistration is null || MovementBoundary is null)
+            throw new ArgumentException("Ordinary contact movement requires physics, a registration and a MovementBoundary.");
+        return EffectiveMovementBinding.Ordinary(tuning, Physics, MovementRegistration, GroundHeight, GroundNormal,
+            MovementBoundary, MovementWaterField, _providedMedium, MovementQueries);
+    }
+
+    internal MovementFrameDescriptor NavigationFrame
+    {
+        get
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            _origin = Physics!.Origin;
+            EnsureOrigin();
+            CaptureContactFrame();
+            return _contactFrame;
+        }
     }
 
     MoveState StepContact(in MoveState local, Vector2 direction, bool run, float dt)

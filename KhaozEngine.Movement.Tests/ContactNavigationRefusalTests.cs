@@ -107,18 +107,6 @@ public class ContactNavigationRefusalTests
     }
 
     [Fact]
-    public void WellFormedContactProfileKeepsInterimRefusal()
-    {
-        using var scene = new OrdinaryContactScene();
-        using var context = new GroundMoveContext(scene.Height, null, scene.Physics, null, null, null,
-            null, scene.Registration, MovementBoundary.Rectangle(-20, -20, 20, 20));
-        var options = new PhysicsNavBakeOptions(0, 0, 1, 1, 1, 2, 4, scene.Tuning.MaxSlopeRadians, 4, 4);
-        using PhysicsNavBake capture = PhysicsNavBake.Capture(context, options, _ => 0);
-        Assert.Equal("Contact navigation profiles land in task 4.",
-            Assert.Throws<NotSupportedException>(() => capture.BuildProfile(scene.Tuning, default)).Message);
-    }
-
-    [Fact]
     public void ProfilesResolveTheirEffectiveBindingKind()
     {
         Assert.Equal(EffectiveMovementBindingKind.Legacy,

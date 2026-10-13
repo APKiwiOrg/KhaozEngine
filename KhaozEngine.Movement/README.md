@@ -911,7 +911,17 @@ Construction validates the selected foot geometry and every explicit kernel requ
 gravity, maximum fall speed and swim-enter depth fraction. Default foot and water inputs retain their fingerprints.
 Ordinary runtime selection is implemented in phase 5a, staged in 20.37.0. Navigation doors validate Contact
 configuration, refuse aquatic selection for #1389 and require a leased capture basis for ground construction.
-Contact profile proofs remain deferred. The frozen v1 fingerprint and legacy bake bytes are unchanged.
+Ordinary contact ground profiles prove each captured surface at its certified resting anchor. The anchor must keep
+its raw surface's ownership band, fit captured headroom and pass both raw and resting area footprints. Placement and
+Hold require grounded `Advanced` outcomes within the shared 3D 1 mm sphere. Directed edges and Stair links use the
+same wet unit-pace proof binding and read every movement outcome. WadeOnly and SurfaceSwimmer omit swim-deep ground
+nodes, DryOnly omits wet nodes, and Unknown water refuses the candidate. Fresh grids expose admitted anchor feet Y
+through `NavGrid.RestingHeightAt` while raw heights still define layers, areas and candidate links.
+The bake owns separate source and proof bindings for each profile, preserving the context's cached runtime binding
+and borrowed view. Its full outward query envelope must fit the ordinary served scope. Every anchor, placement and
+step takes a fresh lease, and a non-Known anchor query or changed physics, environment or frame basis throws without
+publishing a partial graph. Contact graph serialization and public runtime validation remain deferred to the rest
+of phase 5b. The frozen v1 fingerprint and legacy bake bytes are unchanged.
 Native G1b, #1299 navigation acceptance and the remaining adoption gates
 stay open. Local timing in the [5a proof](../docs/superpowers/plans/proofs/2026-10-13-contact-controller-phase5a-cost.md)
 does not establish the hosted cost gate.

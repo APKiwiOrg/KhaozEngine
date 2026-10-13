@@ -5,13 +5,16 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 20.36.0
+## 20.37.0
 
 - Added GPU-free rigid attachment definitions, strict JSON and embedded GLB validation in
   `KhaozEngine.Attachments`. The separate renderer arm is included in Game3D and provides named-joint
   binding, shared scene uploads, stable part/material motion identities and allocation-free submission.
 - The tile scene exposes attachment uploads through an optional capability. Render3D adds material-part
   import from GLB bytes, transactional surface-map loading and explicit release of owned maps.
+
+## 20.36.0
+
 - Tile ground is slope aware (#1289). Past 45 degrees of slope every material adds two side projections to its
   top-down tap, fully weighted by 60 degrees, so cliffs carry their texture up the face instead of streaking.
   The projection is unchanged below 45 degrees. A material with a steep companion (below) also blends toward it

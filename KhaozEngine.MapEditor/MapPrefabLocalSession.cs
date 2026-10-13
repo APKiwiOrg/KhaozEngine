@@ -14,12 +14,13 @@ namespace KhaozEngine.MapEditor;
 /// <summary>Detached prefab authoring with native commands and captured materialized attachment ownership.</summary>
 public sealed class MapPrefabLocalSession
 {
-    const string LocalInstance = "prefab-local-session";
+    readonly string _localInstance;
     readonly MapDocument _context;
     readonly MapAssetClosure _sourceAssets;
     readonly MapRecordRef? _parent;
     readonly string _assetId;
     readonly MapTransform _origin;
+    readonly IReadOnlySet<MapPrefabChildKey> _excluded;
     readonly EditorHistory _history = new();
     MapDocument _document;
     MapAssetClosure _assets;
@@ -28,6 +29,10 @@ public sealed class MapPrefabLocalSession
     public MapDocument Document => NativeDocumentSnapshot.Clone(_document, MapDocRegistry.CreateDefault());
 
     public MapPrefabLocalSession(MapPrefabAsset asset, MapAssetClosure assets, MapDocument authoringContext, MapRecordRef? parentSpace = null)
+        : this(asset, assets, authoringContext, parentSpace, null, null) { }
+
+    internal MapPrefabLocalSession(MapPrefabAsset asset, MapAssetClosure assets, MapDocument authoringContext, MapRecordRef? parentSpace,
+        MapTransform? origin, IReadOnlySet<MapPrefabChildKey>? excluded)
     {
         ArgumentNullException.ThrowIfNull(asset);
         ArgumentNullException.ThrowIfNull(assets);
@@ -36,8 +41,11 @@ public sealed class MapPrefabLocalSession
         _sourceAssets = assets;
         _parent = parentSpace;
         _assetId = asset.Id;
-        _origin = (_context.Prefabs?.Instances ?? []).Where(i => MapAssetVersionIdentity.LogicalId("prefab", i.ResourceId) == asset.Id && i.ParentSpace == parentSpace)
-            .OrderBy(i => i.Id, StringComparer.Ordinal).Select(i => (MapTransform?)i.Transform).FirstOrDefault() ?? new(Vector3.Zero, 0, 1);
+        var source = (_context.Prefabs?.Instances ?? []).Where(i => MapAssetVersionIdentity.LogicalId("prefab", i.ResourceId) == asset.Id && i.ParentSpace == parentSpace)
+            .OrderBy(i => i.Id, StringComparer.Ordinal).FirstOrDefault();
+        _origin = origin ?? source?.Transform ?? new(Vector3.Zero, 0, 1);
+        _excluded = excluded ?? (source?.Bindings.Entries ?? []).Select(b => new MapPrefabChildKey(b.Child.Kind, b.WorldId)).ToHashSet();
+        _localInstance = MapPrefabAuthoringSlice.InstanceId(_context);
         (_document, _assets) = Detach(asset);
         _history.BindNativeAssets(_document, _assets);
     }
@@ -83,9 +91,9 @@ public sealed class MapPrefabLocalSession
     public MapPrefabAsset Export()
     {
         RequireOpen();
-        var instance = _document.Prefabs!.Instances.Single(i => i.Id == LocalInstance);
+        var instance = _document.Prefabs!.Instances.Single(i => i.Id == _localInstance);
         var schema = _assets.GetPrefab(instance.ResourceId);
-        var selected = _document.Prefabs.Transfers.Where(t => t.InstanceId == LocalInstance && !t.Retired && !t.Binding.Removed)
+        var selected = _document.Prefabs.Transfers.Where(t => t.InstanceId == _localInstance && !t.Retired && !t.Binding.Removed)
             .Select(t => new MapPrefabReference(MapPrefabReferenceScope.World, t.Binding.Child.Kind, t.Binding.WorldId)).ToArray();
         if (selected.Length == 0) return schema with { Children = [], Roofs = [], MaterializedAttachments = [] };
         var exported = MapPrefabExtraction.Extract(_document, _assets, selected, _origin, _assetId);
@@ -129,17 +137,12 @@ public sealed class MapPrefabLocalSession
         roots[0] = root with { Sha256 = Convert.ToHexStringLower(SHA256.HashData(manifestBytes)) };
         var source = new CapturedSource(_sourceAssets, roots[0], manifestBytes, reference, prefabBytes);
         MapAssetClosure assets = MapAssetClosure.Load(roots, source);
-        var document = NativeDocumentSnapshot.Clone(_context, MapDocRegistry.CreateDefault());
-        document.Tiles = null;
+        var document = MapPrefabAuthoringSlice.Create(_context, _sourceAssets, asset, _parent, _excluded);
         document.NativeAssets = roots.ToList();
-        if (document.Prefabs is { } context)
-            document.Prefabs = new(context.PayloadVersion, context.ExpansionVersion, context.Instances.Select(i => i.Removed ? i : i with
-            { Removed = true, Bindings = new(i.Bindings.Entries.Select(b => b with { Removed = true }).ToArray()) }).ToArray(), context.Transfers)
-            { Attachments = context.Attachments };
         // Context supplies authored world references and the explicit parent. Local payloads get their own typed IDs.
         var placed = MapPrefabEdits.Prepare(document, assets,
-            new MapPlacePrefab(LocalInstance, reference.Id, _origin, _parent, NumericLeaves: false)).After;
-        var detached = MapPrefabEdits.Prepare(placed, assets, new MapUnpackPrefab(LocalInstance)).After;
+            new MapPlacePrefab(_localInstance, reference.Id, _origin, _parent, NumericLeaves: false)).After;
+        var detached = MapPrefabEdits.Prepare(placed, assets, new MapUnpackPrefab(_localInstance)).After;
         return (detached, assets);
     }
     static System.Text.Json.JsonSerializerOptions ManifestOptions()

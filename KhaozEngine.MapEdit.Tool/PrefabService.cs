@@ -15,7 +15,7 @@ public sealed record MapPrefabAssetInfo(string ResourceId, string Sha256, int Pa
 public sealed record MapPrefabPublishResult(MapAssetRef Resource, MapPrefabMutationResult? Mutation);
 
 /// <summary>The shared author-time prefab workflow. Local edits remain detached until an immutable save is accepted.</summary>
-public sealed class PrefabService(MapEditSession session)
+public sealed partial class PrefabService(MapEditSession session)
 {
     readonly object _lock = new();
     MapPrefabLocalSession? _local;
@@ -69,7 +69,8 @@ public sealed class PrefabService(MapEditSession session)
             return session.WithNativeAssets(c =>
             {
                 var asset = MapPrefabExtraction.Extract(c.Document, c.Assets, selected, origin, assetId);
-                var local = new MapPrefabLocalSession(asset, c.Assets, c.Document);
+                var (parent, excluded) = ExtractionContext(c.Document, c.Assets, selected);
+                var local = new MapPrefabLocalSession(asset, c.Assets, c.Document, parent, origin, excluded);
                 _local?.Cancel(); _local = local;
                 return local.Export();
             });

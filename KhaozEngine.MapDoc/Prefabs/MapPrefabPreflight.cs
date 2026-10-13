@@ -56,8 +56,12 @@ internal static class MapPrefabPreflight
                     count.Bindings = checked(count.Bindings + instance.Bindings.Entries.Count);
                     count.ReferenceEdges = checked(count.ReferenceEdges + 1 + (instance.ParentSpace is null ? 0 : 2));
                     count.Check();
-                    // Transferred sources charge only their persisted inventory. Ordinary deletion retains its existing work budget.
-                    MapPrefabAsset? asset = instance.Unpacked ? null : assets.BorrowPrefab(instance.ResourceId);
+                    // A resolvable retained base keeps its established work charge. Missing historical versions
+                    // have only the persisted reservation inventory, just like unpacked sources.
+                    bool retainedBase = !instance.Unpacked && (!instance.Removed ||
+                        assets.TryGetResource(instance.ResourceId, out var pinned) && pinned!.Kind == MapResourceKind.Prefab &&
+                        pinned.Reference.Sha256 == instance.ResourceSha256);
+                    MapPrefabAsset? asset = retainedBase ? assets.BorrowPrefab(instance.ResourceId) : null;
                     if (asset is not null)
                     {
                         foreach (var child in asset.Children) count.Child(assets, child, asset.MaterializedAttachments);
@@ -77,9 +81,9 @@ internal static class MapPrefabPreflight
                             count.Overrides = checked(count.Overrides + 1);
                             count.ReferenceEdges = checked(count.ReferenceEdges + 1);
                             count.Check();
-                            if (retained is MapPrefabReplaceOverride replace) count.Child(assets, replace.Value, asset?.MaterializedAttachments, expandResources: !instance.Unpacked);
-                            if (retained is MapPrefabAddOverride add) count.Child(assets, add.Value, asset?.MaterializedAttachments, expandResources: !instance.Unpacked);
-                            if (!instance.Unpacked && retained is MapPrefabPlacementOverride { AssetId: { } id }) count.PlacementAsset(assets, id, retained.Child.Key, false, asset!.MaterializedAttachments);
+                            if (retained is MapPrefabReplaceOverride replace) count.Child(assets, replace.Value, asset?.MaterializedAttachments, expandResources: retainedBase);
+                            if (retained is MapPrefabAddOverride add) count.Child(assets, add.Value, asset?.MaterializedAttachments, expandResources: retainedBase);
+                            if (retainedBase && retained is MapPrefabPlacementOverride { AssetId: { } id }) count.PlacementAsset(assets, id, retained.Child.Key, false, asset!.MaterializedAttachments);
                         }
                 }
             }

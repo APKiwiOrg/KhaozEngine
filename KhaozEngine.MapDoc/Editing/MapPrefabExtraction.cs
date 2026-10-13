@@ -100,7 +100,7 @@ public static class MapPrefabExtraction
     {
         var p = MapPrefabReferenceWalker.Copy(source, id, source.SupportBinding);
         p.NumericId = null;
-        p.X = pose.Position.X; p.Y = pose.Position.Y; p.Z = pose.Position.Z;
+        p.X = pose.Position.X; p.Y = source.Y is null ? null : pose.Position.Y; p.Z = pose.Position.Z;
         p.Yaw = pose.YawRadians; p.Scale = pose.Scale;
         return p;
     }

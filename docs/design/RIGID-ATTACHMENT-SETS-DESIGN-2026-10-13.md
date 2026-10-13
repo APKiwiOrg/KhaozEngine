@@ -44,16 +44,38 @@ The owner replaced the full Windows matrix gate with a baseline gate. Main and r
 fail the same Windows rows in [run 38373207663](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/38373207663).
 The #1157 workstream has had no work since 7 October. This decision supersedes the earlier wait for #1157.
 
-The exact reconciled merge head must have green push `ci` and `cross-platform-gpu` runs, plus one full
-hosted `cross-platform-gpu` dispatch using `legs=all`, `bake=false` and `tier=push`, the route used by
-run 38392043530. All eight attachment cases must pass without skips on Metal, D3D11 and Vulkan.
+The owner amended the trigger gate after confirming that feature-branch pushes do not run these
+workflows. A draft PR to main must have green `ci` and PR-tier `cross-platform-gpu` checks on the
+exact reconciled head. That head must contain current main so its PR merge tree is identical. Main
+movement requires reconciliation, a push and fresh head checks. One full hosted `cross-platform-gpu`
+dispatch must test that same head using `legs=all`, `bake=false` and `tier=push`, the route used by
+run 38392043530. After the fast-forward and push, actual main push checks must pass. A failed main
+check is reported without a revert or force operation. All eight attachment cases must pass without skips on Metal, D3D11 and Vulkan.
 Metal, Vulkan and the Vulkan synchronization validation leg must pass. The Windows D3D11 leg may
 fail only the eight #1316 MapDoc path-fixture rows and the #1157 point-shadow boundary assertion.
 Downloaded TRX results must prove the exact failing set. Any other failing row blocks integration.
 
 No shadow code, shader, tolerance, #1316 repair or proof-only workflow change is included. Those
 workstreams retain ownership. Current main `ee6016aae` is being reconciled and released `20.37.0`
-is followed by staged additive version `20.38.0`. Fresh verification is pending. No tag is authorized.
+is followed by staged additive version `20.38.0`. No tag is authorized.
+
+### Reconciled local checkpoint
+
+The reconciled source is `be9889d4fa34728e3b3ab63cc8e89aa5ed442ef2`, containing main
+`ee6016aae2473dadcb1c8a3fdcdaff4bc2371392`. The Release build and the affected render rebuild passed
+with zero warnings and errors. The focused proof passed 112 core and 47 renderer cases without skips.
+The full solution suite passed 31,573 cases with zero failures and 1,374 conditional skips across
+37 projects. Strict native Metal with API validation passed all eight attachment cases without skips.
+The new captures preserve independent poses, enabled and omitted shadows, and outlines.
+
+Private packaging passed with 107 nupkg and 105 snupkg files. Both attachment DLL hashes match the
+tested build. All repository commit fields equal the tested source, all engine dependency versions
+are `20.38.0`, the core has no direct dependencies, the renderer has exactly Attachments and Render3D,
+and both umbrella edges include the renderer arm. Whole-tree guards and doc versions passed. The
+format sweep found one initializer whitespace row, corrected without a token change and reverified.
+
+The local Metal TRX SHA256 is `7bd4979285c9ae6009e06265f0c3c2f45be7e1b886660726cd3eebc077231032`.
+The fresh hosted gate and merge-resolution review are pending.
 
 ## Purpose
 

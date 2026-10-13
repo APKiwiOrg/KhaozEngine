@@ -166,3 +166,25 @@ initializer fields shared a line. Split the fields onto separate lines. Token-no
 identical, focused format verification exit 0. Full solution suite is still running on the same
 behavioral source, with no reported failures. Rebuild the affected render project before strict Metal
 and package proof. No test loop or new implementation dispatch.
+
+Owner trigger amendment, 2026-10-14. Feature-branch push checks are impossible under the unchanged
+workflow triggers. Open a draft PR to main and require green ci and PR-tier cross-platform-gpu on
+the exact head intended for fast-forward. It must contain current main so the PR merge ref has the
+same tree. Main movement requires reconciliation, push and fresh head checks. A separate single
+full hosted cross-platform-gpu dispatch tests that same head under the baseline rules. After
+fast-forward and push, actual main push ci and cross-platform-gpu must pass. Report a failure, never
+revert or force without asking. Confirm the PR is merged, or close it with one line naming main SHA.
+
+Local source be9889d4fa34728e3b3ab63cc8e89aa5ed442ef2. Full suite exit 0, 37 summaries, 31573 passed,
+0 failed, 1374 conditional skips. Affected render rebuild exit 0, zero warnings/errors. Strict Metal
+exit 0, eight passed with no skips, Apple M2 Max through MTLDebugDevice with API validation active.
+Local Metal TRX SHA256 7bd4979285c9ae6009e06265f0c3c2f45be7e1b886660726cd3eebc077231032.
+Inspected rest/posed, casting/omitted-shadow and posed-outline captures. Private pack exit 0,
+107 nupkg plus 105 snupkg. Package proof exit 0. All nuspec repository commits equal be9889d4f and
+all engine dependency versions are 20.38.0. Both attachment DLLs match the tested build. Core has
+no dependencies, renderer exactly Attachments and Render3D, both umbrella edges include renderer.
+Core DLL SHA256 821c9368f3dd91203af3b32b2d88dba0d42265709db5508dac4b0c5b33064bf7.
+Renderer DLL SHA256 4ca656d53f2fb22d7865d0172fda8674309bdd12b83fef6ee7b074e4d24a8265.
+Logs integration-20261014-{build,focused,suite,render-build,metal,pack,format-fix}.log and
+package-proof JSON retain evidence. No code changes after these proofs are planned. Exact-head
+hosted baseline gate and one Codex merge-resolution review are next. No tag or release.

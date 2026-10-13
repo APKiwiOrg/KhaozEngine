@@ -154,3 +154,15 @@ main and origin/main both equal ee6016aae. Latest tag v20.37.0, both sides decla
 Reconciliation has only CHANGELOG and INDEX textual conflicts. Preserve all released main history
 and both index entries. Source auto-merge preserves foliage and attachment changes. Stage 20.38.0
 for the additive capability. Fresh local and exact-head hosted proofs plus a Codex merge review follow.
+
+Reconciled merge commit d18bb66c2280a70b93b40b9ee7525d97b2fd2905 contains ee6016aae. Released
+20.37.0 changelog history is byte-identical to main, workflow tree is identical to main, and only the
+attachment surface-map extraction and qualified XML links differ in Scene3D. No shadow source edit.
+Release build exit 0, zero warnings/errors. Focused CPU proof exit 0, 112 core plus 47 renderer tests,
+no skips. Whole-tree dashes/prose/size/instruction/doc guards and diff check passed.
+
+Format sweep found one WHITESPACE row at BoundRigidAttachmentSet.cs line 67, where two record
+initializer fields shared a line. Split the fields onto separate lines. Token-normalized source is
+identical, focused format verification exit 0. Full solution suite is still running on the same
+behavioral source, with no reported failures. Rebuild the affected render project before strict Metal
+and package proof. No test loop or new implementation dispatch.

@@ -64,7 +64,8 @@ public sealed class BoundRigidAttachmentSet
             for (int material = 0; material < handles.Length; material++)
                 destination[draw++] = template with
                 {
-                    Mesh = handles[material], World = _worlds[part],
+                    Mesh = handles[material],
+                    World = _worlds[part],
                     Motion = MotionKey.Combine(partKey, (uint)material),
                 };
         }

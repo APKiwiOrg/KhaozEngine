@@ -226,6 +226,63 @@ public sealed class FoliageShadowGpuTests(FoliageShadowGpuScene fixture) : IClas
     }
 
     [GpuFact]
+    public void PointShadowStaysAtRestWhileCascadeMoves()
+    {
+        Scene3D scene = fixture.Scene;
+        Assert.True(scene.Post.Quality.Shadows.PointShadows.Enabled);
+        FoliageInteractor[] still = Actors.Select(actor => actor with { Agitation = 0f }).ToArray();
+        static void Lamp(Scene3D s) =>
+            s.AddLight(new Vector3(1.5f, 1f, 0f), Color.White, 6f, 1f, LightShadow.Static(77));
+        FoliageBatch batch = scene.CreateFoliageBatch([new(fixture.Shrub, Matrix4x4.Identity, .1f, Shrub, true)]);
+        try
+        {
+            // The first request brings the atlas up, the second draws the row.
+            fixture.Capture(s => { s.DrawFoliage(batch, Vector3.Zero, Wind, still); Lamp(s); });
+            fixture.Capture(s => { s.DrawFoliage(batch, Vector3.Zero, Wind, still); Lamp(s); });
+            ShadowPassDiagnostics rest = scene.LastShadowPassDiagnostics;
+            Assert.Equal(1, rest.PointStaticRebuilds);
+            Assert.Equal(0, rest.RigidDrawCalls);
+            Assert.True(rest.PointFaceDrawCalls > 0);
+            Assert.Equal(rest.PointFaceDrawCalls, scene.FoliagePointShadowDrawCalls);
+            float[] restAtlas = scene.DebugReadPointShadowAtlas(out _, out _);
+            float[] restCascade = scene.DebugReadShadowMap(out _, out _);
+            Assert.Contains(restAtlas, distance => distance < 1f);
+
+            // A shiver-only change moves the cascade caster and leaves the cached point map alone.
+            fixture.Capture(s => { s.DrawFoliage(batch, Vector3.Zero, Wind, Actors); Lamp(s); });
+            Assert.Equal(0, scene.LastShadowPassDiagnostics.PointStaticRebuilds);
+            Assert.Equal(0, scene.FoliagePointShadowDrawCalls);
+            Assert.True(scene.FoliageShadowDrawCalls > 0);
+            Assert.Equal(restAtlas, scene.DebugReadPointShadowAtlas(out _, out _));
+            Assert.NotEqual(restCascade, scene.DebugReadShadowMap(out _, out _));
+
+            // The proxy is exactly the rigid caster at the authored transform.
+            fixture.Capture(s => { s.Draw(fixture.Shrub, Matrix4x4.Identity); Lamp(s); });
+            Assert.Equal(1, scene.LastShadowPassDiagnostics.PointStaticRebuilds);
+            Assert.Equal(0, scene.FoliagePointShadowDrawCalls);
+            AssertDepthMatches(scene.DebugReadPointShadowAtlas(out _, out _), restAtlas);
+
+            fixture.Capture(s => { s.DrawFoliage(batch, Vector3.Zero, Wind, Actors); Lamp(s); });
+            Assert.Equal(1, scene.LastShadowPassDiagnostics.PointStaticRebuilds);
+            Assert.Equal(restAtlas, scene.DebugReadPointShadowAtlas(out _, out _));
+
+            // Removing the proxy invalidates the static row once and clears it.
+            batch.Dispose();
+            fixture.Capture(Lamp);
+            Assert.Equal(1, scene.LastShadowPassDiagnostics.PointStaticRebuilds);
+            Assert.All(scene.DebugReadPointShadowAtlas(out _, out _), distance => Assert.Equal(1f, distance));
+            fixture.Capture(Lamp);
+            Assert.Equal(0, scene.LastShadowPassDiagnostics.PointStaticRebuilds);
+            Assert.Equal(0, scene.FoliagePointShadowStreamCount);
+        }
+        finally
+        {
+            batch.Dispose();
+            fixture.Capture(_ => { });
+        }
+    }
+
+    [GpuFact]
     public void AgedShadowFixtureMatchesFresh()
     {
         using FoliageBatch agedBatch = fixture.Scene.CreateFoliageBatch(

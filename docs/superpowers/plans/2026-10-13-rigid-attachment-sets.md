@@ -14,7 +14,7 @@ views borrow them.
 
 ## Global Constraints
 
-- Plans await review. Product work starts only after plan approval and execution-method selection.
+- The owner approved this plan and task-by-task execution on 2026-10-13. Release authorization is separate.
 - Work in the engine task worktree. Preserve other work and follow current `AGENTS.md` and contributor rules.
 - No game, inventory, equipment-slot, skill or particular skeleton type enters the engine API.
 - Root JSON fields are `formatVersion` and `parts`. Part fields are `id`, `mesh`, `joint` and `local`.

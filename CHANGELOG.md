@@ -7,6 +7,11 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 20.35.1
 
+- Added GPU-free rigid attachment definitions, strict JSON and embedded GLB validation in
+  `KhaozEngine.Attachments`. The separate renderer arm is included in Game3D and provides named-joint
+  binding, shared scene uploads, stable part/material motion identities and allocation-free submission.
+- The tile scene exposes attachment uploads through an optional capability. Render3D adds material-part
+  import from GLB bytes, transactional surface-map loading and explicit release of owned maps.
 - World map symbols add an optional `SizeMetres` init property for full local width and depth independent
   of the authored footprint. Symbols and building shadows retain the authored centre and rotation.
   Null preserves existing raster bytes. Sized walls use both explicit dimensions.

@@ -1,8 +1,9 @@
 # Rigid attachment sets
 
-Status: consumer-approved scope, with package and API choices proposed for implementation-plan review.
+Status: owner-approved scope, package boundaries and implementation plan, 2026-10-13.
 The [implementation plan](../superpowers/plans/2026-10-13-rigid-attachment-sets.md) is the execution contract.
-This is planned behaviour, not a description of a shipped API.
+This document records the design rationale. The package READMEs and consumer guide describe current APIs.
+Package availability is determined by release tags, with consumer adoption gated on an approved release.
 
 ## Purpose
 

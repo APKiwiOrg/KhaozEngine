@@ -34,6 +34,9 @@ public sealed class GroundMaterial
     public GroundMaterialKind Kind { get; set; } = GroundMaterialKind.Ground;
     /// <summary>Texture repeats per metre on the textured ground path, null to take the renderer default of 0.5.</summary>
     public float? TilesPerMetre { get; set; }
+    /// <summary>The material this one blends toward on steep ground, null when it keeps its own look at every
+    /// slope. See <see cref="GroundMaterialSteep"/>.</summary>
+    public GroundMaterialSteep? Steep { get; set; }
 }
 
 /// <summary>How an archetype contributes to the derived collision map (the collision baker reads this, it is
@@ -159,6 +162,7 @@ public sealed class TileWorldCatalogs
                 Texture = material.Texture,
                 Kind = material.Kind,
                 TilesPerMetre = material.TilesPerMetre,
+                Steep = material.Steep?.Clone(),
             });
             copy._materialSources.Add(entry.Key, ("region build materials", false));
         }
@@ -201,6 +205,8 @@ public sealed class TileWorldCatalogs
         var c = new TileWorldCatalogs();
         foreach (GroundMaterial m in file.Materials ?? new()) c.AddMaterial(m, sourceName, sourceIsFile);
         foreach (TileObjectArchetype a in file.Archetypes ?? new()) c.AddArchetype(a, sourceName, sourceIsFile);
+        // A steep companion resolves inside its own file, so the check runs per file, before any merge.
+        GroundMaterialSteepRules.ThrowIfInvalid(c, sourceName);
         return c;
     }
 

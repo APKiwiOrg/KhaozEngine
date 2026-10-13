@@ -16,7 +16,17 @@
           "color": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
           "texture": { "type": "string" },
           "kind": { "type": "string", "enum": ["Ground", "Water"] },
-          "tilesPerMetre": { "type": "number", "minimum": 0.01 }
+          "tilesPerMetre": { "type": "number", "minimum": 0.01 },
+          "steep": {
+            "type": "object",
+            "required": ["material"],
+            "properties": {
+              "material": { "type": "integer", "minimum": 1, "maximum": 65535 },
+              "fromDegrees": { "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 90 },
+              "toDegrees": { "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 90 }
+            },
+            "additionalProperties": false
+          }
         },
         "additionalProperties": false
       }

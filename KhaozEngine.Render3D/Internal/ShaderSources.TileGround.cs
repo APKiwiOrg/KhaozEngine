@@ -119,6 +119,11 @@ void main() {
         //      the taps run under a data-dependent branch. An implicit texture() there takes undefined derivatives
         //      once a quad diverges at that branch, which minified ground reads as distance shimmer.
         //
+        //      SLOPE (TileGroundSteepShading, #1289). Past TriplanarStartDegrees the taps add side projections, so a
+        //      cliff stops smearing one row of texels into streaks. A material whose catalog row has a steep
+        //      companion blends toward it over its own band, whatever its corners voted. Both read the slope off the
+        //      interpolated lattice normal. A fragment below every threshold takes exactly the taps it always took.
+        //
         //      Lighting is the shared LightingCommonGlsl block and the three MRT targets are exactly SplatFrag's
         //      (geometric normal to attachment 1 for the edge pass, NDC depth to attachment 2). ----
         public const string TileGroundFrag = @"#version 450
@@ -143,10 +148,12 @@ layout(set=0, binding=0) uniform U {
 " + PointLightBufferGlsl + PointLightClusterBufferGlsl + @"
 // The material's own uniforms, written ONCE at load and never re-uploaded. Declared here and NOT in
 // TileGroundVert, because the vertex stage reads none of them (TileGroundMaterialConfig.BuildParams is the C#
-// side of this block, MaxMaterials + 1 vec4).
+// side of this block, 2 * MaxMaterials + 2 vec4).
 layout(set=1, binding=0) uniform TileGroundParams {
     vec4 TintTiling[64];   // xyz = tint, w = tiles/metre, one entry per catalog material
     vec4 Misc;             // x = baseSpecStrength, y = material layer count, zw reserved (0)
+    vec4 Triplanar;        // x = cos(start), y = cos(full), z = sharpness, w reserved (0). TileGroundSteepShading
+    vec4 SteepBand[64];    // x = companion slot + 1 (0 = none), y = cos(toDegrees), z = cos(fromDegrees), w reserved
 };
 layout(set=1, binding=1) uniform texture2DArray AlbedoArray;  // one layer per catalog material, sampled FIRST
 layout(set=1, binding=2) uniform sampler Samp;
@@ -174,6 +181,32 @@ layout(location=2) out vec4 oDepth;
 vec3 sampleSlot(int slot, vec2 uv, vec2 g0, vec2 g1) {
     return textureGrad(sampler2DArray(AlbedoArray, Samp), vec3(uv, float(slot)), g0, g1).rgb;
 }
+
+// One material's tinted albedo at this fragment. tw holds the projection weights (x = the side projection along
+// world X, y = top-down, z = the side projection along world Z), already thresholded and renormalised in main, and
+// tri says whether this fragment is past the triplanar start at all. When it is not, this is the single top-down
+// tap the ground has always taken and nothing else runs. When it is, every positive weight is sampled and nothing
+// else. The side projections keep v running down world Y, so a texture keeps its up on a cliff. Every gradient is
+// a swizzle of the hoisted dWx/dWy, so each tap stays well defined under the data-dependent branches around it.
+vec3 sampleMaterial(int sl, vec3 wpAbs, vec3 dWx, vec3 dWy, vec3 tw, bool tri) {
+    float tile = TintTiling[sl].w;
+    vec3 c;
+    if (!tri) {
+        c = sampleSlot(sl, wpAbs.xz * tile, dWx.xz * tile, dWy.xz * tile);
+    } else {
+        c = vec3(0.0);
+        if (tw.y > 0.0) {
+            c += tw.y * sampleSlot(sl, wpAbs.xz * tile, dWx.xz * tile, dWy.xz * tile);
+        }
+        if (tw.x > 0.0) {
+            c += tw.x * sampleSlot(sl, vec2(wpAbs.z, -wpAbs.y) * tile, vec2(dWx.z, -dWx.y) * tile, vec2(dWy.z, -dWy.y) * tile);
+        }
+        if (tw.z > 0.0) {
+            c += tw.z * sampleSlot(sl, vec2(wpAbs.x, -wpAbs.y) * tile, vec2(dWx.x, -dWx.y) * tile, vec2(dWy.x, -dWy.y) * tile);
+        }
+    }
+    return c * TintTiling[sl].xyz;
+}
 " + MaterialLodGradGlsl + LightingCommonGlsl + AtmosphereBindingsAt3Glsl + AtmosphereFogGlsl + @"
 void main() {
     vec3 Ngeo = normalize(vNormalW);
@@ -197,9 +230,9 @@ void main() {
                          clamp(int(vOverlaySlot - 0.5), 0, maxSlot));
 
     // Screen-space world derivatives, taken ONCE here in uniform control flow (before the loop's data-dependent
-    // `continue`). The UV is wpAbs.xz * tile, so its texture-space gradient is the matching world derivative scaled
-    // by that slot's tile rate. Feeding these to textureGrad keeps the mip/aniso LOD well-defined regardless of the
-    // branch.
+    // `continue` and the slope branches). Every UV is two world axes times the slot's tile rate, so its
+    // texture-space gradient is the matching swizzle of these scaled by that rate. Feeding them to textureGrad keeps
+    // the mip/aniso LOD well-defined regardless of the branch.
     vec3 dWx = dFdx(vWorldPos) * materialGradScale();   // the temporal mip bias as a gradient scale, 1.0 when off
     vec3 dWy = dFdy(vWorldPos) * materialGradScale();
 
@@ -209,15 +242,42 @@ void main() {
     // and the origin cancels.
     vec3 wpAbs = vWorldPos + RenderOrigin.xyz;
 
+    // Slope, from the interpolated lattice normal, so it is continuous across tiles and regions. Triplanar side
+    // projections fade in between Triplanar.x (cos start) and Triplanar.y (cos full). Below the start triFade is
+    // exactly 0, tri is false, and every tap below is the plain top-down one.
+    float ny = abs(Ngeo.y);
+    float triFade = 1.0 - smoothstep(Triplanar.y, Triplanar.x, ny);
+    bool tri = triFade > 0.0;
+    vec3 tw = vec3(0.0, 1.0, 0.0);
+    if (tri) {
+        vec3 b = pow(abs(Ngeo), vec3(Triplanar.z));
+        b /= max(b.x + b.y + b.z, 1e-5);
+        tw = vec3(b.x * triFade, mix(1.0, b.y, triFade), b.z * triFade);
+        // A projection too faint to see is dropped rather than skipped, and the kept weights renormalised once
+        // here, so dropping one never darkens the ground and switching it on never steps. The three sum to 1
+        // before the cut, so at least one survives it.
+        if (tw.x <= 0.001) { tw.x = 0.0; }
+        if (tw.y <= 0.001) { tw.y = 0.0; }
+        if (tw.z <= 0.001) { tw.z = 0.0; }
+        tw /= tw.x + tw.y + tw.z;
+    }
+
     vec3 albedo = vec3(0.0);
     for (int L = 0; L < 5; L++) {
         float wl = w[L];
         if (wl <= 0.001) continue;
         int sl = slot[L];
-        float tile = TintTiling[sl].w;
-        vec2 uv = wpAbs.xz * tile;
-        vec2 g0 = dWx.xz * tile, g1 = dWy.xz * tile;
-        albedo += wl * sampleSlot(sl, uv, g0, g1) * TintTiling[sl].xyz;
+        vec3 c = sampleMaterial(sl, wpAbs, dWx, dWy, tw, tri);
+        // The material's steep companion, a property of the MATERIAL whatever slot role it fills here. Its own
+        // companion is never followed. A material with none, or a slope below its band, takes no extra tap.
+        vec4 sb = SteepBand[sl];
+        if (sb.x > 0.5) {
+            float s = 1.0 - smoothstep(sb.y, sb.z, ny);
+            if (s > 0.0) {
+                c = mix(c, sampleMaterial(clamp(int(sb.x - 0.5), 0, maxSlot), wpAbs, dWx, dWy, tw, tri), s);
+            }
+        }
+        albedo += wl * c;
     }
     // The per-vertex jitter is the soft tile-to-tile brightness variation the colour path already had, kept here so
     // a textured ground reads the same way. Per-instance tint rides on top, as it does in the splat pass.

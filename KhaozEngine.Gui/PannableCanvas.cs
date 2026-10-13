@@ -6,10 +6,10 @@ using KhaozEngine.Primitives;
 
 namespace KhaozEngine.Gui
 {
-    /// <summary>Whether <see cref="PannableCanvas.Update"/> applies the mouse wheel as a vertical pan or a zoom.</summary>
+    /// <summary>Whether the canvas applies the mouse wheel as a vertical pan or a zoom.</summary>
     public enum CanvasWheelMode
     {
-        /// <summary>Wheel pans the view vertically (the historical default; back-compat).</summary>
+        /// <summary>Wheel pans the view. The legacy update uses only the vertical axis.</summary>
         Pan,
 
         /// <summary>Wheel zooms the view toward the pointer, clamped to <see cref="PannableCanvas.MinZoom"/>/<see cref="PannableCanvas.MaxZoom"/>.</summary>
@@ -25,17 +25,20 @@ namespace KhaozEngine.Gui
     ///
     /// <para>Delegates its transform / clamp / pan / zoom math to a backing <see cref="Render2D.Camera2D"/>, so
     /// the gesture math has a single implementation. Per frame: set <see cref="Viewport"/> and
-    /// <see cref="ContentBounds"/>, call <see cref="Update"/> to pan/zoom/clamp, then <see cref="Draw"/> with a
-    /// world-space draw callback. Query <see cref="TryGetTap"/> for the world point(s) tapped this frame.</para>
+    /// <see cref="ContentBounds"/>, update to pan/zoom/clamp, then <see cref="Draw"/> with a
+    /// world-space draw callback. Use <see cref="Update(Pointer, float)"/> and <see cref="TryGetTap"/> for
+    /// legacy immediate input, or <see cref="Update(InputManager, float, bool, Func{Vector2, bool})"/> and
+    /// <see cref="TryGetGestureTap"/> for admitted gestures, inertia and accepted taps.</para>
     ///
-    /// <para>Wheel zoom is opt-in via <see cref="Wheel"/>. Two-finger pinch zoom is a follow-up.
+    /// <para>Wheel zoom is opt-in via <see cref="Wheel"/>. The frame-aware overload also handles native
+    /// magnify, precise scrolling and touch pinch. Pinch and command+precise zoom remain continuous.
     /// <see cref="MinZoom"/>/<see cref="MaxZoom"/> bound both <see cref="Focus"/> and wheel zoom.
     /// Note: bitmap <c>SpriteFont</c> text is baked at a fixed size, so world-space text blurs at any
     /// non-1.0 zoom. A caller that needs crisp text either pins <see cref="MinZoom"/> = <see cref="MaxZoom"/> = 1
     /// (no zoom) or lists a few whole-number-ish stops in <see cref="SnapZoomLevels"/> and accepts blur only
     /// at those stops.</para>
     /// </summary>
-    public sealed class PannableCanvas
+    public sealed partial class PannableCanvas
     {
         readonly Camera2D _camera = new();
 
@@ -48,13 +51,14 @@ namespace KhaozEngine.Gui
         /// <summary>Extra slack in world units added on all sides of <see cref="ContentBounds"/> before clamping.</summary>
         public float Padding { get; set; }
 
-        /// <summary>World units panned per unit of wheel-scroll delta (vertical).</summary>
+        /// <summary>Pointer-space pan distance per wheel unit, divided by camera zoom when moving the camera.
+        /// The legacy update uses vertical scroll only. The frame-aware update uses both scroll axes.</summary>
         public float ScrollPanSpeed { get; set; } = 0.5f;
 
-        /// <summary>When true, <see cref="Update"/> reserves the viewport via <see cref="Pointer.BlockRegion"/> so lower screens ignore drags/scrolls that start inside it.</summary>
+        /// <summary>When true, updates reserve the viewport via <see cref="Pointer.BlockRegion"/> so lower screens ignore drags/scrolls that start inside it.</summary>
         public bool BlockInput { get; set; } = true;
 
-        /// <summary>When false, all panning is ignored: drag and wheel scroll pan.</summary>
+        /// <summary>When false, updates ignore all pan and zoom input and cancel frame-aware gestures.</summary>
         public bool EnablePan { get; set; } = true;
 
         /// <summary>Smallest allowed camera zoom (bounds <see cref="Focus"/>).</summary>
@@ -63,7 +67,8 @@ namespace KhaozEngine.Gui
         /// <summary>Largest allowed camera zoom (bounds <see cref="Focus"/>).</summary>
         public float MaxZoom { get; set; } = 10f;
 
-        /// <summary>Whether the wheel pans vertically or zooms toward the pointer. Default <see cref="CanvasWheelMode.Pan"/> (back-compat).</summary>
+        /// <summary>Whether the wheel pans or zooms toward the pointer. Default <see cref="CanvasWheelMode.Pan"/>.
+        /// In the frame-aware update, Ctrl/Cmd+wheel overrides Pan and zooms using any configured snap stops.</summary>
         public CanvasWheelMode Wheel { get; set; } = CanvasWheelMode.Pan;
 
         /// <summary>Multiplicative zoom applied per unit of wheel delta when <see cref="Wheel"/> is <see cref="CanvasWheelMode.Zoom"/>:
@@ -71,15 +76,17 @@ namespace KhaozEngine.Gui
         /// <see cref="SnapZoomLevels"/> is set. Must be &gt; 1.</summary>
         public float ZoomStep { get; set; } = 1.1f;
 
-        /// <summary>When set (non-empty) and <see cref="Wheel"/> is <see cref="CanvasWheelMode.Zoom"/>, the wheel snaps to
+        /// <summary>When set (non-empty), wheel zoom snaps to
         /// these discrete zoom stops instead of stepping continuously by <see cref="ZoomStep"/>: each wheel event moves
         /// to the adjacent stop in the scroll direction (magnitude does not skip stops). Lets a caller keep bitmap text
-        /// crisp at a few chosen zoom levels. Stops need not be sorted; each is still clamped to
-        /// <see cref="MinZoom"/>/<see cref="MaxZoom"/>.</summary>
+        /// crisp at a few chosen zoom levels. Stops need not be sorted, and each is clamped to
+        /// <see cref="MinZoom"/>/<see cref="MaxZoom"/>. The legacy update uses stops only in Zoom mode.
+        /// The frame-aware update also uses stops for Ctrl/Cmd+wheel in Pan mode. Native magnify and
+        /// command+precise zoom remain continuous.</summary>
         public float[]? SnapZoomLevels { get; set; }
 
         /// <summary>The backing camera. Exposed so callers can read or drive position/zoom directly;
-        /// direct writes bypass clamping, so call <see cref="Update"/> (which clamps) afterward to keep the view in bounds.</summary>
+        /// direct writes bypass clamping, so call an update afterward to keep the view in bounds.</summary>
         public Camera2D Camera => _camera;
 
         /// <summary>Maps a world point to design/screen coordinates (accounts for the <see cref="Viewport"/> offset).</summary>
@@ -137,11 +144,14 @@ namespace KhaozEngine.Gui
 
         /// <summary>Applies a wheel zoom step (continuous <see cref="ZoomStep"/> or a <see cref="SnapZoomLevels"/> stop),
         /// clamped to <see cref="MinZoom"/>/<see cref="MaxZoom"/>, keeping the world point under
-        /// <paramref name="cursorScreen"/> fixed. The trailing <see cref="Clamp"/> in <see cref="Update"/> re-clamps
+        /// <paramref name="cursorScreen"/> fixed. The trailing <see cref="Clamp"/> in <see cref="Update(Pointer, float)"/> re-clamps
         /// position to <see cref="ContentBounds"/>.</summary>
         void ZoomTowardCursor(float wheelDelta, Vector2 cursorScreen)
+            => ZoomToCursor(TargetZoom(wheelDelta), cursorScreen);
+
+        void ZoomToCursor(float targetZoom, Vector2 cursorScreen)
         {
-            float target = Math.Clamp(TargetZoom(wheelDelta), MinZoom, MaxZoom);
+            float target = Math.Clamp(targetZoom, MinZoom, MaxZoom);
             if (target == _camera.Zoom) return;
 
             // Keep the cursor's world point fixed: adjust position by how far that point drifts under the new zoom.
@@ -188,7 +198,8 @@ namespace KhaozEngine.Gui
         public Vector2 PointerWorld(Pointer pointer) => ScreenToWorld(pointer.Position);
 
         /// <summary>
-        /// True on the frame the viewport was tapped (press-origin and release both inside it). Returns the
+        /// Legacy release hit testing for <see cref="Update(Pointer, float)"/>. True when press-origin and
+        /// release are both inside the viewport. Returns the
         /// press and release world points so the caller can hit-test both and require the same target; a pan
         /// that ends inside returns true too, but its press/release world points differ so the check rejects it.
         /// When not a tap, both out-params are <c>default</c>.

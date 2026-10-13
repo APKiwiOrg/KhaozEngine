@@ -877,6 +877,24 @@ captured `MouseDelta` keeps its existing nonpositive-or-NaN fallback to 1. Snaps
 preserve both added facts. `WithoutScroll()` does so, and `AutomationInputInjector.Compose` preserves real motion
 or computes injected points motion from framebuffer coordinates and its own logical baseline.
 
+`InputState.Gestures` carries ordered event-time pointer samples. Native macOS input supplies precise scroll
+in window points and magnify with scale identity 1, preserving phases, momentum and Ctrl/Cmd state. Windows
+captures Ctrl+wheel at message time as `ModifierWheelCompatibility`. Plain wheel values remain wheel units.
+Anchors use framebuffer pixels. Silk wheel totals remain independent, so apply the samples once without also
+applying the scalar summaries. `WithoutScroll()` clears both wheel axes and scroll samples while retaining
+magnify. `WithoutPointerGestures()` clears all pointer samples and both scalar wheel axes.
+
+Public `PointerGestureFrame` values and `PointerGestureFrame.Empty` have `IsAvailable == true`, including an
+intentionally empty native frame. Legacy scalar fallback applies only when `IsAvailable == false`, which is
+the default for the two older `InputState` constructors. The additive overload takes `PointerGestureFrame`,
+horizontal scroll, points motion and framebuffer scale before the original arguments. Copies and automation
+preserve stream availability, so cleared native samples cannot revive retained legacy scroll.
+
+For developer diagnostics, `AppWindow.NativeGestureFailure` retains the first native failure and its stage
+(`Install`, `Remove`, `Release` or `Callback`), message and optional original exception. Failed installation
+continues wheel fallback. Failed removal retains callback roots. Later failures do not replace the first,
+and no automatic logging occurs. A platform with no native backend is normal fallback and reports no failure.
+
 ### InputManager + Pointer - the higher-level read
 
 `Pointer` (the unified pointer) and `InputManager` (pointer + keyboard/gamepad/menu-nav) derive per-frame state
@@ -1091,6 +1109,186 @@ protected override void OnUpdate(float dt)
 A scene cannot reach the protected member, so an app whose camera lives in a scene forwards the scene's want
 itself. The Showcase does this for its 3D room: `IShowcaseRoom.WantsPointerCapture` defaults to false, and
 `ShowcaseApp` forwards the active room's value after the scenes update.
+
+### Pan and zoom
+
+`PanZoomController` interprets mouse drag, wheel, precise scroll, magnify and stable-ID touches through
+`IPanZoomTarget`. Its `PanByScreenDelta(Vector2)` moves displayed content in the positive screen direction.
+`ZoomByFactor(float, Vector2 anchor)` enlarges content for factors above 1 and keeps the material point under
+the anchor fixed. Targets own bounds, zoom limits, projection and wrapping. Hard bounds can take priority
+over anchoring at an edge. No geographic camera is supplied by Windowing.
+
+Update the manager once with the complete `Frame.Input` and the same viewport used for presentation.
+Update overlays first, then admit map gestures, then reserve the map's own region. Region reservations reset
+each manager update. Include separate GuiSurface or consumer reservations through `isBlocked`.
+
+```csharp
+input.Update(frame.Input, uiViewport);
+UpdateOverlays(input); // caller updates and reserves controls
+sheet.Update(input, mapBounds, safeArea, bodyContentHeight, frame.Dt);
+controller.Update(input, target, mapBounds, frame.Dt,
+    hasKeyboardFocus: mapFocused, isBlocked: ReservedBySurface);
+input.BlockInputRegion(mapBounds); // reserve only after admission
+```
+
+Positions, bounds, slop and target deltas use Pointer coordinates. Raw sample anchors and touch positions
+are framebuffer pixels. Precise-scroll vectors are window points, wheel deltas are wheel units and scale
+identity is 1. The controller uses `Pointer.Coordinates.PositionFromPixels` for positions and
+`VectorFromPoints` for precise deltas, including framebuffer scale and viewport mapping. Do not preconvert
+samples or replay `ScrollDelta`, `HorizontalScrollDelta` or `PinchScaleFactor` alongside their ordered batch.
+Only an unavailable gesture stream uses legacy scalar fallback. An available empty stream does nothing.
+
+`Pointer.IsConsumed` is the persistent left-button latch. It gates mouse admission and active mouse
+recognition, while touch, wheel and native streams still use geometric admission and reservations.
+Consumption of an admitted mouse gesture rejects its continuation, tap and inertia through release.
+Fresh touch, wheel, precise scroll and magnify remain available while the consumed button is still held.
+`InputManager.SuppressPointerInput()` is the global pointer boundary. Controllers honor it even though
+raw `State` remains readable. A rejected start stays rejected through its entire sequence, including native
+momentum. Every participating touch must start inside admitted bounds, and a previously unobserved touch ID
+must arrive as `TouchPhase.Began`. Desktop hosts do not synthesize touch contacts from trackpad events.
+Undefined phases, nonfinite coordinates and duplicate IDs reject the entire touch sequence until release.
+
+Call `controller.Cancel()`, `canvas.CancelGestures()` and `sheet.CancelGestures()` when hiding, replacing,
+resetting or changing ownership of a view. Automatic cancellation covers focus loss, capture, suppression
+and bounds or coordinate mapping changes. Cancellation discards inertia, pending wheel animation and tap
+history. Held contacts cannot restart until physically released. A native momentum tail cannot revive a
+cancelled sequence. Continue lifecycle sampling while a view is inactive, or retain inhibition until release.
+
+`Tapped`/`TapPosition` and `DoubleTapped`/`DoubleTapPosition` are results of the latest controller update.
+A single tap reports immediately. A qualifying second tap zooms at its position and reports double-tap
+instead of a second single tap. Selection can therefore happen on the first tap before zooming. A two-finger
+tap zooms out at its centroid. Drag releases and cancelled sequences never select.
+
+`PanZoomOptions` validates mutable policy at each update. Defaults include slop 8, tap/double-tap timing
+0.3 seconds, double-tap radius 24, wheel factor 1.1 and duration 0.12 seconds, inertia decay 8 and stationary
+release cutoff 0.08 seconds. Wheel defaults to Zoom, with optional Pan and speed 40. Ctrl/Cmd scrolling
+always requests zoom. Precise-scroll zoom uses `PreciseScrollZoomLogFactorPerPoint` (default 0.01) in raw
+window points. Native magnify is immediate. Native momentum is applied directly without a second fling.
+Keyboard navigation is off by default and requires both `KeyboardEnabled` and caller-owned focus.
+Pass real elapsed seconds. Zero time advances no animation or velocity estimate, while direct samples remain
+immediate. Negative or nonfinite time is rejected. Ordered wheel operations finish before later direct effects.
+
+#### Bounded canvas
+
+`PannableCanvas` supplies an actual bounded Camera2D adapter. Set its viewport and world content bounds,
+then use the full-frame update after overlays:
+
+```csharp
+var canvas = new PannableCanvas
+{
+    ContentBounds = new Rect(0, 0, 2000, 2000),
+    MinZoom = .5f, MaxZoom = 4, Wheel = CanvasWheelMode.Zoom
+};
+canvas.Camera.Position = new Vector2(1000, 1000);
+canvas.Viewport = mapBounds;
+canvas.Update(input, frame.Dt, hasKeyboardFocus: mapFocused, isBlocked: ReservedBySurface);
+if (canvas.TryGetGestureTap(out var world)) SelectWorldPoint(world);
+```
+
+Both canvas paths clamp to `ContentBounds` plus `Padding`. The legacy `Update(Pointer, float wheelDelta)`
+keeps immediate vertical wheel behavior, Pan default and `TryGetTap` release geometry, which also reports
+drag releases. The new `Update(InputManager, float, bool, Func<Vector2, bool>?)` uses
+`GestureController`/`GestureOptions`, ordered gestures, inertia and `TryGetGestureTap` accepted single taps.
+Choose one path per frame. Canvas `Wheel`, `ScrollPanSpeed`, `ZoomStep` and `SnapZoomLevels` configure its
+controller on update. Wheel snap stops choose one adjacent stop per ordered event, including Ctrl/Cmd+wheel
+in Pan mode. Native magnify and command+precise zoom stay continuous. The canvas reserves itself after
+admission when `BlockInput` is true. `EnablePan = false` cancels the full-frame path.
+
+#### Wrapping target example
+
+A generic geographic fixture can preserve the anchor by measuring its material coordinate before and after
+the clamped scale change. Wrap longitude differences, then clamp latitude. This is consumer adapter math,
+not an engine camera API:
+
+```csharp
+sealed class WrappingTarget(Rect bounds) : IPanZoomTarget
+{
+    float longitude = 179, latitude = -5, span = 40;
+    Vector2 Centre => new(bounds.X + bounds.Width / 2, bounds.Y + bounds.Height / 2);
+    static float Wrap(float x) => ((x + 180) % 360 + 360) % 360 - 180;
+    Vector2 Unproject(Vector2 p) => new(
+        Wrap(longitude + (p.X - Centre.X) * span / bounds.Width),
+        latitude - (p.Y - Centre.Y) * span / bounds.Width);
+    public void PanByScreenDelta(Vector2 delta)
+    {
+        longitude = Wrap(longitude - delta.X * span / bounds.Width);
+        latitude = Math.Clamp(latitude + delta.Y * span / bounds.Width, -85, 85);
+    }
+    public void ZoomByFactor(float factor, Vector2 anchor)
+    {
+        var before = Unproject(anchor);
+        span = Math.Clamp(span / factor, 1, 360);
+        var after = Unproject(anchor);
+        longitude = Wrap(longitude + Wrap(before.X - after.X));
+        latitude = Math.Clamp(latitude + before.Y - after.Y, -85, 85);
+    }
+}
+```
+
+With bounds `(100,100,800,600)`, factor 2 at `(700,250)` changes centre longitude 179 to -176 and span 40
+to 20. The anchored longitude -171 remains under `(700,250)` across the date line. The headless
+`PanZoomConsumerContractTests` exercise this target and the real bounded canvas through InputManager,
+overlay/sheet reservations and cancellation.
+
+#### Draggable bottom sheet
+
+The host supplies bounds excluding HUD/tab bars and `SafeAreaInsets`. All heights use Pointer coordinates.
+Detents have stable IDs and caller-owned height policies. `Update` takes body-only measured content height.
+Custom detent resolvers receive safe available height and total desired sheet height, including the handle.
+
+```csharp
+var sheet = new DraggableBottomSheet(new[]
+{
+    BottomSheetDetent.Fixed("dismissed", 0, dismissible: true),
+    BottomSheetDetent.ContentCapped("peek", .45f),
+    BottomSheetDetent.Fraction("expanded", 1)
+}, "peek", new BottomSheetOptions
+{
+    HandleToggleDetentIds = new[] { "peek", "expanded" }
+});
+sheet.DetentChanged += OnSettledDetent; // Action<string>
+sheet.Dismissed += OnDismissed;         // Action
+sheet.Update(input, mapBounds, safeArea, bodyContentHeight, frame.Dt);
+sheet.Draw(batch, (bodyViewport, offset) => DrawLocalizedBody(bodyViewport, offset));
+```
+
+Update the sheet before maps. Its handle owns resize. Body drag expands first, then scrolls residual upward
+movement. Downward movement unwinds scroll before collapsing. Residual never reaches the map. Precise scroll
+can move the sheet/body with native ownership through momentum. Wheel scrolls an expanded body only, without
+fling. Magnify and Ctrl/Cmd scroll reserve zoom intent over the visible sheet without moving it.
+Pending body contacts preserve child button taps, including stationary holds beyond the sheet tap duration.
+Handles, committed drags and cancellation consume associated left input through physical release, including
+touch-emulated mouse contacts and movement first observed at release. Pure touch and native ownership use
+region reservation. Visible, admission and intermediate sheet regions reserve lower maps, whose rejected
+starts stay rejected through release even after dismissal.
+
+`Bounds`, `HandleBounds`, `ContentBounds` and positive `ScrollOffset` describe the current presentation.
+`CurrentDetentId` is last settled, `TargetDetentId` is selected. `SetDetent(id, animated)` selects without
+resetting identity on selection changes. Layout/content/mapping changes cancel motion and settle the same
+target ID. `DetentChanged` fires on an actual settled/immediate ID change. `Dismissed` fires on arrival from
+a non-dismissible ID into an explicitly dismissible ID. Repeated selection/resize does not repeat events.
+`ToggleHandle(animated = true)` is also a caller-driven keyboard action with caller-owned focus. An explicit
+pair can include dismissal or equal-height IDs. Without one, it uses the lowest/highest non-dismissible IDs,
+with declaration order breaking ties. Fewer than two distinct eligible IDs or equal extrema is a no-op.
+
+The host owns optional `WhiteTexture`, theme colors and batch Begin/End. `Draw` clips its body callback and
+restores the enclosing scissor even if the callback throws. It does not process a second ScrollablePanel drag.
+Resolve player-facing body labels through `StringId`/`LocalizedText` as usual.
+
+#### Platform validation and consumer adoption
+
+macOS uses native precise scroll and magnify with event phases, modifiers and momentum. Windows Ctrl+wheel
+is `ModifierWheelCompatibility`, not proof of native pinch. Other desktop backends retain wheel support.
+Full native Windows precision-touchpad pan is outside this delivery. The opt-in
+[GestureInputProbe](../tools/GestureInputProbe/README.md) shows payload/mapping/failure diagnostics and a grid
+with a sheet. Its device checks require an owner run. Headless results cannot prove physical delivery or feel.
+
+[Flightline #3](https://github.com/APKiwiOrg/Flightline/issues/3) owns consumer adoption. The verified junction
+is Client-side `WorldLayer.Interact`, using its existing manager, current bounds and reservations. Implement
+an `IPanZoomTarget` adapter there and preserve existing lifecycle cancellation hooks. Its current
+`NetworkViewport.Zoom(factor)` is centre-only, so forwarding alone cannot preserve an anchor. Compensation
+can use the actual clamped old/new span and existing pan operation, or the generic before/after method above.
+Replace the old Touches-only recognition with one full-frame controller. Release/pin adoption remains separate.
 
 ### Tap or drag (`PointerGesture`)
 
@@ -7931,7 +8129,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.35.1" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.37.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -8227,7 +8425,7 @@ On the dev Mac a 36,864-column flat world wrote 664,689 bytes and loaded in abou
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.35.1" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.37.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -8969,7 +9167,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.35.1" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.37.0" />
 ```
 
 ```csharp
@@ -11251,6 +11449,28 @@ the first textured material fixes it. And every layer costs that size whether it
 colour layer is a full-size fill), so a 1024 texture makes each untextured material in the same catalog a 4 MB
 layer. 256 is plenty at this grain. Leave `GroundMaterials` null and the view builds the all-flat set itself,
 which is what a colour-only world wants.
+
+**Cliffs take a steep companion and are drawn from the side.** A ground material can name the material it
+becomes on steep ground. The corner vote is unchanged, so a one-tile cliff of rock beside flat grass still votes
+grass at its foot corners, but every grass tap on the face renders rock:
+
+```jsonc
+{ "materials": [
+  { "id": 1,  "name": "grass", "color": "#4c7a3a", "texture": "ground/grass.png",
+    "steep": { "material": 14, "fromDegrees": 40, "toDegrees": 55 } },
+  { "id": 14, "name": "rock",  "color": "#7a7a7a", "texture": "ground/rock.png" }
+] }
+```
+
+`material` is required and must be another non-Water material of the same catalog file. `fromDegrees` and
+`toDegrees` are optional, default to 40 and 55 (`GroundMaterialSteep.DefaultFromDegrees` and `DefaultToDegrees`),
+and must rise strictly inside (0, 90), wide enough that the two ends differ in cosine. The blend is a smoothstep over that band on the slope of the interpolated
+ground normal, and it belongs to the material in whatever corner or overlay slot it fills. A companion's own
+`steep` is not followed. Separately, and for every material, ground steeper than 45 degrees adds side projections
+to the top-down tap, fully weighted by 60, so a cliff carries its texture up its height instead of streaking.
+The two rules are independent. Below 45 degrees the projection is unchanged for every material, but a material
+with a companion already blends from its `fromDegrees`, 40 by default. A material with no companion renders
+exactly as before below 45 degrees. The triplanar constants are `TileGroundSteepShading`'s in Render3D.
 
 **Water is carved, not placed.** A tile is water when its underlay material's `kind` is `Water`, and you sink the
 bed by lowering the corner heights, so the material's texture is the river BED and the surface height is computed.
@@ -16457,7 +16677,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.35.1" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.37.0" />
 ```
 
 ```csharp
@@ -16493,7 +16713,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.35.1" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.37.0" />
 ```
 
 ```csharp
@@ -16735,7 +16955,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.35.1" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.37.0" />
 ```
 
 ```csharp
@@ -21095,7 +21315,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.35.1" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.37.0" />
 </ItemGroup>
 ```
 

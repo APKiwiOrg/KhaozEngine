@@ -80,9 +80,9 @@ public static class TileWorldHash
     /// collision map, so two heads over one world directory with independently updated catalogs agreed on the world
     /// digest and then disagreed on every wall. <see cref="OfWorldAndCatalogs"/> is the composed digest a netcode
     /// gate should use.</para>
-    /// <para>EVERY authored field is in, cosmetic ones included (walk surfaces and collision height too, each written
-    /// only for an archetype that carries one, so a catalog without any digests exactly as it did before the field
-    /// existed), rather than only the fields the collision baker reads. The engine does not know which fields a given
+    /// <para>EVERY authored field is in, cosmetic ones included (walk surfaces, collision height and a material's
+    /// steep companion too, each written only for an entry that carries one, so a catalog without any digests
+    /// exactly as it did before the field existed), rather than only the fields the collision baker reads. The engine does not know which fields a given
     /// game treats as decoration, a mesh reference points at content the client has to ship anyway, and a digest that
     /// blessed art drift would be silently wrong for the first game that dispatched on a tag.</para>
     /// </summary>
@@ -102,7 +102,9 @@ public static class TileWorldHash
             Text(sb, m.Color);
             Text(sb, m.Texture);
             sb.Append(m.Kind).Append(' ');
-            sb.Append(m.TilesPerMetre?.ToString("R", CultureInfo.InvariantCulture) ?? "-").Append('\n');
+            sb.Append(m.TilesPerMetre?.ToString("R", CultureInfo.InvariantCulture) ?? "-");
+            Steep(sb, m.Steep);
+            sb.Append('\n');
         }
         foreach (TileObjectArchetype a in catalogs.Archetypes.Values.OrderBy(a => a.Id, StringComparer.Ordinal))
         {
@@ -201,6 +203,16 @@ public static class TileWorldHash
     static void CollisionHeight(StringBuilder sb, float? height)
     {
         if (height is { } h) sb.Append("h ").Append(Float(h)).Append(' ');
+    }
+
+    // Written only for a material that carries a companion, so a catalog without any digests exactly as it did
+    // before the field existed. The AUTHORED band is digested rather than the resolved one, the same as every other
+    // optional field here.
+    static void Steep(StringBuilder sb, GroundMaterialSteep? steep)
+    {
+        if (steep is null) return;
+        sb.Append(" s ").Append(Inv(steep.Material)).Append(' ')
+            .Append(OptionalFloat(steep.FromDegrees)).Append(' ').Append(OptionalFloat(steep.ToDegrees));
     }
 
     static string OptionalFloat(float? value) => value is { } v ? Float(v) : "-";

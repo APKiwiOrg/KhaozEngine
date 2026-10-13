@@ -49,6 +49,9 @@ namespace KhaozEngine.Windowing
         // captured snapshot reports it as the position, so a hidden cursor never hovers, selects or blocks.
         Vector2 _captureAnchor;
         float _wheelAccum;
+        float _horizontalWheelAccum;
+        readonly PointerGestureAccumulator _gestures = new();
+        bool _pointerGesturesAvailable;
         bool _focused = true;   // windows open focused, and OnFocusChanged keeps this in sync.
         readonly StringBuilder _textInput = new();
         bool _textInputAvailable;
@@ -86,6 +89,9 @@ namespace KhaozEngine.Windowing
         /// <summary>Mark a window as supplying OS committed text events, including frames with no text.</summary>
         public void EnableTextInput() => _textInputAvailable = true;
 
+        /// <summary>Declare an authoritative pointer gesture producer for this accumulator's lifetime.</summary>
+        public void EnablePointerGestures() => _pointerGesturesAvailable = true;
+
         /// <summary>Record one committed Unicode scalar value from the OS text callback.</summary>
         public void OnTextInput(uint codepoint)
         {
@@ -110,6 +116,20 @@ namespace KhaozEngine.Windowing
         /// <see cref="InputState.ScrollDelta"/>, which is cleared by <see cref="Snapshot"/>.</summary>
         public void OnScroll(float wheelDelta) => _wheelAccum += wheelDelta;
 
+        /// <summary>Accumulate both legacy wheel axes independently of ordered gesture samples.</summary>
+        public void OnScroll(Vector2 wheelDelta)
+        {
+            _horizontalWheelAccum += wheelDelta.X;
+            _wheelAccum += wheelDelta.Y;
+        }
+
+        /// <summary>Record an event-time sample without changing legacy scroll totals.</summary>
+        public void OnPointerGesture(PointerGestureSample sample)
+        {
+            EnablePointerGestures();
+            if (_focused && !_lastCaptured) _gestures.Add(sample);
+        }
+
         /// <summary>
         /// Record an OS focus change. On the transition to unfocused, everything currently held is moved into the
         /// released sets and the down sets are cleared, so a consumer sees one clean release edge for it.
@@ -123,6 +143,7 @@ namespace KhaozEngine.Windowing
         {
             if (focused == _focused) return;
             _focused = focused;
+            _gestures.Clear();
             if (focused) return;
 
             _textInput.Clear();
@@ -170,9 +191,11 @@ namespace KhaozEngine.Windowing
                 ? points - _lastMousePoints : Vector2.Zero;
             if (pointerCaptured && !_lastCaptured) _captureAnchor = live;
             Vector2 position = pointerCaptured ? _captureAnchor : live;
+            if (!_focused || pointerCaptured || pointerCaptured != _lastCaptured) _gestures.Clear();
 
             var input = new InputState(
-                pointsDelta, scale,
+                _pointerGesturesAvailable ? _gestures.Snapshot() : PointerGestureFrame.Unavailable,
+                _horizontalWheelAccum, pointsDelta, scale,
                 new HashSet<Key>(_keysDown), new HashSet<Key>(_pressed), new HashSet<Key>(_released),
                 new HashSet<MouseButton>(_mouseDown), new HashSet<MouseButton>(_mousePressed),
                 position, delta, _wheelAccum, width, height,
@@ -195,6 +218,7 @@ namespace KhaozEngine.Windowing
             // attached must still report a zero delta on the first frame one shows up.
             if (hasMouse) _cursorSampled = true;
             _wheelAccum = 0f;
+            _horizontalWheelAccum = 0f;
             return input;
         }
 

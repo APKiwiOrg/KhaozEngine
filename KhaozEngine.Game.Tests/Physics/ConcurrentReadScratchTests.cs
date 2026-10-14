@@ -234,6 +234,7 @@ public sealed class ConcurrentReadScratchTests
         Assert.Equal(expected, nested);
         Assert.Equal(expected, outer);
         Assert.Equal(1, cache.Constructions);
+        Assert.Equal(2, cache.Captures);
         Assert.NotNull(published);
         Assert.Same(published, Published(world, cache, owner));
         Assert.Equal(expected, Capture(footprint, lease, request).Text);
@@ -244,34 +245,38 @@ public sealed class ConcurrentReadScratchTests
     public void AnExceptionLeavingAnOuterIntervalWithScratchAttachedStillReturnsIt()
     {
         var world = new BepuPhysicsWorld(Vector3.Zero);
-        Vector3[] floor = [new(-4f, 0f, -4f), new(-4f, 0f, 4f), new(4f, 0f, 4f), new(4f, 0f, -4f)];
-        world.AddStatic(new TriangleMeshShape(floor, [0, 2, 1, 0, 3, 2]), Pose.Identity);
-        QueryGate gate = ConcurrentReadGateTests.Gate(world);
-        QueryScratchPool pool = gate.ScratchPool;
-        MoveTuning tuning = MoveTuning.Default with { Controller = MovementControllerKind.Contact };
-        bool attached = false;
-        // Fail only once the step's lease interval holds scratch, so the failure unwinds through the lease.
-        float Ground(float x, float z)
+        try
         {
-            if (pool.IdleCount >= pool.Constructed().Length) return 0f;
-            attached = true;
-            throw new InvalidOperationException("ground failure");
+            Vector3[] floor = [new(-4f, 0f, -4f), new(-4f, 0f, 4f), new(4f, 0f, 4f), new(4f, 0f, -4f)];
+            world.AddStatic(new TriangleMeshShape(floor, [0, 2, 1, 0, 3, 2]), Pose.Identity);
+            QueryGate gate = ConcurrentReadGateTests.Gate(world);
+            QueryScratchPool pool = gate.ScratchPool;
+            MoveTuning tuning = MoveTuning.Default with { Controller = MovementControllerKind.Contact };
+            bool attached = false;
+            // Fail only once the step's lease interval holds scratch, so the failure unwinds through the lease.
+            float Ground(float x, float z)
+            {
+                if (pool.IdleCount >= pool.Constructed().Length) return 0f;
+                attached = true;
+                throw new InvalidOperationException("ground failure");
+            }
+            var state = new MoveState { Position = new Vector3(0f, tuning.CapsuleHalfHeight, 0f), Grounded = true };
+            Assert.Throws<InvalidOperationException>(() => CharacterMovement.Step(state,
+                new MoveCommand(Vector2.UnitY, run: false, cameraYaw: 0f, jump: false), 1f / 30f, Ground, tuning, world: world));
+            Assert.True(attached);
+            Assert.Equal(0, gate.ActiveReaders);
+            QueryScratch[] constructed = pool.Constructed();
+            Assert.NotEmpty(constructed);
+            Assert.Equal(constructed.Length, pool.IdleCount);
+            Assert.All(constructed, scratch => Assert.Equal(0, scratch.Disposals));
+            world.Dispose();
+            Assert.All(constructed, scratch =>
+            {
+                Assert.Equal(1, scratch.Disposals);
+                Assert.Equal(0, scratch.NativeCapacity);
+            });
         }
-        var state = new MoveState { Position = new Vector3(0f, tuning.CapsuleHalfHeight, 0f), Grounded = true };
-        Assert.Throws<InvalidOperationException>(() => CharacterMovement.Step(state,
-            new MoveCommand(Vector2.UnitY, run: false, cameraYaw: 0f, jump: false), 1f / 30f, Ground, tuning, world: world));
-        Assert.True(attached);
-        Assert.Equal(0, gate.ActiveReaders);
-        QueryScratch[] constructed = pool.Constructed();
-        Assert.NotEmpty(constructed);
-        Assert.Equal(constructed.Length, pool.IdleCount);
-        Assert.All(constructed, scratch => Assert.Equal(0, scratch.Disposals));
-        world.Dispose();
-        Assert.All(constructed, scratch =>
-        {
-            Assert.Equal(1, scratch.Disposals);
-            Assert.Equal(0, scratch.NativeCapacity);
-        });
+        finally { world.Dispose(); }
     }
 
     static BepuPhysicsWorld CompoundWorld(out StaticHandle owner)

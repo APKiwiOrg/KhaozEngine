@@ -70,7 +70,7 @@ write depth per thread.
   failed. A borrowed view's disposal never disposes world-owned scratch.
 
 **Installed support geometry.** The cache publishes immutable installed topology through a thread-safe map keyed by
-installation identity and static geometry version. Concurrent misses for one key construct it once. Mutations
+installation identity and static geometry version. Concurrent misses for one key construct it once. With a diagnostic allocation observer attached, a miss captures with no cache lock held, so concurrent or nested misses may each capture and only the first publication is kept and counted (`Constructions` counts published captures, `Captures` counts every capture). Mutations
 invalidate entries inside the writer interval. Materialization writes only into the borrowed scratch. No lock is held
 across a footprint proof.
 
@@ -190,7 +190,9 @@ Physics:
 
 - Two threads hold read leases on one world at once and both query successfully. Rays, mesh and compound sweeps,
   penetration and contact smoothing produce identical results to the serial gate under simultaneous readers.
-- Cold installed support geometry for one owner, requested by two readers at once, is constructed once. A following
+- Cold installed support geometry for one owner, requested by two readers at once, is constructed once. With a diagnostic allocation
+  observer attached, concurrent or nested misses may each capture and only the first publication is kept and counted
+  (`Constructions` counts published captures, `Captures` counts every capture). A following
   mutation, removal and handle reuse invalidate it.
 - Event-coordinated gate tests: a queued writer with a nested query inside an active reader completes without deadlock,
   a mutation from a ground or diagnostic callback throws before the generation changes, wrong-thread disposal is

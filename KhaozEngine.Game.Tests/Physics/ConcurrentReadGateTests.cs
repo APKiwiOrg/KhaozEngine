@@ -132,42 +132,47 @@ public sealed class ConcurrentReadGateTests
     public void RefusalsInsideTheGateLeaveNoReaderAndReturnTheirScratch()
     {
         var world = new BepuPhysicsWorld(Vector3.Zero);
-        world.AddStatic(Box, Pose.At(new Vector3(2f, 0f, 0f)));
-        QueryGate gate = Gate(world);
-        IPhysicsWorldQueryView view = world.CreateQueryViewExcludingStatics([]);
-        var source = (IPhysicsQueryLeaseSource)view;
-        using var held = new ManualResetEventSlim();
-        using var release = new ManualResetEventSlim();
-        // A held lease keeps the view's disposal queued, so an acquisition that passed the view's first check
-        // waits behind it and is refused by the second check once admitted.
-        BoundedThread holder = BoundedThread.Start(() =>
-        {
-            using IPhysicsQueryLease lease = world.AcquireQueryReadLease();
-            Assert.True(world.SweepCapsule(Capsule, Pose.Identity, Vector3.UnitX, 8f, out _));
-            held.Set();
-            BoundedThread.Await(release);
-        });
-        BoundedThread? disposer = null, racer = null;
         try
         {
-            BoundedThread.Await(held);
-            disposer = BoundedThread.Start(view.Dispose);
-            BoundedThread.Until(() => gate.WaitingWriters == 1);
-            racer = BoundedThread.Start(() => Assert.Throws<ObjectDisposedException>(source.AcquireQueryReadLease));
-            BoundedThread.Until(() => gate.WaitingReaders == 1);
-        }
-        finally { release.Set(); }
-        holder.Join();
-        disposer!.Join();
-        racer!.Join();
-        Assert.Equal(0, gate.ActiveReaders);
-        Assert.Equal(gate.ScratchPool.Constructed().Length, gate.ScratchPool.IdleCount);
+            world.AddStatic(Box, Pose.At(new Vector3(2f, 0f, 0f)));
+            QueryGate gate = Gate(world);
+            IPhysicsWorldQueryView view = world.CreateQueryViewExcludingStatics([]);
+            var source = (IPhysicsQueryLeaseSource)view;
+            using var held = new ManualResetEventSlim();
+            using var release = new ManualResetEventSlim();
+            // A held lease keeps the view's disposal queued, so an acquisition that passed the view's first check
+            // waits behind it and is refused by the second check once admitted.
+            BoundedThread holder = BoundedThread.Start(() =>
+            {
+                using IPhysicsQueryLease lease = world.AcquireQueryReadLease();
+                Assert.True(world.SweepCapsule(Capsule, Pose.Identity, Vector3.UnitX, 8f, out _));
+                held.Set();
+                BoundedThread.Await(release);
+            });
+            BoundedThread? disposer = null, racer = null;
+            try
+            {
+                BoundedThread.Await(held);
+                disposer = BoundedThread.Start(view.Dispose);
+                BoundedThread.Until(() => gate.WaitingWriters == 1);
+                racer = BoundedThread.Start(() => Assert.Throws<ObjectDisposedException>(source.AcquireQueryReadLease));
+                BoundedThread.Until(() => gate.WaitingReaders == 1);
+            }
+            finally { release.Set(); }
+            holder.Join();
+            disposer!.Join();
+            racer!.Join();
+            Assert.Equal(0, gate.ActiveReaders);
+            Assert.NotEmpty(gate.ScratchPool.Constructed());
+            Assert.Equal(gate.ScratchPool.Constructed().Length, gate.ScratchPool.IdleCount);
 
-        world.Dispose();
-        Assert.Throws<ObjectDisposedException>(world.AcquireQueryReadLease);
-        Assert.Equal(0, gate.ActiveReaders);
-        // Disposal is a writer even on a disposed world, so a leaked reader interval would hold it out.
-        BoundedThread.Start(world.Dispose).Join();
+            world.Dispose();
+            Assert.Throws<ObjectDisposedException>(world.AcquireQueryReadLease);
+            Assert.Equal(0, gate.ActiveReaders);
+            // Disposal is a writer even on a disposed world, so a leaked reader interval would hold it out.
+            BoundedThread.Start(world.Dispose).Join();
+        }
+        finally { world.Dispose(); }
     }
 
     [Theory]
@@ -269,6 +274,7 @@ public sealed class ConcurrentReadGateTests
         Assert.True(world.SweepCapsule(Capsule, Pose.At(new Vector3(1f, 3f, 1f)), -Vector3.UnitY, 5f, out _));
         Assert.Same(scratch, Assert.Single(pool.Constructed()));
     }
+
     [Fact]
     public void AQueuedWriterAndANestedQueryInsideAnActiveReaderBothComplete()
     {

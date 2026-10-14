@@ -8182,7 +8182,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.39.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.39.1" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -8360,7 +8360,7 @@ Both `BuildProfile` overloads, `GroundNavigationBake.Create` and every `GroundNa
 validate Contact selection before other profile work or stream reads. Malformed configurations throw
 `ArgumentException`, and Contact aquatic profiles throw `NotSupportedException` naming #1389. Ground construction
 requires an ordinary-constructed context and a leased capture whose geometry and origin remain unchanged.
-Phase 5b ground navigation is implemented in staged 20.39.0. Contact aquatic navigation, footprint-only seeds and
+Phase 5b ground navigation is implemented in 20.39.0. Contact aquatic navigation, footprint-only seeds and
 public explicit bake profiles are deferred to [#1389](https://github.com/APKiwiOrg/KhaozEngine/issues/1389).
 Raw surfaces retain layer and area identity. Certified resting anchors supply physical node poses through
 `NavGrid.RestingHeightAt`. Placement and Hold require grounded `Advanced` outcomes within 1 mm, and directed
@@ -8516,7 +8516,7 @@ On the dev Mac a 36,864-column flat world wrote 664,689 bytes and loaded in abou
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.39.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.39.1" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -9275,7 +9275,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.39.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.39.1" />
 ```
 
 ```csharp
@@ -12739,7 +12739,7 @@ maximum fall speed and swim-enter depth fraction, a non-Legacy water policy, reg
 with query leases, capsule contacts, complete support footprints and certified capsule sweeps. A medium
 delegate requires a field. Public explicit configuration governs its own water policy and rejects conflicting
 tuning water. Contact plus public explicit configuration is refused as two selections.
-Phase 5a is released in 20.37.0. Phase 5b ground navigation is staged in 20.39.0.
+Phase 5a is released in 20.37.0. Phase 5b ground navigation is released in 20.39.0.
 
 The retained `MoveCommand(move, run, cameraYaw, jump, faceCamera)` constructor and `default(MoveCommand)` leave
 `ScaleSpeedByAxis` false. They keep nonzero player axes normalized to full speed and keep the legacy dead zone. The
@@ -16820,7 +16820,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.39.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.39.1" />
 ```
 
 ```csharp
@@ -16856,7 +16856,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.39.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.39.1" />
 ```
 
 ```csharp
@@ -17098,7 +17098,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.39.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.39.1" />
 ```
 
 ```csharp
@@ -21458,7 +21458,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.39.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.39.1" />
 </ItemGroup>
 ```
 

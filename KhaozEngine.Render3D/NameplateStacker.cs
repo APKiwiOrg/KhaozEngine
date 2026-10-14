@@ -23,6 +23,7 @@ public sealed class NameplateStacker
     private int[] _order = new int[16];
     private long[] _drawOrder = new long[16];
     private int _entryCount;
+    private int _orderCount;
     private int _drawCount;
     private bool _resolved;
 
@@ -73,7 +74,7 @@ public sealed class NameplateStacker
         entry.Seen = true;
     }
 
-    /// <summary>Stacks unpinned panels upward around fixed pins and drops ids that were not submitted.</summary>
+    /// <summary>Stacks panels around fixed pins, eases retained offsets and drops ids that were not submitted.</summary>
     /// <param name="dt">Elapsed frame time in seconds.</param>
     public void Resolve(float dt)
     {
@@ -89,6 +90,9 @@ public sealed class NameplateStacker
         for (int i = 0; i < _entryCount; i++)
             if (!_entries[_order[i]].Pinned)
                 SolveUnpinned(i);
+
+        // Keep every obstacle at its solved rectangle until the entire layout has been solved.
+        EaseOffsets(dt);
 
         _drawCount = 0;
         for (int i = _entryCount - 1; i >= 0; i--)
@@ -139,6 +143,7 @@ public sealed class NameplateStacker
 
     private void CompactEntries()
     {
+        Array.Fill(_order, -1, 0, _orderCount);
         int count = 0;
         for (int i = 0; i < _entryCount; i++)
         {
@@ -151,16 +156,45 @@ public sealed class NameplateStacker
 
             _entries[count] = entry;
             _entryById[entry.Id] = count;
-            _order[count] = count;
+            if (entry.HasHistory)
+                _order[entry.PlacementIndex] = count;
             count++;
         }
 
         Array.Clear(_entries, count, _entryCount - count);
         _entryCount = count;
+
+        int survivors = 0;
+        for (int i = 0; i < _orderCount; i++)
+            if (_order[i] >= 0)
+                _order[survivors++] = _order[i];
+        _orderCount = survivors;
     }
 
     private void SortPlacementOrder()
     {
+        for (int i = 0; i < _entryCount; i++)
+        {
+            ref Entry entry = ref _entries[i];
+            if (entry.HasHistory)
+                continue;
+
+            int insertAt = 0;
+            while (insertAt < _orderCount)
+            {
+                ref Entry previous = ref _entries[_order[insertAt]];
+                if (previous.Rank > entry.Rank ||
+                    (previous.Rank == entry.Rank && !previous.HasHistory && previous.Id > entry.Id))
+                    break;
+                insertAt++;
+            }
+
+            for (int j = _orderCount; j > insertAt; j--)
+                _order[j] = _order[j - 1];
+            _order[insertAt] = i;
+            _orderCount++;
+        }
+
         for (int i = 1; i < _entryCount; i++)
         {
             int index = _order[i];
@@ -169,7 +203,7 @@ public sealed class NameplateStacker
             while (j > 0)
             {
                 ref Entry previous = ref _entries[_order[j - 1]];
-                if (previous.Rank < entry.Rank || (previous.Rank == entry.Rank && previous.Id < entry.Id))
+                if (previous.Rank - entry.Rank <= RankBand)
                     break;
 
                 _order[j] = _order[j - 1];
@@ -177,6 +211,24 @@ public sealed class NameplateStacker
             }
 
             _order[j] = index;
+        }
+
+        for (int i = 0; i < _entryCount; i++)
+            _entries[_order[i]].PlacementIndex = i;
+    }
+
+    private void EaseOffsets(float dt)
+    {
+        float alpha = float.IsFinite(dt) && dt > 0f ? 1f - MathF.Exp(-dt / TimeConstant) : 0f;
+        for (int i = 0; i < _entryCount; i++)
+        {
+            ref Entry entry = ref _entries[i];
+            float offset = entry.Pinned ? 0f : !entry.HasHistory ? entry.SolvedOffset :
+                entry.Offset + alpha * (entry.SolvedOffset - entry.Offset);
+            entry.Offset = Math.Clamp(offset, MathF.Min(_topMargin, entry.NaturalRect.Y) - entry.NaturalRect.Y, 0f);
+            entry.ResolvedRect = entry.NaturalRect;
+            entry.ResolvedRect.Y += entry.Offset;
+            entry.HasHistory = true;
         }
     }
 
@@ -218,8 +270,11 @@ public sealed class NameplateStacker
         public Vector4 NaturalRect;
         public Vector4 ResolvedRect;
         public float SolvedOffset;
+        public float Offset;
         public float Rank;
+        public int PlacementIndex;
         public bool Pinned;
         public bool Seen;
+        public bool HasHistory;
     }
 }

@@ -20,10 +20,10 @@ public sealed partial class BepuPhysicsWorld : IPhysicsCapsuleFeatures
     void AuthenticateFeatureLease(IPhysicsQueryLease lease)
     {
         ArgumentNullException.ThrowIfNull(lease);
-        // Do not invoke a user-supplied AssertCurrent or enter the monitor before proving ownership.
+        // Do not invoke a user-supplied AssertCurrent or enter the gate before proving ownership.
         if (lease is not ReadLease actual || !ReferenceEquals(actual.SourceWorld, this))
             throw new ArgumentException("The lease was not issued by this physics owner.", nameof(lease));
-        actual.AssertCurrent(); // Includes the thread check before any monitor acquisition.
+        actual.AssertCurrent(); // Includes the thread check before any gate entry.
     }
 
     void AssertFeatureCurrentCore(IPhysicsWorld receiver, in CapsuleFeatureResult result, IPhysicsQueryLease lease)
@@ -63,7 +63,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsCapsuleFeatures
             !RepresentedGeometryTransforms.PosePoint(pose, Vector3.Zero).IsResolved)
             return CapsuleFeatureResult.Refused(CapsuleFeatureStatus.Unsupported);
 
-        // Read the live registry and pose under the authenticated gate, including rebase changes.
+        // Read the live registry and pose inside the authenticated read interval, including rebase changes.
         // Uncached managed scratch avoids shape removal/reuse and cache lifetime mutation hooks.
         _sim.Statics.GetDescription(entry.Handle, out var description);
         if (description.Shape.Type == default(Mesh).TypeId)

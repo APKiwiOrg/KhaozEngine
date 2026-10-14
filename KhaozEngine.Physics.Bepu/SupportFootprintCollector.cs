@@ -123,8 +123,8 @@ internal sealed partial class SupportFootprintCollector
                 }
                 else
                 {
-                    // A local capture failure must keep the full evaluator's original refusal ordering.
-                    installed.Remove(owner);
+                    // A local capture failure must keep the full evaluator's original refusal ordering. The cache
+                    // retains no refusal, so readers never write invalidations.
                     captured = SupportNeighborhoodPolyhedra.Capture(simulation, description.Shape, description.Pose,
                         _bounds, _capture, _leaves, _curved);
                 }

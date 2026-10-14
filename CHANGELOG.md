@@ -5,6 +5,15 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.40.0
+
+- Bepu physics worlds accept concurrent readers. Several threads may hold read leases and run queries on one world
+  at once, while mutations stay exclusive, run in arrival order and hold back new readers once queued. Nested
+  reads on one thread never wait, and same-thread mutations, nested leases and leases inside a mutation are
+  refused before anything changes. Each read interval borrows private Bepu allocation scratch, and installed
+  support geometry is published once per owner and geometry version. Worlds and their restricted views declare
+  the new `IPhysicsConcurrentReadSource` marker, and `IPhysicsQueryLeaseSource` is unchanged.
+
 ## 20.39.0
 
 - Navigation bake doors normalize effective profile kinds before identity work or stream reads. Malformed Contact

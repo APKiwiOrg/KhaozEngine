@@ -16,10 +16,6 @@ namespace KhaozEngine.Physics.Bepu;
 /// <summary>Shared query implementations for the complete world and its restricted views.</summary>
 public sealed partial class BepuPhysicsWorld
 {
-    // Broad-phase candidates for one penetration query. Cleared per call and kept for its capacity. Query views
-    // reach the same core, so they share it. The world is single-threaded, so one list serves every caller.
-    private readonly List<CollidableReference> _overlapScratch = new();
-
     public bool Raycast(Vector3 origin, Vector3 direction, float maxDistance, out RayHit hit, QueryFilter filter = default)
         => RaycastCore(origin, direction, maxDistance, out hit, filter, exclusions: null);
 
@@ -65,7 +61,8 @@ public sealed partial class BepuPhysicsWorld
         var handler = new SweepHitHandler(filter.Mobility, exclusions,
             filter.CullBackFaces ? _sim : null, direction);
 
-        _sim.Sweep(bepuCapsule, rigidPose, velocity, maxDistance / scale, _pool, ref handler);
+        // Mesh and compound targets allocate child overlap lists from the pool, so it is the interval's own.
+        _sim.Sweep(bepuCapsule, rigidPose, velocity, maxDistance / scale, scope.Scratch.Pool, ref handler);
 
         if (!handler.DidHit)
         {
@@ -99,16 +96,29 @@ public sealed partial class BepuPhysicsWorld
         var bepuCapsule = new Capsule(capsule.Radius, capsule.Length);
         bepuCapsule.ComputeBounds(pose.Orientation, out var bMin, out var bMax);
 
-        _overlapScratch.Clear();
-        var collector = new OverlapCollector(_overlapScratch);
+        QueryScratch scratch = scope.Scratch;
+        List<CollidableReference> found = scratch.Overlaps.Take();
+        try
+        {
+            found.Clear();
+            return CollectPenetration(scratch, found, bepuCapsule, bMin, bMax, pose, out mtv, exclusions);
+        }
+        finally { scratch.Overlaps.Restore(found); }
+    }
+
+    unsafe bool CollectPenetration(QueryScratch scratch, List<CollidableReference> found, Capsule bepuCapsule,
+        Vector3 bMin, Vector3 bMax, Pose pose, out Vector3 mtv, StaticQueryExclusions? exclusions)
+    {
+        var collector = new OverlapCollector(found);
         _sim.BroadPhase.GetOverlaps(pose.Position + bMin, pose.Position + bMax, ref collector);
         if (collector.Found.Count == 0) { mtv = default; return false; }
 
         var callbacks = new PenetrationCallbacks();
-        // Reuse the live collision-task registry off NarrowPhase. dt = 0 so there is no velocity-bound
+        // Reuse the live collision-task registry off NarrowPhase. Bepu's own narrow phase shares it across
+        // workers, and every batch allocation goes to the interval's pool. dt = 0 so there is no velocity-bound
         // expansion. speculativeMargin = 0 below so only real penetration (depth >= 0) reaches the callback.
         var batcher = new CollisionBatcher<PenetrationCallbacks>(
-            _pool, _sim.Shapes, _sim.NarrowPhase.CollisionTaskRegistry, 0f, callbacks);
+            scratch.Pool, _sim.Shapes, _sim.NarrowPhase.CollisionTaskRegistry, 0f, callbacks);
         try
         {
             int capsuleType = bepuCapsule.TypeId;

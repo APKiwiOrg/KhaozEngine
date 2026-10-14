@@ -1,5 +1,7 @@
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Threading;
 using BepuPhysics;
 using BepuPhysics.Collidables;
 using KhaozEngine.Physics;
@@ -7,24 +9,50 @@ using StaticHandle = KhaozEngine.Physics.StaticHandle;
 
 namespace KhaozEngine.Physics.Bepu;
 
-/// <summary>Successful local installation captures. No query result or refusal is retained.
-/// Owners, installation identities and static geometry versions must all match before reuse.</summary>
+/// <summary>Successful local installation captures, published as immutable topology for concurrent readers.
+/// No query result or refusal is retained. Owners, installation identities and static geometry versions must
+/// all match before reuse. Concurrent misses for one key construct it once, and the only lock held is that
+/// key's, across topology capture alone. Invalidation runs inside the owner's writer interval.</summary>
 internal sealed class InstalledSupportGeometryCache
 {
-    readonly record struct Entry(TypedIndex Installation, long StaticGeometryVersion, InstalledSupportGeometry Geometry);
-    readonly Dictionary<int, Entry> _entries = [];
+    readonly record struct Key(int Owner, TypedIndex Installation, long StaticGeometryVersion);
+    readonly ConcurrentDictionary<Key, Slot> _entries = new();
+    int _constructions;
+
+    /// <summary>How many captures this cache has constructed.</summary>
+    internal int Constructions => Volatile.Read(ref _constructions);
 
     internal CapsuleFeatureStatus GetOrCapture(Simulation simulation, StaticHandle owner, TypedIndex installation,
         long staticGeometryVersion, out InstalledSupportGeometry? geometry)
     {
-        geometry = null;
-        if (_entries.TryGetValue(owner.Value, out Entry entry) && entry.Installation == installation &&
-            entry.StaticGeometryVersion == staticGeometryVersion && entry.Geometry.Matches(simulation, installation))
+        var key = new Key(owner.Value, installation, staticGeometryVersion);
+        while (true)
         {
-            geometry = entry.Geometry;
-            return CapsuleFeatureStatus.Complete;
+            if (!_entries.TryGetValue(key, out Slot? slot)) slot = _entries.GetOrAdd(key, new Slot());
+            CapsuleFeatureStatus status = slot.Resolve(this, simulation, installation, out geometry, out bool constructed);
+            if (status != CapsuleFeatureStatus.Complete)
+            {
+                _entries.TryRemove(new KeyValuePair<Key, Slot>(key, slot));
+                return status;
+            }
+            // A capture this call made reads the live installation. A published one is checked against it.
+            if (constructed || geometry!.Matches(simulation, installation)) return CapsuleFeatureStatus.Complete;
+            _entries.TryRemove(new KeyValuePair<Key, Slot>(key, slot));
         }
-        _entries.Remove(owner.Value);
+    }
+
+    internal void Remove(StaticHandle owner)
+    {
+        foreach (Key key in _entries.Keys)
+            if (key.Owner == owner.Value) _entries.TryRemove(key, out _);
+    }
+
+    internal void Clear() => _entries.Clear();
+
+    static CapsuleFeatureStatus Capture(Simulation simulation, TypedIndex installation,
+        out InstalledSupportGeometry? geometry)
+    {
+        geometry = null;
         var leaves = new List<InstalledSupportLeaf>();
         CapsuleFeatureStatus status;
         if (installation.Type == default(Compound).TypeId)
@@ -45,7 +73,6 @@ internal sealed class InstalledSupportGeometryCache
             if (status != CapsuleFeatureStatus.Complete) return status;
         }
         geometry = new(leaves);
-        _entries.Add(owner.Value, new(installation, staticGeometryVersion, geometry));
         return CapsuleFeatureStatus.Complete;
     }
 
@@ -72,6 +99,34 @@ internal sealed class InstalledSupportGeometryCache
         return CapsuleFeatureStatus.Complete;
     }
 
-    internal void Remove(StaticHandle owner) => _entries.Remove(owner.Value);
-    internal void Clear() => _entries.Clear();
+    /// <summary>One key's capture. Publication is a volatile flag written after the immutable result.</summary>
+    sealed class Slot
+    {
+        readonly Lock _gate = new();
+        volatile bool _resolved;
+        CapsuleFeatureStatus _status;
+        InstalledSupportGeometry? _geometry;
+
+        internal CapsuleFeatureStatus Resolve(InstalledSupportGeometryCache owner, Simulation simulation,
+            TypedIndex installation, out InstalledSupportGeometry? geometry, out bool constructed)
+        {
+            constructed = false;
+            if (!_resolved)
+            {
+                lock (_gate)
+                {
+                    if (!_resolved)
+                    {
+                        // A throwing capture publishes nothing, so a later reader captures again.
+                        _status = Capture(simulation, installation, out _geometry);
+                        Interlocked.Increment(ref owner._constructions);
+                        _resolved = true;
+                        constructed = true;
+                    }
+                }
+            }
+            geometry = _geometry;
+            return _status;
+        }
+    }
 }

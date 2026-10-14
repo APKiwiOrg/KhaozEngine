@@ -8182,7 +8182,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.39.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.40.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -8516,7 +8516,7 @@ On the dev Mac a 36,864-column flat world wrote 664,689 bytes and loaded in abou
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.39.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.40.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -9140,8 +9140,14 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
   `SourceWorld`, `Origin` and process-local `GeometryGeneration`. `AssertCurrent()` rejects expired or
   wrong-thread use. Perform queries and publish pure state under the lease, then dispose it on its
   acquiring thread before changing physics. Same-thread writes and nested leases are refused, other
-  threads serialize behind the gate, and view disposal cannot invalidate an active interval. This does
+  threads' writes wait behind the gate, and view disposal cannot invalidate an active interval. This does
   not certify native environment residency or provide a cross-head world/bake identity.
+- Optional marker `IPhysicsConcurrentReadSource` declares that the exact receiver accepts simultaneous
+  read leases and queries from several threads. Bepu owners and their restricted views declare it: each
+  reader interval borrows private query scratch, nested reads on one thread never wait, and writers are
+  exclusive, run in arrival order and hold back new readers once queued. Forwarding wrappers stay serial
+  unless they declare it after auditing their own state. The read-path audit is in
+  `docs/verification/2026-10-14-bepu-concurrent-read-audit.md`.
 - Optional `IPhysicsCapsuleContacts.QueryCapsuleContacts(capsule, pose, maxSeparationMetres,
   destination, filter) -> CapsuleContactResult` gathers independent constraints, including positive
   separations within the margin. Check `Complete` and `CertifiedErrorMetres` before using the output.
@@ -9275,7 +9281,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.39.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.40.0" />
 ```
 
 ```csharp
@@ -16819,7 +16825,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.39.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.40.0" />
 ```
 
 ```csharp
@@ -16855,7 +16861,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.39.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.40.0" />
 ```
 
 ```csharp
@@ -17097,7 +17103,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.39.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.40.0" />
 ```
 
 ```csharp
@@ -21457,7 +21463,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.39.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.40.0" />
 </ItemGroup>
 ```
 

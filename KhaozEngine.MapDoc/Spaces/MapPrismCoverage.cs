@@ -48,14 +48,26 @@ public static class MapPrismCoverage
             var work = new MapWaterWorkBudget(limits.MaxPairChecks);
             var bounds = raw.Select(p => MapWaterPolygons.Bounds.Of(p.Polygon)).ToArray();
             // Exact bounds broad phases. A parent or peer piece whose bounds do not overlap shares no positive area, so
-            // skipping it changes no result. Each candidate is charged once, in the released visiting order.
+            // skipping it changes no result. Each candidate is charged once, in the released visiting order. One sweep
+            // per parent owner covers the pieces of every room it parents. The partition above already resolved every
+            // owner, so resolving them first raises nothing new.
+            var owners = prisms.ToDictionary(p => p.Id, p => MapSpaceGeometry.Owner(view, MapSpaceGeometry.Record<MapSpaceDoc>(view, p.Parent)), StringComparer.Ordinal);
+            var bySpace = Enumerable.Range(0, raw.Count).ToLookup(i => raw[i].SpaceId, StringComparer.Ordinal);
+            var near = new Dictionary<(string Prism, int Piece), List<int>>();
+            foreach (var group in prisms.GroupBy(p => owners[p.Id], StringComparer.Ordinal))
+            {
+                var parents = bySpace[group.Key].ToArray();
+                var pieces = group.SelectMany(p => Enumerable.Range(0, domains[p.Id].Pieces.Count).Select(i => (Prism: p.Id, Piece: i))).ToArray();
+                foreach (var (left, right) in MapWaterBoundsSweep.Cross(pieces.Select(p => domains[p.Prism].PieceBounds(p.Piece)).ToArray(),
+                    parents.Select(i => bounds[i]).ToArray()))
+                {
+                    if (!near.TryGetValue(pieces[left], out var list)) near.Add(pieces[left], list = new());
+                    list.Add(parents[right]);
+                }
+            }
             foreach (var prism in prisms)
             {
                 var domain = domains[prism.Id];
-                string parentOwner = MapSpaceGeometry.Owner(view, MapSpaceGeometry.Record<MapSpaceDoc>(view, prism.Parent));
-                var parents = Enumerable.Range(0, raw.Count).Where(i => raw[i].SpaceId == parentOwner).ToArray();
-                var near = MapWaterBoundsSweep.Cross(Enumerable.Range(0, domain.Pieces.Count).Select(domain.PieceBounds).ToArray(),
-                    parents.Select(i => bounds[i]).ToArray()).ToLookup(p => p.Left, p => parents[p.Right]);
                 var heights = MapPrismGeometry.Heights(view, prism);
                 var lo = MapWideRational.From(heights.Lower); var hi = MapWideRational.From(heights.Upper);
                 for (int i = 0; i < domain.Pieces.Count; i++)
@@ -64,7 +76,7 @@ public static class MapPrismCoverage
                         var polygon = convex;
                         var extent = MapWaterPolygons.Bounds.Of(polygon);
                         var uncovered = new List<IReadOnlyList<MapWideXz>> { polygon };
-                        foreach (var parent in near[i].Where(p => bounds[p].OverlapsOpen(extent)).Select(p => raw[p]))
+                        foreach (var parent in (near.GetValueOrDefault((prism.Id, i)) ?? []).Where(p => bounds[p].OverlapsOpen(extent)).Select(p => raw[p]))
                         {
                             work.Charge(1);
                             var clip = MapOccupiedPartitions.Intersect(polygon, parent.Polygon);

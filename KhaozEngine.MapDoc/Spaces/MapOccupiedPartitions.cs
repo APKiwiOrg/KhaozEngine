@@ -190,6 +190,7 @@ internal static class MapOccupiedPartitions
         var prepared = MapCommonRefinement.PrepareFootprints(view, footprints, limits, null, meter);
         if (prepared.Context is not { } context) throw new MapDocumentException("capacity exceeded: " + prepared.Refusal);
         var raw = new List<MapOccupiedPiece>();
+        var parentIndexes = new Dictionary<string, (MapOccupiedPiece[] Parents, MapWaterPolygons.Bounds[] Bounds, MapBoundsIndex Index)>(StringComparer.Ordinal);
         var vertices = new Dictionary<List<MapOccupiedPiece>, long>();
         var work = new MapWaterWorkBudget(limits.MaxPairChecks, compile: false, meter?.Pairs);
         foreach (var footprint in footprints)
@@ -300,6 +301,15 @@ internal static class MapOccupiedPartitions
                 throw new MapDocumentException("capacity exceeded: occupied pieces");
             vertices[target] = count;
             target.Add(piece);
+            if (ReferenceEquals(target, raw)) parentIndexes.Remove(piece.SpaceId);
+        }
+        // The owner's pieces in raw order with their bounds and index, rebuilt only after raw gains a piece of that owner.
+        (MapOccupiedPiece[] Parents, MapWaterPolygons.Bounds[] Bounds, MapBoundsIndex Index) ParentIndex(string owner)
+        {
+            if (parentIndexes.TryGetValue(owner, out var cached)) return cached;
+            var parents = raw.Where(p => p.SpaceId == owner).ToArray();
+            var bounds = parents.Select(p => MapWaterPolygons.Bounds.Of(p.Polygon)).ToArray();
+            return parentIndexes[owner] = (parents, bounds, new MapBoundsIndex(bounds));
         }
         void Room(MapPrismDomain prism, int depth)
         {
@@ -314,15 +324,14 @@ internal static class MapOccupiedPartitions
             var domain = MapPrismGeometry.Compile(view, prism);
             var (lower, upper) = MapPrismGeometry.Heights(view, prism);
             var lo = Boundary(view, prism.Id, "prism-lower"); var hi = Boundary(view, prism.Id, "prism-upper");
-            var parents = raw.Where(p => p.SpaceId == parentOwner).ToArray();
-            // Every convex part is prepared before the first parent, as released. An exact bounds sweep then visits, in
-            // the released parent, piece and part order, only the parts whose bounds overlap a parent. The others share
-            // no positive area. Each visited pair is charged once.
+            var (parents, parentBounds, parentIndex) = ParentIndex(parentOwner);
+            // Every convex part is prepared before the first parent, as released. The owner's cached exact bounds index
+            // then gives, in the released parent, piece and part order, only the parts whose bounds overlap a parent.
+            // The others share no positive area. Each visited pair is charged once.
             var parts = parents.Length == 0 ? [] : Enumerable.Range(0, domain.Pieces.Count)
                 .Select(i => domain.ConvexParts(i, work).Select(c => (Polygon: c, Bounds: MapWaterPolygons.Bounds.Of(c))).ToArray()).ToArray();
-            var parentBounds = parents.Select(p => MapWaterPolygons.Bounds.Of(p.Polygon)).ToArray();
-            var near = MapWaterBoundsSweep.Cross(parentBounds, Enumerable.Range(0, parts.Length).Select(domain.PieceBounds).ToArray())
-                .ToLookup(p => p.Left, p => p.Right);
+            var near = Enumerable.Range(0, parts.Length).SelectMany(i => parentIndex.Overlapping(domain.PieceBounds(i)).Select(k => (Parent: k, Piece: i)))
+                .Order().ToLookup(p => p.Parent, p => p.Piece);
             for (int k = 0; k < parents.Length; k++)
                 foreach (int i in near[k])
                     foreach (var (convex, extent) in parts[i])

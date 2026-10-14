@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -71,7 +70,8 @@ public sealed class MapPrismCoverageScaleTests
 
         var errors = MapPrismCoverage.Validate(view, new());
 
-        Assert.Contains(errors, e => e.StartsWith("prism coverage: ", StringComparison.Ordinal) &&
-            e.Contains("65536 pair checks", StringComparison.Ordinal));
+        // The partition room stage and the parent loop see 512 candidates per room and pass. The peer loop refuses:
+        // its message has no "capacity exceeded:" prefix, which a partition refusal would carry.
+        Assert.Contains("prism coverage: domain work exceeds 65536 pair checks", errors);
     }
 }

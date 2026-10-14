@@ -25,7 +25,7 @@ public sealed partial class Scene3D
     /// <summary>Upload a skinned mesh and bind a full PBR-lite material (<paramref name="maps"/>): albedo +
     /// optional normal + optional roughness, mirroring <see cref="LoadMesh(GltfMesh,SurfaceMaps)"/>. Invalid
     /// handles fall back to the renderer defaults (white albedo / flat normal / zero roughness). Normal
-    /// perturbation requires the mesh to carry tangents. Skinned glTF via <see cref="GltfLoader.LoadSkinned"/> or
+    /// perturbation requires the mesh to carry tangents. Skinned glTF via <see cref="GltfLoader.LoadSkinned(string)"/> or
     /// <see cref="SkinnedMeshBuilder"/> output both compute them. A tangent-less skinned vertex is lit by its
     /// geometric normal. The tangent rides the skin deform on either skinning path, so the TBN tracks the pose.</summary>
     public SkinnedMeshHandle LoadSkinnedMesh(SkinnedGltfMesh mesh, SurfaceMaps maps)

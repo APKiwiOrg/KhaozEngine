@@ -61,7 +61,7 @@ namespace KhaozEngine.Render3D
 
         /// <summary>The joint hierarchy this mesh poses through (parent links + rest-local TRS + bone-to-node map),
         /// or <c>null</c> for meshes built without one (e.g. <see cref="SkinnedMeshBuilder"/>'s code-driven rigs).
-        /// Set by <see cref="GltfLoader.LoadSkinned"/> from the glTF skin; required to play
+        /// Set by <see cref="GltfLoader.LoadSkinned(string)"/> from the glTF skin, required to play
         /// <see cref="AnimationClip"/>s on the mesh.</summary>
         public Skeleton? Skeleton { get; }
 

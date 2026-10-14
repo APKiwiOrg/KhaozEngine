@@ -182,7 +182,7 @@ namespace KhaozEngine.Tests.Render3D
         /// <summary>A minimal GLB: one material with a baseColorFactor, one mesh, one node, one scene, and
         /// POSITION plus an optional float VEC4 COLOR_0. With <paramref name="skinned"/> it also carries
         /// JOINTS_0/WEIGHTS_0 bound to a one-joint skin, which is the least a glb can have and still load through
-        /// <see cref="GltfLoader.LoadSkinned"/>.</summary>
+        /// <see cref="GltfLoader.LoadSkinned(string)"/>.</summary>
         static byte[] BuildGlb(Vector3[] positions, Vector4[]? colors, bool skinned = false)
         {
             var bin = new MemoryStream();

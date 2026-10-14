@@ -4,20 +4,22 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Prefabs;
 
 namespace KhaozEngine.MapDoc.Surfaces;
 
 /// <summary>A leaf support resource, payload 1: surfaces with their patches and embedded records, an optional space,
 /// and one explicit scoped slot per embedded reference. Pointers are rooted at the resource, with surfaces in ID
-/// order and patches in key order.</summary>
+/// order and patches in key order. The encoded payload begins with the discriminant
+/// <c>"resourceSchema":"kemap/support-resource"</c>.</summary>
 public sealed record MapSupportResource(int PayloadVersion, MapSurfaceSet Surfaces, MapRecordRef? Space,
     IReadOnlyList<MapPrefabReferenceSlot> References);
 
 /// <summary>The closed, bounded support resource codec.</summary>
 public static class MapSupportResourceFile
 {
-    static readonly string[] Required = ["payloadVersion", "surfaces", "patches", "references"];
+    static readonly string[] Required = [MapTypedResourceSchema.Property, "payloadVersion", "surfaces", "patches", "references"];
 
     public static MapSupportResource Read(ReadOnlyMemory<byte> bytes, string resourceId)
     {
@@ -28,6 +30,7 @@ public static class MapSupportResourceFile
             using JsonDocument json = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 64 });
             JsonElement root = json.RootElement;
             if (root.ValueKind != JsonValueKind.Object) Fail(resourceId, "expected an object");
+            MapTypedResourceSchema.Require(root, MapTypedResourceSchema.Support, "Support resource", resourceId);
             var seen = new HashSet<string>(StringComparer.Ordinal);
             foreach (JsonProperty property in root.EnumerateObject())
                 if (!seen.Add(property.Name) || !Required.Contains(property.Name, StringComparer.Ordinal) && property.Name != "space")
@@ -57,6 +60,7 @@ public static class MapSupportResourceFile
         using (var w = new Utf8JsonWriter(stream))
         {
             w.WriteStartObject();
+            w.WriteString(MapTypedResourceSchema.Property, MapTypedResourceSchema.Support);
             w.WriteNumber("payloadVersion", resource.PayloadVersion);
             w.WritePropertyName("surfaces");
             MapPrefabJson.Write(w, resource.Surfaces.Refs.OrderBy(s => s.Id, StringComparer.Ordinal).ToArray());

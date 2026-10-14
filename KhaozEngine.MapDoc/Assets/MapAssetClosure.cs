@@ -36,9 +36,9 @@ public sealed class MapAssetClosure
         foreach (MapResolvedAsset leaf in Assets)
         {
             foreach (string id in leaf.SupportResourceIds)
-                if (!_supports.ContainsKey(id) && Structured(snapshots[id])) _supports.Add(id, MapSupportResourceFile.Read(snapshots[id], id));
+                if (!_supports.ContainsKey(id) && MapTypedResourceSchema.Carries(snapshots[id])) _supports.Add(id, MapSupportResourceFile.Read(snapshots[id], id));
             foreach (string id in leaf.LightResourceIds)
-                if (!_lights.ContainsKey(id) && Structured(snapshots[id])) _lights.Add(id, MapLightFile.Read(snapshots[id], id));
+                if (!_lights.ContainsKey(id) && MapTypedResourceSchema.Carries(snapshots[id])) _lights.Add(id, MapLightFile.Read(snapshots[id], id));
         }
         foreach (var resource in resources.Values.Where(r => r.Kind == MapResourceKind.Prefab))
         {
@@ -49,13 +49,8 @@ public sealed class MapAssetClosure
         Hash = ComputeHash(resources);
     }
 
-    // Released analytic resources can be opaque blobs. R5 typed attachments are JSON objects and are decoded once.
-    static bool Structured(byte[] bytes)
-    {
-        foreach (byte value in bytes)
-            if (value is not (9 or 10 or 13 or 32)) return value == (byte)'{';
-        return false;
-    }
+    // Released resources stay opaque, including JSON objects. Only R5 typed attachments that open with their
+    // discriminant are decoded, once, at construction.
     internal bool HasSupport(string id) => _supports.ContainsKey(id);
     internal bool HasLight(string id) => _lights.ContainsKey(id);
     public MapResolvedAsset GetAsset(string assetId) => _assets.TryGetValue(assetId, out var asset)
@@ -75,10 +70,12 @@ public sealed class MapAssetClosure
         ? bytes : throw new MapDocumentException($"Native resource '{resourceId}' is not captured.");
     internal MapPrefabAsset BorrowPrefab(string id) => _prefabs.TryGetValue(id, out var prefab)
         ? prefab : throw new MapDocumentException($"Native prefab '{id}' is not captured.");
-    internal MapSupportResource BorrowSupport(string id) => _supports.TryGetValue(id, out var support)
-        ? support : throw new MapDocumentException($"Native support '{id}' is not captured.");
-    internal MapLocalLightDoc BorrowLight(string id) => _lights.TryGetValue(id, out var light)
-        ? light : throw new MapDocumentException($"Native light '{id}' is not captured.");
+    internal MapSupportResource BorrowSupport(string id) => _supports.TryGetValue(id, out var support) ? support
+        : _resources.ContainsKey(id) ? throw MapTypedResourceSchema.Opaque("support", id, MapTypedResourceSchema.Support)
+        : throw new MapDocumentException($"Native support '{id}' is not captured.");
+    internal MapLocalLightDoc BorrowLight(string id) => _lights.TryGetValue(id, out var light) ? light
+        : _resources.ContainsKey(id) ? throw MapTypedResourceSchema.Opaque("light", id, MapTypedResourceSchema.Light)
+        : throw new MapDocumentException($"Native light '{id}' is not captured.");
 
     /// <summary>Looks up a resource without throwing. A null id is never in the closure.</summary>
     internal bool TryGetResource(string? resourceId, out MapResolvedResource? resource)

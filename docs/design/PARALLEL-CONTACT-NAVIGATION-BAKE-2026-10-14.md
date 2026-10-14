@@ -3,7 +3,7 @@
 Design for [#1401](https://github.com/APKiwiOrg/KhaozEngine/issues/1401). Source baseline: `c45768b73` on `main`,
 staged 20.39.0 with [#438](https://github.com/APKiwiOrg/KhaozEngine/issues/438) phase 5b. The owner chose option A
 (parallel bake split by region) on 2026-10-14. Every choice below is a recorded ruling for the owner's review.
-Revision 2 answers review round 1 (F1 to F8).
+Revision 3 answers review rounds 1 and 2.
 
 ## Problem
 
@@ -35,8 +35,8 @@ or cheaper proofs (#1401 option B), native MapDoc movement, Grimhollow adoption,
 
 ### PB-1 Concurrent physics readers
 
-**Gate.** `BepuPhysicsWorld` replaces its monitor with a writer-preferring reader and writer gate that tracks read
-depth per thread.
+**Gate.** `BepuPhysicsWorld` replaces its monitor with a writer-preferring reader and writer gate that tracks read and
+write depth per thread.
 
 - The outermost read on a thread (a lease or a single query) admits one reader interval. Every nested read on that
   thread (view-to-core delegation, footprint-to-sweep delegation, registration authentication, ground delegates,
@@ -44,24 +44,43 @@ depth per thread.
 - A second explicit lease on the same world and thread still throws and leaves the first lease intact.
 - A mutation or disposal on a thread that holds a read interval throws before any upgrade attempt and before the
   geometry generation advances, as the public seam promises today.
-- Writers are exclusive. Once a writer queues, new outer readers wait. The writer waits for active outer readers to
-  leave. Writers run in arrival order. Reads made by the writer's own thread during its mutation run inside the
-  writer's interval, as the reentrant monitor allows today.
+- Writers are exclusive and run in arrival order. Once a writer queues, new outer readers wait, and the writer waits for
+  active outer readers to leave. A nested mutation on the writer's own thread runs inside its interval, as the
+  reentrant monitor allows today. Reads on the writer's own thread also run inside it, with scratch attached lazily
+  for the writer's interval and released at its outer exit. An explicit lease requested inside a writer interval
+  throws, so no lease can outlive the writer.
 - Wrong-thread lease use and disposal are rejected before waiting on any gate.
+- **Supported dependencies.** Same-thread reentrancy is supported. A read callback must not synchronously wait on
+  another thread entering this world or on a writer completing, exactly as the current exclusive monitor already
+  forbids. Writers make progress once every admitted reader interval ends. A continuous writer queue can delay new
+  readers, which is accepted because no writer runs during a bake.
 
-**Scratch.** Each reader interval borrows one `QueryScratch` from a thread-safe owner pool and returns it at the end of
-the interval. A `QueryScratch` owns its own Bepu `BufferPool`, distinct from the simulation pool, plus every reusable
-collector, traversal stack and result buffer the read path uses. Every read-side allocation and return goes through
-that pool, including `Simulation.Sweep`, penetration and contact batchers, mesh contact reduction and smoothing.
-Scratch is reused across intervals and cleared on return. Partial acquisition releases what it took.
+**Scratch.** Gate nesting and scratch loans are separate concepts.
+
+- Each outer interval borrows one `QueryScratch` from a world-owned pool. It owns a private Bepu `BufferPool`, distinct
+  from the simulation pool. Every read-side allocation and return goes through it, including `Simulation.Sweep`,
+  penetration and contact batchers, mesh contact reduction and smoothing.
+- Collectors and buffer sets inside a `QueryScratch` are loaned per operation with the existing take-and-restore
+  pattern (`BepuPhysicsWorld.SupportFootprint.cs`, `SupportNeighborhood.cs`). A nested operation of the same kind,
+  such as a footprint query issued from a diagnostic callback, gets an inactive set or a fresh one, never the active
+  one.
+- Returning scratch resets it logically and keeps its allocator capacity. Pools are not cleared per interval.
+- World disposal is exclusive. After every interval has left, it drains the scratch pool and disposes every
+  `QueryScratch` exactly once, clearing each private `BufferPool`. A partially constructed scratch is cleaned where it
+  failed. A borrowed view's disposal never disposes world-owned scratch.
 
 **Installed support geometry.** The cache publishes immutable installed topology through a thread-safe map keyed by
 installation identity and static geometry version. Concurrent misses for one key construct it once. Mutations
-invalidate entries inside the writer interval. Materialization writes only into the reader's scratch. No lock is held
+invalidate entries inside the writer interval. Materialization writes only into the borrowed scratch. No lock is held
 across a footprint proof.
 
+**Capability.** A new optional interface, `IPhysicsConcurrentReadSource`, declares that a receiver supports simultaneous
+reader intervals and simultaneous query calls under the rules above. `IPhysicsQueryLeaseSource` does not change.
+`BepuPhysicsWorld` and its restricted `QueryView` declare the capability. A forwarding wrapper declares it only after
+auditing its own state.
+
 **Audit.** The implementation records a call-graph audit of the pinned BepuPhysics 2.4.0 read paths (ray, sweep,
-broad-phase overlap, mesh, compound and hull branches) showing no shared write outside the reader's pool, and pins it
+broad-phase overlap, mesh, compound and hull branches) showing no shared write outside the borrowed pool, and pins it
 with simultaneous-reader result comparisons.
 
 **Why:** edge proofs are almost the whole bake. Concurrent readers are also the engine capability a multi-threaded
@@ -95,10 +114,21 @@ server tick needs. A per-thread world copy would duplicate world construction an
   band.
 - **Determinism.** Every column, edge and link result is a pure function of the snapshot and the world, with no
   cross-cell accumulation, so graphs, resting heights and file bytes are identical for any degree.
-- **Failure selection.** Each work item has its serial ordinal (phase, then row-major cell, then direction or candidate
-  index). When a worker fails, the build stops scheduling items above that ordinal, lets running proofs finish, and
-  completes every item below it, so the failure selected is the lowest ordinal, which is the one the serial build
-  throws first. The original exception is rethrown with its type and stack.
+- **Serial order.** The build defines the complete serial order the current code runs in, and phases are barriers.
+  - Setup comes first: snapshot, worker construction and first pins.
+  - Admission follows, in captured Z, then X, then raw-surface order. Within a surface it runs anchor, placement and
+    Hold in sequence, with its anchor insertion at that position.
+  - Layering and link generation follow.
+  - Edges then run in layer, Z, X and `ProfileNeighbors` direction order.
+  - Stair links run last, in original candidate-array index order, skipped candidates included.
+- **Failure selection.** Each work item carries its serial ordinal. Every item ends in success, refusal or failure, and
+  failed items are never retried. When an item fails, the build atomically lowers a failure cutoff to that ordinal,
+  stops scheduling items above it, and lets every unfinished item below it reach a terminal state. The failure with
+  the lowest ordinal wins, which is the exception the serial API throws first, including the controller's existing
+  exception translations. A cross-worker duplicate anchor carries the later insertion's admission ordinal. Setup,
+  merge, extraction and generation failures keep their logical positions. A later phase starts only after its
+  prerequisite phase joins successfully. Under fixed, terminating providers and the existing finite proof budgets, this
+  drains a finite prefix and terminates. The selected exception is rethrown with its original type and stack.
 - **Shutdown.** Stop checks happen between proofs, never inside a leased call. Every worker is joined, each worker
   disposes its own leases on its own thread, and only then are bindings and the context-owned view released.
   Caller-owned physics and borrowed views stay usable. If cleanup also fails, the primary exception is rethrown and
@@ -107,16 +137,25 @@ server tick needs. A per-thread world copy would duplicate world construction an
 ### PB-4 Execution setting
 
 - `NavBakeExecution` is a public record with `MaxDegreeOfParallelism`, which must be at least 1.
-- New overloads of `PhysicsNavBake.BuildProfile` and `GroundNavigationBake.Create` take it. The existing signatures
-  stay as forwarding overloads, so compiled consumers keep working. Null or omitted means degree 1.
-- Validation order: the execution argument is checked first (`ArgumentOutOfRangeException` for a degree below 1), then
-  everything checked today, in today's order.
-- At degree 1 the build runs exactly the current serial path.
+- New overloads, keeping every existing signature:
+  - `PhysicsNavBake.BuildProfile(in MoveTuning tuning, NavAreaFilter areas, GroundProfileOptions? options,
+    NavBakeExecution? execution)`
+  - `GroundNavigationBake.Create(PhysicsNavBake bake, NavBakeSources sources, IReadOnlyList<NavBakeProfile> profiles,
+    NavBakeExecution? execution)`
+
+  The existing two and three argument `BuildProfile` forms and the three argument `Create` form forward with a null
+  execution. Existing `null` and `default` option calls stay unambiguous. Null execution means degree 1.
+- Validation order:
+  1. The execution argument is checked first, with `ArgumentOutOfRangeException` for a degree below 1.
+  2. Every existing check runs next, in today's order, including profile resolution and sorting in `Create`.
+  3. Only then, for a resolved contact profile at a degree above 1, the build requires `IPhysicsConcurrentReadSource`
+     on both the logical physics source and the exact selected query view, before any worker is constructed. If
+     either lacks it, the build throws `NotSupportedException`.
+
+  Legacy profiles always build serially and never require the capability, including in an all-legacy build above
+  degree 1.
+- At degree 1 the build runs exactly the current serial path, with no new snapshot check.
 - `GroundNavigationBake.Create` builds profiles one after another and passes the execution to each contact profile.
-  Legacy profiles always build serially.
-- Above degree 1 on a physics world that does not declare concurrent readers,
-  `IPhysicsQueryLeaseSource.SupportsConcurrentReaders`, the build throws `NotSupportedException`.
-  `BepuPhysicsWorld` declares it.
 - The setting is not part of `PhysicsNavBakeOptions` or the bake identity, so no bytes change.
 - Endorsed providers are named in the documentation by method after the audit. That covers the TileWorld ground
   samplers, `TileMediumSampler` as a water field and the TileWorld registration. MapDoc is not endorsed: it has no
@@ -124,14 +163,16 @@ server tick needs. A per-thread world copy would duplicate world construction an
 
 ### PB-5 Diagnostics and cost
 
-- Each worker initializes the caller's enabled diagnostics on its own thread and collects them in a `finally`, restoring
-  any prior thread-local state. Counts and allocation deltas are aggregated after the join.
+- **Isolation.** Workers copy the caller's diagnostic enablement, not its observer delegates. Each worker records into
+  its own recorder through a scoped helper that captures and restores every prior thread-local counter, observation
+  and callback, including on setup failure. Records merge into the caller's after the join. A caller observer reaches
+  workers only through an explicit per-worker observer factory.
 - The cost record measures:
-  - whole-build wall time on the caller,
+  - whole-build wall time on the caller, including setup and disposal,
   - summed per-proof time, separately,
-  - allocations across all threads (`GC.GetTotalAllocatedBytes(precise: true)` deltas),
-  - scratch pool size, worker utilization and per-phase time, including binding construction, envelope validation,
-    merge and disposal.
+  - managed allocations across all threads (`GC.GetTotalAllocatedBytes(precise: true)` deltas) and native scratch
+    capacity retained by reader pools,
+  - worker utilization and per-phase time, including binding construction, envelope validation, merge and disposal.
 - One cold and one warm local measurement at degree 1 and at the machine's core count, through `build-slot --heavy`.
   No loop, repeat or load run, and no no-GC assertion.
 
@@ -154,6 +195,14 @@ Physics:
 - Event-coordinated gate tests: a queued writer with a nested query inside an active reader completes without deadlock,
   a mutation from a ground or diagnostic callback throws before the generation changes, wrong-thread disposal is
   rejected without waiting, and a refused acquisition releases everything it took.
+- A footprint query triggered from a diagnostic observer during an outer footprint query, with different requests and
+  output arrays, leaves both results correct. Writer-interval reads release their scratch at writer exit, and an
+  explicit lease inside a writer interval throws.
+- Scratch accounting: every constructed `QueryScratch` is disposed exactly once with its native pool cleared, after
+  success, a query exception, a failed acquisition and owner disposal.
+- Capability: an unchanged old `IPhysicsQueryLeaseSource` implementer still compiles and works serially. The Bepu world
+  and its view declare concurrent reads. A borrowed wrapper without the capability over a Bepu owner refuses degree
+  above 1.
 - A nested second lease on one thread still throws. Every existing physics, lease, support and movement test passes
   unchanged.
 
@@ -168,11 +217,15 @@ Bake:
 - Roof, footprint and exact-arrival refusals match at every degree.
 - Snapshot: a water generation change between two workers' first acquisitions, and a change after one band completes,
   each refuse the whole build.
-- Failure: a fixture where a later cell fails first in wall-clock time throws the earlier cell's exception, with the
-  serial type and message, publishes nothing, releases every gate and leaves the caller's world and view usable. Fault
-  providers used in these tests are schedule-independent.
-- Execution: degree below 1, null, the forwarding overloads, and degree above 1 on a world without concurrent readers
-  each behave as stated.
+- Failure: two-failure fixtures across layers, raw surfaces and candidate order, where the later one fails first in
+  wall-clock time, throw the serial API's exception. Also covered: a provider exception, a held sibling lease, a setup
+  failure after partial worker construction, and a cleanup failure attached to the primary. Each publishes nothing,
+  releases every gate and leaves the caller's world and view usable. Fault providers are schedule-independent.
+- Diagnostics: a diagnostic-enabled build at degree 8 matches the degree 1 bytes, with balanced independent recorder
+  stacks, correct merged counts and the caller's prior thread-local state restored.
+- Execution: degree below 1 (also combined with an invalid existing argument), null, the existing `null` and `default`
+  option call forms, an all-legacy build above degree 1 on an undeclared backend (serial, no refusal), and a mixed build
+  above degree 1 each behave as stated.
 - Legacy bakes are byte-identical, and the all-legacy full-file golden still matches.
 
 Cost: the PB-5 record with the measured speedup and an updated Hollowmere extrapolation.
@@ -201,3 +254,15 @@ Round 1 (`review-1.md`, Not ready, 0 Critical, 6 Important, 2 Minor):
 - F8: worker diagnostics and all-thread cost accounting (PB-5).
 - Unverified notes: the Bepu audit is an implementation deliverable (PB-1), MapDoc is excluded from endorsement (PB-4),
   and the speedup is measured rather than claimed (PB-5).
+
+Round 2 (`review-2.md`, Not ready, 0 Critical, 6 Important, 1 Minor):
+
+- G1: supported dependencies stated, with writer progress conditional and reader delay accepted (PB-1).
+- G2: scratch loans per operation separate from gate nesting, writer-interval scratch, and leases refused inside
+  writers (PB-1).
+- G3: the complete serial order with phase barriers, terminal states, the failure cutoff and termination (PB-3).
+- G4: a separate `IPhysicsConcurrentReadSource` checked on the logical source and the exact selected view (PB-1,
+  PB-4).
+- G5: per-worker recorders without shared observer delegates, and a per-worker observer factory (PB-5).
+- G6: logical reset on return and exclusive drain and disposal of reader pools (PB-1).
+- G7: exact overload signatures, validation placement, legacy exemption, and degree 1 without the new check (PB-4).

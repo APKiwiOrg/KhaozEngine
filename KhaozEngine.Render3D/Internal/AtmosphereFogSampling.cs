@@ -43,7 +43,7 @@ internal static class AtmosphereFogSampling
     }
 
     /// <summary>Sine and cosine of the geometric horizon's zenith angle. They are per-frame constants on the
-    /// GPU, packed in the atmosphere uniforms' Origin.w and NightTint.w lanes.</summary>
+    /// GPU, packed in the atmosphere uniforms' FogHorizon.</summary>
     internal static (double Sin, double Cos) HorizonSinCos(double radiusKm, float bottomKm)
     {
         double horizon = HorizonAngle(radiusKm, bottomKm);

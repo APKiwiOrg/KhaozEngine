@@ -91,7 +91,7 @@ vec3 atmosphereFogSource(vec3 direction) {
 // Mirrors AtmosphereFogScattering.Ratio and AtmosphereFogSampling.BelowHorizon. Below the horizon the sky-view
 // sample is the horizon texel at the view's azimuth. Rescale it to the view's true scattering angle, eased in
 // over one final sky texel span so the horizon join keeps zero slope. One at and above the horizon and in vacuum.
-// Origin.w and NightTint.w carry the horizon's per-frame sine and cosine (AtmosphereFogSampling.HorizonSinCos).
+// FogHorizon.xy carries the horizon's per-frame sine and cosine (AtmosphereFogSampling.HorizonSinCos).
 vec3 atmosphereFogPhaseRatio(vec3 view, float radius) {
     float horizon = AtmoHorizonAngle(radius);
     float theta = acos(clamp(view.y, -1.0, 1.0));
@@ -101,7 +101,7 @@ vec3 atmosphereFogPhaseRatio(vec3 view, float radius) {
     float zenith = t < 1.0 ? horizon + cell * t * t * t * (3.0 - 2.0 * t) : theta;
     vec2 planar = all(equal(view.xz, vec2(0.0))) ? vec2(1.0, 0.0) : normalize(view.xz);
     vec3 actual = atmosphereFogSource(vec3(planar.x * sin(zenith), cos(zenith), planar.y * sin(zenith)));
-    vec3 horizonView = vec3(planar.x * Atmo.Origin.w, Atmo.NightTint.w, planar.y * Atmo.Origin.w);
+    vec3 horizonView = vec3(planar.x * Atmo.FogHorizon.x, Atmo.FogHorizon.y, planar.y * Atmo.FogHorizon.x);
     vec3 horizonSource = atmosphereFogSource(horizonView);
     return vec3(horizonSource.x > 0.0 ? actual.x / horizonSource.x : 1.0,
         horizonSource.y > 0.0 ? actual.y / horizonSource.y : 1.0,

@@ -448,9 +448,9 @@ public sealed class AtmosphereRendererTests
     {
         string[] names = { "Planet", "Rayleigh", "Mie", "Ozone", "GroundHaze", "Sun", "Moon", "Tint",
                 "Floors", "Camera", "Origin", "SunT", "MoonT", "Right", "Up", "Back", "Ray", "Res", "Tone", "NightTint",
-                "FogScatter", "FogSource" };
-        Assert.Equal(352, Marshal.SizeOf<AtmosphereRenderer.AtmosphereUbo>());
-        Assert.Equal(352u, AtmosphereRenderer.UboBytes);
+                "FogScatter", "FogSource", "FogHorizon" };
+        Assert.Equal(368, Marshal.SizeOf<AtmosphereRenderer.AtmosphereUbo>());
+        Assert.Equal(368u, AtmosphereRenderer.UboBytes);
         for (int i = 0; i < names.Length; i++)
             Assert.Equal(i * 16, (int)Marshal.OffsetOf<AtmosphereRenderer.AtmosphereUbo>(names[i]));
         foreach (string source in new[] { ConsumerBindings(1), ConsumerBindings(3), ConsumerBindings(4),
@@ -558,11 +558,13 @@ public sealed class AtmosphereRendererTests
         var u = AtmosphereRenderer.PackUbo(s, frame, lighting, scattering, new(2f, 500f, 3f), new(100f, 1500f, 200f),
             Matrix4x4.Identity, projection, 800, 600, new HdrSettings());
         Assert.Equal(new Vector4(2f, 500f, 3f, 2f), u.Camera);
-        // The fog's horizon sine and cosine ride the spare lanes, at the camera's 2 km absolute altitude.
+        Assert.Equal(new Vector4(100f, 1500f, 200f, 0f), u.Origin);
+        // FogHorizon holds the horizon sine and cosine at the camera's 2 km absolute altitude.
         double radius = s.PlanetRadiusKm + 2.0;
-        Assert.Equal(new Vector3(100f, 1500f, 200f), new Vector3(u.Origin.X, u.Origin.Y, u.Origin.Z));
-        Assert.Equal(s.PlanetRadiusKm / radius, u.Origin.W, 6);
-        Assert.Equal(-Math.Sqrt((radius - s.PlanetRadiusKm) * (radius + s.PlanetRadiusKm)) / radius, u.NightTint.W, 6);
+        Assert.Equal(s.PlanetRadiusKm / radius, u.FogHorizon.X, 6);
+        Assert.Equal(-Math.Sqrt((radius - s.PlanetRadiusKm) * (radius + s.PlanetRadiusKm)) / radius, u.FogHorizon.Y, 6);
+        Assert.Equal(0f, u.FogHorizon.Z);
+        Assert.Equal(0f, u.FogHorizon.W);
         Assert.Equal(new Vector4(1f, 0f, 0f, 0f), u.Right);
         Assert.Equal(new Vector4(0f, 1f, 0f, 0f), u.Up);
         Assert.Equal(new Vector4(0f, 0f, 1f, 0f), u.Back);
@@ -574,7 +576,7 @@ public sealed class AtmosphereRendererTests
         Assert.Equal(.03f, u.Moon.W);
         Assert.Equal(7f, u.Planet.W);
         Assert.Equal(1f, u.Tint.W);
-        Assert.Equal(new Vector3(.45f, .65f, 1f), new Vector3(u.NightTint.X, u.NightTint.Y, u.NightTint.Z));
+        Assert.Equal(new Vector4(.45f, .65f, 1f, 0f), u.NightTint);
         Assert.Equal(new Vector4(.7f, .8f, .9f, .5f), u.FogScatter);
         Assert.Equal(new Vector4(.01f, .02f, .03f, 80f), u.FogSource);
         Assert.Equal(new Vector4(1f, 1f, 0f, .75f), u.Tone);
@@ -583,7 +585,7 @@ public sealed class AtmosphereRendererTests
             projection, 800, 600, new HdrSettings { Enabled = false });
         Assert.Equal(1f, u.Res.Z);
         Assert.Equal(0f, u.Tone.X);
-        Assert.Equal(1f, u.Origin.W);
-        Assert.True(MathF.Abs(u.NightTint.W) < 1e-6f, $"Horizon cosine at sea level: {u.NightTint.W}.");
+        Assert.Equal(1f, u.FogHorizon.X);
+        Assert.True(MathF.Abs(u.FogHorizon.Y) < 1e-6f, $"Horizon cosine at sea level: {u.FogHorizon.Y}.");
     }
 }

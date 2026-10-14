@@ -4,11 +4,11 @@ using System.Numerics;
 
 namespace KhaozEngine.Render3D;
 
-/// <summary>Collects nameplates by retained id and publishes panel rectangles using reusable frame storage.</summary>
+/// <summary>Collects nameplates by retained id and stacks panel rectangles upward using reusable frame storage.</summary>
 /// <remarks>Call Begin, Add each natural panel, Resolve once, then query the resolved frame.</remarks>
 public sealed class NameplateStacker
 {
-    /// <summary>Vertical separation between stacked panels, in the supplied rectangle's coordinate space.</summary>
+    /// <summary>Clearance between panels on both axes, in the supplied rectangle's coordinate space.</summary>
     public const float Gap = 2f;
 
     /// <summary>Rank difference required to reverse retained plate order.</summary>
@@ -36,7 +36,7 @@ public sealed class NameplateStacker
             throw new ArgumentOutOfRangeException(nameof(topMargin));
     }
 
-    /// <summary>Borrowed ids for the resolved frame, valid until the next Begin.</summary>
+    /// <summary>Borrowed farthest-first ids with pinned plates last, valid until the next Begin.</summary>
     public ReadOnlySpan<long> DrawOrder => _drawOrder.AsSpan(0, _drawCount);
 
     /// <summary>Invalidates public results and starts submissions while retaining private plate history.</summary>
@@ -73,19 +73,38 @@ public sealed class NameplateStacker
         entry.Seen = true;
     }
 
-    /// <summary>Publishes natural rectangles for this frame and drops ids that were not submitted.</summary>
+    /// <summary>Stacks unpinned panels upward around fixed pins and drops ids that were not submitted.</summary>
     /// <param name="dt">Elapsed frame time in seconds.</param>
     public void Resolve(float dt)
     {
         CompactEntries();
+        SortPlacementOrder();
         for (int i = 0; i < _entryCount; i++)
         {
-            ref Entry entry = ref _entries[_order[i]];
+            ref Entry entry = ref _entries[i];
             entry.ResolvedRect = entry.NaturalRect;
-            _drawOrder[i] = entry.Id;
+            entry.SolvedOffset = 0f;
         }
 
-        _drawCount = _entryCount;
+        for (int i = 0; i < _entryCount; i++)
+            if (!_entries[_order[i]].Pinned)
+                SolveUnpinned(i);
+
+        _drawCount = 0;
+        for (int i = _entryCount - 1; i >= 0; i--)
+        {
+            ref Entry entry = ref _entries[_order[i]];
+            if (!entry.Pinned)
+                _drawOrder[_drawCount++] = entry.Id;
+        }
+
+        for (int i = _entryCount - 1; i >= 0; i--)
+        {
+            ref Entry entry = ref _entries[_order[i]];
+            if (entry.Pinned)
+                _drawOrder[_drawCount++] = entry.Id;
+        }
+
         _resolved = true;
     }
 
@@ -140,11 +159,65 @@ public sealed class NameplateStacker
         _entryCount = count;
     }
 
+    private void SortPlacementOrder()
+    {
+        for (int i = 1; i < _entryCount; i++)
+        {
+            int index = _order[i];
+            ref Entry entry = ref _entries[index];
+            int j = i;
+            while (j > 0)
+            {
+                ref Entry previous = ref _entries[_order[j - 1]];
+                if (previous.Rank < entry.Rank || (previous.Rank == entry.Rank && previous.Id < entry.Id))
+                    break;
+
+                _order[j] = _order[j - 1];
+                j--;
+            }
+
+            _order[j] = index;
+        }
+    }
+
+    private void SolveUnpinned(int placementIndex)
+    {
+        ref Entry entry = ref _entries[_order[placementIndex]];
+        Vector4 rect = entry.NaturalRect;
+        float floor = MathF.Min(_topMargin, rect.Y);
+        while (true)
+        {
+            float nextY = rect.Y;
+            for (int i = 0; i < _entryCount; i++)
+            {
+                ref Entry obstacle = ref _entries[_order[i]];
+                // Every pin is fixed before placement. Only earlier unpinned panels have been solved.
+                if (!obstacle.Pinned && i >= placementIndex)
+                    continue;
+
+                Vector4 placed = obstacle.ResolvedRect;
+                if (rect.X < placed.X + placed.Z + Gap && placed.X < rect.X + rect.Z + Gap &&
+                    rect.Y < placed.Y + placed.W + Gap && placed.Y < rect.Y + rect.W + Gap)
+                    nextY = MathF.Min(nextY, placed.Y - Gap - rect.W);
+            }
+
+            nextY = MathF.Max(floor, nextY);
+            if (nextY >= rect.Y)
+                break;
+
+            rect.Y = nextY;
+        }
+
+        entry.SolvedOffset = rect.Y - entry.NaturalRect.Y;
+        entry.ResolvedRect = rect;
+    }
+
     private struct Entry
     {
         public long Id;
         public Vector4 NaturalRect;
         public Vector4 ResolvedRect;
+        public float SolvedOffset;
         public float Rank;
         public bool Pinned;
         public bool Seen;

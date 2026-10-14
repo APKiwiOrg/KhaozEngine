@@ -1,6 +1,9 @@
 using System;
 using System.IO;
+using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using KhaozEngine.Attachments;
 using Xunit;
 
@@ -8,24 +11,124 @@ namespace KhaozEngine.Tests.Attachments;
 
 public class JsonTests
 {
+    [Theory]
+    [InlineData("stone-body.v1.json", "878eb4752608bcc51aa5d8447d76782ae21323c08bd0c974cff8a1e12fd1c8ea")]
+    [InlineData("stone-helmet.v1.json", "66d0bd8d083cb5b8cbebb968f96d8920980778ce7558e7b0e46229db00b3d9df")]
+    [InlineData("stone-legs.v1.json", "57cce9c9f089b3b1bcd041863997fd547e02cfbe46378c8c98a8cc88b6eea798")]
+    public void Shipped_stone_v1_bytes_and_semantic_hash_are_unchanged(string fixtureName, string expectedSha)
+    {
+        byte[] shippedBytes = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Fixtures", fixtureName));
+        Assert.Equal(expectedSha, Convert.ToHexStringLower(SHA256.HashData(shippedBytes)));
+        AttachmentSetDefinition legacy = AttachmentSetJson.Parse(shippedBytes, fixtureName);
+        Assert.All(legacy.Parts, part => Assert.IsType<RigidAttachmentPartDefinition>(part));
+        byte[] written = AttachmentSetJson.Write(legacy);
+        Assert.Equal(shippedBytes, written);
+        Assert.Equal(expectedSha, legacy.SemanticSha256);
+        using JsonDocument document = JsonDocument.Parse(written);
+        Assert.Equal(1, document.RootElement.GetProperty("formatVersion").GetInt32());
+    }
+
+    [Fact]
+    public void Mixed_v2_round_trips_and_sorts_by_id()
+    {
+        string rigid = AttachmentFixtures.PartJson().TrimEnd().Replace("\"id\":1,", "\"id\":1,\"kind\":\"rigid\",", StringComparison.Ordinal);
+        string skinned = $$$"""{"id":2,"kind":"skinned","mesh":{"key":"parts/garment.glb","sha256":"{{{AttachmentFixtures.Hash}}}"}}""";
+        AttachmentSetDefinition mixed = Parse(V2(skinned + "," + rigid));
+        Assert.Equal(new uint[] { 1, 2 }, mixed.Parts.Select(part => part.Id));
+
+        byte[] written = AttachmentSetJson.Write(mixed);
+        using JsonDocument document = JsonDocument.Parse(written);
+        Assert.Equal(2, document.RootElement.GetProperty("formatVersion").GetInt32());
+        Assert.Equal(V2(rigid + "," + skinned), Encoding.UTF8.GetString(written));
+        AttachmentSetDefinition reparsed = AttachmentSetJson.Parse(written, "mixed.json");
+        Assert.IsType<RigidAttachmentPartDefinition>(reparsed.Parts[0]);
+        Assert.IsType<SkinnedAttachmentPartDefinition>(reparsed.Parts[1]);
+        Assert.Equal(mixed.SemanticSha256, reparsed.SemanticSha256);
+        Assert.Equal(written, AttachmentSetJson.Write(reparsed));
+    }
+
+    [Fact]
+    public void Rigid_only_v2_canonicalizes_to_v1()
+    {
+        string rigid = AttachmentFixtures.PartJson().TrimEnd();
+        AttachmentSetDefinition parsed = Parse(V2(rigid.Replace("\"id\":1,", "\"id\":1,\"kind\":\"rigid\",", StringComparison.Ordinal)));
+        byte[] expected = Encoding.UTF8.GetBytes(AttachmentFixtures.SetJson(rigid));
+        byte[] written = AttachmentSetJson.Write(parsed);
+        Assert.Equal(expected, written);
+        Assert.Equal(Parse(AttachmentFixtures.SetJson(rigid)).SemanticSha256, parsed.SemanticSha256);
+        using JsonDocument document = JsonDocument.Parse(written);
+        Assert.Equal(1, document.RootElement.GetProperty("formatVersion").GetInt32());
+    }
+
+    [Fact]
+    public void Skinned_only_v2_round_trips_without_rigid_members()
+    {
+        string json = V2($$$"""{"id":1,"kind":"skinned","mesh":{"key":"parts/garment.glb","sha256":"{{{AttachmentFixtures.Hash}}}"}}""");
+        AttachmentSetDefinition parsed = Parse(json);
+        Assert.IsType<SkinnedAttachmentPartDefinition>(Assert.Single(parsed.Parts));
+        Assert.Equal(json, Encoding.UTF8.GetString(AttachmentSetJson.Write(parsed)));
+    }
+
+    [Fact]
+    public void Canonical_matrices_normalize_signed_zero_and_preserve_float_values()
+    {
+        string local = "[1,-0,0,0,0,1,0,0,0,0,1,0,0.125,-2.5,3.75,1]";
+        string part = AttachmentFixtures.PartJson().TrimEnd().Replace(AttachmentFixtures.Identity, local, StringComparison.Ordinal);
+        string expected = AttachmentFixtures.SetJson(part.Replace("-0", "0", StringComparison.Ordinal));
+        Assert.Equal(expected, Encoding.UTF8.GetString(AttachmentSetJson.Write(Parse(AttachmentFixtures.SetJson(part)))));
+    }
+
+    [Theory]
+    [InlineData("unknown-kind")]
+    [InlineData("case-changed-kind")]
+    [InlineData("non-string-kind")]
+    [InlineData("null-kind")]
+    [InlineData("missing-kind")]
+    [InlineData("v1-kind")]
+    [InlineData("skinned-joint")]
+    [InlineData("skinned-local")]
+    [InlineData("duplicate-root")]
+    [InlineData("duplicate-part")]
+    [InlineData("duplicate-kind")]
+    [InlineData("duplicate-skinned-part")]
+    [InlineData("duplicate-mesh")]
+    [InlineData("escaped-duplicate-root")]
+    [InlineData("escaped-duplicate-part")]
+    [InlineData("escaped-duplicate-kind")]
+    [InlineData("escaped-duplicate-mesh")]
+    [InlineData("unknown-root")]
+    [InlineData("unknown-rigid")]
+    [InlineData("unknown-skinned")]
+    [InlineData("unknown-mesh")]
+    [InlineData("duplicate-id-across-kinds")]
+    [InlineData("missing-mesh")]
+    [InlineData("unsupported-version")]
+    [InlineData("zero-id")]
+    [InlineData("conflicting-hashes")]
+    public void V2_refuses_ambiguous_members(string refusal)
+    {
+        InvalidDataException error = Assert.Throws<InvalidDataException>(() => ParseV2Case(refusal));
+        Assert.Contains(refusal + ".json", error.Message);
+    }
+
     [Fact]
     public void CanonicalJson_IsIndependentOfWhitespaceAndArrayOrder()
     {
-        RigidAttachmentSetDefinition first = Parse(AttachmentFixtures.SetJson(AttachmentFixtures.PartJson(2) + "," + AttachmentFixtures.PartJson()));
-        RigidAttachmentSetDefinition reordered = Parse("\n " + AttachmentFixtures.SetJson(AttachmentFixtures.PartJson() + "," + AttachmentFixtures.PartJson(2)));
+        AttachmentSetDefinition first = Parse(AttachmentFixtures.SetJson(AttachmentFixtures.PartJson(2) + "," + AttachmentFixtures.PartJson()));
+        AttachmentSetDefinition reordered = Parse("\n " + AttachmentFixtures.SetJson(AttachmentFixtures.PartJson() + "," + AttachmentFixtures.PartJson(2)));
         Assert.Equal(first.SemanticSha256, reordered.SemanticSha256);
         string expected = AttachmentFixtures.SetJson(AttachmentFixtures.PartJson().TrimEnd() + "," + AttachmentFixtures.PartJson(2).TrimEnd());
-        Assert.Equal(expected, Encoding.UTF8.GetString(RigidAttachmentSetJson.Write(first)));
-        Assert.Equal(first.SemanticSha256, RigidAttachmentSetJson.Parse(RigidAttachmentSetJson.Write(first), "canonical.json").SemanticSha256);
+        Assert.Equal(expected, Encoding.UTF8.GetString(AttachmentSetJson.Write(first)));
+        Assert.Equal(first.SemanticSha256, AttachmentSetJson.Parse(AttachmentSetJson.Write(first), "canonical.json").SemanticSha256);
     }
 
     [Fact]
     public void Parse_OwnsValuesAfterInputBytesChange()
     {
         byte[] bytes = Encoding.UTF8.GetBytes(AttachmentFixtures.SetJson(AttachmentFixtures.PartJson()));
-        RigidAttachmentSetDefinition parsed = RigidAttachmentSetJson.Parse(bytes, "owned.json");
+        AttachmentSetDefinition parsed = AttachmentSetJson.Parse(bytes, "owned.json");
         Array.Clear(bytes);
-        Assert.Equal("hip", Assert.Single(parsed.Parts).Joint);
+        Assert.Equal("hip", Assert.IsType<RigidAttachmentPartDefinition>(Assert.Single(parsed.Parts)).Joint);
         Assert.Equal(AttachmentFixtures.Hash, Assert.Single(parsed.Meshes).Sha256);
     }
 
@@ -93,9 +196,48 @@ public class JsonTests
         Assert.Throws<InvalidDataException>(() => Parse(json));
     }
 
-    static RigidAttachmentSetDefinition Parse(string json) => RigidAttachmentSetJson.Parse(Encoding.UTF8.GetBytes(json), "fixture.json");
+    static AttachmentSetDefinition Parse(string json) => AttachmentSetJson.Parse(Encoding.UTF8.GetBytes(json), "fixture.json");
 
-    static RigidAttachmentSetDefinition ParseCase(string name)
+    static string V2(string parts) => $$"""{"formatVersion":2,"parts":[{{parts}}]}""";
+
+    static AttachmentSetDefinition ParseV2Case(string name)
+    {
+        string rigid = AttachmentFixtures.PartJson().TrimEnd().Replace("\"id\":1,", "\"id\":1,\"kind\":\"rigid\",", StringComparison.Ordinal);
+        string skinned = $$$"""{"id":2,"kind":"skinned","mesh":{"key":"parts/plate.glb","sha256":"{{{AttachmentFixtures.Hash}}}"}}""";
+        string json = name switch
+        {
+            "unknown-kind" => V2(rigid.Replace("\"rigid\"", "\"cloth\"", StringComparison.Ordinal)),
+            "case-changed-kind" => V2(rigid.Replace("\"rigid\"", "\"Rigid\"", StringComparison.Ordinal)),
+            "non-string-kind" => V2(rigid.Replace("\"rigid\"", "1", StringComparison.Ordinal)),
+            "null-kind" => V2(rigid.Replace("\"rigid\"", "null", StringComparison.Ordinal)),
+            "missing-kind" => V2(AttachmentFixtures.PartJson()),
+            "v1-kind" => AttachmentFixtures.SetJson(rigid),
+            "skinned-joint" => V2(skinned.Replace("\"kind\":", "\"joint\":\"hip\",\"kind\":", StringComparison.Ordinal)),
+            "skinned-local" => V2(skinned.Replace("\"kind\":", "\"local\":" + AttachmentFixtures.Identity + ",\"kind\":", StringComparison.Ordinal)),
+            "duplicate-root" => V2(rigid).Replace("\"formatVersion\":2", "\"formatVersion\":2,\"formatVersion\":2", StringComparison.Ordinal),
+            "duplicate-part" => V2(rigid.Replace("\"id\":1", "\"id\":1,\"id\":1", StringComparison.Ordinal)),
+            "duplicate-kind" => V2(rigid.Replace("\"kind\":\"rigid\"", "\"kind\":\"rigid\",\"kind\":\"skinned\"", StringComparison.Ordinal)),
+            "duplicate-skinned-part" => V2(skinned.Replace("\"id\":2", "\"id\":2,\"id\":2", StringComparison.Ordinal)),
+            "duplicate-mesh" => V2(skinned.Replace("\"key\":", "\"key\":\"other.glb\",\"key\":", StringComparison.Ordinal)),
+            "escaped-duplicate-root" => V2(rigid).Replace("\"formatVersion\":2", "\"formatVersion\":2,\"\\u0066ormatVersion\":2", StringComparison.Ordinal),
+            "escaped-duplicate-part" => V2(rigid.Replace("\"id\":1", "\"id\":1,\"\\u0069d\":1", StringComparison.Ordinal)),
+            "escaped-duplicate-kind" => V2(rigid.Replace("\"kind\":\"rigid\"", "\"kind\":\"rigid\",\"\\u006bind\":\"rigid\"", StringComparison.Ordinal)),
+            "escaped-duplicate-mesh" => V2(skinned.Replace("\"key\":", "\"\\u006bey\":\"other.glb\",\"key\":", StringComparison.Ordinal)),
+            "unknown-root" => V2(rigid).Replace("\"parts\":", "\"extra\":0,\"parts\":", StringComparison.Ordinal),
+            "unknown-rigid" => V2(rigid.Replace("\"id\":", "\"extra\":0,\"id\":", StringComparison.Ordinal)),
+            "unknown-skinned" => V2(skinned.Replace("\"id\":", "\"extra\":0,\"id\":", StringComparison.Ordinal)),
+            "unknown-mesh" => V2(skinned.Replace("\"key\":", "\"extra\":0,\"key\":", StringComparison.Ordinal)),
+            "duplicate-id-across-kinds" => V2(rigid + "," + skinned.Replace("\"id\":2", "\"id\":1", StringComparison.Ordinal)),
+            "missing-mesh" => V2("{\"id\":1,\"kind\":\"skinned\"}"),
+            "unsupported-version" => V2(skinned).Replace("\"formatVersion\":2", "\"formatVersion\":3", StringComparison.Ordinal),
+            "zero-id" => V2(skinned.Replace("\"id\":2", "\"id\":0", StringComparison.Ordinal)),
+            "conflicting-hashes" => V2(rigid + "," + skinned.Replace(AttachmentFixtures.Hash, new string('b', 64), StringComparison.Ordinal)),
+            _ => throw new ArgumentException(name),
+        };
+        return AttachmentSetJson.Parse(Encoding.UTF8.GetBytes(json), name + ".json");
+    }
+
+    static AttachmentSetDefinition ParseCase(string name)
     {
         string part = AttachmentFixtures.PartJson();
         string json = name switch
@@ -134,6 +276,6 @@ public class JsonTests
             "wrong-joint" => AttachmentFixtures.SetJson(part.Replace("\"hip\"", "null", StringComparison.Ordinal)),
             _ => throw new ArgumentException(name),
         };
-        return RigidAttachmentSetJson.Parse(Encoding.UTF8.GetBytes(json), name + ".json");
+        return AttachmentSetJson.Parse(Encoding.UTF8.GetBytes(json), name + ".json");
     }
 }

@@ -526,7 +526,7 @@ alongside the Render3D.Ecs arm, and the umbrella membership lock includes it. Fo
 remain unchanged. Render3D's material-part memory importer reuses its existing glTF decoding.
 
 The arm also owns verified byte snapshots, per-scene upload sharing and transactional resource leases.
-`IRigidAttachmentScene` is an optional upload and full-descriptor draw capability. Its Scene3D adapter
+`IAttachmentScene` is an optional upload and full-descriptor draw capability. Its Scene3D adapter
 uses the renderer's deferred unload APIs. The shipped tile-world scene implements this capability
 without adding attachment members to `ITileWorldScene`. The tile renderer references the attachment arm,
 and the attachment arm has no dependency back to TileWorld. Dispose attachment caches before their scene.

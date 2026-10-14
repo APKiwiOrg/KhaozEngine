@@ -28,8 +28,8 @@ public sealed class RigidAttachmentGpuScene : IDisposable
         [JointPose.Identity, At(0, 2), At(-2, 1), At(2, 1), At(-1, -1), At(1, -1)],
         [0, 1, 2, 3, 4, 5], [5, 3, 1, 4, 2], ["root", "a", "b", "c", "d", "e"]);
     TemporalFixture? _fixture;
-    RigidAttachmentSetCache? _cache;
-    BoundRigidAttachmentSet? _bound, _replacement;
+    AttachmentSetCache? _cache;
+    BoundAttachmentSet? _bound, _replacement;
     Matrix4x4[]? _rest, _posed;
     MeshHandle _red, _green, _floor;
 
@@ -104,18 +104,18 @@ public sealed class RigidAttachmentGpuScene : IDisposable
         if (_fixture is not null) return;
         _fixture = new TemporalFixture(W, H, scene => Configure(scene, shadows: false));
         var source = new AttachmentTestSource();
-        _cache = new RigidAttachmentSetCache(_fixture.Scene, source);
+        _cache = new AttachmentSetCache(_fixture.Scene, source);
         var map = new ContractJointMap(_skeleton, new SkeletonContract(
             [new("root", null, false), new("a", "root", true), new("b", "root", true),
                 new("c", "root", true), new("d", "root", true), new("e", "root", true)]));
-        BoundRigidAttachmentSet Load(string label)
+        BoundAttachmentSet Load(string label)
         {
             AttachmentMeshRef mesh = source.Mesh("part.glb", Glb(label));
-            var definition = new RigidAttachmentSetDefinition(new[] { "a", "b", "c", "d", "e" }
+            var definition = new AttachmentSetDefinition(new[] { "a", "b", "c", "d", "e" }
                 .Select((joint, i) => new RigidAttachmentPartDefinition((uint)i + 1, mesh, joint,
                     Matrix4x4.CreateTranslation(.5f, 0, 0))));
             string key = label + ".json";
-            return _cache.Get(key, source.Add(key, RigidAttachmentSetJson.Write(definition))).Bind(map);
+            return _cache.Get(key, source.Add(key, AttachmentSetJson.Write(definition))).Bind(map);
         }
         _bound = Load("original");
         _replacement = Load("replacement");

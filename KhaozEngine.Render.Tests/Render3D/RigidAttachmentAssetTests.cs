@@ -21,6 +21,31 @@ namespace KhaozEngine.Tests.Render3D;
 
 public sealed class RigidAttachmentAssetTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Skinned_parts_are_refused_before_any_mesh_read_or_upload(bool mixed)
+    {
+        using var harness = new AttachmentAssetHarness();
+        var source = new AttachmentTestSource();
+        var mesh = new AttachmentMeshRef("parts/unread.glb", new string('a', 64));
+        var skinned = new SkinnedAttachmentPartDefinition(7, mesh);
+        var definition = new AttachmentSetDefinition(mixed
+            ? [new RigidAttachmentPartDefinition(1, mesh, "hip", Matrix4x4.Identity), skinned] : [skinned]);
+        string hash = source.Add("set.json", AttachmentSetJson.Write(definition));
+        using var cache = new AttachmentSetCache(harness.Scene, source);
+        int buffers = harness.Factory.Buffers.Count, textures = harness.Factory.Textures.Count;
+
+        InvalidDataException error = Assert.Throws<InvalidDataException>(() => cache.Get("set.json", hash));
+
+        Assert.Contains("set.json", error.Message);
+        Assert.Contains("7", error.Message);
+        Assert.Contains("skinned", error.Message);
+        Assert.Equal("set.json", Assert.Single(source.Reads).Key);
+        Assert.Equal(buffers, harness.Factory.Buffers.Count);
+        Assert.Equal(textures, harness.Factory.Textures.Count);
+    }
+
     [Fact]
     public void Shared_mesh_is_read_and_uploaded_once_across_parts_and_sets()
     {
@@ -29,12 +54,12 @@ public sealed class RigidAttachmentAssetTests
         AttachmentMeshRef mesh = source.Mesh("parts/shared.glb", AttachmentTestSource.Glb(materials: 2));
         string firstHash = source.Set("sets/first.json", mesh, mesh);
         string secondHash = source.Set("sets/second.json", mesh);
-        using var cache = new RigidAttachmentSetCache(harness.Scene, source);
+        using var cache = new AttachmentSetCache(harness.Scene, source);
         int from = harness.Factory.Buffers.Count;
 
-        LoadedRigidAttachmentSet first = cache.Get("sets/first.json", firstHash);
-        LoadedRigidAttachmentSet second = cache.Get("sets/second.json", secondHash);
-        BoundRigidAttachmentSet bound = first.Bind(RigidAttachmentTestRig.Map(RigidAttachmentTestRig.Create()));
+        LoadedAttachmentSet first = cache.Get("sets/first.json", firstHash);
+        LoadedAttachmentSet second = cache.Get("sets/second.json", secondHash);
+        BoundAttachmentSet bound = first.Bind(RigidAttachmentTestRig.Map(RigidAttachmentTestRig.Create()));
 
         Assert.Same(first, cache.Get("sets/first.json", firstHash));
         Assert.Equal(1, source.Reads[mesh.Key]);
@@ -55,7 +80,7 @@ public sealed class RigidAttachmentAssetTests
         AttachmentMeshRef mesh = source.Mesh("parts/mesh.glb", AttachmentTestSource.Glb());
         string hash = source.Set("set.json", mesh);
         source.Bytes[changeDefinition ? "set.json" : mesh.Key][0] ^= 1;
-        using var cache = new RigidAttachmentSetCache(harness.Scene, source);
+        using var cache = new AttachmentSetCache(harness.Scene, source);
         int buffers = harness.Factory.Buffers.Count, textures = harness.Factory.Textures.Count;
 
         InvalidDataException error = Assert.Throws<InvalidDataException>(() => cache.Get("set.json", hash));
@@ -73,7 +98,7 @@ public sealed class RigidAttachmentAssetTests
         AttachmentMeshRef first = source.Mesh("a.glb", AttachmentTestSource.Glb());
         AttachmentMeshRef invalid = source.Mesh("z.glb", Encoding.UTF8.GetBytes("invalid glb"));
         string hash = source.Set("set.json", first, invalid);
-        using var cache = new RigidAttachmentSetCache(harness.Scene, source);
+        using var cache = new AttachmentSetCache(harness.Scene, source);
         int buffers = harness.Factory.Buffers.Count;
 
         InvalidDataException error = Assert.Throws<InvalidDataException>(() => cache.Get("set.json", hash));
@@ -96,9 +121,9 @@ public sealed class RigidAttachmentAssetTests
             Array.Clear(source.Bytes[first.Key]);
             Array.Clear(source.Bytes["set.json"]);
         };
-        using var cache = new RigidAttachmentSetCache(harness.Scene, source);
+        using var cache = new AttachmentSetCache(harness.Scene, source);
 
-        LoadedRigidAttachmentSet loaded = cache.Get("set.json", hash);
+        LoadedAttachmentSet loaded = cache.Get("set.json", hash);
 
         Assert.Equal(hash, loaded.DefinitionSha256);
         Assert.Equal(2, loaded.Definition.Parts.Count);
@@ -119,9 +144,9 @@ public sealed class RigidAttachmentAssetTests
         string previousHash = source.Set("previous.json", previous);
         string failedHash = source.Set("failed.json", previous, first, second);
         var recording = new AttachmentRecordingScene(harness.Scene);
-        using var cache = new RigidAttachmentSetCache(recording, source);
+        using var cache = new AttachmentSetCache(recording, source);
         int previousFrom = harness.Factory.Buffers.Count;
-        LoadedRigidAttachmentSet previousAsset = cache.Get("previous.json", previousHash);
+        LoadedAttachmentSet previousAsset = cache.Get("previous.json", previousHash);
         List<FakeBuffer> previousBuffers = harness.Factory.Buffers.GetRange(previousFrom,
             harness.Factory.Buffers.Count - previousFrom);
         int buffersFrom = harness.Factory.Buffers.Count, texturesFrom = harness.Factory.Textures.Count;
@@ -146,7 +171,7 @@ public sealed class RigidAttachmentAssetTests
         recording.DrawMesh(new RigidInstanceDraw(recording.Uploads[0][0], Matrix4x4.Identity));
         Assert.Equal(0, harness.Factory.LiveSetsNamingAFreedTexture);
 
-        LoadedRigidAttachmentSet retried = cache.Get("failed.json", failedHash);
+        LoadedAttachmentSet retried = cache.Get("failed.json", failedHash);
         Assert.Equal(3, retried.Bind(RigidAttachmentTestRig.Map(RigidAttachmentTestRig.Create())).DrawCount);
         Assert.Equal(2, source.Reads[first.Key]);
         Assert.Equal(1, source.Reads[previous.Key]);
@@ -159,11 +184,11 @@ public sealed class RigidAttachmentAssetTests
         var source = new AttachmentTestSource();
         AttachmentMeshRef mesh = source.Mesh("mesh.glb", AttachmentTestSource.Glb(textured: true));
         string hash = source.Set("set.json", mesh, mesh);
-        using var cache = new RigidAttachmentSetCache(harness.Scene, source);
+        using var cache = new AttachmentSetCache(harness.Scene, source);
         int from = harness.Factory.Buffers.Count, texturesFrom = harness.Factory.Textures.Count;
-        LoadedRigidAttachmentSet loaded = cache.Get("set.json", hash);
+        LoadedAttachmentSet loaded = cache.Get("set.json", hash);
         ContractJointMap map = RigidAttachmentTestRig.Map(RigidAttachmentTestRig.Create());
-        BoundRigidAttachmentSet bound = loaded.Bind(map);
+        BoundAttachmentSet bound = loaded.Bind(map);
         Assert.Same(map.Skeleton, bound.Skeleton);
         List<FakeBuffer> buffers = harness.Factory.Buffers.GetRange(from, harness.Factory.Buffers.Count - from);
         List<FakeTexture> textures = harness.Factory.Textures.GetRange(texturesFrom, harness.Factory.Textures.Count - texturesFrom);
@@ -187,10 +212,10 @@ public sealed class RigidAttachmentAssetTests
         using var harness = new AttachmentAssetHarness();
         var source = new AttachmentTestSource();
         AttachmentMeshRef mesh = source.Mesh("mesh.glb", AttachmentTestSource.Glb());
-        var definition = new RigidAttachmentSetDefinition([new(1, mesh, "unknown", Matrix4x4.Identity)]);
-        string hash = source.Add("set.json", RigidAttachmentSetJson.Write(definition));
-        using var cache = new RigidAttachmentSetCache(harness.Scene, source);
-        LoadedRigidAttachmentSet loaded = cache.Get("set.json", hash);
+        var definition = new AttachmentSetDefinition([new RigidAttachmentPartDefinition(1, mesh, "unknown", Matrix4x4.Identity)]);
+        string hash = source.Add("set.json", AttachmentSetJson.Write(definition));
+        using var cache = new AttachmentSetCache(harness.Scene, source);
+        LoadedAttachmentSet loaded = cache.Get("set.json", hash);
 
         InvalidDataException error = Assert.Throws<InvalidDataException>(() =>
             loaded.Bind(RigidAttachmentTestRig.Map(RigidAttachmentTestRig.Create())));
@@ -204,7 +229,7 @@ public sealed class RigidAttachmentAssetTests
     {
         using var harness = new AttachmentAssetHarness();
         ITileWorldScene tileScene = new Scene3DTileWorldScene(harness.Scene);
-        var attachmentScene = Assert.IsAssignableFrom<IRigidAttachmentScene>(tileScene);
+        var attachmentScene = Assert.IsAssignableFrom<IAttachmentScene>(tileScene);
         int from = harness.Factory.Buffers.Count;
         using IAttachmentMeshLease lease = attachmentScene.UploadAttachment(
             GltfLoader.LoadPartsWithMaterials(AttachmentTestSource.Glb(), "fixture"));
@@ -233,7 +258,7 @@ internal sealed class AttachmentAssetHarness : IDisposable
     public void Dispose() { Scene.Dispose(); _device.Dispose(); }
 }
 
-internal sealed class AttachmentRecordingScene(Scene3D scene) : IRigidAttachmentScene
+internal sealed class AttachmentRecordingScene(Scene3D scene) : IAttachmentScene
 {
     readonly Scene3DAttachmentScene _adapter = new(scene);
     internal List<IReadOnlyList<MeshHandle>> Uploads { get; } = [];
@@ -264,7 +289,7 @@ internal sealed class AttachmentTestSource : IAttachmentAssetSource
     }
     internal AttachmentMeshRef Mesh(string key, byte[] bytes) => new(key, Add(key, bytes));
     internal string Set(string key, params AttachmentMeshRef[] meshes) => Add(key,
-        RigidAttachmentSetJson.Write(new RigidAttachmentSetDefinition(meshes.Select((mesh, index) =>
+        AttachmentSetJson.Write(new AttachmentSetDefinition(meshes.Select((mesh, index) =>
             new RigidAttachmentPartDefinition((uint)index + 1, mesh, "hip", Matrix4x4.Identity)))));
     internal static byte[] Glb(int materials = 1, bool textured = false)
     {

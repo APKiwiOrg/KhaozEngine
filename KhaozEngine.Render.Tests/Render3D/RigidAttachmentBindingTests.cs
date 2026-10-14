@@ -13,6 +13,21 @@ namespace KhaozEngine.Tests.Render3D;
 [Collection("AllocSensitive")]
 public sealed class RigidAttachmentBindingTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Map_only_binding_explicitly_refuses_skinned_parts(bool mixed)
+    {
+        Skeleton skeleton = Create();
+        var skinned = new SkinnedAttachmentPartDefinition(7, Part(1, "hip").Mesh);
+        var definition = new AttachmentSetDefinition(mixed ? [Part(1, "hip"), skinned] : [skinned]);
+
+        InvalidDataException error = Assert.Throws<InvalidDataException>(() => new AttachmentSetBinding(definition, Map(skeleton)));
+
+        Assert.Contains("7", error.Message);
+        Assert.Contains("skinned", error.Message);
+    }
+
     [Fact]
     public void First_composition_of_a_large_set_allocates_no_managed_memory()
     {
@@ -123,10 +138,10 @@ public sealed class RigidAttachmentBindingTests
     public void Missing_constructor_arguments_are_refused()
     {
         Skeleton skeleton = Create();
-        var definition = new RigidAttachmentSetDefinition([Part(1, "hip")]);
+        var definition = new AttachmentSetDefinition([Part(1, "hip")]);
 
-        Assert.Throws<ArgumentNullException>(() => new RigidAttachmentBinding(null!, Map(skeleton)));
-        Assert.Throws<ArgumentNullException>(() => new RigidAttachmentBinding(definition, null!));
+        Assert.Throws<ArgumentNullException>(() => new AttachmentSetBinding(null!, Map(skeleton)));
+        Assert.Throws<ArgumentNullException>(() => new AttachmentSetBinding(definition, null!));
     }
 
     [Theory]
@@ -159,9 +174,9 @@ public sealed class RigidAttachmentBindingTests
     public void Unresolved_later_joint_names_the_part_and_reference(string joint)
     {
         Skeleton skeleton = Create();
-        var definition = new RigidAttachmentSetDefinition([Part(1, "hip"), Part(7, joint)]);
+        var definition = new AttachmentSetDefinition([Part(1, "hip"), Part(7, joint)]);
 
-        var error = Assert.Throws<InvalidDataException>(() => new RigidAttachmentBinding(definition, Map(skeleton)));
+        var error = Assert.Throws<InvalidDataException>(() => new AttachmentSetBinding(definition, Map(skeleton)));
 
         Assert.Contains("7", error.Message);
         Assert.Contains(joint, error.Message);
@@ -201,8 +216,8 @@ public sealed class RigidAttachmentBindingTests
         Assert.Equal(new Vector3(98, 0, 0), worlds[1].Translation);
     }
 
-    static RigidAttachmentBinding Bind(Skeleton skeleton, params RigidAttachmentPartDefinition[] parts) =>
-        new(new RigidAttachmentSetDefinition(parts), Map(skeleton));
+    static AttachmentSetBinding Bind(Skeleton skeleton, params RigidAttachmentPartDefinition[] parts) =>
+        new(new AttachmentSetDefinition(parts), Map(skeleton));
 
     static Matrix4x4 InvalidMatrix(int kind)
     {

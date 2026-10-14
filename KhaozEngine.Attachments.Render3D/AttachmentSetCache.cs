@@ -9,17 +9,17 @@ namespace KhaozEngine.Attachments.Render3D;
 
 /// <summary>Owns verified source snapshots and shared uploads for one scene.</summary>
 /// <remarks>Use on the owning render thread. Dispose before the scene, after stopping use of its views.</remarks>
-public sealed class RigidAttachmentSetCache : IDisposable
+public sealed class AttachmentSetCache : IDisposable
 {
     readonly IAttachmentAssetSource _source;
     readonly Dictionary<AttachmentMeshRef, CachedDefinition> _definitions = [];
     readonly Dictionary<AttachmentMeshRef, CachedMesh> _meshes = [];
     bool _disposed;
 
-    public RigidAttachmentSetCache(Scene3D scene, IAttachmentAssetSource source)
+    public AttachmentSetCache(Scene3D scene, IAttachmentAssetSource source)
         : this(new Scene3DAttachmentScene(scene), source) { }
 
-    public RigidAttachmentSetCache(IRigidAttachmentScene scene, IAttachmentAssetSource source)
+    public AttachmentSetCache(IAttachmentScene scene, IAttachmentAssetSource source)
     {
         ArgumentNullException.ThrowIfNull(scene);
         ArgumentNullException.ThrowIfNull(source);
@@ -27,9 +27,9 @@ public sealed class RigidAttachmentSetCache : IDisposable
         _source = source;
     }
 
-    internal IRigidAttachmentScene Scene { get; }
+    internal IAttachmentScene Scene { get; }
 
-    public LoadedRigidAttachmentSet Get(string key, string expectedSha256)
+    public LoadedAttachmentSet Get(string key, string expectedSha256)
     {
         ThrowIfDisposed();
         ValidateRequest(key, expectedSha256);
@@ -37,7 +37,10 @@ public sealed class RigidAttachmentSetCache : IDisposable
         if (_definitions.TryGetValue(identity, out CachedDefinition? cached)) return cached.View;
 
         byte[] definitionBytes = ReadVerified(identity, key);
-        RigidAttachmentSetDefinition definition = RigidAttachmentSetJson.Parse(definitionBytes, key);
+        AttachmentSetDefinition definition = AttachmentSetJson.Parse(definitionBytes, key);
+        foreach (AttachmentPartDefinition part in definition.Parts)
+            if (part is SkinnedAttachmentPartDefinition)
+                throw new InvalidDataException($"{key}: attachment part {part.Id}, skinned parts cannot be loaded by this cache yet.");
         var pending = new List<PendingMesh>();
         foreach (AttachmentMeshRef mesh in definition.Meshes)
         {
@@ -61,7 +64,7 @@ public sealed class RigidAttachmentSetCache : IDisposable
                 CachedMesh upload = _meshes.TryGetValue(mesh, out CachedMesh? existing) ? existing : staged[mesh];
                 handles[i] = upload.Lease.Handles.ToArray();
             }
-            var loaded = new LoadedRigidAttachmentSet(this, definition, expectedSha256, handles);
+            var loaded = new LoadedAttachmentSet(this, definition, expectedSha256, handles);
             foreach (KeyValuePair<AttachmentMeshRef, CachedMesh> mesh in staged) _meshes.Add(mesh.Key, mesh.Value);
             _definitions.Add(identity, new CachedDefinition(definitionBytes, loaded));
             return loaded;
@@ -125,5 +128,5 @@ public sealed class RigidAttachmentSetCache : IDisposable
 
     sealed record PendingMesh(AttachmentMeshRef Reference, byte[] Bytes, IReadOnlyList<GltfMeshPart> Parts);
     sealed record CachedMesh(byte[] Bytes, IAttachmentMeshLease Lease);
-    sealed record CachedDefinition(byte[] Bytes, LoadedRigidAttachmentSet View);
+    sealed record CachedDefinition(byte[] Bytes, LoadedAttachmentSet View);
 }

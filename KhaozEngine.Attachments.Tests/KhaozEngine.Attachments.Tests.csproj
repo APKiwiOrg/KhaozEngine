@@ -12,4 +12,7 @@
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.Attachments/KhaozEngine.Attachments.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <None Update="Fixtures/*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

@@ -9,20 +9,23 @@ namespace KhaozEngine.Attachments.Render3D;
 /// <summary>Rigid parts resolved once against a contract map and composed from the body's current pose.</summary>
 /// <remarks>Scratch storage is allocated at construction. Use each binding on its owning render thread.
 /// Calls to ComposeWorlds on the same binding must not overlap.</remarks>
-public sealed class RigidAttachmentBinding
+public sealed class AttachmentSetBinding
 {
     readonly ResolvedPart[] _parts;
     readonly Matrix4x4[] _worlds;
 
-    public RigidAttachmentBinding(RigidAttachmentSetDefinition definition, ContractJointMap map)
+    public AttachmentSetBinding(AttachmentSetDefinition definition, ContractJointMap map)
     {
         ArgumentNullException.ThrowIfNull(definition);
         ArgumentNullException.ThrowIfNull(map);
+        foreach (AttachmentPartDefinition part in definition.Parts)
+            if (part is SkinnedAttachmentPartDefinition)
+                throw new InvalidDataException($"Attachment part {part.Id}: map-only binding does not support skinned parts.");
         Skeleton = map.Skeleton;
         _parts = new ResolvedPart[definition.Parts.Count];
         for (int i = 0; i < _parts.Length; i++)
         {
-            RigidAttachmentPartDefinition part = definition.Parts[i];
+            var part = (RigidAttachmentPartDefinition)definition.Parts[i];
             try
             {
                 int node = map.Node(part.Joint);

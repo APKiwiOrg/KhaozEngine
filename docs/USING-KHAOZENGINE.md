@@ -6262,17 +6262,23 @@ scale or shear that skinning blends across vertices but a one-joint attachment w
 reflected joint stays reflected. A non-finite, collapsed, or linearly dependent basis throws `ArgumentException`
 because no rigid orientation can be recovered.
 
-### Rigid attachment sets
+### Attachment sets
 
-`KhaozEngine.Attachments` contains GPU-free immutable definitions, canonical format-1 JSON, strict mesh
-references and embedded rigid GLB validation. Reference it explicitly from headless publishers. The
+`KhaozEngine.Attachments` contains GPU-free immutable rigid and skinned part definitions, canonical
+format-1 and format-2 JSON, strict mesh references and embedded rigid GLB validation. Format 1 is rigid
+only. Format 2 requires an exact `rigid` or `skinned` kind per part. Rigid-only sets write the original
+format-1 bytes and semantic hashes, while sets containing skinned parts write format 2.
+Reference it explicitly from headless publishers. The
 `KhaozEngine.Attachments.Render3D` renderer arm ships in Game3D and binds each named part to a
 `ContractJointMap`. Mesh node transforms are baked during import. Part-local corrections compose with
 the joint's body alignment and the body's current skin-bone palette.
 
+The current cache and map-only binding refuse skinned parts with `InvalidDataException`. Skinned
+definitions can be authored and validated without loading them through the rigid renderer path.
+
 ```csharp
-using var cache = new RigidAttachmentSetCache(scene, new DirectoryAttachmentAssetSource(assetRoot));
-BoundRigidAttachmentSet bound = cache.Get(definitionKey, definitionSha256).Bind(map);
+using var cache = new AttachmentSetCache(scene, new DirectoryAttachmentAssetSource(assetRoot));
+BoundAttachmentSet bound = cache.Get(definitionKey, definitionSha256).Bind(map);
 // Every frame, using the exact bound skeleton and the body's current palette.
 bound.Queue(map.Skeleton, jointPalette, characterWorld, visualIncarnationKey);
 ```
@@ -6292,7 +6298,7 @@ Each material group gets its own temporal key, nested from the caller key, seman
 part ID and material ordinal. Source-array reordering preserves keys. Changed mesh bytes change the
 revision and keys. Keep `visualIncarnationKey` stable for one visual lifetime and replace it when that
 incarnation changes, including a replacement with identical asset bytes. `MotionKey.None` stays untracked.
-The optional `IRigidAttachmentScene` capability accepts uploads and complete descriptors. Its default
+The optional `IAttachmentScene` capability accepts uploads and complete descriptors. Its default
 Scene3D adapter and the native tile-world scene facade forward to the same renderer path.
 
 ### Skinned body contracts (any body shape)

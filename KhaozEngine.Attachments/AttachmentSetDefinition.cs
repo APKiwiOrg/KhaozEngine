@@ -7,38 +7,40 @@ using System.Security.Cryptography;
 
 namespace KhaozEngine.Attachments;
 
-public readonly record struct AttachmentMeshRef(string Key, string Sha256);
-public sealed record RigidAttachmentPartDefinition(uint Id, AttachmentMeshRef Mesh, string Joint, Matrix4x4 Local);
-
-public sealed class RigidAttachmentSetDefinition
+public sealed class AttachmentSetDefinition
 {
-    public RigidAttachmentSetDefinition(IEnumerable<RigidAttachmentPartDefinition> parts)
+    public AttachmentSetDefinition(IEnumerable<AttachmentPartDefinition> parts)
     {
         ArgumentNullException.ThrowIfNull(parts);
-        RigidAttachmentPartDefinition[] owned = parts.ToArray();
+        AttachmentPartDefinition[] owned = parts.ToArray();
         if (owned.Length == 0)
             throw new ArgumentException("An attachment set must contain parts.", nameof(parts));
 
         var ids = new HashSet<uint>();
         var meshes = new Dictionary<string, AttachmentMeshRef>(StringComparer.Ordinal);
-        foreach (RigidAttachmentPartDefinition part in owned)
+        foreach (AttachmentPartDefinition part in owned)
         {
             if (part is null)
                 throw new ArgumentException("An attachment part cannot be null.", nameof(parts));
             string context = $"Attachment part {part.Id}";
             if (part.Id == 0 || !ids.Add(part.Id))
                 throw new ArgumentException($"{context}: IDs must be positive and unique.", nameof(parts));
+            if (part is not (RigidAttachmentPartDefinition or SkinnedAttachmentPartDefinition))
+                throw new ArgumentException($"{context}: unsupported attachment part kind.", nameof(parts));
             string? keyError = AttachmentAssetKey.Error(part.Mesh.Key);
             if (keyError is not null)
                 throw new ArgumentException($"{context}: mesh key '{part.Mesh.Key}' {keyError}.", nameof(parts));
             if (!ValidHash(part.Mesh.Sha256))
                 throw new ArgumentException($"{context}: mesh '{part.Mesh.Key}' requires a lowercase SHA-256.", nameof(parts));
-            if (string.IsNullOrWhiteSpace(part.Joint))
-                throw new ArgumentException($"{context}: a joint name is required.", nameof(parts));
-            if (!AttachmentText.IsWellFormedUtf16(part.Joint))
-                throw new ArgumentException($"{context}: joint '{part.Joint}' must contain well-formed UTF-16.", nameof(parts));
-            if (!ValidMatrix(part.Local))
-                throw new ArgumentException($"{context}: local must be finite, affine and invertible.", nameof(parts));
+            if (part is RigidAttachmentPartDefinition rigid)
+            {
+                if (string.IsNullOrWhiteSpace(rigid.Joint))
+                    throw new ArgumentException($"{context}: a joint name is required.", nameof(parts));
+                if (!AttachmentText.IsWellFormedUtf16(rigid.Joint))
+                    throw new ArgumentException($"{context}: joint '{rigid.Joint}' must contain well-formed UTF-16.", nameof(parts));
+                if (!ValidMatrix(rigid.Local))
+                    throw new ArgumentException($"{context}: local must be finite, affine and invertible.", nameof(parts));
+            }
             if (meshes.TryGetValue(part.Mesh.Key, out AttachmentMeshRef existing) && existing.Sha256 != part.Mesh.Sha256)
                 throw new ArgumentException($"{context}: mesh '{part.Mesh.Key}' has conflicting hashes.", nameof(parts));
             meshes[part.Mesh.Key] = part.Mesh;
@@ -46,10 +48,10 @@ public sealed class RigidAttachmentSetDefinition
         Array.Sort(owned, (left, right) => left.Id.CompareTo(right.Id));
         Parts = Array.AsReadOnly(owned);
         Meshes = Array.AsReadOnly(meshes.Values.OrderBy(mesh => mesh.Key, StringComparer.Ordinal).ToArray());
-        SemanticSha256 = Convert.ToHexStringLower(SHA256.HashData(RigidAttachmentSetJson.Write(this)));
+        SemanticSha256 = Convert.ToHexStringLower(SHA256.HashData(AttachmentSetJson.Write(this)));
     }
 
-    public IReadOnlyList<RigidAttachmentPartDefinition> Parts { get; }
+    public IReadOnlyList<AttachmentPartDefinition> Parts { get; }
     public IReadOnlyList<AttachmentMeshRef> Meshes { get; }
     public string SemanticSha256 { get; }
 
@@ -62,10 +64,10 @@ public sealed class RigidAttachmentSetDefinition
         var knownMeshes = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (KeyValuePair<string, string> mesh in meshSha256)
             knownMeshes.Add(mesh.Key, mesh.Value);
-        foreach (RigidAttachmentPartDefinition part in Parts)
+        foreach (AttachmentPartDefinition part in Parts)
         {
-            if (!knownJoints.Contains(part.Joint))
-                throw new InvalidDataException($"Attachment part {part.Id}: joint '{part.Joint}' is unresolved.");
+            if (part is RigidAttachmentPartDefinition rigid && !knownJoints.Contains(rigid.Joint))
+                throw new InvalidDataException($"Attachment part {part.Id}: joint '{rigid.Joint}' is unresolved.");
             if (!knownMeshes.TryGetValue(part.Mesh.Key, out string? actual) || actual != part.Mesh.Sha256)
                 throw new InvalidDataException($"Attachment part {part.Id}: mesh '{part.Mesh.Key}' is missing or its SHA-256 differs.");
         }

@@ -1,9 +1,13 @@
 # KhaozEngine.Attachments.Render3D
 
-Rigid attachment definitions bound to a posed `KhaozEngine.Render3D` skeleton. This renderer arm
+Attachment definitions bound to a posed `KhaozEngine.Render3D` skeleton. This renderer arm
 references `KhaozEngine.Attachments` and `KhaozEngine.Render3D` and ships in `KhaozEngine.Game3D`.
 
-Construct `RigidAttachmentBinding(definition, map)` once with a `ContractJointMap`. Every part must
+The current renderer supports rigid parts. `AttachmentSetCache.Get` refuses any skinned part with
+`InvalidDataException` before reading or decoding meshes. The map-only `AttachmentSetBinding`
+constructor also refuses sets containing skinned parts.
+
+Construct `AttachmentSetBinding(definition, map)` once with a `ContractJointMap`. Every rigid part must
 name a contract joint in the skin. Unresolved references throw `InvalidDataException` naming the
 part and joint. The binding retains the exact `Skeleton` instance and resolves node, skin-bone
 index and body alignment at construction.
@@ -13,7 +17,7 @@ managed memory. Use each binding on its owning render thread. Calls on the same 
 overlap.
 
 ```csharp
-var binding = new RigidAttachmentBinding(definition, map);
+var binding = new AttachmentSetBinding(definition, map);
 var worlds = new Matrix4x4[binding.PartCount];
 binding.ComposeWorlds(map.Skeleton, jointPalette, characterWorld, worlds);
 ```
@@ -37,16 +41,16 @@ already baked. Material groups retain first-use order. The importer creates no G
 
 ## Loading and ownership
 
-Create one `RigidAttachmentSetCache` per scene with an `IAttachmentAssetSource`. `Get(key, expectedSha256)`
+Create one `AttachmentSetCache` per scene with an `IAttachmentAssetSource`. `Get(key, expectedSha256)`
 checks the exact definition bytes and every distinct mesh revision, applies embedded rigid GLB policy,
 and decodes all new assets before uploading. The cache copies source memory and shares each `(key, hash)`
 upload across its sets. A failure releases newly acquired resources and preserves earlier cached assets.
 
 ```csharp
 using var scene = new Scene3D(device, output);
-using var cache = new RigidAttachmentSetCache(scene, new DirectoryAttachmentAssetSource(assetRoot));
-LoadedRigidAttachmentSet loaded = cache.Get(definitionKey, definitionHash);
-BoundRigidAttachmentSet bound = loaded.Bind(map);
+using var cache = new AttachmentSetCache(scene, new DirectoryAttachmentAssetSource(assetRoot));
+LoadedAttachmentSet loaded = cache.Get(definitionKey, definitionHash);
+BoundAttachmentSet bound = loaded.Bind(map);
 ```
 
 `DefinitionSha256` records the exact source bytes. `Definition.SemanticSha256` records canonical content.
@@ -60,7 +64,7 @@ that disposal order. Cache disposal is idempotent and releases each unique uploa
 textures, through Scene3D's deferred retirement APIs. Use the cache and its bindings on their owning
 render thread, with no overlapping calls.
 
-The `IRigidAttachmentScene` overload accepts an optional scene capability for recording or headless
+The `IAttachmentScene` overload accepts an optional scene capability for recording or headless
 consumers. `Scene3DAttachmentScene` uploads through Scene3D and forwards complete `RigidInstanceDraw`
 descriptors. `UploadAttachment(parts)` returns an `IAttachmentMeshLease` whose immutable handles remain
 borrowed until lease disposal. The shipped `Scene3DTileWorldScene` also offers this optional capability.

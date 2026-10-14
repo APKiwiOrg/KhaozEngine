@@ -7,22 +7,22 @@ namespace KhaozEngine.Attachments.Render3D;
 
 /// <summary>A skeleton binding that borrows its mesh resources from the cache.</summary>
 /// <remarks>Use on the cache's owning render thread. Submission calls on this view must not overlap.</remarks>
-public sealed class BoundRigidAttachmentSet
+public sealed class BoundAttachmentSet
 {
-    readonly RigidAttachmentSetCache _owner;
-    readonly RigidAttachmentBinding _binding;
-    readonly RigidAttachmentSetDefinition _definition;
+    readonly AttachmentSetCache _owner;
+    readonly AttachmentSetBinding _binding;
+    readonly AttachmentSetDefinition _definition;
     readonly MeshHandle[][] _partHandles;
     readonly Matrix4x4[] _worlds;
     readonly RigidInstanceDraw[] _draws;
     readonly uint _revisionLow, _revisionHigh;
     readonly int _drawCount;
 
-    internal BoundRigidAttachmentSet(RigidAttachmentSetCache owner, RigidAttachmentSetDefinition definition,
+    internal BoundAttachmentSet(AttachmentSetCache owner, AttachmentSetDefinition definition,
         MeshHandle[][] partHandles, ContractJointMap map)
     {
         _owner = owner;
-        _binding = new RigidAttachmentBinding(definition, map);
+        _binding = new AttachmentSetBinding(definition, map);
         _definition = definition;
         _partHandles = partHandles;
         foreach (MeshHandle[] handles in partHandles) _drawCount += handles.Length;

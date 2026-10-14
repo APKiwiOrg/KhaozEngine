@@ -12,7 +12,7 @@ public interface IAttachmentMeshLease : IDisposable
 }
 
 /// <summary>Optional scene capability for attachment upload and complete rigid draw descriptors.</summary>
-public interface IRigidAttachmentScene
+public interface IAttachmentScene
 {
     /// <summary>Upload all material groups atomically. A failure releases only resources acquired by this call.</summary>
     IAttachmentMeshLease UploadAttachment(IReadOnlyList<GltfMeshPart> parts);

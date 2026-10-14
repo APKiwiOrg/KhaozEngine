@@ -1,16 +1,18 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Numerics;
 using System.Text.Json;
 
 namespace KhaozEngine.Attachments;
 
-public static class RigidAttachmentSetJson
+public static class AttachmentSetJson
 {
-    public const int CurrentFormatVersion = 1;
+    public const int RigidOnlyFormatVersion = 1;
+    public const int CurrentFormatVersion = 2;
 
-    public static RigidAttachmentSetDefinition Parse(ReadOnlyMemory<byte> utf8, string sourceName)
+    public static AttachmentSetDefinition Parse(ReadOnlyMemory<byte> utf8, string sourceName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sourceName);
         try
@@ -19,17 +21,31 @@ public static class RigidAttachmentSetJson
             JsonElement root = document.RootElement;
             Members(root, "root", "formatVersion", "parts");
             JsonElement version = Required(root, "formatVersion", "root");
-            if (version.ValueKind != JsonValueKind.Number || !version.TryGetInt32(out int number) || number != CurrentFormatVersion)
+            if (version.ValueKind != JsonValueKind.Number || !version.TryGetInt32(out int number)
+                || number is not (RigidOnlyFormatVersion or CurrentFormatVersion))
                 throw new InvalidDataException("root: unsupported formatVersion.");
             JsonElement array = Required(root, "parts", "root");
             if (array.ValueKind != JsonValueKind.Array)
                 throw new InvalidDataException("root: parts must be an array.");
-            var parts = new List<RigidAttachmentPartDefinition>();
+            var parts = new List<AttachmentPartDefinition>();
             int index = 0;
             foreach (JsonElement item in array.EnumerateArray())
             {
                 string context = $"parts[{index++}]";
-                Members(item, context, "id", "mesh", "joint", "local");
+                bool rigid = number == RigidOnlyFormatVersion;
+                if (rigid)
+                    Members(item, context, "id", "mesh", "joint", "local");
+                else
+                {
+                    Members(item, context, "id", "kind", "mesh", "joint", "local");
+                    rigid = Text(item, "kind", context) switch
+                    {
+                        "rigid" => true,
+                        "skinned" => false,
+                        _ => throw new InvalidDataException($"{context}: unsupported attachment kind."),
+                    };
+                    if (!rigid) Members(item, context, "id", "kind", "mesh");
+                }
                 JsonElement idValue = Required(item, "id", context);
                 if (idValue.ValueKind != JsonValueKind.Number || !idValue.TryGetUInt32(out uint id))
                     throw new InvalidDataException($"{context}: id must be a positive uint.");
@@ -38,6 +54,11 @@ public static class RigidAttachmentSetJson
                 Members(mesh, context + " mesh", "key", "sha256");
                 string key = Text(mesh, "key", context + " mesh");
                 string hash = Text(mesh, "sha256", context + " mesh");
+                if (!rigid)
+                {
+                    parts.Add(new SkinnedAttachmentPartDefinition(id, new(key, hash)));
+                    continue;
+                }
                 string joint = Text(item, "joint", context);
                 JsonElement local = Required(item, "local", context);
                 if (local.ValueKind != JsonValueKind.Array || local.GetArrayLength() != 16)
@@ -52,9 +73,9 @@ public static class RigidAttachmentSetJson
                 }
                 var matrix = new Matrix4x4(values[0], values[1], values[2], values[3], values[4], values[5], values[6], values[7],
                     values[8], values[9], values[10], values[11], values[12], values[13], values[14], values[15]);
-                parts.Add(new(id, new(key, hash), joint, matrix));
+                parts.Add(new RigidAttachmentPartDefinition(id, new(key, hash), joint, matrix));
             }
-            return new RigidAttachmentSetDefinition(parts);
+            return new AttachmentSetDefinition(parts);
         }
         catch (Exception error) when (error is JsonException or InvalidDataException or ArgumentException or InvalidOperationException)
         {
@@ -62,28 +83,34 @@ public static class RigidAttachmentSetJson
         }
     }
 
-    public static byte[] Write(RigidAttachmentSetDefinition definition)
+    public static byte[] Write(AttachmentSetDefinition definition)
     {
         ArgumentNullException.ThrowIfNull(definition);
+        bool rigidOnly = definition.Parts.All(part => part is RigidAttachmentPartDefinition);
         using var stream = new MemoryStream();
         using (var writer = new Utf8JsonWriter(stream))
         {
             writer.WriteStartObject();
-            writer.WriteNumber("formatVersion", CurrentFormatVersion);
+            writer.WriteNumber("formatVersion", rigidOnly ? RigidOnlyFormatVersion : CurrentFormatVersion);
             writer.WriteStartArray("parts");
-            foreach (RigidAttachmentPartDefinition part in definition.Parts)
+            foreach (AttachmentPartDefinition part in definition.Parts)
             {
                 writer.WriteStartObject();
                 writer.WriteNumber("id", part.Id);
+                if (!rigidOnly)
+                    writer.WriteString("kind", part is RigidAttachmentPartDefinition ? "rigid" : "skinned");
                 writer.WriteStartObject("mesh");
                 writer.WriteString("key", part.Mesh.Key);
                 writer.WriteString("sha256", part.Mesh.Sha256);
                 writer.WriteEndObject();
-                writer.WriteString("joint", part.Joint);
-                writer.WriteStartArray("local");
-                foreach (float value in RigidAttachmentSetDefinition.Values(part.Local))
-                    writer.WriteNumberValue(value == 0 ? 0f : value);
-                writer.WriteEndArray();
+                if (part is RigidAttachmentPartDefinition rigid)
+                {
+                    writer.WriteString("joint", rigid.Joint);
+                    writer.WriteStartArray("local");
+                    foreach (float value in AttachmentSetDefinition.Values(rigid.Local))
+                        writer.WriteNumberValue(value == 0 ? 0f : value);
+                    writer.WriteEndArray();
+                }
                 writer.WriteEndObject();
             }
             writer.WriteEndArray();

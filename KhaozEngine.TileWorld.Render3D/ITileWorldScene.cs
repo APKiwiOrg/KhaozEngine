@@ -239,7 +239,7 @@ public interface ITileWorldScene
 
 /// <summary>The shipped <see cref="ITileWorldScene"/>: every member forwards straight to a <see cref="Scene3D"/>
 /// and its prop-renderer extension, so the seam costs one virtual call and adds no behaviour of its own.</summary>
-public sealed class Scene3DTileWorldScene : ITileWorldScene, IRigidAttachmentScene
+public sealed class Scene3DTileWorldScene : ITileWorldScene, IAttachmentScene
 {
     readonly Scene3D _scene;
     readonly Scene3DAttachmentScene _attachments;

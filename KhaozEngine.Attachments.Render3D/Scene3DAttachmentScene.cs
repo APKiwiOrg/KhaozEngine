@@ -5,7 +5,7 @@ using KhaozEngine.Render3D;
 namespace KhaozEngine.Attachments.Render3D;
 
 /// <summary>Attachment uploads and complete rigid draws through an existing Scene3D.</summary>
-public sealed class Scene3DAttachmentScene : IRigidAttachmentScene
+public sealed class Scene3DAttachmentScene : IAttachmentScene
 {
     readonly Scene3D _scene;
 

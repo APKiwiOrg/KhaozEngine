@@ -37,7 +37,7 @@ public sealed class RigidAttachmentSubmissionTests
     public void Material_subdraws_have_distinct_temporal_keys_and_preserve_every_template_field()
     {
         using var fixture = new SubmissionFixture();
-        BoundRigidAttachmentSet bound = fixture.Load(2);
+        BoundAttachmentSet bound = fixture.Load(2);
         var draws = new RigidInstanceDraw[3];
         draws[2] = Template;
 
@@ -68,7 +68,7 @@ public sealed class RigidAttachmentSubmissionTests
     public void Packed_instance_uses_the_independent_literal_world_point(bool posed)
     {
         using var fixture = new SubmissionFixture();
-        BoundRigidAttachmentSet bound = fixture.Load(2, twoParts: true);
+        BoundAttachmentSet bound = fixture.Load(2, twoParts: true);
         if (posed) RigidAttachmentTestRig.RotatedPalette(fixture.Skeleton).CopyTo(fixture.Palette, 0);
         var draws = new RigidInstanceDraw[bound.DrawCount];
         var template = new RigidInstanceDraw(default, Matrix4x4.Identity);
@@ -103,12 +103,12 @@ public sealed class RigidAttachmentSubmissionTests
     public void Source_reordering_retains_keys_and_mesh_replacement_or_caller_replacement_changes_them()
     {
         using var fixture = new SubmissionFixture();
-        BoundRigidAttachmentSet first = fixture.Load(2, twoParts: true);
+        BoundAttachmentSet first = fixture.Load(2, twoParts: true);
         var original = new RigidInstanceDraw[first.DrawCount];
         first.WriteDraws(fixture.Skeleton, fixture.Palette, Model, Key, Template, original);
-        RigidAttachmentPartDefinition[] parts = fixture.Loaded!.Definition.Parts.Reverse().ToArray();
+        RigidAttachmentPartDefinition[] parts = fixture.Loaded!.Definition.Parts.Cast<RigidAttachmentPartDefinition>().Reverse().ToArray();
         string originalHash = fixture.Loaded!.DefinitionSha256;
-        BoundRigidAttachmentSet reordered = fixture.LoadDefinition("reordered.json", parts, reorderSource: true);
+        BoundAttachmentSet reordered = fixture.LoadDefinition("reordered.json", parts, reorderSource: true);
         Assert.NotEqual(originalHash, fixture.Loaded!.DefinitionSha256);
         var reorderedDraws = new RigidInstanceDraw[first.DrawCount];
         reordered.WriteDraws(fixture.Skeleton, fixture.Palette, Model, Key, Template, reorderedDraws);
@@ -118,7 +118,7 @@ public sealed class RigidAttachmentSubmissionTests
         first.WriteDraws(fixture.Skeleton, fixture.Palette, Model, MotionKey.From(124), Template, reorderedDraws);
         Assert.All(Enumerable.Range(0, original.Length), i => Assert.NotEqual(original[i].Motion, reorderedDraws[i].Motion));
         AttachmentMeshRef replacement = fixture.Source.Mesh("parts/rigid.glb", AttachmentTestSource.Glb(3));
-        BoundRigidAttachmentSet changed = fixture.LoadDefinition("changed.json",
+        BoundAttachmentSet changed = fixture.LoadDefinition("changed.json",
             parts.Select(part => part with { Mesh = replacement }).ToArray());
         var changedDraws = new RigidInstanceDraw[changed.DrawCount];
         changed.WriteDraws(fixture.Skeleton, fixture.Palette, Model, Key, Template, changedDraws);
@@ -131,7 +131,7 @@ public sealed class RigidAttachmentSubmissionTests
     public void Insufficient_capacity_leaves_every_descriptor_untouched()
     {
         using var fixture = new SubmissionFixture();
-        BoundRigidAttachmentSet bound = fixture.Load(2);
+        BoundAttachmentSet bound = fixture.Load(2);
         RigidInstanceDraw[] shortBuffer = [Template];
         Assert.Throws<ArgumentException>(() => bound.WriteDraws(fixture.Skeleton, fixture.Palette, Model, Key, Template, shortBuffer));
         Assert.Equal(Template, shortBuffer[0]);
@@ -141,7 +141,7 @@ public sealed class RigidAttachmentSubmissionTests
     public void Invalid_late_pose_queues_no_prefix_and_writes_no_descriptors()
     {
         using var fixture = new SubmissionFixture();
-        BoundRigidAttachmentSet bound = fixture.Load(2, twoParts: true);
+        BoundAttachmentSet bound = fixture.Load(2, twoParts: true);
         fixture.Palette[0].M41 = float.NaN;
         RigidInstanceDraw[] draws = Enumerable.Repeat(Template, bound.DrawCount).ToArray();
         Assert.Throws<ArgumentException>(() => bound.Queue(fixture.Skeleton, fixture.Palette, Model, Key, Template));
@@ -155,7 +155,7 @@ public sealed class RigidAttachmentSubmissionTests
     public void Default_queue_draws_opaque_white_and_casts_shadows()
     {
         using var fixture = new SubmissionFixture();
-        BoundRigidAttachmentSet bound = fixture.Load();
+        BoundAttachmentSet bound = fixture.Load();
         bound.Queue(fixture.Skeleton, fixture.Palette, Model, Key);
         RigidInstanceDraw draw = fixture.Capability.Draws[0];
         Assert.Equal(Color.White, draw.Tint);
@@ -173,7 +173,7 @@ public sealed class RigidAttachmentSubmissionTests
     public void Disposed_cache_refuses_both_queue_overloads_and_descriptor_writing()
     {
         using var fixture = new SubmissionFixture();
-        BoundRigidAttachmentSet bound = fixture.Load();
+        BoundAttachmentSet bound = fixture.Load();
         var draws = new RigidInstanceDraw[1];
         fixture.Cache.Dispose();
         Assert.Throws<ObjectDisposedException>(() => bound.Queue(fixture.Skeleton, fixture.Palette, Model, Key));
@@ -186,11 +186,11 @@ public sealed class RigidAttachmentSubmissionTests
     public void First_submission_and_descriptor_writing_allocate_no_frame_memory()
     {
         using var fixture = new SubmissionFixture();
-        BoundRigidAttachmentSet warm = fixture.Load(2);
+        BoundAttachmentSet warm = fixture.Load(2);
         var draws = new RigidInstanceDraw[2];
         warm.WriteDraws(fixture.Skeleton, fixture.Palette, Model, Key, Template, draws);
         warm.Queue(fixture.Skeleton, fixture.Palette, Model, Key, Template);
-        BoundRigidAttachmentSet fresh = fixture.Loaded!.Bind(RigidAttachmentTestRig.Map(fixture.Skeleton));
+        BoundAttachmentSet fresh = fixture.Loaded!.Bind(RigidAttachmentTestRig.Map(fixture.Skeleton));
         fixture.Rig.Scene.Begin();
         fixture.Capability.Clear();
         fixture.Source.OnRead = _ => throw new InvalidOperationException("Frame submission cannot read source assets.");
@@ -209,24 +209,24 @@ public sealed class RigidAttachmentSubmissionTests
         internal readonly Skeleton Skeleton = RigidAttachmentTestRig.Create();
         internal readonly Matrix4x4[] Palette;
         internal readonly SubmissionScene Capability;
-        internal readonly RigidAttachmentSetCache Cache;
-        internal LoadedRigidAttachmentSet? Loaded;
+        internal readonly AttachmentSetCache Cache;
+        internal LoadedAttachmentSet? Loaded;
         internal SubmissionFixture()
         {
             Palette = Skeleton.ComposeRestPose();
             Capability = new SubmissionScene(Rig.Scene);
-            Cache = new RigidAttachmentSetCache(Capability, Source);
+            Cache = new AttachmentSetCache(Capability, Source);
         }
-        internal BoundRigidAttachmentSet Load(int materials = 1, bool twoParts = false)
+        internal BoundAttachmentSet Load(int materials = 1, bool twoParts = false)
         {
             AttachmentMeshRef mesh = Source.Mesh("parts/rigid.glb", AttachmentTestSource.Glb(materials));
             RigidAttachmentPartDefinition first = new(1, mesh, "hip", Matrix4x4.CreateTranslation(1, 0, 0));
             RigidAttachmentPartDefinition second = new(2, mesh, "knee", Matrix4x4.Identity);
             return LoadDefinition("set.json", twoParts ? [first, second] : [first]);
         }
-        internal BoundRigidAttachmentSet LoadDefinition(string key, RigidAttachmentPartDefinition[] parts, bool reorderSource = false)
+        internal BoundAttachmentSet LoadDefinition(string key, RigidAttachmentPartDefinition[] parts, bool reorderSource = false)
         {
-            byte[] bytes = RigidAttachmentSetJson.Write(new RigidAttachmentSetDefinition(parts));
+            byte[] bytes = AttachmentSetJson.Write(new AttachmentSetDefinition(parts));
             if (reorderSource)
             {
                 JsonObject json = JsonNode.Parse(bytes)!.AsObject();
@@ -240,7 +240,7 @@ public sealed class RigidAttachmentSubmissionTests
         public void Dispose() { Cache.Dispose(); Rig.Dispose(); }
     }
 
-    sealed class SubmissionScene(Scene3D scene) : IRigidAttachmentScene
+    sealed class SubmissionScene(Scene3D scene) : IAttachmentScene
     {
         readonly Scene3DAttachmentScene _adapter = new(scene);
         internal readonly RigidInstanceDraw[] Draws = new RigidInstanceDraw[32];

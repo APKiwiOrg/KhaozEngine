@@ -3,14 +3,14 @@ using KhaozEngine.Render3D;
 namespace KhaozEngine.Attachments.Render3D;
 
 /// <summary>A cache-owned definition and its uploaded material groups.</summary>
-public sealed class LoadedRigidAttachmentSet
+public sealed class LoadedAttachmentSet
 {
-    readonly RigidAttachmentSetCache _owner;
-    readonly RigidAttachmentSetDefinition _definition;
+    readonly AttachmentSetCache _owner;
+    readonly AttachmentSetDefinition _definition;
     readonly string _definitionSha256;
     readonly MeshHandle[][] _partHandles;
 
-    internal LoadedRigidAttachmentSet(RigidAttachmentSetCache owner, RigidAttachmentSetDefinition definition,
+    internal LoadedAttachmentSet(AttachmentSetCache owner, AttachmentSetDefinition definition,
         string definitionSha256, MeshHandle[][] partHandles)
     {
         _owner = owner;
@@ -19,7 +19,7 @@ public sealed class LoadedRigidAttachmentSet
         _partHandles = partHandles;
     }
 
-    public RigidAttachmentSetDefinition Definition
+    public AttachmentSetDefinition Definition
     {
         get { _owner.ThrowIfDisposed(); return _definition; }
     }
@@ -31,9 +31,9 @@ public sealed class LoadedRigidAttachmentSet
     }
 
     /// <summary>Resolve every joint and allocate submission scratch once for the scene's render thread.</summary>
-    public BoundRigidAttachmentSet Bind(ContractJointMap map)
+    public BoundAttachmentSet Bind(ContractJointMap map)
     {
         _owner.ThrowIfDisposed();
-        return new BoundRigidAttachmentSet(_owner, _definition, _partHandles, map);
+        return new BoundAttachmentSet(_owner, _definition, _partHandles, map);
     }
 }

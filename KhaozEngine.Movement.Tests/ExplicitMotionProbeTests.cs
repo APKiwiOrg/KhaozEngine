@@ -26,6 +26,42 @@ public class ExplicitMotionProbeTests
             stepSeconds: 1f / 30, maxSteps: steps);
 
     [Theory]
+    [InlineData(false, 0.001f, 0f, ExplicitMotionProofStatus.Proven)]
+    [InlineData(false, 0.0008f, 0.0008f, ExplicitMotionProofStatus.BudgetExceeded)]
+    [InlineData(true, 0.001f, 0f, ExplicitMotionProofStatus.Proven)]
+    [InlineData(true, 0.0008f, 0.0008f, ExplicitMotionProofStatus.Blocked)]
+    public void GroundedArrivalUsesTheOneMillimetreSphere(bool atHold, float x, float y,
+        ExplicitMotionProofStatus expected)
+    {
+        using var fixture = new Scene(wet: false);
+        var tuning = Tuning with { AirMomentum = true };
+        var profile = new ExplicitMovementProfile("arrival", tuning, new(WaterTraversalMode.DryOnly),
+            new NavBakeSources().AddHashOf("query-policy", new byte[] { 1 }), stepSeconds: 1f / 30, maxSteps: 1);
+        var start = fixture.State;
+        Vector3 target = start.State.Position + new Vector3(x, y, 0);
+        if (atHold)
+        {
+            // A landing Hold preserves airborne momentum while seating on the real floor.
+            start = new(start.State with
+            {
+                Grounded = false,
+                Position = start.State.Position - Vector3.UnitY * y,
+                HorizontalVelocity = new(x / profile.StepSeconds, 0),
+            }, start.Frame, null);
+            var held = fixture.Context.StepExplicit(start, Vector2.Zero, false, profile, fixture.Lease);
+            Assert.Equal(MovementStepOutcome.Advanced, held.Outcome);
+            Assert.True(held.State.State.Grounded);
+            Assert.InRange(held.State.State.Position.X - start.State.Position.X, x - 0.0000001f, x + 0.0000001f);
+            Assert.InRange(held.State.State.Position.Y - start.State.Position.Y, y - 0.0000001f, y + 0.0000001f);
+            target = held.State.State.Position;
+        }
+        var proof = fixture.Context.ProbeExplicitMotion(start, target, false, profile, fixture.Lease);
+        Assert.Equal(expected, proof.Status);
+        if (expected == ExplicitMotionProofStatus.Proven) Assert.NotNull(proof.End);
+        else Assert.Null(proof.End);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void RuntimeEntryAndProbeShareTheExplicitKernelAndCapturedView(bool wet)

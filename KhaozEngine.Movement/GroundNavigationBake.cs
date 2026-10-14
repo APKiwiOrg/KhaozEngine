@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
 using System.Security.Cryptography;
+using KhaozEngine.Locomotion;
 using KhaozEngine.Navigation;
 
 namespace KhaozEngine.Movement;
@@ -22,6 +23,7 @@ public sealed partial class GroundNavigationBake
 
     private readonly byte[] _identity;
     private readonly byte[] _fingerprint;
+    private readonly ushort _formatVersion;
     private readonly Vector3 _origin;
     private readonly PhysicsNavColumns _columns;
     private readonly string[] _names;
@@ -37,6 +39,10 @@ public sealed partial class GroundNavigationBake
         _columns = columns;
         _names = names;
         _profiles = profiles;
+        _formatVersion = NavBakeIdentity.FormatVersion;
+        foreach (GroundNavigation profile in profiles)
+            if (profile.Identity.Kind == EffectiveMovementBindingKind.OrdinaryContact)
+                _formatVersion = NavBakeIdentity.ContactFormatVersion;
         _byName = new Dictionary<string, GroundNavigation>(names.Length, StringComparer.Ordinal);
         for (int i = 0; i < names.Length; i++) _byName.Add(names[i], profiles[i]);
         ProfileNames = Array.AsReadOnly(names);
@@ -65,13 +71,13 @@ public sealed partial class GroundNavigationBake
         ArgumentNullException.ThrowIfNull(capture);
         ArgumentNullException.ThrowIfNull(sources);
         ArgumentNullException.ThrowIfNull(profiles);
+        NavBakeProfile[] snapshot = [.. profiles];
+        foreach (NavBakeProfile profile in snapshot)
+            if (profile is not null) _ = profile.ResolveKind();
         _ = capture.Context;
         PhysicsNavBakeOptions options = capture.Options;
         if (options.MaxSurfacesPerColumn > MaxStoredSurfacesPerColumn)
             throw new ArgumentOutOfRangeException(nameof(capture), "A bake stores at most 255 surfaces per column.");
-        NavBakeProfile[] snapshot = [.. profiles];
-        foreach (NavBakeProfile profile in snapshot)
-            if (profile is not null) PhysicsNavBake.ValidateProfileController(profile.Tuning);
         byte[] identity = NavBakeIdentity.Encode(new NavBakeExpectation(options, sources, snapshot),
             NavBakeIdentity.CurrentEngineVersion);
         if (identity.Length > MaxIdentityLength)

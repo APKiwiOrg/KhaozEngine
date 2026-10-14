@@ -694,7 +694,13 @@ MapDoc's legacy-only context restriction is a public construction option, with n
 added for the phase 5a heads. Ordinary frames capture the boundary once, retain space-aware analytic delegates
 and pass the physics origin into certified water queries. Owned views dispose with the binding. Supplied views
 and public explicit contexts remain borrowed. Ordinary offset zero and public explicit offset 0.001 share one
-contact kernel. Contact navigation remains refused until phase 5b, with no wire generation or legacy bake change.
+contact kernel. Ordinary contact navigation creates separate source and proof bindings over the context's borrowed
+view. Locomotion owns anchor discovery and movement outcomes, while Movement admits nodes, proves traversal and
+projects resting heights through Navigation's internal raw-field copy and public `WithRestingHeights`.
+Contact ground navigation, KENB format 2 serialization and public runtime validation are implemented in staged
+20.38.0, with no wire generation or legacy bake byte change. Contact aquatic navigation, footprint-only seeds and
+public explicit bake profiles remain deferred to [#1389](https://github.com/APKiwiOrg/KhaozEngine/issues/1389).
+Phase 6 game adoption remains separate.
 `GroundMoveContext` adapts absolute ground, normal, bounds and medium providers to a caller-owned local-origin
 `IPhysicsWorld`, and changes only the state position's frame during a sequential step. Its ordinary contact overload
 accepts the Locomotion field, registration and boundary, caches tuning validation and owns only an engine-created

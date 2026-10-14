@@ -230,19 +230,51 @@ public sealed class GroundNavigation
     public float AgentHeight { get; }
     public bool Aquatic { get; }
     public bool AllowsSegment(Vector3 fromFeet, Vector3 toFeet);
+    public void Validate(EffectiveMovementBinding binding);
+    public void Validate(in MoveTuning tuning);
 }
 ```
 
 The two-argument `BuildProfile` builds a ground profile and equals the overload with `GroundProfileOptions.Default`.
-Both overloads and `GroundNavigationBake.Create` refuse Contact profiles with `NotSupportedException` naming
-phase 5b. Bake creation checks every profile before identity encoding. Legacy v1 bytes remain unchanged.
+Both overloads, `GroundNavigationBake.Create` and every `GroundNavigationBake.Load` expectation normalize the
+controller and water selection before other profile work or stream reads. Malformed Contact selections throw
+`ArgumentException`. Contact aquatic profiles throw `NotSupportedException` naming #1389. Contact ground profiles
+require an ordinary-constructed context and an unchanged leased capture basis. Phase 5b ground navigation is
+implemented in staged 20.39.0. Contact aquatic navigation, footprint-only seeds and public explicit bake profiles
+are deferred to [#1389](https://github.com/APKiwiOrg/KhaozEngine/issues/1389). Legacy v1 bytes remain unchanged.
 
-`AgentRadius` and `AgentHeight` are the baked radius and full capsule height. Profile geometry must match
-`CapsuleRadius`, `CapsuleHalfHeight`, `MaxSlopeRadians` and `StepHeight` exactly when a context validates a
-tuning. Walk and run pace, climb pace and effect scale may differ at runtime. The directed proof uses unit
-walk and run pace, dry medium, grounded state, no jump, no airborne momentum and no movement commitment.
+Capture records a lease's geometry generation and origin when physics supports `IPhysicsQueryLeaseSource`, then
+checks that basis after classification and sampling. The leases do not span sampling or caller delegates.
+With `SampleWater`, a contact water field requires a supplied medium delegate and capture samples that delegate.
+
+`AgentRadius` and `AgentHeight` are the baked radius and full capsule height. Before directly using `Planner` or
+`AllowsSegment`, call `Validate(binding)` with the runtime `EffectiveMovementBinding`. `MoveToRange` calls it
+against the context's resolved binding before planning and prediction. `Validate(tuning)` is a convenience door
+that resolves Legacy or OrdinaryContact from tuning, but cannot detect a public explicit binding. PublicExplicit
+throws `NotSupportedException` naming #1389. A different binding kind or retained input throws `ArgumentException`.
+Legacy graphs compare radius, half-height, slope and step, plus swim fractions for aquatic graphs. Contact graphs
+compare every retained tuning field, controller, foot fraction, placement offset and effective water policy.
+`WalkSpeed`, `RunSpeed` and `AirMomentum` may differ because proofs normalize them. Numeric runtime comparisons
+use value equality, so +0 and -0 are compatible. File identity and load comparisons remain bitwise.
+
+Legacy directed proofs use unit walk and run pace, dry medium, grounded state, no jump, no airborne momentum and
+no movement commitment. Contact proofs use a separate unit-pace binding over the ordinary source environment,
+including its water policy, while preserving the context's runtime binding.
 The initial hold is slice one of the bounded probe. The default is `1 / 30` seconds and at most 64 core calls.
 Arrival uses a 1 mm proof tolerance. This is a bounded proof tolerance, not a gameplay reach epsilon.
+
+Contact profiles keep raw axis surfaces as layer, area and candidate-link identity. Each surface gets a certified
+resting anchor within its own band, from raw feet minus `GroundedEpsilon` through raw feet plus `StepHeight`,
+below the next raw surface and inside captured headroom. Both raw and resting footprints must pass the area policy.
+The placement admission predicate requires an `Advanced`, grounded result with footing within the shared 3D 1 mm
+sphere. Its displacement guards are pinned by pure predicate tests. A Hold must stay within that sphere, and every
+directed edge and Stair proof must return grounded `Advanced` outcomes through the same wet binding. DryOnly omits
+wet nodes. WadeOnly and SurfaceSwimmer omit swim-deep ground nodes. Unknown water refuses placement, while a
+non-Known anchor query or changed lease basis throws before a graph is published.
+
+Admitted anchor feet Y is stored in `NavGrid.RestingHeightAt`. Raw `SurfaceHeightAt` still determines layers,
+headroom, area membership and candidate Stair topology. Planners, region goals, layer lookup, movement endpoints
+and route straightening use resting heights, with surface fallback for legacy grids.
 
 The profile filters the whole circular footprint against captured columns and their area tags. A centre point
 or bounding square is not enough. It uses raw radius-zero grid checks because the capsule was already checked
@@ -258,7 +290,7 @@ Stair link. It checks a complete segment Y interval conservatively, so a direct 
 even when a sequence of baked edges is eligible. Live collision, support and the final movement result still
 come from the shared movement core.
 
-Profile building allocates no garbage per proof. Penetration queries reuse one overlap scratch list per physics
+Legacy profile building allocates no garbage per proof. Penetration queries reuse one overlap scratch list per physics
 world, the footprint predicate and the dry probe context are built once per profile, and the movement core reuses
 its step and slide capsules per thread. Engine tests in the allocation-sensitive collections gate these targets:
 
@@ -272,7 +304,7 @@ The remaining profile bytes are the result grids. A 48 m by 48 m flat world at 0
 98.6 B per column in one dev Mac observation. Elapsed time is not gated, because the physics query count is
 unchanged.
 
-Profile proofs on smooth sloped physics ground are limited, and so is route following there. Two causes were
+Legacy profile proofs on smooth sloped physics ground are limited, and so is route following there. Two causes were
 measured. A grounded capsule on a physics slope rests above the captured centre height, by `r (1 / cos slope - 1)`.
 A body under command also creeps down the slope by 1.25 to 3.77 mm, because the core's push-out shoves it downhill
 each tick, and allowing for the height alone did not cure the miss. So uphill and sideways edges can fail the 1 mm
@@ -366,8 +398,13 @@ public sealed class GroundNavigationBake
 
 `Create` builds every profile through `capture.BuildProfile` with its `Aquatic` flag while the capture is live, so each
 profile is exactly the fresh build. An aquatic profile from a capture without `SampleWater` is refused there.
-`WriteTo` writes a little-endian `KENB` file, format version 1, and two writes of one bake are byte-identical. A
-loaded profile is a `GroundNavigation` like any other, and its `Space`, graph, columns, `AllowsSegment` and `Planner`
+`WriteTo` writes a little-endian `KENB` file. All-Legacy sets retain format 1 and their exact bytes. Any contact
+profile selects format 2 for the whole set, including mixed contact ground and legacy aquatic profiles. Format 2
+adds each profile's effective kind, foot fraction, water policy and zero placement offset to the identity. Only
+OrdinaryContact layers append one resting float per open cell after that layer's exits, in clear-bit order. Legacy
+layers keep the format 1 layout, store no resting section and get their resting height from the raw surface at runtime.
+Load restores resting heights only for contact layers. Two writes of one bake
+are byte-identical. A loaded profile is a `GroundNavigation` like any other, and its `Space`, graph, columns, `AllowsSegment` and `Planner`
 answers equal the fresh build as bits. `GetProfile` throws `KeyNotFoundException` for
 an unknown name. `Fingerprint` is the SHA-256 of the identity block, for logs and build manifests.
 
@@ -605,7 +642,7 @@ an `Unreachable` route passes through unchanged:
 - Waypoints are only dropped, never created or moved. Every kept bend is a cell centre the body still lands on
   exactly, and the route keeps its status.
 - The final waypoint, both ends of a hop and both ends of a layer change are always kept.
-- Feet heights come from the space's surface heights, so straightening needs a space with surface heights. A route
+- Feet heights come from `NavGrid.RestingHeightAt`, with raw surface fallback when no resting field is set. A route
   over heightless cells, as on a `NavGrid.FromWalkable` grid, stays raw.
 - The side lines cost shortcuts beside walls and fences, where the staircase remains.
 - One plan costs at most one three-line guard check per raw and kept waypoint, each walking the cells it crosses.
@@ -888,7 +925,9 @@ The driver has no wall following or local avoidance. It walks straight and repor
 [phase 4b handoff](../docs/design/CONTACT-CONTROLLER-PHASE-4B-SWIMMING-HANDOFF-2026-10-11.md)
 uses #438 shell solids and certified footprint support for explicit land motion, with swimming's
 full-body medium and route proofs. The fingerprint includes `MoveTuning.FootRadiusFraction` (default 0.5),
-vertical placement offset 0.001 m, handoff recipe version 1 and route-proof recipe version 1.
+vertical placement offset 0.001 m, handoff recipe version 1 and route-proof recipe version 2.
+Grounded arrival at Hold and destination uses the shared 3D 1 mm sphere. Swimming retains its
+horizontal 1 mm and surface-contact vertical tolerances.
 Earlier `f3-full-capsule-v1` proofs cannot certify this behavior. It also includes all
 positional MoveTuning inputs, water capability and launch tuning, area masks, captured boundary identity,
 probe cadence and budget, finite resolver limits and versions, engine version, and ordinal-sorted
@@ -900,11 +939,24 @@ The profile's supplied water policy governs. `MoveTuning.Water` must be default 
 Both defined `Controller` values produce the same explicit fingerprint. Undefined selectors refuse.
 Construction validates the selected foot geometry and every explicit kernel requirement, including positive
 gravity, maximum fall speed and swim-enter depth fraction. Default foot and water inputs retain their fingerprints.
-Ordinary runtime selection is implemented in phase 5a, staged in 20.37.0. `PhysicsNavBake.BuildProfile` and
-`GroundNavigationBake.Create` still refuse Contact before encoding, naming phase 5b. The frozen v1 fingerprint
-and legacy bake bytes are unchanged. Native G1b, #1299 navigation acceptance and the remaining adoption gates
-stay open. Local timing in the [5a proof](../docs/superpowers/plans/proofs/2026-10-13-contact-controller-phase5a-cost.md)
-does not establish the hosted cost gate.
+Ordinary runtime selection is implemented in phase 5a, released in 20.37.0. Navigation doors validate Contact
+configuration, refuse aquatic selection for #1389 and require a leased capture basis for ground construction.
+Ordinary contact ground profiles prove each captured surface at its certified resting anchor. The anchor must keep
+its raw surface's ownership band, fit captured headroom and pass both raw and resting area footprints. Placement and
+Hold require grounded `Advanced` outcomes within the shared 3D 1 mm sphere. Directed edges and Stair links use the
+same wet unit-pace proof binding and read every movement outcome. WadeOnly and SurfaceSwimmer omit swim-deep ground
+nodes, DryOnly omits wet nodes, and Unknown water refuses the candidate. Fresh grids expose admitted anchor feet Y
+through `NavGrid.RestingHeightAt` while raw heights still define layers, areas and candidate links.
+The bake owns separate source and proof bindings for each profile, preserving the context's cached runtime binding
+and borrowed view. Its full outward query envelope must fit the ordinary served scope. Every anchor, placement and
+step takes a fresh lease, and a non-Known anchor query or changed physics, environment or frame basis throws without
+publishing a partial graph. Phase 5b ground navigation, KENB format 2 and public runtime `Validate` are implemented
+in staged 20.39.0. Contact aquatic navigation, footprint-only seeds and public explicit bake profiles remain deferred
+to [#1389](https://github.com/APKiwiOrg/KhaozEngine/issues/1389). The frozen v1 fingerprint and legacy bake bytes
+are unchanged. Native G1b and the remaining adoption gates stay open. Local timing in the
+[5a proof](../docs/superpowers/plans/proofs/2026-10-13-contact-controller-phase5a-cost.md) and the
+[5b cost record](../docs/superpowers/plans/proofs/2026-10-14-contact-controller-phase5b-cost.md) does not establish the
+hosted cost gate.
 
 `GroundMoveContext.StepExplicit` uses that profile's actual cadence and tuning with the existing
 explicit locomotion kernel. The context must name the exact captured movement query view. A second

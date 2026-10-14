@@ -330,8 +330,8 @@ public class PhysicsNavProfileTests
             _ => Tuning with { StepHeight = 0.3f },
         };
 
-        Assert.Throws<ArgumentException>(() => nav.ValidateTuning(changed));
-        nav.ValidateTuning(Tuning with { WalkSpeed = 0f, RunSpeed = 100f, MaxStepClimbSpeed = 0f });
+        Assert.Throws<ArgumentException>(() => nav.Validate(changed));
+        nav.Validate(Tuning with { WalkSpeed = 0f, RunSpeed = 100f, MaxStepClimbSpeed = 0f });
         Assert.Throws<ArgumentException>(() => nav.Planner.FindPath(Vector3.Zero, Vector3.UnitX, 0.21f, PathQueryBudget.Default));
     }
 

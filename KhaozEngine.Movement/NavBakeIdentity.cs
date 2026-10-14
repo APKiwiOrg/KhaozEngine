@@ -13,18 +13,21 @@ namespace KhaozEngine.Movement;
 /// byte count and UTF-8, the 13 positional <see cref="PhysicsNavBakeOptions"/> fields in declaration order as 32-bit
 /// words, <see cref="PhysicsNavBakeOptions.SampleWater"/> as one byte, 0 or 1, sources sorted by ordinal label, then
 /// profiles sorted by ordinal name, each with its area filter, its <see cref="NavBakeProfile.Aquatic"/> flag as one
-/// byte, 0 or 1, and the 27 retained <see cref="MoveTuning"/> fields.</summary>
+/// byte, 0 or 1, and the 27 retained <see cref="MoveTuning"/> fields. Format 2 appends each profile's effective kind,
+/// foot fraction, water mode, surface jump speed and placement offset.</summary>
 /// <remarks>Adding a field to <see cref="MoveTuning"/>, <see cref="PhysicsNavBakeOptions"/> or
 /// <see cref="NavBakeProfile"/> changes this layout, so encode the field here. Once a format version has shipped, the
-/// layout change also needs a <see cref="FormatVersion"/> bump, so a bake from an older layout reports an unsupported
-/// format rather than corrupt bytes. Unreleased KENB v1 changes in place. Changing the label character set,
+/// layout change needs a new supported format version. Format 1 remains frozen for all-legacy bakes. Changing the
+/// label character set,
 /// <see cref="MaxNameLength"/> or <see cref="MaxProfiles"/> changes which stored identities decode as canonical, so it
-/// follows the same rule. The golden fingerprint test changes with every layout change.</remarks>
+/// follows the same rule. The format 1 golden fingerprint and full-file golden remain unchanged.</remarks>
 internal static partial class NavBakeIdentity
 {
-    /// <summary>Bake container format version. Once a version has shipped, bump it whenever the identity or payload
-    /// layout changes. Unreleased KENB v1 changes in place.</summary>
+    /// <summary>Frozen all-legacy bake container format version.</summary>
     internal const ushort FormatVersion = 1;
+
+    /// <summary>Contact identities and per-open-cell resting feet heights.</summary>
+    internal const ushort ContactFormatVersion = 2;
 
     internal const int MaxNameLength = 64;
     internal const int MaxProfiles = 256;
@@ -78,6 +81,7 @@ internal static partial class NavBakeIdentity
         IReadOnlyList<(string Label, byte[] Digest)> sources = (expected.Sources
             ?? throw new ArgumentException("Expectation sources are required.", nameof(expected))).Snapshot();
         NavBakeProfile[] profiles = SortedProfiles(expected.Profiles, nameof(expected));
+        ushort version = FormatFor(profiles);
         if (sources.Count == 0)
             throw new ArgumentException("A bake needs at least one source.", nameof(expected));
         if (sources.Count > ushort.MaxValue)
@@ -106,6 +110,7 @@ internal static partial class NavBakeIdentity
             writer.WriteUInt32(profile.Areas.Excluded);
             writer.WriteUInt8(profile.Aquatic ? (byte)1 : (byte)0);
             WriteTuning(writer, profile.Tuning);
+            if (version == ContactFormatVersion) WriteContactIdentity(writer, profile.Tuning);
         }
         return writer.ToArray();
     }
@@ -114,16 +119,19 @@ internal static partial class NavBakeIdentity
     /// with an empty detail. Otherwise both are decoded and the first difference is named in the order engine,
     /// options, sources, profiles. Stored bytes that do not decode canonically are
     /// <see cref="NavBakeLoadStatus.Corrupt"/>. Never throws.</summary>
-    internal static (NavBakeLoadStatus Status, string Detail) Compare(ReadOnlySpan<byte> stored, ReadOnlySpan<byte> expected)
+    internal static (NavBakeLoadStatus Status, string Detail) Compare(ReadOnlySpan<byte> stored, ReadOnlySpan<byte> expected,
+        ushort storedVersion = FormatVersion, ushort expectedVersion = FormatVersion)
     {
-        if (stored.SequenceEqual(expected)) return (NavBakeLoadStatus.Loaded, "");
-        if (!TryDecode(stored, out Decoded? bake, out string problem))
+        if (storedVersion == expectedVersion && stored.SequenceEqual(expected)) return (NavBakeLoadStatus.Loaded, "");
+        if (!TryDecode(stored, out Decoded? bake, out string problem, storedVersion))
             return (NavBakeLoadStatus.Corrupt, $"Stored identity {problem}.");
-        if (!TryDecode(expected, out Decoded? want, out problem))
+        if (!TryDecode(expected, out Decoded? want, out problem, expectedVersion))
             return (NavBakeLoadStatus.Corrupt, $"Expected identity {problem}.");
 
         if (!string.Equals(bake.EngineVersion, want.EngineVersion, StringComparison.Ordinal))
             return (NavBakeLoadStatus.EngineChanged, $"Bake engine {bake.EngineVersion}, expected {want.EngineVersion}.");
+        if (storedVersion != expectedVersion)
+            return (NavBakeLoadStatus.ProfilesChanged, $"Bake profile format {storedVersion}, expected {expectedVersion}.");
         for (int i = 0; i < OptionCount; i++)
             if (bake.OptionBits[i] != want.OptionBits[i])
                 return (NavBakeLoadStatus.OptionsChanged, $"Option {OptionFieldNames[i]}: bake " +
@@ -138,7 +146,7 @@ internal static partial class NavBakeIdentity
     /// <summary>Decodes an identity block without throwing. False means the bytes are truncated, carry trailing data
     /// or are not canonical, and <paramref name="problem"/> says why.</summary>
     internal static bool TryDecode(ReadOnlySpan<byte> bytes, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out Decoded? identity,
-        out string problem)
+        out string problem, ushort version = FormatVersion)
     {
         identity = null;
         var reader = new NavBakeReader(bytes);
@@ -168,7 +176,8 @@ internal static partial class NavBakeIdentity
         }
 
         if (!reader.TryReadUInt16(out ushort profileCount)) return Fail("is truncated before the profiles", out problem);
-        if (profileCount == 0 || profileCount > MaxProfiles || profileCount > reader.Remaining / ProfileMinBytes)
+        int profileBytes = ProfileMinBytes + (version == ContactFormatVersion ? ContactIdentityBytes : 0);
+        if (profileCount == 0 || profileCount > MaxProfiles || profileCount > reader.Remaining / profileBytes)
             return Fail($"has an impossible profile count {profileCount}", out problem);
         var profiles = new DecodedProfile[profileCount];
         for (int i = 0; i < profileCount; i++)
@@ -185,6 +194,8 @@ internal static partial class NavBakeIdentity
             if (aquatic > 1) return Fail($"has a non-canonical Aquatic flag {aquatic} in profile '{text}'", out problem);
             if (!ReadTuning(ref reader, out MoveTuning tuning))
                 return Fail($"has a truncated or non-canonical tuning in profile '{text}'", out problem);
+            if (version == ContactFormatVersion && !ReadContactIdentity(ref reader, aquatic == 1, ref tuning))
+                return Fail($"has a truncated or non-canonical contact identity in profile '{text}'", out problem);
             profiles[i] = new DecodedProfile(text, required, excluded, aquatic == 1, tuning);
             previous = name;
         }
@@ -303,7 +314,7 @@ internal static partial class NavBakeIdentity
             return $"field Excluded: bake 0x{bake.Excluded:X8}, expected 0x{want.Excluded:X8}";
         if (bake.Aquatic != want.Aquatic)
             return $"field Aquatic: bake {(bake.Aquatic ? "True" : "False")}, expected {(want.Aquatic ? "True" : "False")}";
-        return FirstTuningDifference(bake.Tuning, want.Tuning);
+        return FirstTuningDifference(bake.Tuning, want.Tuning) ?? FirstContactDifference(bake.Tuning, want.Tuning);
     }
 
     private static bool Fail(string reason, out string problem)

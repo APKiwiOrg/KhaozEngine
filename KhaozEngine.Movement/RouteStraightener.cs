@@ -93,7 +93,7 @@ internal sealed class RouteStraightener : IRegionPathPlanner
     {
         NavGrid grid = _space.Layers[waypoint.Layer];
         (int x, int z) = grid.CellOf(waypoint.Position.X, waypoint.Position.Y);
-        float? height = grid.SurfaceHeightAt(x, z);
+        float? height = grid.RestingHeightAt(x, z);
         feet = new Vector3(waypoint.Position.X, height ?? 0f, waypoint.Position.Y);
         return height.HasValue;
     }

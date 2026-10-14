@@ -42,6 +42,11 @@ public sealed partial class GroundMoveContext
     /// Tuning validation and live field, registration and frame authentication still run before movement.</summary>
     public bool SupportsContactController { get; }
 
+    internal Func<float, float, float, MovementMedium>? CaptureMedium => MovementWaterField is null
+        ? Medium
+        : _providedMedium ?? throw new InvalidOperationException(
+            "Water sampling with a contact water field requires a medium delegate.");
+
     IPhysicsWorldQueryView? CreateMovementView(IPhysicsWorldQueryView? supplied)
     {
         if (MovementRegistration is { } registration && !ReferenceEquals(registration.SourceWorld, Physics))
@@ -68,21 +73,15 @@ public sealed partial class GroundMoveContext
         EffectiveMovementBinding next;
         if (tuning.Controller == MovementControllerKind.Contact)
         {
-            if (!_contactConstruction)
-                throw new NotSupportedException("Contact movement requires a GroundMoveContext constructed with its ordinary environment.");
-            EffectiveMovementBinding.Preflight(tuning, EffectiveMovementBindingKind.OrdinaryContact);
-            if (Physics is null || MovementRegistration is null || MovementBoundary is null)
-                throw new ArgumentException("Ordinary contact movement requires physics, a registration and a MovementBoundary.");
-            next = EffectiveMovementBinding.Ordinary(tuning, Physics, MovementRegistration, GroundHeight, GroundNormal,
-                MovementBoundary, MovementWaterField, _providedMedium, MovementQueries);
+            next = CreateNavigationBinding(tuning);
         }
         else
         {
             CheckTuning(tuning);
-            if (_binding is { Kind: EffectiveMovementBindingKind.Legacy })
+            if (_binding is { Kind: EffectiveMovementBindingKind.Legacy } &&
+                _binding.Tuning with { WalkSpeed = tuning.WalkSpeed, RunSpeed = tuning.RunSpeed, AirMomentum = tuning.AirMomentum } == tuning)
             {
-                // Traversal alternates source and unit-speed probe tuning. Legacy owns no
-                // environment resources, so changing its validated values needs no new binding.
+                // Probe pace overrides change neither legacy binding selection nor navigation compatibility.
                 MovementConfigurationValidation.ValidateLegacy(tuning);
                 _validatedTuning = tuning;
                 _hasValidatedTuning = true;
@@ -94,6 +93,35 @@ public sealed partial class GroundMoveContext
         _binding = next;
         _validatedTuning = tuning;
         _hasValidatedTuning = true;
+    }
+
+    internal EffectiveMovementBinding ResolvedBinding => _binding
+        ?? throw new InvalidOperationException("Validate tuning before reading the resolved movement binding.");
+
+    internal EffectiveMovementBinding CreateNavigationBinding(in MoveTuning tuning)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_stepping) throw new InvalidOperationException("Ground movement steps cannot overlap or recurse.");
+        if (_legacyOnlyContactRefusal is not null) throw new NotSupportedException(_legacyOnlyContactRefusal);
+        if (!_contactConstruction)
+            throw new NotSupportedException("Contact movement requires a GroundMoveContext constructed with its ordinary environment.");
+        EffectiveMovementBinding.Preflight(tuning, EffectiveMovementBindingKind.OrdinaryContact);
+        if (Physics is null || MovementRegistration is null || MovementBoundary is null)
+            throw new ArgumentException("Ordinary contact movement requires physics, a registration and a MovementBoundary.");
+        return EffectiveMovementBinding.Ordinary(tuning, Physics, MovementRegistration, GroundHeight, GroundNormal,
+            MovementBoundary, MovementWaterField, _providedMedium, MovementQueries);
+    }
+
+    internal MovementFrameDescriptor NavigationFrame
+    {
+        get
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            _origin = Physics!.Origin;
+            EnsureOrigin();
+            CaptureContactFrame();
+            return _contactFrame;
+        }
     }
 
     MoveState StepContact(in MoveState local, Vector2 direction, bool run, float dt)

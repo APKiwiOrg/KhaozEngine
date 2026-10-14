@@ -43,6 +43,30 @@ public class NavBakeIdentityTests
         NavBakeIdentity.Encode(expected, engine);
 
     [Fact]
+    public void AllLegacyFullFileGolden()
+    {
+        var options = new PhysicsNavBakeOptions(0, 0, 2, 2, 1, 5, 6, 0.8f, 4, 4,
+            MaxSurfacesPerColumn: 1, EdgeProbeSeconds: 1f / 30f, MaxEdgeProbeSteps: 64);
+        var tuning = GoldenTuning;
+        var expected = new NavBakeExpectation(options, new NavBakeSources().Add("world", Digest(0x11)),
+            [new("player", tuning, default)]);
+        using var world = GroundTraversalProbeTests.FlatWorld();
+        using var context = new GroundMoveContext((_, _) => 0, physics: world);
+        using var capture = PhysicsNavBake.Capture(context, options, _ => 0);
+        byte[] file = GroundNavigationBakeRoundTripTests.Write(
+            GroundNavigationBake.Create(capture, expected.Sources, expected.Profiles));
+        int length = (int)BinaryPrimitives.ReadUInt32LittleEndian(file.AsSpan(8));
+        Assert.Equal(Encode(expected, NavBakeIdentity.CurrentEngineVersion), file.AsSpan(52, length).ToArray());
+        // Normalize only the engine identity so releases cannot change the full-file fixture.
+        byte[] identity = Encode(expected);
+        byte[] golden = [.. file.AsSpan(0, 52), .. identity, .. file.AsSpan(52 + length)];
+        BinaryPrimitives.WriteUInt32LittleEndian(golden.AsSpan(8), (uint)identity.Length);
+
+        Assert.Equal("079e0b5fccfb179cfa4cce2025ee1b75059a7b023955778ffb45bb2157bc70eb",
+            Convert.ToHexStringLower(SHA256.HashData(golden)));
+    }
+
+    [Fact]
     public void IdentityIsCanonicalAcrossInsertionOrder()
     {
         var wide = new NavBakeProfile("wide", GoldenTuning with { CapsuleRadius = 0.6f }, new NavAreaFilter(0u, 2u));

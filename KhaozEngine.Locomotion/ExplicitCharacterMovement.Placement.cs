@@ -18,6 +18,7 @@ public static partial class ExplicitCharacterMovement
             MovementSelection selection = validated.State.Selection!.Value;
             var contact = PlacementQueries(placed, tuning, composition, water, queries, selection, boundary);
             Vector3 feet = contact.KernelFeet(placed.Position, tuning);
+            Vector3 candidate = placed.Position;
             bool supported = false;
             MovementContactSupportBinding? binding = null;
             if (placed.Grounded || placed.VerticalVelocity <= 0)
@@ -32,19 +33,24 @@ public static partial class ExplicitCharacterMovement
                         tuning.StepHeight, tuning.GroundedEpsilon, out binding);
                     if (final.Status != SupportStatus.Walkable || binding is null)
                         return Hold(state, MovementStepOutcome.EnvironmentUnresolved);
-                    placed.Position = contact.BodyCentre(seated);
+                    candidate = contact.BodyCentre(seated);
                 }
             }
-            MovementWaterPoint point = contact.SampleMedium(contact.KernelFeet(placed.Position, tuning))!.Value;
+            MovementWaterPoint point = contact.SampleMedium(contact.KernelFeet(candidate, tuning))!.Value;
             if (supported && binding!.Value.Space != point.Space) return Hold(state, MovementStepOutcome.EnvironmentInvalid);
             bool wasSwimming = state.State.Swimming || state.State.WaterExcursion == WaterExcursionState.Surface;
-            bool footing = supported && FootingAllowed(point, wasSwimming, placed.Position.Y, tuning, water);
+            bool footing = supported && FootingAllowed(point, wasSwimming, candidate.Y, tuning, water);
             placed.Grounded = footing;
-            if (supported && placed.VerticalVelocity < 0) placed.VerticalVelocity = 0;
             if (footing)
             {
+                placed.Position = candidate;
                 placed.VerticalVelocity = 0;
                 placed.TimeSinceGrounded = 0;
+            }
+            else if (supported)
+            {
+                point = contact.SampleMedium(feet)!.Value;
+                if (point.Space != selection.Space) return Hold(state, MovementStepOutcome.EnvironmentInvalid);
             }
             selection = new(point.Space, footing ? binding?.Owner : null, queries.Identity);
             ClassifyWater(ref placed, point, footing, wasSwimming, tuning, water, state.State.VerticalVelocity < 0);
@@ -102,7 +108,7 @@ public static partial class ExplicitCharacterMovement
         catch (ArgumentException) { return Hold(state, MovementStepOutcome.EnvironmentInvalid); }
     }
 
-    static LeasedContactQueryContext PlacementQueries(in MoveState state, in MoveTuning tuning,
+    internal static LeasedContactQueryContext PlacementQueries(in MoveState state, in MoveTuning tuning,
         in ContactComposition composition, in WaterTraversalPolicy water, MovementQueryLease queries,
         in MovementSelection selection, MovementBoundary? boundary)
     {

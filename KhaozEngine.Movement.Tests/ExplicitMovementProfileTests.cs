@@ -20,7 +20,7 @@ public class ExplicitMovementProfileTests
         new("fixture", tuning ?? Tuning, water ?? new(WaterTraversalMode.SurfaceSwimmer, 7), sources ?? Sources(), areas, dt, steps, boundary);
 
     [Fact]
-    public void RuntimeContactGeometryParticipatesInTheProfileRecipe()
+    public void RuntimeContactGeometryAndRouteRecipeTwoParticipateInTheProfileRecipe()
     {
         var sources = Sources();
         var profile = Profile(sources: sources);

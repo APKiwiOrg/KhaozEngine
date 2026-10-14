@@ -28,10 +28,7 @@ public sealed partial class GroundNavigationBake
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(expected);
         NavBakeProfile[]? snapshot = expected.Profiles is null ? null : [.. expected.Profiles];
-        byte[] encoded = NavBakeIdentity.Encode(expected with { Profiles = snapshot! }, engineVersion);
-        if (encoded.Length > MaxIdentityLength)
-            throw new ArgumentException("The expected identity block exceeds 1 MiB.", nameof(expected));
-        LoadPlan plan = Plan(expected, snapshot!);
+        LoadPlan plan = Plan(expected, snapshot, engineVersion, out byte[] encoded);
 
         Span<byte> header = stackalloc byte[HeaderLength];
         int read = source.ReadAtLeast(header, HeaderLength, throwOnEndOfStream: false);
@@ -43,9 +40,9 @@ public sealed partial class GroundNavigationBake
         ushort flags = BinaryPrimitives.ReadUInt16LittleEndian(header[6..]);
         uint identityLength = BinaryPrimitives.ReadUInt32LittleEndian(header[8..]);
         ulong payloadLength = BinaryPrimitives.ReadUInt64LittleEndian(header[12..]);
-        if (version != NavBakeIdentity.FormatVersion || flags != 0)
+        if (version is not (NavBakeIdentity.FormatVersion or NavBakeIdentity.ContactFormatVersion) || flags != 0)
             return Refuse(NavBakeLoadStatus.UnsupportedFormat, $"Format version {version} with flags {flags} is not " +
-                $"supported. This engine reads version {NavBakeIdentity.FormatVersion} with flags 0.");
+                "supported. This engine reads versions 1 and 2 with flags 0.");
         if (identityLength > MaxIdentityLength)
             return Refuse(NavBakeLoadStatus.Corrupt, $"Identity block length {identityLength} exceeds 1 MiB.");
         if (source.CanSeek && identityLength > source.Length - source.Position)
@@ -56,10 +53,10 @@ public sealed partial class GroundNavigationBake
         read = source.ReadAtLeast(identity, identity.Length, throwOnEndOfStream: false);
         if (read < identity.Length)
             return Refuse(NavBakeLoadStatus.Corrupt, $"The identity block is truncated at {read} of {identity.Length} bytes.");
-        (NavBakeLoadStatus status, string detail) = NavBakeIdentity.Compare(identity, encoded);
+        (NavBakeLoadStatus status, string detail) = NavBakeIdentity.Compare(identity, encoded, version, NavBakeIdentity.FormatFor(plan.Profiles));
         if (status != NavBakeLoadStatus.Loaded) return Refuse(status, detail);
 
-        ulong bound = PayloadBound(plan);
+        ulong bound = PayloadBound(plan, version);
         if (payloadLength > bound)
             return Refuse(NavBakeLoadStatus.Corrupt, $"Payload length {payloadLength} exceeds the bound {bound} for the expected options.");
         if (source.CanSeek)
@@ -93,13 +90,20 @@ public sealed partial class GroundNavigationBake
     }
 
     // Validates the expectation as Create would, so invalid options or tuning never size a buffer.
-    private static LoadPlan Plan(NavBakeExpectation expected, NavBakeProfile[] profiles)
+    private static LoadPlan Plan(NavBakeExpectation expected, NavBakeProfile[]? profiles,
+        string engineVersion, out byte[] encoded)
     {
+        if (profiles is not null)
+            foreach (NavBakeProfile profile in profiles)
+                if (profile is not null) _ = profile.ResolveKind();
+        encoded = NavBakeIdentity.Encode(expected with { Profiles = profiles! }, engineVersion);
+        if (encoded.Length > MaxIdentityLength)
+            throw new ArgumentException("The expected identity block exceeds 1 MiB.", nameof(expected));
         PhysicsNavBakeOptions options = expected.Options;
         (int width, int height, int cells, _) = options.ValidateWithoutOrigin();
         if (options.MaxSurfacesPerColumn > MaxStoredSurfacesPerColumn)
             throw new ArgumentOutOfRangeException(nameof(expected), "A bake stores at most 255 surfaces per column.");
-        NavBakeProfile[] sorted = SortedByName(profiles);
+        NavBakeProfile[] sorted = SortedByName(profiles!);
         foreach (NavBakeProfile profile in sorted)
         {
             GroundMoveContext.CheckTuning(profile.Tuning);
@@ -119,7 +123,7 @@ public sealed partial class GroundNavigationBake
     }
 
     // The design bound plus one stored candidate count per profile, saturating instead of overflowing.
-    private static ulong PayloadBound(LoadPlan plan)
+    private static ulong PayloadBound(LoadPlan plan, ushort version)
     {
         ulong c = (ulong)plan.Cells, m = (ulong)plan.Options.MaxSurfacesPerColumn;
         ulong layers = (ulong)plan.MaxLayers, n = (ulong)plan.Profiles.Length;
@@ -128,7 +132,15 @@ public sealed partial class GroundNavigationBake
         ulong layer = Add(Add(LayerHeaderBytes, (c + 7) / 8), Mul(5, c));
         ulong links = Mul(Mul(layers, layers == 0 ? 0 : layers - 1), c);
         ulong profile = Add(Add(Add(4, Mul(layers, layer)), LinkCountBytes), links);
-        return Math.Min(Add(capture, Mul(n, profile)), (ulong)Array.MaxLength);
+        ulong total = Add(capture, Mul(n, profile));
+        if (version == NavBakeIdentity.ContactFormatVersion)
+        {
+            ulong contact = 0;
+            foreach (NavBakeProfile selection in plan.Profiles)
+                if (selection.Tuning.Controller == MovementControllerKind.Contact) contact++;
+            total = Add(total, Mul(Mul(Mul(4, c), layers), contact));
+        }
+        return Math.Min(total, (ulong)Array.MaxLength);
     }
 
     private static ulong Add(ulong a, ulong b) => a > ulong.MaxValue - b ? ulong.MaxValue : a + b;
@@ -143,7 +155,8 @@ public sealed partial class GroundNavigationBake
         if (DecodeColumns(ref reader, plan, out origin, out columns) is { } problem) return problem;
         var built = new GroundNavigation[plan.Profiles.Length];
         // One scratch set for every layer of every profile. Grids and traversal layers copy their inputs.
-        var scratch = new LayerScratch(new bool[plan.Cells], new bool[plan.Cells], new float[plan.Cells], new byte[plan.Cells]);
+        var scratch = new LayerScratch(new bool[plan.Cells], new bool[plan.Cells], new float[plan.Cells], new byte[plan.Cells],
+            NavBakeIdentity.FormatFor(plan.Profiles) == NavBakeIdentity.ContactFormatVersion ? new float[plan.Cells] : null);
         for (int i = 0; i < built.Length; i++)
         {
             if (DecodeProfile(ref reader, plan, plan.Profiles[i], columns!, scratch, out GroundNavigation? profile) is { } failed)
@@ -251,7 +264,8 @@ public sealed partial class GroundNavigationBake
 
         var grids = new NavGrid[layerCount];
         var traversal = new NavTraversalLayer[layerCount];
-        (bool[] blocked, bool[] accepted, float[] heights, byte[] exits) = scratch;
+        (bool[] blocked, bool[] accepted, float[] heights, byte[] exits, float[]? resting) = scratch;
+        bool contact = profile.Tuning.Controller == MovementControllerKind.Contact;
         PhysicsNavBakeOptions options = plan.Options;
         for (int layer = 0; layer < layerCount; layer++)
         {
@@ -276,7 +290,7 @@ public sealed partial class GroundNavigationBake
                 accepted[i] = !blocked[i];
                 if (accepted[i]) open++;
             }
-            if (open * 5L > reader.Remaining) return $"Profile '{name}' layer {layer} is truncated in its open cells.";
+            if (open * (contact ? 9L : 5L) > reader.Remaining) return $"Profile '{name}' layer {layer} is truncated in its open cells.";
             for (int i = 0; i < cells; i++)
             {
                 heights[i] = 0f;
@@ -293,6 +307,19 @@ public sealed partial class GroundNavigationBake
             if (FirstBadExit(blocked, exits, width, height) is int bad)
                 return $"Profile '{name}' layer {layer} cell {bad} has an exit to a blocked or outside cell.";
             grids[layer] = NavGrid.FromBlockedSurfaces(width, height, cellSize, originX, originZ, blocked, heights, yMin, yMax, yaw);
+            if (contact)
+            {
+                Array.Copy(heights, resting!, cells);
+                for (int i = 0; i < cells; i++)
+                {
+                    if (blocked[i]) continue;
+                    if (!reader.TryReadSingle(out resting![i])) return $"Profile '{name}' layer {layer} is truncated in its resting heights.";
+                    if (!float.IsFinite(resting[i]) || (double)resting[i] < (double)heights[i] - profile.Tuning.GroundedEpsilon ||
+                        (double)resting[i] > (double)heights[i] + profile.Tuning.StepHeight)
+                        return $"Profile '{name}' layer {layer} resting height at cell {i} is outside its raw height band.";
+                }
+                grids[layer] = grids[layer].WithRestingHeights(resting!);
+            }
             traversal[layer] = new NavTraversalLayer(width, height, accepted, exits);
         }
 
@@ -348,5 +375,5 @@ public sealed partial class GroundNavigationBake
     private sealed record LoadPlan(PhysicsNavBakeOptions Options, int Width, int Height, int Cells, int MaxLayers,
         NavBakeProfile[] Profiles);
 
-    private readonly record struct LayerScratch(bool[] Blocked, bool[] Accepted, float[] Heights, byte[] Exits);
+    private readonly record struct LayerScratch(bool[] Blocked, bool[] Accepted, float[] Heights, byte[] Exits, float[]? Resting);
 }

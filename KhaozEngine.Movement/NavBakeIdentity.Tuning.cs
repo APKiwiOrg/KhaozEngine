@@ -100,7 +100,7 @@ internal static partial class NavBakeIdentity
         return true;
     }
 
-    private static string? FirstTuningDifference(in MoveTuning bake, in MoveTuning want)
+    internal static string? FirstTuningDifference(in MoveTuning bake, in MoveTuning want)
     {
         foreach (TuningField field in TuningFields)
         {

@@ -7866,6 +7866,13 @@ var space = NavSpace.Single(grid);
 Later changes to caller arrays or lists cannot change the validated topology. Immutable `NavGrid` instances
 remain shared rather than copied.
 
+`NavGrid.WithRestingHeights(float[])` returns a new immutable grid with copied row-major physical feet heights,
+without changing raw surfaces, clearance, layer bands or transforms. The array must hold `Width * Height`
+entries. Null or wrong-length arrays throw `ArgumentException`, and non-finite open heights throw
+`ArgumentOutOfRangeException`. Blocked values are ignored. `HasRestingHeights` reports whether the field is set.
+`RestingHeightAt(cx, cz)` supplies physical poses and falls back to `SurfaceHeightAt` on legacy grids. Both
+return null on blocked or out-of-bounds cells. Topology and raw surface identity keep `SurfaceHeightAt`.
+
 A cell is blocked when the terrain slope at its center exceeds `maxSlopeRadians`, an optional
 `extraBlocked(x, z)` gameplay exclusion returns true (a scripted no-go zone), or a nearby `WorldCollider`
 overlaps a conservative center-point probe. One bake serves every agent radius: the walkable rasterization
@@ -7984,7 +7991,7 @@ Hand the returned `NavSpace` to `GridPathPlanner` exactly as with any other bake
 `PathFollower` route across the new layers with no new code. A `Stair` crossing is a plain walked waypoint,
 no special follower state. A `Hop` crossing surfaces the existing `PathFollowState.Hopping` seam described
 below: the follower suspends ground steering and hands back both hop endpoints for the game to drive its
-own lunge. Either way, resolve a waypoint's Y from `space.Layers[waypoint.Layer].SurfaceHeightAt`, not from
+own lunge. Either way, resolve a waypoint's Y from `space.Layers[waypoint.Layer].RestingHeightAt`, not from
 `terrain.GroundHeight`, since the waypoint may sit on a layer above or below the ground.
 
 A smooth world, where every adjacent rise stays within `stepHeight`, degenerates to a single layer,
@@ -8096,8 +8103,8 @@ else if (output.State == PathFollowState.Hopping)
     Vector2 to = output.ActiveWaypoint;
     (int fx, int fz) = layer.CellOf(from.X, from.Y);
     (int tx, int tz) = layer.CellOf(to.X, to.Y);
-    float fromY = layer.SurfaceHeightAt(fx, fz) ?? terrain.GroundHeight(from.X, from.Y);
-    float toY = layer.SurfaceHeightAt(tx, tz) ?? terrain.GroundHeight(to.X, to.Y);
+    float fromY = layer.RestingHeightAt(fx, fz) ?? terrain.GroundHeight(from.X, from.Y);
+    float toY = layer.RestingHeightAt(tx, tz) ?? terrain.GroundHeight(to.X, to.Y);
     agent = PlayLunge(agent, from, fromY, to, toY, dt);   // game-owned jump motion + animation
 }
 // Point Arrived: agent.Position is within AcceptRadius of the goal in XZ and within VerticalAcceptTolerance
@@ -8175,7 +8182,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.38.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.39.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -8330,6 +8337,8 @@ public sealed class GroundNavigation
     public float AgentHeight { get; }
     public bool Aquatic { get; }
     public bool AllowsSegment(Vector3 fromFeet, Vector3 toFeet);
+    public void Validate(EffectiveMovementBinding binding);
+    public void Validate(in MoveTuning tuning);
 }
 ```
 
@@ -8347,14 +8356,29 @@ clearance check sees only the deepest contact, so a route may clip a bank within
 steps, so larger cells than 0.25 m or slow zones must raise `MaxEdgeProbeSteps`. The Movement README states the full
 rules.
 
-Both `BuildProfile` overloads and `GroundNavigationBake.Create` refuse Contact profiles before identity encoding,
-with `NotSupportedException` naming phase 5b. Legacy v1 bake bytes remain unchanged.
+Both `BuildProfile` overloads, `GroundNavigationBake.Create` and every `GroundNavigationBake.Load` expectation
+validate Contact selection before other profile work or stream reads. Malformed configurations throw
+`ArgumentException`, and Contact aquatic profiles throw `NotSupportedException` naming #1389. Ground construction
+requires an ordinary-constructed context and a leased capture whose geometry and origin remain unchanged.
+Phase 5b ground navigation is implemented in staged 20.39.0. Contact aquatic navigation, footprint-only seeds and
+public explicit bake profiles are deferred to [#1389](https://github.com/APKiwiOrg/KhaozEngine/issues/1389).
+Raw surfaces retain layer and area identity. Certified resting anchors supply physical node poses through
+`NavGrid.RestingHeightAt`. Placement and Hold require grounded `Advanced` outcomes within 1 mm, and directed
+edges use the ordinary environment's water policy. Legacy v1 bake bytes remain unchanged.
+Capture checks its leased basis after classification and sampling. With `SampleWater`, a contact water field
+requires a supplied medium delegate, which capture samples without requiring contact tuning validation.
 
 Radius, full height, slope class and step class must match the capture profile's
 `CapsuleRadius`, `CapsuleHalfHeight`, `MaxSlopeRadians` and `StepHeight` exactly. Walk and run pace, climb pace
-and effect scale may differ. Physical holds and independently directed edges use unit pace, dry medium, no
-momentum, no commitment and no jump. The initial hold counts as slice one. Defaults are `1 / 30` seconds and
-64 total core calls, with a 1 mm arrival proof tolerance that is not a gameplay epsilon.
+and effect scale may differ for Legacy graphs. Before using `Planner` or `AllowsSegment` directly, call
+`GroundNavigation.Validate(binding)`. `MoveToRange` validates its resolved context binding automatically.
+Contact graphs compare every retained tuning field, controller, foot fraction, placement offset and effective water
+policy. Runtime numeric comparison uses value equality, including +0 and -0. File identity comparisons stay bitwise.
+`WalkSpeed`, `RunSpeed` and `AirMomentum` may differ because proofs normalize them. `Validate(tuning)` cannot detect
+a public explicit binding. The binding door refuses PublicExplicit with #1389 and mismatches with `ArgumentException`.
+Physical holds and independently directed edges use unit pace, no momentum, no commitment and no jump.
+Legacy proofs use dry medium. Contact proofs retain their ordinary water policy. The initial hold counts as slice
+one. Defaults are `1 / 30` seconds and 64 total core calls, with a 1 mm arrival proof tolerance that is not a gameplay epsilon.
 
 The profile checks the whole circular footprint and each surface's area tags. It uses raw radius-zero grid
 checks after the physical capsule proof, so the radius is not eroded twice. Grounded extraction respects
@@ -8398,7 +8422,7 @@ rests above the captured centre height, and a body under command creeps 1.25 to 
 core's push-out shoves it downhill. Allowing for the height alone did not cure it. The NPC and player driver APIs are
 documented below.
 
-Profile building allocates no garbage per proof. A warmed penetration query and a warmed edge proof allocate
+Legacy profile building allocates no garbage per proof. A warmed penetration query and a warmed edge proof allocate
 zero bytes, and a 4,096-column flat `BuildProfile` allocates 80 bytes per column, down from 58,774. Engine tests
 gate at most 1 KiB per column. Elapsed time is not gated, because the physics query count is unchanged.
 
@@ -8466,8 +8490,10 @@ GroundNavigation? playerProfile = result.Status == NavBakeLoadStatus.Loaded
 ```
 
 `Create` builds each profile through the live capture, so it is exactly the fresh build, and `WriteTo` is
-byte-deterministic. The identity covers the engine version, every capture option including `SampleWater`, the
-labelled digests, and each profile's name, area filter, `Aquatic` flag and every `MoveTuning` field except
+byte-deterministic. All-Legacy sets retain KENB format 1 bytes. A set containing contact profiles uses format 2,
+which stores effective profile identity and resting feet heights, including mixed contact and legacy aquatic sets.
+Load needs no new movement proof. The identity covers the engine version, every capture option including
+`SampleWater`, the labelled digests, and each profile's name, area filter, `Aquatic` flag and every `MoveTuning` field except
 `WalkSpeed`, `RunSpeed` and `AirMomentum`. It holds no architecture-dependent data. The payload stores the captured
 water entries, and an aquatic profile rebuilds its float view on load, so it never loads as a ground profile. `Load` throws `ArgumentException` for an expectation `Create` would refuse, refuses a
 stale bake after the header and identity block without reading the payload, and returns `Corrupt` for truncated,
@@ -8490,7 +8516,7 @@ On the dev Mac a 36,864-column flat world wrote 664,689 bytes and loaded in abou
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.38.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.39.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -8573,7 +8599,8 @@ is refused.
 keeps, from the body's feet, the farthest `Walk` waypoint on the same layer whose centre line and both side lines (just
 under half a cell either side) pass the segment guard, then repeats from there. Waypoints are only dropped, so every
 kept bend is a cell centre the body lands on, and the final waypoint and both ends of every hop and layer change are
-kept. It needs a space with surface heights, and a route over heightless cells (a `NavGrid.FromWalkable` grid) stays
+kept. Feet use `NavGrid.RestingHeightAt`, falling back to raw surfaces when no resting field is set.
+A route over heightless cells (a `NavGrid.FromWalkable` grid) stays
 raw. Beside walls and fences the side lines keep the staircase. When the guard refuses a step on a straightened
 segment, the body holds `Following` for that tick and the next plan is the raw cell route, then straightening resumes.
 Player routed walk-up gets it through the same driver.
@@ -9015,7 +9042,7 @@ only a view it creates. Ground delegates use rounded absolute sampling by defaul
 `groundSpace: OrdinaryGroundSpace.Frame` for original physics-local axes and local heights without an
 absolute float round trip. See [the ordinary environment contract](../KhaozEngine.Locomotion/README.md#ordinary-contact-environment)
 for installation, exclusions, scope acquisition and lifetime rules. Point-only medium delegates do not
-certify contact water paths. Ordinary head integration is implemented and staged in 20.37.0.
+certify contact water paths. Ordinary head integration is released in 20.37.0.
 The boundary is captured once per frame in local double coordinates. Water producers receive local queries
 and the physics origin, compare their exact double sum with absolute geometry, then return absolute intervals
 and contact columns for local conversion. TileWorld indexes captured rounded column bounds so large tile
@@ -9248,7 +9275,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.38.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.39.0" />
 ```
 
 ```csharp
@@ -12711,7 +12738,7 @@ maximum fall speed and swim-enter depth fraction, a non-Legacy water policy, reg
 with query leases, capsule contacts, complete support footprints and certified capsule sweeps. A medium
 delegate requires a field. Public explicit configuration governs its own water policy and rejects conflicting
 tuning water. Contact plus public explicit configuration is refused as two selections.
-Phase 5a is implemented and staged in 20.37.0. Phase 5b capture and navigation acceptance remain open.
+Phase 5a is released in 20.37.0. Phase 5b ground navigation is staged in 20.39.0.
 
 The retained `MoveCommand(move, run, cameraYaw, jump, faceCamera)` constructor and `default(MoveCommand)` leave
 `ScaleSpeedByAxis` false. They keep nonzero player axes normalized to full speed and keep the legacy dead zone. The
@@ -16792,7 +16819,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.38.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.39.0" />
 ```
 
 ```csharp
@@ -16828,7 +16855,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.38.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.39.0" />
 ```
 
 ```csharp
@@ -17070,7 +17097,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.38.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.39.0" />
 ```
 
 ```csharp
@@ -21430,7 +21457,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.38.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.39.0" />
 </ItemGroup>
 ```
 

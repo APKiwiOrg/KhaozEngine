@@ -21,7 +21,7 @@ analytic-only dry movement. Clamp and dry medium delegates are allowed. A wet po
 The position-only `Step(Vector3, ...)` refuses Contact and names the stateful overload. Legacy requires
 the default foot fraction and the complete default water policy, including zero surface jump speed.
 Undefined selectors throw `ArgumentOutOfRangeException`. Released legacy movement arithmetic is unchanged.
-Phase 5a is implemented and staged in 20.37.0. Network and local heads select the same contact kernel.
+Phase 5a is released in 20.37.0. Network and local heads select the same contact kernel.
 
 Ordinary heads additionally require positive gravity, maximum fall speed and swim-enter depth fraction,
 a non-Legacy water policy, registration, boundary and a view implementing `IPhysicsQueryLeaseSource`,
@@ -85,7 +85,12 @@ The [phase 5a allocation proof](../docs/superpowers/plans/proofs/2026-10-13-cont
 records the production physics lease, ordinary pin, movement lease plus context release binding and player
 read scope independently. Its three bounded rectangular rows allocate only those tokens when warm.
 The read-release callback is cached per simulator. Timing is recorded evidence, with no SG-12 verdict.
-Contact navigation capture remains refused until phase 5b. Wire generation 14 and legacy v1 bake bytes stay unchanged.
+Ordinary contact ground navigation is implemented in staged 20.39.0 through
+[KhaozEngine.Movement](../KhaozEngine.Movement/README.md#capsule-checked-ground-profiles), with certified resting
+anchors, wet unit-pace proofs, KENB format 2 and runtime binding validation. Contact aquatic navigation,
+footprint-only seeds and public explicit bake profiles remain deferred to
+[#1389](https://github.com/APKiwiOrg/KhaozEngine/issues/1389).
+Wire generation 14 and legacy v1 bake bytes stay unchanged.
 
 ## API
 
@@ -677,7 +682,11 @@ certified surface-contact band derives swimming without first sinking below the 
 `ValidatePlacement`, `SettlePlacement` and `ReclassifyContinuation` share contact footprint and shell
 placement, with full-body medium proofs under the captured lease. Exact correction keeps its carried
 state and pose. Cold settlement may approach a nearby eligible seat without running a tick, then
-rebinds support at the published axis. Live continuation rebuilds destination footing/water facts
+rebinds support at the published axis. It publishes the seat and clears vertical velocity only when
+the seated pose grants footing. A body denied footing keeps its supplied pose and vertical velocity,
+with water classified at that pose. Spawn and teleport clear swimming history, so a cold body in the
+swim hysteresis band keeps the existing fresh classification and stands on the bed with footing.
+Live continuation rebuilds destination footing/water facts
 without seating, advancing timers or consuming an accepted land jump buffer. Water reclassification
 still clears an ineligible land buffer. Below-knee solid overlap belongs to the footprint, while a
 shell overlap refuses exact admission. Late proof failure holds the complete input pose.

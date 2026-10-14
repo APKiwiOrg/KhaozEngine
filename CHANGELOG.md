@@ -5,6 +5,31 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.39.0
+
+- Navigation bake doors normalize effective profile kinds before identity work or stream reads. Malformed Contact
+  selections refuse as arguments, while Contact aquatic profiles name #1389. Captures record and verify leased
+  geometry and origin, retain their classifier and require a medium delegate when sampling a contact water field.
+- NavGrid separates optional resting feet heights from raw surface identity. Region goals, layer lookup,
+  ground navigation and bake proof endpoints use the resting pose, with unchanged surface fallback for legacy grids.
+- Locomotion exposes internal contact navigation proof bindings and certified resting anchors without
+  water admission or motion routes. Cold placement seats only with footing, preserving a swimmer's float
+  pose and a falling body's vertical velocity when footing is denied. Explicit grounded arrival uses the
+  shared 1 mm sphere at Hold and destination, with route proof recipe 2 and unchanged swimming tolerance.
+- Ordinary contact ground navigation admits captured surfaces at certified resting anchors, preserving raw layers,
+  headroom and areas. Wet unit-pace bindings prove Holds, directed edges and Stair links from movement outcomes.
+  Fresh grids publish resting feet heights in the capture frame, and unknown anchor queries or changed lease bases
+  refuse the bake.
+- KENB format 2 persists contact profile identities and resting feet heights. Mixed contact and legacy aquatic
+  profiles load without new physics proofs, while all-legacy bakes retain their format 1 bytes. GroundNavigation
+  exposes binding and tuning compatibility checks, and MoveToRange validates its resolved binding before routing.
+- Runtime ground navigation accepts numerically equal signed-zero tuning fields, including reused contact bindings.
+  Stored navigation identities retain their bitwise comparisons and deterministic bytes.
+- Disposing a physics navigation capture releases its retained physics source and classifier without disposing
+  caller-owned providers. Immutable columns, options and origin remain available as data.
+- Physical atmosphere fog no longer shows a horizontal seam at camera eye level. Downward views sample only the
+  sky hemisphere and meet the horizon colour with zero slope, on the GPU and in the CPU fog oracle.
+
 ## 20.38.0
 
 - Added GPU-free rigid attachment definitions, strict JSON and embedded GLB validation in
@@ -12,8 +37,6 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   binding, shared scene uploads, stable part/material motion identities and allocation-free submission.
 - The tile scene exposes attachment uploads through an optional capability. Render3D adds material-part
   import from GLB bytes, transactional surface-map loading and explicit release of owned maps.
-- Physical atmosphere fog samples only the sky hemisphere and meets its horizon colour with zero slope.
-  Rounded tangent directions no longer produce a colour jump in the CPU fog oracle.
 
 ## 20.37.0
 

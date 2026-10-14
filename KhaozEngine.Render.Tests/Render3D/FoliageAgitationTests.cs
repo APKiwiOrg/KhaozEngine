@@ -96,10 +96,12 @@ public sealed class FoliageAgitationTests
         agitation.Update(Vector3.Zero, .1f);
         agitation.Update(Vector3.UnitX * .2f, .1f);
         agitation.Update(Vector3.UnitX * .2f, .1f);
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        float rise = agitation.Update(Vector3.UnitX * .4f, .1f);
-        float settle = agitation.Update(Vector3.UnitX * .4f, .3f);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        float rise = 0f, settle = 0f;
+        long allocated = AllocationMeasurement.Measure("a warmed rise and settle", () =>
+        {
+            rise = agitation.Update(Vector3.UnitX * .4f, .1f);
+            settle = agitation.Update(Vector3.UnitX * .4f, .3f);
+        });
         Assert.Equal(1f, rise);
         Assert.Equal(.5f, settle, 1e-6f);
         Assert.Equal(0, allocated);

@@ -17,6 +17,13 @@ public sealed record ItemsBenchmarkConfig
 
     public bool Quick { get; init; }
     public int Players { get; init; } = 1_000;
+
+    /// <summary>
+    /// The players budget 12 holds pages for, which is <see cref="Players"/> unless
+    /// <c>--resident-players</c> names it. Budget 12 is a live heap difference, so it needs enough players to
+    /// stand clear of the instrument's noise, while budget 13 runs a busy loop per player and wants few.
+    /// </summary>
+    public int ResidentPlayers { get; init; } = 1_000;
     public int Generations { get; init; } = 1_000_000;
     public int Crafts { get; init; } = 20;
     public int Seed { get; init; } = 915;
@@ -42,6 +49,7 @@ public sealed record ItemsBenchmarkConfig
         ArgumentNullException.ThrowIfNull(args);
         bool quick = false;
         int players = 1_000;
+        int? residentPlayers = null;
         int generations = 1_000_000;
         int crafts = 20;
         int seed = 915;
@@ -64,6 +72,9 @@ public sealed record ItemsBenchmarkConfig
                     players = ParseInt(Value(args, ref index, option), option);
                     playersGiven = true;
                     break;
+                case "--resident-players":
+                    residentPlayers = ParseInt(Value(args, ref index, option), option);
+                    break;
                 case "--generations":
                     generations = ParseInt(Value(args, ref index, option), option);
                     generationsGiven = true;
@@ -85,10 +96,12 @@ public sealed record ItemsBenchmarkConfig
             }
         }
 
+        int resolvedPlayers = quick && !playersGiven ? 200 : players;
         var config = new ItemsBenchmarkConfig
         {
             Quick = quick,
-            Players = quick && !playersGiven ? 200 : players,
+            Players = resolvedPlayers,
+            ResidentPlayers = residentPlayers ?? resolvedPlayers,
             Generations = quick && !generationsGiven ? 200_000 : generations,
             Crafts = crafts,
             Seed = seed,
@@ -102,6 +115,7 @@ public sealed record ItemsBenchmarkConfig
     public void Validate()
     {
         InRange(Players, 1, MaximumPlayers, nameof(Players));
+        InRange(ResidentPlayers, 1, MaximumPlayers, nameof(ResidentPlayers));
         InRange(Generations, 1_000, MaximumGenerations, nameof(Generations));
         InRange(Crafts, 1, MaximumCrafts, nameof(Crafts));
         if (DatabasePath is not null && !Path.IsPathFullyQualified(DatabasePath))

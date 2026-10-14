@@ -36,7 +36,23 @@ public sealed partial class PhysicsNavBake
     /// <exception cref="ArgumentException">An aquatic profile's capture did not sample water, or its swim fractions
     /// are not ordered <c>Exit &lt;= Submersion &lt;= Enter</c>.</exception>
     public GroundNavigation BuildProfile(in MoveTuning tuning, NavAreaFilter areas, GroundProfileOptions options)
+        => BuildProfile(tuning, areas, options, null);
+
+    /// <summary>Bakes one capsule class as <see cref="BuildProfile(in MoveTuning, NavAreaFilter, GroundProfileOptions)"/>
+    /// does, scheduled by <paramref name="execution"/>. A null execution or a degree of 1 runs the serial build. Above
+    /// degree 1 an ordinary contact profile proves on worker threads over one build snapshot and produces the same
+    /// profile, and its first failure in serial order is the exception the serial build throws. Legacy profiles always
+    /// build serially. See <see cref="NavBakeExecution"/> for what the caller's physics and providers must support.</summary>
+    /// <exception cref="ArgumentOutOfRangeException">The execution's degree is below 1. This is checked first.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
+    /// <exception cref="NotSupportedException">A contact profile above degree 1 has a physics source or selected
+    /// query view without <see cref="KhaozEngine.Physics.IPhysicsConcurrentReadSource"/>. Checked after every other
+    /// argument and before any worker exists.</exception>
+    /// <exception cref="InvalidOperationException">The build snapshot changed during a parallel contact build.</exception>
+    public GroundNavigation BuildProfile(in MoveTuning tuning, NavAreaFilter areas, GroundProfileOptions? options,
+        NavBakeExecution? execution)
     {
+        int degree = NavBakeExecution.Degree(execution, nameof(execution));
         ArgumentNullException.ThrowIfNull(options);
         EffectiveMovementBindingKind kind = new NavBakeProfile("", tuning, areas) { Aquatic = options.Aquatic }.ResolveKind();
         GroundMoveContext context = Context;
@@ -62,6 +78,12 @@ public sealed partial class PhysicsNavBake
             throw new ArgumentException("An aquatic profile needs swim fractions ordered exit, submersion, enter.", nameof(tuning));
         PhysicsNavColumns columns = aquatic ? AquaticColumns.Derive(Columns, tuning) : Columns;
         var footprint = new NavAreaFootprint(columns, Options, tuning, areas);
+        if (degree > 1 && kind == EffectiveMovementBindingKind.OrdinaryContact)
+        {
+            RequireConcurrentReads(context);
+            return BuildContactProfileInParallel(context, source!, tuning, footprint, height,
+                Options.MaxSurfacesPerColumn, degree);
+        }
         using ContactNavigationProof? contact = kind == EffectiveMovementBindingKind.OrdinaryContact
             ? new(this, context, source!, footprint) : null;
         var candidates = new CandidateColumns(this, context, tuning, footprint, columns, contact);

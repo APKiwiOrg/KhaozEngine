@@ -144,10 +144,74 @@ internal static class SupportQueryDiagnostics
         if (t_enabled) t_ground = new(feet, height, error, supported);
     }
 
+    internal static bool Enabled => t_enabled;
+
     internal static void Enable(bool enabled)
     {
-        if (enabled) t_counts ??= new int[24];
+        if (enabled) t_counts ??= new int[CounterCount];
         t_enabled = enabled;
+    }
+
+    const int CounterCount = 24;
+
+    /// <summary>Every thread-local counter, observation and callback of one thread.</summary>
+    internal readonly record struct ThreadState(bool Enabled, int[]? Counts, Action? Begin, Action? End,
+        SupportGroundObservation Ground, Action<SupportFindObservation>? Find, SupportRouteCounts Routes)
+    {
+        /// <summary>An empty recorder with the given enablement and no callbacks.</summary>
+        internal static ThreadState Fresh(bool enabled) =>
+            new(enabled, enabled ? new int[CounterCount] : null, null, null, default, null, default);
+    }
+
+    /// <summary>Installs <paramref name="next"/> on this thread and returns the state it replaced.</summary>
+    internal static ThreadState Exchange(in ThreadState next)
+    {
+        var prior = new ThreadState(t_enabled, t_counts, t_begin, t_end, t_ground, t_find, t_routes);
+        t_enabled = next.Enabled;
+        t_counts = next.Counts;
+        t_begin = next.Begin;
+        t_end = next.End;
+        t_ground = next.Ground;
+        t_find = next.Find;
+        t_routes = next.Routes;
+        return prior;
+    }
+
+    /// <summary>Adds another thread's counters and routes to this thread's recorder when it is enabled. Route
+    /// counts add, and the maximum medium retry count keeps the larger value.</summary>
+    internal static void Merge(in SupportQueryCounts counts, in SupportRouteCounts routes)
+    {
+        if (!t_enabled) return;
+        int[] c = t_counts!;
+        c[0] += counts.Find;
+        c[1] += counts.Proposals;
+        c[2] += counts.Volumes;
+        c[3] += counts.SelectedStatics;
+        c[4] += counts.MeshLeaves;
+        c[5] += counts.Polygons;
+        c[6] += counts.Members;
+        c[7] += counts.Extrema;
+        c[8] += counts.IntervalFallbacks;
+        c[9] += counts.ExactFallbacks;
+        c[10] += counts.JoinPairs;
+        c[11] += counts.JoinsProved;
+        c[12] += counts.JoinsPruned;
+        c[13] += counts.Unsupported;
+        c[14] += counts.Ambiguous;
+        c[15] += counts.CapacityExceeded;
+        c[16] += counts.AnalyticSamples;
+        c[17] += counts.Bindings;
+        c[18] += counts.PhysicsLeases;
+        c[19] += counts.MovementLeases;
+        c[20] += counts.ProducerPins;
+        c[21] += counts.GroundSubsteps;
+        c[22] += counts.MediumRetries;
+        c[23] += counts.ModeSegments;
+        t_routes = new(t_routes.WallRetries + routes.WallRetries, t_routes.PushedPlacements + routes.PushedPlacements,
+            t_routes.MediumResolves + routes.MediumResolves, Math.Max(t_routes.MaximumMediumRetries, routes.MaximumMediumRetries),
+            t_routes.GroundSegments + routes.GroundSegments, t_routes.SlideSegments + routes.SlideSegments,
+            t_routes.AirSegments + routes.AirSegments, t_routes.WaterSegments + routes.WaterSegments,
+            t_routes.RoundedReads + routes.RoundedReads, t_routes.MediumHandoffs + routes.MediumHandoffs);
     }
 
     internal static void Reset()

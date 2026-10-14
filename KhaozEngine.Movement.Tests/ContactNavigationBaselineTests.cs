@@ -44,15 +44,15 @@ public class ContactNavigationBaselineTests(ITestOutputHelper output)
 
     internal sealed record BaselineBake(GroundNavigationBake Bake, NavBakeExpectation Expectation);
 
-    internal static BaselineBake BuildFixture(string fixture) => fixture switch
+    internal static BaselineBake BuildFixture(string fixture, NavBakeExecution? execution = null) => fixture switch
     {
-        "low-lip-bank" => LowLipBank(),
-        "deck-over-ground" => DeckOverGround(),
-        "wade-only-pool" => WadeOnlyPool(),
-        "rebased-origin" => RebasedOrigin(),
-        "mixed-legacy-contact" => MixedLegacyContact(),
-        "stair-accepted-refused" => Stair(extended: true),
-        "multi-layer-row-bands" => Stair(extended: false),
+        "low-lip-bank" => LowLipBank(execution),
+        "deck-over-ground" => DeckOverGround(execution),
+        "wade-only-pool" => WadeOnlyPool(execution),
+        "rebased-origin" => RebasedOrigin(execution),
+        "mixed-legacy-contact" => MixedLegacyContact(execution),
+        "stair-accepted-refused" => Stair(extended: true, execution),
+        "multi-layer-row-bands" => Stair(extended: false, execution),
         _ => throw new ArgumentOutOfRangeException(nameof(fixture)),
     };
 
@@ -69,21 +69,22 @@ public class ContactNavigationBaselineTests(ITestOutputHelper output)
         return normalized;
     }
 
-    static BaselineBake Bake(GroundMoveContext context, PhysicsNavBakeOptions options, params NavBakeProfile[] profiles)
+    static BaselineBake Bake(GroundMoveContext context, PhysicsNavBakeOptions options, NavBakeExecution? execution,
+        params NavBakeProfile[] profiles)
     {
         var expected = new NavBakeExpectation(options, ContactBakeFile.Sources(), profiles);
         using var capture = PhysicsNavBake.Capture(context, options, _ => 0);
-        return new(GroundNavigationBake.Create(capture, expected.Sources, profiles), expected);
+        return new(GroundNavigationBake.Create(capture, expected.Sources, profiles, execution), expected);
     }
 
-    static BaselineBake LowLipBank()
+    static BaselineBake LowLipBank(NavBakeExecution? execution)
     {
         using var world = LowLipTraversalTests.LipWorld();
         using var context = Context(world);
-        return Bake(context, Options, new NavBakeProfile("player", Tuning with { CapsuleRadius = 0.3f }, default));
+        return Bake(context, Options, execution, new NavBakeProfile("player", Tuning with { CapsuleRadius = 0.3f }, default));
     }
 
-    static BaselineBake DeckOverGround()
+    static BaselineBake DeckOverGround(NavBakeExecution? execution)
     {
         using var scene = new OrdinaryContactScene(Tuning, install: (world, builder) =>
         {
@@ -91,18 +92,18 @@ public class ContactNavigationBaselineTests(ITestOutputHelper output)
             Box(world, builder, "deck", new(-2, 2, -2), new(2, 2.1f, 2));
         });
         using var context = Context(scene);
-        return Bake(context, Options, new NavBakeProfile("player", Tuning, default));
+        return Bake(context, Options, execution, new NavBakeProfile("player", Tuning, default));
     }
 
-    static BaselineBake WadeOnlyPool()
+    static BaselineBake WadeOnlyPool(NavBakeExecution? execution)
     {
         using var world = SwimTraversalProbeTests.PoolWorld();
         using var context = Context(world, ContactNavigationWaterTests.PoolHeight, MovementWaterField.Level("world", 0, -4));
-        return Bake(context, ContactNavigationWaterTests.PoolOptions,
+        return Bake(context, ContactNavigationWaterTests.PoolOptions, execution,
             new NavBakeProfile("player", Tuning with { Water = new(WaterTraversalMode.WadeOnly) }, default));
     }
 
-    static BaselineBake RebasedOrigin()
+    static BaselineBake RebasedOrigin(NavBakeExecution? execution)
     {
         MoveTuning tuning = Tuning with { CapsuleRadius = 0.3f };
         using var scene = new OrdinaryContactScene(tuning, origin: new(8, 2, -4), install: (world, builder) =>
@@ -111,20 +112,20 @@ public class ContactNavigationBaselineTests(ITestOutputHelper output)
             Box(world, builder, "lip", new(0, 0, -2), new(2, 0.03125f, 2));
         });
         using var context = Context(scene);
-        return Bake(context, Options with { MinX = -1.5f, MaxX = 1.5f }, new NavBakeProfile("player", tuning, default));
+        return Bake(context, Options with { MinX = -1.5f, MaxX = 1.5f }, execution, new NavBakeProfile("player", tuning, default));
     }
 
-    static BaselineBake MixedLegacyContact()
+    static BaselineBake MixedLegacyContact(NavBakeExecution? execution)
     {
         using var world = GroundTraversalProbeTests.FlatWorld();
         var water = MovementWaterField.Level("world", 0.1f, -4);
         using var context = Context(world, water: water, medium: (_, _, _) => new MovementMedium(0.1f, true, 1));
-        return Bake(context, Options with { SampleWater = true },
+        return Bake(context, Options with { SampleWater = true }, execution,
             new("a-legacy", Tuning with { Controller = MovementControllerKind.Legacy, Water = default }, default) { Aquatic = true },
             new("z-contact", Tuning with { Water = new(WaterTraversalMode.WadeOnly) }, default));
     }
 
-    static BaselineBake Stair(bool extended)
+    static BaselineBake Stair(bool extended, NavBakeExecution? execution)
     {
         MoveTuning tuning = Tuning with
         { CapsuleRadius = 0.04f, CapsuleHalfHeight = 0.15625f, StepHeight = 0.21f, MaxStepClimbSpeed = 0 };
@@ -141,10 +142,10 @@ public class ContactNavigationBaselineTests(ITestOutputHelper output)
         var options = extended
             ? Options with { MinX = -1, MaxX = 1, MinZ = -1.5f, MaxZ = 1.5f, CellSize = 1 }
             : Options with { MinX = -0.3f, MaxX = 0.3f, MinZ = -1.5f, MaxZ = 1.5f, CellSize = 0.3f };
-        return Bake(context, options, new NavBakeProfile("player", tuning, default));
+        return Bake(context, options, execution, new NavBakeProfile("player", tuning, default));
     }
 
-    static void AssertFixture(string fixture, BaselineBake result)
+    internal static void AssertFixture(string fixture, BaselineBake result)
     {
         GroundNavigation nav = result.Bake.GetProfile(fixture == "mixed-legacy-contact" ? "z-contact" : "player");
         switch (fixture)

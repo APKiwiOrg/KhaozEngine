@@ -17,6 +17,8 @@ public sealed class MapEffectiveResources
     readonly MapEffectiveContext _context;
     readonly MapWaterSet? _water;
     readonly MapBuildingIntent _intent;
+    readonly IReadOnlyDictionary<string, MapSupportBinding> _supportRequests =
+        new ReadOnlyDictionary<string, MapSupportBinding>(new Dictionary<string, MapSupportBinding>(StringComparer.Ordinal));
     public IReadOnlyList<MapResolvedPlacement> Placements { get; }
     public IReadOnlyList<MapPlacementSupport> PlacementSupports { get; }
     public MapSurfaceSet Surfaces => _context.Surfaces.Clone();
@@ -35,6 +37,14 @@ public sealed class MapEffectiveResources
     public string AnnotationDigest { get; }
     internal IReadOnlyDictionary<string, IReadOnlyList<MapExactPoint>> WaterCorners { get; }
     internal IReadOnlyList<MapPrefabAttachmentTransfer> Attachments { get; }
+    /// <summary>World-space support requests of prefab-local placements, keyed by world placement ID. Each is computed
+    /// from the placement's pre-seat frame. Standalone placements keep their authored request and are absent.</summary>
+    internal IReadOnlyDictionary<string, MapSupportBinding> SupportRequests
+    {
+        get => _supportRequests;
+        init => _supportRequests = new ReadOnlyDictionary<string, MapSupportBinding>(
+            value.ToDictionary(p => p.Key, p => p.Value with { }, StringComparer.Ordinal));
+    }
 
     internal MapEffectiveResources(MapEffectiveContext context, IMapSurfaceSource source,
         IReadOnlyList<MapResolvedPlacement> placements, IReadOnlyList<MapPlacementSupport> supports,

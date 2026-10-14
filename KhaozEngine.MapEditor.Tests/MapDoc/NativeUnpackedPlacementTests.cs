@@ -172,6 +172,33 @@ public sealed class NativeUnpackedPlacementTests
         Assert.True(h.Undo(unpack)); Assert.Equal(before, unpack.NativeResourceTransforms!.Single(p => p.Kind == MapPrefabChildKind.Placement && p.OwnerId == leaf.Id).Transform);
         Assert.True(h.Redo(unpack)); Assert.Equal(after, unpack.NativeResourceTransforms!.Single(p => p.Kind == MapPrefabChildKind.Placement && p.OwnerId == leaf.Id).Transform);
     }
+    [Fact]
+    public void UnpackedSpaceBoundMissingY_FloorEditReseatsWorldRequestAndUndoes()
+    {
+        // F-R2. Unpack persists the world request from the pre-seat frame, so a floor edit reseats against the same
+        // request after the seated pose moved, through history, reload, undo and redo.
+        var f = PrefabFixtures.SpaceBoundChild(10);
+        var unpack = MapPrefabEdits.Prepare(f.Document, f.Assets, new MapUnpackPrefab("a")).After;
+        var h = PrefabEditorFixtures.History(unpack, f.Assets);
+        var leaf = unpack.Placements.Single(p => p.Id == "consumer");
+        Assert.Null(leaf.Y);
+        var request = leaf.SupportBinding!;
+        Assert.Equal((MapSupportBindingKind.Space, 12.64f), (request.Kind, request.ReferenceY!.Value));
+        MapEffectiveTransform Pose() => unpack.NativeResourceTransforms!.Single(p => p.Kind == MapPrefabChildKind.Placement && p.OwnerId == leaf.Id).Transform;
+        var before = Pose();
+        Assert.Equal(12.4f, (float)before.Y, 5);
+        var patch = unpack.Surfaces.Patches[new(PrefabFixtures.SupportFloorId, 0, 0)];
+        h.Execute(unpack, new TerrainEditCommand(new MapSetCornerHeights(patch.Key, 0, 0, patch.Width + 1, patch.Depth + 1,
+            Enumerable.Repeat(250, patch.Heights.Length).ToArray())));
+        var after = Pose();
+        Assert.Equal(before with { Y = (double)13.0f }, after);
+        Assert.Equal(request, unpack.Placements.Single(p => p.Id == leaf.Id).SupportBinding);
+        PrefabEditorFixtures.Reload(unpack, f.Assets);
+        Assert.True(h.Undo(unpack)); Assert.Equal(before, Pose());
+        Assert.Equal(request, unpack.Placements.Single(p => p.Id == leaf.Id).SupportBinding);
+        Assert.True(h.Redo(unpack)); Assert.Equal(after, Pose());
+        PrefabEditorFixtures.Reload(unpack, f.Assets);
+    }
     static void AssertTiles(MapDocument before, MapDocument after, MapAssetClosure assets, MapNativeEditEffects effects)
     {
         var options = new MapWorldBuildOptions(PrefabFixtures.Options(), "fixture", new());

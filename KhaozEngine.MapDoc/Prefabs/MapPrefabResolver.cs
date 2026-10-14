@@ -195,18 +195,19 @@ public static class MapPrefabResolver
         IMapSurfaceSource Source(MapEffectiveContext value) => nativeSource is null ? new MapEffectiveSurfaceSource(value) : new MapComposedSurfaceSource(value, nativeSource);
         var source = Source(context);
         var effectivePlacements = new List<MapPlacement>();
+        var supportRequests = new Dictionary<string, MapSupportBinding>(StringComparer.Ordinal);
         foreach (var child in children.OfType<MapPrefabPlacementChild>())
         {
             var pose = transforms[MapEffectiveContext.Key(MapPrefabChildKind.Placement, child.Value.Id)];
             var p = MapPrefabReferenceWalker.Copy(child.Value, child.Value.Id, child.Value.SupportBinding);
             p.X = (float)pose.X; p.Z = (float)pose.Z; p.Yaw = (float)pose.YawRadians; p.Scale = (float)pose.Scale;
             p.Y = child.Value.Y is null ? null : (float)pose.Y;
-            if (p.SupportBinding is { } binding) p.SupportBinding = binding with
+            // A standalone request is already in world space. Only a prefab-local request takes the pre-seat pose.
+            if (p.SupportBinding is { } binding && !standaloneNumbers.ContainsKey(child.Value.Id))
             {
-                ReferenceY = binding.ReferenceY is { } y ? new MapResourceTransform(pose).Height(MapExactValue.FromSingle(y)).ToSingle() : null,
-                SearchBelow = binding.SearchBelow is { } below ? (float)(below * pose.Scale) : null,
-                SearchAbove = binding.SearchAbove is { } above ? (float)(above * pose.Scale) : null,
-            };
+                p.SupportBinding = WorldRequest(binding, pose);
+                supportRequests.Add(child.Value.Id, p.SupportBinding with { });
+            }
             effectivePlacements.Add(p);
         }
         var placements = MapResolverV2.ResolveEffectivePlacements(authored, assets, effectivePlacements, transforms, source, out var supports, owners);
@@ -277,8 +278,17 @@ public static class MapPrefabResolver
             Roofs = roofs.Where(r => r.Scope != MapPrefabReferenceScope.World || !inactivePlacementIds.Contains(r.Id) || livePlacementIds.Contains(r.Id)).ToArray(),
             Storeys = Storeys(),
         };
-        return new(context, source, placements, supports, water, intent, lightPoints, waterCorners, attachments, markerPoints, markerInstances);
+        return new(context, source, placements, supports, water, intent, lightPoints, waterCorners, attachments, markerPoints, markerInstances)
+        { SupportRequests = supportRequests };
     }
+
+    /// <summary>The world-space form of a prefab-local support request in its placement's pre-seat frame.</summary>
+    internal static MapSupportBinding WorldRequest(MapSupportBinding binding, MapEffectiveTransform pose) => binding with
+    {
+        ReferenceY = binding.ReferenceY is { } y ? new MapResourceTransform(pose).Height(MapExactValue.FromSingle(y)).ToSingle() : null,
+        SearchBelow = binding.SearchBelow is { } below ? (float)(below * pose.Scale) : null,
+        SearchAbove = binding.SearchAbove is { } above ? (float)(above * pose.Scale) : null,
+    };
     static MapPrefabChild OwnerPose(MapPrefabChild child, IReadOnlyList<MapPrefabChild> children,
         IReadOnlyDictionary<MapPrefabChildKey, MapPrefabChildKey> owners) =>
         child with { LocalTransform = MapPrefabMaterializationOverrides.Pose(children.OfType<MapPrefabPlacementChild>().Single(p => p.Key == owners[child.Key]).Value) };

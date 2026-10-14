@@ -168,6 +168,10 @@ internal static class MapPrefabEditPreparation
                     var frame = resources.Transforms[MapEffectiveContext.Key(child.Key.Kind, id)];
                     copy.X = (float)frame.X; copy.Y = p.Value.Y is null ? null : (float)frame.Y; copy.Z = (float)frame.Z;
                     copy.Yaw = (float)frame.YawRadians; copy.Scale = (float)frame.Scale;
+                    // F-R2. The standalone copy keeps a world-space request computed from the pre-seat frame, never
+                    // from the seated floor height that the persisted pose now carries.
+                    if (copy.SupportBinding is { } local && resources.SupportRequests.TryGetValue(id, out var world))
+                        copy.SupportBinding = local with { ReferenceY = world.ReferenceY, SearchBelow = world.SearchBelow, SearchAbove = world.SearchAbove };
                     copy.NumericId = bindings.Single(b => b.WorldId == id && b.Child.Kind == MapPrefabChildKind.Placement).NumericId;
                     document.Placements.Add(copy);
                     break;

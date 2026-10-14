@@ -196,6 +196,12 @@ compile. Those two context values are proposed operational defaults, not world l
 `Complete`, `CapacityExceeded` (with no partial result), `NotRepresentable`, `Invalid` or `MissingGeometry`.
 Declared seam and strip vertex sequences stay strict. Refinement never waives a matching subdivision.
 
+**Broad-phase budgets.** `MapPartialPaintCompiler` charges `MapRefinementLimits` pair checks per broad-phase
+candidate, a target face and paint source whose exact bounds overlap, found by an exact bounds sweep. Work
+therefore follows the painted area, not the whole target surface. Only target cells whose exact lattice rectangle
+meets some paint source's bounds are counted against the source and context face limits, from cell bytes before
+any compile. A posed target keeps every cell and relies on the exact face sweep alone.
+
 **Legacy lower coverage.** Only a lower bound of kind `MapBoundKind.LegacyExteriorV1`, in an `Exterior`
 space with an `OpenTop` upper bound, may cover a presence-1 `LegacyTileWorld` void or NoDraw cell.
 `MapLegacyExteriorRecipe.Check` returns the first failing rule in the order `legacy recipe: space`,

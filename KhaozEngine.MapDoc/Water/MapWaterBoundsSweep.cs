@@ -72,6 +72,68 @@ internal static class MapWaterBoundsSweep
         }
     }
 
+    /// <summary>Pairs of one left and one right box whose bounds overlap with positive extent on both axes, sorted by
+    /// left index and then right index. Boxes of one list are never compared with each other. Work is proportional to
+    /// the boxes plus the cross pairs whose bounds overlap or touch. Callers charge each returned candidate before its
+    /// exact test, so the comparisons here stay uncharged. Every decision is an exact comparison.</summary>
+    internal static IReadOnlyList<(int Left, int Right)> Cross(IReadOnlyList<MapWaterPolygons.Bounds> left,
+        IReadOnlyList<MapWaterPolygons.Bounds> right)
+    {
+        var result = new List<(int Left, int Right)>();
+        int n = left.Count, total = n + right.Count;
+        if (n == 0 || right.Count == 0) return result;
+        MapWaterPolygons.Bounds At(int i) => i < n ? left[i] : right[i - n];
+        MapWideRational[] zs = Enumerable.Range(0, total).SelectMany(i => new[] { At(i).Min.Z, At(i).Max.Z }).Distinct().Order().ToArray();
+        var low = new int[total];
+        var high = new int[total];
+        for (int i = 0; i < total; i++)
+        {
+            low[i] = Array.BinarySearch(zs, At(i).Min.Z);
+            high[i] = Array.BinarySearch(zs, At(i).Max.Z);
+        }
+        int[] entry = Enumerable.Range(0, total).ToArray();
+        Array.Sort(entry, (a, b) => Compare(At(a).Min.X, a, At(b).Min.X, b));
+        int[] exit = Enumerable.Range(0, total).ToArray();
+        Array.Sort(exit, (a, b) => Compare(At(a).Max.X, a, At(b).Max.X, b));
+
+        var state = new State[total];
+        var byLow = new[] { new SortedSet<(int Low, int Index)>(), new SortedSet<(int Low, int Index)>() };
+        var stab = new[] { new StabTree(zs.Length), new StabTree(zs.Length) };
+        int retired = 0;
+        foreach (int index in entry)
+        {
+            MapWaterPolygons.Bounds current = At(index);
+            // Retire every box that ends at or before the current start. It cannot overlap anything that enters later.
+            for (; retired < total; retired++)
+            {
+                int old = exit[retired];
+                if (At(old).Max.X.CompareTo(current.Min.X) > 0) break;
+                if (state[old] == State.Active)
+                {
+                    int list = old < n ? 0 : 1;
+                    byLow[list].Remove((low[old], old));
+                    stab[list].Update(low[old], high[old], old, add: false);
+                }
+                state[old] = State.Retired;
+            }
+            int side = index < n ? 0 : 1, other = 1 - side;
+            // Active boxes of the other list that start inside the current Z range, then those that start below it.
+            if (high[index] - 1 >= low[index])
+                foreach ((int _, int candidate) in byLow[other].GetViewBetween((low[index], int.MinValue), (high[index] - 1, int.MaxValue)))
+                    if (At(candidate).OverlapsOpen(current)) Add(candidate, index);
+            foreach (int candidate in stab[other].Stab(low[index]))
+                if (low[candidate] < low[index] && At(candidate).OverlapsOpen(current)) Add(candidate, index);
+            if (state[index] == State.Retired) continue;
+            byLow[side].Add((low[index], index));
+            stab[side].Update(low[index], high[index], index, add: true);
+            state[index] = State.Active;
+        }
+        result.Sort();
+        return result;
+
+        void Add(int a, int b) => result.Add(a < n ? (a, b - n) : (b, a - n));
+    }
+
     enum State : byte { Pending, Active, Retired }
 
     static int Compare(MapWideRational a, int ia, MapWideRational b, int ib)

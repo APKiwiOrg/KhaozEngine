@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Numerics;
+using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Water;
@@ -33,86 +35,96 @@ public static class MapPartialPaintCompiler
         { throw new MapDocumentException("NotRepresentable: paint intersection cannot be emitted exactly. No regions were published.", error); }
     }
 
+    // Work follows painted area. Paint sources compile first. Only target cells whose exact lattice rectangle meets a
+    // source's bounds are counted and compiled, then an exact bounds sweep gives each target face its candidate sources
+    // in source order. A pair check is charged per candidate, never per face and source of the whole target.
     static MapPaintRegionSet CompileCore(MapScopedSurfaces view, MapSurfaceRef target, MapSurfaceRef[] paints, MapRefinementLimits limits)
     {
         var work = new Work(limits);
-        var refs = paints.Append(target).ToDictionary(s => s.Id, StringComparer.Ordinal);
-        var keys = view.Witness.Present.Select(p => p.Key).Where(k => refs.ContainsKey(k.SurfaceId)).Order().ToArray();
-        work.Require(keys.Length <= limits.MaxContextPatches, "context patches");
-        var inputs = keys.Select(key =>
+        var refs = paints.ToDictionary(s => s.Id, StringComparer.Ordinal);
+        var present = view.Witness.Present.Select(p => p.Key).Order().ToArray();
+        var paintKeys = present.Where(k => refs.ContainsKey(k.SurfaceId)).ToArray();
+        work.Require(paintKeys.Length <= limits.MaxContextPatches, "context patches");
+        var inputs = paintKeys.Select(key =>
         {
-            if (!view.TryAcquiredPatch(key, out var patch, out _) || patch is null)
-                throw new MapDocumentException("MissingGeometry: paint or target patch unavailable.");
+            var patch = Acquired(view, key);
             var surface = refs[key.SurfaceId];
-            var adapter = surface.Role == MapSurfaceRole.PaintOverride ? surface with { Role = MapSurfaceRole.SupportFloor, PaintPriority = 0 } : surface;
+            var adapter = surface with { Role = MapSurfaceRole.SupportFloor, PaintPriority = 0 };
             return (Surface: surface, Adapter: adapter, Patch: patch,
                 Faces: MapSurfaceCompiler.CountFaces(adapter, patch, MapSlotCellMask.All));
         }).ToArray();
-        long targetCount = inputs.Where(p => p.Surface.Id == target.Id).Sum(p => p.Faces);
-        long paintCount = inputs.Where(p => p.Surface.Id != target.Id).Sum(p => p.Faces);
-        work.Require(targetCount <= limits.MaxSourceFacesPerBound && paintCount <= limits.MaxSourceFacesPerBound, "source faces");
-        work.Require(targetCount + paintCount <= limits.MaxContextFaces, "context faces");
-        var patches = inputs.Select(p => (p.Surface, Geometry: MapSurfaceCompiler.Compile(p.Adapter, p.Patch))).ToArray();
-        var source = patches.Where(p => p.Surface.Id != target.Id).GroupBy(p => p.Surface)
+        long paintCount = inputs.Sum(p => p.Faces);
+        work.Require(paintCount <= limits.MaxSourceFacesPerBound, "source faces");
+        work.Require(paintCount <= limits.MaxContextFaces, "context faces");
+        var source = inputs.Select(p => (p.Surface, Geometry: MapSurfaceCompiler.Compile(p.Adapter, p.Patch))).GroupBy(p => p.Surface)
             .SelectMany(group => PaintSources(view, group.Key, group.Select(p => p.Geometry), work))
             .OrderByDescending(p => p.Priority).ThenBy(p => p.Id, StringComparer.Ordinal).ThenBy(p => p.Material.Face).ToArray();
-        var regions = new List<MapPaintRegion>();
-        foreach (var patch in patches.Where(p => p.Surface.Id == target.Id))
+        var sourceBounds = source.Select(p => MapWaterPolygons.Bounds.Of(p.Polygon)).ToArray();
+        var cells = TargetCells(view, target, sourceBounds, present.Where(k => k.SurfaceId == target.Id).ToArray());
+        work.Require(paintKeys.Length + cells.Count <= limits.MaxContextPatches, "context patches");
+        var targets = cells.Select(entry => (Patch: Acquired(view, entry.Key), Cells: entry.Value)).ToArray();
+        long targetCount = targets.Sum(p => MapSurfaceCompiler.CountFaces(target, p.Patch, p.Cells));
+        work.Require(targetCount <= limits.MaxSourceFacesPerBound, "source faces");
+        work.Require(targetCount + paintCount <= limits.MaxContextFaces, "context faces");
+        var faces = targets.SelectMany(p =>
         {
-            var geometry = MapEffectiveGeometry.TransformPatch(view, patch.Geometry);
-            foreach (var face in geometry.Faces)
+            var geometry = MapEffectiveGeometry.TransformPatch(view, MapSurfaceCompiler.Compile(target, p.Patch, p.Cells, MapSurfaceCompiler.MaxFacesPerPatch));
+            return geometry.Faces.Select(face => (Face: face, Triangle: geometry.ExactTriangle(face)));
+        }).Select(f => (f.Face, f.Triangle, Parent: Polygon(f.Triangle))).ToArray();
+        var pairs = MapWaterBoundsSweep.Cross(faces.Select(f => MapWaterPolygons.Bounds.Of(f.Parent)).ToArray(), sourceBounds);
+        var regions = new List<MapPaintRegion>();
+        for (int next = 0; next < pairs.Count;)
+        {
+            int index = pairs[next].Left;
+            var (face, triangle, parent) = faces[index];
+            var candidates = new List<Source>();
+            for (; next < pairs.Count && pairs[next].Left == index; next++)
             {
-                var triangle = geometry.ExactTriangle(face);
-                var parent = Polygon(triangle);
-                var candidates = new List<Source>();
-                foreach (var paint in source)
+                var paint = source[pairs[next].Right];
+                work.Pair();
+                var clipped = MapWideRefinementGeometry.Normalize(MapEffectiveGeometry.Intersect(paint.Polygon, parent));
+                if (MapEffectiveGeometry.AreaWide(clipped).Sign == 0) continue;
+                candidates.Add(paint with { Material = paint.Material with { Face = face.Key }, Polygon = clipped });
+                work.Polygons(candidates.Select(c => c.Polygon));
+            }
+            // Check authored conflicts before occlusion, including conflicts hidden by higher-priority paint.
+            for (int i = 0; i < candidates.Count; i++)
+                for (int j = i + 1; j < candidates.Count && candidates[j].Priority == candidates[i].Priority; j++)
                 {
+                    var a = candidates[i]; var b = candidates[j];
+                    if (a.Material == b.Material) continue;
                     work.Pair();
-                    if (!BoundsOverlap(parent, paint.Polygon)) continue;
-                    var clipped = MapWideRefinementGeometry.Normalize(MapEffectiveGeometry.Intersect(paint.Polygon, parent));
-                    if (MapEffectiveGeometry.AreaWide(clipped).Sign == 0) continue;
-                    candidates.Add(paint with { Material = paint.Material with { Face = face.Key }, Polygon = clipped });
-                    work.Polygons(candidates.Select(c => c.Polygon));
+                    if (BoundsOverlap(a.Polygon, b.Polygon) && MapEffectiveGeometry.AreaWide(MapEffectiveGeometry.Intersect(a.Polygon, b.Polygon)).Sign > 0)
+                        throw new MapDocumentException($"Invalid: equal-priority paint '{a.Id}' and '{b.Id}' overlap with conflicting materials. Author an explicit priority.");
                 }
-                // Check authored conflicts before occlusion, including conflicts hidden by higher-priority paint.
-                for (int i = 0; i < candidates.Count; i++)
-                    for (int j = i + 1; j < candidates.Count && candidates[j].Priority == candidates[i].Priority; j++)
-                    {
-                        var a = candidates[i]; var b = candidates[j];
-                        if (a.Material == b.Material) continue;
-                        work.Pair();
-                        if (BoundsOverlap(a.Polygon, b.Polygon) && MapEffectiveGeometry.AreaWide(MapEffectiveGeometry.Intersect(a.Polygon, b.Polygon)).Sign > 0)
-                            throw new MapDocumentException($"Invalid: equal-priority paint '{a.Id}' and '{b.Id}' overlap with conflicting materials. Author an explicit priority.");
-                    }
-                var accepted = new List<Source>();
-                foreach (var candidate in candidates)
+            var accepted = new List<Source>();
+            foreach (var candidate in candidates)
+            {
+                var pieces = new List<IReadOnlyList<MapWideXz>> { candidate.Polygon };
+                foreach (var owner in accepted)
                 {
-                    var pieces = new List<IReadOnlyList<MapWideXz>> { candidate.Polygon };
-                    foreach (var owner in accepted)
-                    {
-                        var remaining = new List<IReadOnlyList<MapWideXz>>();
-                        foreach (var piece in pieces)
-                        {
-                            work.Pair();
-                            if (!BoundsOverlap(piece, owner.Polygon)) remaining.Add(piece);
-                            else remaining.AddRange(Subtract(piece, owner.Polygon));
-                            work.Polygons(remaining);
-                        }
-                        pieces = remaining;
-                        if (pieces.Count == 0) break;
-                    }
+                    var remaining = new List<IReadOnlyList<MapWideXz>>();
                     foreach (var piece in pieces)
                     {
-                        accepted.Add(candidate with { Polygon = piece });
-                        work.Polygons(accepted.Select(c => c.Polygon));
+                        work.Pair();
+                        if (!BoundsOverlap(piece, owner.Polygon)) remaining.Add(piece);
+                        else remaining.AddRange(Subtract(piece, owner.Polygon));
+                        work.Polygons(remaining);
                     }
+                    pieces = remaining;
+                    if (pieces.Count == 0) break;
                 }
-                foreach (var region in accepted)
+                foreach (var piece in pieces)
                 {
-                    var points = region.Polygon.Select(p => Lift(triangle, p)).ToArray();
-                    work.Emit(points.Length);
-                    regions.Add(new(face.Key, region.Id, region.Priority, region.Material, points));
+                    accepted.Add(candidate with { Polygon = piece });
+                    work.Polygons(accepted.Select(c => c.Polygon));
                 }
+            }
+            foreach (var region in accepted)
+            {
+                var points = region.Polygon.Select(p => Lift(triangle, p)).ToArray();
+                work.Emit(points.Length);
+                regions.Add(new(face.Key, region.Id, region.Priority, region.Material, points));
             }
         }
         return new(regions, Digest(regions));
@@ -200,6 +212,54 @@ public static class MapPartialPaintCompiler
                 yield return new(surface.Id, surface.PaintPriority, boundary.Key, polygon);
             }
         }
+    }
+
+    static MapSurfacePatch Acquired(MapScopedSurfaces view, MapPatchKey key) =>
+        view.TryAcquiredPatch(key, out var patch, out _) && patch is not null ? patch
+            : throw new MapDocumentException("MissingGeometry: paint or target patch unavailable.");
+
+    // Present target patches in key order, each with its cells whose exact lattice rectangle overlaps some source's
+    // bounds. Patches without such a cell are never read or counted. A posed target keeps every cell, because its
+    // lattice is reached only through the rounded pose, so the exact face sweep alone culls it.
+    static List<KeyValuePair<MapPatchKey, MapSlotCellMask>> TargetCells(MapScopedSurfaces view, MapSurfaceRef target,
+        IReadOnlyList<MapWaterPolygons.Bounds> sources, IReadOnlyList<MapPatchKey> keys)
+    {
+        if (view.EffectiveContext?.Transform(MapPrefabChildKind.Surface, target.Id) is not null)
+            return keys.Select(key => KeyValuePair.Create(key, MapSlotCellMask.All)).ToList();
+        var slots = keys.ToDictionary(key => (key.SlotX, key.SlotZ), _ => new HashSet<int>());
+        foreach (var bounds in sources)
+        {
+            var range = MapLatticeRanges.CellRange(target.Frame, new(Whole(bounds.Min.X, false), Whole(bounds.Min.Z, false)),
+                new(Whole(bounds.Max.X, true), Whole(bounds.Max.Z, true)));
+            if (range.MaxXExclusive <= range.MinX || range.MaxZExclusive <= range.MinZ) continue;
+            long minX = MapSurfaceRanges.Floor(range.MinX, 64), maxX = MapSurfaceRanges.Floor(range.MaxXExclusive - 1, 64);
+            long minZ = MapSurfaceRanges.Floor(range.MinZ, 64), maxZ = MapSurfaceRanges.Floor(range.MaxZExclusive - 1, 64);
+            // Visit the fewer of the slots the range spans and the present target slots.
+            var hit = (maxX - minX + 1) * (double)(maxZ - minZ + 1) <= slots.Count
+                ? Spanned(minX, maxX, minZ, maxZ).Where(slots.ContainsKey)
+                : slots.Keys.Where(s => s.SlotX >= minX && s.SlotX <= maxX && s.SlotZ >= minZ && s.SlotZ <= maxZ);
+            foreach (var (slotX, slotZ) in hit)
+                for (long z = Math.Max(range.MinZ, slotZ * 64); z < Math.Min(range.MaxZExclusive, slotZ * 64 + 64); z++)
+                    for (long x = Math.Max(range.MinX, slotX * 64); x < Math.Min(range.MaxXExclusive, slotX * 64 + 64); x++)
+                        slots[(slotX, slotZ)].Add((int)((z - slotZ * 64) * 64 + x - slotX * 64));
+        }
+        return keys.Where(key => slots[(key.SlotX, key.SlotZ)].Count != 0)
+            .Select(key => KeyValuePair.Create(key, MapSlotCellMask.Of(slots[(key.SlotX, key.SlotZ)]))).ToList();
+    }
+
+    static IEnumerable<(long SlotX, long SlotZ)> Spanned(long minX, long maxX, long minZ, long maxZ)
+    {
+        for (long z = minZ; z <= maxZ; z++)
+            for (long x = minX; x <= maxX; x++) yield return (x, z);
+    }
+
+    // An exact bound, or the enclosing whole metre when the generated vertex is not representable.
+    static MapExactValue Whole(MapWideRational value, bool ceiling)
+    {
+        if (value.TryNarrow(out var exact)) return exact;
+        var quotient = BigInteger.DivRem(value.Numerator, value.Denominator, out var remainder);
+        if (ceiling ? remainder.Sign > 0 : remainder.Sign < 0) quotient += ceiling ? 1 : -1;
+        return new((long)quotient, 1);
     }
 
     static MapWideRational AtZ(Edge edge, MapWideRational z) => edge.A.X.Add(edge.B.X.Subtract(edge.A.X)

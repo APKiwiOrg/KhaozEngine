@@ -48,6 +48,8 @@ public sealed class ShippedBuildingInputGuardTests
     [InlineData("duplicate-json-member")]
     [InlineData("escaping-texture")]
     [InlineData("rooted-texture")]
+    [InlineData("standalone-roof-linked")]
+    [InlineData("standalone-wall")]
     public void PrivateBuildingClosure_RefusesMissingOrUnverifiedInput(string variant)
     {
         using var input = ShippedBuildingGuardFixtures.Create(variant);
@@ -68,6 +70,7 @@ public sealed class ShippedBuildingInputGuardTests
     [InlineData("curved-selection")]
     [InlineData("quarter-turn")]
     [InlineData("nested-texture")]
+    [InlineData("standalone-roof")]
     public void CompleteInventedBuilding_ClosesInputsAndComparesBothHeads(string variant)
     {
         using var fixture = ShippedBuildingGuardFixtures.Create(variant);
@@ -75,7 +78,8 @@ public sealed class ShippedBuildingInputGuardTests
         {
             var inputs = ShippedBuildingInputs.Read(i);
             Assert.Single(inputs.Prefabs);
-            Assert.Equal(variant == "shared-concealment" ? namesPerBuilding * 2 : namesPerBuilding, inputs.World.AllObjects().Count());
+            Assert.Equal((variant == "shared-concealment" ? namesPerBuilding * 2 : namesPerBuilding) + (variant == "standalone-roof" ? 1 : 0),
+                inputs.World.AllObjects().Count());
             Assert.NotEmpty(inputs.MeshBytes);
             var result = ShippedBuildingComparison.Compare(inputs);
             report.Record("buildings", result.DetailJson);
@@ -135,6 +139,17 @@ public sealed class ShippedBuildingInputGuardTests
         Assert.Contains("building-parity", failure.Message);
         Assert.Contains("failures", File.ReadAllText(fixture.Environment["KHAOZ_R2_ORACLE_REPORT"]!));
     }
+    [Theory]
+    [InlineData("standalone-roof-linked", "standalone roof has concealment")]
+    [InlineData("standalone-wall", "unassigned building leaf")]
+    public void StandaloneLeaf_RefusesForItsSpecificReason(string variant, string reason)
+    {
+        // F-R6. Only an inventoried unlinked roof may stand outside every nominated building.
+        using var fixture = ShippedBuildingGuardFixtures.Create(variant);
+        var error = Assert.Throws<InvalidDataException>(() => ShippedBuildingInputs.Read(PrivateOracleInputs.Require(fixture.Environment)));
+        Assert.Equal(reason, error.Message);
+    }
+
     [Fact]
     public void ColliderTopology_WithUnchangedVertexAndNormalBagsIsRefused()
     {
@@ -306,6 +321,9 @@ internal sealed class ShippedBuildingGuardFixtures : IDisposable
         var names = new[] { "wall", "roof", "lamp", "shelter" };
         var objects = names.Select((name, index) => world.AddObject(name, index, 0, 0, variant == "quarter-turn" && name == "wall" ? 1 : 0, new[] { "first", "second" })).ToArray();
         var otherObjects = variant == "shared-concealment" ? names.Select((name, index) => world.AddObject(name, index, 2, 0, 0, new[] { "first", "second" })).ToArray() : [];
+        // F-R6. A source leaf outside every nominated building. Only an unlinked roof may stand alone.
+        string? standaloneKind = variant switch { "standalone-roof" or "standalone-roof-linked" => "shelter", "standalone-wall" => "wall", _ => null };
+        var standalone = standaloneKind is null ? null : world.AddObject(standaloneKind, 3, 3, 0, 1, new[] { "first", "second" });
         TileWorldFile.Save(world, Path.Combine(root, "world"));
         string? texture = variant switch
         {
@@ -489,6 +507,28 @@ internal sealed class ShippedBuildingGuardFixtures : IDisposable
         document.NativeAssets = new() { manifestRef };
         document.NumericIdHighWaterMark = world.AllObjects().Max(o => o.Id);
         document.BuildingIntent = new(1, [], [], [], []);
+        if (standalone is not null)
+        {
+            var archetype = catalogs.Archetype(standalone.ArchetypeId)!;
+            Vector3 at = TileObjectPlacement.AnchorPosition(world, archetype, standalone);
+            document.Placements.Add(new MapPlacement
+            {
+                Id = "standalone-" + standalone.ArchetypeId,
+                Kind = standalone.ArchetypeId,
+                AssetId = standalone.ArchetypeId,
+                X = at.X,
+                Y = at.Y,
+                Z = at.Z,
+                Yaw = TileObjectPlacement.YawRadians(archetype, standalone.Rotation),
+                Scale = 1,
+                NumericId = standalone.Id,
+                Tags = new() { "first", "second" },
+            });
+            var roofEntry = new MapPrefabReference(MapPrefabReferenceScope.World, MapPrefabChildKind.Placement, "standalone-" + standalone.ArchetypeId);
+            document.BuildingIntent = new(1, variant == "standalone-roof-linked" ? new[] { new MapRoofLinkDoc("standalone-link", roofEntry,
+                new[] { new MapPrefabReference(MapPrefabReferenceScope.World, MapPrefabChildKind.Record, "b/room") }, [], 3) } : [], [], [], [])
+            { Roofs = standaloneKind == "shelter" ? new[] { roofEntry } : [] };
+        }
         document.Prefabs = new(1, 1, new[] { new MapPrefabInstance("b", prefabRef.Id, prefabRef.Sha256,
             new(Vector3.Zero, 0, 1), new("exterior", anchor), new(bindings), variant == "actual-override"
                 ? new MapPrefabOverride[] { new MapPrefabPlacementOverride(new(MapPrefabChildKind.Placement, "lamp"), null, null, objects[2].Tags!.ToArray()) } : []) }, []);
@@ -583,6 +623,26 @@ internal sealed class ShippedBuildingGuardFixtures : IDisposable
             centreProbe["sourceSpaceId"] = "c/room"; centreProbe["spaceId"] = "c/room"; comparison["probes"]!.AsArray().Add(centreProbe);
             foreach (var field in new[] { "buildings", "originalLeaves", "roofs", "openings", "doorwayRecords", "dedicatedLights" })
                 comparison["expectations"]![field] = comparison["expectations"]![field]!.GetValue<int>() * 2;
+        }
+        if (standalone is not null)
+        {
+            // No definition and no building. The leaf lists no building, and the roof inventory names it unlinked.
+            var leaf = comparison["leaves"]![3]!.DeepClone();
+            string id = "standalone-" + standalone.ArchetypeId;
+            leaf["sourceId"] = standalone.Id; leaf["buildingId"] = null; leaf["key"] = id; leaf["worldId"] = id;
+            leaf["assetId"] = standalone.ArchetypeId; leaf["meshPath"] = "assets/" + standalone.ArchetypeId + ".mesh";
+            leaf["selectionPath"] = "assets/" + standalone.ArchetypeId + ".selection";
+            leaf["metadata"]!["source"] = "invented/" + standalone.ArchetypeId;
+            comparison["leaves"]!.AsArray().Add(leaf);
+            comparison["selectedLeafIds"]!.AsArray().Add(standalone.Id);
+            comparison["expectations"]!["originalLeaves"] = 5;
+            if (standaloneKind == "shelter")
+            {
+                comparison["roofs"]!.AsArray().Add(variant == "standalone-roof-linked"
+                    ? JsonNode.Parse("{\"leafId\":" + standalone.Id + ",\"linkId\":\"standalone-link\",\"rooms\":[\"b/room\"],\"groups\":[],\"aboveY\":3}")
+                    : JsonNode.Parse("{\"leafId\":" + standalone.Id + ",\"linkId\":null,\"rooms\":[],\"groups\":[],\"aboveY\":3}"));
+                comparison["expectations"]!["roofs"] = 3;
+            }
         }
         if (variant == "actual-override") comparison["buildings"]![0]!["overrides"]!.AsArray().Add(JsonNode.Parse("""{"kind":"Placement","key":"lamp","operation":"placement"}"""));
         switch (variant)

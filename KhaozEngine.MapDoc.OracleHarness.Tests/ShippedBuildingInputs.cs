@@ -138,7 +138,7 @@ internal sealed class ShippedBuildingInputs
             var instance = instances[id];
             Require(!instance.Removed && !instance.Unpacked && instance.ResourceId == Text(definition, "resourceId"),
                 "inactive or mismatched instance");
-            var assigned = leaves.Where(l => Text(l, "buildingId") == id).ToArray();
+            var assigned = leaves.Where(l => BuildingOf(l) == id).ToArray();
             Require(Ids(building, "leafIds").Order().SequenceEqual(assigned.Select(l => l.GetProperty("sourceId").GetInt64()).Order()),
                 "incomplete actual instance membership");
             var overrides = Array(building, "overrides");
@@ -168,9 +168,10 @@ internal sealed class ShippedBuildingInputs
         foreach (var leaf in leaves)
         {
             Shape(leaf, "sourceId", "buildingId", "key", "worldId", "assetId", "meshPath", "selectionPath", "metadata");
-            Require(buildings.ContainsKey(Text(leaf, "buildingId")), "unassigned building leaf");
             var archetype = Catalogs.Archetype(objects[leaf.GetProperty("sourceId").GetInt64()].ArchetypeId)
                 ?? throw new InvalidDataException("unknown source archetype");
+            if (BuildingOf(leaf) is { } buildingId) Require(buildings.ContainsKey(buildingId), "unassigned building leaf");
+            else ValidateStandaloneRoof(leaf, archetype);
             Require(Text(leaf, "meshPath") == archetype.MeshRef, "mesh correspondence differs from source catalog");
             _source.Bytes(archetype.MeshRef);
             if (archetype.LodMeshRef is { } lod) _source.Bytes(lod);
@@ -302,7 +303,7 @@ internal sealed class ShippedBuildingInputs
         {
             Shape(door, "id", "buildingId", "leafIds", "recordIds", "radius", "length", "clear", "jamb");
             Require(buildings.ContainsKey(Text(door, "buildingId")) && Ids(door, "leafIds").Length != 0 &&
-                Ids(door, "leafIds").All(id => leaves.ContainsKey(id) && Text(leaves[id], "buildingId") == Text(door, "buildingId")), "dangling doorway correspondence");
+                Ids(door, "leafIds").All(id => leaves.ContainsKey(id) && BuildingOf(leaves[id]) == Text(door, "buildingId")), "dangling doorway correspondence");
             Require(Strings(door, "recordIds").Length != 0 && Strings(door, "recordIds").All(id => records.ContainsKey(id) &&
                 Ids(door, "leafIds").Contains(records[id].GetProperty("leafId").GetInt64())) && Number(door, "radius") > 0 && Number(door, "length") > 0, "partial doorway");
             foreach (string name in new[] { "clear", "jamb" })
@@ -319,6 +320,32 @@ internal sealed class ShippedBuildingInputs
             Require(Ids(probe, "hiddenRoofIds").All(id => roofs.Any(r => r.GetProperty("leafId").GetInt64() == id)), "unknown concealed roof");
         }
     }
+
+    // F-R6. A leaf outside every nominated building is admitted only as an inventoried unlinked roof. The scaffold
+    // carries it as a standalone placement with its original numeric ID and an unlinked World roof inventory entry.
+    // No prefab definition is fabricated for it, and it never counts as a building or definition.
+    void ValidateStandaloneRoof(JsonElement leaf, TileObjectArchetype archetype)
+    {
+        Require(archetype.IsRoof, "unassigned building leaf");
+        string worldId = Text(leaf, "worldId");
+        long sourceId = leaf.GetProperty("sourceId").GetInt64();
+        Require(Text(leaf, "key") == worldId, "standalone roof key must equal its world ID");
+        var roof = Array(Comparison, "roofs").Where(r => r.GetProperty("leafId").GetInt64() == sourceId).ToArray();
+        var intent = NativeDocument.BuildingIntent;
+        Require(roof.Length == 1 && roof[0].GetProperty("linkId").ValueKind == JsonValueKind.Null &&
+            Strings(roof[0], "rooms").Length == 0 && Strings(roof[0], "groups").Length == 0 &&
+            intent?.RoofLinks.Any(l => l.Roof.Id == worldId) != true, "standalone roof has concealment");
+        Require(intent?.Roofs.Contains(new MapPrefabReference(MapPrefabReferenceScope.World, MapPrefabChildKind.Placement, worldId)) == true,
+            "uninventoried standalone roof");
+        var placement = NativeDocument.Placements.SingleOrDefault(p => p.Id == worldId);
+        Require(placement is not null && placement.NumericId == sourceId && placement.AssetId == Text(leaf, "assetId") &&
+            NativeDocument.Prefabs!.Instances.All(i => i.Bindings.Entries.All(b => b.WorldId != worldId && b.NumericId != sourceId)),
+            "unbound standalone roof leaf");
+    }
+
+    /// <summary>The leaf's nominated building, or null for an admitted standalone roof.</summary>
+    internal static string? BuildingOf(JsonElement leaf) =>
+        leaf.GetProperty("buildingId").ValueKind == JsonValueKind.Null ? null : Text(leaf, "buildingId");
 
     internal static JsonElement[] Array(JsonElement parent, string name) => parent.GetProperty(name).EnumerateArray().ToArray();
     internal static string Text(JsonElement parent, string name)

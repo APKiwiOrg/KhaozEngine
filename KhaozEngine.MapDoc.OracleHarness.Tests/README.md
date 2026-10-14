@@ -274,7 +274,14 @@ Each `leaves` row has this shape:
 ```
 
 `sourceId` is a positive signed 64-bit JSON integer. It must occur exactly once in `selectedLeafIds`,
-`leaves`, the owning building list and its native numeric binding. `worldId`, `key` and `assetId` identify
+`leaves`, the owning building list and its native numeric binding. A source roof that belongs to no nominated
+building, such as a free-standing shelter, uses a null `buildingId` and a `key` equal to its `worldId`. Only an
+inventoried unlinked roof may stand alone: its `roofs` row has a null `linkId` and no rooms or groups, and the
+native scaffold carries it as a standalone placement with the original numeric ID plus an unlinked World roof
+inventory entry and no roof link. No prefab definition is fabricated for it. It counts toward `originalLeaves`
+and `roofs`, never toward `buildings` or `definitions`. Its transform, mesh, collider, selection and numeric ID
+compare like any other leaf, and Auto must keep it visible. A standalone roof with concealment links refuses,
+and a standalone leaf that is not a roof refuses as an unassigned building leaf. `worldId`, `key` and `assetId` identify
 that effective leaf without changing its original ID. `meshPath` must equal the source archetype's
 `meshRef`. `selectionPath` is the original authored KECL selection, or null when no selection was authored.
 Metadata is the frozen original asset metadata. Bounds use finite XYZ arrays in asset source units.

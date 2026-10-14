@@ -103,6 +103,7 @@ internal static class ShippedBuildingComparison
         CompareRoomsAndRoofs(inputs, first, second, evidence);
         CompareLights(inputs, first, evidence);
         CompareDoorways(inputs, first, evidence);
+        CompareStandaloneRoofs(inputs, first, evidence);
         CompareCounts(inputs, first, evidence);
         return evidence.Finish();
     }
@@ -205,7 +206,7 @@ internal static class ShippedBuildingComparison
             var definition = definitions[Text(building, "definitionId")];
             var sourcePrefab = inputs.Prefabs[Text(definition, "id")];
             var keys = Array(definition, "keys").ToDictionary(k => Text(k, "key"));
-            foreach (var leaf in leaves.Where(l => Text(l, "buildingId") == Text(building, "id")))
+            foreach (var leaf in leaves.Where(l => BuildingOf(l) == Text(building, "id")))
             {
                 var actual = objects[leaf.GetProperty("sourceId").GetInt64()];
                 bool addition = !keys.TryGetValue(Text(leaf, "key"), out var key);
@@ -350,6 +351,30 @@ internal static class ShippedBuildingComparison
             if (length > 0 && physics.SweepCapsule(capsule, pose, delta / length, length, out _)) return false;
         }
         return true;
+    }
+
+    // F-R6. Transform, mesh, collider and numeric parity run in the shared leaf loop. Here the standalone roof must stay
+    // outside every instance, remain in the unlinked World roof inventory and stay visible under Auto at its own site.
+    static void CompareStandaloneRoofs(ShippedBuildingInputs inputs, MapBuiltWorld world, Evidence evidence)
+    {
+        var resources = world.Document.EffectiveResources!;
+        var intent = resources.BuildingIntent;
+        var objects = inputs.World.AllObjects().ToDictionary(o => o.Id);
+        foreach (var leaf in Array(inputs.Comparison, "leaves").Where(l => BuildingOf(l) is null))
+        {
+            string worldId = Text(leaf, "worldId");
+            var source = objects[leaf.GetProperty("sourceId").GetInt64()];
+            var native = world.Document.Placements.SingleOrDefault(p => p.PlacementId == worldId);
+            evidence.Check("standalone-roof-placement", native is not null && native.NumericId == source.Id &&
+                inputs.NativeDocument.Placements.Any(p => p.Id == worldId) &&
+                inputs.NativeDocument.Prefabs!.Instances.All(i => i.Bindings.Entries.All(b => b.WorldId != worldId)), new { worldId, native });
+            evidence.Check("standalone-roof-inventory", intent.Roofs.Contains(new MapPrefabReference(MapPrefabReferenceScope.World, MapPrefabChildKind.Placement, worldId)) &&
+                intent.RoofLinks.All(l => l.Roof.Id != worldId), new { worldId, intent.Roofs });
+            Vector3 site = TileObjectPlacement.AnchorPosition(inputs.World, inputs.Catalogs.Archetype(source.ArchetypeId)!, source);
+            var auto = MapRoofPolicy.Evaluate(resources, world.Surfaces, Frame(site + new Vector3(0, 0.5f, 0)), MapRoofMode.Auto).Roofs
+                .SingleOrDefault(r => r.RoofPlacementId == worldId);
+            evidence.Check("standalone-roof-auto-visible", auto is not null && auto.ColourVisible && auto.CameraBoomBlocks, new { worldId, auto });
+        }
     }
 
     static void CompareCounts(ShippedBuildingInputs inputs, MapBuiltWorld world, Evidence evidence)

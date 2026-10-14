@@ -122,10 +122,13 @@ public class NavBakeExecutionTests
         using var context = new GroundMoveContext((_, _) => 0f, null, world, null, null, view, null, registration,
             MovementBoundary.Rectangle(-20, -20, 20, 20));
         using PhysicsNavBake capture = PhysicsNavBake.Capture(context, StairOptions, _ => 0);
-        Assert.Throws<NotSupportedException>(() =>
+        // The message names the capability, so the refusal is the capability check and not another unsupported path.
+        var profile = Assert.Throws<NotSupportedException>(() =>
             capture.BuildProfile(StairTuning, default, GroundProfileOptions.Default, new NavBakeExecution(2)));
-        Assert.Throws<NotSupportedException>(() => GroundNavigationBake.Create(capture, ContactBakeFile.Sources(),
-            [new NavBakeProfile("player", StairTuning, default)], new NavBakeExecution(2)));
+        Assert.Contains(nameof(IPhysicsConcurrentReadSource), profile.Message, StringComparison.Ordinal);
+        var create = Assert.Throws<NotSupportedException>(() => GroundNavigationBake.Create(capture,
+            ContactBakeFile.Sources(), [new NavBakeProfile("player", StairTuning, default)], new NavBakeExecution(2)));
+        Assert.Contains(nameof(IPhysicsConcurrentReadSource), create.Message, StringComparison.Ordinal);
     }
 
     [Fact]

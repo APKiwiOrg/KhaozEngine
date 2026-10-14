@@ -96,7 +96,7 @@ internal sealed class ContactNavigationWorkers
             for (; started < count; started++)
             {
                 int worker = started;
-                var thread = new Thread(() => Work(phase, worker, schedule, work, records))
+                var thread = new Thread(() => Work(phase, worker, schedule, cutoff, work, records))
                 {
                     IsBackground = true,
                     Name = $"Contact navigation {phase} worker {worker}",
@@ -119,13 +119,14 @@ internal sealed class ContactNavigationWorkers
                 {
                     try
                     {
+                        // Raised inside the try, so a second interrupt while it waits on the cutoff retries the join.
+                        if (interrupted is not null) cutoff.Fail(long.MinValue, interrupted);
                         threads[worker].Join();
                         break;
                     }
                     catch (ThreadInterruptedException interrupt)
                     {
                         interrupted ??= interrupt;
-                        cutoff.Fail(long.MinValue, interrupt);
                     }
                 }
         }
@@ -135,28 +136,38 @@ internal sealed class ContactNavigationWorkers
     }
 
     void Work(ContactNavigationPhase phase, int worker, ContactNavigationSchedule schedule,
-        Action<ContactNavigationProof, ContactNavigationBand> work, WorkerDiagnosticsRecord[] records)
+        ContactNavigationCutoff cutoff, Action<ContactNavigationProof, ContactNavigationBand> work,
+        WorkerDiagnosticsRecord[] records)
     {
-        var scope = WorkerDiagnosticsScope.Enter(_diagnostics, _observers[worker]);
         try
         {
-            ContactNavigationProof proof = _proofs[worker]!;
-            while (schedule.TryClaim(out ContactNavigationBand? band))
+            var scope = WorkerDiagnosticsScope.Enter(_diagnostics, _observers[worker]);
+            try
             {
-                try
+                ContactNavigationProof proof = _proofs[worker]!;
+                while (schedule.TryClaim(out ContactNavigationBand? band))
                 {
-                    work(proof, band);
-                    _hooks?.BandCompleted?.Invoke(phase, band.Index);
-                }
-                catch (Exception failure)
-                {
-                    // Every later band starts above this failure, so the worker is done.
-                    band.Fail(failure);
-                    return;
+                    try
+                    {
+                        work(proof, band);
+                        _hooks?.BandCompleted?.Invoke(phase, band.Index);
+                    }
+                    catch (Exception failure)
+                    {
+                        // Every later band starts above this failure, so the worker is done.
+                        band.Fail(failure);
+                        return;
+                    }
                 }
             }
+            finally { records[worker] = scope.Exit(); }
         }
-        finally { records[worker] = scope.Exit(); }
+        catch (Exception failure)
+        {
+            // A failure outside any band, in a claim or the diagnostics scope, has no serial position. It stops the
+            // whole phase, and an unhandled exception on a worker thread would end the process.
+            cutoff.Fail(long.MinValue, failure);
+        }
     }
 
     /// <summary>Releases every worker binding in worker order after all workers joined. Caller-owned physics and

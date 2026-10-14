@@ -198,13 +198,16 @@ public class ParallelContactBakeTests
     }
 
     // The snapshot refusal, a worker's lease refusal when its next acquisition sees the change, or the environment pin
-    // of a lease already held across the change, which checks the water configuration on every step.
+    // of a lease already held across the change, which checks WaterField.Generation through the environment tuple on
+    // every step. A query that meets the stale pin reports it as Stale availability, so the pin refusal also surfaces
+    // as a query that returned Stale. Which form wins depends on which worker meets the change first.
     static readonly string[] RefusalTexts =
     [
         "The contact navigation build snapshot changed.",
         "Movement lease acquisition returned",
         "The movement lease differs from the capture or proof basis.",
         "The ordinary environment pin is stale.",
+        "query returned Stale.",
     ];
 
     [Fact]

@@ -45,7 +45,13 @@ public static class MapPrefabExtraction
             ? new(MapPrefabReferenceScope.Local, r.Kind, local) : r with { Scope = MapPrefabReferenceScope.World };
         var captured = rows.SelectMany(r => r.Children).Select(c => new MapPrefabChildKey(c.LocalChild.Kind, c.WorldId)).ToHashSet();
         var children = new Dictionary<MapPrefabChildKey, MapPrefabChild>();
+        // Captured owners declare these rebased frames in the extracted asset. Requests invert against the same choice.
+        var placementFrames = rows.Select(r => r.PlacementId).Distinct(StringComparer.Ordinal).ToDictionary(id => id,
+            id => MapPrefabEditPreparation.Relative(originFrame, resources.Transforms[MapEffectiveContext.Key(MapPrefabChildKind.Placement, id)]), StringComparer.Ordinal);
         var standalone = document.Placements.Select(p => p.Id).ToHashSet(StringComparer.Ordinal);
+        // A standalone request is already world space. A live child's request is its expansion's pre-seat world form.
+        MapSupportBinding? WorldRequest(string worldId, MapPlacement walked) => standalone.Contains(worldId) ? walked.SupportBinding
+            : resources.SupportRequests.TryGetValue(worldId, out var request) ? request : null;
         foreach (var key in keys.OrderBy(k => k.Kind.ToString(), StringComparer.Ordinal).ThenBy(k => k.Key, StringComparer.Ordinal))
         {
             var (walked, occurrences) = MapPrefabReferenceWalker.Child(snapshot[key], map);
@@ -60,7 +66,8 @@ public static class MapPrefabExtraction
             var pose = MapPrefabEditPreparation.Presentation(local);
             MapPrefabChild child = walked switch
             {
-                MapPrefabPlacementChild p => p with { Value = Placement(p.Value, id, pose, standalone.Contains(key.Key) ? originFrame : null) },
+                MapPrefabPlacementChild p => p with { Value = Placement(p.Value, id, pose, WorldRequest(key.Key, p.Value), originFrame,
+                    placementFrames.TryGetValue(key.Key, out var ownerFrame) ? ownerFrame : null) },
                 MapPrefabSurfaceChild s => s with { Surface = s.Surface with { Id = id, SemanticSha256 = "" } },
                 MapPrefabRecordChild r => r with { Value = r.Value is MapPrismDomain prism ? prism with { Id = id, InstanceId = "" } : r.Value with { Id = id } },
                 MapPrefabMediumChild m => m with { Value = m.Value with { Key = id } },
@@ -82,7 +89,7 @@ public static class MapPrefabExtraction
         }
         var materialized = rows.Select(row => new MapPrefabLocalMaterialization(
             Reference(new(MapPrefabReferenceScope.World, MapPrefabChildKind.Placement, row.PlacementId)), row.ResourceId, row.ResourceSha256, row.Kind,
-            MapPrefabEditPreparation.Relative(originFrame, resources.Transforms[MapEffectiveContext.Key(MapPrefabChildKind.Placement, row.PlacementId)]),
+            placementFrames[row.PlacementId],
             row.Children.Select(child =>
             {
                 var reference = Reference(new(MapPrefabReferenceScope.World, child.LocalChild.Kind, child.WorldId));
@@ -97,23 +104,20 @@ public static class MapPrefabExtraction
         return MapPrefabFile.Read(MapPrefabFile.Write(asset), assetId);
     }
 
-    static MapPlacement Placement(MapPlacement source, string id, MapTransform pose, MapEffectiveTransform? worldRequestOrigin)
+    static MapPlacement Placement(MapPlacement source, string id, MapTransform pose, MapSupportBinding? worldRequest,
+        MapEffectiveTransform origin, MapEffectiveTransform? capturedPlacementFrame)
     {
         var p = MapPrefabReferenceWalker.Copy(source, id, source.SupportBinding);
         p.NumericId = null;
         p.X = pose.Position.X; p.Y = source.Y is null ? null : pose.Position.Y; p.Z = pose.Position.Z;
         p.Yaw = pose.YawRadians; p.Scale = pose.Scale;
-        // F-R2. A standalone request is in world space. Its prefab-local form is relative to the child's pre-seat
-        // frame at the extraction origin, so expanding the extracted instance there reproduces the world request.
-        if (worldRequestOrigin is { } origin && p.SupportBinding is { } binding)
+        // F-R7. The world request inverts against exactly the frame this owner declares when the asset is placed at the
+        // extraction origin, so placement reproduces it without resampling a floor.
+        if (worldRequest is not null && p.SupportBinding is { } binding)
         {
-            var frame = MapEffectiveTransform.Compose(origin, MapPrefabMaterializationOverrides.Pose(p));
-            p.SupportBinding = binding with
-            {
-                ReferenceY = binding.ReferenceY is { } y ? (float)((y - frame.Y) / frame.Scale) : null,
-                SearchBelow = binding.SearchBelow is { } below ? (float)(below / frame.Scale) : null,
-                SearchAbove = binding.SearchAbove is { } above ? (float)(above / frame.Scale) : null,
-            };
+            var frame = MapPrefabResolver.DeclaredOwnerFrame(origin, MapPrefabEditPreparation.AuthoredIdentity, p, capturedPlacementFrame);
+            var local = MapPrefabResolver.LocalRequest(worldRequest, frame);
+            p.SupportBinding = binding with { ReferenceY = local.ReferenceY, SearchBelow = local.SearchBelow, SearchAbove = local.SearchAbove };
         }
         return p;
     }

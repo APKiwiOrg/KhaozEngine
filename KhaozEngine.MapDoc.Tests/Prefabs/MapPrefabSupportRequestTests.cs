@@ -58,7 +58,7 @@ public sealed class MapPrefabSupportRequestTests
         }
         var changed = MapDocumentFile.LoadText(MapDocumentFile.SaveText(unpack));
         string floor = seated.Support.Face!.Value.OwnerId;
-        foreach (var patch in changed.Surfaces.Patches.Values.Where(p => p.Key.SurfaceId == floor)) Array.Fill(patch.Heights, 250);
+        foreach (var patch in changed.Surfaces.Patches.Values.Where(p => p.Key.SurfaceId == floor)) Array.Fill(patch.Heights, 50);
         PrefabFixtures.RefreshCapturedPins(changed);
         for (int index = 0; index < changed.Surfaces.Refs.Count; index++)
         {
@@ -97,5 +97,45 @@ public sealed class MapPrefabSupportRequestTests
         Assert.Equal(world.SearchAbove!.Value, replayed.SearchAbove!.Value, 5);
         Assert.Equal(world with { ReferenceY = null, SearchBelow = null, SearchAbove = null },
             child.Value.SupportBinding! with { ReferenceY = null, SearchBelow = null, SearchAbove = null });
+    }
+
+    [Fact]
+    public void CapturedOwnerExtract_PlacesAndUnpacksAgainstTheSameDeclaredFrame()
+    {
+        // F-R7. A missing-Y light-bearing owner gains a captured Light row at unpack. Its extracted request must invert
+        // against the captured PlacementFrame that placement then declares, not against the nullable-Y pose.
+        var f = PrefabFixtures.SpaceBoundChild(10, "lantern");
+        var seated = Assert.Single(PrefabFixtures.Effective(f).PlacementSupports);
+        Assert.Equal(12.4f, seated.Support.WorldY, 5);
+        var unpack = MapPrefabEdits.Prepare(f.Document, f.Assets, new MapUnpackPrefab("a")).After;
+        var world = unpack.Placements.Single(p => p.Id == "consumer").SupportBinding!;
+        var row = Assert.Single(unpack.Prefabs!.Attachments, a => a.PlacementId == "consumer" && a.Kind == MapPrefabAttachmentKind.Light);
+        Assert.NotEmpty(row.Children);
+        var selection = row.Children.Select(c => new MapPrefabReference(MapPrefabReferenceScope.World, c.LocalChild.Kind, c.WorldId))
+            .Prepend(new MapPrefabReference(MapPrefabReferenceScope.World, MapPrefabChildKind.Placement, "consumer")).ToArray();
+        var origin = new MapTransform(new(3, 7, -2), 0.25f, 2);
+        var extracted = MapPrefabExtraction.Extract(unpack, f.Assets, selection, origin, "lamp-post");
+        var asset = MapPrefabFile.Read(MapPrefabFile.Write(extracted), "lamp-post");
+        var owner = Assert.Single(asset.Children.OfType<MapPrefabPlacementChild>());
+        Assert.Null(owner.Value.Y);
+        Assert.Equal(MapPrefabReferenceScope.World, owner.References.Single(r => r.Path == "/value/supportBinding/spaceId").Target.Scope);
+        Assert.Single(asset.MaterializedAttachments, m => m.Placement.Id == owner.Key.Key);
+        var assets = PrefabFixtures.PublishPrefab(f.Assets, asset);
+        unpack.NativeAssets = assets.Roots.ToList();
+        var placed = MapPrefabEdits.Prepare(unpack, assets, new MapPlacePrefab("copy", asset.Id, origin)).After;
+        string copy = placed.Prefabs!.Instances.Single(i => i.Id == "copy").Bindings.Entries.Single(b => b.Child == owner.Key).WorldId;
+        var placedSupport = Assert.Single(MapPrefabResolver.Expand(placed, assets).PlacementSupports, s => s.PlacementId == copy);
+        Assert.Equal(seated.Support.Face, placedSupport.Support.Face);
+        Assert.Equal(seated.Support.WorldY, placedSupport.Support.WorldY);
+        var again = MapPrefabEdits.Prepare(placed, assets, new MapUnpackPrefab("copy")).After;
+        foreach (var document in new[] { again, MapDocumentFile.LoadText(MapDocumentFile.SaveText(again)) })
+        {
+            var request = document.Placements.Single(p => p.Id == copy).SupportBinding!;
+            Assert.Equal(world.ReferenceY!.Value, request.ReferenceY!.Value, 4);
+            Assert.Equal(world.SearchBelow!.Value, request.SearchBelow!.Value, 4);
+            Assert.Equal(world.SearchAbove!.Value, request.SearchAbove!.Value, 4);
+            var resolved = Assert.Single(MapPrefabResolver.Expand(document, assets).PlacementSupports, s => s.PlacementId == copy);
+            Assert.Equal((seated.Support.Face, seated.Support.WorldY), (resolved.Support.Face, resolved.Support.WorldY));
+        }
     }
 }

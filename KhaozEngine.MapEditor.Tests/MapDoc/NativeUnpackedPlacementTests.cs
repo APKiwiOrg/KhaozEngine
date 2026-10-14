@@ -189,7 +189,7 @@ public sealed class NativeUnpackedPlacementTests
         Assert.Equal(12.4f, (float)before.Y, 5);
         var patch = unpack.Surfaces.Patches[new(PrefabFixtures.SupportFloorId, 0, 0)];
         h.Execute(unpack, new TerrainEditCommand(new MapSetCornerHeights(patch.Key, 0, 0, patch.Width + 1, patch.Depth + 1,
-            Enumerable.Repeat(250, patch.Heights.Length).ToArray())));
+            Enumerable.Repeat(50, patch.Heights.Length).ToArray())));
         var after = Pose();
         Assert.Equal(before with { Y = (double)13.0f }, after);
         Assert.Equal(request, unpack.Placements.Single(p => p.Id == leaf.Id).SupportBinding);

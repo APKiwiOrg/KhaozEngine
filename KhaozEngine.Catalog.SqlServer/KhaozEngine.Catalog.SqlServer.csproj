@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.SqlClient" />
+    <PackageReference Include="System.Security.Cryptography.Pkcs" />
     <ProjectReference Include="../KhaozEngine.Catalog.Authoring/KhaozEngine.Catalog.Authoring.csproj" />
     <!-- Every version ships: V4 is what a fresh create runs, and V1 to V3 are the operator's record of the
          shapes the migrations move and what the migration tests build older databases from. Same set

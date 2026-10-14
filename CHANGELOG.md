@@ -32,6 +32,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - TileWorld animated foliage replaces a cached split only when an archetype it draws changes selection or
   effective style. Style validation still covers the whole selection, and regions that do not draw the changed
   archetype keep their retained batches.
+- The four SqlServer backends reference System.Security.Cryptography.Pkcs 10.0.13 directly, so their packages no
+  longer resolve the 9.0.11 build that GHSA-846f-f764-76mx and GHSA-2fmv-rv2c-59x7 flag through Microsoft.Data.SqlClient.
 
 ## 20.38.0
 

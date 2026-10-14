@@ -8,6 +8,7 @@
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.Commerce/KhaozEngine.Commerce.csproj" />
     <PackageReference Include="Microsoft.Data.SqlClient" />
+    <PackageReference Include="System.Security.Cryptography.Pkcs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />

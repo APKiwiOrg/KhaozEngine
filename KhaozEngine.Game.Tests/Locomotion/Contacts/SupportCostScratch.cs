@@ -5,10 +5,12 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using KhaozEngine.Locomotion.Contacts;
 using KhaozEngine.Physics.Bepu;
+using KhaozEngine.Tests.Physics;
 
 namespace KhaozEngine.Tests.Locomotion.Contacts;
 
-/// <summary>Structural retained array payload, read only after sampling. Shared objects are counted once.</summary>
+/// <summary>Structural retained array payload plus query scratch native capacity, read only after sampling.
+/// Shared objects are counted once.</summary>
 internal static class SupportCostScratch
 {
     readonly record struct ArrayLayout(int Stride, bool ContainsReferences);
@@ -29,15 +31,24 @@ internal static class SupportCostScratch
         Array.FindAll(owner.GetFields(Fields), static field =>
             !field.FieldType.IsPointer && !field.FieldType.IsByRef && Layout(field.FieldType).ContainsReferences));
 
+    // Sample only once the measured operations have returned. An operation restores its loaned set before it
+    // returns, so every set is idle and visible here, whether its scratch is pooled or attached to a held lease.
     internal static long PayloadBytes(BepuPhysicsWorld world)
     {
         var seen = new HashSet<object>(ReferenceEqualityComparer.Instance);
         object? foot = typeof(FootSupport).GetField("t_scratch", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null);
-        object? backend = typeof(BepuPhysicsWorld).GetField("_neighborhoodScratch", Fields)!.GetValue(world);
-        object? footprint = typeof(BepuPhysicsWorld).GetField("_footprintScratch", Fields)!.GetValue(world);
         object? installed = typeof(BepuPhysicsWorld).GetField("_installedSupportGeometry", Fields)!.GetValue(world);
-        return Visit(foot, seen) + Visit(backend, seen) + Visit(footprint, seen) + Visit(installed, seen);
+        long total = Visit(foot, seen) + Visit(installed, seen);
+        foreach (QueryScratch scratch in ConcurrentReadGateTests.Gate(world).ScratchPool.Constructed())
+            total += QueryScratchBytes(scratch, seen);
+        return total;
     }
+
+    // The scratch's own Bepu pool is counted by capacity and never walked: its blocks are native, and Bepu 2.4.0
+    // keeps them in a byte*[] that the array layout probe cannot instantiate a generic method for.
+    static long QueryScratchBytes(QueryScratch scratch, HashSet<object> seen) =>
+        Visit(scratch.Overlaps.Idle, seen) + Visit(scratch.SweepCandidates.Idle, seen) + Visit(scratch.Contacts.Idle, seen) +
+        Visit(scratch.Footprints.Idle, seen) + Visit(scratch.Neighborhoods.Idle, seen) + scratch.NativeCapacity;
 
     static long Visit(object? value, HashSet<object> seen)
     {

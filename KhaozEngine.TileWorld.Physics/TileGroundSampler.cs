@@ -22,7 +22,9 @@ namespace KhaozEngine.TileWorld.Physics;
 /// from on every call, but its rectangle was captured at build and the colliders it has to agree with were built
 /// then too, so a document edited after <see cref="TileWorldColliders.Build(TileWorldDocument, TileWorldCatalogs, TileColliderOptions?)"/> needs a rebuild.
 /// <para>It is read-only after construction, with no cache and no shared scratch buffer, so several threads may call
-/// it at once as long as nothing edits the document meanwhile.</para>
+/// it at once as long as nothing edits the document meanwhile. <see cref="HeightAt"/>, <see cref="NormalAt"/>,
+/// <see cref="HeightDelegate"/> and <see cref="NormalDelegate"/> are endorsed providers for a parallel contact
+/// navigation bake under that condition.</para>
 /// </summary>
 public sealed class TileGroundSampler
 {

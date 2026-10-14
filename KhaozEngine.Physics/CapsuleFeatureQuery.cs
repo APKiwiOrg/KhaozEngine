@@ -155,6 +155,6 @@ public interface IPhysicsCapsuleFeatures
         QueryFilter filter = default);
 
     /// <summary>Rejects another receiver or lease, an expired interval and a wrong thread before entering
-    /// the owner query monitor. A later same-generation lease cannot revive an old result.</summary>
+    /// the owner's read gate. A later same-generation lease cannot revive an old result.</summary>
     void AssertFeatureCurrent(in CapsuleFeatureResult result, IPhysicsQueryLease lease);
 }

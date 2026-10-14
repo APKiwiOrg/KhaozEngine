@@ -9,6 +9,7 @@
     <InternalsVisibleTo Include="KhaozEngine.Render.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.Physics.Bepu" />
     <InternalsVisibleTo Include="KhaozEngine.Locomotion" />
+    <InternalsVisibleTo Include="KhaozEngine.Movement" />
     <InternalsVisibleTo Include="KhaozEngine.Game.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.Movement.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.Server.Tests" />

@@ -67,7 +67,20 @@ public sealed partial class GroundNavigationBake
     /// differ from the list regenerated from its grids, which is an engine defect.</exception>
     public static GroundNavigationBake Create(PhysicsNavBake capture, NavBakeSources sources,
         IReadOnlyList<NavBakeProfile> profiles)
+        => Create(capture, sources, profiles, null);
+
+    /// <summary>Builds every profile as <see cref="Create(PhysicsNavBake, NavBakeSources, IReadOnlyList{NavBakeProfile})"/>
+    /// does, one after another, passing <paramref name="execution"/> to each contact profile. Legacy profiles build
+    /// serially. The execution is not part of the identity, so the bake is byte-identical for any degree.</summary>
+    /// <exception cref="ArgumentOutOfRangeException">The execution's degree is below 1, checked before every other
+    /// argument. Also as the three-argument form.</exception>
+    /// <exception cref="NotSupportedException">A contact profile above degree 1 has a physics source or selected query
+    /// view without <see cref="KhaozEngine.Physics.IPhysicsConcurrentReadSource"/>. Above degree 1 with a contact
+    /// profile, every profile's argument checks run first, then this check, before any profile builds.</exception>
+    public static GroundNavigationBake Create(PhysicsNavBake capture, NavBakeSources sources,
+        IReadOnlyList<NavBakeProfile> profiles, NavBakeExecution? execution)
     {
+        int degree = NavBakeExecution.Degree(execution, nameof(execution));
         ArgumentNullException.ThrowIfNull(capture);
         ArgumentNullException.ThrowIfNull(sources);
         ArgumentNullException.ThrowIfNull(profiles);
@@ -83,6 +96,10 @@ public sealed partial class GroundNavigationBake
         if (identity.Length > MaxIdentityLength)
             throw new ArgumentException("The bake identity block exceeds 1 MiB.", nameof(sources));
         NavBakeProfile[] sorted = SortedByName(snapshot);
+        // Above degree 1 a build with a contact profile checks every profile and the capability before any builds.
+        if (degree > 1 && Array.Exists(sorted, static profile =>
+            profile.ResolveKind() == EffectiveMovementBindingKind.OrdinaryContact))
+            capture.CheckProfiles(sorted);
 
         var names = new string[sorted.Length];
         var built = new GroundNavigation[sorted.Length];
@@ -90,7 +107,7 @@ public sealed partial class GroundNavigationBake
         {
             NavBakeProfile profile = sorted[i];
             GroundNavigation navigation = capture.BuildProfile(profile.Tuning, profile.Areas,
-                new GroundProfileOptions { Aquatic = profile.Aquatic });
+                new GroundProfileOptions { Aquatic = profile.Aquatic }, execution);
             IReadOnlyList<NavLink> regenerated = NavLayerLinks.GenerateGrounded(navigation.Space.Layers, profile.Tuning.StepHeight);
             if (!SameLinks(regenerated, navigation.Space.Links))
                 throw new InvalidOperationException(
@@ -105,7 +122,7 @@ public sealed partial class GroundNavigationBake
     /// container, identity and payload order, and the first failing check decides the status. A stale bake is refused
     /// after the header and identity block, without reading the payload. Content problems never throw. Stream errors
     /// such as <see cref="IOException"/> propagate.</summary>
-    /// <exception cref="ArgumentException">The expectation is invalid, as <see cref="Create"/> would refuse it.</exception>
+    /// <exception cref="ArgumentException">The expectation is invalid, as <see cref="Create(PhysicsNavBake, NavBakeSources, IReadOnlyList{NavBakeProfile})"/> would refuse it.</exception>
     public static NavBakeLoadResult Load(Stream source, NavBakeExpectation expected)
         => Load(source, expected, NavBakeIdentity.CurrentEngineVersion);
 

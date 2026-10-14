@@ -201,6 +201,11 @@ public partial class SupportFootprintTests
 
     static IPhysicsSupportFootprint Capability(IPhysicsWorld world) => Assert.IsAssignableFrom<IPhysicsSupportFootprint>(world);
 
+    // The idle footprint collector of the world's only query scratch. Every operation restores its collector
+    // before returning, so this holds between queries even while a lease is open.
+    internal static SupportFootprintCollector FootprintScratch(BepuPhysicsWorld world) =>
+        Assert.Single(ConcurrentReadGateTests.Gate(world).ScratchPool.Constructed()).Footprints.Idle!;
+
     static SupportFootprintMember[] MemberSentinels(int count) => Enumerable.Repeat(new SupportFootprintMember(
         new StaticHandle(987), SupportElementKind.Polygon, 654, Vector3.One, 0, Vector3.UnitY, 0,
         1, true, 321, 321, 3, 0, default, default), count).ToArray();
@@ -210,7 +215,7 @@ public partial class SupportFootprintTests
     {
         if (result.Status != CapsuleFeatureStatus.Complete)
         {
-            object scratch = typeof(BepuPhysicsWorld).GetField("_footprintScratch", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(scene.World)!;
+            object scratch = FootprintScratch(scene.World);
             var polygons = (List<SupportPolygon>)scratch.GetType().GetField("_polygons", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(scratch)!;
             string diagnostics = string.Join("\n", polygons.Select(p => $"{p.Static}/{p.ElementId} admission={SupportFootprintPolygon.Measure(p, request, out _)} lowest={SupportFootprintProposalGeometry.Lowest(p, request.FootProposal, out var h)} [{h.Lower:R}, {h.Upper:R}]"));
             Assert.Fail($"{result.Status}\n{diagnostics}");

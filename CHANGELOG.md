@@ -5,8 +5,21 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 20.39.1
+## 20.40.0
 
+- Bepu physics worlds accept concurrent readers. Several threads may hold read leases and run queries on one world
+  at once, while mutations stay exclusive, run in arrival order and hold back new readers once queued. Nested
+  reads on one thread never wait, and mutations from inside a read, nested leases and leases inside a mutation
+  are refused before anything changes. Each read interval borrows private Bepu allocation scratch, and installed
+  support geometry is published once per owner and geometry version. Worlds and their restricted views declare
+  the new `IPhysicsConcurrentReadSource` marker, and `IPhysicsQueryLeaseSource` is unchanged.
+- Contact navigation bakes can run in parallel. `NavBakeExecution` and new `PhysicsNavBake.BuildProfile` and
+  `GroundNavigationBake.Create` overloads let an ordinary contact profile prove admissions, edges and Stair links on
+  up to `MaxDegreeOfParallelism` worker threads over one build snapshot. Every degree writes the same bytes, and a
+  failing build throws the exception the serial build throws first. Above degree 1 the physics source and selected
+  query view must declare `IPhysicsConcurrentReadSource`, and the providers must be safe for concurrent reads. The
+  TileWorld ground samplers, `TileMediumSampler` and the TileWorld registration are endorsed. Null or degree 1 runs the
+  serial build, and legacy profiles always build serially.
 - The four SQL Server backends (`Accounts.SqlServer`, `Catalog.SqlServer`, `Commerce.SqlServer` and
   `WorldStore.SqlServer`) now reference `System.Security.Cryptography.Pkcs` 9.0.21 directly. That overrides the
   vulnerable 9.0.11 that `Microsoft.Data.SqlClient` 6.1.6 pulls in (GHSA-846f-f764-76mx, high, and

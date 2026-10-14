@@ -728,6 +728,24 @@ Physics free of a reverse Movement reference.
 without physics, rebuilding layer grids through `NavGrid.FromBlockedSurfaces`. Hashing uses the base library's
 `IncrementalHash` and encoding uses `BinaryPrimitives`, so the bake adds no reference or package.
 
+`KhaozEngine.Physics` grants `InternalsVisibleTo` to `KhaozEngine.Movement` for the per-worker diagnostics of a
+parallel contact bake, and for nothing else. Movement uses exactly these members:
+
+- `WorkerDiagnostics.Plan()`, which copies the calling thread's enablement and per-worker observer factory, never its
+  observer delegates.
+- `WorkerDiagnostics.Merge(...)`, which adds worker records to the calling thread's recorder after the join.
+- `WorkerDiagnosticsPlan.Observer(int)`, which gives one worker its own allocation observer during setup.
+- `WorkerDiagnosticsRecord`, the counts and routes one worker hands back.
+- `WorkerDiagnosticsScope.Enter` and `Exit`, which swap a fresh recorder onto a worker thread and restore every prior
+  thread value.
+- `ContactAllocationPhase`, the argument type of the allocation observer delegate.
+
+None of them is safe as public API. They read and replace thread-local diagnostic state, and a public form would let
+any caller swap another subsystem's recorder or observer. `WorkerDiagnostics.SetObserverFactory`,
+`SupportQueryDiagnostics.ThreadState` and `SupportQueryDiagnostics.Exchange` are used only by tests, through the
+existing test assembly grants. The two packages ship together under one `KhaozEngineVersion`, so the grant cannot
+skew across versions.
+
 The same package owns `MoveToRange`, `DirectMoveToRange`, `RangeSteering`, `RangeMoveStatus`,
 `NpcGroundMovement` and `PlayerPathMovement`. These adapters compose the three existing references only.
 `MoveToRange` consumes guarded region planning and exact shape reach, `DirectMoveToRange` uses the same reach

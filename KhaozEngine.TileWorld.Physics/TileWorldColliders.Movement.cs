@@ -9,7 +9,12 @@ public sealed partial class TileWorldColliders
     readonly TileColliderProvenance[] _provenance;
     internal string MovementWorldId { get; }
     public OrdinaryMovementExtent MovementExtent { get; }
+    /// <summary>The certified ground height for the ordinary contact controller. It reads a private copy of the terrain
+    /// captured at build, so it is safe for concurrent reads and an endorsed provider for a parallel contact navigation
+    /// bake.</summary>
     public Func<float, float, float> MovementGroundHeight { get; }
+    /// <summary>The certified ground normal matching <see cref="MovementGroundHeight"/>, with the same capture and
+    /// the same endorsement.</summary>
     public Func<float, float, Vector3> MovementGroundNormal { get; }
 
     static OrdinaryMovementExtent DescribeExtent(TileWorldDocument document, RegionCoord[] regions,

@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Runtime;
 using KhaozEngine.Physics;
 using KhaozEngine.Locomotion;
+using Xunit.Sdk;
 
 namespace KhaozEngine.Tests.Locomotion.Contacts;
 
@@ -112,9 +113,9 @@ internal sealed class SupportCostSampler
         long warmTicks = timing ? Stopwatch.GetTimestamp() - start : 0;
         long warmBytes = GC.GetAllocatedBytesForCurrentThread() - before;
         try { allocationRegion.Dispose(); }
-        catch (InvalidOperationException error)
+        catch (XunitException error)
         {
-            throw new InvalidOperationException($"{row.Name} {operation} no-GC region failed. " +
+            throw new XunitException($"{row.Name} {operation} no-GC region failed. " +
                 $"Cold {coldBytes} B (isolated {coldIsolated}), scratch inspection {inspectionBytes} B " +
                 $"(isolated {inspectionIsolated}), priming {primingBytes} B (isolated {primingIsolated}), warm {warmBytes} B.", error);
         }

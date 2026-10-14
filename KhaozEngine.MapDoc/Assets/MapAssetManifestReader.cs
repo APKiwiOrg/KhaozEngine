@@ -79,7 +79,7 @@ internal static class MapAssetManifestReader
     {
         if (resource is null) throw new MapDocumentException("Resource must not be null.");
         ValidateReference(resource.Reference);
-        if (!Enum.IsDefined(resource.Kind) || resource.Kind == MapResourceKind.Prefab)
+        if (!Enum.IsDefined(resource.Kind))
             throw new MapDocumentException($"Unsupported resource kind '{resource.Kind}' for '{resource.Reference.Id}'.");
         RequireIds(resource.Dependencies, "resource.dependencies");
     }
@@ -130,14 +130,23 @@ internal static class MapAssetManifestReader
                 throw new MapDocumentException($"Asset '{asset.Id}' requires {kind} resource '{id}'.");
     }
 
-    internal static IEnumerable<(string Id, MapResourceKind Kind)> ResourceReferences(MapAssetDoc asset)
+    internal static IEnumerable<(string Id, MapResourceKind Kind)> ResourceReferences(MapAssetDoc asset) =>
+        ResourceReferences(asset.MeshResourceId, asset.CollisionResourceId, asset.SelectionResourceId,
+            asset.SupportResourceIds, asset.MaterialResourceIds, asset.LodResourceIds, asset.LightResourceIds);
+
+    internal static IEnumerable<(string Id, MapResourceKind Kind)> ResourceReferences(MapResolvedAsset asset) =>
+        ResourceReferences(asset.MeshResourceId, asset.CollisionResourceId, asset.SelectionResourceId,
+            asset.SupportResourceIds, asset.MaterialResourceIds, asset.LodResourceIds, asset.LightResourceIds);
+
+    static IEnumerable<(string Id, MapResourceKind Kind)> ResourceReferences(string mesh, string? collision, string? selection,
+        IReadOnlyList<string> support, IReadOnlyList<string> materials, IReadOnlyList<string> lods, IReadOnlyList<string> lights)
     {
-        yield return (asset.MeshResourceId, MapResourceKind.Mesh);
-        if (asset.CollisionResourceId is { } collision) yield return (collision, MapResourceKind.Collider);
-        if (asset.SelectionResourceId is { } selection) yield return (selection, MapResourceKind.Selection);
-        foreach (string id in asset.SupportResourceIds) yield return (id, MapResourceKind.Surface);
-        foreach (string id in asset.MaterialResourceIds) yield return (id, MapResourceKind.Material);
-        foreach (string id in asset.LodResourceIds) yield return (id, MapResourceKind.Lod);
-        foreach (string id in asset.LightResourceIds) yield return (id, MapResourceKind.Light);
+        yield return (mesh, MapResourceKind.Mesh);
+        if (collision is not null) yield return (collision, MapResourceKind.Collider);
+        if (selection is not null) yield return (selection, MapResourceKind.Selection);
+        foreach (string id in support) yield return (id, MapResourceKind.Surface);
+        foreach (string id in materials) yield return (id, MapResourceKind.Material);
+        foreach (string id in lods) yield return (id, MapResourceKind.Lod);
+        foreach (string id in lights) yield return (id, MapResourceKind.Light);
     }
 }

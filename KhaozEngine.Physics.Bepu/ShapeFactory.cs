@@ -284,9 +284,7 @@ internal static class ShapeFactory
             case CompoundShape nested:
                 foreach (var c in nested.Children)
                 {
-                    Quaternion rot = Quaternion.Concatenate(c.Local.Orientation, local.Orientation);
-                    Vector3 pos = local.Position + Vector3.Transform(c.Local.Position, local.Orientation);
-                    AddFlattenedChild(sim, pool, ref builder, c.Shape, new Pose(pos, rot));
+                    AddFlattenedChild(sim, pool, ref builder, c.Shape, local.Compose(c.Local));
                 }
                 break;
             case TriangleMeshShape:
@@ -343,9 +341,7 @@ internal static class ShapeFactory
             case CompoundShape nested:
                 foreach (var c in nested.Children)
                 {
-                    Quaternion rot = Quaternion.Concatenate(c.Local.Orientation, local.Orientation);
-                    Vector3 pos = local.Position + Vector3.Transform(c.Local.Position, local.Orientation);
-                    AddFlattenedChildDynamic(sim, pool, ref builder, c.Shape, new Pose(pos, rot), mass);
+                    AddFlattenedChildDynamic(sim, pool, ref builder, c.Shape, local.Compose(c.Local), mass);
                 }
                 break;
             case TriangleMeshShape:

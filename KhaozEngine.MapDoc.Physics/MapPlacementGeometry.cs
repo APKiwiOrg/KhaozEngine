@@ -7,7 +7,9 @@ using System.Numerics;
 using System.Security.Cryptography;
 using System.Text;
 using KhaozEngine.MapDoc.Editing;
+using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.Physics;
+using KhaozEngine.Primitives;
 
 namespace KhaozEngine.MapDoc.Physics;
 
@@ -31,7 +33,8 @@ public sealed class MapPlacementGeometry
     /// each taken in double and rounded to float once.</summary>
     public Pose WorldPose { get; }
 
-    /// <summary>The world bounds of <see cref="Collider"/> at <see cref="WorldPose"/>, or null without a collider.</summary>
+    /// <summary>Conservative world bounds of <see cref="Collider"/> across all permitted registration origins,
+    /// including the mathematical pose, or null without a collider.</summary>
     public MapBox3? ColliderBounds { get; }
 
     /// <summary>The interaction envelope under <see cref="MapInteractionPolicy"/>.</summary>
@@ -40,6 +43,13 @@ public sealed class MapPlacementGeometry
     /// <summary>The lowercase hex SHA-256 over the placement and asset identities, both resource digests, the float bits
     /// of position, yaw, combined scale and raise, and <see cref="MapInteractionPolicy.Hash"/>.</summary>
     public string Digest { get; }
+
+    /// <summary>The mathematical pose retained for frame-local backend registration.</summary>
+    public MapEffectiveTransform EffectiveTransform { get; internal init; }
+
+    // Ownership validation uses authored geometry under the precise transform, before backend approximation.
+    internal PhysicsShape? SourceCollider { get; init; }
+    internal double SourceUnitsToMetres { get; init; }
 
     internal MapPlacementGeometry(string placementId, long? numericId, string assetId, PhysicsShape? collider,
         Pose worldPose, MapBox3? colliderBounds, MapInteractionEnvelope envelope, string digest)
@@ -70,18 +80,25 @@ public static class MapPlacementShapes
         {
             if (!assets.TryGetValue(placement.AssetId, out MapAssetShapes? shapes))
                 assets.Add(placement.AssetId, shapes = MapAssetShapes.Read(document.AssetClosure, placement.AssetId));
-            result.Add(Build(placement, shapes));
+            MapEffectiveTransform? precise = document.EffectiveResources?.Transforms.GetValueOrDefault("Placement:" + placement.PlacementId);
+            result.Add(Build(placement, shapes, precise));
         }
         return result.AsReadOnly();
     }
 
-    /// <summary>The world bounds of one resolved placement: the union of its collider bounds and its interaction
-    /// envelope bounds, as <see cref="Resolve"/> computes them, or null when <paramref name="shapes"/> declares neither
+    /// <summary>The tight world bounds of one resolved placement: the union of its collider at the resolved pose and
+    /// its interaction envelope, excluding the registration-origin allowances in <see cref="MapPlacementGeometry.ColliderBounds"/>.
+    /// Returns null when <paramref name="shapes"/> declares neither
     /// a collider nor a selection volume. Unlike <see cref="Resolve"/> it never refuses a missing interaction source,
     /// so an editor can report an edit of such a placement. Throws <see cref="ArgumentException"/> when
     /// <paramref name="shapes"/> belongs to another asset, and <see cref="MapDocumentException"/> as
     /// <see cref="Resolve"/> does for the scale, the transform and the envelope.</summary>
-    public static MapBox3? Bounds(MapResolvedPlacement placement, MapAssetShapes shapes)
+    public static MapBox3? Bounds(MapResolvedPlacement placement, MapAssetShapes shapes) => Bounds(placement, shapes, out _);
+
+    /// <summary>Reports the same tight bounds as <see cref="Bounds(MapResolvedPlacement, MapAssetShapes)"/> and returns
+    /// conservative installed collider and envelope bounds in <paramref name="spatialBounds"/> for edit invalidation.
+    /// Both values are null when the asset declares neither a collider nor a selection volume.</summary>
+    public static MapBox3? Bounds(MapResolvedPlacement placement, MapAssetShapes shapes, out MapBox3? spatialBounds)
     {
         ArgumentNullException.ThrowIfNull(placement);
         ArgumentNullException.ThrowIfNull(shapes);
@@ -89,16 +106,18 @@ public static class MapPlacementShapes
             throw new ArgumentException(
                 $"Shapes of asset '{shapes.AssetId}' cannot bound placement '{placement.PlacementId}' of asset '{placement.AssetId}'.",
                 nameof(shapes));
-        if (shapes.Collider is null && shapes.Selection is null) return null;
+        if (shapes.Collider is null && shapes.Selection is null) { spatialBounds = null; return null; }
         MapPlacementGeometry geometry = Build(placement, shapes);
         MapBox3 envelope = geometry.Envelope.Bounds;
-        return geometry.ColliderBounds is { } collider ? collider.Union(envelope) : envelope;
+        spatialBounds = geometry.ColliderBounds is { } conservative ? conservative.Union(envelope) : envelope;
+        return geometry.Collider is { } collider ? MapShapeBounds.Of(collider, geometry.WorldPose).Union(envelope) : envelope;
     }
 
-    static MapPlacementGeometry Build(MapResolvedPlacement placement, MapAssetShapes shapes)
+    static MapPlacementGeometry Build(MapResolvedPlacement placement, MapAssetShapes shapes, MapEffectiveTransform? precise = null)
     {
         MapTransform transform = placement.Transform;
-        float scale = shapes.SourceUnitsToMetres * transform.Scale;
+        MapEffectiveTransform effective = precise ?? MapEffectiveTransform.From(transform);
+        float scale = (float)(shapes.SourceUnitsToMetres * effective.Scale);
         if (!float.IsFinite(scale) || scale <= 0f)
             throw new MapDocumentException(
                 $"Placement '{placement.PlacementId}' combined scale {scale.ToString(CultureInfo.InvariantCulture)} is not finite and positive.");
@@ -106,18 +125,20 @@ public static class MapPlacementShapes
             !float.IsFinite(transform.Position.Z) || !float.IsFinite(transform.YawRadians))
             throw new MapDocumentException($"Placement '{placement.PlacementId}' has a nonfinite position or yaw.");
 
-        var worldPose = new Pose(transform.Position, YawOrientation(transform.YawRadians));
+        var worldPose = MapBackendPoseAdapter.Pose(effective, WorldFrame.Origin);
         PhysicsShape? collider = shapes.Collider is null ? null : PhysicsShapeScale.Uniform(shapes.Collider, scale);
         PhysicsShape? selection = shapes.Selection is null ? null : PhysicsShapeScale.Uniform(shapes.Selection, scale);
         PhysicsShape source = selection ?? collider ?? throw new MapDocumentException(
             $"Placement '{placement.PlacementId}' asset '{shapes.AssetId}' has no interaction source: it declares neither a selection volume nor a collider.");
 
-        MapBox3? colliderBounds = collider is null ? null : MapShapeBounds.Of(collider, worldPose);
+        MapBox3? colliderBounds = null;
+        if (collider is not null) colliderBounds = MapRegistrationBounds.Of(collider, effective);
         MapInteractionEnvelope envelope =
             MapInteractionEnvelope.Build(placement.PlacementId, source, selection is null, worldPose);
-        string digest = Digest(placement, shapes, scale, envelope.RaiseMetres);
+        string digest = Digest(placement, shapes, scale, envelope.RaiseMetres, precise);
         return new MapPlacementGeometry(placement.PlacementId, placement.NumericId, shapes.AssetId, collider, worldPose,
-            colliderBounds, envelope, digest);
+            colliderBounds, envelope, digest)
+        { EffectiveTransform = effective, SourceCollider = shapes.Collider, SourceUnitsToMetres = shapes.SourceUnitsToMetres };
     }
 
     /// <summary>The rotation by <paramref name="yaw"/> radians about world Y, (0, sin, 0, cos) of half the yaw. The
@@ -129,7 +150,7 @@ public static class MapPlacementShapes
         return new Quaternion(0f, (float)sin, 0f, (float)cos);
     }
 
-    static string Digest(MapResolvedPlacement placement, MapAssetShapes shapes, float scale, float raise)
+    static string Digest(MapResolvedPlacement placement, MapAssetShapes shapes, float scale, float raise, MapEffectiveTransform? precise)
     {
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         Span<byte> buffer = stackalloc byte[8];
@@ -148,6 +169,12 @@ public static class MapPlacementShapes
             hash.AppendData(buffer[..4]);
         }
         WriteString(hash, MapInteractionPolicy.Hash);
+        if (precise is { } pose && pose != MapEffectiveTransform.From(placement.Transform))
+            foreach (double value in new[] { pose.X, pose.Y, pose.Z, pose.YawRadians, pose.Scale })
+            {
+                BinaryPrimitives.WriteInt64LittleEndian(buffer, BitConverter.DoubleToInt64Bits(value));
+                hash.AppendData(buffer);
+            }
         return Convert.ToHexStringLower(hash.GetHashAndReset());
     }
 

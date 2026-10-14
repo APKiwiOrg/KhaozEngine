@@ -64,12 +64,10 @@ public class ParallelForEachPoolingTests
 
         sum = 0;
         const int iterations = 2000;
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < iterations; i++) w.ParallelForEach(action, sched);
-        long after = GC.GetAllocatedBytesForCurrentThread();
+        long allocated = AllocationMeasurement.Measure($"{iterations} non-buffered ParallelForEach calls",
+            () => { for (int i = 0; i < iterations; i++) w.ParallelForEach(action, sched); });
 
         Assert.Equal(iterations * (64L * 63L / 2L), sum);   // sanity: every entity was visited each call
-        long allocated = after - before;
         // Un-pooled this allocated a closure + Action<int> per archetype AND a per-call section closure - hundreds
         // of KB over this loop. With the cached context and inlined section bracket it is ~0.
         Assert.True(allocated < 8192, $"non-buffered ParallelForEach allocated {allocated} bytes over {iterations} calls (expected ~0)");
@@ -87,11 +85,9 @@ public class ParallelForEachPoolingTests
         for (int i = 0; i < 200; i++) w.ParallelForEach(action, sched);   // warm the buffer + sink pools to capacity
 
         const int iterations = 2000;
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < iterations; i++) w.ParallelForEach(action, sched);
-        long after = GC.GetAllocatedBytesForCurrentThread();
+        long allocated = AllocationMeasurement.Measure($"{iterations} buffered ParallelForEach calls",
+            () => { for (int i = 0; i < iterations; i++) w.ParallelForEach(action, sched); });
 
-        long allocated = after - before;
         // Budget: the chunk context + its Body delegate, the k command buffers, the sink list and the section
         // bracket are all reused across calls, so a steady-state buffered pass allocates nothing. The old path
         // allocated a fresh EntityCommandBuffer[k] + k buffers + a sink List + closures every call.

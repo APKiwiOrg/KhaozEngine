@@ -885,6 +885,10 @@ changed placements' collider and envelope bounds before and after. Without a bin
 and no bounds. The provider never refuses an edit. An edit with no such change, or whose changed placements have no
 collider and no selection volume, reports `Placements` only. The editor takes no physics reference, and ke-mapedit
 supplies the provider.
+Providers may additionally set `NativePlacementExtent.SpatialBounds` to conservative installed geometry bounds.
+The effects keep their tight reports in `OldBounds` and `NewBounds`, and carry conservative extents in
+`OldSpatialBounds` and `NewSpatialBounds` for Physics, Nav and Residency. Existing providers use the reported
+bounds for both quantities. Unknown geometry keeps the same `Unbounded` behavior.
 Commands outside this native document transaction protocol are refused on opted-in documents.
 Analytic documents keep their existing command behavior.
 Direct placement `Apply` and `Revert` check document-local native validity only, without asset membership.
@@ -930,7 +934,70 @@ an otherwise empty history dirty. `MarkSaved` acknowledges both the history posi
 For native placements `RenamePlacementCommand` and the inspector edit `DisplayName`, leaving selection
 and both identities unchanged. `SetPlacementLabelCommand` names that behavior explicitly.
 `RemapPlacementIdCommand` is the separate stable-ID operation. Its reference visitor visits only typed
-placement references, of which format 4 has none. Tags and asset/resource IDs are never rewritten.
+placement references, including unpacked binding inventories, transfers, precise owner frames and light
+owners. Tags and asset/resource IDs are never rewritten.
+
+Format-7 native commands use the effective resource policy `kemap/effective-resources/1` and query policy 2.
+Their complete bound validation includes support, paint, room coverage and water before publication. Native
+GUI closure/bounds binding, prefab mode and pointer/key acceptance remain R9 and #1349 work.
+
+`PrefabEditCommand(MapPrefabEdit)` and `InteriorEditCommand(MapInteriorEdit)` prepare pure edits against the
+closure bound to `EditorHistory`. Fresh commands need no constructor capture. Direct `Apply` or `Revert`
+without a closure refuses before preparation. Accepted undo and redo restore captured roots, child IDs,
+storeys and frames, retaining the numeric high-water mark and dormant reservations.
+
+Native publication has two internal modes. Focused commands project their named write sets before
+validation, so unlisted edits cannot leak or satisfy dependencies. Complete snapshot commands clone and
+validate every semantic root and publish the captured document with its matching closure. Both stage
+without changing the live document or accepting command state. Publication precedes acceptance, closure
+rebinding and prepared history adoption. Partial documents refuse either mode. Complete undo retains
+removed instance inventories and retired transfers without recreating live standalone owners.
+
+`PrefabAssetEditCommand(edit, beforeAssets, afterAssets)` switches an immutable prefab version using
+`MapUpdatePrefabAsset`. Its first preparation receives both captured closures. Accepted undo and redo
+restore their matching roots and closures without looking up ambient files.
+
+`MapPrefabLocalSession(asset, assets, authoringContext, parentSpace)` edits a detached native document.
+Its `Document` property returns a detached snapshot whose transfer bindings map stable local keys to
+command document IDs. A captured referring instance supplies the detached placement and export origin,
+so explicit parents remain valid at far sites and under free yaw/scale. Export returns asset-local values
+through the existing wide extraction path. Existing placement, `TerrainEditCommand` and `WaterEditCommand` commands run
+through `Apply`, `Undo` and `Redo`. `Export` captures current definitions and precise frames under the
+same local keys. Materialized support and light rows retain their original resource pins, local scopes
+and empty suppression edges. Removing an owner removes its exported row. Undo restores captured
+values rather than regenerating children from the resource bytes. `Cancel` changes no world or file.
+
+Local authoring retains the full captured map except the chosen source's own children. World roof
+groups omit that source's room memberships in the detached context, while keeping foreign rooms and
+the same group identity. The exported prefab retains its World group reference, and the open map's
+group membership stays unchanged. Ordinary foreign topology dependencies still require their full
+authored closure.
+
+`PrefabVillageWorkflowTests` exercises whole-building moves, keyed overrides, unpack reservations,
+nullable-Y support ownership, undo/redo, immutable version updates and save/reload on the invented
+village. The same commands serve `PrefabService`, `MutationService` and the prefab/interior MCP
+adapters. Local water, paint and marker changes remain detached until one accepted publication.
+Paint changes add Material and Residency invalidation with bounds from captured clipped target
+polygons. The authored paint height never supplies physical faces or an effects extent.
+Real MCP calls also prove typed mutation responses and atomic Room/prism creation. The
+[MapDoc handoff table](../KhaozEngine.MapDoc/README.md#public-synthetic-village-acceptance) names the
+remaining GUI, rendering and broader wire proofs.
+
+The history staging seam prepares command acceptance, stack capacity and gesture adoption before an
+outer publisher runs. The publisher validates and publishes first, then accepts the prepared history
+movement. Callback snapshots delegate to the complete-snapshot command and capture every semantic
+root. Failed outer publication leaves both stacks and command retry state unchanged.
+
+Unpacked placement commands preserve binary64 pose components outside the explicit edit intent. Moves
+replace XZ and supplied Y, rotations replace yaw, scales replace scale, and label edits retain the pose.
+Missing Y retains authored support seating. Floor changes consume that dependency using precise XZ and
+capture the reseated registry and attachment descriptors. Gesture merging captures the final validated
+resource state, so one undo returns to the original state and redo restores the final accepted state.
+Invalidations include pre/post resolved leaves, aliases, attachment surfaces and shared-frame lights,
+with tight reports and conservative spatial bounds. Changed support or prism geometry invalidates Physics,
+Nav and Residency independently of the owner's shape. Changed lights or markers invalidate Residency.
+Unknown resource bounds carry the matching spatial reset. Mesh-only owners without changed spatial
+resources remain placement-only. Unknown geometry reports `Unbounded` and does not prevent repair or deletion. MapEditor still has no physics package reference.
 
 ## Rebuild semantics
 

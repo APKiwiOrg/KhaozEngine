@@ -13,9 +13,11 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="KhaozEngine.MapEdit.Tool" />
+    <InternalsVisibleTo Include="KhaozEngine.MapEditor" />
     <InternalsVisibleTo Include="KhaozEngine.MapDoc.Physics" />
     <InternalsVisibleTo Include="KhaozEngine.MapEditor.Tests" />
     <InternalsVisibleTo Include="KhaozEngine.MapDoc.Tests" />
+    <InternalsVisibleTo Include="KhaozEngine.MapDoc.Physics.Tests" />
     <None Include="README.md" Pack="true" PackagePath="\" />
     <EmbeddedResource Include="mapdoc.schema.json" />
   </ItemGroup>

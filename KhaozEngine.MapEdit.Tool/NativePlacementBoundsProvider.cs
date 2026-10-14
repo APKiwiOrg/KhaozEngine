@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Physics;
+using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapEditor;
 using KhaozEngine.Terrain;
 
@@ -13,10 +15,11 @@ namespace KhaozEngine.MapEdit;
 /// with analytic <see cref="MapRuntime.BuildField"/> support for resolver 1, and
 /// <see cref="NativeDocumentService.SessionOptionsV2"/> with authored bindings for resolver 2. It resolves only the
 /// listed placements whose assets declare a collider or a selection volume, and bounds each with
-/// <see cref="MapPlacementShapes.Bounds"/>. A placement whose asset declares neither contributes nothing and is never
+/// <see cref="MapPlacementShapes.Bounds(MapResolvedPlacement, MapAssetShapes, out MapBox3?)"/>, keeping the tight
+/// report and conservative spatial extent separate. A placement whose asset declares neither contributes nothing and is never
 /// resolved. A placement whose asset shapes, support or geometry refuse with <see cref="MapDocumentException"/> marks the
 /// extent unknown, so an edit is never refused for its bounds. Stateless.</summary>
-public sealed class NativePlacementBoundsProvider : INativePlacementBounds
+public sealed class NativePlacementBoundsProvider : INativePlacementBounds, INativeResolvedPlacementBounds
 {
     /// <summary>The shared instance.</summary>
     public static NativePlacementBoundsProvider Instance { get; } = new();
@@ -34,8 +37,18 @@ public sealed class NativePlacementBoundsProvider : INativePlacementBounds
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(placementIds);
         if (placementIds.Count == 0) return default;
-        var authored = new Dictionary<string, MapPlacement>(StringComparer.Ordinal);
-        foreach (MapPlacement placement in document.Placements) authored.TryAdd(placement.Id, placement);
+        var authored = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (MapPlacement placement in document.Placements)
+            if (placement.AssetId is { } assetId) authored.TryAdd(placement.Id, assetId);
+        if (document.Prefabs is not null && placementIds.Any(id => !authored.ContainsKey(id)))
+        {
+            try
+            {
+                foreach (var placement in MapPrefabResolver.Expand(document, assets).Placements)
+                    authored[placement.PlacementId] = placement.AssetId;
+            }
+            catch (MapDocumentException) { return new(null, true); }
+        }
         bool unknown = false;
         // Only placements with a collider or a selection volume have bounds, so only they are resolved. A placement
         // without either never reaches support resolution.
@@ -43,28 +56,55 @@ public sealed class NativePlacementBoundsProvider : INativePlacementBounds
         var shaped = new List<string>(placementIds.Count);
         foreach (string id in placementIds)
         {
-            string assetId = (authored.TryGetValue(id, out MapPlacement? placement) ? placement.AssetId : null)
+            string assetId = (authored.TryGetValue(id, out string? declaredAsset) ? declaredAsset : null)
                 ?? throw new ArgumentException($"No placement with id '{id}' and an asset.", nameof(placementIds));
             if (!shapes.TryGetValue(assetId, out (bool Refused, MapAssetShapes? Shapes) asset))
                 shapes.Add(assetId, asset = ReadShapes(assets, assetId));
             if (asset.Refused) unknown = true;
             else if (asset.Shapes is not null) shaped.Add(id);
         }
+        return Measure(Resolve(document, assets, registry, shaped, ref unknown), shapes, unknown);
+    }
 
-        MapBox3? union = null;
-        foreach (MapResolvedPlacement placement in Resolve(document, assets, registry, shaped, ref unknown))
+    NativePlacementExtent INativeResolvedPlacementBounds.Bounds(MapAssetClosure assets, IReadOnlyList<MapResolvedPlacement> placements)
+    {
+        ArgumentNullException.ThrowIfNull(assets);
+        ArgumentNullException.ThrowIfNull(placements);
+        bool unknown = false;
+        var shapes = new Dictionary<string, (bool Refused, MapAssetShapes? Shapes)>(StringComparer.Ordinal);
+        var shaped = new List<MapResolvedPlacement>(placements.Count);
+        foreach (MapResolvedPlacement placement in placements)
+        {
+            if (!shapes.TryGetValue(placement.AssetId, out (bool Refused, MapAssetShapes? Shapes) asset))
+                shapes.Add(placement.AssetId, asset = ReadShapes(assets, placement.AssetId));
+            if (asset.Refused) unknown = true;
+            else if (asset.Shapes is not null) shaped.Add(placement);
+        }
+        return Measure(shaped, shapes, unknown);
+    }
+
+    // Unions the tight and spatial bounds of resolved placements. A placement whose geometry refuses marks the extent unknown.
+    static NativePlacementExtent Measure(IReadOnlyList<MapResolvedPlacement> resolved,
+        Dictionary<string, (bool Refused, MapAssetShapes? Shapes)> shapes, bool unknown)
+    {
+        MapBox3? union = null, spatialUnion = null;
+        foreach (MapResolvedPlacement placement in resolved)
         {
             try
             {
-                if (MapPlacementShapes.Bounds(placement, shapes[placement.AssetId].Shapes!) is { } box)
+                if (MapPlacementShapes.Bounds(placement, shapes[placement.AssetId].Shapes!, out MapBox3? spatial) is { } box)
+                {
                     union = union is { } u ? u.Union(box) : box;
+                    MapBox3 geometry = spatial ?? box;
+                    spatialUnion = spatialUnion is { } s ? s.Union(geometry) : geometry;
+                }
             }
             catch (MapDocumentException)
             {
                 unknown = true;
             }
         }
-        return new NativePlacementExtent(union, unknown);
+        return new NativePlacementExtent(union, unknown) { SpatialBounds = spatialUnion };
     }
 
     // The asset's shapes, no shapes when it declares neither a collider nor a selection volume, or refused when the

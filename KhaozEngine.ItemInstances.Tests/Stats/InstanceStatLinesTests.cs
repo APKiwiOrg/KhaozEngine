@@ -20,14 +20,15 @@ namespace KhaozEngine.Tests.ItemInstances.Stats;
 /// carries into its source.
 /// <para>
 /// Every fact builds its OWN registry, its OWN snapshot and its OWN builder, so nothing here writes
-/// process-global state and no <c>DisableParallelization</c> collection is needed. The allocation fact
-/// reads <c>GC.GetAllocatedBytesForCurrentThread()</c>, which is per thread, so it needs none either.
+/// process-global state. The class joins <c>AllocSensitive</c> because the allocation fact holds a
+/// process-wide no-GC region.
 /// </para>
 /// <para>
 /// Every expected number is worked out by hand from contracts 6.4 and 13.2 rather than recomputed by a
 /// second copy of either formula, except where the fact is deliberately ABOUT the formula having one copy.
 /// </para>
 /// </summary>
+[Collection("AllocSensitive")]
 public sealed class InstanceStatLinesTests
 {
     /// <summary>The stat nearly every fact folds, id 1.</summary>
@@ -338,15 +339,20 @@ public sealed class InstanceStatLinesTests
         int totalLines = 0;
         int totalTags = 0;
         int totalSources = 0;
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int iteration = 0; iteration < 32; iteration++)
+        long allocated;
+        // Stack spans cannot enter a delegate, so the checked region wraps the counter directly.
+        using (AllocationRegion.Start("32 warmed stat line builds"))
         {
-            totalLines += content.Build(payload, 0, 1, lines, tags, sources, out int tagCount, out int sourceCount);
-            totalTags += tagCount;
-            totalSources += sourceCount;
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int iteration = 0; iteration < 32; iteration++)
+            {
+                totalLines += content.Build(payload, 0, 1, lines, tags, sources, out int tagCount, out int sourceCount);
+                totalTags += tagCount;
+                totalSources += sourceCount;
+            }
+            allocated = GC.GetAllocatedBytesForCurrentThread() - before;
         }
 
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
         Assert.Equal(0L, allocated);
         Assert.Equal(64, totalLines);
         Assert.Equal(0, totalTags);

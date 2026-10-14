@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
+using KhaozEngine.MapDoc.Water;
 
 namespace KhaozEngine.MapDoc.Spaces;
 
@@ -33,10 +34,13 @@ internal static class MapSpaceGeometry
 
     internal static int? FootprintCell(MapScopedSurfaces view, MapSpaceFootprint footprint, MapExactXz point)
     {
-        var (x, z) = Cell(Surface(view, footprint.Lattice.SurfaceId).Frame, point);
-        MapPatchKey key = MapPatchKey.ForCell(footprint.Lattice.SurfaceId, x, z);
-        int slot = MapLowerCellClassifier.SlotCell(x, z);
-        return key == footprint.Lattice && footprint.SlotCells.Contains(slot) ? slot : null;
+        foreach (var (x, z) in MapEffectiveGeometry.CellCandidates(view, footprint.Lattice.SurfaceId, point))
+        {
+            MapPatchKey key = MapPatchKey.ForCell(footprint.Lattice.SurfaceId, x, z);
+            int slot = MapLowerCellClassifier.SlotCell(x, z);
+            if (key == footprint.Lattice && footprint.SlotCells.Contains(slot)) return slot;
+        }
+        return null;
     }
 
     internal static MapExactXz Xz(MapExactPoint point) => new(point.X, point.Z);
@@ -45,14 +49,14 @@ internal static class MapSpaceGeometry
     internal static bool Between(MapExactValue value, MapExactValue a, MapExactValue b) =>
         value.CompareTo(Min(a, b)) >= 0 && value.CompareTo(Max(a, b)) <= 0;
     internal static bool OnSegment(MapExactXz point, MapExactXz a, MapExactXz b) => a != b &&
-        MapSubdividedTriangle.Cross(new(a.X, default, a.Z), new(b.X, default, b.Z), new(point.X, default, point.Z)).Sign == 0 &&
+        MapSubdividedTriangle.CrossWide(new(a.X, default, a.Z), new(b.X, default, b.Z), new(point.X, default, point.Z)).Sign == 0 &&
         Between(point.X, a.X, b.X) && Between(point.Z, a.Z, b.Z);
 
     internal static MapExactValue Interpolate(MapExactPoint a, MapExactPoint b, MapExactXz point)
     {
-        MapExactValue t = a.X != b.X ? point.X.Subtract(a.X).Divide(b.X.Subtract(a.X))
-            : point.Z.Subtract(a.Z).Divide(b.Z.Subtract(a.Z));
-        return a.Y.Add(b.Y.Subtract(a.Y).Multiply(t));
+        var t = a.X != b.X ? MapWideRational.From(point.X).Subtract(MapWideRational.From(a.X)).Divide(MapWideRational.From(b.X).Subtract(MapWideRational.From(a.X)))
+            : MapWideRational.From(point.Z).Subtract(MapWideRational.From(a.Z)).Divide(MapWideRational.From(b.Z).Subtract(MapWideRational.From(a.Z)));
+        return MapSubdividedTriangle.Narrow(MapWideRational.From(a.Y).Add(MapWideRational.From(b.Y).Subtract(MapWideRational.From(a.Y)).Multiply(t)));
     }
 
     internal static MapExactValue? ChainHeight(IReadOnlyList<MapExactPoint> points, MapExactXz point)
@@ -67,6 +71,58 @@ internal static class MapSpaceGeometry
         foreach (MapBoundFace face in faces)
             if (MapSubdividedTriangle.Height(face.Triangle, point.X, point.Z) is { } height) return height;
         return null;
+    }
+
+    internal static bool OnSegmentWide(MapWideXz point, MapWideXz a, MapWideXz b) => a != b &&
+        MapWaterPolygons.Cross(a, b, point).Sign == 0 &&
+        point.X.CompareTo(MapWideRational.Min(a.X, b.X)) >= 0 && point.X.CompareTo(MapWideRational.Max(a.X, b.X)) <= 0 &&
+        point.Z.CompareTo(MapWideRational.Min(a.Z, b.Z)) >= 0 && point.Z.CompareTo(MapWideRational.Max(a.Z, b.Z)) <= 0;
+
+    internal static MapWideRational? ChainHeightWide(IReadOnlyList<MapWidePoint> points, MapWideXz point)
+    {
+        for (int i = 0; i + 1 < points.Count; i++)
+        {
+            var a = points[i]; var b = points[i + 1];
+            if (!OnSegmentWide(point, a.Xz, b.Xz)) continue;
+            var t = !a.X.Equals(b.X) ? point.X.Subtract(a.X).Divide(b.X.Subtract(a.X)) : point.Z.Subtract(a.Z).Divide(b.Z.Subtract(a.Z));
+            return a.Y.Add(b.Y.Subtract(a.Y).Multiply(t));
+        }
+        return null;
+    }
+
+    internal static MapWideRational? HeightWide(IReadOnlyList<MapBoundFace> faces, MapWideXz point)
+    {
+        foreach (var face in faces)
+        {
+            var t = face.Triangle;
+            var a = MapWideXz.From(new(t.A.X, t.A.Z)); var b = MapWideXz.From(new(t.B.X, t.B.Z)); var c = MapWideXz.From(new(t.C.X, t.C.Z));
+            int ab = MapWaterPolygons.Cross(a, b, point).Sign, bc = MapWaterPolygons.Cross(b, c, point).Sign, ca = MapWaterPolygons.Cross(c, a, point).Sign;
+            if (ab >= 0 && bc >= 0 && ca >= 0 || ab <= 0 && bc <= 0 && ca <= 0)
+                return MapEffectiveGeometry.HeightWide(t, point);
+        }
+        return null;
+    }
+
+    /// <summary>The lexicographic derivative in the R4 world direction (1, infinitesimal +Z).</summary>
+    internal static int Direction(IReadOnlyList<MapBoundFace> faces, MapExactXz point)
+    {
+        MapBoundFace? selected = null;
+        foreach (var face in faces)
+        {
+            if (MapSubdividedTriangle.Height(face.Triangle, point.X, point.Z) is null) continue;
+            selected ??= face;
+            var polygon = MapRefinementPolygon.Triangle(face.Triangle).Select(MapWideXz.From).ToArray();
+            if (MapWaterPolygons.RingContains(polygon, MapWideXz.From(point))) { selected = face; break; }
+        }
+        if (selected is not { } bound) return 0;
+        var t = bound.Triangle;
+        var dx1 = W(t.B.X).Subtract(W(t.A.X)); var dx2 = W(t.C.X).Subtract(W(t.A.X));
+        var dz1 = W(t.B.Z).Subtract(W(t.A.Z)); var dz2 = W(t.C.Z).Subtract(W(t.A.Z));
+        var dy1 = W(t.B.Y).Subtract(W(t.A.Y)); var dy2 = W(t.C.Y).Subtract(W(t.A.Y));
+        var area = dx1.Multiply(dz2).Subtract(dz1.Multiply(dx2));
+        var x = dy1.Multiply(dz2).Subtract(dy2.Multiply(dz1)).Divide(area);
+        return x.Sign != 0 ? x.Sign : dx1.Multiply(dy2).Subtract(dx2.Multiply(dy1)).Divide(area).Sign;
+        static MapWideRational W(MapExactValue value) => MapWideRational.From(value);
     }
 
     internal static string Owner(MapScopedSurfaces view, MapSpaceDoc space)

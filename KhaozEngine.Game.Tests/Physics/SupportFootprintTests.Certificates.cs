@@ -202,7 +202,7 @@ public partial class SupportFootprintTests
             Assert.Equal(0, allocated);
             Assert.Equal(2, SupportQueryDiagnostics.Snapshot().Proposals);
             Assert.Equal(1, SupportQueryDiagnostics.Snapshot().Volumes);
-            object scratch = typeof(BepuPhysicsWorld).GetField("_footprintScratch", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(scene.World)!;
+            object scratch = FootprintScratch(scene.World);
             long payload = (long)typeof(KhaozEngine.Tests.Locomotion.Contacts.SupportCostScratch)
                 .GetMethod("Visit", BindingFlags.Static | BindingFlags.NonPublic)!
                 .Invoke(null, [scratch, new HashSet<object>(ReferenceEqualityComparer.Instance)])!;
@@ -211,10 +211,10 @@ public partial class SupportFootprintTests
         finally { SupportQueryDiagnostics.Enable(false); }
     }
 
-    static BepuPhysics.Simulation SimulationOf(BepuPhysicsWorld world) =>
+    internal static BepuPhysics.Simulation SimulationOf(BepuPhysicsWorld world) =>
         (BepuPhysics.Simulation)typeof(BepuPhysicsWorld).GetField("_sim", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(world)!;
 
-    static Dictionary<int, (BepuPhysics.StaticHandle Handle, BepuPhysics.Collidables.TypedIndex Shape)> HandlesOf(BepuPhysicsWorld world) =>
+    internal static Dictionary<int, (BepuPhysics.StaticHandle Handle, BepuPhysics.Collidables.TypedIndex Shape)> HandlesOf(BepuPhysicsWorld world) =>
         (Dictionary<int, (BepuPhysics.StaticHandle Handle, BepuPhysics.Collidables.TypedIndex Shape)>)typeof(BepuPhysicsWorld)
             .GetField("_handles", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(world)!;
 

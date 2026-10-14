@@ -6,7 +6,8 @@ namespace KhaozEngine.TileWorld.Physics;
 
 public sealed partial class TileColliderRegistration
 {
-    /// <summary>Captures live installer owners and excludes analytic ground in a fresh physical read.</summary>
+    /// <summary>Captures live installer owners and excludes analytic ground in a fresh physical read. The registration
+    /// is immutable once built, so it is an endorsed provider for a parallel contact navigation bake.</summary>
     public OrdinaryMovementRegistration CreateMovementRegistration(string worldId)
     {
         var builder = CreateMovementRegistrationBuilder(worldId);

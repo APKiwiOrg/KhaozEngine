@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
@@ -11,6 +12,14 @@ namespace KhaozEngine.MapDoc.Water;
 /// <summary>Exact predicates over emitted region triangles.</summary>
 internal static class MapWaterRegionGeometry
 {
+    internal static bool Holds(MapWaterRegion region, MapWideXz point) => region.WidePolygons.Count == 0
+        ? region.Triangles.Any(t => TriangleHolds(t, point)) : region.WidePolygons.Any(p =>
+            Enumerable.Range(0, p.Count).All(i => MapWaterPolygons.Cross(p[i], p[(i + 1) % p.Count], point).Sign >= 0));
+
+    /// <summary>A drawing-only bounded adapter. Semantic predicates and hashes never consume rounded vertices.</summary>
+    internal static MapExactXz Drawing(MapWideXz point) => point.TryNarrow(out var exact) ? exact
+        : new(MapResourceTransform.Freeze(point.X.ToDouble()), MapResourceTransform.Freeze(point.Z.ToDouble()));
+
     /// <summary>True when the triangle holds <paramref name="point"/> in XZ, boundaries included.</summary>
     internal static bool TriangleHolds(MapExactTriangle triangle, MapWideXz point)
     {
@@ -38,6 +47,8 @@ internal sealed class MapWaterRegionBuilder
     readonly MapRefinementLimits _reads;
     readonly MapWaterWorkMeter _meter;
     readonly SortedDictionary<string, SpaceRegions> _spaces = new(StringComparer.Ordinal);
+    readonly Dictionary<string, MapOccupiedFragment> _fragments = new(StringComparer.Ordinal);
+    readonly Dictionary<string, MapWaterFragmentBounds> _bounds = new(StringComparer.Ordinal);
     MapWideRational? _deepest;
 
     internal MapWaterRegionBuilder(MapScopedSurfaces view, MapWaterDomain domain, MapExactValue level, MapRefinementLimits reads,
@@ -63,6 +74,45 @@ internal sealed class MapWaterRegionBuilder
 
     /// <summary>The exact minimum height of the covered lower area, or null when none resolved.</summary>
     internal MapWideRational? DeepestBed => _deepest;
+    internal IReadOnlyList<MapWaterFragmentBounds> FragmentBounds => _bounds.OrderBy(p => p.Key, StringComparer.Ordinal).Select(p => p.Value).ToArray();
+
+    /// <summary>R5 feeds the existing clipping and height-split kernel canonical occupied pieces, rather than raw
+    /// ancestor footprints. Each piece is already refined against its canonical bound faces and parent prism.</summary>
+    internal void Add(MapOccupiedPiece occupied)
+    {
+        var fragment = MapOccupiedPartitions.Fragment(occupied.SpaceId, occupied.LowerBoundary, occupied.UpperBoundary, occupied.Path);
+        _fragments.TryAdd(fragment.Id, fragment);
+        var regions = Regions(fragment.Id);
+        for (int index = 0; index < _domain.Pieces.Count; index++)
+            foreach (var part in _domain.ConvexParts(index, _meter.Pairs))
+            {
+                _meter.Pairs.Charge(1);
+                foreach (var clipped in MapWaterPolygons.ClipToConvex(part, occupied.Polygon))
+                {
+                    var wet = MapOccupiedPartitions.Clip(clipped, p => _level.Subtract(occupied.Bottom(p)));
+                    if (!MapOccupiedPartitions.Positive(wet) || !wet.Any(p => occupied.Bottom(p).CompareTo(_level) < 0)) continue;
+                    var low = wet.Select(occupied.Bottom).Aggregate(MapWideRational.Min);
+                    _deepest = _deepest is { } previous ? MapWideRational.Min(previous, low) : low;
+                    var high = wet.Select(p => MapWideRational.Min(_level, occupied.Top(p) ?? _level)).Aggregate(MapWideRational.Max);
+                    var bounds = MapWaterOccupiedPieces.Bounds(wet, low, high);
+                    _bounds[fragment.Id] = new(fragment, _bounds.TryGetValue(fragment.Id, out var old) ? old.Bounds.Union(bounds) : bounds);
+                    if (occupied.Top(wet[0]) is null) regions[MapWaterRegionKind.FreeSurface].Add(wet);
+                    else
+                    {
+                        _meter.Pairs.Charge(1);
+                        var lifted = wet.Select(p => occupied.Lift(p, true)).ToArray();
+                        var (free, closed) = MapWaterPolygons.SplitAtHeight(lifted, _level);
+                        regions[MapWaterRegionKind.FreeSurface].AddRange(free.Select(Flatten));
+                        regions[MapWaterRegionKind.Closed].AddRange(closed.Select(Flatten));
+                        if (closed.Count == 0)
+                        {
+                            var ties = lifted.Where(p => p.Y.CompareTo(_level) == 0).Select(p => p.Xz).Order().ToArray();
+                            if (ties.Length != 0) ClosedContours.Add(new(occupied.SpaceId, fragment.Id, ties[0], ties[^1]));
+                        }
+                    }
+                }
+            }
+    }
 
     /// <summary>Adds one footprint rectangle's regions, or returns the typed failure of a bound read.</summary>
     internal (MapWaterCompileStatus Status, string? Detail)? Add(MapWaterFootprintRect rect)
@@ -106,12 +156,19 @@ internal sealed class MapWaterRegionBuilder
                     List<MapWideXz> ring = Clean(polygon);
                     if (ring.Count < 3) continue;
                     _meter.ChargeTriangles(ring.Count - 2);
-                    MapExactPoint first = Lift(ring[0], level);
+                    bool effective = _fragments.ContainsKey(space);
+                    MapExactPoint Draw(MapWideXz p) => effective ? new(MapWaterRegionGeometry.Drawing(p).X, level, MapWaterRegionGeometry.Drawing(p).Z) : Lift(p, level);
+                    MapExactPoint first = Draw(ring[0]);
                     for (int i = 1; i + 1 < ring.Count; i++)
                         // The ring is counter-clockwise in XZ, so reversing each fan triangle makes it face up.
-                        triangles.Add(new MapExactTriangle(first, Lift(ring[i + 1], level), Lift(ring[i], level)));
+                        triangles.Add(new MapExactTriangle(first, Draw(ring[i + 1]), Draw(ring[i])));
                 }
-                if (triangles.Count != 0) regions.Add(new MapWaterRegion(space, kind, triangles.AsReadOnly()));
+                if (triangles.Count != 0)
+                {
+                    _fragments.TryGetValue(space, out var fragment);
+                    regions.Add(new MapWaterRegion(fragment?.SpaceId ?? space, kind, triangles.AsReadOnly())
+                    { Fragment = fragment, WidePolygons = fragment is null ? Array.Empty<IReadOnlyList<MapWideXz>>() : polygons[kind].Select(p => (IReadOnlyList<MapWideXz>)Clean(p).AsReadOnly()).ToArray() });
+                }
             }
         return regions.AsReadOnly();
     }

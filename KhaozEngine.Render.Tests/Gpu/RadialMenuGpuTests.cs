@@ -90,8 +90,7 @@ namespace KhaozEngine.Tests.Gpu
                 viewport.Update(Width, Height);
 
                 ctx.Batch.Begin(viewport);
-                // AllocAssert may execute the measured 32-call workload twice. Warm both passes into the retained
-                // run-list capacity so an unrelated first-pass allocation cannot make the retry grow that list.
+                // Warm twice the measured 32-call workload so the retained run-list capacity is already grown.
                 for (int i = 0; i < 64; i++) menu.Draw(ctx.Batch, white, font, icons);
                 ctx.Batch.End();
 

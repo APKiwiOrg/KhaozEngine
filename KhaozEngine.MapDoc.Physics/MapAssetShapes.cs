@@ -1,7 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using KhaozEngine.MapDoc.Assets;
+using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.Physics;
 
 namespace KhaozEngine.MapDoc.Physics;
@@ -32,8 +35,16 @@ public sealed class MapAssetShapes
     /// <summary>The asset's source unit scale in metres, applied by the caller when it places the shapes.</summary>
     public float SourceUnitsToMetres { get; }
 
+    /// <summary>Detached descriptors decoded and validated by MapDoc before effective support sampling. Their
+    /// frames already declare metres, so SourceUnitsToMetres is never applied to them again.</summary>
+    public IReadOnlyList<MapSupportResource> SupportResources { get; }
+
     internal MapAssetShapes(string assetId, PhysicsShape? collider, string? colliderSha256, PhysicsShape? selection,
         string? selectionSha256, float sourceUnitsToMetres)
+        : this(assetId, collider, colliderSha256, selection, selectionSha256, sourceUnitsToMetres, Array.Empty<MapSupportResource>()) { }
+
+    internal MapAssetShapes(string assetId, PhysicsShape? collider, string? colliderSha256, PhysicsShape? selection,
+        string? selectionSha256, float sourceUnitsToMetres, IReadOnlyList<MapSupportResource> supportResources)
     {
         AssetId = assetId;
         Collider = collider;
@@ -41,27 +52,26 @@ public sealed class MapAssetShapes
         Selection = selection;
         SelectionSha256 = selectionSha256;
         SourceUnitsToMetres = sourceUnitsToMetres;
+        SupportResources = supportResources;
     }
 
     /// <summary>Reads the collider and selection resources of <paramref name="assetId"/>. Throws
     /// <see cref="MapDocumentException"/> for an asset outside the closure, a payload that does not read as exactly one
     /// <see cref="PropCollisionFormat"/> shape, a triangle mesh inside a compound, which the physics backend cannot
-    /// install, a hull or mesh with no points, and any declared support resource, since placement-local support
-    /// surfaces are not supported yet.</summary>
+    /// install, a hull or mesh with no points, and any declared support resource lacking a validated MapDoc payload.</summary>
     public static MapAssetShapes Read(MapAssetClosure closure, string assetId)
     {
         ArgumentNullException.ThrowIfNull(closure);
         ArgumentNullException.ThrowIfNull(assetId);
         MapResolvedAsset asset = closure.GetAsset(assetId);
-        if (asset.SupportResourceIds.Count != 0)
-            throw new MapDocumentException(
-                $"Asset '{asset.Id}' declares support resource '{asset.SupportResourceIds[0]}', and placement-local support surfaces arrive with R5.");
+        var support = asset.SupportResourceIds.Select(id => closure.BorrowSupport(id)).Select(r => r with
+        { Surfaces = r.Surfaces.Clone(), References = Array.AsReadOnly(r.References.ToArray()) }).ToArray();
 
         (PhysicsShape? collider, string? colliderSha256) =
             ReadShape(closure, asset.Id, asset.CollisionResourceId, MapResourceKind.Collider);
         (PhysicsShape? selection, string? selectionSha256) =
             ReadShape(closure, asset.Id, asset.SelectionResourceId, MapResourceKind.Selection);
-        return new MapAssetShapes(asset.Id, collider, colliderSha256, selection, selectionSha256, asset.SourceUnitsToMetres);
+        return new MapAssetShapes(asset.Id, collider, colliderSha256, selection, selectionSha256, asset.SourceUnitsToMetres, Array.AsReadOnly(support));
     }
 
     static (PhysicsShape? Shape, string? Sha256) ReadShape(MapAssetClosure closure, string assetId, string? resourceId,

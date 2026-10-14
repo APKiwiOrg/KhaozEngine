@@ -73,6 +73,7 @@ public static class MapSurfaceSemantics
         ArgumentNullException.ThrowIfNull(patches);
         if (string.IsNullOrWhiteSpace(surface.Id) || surface.Frame is null || !Enum.IsDefined(surface.Role) || !Enum.IsDefined(surface.PresencePolicy))
             throw new MapDocumentException("invalid surface semantic metadata");
+        MapSurfaceJson.RequirePaintPriority(surface);
         _ = surface.Frame.WorldXz(MapLatticeAddress.Corner(0, 0));
         using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         hash.AppendData(Encoding.UTF8.GetBytes("kemap/surface/1\0"));
@@ -85,6 +86,7 @@ public static class MapSurfaceSemantics
             w.WriteNumber("rowDirection", (byte)surface.Frame.RowDirection); w.WriteNumber("datum", (byte)surface.Frame.Datum); w.WriteEndObject();
             w.WriteNumber("role", (byte)surface.Role); w.WriteNumber("presencePolicy", (byte)surface.PresencePolicy);
             w.WriteString("paintTargetSurfaceId", surface.PaintTargetSurfaceId);
+            if (surface.PaintPriority != 0) w.WriteNumber("paintPriority", surface.PaintPriority);
             w.WritePropertyName("indoorSpan");
             if (surface.IndoorSpan is not { } span) w.WriteNullValue();
             else

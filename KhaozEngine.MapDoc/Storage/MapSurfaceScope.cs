@@ -11,6 +11,9 @@ namespace KhaozEngine.MapDoc.Storage;
 public sealed record MapSurfaceScope(WorldFrame Frame, Vector2 LocalMin, Vector2 LocalMax, float? MinY, float? MaxY,
     IReadOnlyList<MapSurfaceRole> Roles, IReadOnlyList<string>? SpaceIds, MapQueryLimits Limits)
 {
+    // Composition carries one before-work allowance and a discovery-only ownership filter.
+    internal MapPageBudget? SharedBudget { get; init; }
+    internal IReadOnlySet<string>? DiscoverySurfaces { get; init; }
     public Vector2 LocalMin { get; init; } = ValidateInitial(LocalMin, LocalMax, MinY, MaxY, Roles, SpaceIds, Limits);
     public IReadOnlyList<MapSurfaceRole> Roles { get; init; } = Array.AsReadOnly(Roles.ToArray());
     public IReadOnlyList<string>? SpaceIds { get; init; } = SpaceIds is null ? null : Array.AsReadOnly(SpaceIds.ToArray());

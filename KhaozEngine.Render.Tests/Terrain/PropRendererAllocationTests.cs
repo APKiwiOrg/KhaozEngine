@@ -48,8 +48,6 @@ namespace KhaozEngine.Tests.Terrain
             Assert.Equal(placements.Count, instances.Items.Count);   // not vacuous: every placement really is queued
 
             instances.Begin();
-            // Retries once before failing (see AllocAssert.NoPerCallAllocation) to ride out an unrelated gen-0
-            // collision from the rest of the process, per issue #284.
             AllocAssert.NoPerCallAllocation("Queue over 20 calls", () =>
             {
                 for (int i = 0; i < 20; i++)
@@ -75,8 +73,6 @@ namespace KhaozEngine.Tests.Terrain
             Assert.True(instances.Items.Count > placements.Count);   // not vacuous: multi-part, so more than one each
 
             instances.Begin();
-            // Retries once before failing (see AllocAssert.NoPerCallAllocation) to ride out an unrelated gen-0
-            // collision from the rest of the process, per issue #284.
             AllocAssert.NoPerCallAllocation("QueueParts over 20 calls", () =>
             {
                 for (int i = 0; i < 20; i++)

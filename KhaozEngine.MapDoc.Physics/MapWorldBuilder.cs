@@ -8,6 +8,8 @@ using System.Text.Json;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Identity;
+using KhaozEngine.MapDoc.Prefabs;
+using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Water;
@@ -21,7 +23,7 @@ namespace KhaozEngine.MapDoc.Physics;
 public static class MapWorldBuilder
 {
     /// <summary>The largest static position, in metres from the world origin on any axis.</summary>
-    public const double MaxCoordinateMetres = 1_000_000;
+    public const double MaxCoordinateMetres = MapResourceTransform.MaxCoordinateMetres;
 
     // The backend capsule feature query's capture limits.
     const int MaxFeatureLeaves = 64, MaxFeatureMeshTriangles = 65_536;
@@ -50,12 +52,22 @@ public static class MapWorldBuilder
         MapResolvedDocument resolved =
             MapNativeResolution.Resolve(document, assets, options.Resolve, options.LegacySupportHeight);
         bool native = options.Resolve.ResolverVersion == 2;
-        MapScopedSurfaces surfaces = MapScopedSurfaces.CompleteView(native ? document.Surfaces.Clone() : new MapSurfaceSet());
+        var effective = native ? resolved.EffectiveResources : null;
+        bool completeEffective = effective is not null && (document.Prefabs is not null || document.NativeResourceTransforms is not null ||
+            resolved.Placements.Any(p => assets.GetAsset(p.AssetId).SupportResourceIds.Count != 0));
+        MapScopedSurfaces surfaces = effective?.CompleteView() ?? MapScopedSurfaces.CompleteView(new MapSurfaceSet());
+        if (completeEffective)
+        {
+            var findings = MapSpaceCoverageValidator.Validate(surfaces);
+            if (findings.Count != 0) throw new MapDocumentException(string.Join("\n", findings));
+        }
         MapTerrainChunkSet terrain = MapTerrainPhysics.Compile(surfaces, options.Chunks);
         IReadOnlyList<MapPlacementGeometry> placements = MapPlacementShapes.Resolve(resolved);
+        if (completeEffective)
+            MapPrefabSupportBounds.RefuseCoincidentFloors(surfaces, placements);
         // The resolver's authored identity verified the document-level water rules and the material closure. The compile
         // verifies containment over the whole-document view, so a built world never carries unverified water.
-        MapWaterSet? water = native ? document.Water?.Clone() : null;
+        MapWaterSet? water = effective?.Water;
         IReadOnlyList<MapCompiledWaterBody> bodies = water is null ? Array.Empty<MapCompiledWaterBody>() : CompileWater(surfaces, water);
 
         IReadOnlyList<MapLegacySculptTile> sculpt = Array.Empty<MapLegacySculptTile>();
@@ -84,10 +96,15 @@ public static class MapWorldBuilder
 
         string waterDigest = water?.Digest() ?? "";
         string buildHash = BuildHash(resolved.AuthoredHash, options, legacyIdentity, placements, terrain,
-            water is null ? null : (waterDigest, bodies));
+            water is null ? null : (waterDigest, bodies), effective?.AnnotationDigest ?? "");
         MapWaterMediumDoc[] media = water?.Media.OrderBy(m => m.Key, StringComparer.Ordinal).ToArray() ?? Array.Empty<MapWaterMediumDoc>();
+        MapBox3[] supportBounds = effective is not null && terrain.Chunks.Count != 0
+            ? new[] { MapPrefabSupportBounds.Bounds(effective) } : Array.Empty<MapBox3>();
         return new MapBuiltWorld(resolved, surfaces, placements, terrain, statics, diagnostics.AsReadOnly(),
-            WorldBounds(document.Bounds, statics, placements), document.TileSize, buildHash, native,
+            WorldBounds(document.Bounds, statics, placements,
+                effective is null ? Array.Empty<MapBox3>() : MapPrefabSupportBounds.OtherBounds(effective, assets)
+                    .Concat(supportBounds)
+                    .Concat(bodies.Where(b => b.Bounds is not null).Select(b => b.Bounds!.Value))), document.TileSize, buildHash, native,
             native ? null : options.LegacySupportHeight, sculpt, sculptCellSize, terrainBlock, legacyIdentity,
             bodies, Array.AsReadOnly(media), waterDigest,
             legacyWaterLevel: !native && document.Water is null ? document.Terrain.WaterLevel : null);
@@ -108,6 +125,8 @@ public static class MapWorldBuilder
             throw new MapDocumentException($"water: {body.Detail ?? $"water body '{body.BodyId}': {body.Status}"}");
         if (body.Regions.Count > 0 && body.Bounds is null)
             throw new MapDocumentException($"water: body '{body.BodyId}' has regions but no bounds");
+        if (body.Regions.Any(r => r.Fragment is not null) && body.FragmentBounds.Count == 0)
+            throw new MapDocumentException($"water: body '{body.BodyId}' has occupied regions but no fragment bounds");
     }
 
     static void ValidateOptions(MapWorldBuildOptions options)
@@ -133,17 +152,18 @@ public static class MapWorldBuilder
         {
             if (placement.Collider is null) continue;
             Vector3 p = placement.WorldPose.Position;
-            RequireWithinWorld(placement.PlacementId, p.X, p.Y, p.Z);
+            MapResourceTransform.RequireWithinWorld(placement.PlacementId, p.X, p.Y, p.Z);
             Add(new(placement.PlacementId, MapStaticKind.Placement, placement.Collider, p, placement.WorldPose.Orientation,
-                placement.ColliderBounds!.Value, placement.Digest, Array.Empty<MapFaceKey>()));
+                placement.ColliderBounds!.Value, placement.Digest, Array.Empty<MapFaceKey>())
+            { EffectiveTransform = placement.EffectiveTransform });
         }
         foreach (MapTerrainChunk chunk in terrain.Chunks)
         {
             MapSubmissionAnchor a = chunk.Anchor;
-            RequireWithinWorld(chunk.ChunkId, a.X, a.Y, a.Z);
+            MapResourceTransform.RequireWithinWorld(chunk.ChunkId, a.X, a.Y, a.Z);
             var position = new Vector3(a.X, a.Y, a.Z);
             Add(new(chunk.ChunkId, MapStaticKind.TerrainChunk, chunk.Shape, position, Quaternion.Identity,
-                MapShapeBounds.Of(chunk.Shape, Pose.At(position)), chunk.Digest, chunk.TriangleOwners));
+                chunk.Bounds, chunk.Digest, chunk.TriangleOwners));
         }
         return statics.AsReadOnly();
 
@@ -153,13 +173,6 @@ public static class MapWorldBuilder
                 throw new MapDocumentException($"Two statics share the owner id '{descriptor.OwnerId}'.");
             statics.Add(descriptor);
         }
-    }
-
-    static void RequireWithinWorld(string owner, double x, double y, double z)
-    {
-        if (Math.Abs(x) > MaxCoordinateMetres || Math.Abs(y) > MaxCoordinateMetres || Math.Abs(z) > MaxCoordinateMetres)
-            throw new MapDocumentException(FormattableString.Invariant(
-                $"Static '{owner}' at ({x}, {y}, {z}) lies beyond {MaxCoordinateMetres:N0} m from the world origin on an axis."));
     }
 
     /// <summary>The feature query limits a static meets, measured per installed leaf as the backend measures it.</summary>
@@ -230,11 +243,11 @@ public static class MapWorldBuilder
     }
 
     static MapBox3 WorldBounds(MapBounds storage, IReadOnlyList<MapStaticDescriptor> statics,
-        IReadOnlyList<MapPlacementGeometry> placements)
+        IReadOnlyList<MapPlacementGeometry> placements, IEnumerable<MapBox3> other)
     {
         double minX = storage.MinX, minZ = storage.MinZ, maxX = storage.MaxX, maxZ = storage.MaxZ;
         double minY = double.PositiveInfinity, maxY = double.NegativeInfinity;
-        foreach (MapBox3 box in statics.Select(s => s.Bounds).Concat(placements.Select(p => p.Envelope.Bounds)))
+        foreach (MapBox3 box in statics.Select(s => s.Bounds).Concat(placements.Select(p => p.Envelope.Bounds)).Concat(other))
         {
             minX = Math.Min(minX, box.MinX);
             minY = Math.Min(minY, box.MinY);
@@ -290,7 +303,7 @@ public static class MapWorldBuilder
     // Water adds hash members only when a section is present. The authored hash already includes the native format.
     static string BuildHash(string authoredHash, MapWorldBuildOptions options, string legacyIdentity,
         IReadOnlyList<MapPlacementGeometry> placements, MapTerrainChunkSet terrain,
-        (string Digest, IReadOnlyList<MapCompiledWaterBody> Bodies)? water) => CanonicalHash(w =>
+        (string Digest, IReadOnlyList<MapCompiledWaterBody> Bodies)? water, string annotationDigest) => CanonicalHash(w =>
     {
         w.WriteStartObject();
         w.WriteString("domain", "kemap/built-world/1");
@@ -300,6 +313,7 @@ public static class MapWorldBuilder
         w.WriteString("interactionPolicyHash", MapInteractionPolicy.Hash);
         w.WriteNumber("maxTrianglesPerChunk", options.Chunks.MaxTrianglesPerChunk);
         w.WriteString("legacyTerrainIdentity", legacyIdentity);
+        if (annotationDigest.Length != 0) w.WriteString("annotationDigest", annotationDigest);
         w.WriteStartArray("placements");
         foreach (MapPlacementGeometry placement in placements) Pair(w, placement.PlacementId, placement.Digest);
         w.WriteEndArray();

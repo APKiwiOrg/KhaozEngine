@@ -4,7 +4,7 @@ using System.Numerics;
 namespace KhaozEngine.Physics.Bepu;
 
 /// <summary>Reusable storage for capturing and admitting polyhedron leaves, owned by one query scratch and used
-/// under its owner's query monitor. Arrays are handed out at exact lengths, because admission and its consumers
+/// by one operation at a time. Arrays are handed out at exact lengths, because admission and its consumers
 /// read lengths, and stay valid until <see cref="Reset"/>. A warm query of the same scene rents the same arrays in
 /// the same order and allocates nothing. The leaves it captures carry faces and normals but no edge or vertex
 /// incidence, which only the feature query reads.</summary>

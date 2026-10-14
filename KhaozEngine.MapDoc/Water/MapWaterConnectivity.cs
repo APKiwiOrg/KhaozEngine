@@ -67,7 +67,7 @@ internal sealed class MapWaterConnectivity
     /// is definitely invalid adds an error under <paramref name="label"/> and joins nothing. Returns why an edge that
     /// could join the set could not be evaluated, or null.</summary>
     internal string? Join(string label, MapExactValue surface, IReadOnlyList<string> covered, List<string> errors, out bool connected,
-        ISet<MapPatchKey>? read = null)
+        ISet<MapPatchKey>? read = null, ISet<MapRecordRef>? records = null)
     {
         var adjacency = covered.ToDictionary(id => id, _ => new List<string>(), StringComparer.Ordinal);
         var candidates = new SortedSet<int>(_unresolved);
@@ -102,6 +102,9 @@ internal sealed class MapWaterConnectivity
                 return;
             }
             Bottom(edge);
+            if (records is not null)
+                foreach (var source in edge.Provenance)
+                { records.Add(source); read?.Add(source.Anchor); }
             if (edge.Overflow) unknown ??= $"{edge.Relation} is not representable";
             else if (edge.Error is { } apertureError) Fail(edge.Relation, apertureError);
             else if (edge.BottomY!.Value.CompareTo(surface) < 0)
@@ -166,6 +169,7 @@ internal sealed class MapWaterConnectivity
         {
             MapPortalFact fact = MapRelationApertures.Compile(_view, edge.Aperture, edge.From.Owner!, edge.To.Owner!, edge.Link);
             edge.BottomY = MapRelationApertures.BottomOf(fact);
+            edge.Provenance = fact.Geometry.Provenance;
         }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException) { edge.Overflow = true; }
         catch (MapDocumentException error) { edge.Error = error; }
@@ -184,6 +188,7 @@ internal sealed class MapWaterConnectivity
         internal Endpoint To { get; } = to;
         internal string Relation { get; } = relation;
         internal bool Compiled { get; set; }
+        internal IReadOnlyList<MapRecordRef> Provenance { get; set; } = Array.Empty<MapRecordRef>();
         internal MapExactValue? BottomY { get; set; }
         internal bool Overflow { get; set; }
         internal MapDocumentException? Error { get; set; }

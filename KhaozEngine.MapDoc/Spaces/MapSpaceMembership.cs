@@ -14,23 +14,35 @@ public sealed class MapMembershipResult
 {
     public MapMembershipStatus Status { get; }
     public MapFramePoint Point { get; }
+    public MapExactPoint ExactPoint { get; }
     public string? SpaceId { get; }
+    public IReadOnlyList<string> ParentSpaceIds { get; }
+    public MapOccupiedFragment? Fragment { get; }
     public IReadOnlyList<string> DomainKeys { get; }
     public MapLegacyCellTag? LowerCompatibility { get; }
     public string? Detail { get; }
     public MapReadWitness Witness { get; }
 
     internal MapMembershipResult(MapMembershipStatus status, MapFramePoint point, string? spaceId,
-        IEnumerable<string> domainKeys, MapLegacyCellTag? lowerCompatibility, string? detail, MapReadWitness witness)
+        IEnumerable<string> domainKeys, MapLegacyCellTag? lowerCompatibility, string? detail, MapReadWitness witness, MapExactPoint? exactPoint = null, IEnumerable<string>? parentSpaceIds = null, MapOccupiedFragment? fragment = null)
     {
         Status = status;
         Point = point;
+        ExactPoint = exactPoint ?? ExactOrDefault(point);
         SpaceId = spaceId;
+        ParentSpaceIds = Array.AsReadOnly((parentSpaceIds ?? Array.Empty<string>()).ToArray());
+        Fragment = fragment;
         DomainKeys = Array.AsReadOnly(domainKeys.ToArray());
         LowerCompatibility = lowerCompatibility;
         Detail = detail;
         Witness = witness;
     }
+    static MapExactPoint ExactOrDefault(MapFramePoint point)
+    {
+        try { var xz = point.ExactWorldXz(); return new(xz.X, point.ExactY(), xz.Z); }
+        catch (MapExactOverflowException) { return default; }
+    }
+
 }
 
 /// <summary>Resolves membership using only acquired records and one point-cell compilation context.</summary>
@@ -51,6 +63,18 @@ public sealed class MapSpaceMembership
     {
         context.RequireView(_view);
         return QueryCore(point, null, context, null, out _, null, false);
+    }
+
+    public MapMembershipResult QueryExact(MapExactPoint world) => QueryCore(MapEffectiveGeometry.Presentation(_view, world), null, null, null, out _, null, false, world);
+    internal MapMembershipResult QueryExact(MapExactPoint world, IEnumerable<MapBoundFaceDemand> demands,
+        MapBoundFaceWork? work, out MapBoundFaceContext? prepared) =>
+        QueryCore(MapEffectiveGeometry.Presentation(_view, world), work, null, demands, out prepared, null, false, world);
+    internal MapMembershipResult QueryExact(MapExactPoint world, out MapSpaceBoundsPart? selected)
+    {
+        var parts = new List<MapSpaceBoundsPart>(1);
+        var result = QueryCore(MapEffectiveGeometry.Presentation(_view, world), null, null, null, out _, parts, false, world);
+        selected = result.Status == MapMembershipStatus.Resolved ? parts.Single() : null;
+        return result;
     }
 
     /// <summary>Resolves <paramref name="point"/> exactly as <see cref="Query(MapFramePoint)"/> does and reports the
@@ -75,10 +99,25 @@ public sealed class MapSpaceMembership
         return result;
     }
 
+    internal MapMembershipResult QueryExact(MapExactPoint world, MapBoundFaceContext context)
+    {
+        context.RequireView(_view);
+        return QueryCore(MapEffectiveGeometry.Presentation(_view, world), null, context, null, out _, null, false, world);
+    }
+    internal MapMembershipResult Column(MapFramePoint point, MapExactPoint? world, MapBoundFaceContext context,
+        out IReadOnlyList<MapSpaceBoundsPart> parts)
+    {
+        context.RequireView(_view);
+        var found = new List<MapSpaceBoundsPart>();
+        var result = QueryCore(point, null, context, null, out _, found, true, world);
+        parts = result.Status == MapMembershipStatus.Resolved ? found.AsReadOnly() : Array.Empty<MapSpaceBoundsPart>();
+        return result;
+    }
+
     sealed record Candidate(MapSpaceFootprint Footprint, MapSpacePointBounds.Bound Lower, MapSpacePointBounds.Bound Upper);
 
     MapMembershipResult QueryCore(MapFramePoint point, MapBoundFaceWork? work, MapBoundFaceContext? supplied,
-        IEnumerable<MapBoundFaceDemand>? additional, out MapBoundFaceContext? prepared, List<MapSpaceBoundsPart>? parts, bool column)
+        IEnumerable<MapBoundFaceDemand>? additional, out MapBoundFaceContext? prepared, List<MapSpaceBoundsPart>? parts, bool column, MapExactPoint? exactWorld = null)
     {
         prepared = supplied;
         if (point.Frame != _view.Scope.Frame) throw new ArgumentException("point frame differs from acquired frame", nameof(point));
@@ -86,11 +125,11 @@ public sealed class MapSpaceMembership
             throw new ArgumentException("point must be finite", nameof(point));
         try
         {
-            MapExactXz xz = point.ExactWorldXz();
+            MapExactXz xz = exactWorld is { } exact ? new(exact.X, exact.Z) : point.ExactWorldXz();
             // A column reads every height, so the point's own Y never enters it.
-            MapExactValue y = column ? default : point.ExactY();
+            MapExactValue y = column ? default : exactWorld?.Y ?? point.ExactY();
             MapSurfaceScope scope = _view.Scope;
-            if (point.Local.X < scope.LocalMin.X || point.Local.X > scope.LocalMax.X ||
+            if (exactWorld is { } suppliedPoint ? !MapEffectiveGeometry.InScope(_view, suppliedPoint) : point.Local.X < scope.LocalMin.X || point.Local.X > scope.LocalMax.X ||
                 point.Local.Z < scope.LocalMin.Y || point.Local.Z > scope.LocalMax.Y ||
                 (!column && (point.Local.Y < scope.MinY || point.Local.Y > scope.MaxY)))
                 return Failure(MapMembershipStatus.MissingGeometry, "outside acquired scope");
@@ -99,10 +138,23 @@ public sealed class MapSpaceMembership
                 return Failure(MapMembershipStatus.MissingGeometry, "column outside acquired vertical scope");
             if (_view.Status == MapAcquireStatus.CapacityExceeded) return Failure(MapMembershipStatus.CapacityExceeded, _view.Detail);
             if (_view.Status == MapAcquireStatus.NotRepresentable) return Failure(MapMembershipStatus.NotRepresentable, _view.Detail);
+            if (_view.EffectiveContext is not null && _view.Status == MapAcquireStatus.Incomplete) return Failure(MapMembershipStatus.MissingGeometry, Unavailable());
             MapQueryLimits budgets = scope.Limits;
             var limits = new MapRefinementLimits(MaxContextPatches: budgets.MaxCandidatePatches, MaxContextFaces: budgets.MaxInspectedFaces);
             var bounds = supplied is null ? new MapSpacePointBounds(_view, limits, work) : new(supplied, limits);
             MapTopologyRecord[] records = MapSpaceGeometry.Records(_view).OrderBy(r => r.Id, StringComparer.Ordinal).ToArray();
+            var prisms = records.OfType<MapPrismDomain>().ToArray();
+            var roomIds = records.OfType<MapSpaceDoc>().Where(s => s.Kind == MapSpaceKind.Room).Select(s => s.Id).ToHashSet(StringComparer.Ordinal);
+            if (records.OfType<MapSpaceFootprint>().Any(f => roomIds.Contains(f.Space.Id)))
+                return Failure(MapMembershipStatus.MissingGeometry, "room occupancy requires its prism, not a second lattice domain");
+            foreach (var room in records.OfType<MapSpaceDoc>().Where(s => s.Kind == MapSpaceKind.Room && s.AliasOf is null))
+                if (prisms.Count(p => p.Space.Id == room.Id) != 1) return Failure(MapMembershipStatus.MissingGeometry, "room requires one acquired prism");
+            long prismVertices = prisms.Sum(MapPrismGeometry.Cost);
+            if (prisms.Length > budgets.MaxRecordReads || prismVertices > budgets.MaxInspectedFaces)
+                return Failure(MapMembershipStatus.CapacityExceeded, "prism records or vertices");
+            int remainingFaces = budgets.MaxInspectedFaces - (int)prismVertices;
+            bool nested = prisms.Length != 0;
+            if (nested && _view.Status == MapAcquireStatus.Incomplete) return Failure(MapMembershipStatus.MissingGeometry, Unavailable());
             var candidates = new List<Candidate>();
             var demands = new List<MapBoundFaceDemand>();
             var portalChains = new Dictionary<MapRecordRef, (MapBoundaryChain Chain, MapCellDemand[] Cells)>();
@@ -121,27 +173,31 @@ public sealed class MapSpaceMembership
             MapCavePortal[] incident = records.OfType<MapCavePortal>().Where(p => OnPortal(p, xz)).ToArray();
             foreach (MapCavePortal portal in incident)
             {
+                if (prisms.Any(p => p.Space.Id == portal.FromSpace.Id || p.Space.Id == portal.ToSpace.Id)) continue;
                 DemandChain(portal.BandBottom);
                 if (portal.BandTop is { } top) DemandChain(top);
             }
             foreach (MapSurfaceRef surface in _view.Surfaces.Where(s => s.IndoorSpan is not null))
             {
-                var (x, z) = MapSpaceGeometry.Cell(surface.Frame, xz);
-                MapPatchKey key = MapPatchKey.ForCell(surface.Id, x, z);
-                if (!_view.TryAcquiredPatch(key, out MapSurfacePatch? patch, out _) || patch is null) continue;
-                int slot = MapLowerCellClassifier.SlotCell(x, z), lx = slot % 64 - patch.CellMinX, lz = slot / 64 - patch.CellMinZ;
-                if (lx >= 0 && lx < patch.Width && lz >= 0 && lz < patch.Depth &&
-                    (patch.Cells[lz * patch.Width + lx].Flags & MapCellFlags.Indoor) != 0)
-                    demands.Add(new(bounds.SourceCell(key, xz), null));
+                foreach (var (x, z) in MapEffectiveGeometry.CellCandidates(_view, surface.Id, xz))
+                {
+                    MapPatchKey key = MapPatchKey.ForCell(surface.Id, x, z);
+                    if (!_view.TryAcquiredPatch(key, out MapSurfacePatch? patch, out _) || patch is null) continue;
+                    int slot = MapLowerCellClassifier.SlotCell(x, z), lx = slot % 64 - patch.CellMinX, lz = slot / 64 - patch.CellMinZ;
+                    if (lx >= 0 && lx < patch.Width && lz >= 0 && lz < patch.Depth &&
+                        (patch.Cells[lz * patch.Width + lx].Flags & MapCellFlags.Indoor) != 0)
+                        demands.Add(new(new(key, slot), null));
+                }
             }
             if (additional is not null) demands.AddRange(additional);
             MapBoundFaceContext? context = supplied ?? MapBoundFaceContext.PrepareBounds(_view, demands,
-                budgets.MaxCandidatePatches, budgets.MaxInspectedFaces, work, out _, bounds.Preparation);
+                budgets.MaxCandidatePatches, remainingFaces, work, out _, bounds.Preparation);
             prepared = context;
             if (context is null) return Failure(MapMembershipStatus.CapacityExceeded, bounds.Preparation.Refusal ?? "context faces");
             var targets = new Dictionary<string, MapSpaceDoc>(StringComparer.Ordinal);
             foreach (MapCavePortal portal in incident)
             {
+                if (prisms.Any(p => p.Space.Id == portal.FromSpace.Id || p.Space.Id == portal.ToSpace.Id)) continue;
                 MapExactValue bottom = PortalHeight(portal.BandBottom);
                 MapExactValue? top = portal.BandTop is { } reference ? PortalHeight(reference) : null;
                 if (!column && (y.CompareTo(bottom) < 0 || (top is { } ceiling && y.CompareTo(ceiling) >= 0))) continue;
@@ -152,6 +208,7 @@ public sealed class MapSpaceMembership
                 if (column) { Collect(to, band); continue; }
                 return Resolve(to, null, context, band);
             }
+            var canonical = new List<MapSpaceBoundsPart>();
             var included = new Dictionary<string, (MapSpaceDoc Space, MapLegacyCellTag? Compatibility, MapSpaceBoundsPart Part)>(StringComparer.Ordinal);
             foreach (Candidate candidate in candidates)
             {
@@ -160,14 +217,26 @@ public sealed class MapSpaceMembership
                 if (lower is null || (candidate.Footprint.Upper.Kind != MapBoundKind.OpenTop && upper is null))
                     return Failure(MapMembershipStatus.MissingGeometry, $"missing bound: footprint '{candidate.Footprint.Id}'");
                 // An empty candidate holds no height, so point membership can never select it.
-                if (column ? upper is { } end && lower.Value.CompareTo(end) >= 0
+                if (column || nested ? upper is { } end && lower.Value.CompareTo(end) >= 0
                     : y.CompareTo(lower.Value) < 0 || (upper is { } high && y.CompareTo(high) >= 0)) continue;
                 MapSpaceDoc space = MapSpaceGeometry.Record<MapSpaceDoc>(_view, candidate.Footprint.Space);
                 // Resolve maps the selected target's alias once more, so the part names the space it reports.
                 var part = new MapSpaceBoundsPart(Target(Target(space)).Id, MapSpaceGeometry.Owner(_view, space), lower.Value, upper,
-                    BoundaryId(candidate.Footprint.Lower), BoundaryId(candidate.Footprint.Upper), false);
-                if (column) Collect(Target(space), part);
+                    BoundaryId(candidate.Footprint.Lower), BoundaryId(candidate.Footprint.Upper), false)
+                { LowerFaces = Faces(candidate.Lower), UpperFaces = Faces(candidate.Upper) };
+                if (nested) canonical.Add(part);
+                else if (column) Collect(Target(space), part);
                 else included.TryAdd(part.Owner, (Target(space), candidate.Lower.Compatibility, part));
+            }
+            if (nested)
+            {
+                foreach (var occupied in MapOccupiedPartitions.At(_view, xz, canonical, prisms))
+                {
+                    var space = records.OfType<MapSpaceDoc>().First(s => s.Id == occupied.SpaceId);
+                    if (column) Collect(space, occupied);
+                    else if (y.CompareTo(occupied.Lower) >= 0 && (occupied.Upper is not { } end || y.CompareTo(end) < 0))
+                        included.TryAdd(occupied.Owner, (space, null, occupied));
+                }
             }
             if (column)
             {
@@ -182,6 +251,9 @@ public sealed class MapSpaceMembership
                 return parts!.Count == 0 ? Failure(MapMembershipStatus.Outside, null)
                     : new(MapMembershipStatus.Resolved, point, null, Array.Empty<string>(), null, null, _view.ReadWitness);
             }
+            if (_view.EffectiveContext is not null)
+                foreach (var entry in included.Values.ToArray())
+                    foreach (var ancestor in MapSpaceGeometry.Ancestors(_view, entry.Space).Skip(1)) included.Remove(MapSpaceGeometry.Owner(_view, ancestor));
             if (included.Count > 1) return Failure(MapMembershipStatus.Ambiguous, "ambiguous occupied spaces: " + string.Join(", ", included.Keys.Order(StringComparer.Ordinal)));
             if (included.Count == 1)
             {
@@ -199,6 +271,8 @@ public sealed class MapSpaceMembership
                 parts!.Add(part);
             }
 
+            IReadOnlyList<MapBoundFace> Faces(MapSpacePointBounds.Bound bound) => bound.Cell is not { } cell || bound.Compatibility is not null
+                ? Array.Empty<MapBoundFace>() : bound.Opening is { } opening ? context.Opening(opening, cell) : context.Faces(cell);
             void Add(MapSpacePointBounds.Bound bound)
             {
                 if (bound.Cell is { } cell && bound.Compatibility is null) demands.Add(new(cell, bound.Opening));
@@ -232,29 +306,31 @@ public sealed class MapSpaceMembership
                 {
                     if (surface.IndoorSpan is not { } span || !ancestry.Any(s => s.Id == span.ParentSpace.Id)) continue;
                     _ = MapSpaceGeometry.Record<MapSpaceDoc>(_view, span.ParentSpace);
-                    var (x, z) = MapSpaceGeometry.Cell(surface.Frame, xz);
-                    MapCellDemand cell = new(MapPatchKey.ForCell(surface.Id, x, z), MapLowerCellClassifier.SlotCell(x, z));
-                    if (!_view.TryAcquiredPatch(cell.Patch, out MapSurfacePatch? patch, out MapPatchStatus status))
-                        return Failure(MapMembershipStatus.MissingGeometry, $"indoor span '{span.Id}' patch {cell.Patch}: {status}");
-                    if (patch is null) continue;
-                    int lx = cell.SlotCell % 64 - patch.CellMinX, lz = cell.SlotCell / 64 - patch.CellMinZ;
-                    if (lx < 0 || lx >= patch.Width || lz < 0 || lz >= patch.Depth ||
-                        (patch.Cells[lz * patch.Width + lx].Flags & MapCellFlags.Indoor) == 0) continue;
-                    MapExactValue? floor = MapSpaceGeometry.Height(prepared.Faces(cell), xz);
-                    if (floor is null) return Failure(MapMembershipStatus.MissingGeometry, $"missing bound: indoor span '{span.Id}'");
-                    MapExactValue lo = floor.Value.Add(surface.Frame.Metres(new(span.LowerOffsetUnits, 1)));
-                    MapExactValue hi = floor.Value.Add(surface.Frame.Metres(new(span.UpperOffsetUnits, 1)));
-                    if (y.CompareTo(lo) >= 0 && y.CompareTo(hi) < 0) { keys.Add(span.Id); keys.AddRange(span.DomainTags); }
+                    foreach (var (x, z) in MapEffectiveGeometry.CellCandidates(_view, surface.Id, xz))
+                    {
+                        MapCellDemand cell = new(MapPatchKey.ForCell(surface.Id, x, z), MapLowerCellClassifier.SlotCell(x, z));
+                        if (!_view.TryAcquiredPatch(cell.Patch, out MapSurfacePatch? patch, out MapPatchStatus status))
+                            return Failure(MapMembershipStatus.MissingGeometry, $"indoor span '{span.Id}' patch {cell.Patch}: {status}");
+                        if (patch is null) continue;
+                        int lx = cell.SlotCell % 64 - patch.CellMinX, lz = cell.SlotCell / 64 - patch.CellMinZ;
+                        if (lx < 0 || lx >= patch.Width || lz < 0 || lz >= patch.Depth ||
+                            (patch.Cells[lz * patch.Width + lx].Flags & MapCellFlags.Indoor) == 0) continue;
+                        MapExactValue? lo = MapEffectiveGeometry.SpanHeight(prepared, cell, xz, span.LowerOffsetUnits);
+                        MapExactValue? hi = MapEffectiveGeometry.SpanHeight(prepared, cell, xz, span.UpperOffsetUnits);
+                        if (lo is null || hi is null) return Failure(MapMembershipStatus.MissingGeometry, $"missing bound: indoor span '{span.Id}'");
+                        if (y.CompareTo(lo.Value) >= 0 && y.CompareTo(hi.Value) < 0) { keys.Add(span.Id); keys.AddRange(span.DomainTags); }
+                    }
                 }
-                if (selected is not null) parts?.Add(selected);
-                return new(MapMembershipStatus.Resolved, point, space.Id, keys.Distinct(StringComparer.Ordinal), compatibility, null, _view.ReadWitness);
+                if (selected is not null) { selected = MapOccupiedPartitions.Identify(_view, selected); parts?.Add(selected); }
+                return new(MapMembershipStatus.Resolved, point, space.Id, keys.Distinct(StringComparer.Ordinal), compatibility, null, _view.ReadWitness, exactWorld, ancestry.Skip(1).Select(s => s.Id), selected?.Fragment);
             }
         }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
         { return Failure(MapMembershipStatus.NotRepresentable, "overflow"); }
         catch (MapDocumentException error)
         {
-            return Failure(MapCommonRefinement.NotRepresentable(error) ? MapMembershipStatus.NotRepresentable :
+            return Failure(error.Message.Contains("capacity exceeded", StringComparison.Ordinal) || error.Message.Contains("domain work exceeds", StringComparison.Ordinal) ? MapMembershipStatus.CapacityExceeded :
+                MapCommonRefinement.NotRepresentable(error) || error.Message.Contains("not representable", StringComparison.OrdinalIgnoreCase) ? MapMembershipStatus.NotRepresentable :
                 error.Message.Contains("invalid", StringComparison.Ordinal) || error.Message.Contains("legacy recipe", StringComparison.Ordinal)
                     ? MapMembershipStatus.Invalid : MapMembershipStatus.MissingGeometry, error.Message);
         }
@@ -263,7 +339,7 @@ public sealed class MapSpaceMembership
         MapMembershipResult Failure(MapMembershipStatus status, string? detail)
         {
             parts?.Clear();
-            return new(status, point, null, Array.Empty<string>(), null, detail, _view.ReadWitness);
+            return new(status, point, null, Array.Empty<string>(), null, detail, _view.ReadWitness, exactWorld);
         }
     }
 
@@ -274,8 +350,8 @@ public sealed class MapSpaceMembership
         for (int i = 0; i + 1 < portal.Interval.Count; i++)
         {
             MapLatticeVertex a = portal.Interval[i], b = portal.Interval[i + 1];
-            if (MapSpaceGeometry.OnSegment(point, MapSpaceGeometry.Surface(_view, a.SurfaceId).Frame.WorldXz(a.Address),
-                MapSpaceGeometry.Surface(_view, b.SurfaceId).Frame.WorldXz(b.Address))) return true;
+            if (MapSpaceGeometry.OnSegment(point, MapEffectiveGeometry.Vertex(_view, a),
+                MapEffectiveGeometry.Vertex(_view, b))) return true;
         }
         return false;
     }
@@ -285,8 +361,8 @@ public sealed class MapSpaceMembership
         for (int i = 0; i + 1 < chain.Vertices.Count; i++)
         {
             MapLatticeVertex first = chain.Vertices[i].Vertex, last = chain.Vertices[i + 1].Vertex;
-            MapExactXz a = MapSpaceGeometry.Surface(_view, first.SurfaceId).Frame.WorldXz(first.Address);
-            MapExactXz b = MapSpaceGeometry.Surface(_view, last.SurfaceId).Frame.WorldXz(last.Address);
+            MapExactXz a = MapEffectiveGeometry.Vertex(_view, first);
+            MapExactXz b = MapEffectiveGeometry.Vertex(_view, last);
             if (!MapSpaceGeometry.OnSegment(point, a, b) || (point == b && i + 2 < chain.Vertices.Count)) continue;
             return chain with { Vertices = Array.AsReadOnly(new[] { chain.Vertices[i], chain.Vertices[i + 1] }) };
         }

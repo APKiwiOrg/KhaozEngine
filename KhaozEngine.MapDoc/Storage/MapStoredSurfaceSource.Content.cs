@@ -13,7 +13,9 @@ public sealed partial class MapStoredSurfaceSource
     /// <summary>The authored content digest over the tile files the pinned generation names, one tile at a time.
     /// Each file is read by its pinned name and its content is checked against the pinned tile hash before any
     /// entry is used. The content then passes the loaded document's rules, with its messages, before the tile
-    /// structure rules and the digest. The manifest is never reread and no directory is listed.</summary>
+    /// structure rules and the digest. The manifest is never reread and no directory is listed. Prefab
+    /// reservations seed the numeric check, and the shared identity registry sees the pinned surfaces, the index
+    /// record IDs and every verified tile, as the loaded path sees the whole document.</summary>
     internal string IdentityContentDigest(MapAssetClosure assets)
     {
         if (_pinnedTiles.SchemeVersion != MapDocumentHash.SchemeVersion)
@@ -21,11 +23,15 @@ public sealed partial class MapStoredSurfaceSource
                 $"the pinned manifest uses {_pinnedTiles.SchemeVersion}.");
         MapDocRegistry registry = MapDocRegistry.CreateDefault();
         var digest = new MapAuthoredContentDigest();
-        var numericIds = new HashSet<long>();
+        var numericIds = new HashSet<long>(MapNativeValidation.PrefabNumericIds(_globals).Select(p => p.Id));
+        var identities = new MapPrefabIdentityRegistry(_globals);
+        identities.AddSurfaces(Surfaces.Select(s => s.Id));
+        foreach (MapSurfaceIndexEntry indexed in EnumeratePinnedEntries(null)) identities.AddRecords(indexed.Key, indexed.RecordIds);
         foreach (MapTileEntry entry in _pinnedTiles.Entries)
         {
             MapTileContent content = PinnedTile(entry, registry);
             MapBoundDocumentValidation.ValidateContent(_globals, _surfaceLookup, content, numericIds, assets);
+            identities.AddPlacements(content.Placements);
             try
             {
                 MapTileValidator.Validate(content, "pinned tile", MapTileFile.FileName(entry.Coord, entry.Hash),
@@ -36,6 +42,7 @@ public sealed partial class MapStoredSurfaceSource
             if (digest.Add(content.Placements, content.Spawns, content.PlayerSpawns, content.SculptTiles) is not null)
                 throw PinnedTileRefusal(MapPatchStatus.Corrupt, entry, null);
         }
+        identities.Finish();
         return digest.Finish();
     }
 

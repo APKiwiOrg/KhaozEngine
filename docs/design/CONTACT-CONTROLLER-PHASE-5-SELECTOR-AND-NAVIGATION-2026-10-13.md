@@ -3,7 +3,7 @@
 Design for [#438](https://github.com/APKiwiOrg/KhaozEngine/issues/438) phase 5 and the navigation half of
 [#1299](https://github.com/APKiwiOrg/KhaozEngine/issues/1299). Source baseline: `ec20a2b61` on `main`, staged 20.34.0,
 phases 1 to 4b and the support gates. Status: phase 5a released in 20.37.0, with controller execution
-rulings C1 to C20 applied. Phase 5b ground navigation is implemented in staged 20.39.0. Contact aquatic navigation,
+rulings C1 to C20 applied. Phase 5b ground navigation is released in 20.39.0. Contact aquatic navigation,
 footprint-only seeds and public explicit bake profiles are deferred to
 [#1389](https://github.com/APKiwiOrg/KhaozEngine/issues/1389). The revision 6 design and its review history below
 remain the historical baseline. Current APIs, package placement, frame rules and lifetime contracts live in

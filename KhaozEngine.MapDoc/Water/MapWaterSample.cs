@@ -1,4 +1,6 @@
 using KhaozEngine.MapDoc.Identity;
+using KhaozEngine.MapDoc.Spaces;
+using KhaozEngine.MapDoc.Surfaces;
 
 namespace KhaozEngine.MapDoc.Water;
 
@@ -13,4 +15,8 @@ public enum MapWaterStatus { Dry, Wet, MissingGeometry, Ambiguous, CapacityExcee
 /// sample carries the acquisition's read witness and the water digest the query captured.</summary>
 public sealed record MapWaterSample(MapWaterStatus Status, MapFramePoint Point, string? BodyId, string? SpaceId, string? Medium,
     float LowerY, float UpperY, float NominalSurfaceY, bool UpperIsFreeSurface, string? LowerBoundaryId, string? UpperBoundaryId,
-    string? Detail, MapReadWitness Witness, string WaterDigest);
+    string? Detail, MapReadWitness Witness, string WaterDigest)
+{
+    public MapOccupiedFragment? Fragment { get; init; }
+    public MapExactPoint? ExactPoint { get; init; }
+}

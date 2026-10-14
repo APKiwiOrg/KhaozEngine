@@ -222,7 +222,7 @@ public partial class SupportFootprintTests
             Assert.Equal(CapsuleFeatureStatus.Complete, result.Status);
             Assert.Equal(0, bytes);
             Assert.True(SupportQueryDiagnostics.Snapshot().ExactFallbacks > 0);
-            object scratch = typeof(BepuPhysicsWorld).GetField("_footprintScratch", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(scene.World)!;
+            object scratch = FootprintScratch(scene.World);
             long payload = (long)typeof(KhaozEngine.Tests.Locomotion.Contacts.SupportCostScratch)
                 .GetMethod("Visit", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!
                 .Invoke(null, [scratch, new HashSet<object>(ReferenceEqualityComparer.Instance)])!;

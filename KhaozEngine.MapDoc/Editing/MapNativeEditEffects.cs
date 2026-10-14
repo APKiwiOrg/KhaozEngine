@@ -44,11 +44,36 @@ public sealed record MapNativeEditEffects(MapBox3? OldBounds, MapBox3? NewBounds
     IReadOnlyList<MapPatchKey> Patches, IReadOnlyList<string> SpaceIds, IReadOnlyList<string> DependencyIds,
     IReadOnlyList<MapDigestChange> DigestChanges, MapNativeInvalidation Invalidates)
 {
+    MapBox3? _oldSpatialBounds, _newSpatialBounds;
+
+    /// <summary>The conservative old extent used by Physics, Nav and Residency. Without an explicit spatial extent
+    /// it follows <see cref="OldBounds"/>, including record copies that change the report. It always includes the report.</summary>
+    public MapBox3? OldSpatialBounds
+    {
+        get => Spatial(OldBounds, _oldSpatialBounds);
+        init => _oldSpatialBounds = value;
+    }
+
+    /// <summary>The conservative new extent used by Physics, Nav and Residency, with the same fallback and union
+    /// rule as <see cref="OldSpatialBounds"/>.</summary>
+    public MapBox3? NewSpatialBounds
+    {
+        get => Spatial(NewBounds, _newSpatialBounds);
+        init => _newSpatialBounds = value;
+    }
+
     /// <summary>The water bodies the edit changes, empty when it changes none.</summary>
     public IReadOnlyList<string> WaterBodyIds { get; init; } = Array.Empty<string>();
 
+    public IReadOnlyList<string> InstanceIds { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> ChildIds { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> RoofIds { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> LightIds { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> MarkerIds { get; init; } = Array.Empty<string>();
+
     /// <summary>Compact canonical JSON with fixed field order, ordinal IDs and invariant numbers. <c>waterBodyIds</c>
-    /// follows <c>dependencyIds</c> only when <see cref="WaterBodyIds"/> is not empty.</summary>
+    /// follows <c>dependencyIds</c> only when <see cref="WaterBodyIds"/> is not empty. Spatial bounds follow the reported
+    /// bounds only when they differ, preserving descriptions whose extents already agree.</summary>
     public string Describe()
     {
         using var output = new MemoryStream();
@@ -57,6 +82,8 @@ public sealed record MapNativeEditEffects(MapBox3? OldBounds, MapBox3? NewBounds
             writer.WriteStartObject();
             WriteBounds(writer, "oldBounds", OldBounds);
             WriteBounds(writer, "newBounds", NewBounds);
+            if (OldSpatialBounds != OldBounds) WriteBounds(writer, "oldSpatialBounds", OldSpatialBounds);
+            if (NewSpatialBounds != NewBounds) WriteBounds(writer, "newSpatialBounds", NewSpatialBounds);
             writer.WriteStartArray("patches");
             foreach (MapPatchKey patch in Patches.Order())
             {
@@ -71,6 +98,11 @@ public sealed record MapNativeEditEffects(MapBox3? OldBounds, MapBox3? NewBounds
             WriteIds(writer, "dependencyIds", DependencyIds);
             // Written only when present, so every description without water keeps its bytes.
             if (WaterBodyIds.Count != 0) WriteIds(writer, "waterBodyIds", WaterBodyIds);
+            if (InstanceIds.Count != 0) WriteIds(writer, "instanceIds", InstanceIds);
+            if (ChildIds.Count != 0) WriteIds(writer, "childIds", ChildIds);
+            if (RoofIds.Count != 0) WriteIds(writer, "roofIds", RoofIds);
+            if (LightIds.Count != 0) WriteIds(writer, "lightIds", LightIds);
+            if (MarkerIds.Count != 0) WriteIds(writer, "markerIds", MarkerIds);
             writer.WriteStartArray("digestChanges");
             foreach (MapDigestChange change in DigestChanges.OrderBy(c => c.Key, StringComparer.Ordinal)
                 .ThenBy(c => c.Before, StringComparer.Ordinal).ThenBy(c => c.After, StringComparer.Ordinal))
@@ -87,6 +119,9 @@ public sealed record MapNativeEditEffects(MapBox3? OldBounds, MapBox3? NewBounds
         }
         return Encoding.UTF8.GetString(output.ToArray());
     }
+
+    static MapBox3? Spatial(MapBox3? reported, MapBox3? geometry) =>
+        reported is { } bounds ? geometry is { } spatial ? bounds.Union(spatial) : bounds : geometry;
 
     static void WriteBounds(Utf8JsonWriter writer, string name, MapBox3? bounds)
     {

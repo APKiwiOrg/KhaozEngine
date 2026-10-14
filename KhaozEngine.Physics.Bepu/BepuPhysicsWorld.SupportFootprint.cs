@@ -6,11 +6,10 @@ namespace KhaozEngine.Physics.Bepu;
 
 public sealed partial class BepuPhysicsWorld : IPhysicsSupportFootprint
 {
-    SupportFootprintCollector? _footprintScratch = new();
     readonly InstalledSupportGeometryCache _installedSupportGeometry = new();
     long _staticGeometryVersion;
 
-    // The mutation gate protects this version independently of moving bodies and query generations.
+    // Writers advance this version and invalidate published topology inside their exclusive interval.
     void StaticGeometryChanged(StaticHandle? owner = null)
     {
         checked { _staticGeometryVersion++; }
@@ -50,15 +49,15 @@ public sealed partial class BepuPhysicsWorld : IPhysicsSupportFootprint
             throw new ArgumentException("The footprint query does not support this filter value.", nameof(filter));
         if (joins.Length < (long)members.Length * SupportFootprintResult.JoinWordsFor(members.Length))
             throw new ArgumentException("The join span must hold members.Length * JoinWordsFor(members.Length) words.", nameof(joins));
-        SupportFootprintCollector collector = _footprintScratch ?? new SupportFootprintCollector();
-        _footprintScratch = null;
+        QueryScratch scratch = scope.Scratch;
+        SupportFootprintCollector collector = scratch.Footprints.Take();
         try
         {
             SupportFootprintResult result = CollectFootprint(collector, receiver, lease, request, members, joins, filter, exclusions);
             SupportQueryDiagnostics.Refusal(result.Status);
             return result;
         }
-        finally { _footprintScratch = collector; }
+        finally { scratch.Footprints.Restore(collector); }
     }
 
     SupportFootprintResult CollectFootprint(SupportFootprintCollector collector, IPhysicsWorld receiver,

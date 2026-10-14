@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
+using KhaozEngine.MapDoc.Water;
 
 namespace KhaozEngine.MapDoc.Spaces;
 
@@ -15,8 +16,9 @@ internal sealed class MapBoundPreparation
     readonly MapBoundFaceWork? _validationWork;
     readonly Dictionary<MapPatchKey, MapValidatedSurfacePatch> _validated = new();
     readonly MapBoundFaceContext? _context;
+    internal MapWaterWorkMeter? WaterMeter { get; }
 
-    internal MapBoundPreparation(MapScopedSurfaces view, MapRefinementLimits limits, MapBoundFaceWork? work)
+    internal MapBoundPreparation(MapScopedSurfaces view, MapRefinementLimits limits, MapBoundFaceWork? work, MapWaterWorkMeter? meter = null)
     {
         ArgumentNullException.ThrowIfNull(view);
         ArgumentNullException.ThrowIfNull(limits);
@@ -24,10 +26,11 @@ internal sealed class MapBoundPreparation
         _limits = limits;
         _work = work;
         _validationWork = work;
+        WaterMeter = meter;
     }
 
     internal MapBoundPreparation(MapBoundFaceContext context, MapRefinementLimits limits)
-        : this(context.View, limits, null)
+        : this(context.View, limits, null, context.WaterMeter)
     {
         _context = context;
         _validationWork = context.Work;
@@ -48,7 +51,9 @@ internal sealed class MapBoundPreparation
     {
         MapSurfaceRef? lattice = Surface(footprint.Lattice.SurfaceId);
         if (lattice is null) throw new MapDocumentException($"missing footprint lattice '{footprint.Lattice.SurfaceId}'");
-        return MapLatticeRanges.CellRect(lattice.Frame, footprint.Lattice, cell);
+        if (_view.EffectiveContext is null) return MapLatticeRanges.CellRect(lattice.Frame, footprint.Lattice, cell);
+        var bounds = MapEffectiveGeometry.Bounds(MapEffectiveGeometry.CellPolygon(_view, footprint.Lattice, cell));
+        return new[] { new MapExactXz(bounds.MinX, bounds.MinZ), new MapExactXz(bounds.MaxX, bounds.MaxZ) };
     }
 
     internal Plan Bound(MapSpaceFootprint footprint, MapBoundRef bound, MapExactXz min, MapExactXz max)
@@ -59,7 +64,7 @@ internal sealed class MapBoundPreparation
         if (min.X.CompareTo(max.X) >= 0 || min.Z.CompareTo(max.Z) >= 0) return Failure(MapRefinementStatus.Invalid, "cell");
         bool lower = bound == footprint.Lower;
         if (!lower && bound.Kind == MapBoundKind.LegacyExteriorV1) return Failure(MapRefinementStatus.Invalid, "legacy recipe: upper");
-        if (bound.Kind == MapBoundKind.HorizontalOpening) return Opening(bound, min, max);
+        if (bound.Kind == MapBoundKind.HorizontalOpening) return Opening(bound, min, max, lower);
         if (bound.Kind is not (MapBoundKind.SupportFloor or MapBoundKind.Ceiling or MapBoundKind.LegacyExteriorV1))
             return Failure(MapRefinementStatus.Invalid, "bound kind");
         MapSurfaceRef? surface = Surface(bound.SurfaceId);
@@ -72,7 +77,8 @@ internal sealed class MapBoundPreparation
             }
             return Failure(MapRefinementStatus.MissingGeometry, $"surface '{bound.SurfaceId}': missing");
         }
-        MapCellRect range = MapLatticeRanges.CellRange(surface.Frame, min, max);
+        MapCellRect range = MapEffectiveGeometry.CellRange(_view, surface.Id, min, max);
+        WaterMeterCharge(surface.Id, min, max);
         if (!WithinCellBudget(range)) return Failure(MapRefinementStatus.CapacityExceeded, "source faces: cell range");
         var demands = new List<MapCellDemand>();
         var compatibility = new List<MapLegacyCellTag>();
@@ -93,8 +99,11 @@ internal sealed class MapBoundPreparation
                 return Failure(MapRefinementStatus.MissingGeometry, $"patch {key}: {status}");
             if (status == MapPatchStatus.KnownEmpty) continue;
             if (patch is null) return Failure(MapRefinementStatus.MissingGeometry, $"patch {key}: {status} without payload");
-            if (ValidatedPatch(surface, patch) is null) return Failure(MapRefinementStatus.CapacityExceeded, Refusal);
+            if (WaterMeter is null && ValidatedPatch(surface, patch) is null) return Failure(MapRefinementStatus.CapacityExceeded, Refusal);
             long faces = MapSurfaceCompiler.CountFaces(surface, patch, slot);
+            WaterMeter?.ChargeRead(faces);
+            WaterMeter?.CountFaces(!lower, checked((int)faces));
+            if (WaterMeter is not null && ValidatedPatch(surface, patch) is null) return Failure(MapRefinementStatus.CapacityExceeded, Refusal);
             count = checked(count + faces);
             if (_work is not null) _work.BoundFacesCounted += faces;
             if (count > _limits.MaxSourceFacesPerBound) return Failure(MapRefinementStatus.CapacityExceeded, "source faces");
@@ -103,7 +112,7 @@ internal sealed class MapBoundPreparation
         return new(MapRefinementStatus.Complete, demands.AsReadOnly(), compatibility.AsReadOnly(), null, null);
     }
 
-    Plan Opening(MapBoundRef bound, MapExactXz min, MapExactXz max)
+    Plan Opening(MapBoundRef bound, MapExactXz min, MapExactXz max, bool lower)
     {
         if (bound.Opening is not { } reference) return Failure(MapRefinementStatus.MissingGeometry, "opening: missing reference");
         if (!_view.TryRecord(reference, out MapTopologyRecord? record, out MapPatchStatus recordStatus, borrow: true) ||
@@ -111,7 +120,8 @@ internal sealed class MapBoundPreparation
             return Failure(MapRefinementStatus.MissingGeometry, $"opening '{reference.Id}' {reference.Anchor}: {recordStatus}");
         MapSurfaceRef? surface = Surface(opening.Patch.SurfaceId);
         if (surface is null) return Failure(MapRefinementStatus.MissingGeometry, $"opening '{reference.Id}': missing surface");
-        MapCellRect range = MapLatticeRanges.CellRange(surface.Frame, min, max);
+        MapCellRect range = MapEffectiveGeometry.CellRange(_view, surface.Id, min, max);
+        WaterMeterCharge(surface.Id, min, max);
         if (!WithinCellBudget(range)) return Failure(MapRefinementStatus.CapacityExceeded, "source faces: cell range");
         if (!_view.TryAcquiredPatch(opening.Patch, out MapSurfacePatch? patch, out MapPatchStatus status) || patch is null)
             return Failure(MapRefinementStatus.MissingGeometry, $"opening '{reference.Id}' {opening.Patch}: {status}");
@@ -120,10 +130,12 @@ internal sealed class MapBoundPreparation
         long count = 0;
         foreach (int slot in opening.SlotCells.Order())
         {
-            MapExactXz[] rect = MapLatticeRanges.CellRect(surface.Frame, opening.Patch, slot);
-            if (rect[0].X.CompareTo(max.X) >= 0 || rect[1].X.CompareTo(min.X) <= 0 ||
-                rect[0].Z.CompareTo(max.Z) >= 0 || rect[1].Z.CompareTo(min.Z) <= 0) continue;
+            var rect = MapEffectiveGeometry.Bounds(MapEffectiveGeometry.CellPolygon(_view, opening.Patch, slot));
+            if (rect.MinX.CompareTo(max.X) >= 0 || rect.MaxX.CompareTo(min.X) <= 0 ||
+                rect.MinZ.CompareTo(max.Z) >= 0 || rect.MaxZ.CompareTo(min.Z) <= 0) continue;
             int faces = MapBoundFaceContext.OpeningFaceCount(patch, slot);
+            WaterMeter?.ChargeRead(faces);
+            WaterMeter?.CountFaces(!lower, faces);
             count = checked(count + faces);
             if (_work is not null) _work.BoundFacesCounted += faces;
             if (count > _limits.MaxSourceFacesPerBound) return Failure(MapRefinementStatus.CapacityExceeded, "source faces");
@@ -140,6 +152,11 @@ internal sealed class MapBoundPreparation
             return count <= _limits.MaxSourceFacesPerBound;
         }
         catch (OverflowException) { return false; }
+    }
+
+    void WaterMeterCharge(string surface, MapExactXz min, MapExactXz max)
+    {
+        if (WaterMeter is { } meter) MapWaterBoundReads.ChargeTraversal(_view, surface, min, max, meter);
     }
 
     static IEnumerable<(long X, long Z)> Cells(MapCellRect range)

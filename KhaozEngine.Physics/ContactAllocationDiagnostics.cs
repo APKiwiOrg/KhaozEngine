@@ -19,6 +19,17 @@ internal static class ContactAllocationDiagnostics
 
     internal static void SetObserver(Action<ContactAllocationPhase, bool>? observer) => t_observer = observer;
 
+    /// <summary>Installs <paramref name="observer"/> on this thread and returns the observer it replaced.</summary>
+    internal static Action<ContactAllocationPhase, bool>? Exchange(Action<ContactAllocationPhase, bool>? observer)
+    {
+        Action<ContactAllocationPhase, bool>? prior = t_observer;
+        t_observer = observer;
+        return prior;
+    }
+
+    /// <summary>Whether a phase boundary on this thread can run observer code.</summary>
+    internal static bool Observed => t_observer is not null;
+
     internal static Scope Begin(ContactAllocationPhase phase)
     {
         Action<ContactAllocationPhase, bool>? observer = t_observer;

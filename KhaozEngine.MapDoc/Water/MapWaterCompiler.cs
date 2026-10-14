@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using KhaozEngine.MapDoc.Editing;
+using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
@@ -45,6 +46,7 @@ public static class MapWaterCompiler
         readonly MapWaterWorkMeter _meter = new(limits);
         readonly SortedSet<MapPatchKey> _patches = new();
         readonly SortedSet<string> _surfaces = new(StringComparer.Ordinal);
+        readonly HashSet<MapRecordRef> _relations = new();
         readonly Dictionary<string, IReadOnlyList<MapWaterFootprintRect>> _footprints = new(StringComparer.Ordinal);
         readonly Dictionary<string, bool> _footprintsComplete = new(StringComparer.Ordinal);
         readonly MapWaterMediumDoc? _medium = water.Media.FirstOrDefault(m => m is not null && m.Key == body.Medium);
@@ -53,6 +55,11 @@ public static class MapWaterCompiler
         IReadOnlyList<MapWaterRegion> _regions = Array.Empty<MapWaterRegion>();
         IReadOnlyList<MapWaterClosedContour> _closedContours = Array.Empty<MapWaterClosedContour>();
         MapWideRational? _deepest;
+        MapEffectiveWaterBody? _effective;
+        bool _usesOccupied;
+        IReadOnlyList<MapOccupiedPiece>? _occupied;
+        IReadOnlyList<MapWaterFragmentBounds> _fragmentBounds = Array.Empty<MapWaterFragmentBounds>();
+        float Level => _effective?.SurfaceY.ToSingle() ?? body.SurfaceY;
 
         internal MapCompiledWaterBody Run(ref MapWaterConnectivity? graph)
         {
@@ -66,31 +73,39 @@ public static class MapWaterCompiler
             }
             catch (MapDocumentException error)
             {
-                (status, detail) = (MapCommonRefinement.NotRepresentable(error) ? MapWaterCompileStatus.NotRepresentable
-                    : MapWaterCompileStatus.Invalid, $"{_label}: {error.Message}");
+                (status, detail) = (MapCommonRefinement.NotRepresentable(error) || error.Message.Contains("not representable", StringComparison.OrdinalIgnoreCase) ? MapWaterCompileStatus.NotRepresentable
+                    : _usesOccupied && error.Message.Contains("missing geometry", StringComparison.Ordinal) ? MapWaterCompileStatus.Incomplete
+                    : _usesOccupied && (error.Message.Contains("capacity exceeded", StringComparison.Ordinal) || error.Message.Contains("domain work exceeds", StringComparison.Ordinal))
+                        ? MapWaterCompileStatus.CapacityExceeded : MapWaterCompileStatus.Invalid, $"{_label}: {error.Message}");
             }
             if (status is not (MapWaterCompileStatus.Complete or MapWaterCompileStatus.Incomplete))
             {
                 _regions = Array.Empty<MapWaterRegion>();
                 _closedContours = Array.Empty<MapWaterClosedContour>();
                 _deepest = null;
+                _fragmentBounds = Array.Empty<MapWaterFragmentBounds>();
             }
             float? deepest = null;
             if (_deepest is { } bed)
             {
-                if (bed.TryNarrow(out MapExactValue exact)) deepest = exact.ToSingle();
+                if (_usesOccupied) deepest = (float)bed.ToDouble();
+                else if (bed.TryNarrow(out MapExactValue exact)) deepest = exact.ToSingle();
                 else (status, detail, _regions) = (MapWaterCompileStatus.NotRepresentable, $"{_label}: deepest bed is not representable",
                     Array.Empty<MapWaterRegion>());
             }
-            MapBox3? bounds = deepest is { } low ? Bounds(low) : null;
+            MapBox3? bounds = _fragmentBounds.Count != 0 ? _fragmentBounds.Select(b => b.Bounds).Aggregate((a, b) => a.Union(b))
+                : deepest is { } low ? Bounds(low) : null;
             MapWaterMediumDoc medium = _medium ?? new MapWaterMediumDoc(body.Medium, MapWaterMediumKind.Water, float.NaN);
             string digest = Digest(status, detail, deepest, bounds);
-            return new MapCompiledWaterBody(body.Id, body.SurfaceY, medium, body.RenderMaterial, _regions, deepest, bounds, status, detail,
+            return new MapCompiledWaterBody(body.Id, Level, medium, body.RenderMaterial, _regions, deepest, bounds, status, detail,
                 _meter.Work, digest)
             {
                 Domain = _domain,
                 Footprints = _footprints.ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal),
                 ClosedContours = _closedContours,
+                OccupiedPieces = (_occupied ?? Array.Empty<MapOccupiedPiece>()).Where(p => body.Covers.Any(c => c.Id == p.SpaceId)).ToArray(),
+                FragmentFootprints = MapWaterFootprints.ByFragment((_occupied ?? Array.Empty<MapOccupiedPiece>()).Where(p => body.Covers.Any(c => c.Id == p.SpaceId))),
+                FragmentBounds = _fragmentBounds,
             };
         }
 
@@ -106,37 +121,67 @@ public static class MapWaterCompiler
                 return (MapWaterCompileStatus.NotRepresentable, $"{_label}: surfaceY is not representable");
             }
             var errors = new List<string>();
-            _domain = MapWaterDomain.TryCompile(body.Domain, null, errors, _meter.Pairs);
+            if (view.EffectiveContext?.Transform(MapPrefabChildKind.WaterBody, body.Id) is not null)
+            {
+                _effective = MapEffectiveWater.Resolve(view, body, _meter.Pairs);
+                _domain = _effective.Domain;
+                level = _effective.SurfaceY;
+            }
+            else _domain = MapWaterDomain.TryCompile(body.Domain, null, errors, _meter.Pairs);
+            if (_domain is not null && view.EffectiveContext is not null)
+            {
+                _effective ??= new(body, _domain, level, body.Id, body.Covers, "");
+                _usesOccupied = MapEffectiveWater.UsesOccupied(view, _effective);
+            }
             if (_domain is null)
                 return (errors[0].Contains("not representable", StringComparison.Ordinal) ? MapWaterCompileStatus.NotRepresentable
                     : MapWaterCompileStatus.Invalid, $"{_label}: {errors[0]}");
 
             string[] spaces = (body.Covers ?? Array.Empty<MapRecordRef>()).Where(c => c is not null).Select(c => c.Id).Distinct(StringComparer.Ordinal)
                 .Order(StringComparer.Ordinal).ToArray();
-            foreach (string space in spaces) Footprints(space, out _);
+            if (!_usesOccupied) foreach (string space in spaces) Footprints(space, out _);
             foreach (MapRecordRef cover in body.Covers ?? Array.Empty<MapRecordRef>())
                 if (cover is not null) _patches.Add(cover.Anchor);
-            var prepared = new MapWaterContainment.Prepared(level, _domain, Footprints, _meter.Pairs, _patches);
+            var prepared = new MapWaterContainment.Prepared(level, _domain, Footprints, _meter.Pairs, _patches, _usesOccupied ? Occupied : null,
+                _usesOccupied ? _relations : null);
             MapWaterContainmentReport containment = MapWaterContainment.ValidateBody(view, body, prepared, ref graph);
             if (containment.Complete && containment.Errors.Count != 0) return (MapWaterCompileStatus.Invalid, containment.Errors[0]);
             string? incomplete = containment.Errors.FirstOrDefault();
-            if (spaces.FirstOrDefault(s => !_footprintsComplete[s]) is { } partial)
+            if (!_usesOccupied && spaces.FirstOrDefault(s => !_footprintsComplete[s]) is { } partial)
                 incomplete ??= $"{_label}: footprints of space '{partial}' are not proven complete in this view";
 
             var builder = new MapWaterRegionBuilder(view, _domain, level, limits.Reads ?? new MapRefinementLimits(), _meter);
-            foreach (string space in spaces)
-                foreach (MapWaterFootprintRect rect in _footprints[space])
-                    if (builder.Add(rect) is { } failure)
-                    {
-                        Absorb(builder);
-                        return (failure.Status, $"{_label}: {failure.Detail}");
-                    }
+            if (_usesOccupied)
+            {
+                try
+                {
+                    foreach (string space in spaces)
+                        foreach (var piece in Occupied(space)) builder.Add(piece);
+                }
+                catch (MapDocumentException error) when (error.Message.Contains("missing geometry", StringComparison.Ordinal))
+                { return (MapWaterCompileStatus.Incomplete, incomplete ?? $"{_label}: {error.Message}"); }
+            }
+            else
+                foreach (string space in spaces)
+                    foreach (MapWaterFootprintRect rect in _footprints[space])
+                        if (builder.Add(rect) is { } failure)
+                        {
+                            Absorb(builder);
+                            return (failure.Status, $"{_label}: {failure.Detail}");
+                        }
             Absorb(builder);
             _regions = builder.Emit(level);
             _closedContours = builder.ClosedContours.AsReadOnly();
             _deepest = builder.DeepestBed;
+            _fragmentBounds = builder.FragmentBounds;
             incomplete ??= builder.Unresolved is { } gap ? $"{_label}: {gap}" : null;
             return incomplete is null ? (MapWaterCompileStatus.Complete, null) : (MapWaterCompileStatus.Incomplete, incomplete);
+        }
+
+        IReadOnlyList<MapOccupiedPiece> Occupied(string space)
+        {
+            _occupied ??= MapWaterOccupiedPieces.Of(view, _domain!.Min, _domain.Max, limits.Reads ?? new(), _meter);
+            return _occupied.Where(p => p.SpaceId == space).ToArray();
         }
 
         /// <summary>The footprint rectangles of one covered space near the domain, gathered once under the meter.</summary>
@@ -183,6 +228,65 @@ public static class MapWaterCompiler
                 w.WriteStartObject();
                 w.WriteString("body", MapWaterSet.BodyDigest(body));
                 w.WriteString("medium", _medium is null ? null : MapWaterSet.MediumDigest(_medium));
+                if (_usesOccupied)
+                {
+                    w.WriteString("transform", _effective!.TransformDigest);
+                    w.WriteNumber("occupiedPolicy", 2);
+                    w.WriteString("deepestExact", _deepest?.ToString());
+                    w.WriteStartArray("relations");
+                    foreach (var reference in _relations.OrderBy(r => r.Id, StringComparer.Ordinal).ThenBy(r => r.Anchor))
+                    {
+                        if (!view.TryRecord(reference, out var record, out _, borrow: true)) continue;
+                        var ids = record switch
+                        {
+                            MapBoundaryChain chain => chain.Vertices.Select(v => v.Vertex.SurfaceId).Concat(chain.SourcePatch is { } patch ? new[] { patch.SurfaceId } : []),
+                            MapHorizontalOpening opening => new[] { opening.Patch.SurfaceId },
+                            MapCavePortal portal => portal.Interval.Select(v => v.SurfaceId),
+                            _ => Array.Empty<string>(),
+                        };
+                        var frames = ids.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).Select(id =>
+                        {
+                            var surface = MapSpaceGeometry.Surface(view, id);
+                            return new
+                            {
+                                surface.Id,
+                                surface.Frame,
+                                surface.Role,
+                                surface.PresencePolicy,
+                                Pose = view.EffectiveContext?.Transform(MapPrefabChildKind.Surface, id)?.Transform
+                            };
+                        }).ToArray();
+                        w.WriteStringValue(MapPrefabJson.Digest("kemap/water-relation/1", new
+                        { Record = record, Pose = view.EffectiveContext?.Transform(MapPrefabChildKind.Record, reference.Id)?.Transform, Frames = frames }));
+                    }
+                    w.WriteEndArray();
+                    w.WriteStartArray("fragments");
+                    foreach (var piece in (_occupied ?? Array.Empty<MapOccupiedPiece>()).Where(p => body.Covers.Any(c => c.Id == p.SpaceId))
+                        .OrderBy(p => p.FragmentId, StringComparer.Ordinal).ThenBy(p => p.Polygon[0]))
+                    {
+                        w.WriteStartArray();
+                        w.WriteStringValue(piece.FragmentId);
+                        foreach (var boundary in new[] { piece.LowerBoundary, piece.UpperBoundary })
+                        {
+                            w.WriteStringValue(boundary.OwnerId); w.WriteStringValue(boundary.Role); w.WriteStringValue(boundary.SemanticDigest);
+                        }
+                        // Ancestor bounds certify the intersection even where a prism plane wins. Logical path
+                        // identities omit semantics, so consumed ancestor metadata enters the body hash here.
+                        for (int ancestor = 0; ancestor + 4 < piece.Path.Count; ancestor += 5)
+                        {
+                            w.WriteStringValue(MapOccupiedPartitions.Boundary(view, piece.Path[ancestor], "ancestor-space").SemanticDigest);
+                            w.WriteStringValue(MapOccupiedPartitions.Boundary(view, piece.Path[ancestor + 1], piece.Path[ancestor + 2]).SemanticDigest);
+                            w.WriteStringValue(MapOccupiedPartitions.Boundary(view, piece.Path[ancestor + 3], piece.Path[ancestor + 4]).SemanticDigest);
+                        }
+                        foreach (var point in piece.Polygon)
+                        {
+                            w.WriteStringValue(point.X.ToString()); w.WriteStringValue(point.Z.ToString());
+                            w.WriteStringValue(piece.Bottom(point).ToString()); w.WriteStringValue(piece.Top(point)?.ToString());
+                        }
+                        w.WriteEndArray();
+                    }
+                    w.WriteEndArray();
+                }
                 w.WriteStartArray("surfaces");
                 foreach (MapSurfaceRef surface in surfaces.Select(id => view.Surfaces.FirstOrDefault(s => s.Id == id)).OfType<MapSurfaceRef>())
                 {
@@ -222,14 +326,22 @@ public static class MapWaterCompiler
                     w.WriteStartObject();
                     w.WriteString("space", region.SpaceId);
                     w.WriteString("kind", region.Kind.ToString());
+                    if (region.Fragment is { } fragment) w.WriteString("fragment", fragment.Id);
                     w.WriteStartArray("triangles");
-                    foreach (MapExactTriangle t in region.Triangles)
-                        foreach (MapExactPoint p in new[] { t.A, t.B, t.C })
-                        {
-                            w.WriteStringValue(p.X.ToString());
-                            w.WriteStringValue(p.Y.ToString());
-                            w.WriteStringValue(p.Z.ToString());
-                        }
+                    if (region.WidePolygons.Count != 0)
+                    {
+                        foreach (var polygon in region.WidePolygons)
+                            foreach (var point in polygon)
+                            { w.WriteStringValue(point.X.ToString()); w.WriteStringValue(_effective!.SurfaceY.ToString()); w.WriteStringValue(point.Z.ToString()); }
+                    }
+                    else
+                        foreach (MapExactTriangle t in region.Triangles)
+                            foreach (MapExactPoint p in new[] { t.A, t.B, t.C })
+                            {
+                                w.WriteStringValue(p.X.ToString());
+                                w.WriteStringValue(p.Y.ToString());
+                                w.WriteStringValue(p.Z.ToString());
+                            }
                     w.WriteEndArray();
                     w.WriteEndObject();
                 }
@@ -239,10 +351,10 @@ public static class MapWaterCompiler
                 {
                     w.WriteStartArray();
                     w.WriteStringValue(contour.SpaceId);
-                    w.WriteStringValue(contour.A.X.ToString());
-                    w.WriteStringValue(contour.A.Z.ToString());
-                    w.WriteStringValue(contour.B.X.ToString());
-                    w.WriteStringValue(contour.B.Z.ToString());
+                    if (contour.FragmentId is { } fragment) w.WriteStringValue(fragment);
+                    var a = contour.WideA ?? MapWideXz.From(contour.A); var b = contour.WideB ?? MapWideXz.From(contour.B);
+                    w.WriteStringValue(a.X.ToString()); w.WriteStringValue(a.Z.ToString());
+                    w.WriteStringValue(b.X.ToString()); w.WriteStringValue(b.Z.ToString());
                     w.WriteEndArray();
                 }
                 w.WriteEndArray();

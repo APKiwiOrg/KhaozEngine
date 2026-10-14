@@ -5,6 +5,7 @@ using BepuPhysics;
 using BepuPhysics.Collidables;
 using BepuPhysics.CollisionDetection;
 using BepuUtilities;
+using BepuUtilities.Memory;
 using KhaozEngine.Physics;
 
 namespace KhaozEngine.Physics.Bepu;
@@ -15,8 +16,6 @@ public sealed partial class BepuPhysicsWorld : IPhysicsCapsuleContacts, IPhysics
     // separate from the caller's output capacity and must travel with a bake's backend/policy identity.
     const int MaximumContactCandidates = 4096;
     const float MaximumContactErrorMetres = 0.001f;
-    readonly List<CollidableReference> _contactCandidates = new();
-    readonly CapsuleContactCollector _contactCollector = new();
 
     /// <inheritdoc/>
     public CapsuleContactResult QueryCapsuleContacts(CapsuleShape capsule, Pose pose, float maxSeparationMetres,
@@ -59,8 +58,24 @@ public sealed partial class BepuPhysicsWorld : IPhysicsCapsuleContacts, IPhysics
         if (filter.Mobility is not (QueryMobility.All or QueryMobility.Statics or QueryMobility.Dynamics))
             throw new ArgumentOutOfRangeException(nameof(filter));
 
-        _contactCollector.Reset();
-        _contactCandidates.Clear();
+        QueryScratch scratch = scope.Scratch;
+        QueryScratch.ContactSet contacts = scratch.Contacts.Take();
+        try
+        {
+            return CollectCapsuleContacts(scratch.Pool, contacts, capsule, pose, maxSeparationMetres, destination,
+                filter, exclusions);
+        }
+        finally { scratch.Contacts.Restore(contacts); }
+    }
+
+    unsafe CapsuleContactResult CollectCapsuleContacts(BufferPool pool, QueryScratch.ContactSet contacts,
+        in CapsuleQueryDimensions capsule, Pose pose, float maxSeparationMetres, Span<CapsuleContact> destination,
+        QueryFilter filter, StaticQueryExclusions? exclusions)
+    {
+        List<CollidableReference> candidates = contacts.Candidates;
+        CapsuleContactCollector collector = contacts.Collector;
+        collector.Reset();
+        candidates.Clear();
         var queryShape = new Capsule(capsule.Radius, capsule.Length);
         queryShape.ComputeBounds(pose.Orientation, out Vector3 min, out Vector3 max);
         // Broad phase must include uncertain boundary contacts too. Use the full accepted error budget
@@ -69,16 +84,16 @@ public sealed partial class BepuPhysicsWorld : IPhysicsCapsuleContacts, IPhysics
         min += pose.Position - expansion;
         max += pose.Position + expansion;
         if (!Finite(min) || !Finite(max)) return Uncertified();
-        var overlaps = new ContactCandidates(_contactCandidates, filter.Mobility, exclusions);
+        var overlaps = new ContactCandidates(candidates, filter.Mobility, exclusions);
         _sim.BroadPhase.GetOverlaps(min, max, ref overlaps);
         if (overlaps.Overflow) return Uncertified();
         float scale = MathF.Max(1f, MathF.Max(MaxAbs(pose.Position), MathF.Max(MaxAbs(min), MaxAbs(max))));
         // The bounded selection still needs representable coordinates. An empty selection never runs
         // capsule/hull face selection and therefore carries no narrow-phase error allowance.
-        if (_contactCandidates.Count == 0)
+        if (candidates.Count == 0)
             return 8f * (MathF.BitIncrement(scale) - scale) <= MaximumContactErrorMetres
                 ? new CapsuleContactResult(true, 0, 0, 0f) : Uncertified();
-        foreach (CollidableReference candidate in _contactCandidates)
+        foreach (CollidableReference candidate in candidates)
         {
             bool dynamic = candidate.Mobility != CollidableMobility.Static;
             TypedIndex shape;
@@ -104,7 +119,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsCapsuleContacts, IPhysics
             if (!Finite(bodyMin) || !Finite(bodyMax)) return Uncertified();
             scale = MathF.Max(scale, MathF.Max(MaxAbs(bodyPose.Position),
                 MathF.Max(MaxAbs(bodyMin), MaxAbs(bodyMax))));
-            _contactCollector.AddPair(shape, bodyPose, handle, dynamic);
+            collector.AddPair(shape, bodyPose, handle, dynamic);
         }
 
         // Capsule/hull face selection uses an epsilon no greater than 1e-3 * capsule radius in the
@@ -113,33 +128,33 @@ public sealed partial class BepuPhysicsWorld : IPhysicsCapsuleContacts, IPhysics
         float error = 0.001f * capsule.Radius + 8f * (MathF.BitIncrement(scale) - scale);
         if (!float.IsFinite(error) || error > MaximumContactErrorMetres) return Uncertified();
         float margin = maxSeparationMetres + error;
-        _contactCollector.Margin = margin;
+        collector.Margin = margin;
         // Refuse excessive mesh density before asking the backend to allocate or test its children.
-        for (int i = 0; i < _contactCollector.PairCount; i++)
+        for (int i = 0; i < collector.PairCount; i++)
         {
-            CapsuleContactCollector.Pair pair = _contactCollector.PairAt(i);
+            CapsuleContactCollector.Pair pair = collector.PairAt(i);
             if (pair.Shape.Type == default(Mesh).TypeId &&
                 !CapsuleMeshContacts.Prepare(_sim.Shapes, pair, queryShape, pose, margin)) return Uncertified();
         }
-        var batcher = new CollisionBatcher<CapsuleContactCollector.Callbacks>(_pool, _sim.Shapes,
-            _sim.NarrowPhase.CollisionTaskRegistry, 0f, new CapsuleContactCollector.Callbacks(_contactCollector));
+        var batcher = new CollisionBatcher<CapsuleContactCollector.Callbacks>(pool, _sim.Shapes,
+            _sim.NarrowPhase.CollisionTaskRegistry, 0f, new CapsuleContactCollector.Callbacks(collector));
         try
         {
-            for (int i = 0; i < _contactCollector.PairCount && _contactCollector.Valid; i++)
-                if (!CapsuleContactBatch.Submit(_sim.Shapes, _contactCollector.PairAt(i), queryShape,
-                    pose, margin, _contactCollector, ref batcher)) return Uncertified();
+            for (int i = 0; i < collector.PairCount && collector.Valid; i++)
+                if (!CapsuleContactBatch.Submit(_sim.Shapes, collector.PairAt(i), queryShape,
+                    pose, margin, collector, ref batcher)) return Uncertified();
         }
         finally
         {
             batcher.Flush();
         }
-        if (!_contactCollector.Valid) return Uncertified();
-        _contactCollector.FinishChildren(_sim.Shapes, _pool);
-        if (!_contactCollector.Valid) return Uncertified();
-        _contactCollector.SortAndDeduplicate();
-        int count = _contactCollector.ContactCount;
+        if (!collector.Valid) return Uncertified();
+        collector.FinishChildren(_sim.Shapes, pool);
+        if (!collector.Valid) return Uncertified();
+        collector.SortAndDeduplicate();
+        int count = collector.ContactCount;
         if (count > destination.Length) return new CapsuleContactResult(false, 0, count, error);
-        _contactCollector.CopyTo(destination);
+        collector.CopyTo(destination);
         return new CapsuleContactResult(true, count, count, error);
     }
 

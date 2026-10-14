@@ -5,6 +5,16 @@ using System.Text.Json.Serialization;
 
 namespace KhaozEngine.MapDoc.Surfaces;
 
+/// <summary>Paint metadata validity shared by canonical identity and region compilation.</summary>
+internal static class MapSurfaceJson
+{
+    internal static void RequirePaintPriority(MapSurfaceRef surface)
+    {
+        if (surface.Role != MapSurfaceRole.PaintOverride && surface.PaintPriority != 0)
+            throw new MapDocumentException("paintPriority is valid only for PaintOverride surfaces.");
+    }
+}
+
 /// <summary>Constructs exact authored units instead of accepting a readonly struct's invalid default.</summary>
 internal sealed class MapRationalJsonConverter : JsonConverter<MapRational>
 {

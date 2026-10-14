@@ -728,6 +728,24 @@ Physics free of a reverse Movement reference.
 without physics, rebuilding layer grids through `NavGrid.FromBlockedSurfaces`. Hashing uses the base library's
 `IncrementalHash` and encoding uses `BinaryPrimitives`, so the bake adds no reference or package.
 
+`KhaozEngine.Physics` grants `InternalsVisibleTo` to `KhaozEngine.Movement` for the per-worker diagnostics of a
+parallel contact bake, and for nothing else. Movement uses exactly these members:
+
+- `WorkerDiagnostics.Plan()`, which copies the calling thread's enablement and per-worker observer factory, never its
+  observer delegates.
+- `WorkerDiagnostics.Merge(...)`, which adds worker records to the calling thread's recorder after the join.
+- `WorkerDiagnosticsPlan.Observer(int)`, which gives one worker its own allocation observer during setup.
+- `WorkerDiagnosticsRecord`, the counts and routes one worker hands back.
+- `WorkerDiagnosticsScope.Enter` and `Exit`, which swap a fresh recorder onto a worker thread and restore every prior
+  thread value.
+- `ContactAllocationPhase`, the argument type of the allocation observer delegate.
+
+None of them is safe as public API. They read and replace thread-local diagnostic state, and a public form would let
+any caller swap another subsystem's recorder or observer. `WorkerDiagnostics.SetObserverFactory`,
+`SupportQueryDiagnostics.ThreadState` and `SupportQueryDiagnostics.Exchange` are used only by tests, through the
+existing test assembly grants. The two packages ship together under one `KhaozEngineVersion`, so the grant cannot
+skew across versions.
+
 The same package owns `MoveToRange`, `DirectMoveToRange`, `RangeSteering`, `RangeMoveStatus`,
 `NpcGroundMovement` and `PlayerPathMovement`. These adapters compose the three existing references only.
 `MoveToRange` consumes guarded region planning and exact shape reach, `DirectMoveToRange` uses the same reach
@@ -951,6 +969,29 @@ KhaozEngine.MapEdit.Tool -> KhaozEngine.MapDoc.Physics  (NativeCollisionService 
 ```
 
 `ke-mapedit` is in no umbrella, so the edge carries the package into no shipped game.
+
+### Prefab runtime and authoring non-edges
+
+The 20.40.0 R5 surface adds no package or umbrella edge. `Foundation` carries MapDoc, and Game3D and Server
+inherit it. The effective resource policy `kemap/effective-resources/1` and query policy 2 identify one
+captured GPU-free resource view. The Light/Support `resourceSchema` discriminant does not move decoding into
+a renderer or physics backend, and unmarked bytes retain the released opaque path.
+
+Rigid prefab payloads, persisted bindings, format-7 identity, strict immutable resource closure,
+local support ownership, partial paint, room parenting, AuthoredOpen portals, bounded effective
+witnesses, roof flags and versioned marker/light values stay in `MapDoc`. `MapDoc.Physics` consumes
+that same effective village for statics, water inputs, membership and annotation intent. Neither
+runtime producer references TileWorld, a renderer, GPU, MapEditor or a game. MapDoc also stays free
+of the physics seam. MapEditor gains no MapDoc.Physics reference. The dev tool's existing explicit
+physics edge supplies collider measurement, and introduces no runtime edge.
+
+`ArchitectureTests.Prefabs.cs`, a partial of the existing architecture test class, checks these
+transitive runtime non-edges and the editor's direct non-edge. The invented public village verifies
+two independently loaded headless builds and the actual prefab/interior services and MCP commands.
+`NativeManifestAdapterTests` remains the regression for the one-way verified native asset adapter.
+No TileWorld oracle or game source data participates in the village. The
+[MapDoc handoff table](../KhaozEngine.MapDoc/README.md#public-synthetic-village-acceptance) lists every
+remaining R6 to R11 proof, native controller/route gates and live-door/rendering consumers.
 
 ## Content catalog package edges
 

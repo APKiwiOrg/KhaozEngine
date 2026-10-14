@@ -47,7 +47,7 @@ public readonly record struct MapLocalBounds(
     [property: JsonRequired] Vector3 Min,
     [property: JsonRequired] Vector3 Max);
 
-/// <summary>Closed resource roles. Prefab payloads are reserved and refused until supported.</summary>
+/// <summary>Closed resource roles. Prefab resources carry rigid payload 1 with verified leaf dependencies.</summary>
 public enum MapResourceKind
 {
     Manifest,

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using KhaozEngine.MapDoc.Prefabs;
 
 namespace KhaozEngine.MapEdit.Tools;
 
@@ -19,6 +20,7 @@ public static class McpBootstrap
         services.AddSingleton<WaterService>();
         services.AddSingleton<MutationService>();
         services.AddSingleton<RenderService>();
+        services.AddSingleton<PrefabService>();
         return services;
     }
 
@@ -30,6 +32,8 @@ public static class McpBootstrap
         builder.WithTools<QueryTools>();
         builder.WithTools<MutationTools>();
         builder.WithTools<RenderTools>();
+        builder.WithTools<PrefabTools>(MapPrefabJson.ToolOptions);
+        builder.WithTools<InteriorTools>(MapPrefabJson.ToolOptions);
         return builder;
     }
 }

@@ -146,7 +146,7 @@ public sealed class NativeAssetClosureTests
     [InlineData("wrong-kind")]
     [InlineData("unknown-kind")]
     [InlineData("numeric-kind")]
-    [InlineData("prefab")]
+    [InlineData("future-prefab-payload")]
     [InlineData("zero-units")]
     [InlineData("negative-units")]
     [InlineData("overflow-units")]
@@ -174,7 +174,7 @@ public sealed class NativeAssetClosureTests
             case "wrong-kind": asset["meshResourceId"] = "material"; break;
             case "unknown-kind": resource["kind"] = "FutureKind"; break;
             case "numeric-kind": resource["kind"] = 1; break;
-            case "prefab": resource["kind"] = "Prefab"; break;
+            case "future-prefab-payload": resource["kind"] = "Prefab"; resource["reference"]!["payloadVersion"] = 2; break;
             case "zero-units": asset["sourceUnitsToMetres"] = 0; break;
             case "negative-units": asset["sourceUnitsToMetres"] = -1; break;
             case "overflow-units": asset["sourceUnitsToMetres"] = JsonNode.Parse("1e100"); break;

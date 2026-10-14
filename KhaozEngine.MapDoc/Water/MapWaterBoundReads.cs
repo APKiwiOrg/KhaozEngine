@@ -25,6 +25,14 @@ internal sealed record MapWaterBoundRead(MapRefinementStatus Status, string? Det
 /// <c>CapacityExceeded</c> before any read.</summary>
 internal static class MapWaterBoundReads
 {
+    internal static void ChargeTraversal(MapScopedSurfaces view, string surfaceId, MapExactXz min, MapExactXz max, MapWaterWorkMeter meter)
+    {
+        var range = MapEffectiveGeometry.CellRange(view, surfaceId, min, max);
+        if (range.MaxXExclusive <= range.MinX || range.MaxZExclusive <= range.MinZ) return;
+        var slots = MapSurfaceRanges.Slots(range);
+        meter.ChargeBoundTraversal(((BigInteger)slots.MaxXExclusive - slots.MinX) * ((BigInteger)slots.MaxZExclusive - slots.MinZ),
+            ((BigInteger)range.MaxXExclusive - range.MinX) * ((BigInteger)range.MaxZExclusive - range.MinZ));
+    }
     internal static MapWaterBoundRead Read(MapScopedSurfaces view, MapSpaceFootprint footprint, MapBoundRef bound,
         MapExactXz min, MapExactXz max, MapRefinementLimits limits, MapWaterWorkMeter meter, bool upper)
     {

@@ -19,8 +19,9 @@ using SeamConstraintHandle = KhaozEngine.Physics.ConstraintHandle;
 
 namespace KhaozEngine.Physics.Bepu;
 
-/// <summary>BepuPhysics v2 backend for <see cref="IPhysicsWorld"/>. Single-threaded, deterministic
-/// (null dispatcher, fixed SolveDescription, per-step gravity applied uniformly). The only assembly in the
+/// <summary>BepuPhysics v2 backend for <see cref="IPhysicsWorld"/>. Deterministic (null dispatcher, fixed
+/// SolveDescription, per-step gravity applied uniformly). Mutations are exclusive, and reads may run on
+/// several threads at once (see <see cref="IPhysicsConcurrentReadSource"/>). The only assembly in the
 /// engine that references BepuPhysics; consumers depend on the dependency-free <c>KhaozEngine.Physics</c> seam
 /// and add this backend explicitly, matching the Netcode.LiteNetLib / WorldStore.Sqlite pattern.</summary>
 public sealed partial class BepuPhysicsWorld : IPhysicsWorld
@@ -37,6 +38,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsWorld
     /// constructor's <c>velocityIterationCount</c> parameter).</summary>
     public const int DefaultVelocityIterationCount = 8;
 
+    // The simulation's allocator. Only writers use it. Reads allocate from their interval's QueryScratch.
     private readonly BufferPool _pool;
     private readonly BepuSim _sim;
 
@@ -474,8 +476,13 @@ public sealed partial class BepuPhysicsWorld : IPhysicsWorld
         if (_disposed) return;
         _disposed = true;
         StaticGeometryChanged();
-        _sim.Dispose();
-        _pool.Clear();
+        try
+        {
+            _sim.Dispose();
+            _pool.Clear();
+        }
+        // Disposal is exclusive, so every reader interval has already returned its scratch.
+        finally { _queryGate.ScratchPool.Close(); }
     }
 }
 

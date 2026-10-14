@@ -76,6 +76,17 @@ internal static class NativeAssetFixtures
         ["dependencies"] = new JsonArray(dependencies.Select(x => (JsonNode?)JsonValue.Create(x)).ToArray())
     };
 
+    /// <summary>The valid closure with one first-root resource replaced by <paramref name="bytes"/> under a correct
+    /// resource and manifest digest.</summary>
+    internal static (IReadOnlyList<MapAssetRef> Roots, NativeMemoryAssetSource Source) WithResourceBytes(string id, byte[] bytes)
+    {
+        var (roots, source) = Valid();
+        MapAssetRef replaced = source.Add(id, bytes);
+        var root = JsonNode.Parse(source.Read(roots[0]).Span)!.AsObject();
+        root["resources"]!.AsArray().Single(r => r!["reference"]!["id"]!.GetValue<string>() == id)!["reference"]!["sha256"] = replaced.Sha256;
+        return (new[] { source.Add("root-a", root.ToJsonString()), roots[1] }, source);
+    }
+
     internal static (IReadOnlyList<MapAssetRef> Roots, NativeMemoryAssetSource Source) Change(Action<JsonObject> change)
     {
         var (roots, source) = Valid();

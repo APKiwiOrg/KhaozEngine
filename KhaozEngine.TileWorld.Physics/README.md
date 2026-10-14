@@ -172,6 +172,13 @@ The legacy samplers have no shared scratch. The ground sampler needs its documen
 The water field and certified ground delegates retain immutable captured data. Water tracing uses bounded
 per-thread scratch and precomputed exact rectangular unions, so independent readers do not share scratch.
 
+These providers were audited for a parallel contact navigation bake, `NavBakeExecution` above degree 1 in
+[KhaozEngine.Movement](../KhaozEngine.Movement/README.md#parallel-contact-bake), and are endorsed by method:
+`MovementGroundHeight` and `MovementGroundNormal`, `Ground.HeightAt`, `NormalAt`, `HeightDelegate` and
+`NormalDelegate` while the document stays unedited, `Medium` as a water field (`SampleCentreWater`, `TraceWater`,
+`SemanticIdentity`, `Generation`, `Extent`) and through `MediumAt` and `MediumDelegate`, and the registration that
+`CreateMovementRegistration` or `CreateMovementRegistrationBuilder` builds.
+
 ## Hash
 
 `Hash` is SHA-256 over every collider in order: its kind byte, its shape as `PropCollisionFormat.Write` writes it,

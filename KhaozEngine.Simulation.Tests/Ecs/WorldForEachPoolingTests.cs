@@ -41,12 +41,10 @@ public class WorldForEachPoolingTests
 
         total = 0f;
         const int iterations = 2000;
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < iterations; i++) w.ForEach(action);
-        long after = GC.GetAllocatedBytesForCurrentThread();
+        long allocated = AllocationMeasurement.Measure($"{iterations} ForEach calls",
+            () => { for (int i = 0; i < iterations; i++) w.ForEach(action); });
 
         Assert.Equal(16 * iterations, total);   // sanity: the loop actually iterated every entity
-        long allocated = after - before;
         // A fresh Query + 3 Lists is >=150 bytes; un-pooled this loop would allocate >300 KB. Pooled it is
         // ~0; allow a tiny margin for incidental runtime noise (well under one Query's cost per iteration).
         Assert.True(allocated < 8192, $"ForEach allocated {allocated} bytes over {iterations} calls (expected ~0)");

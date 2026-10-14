@@ -338,10 +338,12 @@ public sealed class ShardedWorldServerLingerAllocationTests
         rig.Hub.DisconnectClient(transport);
         rig.Server.Poll();
         Assert.True(rig.Server.IsLingering(slot));
+        Action fiftyTicks = () => { for (int i = 0; i < 50; i++) rig.Server.Tick(dt); };
+        // One unmeasured pass of the same window lets lazy first use and working-size growth settle first.
         for (int i = 0; i < 10; i++) rig.Server.Tick(dt);
+        fiftyTicks();
 
-        long lingering = Measure(() => { for (int i = 0; i < 50; i++) rig.Server.Tick(dt); });
-        long retryLingering = Measure(() => { for (int i = 0; i < 50; i++) rig.Server.Tick(dt); });
+        long lingering = AllocationMeasurement.Measure("50 ticks with a lingering body", fiftyTicks);
         Assert.True(rig.Server.IsLingering(slot));
         Assert.True(rig.Server.TryGetPlayerState(slot, out PlayerMoveState body));
 
@@ -349,22 +351,10 @@ public sealed class ShardedWorldServerLingerAllocationTests
         Assert.Equal(0, rig.Server.PlayerCount);
         rig.Server.SpawnEntity(body.Position.X, body.Position.Z);
         for (int i = 0; i < 10; i++) rig.Server.Tick(dt);
-        long baseline = Measure(() => { for (int i = 0; i < 50; i++) rig.Server.Tick(dt); });
-        long retryBaseline = Measure(() => { for (int i = 0; i < 50; i++) rig.Server.Tick(dt); });
+        fiftyTicks();
+        long baseline = AllocationMeasurement.Measure("50 ticks with no player and one entity", fiftyTicks);
 
-        // Each side is measured twice and any equal pair passes, because one-time lazy work (a first use of a code
-        // path or a collection growing to its working size) can still land in either side's first window.
-        Assert.True(
-            lingering == baseline || lingering == retryBaseline
-                || retryLingering == baseline || retryLingering == retryBaseline,
-            $"50 ticks with a lingering body allocated {lingering} then {retryLingering} bytes, against {baseline} "
-                + $"then {retryBaseline} with no player and one entity");
-    }
-
-    private static long Measure(Action loop)
-    {
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        loop();
-        return GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.True(lingering == baseline,
+            $"50 ticks with a lingering body allocated {lingering} bytes, against {baseline} with no player and one entity");
     }
 }

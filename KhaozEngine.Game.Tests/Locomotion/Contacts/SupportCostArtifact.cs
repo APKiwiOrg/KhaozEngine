@@ -215,7 +215,7 @@ internal static class SupportCostArtifact
             Compilation = "Release, tiering disabled. First-use sample, one unmeasured priming call, warm sample. No warm-up loop.",
             ColdJit = "First use may include optimized JIT. The second invocation primes hit-only paths outside measurement before the warm sample. ColdBytes measures managed allocation, not JIT code memory.",
             ColdScratch = "Scene construction excluded. Each new scene has its own backend scratch. FootSupport thread scratch is shared across rows.",
-            Scratch = "High-water retained managed array payload in support scratch and privately owned installed local geometry. Excludes object headers and backend native buffers.",
+            Scratch = "High-water retained managed array payload in support scratch, every constructed query scratch and privately owned installed local geometry, plus each query scratch's native Bepu pool capacity. Excludes object headers.",
             HostScale = 1,
             Backend = "Bepu, selected query view, empty static exclusions, one authenticated lease per operation",
             Tuning = SupportGateCostScenes.Tuning,

@@ -112,15 +112,17 @@ public sealed partial class GroundMoveContext
             MovementBoundary, MovementWaterField, _providedMedium, MovementQueries);
     }
 
+    /// <summary>The contact frame the next step would capture at the current physics origin. Reading it changes no
+    /// context state, so a navigation build captures it once into its snapshot.</summary>
     internal MovementFrameDescriptor NavigationFrame
     {
         get
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            _origin = Physics!.Origin;
-            EnsureOrigin();
-            CaptureContactFrame();
-            return _contactFrame;
+            Vector3 origin = Physics!.Origin;
+            if (MovementQueries is { } queries && (!ReferenceEquals(queries.SourceWorld, Physics) || queries.Origin != origin))
+                throw new InvalidOperationException("The movement query source or origin changed during a ground movement step.");
+            return ContactFrameAt(origin);
         }
     }
 

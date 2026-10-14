@@ -1,4 +1,6 @@
 using System;
+using System.Linq;
+using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc;
 
 namespace KhaozEngine.MapEditor;
@@ -12,6 +14,15 @@ public static class NativePlacementReferences
         ArgumentNullException.ThrowIfNull(document);
         ArgumentException.ThrowIfNullOrWhiteSpace(oldId);
         ArgumentException.ThrowIfNullOrWhiteSpace(newId);
-        // Future structured prefab/marker references extend this visitor, never arbitrary strings or tags.
+        var remapped = MapPrefabReferences.RemapWorld(document, MapPrefabChildKind.Placement, oldId, newId);
+        document.Prefabs = remapped.Prefabs;
+        document.BuildingIntent = remapped.BuildingIntent;
+        document.NativeResourceTransforms = remapped.NativeResourceTransforms;
+        if (document.Prefabs is { } set)
+            document.Prefabs = new(set.PayloadVersion, set.ExpansionVersion,
+                set.Instances.Select(i => !i.Unpacked ? i : i with
+                { Bindings = new(i.Bindings.Entries.Select(b => b.Child.Kind == MapPrefabChildKind.Placement && b.WorldId == oldId ? b with { WorldId = newId } : b).ToArray()) }).ToArray(), set.Transfers)
+            { Attachments = set.Attachments };
+        MapPrefabAttachmentDescriptors.Refresh(document);
     }
 }

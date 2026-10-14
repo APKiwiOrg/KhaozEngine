@@ -1,15 +1,18 @@
 using System.Collections.Generic;
 using KhaozEngine.MapDoc.Assets;
+using KhaozEngine.MapDoc.Prefabs;
 
 namespace KhaozEngine.MapDoc.Storage;
 
 public sealed partial class MapStoredSurfaceSource
 {
-    /// <summary>The manifest-level checks the loaded document runs, through the same validation code.</summary>
+    /// <summary>The manifest-level checks the loaded document runs, through the same validation code. Prefab
+    /// reservations against standalone content follow in <see cref="IdentityContentDigest"/>.</summary>
     internal void RequireIdentityManifest(MapAssetClosure assets)
     {
         MapBoundDocumentValidation.ValidateLocal(_globals);
         MapBoundDocumentValidation.RequireRoots(_nativeAssets, assets);
+        MapPrefabValidation.RequireDocument(_globals, assets);
         MapBoundDocumentValidation.RequireWaterMaterials(_globals.Water, assets);
     }
 

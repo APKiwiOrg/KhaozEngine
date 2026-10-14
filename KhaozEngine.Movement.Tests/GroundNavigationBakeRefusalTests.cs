@@ -147,9 +147,9 @@ public class GroundNavigationBakeRefusalTests
         AssertRefused(GroundNavigationBake.Load(new MemoryStream(file), large.Expected), NavBakeLoadStatus.Corrupt, "remaining");
 
         var stream = new MemoryStream(file);
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        NavBakeLoadResult result = GroundNavigationBake.Load(stream, large.Expected);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        NavBakeLoadResult result = null!;
+        long allocated = AllocationMeasurement.Measure("A refused payload length",
+            () => result = GroundNavigationBake.Load(stream, large.Expected));
 
         AssertRefused(result, NavBakeLoadStatus.Corrupt, "remaining");
         Assert.True(allocated < 64 * 1024, $"A refused length allocated {allocated} bytes.");
@@ -177,9 +177,9 @@ public class GroundNavigationBakeRefusalTests
         AssertRefused(Load(file), NavBakeLoadStatus.Corrupt, detailFragment);
 
         var stream = new MemoryStream(file);
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        NavBakeLoadResult result = GroundNavigationBake.Load(stream, deck.Expected);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        NavBakeLoadResult result = null!;
+        long allocated = AllocationMeasurement.Measure($"A hostile {field} count",
+            () => result = GroundNavigationBake.Load(stream, deck.Expected), budget: file.Length + 8L * 1024 * 1024);
 
         AssertRefused(result, NavBakeLoadStatus.Corrupt, detailFragment);
         Assert.True(allocated - file.Length < 1024 * 1024, $"A hostile count allocated {allocated} bytes for a {file.Length} byte file.");
@@ -417,9 +417,9 @@ public class GroundNavigationBakeRefusalTests
         AssertRefused(Load(file), NavBakeLoadStatus.Corrupt, "remaining");
 
         var stream = new MemoryStream(file);
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        NavBakeLoadResult result = GroundNavigationBake.Load(stream, Deck.Value.Expected);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        NavBakeLoadResult result = null!;
+        long allocated = AllocationMeasurement.Measure("A refused identity length",
+            () => result = GroundNavigationBake.Load(stream, Deck.Value.Expected));
 
         AssertRefused(result, NavBakeLoadStatus.Corrupt, "remaining");
         Assert.True(allocated < 64 * 1024, $"A refused identity length allocated {allocated} bytes.");

@@ -7,6 +7,7 @@ using KhaozEngine.MapDoc.Identity;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.Primitives;
+using KhaozEngine.MapDoc.Prefabs;
 
 namespace KhaozEngine.MapDoc.Support;
 
@@ -19,13 +20,53 @@ public static class MapResolverV2
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(surfaces);
         string hash = MapAuthoredIdentityV2.Compute(document, assets, options);
-        var bindings = new Dictionary<string, MapSupportBinding>(StringComparer.Ordinal);
-        foreach (MapPlacement placement in document.Placements.OrderBy(p => p.Id, StringComparer.Ordinal))
-            if (placement.Y is null) bindings.Add(placement.Id, RequireBinding(placement));
-        var supports = new List<MapPlacementSupport>();
-        MapResolvedDocument resolved = MapResolver.Resolve(document, assets,
-            (id, x, z) => SupportHeight(id, bindings[id], x, z, surfaces, assets, supports), hash);
-        return new(resolved, supports);
+        var effective = MapPrefabResolver.Expand(document, assets, new(), null, surfaces);
+        var resolved = new MapResolvedDocument(effective.Placements, assets, MapResolvedBounds.Of(document.PlayableBounds!),
+            MapResolvedBounds.Of(document.Bounds), hash, effective);
+        return new(resolved, effective.PlacementSupports);
+    }
+
+    internal static IReadOnlyList<MapResolvedPlacement> ResolveEffectivePlacements(MapDocument authored, MapAssetClosure assets,
+        IReadOnlyList<MapPlacement> effective, IReadOnlyDictionary<string, MapEffectiveTransform> transforms,
+        IMapSurfaceSource surfaces, out IReadOnlyList<MapPlacementSupport> supports, IReadOnlyDictionary<string, string>? owners = null)
+    {
+        var result = new List<MapResolvedPlacement>();
+        var selected = new List<MapPlacementSupport>();
+        var missingY = effective.Where(p => p.Y is null).Select(p => p.Id).ToHashSet(StringComparer.Ordinal);
+        foreach (var placement in effective)
+        {
+            var pose = transforms[MapEffectiveContext.Key(MapPrefabChildKind.Placement, placement.Id)];
+            MapResourceTransform.RequireWithinWorld(placement.Id, pose.X, pose.Y, pose.Z);
+            _ = new MapResourceTransform(pose).Point(new(default, default, default));
+            float presentationScale = (float)pose.Scale, presentationYaw = (float)pose.YawRadians;
+            if (!float.IsFinite(presentationScale) || presentationScale <= 0 || !float.IsFinite(presentationYaw))
+                throw new MapDocumentException($"Placement '{placement.Id}' backend pose is NotRepresentable.");
+            float y = (float)pose.Y;
+            if (placement.Y is null)
+            {
+                var binding = RequireBinding(placement);
+                var world = new MapResourceTransform(pose).Point(new(default, default, default)) with
+                { Y = MapExactValue.FromSingle(binding.ReferenceY ?? 0) };
+                var frame = WorldFrame.Nearest(world.X.ToSingle(), world.Z.ToSingle());
+                float x = world.X.Subtract(new((long)frame.X * (long)WorldFrame.Grid, 1)).ToSingle();
+                float z = world.Z.Subtract(new((long)frame.Z * (long)WorldFrame.Grid, 1)).ToSingle();
+                var scope = new MapSurfaceScope(frame, new(x - 2, z - 2), new(x + 2, z + 2), null, null, Enum.GetValues<MapSurfaceRole>(), null, new());
+                var view = MapScopedSurfaces.Acquire(surfaces, scope, assets.Roots.Select(a => a.Sha256).ToArray(), 2, 2);
+                var query = new MapSupportQuery(view);
+                var support = binding.Kind == MapSupportBindingKind.Surface ? query.SampleSurfaceExact(world, binding.SurfaceId!)
+                    : query.SelectExact(new(MapEffectiveGeometry.Presentation(view, world), null, binding.SpaceId, null, binding.SearchAbove!.Value, binding.SearchBelow!.Value, null), world);
+                if (support.Status != MapSupportStatus.Supported) throw new MapDocumentException($"Placement '{placement.Id}' support status {support.Status}: {support.Detail}");
+                if (support.Face is { } face && owners is not null &&
+                    owners.TryGetValue(MapEffectiveContext.Key(MapPrefabChildKind.Surface, face.OwnerId), out var provider) && missingY.Contains(provider))
+                    throw new MapDocumentException($"Placement '{placement.Id}' with missing Y cannot bind support supplied by placement '{provider}' with missing Y.");
+                y = support.WorldY;
+                selected.Add(new(placement.Id, support));
+            }
+            result.Add(new(placement.Id, placement.Kind, placement.AssetId!, placement.NumericId,
+                new(new((float)pose.X, y, (float)pose.Z), presentationYaw, presentationScale), placement.Tags));
+        }
+        supports = Array.AsReadOnly(selected.ToArray());
+        return result.AsReadOnly();
     }
 
     /// <summary>Resolves <paramref name="placements"/>, which belong to <paramref name="document"/>, in the given order

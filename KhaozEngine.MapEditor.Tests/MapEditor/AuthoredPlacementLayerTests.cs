@@ -393,11 +393,8 @@ public sealed class AuthoredPlacementLayerTests
         Action<ChunkCoord> invalidate = static _ => { };
         layer.Refresh(doc, field, visibility, "2048", invalidate);
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 20; i++) layer.Refresh(doc, field, visibility, "2048", invalidate);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-
-        Assert.Equal(0, allocated);
+        AllocationMeasurement.NoPerCallAllocation("20 idle AuthoredPlacementLayer refreshes",
+            () => { for (int i = 0; i < 20; i++) layer.Refresh(doc, field, visibility, "2048", invalidate); });
     }
 
     [Fact]

@@ -14,8 +14,18 @@ public enum MapWaterRegionKind : byte { FreeSurface, Closed, Unresolved }
 
 /// <summary>One kind of area of a body within one covered space. Every triangle lies at
 /// <c>Y = FromSingle(SurfaceY)</c> and faces up, meaning <c>cross(B - A, C - A).Y &gt; 0</c>. Triangles are closed
-/// drawing geometry and may share boundaries.</summary>
-public sealed record MapWaterRegion(string SpaceId, MapWaterRegionKind Kind, IReadOnlyList<MapExactTriangle> Triangles);
+/// drawing geometry and may share boundaries. Effective semantic polygons remain wide internally and the
+/// triangles are their bounded drawing adapter.</summary>
+public sealed record MapWaterRegion(string SpaceId, MapWaterRegionKind Kind, IReadOnlyList<MapExactTriangle> Triangles)
+{
+    /// <summary>The occupied owner and both boundary provenances for effective geometry.</summary>
+    public MapOccupiedFragment? Fragment { get; init; }
+    // Authoritative polygons remain wide. Triangles are the bounded drawing adapter only on the R5 path.
+    internal IReadOnlyList<IReadOnlyList<MapWideXz>> WidePolygons { get; init; } = Array.Empty<IReadOnlyList<MapWideXz>>();
+}
+
+/// <summary>Conservative wet bounds of one occupied fragment, retaining its lower and upper owners.</summary>
+public sealed record MapWaterFragmentBounds(MapOccupiedFragment Fragment, MapBox3 Bounds);
 
 public enum MapWaterCompileStatus { Complete, Incomplete, CapacityExceeded, NotRepresentable, Invalid }
 
@@ -81,6 +91,10 @@ public sealed record MapCompiledWaterBody(string BodyId, float SurfaceY, MapWate
         new Dictionary<string, IReadOnlyList<MapWaterFootprintRect>>(StringComparer.Ordinal);
 
     internal IReadOnlyList<MapWaterClosedContour> ClosedContours { get; init; } = Array.Empty<MapWaterClosedContour>();
+    public IReadOnlyList<MapWaterFragmentBounds> FragmentBounds { get; init; } = Array.Empty<MapWaterFragmentBounds>();
+    internal IReadOnlyList<MapOccupiedPiece> OccupiedPieces { get; init; } = Array.Empty<MapOccupiedPiece>();
+    internal IReadOnlyDictionary<string, IReadOnlyList<MapOccupiedPiece>> FragmentFootprints { get; init; } =
+        new Dictionary<string, IReadOnlyList<MapOccupiedPiece>>(StringComparer.Ordinal);
 
     /// <summary>The kind of <paramref name="point"/> in the covered space <paramref name="spaceId"/>, or null when the
     /// body's domain does not hold it under OA7 or that space's footprint does not own it, the footprint owning a point
@@ -88,11 +102,18 @@ public sealed record MapCompiledWaterBody(string BodyId, float SurfaceY, MapWate
     /// triangle or preserved tangential contour holds, boundaries included, is <see cref="MapWaterRegionKind.Closed"/>, so a contour tie closes as
     /// <see cref="MapWaterQuery"/> closes it. Otherwise a point a free triangle holds is
     /// <see cref="MapWaterRegionKind.FreeSurface"/>, and any other owned point is
-    /// <see cref="MapWaterRegionKind.Unresolved"/>. Stacked spaces at one XZ classify independently.</summary>
+    /// <see cref="MapWaterRegionKind.Unresolved"/>. With effective occupied fragments it returns their unanimous
+    /// answer, or Unresolved when their kinds differ. Closed precedence never crosses fragments.</summary>
     public MapWaterRegionKind? Classify(string spaceId, MapExactXz point)
     {
         ArgumentNullException.ThrowIfNull(spaceId);
         if (Domain is null || !Domain.Contains(point)) return null;
+        if (OccupiedPieces.Count != 0)
+        {
+            var kinds = OccupiedPieces.Where(p => p.SpaceId == spaceId && Owns(p, point))
+                .Select(p => p.FragmentId).Distinct(StringComparer.Ordinal).Select(id => ClassifyFragment(id, point)).Distinct().ToArray();
+            return kinds.Length == 0 ? null : kinds.Length == 1 ? kinds[0] : MapWaterRegionKind.Unresolved;
+        }
         if (!Footprints.TryGetValue(spaceId, out IReadOnlyList<MapWaterFootprintRect>? rects) || !rects.Any(r => Owns(r, point))) return null;
         MapWideXz p = MapWideXz.From(point);
         if (Holds(MapWaterRegionKind.Closed)) return MapWaterRegionKind.Closed;
@@ -102,6 +123,20 @@ public sealed record MapCompiledWaterBody(string BodyId, float SurfaceY, MapWate
         bool Holds(MapWaterRegionKind kind) => Regions.Where(r => r.SpaceId == spaceId && r.Kind == kind)
             .SelectMany(r => r.Triangles).Any(t => MapWaterRegionGeometry.TriangleHolds(t, p));
     }
+
+    /// <summary>Classifies one vertical fragment. Closed precedence applies within that fragment only.</summary>
+    public MapWaterRegionKind? ClassifyFragment(string fragmentId, MapExactXz point)
+    {
+        ArgumentNullException.ThrowIfNull(fragmentId);
+        if (Domain is null || !Domain.Contains(point) || !FragmentFootprints.TryGetValue(fragmentId, out var pieces) || !pieces.Any(p => Owns(p, point))) return null;
+        var xz = MapWideXz.From(point);
+        bool Holds(MapWaterRegionKind kind) => Regions.Where(r => r.Fragment?.Id == fragmentId && r.Kind == kind)
+            .Any(r => MapWaterRegionGeometry.Holds(r, xz));
+        if (Holds(MapWaterRegionKind.Closed) || ClosedContours.Any(c => c.FragmentId == fragmentId && c.Holds(xz))) return MapWaterRegionKind.Closed;
+        return Holds(MapWaterRegionKind.FreeSurface) ? MapWaterRegionKind.FreeSurface : MapWaterRegionKind.Unresolved;
+    }
+
+    static bool Owns(MapOccupiedPiece piece, MapExactXz point) => MapWaterPolygons.RingContains(piece.Polygon, MapWideXz.From(point));
 
     static bool Owns(MapWaterFootprintRect rect, MapExactXz point)
     {

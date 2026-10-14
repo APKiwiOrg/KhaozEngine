@@ -315,6 +315,10 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   closure, a resource that is not a binary glTF, an external URI or a mesh that does not load throws
   `MapDocumentException`.
 
+R5's format-7 effective prefab resources retain this one-way leaf mesh loader. Prefabs have no mesh of their
+own. Partial-face paint drawing, room-based roof colour/shadows, camera policy and local-light presentation
+remain R8 work. Consume the effective MapDoc snapshot rather than re-expanding children in this adapter.
+
 ## Usage
 
 ```csharp

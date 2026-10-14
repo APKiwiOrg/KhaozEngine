@@ -4,6 +4,8 @@ using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text.Json;
+using KhaozEngine.MapDoc.Prefabs;
+using KhaozEngine.MapDoc.Surfaces;
 
 namespace KhaozEngine.MapDoc.Assets;
 
@@ -12,6 +14,10 @@ public sealed class MapAssetClosure
 {
     readonly Dictionary<string, MapResolvedAsset> _assets;
     readonly Dictionary<string, MapResolvedResource> _resources;
+    readonly Dictionary<string, byte[]> _snapshots;
+    readonly Dictionary<string, MapSupportResource> _supports = new(StringComparer.Ordinal);
+    readonly Dictionary<string, MapLocalLightDoc> _lights = new(StringComparer.Ordinal);
+    readonly Dictionary<string, MapPrefabAsset> _prefabs = new(StringComparer.Ordinal);
     public IReadOnlyList<MapResolvedAsset> Assets { get; }
     public string Hash { get; }
     /// <summary>The exact input roots, snapshotted before source reads and published in ordinal ID order.</summary>
@@ -20,20 +26,56 @@ public sealed class MapAssetClosure
     MapAssetClosure(Dictionary<string, MapAssetDoc> assets, Dictionary<string, MapResourceDoc> resources,
         Dictionary<string, byte[]> snapshots, MapAssetRef[] roots)
     {
+        _snapshots = snapshots;
         _assets = assets.ToDictionary(pair => pair.Key, pair => new MapResolvedAsset(pair.Value), StringComparer.Ordinal);
         _resources = resources.ToDictionary(pair => pair.Key,
             pair => new MapResolvedResource(pair.Value.Reference, pair.Value.Kind, pair.Value.Dependencies, snapshots[pair.Key]),
             StringComparer.Ordinal);
         Assets = Array.AsReadOnly(_assets.Values.OrderBy(asset => asset.Id, StringComparer.Ordinal).ToArray());
         Roots = Array.AsReadOnly(roots);
+        foreach (MapResolvedAsset leaf in Assets)
+        {
+            foreach (string id in leaf.SupportResourceIds)
+                if (!_supports.ContainsKey(id) && MapTypedResourceSchema.Carries(snapshots[id])) _supports.Add(id, MapSupportResourceFile.Read(snapshots[id], id));
+            foreach (string id in leaf.LightResourceIds)
+                if (!_lights.ContainsKey(id) && MapTypedResourceSchema.Carries(snapshots[id])) _lights.Add(id, MapLightFile.Read(snapshots[id], id));
+        }
+        foreach (var resource in resources.Values.Where(r => r.Kind == MapResourceKind.Prefab))
+        {
+            var prefab = MapPrefabFile.Read(snapshots[resource.Reference.Id], resource.Reference.Id, this);
+            MapPrefabValidation.RequireLeafResources(prefab.Children, this, resource.Dependencies);
+            _prefabs.Add(resource.Reference.Id, prefab);
+        }
         Hash = ComputeHash(resources);
     }
 
+    // Released resources stay opaque, including JSON objects. Only R5 typed attachments that open with their
+    // discriminant are decoded, once, at construction.
+    internal bool HasSupport(string id) => _supports.ContainsKey(id);
+    internal bool HasLight(string id) => _lights.ContainsKey(id);
     public MapResolvedAsset GetAsset(string assetId) => _assets.TryGetValue(assetId, out var asset)
         ? asset : throw new MapDocumentException($"Native asset '{assetId}' is not in the verified closure.");
 
     public MapResolvedResource GetResource(string resourceId) => _resources.TryGetValue(resourceId, out var resource)
         ? resource : throw new MapDocumentException($"Native resource '{resourceId}' is not in the verified closure.");
+
+    /// <summary>A detached copy of a bounded prefab decoded from the verified immutable snapshot.</summary>
+    public MapPrefabAsset GetPrefab(string resourceId) => _prefabs.TryGetValue(resourceId, out var prefab)
+        ? MapPrefabJson.Copy(prefab) : throw new MapDocumentException($"Native prefab '{resourceId}' is not in the verified closure.");
+
+    internal IEnumerable<MapResolvedResource> CapturedResources => _resources.Values;
+    internal int ResourceByteLength(string resourceId) => _snapshots.TryGetValue(resourceId, out var bytes)
+        ? bytes.Length : throw new MapDocumentException($"Native resource '{resourceId}' is not captured.");
+    internal ReadOnlyMemory<byte> BorrowVerifiedResourceBytes(string resourceId) => _snapshots.TryGetValue(resourceId, out var bytes)
+        ? bytes : throw new MapDocumentException($"Native resource '{resourceId}' is not captured.");
+    internal MapPrefabAsset BorrowPrefab(string id) => _prefabs.TryGetValue(id, out var prefab)
+        ? prefab : throw new MapDocumentException($"Native prefab '{id}' is not captured.");
+    internal MapSupportResource BorrowSupport(string id) => _supports.TryGetValue(id, out var support) ? support
+        : _resources.ContainsKey(id) ? throw MapTypedResourceSchema.Opaque("support", id, MapTypedResourceSchema.Support)
+        : throw new MapDocumentException($"Native support '{id}' is not captured.");
+    internal MapLocalLightDoc BorrowLight(string id) => _lights.TryGetValue(id, out var light) ? light
+        : _resources.ContainsKey(id) ? throw MapTypedResourceSchema.Opaque("light", id, MapTypedResourceSchema.Light)
+        : throw new MapDocumentException($"Native light '{id}' is not captured.");
 
     /// <summary>Looks up a resource without throwing. A null id is never in the closure.</summary>
     internal bool TryGetResource(string? resourceId, out MapResolvedResource? resource)
@@ -107,7 +149,7 @@ public sealed class MapAssetClosure
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or KeyNotFoundException)
         {
-            throw new MapDocumentException($"Cannot read native resource '{reference.Id}'.", ex);
+            throw new MapDocumentException($"Cannot read native resource '{reference.Id}' with expected SHA-256 '{reference.Sha256}'.", ex);
         }
     }
 

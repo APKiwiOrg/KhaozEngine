@@ -22,6 +22,7 @@ internal readonly struct MapWideRational : IEquatable<MapWideRational>, ICompara
     public BigInteger Numerator => _numerator;
     public BigInteger Denominator => _denominatorMinusOne + BigInteger.One;
     public int Sign => _numerator.Sign;
+    internal double ToDouble() => (double)_numerator / (double)Denominator;
 
     public static MapWideRational From(MapExactValue value) => new(value.Numerator, value.Denominator);
     public static MapWideRational From(long value) => new(value, BigInteger.One);
@@ -90,8 +91,10 @@ internal readonly struct MapWideRational : IEquatable<MapWideRational>, ICompara
     public static MapWideRational Max(MapWideRational a, MapWideRational b) => a.CompareTo(b) >= 0 ? a : b;
 }
 
-internal readonly record struct MapWideXz(MapWideRational X, MapWideRational Z)
+internal readonly record struct MapWideXz(MapWideRational X, MapWideRational Z) : IComparable<MapWideXz>
 {
+    public int CompareTo(MapWideXz other) => !Z.Equals(other.Z) ? Z.CompareTo(other.Z) : X.CompareTo(other.X);
+
     public static MapWideXz From(MapExactXz point) => new(MapWideRational.From(point.X), MapWideRational.From(point.Z));
 
     public bool TryNarrow(out MapExactXz point)
@@ -109,4 +112,5 @@ internal readonly record struct MapWideXz(MapWideRational X, MapWideRational Z)
 internal readonly record struct MapWidePoint(MapWideRational X, MapWideRational Y, MapWideRational Z)
 {
     public MapWideXz Xz => new(X, Z);
+    public static MapWidePoint From(MapExactPoint point) => new(MapWideRational.From(point.X), MapWideRational.From(point.Y), MapWideRational.From(point.Z));
 }

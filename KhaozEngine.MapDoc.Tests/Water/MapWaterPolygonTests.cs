@@ -106,6 +106,30 @@ public class MapWaterPolygonTests
     }
 
     [Fact]
+    public void BoundsCross_MatchesEveryOverlappingCrossPairInOrder()
+    {
+        var random = new Random(20261012);
+        MapWaterPolygons.Bounds Box()
+        {
+            long x = random.Next(0, 40), z = random.Next(0, 40);
+            return MapWaterPolygons.Bounds.Of(P(x, z), P(x + random.Next(0, 6), z + random.Next(0, 6)));
+        }
+        var left = Enumerable.Range(0, 200).Select(_ => Box()).ToArray();
+        var right = Enumerable.Range(0, 120).Select(_ => Box()).ToArray();
+        var expected = new List<(int, int)>();
+        for (int a = 0; a < left.Length; a++)
+            for (int b = 0; b < right.Length; b++)
+                if (left[a].OverlapsOpen(right[b])) expected.Add((a, b));
+        Assert.NotEmpty(expected);
+        Assert.Equal(expected, MapWaterBoundsSweep.Cross(left, right));
+        Assert.Equal(expected.Select(p => (p.Item2, p.Item1)).Order(), MapWaterBoundsSweep.Cross(right, left));
+        Assert.Empty(MapWaterBoundsSweep.Cross(left, []));
+        // A result cap equal to the overlap count admits the input, one less refuses it with no partial result.
+        Assert.Equal(expected, MapWaterBoundsSweep.Cross(left, right, expected.Count)!);
+        Assert.Null(MapWaterBoundsSweep.Cross(left, right, expected.Count - 1));
+    }
+
+    [Fact]
     public void BoundsSweep_ColumnChargesTouchingNeighboursOnly()
     {
         var bounds = Enumerable.Range(0, 4096).Select(z => MapWaterPolygons.Bounds.Of(P(0, z), P(1, z + 1))).ToArray();

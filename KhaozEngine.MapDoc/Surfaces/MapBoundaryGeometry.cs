@@ -41,14 +41,14 @@ public static class MapBoundaryGeometry
                     if (vertex.Vertex.SurfaceId != source.Surface.Id ||
                         !source.Vertices.TryGetValue(vertex.Vertex.Address, out MapExactPoint point))
                         return Failure(MapResolveStatus.Invalid, "chain source vertex is not a surface edge vertex");
-                    points.Add(point);
+                    points.Add(MapEffectiveGeometry.Point(view, vertex.Vertex.SurfaceId, point));
                 }
                 else
                 {
                     MapSurfaceRef? surface = Surface(view, vertex.Vertex.SurfaceId);
                     if (surface is null) return Failure(MapResolveStatus.MissingGeometry, "unresolved chain surface");
                     MapExactXz xz = surface.Frame.WorldXz(vertex.Vertex.Address);
-                    points.Add(new(xz.X, surface.Frame.Metres(new(vertex.HeightUnits!.Value, 1)), xz.Z));
+                    points.Add(MapEffectiveGeometry.Point(view, surface.Id, new(xz.X, surface.Frame.Metres(new(vertex.HeightUnits!.Value, 1)), xz.Z)));
                 }
             }
             return new(MapResolveStatus.Resolved, points.AsReadOnly(), null);

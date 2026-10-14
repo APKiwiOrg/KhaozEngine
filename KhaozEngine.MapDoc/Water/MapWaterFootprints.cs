@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.MapDoc.Spaces;
@@ -18,6 +19,9 @@ internal sealed record MapWaterFootprintRect(string SpaceId, MapSpaceFootprint F
 /// <summary>Reads a space's acquired footprints near a window and merges their cells into rectangles.</summary>
 internal static class MapWaterFootprints
 {
+    internal static IReadOnlyDictionary<string, IReadOnlyList<MapOccupiedPiece>> ByFragment(IEnumerable<MapOccupiedPiece> pieces) =>
+        new ReadOnlyDictionary<string, IReadOnlyList<MapOccupiedPiece>>(pieces.GroupBy(p => p.FragmentId, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<MapOccupiedPiece>)Array.AsReadOnly(g.ToArray()), StringComparer.Ordinal));
     /// <summary>The footprint rectangles of <paramref name="spaceId"/>, including its aliases' footprints, read only from
     /// footprints whose 64-cell slot meets the closed window. Cells group by (lattice frame, lower bound, upper bound)
     /// and each group merges across slots by the greedy row-run rule: rows in ascending Z, each row's maximal X runs
@@ -164,14 +168,14 @@ internal static class MapWaterFootprints
     }
 
     /// <summary>True when the acquisition is complete with a complete witness, every surface role and no height filter.</summary>
-    static bool HoldsEverything(MapScopedSurfaces view)
+    internal static bool HoldsEverything(MapScopedSurfaces view)
     {
         MapSurfaceScope scope = view.Scope;
         return view.Status == MapAcquireStatus.Complete && view.Witness.Complete && scope.MinY is null && scope.MaxY is null &&
             Enum.GetValues<MapSurfaceRole>().All(scope.Roles.Contains);
     }
 
-    static bool ScopeHolds(MapScopedSurfaces view, MapExactXz windowMin, MapExactXz windowMax)
+    internal static bool ScopeHolds(MapScopedSurfaces view, MapExactXz windowMin, MapExactXz windowMax)
     {
         MapSurfaceScope scope = view.Scope;
         MapExactXz min = new MapFramePoint(scope.Frame, new Vector3(scope.LocalMin.X, 0, scope.LocalMin.Y)).ExactWorldXz();

@@ -24,6 +24,7 @@ internal sealed class MapAcquiredFacts
     internal IEnumerable<MapUnavailable> Unavailable => _unavailable.OrderBy(r => r.Key).ThenBy(r => r.What, StringComparer.Ordinal).ThenBy(r => r.Status);
     internal IEnumerable<MapRecordRef> Records => _recordIds.Values.OrderBy(r => r.Anchor).ThenBy(r => r.Id, StringComparer.Ordinal);
     internal bool Complete => _unavailable.Count == 0;
+    internal bool IsKnownEmpty(MapPatchKey key) => _empty.Any(r => r.SurfaceId == key.SurfaceId && r.Slots.Contains(key.SlotX, key.SlotZ));
     internal bool HasRead(MapPatchKey key) => _reads.ContainsKey(key);
     internal bool TrySurface(string id, out MapSurfaceRef? surface) => _surfaces.TryGetValue(id, out surface);
 

@@ -16,8 +16,8 @@ internal readonly record struct SupportMember(SupportPolygon? Polygon, SupportEl
 /// <summary>Collects the support neighborhood of one upright probe. Membership is decided by the lower bound of
 /// each element's separation interval, so an element is included whenever it may lie within the band. Elements
 /// are ordered by static handle then element id. Capacity is checked atomically after every member and join is
-/// known, and nothing reaches the caller's spans before the result is constructed. One instance is reused by its
-/// owner world for query after query, under the world's query monitor, so a warm query allocates nothing.</summary>
+/// known, and nothing reaches the caller's spans before the result is constructed. One instance is loaned to one
+/// query at a time and reused for query after query, so a warm query allocates nothing.</summary>
 internal sealed class SupportNeighborhoodCollector
 {
     // Broadphase bounds are binary32 boxes from the backend. This margin keeps every static whose geometry may

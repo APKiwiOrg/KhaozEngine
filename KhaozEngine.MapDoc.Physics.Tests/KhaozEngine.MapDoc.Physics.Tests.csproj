@@ -18,4 +18,7 @@
     <!-- Cell islands, for the grid equivalence proofs. -->
     <ProjectReference Include="../KhaozEngine.Sharding/KhaozEngine.Sharding.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../KhaozEngine.MapDoc.Tests/Prefabs/*Fixtures.cs" Link="Prefabs/%(Filename)%(Extension)" />
+  </ItemGroup>
 </Project>

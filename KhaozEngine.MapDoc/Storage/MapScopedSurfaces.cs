@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.MapDoc.Identity;
+using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.Primitives;
 
@@ -14,6 +15,7 @@ public enum MapAcquireStatus { Complete, Incomplete, CapacityExceeded, NotRepres
 public sealed class MapScopedSurfaces
 {
     readonly MapAcquiredFacts _facts;
+    internal MapEffectiveContext? EffectiveContext { get; private init; }
     MapScopedSurfaces(MapScopedAcquisition.Result result, MapSurfaceScope scope, IReadOnlyList<string> assets,
         int queryPolicyVersion, int buildPolicyVersion)
     {
@@ -68,7 +70,11 @@ public sealed class MapScopedSurfaces
         string[] assets = assetSha256.ToArray();
         foreach (string asset in assets) MapSurfaceStorageLayout.RequireDigest(asset);
         if (queryPolicyVersion < 1 || buildPolicyVersion < 1) throw new ArgumentOutOfRangeException(nameof(queryPolicyVersion), "invalid acquisition policy version");
-        return new(MapScopedAcquisition.Run(capable, request, work), request, assets, queryPolicyVersion, buildPolicyVersion);
+        var context = (source as IMapEffectiveSurfaceContext)?.EffectiveContext;
+        return new(context is null ? MapScopedAcquisition.Run(capable, request, work)
+            : MapEffectiveAcquisition.Run(capable, request, work, context), request, assets,
+            context is null ? queryPolicyVersion : 2, context is null ? buildPolicyVersion : 2)
+        { EffectiveContext = context };
     }
     public static MapScopedSurfaces CompleteView(MapSurfaceSet set)
     {
@@ -98,6 +104,32 @@ public sealed class MapScopedSurfaces
         {
             ListsEverySurface = true,
         };
+    }
+    internal static MapScopedSurfaces CompleteEffective(MapEffectiveContext context)
+    {
+        var facts = new MapAcquiredFacts();
+        foreach (var surface in context.Surfaces.Refs) facts.AddSurface(surface);
+        foreach (var entry in context.Surfaces.Patches)
+            facts.AddRead(new(entry.Key, MapPatchStatus.Present, entry.Value, MapSurfaceSemantics.PatchDigest(entry.Value), null, 0));
+        var localScope = ResidentScope(facts);
+        var corners = context.Surfaces.Patches.Values.SelectMany(p =>
+        {
+            var surface = context.Surfaces.Refs.Single(s => s.Id == p.Key.SurfaceId);
+            long x = checked(p.Key.SlotX * 64 + p.CellMinX), z = checked(p.Key.SlotZ * 64 + p.CellMinZ);
+            return new[] { MapLatticeAddress.Corner(x, z), MapLatticeAddress.Corner(x + p.Width, z),
+                MapLatticeAddress.Corner(x + p.Width, z + p.Depth), MapLatticeAddress.Corner(x, z + p.Depth) }
+                .Select(a => { var point = surface.Frame.WorldXz(a); return context.Xz(surface.Id, point); });
+        }).ToArray();
+        var frame = corners.Length == 0 ? WorldFrame.Origin : WorldFrame.Nearest(corners[0].X.ToSingle(), corners[0].Z.ToSingle());
+        long ax = (long)frame.X * (long)WorldFrame.Grid, az = (long)frame.Z * (long)WorldFrame.Grid;
+        var scope = localScope with
+        {
+            Frame = frame,
+            LocalMin = corners.Length == 0 ? Vector2.Zero : new(Outward(corners.Min(c => c.X.Floor()) - ax, true), Outward(corners.Min(c => c.Z.Floor()) - az, true)),
+            LocalMax = corners.Length == 0 ? Vector2.Zero : new(Outward(corners.Max(c => c.X.Ceiling()) - ax, false), Outward(corners.Max(c => c.Z.Ceiling()) - az, false)),
+        };
+        return new(new(MapAcquireStatus.Complete, null, facts, "effective:" + context.Digest, context.Digest, 0, 0), scope, new[] { context.Digest }, 2, 2)
+        { EffectiveContext = context, ListsEverySurface = true };
     }
     static MapSurfaceScope ResidentScope(MapAcquiredFacts facts)
     {
@@ -137,6 +169,9 @@ public sealed class MapScopedSurfaces
     {
         patch = _facts.OwnedPatch(key);
         status = _facts.Status(key);
+        if (EffectiveContext is not null && status == MapPatchStatus.Unloaded && _facts.IsKnownEmpty(key)) status = MapPatchStatus.KnownEmpty;
+        if (EffectiveContext is not null && ListsEverySurface && patch is null &&
+            EffectiveContext.Surfaces.Refs.Any(s => s.Id == key.SurfaceId) && !EffectiveContext.Surfaces.Patches.ContainsKey(key)) status = MapPatchStatus.KnownEmpty;
         return status is MapPatchStatus.Present or MapPatchStatus.KnownEmpty;
     }
 }

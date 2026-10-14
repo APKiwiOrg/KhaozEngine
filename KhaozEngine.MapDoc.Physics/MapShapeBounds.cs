@@ -13,10 +13,13 @@ public static class MapShapeBounds
 {
     /// <summary>The tight world bounds of <paramref name="shape"/> placed at <paramref name="pose"/>.</summary>
     public static MapBox3 Of(PhysicsShape shape, Pose pose)
+        => Of(shape, MapDoublePose.From(pose));
+
+    internal static MapBox3 Of(PhysicsShape shape, MapDoublePose pose)
     {
         ArgumentNullException.ThrowIfNull(shape);
         var box = MapBoundsAccumulator.Empty;
-        Accumulate(shape, MapDoublePose.From(pose), ref box);
+        Accumulate(shape, pose, ref box);
         return box.ToBox();
     }
 

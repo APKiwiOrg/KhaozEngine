@@ -58,9 +58,9 @@ public class MessageReassemblerLimitTests
 
         // The refusal holds no state and allocates nothing.
         byte[] lying = LyingFirstChunk(1, 2, 255);
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        bool accepted = bounded.TryComplete(lying, out _, out reason);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        bool accepted = true;
+        long allocated = AllocationMeasurement.Measure("A refused lying first chunk",
+            () => accepted = bounded.TryComplete(lying, out _, out reason));
         Assert.False(accepted);
         Assert.Equal(MessageReassembler.PayloadLimitExceeded, reason);
         Assert.Equal(0, allocated);
@@ -75,9 +75,9 @@ public class MessageReassemblerLimitTests
             Assert.Null(pending);
         }
         Assert.Equal(1, bounded.PartialAssemblyCount);
-        before = GC.GetAllocatedBytesForCurrentThread();
-        accepted = bounded.TryComplete(over[^1], out ReadOnlyMemory<byte> assembled, out reason);
-        allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        ReadOnlyMemory<byte> assembled = default;
+        allocated = AllocationMeasurement.Measure("A refused overflowing final chunk",
+            () => accepted = bounded.TryComplete(over[^1], out assembled, out reason));
         Assert.False(accepted);
         Assert.Equal(MessageReassembler.PayloadLimitExceeded, reason);
         Assert.True(assembled.IsEmpty);

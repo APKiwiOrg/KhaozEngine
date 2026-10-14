@@ -199,8 +199,6 @@ public sealed class MotionHistoryTests
         Assert.True(history.TryGetPreviousSkinned(MotionKey.Combine(bodies, 39), out _, out ReadOnlySpan<Matrix4x4> last));
         Assert.Equal(palette.Length, last.Length);
 
-        // Retries once before failing (see AllocAssert.NoPerCallAllocation) to ride out an unrelated gen-0
-        // collision from the rest of the process, per issue #284.
         AllocAssert.NoPerCallAllocation("20 steady frames of 2,000 rigid and 40 skinned keys", () =>
         {
             for (int i = 0; i < 20; i++) Frame();

@@ -14,16 +14,10 @@ namespace KhaozEngine.MapEdit;
 /// mutations route through
 /// <see cref="Apply(EditorCommand, string, string)"/> (or its factory overload,
 /// <see cref="Apply(Func{MapDocument, MapDocRegistry, EditorCommand}, string, Func{EditorCommand, string}, bool)"/>,
-/// for verbs that need a document read to build the command): apply the <see cref="EditorCommand"/>, validate the
-/// document, and on any validation error revert the command and throw, so the in-session document is never left
-/// invalid. The few mutations with no command (terrain seed, region bake) reproduce that same apply, validate,
-/// revert-on-error shape by hand inside one <see cref="MapEditSession.Mutate{T}"/> callback. <see cref="ScatterOverrideEdit"/>
-/// reproduces that same shape too, but WITH commands: it can apply up to two <see cref="EditorCommand"/> instances
-/// (shape and/or values) under one lock, so a call touching both lands as one atomic edit with one combined
-/// revert-on-error. A rejected mutation leaves the session exactly as it was before the attempt, including the
-/// dirty flag, because
-/// <see cref="MapEditSession.Mutate{T}"/> only marks dirty when its callback returns normally and a rejected
-/// mutation throws out of that callback.</summary>
+/// for verbs that need a document read to build the command). Analytic commands apply, validate and revert
+/// on failure. Native commands stage their named publication and history through the session. Generic native
+/// callbacks capture the complete candidate as one history entry after the callback succeeds. Both paths leave
+/// the committed document, history and dirty state untouched on rejection.</summary>
 public sealed partial class MutationService(MapEditSession session)
 {
     /// <summary>The shared mutation choke point used by every verb below: applies <paramref name="command"/> to

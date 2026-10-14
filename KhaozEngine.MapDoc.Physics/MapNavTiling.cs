@@ -204,8 +204,9 @@ public static class MapNavTiling
 
     /// <summary>The navigation tiles <paramref name="effects"/> invalidates in (Z, X) order, empty unless it invalidates
     /// navigation or water medium. <paramref name="world"/> is the world built after the edit, as for
-    /// <see cref="MapResidencyOwnership.Affected"/>, whose navigation tiles this widens by the seam margin: every tile
-    /// whose capture bounds meet, on X and Z, the old or new edit bounds or the bounds of a chunk of a listed patch. For a
+    /// <see cref="MapResidencyOwnership.Affected(MapBuiltWorld, MapWorldGrids, MapNativeEditEffects)"/>, whose navigation tiles this widens by the seam margin: every tile
+    /// whose capture bounds meet, on X and Z, <see cref="MapNativeEditEffects.OldSpatialBounds"/> or
+    /// <see cref="MapNativeEditEffects.NewSpatialBounds"/> or the bounds of a chunk of a listed patch. For a
     /// resolver-1 terrain edit it also widens each edit box by the footprint of every sculpt tile position the box meets,
     /// taken arithmetically from <see cref="TerrainSculpt.TileSize"/> and <see cref="MapBuiltWorld.LegacySculptCellSize"/>
     /// whether or not that tile exists, so a sculpt tile the edit added or removed lists every tile whose geometry
@@ -219,7 +220,7 @@ public static class MapNavTiling
     /// <para>A tile that leaves the partition, because the edit shrank the world's bounds, is never listed, since the
     /// result is clipped to the post-edit partition. A consumer that keeps derived state per tile diffs the old and new
     /// partitions to find removed tiles.</para>
-    /// <para>Throws as <see cref="MapResidencyOwnership.Affected"/> does, including for an unbounded edit's boxes, as
+    /// <para>Throws as <see cref="MapResidencyOwnership.Affected(MapBuiltWorld, MapWorldGrids, MapNativeEditEffects)"/> does, including for an unbounded edit's boxes, as
     /// <see cref="Partition"/> does when an unbounded edit's world reaches more than <see cref="MaxPartitionTiles"/>
     /// tiles, and <see cref="ArgumentException"/> for invalid options.</para></summary>
     public static IReadOnlyList<MapNavTileCoord> AffectedTiles(MapBuiltWorld world, MapWorldGrids grids,
@@ -236,7 +237,7 @@ public static class MapNavTiling
             // Every partition tile, without enumerating every storage tile through Affected first. The edit boxes are
             // still checked, as Affected checks them.
             grids.Validate(world);
-            foreach (MapBox3? box in new[] { effects.OldBounds, effects.NewBounds })
+            foreach (MapBox3? box in new[] { effects.OldSpatialBounds, effects.NewSpatialBounds })
                 if (box is { } within) MapResidencyOwnership.RequireWithinWorld(within);
             (int minX, int maxX, int minZ, int maxZ) = PartitionRange(world, grids);
             var every = new MapNavTileCoord[RequirePartitionCount(minX, maxX, minZ, maxZ)];
@@ -249,7 +250,7 @@ public static class MapNavTiling
         MapAffectedSet affected = MapResidencyOwnership.Affected(world, grids, effects);
         if (!navigates) return Array.Empty<MapNavTileCoord>();
 
-        MapBox3[] edited = new[] { effects.OldBounds, effects.NewBounds }.Where(b => b.HasValue).Select(b => b!.Value).ToArray();
+        MapBox3[] edited = new[] { effects.OldSpatialBounds, effects.NewSpatialBounds }.Where(b => b.HasValue).Select(b => b!.Value).ToArray();
         var widen = new List<(double MinX, double MinZ, double MaxX, double MaxZ)>();
         foreach (MapBox3 box in edited) widen.Add((box.MinX, box.MinZ, box.MaxX, box.MaxZ));
         string[] prefixes = MapResidencyOwnership.PatchChunkPrefixes(world, effects.Patches);
@@ -276,6 +277,23 @@ public static class MapNavTiling
         }
         (int firstX, int lastX, int firstZ, int lastZ) = PartitionRange(world, grids);
         return tiles.Where(t => t.X >= firstX && t.X <= lastX && t.Z >= firstZ && t.Z <= lastZ).ToArray();
+    }
+
+    /// <summary>Old and new capture tiles, including tiles outside the post-edit partition and every removed static's
+    /// old capture. This lets deletion retire derived state without knowing a removed owner's current geometry.</summary>
+    public static IReadOnlyList<MapNavTileCoord> AffectedTiles(MapBuiltWorld before, MapBuiltWorld after, MapWorldGrids grids,
+        MapNavTileOptions options, MapNativeEditEffects effects)
+    {
+        var tiles = new SortedSet<MapNavTileCoord>(AffectedTiles(before, grids, options, effects), TileOrder);
+        tiles.UnionWith(AffectedTiles(after, grids, options, effects));
+        if ((effects.Invalidates & (MapNativeInvalidation.Nav | MapNativeInvalidation.Medium)) == 0) return tiles.ToArray();
+        var live = after.Statics.Select(s => s.OwnerId).ToHashSet(StringComparer.Ordinal);
+        foreach (var removed in before.Statics.Where(s => !live.Contains(s.OwnerId)))
+        {
+            var b = removed.Bounds;
+            tiles.UnionWith(CaptureTilesMeeting(b.MinX, b.MinZ, b.MaxX, b.MaxZ, grids, options.SeamMarginMetres));
+        }
+        return tiles.ToArray();
     }
 
     /// <summary>The number of tiles in a partition range, after refusing a range beyond
@@ -419,18 +437,22 @@ public static class MapNavTiling
     static IEnumerable<MapNavTileCoord> WaterCaptureTiles(MapCompiledWaterBody body, MapWorldGrids grids, double margin)
     {
         var tiles = new SortedSet<MapNavTileCoord>(TileOrder);
-        foreach (MapExactTriangle triangle in body.Regions.SelectMany(r => r.Triangles))
+        foreach (var region in body.Regions)
         {
-            MapBox3 box = MapResidencyOwnership.XzBounds(triangle);
-            var polygon = new[] { triangle.A, triangle.B, triangle.C }
-                .Select(p => new MapWideXz(MapWideRational.From(p.X), MapWideRational.From(p.Z))).ToArray();
-            foreach (MapNavTileCoord tile in CaptureTilesMeeting(box.MinX, box.MinZ, box.MaxX, box.MaxZ, grids, margin))
+            var pieces = region.WidePolygons.Count == 0 ? region.Triangles.Select(t =>
+                (Polygon: (IReadOnlyList<MapWideXz>)new[] { MapWideXz.From(new(t.A.X, t.A.Z)), MapWideXz.From(new(t.B.X, t.B.Z)), MapWideXz.From(new(t.C.X, t.C.Z)) },
+                    Box: MapResidencyOwnership.XzBounds(t)))
+                : region.WidePolygons.Select(p => (Polygon: p, Box: MapWaterOccupiedPieces.Bounds(p, default, default)));
+            foreach (var (polygon, box) in pieces)
             {
-                if (tiles.Contains(tile)) continue;
-                MapBox3 capture = Grow(TileBounds(tile, grids, 0, 0), margin);
-                var min = new MapWideXz(MapWideRational.FromDouble(capture.MinX), MapWideRational.FromDouble(capture.MinZ));
-                var max = new MapWideXz(MapWideRational.FromDouble(capture.MaxX), MapWideRational.FromDouble(capture.MaxZ));
-                if (MapWaterPolygons.ClipToRect(polygon, min, max).Count > 0) tiles.Add(tile);
+                foreach (MapNavTileCoord tile in CaptureTilesMeeting(box.MinX, box.MinZ, box.MaxX, box.MaxZ, grids, margin))
+                {
+                    if (tiles.Contains(tile)) continue;
+                    MapBox3 capture = Grow(TileBounds(tile, grids, 0, 0), margin);
+                    var min = new MapWideXz(MapWideRational.FromDouble(capture.MinX), MapWideRational.FromDouble(capture.MinZ));
+                    var max = new MapWideXz(MapWideRational.FromDouble(capture.MaxX), MapWideRational.FromDouble(capture.MaxZ));
+                    if (MapWaterPolygons.ClipToRect(polygon, min, max).Count > 0) tiles.Add(tile);
+                }
             }
         }
         return tiles;
@@ -544,7 +566,7 @@ public static class MapNavTiling
     {
         if (portal.Interval.Count < 2)
             throw new MapDocumentException($"invalid vertex sequence: portal '{portal.Id}'");
-        MapExactXz[] points = portal.Interval.Select(v => Surface(view, v.SurfaceId).Frame.WorldXz(v.Address)).ToArray();
+        MapExactXz[] points = portal.Interval.Select(v => MapEffectiveGeometry.Vertex(view, v)).ToArray();
         for (int i = 1; i < points.Length; i++)
             AddReach(tiles, grids, points[i - 1].X.ToDouble(), points[i - 1].Z.ToDouble(), points[i].X.ToDouble(),
                 points[i].Z.ToDouble());
@@ -556,8 +578,10 @@ public static class MapNavTiling
         MapSurfacePatch patch = view.Patch(opening.Patch).Patch
             ?? throw new MapDocumentException($"missing geometry: opening '{opening.Id}' patch {opening.Patch}");
         MapOpeningPlane plane = MapOpeningBoundary.Compile(Surface(view, opening.Patch.SurfaceId), patch, opening);
-        foreach (MapExactTriangle t in plane.ExactTriangles)
+        foreach (MapExactTriangle local in plane.ExactTriangles)
         {
+            var t = new MapExactTriangle(MapEffectiveGeometry.Point(view, opening.Patch.SurfaceId, local.A),
+                MapEffectiveGeometry.Point(view, opening.Patch.SurfaceId, local.B), MapEffectiveGeometry.Point(view, opening.Patch.SurfaceId, local.C));
             double[] xs = { t.A.X.ToDouble(), t.B.X.ToDouble(), t.C.X.ToDouble() };
             double[] zs = { t.A.Z.ToDouble(), t.B.Z.ToDouble(), t.C.Z.ToDouble() };
             AddReach(tiles, grids, xs.Min(), zs.Min(), xs.Max(), zs.Max());

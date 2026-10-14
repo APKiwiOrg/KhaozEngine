@@ -64,6 +64,18 @@ public class NativeCollisionServiceTests
     }
 
     [Fact]
+    public void AcceptedHeightChange_UndoRedoRestoresTheMatchingClosure()
+    {
+        using var f = new NativeCollisionToolFixture();
+        var before = f.Service.Measure("wall-1");
+        var changed = f.Service.SetHeights("wall-variant", 0.1f, 2.4f, dryRun: false);
+        Assert.NotNull(f.Session.UndoNative());
+        Assert.Equal(before, f.Service.Measure("wall-1"));
+        Assert.NotNull(f.Session.RedoNative());
+        Assert.Equal(changed.AfterSha256, f.Service.Measure("wall-1").ColliderSha256);
+    }
+
+    [Fact]
     public void BakedMeshCollider_RefusesHeightEdits()
     {
         using var f = new NativeCollisionToolFixture();

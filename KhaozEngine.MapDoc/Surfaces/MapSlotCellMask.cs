@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 
 namespace KhaozEngine.MapDoc.Surfaces;
@@ -34,6 +35,14 @@ internal sealed class MapSlotCellMask
             words[cell / 64] |= 1UL << (cell % 64);
         }
         return new(words);
+    }
+
+    /// <summary>A mask from 64 row words. Bit x of row z is slot cell z * 64 + x.</summary>
+    internal static MapSlotCellMask FromRows(IReadOnlyList<ulong> rows)
+    {
+        ArgumentNullException.ThrowIfNull(rows);
+        if (rows.Count != 64) throw new ArgumentOutOfRangeException(nameof(rows));
+        return new(rows.ToArray());
     }
 
     internal MapSlotCellMask Union(MapSlotCellMask other)

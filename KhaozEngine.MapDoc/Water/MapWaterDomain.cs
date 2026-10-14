@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Surfaces;
 
 namespace KhaozEngine.MapDoc.Water;
@@ -11,9 +12,8 @@ namespace KhaozEngine.MapDoc.Water;
 /// in float. <see cref="Scale"/> is positive.</summary>
 public readonly record struct MapWaterPlacement(Vector3 Position, float Yaw, float Scale)
 {
-    public float SurfaceY(float local) => Position.Y + Scale * local;
-
-    internal Vector3 Transform(Quaternion yaw, float x, float z) => Vector3.Transform(new Vector3(x, 0, z) * Scale, yaw) + Position;
+    public float SurfaceY(float local) => Kernel.ReleasedWaterHeight(local);
+    internal MapResourceTransform Kernel => new(new(Position.X, Position.Y, Position.Z, Yaw, Scale));
 }
 
 /// <summary>One simple domain piece, counter-clockwise in world XZ.</summary>
@@ -50,6 +50,8 @@ public sealed class MapWaterDomain
     }
 
     public IReadOnlyList<MapWaterPiece> Pieces { get; }
+    /// <summary>The exact bounds of one piece, which also bound every one of its convex parts.</summary>
+    internal MapWaterPolygons.Bounds PieceBounds(int piece) => _bounds[piece];
     public MapExactXz Min { get; }
     public MapExactXz Max { get; }
 
@@ -67,7 +69,10 @@ public sealed class MapWaterDomain
     /// <summary>Compiles the domain or records why it cannot, without a label. Counts are checked before any
     /// geometry work, and the simplicity checks charge <paramref name="budget"/>.</summary>
     internal static MapWaterDomain? TryCompile(MapWaterDomainDoc doc, MapWaterPlacement? placement, List<string> errors,
-        MapWaterWorkBudget budget)
+        MapWaterWorkBudget budget) => TryCompileEffective(doc, placement?.Kernel, errors, budget, releasedPlacement: placement is not null);
+
+    internal static MapWaterDomain? TryCompileEffective(MapWaterDomainDoc doc, MapResourceTransform? transform, List<string> errors,
+        MapWaterWorkBudget budget, bool releasedPlacement = false)
     {
         if (doc.Rects is null || doc.Rings is null || doc.Frame is null)
         {
@@ -80,8 +85,8 @@ public sealed class MapWaterDomain
             errors.Add("domain is empty");
             return null;
         }
-        if (placement is { } p && (!float.IsFinite(p.Position.X) || !float.IsFinite(p.Position.Y) ||
-            !float.IsFinite(p.Position.Z) || !float.IsFinite(p.Yaw) || !float.IsFinite(p.Scale) || !(p.Scale > 0f)))
+        if (transform is { Transform: var p } && (!double.IsFinite(p.X) || !double.IsFinite(p.Y) ||
+            !double.IsFinite(p.Z) || !double.IsFinite(p.YawRadians) || !double.IsFinite(p.Scale) || !(p.Scale > 0d)))
         {
             errors.Add("placement must be finite with a positive scale");
             return null;
@@ -91,7 +96,6 @@ public sealed class MapWaterDomain
         var names = new List<string>(rings.Capacity);
         try
         {
-            Quaternion yaw = placement is { } q ? Quaternion.CreateFromAxisAngle(Vector3.UnitY, q.Yaw) : Quaternion.Identity;
             for (int i = 0; i < doc.Rects.Count; i++)
             {
                 MapWaterRect rect = doc.Rects[i];
@@ -105,7 +109,7 @@ public sealed class MapWaterDomain
                 // Ordering by world coordinates lets a negative-Z frame own its world minimum.
                 MapExactValue minX = Least(a.X, b.X), maxX = Most(a.X, b.X), minZ = Least(a.Z, b.Z), maxZ = Most(a.Z, b.Z);
                 MapExactXz[] corners = { new(minX, minZ), new(maxX, minZ), new(maxX, maxZ), new(minX, maxZ) };
-                AddRing(rings, names, $"rect {i}", corners, rect: true, placement, yaw, errors, budget);
+                AddRing(rings, names, $"rect {i}", corners, rect: true, transform, errors, budget, releasedPlacement);
             }
             for (int i = 0; i < doc.Rings.Count; i++)
             {
@@ -115,8 +119,8 @@ public sealed class MapWaterDomain
                     errors.Add($"ring {i} needs at least 3 vertices");
                     continue;
                 }
-                AddRing(rings, names, $"ring {i}", vertices.Select(doc.Frame.WorldXz).ToArray(), rect: false, placement, yaw,
-                    errors, budget);
+                AddRing(rings, names, $"ring {i}", vertices.Select(doc.Frame.WorldXz).ToArray(), rect: false, transform,
+                    errors, budget, releasedPlacement);
             }
         }
         catch (MapExactOverflowException)
@@ -221,18 +225,16 @@ public sealed class MapWaterDomain
     /// <summary>Places, checks and normalizes one piece. An unplaced rect has four distinct ordered corners, so it
     /// is simple once it has area and skips the simplicity sweep.</summary>
     static void AddRing(List<MapWideXz[]> rings, List<string> names, string name, MapExactXz[] corners, bool rect,
-        MapWaterPlacement? placement, Quaternion yaw, List<string> errors, MapWaterWorkBudget budget)
+        MapResourceTransform? transform, List<string> errors, MapWaterWorkBudget budget, bool releasedPlacement)
     {
-        if (placement is { } p)
+        if (transform is not null)
         {
             for (int i = 0; i < corners.Length; i++)
             {
-                Vector3 world = p.Transform(yaw, corners[i].X.ToSingle(), corners[i].Z.ToSingle());
                 string unrepresentable = $"{name} corner {i} is not representable under its placement";
-                // A finite placement can still overflow float, and FromSingle refuses a non-finite value.
-                if (!float.IsFinite(world.X) || !float.IsFinite(world.Z)) throw new MapDocumentException(unrepresentable);
-                try { corners[i] = new(MapExactValue.FromSingle(world.X), MapExactValue.FromSingle(world.Z)); }
-                catch (MapExactOverflowException) { throw new MapDocumentException(unrepresentable); }
+                try { corners[i] = releasedPlacement ? transform.ReleasedWaterXz(corners[i]) : transform.Xz(corners[i]); }
+                catch (Exception error) when (error is MapExactOverflowException or MapDocumentException or OverflowException)
+                { throw new MapDocumentException(unrepresentable); }
             }
         }
         MapWideXz[] ring = corners.Select(MapWideXz.From).ToArray();
@@ -241,7 +243,7 @@ public sealed class MapWaterDomain
             errors.Add($"{name} has zero area");
             return;
         }
-        if (!(rect && placement is null) && !MapWaterPolygons.IsSimple(ring, budget))
+        if (!(rect && transform is null) && !MapWaterPolygons.IsSimple(ring, budget))
         {
             errors.Add($"{name} self-intersects");
             return;

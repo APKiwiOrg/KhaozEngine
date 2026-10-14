@@ -173,7 +173,8 @@ public sealed partial class MovePlacementCommand : EditorCommand, INativePlaceme
     /// <inheritdoc/>
     public override bool TryMerge(IEditorCommand next)
     {
-        if (next is MovePlacementCommand m && string.Equals(m._id, _id, StringComparison.Ordinal))
+        if (_native.Accepted) return false;
+        if (next is MovePlacementCommand m && !m._native.Accepted && string.Equals(m._id, _id, StringComparison.Ordinal))
         {
             _newX = m._newX;
             _newZ = m._newZ;
@@ -230,7 +231,8 @@ public sealed partial class RotatePlacementCommand : EditorCommand, INativePlace
     /// <inheritdoc/>
     public override bool TryMerge(IEditorCommand next)
     {
-        if (next is RotatePlacementCommand r && string.Equals(r._id, _id, StringComparison.Ordinal))
+        if (_native.Accepted) return false;
+        if (next is RotatePlacementCommand r && !r._native.Accepted && string.Equals(r._id, _id, StringComparison.Ordinal))
         {
             _newYaw = r._newYaw;
             return true;
@@ -285,7 +287,8 @@ public sealed partial class ScalePlacementCommand : EditorCommand, INativePlacem
     /// <inheritdoc/>
     public override bool TryMerge(IEditorCommand next)
     {
-        if (next is ScalePlacementCommand s && string.Equals(s._id, _id, StringComparison.Ordinal))
+        if (_native.Accepted) return false;
+        if (next is ScalePlacementCommand s && !s._native.Accepted && string.Equals(s._id, _id, StringComparison.Ordinal))
         {
             _newScale = s._newScale;
             return true;

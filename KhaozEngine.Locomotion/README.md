@@ -85,7 +85,7 @@ The [phase 5a allocation proof](../docs/superpowers/plans/proofs/2026-10-13-cont
 records the production physics lease, ordinary pin, movement lease plus context release binding and player
 read scope independently. Its three bounded rectangular rows allocate only those tokens when warm.
 The read-release callback is cached per simulator. Timing is recorded evidence, with no SG-12 verdict.
-Ordinary contact ground navigation is implemented in staged 20.39.0 through
+Ordinary contact ground navigation is released in 20.39.0 through
 [KhaozEngine.Movement](../KhaozEngine.Movement/README.md#capsule-checked-ground-profiles), with certified resting
 anchors, wet unit-pace proofs, KENB format 2 and runtime binding validation. Contact aquatic navigation,
 footprint-only seeds and public explicit bake profiles remain deferred to

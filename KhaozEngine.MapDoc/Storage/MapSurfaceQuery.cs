@@ -46,7 +46,7 @@ internal static class MapSurfaceQuery
         foreach (MapSurfaceRef surface in source.Surfaces)
         {
             budget.BeforeMetadata();
-            if (!scope.Roles.Contains(surface.Role)) continue;
+            if ((scope.DiscoverySurfaces is { } ids && !ids.Contains(surface.Id)) || !scope.Roles.Contains(surface.Role)) continue;
             if (reserve is not null) budget.BeforeRange();
             MapCellRect cells = MapSurfaceRanges.Cells(world, surface.Frame);
             MapSlotRect slots;

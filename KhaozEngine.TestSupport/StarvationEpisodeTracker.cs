@@ -23,7 +23,8 @@ public readonly record struct StarvationObservation(bool CaptureDump, Starvation
 /// further slow readings, and closes when a probe completes under the threshold, which is the pool servicing work
 /// promptly again.</para>
 ///
-/// <para>The one dump this tracker will ever ask for comes on the first slow reading whose probe is STILL QUEUED
+/// <para>Dump capture is off by default. When explicitly enabled, the one dump this tracker will ever ask for
+/// comes on the first slow reading whose probe is STILL QUEUED
 /// and which either waited the dump threshold itself or belongs to an episode that has lasted that long. The
 /// second half is not optional. A pool held at a steady three or four second wait never produces a single ten
 /// second probe, yet a loopback HTTPS request that needs a dozen pool hops times out under it, which is exactly
@@ -34,12 +35,14 @@ public sealed class StarvationEpisodeTracker
 {
     private readonly TimeSpan episodeThreshold;
     private readonly TimeSpan dumpThreshold;
+    private readonly bool captureDump;
     private bool dumpRequested;
 
     /// <param name="episodeThreshold">Latency at which an episode opens. Must be positive.</param>
     /// <param name="dumpThreshold">Probe wait, or episode length, at which the one dump is requested. Must not be below
     /// <paramref name="episodeThreshold"/>.</param>
-    public StarvationEpisodeTracker(TimeSpan episodeThreshold, TimeSpan dumpThreshold)
+    /// <param name="captureDump">Whether to request a suspending process dump. Defaults to logging episodes only.</param>
+    public StarvationEpisodeTracker(TimeSpan episodeThreshold, TimeSpan dumpThreshold, bool captureDump = false)
     {
         if (episodeThreshold <= TimeSpan.Zero)
             throw new ArgumentOutOfRangeException(nameof(episodeThreshold), episodeThreshold, "must be positive");
@@ -47,6 +50,7 @@ public sealed class StarvationEpisodeTracker
             throw new ArgumentOutOfRangeException(nameof(dumpThreshold), dumpThreshold, "must not be below the episode threshold");
         this.episodeThreshold = episodeThreshold;
         this.dumpThreshold = dumpThreshold;
+        this.captureDump = captureDump;
     }
 
     /// <summary>The episode in progress, or null when the pool is keeping up.</summary>
@@ -70,7 +74,7 @@ public sealed class StarvationEpisodeTracker
                 Open = Open with { PeakLatency = latency, CountersAtPeak = counters };
 
             bool sustained = latency >= dumpThreshold || utcNow - Open.StartUtc >= dumpThreshold;
-            bool dump = !probeCompleted && !dumpRequested && sustained;
+            bool dump = captureDump && !probeCompleted && !dumpRequested && sustained;
             dumpRequested |= dump;
             return new StarvationObservation(dump, null);
         }

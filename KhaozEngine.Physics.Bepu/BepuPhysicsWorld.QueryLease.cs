@@ -1,35 +1,32 @@
 using System;
 using System.Numerics;
-using System.Threading;
 using KhaozEngine.Physics;
 
 namespace KhaozEngine.Physics.Bepu;
 
-public sealed partial class BepuPhysicsWorld : IPhysicsQueryLeaseSource
+public sealed partial class BepuPhysicsWorld : IPhysicsQueryLeaseSource, IPhysicsConcurrentReadSource
 {
-    // Queries reuse backend scratch storage, so readers are exclusive too. Ordinary nested queries on
-    // the owning thread are safe, but another lease cannot shorten the first lease's lifetime.
-    readonly object _queryGate = new();
-    ReadLease? _readLease;
+    // Readers run together because each interval borrows private scratch, and the simulation is only read.
+    // Mutations are exclusive writers. Nested operations on one thread reuse its admitted interval.
+    readonly QueryGate _queryGate = new(new QueryScratchPool());
     long _queryGeneration;
     bool _disposed;
 
     /// <inheritdoc/>
     public IPhysicsQueryLease AcquireQueryReadLease()
     {
-        QueryOperation operation = EnterQuery();
+        QueryGate.Holder holder = _queryGate.EnterLease();
         try
         {
-            if (_readLease is not null)
-                throw new InvalidOperationException("Physics query leases cannot be nested.");
+            if (_disposed) throw new ObjectDisposedException(nameof(BepuPhysicsWorld));
             SupportQueryDiagnostics.Record(SupportQueryCounter.PhysicsLeases);
-            var lease = new ReadLease(this, operation);
-            _readLease = lease;
+            var lease = new ReadLease(this, holder);
+            holder.Lease = lease;
             return lease;
         }
         catch
         {
-            operation.Dispose();
+            _queryGate.ExitRead(holder);
             throw;
         }
     }
@@ -42,42 +39,48 @@ public sealed partial class BepuPhysicsWorld : IPhysicsQueryLeaseSource
 
     QueryOperation EnterOperation(bool mutation, bool allowDisposed, bool changesGeometry)
     {
-        bool taken = false;
+        // A mutation on a thread inside a read interval or lease is refused here, before any wait.
+        QueryGate.Holder holder = mutation ? _queryGate.EnterWrite() : _queryGate.EnterRead();
+        var operation = new QueryOperation(_queryGate, holder, mutation);
         try
         {
-            Monitor.Enter(_queryGate, ref taken);
             if (_disposed && !allowDisposed)
                 throw new ObjectDisposedException(nameof(BepuPhysicsWorld));
-            if (mutation && _readLease is not null)
-                throw new InvalidOperationException("Physics mutations are refused during a query read lease.");
             // Advance before a write that may partially fail. A failed validation may conservatively advance
             // this local generation too, but a refused leased mutation reaches no write and never advances it.
             if (changesGeometry) checked { _queryGeneration++; }
-            return new QueryOperation(_queryGate);
+            return operation;
         }
         catch
         {
-            if (taken) Monitor.Exit(_queryGate);
+            operation.Dispose();
             throw;
         }
     }
 
-    readonly struct QueryOperation(object gate) : IDisposable
+    readonly struct QueryOperation(QueryGate gate, QueryGate.Holder holder, bool mutation) : IDisposable
     {
-        public void Dispose() => Monitor.Exit(gate);
+        /// <summary>The interval's private scratch, attached on first use.</summary>
+        public QueryScratch Scratch => gate.Scratch(holder);
+
+        public void Dispose()
+        {
+            if (mutation) gate.ExitWrite(holder);
+            else gate.ExitRead(holder);
+        }
     }
 
     sealed class ReadLease : IPhysicsQueryLease
     {
         readonly BepuPhysicsWorld _owner;
-        readonly QueryOperation _operation;
+        readonly QueryGate.Holder _holder;
         readonly int _thread;
         bool _disposed;
 
-        public ReadLease(BepuPhysicsWorld owner, QueryOperation operation)
+        public ReadLease(BepuPhysicsWorld owner, QueryGate.Holder holder)
         {
             _owner = owner;
-            _operation = operation;
+            _holder = holder;
             _thread = Environment.CurrentManagedThreadId;
             Origin = owner._origin;
             GeometryGeneration = owner._queryGeneration;
@@ -91,7 +94,8 @@ public sealed partial class BepuPhysicsWorld : IPhysicsQueryLeaseSource
         {
             AssertThread();
             if (_disposed) throw new ObjectDisposedException(nameof(IPhysicsQueryLease));
-            if (!ReferenceEquals(_owner._readLease, this) || _owner._queryGeneration != GeometryGeneration ||
+            // The live lease keeps writers out, so the owner fields read here cannot change underneath it.
+            if (!ReferenceEquals(_holder.Lease, this) || _owner._queryGeneration != GeometryGeneration ||
                 _owner._origin != Origin || _owner._disposed)
                 throw new InvalidOperationException("The physics query lease no longer describes its owner.");
         }
@@ -101,15 +105,15 @@ public sealed partial class BepuPhysicsWorld : IPhysicsQueryLeaseSource
             AssertThread();
             if (_disposed) return;
             AssertCurrent();
-            _owner._readLease = null;
+            _holder.Lease = null;
             _disposed = true;
-            _operation.Dispose();
+            _owner._queryGate.ExitRead(_holder);
         }
 
         void AssertThread()
         {
-            // Check before attempting the monitor: another thread must fail, not deadlock waiting for
-            // the acquiring thread to release the very lease it is trying to inspect or dispose.
+            // Check before touching the gate: another thread must fail, not wait behind the very lease it is
+            // trying to inspect or dispose.
             if (Environment.CurrentManagedThreadId != _thread)
                 throw new InvalidOperationException("A physics query lease belongs to its acquiring thread.");
         }

@@ -6,11 +6,6 @@ namespace KhaozEngine.Physics.Bepu;
 
 public sealed partial class BepuPhysicsWorld : IPhysicsSupportNeighborhood
 {
-    // Neighborhood scratch for this world. Every query on the world or one of its views runs under the world's
-    // query monitor, so threads never share it. A query that finds it taken, which only a nested query on the
-    // owning thread could, uses a fresh collector instead.
-    SupportNeighborhoodCollector? _neighborhoodScratch = new();
-
     /// <inheritdoc/>
     public SupportNeighborhoodResult QuerySupportNeighborhood(IPhysicsQueryLease lease, CapsuleShape probe, Pose pose,
         float bandMetres, Span<SupportElement> elements, Span<ulong> joins, QueryFilter filter = default) =>
@@ -57,18 +52,15 @@ public sealed partial class BepuPhysicsWorld : IPhysicsSupportNeighborhood
             probe.Radius is < 0.01f or > 2f || probe.Length > 8f || bandMetres > 0.01f ||
             !RepresentedGeometryTransforms.PosePoint(pose, Vector3.Zero).IsResolved)
             return SupportNeighborhoodResult.Refused(CapsuleFeatureStatus.Unsupported);
-        SupportNeighborhoodCollector collector = _neighborhoodScratch ?? new SupportNeighborhoodCollector();
-        _neighborhoodScratch = null;
+        QueryScratch scratch = scope.Scratch;
+        SupportNeighborhoodCollector collector = scratch.Neighborhoods.Take();
         try
         {
             SupportNeighborhoodResult result = Collect(collector, receiver, lease, probe, pose, bandMetres, elements, joins, filter, exclusions);
             if (result.Status != CapsuleFeatureStatus.CapacityExceeded) SupportQueryDiagnostics.Refusal(result.Status);
             return result;
         }
-        finally
-        {
-            _neighborhoodScratch = collector;
-        }
+        finally { scratch.Neighborhoods.Restore(collector); }
     }
 
     SupportNeighborhoodResult Collect(SupportNeighborhoodCollector collector, IPhysicsWorld receiver,
@@ -80,7 +72,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsSupportNeighborhood
         // A dynamics-only filter selects no static, so its neighborhood is certified empty.
         if (filter.Mobility == QueryMobility.Dynamics) return collector.Publish(receiver, lease, elements, joins);
 
-        // Read the live registry and poses under the authenticated gate. Scratch is reused storage only: every
+        // Read the live registry and poses inside the authenticated read interval. Scratch is reused storage only: every
         // shape and pose is read again for each query, so no cached geometry outlives a shape removal or reuse.
         foreach (var (seam, installed) in collector.Candidates(_sim, _reverseHandles, exclusions, probe, pose,
                      bandMetres))

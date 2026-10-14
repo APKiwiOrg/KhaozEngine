@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Linq;
 using KhaozEngine.MapDoc.Editing;
+using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Water;
@@ -30,7 +32,11 @@ public enum MapStaticKind
 /// bounds. <see cref="TriangleOwners"/> names the compiled face of each terrain triangle and is empty for a
 /// placement.</summary>
 public sealed record MapStaticDescriptor(string OwnerId, MapStaticKind Kind, PhysicsShape Shape, Vector3 Position,
-    Quaternion Orientation, MapBox3 Bounds, string Digest, IReadOnlyList<MapFaceKey> TriangleOwners);
+    Quaternion Orientation, MapBox3 Bounds, string Digest, IReadOnlyList<MapFaceKey> TriangleOwners)
+{
+    /// <summary>A precise placement pose, used only at the frame-local backend boundary. Terrain uses its whole-metre anchor.</summary>
+    public MapEffectiveTransform? EffectiveTransform { get; init; }
+}
 
 /// <summary>Whether the backend's capsule feature query, <see cref="IPhysicsCapsuleFeatures"/>, can
 /// capture a static, and why not. These predict that capability only. The contact controller's foot-support primitive,
@@ -97,8 +103,8 @@ public sealed class MapBuiltWorld
     /// <summary>Every feature query limit a static meets, in static order.</summary>
     public IReadOnlyList<MapStaticDiagnostic> Diagnostics { get; }
 
-    /// <summary>The union of the storage bounds, every static and every interaction envelope. The storage bounds
-    /// carry no height, so a world with no static and no envelope has a zero height range. A resolver-1 world's
+    /// <summary>The union of storage, physical support, statics, interaction envelopes, render, LOD, light and water bounds.
+    /// Storage carries no height, so a world with no bounded resource has a zero height range. A resolver-1 world's
     /// bounds do not include its analytic terrain height.</summary>
     public MapBox3 Bounds { get; }
 
@@ -147,6 +153,21 @@ public sealed class MapBuiltWorld
     /// <summary>The resolver-1 global water level, null for a native world.</summary>
     public float? LegacyWaterLevel { get; }
 
+    /// <summary>Immutable world-metre lights in stable ID order, including bound leaf emissions.</summary>
+    public IReadOnlyList<MapEffectiveLight> Lights { get; }
+
+    /// <summary>Immutable XYZ markers in stable ID order, independent of MapSpawn.</summary>
+    public IReadOnlyList<MapEffectiveMarker> Markers { get; }
+
+    /// <summary>Explicit concealment links with world-metre heights and typed attachments.</summary>
+    public IReadOnlyList<MapRoofLinkDoc> RoofLinks { get; }
+
+    /// <summary>Explicit room sets. Only groups attached to a link expand its concealment set.</summary>
+    public IReadOnlyList<MapRoofGroupDoc> RoofGroups { get; }
+
+    /// <summary>The versioned effective annotation digest, empty without annotation intent.</summary>
+    public string AnnotationDigest { get; }
+
     readonly Dictionary<string, MapPlacementGeometry> _byId;
 
     internal MapBuiltWorld(MapResolvedDocument document, MapScopedSurfaces surfaces,
@@ -177,6 +198,14 @@ public sealed class MapBuiltWorld
         WaterMedia = waterMedia;
         WaterDigest = waterDigest;
         LegacyWaterLevel = legacyWaterLevel;
+        var effective = document.EffectiveResources;
+        Lights = effective is null ? Array.Empty<MapEffectiveLight>() : MapEffectiveAnnotations.Lights(effective);
+        Markers = effective is null ? Array.Empty<MapEffectiveMarker>() : MapEffectiveAnnotations.Markers(effective);
+        var intent = effective?.BuildingIntent;
+        RoofLinks = Array.AsReadOnly((intent?.RoofLinks ?? []).Select(link => link with
+        { Rooms = Array.AsReadOnly(link.Rooms.ToArray()), Groups = Array.AsReadOnly(link.Groups.ToArray()) }).ToArray());
+        RoofGroups = Array.AsReadOnly((intent?.RoofGroups ?? []).Select(group => group with { Rooms = Array.AsReadOnly(group.Rooms.ToArray()) }).ToArray());
+        AnnotationDigest = effective?.AnnotationDigest ?? "";
         _byId = new Dictionary<string, MapPlacementGeometry>(placements.Count, StringComparer.Ordinal);
         foreach (MapPlacementGeometry placement in placements) _byId.Add(placement.PlacementId, placement);
     }

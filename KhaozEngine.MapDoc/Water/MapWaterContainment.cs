@@ -40,12 +40,13 @@ public static class MapWaterContainment
     /// <summary>The footprint rectangles of one covered space near the body's domain, and whether the view proves it
     /// holds all of them.</summary>
     internal delegate IReadOnlyList<MapWaterFootprintRect> FootprintSource(string spaceId, out bool complete);
+    internal delegate IReadOnlyList<MapOccupiedPiece> OccupiedSource(string spaceId);
 
     /// <summary>A body the compile has already prepared: its exact level and compiled domain, the footprints it
     /// gathered once under its work meter, the compile budget that every overlap test charges, and the set that
     /// collects the anchors of the relation records connectivity evaluated.</summary>
     internal sealed record Prepared(MapExactValue Surface, MapWaterDomain Domain, FootprintSource Footprints, MapWaterWorkBudget Pairs,
-        ISet<MapPatchKey> Read);
+        ISet<MapPatchKey> Read, OccupiedSource? Occupied = null, ISet<MapRecordRef>? Records = null);
 
     /// <summary>The compile's per-body entry: the same rules as <see cref="Validate(MapScopedSurfaces, MapWaterSet)"/>
     /// for one prepared body, sharing <paramref name="graph"/> with every other body of the compile. Work past a compile
@@ -65,6 +66,7 @@ public static class MapWaterContainment
         string? unverified;
         try { unverified = ValidateBody(view, body, prepared, errors, ref graph, work); }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException) { unverified = "not representable"; }
+        catch (MapWaterCapacityException error) when (prepared is null) { unverified = error.Message; }
         catch (MapDocumentException error) when (Invalid(error))
         {
             errors.Add($"water body '{body.Id}': {error.Message}");
@@ -84,6 +86,7 @@ public static class MapWaterContainment
         string label = $"water body '{body.Id}'";
         MapExactValue surface;
         MapWaterDomain domain;
+        bool effective = prepared?.Occupied is not null;
         if (prepared is not null)
         {
             surface = prepared.Surface;
@@ -97,7 +100,20 @@ public static class MapWaterContainment
                 errors.Add($"{label}: surfaceY is not representable");
                 return null;
             }
-            try { domain = MapWaterDomain.Compile(body.Domain); }
+            try
+            {
+                var resolved = MapEffectiveWater.Resolve(view, body);
+                domain = resolved.Domain;
+                surface = resolved.SurfaceY;
+                effective = MapEffectiveWater.UsesOccupied(view, resolved);
+                if (effective)
+                {
+                    IReadOnlyList<MapOccupiedPiece>? pieces = null;
+                    var meter = new MapWaterWorkMeter(new());
+                    prepared = new(surface, domain, EmptyFootprints, meter.Pairs, new HashSet<MapPatchKey>(),
+                        id => (pieces ??= MapWaterOccupiedPieces.Of(view, domain.Min, domain.Max, new(), meter)).Where(p => p.SpaceId == id).ToArray());
+                }
+            }
             catch (MapDocumentException error)
             {
                 errors.Add($"{label}: {error.Message}");
@@ -114,7 +130,8 @@ public static class MapWaterContainment
             {
                 // A present or known-empty anchor proves the record is absent, and so does an unread anchor the view
                 // proves does not exist. Any other anchor hides it.
-                if (status is MapPatchStatus.Missing or MapPatchStatus.KnownEmpty ||
+                if (effective) unavailable ??= $"cover '{cover.Id}' {cover.Anchor} is {status}";
+                else if (status is MapPatchStatus.Missing or MapPatchStatus.KnownEmpty ||
                     status == MapPatchStatus.Unloaded && MapWaterFootprints.ProvesAbsent(view, cover.Anchor))
                     errors.Add($"{label}: cover '{cover.Id}' is not a space");
                 else unavailable ??= $"cover '{cover.Id}' is {status}";
@@ -126,12 +143,25 @@ public static class MapWaterContainment
         }
         if (unavailable is not null) return unavailable;
         if (covered.Count == 0) return null;
+        // A successfully acquired relation with unavailable aperture geometry must name that aperture. Room
+        // partition acquisition is conservative too, but cannot hide the hydraulic reason behind a generic gap.
+        if (effective && covered.Count > 1)
+        {
+            graph ??= new MapWaterConnectivity(view, work);
+            string? apertureUnknown = graph.Join(label, surface, covered, errors, out bool joined, prepared?.Read, prepared?.Records);
+            if (apertureUnknown is not null) return apertureUnknown;
+            if (!joined)
+            {
+                if (!view.ListsEverySurface) return "covered spaces not proven connected in this view";
+                errors.Add($"{label}: covered spaces are not connected below its surface");
+            }
+        }
         if (!MeetsFootprint(view, domain, covered, prepared, out bool footprintsComplete))
         {
             if (!footprintsComplete) return "covered footprints are unavailable";
             errors.Add($"{label} covers no space footprint");
         }
-        if (covered.Count == 1) return null;
+        if (covered.Count == 1 || effective) return null;
         graph ??= new MapWaterConnectivity(view, work);
         string? unknown = graph.Join(label, surface, covered, errors, out bool connected, prepared?.Read);
         if (connected) return null;
@@ -152,6 +182,17 @@ public static class MapWaterContainment
         foreach (string space in covered)
         {
             bool spaceComplete;
+            if (prepared?.Occupied is { } occupied)
+            {
+                foreach (var piece in occupied(space))
+                    for (int index = 0; index < domain.Pieces.Count; index++)
+                        foreach (var part in domain.ConvexParts(index, prepared.Pairs))
+                        {
+                            prepared.Pairs.Charge(1);
+                            if (MapWaterPolygons.ClipToConvex(part, piece.Polygon).Count != 0) return true;
+                        }
+                continue;
+            }
             IReadOnlyList<MapWaterFootprintRect> rects = prepared is not null ? prepared.Footprints(space, out spaceComplete)
                 : MapWaterFootprints.Of(view, space, domain.Min, domain.Max, out spaceComplete, out _, out _);
             complete &= spaceComplete;
@@ -166,6 +207,9 @@ public static class MapWaterContainment
         }
         return false;
     }
+
+    static IReadOnlyList<MapWaterFootprintRect> EmptyFootprints(string _, out bool complete)
+    { complete = true; return Array.Empty<MapWaterFootprintRect>(); }
 
     /// <summary>True when an exception reports definitely invalid authored data, as opposed to missing, unavailable
     /// or unrepresentable data that a complete or wider view could still resolve.</summary>

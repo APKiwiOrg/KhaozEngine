@@ -30,20 +30,13 @@ public class ItemInstanceVisibilityAllocationTests
                 registry, payload, PropertyVisibility.Everyone, identified: true, revealedMask: 0, view);
         }
 
-        // A loaded suite can place a one-time tiered JIT allocation in one sample. A real allocation in
-        // PublicView appears in every sample, so keep the strict zero bound over the lowest of three runs.
-        long leastAllocated = long.MaxValue;
-        for (int sample = 0; sample < 3; sample++)
+        AllocationMeasurement.NoPerCallAllocation("256 PublicView writes", () =>
         {
-            long before = GC.GetAllocatedBytesForCurrentThread();
             for (int index = 0; index < 256; index++)
             {
                 ItemInstanceVisibility.PublicView(
                     registry, payload, PropertyVisibility.Everyone, identified: true, revealedMask: 0, view);
             }
-            leastAllocated = Math.Min(leastAllocated, GC.GetAllocatedBytesForCurrentThread() - before);
-        }
-
-        Assert.Equal(0, leastAllocated);
+        });
     }
 }

@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Reflection;
+using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
+using KhaozEngine.Tests.Physics;
 using Xunit;
 
 namespace KhaozEngine.Tests.Locomotion.Contacts;
@@ -14,18 +16,22 @@ public sealed class SupportCostScratchTests
     public void ScratchIncludesTheCompleteFootprintOwner()
     {
         using var world = new BepuPhysicsWorld(Vector3.Zero);
-        FieldInfo field = typeof(BepuPhysicsWorld).GetField("_footprintScratch",
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        object? footprint = field.GetValue(world);
+        // Query scratch exists from the first read. One footprint query leaves its collector idle in it.
+        using (IPhysicsQueryLease lease = world.AcquireQueryReadLease())
+            ((IPhysicsSupportFootprint)world).QuerySupportFootprint(lease, SupportFootprintTests.Request(),
+                new SupportFootprintMember[256], new ulong[1024]);
+        QueryScratch scratch = Assert.Single(ConcurrentReadGateTests.Gate(world).ScratchPool.Constructed());
+        SupportFootprintCollector? footprint = scratch.Footprints.Idle;
         Assert.NotNull(footprint);
         long complete = SupportCostScratch.PayloadBytes(world);
         long without;
         try
         {
-            field.SetValue(world, null);
+            // Slot is a mutable struct field, so this writes the scratch itself, not a boxed copy.
+            scratch.Footprints.Idle = null;
             without = SupportCostScratch.PayloadBytes(world);
         }
-        finally { field.SetValue(world, footprint); }
+        finally { scratch.Footprints.Idle = footprint; }
         Assert.True(complete > without, $"Complete {complete}, without footprint {without}.");
     }
 

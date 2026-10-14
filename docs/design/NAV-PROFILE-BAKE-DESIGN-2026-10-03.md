@@ -209,8 +209,8 @@ Three changes, all behavior-preserving:
    `MovementQueries` and a null medium, then keeps it. `TryEdge` uses it. The dry context has its own `_stepping` and
    `_origin`, as the per-call context did.
 
-Targets. The first three are deterministic test gates in the AllocSensitive collections using the existing
-`AllocAssert` pattern of one retry.
+Targets. The first three are deterministic test gates in the AllocSensitive collections. Each takes one
+measurement inside the shared checked no-GC region.
 
 | # | Measured unit | v20.18.0 | Target |
 | --- | --- | --- | --- |

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.Primitives;
+using KhaozEngine.MapDoc.Prefabs;
 
 namespace KhaozEngine.MapDoc.Surfaces;
 
@@ -40,41 +41,10 @@ public static class MapFrameLocal
     public static MapFrameMesh CompileInFrame(MapCompiledPatch local, MapTransform placement, WorldFrame frame)
     {
         ArgumentNullException.ThrowIfNull(local);
-        if (!float.IsFinite(placement.Position.X) || !float.IsFinite(placement.Position.Y) ||
-            !float.IsFinite(placement.Position.Z) || !float.IsFinite(placement.YawRadians) ||
-            !float.IsFinite(placement.Scale) || placement.Scale <= 0)
-            throw new MapDocumentException("frame-local placement must be finite with positive scale");
-
-        // Reduce translation before composing, while the float placement is exact in double.
-        double tx = (double)placement.Position.X - (long)frame.X * (long)WorldFrame.Grid;
-        double ty = placement.Position.Y;
-        double tz = (double)placement.Position.Z - (long)frame.Z * (long)WorldFrame.Grid;
-        double c = Math.Cos(placement.YawRadians), s = Math.Sin(placement.YawRadians);
-        double scale = placement.Scale;
-        var positions = new Vector3[local.ExactVertices.Count];
-        for (int i = 0; i < positions.Length; i++)
-        {
-            var vertex = local.ExactVertices[i];
-            double x = vertex.X.ToDouble() * scale, y = vertex.Y.ToDouble() * scale,
-                z = vertex.Z.ToDouble() * scale;
-            Vector3 position = new((float)(tx + c * x + s * z), (float)(ty + y),
-                (float)(tz - s * x + c * z));
-            ValidatePosition(position);
-            positions[i] = position;
-        }
-
-        var faces = new MapCompiledFace[local.Faces.Count];
-        for (int i = 0; i < faces.Length; i++)
-        {
-            MapCompiledFace face = local.Faces[i];
-            Vector3 normal = face.Normal;
-            // Positive uniform scale preserves winding and normal length. Only yaw changes direction.
-            faces[i] = face with
-            {
-                Normal = new((float)(c * normal.X + s * normal.Z), normal.Y,
-                    (float)(-s * normal.X + c * normal.Z)),
-            };
-        }
+        var transform = new MapResourceTransform(MapEffectiveTransform.From(placement));
+        var vertices = placement == new MapTransform(Vector3.Zero, 0, 1) ? local.ExactVertices.ToArray() : local.ExactVertices.Select(transform.Point).ToArray();
+        var positions = vertices.Select(p => transform.ToFrame(p, frame)).ToArray();
+        var faces = local.Faces.Select(f => f with { Normal = MapEffectiveGeometry.Normal(new(vertices[f.A], vertices[f.B], vertices[f.C])) }).ToArray();
         return new(frame, positions, faces);
     }
 

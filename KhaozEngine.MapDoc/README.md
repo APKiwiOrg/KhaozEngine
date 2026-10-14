@@ -36,7 +36,7 @@ features are not supported in native documents yet.
 
 ## Native edit effects
 
-Every API in this section is new in 20.30.0.
+The native edit contract shipped in 20.30.0.
 `KhaozEngine.MapDoc.Editing.MapNativeEditEffects` describes an accepted document edit with old and new
 `MapBox3` bounds, patch keys, space and dependency IDs, `MapDigestChange` values and `MapNativeInvalidation`
 flags for Terrain, Physics, Nav, Material, Residency and Placements. `Unbounded` marks a geometry change whose
@@ -44,6 +44,10 @@ bounds are unknown. It is a full reset: discard all prior derived state for this
 post-edit world. `Describe()` emits
 compact canonical JSON with fixed field order, sorted patch keys and ordinal IDs, invariant numbers and explicit
 nulls.
+`OldBounds` and `NewBounds` keep the reported extents. `OldSpatialBounds` and `NewSpatialBounds` include optional
+conservative installed geometry bounds for Physics, Nav and Residency. Without separate spatial values they follow
+the reported bounds, including record copies that change them. Spatial values always include the report.
+`Describe()` adds `oldSpatialBounds` and `newSpatialBounds` after the reported bounds only when they differ.
 `MapNativeWriteSet` names patch payloads, surface declarations and placement state for publication.
 Records, spaces, corner owners and material uses are carried by the named patch payloads.
 
@@ -99,8 +103,9 @@ the manifest, lists directories or trusts a stored hash without reading the file
 the same document rules as the loaded document, through the same code and with the same messages.
 
 Both overloads hash exactly these inputs under `kemap/native-authored/2`: the root digest, the authored
-content digest, ordered `(patchKey, semanticDigest)` facts, the verified asset closure hash, builder ID and
-version, options hash and resolver version. The content digest (`kemap/native-content/1`) covers
+content digest, ordered `(patchKey, semanticDigest)` facts, `kemap/effective-resources/1`, query policy 2,
+the verified asset closure hash, builder ID and version, options hash and resolver version. The content digest
+(`kemap/native-content/1`) covers
 placements (including explicit `Y` and `SupportBinding`), spawns, player spawns and sculpt tiles. Each entry
 is normalized as scheme 1 normalizes it, ordered by ordinal id or sculpt tile, with placement display names
 stripped and an empty sculpt block equal to an absent one. `MapSurfaceSemantics.RootDigest` covers globals
@@ -138,6 +143,14 @@ each `1 + 4 * 256 * MaxPageReads`. `PagesRead` counts successful new directory/i
 on the session and as a delta on each operation. A cached traversal can exhaust its allowance with zero
 decodes. Record reads and expansion depth also obey the scope's limits. Capacity or exact-overflow refusal
 publishes no acquired content and disposes the session.
+
+Effective prefab composition opens one native session per pose group beside its generated part and admits
+page visits, metadata inspections and rectangle additions of every part against one common ceiling. Producers
+report that work before doing it through `IMapSurfacePageVisitSession` and `IMapSurfaceWorkSession`, and a public
+adapter that copies the scope forwards both. A native session that cannot report work it would share with another
+part makes composition refuse before traversal with `CapacityExceeded` and a detail naming the missing capability.
+Raising the query limits cannot cure that refusal. A single unobservable native session that is the only part keeps
+its own whole allowance.
 
 The returned view, `MapCoverageWitness`, `MapReadWitness` and `MapScopedIdentity` are factory-only and
 immutable. They detach payloads, nested record and span lists, scope filters and asset digests. `Patch`
@@ -182,6 +195,17 @@ is limited to 256 unique bound patches and 262,144 compiled faces, counted from 
 compile. Those two context values are proposed operational defaults, not world limits. A refinement ends
 `Complete`, `CapacityExceeded` (with no partial result), `NotRepresentable`, `Invalid` or `MissingGeometry`.
 Declared seam and strip vertex sequences stay strict. Refinement never waives a matching subdivision.
+
+**Broad-phase budgets.** `MapPartialPaintCompiler` charges `MapRefinementLimits` pair checks per broad-phase
+candidate, a target face and paint source whose exact bounds openly overlap, found by an exact bounds sweep. Its
+slab, conflict and occlusion checks are charged to the same pair counter. Work therefore follows the painted area,
+not the whole target surface. Paint patches are counted from cell bytes and compiled first. Only target cells whose
+exact lattice rectangle openly overlaps some paint source's bounds are then counted against the source and context
+face limits, from cell bytes before any target compile. The context patch limit refuses at the first hit target
+slot past it, before that slot is marked. A posed target keeps every cell and relies on the exact face sweep alone.
+`MapPrismCoverage` and the room stage of the occupied partition count the same way. A pair check is a parent piece
+and room convex part, or two peer pieces, whose exact bounds openly overlap, so a room is charged only for the
+pieces near it. The visiting order is unchanged, so findings and their sorted order are too.
 
 **Legacy lower coverage.** Only a lower bound of kind `MapBoundKind.LegacyExteriorV1`, in an `Exterior`
 space with an `OpenTop` upper bound, may cover a presence-1 `LegacyTileWorld` void or NoDraw cell.
@@ -235,8 +259,9 @@ so no later read touches the producer, even one pinned to the same generation.
 
 **Later rounds.** R3 owns physics sidedness, floor support and headroom, picking, placement supports, movement
 integration and tiled nav capture. R4 owns flooded and dry containment and water bed semantics over R2
-space geometry. R5 owns free prefab transforms, interior domains and roof links over the R2 compiler and
-queries in local space. R8 owns bounded surface and asset residency, lighting, occlusion, HLOD, render-origin
+space geometry. R5 provides free prefab transforms, interior domains and roof links over the R2 compiler
+and queries in local space, described below. R8 owns bounded surface and asset residency, lighting, occlusion,
+HLOD, render-origin
 adapters and backend water captures. Each must keep legacy fallback cells non-capture and emit no physics,
 nav or water faces for them. R2 claims no physics, nav, water or rendering capability.
 
@@ -280,11 +305,31 @@ the body, space, medium and lower/upper boundary ids, carries the nominal level 
 is a free surface. A level strictly below the ceiling, or an open top, is free. A ceiling tie closes the top.
 Missing geometry, ambiguity, capacity and narrowing failures keep their typed status, never become dry.
 
+Prefab water uses the captured instance pose and the shared resource transform policy. Local levels and domains
+transform once, and effective body IDs and covers are already binding-remapped. Covers name authored spaces.
+Covering a parent leaves an uncovered room dry. Occupied fragments retain distinct identities and lower/upper
+boundary provenance when the parent recurs below and above a room. `MapWaterRegion.Fragment` and
+`MapWaterSample.Fragment` name those owners. `MapCompiledWaterBody.FragmentBounds` contains their conservative
+wet bounds. `ClassifyFragment(fragmentId, point)` classifies one fragment. `Classify(spaceId, point)` returns a
+unanimous fragment answer, or `Unresolved` when their kinds differ. Closed precedence applies within a fragment.
+`SampleExact(world)` shares the sampling core with exact membership and retains the supplied `ExactPoint`.
+
+Effective clipping, contours, classification, bounds and digests keep wide rational geometry. Effective region
+triangles are a bounded drawing adapter, and do not feed semantic predicates or hashes. Unplaced R4 compilation
+keeps its released exact triangles, digests and narrowing refusals. The existing interval, clipping and height-split
+kernels supply both paths. A compiled digest includes each consumed hydraulic aperture's geometry and pose,
+without including the containing prefab resource SHA or the whole scoped digest. An unrelated marker edit leaves
+the body's digest and its navigation medium identities unchanged.
+
 `MapWaterContainment.Validate(view, water)` checks authored spaces only, requires positive-area contact with a
 covered footprint and connects multiple covered spaces through portal or vertical-link openings whose exact bottom
 lies strictly below the body's level. No implicit exterior is added. Every editor publication with water validates
 the complete set, including terrain and unrelated placement edits, and every compile and build checks containment.
 Document-level water rules and render material closure run on both in-memory and stored native identity paths.
+`MapBoundDocumentValidation.ValidateEffectiveWater(resources, assets)` is the complete effective publication gate
+for prefab, placement and roof edits. It checks material closure and requires every body to compile completely.
+Identity validation remains geometry-free. Prefab and interior editor publication uses this gate before
+accepting history.
 
 `MapWaterCompiler.Compile(view, water, limits)` captures the set and emits `MapCompiledWaterBody` values in id order,
 with exact up-facing region triangles split into `FreeSurface`, `Closed` and `Unresolved` at every ceiling transition,
@@ -520,11 +565,162 @@ touched tiles are stored, and an absent or empty block leaves terrain byte-ident
 `Tiles` snapshot round out the read side. The composition itself lives in `KhaozEngine.Terrain`
 (`TerrainSculpt`); see `docs/design/TERRAIN-SCULPT-LAYER-DESIGN.md`.
 
+## Rigid prefab payloads and building intent
+
+Format 7 adds optional root `Prefabs`, `BuildingIntent` and `NativeResourceTransforms` sections. Each present
+section requires resolver identity (1, 2) and `AuthoredBindingsV2`. The sections live once in native root globals,
+never in tile placements. Monolithic and tiled persistence, loaded identity and stored identity use the same
+canonical codec. Null sections are omitted and preserve the released analytic projections.
+
+In 20.40.0, `MapPrefabResolver.Expand` publishes one immutable `MapEffectiveResources` snapshot using
+`kemap/effective-resources/1` and query policy 2. Support, physical geometry, paint, water, membership and
+annotations consume that same captured closure and effective source. Authored, effective, scoped and build
+identities carry the policy, so a consumer cannot reuse a pre-R5 capture as equivalent evidence.
+
+`MapPrefabSet` payload 1 and expansion version 1 retain instances, typed bindings, overrides and transfers.
+Instance poses use free XYZ, yaw radians and finite positive uniform scale. `ParentSpace` may be absent for a
+parent-independent rigid prefab. Rooms, water and `$parent` occurrences require explicit authored context.
+Loading, validation and closure reads never reserve new identities. Bindings carry supplied world IDs and optional
+placement-only numeric IDs as exact decimal int64 strings. Removed instances and retired transfers remain persisted.
+
+A manifest `Prefab` resource carries payload 1. `MapAssetClosure.Load` verifies every resource digest once, checks
+acyclic declared dependencies, decodes bounded prefab snapshots and validates every leaf resource edge before
+publishing. `GetPrefab` returns a detached copy of that verified snapshot. Prefabs have no mesh of their own and
+cannot contain nested instances. Mesh, collider, selection, LOD, material, support and light resources belong to leaves.
+
+`MapPrefabFile.Read` and `Write` use a closed codec. The payload keeps its logical asset ID. A resource ID
+may be that bare ID or exactly `prefab/<escaped-logical-id>/<sha256>`. The escape is the world-ID UTF-8
+percent escape, and the version suffix is 64 lowercase hex characters. Read independently verifies the
+suffix against the bytes, preserving the released ID-mismatch refusal for every other identity. Children have a typed stable key, one local pose and scoped
+reference slots. Explicit Surface children contain geometry with empty `Records`. Topology is persisted in separate
+Record children with declared anchors. Each reference occurrence requires its own supported typed slot. A local
+anchor or geometry reference must agree with the record pose. A World reference retains its standalone meaning.
+Placement children use their placement pose and retain identity `LocalTransform`. Ordered tags remain ordered.
+
+`MapSetInterior` creates a missing standalone Room and its prism in one prepared edit. The room uses
+`Domain.Space.Id` and anchor, its explicit `Domain.Parent`, and empty authored tags/walls/portals/links.
+Both records enter the affected write set. An existing non-alias Room keeps its fields and replaces the
+prism with the same record ID. Alias rooms and non-Room spaces refuse. `MapRemoveInterior` removes
+the Room and prism together, with ordinary dependency validation still required.
+
+`MapBuildingIntent` payload 1 owns explicit roof inventory, roof links/groups, local light and XYZ marker payloads,
+and standalone `MapStoreyDoc` payload-1 IDs/names. Roof inventory does not create children or reservations.
+Removed local keys cannot remove same-text World references. Retained inventory entries for removed placement
+reservations are inactive unless a transferred standalone producer is live.
+`MapStandaloneResourceTransform` retains precise binary64 poses for unpacked resources. The prefab transfer registry
+also persists placement-attached support and light descriptors, including precise owner poses and retirement.
+Empty attachment, roof and storey collections and false retirement flags are omitted. `Clone` detaches mutable
+collections and `Digest` hashes the same canonical bytes used by persistence.
+
+`MapRoofPolicy.Evaluate(resources, view, observer, mode)` returns one `MapRoofIntent` per inventoried roof,
+including unlinked shelters. `Auto` uses the acquired R2 room membership and world height. A link matches its
+direct rooms and the union of exactly its attached groups. Groups may join rooms in different instances, but
+unrelated groups, portals and parent membership do not widen a link. Any eligible link may conceal its roof.
+Missing or ambiguous membership retains its status and witness and keeps all Auto roofs visible.
+`AlwaysVisible` and `AlwaysHidden` still enumerate the complete inventory.
+
+The four intent flags have separate consumers. Hidden roofs have `ColourVisible = false`, `CastShadows = true`,
+`CameraBoomBlocks = false` and `SkyPickingBlocks = true`. Visible roofs set all four true. This policy never
+changes collision, interaction geometry or static registration. R8 owns colour, shadows, camera boom and sky-ray
+integration.
+
+Typed Light and Support resource payloads begin with the discriminant `"resourceSchema"`, valued
+`kemap/light-resource` or `kemap/support-resource`. Their writers emit it first and their closed decoders require it.
+`MapAssetClosure.Load` decodes only bytes that carry it, so every other resource, JSON or not, stays opaque as
+released. Prefab leaf lights, typed support and Physics support refuse an opaque resource with a message naming it.
+
+`MapEffectiveAnnotations.Lights(resources)` and `Markers(resources)` return immutable records in stable ID order.
+Both carry their own payload version. Light positions and radii are owner-frame metres, independent of leaf
+`SourceUnitsToMetres`. Expansion composes the precise owner pose once, freezes the position once and scales the
+radius once in binary64 before rounding to float. Colour, intensity and shadow intent remain unchanged.
+`LightResourceIds` use the existing scoped and bound implicit Light children. Explicit children coexist under
+distinct keys. Materialized transfers reuse the captured descriptor frame without composing the owner again.
+Markers retain exact XYZ, yaw, name, role, enabled state, ordered tags and optional instance provenance. They do
+not become `MapSpawn`. R6 chooses role registries and spawn projections. R8 renders lights.
+
+`MapPrefabExpansionLimits` supplies finite collection and payload ceilings before codec materialization. Effective
+geometry composition, aggregate expansion charges, remapping and editor lifecycle commands are separate stages.
+This payload layer adds no rendering, physics or editor dependency.
+
+## Pure prefab and interior preparation
+
+`MapPrefabEdits.Prepare(document, assets, edit)` returns a detached `MapPrefabEditResult` with `After`, a named
+`MapNativeWriteSet` and `MapNativeEditEffects`. Place, move, keyed override, child restore, remove and unpack prepare
+one complete candidate against the matching captured closure. The input document and allocator never advance.
+New numeric reservations belong to the candidate until publication accepts it. Remove overrides retain `Previous`,
+so restore preserves customization and reuses the original typed and numeric bindings.
+
+`PrepareAssetUpdate(document, beforeAssets, afterAssets, edit)` reads both pinned definitions explicitly and updates
+every live referring instance in one candidate. It selects `afterAssets.Roots` in `After.NativeAssets` and marks the
+native asset write. Removed source tombstones and their transferred descriptors are historical owners and remain
+unchanged. The caller publishes immutable asset bytes before accepting the document and closure switch.
+
+`MapUnpackPrefab` moves every live child to its standalone home with the same world ID and numeric ID. It retains
+precise binary64 poses, authored nullable-Y dispositions, explicit storeys with standalone ownership, authored
+roof inventory and scoped references. A standalone support request is always world space and resolves as released,
+whatever the placement scale. Only a prefab-local request transforms by its placement's pre-seat frame, so unpack
+persists that world-space request, never one derived from the seated floor height. Extraction inverts a standalone
+request into the extracted child's frame at the asset origin. The source keeps its complete binding inventory and persists `unpacked: true`.
+This optional flag distinguishes transferred inventory from ordinary deletion and is omitted otherwise. Removed bindings
+are dormant reservations, while every other entry requires its matching transfer. Validation uses this persisted
+inventory without enumerating the current prefab or dependency versions, and counts each identity once.
+Transfer rows capture each support and light edge, its verified
+resource pin, live children, record anchors and owner-relative poses. Empty rows suppress the whole advertised edge.
+Standalone expansion validates and reuses these descriptors without reading or regenerating the attached payload.
+
+`MapPrefabExtraction.Extract(document, assets, selected, origin, assetId)` refuses partial room, floor, roof or
+materialized-owner selections. Selected references become explicit Local slots and external references remain World.
+Explicit owned lights retain owner-relative transforms in either scope. Unowned lights rebase against the asset origin.
+Captured attachments become asset-local materialization rows with precise rebased owner frames, captured definitions
+and fresh local descriptor pins. Extraction preserves edited support heights and emissions rather than reading their
+original leaf payloads. `MapPrefabAssetEdits.Replace(asset, child, remove)` prepares immutable add, replace and remove
+edits through the same captured-frame reconciliation. Value-only replacements preserve precise frames, and removal
+keeps an empty suppression row. Local history restores the captured asset snapshot and its mapping.
+
+`MapInteriorEdits.Prepare` handles standalone prism domains and roof links/groups through the same complete candidate
+gate. Preparation validates authored parents, room coverage and complete effective water containment. Effects name
+instances, children and the effective roof, light and marker inventories. Empty additions are omitted from `Describe`,
+and the released positional write-set and effect constructors remain unchanged. Physical bounds and editor publication
+are later stages. These APIs have no editor, tool, rendering or physics dependency.
+
+## Public synthetic village acceptance
+
+`PrefabFixtures.Village()` in `MapDoc.Tests/Prefabs/PrefabVillageFixtures.cs` is invented public data.
+Four payload-1 definitions, hut, tower, bath and canopy, produce five instances with two huts. Free
+XYZ, yaw 0.371 and scales 0.8 and 1.2 compose support-resource floors, two storeys, authored room
+parents, AuthoredOpen portals, a cross-instance roof group and an inventoried unlinked canopy roof.
+The bath supplies optional local water. One hut has an explicit extra-furniture override. Notched
+ground paint subdivides unchanged canonical faces. Lights and XYZ markers retain versioned fields
+and ordered tags. The canopy requires no Room or ParentSpace.
+
+`MapPrefabVillageTests` checks tiled reload, strict closure pins, single leaf ownership, fixed wet/dry
+and room probes, and complete scoped witnesses. Support acquisition captures known-empty local slots
+for offsite floors introduced by incident records. Those reads share the existing patch allowance,
+so missing geometry remains a refusal and a limit overflow publishes no partial owner. Format 7
+moves native root identities once. Resolving and reloading allocate no new bindings.
+
+The independent-head acceptance lives in `MapDoc.Physics.Tests`, and the shared command plus real
+MCP workflow lives in `MapEditor.Tests/MapEditTool/PrefabVillageWorkflowTests.cs`. These tests consume
+verified bytes and separately loaded documents. They supply headless acceptance for these seams.
+
+| Later owner | Remaining proof |
+| --- | --- |
+| R6 | Local marker role registry, spawn projection and gameplay consumers |
+| R7 | Distribution and foliage exclusions over effective canonical paint owners |
+| R8 | Partial-face drawing, roof colour and shadows, camera boom, sky picking, local-light pixels, bounded streaming, eviction, HLOD and on-demand navigation |
+| R9 and #1349 | GUI closure/bounds binding, prefab mode, inspectors and real pointer/key input |
+| R10 | Whole verb-map wire parity beyond the registered prefab/interior commands |
+| R11 and G2 | Private lossless importer, exhaustive source comparison, actual source freeze and import-time acceptance of target, distance, occlusion and stance changes |
+| G1b, #1355 and #438 phase 5 | Native controller walking, body certificates and complete layered routes |
+| #1363 | Live door state and generation-fenced collision, navigation and water swaps |
+| #1327 | Compound contact provenance beyond canonical support surfaces |
+| #1301 and #1358 to #1362 | Runtime residency and water indexing, huge exterior coverage and medium-aware seam capture |
+
 ## Format versioning
 
-`MapDocumentFile.CurrentFormatVersion` is the version this engine build reads and writes (currently 6,
-which adds bounded water, after version 5 added the support recipe and surface metadata and version 4 added
-native metadata). Loading a document with an
+`MapDocumentFile.CurrentFormatVersion` is the version this engine build reads and writes, currently 7.
+Format 7 adds rigid prefabs and building intent. Version 6 added bounded water, version 5 added the support recipe
+and surface metadata and version 4 added native metadata. Loading a document with an
 older `formatVersion` runs migrations
 (`MapDocumentLoadOptions.RegisterMigration`, each a pure `JsonObject -> JsonObject` step from N to N+1)
 until it reaches the current version. The engine's own steps are pre-registered by the
@@ -536,8 +732,12 @@ execution. The format advance changes authored identity once. It does not preser
 `MapSurfaceMigration.Upgrade` clones its input and leaves a format-5 input semantically unchanged.
 v5 -> v6 (`MapWaterMigration.Upgrade`) adds no member, so a migrated document has no `water` section and keeps
 legacy global water. It accepts only format 5 or 6 input.
-The format-6 advance moves native root digests and resolver-2 authored identities once even without water, while
-documents without water keep their document hash.
+v6 -> v7 (`MapPrefabMigration.Upgrade`) clones input and changes only `formatVersion`. It accepts format 6 or 7.
+Format 7 moves every native root digest and resolver-2 authored identity once, including maps without prefabs.
+Rebuild identity-keyed caches and navigation captures after this migration. Absent prefab sections preserve
+analytic execution and document hashing. Portals remain AuthoredOpen, with live state gated by #1363.
+Headless doorway clearance and roof intent are available. Native controller routes and R8 rendering retain
+the separate gates in the handoff table above.
 
 `MapDocument.SupportRecipe` pairs resolver 1 with `LegacyXzCallbackV1` and resolver 2 with
 `AuthoredBindingsV2`. Resolver 1 refuses authored surfaces and placement support bindings. A placement

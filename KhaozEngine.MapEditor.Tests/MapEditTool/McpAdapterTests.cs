@@ -26,9 +26,10 @@ namespace KhaozEngine.Tests.MapEditTool
     /// tools through the wire: list, call with JSON arguments, and read the returned content. This exercises the
     /// attribute discovery, DI construction, JSON (de)serialization, and the McpException error mapping end to
     /// end, not just the service methods in isolation.</summary>
+    [Collection(McpWireCollection.Name)]
     public partial class McpAdapterTests
     {
-        /// <summary>All 78 verb names, spelled exactly as the plan header's verb table: the original 39 (including
+        /// <summary>All 92 verb names, spelled exactly as the plan header's verb table: the original 39 (including
         /// the two render verbs added in Task 6) plus the Task 5 naming, layer-targeting, and procedural-setup
         /// verbs (feature/exclusion rename, exclusion layer targeting, the biome band and scatter/companion layer
         /// triads plus their rename verbs, and the procedural_info read verb), the scatter_rule
@@ -90,15 +91,18 @@ namespace KhaozEngine.Tests.MapEditTool
             "element_duplicate",
             // Renders
             "render_topdown", "render_view",
+            // R5 prefab and standalone interior authoring, additive to every released verb.
+            "prefab_open", "prefab_edit", "prefab_save", "prefab_extract", "prefab_place", "prefab_list",
+            "prefab_override", "prefab_unpack", "prefab_undo", "prefab_redo",
+            "interior_volume_add", "interior_volume_set", "interior_volume_remove", "roof_link_set",
         };
 
         [Fact]
         public async Task ToolRegistry_ExposesAllDocumentQueryMutationVerbs()
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            await using McpHarness harness = await McpHarness.StartAsync(cts.Token);
+            await using McpHarness harness = await McpWire.StartAsync();
 
-            IList<McpClientTool> tools = await harness.Client.ListToolsAsync(cancellationToken: cts.Token);
+            IList<McpClientTool> tools = await harness.Client.ListAsync();
             HashSet<string> names = tools.Select(t => t.Name).ToHashSet(StringComparer.Ordinal);
 
             Assert.Equal(ExpectedVerbs.ToHashSet(StringComparer.Ordinal), names);
@@ -112,21 +116,20 @@ namespace KhaozEngine.Tests.MapEditTool
         [Fact]
         public async Task MapSummary_RoundTripsThroughMcpCall()
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             string dir = NewTempDir();
             try
             {
                 string path = Path.Combine(dir, "zone.map.json");
                 MapDocumentFile.Save(SampleDocs.SampleDoc(), path);
 
-                await using McpHarness harness = await McpHarness.StartAsync(cts.Token);
+                await using McpHarness harness = await McpWire.StartAsync();
 
-                CallToolResult open = await harness.Client.CallToolAsync("map_open",
-                    new Dictionary<string, object?> { ["path"] = path }, cancellationToken: cts.Token);
+                CallToolResult open = await harness.Client.CallAsync("map_open",
+                    new Dictionary<string, object?> { ["path"] = path });
                 Assert.NotEqual(true, open.IsError);
 
-                CallToolResult summary = await harness.Client.CallToolAsync("map_summary",
-                    new Dictionary<string, object?>(), cancellationToken: cts.Token);
+                CallToolResult summary = await harness.Client.CallAsync("map_summary",
+                    new Dictionary<string, object?>());
                 Assert.NotEqual(true, summary.IsError);
 
                 MapSummary parsed = Deserialize<MapSummary>(summary);
@@ -147,13 +150,12 @@ namespace KhaozEngine.Tests.MapEditTool
         [Fact]
         public async Task FailedVerb_SurfacesPreciseMessage()
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            await using McpHarness harness = await McpHarness.StartAsync(cts.Token);
+            await using McpHarness harness = await McpWire.StartAsync();
 
             // map_summary with no document open: the service throws, the adapter maps it to an McpException, and the
             // SDK surfaces the verbatim message (which names map_open) as an error result rather than masking it.
-            CallToolResult result = await harness.Client.CallToolAsync("map_summary",
-                new Dictionary<string, object?>(), cancellationToken: cts.Token);
+            CallToolResult result = await harness.Client.CallAsync("map_summary",
+                new Dictionary<string, object?>());
 
             Assert.True(result.IsError);
             string text = string.Concat(result.Content.OfType<TextContentBlock>().Select(c => c.Text));
@@ -163,21 +165,19 @@ namespace KhaozEngine.Tests.MapEditTool
         [Fact]
         public async Task PlacementAdd_ThroughMcp_MutatesSessionAndReportsGround()
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             string dir = NewTempDir();
             try
             {
                 string path = Path.Combine(dir, "zone.map.json");
                 MapDocumentFile.Save(SampleDocs.SampleDoc(), path);
 
-                await using McpHarness harness = await McpHarness.StartAsync(cts.Token);
+                await using McpHarness harness = await McpWire.StartAsync();
 
-                await harness.Client.CallToolAsync("map_open",
-                    new Dictionary<string, object?> { ["path"] = path }, cancellationToken: cts.Token);
+                await harness.Client.CallAsync("map_open",
+                    new Dictionary<string, object?> { ["path"] = path });
 
-                CallToolResult result = await harness.Client.CallToolAsync("placement_add",
-                    new Dictionary<string, object?> { ["kind"] = "hut", ["x"] = 12.0, ["z"] = -3.5 },
-                    cancellationToken: cts.Token);
+                CallToolResult result = await harness.Client.CallAsync("placement_add",
+                    new Dictionary<string, object?> { ["kind"] = "hut", ["x"] = 12.0, ["z"] = -3.5 });
                 Assert.NotEqual(true, result.IsError);
 
                 MutationResult mutation = Deserialize<MutationResult>(result);
@@ -202,21 +202,19 @@ namespace KhaozEngine.Tests.MapEditTool
         [Fact]
         public async Task PlayerSpawnAdd_ThroughMcp_MutatesSessionAndReportsId()
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             string dir = NewTempDir();
             try
             {
                 string path = Path.Combine(dir, "zone.map.json");
                 MapDocumentFile.Save(SampleDocs.SampleDoc(), path);
 
-                await using McpHarness harness = await McpHarness.StartAsync(cts.Token);
+                await using McpHarness harness = await McpWire.StartAsync();
 
-                await harness.Client.CallToolAsync("map_open",
-                    new Dictionary<string, object?> { ["path"] = path }, cancellationToken: cts.Token);
+                await harness.Client.CallAsync("map_open",
+                    new Dictionary<string, object?> { ["path"] = path });
 
-                CallToolResult result = await harness.Client.CallToolAsync("player_spawn_add",
-                    new Dictionary<string, object?> { ["x"] = 5.0, ["z"] = 6.0, ["yaw"] = 0.5 },
-                    cancellationToken: cts.Token);
+                CallToolResult result = await harness.Client.CallAsync("player_spawn_add",
+                    new Dictionary<string, object?> { ["x"] = 5.0, ["z"] = 6.0, ["yaw"] = 0.5 });
                 Assert.NotEqual(true, result.IsError);
 
                 MutationResult mutation = Deserialize<MutationResult>(result);
@@ -238,26 +236,24 @@ namespace KhaozEngine.Tests.MapEditTool
         [Fact]
         public async Task BiomeBandAdd_ThroughMcp_AppendsBandAndReportsIndex()
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             string dir = NewTempDir();
             try
             {
                 string path = Path.Combine(dir, "zone.map.json");
                 MapDocumentFile.Save(SampleDocs.SampleDoc(), path);
 
-                await using McpHarness harness = await McpHarness.StartAsync(cts.Token);
+                await using McpHarness harness = await McpWire.StartAsync();
 
-                await harness.Client.CallToolAsync("map_open",
-                    new Dictionary<string, object?> { ["path"] = path }, cancellationToken: cts.Token);
+                await harness.Client.CallAsync("map_open",
+                    new Dictionary<string, object?> { ["path"] = path });
 
-                CallToolResult result = await harness.Client.CallToolAsync("biome_band_add",
+                CallToolResult result = await harness.Client.CallAsync("biome_band_add",
                     new Dictionary<string, object?>
                     {
                         ["biome"] = "Desert",
                         ["baseHeight"] = 4.0,
                         ["hillAmplitude"] = 0.5,
-                    },
-                    cancellationToken: cts.Token);
+                    });
                 Assert.NotEqual(true, result.IsError);
 
                 MutationResult mutation = Deserialize<MutationResult>(result);
@@ -279,21 +275,19 @@ namespace KhaozEngine.Tests.MapEditTool
         [Fact]
         public async Task ElementDuplicate_ThroughMcp_DuplicatesPlacementAndReportsId()
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             string dir = NewTempDir();
             try
             {
                 string path = Path.Combine(dir, "zone.map.json");
                 MapDocumentFile.Save(SampleDocs.SampleDoc(), path);
 
-                await using McpHarness harness = await McpHarness.StartAsync(cts.Token);
+                await using McpHarness harness = await McpWire.StartAsync();
 
-                await harness.Client.CallToolAsync("map_open",
-                    new Dictionary<string, object?> { ["path"] = path }, cancellationToken: cts.Token);
+                await harness.Client.CallAsync("map_open",
+                    new Dictionary<string, object?> { ["path"] = path });
 
-                CallToolResult result = await harness.Client.CallToolAsync("element_duplicate",
-                    new Dictionary<string, object?> { ["kind"] = "placement", ["id"] = "inn" },
-                    cancellationToken: cts.Token);
+                CallToolResult result = await harness.Client.CallAsync("element_duplicate",
+                    new Dictionary<string, object?> { ["kind"] = "placement", ["id"] = "inn" });
                 Assert.NotEqual(true, result.IsError);
 
                 MutationResult mutation = Deserialize<MutationResult>(result);
@@ -313,19 +307,18 @@ namespace KhaozEngine.Tests.MapEditTool
         [Fact]
         public async Task SculptApply_ThroughMcp_MutatesSessionAndReportsTouchedCells()
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             string dir = NewTempDir();
             try
             {
                 string path = Path.Combine(dir, "zone.map.json");
                 MapDocumentFile.Save(SampleDocs.SampleDoc(), path);
 
-                await using McpHarness harness = await McpHarness.StartAsync(cts.Token);
+                await using McpHarness harness = await McpWire.StartAsync();
 
-                await harness.Client.CallToolAsync("map_open",
-                    new Dictionary<string, object?> { ["path"] = path }, cancellationToken: cts.Token);
+                await harness.Client.CallAsync("map_open",
+                    new Dictionary<string, object?> { ["path"] = path });
 
-                CallToolResult result = await harness.Client.CallToolAsync("sculpt_apply",
+                CallToolResult result = await harness.Client.CallAsync("sculpt_apply",
                     new Dictionary<string, object?>
                     {
                         ["brush"] = "raise",
@@ -334,8 +327,7 @@ namespace KhaozEngine.Tests.MapEditTool
                         ["radius"] = 2.5,
                         ["strength"] = 4.0,
                         ["dt"] = 0.5,
-                    },
-                    cancellationToken: cts.Token);
+                    });
                 Assert.NotEqual(true, result.IsError);
 
                 SculptApplyResult sculpt = Deserialize<SculptApplyResult>(result);
@@ -346,8 +338,8 @@ namespace KhaozEngine.Tests.MapEditTool
                 Assert.NotNull(session.WithDocument((doc, _) => doc.TerrainOverrides));
                 Assert.True(session.IsDirty);
 
-                CallToolResult stats = await harness.Client.CallToolAsync("sculpt_stats",
-                    new Dictionary<string, object?>(), cancellationToken: cts.Token);
+                CallToolResult stats = await harness.Client.CallAsync("sculpt_stats",
+                    new Dictionary<string, object?>());
                 Assert.NotEqual(true, stats.IsError);
                 SculptStatsResult statsResult = Deserialize<SculptStatsResult>(stats);
                 Assert.True(statsResult.HasLayer);
@@ -359,20 +351,19 @@ namespace KhaozEngine.Tests.MapEditTool
         [Fact]
         public async Task Retile_ThroughMcp_ChangesWorldHashAndReportsWarning()
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             string dir = NewTempDir();
             try
             {
                 string path = Path.Combine(dir, "zone.map.json");
                 MapDocumentFile.Save(SampleDocs.SampleDoc(), path);
 
-                await using McpHarness harness = await McpHarness.StartAsync(cts.Token);
+                await using McpHarness harness = await McpWire.StartAsync();
 
-                await harness.Client.CallToolAsync("map_open",
-                    new Dictionary<string, object?> { ["path"] = path }, cancellationToken: cts.Token);
+                await harness.Client.CallAsync("map_open",
+                    new Dictionary<string, object?> { ["path"] = path });
 
-                CallToolResult result = await harness.Client.CallToolAsync("retile",
-                    new Dictionary<string, object?> { ["tileSize"] = 256.0 }, cancellationToken: cts.Token);
+                CallToolResult result = await harness.Client.CallAsync("retile",
+                    new Dictionary<string, object?> { ["tileSize"] = 256.0 });
                 Assert.NotEqual(true, result.IsError);
 
                 RetileResult retiled = Deserialize<RetileResult>(result);
@@ -412,7 +403,7 @@ namespace KhaozEngine.Tests.MapEditTool
 
         /// <summary>A live in-process MCP client and server, wired over a pair of pipes through the same
         /// composition path the stdio host uses. Disposing tears the client down first, then the host.</summary>
-        sealed class McpHarness : IAsyncDisposable
+        internal sealed class McpHarness : IAsyncDisposable
         {
             readonly IHost _host;
 

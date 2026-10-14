@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using KhaozEngine.MapDoc.Editing;
+using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Water;
 
@@ -29,7 +30,7 @@ public sealed record MapAffectedSet(IReadOnlyList<string> Owners, IReadOnlyList<
 public static class MapResidencyOwnership
 {
     /// <summary>The most storage tiles one list here holds, 2^20: a static's
-    /// <see cref="MapResidencyEntry.Membership"/>, and each extent <see cref="Affected"/> lists, whether an edit box,
+    /// <see cref="MapResidencyEntry.Membership"/>, and each extent <see cref="Affected(MapBuiltWorld, MapWorldGrids, MapNativeEditEffects)"/> lists, whether an edit box,
     /// a listed patch chunk or, for an unbounded edit, the whole world. At 64 m tiles that is, for example, a square
     /// about 65 km on a side.</summary>
     public const int MaxStorageTiles = 1 << 20;
@@ -93,6 +94,29 @@ public static class MapResidencyOwnership
         return entries.AsReadOnly();
     }
 
+    /// <summary>One entry per effective light and marker, sorted by typed owner ID. Light membership includes its
+    /// scaled world-metre radius. Markers occupy their exact point. These entries never install statics.</summary>
+    public static IReadOnlyList<MapResidencyEntry> BuildAnnotations(MapBuiltWorld world, MapWorldGrids grids)
+    {
+        ArgumentNullException.ThrowIfNull(world);
+        ArgumentNullException.ThrowIfNull(grids);
+        grids.Validate(world);
+        var entries = new List<MapResidencyEntry>();
+        foreach (var light in world.Lights) Add("light:" + light.Id, light.Position, MapEffectiveAnnotations.Bounds(light));
+        foreach (var marker in world.Markers) Add("marker:" + marker.Id, marker.Position, MapEffectiveAnnotations.Bounds(marker));
+        return entries.AsReadOnly();
+
+        void Add(string id, MapExactPoint point, MapBox3 bounds)
+        {
+            var tiles = TilesOf(bounds, grids.StorageTileSize);
+            RequireStorageTiles(tiles, $"Annotation '{id}'");
+            var membership = Enumerate(tiles);
+            entries.Add(new(id, TilesOf(new(point.X.ToDouble(), 0, point.Z.ToDouble(), point.X.ToDouble(), 0, point.Z.ToDouble()), grids.StorageTileSize).Min,
+                membership, membership.Select(grids.AlignedNavTileOf).Distinct().OrderBy(c => c.Z).ThenBy(c => c.X).ToArray(),
+                membership.Select(grids.AlignedServerCellOf).Distinct().OrderBy(c => c.Z).ThenBy(c => c.X).ToArray(), bounds));
+        }
+    }
+
     internal static string WaterOwnerId(string bodyId) => "water:" + bodyId;
 
     /// <summary>The storage tiles in (Z, X) order that any region triangle of <paramref name="body"/> reaches with its
@@ -101,15 +125,17 @@ public static class MapResidencyOwnership
     {
         string what = $"Water body '{body.BodyId}'";
         var tiles = new SortedSet<MapTileCoord>(TileOrder);
-        foreach (MapExactTriangle triangle in body.Regions.SelectMany(r => r.Triangles))
-        {
-            MapTileRect rect = TilesOf(XzBounds(triangle), grids.StorageTileSize);
-            RequireStorageTiles(rect, what);
-            tiles.UnionWith(Enumerate(rect));
-            if (tiles.Count > MaxStorageTiles)
-                throw new MapDocumentException(string.Format(CultureInfo.InvariantCulture,
-                    "{0} reaches more than the {1:N0} storage tiles one list allows.", what, MaxStorageTiles));
-        }
+        foreach (var region in body.Regions)
+            foreach (var bounds in region.WidePolygons.Count == 0 ? region.Triangles.Select(XzBounds) : region.WidePolygons.SelectMany(p =>
+                Enumerable.Range(1, p.Count - 2).Select(i => MapWaterOccupiedPieces.Bounds(new[] { p[0], p[i], p[i + 1] }, default, default))))
+            {
+                MapTileRect rect = TilesOf(bounds, grids.StorageTileSize);
+                RequireStorageTiles(rect, what);
+                tiles.UnionWith(Enumerate(rect));
+                if (tiles.Count > MaxStorageTiles)
+                    throw new MapDocumentException(string.Format(CultureInfo.InvariantCulture,
+                        "{0} reaches more than the {1:N0} storage tiles one list allows.", what, MaxStorageTiles));
+            }
         return tiles.ToArray();
     }
 
@@ -136,6 +162,8 @@ public static class MapResidencyOwnership
     /// <see cref="MapNativeEditEffects.WaterBodyIds"/> is a <c>water:{bodyId}</c> owner, and the storage tiles of
     /// each one <paramref name="world"/> holds, under the rule of <see cref="BuildWater"/>, join the tiles of the
     /// reported edit bounds.</para>
+    /// <para>Edit extents use <see cref="MapNativeEditEffects.OldSpatialBounds"/> and <see cref="MapNativeEditEffects.NewSpatialBounds"/>,
+    /// keeping tight reported interaction bounds separate from conservative installed geometry.</para>
     /// <para>Owners are the statics whose bounds meet the old or new edit bounds, plus the chunks of every listed patch:
     /// its own surface chunks and the chunks of every wall strip the world records in it. Storage tiles are those the
     /// old and new edit bounds reach, under the membership rule of <see cref="Build"/>, plus the membership of those
@@ -158,7 +186,7 @@ public static class MapResidencyOwnership
         if ((effects.Invalidates & Spatial) == 0)
             return new(Array.Empty<string>(), Array.Empty<MapTileCoord>(), Array.Empty<MapNavTileCoord>());
 
-        MapBox3[] edited = new[] { effects.OldBounds, effects.NewBounds }.Where(b => b.HasValue).Select(b => b!.Value).ToArray();
+        MapBox3[] edited = new[] { effects.OldSpatialBounds, effects.NewSpatialBounds }.Where(b => b.HasValue).Select(b => b!.Value).ToArray();
         foreach (MapBox3 box in edited) RequireWithinWorld(box);
         string[] prefixes = PatchChunkPrefixes(world, effects.Patches);
         var owners = new SortedSet<string>(StringComparer.Ordinal);
@@ -173,6 +201,12 @@ public static class MapResidencyOwnership
             if (patchChunk) tiles.UnionWith(StorageTiles(descriptor.Bounds, grids, $"Chunk '{descriptor.OwnerId}'"));
             if (unbounded || patchChunk || edited.Any(box => Meets(box, descriptor.Bounds))) owners.Add(descriptor.OwnerId);
         }
+        foreach (var annotation in BuildAnnotations(world, grids))
+            if (unbounded || edited.Any(box => Meets(box, annotation.WorldBounds)))
+            {
+                owners.Add(annotation.OwnerId);
+                tiles.UnionWith(annotation.Membership);
+            }
         bool medium = (effects.Invalidates & MapNativeInvalidation.Medium) != 0;
         var named = new HashSet<string>(medium ? effects.WaterBodyIds : Array.Empty<string>(), StringComparer.Ordinal);
         owners.UnionWith(named.Select(WaterOwnerId));
@@ -183,6 +217,33 @@ public static class MapResidencyOwnership
                 tiles.UnionWith(WaterTiles(body, grids));
             }
         MapNavTileCoord[] nav = tiles.Select(grids.AlignedNavTileOf).Distinct().OrderBy(c => c.Z).ThenBy(c => c.X).ToArray();
+        return new(owners.ToArray(), tiles.ToArray(), nav);
+    }
+
+    /// <summary>Consequences across both snapshots, including removed owner IDs and their old membership. Unknown
+    /// geometry keeps Unbounded's reset semantics. Changed support-bound placement extents belong in the effects
+    /// emitted by preparation, rather than being inferred from an edited terrain patch.</summary>
+    public static MapAffectedSet Affected(MapBuiltWorld before, MapBuiltWorld after, MapWorldGrids grids, MapNativeEditEffects effects)
+    {
+        ArgumentNullException.ThrowIfNull(before);
+        var old = Affected(before, grids, effects);
+        var current = Affected(after, grids, effects);
+        if ((effects.Invalidates & Spatial) == 0) return current;
+        var owners = new SortedSet<string>(old.Owners.Concat(current.Owners), StringComparer.Ordinal);
+        var tiles = new SortedSet<MapTileCoord>(old.StorageTiles.Concat(current.StorageTiles), TileOrder);
+        var live = after.Statics.Select(s => s.OwnerId).ToHashSet(StringComparer.Ordinal);
+        foreach (var removed in before.Statics.Where(s => !live.Contains(s.OwnerId)))
+        {
+            owners.Add(removed.OwnerId);
+            tiles.UnionWith(StorageTiles(removed.Bounds, grids, $"Removed owner '{removed.OwnerId}'"));
+        }
+        var liveAnnotations = BuildAnnotations(after, grids).Select(a => a.OwnerId).ToHashSet(StringComparer.Ordinal);
+        foreach (var removed in BuildAnnotations(before, grids).Where(a => !liveAnnotations.Contains(a.OwnerId)))
+        {
+            owners.Add(removed.OwnerId);
+            tiles.UnionWith(removed.Membership);
+        }
+        var nav = tiles.Select(grids.AlignedNavTileOf).Distinct().OrderBy(t => t.Z).ThenBy(t => t.X).ToArray();
         return new(owners.ToArray(), tiles.ToArray(), nav);
     }
 

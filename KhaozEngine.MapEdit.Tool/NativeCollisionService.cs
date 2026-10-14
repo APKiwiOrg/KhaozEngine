@@ -8,6 +8,7 @@ using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Physics;
+using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapEditor;
 using KhaozEngine.Physics;
@@ -36,7 +37,9 @@ public sealed class NativeCollisionService(MapEditSession session)
 {
     /// <summary>What a height edit invalidates: every placement of the asset changes its physics, navigation and
     /// residency bounds. The old and new bounds are the placements' collider and interaction envelope bounds from
-    /// <see cref="NativePlacementBoundsProvider"/>, as placement edits report them. When the provider cannot size a
+    /// <see cref="NativePlacementBoundsProvider"/>, as placement edits report them. Spatial invalidation uses the
+    /// separately captured <see cref="MapNativeEditEffects.OldSpatialBounds"/> and <see cref="MapNativeEditEffects.NewSpatialBounds"/>.
+    /// When the provider cannot size a
     /// placement, the edit also reports <see cref="MapNativeInvalidation.Unbounded"/> with no bounds.</summary>
     public const MapNativeInvalidation HeightEditInvalidation =
         MapNativeInvalidation.Physics | MapNativeInvalidation.Nav | MapNativeInvalidation.Residency;
@@ -95,7 +98,7 @@ public sealed class NativeCollisionService(MapEditSession session)
             if (collider != plan.ColliderReference || root != plan.NewRoot)
                 throw new MapDocumentException($"Collider edit for '{assetId}' wrote resources that differ from its plan.");
             MapAssetClosure assets = MapAssetClosure.Load(plan.NewRoots, context.Source);
-            var command = new NativeAssetRootsCommand($"Set collider heights for {assetId}", plan.NewRoots, plan.Effects);
+            var command = new NativeAssetRootsCommand($"Set collider heights for {assetId}", plan.NewRoots, plan.Effects, context.Assets, assets);
             MapNativeEditEffects effects = session.ApplyNativeAssets(command, assets);
             return new NativeCollisionEditResult(true, plan.BeforeSha256, plan.AfterSha256, plan.AffectedPlacementIds, effects);
         });
@@ -124,8 +127,9 @@ public sealed class NativeCollisionService(MapEditSession session)
         byte[] bytes = Serialize(resized);
         string before = shapes.ColliderSha256!;
         string after = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
-        string[] affected = context.Document.Placements.Where(p => string.Equals(p.AssetId, assetId, StringComparison.Ordinal))
-            .Select(p => p.Id).Order(StringComparer.Ordinal).ToArray();
+        string[] affected = context.Document.Prefabs is not null
+            ? MapPrefabResolver.Expand(context.Document, closure).Placements.Where(p => p.AssetId == assetId).Select(p => p.PlacementId).Order(StringComparer.Ordinal).ToArray()
+            : context.Document.Placements.Where(p => p.AssetId == assetId).Select(p => p.Id).Order(StringComparer.Ordinal).ToArray();
         IReadOnlyList<MapAssetRef> oldRoots = context.Document.NativeAssets.ToArray();
 
         (int rootIndex, MapAssetManifestDoc manifest, MapResourceDoc resource) = FindDeclaringRoot(closure, oldRoots, assetId, colliderId);
@@ -161,7 +165,8 @@ public sealed class NativeCollisionService(MapEditSession session)
         bool unknown = old.Unknown || @new.Unknown;
         var effects = new MapNativeEditEffects(unknown ? null : old.Bounds, unknown ? null : @new.Bounds,
             Array.Empty<MapPatchKey>(), Array.Empty<string>(), Array.Empty<string>(), digests.AsReadOnly(),
-            unknown ? HeightEditInvalidation | MapNativeInvalidation.Unbounded : HeightEditInvalidation);
+            unknown ? HeightEditInvalidation | MapNativeInvalidation.Unbounded : HeightEditInvalidation)
+        { OldSpatialBounds = unknown ? null : old.SpatialBounds, NewSpatialBounds = unknown ? null : @new.SpatialBounds };
         return new HeightPlan(before, after, Array.AsReadOnly(affected), effects, false, colliderId, bytes,
             colliderReference, manifest, Array.AsReadOnly(newRoots), newRoot);
     }
@@ -248,29 +253,23 @@ public sealed class NativeCollisionService(MapEditSession session)
         }
     }
 
-    // Swaps the document's native asset roots in one native transaction. The tool keeps no undo history, so the command
-    // only ever publishes forward through MapEditSession.ApplyNativeAssets.
-    sealed class NativeAssetRootsCommand(string label, IReadOnlyList<MapAssetRef> roots, MapNativeEditEffects effects)
-        : IEditorCommand, INativeDocumentCommand
+    // Captures both root versions and their matching closures. State is accepted only after session publication.
+    sealed class NativeAssetRootsCommand(string label, IReadOnlyList<MapAssetRef> roots, MapNativeEditEffects effects,
+        MapAssetClosure beforeAssets, MapAssetClosure afterAssets) : EditorCommand, INativeBoundDocumentCommand, INativeAssetClosureCommand
     {
-        const string ForwardOnly = "A native asset root swap publishes forward through MapEditSession.ApplyNativeAssets only.";
-
-        public string Label => label;
-
-        public void Apply(MapDocument doc) => throw new NotSupportedException(ForwardOnly);
-
-        public void Revert(MapDocument doc) => throw new NotSupportedException(ForwardOnly);
-
-        public bool TryMerge(IEditorCommand next) => false;
-
-        public NativeDocumentPreparation Prepare(MapDocument candidate, bool undo)
-        {
-            if (undo) throw new NotSupportedException(ForwardOnly);
-            candidate.NativeAssets = roots.ToList();
-            var writes = new MapNativeWriteSet(Array.Empty<MapPatchKey>(), Array.Empty<string>(), Array.Empty<string>(),
-                Array.Empty<string>(), Array.Empty<MapCornerOwnerChange>(), Array.Empty<ushort>(), false)
-            { NativeAssets = true };
-            return new NativeDocumentPreparation(writes, effects, () => { });
-        }
+        readonly NativePrefabCommandState _state = new();
+        public override string Label => label;
+        internal override bool AffectsWorld => true;
+        public override void Apply(MapDocument doc) => NativeDocumentTransaction.Run(doc, this, false, afterAssets);
+        public override void Revert(MapDocument doc) => NativeDocumentTransaction.Run(doc, this, true, beforeAssets);
+        public MapAssetClosure Closure(bool undo) => undo ? beforeAssets : afterAssets;
+        NativeDocumentPreparation INativeBoundDocumentCommand.Prepare(MapDocument candidate, bool undo, MapAssetClosure assets) =>
+            _state.Prepare(candidate, undo, () =>
+            {
+                var after = NativeDocumentSnapshot.Clone(candidate, MapDocRegistry.CreateDefault());
+                after.NativeAssets = roots.ToList();
+                var writes = NativeCompleteSnapshotCommand.EmptyWrites with { NativeAssets = true };
+                return new(after, writes, effects);
+            });
     }
 }

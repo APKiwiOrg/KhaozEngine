@@ -21,7 +21,7 @@ namespace KhaozEngine.Tests.MapDoc;
 /// <see cref="MapAssetShapes.Read"/> refuses until R5. <c>crate-1</c> stands at (10, 0, 10). <c>marker-1</c>, a mesh-only
 /// placement at (-10, 0, -10), and <c>supported-1</c>, a <c>supported-crate</c> at (-30, 0, 30), exist only when asked
 /// for, since a world build refuses both.</summary>
-internal sealed class NativePlacementEffectsFixture
+internal sealed partial class NativePlacementEffectsFixture
 {
     public static readonly MapWorldGrids Grids = new(64f, 1, 4, Vector2.Zero);
     public static readonly MapNavTileOptions NavOptions = new(0f, "placement-effects-profile", "placement-effects-controller");

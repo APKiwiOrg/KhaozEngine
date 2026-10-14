@@ -26,11 +26,8 @@ public sealed class RigidAttachmentBindingTests
 
         // Warm composition and matrix math without touching the large-set scratch path.
         Bind(skeleton, Part(1, "hip")).ComposeWorlds(skeleton, palette, model, new Matrix4x4[1]);
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        binding.ComposeWorlds(skeleton, palette, model, worlds);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-
-        Assert.Equal(0L, allocated);
+        AllocAssert.NoPerCallAllocation("a first large-set composition",
+            () => binding.ComposeWorlds(skeleton, palette, model, worlds));
         Assert.Equal(129, binding.PartCount);
         Assert.Equal(new Vector3(11, 2, 0), worlds[0].Translation);
         Assert.Equal(new Vector3(139, 2, 0), worlds[128].Translation);

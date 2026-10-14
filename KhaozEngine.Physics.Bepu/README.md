@@ -65,14 +65,19 @@ either value shifts the bit-exact result legitimately.
   therefore cannot hide the replacement. An empty selection still returns a restricted non-owning view with
   unfiltered query results. The view preserves the source world's mobility gates and dynamic observations,
   while simulation contacts remain unchanged.
-- **Query read leases** - the owner and its restricted views implement `IPhysicsQueryLeaseSource`.
-  A lease holds one exclusive, thread-affine gate because queries reuse backend scratch buffers.
-  The gate also covers every mutation, rebase, query and operational view disposal. Mutations from the
-  lease's own thread fail before changing the world, and a nested lease cannot shorten the first one's
-  lifetime. Other threads wait outside the gate. The captured generation is local to this process and
-  advances conservatively before operations that may change the world, including writes that later fail.
-  Rejected leased mutations never advance it. This is a synchronous lifetime contract, not immutable
-  geometry or permission to call a lease from another thread. Release it before any physics write.
+- **Query read leases** - the owner and its restricted views implement `IPhysicsQueryLeaseSource` and
+  `IPhysicsConcurrentReadSource`. A lease is a thread-affine reader interval, and several threads may hold
+  leases and query one world at once. Every outer read interval borrows private query scratch, including its
+  own Bepu allocation pool, so readers never share backend buffers. Mutations, rebases and operational view
+  disposal are exclusive writers that run in arrival order once every admitted reader interval has ended,
+  and new outer readers wait behind a queued writer. Nested reads on one thread reuse its interval and never
+  wait. Mutations from inside a read fail before changing the world, and a nested lease cannot shorten the
+  first one's lifetime. The read paths and the storage each one uses are recorded in the
+  [concurrent read audit](../docs/verification/2026-10-14-bepu-concurrent-read-audit.md). The captured
+  generation is local to this process and advances conservatively before operations that may change the world,
+  including writes that later fail. Rejected leased mutations never advance it. This is a synchronous
+  lifetime contract, not immutable geometry or permission to call a lease from another thread. Release it
+  before any physics write.
 - **Capsule-feature certification** - the owner and its restricted views implement
   `IPhysicsCapsuleFeatures`. The query authenticates the lease as this owner's before entering the gate,
   reads the live static, and certifies boxes, convex hulls, compounds of those, and one-sided triangle meshes

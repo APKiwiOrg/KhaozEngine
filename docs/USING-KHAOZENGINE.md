@@ -8319,6 +8319,8 @@ public sealed partial class PhysicsNavBake : IDisposable
 
     public GroundNavigation BuildProfile(in MoveTuning tuning, NavAreaFilter areas);
     public GroundNavigation BuildProfile(in MoveTuning tuning, NavAreaFilter areas, GroundProfileOptions options);
+    public GroundNavigation BuildProfile(in MoveTuning tuning, NavAreaFilter areas, GroundProfileOptions? options,
+        NavBakeExecution? execution);
     public void Dispose();
 }
 ```
@@ -8368,7 +8370,7 @@ Both `BuildProfile` overloads, `GroundNavigationBake.Create` and every `GroundNa
 validate Contact selection before other profile work or stream reads. Malformed configurations throw
 `ArgumentException`, and Contact aquatic profiles throw `NotSupportedException` naming #1389. Ground construction
 requires an ordinary-constructed context and a leased capture whose geometry and origin remain unchanged.
-Phase 5b ground navigation is implemented in staged 20.39.0. Contact aquatic navigation, footprint-only seeds and
+Phase 5b ground navigation is released in 20.39.0. Contact aquatic navigation, footprint-only seeds and
 public explicit bake profiles are deferred to [#1389](https://github.com/APKiwiOrg/KhaozEngine/issues/1389).
 Raw surfaces retain layer and area identity. Certified resting anchors supply physical node poses through
 `NavGrid.RestingHeightAt`. Placement and Hold require grounded `Advanced` outcomes within 1 mm, and directed
@@ -8444,6 +8446,8 @@ public sealed class GroundNavigationBake
 {
     public static GroundNavigationBake Create(PhysicsNavBake capture, NavBakeSources sources,
         IReadOnlyList<NavBakeProfile> profiles);
+    public static GroundNavigationBake Create(PhysicsNavBake capture, NavBakeSources sources,
+        IReadOnlyList<NavBakeProfile> profiles, NavBakeExecution? execution);
     public static NavBakeLoadResult Load(Stream source, NavBakeExpectation expected);
     public void WriteTo(Stream destination);
     public ReadOnlySpan<byte> Fingerprint { get; }
@@ -8518,6 +8522,42 @@ changes, and keep a game test that loads the shipped bake and expects `Loaded`.
 
 On the dev Mac a 36,864-column flat world wrote 664,689 bytes and loaded in about 20 to 23 ms, allocating
 1,958,264 bytes against about 0.85 to 0.96 MB retained. These are single observations, not startup guarantees.
+
+### Parallel contact bake (`NavBakeExecution`)
+
+Contact profiles cost far more to bake than legacy ones, so a content pipeline can spread one contact profile over
+worker threads. This is implemented in staged 20.40.0:
+
+```csharp
+var execution = new NavBakeExecution(Environment.ProcessorCount);
+GroundNavigationBake bake = GroundNavigationBake.Create(capture, sources, profiles, execution);
+```
+
+A null execution or a degree of 1 runs the serial build, and the older overloads forward null. The setting is not
+part of the options or the bake identity, so every degree writes the same bytes and loads against the same
+expectation. Above degree 1 an ordinary contact profile proves its admissions, edges and Stair links on up to
+`MaxDegreeOfParallelism` workers, over `min(rows, workers * 4)` row bands claimed in order. Legacy profiles always
+build serially. `Create` builds profiles one after another and passes the setting to each contact profile.
+
+A degree below 1 throws `ArgumentOutOfRangeException` before any other check. After every existing check, a contact
+profile above degree 1 needs `IPhysicsConcurrentReadSource` on both the capture's physics source and the context's
+selected query view, or it throws `NotSupportedException`. `BepuPhysicsWorld` and its restricted views declare it.
+Every provider the game supplies (ground height and normal, medium, water field, registration and area classifier)
+must answer deterministically from its inputs, whatever the call order or thread, and be safe for concurrent reads.
+Keep their data fixed through capture and build. The audited TileWorld providers are endorsed:
+`TileWorldColliders.MovementGroundHeight` and `MovementGroundNormal`, the `TileGroundSampler` delegates while the
+document stays unedited, `TileMediumSampler` and the registration from `TileColliderRegistration`. MapDoc providers
+are not endorsed yet. The [Movement README](../KhaozEngine.Movement/README.md#parallel-contact-bake) names each
+method.
+
+The build snapshots the physics basis and the environment producer identity, and refuses the whole build with
+`InvalidOperationException` when either changes. A failing build throws the exception the serial build would have thrown
+first, publishes nothing and leaves the caller's world and views usable. On a 576-column fixture, degree 12 spends 0.85
+to 0.93 of the serial CPU time per proof, about 8 to 10 times faster on a 12-core machine the bake has to itself.
+Wall-clock speedup on a shared machine follows each worker's CPU share, so bake contact navigation with the machine
+otherwise idle. See the [cost record](superpowers/plans/proofs/2026-10-14-parallel-contact-bake-cost.md) and the
+[slowdown record](superpowers/plans/proofs/2026-10-14-parallel-proof-slowdown.md) for the metrics and the Hollowmere
+extrapolation.
 
 ### Range steering, NPC stepping and client path commands
 
@@ -9148,8 +9188,14 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
   `SourceWorld`, `Origin` and process-local `GeometryGeneration`. `AssertCurrent()` rejects expired or
   wrong-thread use. Perform queries and publish pure state under the lease, then dispose it on its
   acquiring thread before changing physics. Same-thread writes and nested leases are refused, other
-  threads serialize behind the gate, and view disposal cannot invalidate an active interval. This does
+  threads' writes wait behind the gate, and view disposal cannot invalidate an active interval. This does
   not certify native environment residency or provide a cross-head world/bake identity.
+- Optional marker `IPhysicsConcurrentReadSource` declares that the exact receiver accepts simultaneous
+  read leases and queries from several threads. Bepu owners and their restricted views declare it: each
+  reader interval borrows private query scratch, nested reads on one thread never wait, and writers are
+  exclusive, run in arrival order and hold back new readers once queued. Forwarding wrappers stay serial
+  unless they declare it after auditing their own state. The read-path audit is in
+  `docs/verification/2026-10-14-bepu-concurrent-read-audit.md`.
 - Optional `IPhysicsCapsuleContacts.QueryCapsuleContacts(capsule, pose, maxSeparationMetres,
   destination, filter) -> CapsuleContactResult` gathers independent constraints, including positive
   separations within the margin. Check `Complete` and `CertifiedErrorMetres` before using the output.
@@ -10528,9 +10574,11 @@ version or the load fails. The engine's own steps are pre-registered: v1 to v2 d
 `terrainOverrides` placeholder, v2 to v3 stamps `tileSize` with `MapDocumentFile.DefaultTileSize`
 (512 m), v3 to v4 adds `playableBounds` from `bounds` when it is absent, and v4 to v5 stamps the
 `LegacyXzCallbackV1` support recipe. The v5 to v6 step (`MapWaterMigration.Upgrade`) adds no member.
-`MapDocumentFile.CurrentFormatVersion` is 6, and saving always writes it. Version and layout are independent
+The v6 to v7 step (`MapPrefabMigration.Upgrade`) clones input and changes only `formatVersion`.
+`MapDocumentFile.CurrentFormatVersion` is 7, and saving always writes it. Version and layout are independent
 axes, so a monolithic file at the current version is legal. Format 5 and the v4 to v5 step arrived in
-20.30.0. Format 6 adds optional bounded water in 20.32.0. Releases up to 20.29.1 write format 4.
+20.30.0. Format 6 adds optional bounded water in 20.32.0, and format 7 adds rigid prefabs and building intent
+in 20.40.0. Releases up to 20.29.1 write format 4.
 
 Format 6 moves every native root digest and every resolver-2 authored identity once, including documents
 without water. Rebuild caches and navigation captures keyed on them. Documents without water keep their
@@ -10542,6 +10590,61 @@ identity token changes exactly once at that format advance, with no continuity t
 recompute any stored token after the first load. That token change arrives with 20.30.0 too. Resolver-v1
 options, including the caller's `OptionsHash`, and resolver-v1 execution are unchanged. The authored-surface
 resolver version 2 is new in 20.30.0 and is opt-in through a document's resolver identity.
+
+### Free buildings and effective resources
+
+Format 7 adds optional `Prefabs`, `BuildingIntent` and `NativeResourceTransforms` root sections for resolver
+identity `(1, 2)` with `AuthoredBindingsV2`. Rigid prefab payload 1 has stable typed child keys, persisted
+world bindings and optional placement numeric IDs encoded as decimal int64 strings. A building can compose
+rooms, storeys, roof links/groups, lights, XYZ markers, local support, partial-face paint and bounded water.
+Free XYZ, yaw radians and finite positive uniform scale compose once. Parent-dependent rooms and water
+require explicit authored context. Nested prefabs, generated stairs and foundations are outside payload 1.
+
+Format 7 changes every native root digest and resolver-2 authored identity once, including documents without
+prefabs. Rebuild identity-keyed caches and navigation captures after migration. Resolver-1 execution and
+absent-section document hashing keep their released paths. The effective resource policy is
+`kemap/effective-resources/1`, with query policy 2 in authored, effective, scoped and world-build identities.
+
+```csharp
+using KhaozEngine.MapDoc.Prefabs;
+
+MapEffectiveResources resources = MapPrefabResolver.Expand(document, closure);
+var surfaceSource = resources.SurfaceSource;
+var lights = MapEffectiveAnnotations.Lights(resources);
+var markers = MapEffectiveAnnotations.Markers(resources);
+```
+
+These APIs are in `KhaozEngine.MapDoc.Prefabs`. Share this captured effective snapshot across support,
+geometry, water, membership and annotations. Acquire bounded views from its `SurfaceSource` and pair water
+with the matching effective set and view. Floor resources install before nullable-Y support sampling. A
+prefab-local support request transforms from the pre-seat frame, while a standalone request stays world-space.
+Paint clips inside unchanged canonical physical triangles and never creates a second floor owner. Expansion
+and composition refuse missing closure, unsupported work reporting and capacity overflow without partial facts.
+
+Typed Light and Support payloads begin with `resourceSchema`, valued `kemap/light-resource` or
+`kemap/support-resource`. Writers emit it first and closed decoders require it. Closure reads decode only
+marked bytes. Released opaque resources, including JSON, stay opaque. A prefab light or typed support consumer
+refuses opaque bytes clearly. Shared leaf resource pins remain distinct from prefab version addresses.
+
+A prefab resource keeps its logical asset ID and accepts either that ID or
+`prefab/<escaped-logical-id>/<sha256>`. The lowercase SHA-256 suffix must match its immutable bytes.
+`MapPrefabEdits.Prepare` and `MapInteriorEdits.Prepare` return detached validated after states and named write
+sets. MapEditor publishes them through `PrefabEditCommand`, `InteriorEditCommand` and `PrefabAssetEditCommand`.
+Unpack transfers live children with their IDs and precise poses, retaining removed-source reservations and
+materialized support/light pins. Extraction preserves explicit parent context and the requested origin.
+`PrefabService` edits detached assets, then publishes immutable bytes and a verified replacement closure before
+one accepted switch of every referring instance in the open complete map. Other maps retain their pins.
+
+Doors remain AuthoredOpen. `MapRoofPolicy` returns separate colour, shadow, camera-boom and sky-picking flags.
+Auto concealment uses occupied rooms and explicit links/groups, and leaves unlinked shelters visible. Hidden
+roofs still cast shadows and block sky picking, and never change physics statics. R8 owns rendering, cameras
+and local-light pixels. Live door state waits for [#1363](https://github.com/APKiwiOrg/KhaozEngine/issues/1363).
+Native controller walking and layered routes remain gated by G1b, #1355 and #438. Physical doorway clearance
+is headless R5 evidence. R9 owns the GUI host and real input, and R10 owns the remaining verb-map parity.
+
+See the [MapDoc reference](../KhaozEngine.MapDoc/README.md#rigid-prefab-payloads-and-building-intent),
+[headless world builder](../KhaozEngine.MapDoc.Physics/README.md#independent-synthetic-village-heads) and
+[ke-mapedit prefab workflow](../KhaozEngine.MapEdit.Tool/README.md#prefab-assets-and-native-history).
 
 ### Bounded water
 
@@ -10556,6 +10659,15 @@ interval only when the point's occupied space is covered, its XZ is in the body 
 XZ in ascending order. Samples name body, space, medium and boundary ids and distinguish a free surface
 from a closed ceiling, with ceiling ties closed. Missing, ambiguous, over-budget and unrepresentable
 geometry keep their failure status rather than becoming dry.
+
+For prefab water, pass the water set and view from the same `MapEffectiveResources` snapshot. Domains and local
+levels use the shared captured transform exactly once. Explicit covers include only their authored spaces, so
+parent water does not flood an uncovered room. Region and sample `Fragment` properties preserve occupied owners
+and both boundary provenances. `FragmentBounds` supplies conservative wet bounds, and
+`ClassifyFragment(fragmentId, point)` distinguishes repeated vertical fragments of one space.
+The space classifier returns `Unresolved` when fragment kinds disagree. `SampleExact(world)` uses exact membership
+and retains `ExactPoint`. Effective semantic geometry and digests remain wide, with bounded region triangles for
+drawing. Released unplaced R4 results and refusals stay unchanged.
 
 `MapWaterCompiler.Compile(view, water, limits)` emits exact free, closed and unresolved region triangles
 with per-body digests and counted work. `MapWaterCompileLimits.MaxBoundCells` counts bound-lattice slot
@@ -10823,11 +10935,14 @@ each tile's parsed content against its pinned tile hash. A removed tile file ref
 altered content with `Corrupt`.
 
 The `kemap/native-authored/2` token covers exactly the root digest, the authored content digest, ordered
-patch keys and semantic digests, the closure hash, the builder ID and version, the options hash and the
-resolver version. The content digest (`kemap/native-content/1`) covers placements, including explicit `Y`
+patch keys and semantic digests, the effective resource policy and query policy 2, the closure hash,
+the builder ID and version, the options hash and the resolver version. The content digest
+(`kemap/native-content/1`) covers placements, including explicit `Y`
 and `SupportBinding`, spawns, player spawns and sculpt tiles, normalized as scheme 1 normalizes them with
-placement display names stripped. `MapSurfaceSemantics.RootDigest` and scoped identity cover globals and
-surfaces only, never tile content. Repacking, embedding and incident bookkeeping do not change the token.
+placement display names stripped. `MapSurfaceSemantics.RootDigest` covers native globals, including format-7
+prefab and building intent,
+and surface metadata, never tile content. Scoped identity covers its acquired effective facts and policies.
+Repacking, embedding and incident bookkeeping do not change the token.
 Equivalent complete in-memory, monolithic, tiled and repacked documents share a token. Resolver 1 uses
 `MapAuthoredIdentity`.
 
@@ -10930,8 +11045,13 @@ triangles use the shared 2048 m vertex range and world-enclosure gates, with err
 checked per query. `LocalExtent` does not predict those footprint decisions, and one unsupported static in the column refuses
 the whole footprint query.
 
-**Refusals.** `MapAssetShapes.Read` throws `MapDocumentException` for an asset that declares a `Surface` (support)
-resource, since placement-local support surfaces arrive with R5. It also refuses a compound holding a triangle mesh,
+**Refusals.** `MapAssetShapes.Read` throws `MapDocumentException` for a support resource without a validated MapDoc
+payload, including an opaque resource that does not begin with `"resourceSchema":"kemap/support-resource"`. Support payload 1 installs in MapDoc before missing-Y sampling, and its lattice frames already declare
+metres. Physics consumes the captured transformed surfaces with canonical owners. Complete prefab and unpacked
+builds refuse room coverage findings and independently authored coincident floors, even without water.
+`MapBackendPoseAdapter` makes the frame-local binary32 approximation explicit and reports its error in metres.
+The pre/post `Affected` and `AffectedTiles` overloads retain removed owners and old tile captures.
+`Read` also refuses a compound holding a triangle mesh,
 a hull or mesh with no points and a payload with bytes after its shape. The `PropCollisionFormat` reader beneath it
 refuses non-finite or non-positive box and cylinder sizes, non-finite points and poses, a mesh index count that is
 not a multiple of 3 or an index outside the vertices, an empty compound, compound nesting deeper than 16 levels and
@@ -11292,7 +11412,8 @@ casting. Entries outside the selection or not exactly naming an authored selecte
 `ArgumentException` naming the ID. Selected archetypes sharing a catalog mesh reference or any resolved
 mesh part must agree on their effective style, including omitted defaults. Conflicts name both IDs.
 Styles are detached snapshots validated before submission and compared by value each draw. A changed
-selection or style, including an in-place map edit, invalidates affected splits. Removing a style restores
+selection or style, including an in-place map edit, invalidates only the splits that draw a changed
+archetype, and other splits keep their retained batches. Removing a style restores
 Blade motion and casting off. Short-cover maps do not override these styles.
 
 `FoliageMotionProfile(BendScale, MaxLean, WindScale, Shiver)` has these finite inclusive ranges:
@@ -12578,8 +12699,7 @@ center and uses that center if no enabled spawn is found. `map_save` always writ
 document came from (`MapDocumentFile.SaveAuto`), never converting implicitly. `window_status` reports the
 loaded window's tile and world rect plus the occupied/loaded tile counts (`Tiled` false for a monolithic
 document). `set_window(minX, minZ, maxX, maxZ, discard?)` moves the window: it refuses with unsaved
-changes unless `discard` is passed, and on success discards whatever was loaded before (this session keeps
-no undo stack across calls, so there is nothing to replay) and reloads fresh from the manifest. Writing
+changes unless `discard` is passed, and on success clears native history and reloads fresh from the manifest. Writing
 content that moved into a tile the window never loaded throws a precise `MapDocumentException` naming the
 item and the target tile rather than silently dropping it, the same guard `SaveTiled` states on the
 document itself. `convert_to_tiled(directory)` / `convert_to_single(path)` change the on-disk FORM
@@ -12592,6 +12712,14 @@ outside the reserved namespace, and is refused only when that directory already 
 re-saves: `tileSize` IS part of world identity (`MapDocumentHash.OfWorld`), so this changes the world hash
 on purpose, and the result's `Warning` states the before/after digests plainly rather than leaving a caller
 to notice a coordinated client/server release is now needed.
+
+**Prefab authoring and history.** Native sessions retain one history for placement, terrain, water,
+prefab, interior, generic callback and collider-root edits. `prefab_undo` and `prefab_redo` restore the
+captured document and matching verified closure. Save preserves history. Successful open, window
+replacement, conversion and retile clear it. Rejected publication changes no history or dirty state.
+`PrefabService` edits detached local asset sessions and publishes digest-addressed immutable versions
+before one complete map switch. Other maps and materialized leaf pins retain their old bytes. See the
+[ke-mapedit prefab workflow](../KhaozEngine.MapEdit.Tool/README.md#prefab-assets-and-native-history).
 
 **Validation scope.** `map_validate()` validates the document structure and schema, including each loaded
 tile of a windowed document against the tile schema. `SchemaScope` reports `document`, `loadedTiles`, or
@@ -12607,7 +12735,7 @@ the MCP boundary as raw JSON strings parsed with the open document's own seriali
 typed parameters. A lake feature: `{"type": "lake", "centerX": 34, "centerZ": -14, "radius": 22,
 "depth": 6}`. A disc shape: `{"type": "disc", "centerX": 0, "centerZ": 0, "radius": 26}`.
 
-**Verb surface (78 tools).**
+**Verb surface (92 tools).**
 
 | Group | Verbs |
 |---|---|
@@ -12622,6 +12750,8 @@ typed parameters. A lake feature: `{"type": "lake", "centerX": 34, "centerZ": -1
 | Sculpt | `sculpt_apply`, `sculpt_flatten_region`, `sculpt_clear` |
 | Duplicate | `element_duplicate` |
 | Renders | `render_topdown`, `render_view` |
+| Prefabs | `prefab_open`, `prefab_edit`, `prefab_save`, `prefab_extract`, `prefab_place`, `prefab_list`, `prefab_override`, `prefab_unpack`, `prefab_undo`, `prefab_redo` |
+| Interiors | `interior_volume_add`, `interior_volume_set`, `interior_volume_remove`, `roof_link_set` |
 
 `sculpt_apply(brush, x, z, radius, strength, dt, targetHeight?)` applies one terrain-sculpt brush dab
 (`raise`/`lower`/`smooth`/`flatten`/`set_height`) at a world point as a single `TerrainSculptStrokeCommand`
@@ -12746,7 +12876,7 @@ maximum fall speed and swim-enter depth fraction, a non-Legacy water policy, reg
 with query leases, capsule contacts, complete support footprints and certified capsule sweeps. A medium
 delegate requires a field. Public explicit configuration governs its own water policy and rejects conflicting
 tuning water. Contact plus public explicit configuration is refused as two selections.
-Phase 5a is released in 20.37.0. Phase 5b ground navigation is staged in 20.39.0.
+Phase 5a is released in 20.37.0. Phase 5b ground navigation is released in 20.39.0.
 
 The retained `MoveCommand(move, run, cameraYaw, jump, faceCamera)` constructor and `default(MoveCommand)` leave
 `ScaleSpeedByAxis` false. They keep nonzero player axes normalized to full speed and keep the legacy dead zone. The

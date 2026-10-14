@@ -34,6 +34,11 @@ public partial class ArchitectureTests
         IReadOnlyDictionary<string, Project> graph = LoadGraph();
         Assert.DoesNotContain(graph.Values, p => p.ProjectRefs.Contains(Harness));
         Assert.False(graph[Harness].IsPackableLibrary);
+        Assert.Equal(new[]
+        {
+            "KhaozEngine.MapDoc", "KhaozEngine.MapDoc.Physics", "KhaozEngine.Physics.Bepu",
+            "KhaozEngine.TileWorld", "KhaozEngine.TileWorld.Physics",
+        }, graph[Harness].ProjectRefs.OrderBy(name => name, StringComparer.Ordinal));
         Assert.Contains(XDocument.Load(Path.Combine(RepoRoot(), Harness, Harness + ".csproj")).Root!.Descendants("IsPackable"),
             e => string.Equals((string?)e, "false", StringComparison.OrdinalIgnoreCase));
     }

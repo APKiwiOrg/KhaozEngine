@@ -54,7 +54,9 @@ Pulls in:
 - `KhaozEngine.MapDoc` - the zone/map document format: load/save/validate/migrate a versioned JSON model
   (terrain with parametric features, scatter and companion layers, exclusion/override shapes, authored
   placements, spawns, regions) plus `MapRuntime` builders that produce the exact `TerrainField`/
-  `ScatterConfig`/`PropPlacement` objects games consume.
+  `ScatterConfig`/`PropPlacement` objects games consume. Native format 7 also carries rigid prefab payload 1,
+  effective support/paint/water, rooms, storeys, roof intent, lights and markers with pure edit preparation.
+  The headless physics builder and authoring tools remain explicit opt-ins.
 - `KhaozEngine.TileWorld` - the OSRS-style tile world document: 64x64 tile regions with stacked planes, a
   global tile-corner height lattice, ground/overlay materials and settings flags, tile-anchored objects and
   named markers, a hash-checked directory file form, catalogs, a validator, the derived per-edge collision

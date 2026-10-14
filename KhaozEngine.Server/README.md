@@ -5,6 +5,10 @@ code, it is a curated dependency group: one `<PackageReference>` gives an author
 server or tool the GPU-free foundation plus the full netcode and MMO server stack. Pulls in NO
 graphics, windowing, audio, or GPU, so the server stays lean.
 
+Format-7 MapDoc and GPU-free prefab/interior preparation arrive through `Foundation`. Add `MapDoc.Physics`
+and a physics backend explicitly to build and install the same effective native resources as a client.
+The editor and ke-mapedit remain separate authoring tools, and native movement adoption keeps its G1b gates.
+
 Pulls in:
 
 - `KhaozEngine.Foundation` - the GPU-free foundation umbrella (ECS, serialization, content,

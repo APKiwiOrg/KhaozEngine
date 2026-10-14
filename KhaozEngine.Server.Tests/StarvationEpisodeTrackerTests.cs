@@ -14,9 +14,29 @@ public class StarvationEpisodeTrackerTests
     private static readonly DateTime T0 = new(2026, 9, 23, 0, 0, 0, DateTimeKind.Utc);
     private static readonly PoolCounters Quiet = default;
 
-    private static StarvationEpisodeTracker New() => new(Episode, Dump);
+    private static StarvationEpisodeTracker New() => new(Episode, Dump, captureDump: true);
 
     private static TimeSpan Ms(int ms) => TimeSpan.FromMilliseconds(ms);
+
+    [Theory]
+    [InlineData(3000)]
+    [InlineData(10000)]
+    public void The_default_watch_logs_sustained_episodes_without_requesting_a_dump(int probeMs)
+    {
+        var tracker = new StarvationEpisodeTracker(Episode, Dump);
+        var atPeak = new PoolCounters(12, 90, 1234);
+
+        Assert.False(tracker.Observe(T0.AddSeconds(3), Ms(3000), probeCompleted: false, atPeak).CaptureDump);
+        Assert.False(tracker.Observe(T0.AddSeconds(10), Ms(probeMs), probeCompleted: false, atPeak).CaptureDump);
+        StarvationObservation recovered = tracker.Observe(T0.AddSeconds(11), Ms(1), probeCompleted: true, Quiet);
+
+        StarvationEpisode closed = Assert.IsType<StarvationEpisode>(recovered.Closed);
+        Assert.Equal(T0, closed.StartUtc);
+        Assert.Equal(Ms(probeMs), closed.PeakLatency);
+        Assert.Equal(atPeak, closed.CountersAtPeak);
+        Assert.Null(tracker.Open);
+        Assert.False(tracker.Observe(T0.AddSeconds(31), Ms(20000), probeCompleted: false, Quiet).CaptureDump);
+    }
 
     [Fact]
     public void Readings_under_the_threshold_open_nothing_and_ask_for_nothing()

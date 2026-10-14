@@ -8,11 +8,12 @@ using KhaozEngine.Physics;
 
 namespace KhaozEngine.Movement;
 
-/// <summary>One profile's leased admission and directed traversal at certified resting feet.</summary>
+/// <summary>One profile's leased admission and directed traversal at certified resting feet. The serial build reads
+/// its live context frame. A parallel worker reads the build snapshot instead and never touches the context.</summary>
 internal sealed class ContactNavigationProof : IDisposable
 {
     readonly PhysicsNavBake _bake;
-    readonly GroundMoveContext _context;
+    readonly GroundMoveContext? _context;
     readonly PhysicsNavCaptureBasis _basis;
     readonly EffectiveMovementBinding _proof;
     readonly MovementFrameDescriptor _frame;
@@ -40,6 +41,28 @@ internal sealed class ContactNavigationProof : IDisposable
         }
         catch { _proof?.Dispose(); throw; }
     }
+
+    /// <summary>A parallel worker's proof over <paramref name="snapshot"/>. The build validated the envelope once.
+    /// The first lease is authenticated against the snapshot before any work starts.</summary>
+    internal ContactNavigationProof(PhysicsNavBake bake, ContactNavigationSnapshot snapshot,
+        EffectiveMovementBinding source, NavAreaFootprint footprint)
+    {
+        _bake = bake;
+        _basis = snapshot.Basis;
+        try
+        {
+            _proof = source.CreateProofBinding();
+            _frame = snapshot.Frame;
+            _scope = _proof.CreateOrdinaryScope(_frame);
+            _footprint = footprint;
+            using var queries = Acquire(new(bake.Options.MinX, 0, bake.Options.MinZ));
+            snapshot.Authenticate(queries);
+        }
+        catch { _proof?.Dispose(); throw; }
+    }
+
+    /// <summary>The raw feet this proof admitted, each with its resting height.</summary>
+    internal IReadOnlyDictionary<Vector3, float> Anchors => _anchors;
 
     internal bool Admit(Vector3 rawFeet, float headroom, float nextSurface)
     {
@@ -77,7 +100,9 @@ internal sealed class ContactNavigationProof : IDisposable
         bool grounded, bool hasFooting) => outcome == MovementStepOutcome.Advanced && grounded && hasFooting &&
         GroundTraversalProbe.Near(settledFeet, anchorFeet);
 
-    internal NavSpace WithRestingHeights(NavSpace space)
+    internal NavSpace WithRestingHeights(NavSpace space) => WithRestingHeights(space, _anchors);
+
+    internal static NavSpace WithRestingHeights(NavSpace space, IReadOnlyDictionary<Vector3, float> anchors)
     {
         var layers = new NavGrid[space.Layers.Count];
         for (int layer = 0; layer < layers.Length; layer++)
@@ -90,7 +115,7 @@ internal sealed class ContactNavigationProof : IDisposable
                     if (grid.ClearanceAt(x, z) == 0) continue;
                     int cell = z * grid.Width + x;
                     Vector2 centre = grid.CellCenter(x, z);
-                    heights[cell] = _anchors[new(centre.X, heights[cell], centre.Y)];
+                    heights[cell] = anchors[new(centre.X, heights[cell], centre.Y)];
                 }
             layers[layer] = grid.WithRestingHeights(heights);
         }
@@ -148,8 +173,11 @@ internal sealed class ContactNavigationProof : IDisposable
 
     MovementQueryLease Acquire(Vector3 cell)
     {
-        _ = _bake.Context;
-        if (_context.NavigationFrame != _frame) throw Failure(cell, "The navigation frame changed.");
+        if (_context is not null)
+        {
+            _ = _bake.Context;
+            if (_context.NavigationFrame != _frame) throw Failure(cell, "The navigation frame changed.");
+        }
         MovementAvailability availability = _proof.TryAcquire(_scope, out var queries);
         if (availability != MovementAvailability.Known || queries is null)
             throw Failure(cell, $"Movement lease acquisition returned {availability}.");

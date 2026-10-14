@@ -12,8 +12,11 @@ namespace KhaozEngine.TileWorld.Physics;
 /// <para>Every water tile's surface is collected once into a per-tile table, so a call is one lookup with no search
 /// and no allocation. The table is a snapshot of the document it was built from, so a document edited after
 /// <see cref="TileWorldColliders.Build(TileWorldDocument, TileWorldCatalogs, TileColliderOptions?)"/> needs a rebuild.</para>
-/// <para>The table is read-only after construction, so several threads may call the sampler at once as long as
-/// nothing edits the document meanwhile.</para>
+/// <para>The table and the water field are read-only after construction, so several threads may call the sampler at
+/// once. The field's columns, boundaries and index are immutable, and a trace writes only bounded per-thread scratch.
+/// <see cref="SampleCentreWater"/>, <see cref="TraceWater"/>, <see cref="SemanticIdentity"/>, <see cref="Generation"/>,
+/// <see cref="Extent"/>, <see cref="MediumAt"/> and <see cref="MediumDelegate"/> are endorsed providers for a parallel
+/// contact navigation bake.</para>
 /// </summary>
 public sealed partial class TileMediumSampler : IMovementWaterField
 {

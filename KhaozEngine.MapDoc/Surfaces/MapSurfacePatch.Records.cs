@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.MapDoc.Spaces;
+using KhaozEngine.MapDoc.Water;
 
 namespace KhaozEngine.MapDoc.Surfaces;
 
@@ -30,6 +31,14 @@ public sealed partial class MapSurfacePatch
                     Walls = space.Walls.ToArray(),
                     Portals = space.Portals.ToArray(),
                     Links = space.Links.ToArray(),
+                },
+                MapPrismDomain prism => prism with
+                {
+                    Footprint = prism.Footprint with
+                    {
+                        Rects = prism.Footprint.Rects.ToArray(),
+                        Rings = prism.Footprint.Rings.Select(r => r with { Vertices = r.Vertices.ToArray() }).ToArray(),
+                    },
                 },
                 MapSpaceFootprint footprint => footprint with { SlotCells = footprint.SlotCells.ToArray() },
                 _ => throw new MapDocumentException("unknown topology record type"),

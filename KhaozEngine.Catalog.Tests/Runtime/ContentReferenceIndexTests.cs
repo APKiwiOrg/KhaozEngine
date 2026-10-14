@@ -87,15 +87,15 @@ public sealed class ContentReferenceIndexTests
             Assert.True(field.FieldType.IsArray, $"{field.Name} retains {field.FieldType} instead of a built array");
         });
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
         int checksum = 0;
-        for (int i = 0; i < 1_000; i++)
+        long allocated = AllocationMeasurement.Measure("1000 reference index reads", () =>
         {
-            ReadOnlySpan<int> ids = references.Ids(Item, 5, Food);
-            checksum += ids[0] + ids[1] + ids[2];
-        }
-
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            for (int i = 0; i < 1_000; i++)
+            {
+                ReadOnlySpan<int> ids = references.Ids(Item, 5, Food);
+                checksum += ids[0] + ids[1] + ids[2];
+            }
+        });
         Assert.Equal(60_000, checksum);
         Assert.Equal(0, allocated);
     }

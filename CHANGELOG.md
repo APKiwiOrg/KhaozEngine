@@ -13,6 +13,11 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   are refused before anything changes. Each read interval borrows private Bepu allocation scratch, and installed
   support geometry is published once per owner and geometry version. Worlds and their restricted views declare
   the new `IPhysicsConcurrentReadSource` marker, and `IPhysicsQueryLeaseSource` is unchanged.
+- The four SQL Server backends (`Accounts.SqlServer`, `Catalog.SqlServer`, `Commerce.SqlServer` and
+  `WorldStore.SqlServer`) now reference `System.Security.Cryptography.Pkcs` 9.0.21 directly. That overrides the
+  vulnerable 9.0.11 that `Microsoft.Data.SqlClient` 6.1.6 pulls in (GHSA-846f-f764-76mx, high, and
+  GHSA-2fmv-rv2c-59x7, moderate), so Release restore passes the NuGet audit again (#1407). The override goes
+  once SqlClient references a patched Pkcs itself.
 
 ## 20.39.0
 

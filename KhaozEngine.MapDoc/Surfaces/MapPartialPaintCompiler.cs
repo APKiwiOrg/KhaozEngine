@@ -35,9 +35,10 @@ public static class MapPartialPaintCompiler
         { throw new MapDocumentException("NotRepresentable: paint intersection cannot be emitted exactly. No regions were published.", error); }
     }
 
-    // Work follows painted area. Paint sources compile first. Only target cells whose exact lattice rectangle meets a
-    // source's bounds are counted and compiled, then an exact bounds sweep gives each target face its candidate sources
-    // in source order. A pair check is charged per candidate, never per face and source of the whole target.
+    // Work follows painted area. Paint sources compile first. Only target cells whose exact lattice rectangle openly
+    // overlaps a source's bounds are counted and compiled, then an exact bounds sweep gives each target face its
+    // candidate sources in source order. A pair check is charged per candidate, never per face and source of the whole
+    // target. Slab, conflict and occlusion checks charge the same counter.
     static MapPaintRegionSet CompileCore(MapScopedSurfaces view, MapSurfaceRef target, MapSurfaceRef[] paints, MapRefinementLimits limits)
     {
         var work = new Work(limits);
@@ -60,9 +61,11 @@ public static class MapPartialPaintCompiler
             .SelectMany(group => PaintSources(view, group.Key, group.Select(p => p.Geometry), work))
             .OrderByDescending(p => p.Priority).ThenBy(p => p.Id, StringComparer.Ordinal).ThenBy(p => p.Material.Face).ToArray();
         var sourceBounds = source.Select(p => MapWaterPolygons.Bounds.Of(p.Polygon)).ToArray();
-        var cells = TargetCells(view, target, sourceBounds, present.Where(k => k.SurfaceId == target.Id).ToArray());
-        work.Require(paintKeys.Length + cells.Count <= limits.MaxContextPatches, "context patches");
-        var targets = cells.Select(entry => (Patch: Acquired(view, entry.Key), Cells: entry.Value)).ToArray();
+        // The cell filter refuses at the first hit target slot past the patch allowance, before marking it.
+        var cells = TargetCells(view, target, sourceBounds, present.Where(k => k.SurfaceId == target.Id).ToArray(),
+            limits.MaxContextPatches - paintKeys.Length);
+        work.Require(cells is not null && paintKeys.Length + cells.Count <= limits.MaxContextPatches, "context patches");
+        var targets = cells!.Select(entry => (Patch: Acquired(view, entry.Key), Cells: entry.Value)).ToArray();
         long targetCount = targets.Sum(p => MapSurfaceCompiler.CountFaces(target, p.Patch, p.Cells));
         work.Require(targetCount <= limits.MaxSourceFacesPerBound, "source faces");
         work.Require(targetCount + paintCount <= limits.MaxContextFaces, "context faces");
@@ -71,9 +74,11 @@ public static class MapPartialPaintCompiler
             var geometry = MapEffectiveGeometry.TransformPatch(view, MapSurfaceCompiler.Compile(target, p.Patch, p.Cells, MapSurfaceCompiler.MaxFacesPerPatch));
             return geometry.Faces.Select(face => (Face: face, Triangle: geometry.ExactTriangle(face)));
         }).Select(f => (f.Face, f.Triangle, Parent: Polygon(f.Triangle))).ToArray();
-        var pairs = MapWaterBoundsSweep.Cross(faces.Select(f => MapWaterPolygons.Bounds.Of(f.Parent)).ToArray(), sourceBounds);
+        // Every candidate is charged below, so more candidates than the remaining allowance refuse before listing them.
+        var pairs = MapWaterBoundsSweep.Cross(faces.Select(f => MapWaterPolygons.Bounds.Of(f.Parent)).ToArray(), sourceBounds, work.RemainingPairs);
+        work.Require(pairs is not null, "pair checks");
         var regions = new List<MapPaintRegion>();
-        for (int next = 0; next < pairs.Count;)
+        for (int next = 0; next < pairs!.Count;)
         {
             int index = pairs[next].Left;
             var (face, triangle, parent) = faces[index];
@@ -218,39 +223,59 @@ public static class MapPartialPaintCompiler
         view.TryAcquiredPatch(key, out var patch, out _) && patch is not null ? patch
             : throw new MapDocumentException("MissingGeometry: paint or target patch unavailable.");
 
-    // Present target patches in key order, each with its cells whose exact lattice rectangle overlaps some source's
-    // bounds. Patches without such a cell are never read or counted. A posed target keeps every cell, because its
-    // lattice is reached only through the rounded pose, so the exact face sweep alone culls it.
-    static List<KeyValuePair<MapPatchKey, MapSlotCellMask>> TargetCells(MapScopedSurfaces view, MapSurfaceRef target,
-        IReadOnlyList<MapWaterPolygons.Bounds> sources, IReadOnlyList<MapPatchKey> keys)
+    // Present target patches in key order, each with its cells whose exact lattice rectangle openly overlaps some
+    // source's bounds. Patches without such a cell are never read or counted. A posed target keeps every cell, because
+    // its lattice is reached only through the rounded pose, so the exact face sweep alone culls it.
+    static IReadOnlyList<KeyValuePair<MapPatchKey, MapSlotCellMask>>? TargetCells(MapScopedSurfaces view, MapSurfaceRef target,
+        IReadOnlyList<MapWaterPolygons.Bounds> sources, IReadOnlyList<MapPatchKey> keys, int maxSlots) =>
+        view.EffectiveContext?.Transform(MapPrefabChildKind.Surface, target.Id) is not null
+            ? keys.Select(key => KeyValuePair.Create(key, MapSlotCellMask.All)).ToList()
+            : CandidateCells(target.Frame, sources, keys, maxSlots);
+
+    /// <summary>The cells of the present slots <paramref name="keys"/> whose exact lattice rectangle openly overlaps a
+    /// source's bounds, in key order. Null, with no partial result, once more than <paramref name="maxSlots"/> distinct
+    /// slots are hit. A source visits only the present slots in its range, and each hit slot costs one OR per row.</summary>
+    internal static IReadOnlyList<KeyValuePair<MapPatchKey, MapSlotCellMask>>? CandidateCells(MapLatticeFrame frame,
+        IReadOnlyList<MapWaterPolygons.Bounds> sources, IReadOnlyList<MapPatchKey> keys, int maxSlots)
     {
-        if (view.EffectiveContext?.Transform(MapPrefabChildKind.Surface, target.Id) is not null)
-            return keys.Select(key => KeyValuePair.Create(key, MapSlotCellMask.All)).ToList();
-        var slots = keys.ToDictionary(key => (key.SlotX, key.SlotZ), _ => new HashSet<int>());
+        var rows = keys.GroupBy(key => key.SlotZ).OrderBy(g => g.Key)
+            .Select(g => (Z: g.Key, X: g.Select(key => key.SlotX).Distinct().Order().ToArray())).ToArray();
+        long[] rowZ = rows.Select(r => r.Z).ToArray();
+        var hit = new Dictionary<(long SlotX, long SlotZ), ulong[]>();
         foreach (var bounds in sources)
         {
-            var range = MapLatticeRanges.CellRange(target.Frame, new(Whole(bounds.Min.X, false), Whole(bounds.Min.Z, false)),
+            var range = MapLatticeRanges.CellRange(frame, new(Whole(bounds.Min.X, false), Whole(bounds.Min.Z, false)),
                 new(Whole(bounds.Max.X, true), Whole(bounds.Max.Z, true)));
             if (range.MaxXExclusive <= range.MinX || range.MaxZExclusive <= range.MinZ) continue;
             long minX = MapSurfaceRanges.Floor(range.MinX, 64), maxX = MapSurfaceRanges.Floor(range.MaxXExclusive - 1, 64);
             long minZ = MapSurfaceRanges.Floor(range.MinZ, 64), maxZ = MapSurfaceRanges.Floor(range.MaxZExclusive - 1, 64);
-            // Visit the fewer of the slots the range spans and the present target slots.
-            var hit = (maxX - minX + 1) * (double)(maxZ - minZ + 1) <= slots.Count
-                ? Spanned(minX, maxX, minZ, maxZ).Where(slots.ContainsKey)
-                : slots.Keys.Where(s => s.SlotX >= minX && s.SlotX <= maxX && s.SlotZ >= minZ && s.SlotZ <= maxZ);
-            foreach (var (slotX, slotZ) in hit)
-                for (long z = Math.Max(range.MinZ, slotZ * 64); z < Math.Min(range.MaxZExclusive, slotZ * 64 + 64); z++)
-                    for (long x = Math.Max(range.MinX, slotX * 64); x < Math.Min(range.MaxXExclusive, slotX * 64 + 64); x++)
-                        slots[(slotX, slotZ)].Add((int)((z - slotZ * 64) * 64 + x - slotX * 64));
+            for (int zi = LowerBound(rowZ, minZ); zi < rowZ.Length && rowZ[zi] <= maxZ; zi++)
+            {
+                long slotZ = rowZ[zi], originZ = slotZ * 64;
+                int z0 = (int)(Math.Max(range.MinZ, originZ) - originZ), z1 = (int)(Math.Min(range.MaxZExclusive, originZ + 64) - originZ);
+                long[] xs = rows[zi].X;
+                for (int xi = LowerBound(xs, minX); xi < xs.Length && xs[xi] <= maxX; xi++)
+                {
+                    long slotX = xs[xi], originX = slotX * 64;
+                    if (!hit.TryGetValue((slotX, slotZ), out var mask))
+                    {
+                        if (hit.Count >= maxSlots) return null;
+                        hit.Add((slotX, slotZ), mask = new ulong[64]);
+                    }
+                    int x0 = (int)(Math.Max(range.MinX, originX) - originX), x1 = (int)(Math.Min(range.MaxXExclusive, originX + 64) - originX);
+                    ulong span = (x1 - x0 == 64 ? ulong.MaxValue : (1UL << (x1 - x0)) - 1) << x0;
+                    for (int z = z0; z < z1; z++) mask[z] |= span;
+                }
+            }
         }
-        return keys.Where(key => slots[(key.SlotX, key.SlotZ)].Count != 0)
-            .Select(key => KeyValuePair.Create(key, MapSlotCellMask.Of(slots[(key.SlotX, key.SlotZ)]))).ToList();
+        return keys.Where(key => hit.ContainsKey((key.SlotX, key.SlotZ)))
+            .Select(key => KeyValuePair.Create(key, MapSlotCellMask.FromRows(hit[(key.SlotX, key.SlotZ)]))).ToList();
     }
 
-    static IEnumerable<(long SlotX, long SlotZ)> Spanned(long minX, long maxX, long minZ, long maxZ)
+    static int LowerBound(long[] sorted, long value)
     {
-        for (long z = minZ; z <= maxZ; z++)
-            for (long x = minX; x <= maxX; x++) yield return (x, z);
+        int index = Array.BinarySearch(sorted, value);
+        return index < 0 ? ~index : index;
     }
 
     // An exact bound, or the enclosing whole metre when the generated vertex is not representable.
@@ -328,6 +353,7 @@ public static class MapPartialPaintCompiler
         internal void Require(bool condition, string detail)
         { if (!condition) throw new MapDocumentException("CapacityExceeded: paint " + detail + " budget exceeded."); }
         internal void Pair() => Require(++_pairs <= limits.MaxPairChecks, "pair checks");
+        internal long RemainingPairs => Math.Max(0, limits.MaxPairChecks - _pairs);
         internal void Source(int vertices)
         {
             _sourceVertices += vertices;

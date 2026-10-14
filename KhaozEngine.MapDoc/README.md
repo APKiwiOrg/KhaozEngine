@@ -197,13 +197,15 @@ compile. Those two context values are proposed operational defaults, not world l
 Declared seam and strip vertex sequences stay strict. Refinement never waives a matching subdivision.
 
 **Broad-phase budgets.** `MapPartialPaintCompiler` charges `MapRefinementLimits` pair checks per broad-phase
-candidate, a target face and paint source whose exact bounds overlap, found by an exact bounds sweep. Work
-therefore follows the painted area, not the whole target surface. Only target cells whose exact lattice rectangle
-meets some paint source's bounds are counted against the source and context face limits, from cell bytes before
-any compile. A posed target keeps every cell and relies on the exact face sweep alone. `MapPrismCoverage` and the
-room stage of the occupied partition count the same way. A pair check is a parent piece and room convex part, or
-two peer pieces, whose exact bounds overlap, so a room is charged only for the pieces near it. The visiting order
-is unchanged, so findings and their sorted order are too.
+candidate, a target face and paint source whose exact bounds openly overlap, found by an exact bounds sweep. Its
+slab, conflict and occlusion checks are charged to the same pair counter. Work therefore follows the painted area,
+not the whole target surface. Paint patches are counted from cell bytes and compiled first. Only target cells whose
+exact lattice rectangle openly overlaps some paint source's bounds are then counted against the source and context
+face limits, from cell bytes before any target compile. The context patch limit refuses at the first hit target
+slot past it, before that slot is marked. A posed target keeps every cell and relies on the exact face sweep alone.
+`MapPrismCoverage` and the room stage of the occupied partition count the same way. A pair check is a parent piece
+and room convex part, or two peer pieces, whose exact bounds openly overlap, so a room is charged only for the
+pieces near it. The visiting order is unchanged, so findings and their sorted order are too.
 
 **Legacy lower coverage.** Only a lower bound of kind `MapBoundKind.LegacyExteriorV1`, in an `Exterior`
 space with an `OpenTop` upper bound, may cover a presence-1 `LegacyTileWorld` void or NoDraw cell.

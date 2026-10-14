@@ -124,6 +124,9 @@ public class MapWaterPolygonTests
         Assert.Equal(expected, MapWaterBoundsSweep.Cross(left, right));
         Assert.Equal(expected.Select(p => (p.Item2, p.Item1)).Order(), MapWaterBoundsSweep.Cross(right, left));
         Assert.Empty(MapWaterBoundsSweep.Cross(left, []));
+        // A result cap equal to the overlap count admits the input, one less refuses it with no partial result.
+        Assert.Equal(expected, MapWaterBoundsSweep.Cross(left, right, expected.Count)!);
+        Assert.Null(MapWaterBoundsSweep.Cross(left, right, expected.Count - 1));
     }
 
     [Fact]

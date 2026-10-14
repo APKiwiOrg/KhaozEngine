@@ -49,8 +49,26 @@ public sealed class MapPrefabPaintScaleTests
 
         var error = Assert.Throws<MapDocumentException>(() => PrefabFixtures.Effective(f));
 
-        Assert.Contains("CapacityExceeded", error.Message);
-        Assert.Contains("pair checks", error.Message);
+        Assert.Contains("CapacityExceeded: paint pair checks", error.Message);
+    }
+
+    // Quarter metre cells from slot -1, so slots are 16 m wide. One footprint lies in the negative slot, one straddles
+    // the seam at x 0 and one straddles the seam at x 16. The digest was recorded from the compiler before the broad
+    // phase with a raised pair budget, and the default budget must publish the same regions.
+    [Fact]
+    public void SeamAndNegativeSlotPaint_KeepsItsRecordedRegions()
+    {
+        var sites = new Vector3[] { new(-8.25f, 9, -0.25f), new(-0.75f, 9, -0.25f), new(15.25f, 9, -0.25f) };
+        var resources = PrefabFixtures.Effective(PrefabFixtures.ScatteredPaint(sites, 1, regions: 4, depth: 12, new(1, 4), firstSlot: -1));
+
+        var raised = MapPartialPaintCompiler.Compile(resources.CompleteView(), "ground", new MapRefinementLimits(MaxPairChecks: 1 << 22));
+
+        Assert.Equal(603, raised.Regions.Count);
+        Assert.Equal("abe996c117a5d64e2ca289b912c3fe5d95265d0a75c25f8cc38b3a7a2464c37a", raised.Digest);
+        Assert.Equal(raised.Digest, resources.PaintRegions["ground"].Digest);
+        Assert.Equal(new[] { "a/paint", "copy1/paint", "copy2/paint" }, raised.Regions.Select(r => r.PaintId).Distinct().Order(StringComparer.Ordinal));
+        Assert.Contains(raised.Regions, r => r.Face.Patch!.Value.SlotX == -1);
+        Assert.Contains(raised.Regions, r => r.Face.Patch!.Value.SlotX == 1);
     }
 
     // Digests recorded from the compiler before the broad phase. Region order and every exact vertex are unchanged.

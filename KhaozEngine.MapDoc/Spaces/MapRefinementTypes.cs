@@ -5,7 +5,12 @@ namespace KhaozEngine.MapDoc.Spaces;
 
 public enum MapRefinementStatus { Complete, CapacityExceeded, NotRepresentable, Invalid, MissingGeometry }
 
-/// <summary>The context defaults are configurable operational query budgets counted from cell bytes before compilation, not world limits or byte caps.</summary>
+/// <summary>The context defaults are configurable operational query budgets, not world limits or byte caps. Face and
+/// patch counts come from cell bytes before the counted geometry compiles. Partial paint compiles its paint patches
+/// first, then counts only target cells whose exact rectangle openly overlaps a paint source, before any target
+/// compile. Pair checks count exact tests. Partial paint and room coverage charge one per broad-phase candidate whose
+/// exact bounds openly overlap, and partial paint also charges its slab, conflict and occlusion checks to the same
+/// counter.</summary>
 public sealed record MapRefinementLimits(int MaxSourceFacesPerBound = 16_384, int MaxPairChecks = 65_536,
     int MaxRefinementFaces = 32_768, int MaxRefinementVertices = 131_072,
     int MaxContextPatches = 256, int MaxContextFaces = 262_144);

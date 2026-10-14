@@ -72,12 +72,18 @@ internal static class MapWaterBoundsSweep
         }
     }
 
+    /// <summary>Every cross pair whose bounds overlap. See the capped overload.</summary>
+    internal static IReadOnlyList<(int Left, int Right)> Cross(IReadOnlyList<MapWaterPolygons.Bounds> left,
+        IReadOnlyList<MapWaterPolygons.Bounds> right) => Cross(left, right, long.MaxValue)!;
+
     /// <summary>Pairs of one left and one right box whose bounds overlap with positive extent on both axes, sorted by
     /// left index and then right index. Boxes of one list are never compared with each other. Work is proportional to
     /// the boxes plus the cross pairs whose bounds overlap or touch. Callers charge each returned candidate before its
-    /// exact test, so the comparisons here stay uncharged. Every decision is an exact comparison.</summary>
-    internal static IReadOnlyList<(int Left, int Right)> Cross(IReadOnlyList<MapWaterPolygons.Bounds> left,
-        IReadOnlyList<MapWaterPolygons.Bounds> right)
+    /// exact test, so the comparisons here stay uncharged. Every decision is an exact comparison. A caller that charges
+    /// every returned pair passes its remaining allowance as <paramref name="cap"/>. More pairs than that return null,
+    /// with no partial result, before the list grows past the allowance.</summary>
+    internal static IReadOnlyList<(int Left, int Right)>? Cross(IReadOnlyList<MapWaterPolygons.Bounds> left,
+        IReadOnlyList<MapWaterPolygons.Bounds> right, long cap)
     {
         var result = new List<(int Left, int Right)>();
         int n = left.Count, total = n + right.Count;
@@ -120,9 +126,9 @@ internal static class MapWaterBoundsSweep
             // Active boxes of the other list that start inside the current Z range, then those that start below it.
             if (high[index] - 1 >= low[index])
                 foreach ((int _, int candidate) in byLow[other].GetViewBetween((low[index], int.MinValue), (high[index] - 1, int.MaxValue)))
-                    if (At(candidate).OverlapsOpen(current)) Add(candidate, index);
+                    if (At(candidate).OverlapsOpen(current) && !Add(candidate, index)) return null;
             foreach (int candidate in stab[other].Stab(low[index]))
-                if (low[candidate] < low[index] && At(candidate).OverlapsOpen(current)) Add(candidate, index);
+                if (low[candidate] < low[index] && At(candidate).OverlapsOpen(current) && !Add(candidate, index)) return null;
             if (state[index] == State.Retired) continue;
             byLow[side].Add((low[index], index));
             stab[side].Update(low[index], high[index], index, add: true);
@@ -131,7 +137,12 @@ internal static class MapWaterBoundsSweep
         result.Sort();
         return result;
 
-        void Add(int a, int b) => result.Add(a < n ? (a, b - n) : (b, a - n));
+        bool Add(int a, int b)
+        {
+            if (result.Count >= cap) return false;
+            result.Add(a < n ? (a, b - n) : (b, a - n));
+            return true;
+        }
     }
 
     enum State : byte { Pending, Active, Retired }

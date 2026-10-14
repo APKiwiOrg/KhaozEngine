@@ -14,8 +14,10 @@ namespace KhaozEngine.Tests.MapDoc.Prefabs;
 internal static partial class PrefabFixtures
 {
     // Invented public geometry. Copies of the painted roomless hut over one flat world floor of several regions.
-    // Each region is a 64 cell wide patch of the given depth, so the floor's face count is fixed by the caller.
-    internal static PrefabFixture ScatteredPaint(IReadOnlyList<Vector3> sites, float scale, int regions, int depth, MapRational cellUnit)
+    // Each region is a 64 cell wide patch of the given depth, from slot firstSlot eastward along one slot row, so the
+    // floor's face count is fixed by the caller.
+    internal static PrefabFixture ScatteredPaint(IReadOnlyList<Vector3> sites, float scale, int regions, int depth, MapRational cellUnit,
+        int firstSlot = 0)
     {
         var f = Create("uneven-painted");
         var document = f.Document;
@@ -23,7 +25,7 @@ internal static partial class PrefabFixtures
         int index = document.Surfaces.Refs.FindIndex(s => s.Id == "ground");
         var ground = document.Surfaces.Refs[index];
         document.Surfaces.Refs[index] = ground with { Frame = ground.Frame with { CellUnitMetres = cellUnit } };
-        for (int slot = 0; slot < regions; slot++)
+        for (int slot = firstSlot; slot < firstSlot + regions; slot++)
         {
             var patch = Patch("ground", 64, depth, 0);
             patch.Key = new("ground", slot, 0);

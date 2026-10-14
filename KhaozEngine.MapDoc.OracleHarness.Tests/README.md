@@ -246,6 +246,8 @@ placement tag override while keeping the nominal source prefab unchanged. `share
 instance-owned rooms joined by one explicit group, with emitting props counted separately from indoor lights.
 `curved-selection` preserves an original KECL cylinder selection, including its base-aligned geometry.
 `quarter-turn` checks equivalent source boxes and native compound geometry under a rotated original leaf.
+`yaw-full-turn` places a leaf a full turn from its source yaw, and `derived-selection` gives the colliderless
+lamp no authored selection and its exact derived box.
 
 `definitions[].path` is a source `TilePrefabFile` definition. `resourceId` identifies the matching verified
 native prefab resource. Logical IDs and verified `prefab/<escape(id)>/<sha256>` IDs are both accepted by
@@ -285,7 +287,25 @@ and a standalone leaf that is not a roof refuses as an unassigned building leaf.
 that effective leaf without changing its original ID. `meshPath` must equal the source archetype's
 `meshRef`. `selectionPath` is the original authored KECL selection, or null when no selection was authored.
 Metadata is the frozen original asset metadata. Bounds use finite XYZ arrays in asset source units.
-`category`, `lodBounds` and `lightBounds` may be null. `renderBounds` is required. Mesh bytes, metadata,
+`category`, `lodBounds` and `lightBounds` may be null. `renderBounds` is required.
+
+When the frozen source has no per-model metadata, the generator derives the native asset `source`, `license`
+and `category` mechanically and records the rule in the provenance `oracleEquivalence` object. `source` is
+`<sourceRepository>@<commit>:<repo path of the mesh>`. `license` is the identifier read from the frozen
+repository `LICENSE` file, an SPDX identifier when it states one, else `LicenseRef-<repository name>`, and that
+`LICENSE` file is listed in provenance `paths`. `category` is the source archetype's category when the catalog
+declares one, else null. The comparator checks these strings exactly like any other metadata.
+
+A leaf with no authored `selectionPath` and a nonempty source collider capture must have no native selection.
+A leaf with neither has a derived native selection, because the source picked it by its model box and a native
+asset needs a selection or a collider. That selection is exactly one KECL box whose local min and max are the
+leaf's `metadata.renderBounds` in source units. It compares through the authored selection geometry path under
+the legacy matrix, as check `derived-selection`. A missing selection, an extra primitive or a different box fails.
+The picking delta stays recorded as deferred R11 acceptance.
+
+Leaf yaw compares as an angle. The wrapped difference `Math.IEEERemainder(native - source, 2 * Math.PI)` must
+be within the normal tolerance, so an effective yaw a full turn from the source passes and a quarter turn fails.
+Scale compares directly. The comparison never normalizes MapDoc yaw. Mesh bytes, metadata,
 ordered tags, kind, asset and IDs compare independently. Source furniture differences require an explicit
 actual-instance override. The original light-emitting placement remains in this leaf list.
 

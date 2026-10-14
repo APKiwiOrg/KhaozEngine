@@ -71,6 +71,8 @@ public sealed class ShippedBuildingInputGuardTests
     [InlineData("quarter-turn")]
     [InlineData("nested-texture")]
     [InlineData("standalone-roof")]
+    [InlineData("yaw-full-turn")]
+    [InlineData("derived-selection")]
     public void CompleteInventedBuilding_ClosesInputsAndComparesBothHeads(string variant)
     {
         using var fixture = ShippedBuildingGuardFixtures.Create(variant);
@@ -106,6 +108,10 @@ public sealed class ShippedBuildingInputGuardTests
     [InlineData("floor-paint")]
     [InlineData("doorway-clearance")]
     [InlineData("expectation-count")]
+    [InlineData("native-yaw")]
+    [InlineData("derived-selection-box")]
+    [InlineData("derived-selection-missing")]
+    [InlineData("collider-selection")]
     public void Comparison_RecordsInventedSemanticMismatchOnlyInSecureReport(string variant)
     {
         using var fixture = ShippedBuildingGuardFixtures.Create(variant);
@@ -131,6 +137,9 @@ public sealed class ShippedBuildingInputGuardTests
             "floor-paint" => "floor-material",
             "doorway-clearance" => "doorway-clear",
             "expectation-count" => "expectation-dedicatedlights",
+            "native-yaw" => "leaf-yaw-scale",
+            "derived-selection-box" or "derived-selection-missing" => "derived-selection",
+            "collider-selection" => "authored-selection",
             _ => throw new InvalidOperationException("unknown invented mismatch"),
         };
         Assert.Contains(category, compared.Failures);
@@ -396,8 +405,15 @@ internal sealed class ShippedBuildingGuardFixtures : IDisposable
         {
             string id = o.ArchetypeId;
             Add(id + ".mesh", Encoding.UTF8.GetBytes("invented mesh " + id), "Mesh");
-            Add(id + ".selection", Shape(variant == "curved-selection" && id == "lamp"
-                ? new CylinderShape(0.2f, 0.4f) : new BoxShape(new(id == "roof" ? 0.4f : 0.5f, 0.1f, 0.5f))), "Selection");
+            // F-R10. The colliderless lamp's derived selection spans its renderBounds (-2, 0.5, -3) to (2, 8, 3).
+            bool derived = id == "lamp" && variant is "derived-selection" or "derived-selection-box";
+            bool noSelection = id == "lamp" && variant == "derived-selection-missing";
+            if (derived)
+                Add("lamp.selection", Shape(new CompoundShape(new[] { new CompoundChild(new BoxShape(new(2, variant == "derived-selection" ? 3.75f : 3.5f, 3)),
+                    new Pose(new(0, variant == "derived-selection" ? 4.25f : 4, 0), Quaternion.Identity)) })), "Selection");
+            else if (!noSelection)
+                Add(id + ".selection", Shape(variant == "curved-selection" && id == "lamp"
+                    ? new CylinderShape(0.2f, 0.4f) : new BoxShape(new(id == "roof" ? 0.4f : 0.5f, 0.1f, 0.5f))), "Selection");
             if (id == "wall")
                 Add("wall.collider", Shape(new CompoundShape(new[] { new CompoundChild(new BoxShape(new(0.05f, 1.5f, 0.5f)),
                     new Pose(new(-0.5f, 1.5f, 0), Quaternion.Identity)) })), "Collider");
@@ -406,10 +422,12 @@ internal sealed class ShippedBuildingGuardFixtures : IDisposable
                 { new Vector3(-0.5f, -0.1f, -0.5f), new(-0.5f, -0.1f, 0.5f), new(-0.5f, 0.4f, -0.5f), new(-0.5f, 0.4f, 0.5f),
                     new(0.5f, -0.1f, -0.5f), new(0.5f, -0.1f, 0.5f), new(0.5f, 0.4f, -0.5f), new(0.5f, 0.4f, 0.5f) },
                     new[] { 0, 1, 3, 4, 6, 7, 0, 4, 5, 2, 3, 7, 0, 2, 6, 1, 5, 7 })), "Collider");
+            // A native asset needs an interaction source, so the selectionless lamp carries a collider instead.
+            if (noSelection) Add("lamp.collider", Shape(new BoxShape(new(0.5f, 0.1f, 0.5f))), "Collider");
             var a = NativeAssetFixtures.Asset();
             a["id"] = id; a["meshResourceId"] = id + ".mesh";
-            a["collisionResourceId"] = id == "wall" ? "wall.collider" : id == "lamp" && variant == "collider-topology" ? "lamp.collider" : null;
-            a["selectionResourceId"] = id + ".selection";
+            a["collisionResourceId"] = id == "wall" ? "wall.collider" : id == "lamp" && variant is "collider-topology" or "derived-selection-missing" ? "lamp.collider" : null;
+            a["selectionResourceId"] = noSelection ? null : id + ".selection";
             foreach (string field in new[] { "supportResourceIds", "materialResourceIds", "lodResourceIds", "lightResourceIds" }) a[field] = new JsonArray();
             a["sourceUnitsToMetres"] = 1; a["source"] = "invented/" + id; a["textured"] = false;
             if (id == "lamp" && variant == "picking-delta")
@@ -431,6 +449,8 @@ internal sealed class ShippedBuildingGuardFixtures : IDisposable
             bindings.Add(new(new(MapPrefabChildKind.Placement, id), "b/" + id, o.Id, false));
         }
         if (variant == "native-transform") ((MapPrefabPlacementChild)children[2]).Value.X += 0.25f;
+        // F-R9. A full turn is the same pose. A quarter turn is not.
+        if (variant is "yaw-full-turn" or "native-yaw") ((MapPrefabPlacementChild)children[2]).Value.Yaw += variant == "native-yaw" ? MathF.PI / 2 : MathF.Tau;
         var light = new MapLocalLightDoc(1, "indoor", new(MapPrefabReferenceScope.Local, MapPrefabChildKind.Placement, "lamp"),
             new(0, 1, 0), Vector3.One, variant == "native-light" ? 2 : 1, 2, false);
         children.Add(new MapPrefabLightChild(new(MapPrefabChildKind.Light, "indoor"), light));
@@ -575,6 +595,9 @@ internal sealed class ShippedBuildingGuardFixtures : IDisposable
             """)!.AsObject();
         if (variant == "picking-delta")
             comparison["leaves"]![2]!["metadata"]!["renderBounds"] = JsonNode.Parse("""{"min":[-0.5,-0.1,-0.5],"max":[0.5,0.1,0.5]}""");
+        if (variant is "derived-selection" or "derived-selection-box" or "derived-selection-missing")
+            comparison["leaves"]![2]!["selectionPath"] = null;
+        if (variant == "collider-selection") comparison["leaves"]![0]!["selectionPath"] = null;
         if (variant == "quarter-turn")
         {
             comparison["doorways"]![0]!["clear"] = JsonNode.Parse("[[1.5,0.1,0],[1.5,0.1,-2]]");

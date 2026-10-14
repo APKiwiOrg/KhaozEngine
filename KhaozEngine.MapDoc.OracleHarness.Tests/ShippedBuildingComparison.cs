@@ -61,7 +61,9 @@ internal static class ShippedBuildingComparison
             float yaw = TileObjectPlacement.YawRadians(archetype, source.Rotation);
             var pose = geometry.EffectiveTransform;
             evidence.Near("leaf-position", new[] { (double)position.X, position.Y, position.Z }, new[] { pose.X, pose.Y, pose.Z }, VertexTolerance, sourceId);
-            evidence.Near("leaf-yaw-scale", new[] { (double)yaw, 1d }, new[] { pose.YawRadians, pose.Scale }, NormalTolerance, sourceId);
+            // F-R9. Yaw is an angle. Scale stays a plain comparison.
+            evidence.Near("leaf-yaw-scale", new[] { 0d, 1d }, new[] { YawDifference(yaw, pose.YawRadians), pose.Scale }, NormalTolerance,
+                new { sourceId, sourceYaw = yaw, nativeYaw = pose.YawRadians });
             evidence.Check("original-mesh", inputs.Bytes(Text(leaf, "meshPath")).SequenceEqual(inputs.Assets.GetResource(asset.MeshResourceId).Bytes.ToArray()), new { sourceId, asset.MeshResourceId });
             var metadata = leaf.GetProperty("metadata");
             evidence.Check("asset-metadata", asset.Source == Text(metadata, "source") && asset.License == Text(metadata, "license") &&
@@ -77,8 +79,26 @@ internal static class ShippedBuildingComparison
             ShippedBuildingGeometry.Compare("physical-collider", expected, actual, sourceId, evidence.Check, evidence.Near);
             var sourceSelectionPath = NullableText(leaf, "selectionPath");
             var shapes = MapAssetShapes.Read(inputs.Assets, native.AssetId);
-            if (sourceSelectionPath is null)
+            float units = Number(metadata, "sourceUnitsToMetres");
+            if (sourceSelectionPath is null && expected.Length != 0)
                 evidence.Check("authored-selection", shapes.Selection is null, new { sourceId, shapes.SelectionSha256 });
+            else if (sourceSelectionPath is null)
+            {
+                // F-R10. No source collider and no authored selection: the source picked this leaf by its model box, so
+                // the native selection is exactly one box spanning the attested renderBounds in source units.
+                var bounds = metadata.GetProperty("renderBounds");
+                Vector3 min = Vector(bounds.GetProperty("min")), max = Vector(bounds.GetProperty("max"));
+                var derived = new CompoundShape(new[] { new CompoundChild(new BoxShape((max - min) * 0.5f), new Pose((min + max) * 0.5f, Quaternion.Identity)) });
+                var derivedExpected = ShippedBuildingGeometry.Capture(derived, p => Vector3.Transform(p * units, legacyMatrix),
+                    n => Vector3.TransformNormal(n, legacyMatrix)).ToArray();
+                var derivedActual = shapes.Selection is null ? [] : ShippedBuildingGeometry.Capture(shapes.Selection,
+                    p => Precise(pose, p * units * (float)pose.Scale), n => new MapResourceTransform(pose).Normal(n)).ToArray();
+                var derivedFailures = new List<string>();
+                ShippedBuildingGeometry.Compare("derived-selection", derivedExpected, derivedActual, sourceId,
+                    (category, ok, detail) => { if (!ok) derivedFailures.Add(category); evidence.Check(category, ok, detail); }, evidence.Near);
+                evidence.Check("derived-selection", shapes.Selection is not null && derivedFailures.Count == 0,
+                    new { sourceId, min, max, units, shapes.SelectionSha256, derivedFailures });
+            }
             else
             {
                 byte[] original = inputs.Bytes(sourceSelectionPath);
@@ -86,7 +106,6 @@ internal static class ShippedBuildingComparison
                     original.SequenceEqual(inputs.Assets.GetResource(asset.SelectionResourceId).Bytes.ToArray()), new { sourceId, sourceSelectionPath, asset.SelectionResourceId });
                 using var stream = new MemoryStream(original);
                 var sourceShape = PropCollisionFormat.Read(stream);
-                float units = Number(metadata, "sourceUnitsToMetres");
                 var selectionExpected = ShippedBuildingGeometry.Capture(sourceShape, p => Vector3.Transform(p * units, legacyMatrix),
                     n => Vector3.TransformNormal(n, legacyMatrix)).ToArray();
                 var selectionActual = shapes.Selection is null ? [] : ShippedBuildingGeometry.Capture(shapes.Selection,
@@ -451,6 +470,8 @@ internal static class ShippedBuildingComparison
         for (int index = 0; index < actual.Length; index++)
             if (assigned[index] < 0) evidence.Check(category + "-unexpected", false, new { owner, index, actual = actual[index] });
     }
+    /// <summary>F-R9. Signed angular distance from source to native yaw, wrapped into one turn about zero.</summary>
+    internal static double YawDifference(double source, double native) => Math.IEEERemainder(native - source, 2 * Math.PI);
     static Vector3 Transform(Pose pose, Vector3 p) => pose.Position + Vector3.Transform(p, pose.Orientation);
     static Coordinates Precise(MapEffectiveTransform pose, Vector3 p)
     { var (s, c) = Math.SinCos(pose.YawRadians); return new(pose.X + c * p.X + s * p.Z, pose.Y + p.Y, pose.Z - s * p.X + c * p.Z); }

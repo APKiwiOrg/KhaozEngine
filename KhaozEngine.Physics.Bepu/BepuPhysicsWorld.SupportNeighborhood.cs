@@ -1,16 +1,11 @@
 using System;
 using System.Numerics;
-using System.Threading;
 using KhaozEngine.Physics;
 
 namespace KhaozEngine.Physics.Bepu;
 
 public sealed partial class BepuPhysicsWorld : IPhysicsSupportNeighborhood
 {
-    // One warm collector the world keeps for serial callers. A concurrent or nested query that finds it taken
-    // borrows its interval scratch's collector, so no two operations ever share one.
-    SupportNeighborhoodCollector? _neighborhoodScratch = new();
-
     /// <inheritdoc/>
     public SupportNeighborhoodResult QuerySupportNeighborhood(IPhysicsQueryLease lease, CapsuleShape probe, Pose pose,
         float bandMetres, Span<SupportElement> elements, Span<ulong> joins, QueryFilter filter = default) =>
@@ -57,20 +52,15 @@ public sealed partial class BepuPhysicsWorld : IPhysicsSupportNeighborhood
             probe.Radius is < 0.01f or > 2f || probe.Length > 8f || bandMetres > 0.01f ||
             !RepresentedGeometryTransforms.PosePoint(pose, Vector3.Zero).IsResolved)
             return SupportNeighborhoodResult.Refused(CapsuleFeatureStatus.Unsupported);
-        SupportNeighborhoodCollector? primary = Interlocked.Exchange(ref _neighborhoodScratch, null);
-        QueryScratch? scratch = primary is null ? scope.Scratch : null;
-        SupportNeighborhoodCollector collector = primary ?? scratch!.Neighborhoods.Take();
+        QueryScratch scratch = scope.Scratch;
+        SupportNeighborhoodCollector collector = scratch.Neighborhoods.Take();
         try
         {
             SupportNeighborhoodResult result = Collect(collector, receiver, lease, probe, pose, bandMetres, elements, joins, filter, exclusions);
             if (result.Status != CapsuleFeatureStatus.CapacityExceeded) SupportQueryDiagnostics.Refusal(result.Status);
             return result;
         }
-        finally
-        {
-            if (primary is not null) Volatile.Write(ref _neighborhoodScratch, primary);
-            else scratch!.Neighborhoods.Restore(collector);
-        }
+        finally { scratch.Neighborhoods.Restore(collector); }
     }
 
     SupportNeighborhoodResult Collect(SupportNeighborhoodCollector collector, IPhysicsWorld receiver,

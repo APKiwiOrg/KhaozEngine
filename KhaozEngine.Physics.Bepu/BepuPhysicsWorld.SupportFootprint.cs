@@ -1,15 +1,11 @@
 using System;
 using System.Numerics;
-using System.Threading;
 using KhaozEngine.Physics;
 
 namespace KhaozEngine.Physics.Bepu;
 
 public sealed partial class BepuPhysicsWorld : IPhysicsSupportFootprint
 {
-    // One warm collector the world keeps for serial callers. A concurrent or nested query that finds it taken
-    // borrows its interval scratch's collector, so no two operations ever share one.
-    SupportFootprintCollector? _footprintScratch = new();
     readonly InstalledSupportGeometryCache _installedSupportGeometry = new();
     long _staticGeometryVersion;
 
@@ -53,20 +49,15 @@ public sealed partial class BepuPhysicsWorld : IPhysicsSupportFootprint
             throw new ArgumentException("The footprint query does not support this filter value.", nameof(filter));
         if (joins.Length < (long)members.Length * SupportFootprintResult.JoinWordsFor(members.Length))
             throw new ArgumentException("The join span must hold members.Length * JoinWordsFor(members.Length) words.", nameof(joins));
-        SupportFootprintCollector? primary = Interlocked.Exchange(ref _footprintScratch, null);
-        QueryScratch? scratch = primary is null ? scope.Scratch : null;
-        SupportFootprintCollector collector = primary ?? scratch!.Footprints.Take();
+        QueryScratch scratch = scope.Scratch;
+        SupportFootprintCollector collector = scratch.Footprints.Take();
         try
         {
             SupportFootprintResult result = CollectFootprint(collector, receiver, lease, request, members, joins, filter, exclusions);
             SupportQueryDiagnostics.Refusal(result.Status);
             return result;
         }
-        finally
-        {
-            if (primary is not null) Volatile.Write(ref _footprintScratch, primary);
-            else scratch!.Footprints.Restore(collector);
-        }
+        finally { scratch.Footprints.Restore(collector); }
     }
 
     SupportFootprintResult CollectFootprint(SupportFootprintCollector collector, IPhysicsWorld receiver,

@@ -143,6 +143,14 @@ on the session and as a delta on each operation. A cached traversal can exhaust 
 decodes. Record reads and expansion depth also obey the scope's limits. Capacity or exact-overflow refusal
 publishes no acquired content and disposes the session.
 
+Effective prefab composition opens one native session per pose group beside its generated part and admits
+page visits, metadata inspections and rectangle additions of every part against one common ceiling. Producers
+report that work before doing it through `IMapSurfacePageVisitSession` and `IMapSurfaceWorkSession`, and a public
+adapter that copies the scope forwards both. A native session that cannot report work it would share with another
+part makes composition refuse before traversal with `CapacityExceeded` and a detail naming the missing capability.
+Raising the query limits cannot cure that refusal. A single unobservable native session that is the only part keeps
+its own whole allowance.
+
 The returned view, `MapCoverageWitness`, `MapReadWitness` and `MapScopedIdentity` are factory-only and
 immutable. They detach payloads, nested record and span lists, scope filters and asset digests. `Patch`
 returns a fresh clone and no access after publication rereads the producer. Scoped identity stays under
@@ -597,6 +605,11 @@ The four intent flags have separate consumers. Hidden roofs have `ColourVisible 
 changes collision, interaction geometry or static registration. R8 owns colour, shadows, camera boom and sky-ray
 integration.
 
+Typed Light and Support resource payloads begin with the discriminant `"resourceSchema"`, valued
+`kemap/light-resource` or `kemap/support-resource`. Their writers emit it first and their closed decoders require it.
+`MapAssetClosure.Load` decodes only bytes that carry it, so every other resource, JSON or not, stays opaque as
+released. Prefab leaf lights, typed support and Physics support refuse an opaque resource with a message naming it.
+
 `MapEffectiveAnnotations.Lights(resources)` and `Markers(resources)` return immutable records in stable ID order.
 Both carry their own payload version. Light positions and radii are owner-frame metres, independent of leaf
 `SourceUnitsToMetres`. Expansion composes the precise owner pose once, freezes the position once and scales the
@@ -624,8 +637,11 @@ native asset write. Removed source tombstones and their transferred descriptors 
 unchanged. The caller publishes immutable asset bytes before accepting the document and closure switch.
 
 `MapUnpackPrefab` moves every live child to its standalone home with the same world ID and numeric ID. It retains
-precise binary64 poses, authored nullable-Y support requests, explicit storeys with standalone ownership, authored
-roof inventory and scoped references. The source keeps its complete binding inventory and persists `unpacked: true`.
+precise binary64 poses, authored nullable-Y dispositions, explicit storeys with standalone ownership, authored
+roof inventory and scoped references. A standalone support request is always world space and resolves as released,
+whatever the placement scale. Only a prefab-local request transforms by its placement's pre-seat frame, so unpack
+persists that world-space request, never one derived from the seated floor height. Extraction inverts a standalone
+request into the extracted child's frame at the asset origin. The source keeps its complete binding inventory and persists `unpacked: true`.
 This optional flag distinguishes transferred inventory from ordinary deletion and is omitted otherwise. Removed bindings
 are dormant reservations, while every other entry requires its matching transfer. Validation uses this persisted
 inventory without enumerating the current prefab or dependency versions, and counts each identity once.

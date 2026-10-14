@@ -10302,7 +10302,7 @@ mesh triangles near its probe, which `LocalExtent` does not predict, and one uns
 the whole neighborhood query.
 
 **Refusals.** `MapAssetShapes.Read` throws `MapDocumentException` for a support resource without a validated MapDoc
-payload. Support payload 1 installs in MapDoc before missing-Y sampling, and its lattice frames already declare
+payload, including an opaque resource that does not begin with `"resourceSchema":"kemap/support-resource"`. Support payload 1 installs in MapDoc before missing-Y sampling, and its lattice frames already declare
 metres. Physics consumes the captured transformed surfaces with canonical owners. Complete prefab and unpacked
 builds refuse room coverage findings and independently authored coincident floors, even without water.
 `MapBackendPoseAdapter` makes the frame-local binary32 approximation explicit and reports its error in metres.

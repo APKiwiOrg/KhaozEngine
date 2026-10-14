@@ -133,6 +133,7 @@ public partial class ArchitectureTests
         ["Microsoft.Data.Sqlite"] = new[] { "Sqlite", "WorldStore.Sqlite", "Commerce.Sqlite", "Catalog.Sqlite", "Accounts.Sqlite" },
         ["SQLitePCLRaw.lib.e_sqlite3"] = new[] { "Sqlite", "WorldStore.Sqlite", "Commerce.Sqlite", "Catalog.Sqlite", "Accounts.Sqlite" },
         ["Microsoft.Data.SqlClient"] = new[] { "WorldStore.SqlServer", "Commerce.SqlServer", "Catalog.SqlServer", "Accounts.SqlServer" },
+        ["System.Security.Cryptography.Pkcs"] = new[] { "WorldStore.SqlServer", "Commerce.SqlServer", "Catalog.SqlServer", "Accounts.SqlServer" }, // patched override, #1407
         // The blob SDK, contained in the catalog's public-origin pack store and nowhere else. Azure.Identity
         // has NO row here, and the absence is the assertion: the store takes a ready BlobContainerClient so
         // the host owns the credential, and the only project in the tree that references Azure.Identity is

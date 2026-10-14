@@ -5,6 +5,14 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.39.1
+
+- The four SQL Server backends (`Accounts.SqlServer`, `Catalog.SqlServer`, `Commerce.SqlServer` and
+  `WorldStore.SqlServer`) now reference `System.Security.Cryptography.Pkcs` 9.0.21 directly. That overrides the
+  vulnerable 9.0.11 that `Microsoft.Data.SqlClient` 6.1.6 pulls in (GHSA-846f-f764-76mx, high, and
+  GHSA-2fmv-rv2c-59x7, moderate), so Release restore passes the NuGet audit again (#1407). The override goes
+  once SqlClient references a patched Pkcs itself.
+
 ## 20.39.0
 
 - Navigation bake doors normalize effective profile kinds before identity work or stream reads. Malformed Contact

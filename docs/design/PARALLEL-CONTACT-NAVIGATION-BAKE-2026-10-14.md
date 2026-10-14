@@ -1,9 +1,16 @@
 # Parallel contact navigation bake
 
 Design for [#1401](https://github.com/APKiwiOrg/KhaozEngine/issues/1401). Source baseline: `c45768b73` on `main`,
-staged 20.39.0 with [#438](https://github.com/APKiwiOrg/KhaozEngine/issues/438) phase 5b. The owner chose option A
+released as 20.39.0 with [#438](https://github.com/APKiwiOrg/KhaozEngine/issues/438) phase 5b. The owner chose option A
 (parallel bake split by region) on 2026-10-14. Every choice below is a recorded ruling for the owner's review.
 Revision 3 answers review rounds 1 and 2.
+
+Status: implemented in staged 20.40.0. The provider audit endorses the TileWorld ground samplers, `TileMediumSampler`
+and the TileWorld registration, named by method in the Movement package README. The
+[local cost record](../superpowers/plans/proofs/2026-10-14-parallel-contact-bake-cost.md) holds the PB-5 metrics.
+
+Erratum: the first parameter of the new `GroundNavigationBake.Create` overload is named `capture`, not `bake`, to
+match the existing three argument overload.
 
 ## Problem
 

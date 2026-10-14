@@ -78,7 +78,10 @@ public class GlbPolicyTests
             case "trailing-header": Array.Resize(ref glb, glb.Length + 4); BinaryPrimitives.WriteUInt32LittleEndian(glb.AsSpan(8), (uint)glb.Length); break;
             case "overflow-binary": BinaryPrimitives.WriteUInt32LittleEndian(glb.AsSpan(glb.Length - 12), uint.MaxValue - 3); break;
         }
-        Assert.Throws<InvalidDataException>(() => AttachmentGlb.ValidateRigidEmbedded(glb, name + ".glb"));
+        InvalidDataException rigid = Assert.Throws<InvalidDataException>(() => AttachmentGlb.ValidateRigidEmbedded(glb, name + ".glb"));
+        InvalidDataException skinned = Assert.Throws<InvalidDataException>(() => AttachmentGlb.ValidateSkinnedEmbedded(glb, name + ".glb"));
+        Assert.Contains(name + ".glb", rigid.Message);
+        Assert.Equal(rigid.Message, skinned.Message);
     }
 
     static byte[] Container(string json, bool binary = true)

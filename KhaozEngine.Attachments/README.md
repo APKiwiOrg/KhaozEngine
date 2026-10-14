@@ -75,3 +75,17 @@ against concurrent filesystem replacement.
 Call `AttachmentGlb.ValidateRigidEmbedded(bytes, sourceName)` before importing. It checks GLB 2
 headers and chunk bounds, requires embedded buffers and images, and refuses skin, animation and
 morph data. It does not replace the renderer's full glTF geometry validation.
+
+Call `AttachmentGlb.ValidateSkinnedEmbedded(bytes, sourceName)` for skinned parts before importing.
+It shares the GLB 2 envelope, embedded-resource and recursive duplicate-key checks. Exactly one
+embedded buffer and one skin are required. Every mesh node must reference that skin. Joint indices
+and ordinal joint names must be unique, with non-blank names and at most 128 joints. Animations,
+morph targets, node or mesh weights and influence sets beyond `JOINTS_0` and `WEIGHTS_0` are refused.
+
+Every primitive requires paired VEC4 joint and weight accessors with matching POSITION counts.
+The policy decodes all four joint indices, including zero-weight lanes, and refuses out-of-range
+indices, negative or non-finite weights and all-zero weight vertices before importer normalization.
+Unsigned byte and unsigned short joints, float or normalized unsigned byte/short weights, strided
+views and sparse overrides are supported. Accessor and sparse ranges are checked against the declared
+embedded buffer before reading. Optional inverse-bind accessors must contain one finite MAT4 per
+joint. Host joint-name mapping and bind-pose compatibility are renderer-level checks.

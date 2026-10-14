@@ -5,6 +5,25 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.40.0
+
+- MapDoc format 7 adds rigid prefab payload 1, digest-addressed immutable asset versions, persisted child
+  bindings and lossless standalone transfers. Free XYZ, yaw and positive uniform scale compose once across
+  buildings, rooms, storeys, roofs, lights, markers, local support, partial-face paint and bounded water.
+- Pure prefab and interior edits prepare validated write sets. Placement, moves, keyed overrides, unpack,
+  extraction and atomic Room/prism creation share editor commands and complete native undo/redo with
+  captured closures. ke-mapedit registers prefab asset, instance, history, interior and roof-link tools.
+- Format 7 changes native root and resolver-2 authored identities even for maps without prefabs. Rebuild
+  identity-keyed caches and navigation captures. Resolver-1 execution and absent-section document hashing
+  remain unchanged. Effective resources use `kemap/effective-resources/1` and query policy 2, with one
+  captured closure, bounded composition and no partial publication on capacity refusal.
+- Doors remain AuthoredOpen. Live door state is gated by #1363. Headless geometry, room membership,
+  effective water, roof intent and physical doorway clearance are available. Native controller routes
+  remain gated by G1b, #1355 and #438, while R8 owns roof colour/shadows, cameras and local-light rendering.
+- Typed Light and Support payloads require the leading `resourceSchema` discriminant with value
+  `kemap/light-resource` or `kemap/support-resource`. Released opaque bytes, including JSON, remain opaque
+  unless marked. Typed consumers clearly refuse opaque resources instead of reinterpreting them.
+
 ## 20.39.0
 
 - Navigation bake doors normalize effective profile kinds before identity work or stream reads. Malformed Contact

@@ -124,8 +124,7 @@ public static class MapPrefabResolver
                 else if (local is MapPrefabPlacementChild placement)
                 {
                     var ownerRow = suppression.FirstOrDefault(r => r.Placement.Id == local.Key.Key);
-                    pose = ownerRow is not null ? MapEffectiveTransform.Compose(instancePose, ownerRow.PlacementFrame)
-                        : MapEffectiveTransform.Compose(MapEffectiveTransform.Compose(instancePose, local.LocalTransform), MapPrefabMaterializationOverrides.Pose(placement.Value));
+                    pose = DeclaredOwnerFrame(instancePose, local.LocalTransform, placement.Value, ownerRow?.PlacementFrame);
                 }
                 else
                 {
@@ -282,6 +281,22 @@ public static class MapPrefabResolver
         { SupportRequests = supportRequests };
     }
 
+    /// <summary>F-R7. The one frame choice an owner placement declares in an instance, shared by expansion and
+    /// extraction. A materialized owner declares its captured placement frame. Any other owner composes its local
+    /// transform and nullable-Y placement pose. Support requests are relative to this pre-seat frame.</summary>
+    internal static MapEffectiveTransform DeclaredOwnerFrame(MapEffectiveTransform instancePose, MapTransform localTransform,
+        MapPlacement placement, MapEffectiveTransform? capturedPlacementFrame) => capturedPlacementFrame is { } captured
+        ? MapEffectiveTransform.Compose(instancePose, captured)
+        : MapEffectiveTransform.Compose(MapEffectiveTransform.Compose(instancePose, localTransform), MapPrefabMaterializationOverrides.Pose(placement));
+
+    /// <summary>The prefab-local form of a world-space support request in a declared pre-seat frame.</summary>
+    internal static MapSupportBinding LocalRequest(MapSupportBinding binding, MapEffectiveTransform frame) => binding with
+    {
+        ReferenceY = binding.ReferenceY is { } y ? (float)((y - frame.Y) / frame.Scale) : null,
+        SearchBelow = binding.SearchBelow is { } below ? (float)(below / frame.Scale) : null,
+        SearchAbove = binding.SearchAbove is { } above ? (float)(above / frame.Scale) : null,
+    };
+
     /// <summary>The world-space form of a prefab-local support request in its placement's pre-seat frame.</summary>
     internal static MapSupportBinding WorldRequest(MapSupportBinding binding, MapEffectiveTransform pose) => binding with
     {
@@ -289,7 +304,9 @@ public static class MapPrefabResolver
         SearchBelow = binding.SearchBelow is { } below ? (float)(below * pose.Scale) : null,
         SearchAbove = binding.SearchAbove is { } above ? (float)(above * pose.Scale) : null,
     };
-    static MapPrefabChild OwnerPose(MapPrefabChild child, IReadOnlyList<MapPrefabChild> children,
+    /// <summary>The implicit-owner pose normalization shared by expansion and unpack. An enumerated support or light child
+    /// takes its owner placement's pose, the pose explicit records anchored on it declare.</summary>
+    internal static MapPrefabChild OwnerPose(MapPrefabChild child, IReadOnlyList<MapPrefabChild> children,
         IReadOnlyDictionary<MapPrefabChildKey, MapPrefabChildKey> owners) =>
         child with { LocalTransform = MapPrefabMaterializationOverrides.Pose(children.OfType<MapPrefabPlacementChild>().Single(p => p.Key == owners[child.Key]).Value) };
     static MapExactPoint Exact(Vector3 point) => new(MapExactValue.FromSingle(point.X), MapExactValue.FromSingle(point.Y), MapExactValue.FromSingle(point.Z));

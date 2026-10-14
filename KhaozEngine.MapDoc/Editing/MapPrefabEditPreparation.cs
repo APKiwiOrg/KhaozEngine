@@ -86,8 +86,11 @@ internal static class MapPrefabEditPreparation
         var reconciled = MapPrefabMaterializationOverrides.Reconcile(assets.GetPrefab(instance.ResourceId), instance.Overrides);
         var explicitChildren = reconciled.LiveAsset.Children;
         var owners = new Dictionary<MapPrefabChildKey, MapPrefabChildKey>();
+        // F-R8. Enumerated children take their owner's pose, exactly as expansion does, before the combined asset is
+        // validated and remapped. Explicit records anchored on a posed owner's implicit floor then keep their valid pose.
         var implicitChildren = MapEffectiveSupport.Enumerate(assets, explicitChildren, reconciled.EffectiveAsset.MaterializedAttachments, owners: owners)
-            .Concat(MapPrefabAttachedLights.Enumerate(assets, explicitChildren, reconciled.EffectiveAsset.MaterializedAttachments, owners: owners)).ToArray();
+            .Concat(MapPrefabAttachedLights.Enumerate(assets, explicitChildren, reconciled.EffectiveAsset.MaterializedAttachments, owners: owners))
+            .Select(c => MapPrefabResolver.OwnerPose(c, explicitChildren, owners)).ToArray();
         var local = reconciled.LiveAsset with { Children = explicitChildren.Concat(implicitChildren).ToArray() };
         var bound = instance.Bindings.Entries.Where(b => !b.Removed).ToDictionary(b => b.Child, b => b.WorldId);
         implicitOwners = owners;

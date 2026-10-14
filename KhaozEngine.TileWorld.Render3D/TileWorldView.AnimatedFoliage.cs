@@ -33,8 +33,8 @@ public sealed partial class TileWorldView
         AnimatedPropSplit? split = splits?[plane];
         // Builds and archetype overrides replace their ground list. A slot owns its previous split until
         // replacement is observed here or the region is freed, so discarded lists never accumulate.
-        if (split is null || !ReferenceEquals(split.Source, ground) ||
-            !split.Matches(selection, _options.AnimatedFoliageStyles))
+        // The global snapshot is validated in Draw. A split compares only the archetypes its ground list draws.
+        if (split is null || !ReferenceEquals(split.Source, ground) || !split.Key.Matches(_animatedFoliageStyles))
         {
             AnimatedPropSplit? replacement = selection.Count == 0 || ground.Count == 0
                 ? null : new AnimatedPropSplit(ground, _animatedFoliageStyles);
@@ -63,8 +63,8 @@ public sealed partial class TileWorldView
         _animatedFoliageOptions.WindSpatialFrequency = source.WindSpatialFrequency;
         _animatedFoliageOptions.WindFadeBladePixels = source.WindFadeBladePixels;
         _animatedFoliageOptions.Interactors = source.Interactors;
-        _animatedFoliageOptions.MotionProfiles = split.Styles.MotionProfiles;
-        _animatedFoliageOptions.ModelCastsShadows = split.Styles.ModelCastsShadows;
+        _animatedFoliageOptions.MotionProfiles = _animatedFoliageStyles.MotionProfiles;
+        _animatedFoliageOptions.ModelCastsShadows = _animatedFoliageStyles.ModelCastsShadows;
         return drawn + _scene.DrawGroundCover(split.Foliage, _propMeshes, focus, _animatedFoliageOptions);
     }
 
@@ -87,14 +87,14 @@ public sealed partial class TileWorldView
 
     sealed class AnimatedPropSplit
     {
-        public AnimatedFoliageStyleSnapshot Styles { get; }
+        public AnimatedFoliageSplitKey Key { get; }
         public IReadOnlyList<PropPlacement> Source { get; }
         public IReadOnlyList<PropPlacement> Ordinary { get; }
         public GroundCoverBatch Foliage { get; }
 
         public AnimatedPropSplit(IReadOnlyList<PropPlacement> source, AnimatedFoliageStyleSnapshot styles)
         {
-            Styles = styles;
+            Key = new AnimatedFoliageSplitKey(source, styles);
             Source = source;
             var ordinary = new List<PropPlacement>();
             var foliage = new List<GroundCoverInstance>();
@@ -113,8 +113,5 @@ public sealed partial class TileWorldView
             Ordinary = foliage.Count == 0 ? source : ordinary.ToArray();
             Foliage = new GroundCoverBatch(foliage);
         }
-
-        public bool Matches(IReadOnlySet<string> selection, IReadOnlyDictionary<string, AnimatedFoliageStyle> styles) =>
-            Styles.Matches(selection, styles);
     }
 }

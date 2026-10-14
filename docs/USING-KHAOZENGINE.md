@@ -11284,7 +11284,8 @@ casting. Entries outside the selection or not exactly naming an authored selecte
 `ArgumentException` naming the ID. Selected archetypes sharing a catalog mesh reference or any resolved
 mesh part must agree on their effective style, including omitted defaults. Conflicts name both IDs.
 Styles are detached snapshots validated before submission and compared by value each draw. A changed
-selection or style, including an in-place map edit, invalidates affected splits. Removing a style restores
+selection or style, including an in-place map edit, invalidates only the splits that draw a changed
+archetype, and other splits keep their retained batches. Removing a style restores
 Blade motion and casting off. Short-cover maps do not override these styles.
 
 `FoliageMotionProfile(BendScale, MaxLean, WindScale, Shiver)` has these finite inclusive ranges:

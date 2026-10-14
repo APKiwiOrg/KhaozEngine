@@ -29,6 +29,9 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   caller-owned providers. Immutable columns, options and origin remain available as data.
 - Physical atmosphere fog no longer shows a horizontal seam at camera eye level. Downward views sample only the
   sky hemisphere and meet the horizon colour with zero slope, on the GPU and in the CPU fog oracle.
+- TileWorld animated foliage replaces a cached split only when an archetype it draws changes selection or
+  effective style. Style validation still covers the whole selection, and regions that do not draw the changed
+  archetype keep their retained batches.
 
 ## 20.38.0
 

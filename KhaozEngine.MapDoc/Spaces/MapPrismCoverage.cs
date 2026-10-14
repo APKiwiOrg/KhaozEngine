@@ -46,19 +46,25 @@ public static class MapPrismCoverage
             if (partition.Status != MapRefinementStatus.Complete) throw MapOccupiedPartitions.Refusal(partition.Status, partition.Detail);
             var raw = partition.Pieces;
             var work = new MapWaterWorkBudget(limits.MaxPairChecks);
+            var bounds = raw.Select(p => MapWaterPolygons.Bounds.Of(p.Polygon)).ToArray();
+            // Exact bounds broad phases. A parent or peer piece whose bounds do not overlap shares no positive area, so
+            // skipping it changes no result. Each candidate is charged once, in the released visiting order.
             foreach (var prism in prisms)
             {
                 var domain = domains[prism.Id];
                 string parentOwner = MapSpaceGeometry.Owner(view, MapSpaceGeometry.Record<MapSpaceDoc>(view, prism.Parent));
-                var parents = raw.Where(p => p.SpaceId == parentOwner).ToArray();
+                var parents = Enumerable.Range(0, raw.Count).Where(i => raw[i].SpaceId == parentOwner).ToArray();
+                var near = MapWaterBoundsSweep.Cross(Enumerable.Range(0, domain.Pieces.Count).Select(domain.PieceBounds).ToArray(),
+                    parents.Select(i => bounds[i]).ToArray()).ToLookup(p => p.Left, p => parents[p.Right]);
                 var heights = MapPrismGeometry.Heights(view, prism);
                 var lo = MapWideRational.From(heights.Lower); var hi = MapWideRational.From(heights.Upper);
                 for (int i = 0; i < domain.Pieces.Count; i++)
                     foreach (var convex in domain.ConvexParts(i, work))
                     {
                         var polygon = convex;
+                        var extent = MapWaterPolygons.Bounds.Of(polygon);
                         var uncovered = new List<IReadOnlyList<MapWideXz>> { polygon };
-                        foreach (var parent in parents)
+                        foreach (var parent in near[i].Where(p => bounds[p].OverlapsOpen(extent)).Select(p => raw[p]))
                         {
                             work.Charge(1);
                             var clip = MapOccupiedPartitions.Intersect(polygon, parent.Polygon);
@@ -73,23 +79,24 @@ public static class MapPrismCoverage
                         if (uncovered.Any(MapOccupiedPartitions.Positive)) errors.Add($"prism '{prism.Id}': outside parent footprint");
                     }
             }
-            for (int i = 0; i < raw.Count; i++)
-                for (int j = i + 1; j < raw.Count; j++)
-                {
-                    var a = raw[i]; var b = raw[j];
-                    if (a.SpaceId == b.SpaceId || MapOccupiedPartitions.Ancestor(view, a.SpaceId, b.SpaceId) || MapOccupiedPartitions.Ancestor(view, b.SpaceId, a.SpaceId)) continue;
-                    work.Charge(1);
-                    var polygon = MapOccupiedPartitions.Intersect(a.Polygon, b.Polygon);
-                    if (!MapOccupiedPartitions.Positive(polygon)) continue;
-                    if (a.UpperFaces is not null || a.UpperPlane is not null)
-                        polygon = MapOccupiedPartitions.Clip(polygon, p => MapOccupiedPartitions.Height(a, p, true).Subtract(MapOccupiedPartitions.Height(b, p, false)));
-                    if (b.UpperFaces is not null || b.UpperPlane is not null)
-                        polygon = MapOccupiedPartitions.Clip(polygon, p => MapOccupiedPartitions.Height(b, p, true).Subtract(MapOccupiedPartitions.Height(a, p, false)));
-                    if (MapOccupiedPartitions.Positive(polygon) &&
-                        polygon.Any(p => a.Top(p) is not { } ta || ta.CompareTo(b.Bottom(p)) > 0) &&
-                        polygon.Any(p => b.Top(p) is not { } tb || tb.CompareTo(a.Bottom(p)) > 0))
-                        errors.Add($"peer occupied overlap: '{a.SpaceId}' with '{b.SpaceId}'");
-                }
+            // The sweep only compares bounds, in work proportional to the pairs whose bounds overlap or touch, and stays uncharged.
+            var peers = MapWaterBoundsSweep.Pairs(bounds, touching: false, new MapWaterWorkBudget(long.MaxValue)).Order().ToArray();
+            foreach (var (i, j) in peers)
+            {
+                var a = raw[i]; var b = raw[j];
+                if (a.SpaceId == b.SpaceId || MapOccupiedPartitions.Ancestor(view, a.SpaceId, b.SpaceId) || MapOccupiedPartitions.Ancestor(view, b.SpaceId, a.SpaceId)) continue;
+                work.Charge(1);
+                var polygon = MapOccupiedPartitions.Intersect(a.Polygon, b.Polygon);
+                if (!MapOccupiedPartitions.Positive(polygon)) continue;
+                if (a.UpperFaces is not null || a.UpperPlane is not null)
+                    polygon = MapOccupiedPartitions.Clip(polygon, p => MapOccupiedPartitions.Height(a, p, true).Subtract(MapOccupiedPartitions.Height(b, p, false)));
+                if (b.UpperFaces is not null || b.UpperPlane is not null)
+                    polygon = MapOccupiedPartitions.Clip(polygon, p => MapOccupiedPartitions.Height(b, p, true).Subtract(MapOccupiedPartitions.Height(a, p, false)));
+                if (MapOccupiedPartitions.Positive(polygon) &&
+                    polygon.Any(p => a.Top(p) is not { } ta || ta.CompareTo(b.Bottom(p)) > 0) &&
+                    polygon.Any(p => b.Top(p) is not { } tb || tb.CompareTo(a.Bottom(p)) > 0))
+                    errors.Add($"peer occupied overlap: '{a.SpaceId}' with '{b.SpaceId}'");
+            }
         }
         catch (Exception error) when (error is MapDocumentException or MapExactOverflowException or OverflowException)
         { errors.Add("prism coverage: " + Detail(error)); }

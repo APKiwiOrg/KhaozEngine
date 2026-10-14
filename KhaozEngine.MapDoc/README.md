@@ -200,7 +200,10 @@ Declared seam and strip vertex sequences stay strict. Refinement never waives a 
 candidate, a target face and paint source whose exact bounds overlap, found by an exact bounds sweep. Work
 therefore follows the painted area, not the whole target surface. Only target cells whose exact lattice rectangle
 meets some paint source's bounds are counted against the source and context face limits, from cell bytes before
-any compile. A posed target keeps every cell and relies on the exact face sweep alone.
+any compile. A posed target keeps every cell and relies on the exact face sweep alone. `MapPrismCoverage` and the
+room stage of the occupied partition count the same way. A pair check is a parent piece and room convex part, or
+two peer pieces, whose exact bounds overlap, so a room is charged only for the pieces near it. The visiting order
+is unchanged, so findings and their sorted order are too.
 
 **Legacy lower coverage.** Only a lower bound of kind `MapBoundKind.LegacyExteriorV1`, in an `Exterior`
 space with an `OpenTop` upper bound, may cover a presence-1 `LegacyTileWorld` void or NoDraw cell.

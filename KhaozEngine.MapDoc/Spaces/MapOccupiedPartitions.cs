@@ -314,10 +314,21 @@ internal static class MapOccupiedPartitions
             var domain = MapPrismGeometry.Compile(view, prism);
             var (lower, upper) = MapPrismGeometry.Heights(view, prism);
             var lo = Boundary(view, prism.Id, "prism-lower"); var hi = Boundary(view, prism.Id, "prism-upper");
-            foreach (var parent in raw.Where(p => p.SpaceId == parentOwner).ToArray())
-                for (int i = 0; i < domain.Pieces.Count; i++)
-                    foreach (var convex in domain.ConvexParts(i, work))
+            var parents = raw.Where(p => p.SpaceId == parentOwner).ToArray();
+            // Every convex part is prepared before the first parent, as released. An exact bounds sweep then visits, in
+            // the released parent, piece and part order, only the parts whose bounds overlap a parent. The others share
+            // no positive area. Each visited pair is charged once.
+            var parts = parents.Length == 0 ? [] : Enumerable.Range(0, domain.Pieces.Count)
+                .Select(i => domain.ConvexParts(i, work).Select(c => (Polygon: c, Bounds: MapWaterPolygons.Bounds.Of(c))).ToArray()).ToArray();
+            var parentBounds = parents.Select(p => MapWaterPolygons.Bounds.Of(p.Polygon)).ToArray();
+            var near = MapWaterBoundsSweep.Cross(parentBounds, Enumerable.Range(0, parts.Length).Select(domain.PieceBounds).ToArray())
+                .ToLookup(p => p.Left, p => p.Right);
+            for (int k = 0; k < parents.Length; k++)
+                foreach (int i in near[k])
+                    foreach (var (convex, extent) in parts[i])
                     {
+                        if (!parentBounds[k].OverlapsOpen(extent)) continue;
+                        var parent = parents[k];
                         work.Charge(1);
                         var polygon = Intersect(parent.Polygon, convex);
                         if (!Positive(polygon)) continue;

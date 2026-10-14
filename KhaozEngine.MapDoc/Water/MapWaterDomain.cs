@@ -50,6 +50,8 @@ public sealed class MapWaterDomain
     }
 
     public IReadOnlyList<MapWaterPiece> Pieces { get; }
+    /// <summary>The exact bounds of one piece, which also bound every one of its convex parts.</summary>
+    internal MapWaterPolygons.Bounds PieceBounds(int piece) => _bounds[piece];
     public MapExactXz Min { get; }
     public MapExactXz Max { get; }
 

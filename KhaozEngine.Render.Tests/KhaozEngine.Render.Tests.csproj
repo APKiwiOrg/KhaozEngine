@@ -22,6 +22,9 @@
   </ItemGroup>
   <ItemGroup>
     <None Update="Fixtures/nameplate-legacy-draw-calls.txt" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Gpu/FaceSeamReachTests.cs replays two retained cube-face seam captures through the GPU case's own
+         measurement: the shipped filter on WARP and the clamped-face control on Metal. -->
+    <None Update="Fixtures/point-shadow-seam/*.red.gz" CopyToOutputDirectory="PreserveNewest" />
     <!-- Bundled libre font (Roboto, Apache-2.0) so the 2D golden has identical glyph input on every OS/runner,
          instead of a hard-coded macOS system-font path that doesn't exist on Windows/Linux CI. Loaded from the
          test output dir ("Assets/Roboto-Regular.ttf") by the Gpu/Render2D font tests. -->

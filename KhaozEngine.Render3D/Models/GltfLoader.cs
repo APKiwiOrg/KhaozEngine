@@ -293,117 +293,6 @@ namespace KhaozEngine.Render3D
             }
         }
 
-        /// <summary>Load a rigged glb/glTF as a <see cref="SkinnedGltfMesh"/>: reads POSITION/NORMAL/TEXCOORD_0/TANGENT
-        /// plus JOINTS_0/WEIGHTS_0 and the skin's inverse-bind matrices + rest-pose joint world transforms. A missing
-        /// TANGENT is computed from UV+position (Lengyel, accumulated over the index list then Gram-Schmidt
-        /// orthogonalized against the normal) so a normal-mapped skinned mesh perturbs correctly; a mesh with no UV
-        /// gradient keeps a zero tangent (lit by the geometric normal). Material textures are NOT auto-read (bind a
-        /// PNG albedo separately, as with <see cref="Load"/>, or opt into auto-read with
-        /// <see cref="LoadSkinnedWithMaterial"/>). Throws if the mesh has no skin/joint data (use
-        /// <see cref="Load"/> for rigid meshes). Indexed directly (no re-weld) so joints/weights stay aligned to
-        /// their vertices; emits 32-bit indices so rigs past the 65,536-vertex ceiling load
-        /// (<see cref="SkinnedGltfMesh"/> picks the GPU index width).</summary>
-        public static SkinnedGltfMesh LoadSkinned(string path) => BuildSkinned(LoadModel(path), path);
-
-        /// <summary>Opt-in convenience: load a rigged glb/glTF AND auto-read its first textured material's
-        /// baseColor/normal/metallicRoughness textures, decoded to raw RGBA8 (no GPU). The
-        /// <see cref="SkinnedGltfMesh"/> is identical to <see cref="LoadSkinned"/>; only the extra
-        /// <see cref="GltfMaterialMaps"/> are new. Upload them with <see cref="Scene3D.LoadSurfaceMaps"/> and pass
-        /// the result to <see cref="Scene3D.LoadSkinnedMesh(SkinnedGltfMesh,Scene3D.SurfaceMaps)"/>. A material with
-        /// no (or missing/undecodable) textures yields an all-absent <see cref="GltfMaterialMaps"/>, never a
-        /// throw.</summary>
-        public static (SkinnedGltfMesh Mesh, GltfMaterialMaps Maps) LoadSkinnedWithMaterial(string path)
-        {
-            ModelRoot root = LoadModel(path);
-            SkinnedGltfMesh mesh = BuildSkinned(root, path);
-            return (mesh, ReadMaterialMaps(FirstTexturedMaterial(root)));
-        }
-
-        static SkinnedGltfMesh BuildSkinned(ModelRoot root, string path)
-        {
-            var verts = new List<SkinnedVertex>();
-            var indices = new List<uint>();
-            var srcTangent = new List<Vector4?>();   // glTF TANGENT per vertex if present; null => compute
-            Skin? skin = null;
-
-            foreach (var mesh in root.LogicalMeshes)
-                foreach (var prim in mesh.Primitives)
-                {
-                    var pos = prim.GetVertexAccessor("POSITION")?.AsVector3Array();
-                    var joints = prim.GetVertexAccessor("JOINTS_0")?.AsVector4Array();
-                    var weights = prim.GetVertexAccessor("WEIGHTS_0")?.AsVector4Array();
-                    if (pos == null || joints == null || weights == null) continue;
-
-                    // Single-skin assumption: the first skin found supplies InverseBind/RestPose for all meshes.
-                    // A glb where different meshes use different skins is not supported; later meshes would mis-bind against this skin.
-                    skin ??= root.LogicalNodes.FirstOrDefault(n => n.Mesh == mesh && n.Skin != null)?.Skin
-                             ?? root.LogicalSkins.FirstOrDefault();
-
-                    var normals = prim.GetVertexAccessor("NORMAL")?.AsVector3Array();
-                    var texcoords = prim.GetVertexAccessor("TEXCOORD_0")?.AsVector2Array();
-                    // TANGENT is a vec4 (xyz = tangent direction, w = bitangent sign per glTF spec); when absent,
-                    // it is computed below from UV+position.
-                    var tangents = prim.GetVertexAccessor("TANGENT")?.AsVector4Array();
-                    // Per-vertex COLOR_0 multiplies the material colour exactly as the rigid path does, so a rigged
-                    // asset painted with vertex colours reads the same as the prop kit it was authored beside.
-                    var colors = prim.GetVertexAccessor("COLOR_0")?.AsColorArray();
-                    Vector4 baseColor = ReadBaseColor(prim.Material);
-                    string identity = $"glTF asset '{path}'";
-
-                    int baseIndex = verts.Count;
-                    for (int i = 0; i < pos.Count; i++)
-                    {
-                        Vector4 w = SkinningMath.NormalizeWeights(weights[i]);
-                        verts.Add(new SkinnedVertex
-                        {
-                            Position = pos[i],
-                            Normal = normals != null && i < normals.Count ? normals[i] : Vector3.UnitY,
-                            Color = colors != null && i < colors.Count ? baseColor * colors[i] : baseColor,
-                            Uv = texcoords != null && i < texcoords.Count ? texcoords[i] : Vector2.Zero,
-                            BoneIndices = joints[i],
-                            BoneWeights = w,
-                        });
-                        srcTangent.Add(tangents != null && i < tangents.Count ? tangents[i] : (Vector4?)null);
-                    }
-                    foreach (var (a, b, c) in prim.GetTriangleIndices())
-                    {
-                        indices.Add(MeshIndexValidation.Rebase(a, pos.Count, baseIndex, identity));
-                        indices.Add(MeshIndexValidation.Rebase(b, pos.Count, baseIndex, identity));
-                        indices.Add(MeshIndexValidation.Rebase(c, pos.Count, baseIndex, identity));
-                    }
-                }
-
-            if (verts.Count == 0 || skin == null)
-                throw new InvalidOperationException("glTF has no skinned mesh (JOINTS_0/WEIGHTS_0 + skin): " + path);
-
-            ComputeSkinnedTangents(verts, indices, srcTangent);
-
-            int boneCount = skin.JointsCount;
-
-            // Reject a malformed/malicious rig at load. The CPU skinning path slices the bone palette to
-            // exactly MaxBonesPerDraw and reads it unconditionally per vertex (SkinningMath.BlendSkinMatrix),
-            // so an oversized joint count or an out-of-range JOINTS_0 index would otherwise throw mid-frame.
-            if (boneCount > SkinningMath.MaxBonesPerDraw)
-                throw new InvalidOperationException(
-                    $"glTF skin has {boneCount} joints, over the {SkinningMath.MaxBonesPerDraw}-bone per-draw cap: {path}");
-            foreach (SkinnedVertex v in verts)
-                if (!SkinningMath.AreBoneIndicesValid(v.BoneIndices, boneCount))
-                    throw new InvalidOperationException(
-                        $"glTF JOINTS_0 references a bone index outside [0,{boneCount}): {path}");
-
-            var inverseBind = new Matrix4x4[boneCount];
-            var restPose = new Matrix4x4[boneCount];
-            for (int b = 0; b < boneCount; b++)
-            {
-                var (node, ibm) = skin.GetJoint(b);
-                inverseBind[b] = ibm;
-                restPose[b] = node.WorldMatrix;     // bind-pose joint world transform
-            }
-
-            Skeleton skeleton = BuildSkeleton(skin);
-            return new SkinnedGltfMesh(verts.ToArray(), indices.ToArray(), inverseBind, restPose, skeleton);
-        }
-
         /// <summary>Build the poseable joint hierarchy from a glTF skin: the skeleton node set is every joint plus
         /// all of its visual ancestors (so a static armature/root offset above the joints is composed in), ordered
         /// parents-before-children. Each node carries its rest-local TRS (from the node's local matrix) and its glTF
@@ -454,7 +343,7 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>Read every glTF animation as an <see cref="AnimationClip"/> (additive: leaves
-        /// <see cref="Load"/> / <see cref="LoadSkinned"/> unchanged). Each animation's channels are grouped by
+        /// <see cref="Load"/> / <see cref="LoadSkinned(string)"/> unchanged). Each animation's channels are grouped by
         /// target node into a <see cref="JointTrack"/> (translation / rotation / scale), keyed by the node's glTF
         /// logical index so the clip resolves against the mesh <see cref="Skeleton"/>; per channel the sampler keys
         /// are read with their interpolation (STEP held, LINEAR interpolated, CUBICSPLINE reduced to its value keys

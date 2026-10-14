@@ -1052,6 +1052,17 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   mutation, and `identity` names malformed indices in diagnostics. Attachment consumers apply
   `AttachmentGlb.ValidateRigidEmbedded` before import through `KhaozEngine.Attachments`.
   `KhaozEngine.Attachments.Render3D` supplies the skeleton binding and ships in Game3D.
+- Skinned material parts: `GltfLoader.LoadSkinnedPartsWithMaterials(path)` and its
+  `(ReadOnlyMemory<byte> glb, string identity)` overload return one `GltfSkinnedMeshPart(Mesh, Maps)` per
+  source material in first-use order, including an untextured group for primitives without a material.
+  Parts share one `Skeleton`, inverse binds and rest poses in skin joint order. Vertices stay in skin
+  model coordinates, with no mesh-node transform bake, and retain aligned joints, normalized weights,
+  tangents and material-factor times vertex colour. Maps contain decoded RGBA8 albedo, normal and
+  metallic-roughness images plus each material's alpha cutoff, exactly as the rigid importer reads them.
+  Byte imports need no temporary file and leave the source unchanged. Attachment consumers call
+  `AttachmentGlb.ValidateSkinnedEmbedded` before import. `GltfLoader.LoadSkinned(glb, identity)` also
+  imports a flattened mesh from bytes. The existing `LoadSkinned(path)` and
+  `LoadSkinnedWithMaterial(path)` keep their flattened geometry and first-textured-material behaviour.
 - Named nodes and sockets: `GltfLoader.LoadNamedNodes(path) -> IReadOnlyList<GltfNamedNode>` returns every logical
   node with a non-empty name, empties included, in logical-node order. Each `GltfNamedNode(Name, WorldTransform)`
   carries the node's world matrix exactly as `Load` bakes a mesh node's vertices, so an empty named `socket_nose`

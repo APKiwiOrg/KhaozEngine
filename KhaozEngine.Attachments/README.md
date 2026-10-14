@@ -79,7 +79,9 @@ morph data. It does not replace the renderer's full glTF geometry validation.
 Call `AttachmentGlb.ValidateSkinnedEmbedded(bytes, sourceName)` for skinned parts before importing.
 It shares the GLB 2 envelope, embedded-resource and recursive duplicate-key checks. Exactly one
 embedded buffer and one skin are required. Every mesh node must reference that skin. Joint indices
-and ordinal joint names must be unique, with non-blank names and at most 128 joints. Animations,
+and ordinal joint names must be unique, with non-blank names and at most 128 joints. Joints must share
+a common ancestor, which may be a joint or another node. Node hierarchy cycles, multiple parents,
+repeated children and malformed child references are refused. Animations,
 morph targets, node or mesh weights and influence sets beyond `JOINTS_0` and `WEIGHTS_0` are refused.
 
 Every primitive requires paired VEC4 joint and weight accessors with matching POSITION counts.

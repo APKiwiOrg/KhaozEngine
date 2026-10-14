@@ -18,6 +18,63 @@ public class SkinnedGlbPolicyTests
         AttachmentGlb.ValidateSkinnedEmbedded(valid128, "valid.glb");
         Assert.Equal(128, fixtureJointCount);
         Assert.Equal(4, fixtureInfluencesPerVertex);
+        Assert.Equal(127, fixture.Nodes[0]!["children"]!.AsArray().Count);
+        JsonArray sceneRoots = fixture.Root["scenes"]![0]!["nodes"]!.AsArray();
+        Assert.Equal(2, sceneRoots.Count);
+        Assert.Equal(0, sceneRoots[0]!.GetValue<int>());
+        Assert.Equal(128, sceneRoots[1]!.GetValue<int>());
+    }
+
+    [Theory]
+    [InlineData("joint-chain")]
+    [InlineData("non-joint-root")]
+    [InlineData("non-joint-intermediate")]
+    [InlineData("reordered-joints")]
+    [InlineData("single-joint")]
+    public void Legal_joint_hierarchies_are_accepted(string name)
+    {
+        var fixture = new SkinnedAttachmentGlbFixture();
+        switch (name)
+        {
+            case "joint-chain":
+                for (int joint = 0; joint < 3; joint++)
+                    fixture.Nodes[joint]!["children"] = new JsonArray(joint + 1);
+                break;
+            case "non-joint-root":
+                fixture.Nodes[0]!.AsObject().Remove("children");
+                fixture.Nodes.Add(new JsonObject { ["children"] = new JsonArray(0, 1, 2, 3) });
+                fixture.Root["scenes"]![0]!["nodes"] = new JsonArray(5, 4);
+                break;
+            case "non-joint-intermediate":
+                fixture.Nodes[0]!["children"] = new JsonArray(5, 2, 3);
+                fixture.Nodes.Add(new JsonObject { ["children"] = new JsonArray(1) });
+                break;
+            case "reordered-joints": fixture.Skin["joints"] = new JsonArray(3, 2, 1, 0); break;
+            case "single-joint":
+                fixture.Skin["joints"] = new JsonArray(0);
+                fixture.Accessors[3]!["count"] = 1;
+                for (int vertex = 0; vertex < 3; vertex++)
+                {
+                    fixture.SetElement(1, vertex, 0, 0, 0, 0);
+                    fixture.SetElement(2, vertex, 1, 0, 0, 0);
+                }
+                break;
+        }
+        AttachmentGlb.ValidateSkinnedEmbedded(fixture.Build(), "hierarchy.glb");
+    }
+
+    [Fact]
+    public void Valid_skin_with_deep_parent_chain_is_accepted()
+    {
+        var fixture = new SkinnedAttachmentGlbFixture();
+        int root = 0;
+        for (int depth = 0; depth < 8192; depth++)
+        {
+            fixture.Nodes.Add(new JsonObject { ["children"] = new JsonArray(root) });
+            root = fixture.Nodes.Count - 1;
+        }
+        fixture.Root["scenes"]![0]!["nodes"] = new JsonArray(root, 4);
+        AttachmentGlb.ValidateSkinnedEmbedded(fixture.Build(), "deep-hierarchy.glb");
     }
 
     [Theory]
@@ -89,6 +146,21 @@ public class SkinnedGlbPolicyTests
     [InlineData("missing-name", "joint 1")]
     [InlineData("joint-node-range", "skin 0")]
     [InlineData("empty-joints", "skin 0")]
+    [InlineData("no-common-root", "skin 0: joints must share a common root")]
+    [InlineData("separate-joint-root", "skin 0: joints must share a common root")]
+    [InlineData("hierarchy-cycle", "skin 0 node 0: node hierarchy contains a cycle")]
+    [InlineData("self-cycle", "skin 0 node 4: node hierarchy contains a cycle")]
+    [InlineData("detached-cycle", "skin 0 node 5: node hierarchy contains a cycle")]
+    [InlineData("two-parents", "skin 0 node 1: multiple parents")]
+    [InlineData("repeated-child", "skin 0 node 1: multiple parents")]
+    [InlineData("children-object", "skin 0 node 0: children must be an array")]
+    [InlineData("child-range", "skin 0 node 0 children: invalid node reference")]
+    [InlineData("child-negative", "skin 0 node 0 children: expected a non-negative integer")]
+    [InlineData("child-fractional", "skin 0 node 0 children: expected a non-negative integer")]
+    [InlineData("child-string", "skin 0 node 0 children: expected a non-negative integer")]
+    [InlineData("child-null", "skin 0 node 0 children: expected a non-negative integer")]
+    [InlineData("child-overflow", "skin 0 node 0 children: expected a non-negative integer")]
+    [InlineData("non-object-node", "skin 0 node 4: node must be an object")]
     [InlineData("animation", "animations")]
     [InlineData("targets", "primitive 0")]
     [InlineData("node-weights", "node 4")]
@@ -177,6 +249,30 @@ public class SkinnedGlbPolicyTests
             case "missing-name": fixture.Nodes[1]!.AsObject().Remove("name"); break;
             case "joint-node-range": fixture.Skin["joints"]![1] = 99; break;
             case "empty-joints": fixture.Skin["joints"] = new JsonArray(); break;
+            case "no-common-root":
+                fixture.Nodes[0]!.AsObject().Remove("children");
+                fixture.Root["scenes"]![0]!["nodes"] = new JsonArray(0, 1, 2, 3, 4);
+                break;
+            case "separate-joint-root":
+                fixture.Nodes[0]!["children"] = new JsonArray(1, 2);
+                fixture.Root["scenes"]![0]!["nodes"] = new JsonArray(0, 3, 4);
+                break;
+            case "hierarchy-cycle": fixture.Nodes[1]!["children"] = new JsonArray(0); break;
+            case "self-cycle": fixture.MeshNode["children"] = new JsonArray(4); break;
+            case "detached-cycle":
+                fixture.Nodes.Add(new JsonObject { ["children"] = new JsonArray(6) });
+                fixture.Nodes.Add(new JsonObject { ["children"] = new JsonArray(5) });
+                break;
+            case "two-parents": fixture.MeshNode["children"] = new JsonArray(1); break;
+            case "repeated-child": fixture.Nodes[0]!["children"]!.AsArray().Add(1); break;
+            case "children-object": fixture.Nodes[0]!["children"] = new JsonObject(); break;
+            case "child-range": fixture.Nodes[0]!["children"] = new JsonArray(99); break;
+            case "child-negative": fixture.Nodes[0]!["children"] = new JsonArray(-1); break;
+            case "child-fractional": fixture.Nodes[0]!["children"] = new JsonArray(.5); break;
+            case "child-string": fixture.Nodes[0]!["children"] = new JsonArray("one"); break;
+            case "child-null": fixture.Nodes[0]!["children"] = new JsonArray((JsonNode?)null); break;
+            case "child-overflow": fixture.Nodes[0]!["children"] = new JsonArray(uint.MaxValue); break;
+            case "non-object-node": fixture.Nodes[4] = null; break;
             case "animation": fixture.Root["animations"] = new JsonArray(new JsonObject()); break;
             case "targets": fixture.Primitives[0]!["targets"] = new JsonArray(); break;
             case "node-weights": fixture.MeshNode["weights"] = new JsonArray(); break;

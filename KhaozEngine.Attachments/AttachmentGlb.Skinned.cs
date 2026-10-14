@@ -70,6 +70,7 @@ public static partial class AttachmentGlb
             if (!names.Add(name.GetString()!))
                 throw new InvalidDataException($"{jointContext}: repeated joint name '{name.GetString()}'.");
         }
+        AttachmentGlbHierarchy.Validate(root, joints, context);
         int count = joints.GetArrayLength();
         if (skin.TryGetProperty("inverseBindMatrices", out JsonElement reference))
         {

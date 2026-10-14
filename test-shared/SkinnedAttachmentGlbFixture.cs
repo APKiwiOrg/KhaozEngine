@@ -31,14 +31,17 @@ internal sealed class SkinnedAttachmentGlbFixture
         AddAccessor(3, "VEC4", weightComponentType, weightComponentType != 5126, strided);
         AddAccessor(jointCount, "MAT4", 5126, false, false);
         var joints = new JsonArray();
+        var jointChildren = new JsonArray();
         JsonArray sceneNodes = Root["scenes"]![0]!["nodes"]!.AsArray();
         for (int i = 0; i < jointCount; i++)
         {
             Nodes.Add(new JsonObject { ["name"] = "joint-" + i });
             joints.Add(i);
-            sceneNodes.Add(i);
+            if (i > 0) jointChildren.Add(i);
             SetInverseBind(i, Matrix4x4.Identity);
         }
+        if (jointCount > 1) Nodes[0]!["children"] = jointChildren;
+        if (jointCount > 0) sceneNodes.Add(0);
         Skin["joints"] = joints;
         Skin["inverseBindMatrices"] = 3;
         Nodes.Add(new JsonObject { ["name"] = "garment", ["mesh"] = 0, ["skin"] = 0 });

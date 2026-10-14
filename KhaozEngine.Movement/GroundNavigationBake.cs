@@ -75,12 +75,12 @@ public sealed partial class GroundNavigationBake
     /// <exception cref="ArgumentOutOfRangeException">The execution's degree is below 1, checked before every other
     /// argument. Also as the three-argument form.</exception>
     /// <exception cref="NotSupportedException">A contact profile above degree 1 has a physics source or selected query
-    /// view without <see cref="KhaozEngine.Physics.IPhysicsConcurrentReadSource"/>. Checked when that profile builds,
-    /// after its other checks and before any of its workers exist.</exception>
+    /// view without <see cref="KhaozEngine.Physics.IPhysicsConcurrentReadSource"/>. Above degree 1 with a contact
+    /// profile, every profile's argument checks run first, then this check, before any profile builds.</exception>
     public static GroundNavigationBake Create(PhysicsNavBake capture, NavBakeSources sources,
         IReadOnlyList<NavBakeProfile> profiles, NavBakeExecution? execution)
     {
-        _ = NavBakeExecution.Degree(execution, nameof(execution));
+        int degree = NavBakeExecution.Degree(execution, nameof(execution));
         ArgumentNullException.ThrowIfNull(capture);
         ArgumentNullException.ThrowIfNull(sources);
         ArgumentNullException.ThrowIfNull(profiles);
@@ -96,6 +96,10 @@ public sealed partial class GroundNavigationBake
         if (identity.Length > MaxIdentityLength)
             throw new ArgumentException("The bake identity block exceeds 1 MiB.", nameof(sources));
         NavBakeProfile[] sorted = SortedByName(snapshot);
+        // Above degree 1 a build with a contact profile checks every profile and the capability before any builds.
+        if (degree > 1 && Array.Exists(sorted, static profile =>
+            profile.ResolveKind() == EffectiveMovementBindingKind.OrdinaryContact))
+            capture.CheckProfiles(sorted);
 
         var names = new string[sorted.Length];
         var built = new GroundNavigation[sorted.Length];

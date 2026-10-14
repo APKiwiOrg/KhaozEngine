@@ -106,4 +106,48 @@ public class NavBakeExecutionTests
         SameGraphBits(declared.Build(null), serial);
         scene.AssertUsable();
     }
+
+    [Fact]
+    public void PhysicsSourceWithoutTheCapabilityRefusesContactUnderADeclaringView()
+    {
+        using var world = new ObservedPhysicsWorld();
+        Assert.IsNotAssignableFrom<IPhysicsConcurrentReadSource>(world);
+        var builder = OrdinaryMovementRegistration.CreateBuilder("world", world, new(new(-20, -4, -20), new(20, 4, 20), 0, 0));
+        Box(world.Backend, builder, "floor", new(-8, -0.2f, -8), new(8, 0, 8));
+        OrdinaryMovementRegistration registration;
+        using (IPhysicsQueryLease lease = world.AcquireQueryReadLease()) registration = builder.Build(lease);
+        using IPhysicsWorldQueryView inner = world.Backend.CreateQueryViewExcludingStatics([]);
+        var view = new ConcurrentForwardingQueryView(inner, world);
+        Assert.IsAssignableFrom<IPhysicsConcurrentReadSource>(view);
+        using var context = new GroundMoveContext((_, _) => 0f, null, world, null, null, view, null, registration,
+            MovementBoundary.Rectangle(-20, -20, 20, 20));
+        using PhysicsNavBake capture = PhysicsNavBake.Capture(context, StairOptions, _ => 0);
+        Assert.Throws<NotSupportedException>(() =>
+            capture.BuildProfile(StairTuning, default, GroundProfileOptions.Default, new NavBakeExecution(2)));
+        Assert.Throws<NotSupportedException>(() => GroundNavigationBake.Create(capture, ContactBakeFile.Sources(),
+            [new NavBakeProfile("player", StairTuning, default)], new NavBakeExecution(2)));
+    }
+
+    [Fact]
+    public void MixedCreateAboveDegreeOneChecksEveryProfileBeforeBuildingAny()
+    {
+        using var scene = new SmallStairScene(concurrentView: false);
+        using PhysicsNavBake capture = scene.Capture();
+        MoveTuning legacy = StairTuning with { Controller = MovementControllerKind.Legacy, Water = default };
+        // The legacy profile sorts first, so a build that started would read ground height before the refusal.
+        NavBakeProfile[] profiles = [new("a-legacy", legacy, default), new("player", StairTuning, default)];
+        NavBakeProfile[] badSlope = [profiles[0], new("player", StairTuning with { MaxSlopeRadians = 0.1f }, default)];
+        int reads = scene.HeightReads;
+        Assert.Throws<NotSupportedException>(() =>
+            GroundNavigationBake.Create(capture, ContactBakeFile.Sources(), profiles, new NavBakeExecution(2)));
+        Assert.Equal(reads, scene.HeightReads);
+        // A later profile's argument check still wins over the capability.
+        Assert.Throws<ArgumentException>(() =>
+            GroundNavigationBake.Create(capture, ContactBakeFile.Sources(), badSlope, new NavBakeExecution(2)));
+        Assert.Equal(reads, scene.HeightReads);
+        // The count does observe a legacy build.
+        capture.BuildProfile(legacy, default);
+        Assert.True(scene.HeightReads > reads);
+        scene.AssertUsable();
+    }
 }

@@ -183,30 +183,30 @@ internal static class SupportQueryDiagnostics
     {
         if (!t_enabled) return;
         int[] c = t_counts!;
-        c[0] += counts.Find;
-        c[1] += counts.Proposals;
-        c[2] += counts.Volumes;
-        c[3] += counts.SelectedStatics;
-        c[4] += counts.MeshLeaves;
-        c[5] += counts.Polygons;
-        c[6] += counts.Members;
-        c[7] += counts.Extrema;
-        c[8] += counts.IntervalFallbacks;
-        c[9] += counts.ExactFallbacks;
-        c[10] += counts.JoinPairs;
-        c[11] += counts.JoinsProved;
-        c[12] += counts.JoinsPruned;
-        c[13] += counts.Unsupported;
-        c[14] += counts.Ambiguous;
-        c[15] += counts.CapacityExceeded;
-        c[16] += counts.AnalyticSamples;
-        c[17] += counts.Bindings;
-        c[18] += counts.PhysicsLeases;
-        c[19] += counts.MovementLeases;
-        c[20] += counts.ProducerPins;
-        c[21] += counts.GroundSubsteps;
-        c[22] += counts.MediumRetries;
-        c[23] += counts.ModeSegments;
+        c[(int)SupportQueryCounter.Find] += counts.Find;
+        c[(int)SupportQueryCounter.Proposals] += counts.Proposals;
+        c[(int)SupportQueryCounter.Volumes] += counts.Volumes;
+        c[(int)SupportQueryCounter.SelectedStatics] += counts.SelectedStatics;
+        c[(int)SupportQueryCounter.MeshLeaves] += counts.MeshLeaves;
+        c[(int)SupportQueryCounter.Polygons] += counts.Polygons;
+        c[(int)SupportQueryCounter.Members] += counts.Members;
+        c[(int)SupportQueryCounter.Extrema] += counts.Extrema;
+        c[(int)SupportQueryCounter.IntervalFallbacks] += counts.IntervalFallbacks;
+        c[(int)SupportQueryCounter.ExactFallbacks] += counts.ExactFallbacks;
+        c[(int)SupportQueryCounter.JoinPairs] += counts.JoinPairs;
+        c[(int)SupportQueryCounter.JoinsProved] += counts.JoinsProved;
+        c[(int)SupportQueryCounter.JoinsPruned] += counts.JoinsPruned;
+        c[(int)SupportQueryCounter.Unsupported] += counts.Unsupported;
+        c[(int)SupportQueryCounter.Ambiguous] += counts.Ambiguous;
+        c[(int)SupportQueryCounter.CapacityExceeded] += counts.CapacityExceeded;
+        c[(int)SupportQueryCounter.AnalyticSamples] += counts.AnalyticSamples;
+        c[(int)SupportQueryCounter.Bindings] += counts.Bindings;
+        c[(int)SupportQueryCounter.PhysicsLeases] += counts.PhysicsLeases;
+        c[(int)SupportQueryCounter.MovementLeases] += counts.MovementLeases;
+        c[(int)SupportQueryCounter.ProducerPins] += counts.ProducerPins;
+        c[(int)SupportQueryCounter.GroundSubsteps] += counts.GroundSubsteps;
+        c[(int)SupportQueryCounter.MediumRetries] += counts.MediumRetries;
+        c[(int)SupportQueryCounter.ModeSegments] += counts.ModeSegments;
         t_routes = new(t_routes.WallRetries + routes.WallRetries, t_routes.PushedPlacements + routes.PushedPlacements,
             t_routes.MediumResolves + routes.MediumResolves, Math.Max(t_routes.MaximumMediumRetries, routes.MaximumMediumRetries),
             t_routes.GroundSegments + routes.GroundSegments, t_routes.SlideSegments + routes.SlideSegments,

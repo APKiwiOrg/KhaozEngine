@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using KhaozEngine.Locomotion;
@@ -11,12 +12,18 @@ namespace KhaozEngine.Movement;
 internal enum ContactNavigationPhase { Admission, Edges, Links }
 
 /// <summary>A parallel contact build's workers. Setup runs on the calling thread: the snapshot, then each worker's
-/// source and proof binding with its first pin, in worker order. A phase splits its rows into contiguous bands, one per
-/// worker, and never schedules an empty band. Every worker owns its binding, its environment context and its anchor
-/// map, and shares only the snapshot, the captured columns, the footprint and the options. Release joins nothing
-/// because every phase joins its workers before returning, so it only disposes bindings in worker order.</summary>
+/// source and proof binding with its first pin, in worker order. A phase splits its rows into contiguous bands, up to
+/// <see cref="BandsPerWorker"/> per worker and never an empty one, and the workers claim bands in ascending order.
+/// Every worker owns its binding, its environment context and its anchor map, and shares only the snapshot, the
+/// captured columns, the footprint and the options. Release joins nothing because every phase joins its workers before
+/// returning, so it only disposes bindings in worker order.</summary>
 internal sealed class ContactNavigationWorkers
 {
+    /// <summary>Bands per worker in one phase. Rows differ in proof cost, so a worker that finishes a cheap band claims
+    /// the next one instead of idling behind a costly band. The count is fixed, so the partition never depends on
+    /// timing.</summary>
+    internal const int BandsPerWorker = 4;
+
     readonly ContactNavigationProof?[] _proofs;
     readonly EffectiveMovementBinding?[] _sources;
     readonly Action<ContactAllocationPhase, bool>?[] _observers;
@@ -64,28 +71,35 @@ internal sealed class ContactNavigationWorkers
         return workers;
     }
 
+    /// <summary>The bands one phase splits <paramref name="rows"/> into with <paramref name="workers"/> workers:
+    /// <see cref="BandsPerWorker"/> per worker, capped by the row count so no band is empty.</summary>
+    internal static int BandCount(int workers, int rows) => (int)Math.Min(rows, (long)workers * BandsPerWorker);
+
     /// <summary>Runs <paramref name="work"/> over <paramref name="rows"/> rows split into contiguous bands and joins
-    /// every worker. Returns the cutoff holding the lowest-ordinal failure, so the caller can add failures that keep a
-    /// later logical position before throwing.</summary>
-    internal ContactNavigationCutoff Run(ContactNavigationPhase phase, int rows,
+    /// every worker. <paramref name="firstOrdinal"/> gives the serial ordinal of a row's first item, so a worker stops
+    /// claiming once the next band starts above the failure cutoff. Returns the cutoff holding the lowest-ordinal
+    /// failure, so the caller can add failures that keep a later logical position before throwing.</summary>
+    internal ContactNavigationCutoff Run(ContactNavigationPhase phase, int rows, Func<int, long> firstOrdinal,
         Action<ContactNavigationProof, ContactNavigationBand> work)
     {
         var cutoff = new ContactNavigationCutoff();
-        int count = Math.Min(Count, rows);
-        if (count <= 0) return cutoff;
+        int bands = BandCount(Count, rows);
+        if (bands <= 0) return cutoff;
+        var schedule = new ContactNavigationSchedule(rows, bands, firstOrdinal, cutoff);
+        int count = Math.Min(Count, bands);
         var records = new WorkerDiagnosticsRecord[count];
         var threads = new Thread[count];
         int started = 0;
+        ThreadInterruptedException? interrupted = null;
         try
         {
             for (; started < count; started++)
             {
-                var band = new ContactNavigationBand(started, BandStart(rows, count, started),
-                    BandStart(rows, count, started + 1), cutoff);
-                var thread = new Thread(() => Work(phase, band, work, records))
+                int worker = started;
+                var thread = new Thread(() => Work(phase, worker, schedule, work, records))
                 {
                     IsBackground = true,
-                    Name = $"Contact navigation {phase} worker {band.Worker}",
+                    Name = $"Contact navigation {phase} worker {worker}",
                 };
                 threads[started] = thread;
                 thread.Start();
@@ -98,26 +112,52 @@ internal sealed class ContactNavigationWorkers
         }
         finally
         {
-            for (int worker = 0; worker < started; worker++) threads[worker].Join();
+            // An interrupt stops the workers at their next item, but every one is still joined before it propagates,
+            // so no binding is released while a worker can use it.
+            for (int worker = 0; worker < started; worker++)
+                while (true)
+                {
+                    try
+                    {
+                        threads[worker].Join();
+                        break;
+                    }
+                    catch (ThreadInterruptedException interrupt)
+                    {
+                        interrupted ??= interrupt;
+                        cutoff.Fail(long.MinValue, interrupt);
+                    }
+                }
         }
         WorkerDiagnostics.Merge(records.AsSpan(0, started));
+        if (interrupted is not null) ExceptionDispatchInfo.Capture(interrupted).Throw();
         return cutoff;
     }
 
-    void Work(ContactNavigationPhase phase, ContactNavigationBand band,
+    void Work(ContactNavigationPhase phase, int worker, ContactNavigationSchedule schedule,
         Action<ContactNavigationProof, ContactNavigationBand> work, WorkerDiagnosticsRecord[] records)
     {
-        var scope = WorkerDiagnosticsScope.Enter(_diagnostics, _observers[band.Worker]);
+        var scope = WorkerDiagnosticsScope.Enter(_diagnostics, _observers[worker]);
         try
         {
-            work(_proofs[band.Worker]!, band);
-            _hooks?.BandCompleted?.Invoke(phase, band.Worker);
+            ContactNavigationProof proof = _proofs[worker]!;
+            while (schedule.TryClaim(out ContactNavigationBand? band))
+            {
+                try
+                {
+                    work(proof, band);
+                    _hooks?.BandCompleted?.Invoke(phase, band.Index);
+                }
+                catch (Exception failure)
+                {
+                    // Every later band starts above this failure, so the worker is done.
+                    band.Fail(failure);
+                    return;
+                }
+            }
         }
-        catch (Exception failure) { band.Fail(failure); }
-        finally { records[band.Worker] = scope.Exit(); }
+        finally { records[worker] = scope.Exit(); }
     }
-
-    static int BandStart(int rows, int count, int band) => (int)((long)rows * band / count);
 
     /// <summary>Releases every worker binding in worker order after all workers joined. Caller-owned physics and
     /// borrowed views stay usable. With a <paramref name="primary"/> failure, cleanup failures are attached to it under
@@ -151,13 +191,38 @@ internal sealed class ContactNavigationWorkers
     internal const string CleanupFailuresKey = "CleanupFailures";
 }
 
-/// <summary>One worker's contiguous rows in one phase. <see cref="Admits"/> runs between proofs and records the serial
-/// ordinal of the item about to start, so a failure carries that ordinal.</summary>
-internal sealed class ContactNavigationBand(int worker, int start, int end, ContactNavigationCutoff cutoff)
+/// <summary>One phase's bands in row order. Workers claim them in ascending order through one counter, and a claim is
+/// refused once the band's first item lies above the failure cutoff. Every later band lies above it too, so every
+/// band below the final cutoff was claimed and ran.</summary>
+internal sealed class ContactNavigationSchedule(int rows, int count, Func<int, long> firstOrdinal,
+    ContactNavigationCutoff cutoff)
 {
-    long _current = long.MinValue;
+    int _next = -1;
 
-    internal int Worker { get; } = worker;
+    internal bool TryClaim([NotNullWhen(true)] out ContactNavigationBand? band)
+    {
+        band = null;
+        int index = Interlocked.Increment(ref _next);
+        if (index >= count) return false;
+        int start = Start(index);
+        long first = firstOrdinal(start);
+        if (!cutoff.Admits(first)) return false;
+        band = new ContactNavigationBand(index, start, Start(index + 1), first, cutoff);
+        return true;
+    }
+
+    int Start(int index) => (int)((long)rows * index / count);
+}
+
+/// <summary>One band of contiguous rows in one phase. <see cref="Index"/> is its position in row order, independent of
+/// the worker that claimed it. <see cref="Admits"/> runs between proofs and records the serial ordinal of the item
+/// about to start, so a failure carries that ordinal.</summary>
+internal sealed class ContactNavigationBand(int index, int start, int end, long firstOrdinal,
+    ContactNavigationCutoff cutoff)
+{
+    long _current = firstOrdinal;
+
+    internal int Index { get; } = index;
     internal int Start { get; } = start;
     internal int End { get; } = end;
 
@@ -198,32 +263,5 @@ internal sealed class ContactNavigationCutoff
         Exception? failure;
         lock (_gate) failure = _failure;
         if (failure is not null) ExceptionDispatchInfo.Capture(failure).Throw();
-    }
-}
-
-/// <summary>Observation points of a parallel contact build for tests, read from the calling thread when setup starts.
-/// <see cref="WorkerPinned"/> and <see cref="Releasing"/> run on the calling thread, <see cref="BandCompleted"/> on the
-/// worker that finished the band. A hook that throws fails the build at that point.</summary>
-internal sealed class ContactNavigationBuildHooks
-{
-    [ThreadStatic] static ContactNavigationBuildHooks? t_current;
-
-    internal static ContactNavigationBuildHooks? Current => t_current;
-
-    internal Action<int>? WorkerPinned { get; init; }
-    internal Action<ContactNavigationPhase, int>? BandCompleted { get; init; }
-    internal Action<int>? Releasing { get; init; }
-
-    /// <summary>Installs <paramref name="hooks"/> for builds started on this thread until the scope is disposed.</summary>
-    internal static Scope Install(ContactNavigationBuildHooks? hooks)
-    {
-        ContactNavigationBuildHooks? prior = t_current;
-        t_current = hooks;
-        return new(prior);
-    }
-
-    internal readonly struct Scope(ContactNavigationBuildHooks? prior) : IDisposable
-    {
-        public void Dispose() => t_current = prior;
     }
 }

@@ -168,6 +168,62 @@ public class ParallelContactBakeFailureTests
         scene.AssertUsable();
     }
 
+    [Fact]
+    public void InterruptedJoinStillJoinsEveryWorkerBeforeRelease()
+    {
+        var holding = new ManualResetEventSlim();
+        var resume = new ManualResetEventSlim();
+        var released = new ManualResetEventSlim();
+        float row0 = Centre(0, 0).Y;
+        int held = 0;
+        bool resumed = false;
+        Thread? heldWorker = null;
+        // The first query on row 0 holds its admission worker inside a leased query until the test resumes it.
+        using var scene = new SmallStairScene(fault: (position, _) =>
+        {
+            if (MathF.Abs(position.Z - row0) >= 0.01f || Interlocked.Exchange(ref held, 1) != 0) return;
+            heldWorker = Thread.CurrentThread;
+            holding.Set();
+            resumed = resume.Wait(Timeout);
+        });
+        var aliveAtRelease = new List<bool>();
+        Exception? thrown = null;
+        var builder = new Thread(() =>
+        {
+            using var hooks = ContactNavigationBuildHooks.Install(new()
+            {
+                Releasing = _ =>
+                {
+                    aliveAtRelease.Add(heldWorker!.IsAlive);
+                    released.Set();
+                },
+            });
+            try { scene.Build(new NavBakeExecution(2)); }
+            catch (Exception failure) { thrown = failure; }
+        });
+        builder.Start();
+        try
+        {
+            Assert.True(holding.Wait(Timeout));
+            // Every worker has started, so the builder blocks only in a phase join.
+            Assert.True(SpinWait.SpinUntil(() => (builder.ThreadState & ThreadState.WaitSleepJoin) != 0, Timeout));
+            builder.Interrupt();
+            // A join that gave up on the interrupt would release the workers while the held one is still inside
+            // its query. The fixed join keeps waiting, so nothing is released before the worker resumes.
+            Assert.False(released.Wait(TimeSpan.FromMilliseconds(500)), "Workers were released under a live worker.");
+        }
+        finally
+        {
+            resume.Set();
+            Assert.True(builder.Join(Timeout));
+        }
+        Assert.True(resumed);
+        Assert.IsType<ThreadInterruptedException>(thrown);
+        Assert.NotEmpty(aliveAtRelease);
+        Assert.DoesNotContain(true, aliveAtRelease);
+        scene.AssertUsable();
+    }
+
     static void AssertSerialFailureWins(Faults faults)
     {
         using var scene = new SmallStairScene(fault: faults.Check);
@@ -191,12 +247,12 @@ public class ParallelContactBakeFailureTests
         }
     }
 
-    static Vector2 Centre(int x, int z) =>
+    internal static Vector2 Centre(int x, int z) =>
         new(-0.3f + (x + 0.5f) * SmallStairScene.Cell, -0.9f + (z + 0.5f) * SmallStairScene.Cell);
 
     // Any capsule query on the cell's column within the height band. Holds and anchors query a shell about 0.26 m above
     // the feet for this tuning.
-    static Func<Vector3, Vector3, bool> Near(Vector2 cell, float lowCentre, float highCentre) => (position, _) =>
+    internal static Func<Vector3, Vector3, bool> Near(Vector2 cell, float lowCentre, float highCentre) => (position, _) =>
         MathF.Abs(position.X - cell.X) < 0.01f && MathF.Abs(position.Z - cell.Y) < 0.01f &&
         position.Y >= lowCentre && position.Y <= highCentre;
 

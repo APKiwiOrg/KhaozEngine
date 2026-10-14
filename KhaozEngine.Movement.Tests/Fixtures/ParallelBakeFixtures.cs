@@ -13,14 +13,16 @@ namespace KhaozEngine.Tests.Movement.Fixtures;
 
 /// <summary>A borrowed movement view that forwards every query to a Bepu view and declares no concurrent reads.
 /// <see cref="Fault"/> sees each capsule query's local start position and displacement and may throw. It must be a
-/// pure function of those inputs so its failures do not depend on the schedule.</summary>
-internal class ForwardingQueryView(IPhysicsWorldQueryView inner) : PhysicsForwarder(inner), IPhysicsWorldQueryView,
+/// pure function of those inputs so its failures do not depend on the schedule. A <paramref name="sourceWorld"/> names a
+/// forwarding world the view reports as its source instead of the inner view's.</summary>
+internal class ForwardingQueryView(IPhysicsWorldQueryView inner, IPhysicsWorld? sourceWorld = null)
+    : PhysicsForwarder(inner), IPhysicsWorldQueryView,
     IPhysicsQueryLeaseSource, IPhysicsCapsuleGeometryQueries, IPhysicsCapsuleFeatures, IPhysicsSupportNeighborhood,
     IPhysicsSupportFootprint
 {
     internal Action<Vector3, Vector3>? Fault { get; init; }
 
-    public IPhysicsWorld SourceWorld => inner.SourceWorld;
+    public IPhysicsWorld SourceWorld => sourceWorld ?? inner.SourceWorld;
     public IPhysicsQueryLease AcquireQueryReadLease() => ((IPhysicsQueryLeaseSource)inner).AcquireQueryReadLease();
 
     public CapsuleContactResult QueryCapsuleContacts(CapsuleShape capsule, Pose pose, float separation,
@@ -75,8 +77,8 @@ internal class ForwardingQueryView(IPhysicsWorldQueryView inner) : PhysicsForwar
 
 /// <summary>The same forwarding view after auditing its state: it holds only the inner view and an immutable fault, so
 /// it declares concurrent reads.</summary>
-internal sealed class ConcurrentForwardingQueryView(IPhysicsWorldQueryView inner) : ForwardingQueryView(inner),
-    IPhysicsConcurrentReadSource;
+internal sealed class ConcurrentForwardingQueryView(IPhysicsWorldQueryView inner, IPhysicsWorld? sourceWorld = null)
+    : ForwardingQueryView(inner, sourceWorld), IPhysicsConcurrentReadSource;
 
 /// <summary>A water field whose generation the test advances. Answers come from the inner field.</summary>
 internal sealed class MutableWaterField(IMovementWaterField inner) : IMovementWaterField
@@ -116,6 +118,7 @@ internal sealed class SmallStairScene : IDisposable
 
     readonly OrdinaryContactScene _scene;
     readonly IPhysicsWorldQueryView _inner;
+    int _heightReads;
 
     internal SmallStairScene(bool concurrentView = true, Action<Vector3, Vector3>? fault = null,
         IMovementWaterField? water = null)
@@ -129,13 +132,20 @@ internal sealed class SmallStairScene : IDisposable
         _inner = _scene.Physics.CreateQueryViewExcludingStatics(_scene.Registration.ExcludedStatics.ToArray());
         View = concurrentView ? new ConcurrentForwardingQueryView(_inner) { Fault = fault }
             : new ForwardingQueryView(_inner) { Fault = fault };
-        Context = new GroundMoveContext(_scene.Height, _scene.Normal, _scene.Physics, null, null, View, water,
+        Context = new GroundMoveContext((x, z) =>
+        {
+            Interlocked.Increment(ref _heightReads);
+            return _scene.Height(x, z);
+        }, _scene.Normal, _scene.Physics, null, null, View, water,
             _scene.Registration, MovementBoundary.Rectangle(-20, -20, 20, 20));
     }
 
     internal BepuPhysicsWorld Physics => _scene.Physics;
     internal ForwardingQueryView View { get; }
     internal GroundMoveContext Context { get; }
+
+    /// <summary>Ground height reads through the context, from any thread. Legacy movement steps read it.</summary>
+    internal int HeightReads => Volatile.Read(ref _heightReads);
 
     internal PhysicsNavBake Capture() => PhysicsNavBake.Capture(Context, StairOptions, _ => 0);
 

@@ -45,7 +45,8 @@ public sealed partial class PhysicsNavBake
                 width = Math.Max(width, grid.Width);
             }
 
-            workers.Run(ContactNavigationPhase.Edges, layerRows[^1], (proof, band) =>
+            workers.Run(ContactNavigationPhase.Edges, layerRows[^1],
+                row => (long)row * width * ProfileNeighbors.Length, (proof, band) =>
             {
                 for (int row = band.Start, layer = 0; row < band.End; row++)
                 {
@@ -74,7 +75,7 @@ public sealed partial class PhysicsNavBake
 
             IReadOnlyList<NavLink> candidates = space.Links;
             var accepted = new bool[candidates.Count];
-            workers.Run(ContactNavigationPhase.Links, candidates.Count, (proof, band) =>
+            workers.Run(ContactNavigationPhase.Links, candidates.Count, index => index, (proof, band) =>
             {
                 for (int index = band.Start; index < band.End; index++)
                 {
@@ -144,10 +145,11 @@ public sealed partial class PhysicsNavBake
         void Admit()
         {
             int width = bake.Columns.Width, rows = bake.Columns.Height;
-            var bands = new AdmissionBand?[Math.Min(workers.Count, rows)];
-            ContactNavigationCutoff cutoff = workers.Run(ContactNavigationPhase.Admission, rows, (proof, band) =>
+            var bands = new ContactAdmissionBand?[ContactNavigationWorkers.BandCount(workers.Count, rows)];
+            ContactNavigationCutoff cutoff = workers.Run(ContactNavigationPhase.Admission, rows,
+                row => (long)row * width * maxSurfaces, (proof, band) =>
             {
-                var result = bands[band.Worker] = new AdmissionBand(band.Start * width, band.End * width);
+                var result = bands[band.Index] = new ContactAdmissionBand(band.Start * width, band.End * width);
                 var buffer = new NavSurfaceSample[maxSurfaces];
                 for (int z = band.Start; z < band.End; z++)
                     for (int x = 0; x < width; x++)
@@ -170,13 +172,13 @@ public sealed partial class PhysicsNavBake
                         result.Keep(cell, buffer.AsSpan(0, kept));
                     }
             });
-            Merge(bands, cutoff);
+            ContactAdmissionBand.MergeAnchors(bands, cutoff, _anchors);
             cutoff.ThrowSelected();
 
             int cells = width * rows;
             _starts = new int[cells + 1];
             var accepted = new List<NavSurfaceSample>();
-            foreach (AdmissionBand? band in bands)
+            foreach (ContactAdmissionBand? band in bands)
                 for (int cell = band!.FirstCell; cell < band.EndCell; cell++)
                 {
                     _starts[cell] = accepted.Count;
@@ -185,46 +187,50 @@ public sealed partial class PhysicsNavBake
             _starts[cells] = accepted.Count;
             _accepted = [.. accepted];
         }
+    }
+}
 
-        // Bands merge in row order, so anchors arrive in admission order. A duplicate across bands fails at the later
-        // insertion's ordinal, unless an earlier item already failed.
-        void Merge(AdmissionBand?[] bands, ContactNavigationCutoff cutoff)
+/// <summary>One admission band's accepted surfaces and anchors, in its cells' order.</summary>
+internal sealed class ContactAdmissionBand(int firstCell, int endCell)
+{
+    readonly int[] _starts = new int[endCell - firstCell + 1];
+    readonly List<NavSurfaceSample> _surfaces = [];
+
+    internal int FirstCell { get; } = firstCell;
+    internal int EndCell { get; } = endCell;
+    internal List<(Vector3 Feet, float Resting, long Ordinal)> Anchors { get; } = [];
+
+    internal void Keep(int cell, ReadOnlySpan<NavSurfaceSample> surfaces)
+    {
+        _starts[cell - FirstCell] = _surfaces.Count;
+        _surfaces.AddRange(surfaces);
+        _starts[cell - FirstCell + 1] = _surfaces.Count;
+    }
+
+    internal ReadOnlySpan<NavSurfaceSample> Column(int cell) => CollectionsMarshal.AsSpan(_surfaces)
+        [_starts[cell - FirstCell].._starts[cell - FirstCell + 1]];
+
+    /// <summary>Adds every band's anchors to <paramref name="anchors"/> by band index, which is row order and so
+    /// admission order, never completion order. A duplicate key fails at the later insertion's ordinal, as the serial
+    /// <c>Dictionary.Add</c> does, and only wins when it lies below every failure already in the cutoff. Merging stops at
+    /// the first anchor at or above the cutoff and at the first band never claimed, since every later one lies above
+    /// the cutoff too.</summary>
+    internal static void MergeAnchors(ContactAdmissionBand?[] bands, ContactNavigationCutoff cutoff,
+        Dictionary<Vector3, float> anchors)
+    {
+        foreach (ContactAdmissionBand? band in bands)
         {
-            foreach (AdmissionBand? band in bands)
+            if (band is null) return;
+            foreach ((Vector3 feet, float resting, long ordinal) in band.Anchors)
             {
-                if (band is null) return;
-                foreach ((Vector3 feet, float resting, long ordinal) in band.Anchors)
+                if (!cutoff.Admits(ordinal)) return;
+                try { anchors.Add(feet, resting); }
+                catch (ArgumentException duplicate)
                 {
-                    if (!cutoff.Admits(ordinal)) return;
-                    try { _anchors.Add(feet, resting); }
-                    catch (ArgumentException duplicate)
-                    {
-                        cutoff.Fail(ordinal, duplicate);
-                        return;
-                    }
+                    cutoff.Fail(ordinal, duplicate);
+                    return;
                 }
             }
         }
-    }
-
-    // One worker's admitted surfaces and anchors, in its cells' order.
-    private sealed class AdmissionBand(int firstCell, int endCell)
-    {
-        readonly int[] _starts = new int[endCell - firstCell + 1];
-        readonly List<NavSurfaceSample> _surfaces = [];
-
-        internal int FirstCell { get; } = firstCell;
-        internal int EndCell { get; } = endCell;
-        internal List<(Vector3 Feet, float Resting, long Ordinal)> Anchors { get; } = [];
-
-        internal void Keep(int cell, ReadOnlySpan<NavSurfaceSample> surfaces)
-        {
-            _starts[cell - FirstCell] = _surfaces.Count;
-            _surfaces.AddRange(surfaces);
-            _starts[cell - FirstCell + 1] = _surfaces.Count;
-        }
-
-        internal ReadOnlySpan<NavSurfaceSample> Column(int cell) => CollectionsMarshal.AsSpan(_surfaces)
-            [_starts[cell - FirstCell].._starts[cell - FirstCell + 1]];
     }
 }

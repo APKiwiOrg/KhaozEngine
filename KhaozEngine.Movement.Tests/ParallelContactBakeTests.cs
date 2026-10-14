@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Threading;
 using KhaozEngine.Locomotion;
@@ -87,9 +88,10 @@ public class ParallelContactBakeTests
             Assert.True(callerPhases.Events > callerEvents);
             Assert.Equal([caller], callerPhases.Threads);
             callerPhases.AssertBalanced();
+            // Workers claim bands as they free up, so one worker may prove nothing in a phase.
+            Assert.True(workerRecorders.Take(workers).Sum(recorder => recorder.Events) > 0);
             foreach (PhaseRecorder recorder in workerRecorders.Take(workers))
             {
-                Assert.True(recorder.Events > 0);
                 Assert.DoesNotContain(caller, recorder.Threads);
                 recorder.AssertBalanced();
             }
@@ -187,10 +189,23 @@ public class ParallelContactBakeTests
                 if (completedPhase == phase && Interlocked.Increment(ref completed) == 1) water.Advance();
             },
         }))
-            Assert.Throws<InvalidOperationException>(() => scene.Build(new NavBakeExecution(2)));
+        {
+            var refused = Assert.Throws<InvalidOperationException>(() => scene.Build(new NavBakeExecution(2)));
+            Assert.True(RefusalTexts.Any(text => refused.Message.Contains(text, StringComparison.Ordinal)), refused.ToString());
+        }
         Assert.True(Volatile.Read(ref completed) >= 1);
         scene.AssertUsable();
     }
+
+    // The snapshot refusal, a worker's lease refusal when its next acquisition sees the change, or the environment pin
+    // of a lease already held across the change, which checks the water configuration on every step.
+    static readonly string[] RefusalTexts =
+    [
+        "The contact navigation build snapshot changed.",
+        "Movement lease acquisition returned",
+        "The movement lease differs from the capture or proof basis.",
+        "The ordinary environment pin is stale.",
+    ];
 
     [Fact]
     public void WaterGenerationChangeAfterTheLastBandIsCaughtBeforePublishing()
@@ -199,12 +214,12 @@ public class ParallelContactBakeTests
         using var scene = new SmallStairScene(water: water);
         int links = scene.Build(null).Space.Links.Count;
         Assert.True(links >= 2);
-        int completed = 0;
+        int bands = ContactNavigationWorkers.BandCount(2, links), completed = 0;
         using (ContactNavigationBuildHooks.Install(new()
         {
             BandCompleted = (phase, _) =>
             {
-                if (phase == ContactNavigationPhase.Links && Interlocked.Increment(ref completed) == 2) water.Advance();
+                if (phase == ContactNavigationPhase.Links && Interlocked.Increment(ref completed) == bands) water.Advance();
             },
         }))
         {
@@ -212,6 +227,28 @@ public class ParallelContactBakeTests
             Assert.Contains("snapshot changed", refused.Message);
         }
         scene.AssertUsable();
+    }
+
+    [Fact]
+    public void WorkerMergeAddsEveryCounter()
+    {
+        ConstructorInfo constructor = typeof(SupportQueryCounts).GetConstructors().Single();
+        Assert.Equal(Enum.GetNames<SupportQueryCounter>(), constructor.GetParameters().Select(parameter => parameter.Name));
+        var counts = (SupportQueryCounts)constructor.Invoke(
+            [.. Enumerable.Range(1, constructor.GetParameters().Length).Select(value => (object)value)]);
+        var routes = new SupportRouteCounts(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+        SupportQueryDiagnostics.ThreadState prior = SupportQueryDiagnostics.Exchange(
+            SupportQueryDiagnostics.ThreadState.Fresh(true));
+        try
+        {
+            WorkerDiagnostics.Merge([new WorkerDiagnosticsRecord(counts, routes)]);
+            Assert.Equal(counts, SupportQueryDiagnostics.Snapshot());
+            Assert.Equal(routes, SupportQueryDiagnostics.Routes);
+        }
+        finally
+        {
+            SupportQueryDiagnostics.Exchange(prior);
+        }
     }
 
     sealed class PhaseRecorder

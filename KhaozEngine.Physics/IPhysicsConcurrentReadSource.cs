@@ -12,8 +12,10 @@ namespace KhaozEngine.Physics;
 /// holds a read interval throws before the geometry generation changes. A lease requested inside a writer
 /// interval throws.</para>
 /// <para>A read callback must not synchronously wait on another thread entering the same receiver or on a
-/// writer completing, exactly as an exclusive receiver already forbids. Readers share no mutable state:
-/// each interval borrows private query storage.</para>
+/// writer completing, exactly as an exclusive receiver already forbids. Each interval borrows private query
+/// storage, and state that readers share, such as cached installed geometry, is published thread-safely.
+/// The receiver holds no internal lock while callback code raised during a query runs, so a callback that
+/// waits on another reader's callback cannot stall either reader inside the receiver.</para>
 /// <para>A forwarding wrapper declares this only after auditing its own state. A receiver's declaration
 /// never covers a wrapper over it, and a wrapper's never covers the receiver it forwards to.</para></summary>
 public interface IPhysicsConcurrentReadSource

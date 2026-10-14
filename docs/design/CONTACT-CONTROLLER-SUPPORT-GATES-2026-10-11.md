@@ -7,8 +7,10 @@ Source baseline: `06b734c5722bc2cc95cea459255d6ec93e9236c7`, phases 1 through 4b
 Status: Tasks 1 to 10 implemented, with Task 11 final verification recorded in
 [the gate record](../verification/2026-10-11-support-gates-final.json), staged for 20.34.0.
 Geometry and cost have separate dispositions. #1347 requires every shape completeness row and an
-orchestrator-pushed verified commit. #1334 remains open with 96 harness-corrected time rejections,
-awaiting the owner-approved normalized hosted repeat proof at the phase 6 stop.
+orchestrator-pushed verified commit. #1334 remains open. The
+[approved 20-iteration hosted proof](../verification/2026-10-14-support-cost-hosted-1334.md)
+rejects 151 median time rows after SG-24 normalization. Warm allocation limits pass. Seven median
+rows are within 10 percent of their ceilings and require a second approved run before acceptance.
 Every choice is a recorded ruling for the owner's review. Rulings SG-19 to SG-24 settle the draft's open
 questions, the orchestrator review and the independent spec review. The original specification task
 ran no build, test, timing or stress proof. Implementation and final verification have separate records.

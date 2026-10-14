@@ -47,8 +47,4 @@
     <Compile Include="../test-shared/AllocationRegion.cs" Link="Shared/AllocationRegion.cs" />
     <Compile Include="../test-shared/AllocationMeasurement.cs" Link="Shared/AllocationMeasurement.cs" />
   </ItemGroup>
-  <ItemGroup>
-    <!-- Allocation bounds measure search storage without tier promotion inside the counted call. -->
-    <RuntimeHostConfigurationOption Include="System.Runtime.TieredCompilation" Value="false" />
-  </ItemGroup>
 </Project>

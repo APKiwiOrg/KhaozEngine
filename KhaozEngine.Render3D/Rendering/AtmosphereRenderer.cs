@@ -168,7 +168,13 @@ internal sealed class AtmosphereRenderer : IDisposable
 
     internal static AtmosphereUbo PackUbo(AtmosphereSettings settings, in AtmosphereFrame frame,
         in AtmosphereLighting lighting, in AtmosphereFogScattering scattering, Vector3 cameraRelative,
-        Vector3 renderOrigin, Matrix4x4 view, Matrix4x4 projection, int width, int height, HdrSettings hdr) => new()
+        Vector3 renderOrigin, Matrix4x4 view, Matrix4x4 projection, int width, int height, HdrSettings hdr)
+    {
+        // The fog's horizon direction is constant per frame. It uses the camera radius AtmosphereFog.Shade uses.
+        float cameraHeightKm = MathF.Max(settings.HeightKm(cameraRelative.Y + renderOrigin.Y), 0f);
+        var (horizonSin, horizonCos) = AtmosphereFogSampling.HorizonSinCos(
+            settings.PlanetRadiusKm + (double)cameraHeightKm, settings.PlanetRadiusKm);
+        return new()
         {
             Planet = new(settings.PlanetRadiusKm, settings.PlanetRadiusKm + settings.AtmosphereHeightKm,
                 settings.WorldUnitsPerKilometre, settings.AerialDistanceScale),
@@ -181,7 +187,7 @@ internal sealed class AtmosphereRenderer : IDisposable
             Tint = new(frame.Tint, settings.Enabled ? 1f : 0f),
             Floors = new(settings.AmbientScale, settings.FillScale, settings.NightAmbientFloor, settings.NightSkyFloor),
             Camera = new(cameraRelative, settings.HeightKm(cameraRelative.Y + renderOrigin.Y)),
-            Origin = new(renderOrigin, 0f),
+            Origin = new(renderOrigin, (float)horizonSin),
             SunT = new(lighting.SunTransmittance, frame.SunOpacity),
             MoonT = new(lighting.MoonTransmittance, frame.MoonOpacity),
             // Row-vector view matrices store the world camera axes in their columns.
@@ -194,10 +200,11 @@ internal sealed class AtmosphereRenderer : IDisposable
                 SkyHorizonMath.IsPerspective(projection) ? 0f : 1f, settings.SunAngularRadiusRadians),
             Tone = new(hdr.Enabled ? 1f : 0f, MathF.Max(hdr.Exposure, 0f), (float)hdr.Operator,
                 Math.Clamp(hdr.ChromaPreservation, 0f, 1f)),
-            NightTint = new(settings.NightTint, 0f),
+            NightTint = new(settings.NightTint, (float)horizonCos),
             FogScatter = new(scattering.RayleighScattering, scattering.MieScattering),
             FogSource = new(scattering.MultipleScattering, settings.AerialOnsetDistance),
         };
+    }
 
     public void Dispose()
     {

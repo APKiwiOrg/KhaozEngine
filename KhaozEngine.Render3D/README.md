@@ -638,9 +638,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   altitude across eight cached quadratic slices. `AerialDistanceScale = 20` compresses fog distance and endpoint
   heights together, without changing sky or lighting altitude. Zero disables fog. `AerialOnsetDistance = 0`
   keeps the linear distance, and a positive onset `s` uses `d * d / (d + s)` so near geometry stays clear while
-  distant fog loses at most `s`. `HazeDensityPerKm = 0` defaults to no extra mist, with `HazeScaleHeightKm = 0.25`.
-  Downward fog rescales the horizon sky sample to the view's true scattering angle, so a low sun's aureole stays
-  on horizontal rays. Physical sky follows world view rays regardless of
+  distant fog loses at most `s`. `HazeDensityPerKm = 0` defaults to no extra mist, with
+  `HazeScaleHeightKm = 0.25`. Downward fog rescales the horizon sky sample to the view's true scattering angle,
+  so a low sun's aureole stays on horizontal rays. Physical sky follows world view rays regardless of
   `SkyHorizon`. Static half-float LUTs are transmittance 256 by 64 and multi-scattering 32 by 32. Sky-view is
   192 by 108, rebuilt each enabled frame with separate horizon endpoints for sky and ground.
 

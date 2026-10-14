@@ -76,15 +76,22 @@ vec2 atmosphereFogSkyUv(vec3 view, float radius) {
     return vec2(u, (53.5 - weight) / 108.0);
 }
 // Mirrors AtmosphereFogScattering.Source: sun and moon slab in-scatter plus the multiple-scattering source.
+// Sun and Moon are packed unit length. The uniform moon branch skips the key while its fraction is zero.
 vec3 atmosphereFogSource(vec3 direction) {
-    float sunMu = dot(direction, normalize(Atmo.Sun.xyz)), moonMu = dot(direction, normalize(Atmo.Moon.xyz));
+    float sunMu = dot(direction, Atmo.Sun.xyz);
     vec3 sun = Atmo.FogScatter.rgb * AtmoRayleighPhase(sunMu) + vec3(Atmo.FogScatter.w * AtmoMiePhase(sunMu));
-    vec3 moon = Atmo.FogScatter.rgb * AtmoRayleighPhase(moonMu) + vec3(Atmo.FogScatter.w * AtmoMiePhase(moonMu));
-    return Atmo.SunT.rgb * sun + Atmo.MoonT.rgb * (moon * Atmo.Moon.w) + Atmo.FogSource.rgb;
+    vec3 moon = vec3(0.0);
+    if (Atmo.Moon.w > 0.0) {
+        float moonMu = dot(direction, Atmo.Moon.xyz);
+        moon = Atmo.MoonT.rgb * ((Atmo.FogScatter.rgb * AtmoRayleighPhase(moonMu)
+            + vec3(Atmo.FogScatter.w * AtmoMiePhase(moonMu))) * Atmo.Moon.w);
+    }
+    return Atmo.SunT.rgb * sun + moon + Atmo.FogSource.rgb;
 }
 // Mirrors AtmosphereFogScattering.Ratio and AtmosphereFogSampling.BelowHorizon. Below the horizon the sky-view
 // sample is the horizon texel at the view's azimuth. Rescale it to the view's true scattering angle, eased in
 // over one final sky texel span so the horizon join keeps zero slope. One at and above the horizon and in vacuum.
+// Origin.w and NightTint.w carry the horizon's per-frame sine and cosine (AtmosphereFogSampling.HorizonSinCos).
 vec3 atmosphereFogPhaseRatio(vec3 view, float radius) {
     float horizon = AtmoHorizonAngle(radius);
     float theta = acos(clamp(view.y, -1.0, 1.0));
@@ -94,7 +101,8 @@ vec3 atmosphereFogPhaseRatio(vec3 view, float radius) {
     float zenith = t < 1.0 ? horizon + cell * t * t * t * (3.0 - 2.0 * t) : theta;
     vec2 planar = all(equal(view.xz, vec2(0.0))) ? vec2(1.0, 0.0) : normalize(view.xz);
     vec3 actual = atmosphereFogSource(vec3(planar.x * sin(zenith), cos(zenith), planar.y * sin(zenith)));
-    vec3 horizonSource = atmosphereFogSource(vec3(planar.x * sin(horizon), cos(horizon), planar.y * sin(horizon)));
+    vec3 horizonView = vec3(planar.x * Atmo.Origin.w, Atmo.NightTint.w, planar.y * Atmo.Origin.w);
+    vec3 horizonSource = atmosphereFogSource(horizonView);
     return vec3(horizonSource.x > 0.0 ? actual.x / horizonSource.x : 1.0,
         horizonSource.y > 0.0 ? actual.y / horizonSource.y : 1.0,
         horizonSource.z > 0.0 ? actual.z / horizonSource.z : 1.0);

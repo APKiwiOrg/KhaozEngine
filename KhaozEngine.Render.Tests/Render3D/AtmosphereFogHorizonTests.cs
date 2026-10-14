@@ -104,7 +104,7 @@ public sealed class AtmosphereFogHorizonTests
             new Vector3(MathF.Cos(step), MathF.Sin(step), 0) * 100000, Vector3.Zero);
         float slope = Vector3.Distance(at, above) / (step * at.Length());
         Console.WriteLine($"FOG_HORIZON_SLOPE sun={sunDegrees} relativeSlopePerRadian={slope}");
-        Assert.True(slope < .01f, $"The upward fog colour slope {slope} must meet the constant downward colour.");
+        Assert.True(slope < .01f, $"The upward fog colour slope {slope} must meet the geometric-horizon colour.");
     }
 
     [Theory]

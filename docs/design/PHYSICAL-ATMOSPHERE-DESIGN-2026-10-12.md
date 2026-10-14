@@ -208,7 +208,9 @@ One shared GLSL chunk, `AtmosphereFogGlsl`, with its bindings chunk, spliced by 
   into glowing fog.
 - **Bindings.** A small atmosphere UBO plus the sky-view LUT at one binding shared by every participating
   pipeline. Since 20.40.0 the UBO ends with `FogScatter` (Rayleigh and Mie scattering at the camera's scaled
-  altitude) and `FogSource` (the multiple-scattering term and the onset), 352 bytes in all. The exact slots are fixed in the plan against each pipeline's layout. When the atmosphere is off, a
+  altitude) and `FogSource` (the multiple-scattering term and the onset), 352 bytes in all. The spare `Origin.w`
+  and `NightTint.w` lanes carry the sine and cosine of the fog's horizon angle, a per-frame constant of the phase
+  ratio. The exact slots are fixed in the plan against each pipeline's layout. When the atmosphere is off, a
   uniform flag makes the chunk a no-op, so there are no pipeline permutations.
 
 ## Phase 1, lighting

@@ -52,10 +52,13 @@ internal readonly record struct AtmosphereFogScattering(Vector3 RayleighScatteri
         return new Vector3(Divide(actual.X, sample.X), Divide(actual.Y, sample.Y), Divide(actual.Z, sample.Z));
     }
 
+    // Directions are unit length, as packed. The moon key is skipped while its fraction is zero.
     Vector3 Source(Vector3 direction)
     {
-        float sunMu = Vector3.Dot(direction, SunDirection), moonMu = Vector3.Dot(direction, MoonDirection);
-        return SunTransmittance * Phase(sunMu) + MoonTransmittance * (Phase(moonMu) * MoonFraction) + MultipleScattering;
+        var moon = MoonFraction > 0
+            ? MoonTransmittance * (Phase(Vector3.Dot(direction, MoonDirection)) * MoonFraction)
+            : Vector3.Zero;
+        return SunTransmittance * Phase(Vector3.Dot(direction, SunDirection)) + moon + MultipleScattering;
     }
 
     Vector3 Phase(float mu) => RayleighScattering * AtmosphereModel.RayleighPhase(mu)

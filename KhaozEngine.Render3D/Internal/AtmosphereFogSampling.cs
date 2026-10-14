@@ -3,7 +3,7 @@ using System.Numerics;
 
 namespace KhaozEngine.Render3D.Internal;
 
-/// <summary>Sky-only fog sampling. The final sky texel meets the constant downward colour with zero
+/// <summary>Sky-only fog sampling. The final sky texel meets the geometric-horizon colour with zero
 /// slope, then rejoins the sky LUT's square-root mapping with matching value and first derivative.</summary>
 internal static class AtmosphereFogSampling
 {
@@ -36,13 +36,22 @@ internal static class AtmosphereFogSampling
         double zenith = t < 1 ? horizon + cell * t * t * t * (3 - 2 * t) : theta;
         double planar = Math.Sqrt((double)view.X * view.X + (double)view.Z * view.Z);
         double x = planar == 0 ? 1 : view.X / planar, z = planar == 0 ? 0 : view.Z / planar;
-        horizonView = Direction(x, z, horizon);
-        easedView = Direction(x, z, zenith);
+        var (horizonSin, horizonCos) = HorizonSinCos(radiusKm, bottomKm);
+        horizonView = Direction(x, z, horizonSin, horizonCos);
+        easedView = Direction(x, z, Math.Sin(zenith), Math.Cos(zenith));
         return true;
     }
 
-    static Vector3 Direction(double x, double z, double zenith)
-        => new((float)(x * Math.Sin(zenith)), (float)Math.Cos(zenith), (float)(z * Math.Sin(zenith)));
+    /// <summary>Sine and cosine of the geometric horizon's zenith angle. They are per-frame constants on the
+    /// GPU, packed in the atmosphere uniforms' Origin.w and NightTint.w lanes.</summary>
+    internal static (double Sin, double Cos) HorizonSinCos(double radiusKm, float bottomKm)
+    {
+        double horizon = HorizonAngle(radiusKm, bottomKm);
+        return (Math.Sin(horizon), Math.Cos(horizon));
+    }
+
+    static Vector3 Direction(double x, double z, double sin, double cos)
+        => new((float)(x * sin), (float)cos, (float)(z * sin));
 
     // t is angular distance above the horizon in units of the final sky texel's angular span.
     // w(0)=w'(0)=w''(0)=0, w(1)=1 and w'(1)=1/2, matching sqrt(t) at the join.

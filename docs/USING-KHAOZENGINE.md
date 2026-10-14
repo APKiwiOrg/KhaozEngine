@@ -4988,11 +4988,12 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     hemisphere. The final sky texel eases into the geometric-horizon colour with zero slope. Below the horizon that
     colour is rescaled per channel to the view's true scattering angle by the ratio of the sun and moon in-scatter
     of a slab of the air at the camera's scaled altitude, eased in over one sky texel span. Downward views toward
-    a low sun no longer take the horizon's aureole. The ratio is exactly one at and above the horizon. The CPU oracle samples sky-view texels at the fog UV directly,
-    including bilinear filtering and periodic azimuth, without reconstructing a tangent for the ordinary sky
-    lookup. Sky and reflection mappings remain unchanged. Additive effects lose
-    transmitted energy only. Models, dissolved and skinned models, splat and tile terrain, foliage, water, decals,
-    billboards, particles, trails and beams participate. Debug lines and distortion draws retain their own paths.
+    a low sun no longer take the horizon's aureole. The ratio is exactly one at and above the horizon. The CPU
+    oracle samples sky-view texels at the fog UV directly, including bilinear filtering and periodic azimuth,
+    without reconstructing a tangent for the ordinary sky lookup. Sky and reflection mappings remain unchanged.
+    Additive effects lose transmitted energy only. Models, dissolved and skinned models, splat and tile terrain,
+    foliage, water, decals, billboards, particles, trails and beams participate. Debug lines and distortion draws
+    retain their own paths.
   - **GPU-free model and fog oracle.** `AtmosphereModel` needs no device. It snapshots validated settings and
     exposes `Transmittance`, `SingleScattering`, `MultiScattering`, `SkyRadiance`, `CreateFrame`, `EvaluateLighting`
     and `SkyValue`. `CreateFrame(SunCycle.Evaluate(timeOfDay, cycle))` produces an `AtmosphereFrame` with independent

@@ -3,6 +3,7 @@ using System.Linq;
 using System.Numerics;
 using System.Reflection;
 using System.Threading;
+using KhaozEngine.Locomotion;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
 using Xunit;
@@ -107,8 +108,7 @@ public sealed class ConcurrentReadScratchTests
             new CompoundChild(new BoxShape(new Vector3(1f, 0.5f, 2f)), Pose.At(new Vector3(-1f, 0f, 0f))),
             new CompoundChild(new BoxShape(new Vector3(1f, 0.5f, 2f)), Pose.At(new Vector3(1f, 0f, 0f))),
         ]), Pose.At(new Vector3(0f, -0.5f, 0f)));
-        var cache = (InstalledSupportGeometryCache)typeof(BepuPhysicsWorld)
-            .GetField("_installedSupportGeometry", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(world)!;
+        InstalledSupportGeometryCache cache = Cache(world);
         SupportFootprintRequest request = SupportFootprintTests.Request(0.1f, 0.2f);
 
         var results = new string[2];
@@ -116,12 +116,11 @@ public sealed class ConcurrentReadScratchTests
         {
             BoundedThread[] readers = [.. Enumerable.Range(0, 2).Select(slot => BoundedThread.Start(() =>
             {
-                bool arrived = false;
                 ContactAllocationDiagnostics.SetObserver((phase, entering) =>
                 {
-                    // Both readers reach the cold lookup together.
-                    if (arrived || !entering || phase != ContactAllocationPhase.SupportCapture) return;
-                    arrived = true;
+                    // Both readers reach the cold lookup together, then capture unobserved like production readers.
+                    if (!entering || phase != ContactAllocationPhase.SupportCapture) return;
+                    ContactAllocationDiagnostics.SetObserver(null);
                     BoundedThread.Arrive(barrier);
                 });
                 try
@@ -134,6 +133,7 @@ public sealed class ConcurrentReadScratchTests
             foreach (BoundedThread reader in readers) reader.Join();
         }
         Assert.Equal(1, cache.Constructions);
+        Assert.Equal(1, cache.Captures);
         Assert.Equal(results[0], results[1]);
         Assert.Equal(results[0], Query(world, request));
         Assert.Equal(1, cache.Constructions);
@@ -168,6 +168,134 @@ public sealed class ConcurrentReadScratchTests
             new CompoundChild(new BoxShape(new Vector3(1f, 0.25f, 2f)), Pose.At(new Vector3(1f, 0f, 0f))),
         ]), Pose.At(new Vector3(0f, -0.25f, 0f)));
         Assert.Equal(replaced, Query(fresh, request));
+    }
+
+    [Fact]
+    public void AnObserverBlockedInsideAColdCaptureDoesNotStallAnotherReaderOfTheSameKey()
+    {
+        using BepuPhysicsWorld world = CompoundWorld(out _);
+        InstalledSupportGeometryCache cache = Cache(world);
+        SupportFootprintRequest request = SupportFootprintTests.Request(0.1f, 0.2f);
+        string expected;
+        using (BepuPhysicsWorld serial = CompoundWorld(out _)) expected = Query(serial, request);
+        var results = new string[2];
+        using (var barrier = new Barrier(2))
+        {
+            BoundedThread[] readers = [.. Enumerable.Range(0, 2).Select(slot => BoundedThread.Start(() =>
+            {
+                bool arrived = false;
+                ContactAllocationDiagnostics.SetObserver((phase, entering) =>
+                {
+                    // Each reader waits inside its own cold capture until the other reader is inside one too.
+                    if (arrived || !entering || phase != ContactAllocationPhase.SupportLocalValidation) return;
+                    arrived = true;
+                    BoundedThread.Arrive(barrier);
+                });
+                try
+                {
+                    using IPhysicsQueryLease lease = world.AcquireQueryReadLease();
+                    results[slot] = Capture((IPhysicsSupportFootprint)world, lease, request).Text;
+                }
+                finally { ContactAllocationDiagnostics.SetObserver(null); }
+            }))];
+            foreach (BoundedThread reader in readers) reader.Join();
+        }
+        Assert.Equal(1, cache.Constructions);
+        Assert.Equal(2, cache.Captures);
+        Assert.All(results, result => Assert.Equal(expected, result));
+        Assert.Equal(expected, Query(world, request));
+        Assert.Equal(1, cache.Constructions);
+        Assert.Equal(2, cache.Captures);
+    }
+
+    [Fact]
+    public void ANestedSameKeyMissFromAnObserverPublishesOnceAndKeepsThePublishedGeometry()
+    {
+        using BepuPhysicsWorld world = CompoundWorld(out StaticHandle owner);
+        InstalledSupportGeometryCache cache = Cache(world);
+        SupportFootprintRequest request = SupportFootprintTests.Request(0.1f, 0.2f);
+        string expected;
+        using (BepuPhysicsWorld serial = CompoundWorld(out _)) expected = Query(serial, request);
+        var footprint = (IPhysicsSupportFootprint)world;
+        using IPhysicsQueryLease lease = world.AcquireQueryReadLease();
+        string? nested = null;
+        InstalledSupportGeometry? published = null;
+        ContactAllocationDiagnostics.SetObserver((phase, entering) =>
+        {
+            // The outer capture of this key is still running when the same thread misses the same key again.
+            if (nested is not null || !entering || phase != ContactAllocationPhase.SupportLocalValidation) return;
+            nested = "";
+            nested = Capture(footprint, lease, request).Text;
+            published = Published(world, cache, owner);
+        });
+        string outer;
+        try { outer = Capture(footprint, lease, request).Text; }
+        finally { ContactAllocationDiagnostics.SetObserver(null); }
+        Assert.Equal(expected, nested);
+        Assert.Equal(expected, outer);
+        Assert.Equal(1, cache.Constructions);
+        Assert.NotNull(published);
+        Assert.Same(published, Published(world, cache, owner));
+        Assert.Equal(expected, Capture(footprint, lease, request).Text);
+        Assert.Equal(1, cache.Constructions);
+    }
+
+    [Fact]
+    public void AnExceptionLeavingAnOuterIntervalWithScratchAttachedStillReturnsIt()
+    {
+        var world = new BepuPhysicsWorld(Vector3.Zero);
+        Vector3[] floor = [new(-4f, 0f, -4f), new(-4f, 0f, 4f), new(4f, 0f, 4f), new(4f, 0f, -4f)];
+        world.AddStatic(new TriangleMeshShape(floor, [0, 2, 1, 0, 3, 2]), Pose.Identity);
+        QueryGate gate = ConcurrentReadGateTests.Gate(world);
+        QueryScratchPool pool = gate.ScratchPool;
+        MoveTuning tuning = MoveTuning.Default with { Controller = MovementControllerKind.Contact };
+        bool attached = false;
+        // Fail only once the step's lease interval holds scratch, so the failure unwinds through the lease.
+        float Ground(float x, float z)
+        {
+            if (pool.IdleCount >= pool.Constructed().Length) return 0f;
+            attached = true;
+            throw new InvalidOperationException("ground failure");
+        }
+        var state = new MoveState { Position = new Vector3(0f, tuning.CapsuleHalfHeight, 0f), Grounded = true };
+        Assert.Throws<InvalidOperationException>(() => CharacterMovement.Step(state,
+            new MoveCommand(Vector2.UnitY, run: false, cameraYaw: 0f, jump: false), 1f / 30f, Ground, tuning, world: world));
+        Assert.True(attached);
+        Assert.Equal(0, gate.ActiveReaders);
+        QueryScratch[] constructed = pool.Constructed();
+        Assert.NotEmpty(constructed);
+        Assert.Equal(constructed.Length, pool.IdleCount);
+        Assert.All(constructed, scratch => Assert.Equal(0, scratch.Disposals));
+        world.Dispose();
+        Assert.All(constructed, scratch =>
+        {
+            Assert.Equal(1, scratch.Disposals);
+            Assert.Equal(0, scratch.NativeCapacity);
+        });
+    }
+
+    static BepuPhysicsWorld CompoundWorld(out StaticHandle owner)
+    {
+        var world = new BepuPhysicsWorld(Vector3.Zero);
+        owner = world.AddStatic(new CompoundShape(
+        [
+            new CompoundChild(new BoxShape(new Vector3(1f, 0.5f, 2f)), Pose.At(new Vector3(-1f, 0f, 0f))),
+            new CompoundChild(new BoxShape(new Vector3(1f, 0.5f, 2f)), Pose.At(new Vector3(1f, 0f, 0f))),
+        ]), Pose.At(new Vector3(0f, -0.5f, 0f)));
+        return world;
+    }
+
+    static InstalledSupportGeometryCache Cache(BepuPhysicsWorld world) => (InstalledSupportGeometryCache)typeof(BepuPhysicsWorld)
+        .GetField("_installedSupportGeometry", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(world)!;
+
+    // The owner's published geometry, read through the cache's own lookup, which hits once a capture is published.
+    static InstalledSupportGeometry? Published(BepuPhysicsWorld world, InstalledSupportGeometryCache cache, StaticHandle owner)
+    {
+        long version = (long)typeof(BepuPhysicsWorld)
+            .GetField("_staticGeometryVersion", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(world)!;
+        Assert.Equal(CapsuleFeatureStatus.Complete, cache.GetOrCapture(SupportFootprintTests.SimulationOf(world), owner,
+            SupportFootprintTests.HandlesOf(world)[owner.Value].Shape, version, out InstalledSupportGeometry? geometry));
+        return geometry;
     }
 
     static bool MeshContacts(IPhysicsWorld world)

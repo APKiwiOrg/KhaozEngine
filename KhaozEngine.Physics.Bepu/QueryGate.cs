@@ -39,6 +39,12 @@ internal sealed class QueryGate
         get { lock (_sync) return (int)(_nextTicket - _servingTicket) - (_activeWriter ? 1 : 0) - _abandonedTickets.Count; }
     }
 
+    /// <summary>Admitted outer reader intervals, for diagnostics.</summary>
+    internal int ActiveReaders
+    {
+        get { lock (_sync) return _activeReaders; }
+    }
+
     /// <summary>Outer readers waiting behind a queued or active writer, for diagnostics.</summary>
     internal int WaitingReaders
     {

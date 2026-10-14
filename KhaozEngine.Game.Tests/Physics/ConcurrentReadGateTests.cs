@@ -2,6 +2,7 @@ using System;
 using System.Numerics;
 using System.Reflection;
 using System.Threading;
+using KhaozEngine.Locomotion;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
 using Xunit;
@@ -125,6 +126,148 @@ public sealed class ConcurrentReadGateTests
         BoundedThread.Start(() => world.RemoveStatic(new StaticHandle(0))).Join();
         Assert.True(world.Raycast(Vector3.Zero, Vector3.UnitX, 8f, out RayHit hit));
         Assert.Equal(new StaticHandle(1), hit.Body);
+    }
+
+    [Fact]
+    public void RefusalsInsideTheGateLeaveNoReaderAndReturnTheirScratch()
+    {
+        var world = new BepuPhysicsWorld(Vector3.Zero);
+        world.AddStatic(Box, Pose.At(new Vector3(2f, 0f, 0f)));
+        QueryGate gate = Gate(world);
+        IPhysicsWorldQueryView view = world.CreateQueryViewExcludingStatics([]);
+        var source = (IPhysicsQueryLeaseSource)view;
+        using var held = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        // A held lease keeps the view's disposal queued, so an acquisition that passed the view's first check
+        // waits behind it and is refused by the second check once admitted.
+        BoundedThread holder = BoundedThread.Start(() =>
+        {
+            using IPhysicsQueryLease lease = world.AcquireQueryReadLease();
+            Assert.True(world.SweepCapsule(Capsule, Pose.Identity, Vector3.UnitX, 8f, out _));
+            held.Set();
+            BoundedThread.Await(release);
+        });
+        BoundedThread? disposer = null, racer = null;
+        try
+        {
+            BoundedThread.Await(held);
+            disposer = BoundedThread.Start(view.Dispose);
+            BoundedThread.Until(() => gate.WaitingWriters == 1);
+            racer = BoundedThread.Start(() => Assert.Throws<ObjectDisposedException>(source.AcquireQueryReadLease));
+            BoundedThread.Until(() => gate.WaitingReaders == 1);
+        }
+        finally { release.Set(); }
+        holder.Join();
+        disposer!.Join();
+        racer!.Join();
+        Assert.Equal(0, gate.ActiveReaders);
+        Assert.Equal(gate.ScratchPool.Constructed().Length, gate.ScratchPool.IdleCount);
+
+        world.Dispose();
+        Assert.Throws<ObjectDisposedException>(world.AcquireQueryReadLease);
+        Assert.Equal(0, gate.ActiveReaders);
+        // Disposal is a writer even on a disposed world, so a leaked reader interval would hold it out.
+        BoundedThread.Start(world.Dispose).Join();
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void AnInterruptedWaitingWriterGivesUpItsTicketWithoutStrandingLaterIntervals(bool serving)
+    {
+        var gate = new QueryGate(new QueryScratchPool());
+        using var held = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        BoundedThread reader = BoundedThread.Start(() =>
+        {
+            QueryGate.Holder holder = gate.EnterRead();
+            held.Set();
+            try { BoundedThread.Await(release); }
+            finally { gate.ExitRead(holder); }
+        });
+        BoundedThread? first = null, second = null;
+        try
+        {
+            BoundedThread.Await(held);
+            // The first writer holds the serving ticket and the second the next one. Both wait for the reader.
+            first = BoundedThread.Start(() => Write(gate, interrupted: serving));
+            BoundedThread.Until(() => gate.WaitingWriters == 1);
+            second = BoundedThread.Start(() => Write(gate, interrupted: !serving));
+            BoundedThread.Until(() => gate.WaitingWriters == 2);
+            BoundedThread interrupted = serving ? first : second;
+            interrupted.Interrupt();
+            interrupted.Join();
+            Assert.Equal(1, gate.WaitingWriters);
+            Assert.True((serving ? second : first).IsAlive);
+        }
+        finally { release.Set(); }
+        reader.Join();
+        first!.Join();
+        second!.Join();
+        Assert.Equal(0, gate.WaitingWriters);
+        BoundedThread.Start(() => gate.ExitRead(gate.EnterRead())).Join();
+        BoundedThread.Start(() => gate.ExitWrite(gate.EnterWrite())).Join();
+        Assert.Equal(0, gate.ActiveReaders);
+    }
+
+    static void Write(QueryGate gate, bool interrupted)
+    {
+        if (interrupted)
+        {
+            Assert.Throws<ThreadInterruptedException>(() => gate.EnterWrite());
+            return;
+        }
+        gate.ExitWrite(gate.EnterWrite());
+    }
+
+    [Fact]
+    public void AMutationFromAGroundCallbackThrowsBeforeTheGenerationChanges()
+    {
+        using var world = new BepuPhysicsWorld(Vector3.Zero);
+        MoveTuning tuning = MoveTuning.Default with { Controller = MovementControllerKind.Contact };
+        long staticGeneration = world.StaticGeometryGeneration, generation;
+        using (IPhysicsQueryLease before = world.AcquireQueryReadLease()) generation = before.GeometryGeneration;
+        Exception? mutation = null;
+        bool fired = false;
+        // The contact step evaluates ground inside its read lease.
+        float Ground(float x, float z)
+        {
+            if (!fired)
+            {
+                fired = true;
+                mutation = Record.Exception(() => world.AddStatic(Box, Pose.At(new Vector3(0f, 4f, 0f))));
+            }
+            return 0f;
+        }
+        var state = new MoveState { Position = new Vector3(0f, tuning.CapsuleHalfHeight, 0f), Grounded = true };
+        CharacterMovement.Step(state, new MoveCommand(Vector2.UnitY, run: false, cameraYaw: 0f, jump: false), 1f / 30f,
+            Ground, tuning, world: world);
+        Assert.True(fired);
+        Assert.IsType<InvalidOperationException>(mutation);
+        Assert.Equal(staticGeneration, world.StaticGeometryGeneration);
+        using IPhysicsQueryLease after = world.AcquireQueryReadLease();
+        Assert.Equal(generation, after.GeometryGeneration);
+    }
+
+    [Fact]
+    public void ABorrowedViewsDisposalNeverDisposesWorldOwnedScratch()
+    {
+        using var world = new BepuPhysicsWorld(Vector3.Zero);
+        Vector3[] floor = [new(-4f, 0f, -4f), new(-4f, 0f, 4f), new(4f, 0f, 4f), new(4f, 0f, -4f)];
+        world.AddStatic(new TriangleMeshShape(floor, [0, 2, 1, 0, 3, 2]), Pose.Identity);
+        QueryScratchPool pool = Gate(world).ScratchPool;
+        IPhysicsWorldQueryView view = world.CreateQueryViewExcludingStatics([]);
+        // A mesh sweep through the view allocates natively in the world's interval scratch.
+        Assert.True(view.SweepCapsule(Capsule, Pose.At(new Vector3(1f, 3f, 1f)), -Vector3.UnitY, 5f, out _));
+        QueryScratch scratch = Assert.Single(pool.Constructed());
+        long capacity = scratch.NativeCapacity;
+        Assert.True(capacity > 0);
+        view.Dispose();
+        Assert.Equal(0, scratch.Disposals);
+        Assert.Equal(capacity, scratch.NativeCapacity);
+        Assert.Equal(1, pool.IdleCount);
+        Assert.True(world.SweepCapsule(Capsule, Pose.At(new Vector3(1f, 3f, 1f)), -Vector3.UnitY, 5f, out _));
+        Assert.Same(scratch, Assert.Single(pool.Constructed()));
     }
     [Fact]
     public void AQueuedWriterAndANestedQueryInsideAnActiveReaderBothComplete()

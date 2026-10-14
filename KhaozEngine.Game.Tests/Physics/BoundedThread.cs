@@ -32,6 +32,9 @@ internal sealed class BoundedThread
 
     internal bool IsAlive => _thread.IsAlive;
 
+    /// <summary>Interrupts the thread's current or next blocking wait.</summary>
+    internal void Interrupt() => _thread.Interrupt();
+
     /// <summary>Joins within the timeout and rethrows the body's failure on the test thread.</summary>
     internal void Join()
     {

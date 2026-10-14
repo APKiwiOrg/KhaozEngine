@@ -71,6 +71,12 @@ internal sealed class QueryScratchPool
         if (failures is not null) throw new AggregateException(failures);
     }
 
+    /// <summary>Scratch waiting in the pool for its next interval, for accounting.</summary>
+    internal int IdleCount
+    {
+        get { lock (_sync) return _idle.Count; }
+    }
+
     /// <summary>Every scratch this pool has constructed, for disposal accounting.</summary>
     internal QueryScratch[] Constructed()
     {

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Identity;
 using KhaozEngine.MapDoc.Prefabs;
@@ -184,6 +185,52 @@ public sealed class MapPrefabBindingTests
     public void ActiveAttachment_WithPinsAndAnchorsMatchesOnBothPaths()
     {
         var f = PrefabFixtures.Create("attachment");
+        Assert.Equal(Identity(f), StoredIdentity(f));
+    }
+
+    [Fact]
+    public void LiveInstancePinMismatch_RefusesOnLoadedAndStoredPaths()
+    {
+        var f = PrefabFixtures.Create();
+        Assert.Equal(Identity(f), StoredIdentity(f));
+        var instance = f.Document.Prefabs!.Instances.Single();
+        Assert.Equal(f.Assets.GetResource(instance.ResourceId).Reference.Sha256, instance.ResourceSha256);
+        f.Document.Prefabs = new(1, 1, new[] { instance with { ResourceSha256 = new string('f', 64) } }, []);
+        var loaded = Assert.Throws<MapDocumentException>(() => Identity(f));
+        var stored = Assert.Throws<MapDocumentException>(() => StoredIdentity(f));
+        Assert.Contains("Instance 'a' does not match its verified Prefab resource.", loaded.Message);
+        Assert.Equal(loaded.Message, stored.Message);
+    }
+
+    [Fact]
+    public void ActiveAttachment_RoundTripsMonolithicAndTiledWithOmittedRetirement()
+    {
+        var f = PrefabFixtures.Create("attachment");
+        var row = Assert.Single(f.Document.Prefabs!.Attachments);
+        Assert.False(row.Retired);
+        Assert.Equal(2, row.Children.Count);
+        string text = MapDocumentFile.SaveText(f.Document);
+        var persisted = JsonNode.Parse(text)!["prefabs"]!["attachments"]!.AsArray().Single()!.AsObject();
+        Assert.False(persisted.ContainsKey("retired"));
+        Assert.Equal(row.Children.Count, persisted["children"]!.AsArray().Count);
+        string dir = PrefabFixtures.TempDirectory();
+        try
+        {
+            MapDocumentFile.SaveTiled(f.Document, dir);
+            foreach (var reloaded in new[] { MapDocumentFile.LoadText(text), MapDocumentFile.LoadTiled(dir) })
+            {
+                var copy = Assert.Single(reloaded.Prefabs!.Attachments);
+                Assert.Equal((row.PlacementId, row.ResourceId, row.ResourceSha256, row.Kind, false),
+                    (copy.PlacementId, copy.ResourceId, copy.ResourceSha256, copy.Kind, copy.Retired));
+                // Persistence uses canonical child order. Every row child, anchor, pose and pin survives exactly.
+                Assert.Equal(row.Children.Count, copy.Children.Count);
+                Assert.All(row.Children, child => Assert.Contains(child, copy.Children));
+                Assert.Equal(f.Document.NativeResourceTransforms!.Count, reloaded.NativeResourceTransforms!.Count);
+                Assert.All(f.Document.NativeResourceTransforms, pin => Assert.Contains(pin, reloaded.NativeResourceTransforms));
+                Assert.Equal(f.Document.Prefabs.Digest(), reloaded.Prefabs.Digest());
+            }
+        }
+        finally { Directory.Delete(dir, true); }
         Assert.Equal(Identity(f), StoredIdentity(f));
     }
 

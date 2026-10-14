@@ -87,6 +87,32 @@ public sealed class MapPrefabFormatTests
         Assert.Contains(MapPrefabValidation.Validate(f.Document, f.Assets), e => e.Contains("numeric", StringComparison.OrdinalIgnoreCase));
     }
 
+    [Theory]
+    [InlineData("record-record-pose-mismatch")]
+    [InlineData("inconsistent-pose")]
+    public void RecordPoseMismatch_RefusesWithThePoseConsistencyDiagnostic(string variant)
+    {
+        var error = Assert.Throws<MapDocumentException>(() => MapPrefabFile.Read(PrefabFixtures.AssetBytes(variant), "hut"));
+        Assert.Contains("local anchor and geometry poses must match the record pose", error.Message);
+        // The same displaced geometry with World-scoped band references needs no local pose agreement.
+        Assert.NotEmpty(MapPrefabFile.Read(PrefabFixtures.AssetBytes("record-record-pose-world"), "hut").Children);
+        Assert.NotEmpty(MapPrefabFile.Read(PrefabFixtures.AssetBytes("valid"), "hut").Children);
+    }
+
+    [Fact]
+    public void PrefabSectionConverters_AreInternalWithPublicParameterlessConstructors()
+    {
+        foreach (string name in new[] { "MapPrefabSetJsonConverter", "MapBuildingIntentJsonConverter", "MapStandaloneTransformsJsonConverter" })
+        {
+            var type = typeof(MapPrefabFile).Assembly.GetType("KhaozEngine.MapDoc.Prefabs." + name, throwOnError: true)!;
+            Assert.False(type.IsPublic);
+            Assert.NotNull(type.GetConstructor(Type.EmptyTypes));
+        }
+        var f = PrefabFixtures.Create("all-resources");
+        string text = MapDocumentFile.SaveText(f.Document);
+        Assert.Equal(text, MapDocumentFile.SaveText(MapDocumentFile.LoadText(text)));
+    }
+
     [Fact]
     public void WorldRecordReference_DoesNotRequireTheLocalRecordPose()
     {
@@ -121,9 +147,29 @@ public sealed class MapPrefabFormatTests
         f.Document.SupportRecipe = MapSupportRecipe.LegacyXzCallbackV1;
         f.Document.Surfaces = new();
         int calls = 0;
-        Assert.Throws<MapDocumentException>(() => MapResolver.Resolve(f.Document, f.Assets,
+        var error = Assert.Throws<MapDocumentException>(() => MapResolver.Resolve(f.Document, f.Assets,
             (_, _) => { calls++; return 0; }, new("fixture", 1, "fixture")));
+        Assert.Contains("Prefab sections require resolver identity (1, 2) and AuthoredBindingsV2.", error.Message);
         Assert.Equal(0, calls);
+    }
+
+    [Fact]
+    public void ResolverOne_WithoutPrefabSectionsCallsBackForAMissingYPlacement()
+    {
+        var f = PrefabFixtures.Create();
+        f.Document.Prefabs = null;
+        Assert.Null(f.Document.BuildingIntent);
+        Assert.Null(f.Document.NativeResourceTransforms);
+        f.Document.ResolverIdentity = new(1, 1);
+        f.Document.SupportRecipe = MapSupportRecipe.LegacyXzCallbackV1;
+        f.Document.Surfaces = new();
+        f.Document.Placements.Add(new MapPlacement
+        { Id = "probe", Kind = "item", AssetId = "item", X = 1, Y = null, Z = -1, Scale = 1, NumericId = ++f.Document.NumericIdHighWaterMark });
+        int calls = 0;
+        var resolved = MapResolver.Resolve(f.Document, f.Assets, (x, z) => { calls++; Assert.Equal((1f, -1f), (x, z)); return 2.5f; },
+            new("fixture", 1, "fixture"));
+        Assert.Equal(1, calls);
+        Assert.Equal(2.5f, resolved.Placements.Single(p => p.PlacementId == "probe").Transform.Position.Y);
     }
 
     [Fact]

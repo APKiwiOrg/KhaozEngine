@@ -449,20 +449,26 @@ internal static class MapPrefabJson
     }
 }
 
-public sealed class MapPrefabSetJsonConverter : JsonConverter<MapPrefabSet>
+// Internal implementation. System.Text.Json instantiates an attribute-named converter through its public parameterless constructor.
+internal sealed class MapPrefabSetJsonConverter : JsonConverter<MapPrefabSet>
 {
+    public MapPrefabSetJsonConverter() { }
     public override MapPrefabSet Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     { using JsonDocument json = JsonDocument.ParseValue(ref reader); return MapPrefabJson.Read<MapPrefabSet>(json.RootElement); }
     public override void Write(Utf8JsonWriter w, MapPrefabSet value, JsonSerializerOptions options) => MapPrefabJson.Write(w, value);
 }
-public sealed class MapBuildingIntentJsonConverter : JsonConverter<MapBuildingIntent>
+// Internal implementation. System.Text.Json instantiates an attribute-named converter through its public parameterless constructor.
+internal sealed class MapBuildingIntentJsonConverter : JsonConverter<MapBuildingIntent>
 {
+    public MapBuildingIntentJsonConverter() { }
     public override MapBuildingIntent Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     { using JsonDocument json = JsonDocument.ParseValue(ref reader); return MapPrefabJson.Read<MapBuildingIntent>(json.RootElement); }
     public override void Write(Utf8JsonWriter w, MapBuildingIntent value, JsonSerializerOptions options) => MapPrefabJson.Write(w, value);
 }
-public sealed class MapStandaloneTransformsJsonConverter : JsonConverter<IReadOnlyList<MapStandaloneResourceTransform>>
+// Internal implementation. System.Text.Json instantiates an attribute-named converter through its public parameterless constructor.
+internal sealed class MapStandaloneTransformsJsonConverter : JsonConverter<IReadOnlyList<MapStandaloneResourceTransform>>
 {
+    public MapStandaloneTransformsJsonConverter() { }
     public override IReadOnlyList<MapStandaloneResourceTransform> Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     { using JsonDocument json = JsonDocument.ParseValue(ref reader); return MapPrefabJson.Read<MapStandaloneResourceTransform[]>(json.RootElement); }
     public override void Write(Utf8JsonWriter w, IReadOnlyList<MapStandaloneResourceTransform> value, JsonSerializerOptions options) => MapPrefabJson.Write(w, value);

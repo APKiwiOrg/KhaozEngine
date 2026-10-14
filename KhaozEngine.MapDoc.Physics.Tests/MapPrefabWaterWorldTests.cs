@@ -150,8 +150,24 @@ public class MapPrefabWaterWorldTests
         var coords = old.Keys.Concat(current.Keys).Distinct().ToArray();
         var changed = coords.Where(c => (old.GetValueOrDefault(c)?.MediumDigest ?? "") != (current.GetValueOrDefault(c)?.MediumDigest ?? "")).ToArray();
         Assert.NotEmpty(changed);
-        Assert.Contains(coords, c => (old.GetValueOrDefault(c)?.MediumDigest ?? "") == "" && (current.GetValueOrDefault(c)?.MediumDigest ?? "") == "");
-        Assert.All(changed, c => Assert.True((old.GetValueOrDefault(c)?.MediumDigest ?? "") != "" || (current.GetValueOrDefault(c)?.MediumDigest ?? "") != ""));
+        // Independent footprint: tiles whose capture bounds meet a compiled water fragment's XZ bounds with positive area.
+        HashSet<MapNavTileCoord> Wet(MapBuiltWorld world, IReadOnlyDictionary<MapNavTileCoord, MapNavTile> tiles)
+        {
+            var bounds = Assert.Single(world.Water).FragmentBounds.Select(f => f.Bounds).ToArray();
+            Assert.NotEmpty(bounds);
+            return tiles.Values.Where(t => bounds.Any(b => b.MinX < t.CaptureBounds.MaxX && t.CaptureBounds.MinX < b.MaxX &&
+                b.MinZ < t.CaptureBounds.MaxZ && t.CaptureBounds.MinZ < b.MaxZ)).Select(t => t.Coord).ToHashSet();
+        }
+        var oldWet = Wet(before, old);
+        var newWet = Wet(after, current);
+        Assert.NotEqual(oldWet, newWet);
+        var affected = oldWet.Union(newWet).ToHashSet();
+        Assert.All(changed, c => Assert.Contains(c, affected));
+        var unaffected = coords.Where(c => !affected.Contains(c)).ToArray();
+        Assert.NotEmpty(unaffected);
+        Assert.All(unaffected, c => Assert.Equal(("", ""), (old.GetValueOrDefault(c)?.MediumDigest ?? "", current.GetValueOrDefault(c)?.MediumDigest ?? "")));
+        Assert.All(oldWet, c => Assert.NotEqual("", old[c].MediumDigest));
+        Assert.All(newWet, c => Assert.NotEqual("", current[c].MediumDigest));
     }
 
     [Fact]

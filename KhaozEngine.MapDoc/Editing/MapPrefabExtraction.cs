@@ -66,8 +66,11 @@ public static class MapPrefabExtraction
             var pose = MapPrefabEditPreparation.Presentation(local);
             MapPrefabChild child = walked switch
             {
-                MapPrefabPlacementChild p => p with { Value = Placement(p.Value, id, pose, WorldRequest(key.Key, p.Value), originFrame,
-                    placementFrames.TryGetValue(key.Key, out var ownerFrame) ? ownerFrame : null) },
+                MapPrefabPlacementChild p => p with
+                {
+                    Value = Placement(p.Value, id, pose, WorldRequest(key.Key, p.Value), originFrame,
+                    placementFrames.TryGetValue(key.Key, out var ownerFrame) ? ownerFrame : null)
+                },
                 MapPrefabSurfaceChild s => s with { Surface = s.Surface with { Id = id, SemanticSha256 = "" } },
                 MapPrefabRecordChild r => r with { Value = r.Value is MapPrismDomain prism ? prism with { Id = id, InstanceId = "" } : r.Value with { Id = id } },
                 MapPrefabMediumChild m => m with { Value = m.Value with { Key = id } },

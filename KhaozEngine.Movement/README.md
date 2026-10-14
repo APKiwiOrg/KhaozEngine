@@ -462,7 +462,8 @@ public sealed class GroundNavigationBake
 
 `Create` builds every profile through `capture.BuildProfile` with its `Aquatic` flag while the capture is live, so each
 profile is exactly the fresh build. The `execution` overload builds profiles one after another and passes the setting to
-each contact profile, as [Parallel contact bake](#parallel-contact-bake) describes. An aquatic profile from a capture without `SampleWater` is refused there.
+each contact profile, as [Parallel contact bake](#parallel-contact-bake) describes. An aquatic profile from a capture
+without `SampleWater` is refused there.
 `WriteTo` writes a little-endian `KENB` file. All-Legacy sets retain format 1 and their exact bytes. Any contact
 profile selects format 2 for the whole set, including mixed contact ground and legacy aquatic profiles. Format 2
 adds each profile's effective kind, foot fraction, water policy and zero placement offset to the identity. Only

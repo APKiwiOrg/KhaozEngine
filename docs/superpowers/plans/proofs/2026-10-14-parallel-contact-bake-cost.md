@@ -104,10 +104,12 @@ threads allocate, cold JIT on 12 threads and other machine work. This sample doe
 | cold | 12 | 31,453,408 | 12 | 0 |
 | warm | 12 | 17,829,648 | 12 | 0 |
 
-Degree 12 allocated 1.3 to 2.0 times as much as degree 1, from per-worker bindings, environment contexts, anchor
-maps, band results and thread start. The reader pools built one scratch per concurrent reader and retained no native
-Bepu pool capacity after either pass. These figures are not comparable with the 2026-10-11 support-gates baseline.
-`ScratchHighWaterBytes` now counts native pool capacity and every pooled query scratch, which that baseline did not.
+Degree 12 allocated 1.3 to 2.0 times as much as degree 1, from per-worker bindings, environment contexts, anchor maps,
+band results and thread start. The reader pools built one scratch per concurrent reader and retained no native Bepu
+pool capacity after either pass. This box-only fixture used no pooled Bepu path (no collision batcher, simulation
+sweep or mesh contacts), so native scratch kept per worker on worlds with meshes is not measured here. These figures
+are not comparable with the 2026-10-11 support-gates baseline. `ScratchHighWaterBytes` now counts native pool capacity
+and every pooled query scratch, which that baseline did not.
 
 ## Band rule
 

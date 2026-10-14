@@ -54,7 +54,14 @@ public sealed partial class MapPrefabTransformTests
                 Enum.GetValues<MapSurfaceRole>(), null, new(MaxPageReads: 32)), []);
         Assert.Equal(expected, view.Status);
         Assert.Equal(visits, work.PageVisits);
-        if (expected == MapAcquireStatus.CapacityExceeded) Assert.Empty(view.Witness.Present);
+        // The first page-opaque native group refuses composition before a second opaque session opens.
+        Assert.Equal(1, native.Opens);
+        if (expected == MapAcquireStatus.CapacityExceeded)
+        {
+            Assert.Empty(view.Witness.Present);
+            Assert.Contains("IMapSurfacePageVisitSession.CanObservePageVisits", view.Detail);
+            Assert.DoesNotContain("CanObserveWork", view.Detail);
+        }
     }
     [Theory]
     [InlineData(false)]

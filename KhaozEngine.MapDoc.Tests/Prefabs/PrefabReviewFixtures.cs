@@ -12,9 +12,13 @@ namespace KhaozEngine.Tests.MapDoc.Prefabs;
 
 internal static partial class PrefabFixtures
 {
-    internal static IMapSurfaceAcquisitionSource PublicCopyingSource(IMapSurfaceAcquisitionSource source, bool opaque = false) => new PublicCopyingSurfaceSource(source, opaque);
-    sealed class PublicCopyingSurfaceSource(IMapSurfaceAcquisitionSource source, bool opaque) : IMapSurfaceAcquisitionSource
+    internal static PublicCopyingSurfaceSource PublicCopyingSource(IMapSurfaceAcquisitionSource source, bool opaque = false, bool workOpaque = false) =>
+        new(source, opaque, workOpaque);
+    // Copies only the public scope fields, as a public adapter must. Opaque hides page visits. WorkOpaque hides
+    // metadata and rectangle work. Otherwise the adapter forwards each observation contract.
+    internal sealed class PublicCopyingSurfaceSource(IMapSurfaceAcquisitionSource source, bool opaque, bool workOpaque) : IMapSurfaceAcquisitionSource
     {
+        internal int Opens { get; private set; }
         public string SnapshotId => source.SnapshotId;
         public string RootSha256 => source.RootSha256;
         public IReadOnlyList<MapSurfaceRef> Surfaces => source.Surfaces;
@@ -22,13 +26,31 @@ internal static partial class PrefabFixtures
         public MapPatchFindResult FindPatches(MapSurfaceScope scope) => source.FindPatches(Copy(scope));
         public IMapSurfaceAcquisitionSession OpenAcquisition(MapSurfaceScope scope)
         {
+            Opens++;
             var session = source.OpenAcquisition(Copy(scope));
-            return opaque ? new OpaqueSession(session) : session;
+            return opaque || workOpaque ? new ForwardingSession(session, !opaque, !workOpaque) : session;
         }
         static MapSurfaceScope Copy(MapSurfaceScope scope) => new(scope.Frame, scope.LocalMin, scope.LocalMax,
             scope.MinY, scope.MaxY, scope.Roles, scope.SpaceIds, scope.Limits);
-        sealed class OpaqueSession(IMapSurfaceAcquisitionSession session) : IMapSurfaceAcquisitionSession
+        sealed class ForwardingSession(IMapSurfaceAcquisitionSession session, bool pages, bool work) : IMapSurfacePageVisitSession, IMapSurfaceWorkSession
         {
+            public bool CanObservePageVisits => pages && session is IMapSurfacePageVisitSession { CanObservePageVisits: true };
+            public bool CanObserveWork => work && session is IMapSurfaceWorkSession { CanObserveWork: true };
+            public event Action? PageVisiting
+            {
+                add { if (CanObservePageVisits) ((IMapSurfacePageVisitSession)session).PageVisiting += value; }
+                remove { if (CanObservePageVisits) ((IMapSurfacePageVisitSession)session).PageVisiting -= value; }
+            }
+            public event Action? MetadataInspecting
+            {
+                add { if (CanObserveWork) ((IMapSurfaceWorkSession)session).MetadataInspecting += value; }
+                remove { if (CanObserveWork) ((IMapSurfaceWorkSession)session).MetadataInspecting -= value; }
+            }
+            public event Action? RangeAdding
+            {
+                add { if (CanObserveWork) ((IMapSurfaceWorkSession)session).RangeAdding += value; }
+                remove { if (CanObserveWork) ((IMapSurfaceWorkSession)session).RangeAdding -= value; }
+            }
             public string SnapshotId => session.SnapshotId;
             public string RootSha256 => session.RootSha256;
             public int PagesRead => session.PagesRead;
@@ -39,6 +61,15 @@ internal static partial class PrefabFixtures
             public bool TryGetIncidentRecords(MapPatchKey key, out IReadOnlyList<MapRecordRef>? records) => session.TryGetIncidentRecords(key, out records);
             public void Dispose() => session.Dispose();
         }
+    }
+    /// <summary>Patchless native surfaces split into two pose groups, so each copied session repeats all metadata work.</summary>
+    internal static (MapDocument Document, MapEffectiveContext Context) WorkAdmissionGeometry(int count)
+    {
+        var f = Create("roomless");
+        f.Document.Prefabs = null;
+        for (int i = 0; i < count; i++) f.Document.Surfaces.Refs.Add(Surface($"native-{i:D4}", MapSurfaceRole.SupportFloor));
+        var transforms = new Dictionary<string, MapEffectiveTransform> { ["Surface:native-0001"] = new(1000, 0, 0, 0, 1) };
+        return (f.Document, new(f.Document.Surfaces.Clone(), transforms, new string('9', 64)));
     }
     internal static IMapSurfaceAcquisitionSource ObservedNative(MapDocument doc, MapSurfaceAcquisitionWork work) =>
         new ObservedNativeSource(MapDocumentSurfaceSource.Capture(doc), work);

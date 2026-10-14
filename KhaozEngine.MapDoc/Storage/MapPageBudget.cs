@@ -18,10 +18,13 @@ internal sealed class MapPageBudget
     internal int Reads;
     internal MapSurfaceAcquisitionWork? Work { get; }
     internal event System.Action? PageVisiting;
+    internal event System.Action? MetadataInspecting;
+    internal event System.Action? RangeAdding;
 
     internal void BeforeMetadata()
     {
         if (_admission.Metadata >= _admission.RangeLimit) throw new MapSurfaceCapacityException();
+        MetadataInspecting?.Invoke();
         _admission.Metadata++;
         if (Work is { } observation) observation.MetadataChecks++;
     }
@@ -37,6 +40,7 @@ internal sealed class MapPageBudget
     internal void BeforeRange()
     {
         if (_admission.Ranges >= _admission.RangeLimit) throw new MapSurfaceCapacityException();
+        RangeAdding?.Invoke();
         _admission.Ranges++;
         if (Work is { } observation) observation.RangeOperations++;
     }

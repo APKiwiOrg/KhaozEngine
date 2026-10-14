@@ -9,7 +9,7 @@ using KhaozEngine.Primitives;
 namespace KhaozEngine.MapDoc.Storage;
 
 /// <summary>Composes generated resource edges with the caller's pinned native producer.</summary>
-internal sealed class MapComposedSurfaceSource : IMapSurfaceAcquisitionSource, IMapEffectiveSurfaceContext
+internal sealed partial class MapComposedSurfaceSource : IMapSurfaceAcquisitionSource, IMapEffectiveSurfaceContext
 {
     readonly IMapSurfaceSource _native;
     readonly MapEffectiveSurfaceSource _generated;
@@ -44,7 +44,7 @@ internal sealed class MapComposedSurfaceSource : IMapSurfaceAcquisitionSource, I
     }
     public IMapSurfaceAcquisitionSession OpenAcquisition(MapSurfaceScope scope) => new Acquisition(this, scope);
 
-    sealed class Acquisition : IMapSurfacePageVisitSession
+    sealed partial class Acquisition : IMapSurfacePageVisitSession, IMapSurfaceWorkSession
     {
         sealed record Part(IMapSurfaceAcquisitionSession Session, IReadOnlySet<string> Ids);
         readonly MapComposedSurfaceSource _source;
@@ -52,7 +52,6 @@ internal sealed class MapComposedSurfaceSource : IMapSurfaceAcquisitionSource, I
         readonly List<Part> _parts = new();
         readonly SortedSet<MapPatchKey> _reserved = new();
         int _pageVisits;
-        bool _unsafeTraversal;
         bool _disposed;
         public bool CanObservePageVisits { get; private set; } = true;
         public event Action? PageVisiting;
@@ -64,8 +63,10 @@ internal sealed class MapComposedSurfaceSource : IMapSurfaceAcquisitionSource, I
         internal Acquisition(MapComposedSurfaceSource source, MapSurfaceScope scope)
         {
             _source = source; _scope = scope;
+            _workLimit = 1L + 4L * MapSurfacePages.MaxEntries * scope.Limits.MaxPageReads;
             var groups = source._nativePoses.GroupBy(p => p.Value).ToArray();
             var budget = scope.SharedBudget ?? new MapPageBudget(scope.Limits.MaxPageReads);
+            bool generated = source._generated.Surfaces.Count != 0;
             try
             {
                 if (groups.Length != 0 && source._native is not IMapSurfaceAcquisitionSource)
@@ -80,40 +81,34 @@ internal sealed class MapComposedSurfaceSource : IMapSurfaceAcquisitionSource, I
                     if (session.SnapshotId != source._nativeSnapshot || session.RootSha256 != source._nativeRoot)
                     { session.Dispose(); throw new MapDocumentException("native producer differs from its pinned composition"); }
                     _parts.Add(new(session, ids));
-                    if (groups.Length > 1 && session is not IMapSurfacePageVisitSession { CanObservePageVisits: true })
-                    { _unsafeTraversal = true; break; }
+                    // Several parts share one ceiling only while every native session reports its work before doing it.
+                    _unobservable = Unobservable(session, pages: groups.Length > 1, work: groups.Length > 1 || generated);
+                    if (_unobservable is not null) break;
                 }
-                int opaque = 0;
-                foreach (var part in _parts)
-                    if (part.Session is IMapSurfacePageVisitSession { CanObservePageVisits: true } observable)
-                        observable.PageVisiting += AdmitPageVisit;
-                    else opaque++;
-                CanObservePageVisits = opaque == 0;
+                int pageOpaque = 0, workOpaque = 0;
+                foreach (var part in _parts) Observe(part.Session, ref pageOpaque, ref workOpaque);
+                CanObservePageVisits = pageOpaque == 0;
+                CanObserveWork = workOpaque == 0;
                 // One legacy session already owns a whole-call allowance. Reserve it conservatively. Multiple
                 // unobservable native sessions cannot be composed safely, so refuse before traversing any of them.
-                if (opaque != 0) _pageVisits = scope.Limits.MaxPageReads;
-                _unsafeTraversal |= opaque > 1;
-                if (source._generated.Surfaces.Count != 0)
+                if (pageOpaque != 0) _pageVisits = scope.Limits.MaxPageReads;
+                if (workOpaque != 0) _metadata = _ranges = _workLimit;
+                if (pageOpaque > 1) _unobservable ??= Unobservable(_parts[0].Session, pages: true, work: false);
+                if (generated)
                 {
-                    var generated = (IMapSurfacePageVisitSession)source._generated.OpenAcquisition(scope with { SharedBudget = budget });
-                    generated.PageVisiting += AdmitPageVisit;
-                    _parts.Add(new(generated, source._generated.Surfaces.Select(s => s.Id).ToHashSet(StringComparer.Ordinal)));
+                    var session = source._generated.OpenAcquisition(scope with { SharedBudget = budget });
+                    _parts.Add(new(session, source._generated.Surfaces.Select(s => s.Id).ToHashSet(StringComparer.Ordinal)));
+                    Observe(session, ref pageOpaque, ref workOpaque);
                 }
             }
             catch { Dispose(); throw; }
         }
         Part? Owner(string id) => _parts.FirstOrDefault(p => p.Ids.Contains(id));
-        void AdmitPageVisit()
-        {
-            if (_pageVisits >= _scope.Limits.MaxPageReads) throw new MapSurfaceCapacityException();
-            PageVisiting?.Invoke();
-            _pageVisits++;
-        }
         public bool TryGetSurface(string id, out MapSurfaceRef? surface)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             surface = null;
-            if (_unsafeTraversal) throw new MapSurfaceCapacityException();
+            if (_unobservable is not null) throw new MapSurfaceCapacityException(_unobservable);
             return Owner(id)?.Session.TryGetSurface(id, out surface) == true;
         }
         public MapPatchFindResult FindPatches()
@@ -124,7 +119,7 @@ internal sealed class MapComposedSurfaceSource : IMapSurfaceAcquisitionSource, I
             bool complete = true;
             try
             {
-                if (_unsafeTraversal) throw new MapSurfaceCapacityException();
+                if (_unobservable is not null) throw new MapSurfaceCapacityException(_unobservable);
                 foreach (var part in _parts)
                 {
                     var found = part.Session.FindPatches();
@@ -138,7 +133,10 @@ internal sealed class MapComposedSurfaceSource : IMapSurfaceAcquisitionSource, I
                 return new(complete && unavailable.Count == 0 ? MapFindStatus.Complete : MapFindStatus.Incomplete,
                     _scope, SnapshotId, patches.AsReadOnly(), empty.AsReadOnly(), unavailable.AsReadOnly(), PagesRead - before);
             }
-            catch (MapSurfaceCapacityException) { return new(MapFindStatus.CapacityExceeded, _scope, SnapshotId, [], [], [], PagesRead - before); }
+            catch (MapSurfaceCapacityException ex)
+            {
+                return new(MapFindStatus.CapacityExceeded, _scope, SnapshotId, [], [], [], PagesRead - before) { Diagnostic = ex.Diagnostic };
+            }
         }
         void Reserve(MapPatchKey key)
         {
@@ -148,7 +146,7 @@ internal sealed class MapComposedSurfaceSource : IMapSurfaceAcquisitionSource, I
         public MapPatchRead ReadPatch(MapPatchKey key)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            if (_unsafeTraversal) throw new MapSurfaceCapacityException();
+            if (_unobservable is not null) throw new MapSurfaceCapacityException(_unobservable);
             Reserve(key);
             int before = PagesRead;
             var part = Owner(key.SurfaceId) ?? throw new MapDocumentException("required surface is undeclared: " + key.SurfaceId);
@@ -158,7 +156,7 @@ internal sealed class MapComposedSurfaceSource : IMapSurfaceAcquisitionSource, I
         public bool TryGetIncidentRecords(MapPatchKey key, out IReadOnlyList<MapRecordRef>? records)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            if (_unsafeTraversal) throw new MapSurfaceCapacityException();
+            if (_unobservable is not null) throw new MapSurfaceCapacityException(_unobservable);
             var owner = Owner(key.SurfaceId);
             records = null;
             return owner?.Session.TryGetIncidentRecords(key, out records) == true;
@@ -169,8 +167,7 @@ internal sealed class MapComposedSurfaceSource : IMapSurfaceAcquisitionSource, I
             _disposed = true;
             foreach (var part in _parts)
             {
-                if (part.Session is IMapSurfacePageVisitSession { CanObservePageVisits: true } observable)
-                    observable.PageVisiting -= AdmitPageVisit;
+                Release(part.Session);
                 part.Session.Dispose();
             }
         }

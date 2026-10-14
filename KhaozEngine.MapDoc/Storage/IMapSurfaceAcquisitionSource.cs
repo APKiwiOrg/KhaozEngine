@@ -5,6 +5,14 @@ using KhaozEngine.MapDoc.Surfaces;
 namespace KhaozEngine.MapDoc.Storage;
 
 /// <summary>A pinned producer that supports one bounded acquisition across discovery and explicit reads.</summary>
+/// <remarks>Effective prefab composition opens one session per native pose group beside its generated part. Every part
+/// shares one MapQueryLimits ceiling for page visits, metadata inspections and rectangle additions, so composition admits
+/// that work before it happens through the optional observation capabilities below. With more than one native group,
+/// each native session must report IMapSurfacePageVisitSession.CanObservePageVisits. With more than one part of any kind,
+/// each native session must report IMapSurfaceWorkSession.CanObserveWork. Otherwise composition refuses before any
+/// traversal with CapacityExceeded and a diagnostic naming the missing capability. Raising MapQueryLimits cannot cure that
+/// refusal. A producer or adapter cures it by raising or forwarding the observation events. One native session that is
+/// the only part keeps its own whole allowance without observation.</remarks>
 public interface IMapSurfaceAcquisitionSource : IMapSurfaceSource
 {
     IMapSurfaceAcquisitionSession OpenAcquisition(MapSurfaceScope scope);
@@ -33,4 +41,18 @@ public interface IMapSurfacePageVisitSession : IMapSurfaceAcquisitionSession
 {
     bool CanObservePageVisits { get; }
     event Action? PageVisiting;
+}
+
+/// <summary>Optional before-work observation of metadata inspections and rectangle additions.</summary>
+/// <remarks>When CanObserveWork is true, MetadataInspecting is raised synchronously before every surface-ref inspection,
+/// surface lookup and lookup-node bounds check, including excluded roles and rejected nodes. RangeAdding is raised
+/// synchronously before every rectangle seed, split addition and merge addition, including work that visits no page.
+/// A handler can throw MapSurfaceCapacityException to refuse that work before it happens. The capability remains fixed
+/// for the session lifetime. Adapters forward these events as they forward PageVisiting, without retaining private
+/// fields on a copied request.</remarks>
+public interface IMapSurfaceWorkSession : IMapSurfaceAcquisitionSession
+{
+    bool CanObserveWork { get; }
+    event Action? MetadataInspecting;
+    event Action? RangeAdding;
 }

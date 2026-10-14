@@ -57,7 +57,7 @@ internal sealed class MapEffectiveAcquisition
             return Finish(_facts.Complete ? MapAcquireStatus.Complete : MapAcquireStatus.Incomplete,
                 _facts.Complete ? null : _unknownIncidents ? "incomplete incident records" : "incomplete surface acquisition", _facts);
         }
-        catch (MapSurfaceCapacityException) { return Finish(MapAcquireStatus.CapacityExceeded, phase + " capacity exceeded", new()); }
+        catch (MapSurfaceCapacityException ex) { return Finish(MapAcquireStatus.CapacityExceeded, ex.Diagnostic ?? phase + " capacity exceeded", new()); }
         catch (MapExactOverflowException) { return Finish(MapAcquireStatus.NotRepresentable, "exact value overflow", new()); }
     }
     MapScopedAcquisition.Result Finish(MapAcquireStatus status, string? detail, MapAcquiredFacts facts) =>
@@ -118,7 +118,7 @@ internal sealed class MapEffectiveAcquisition
         if (found.SnapshotId != _snapshot || found.Scope is null || found.Scope.Digest != _scope.Digest || !Enum.IsDefined(found.Status))
             throw new MapDocumentException("incoherent acquisition discovery snapshot or scope");
         foreach (MapPatchKey key in ReservationSnapshot()) _reserved.Add(key);
-        if (found.Status == MapFindStatus.CapacityExceeded) throw new MapSurfaceCapacityException();
+        if (found.Status == MapFindStatus.CapacityExceeded) throw new MapSurfaceCapacityException(found.Diagnostic);
         foreach (MapCoveredRange range in found.KnownEmpty)
         {
             Surface(range.SurfaceId);

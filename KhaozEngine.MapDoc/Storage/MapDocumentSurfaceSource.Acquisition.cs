@@ -12,9 +12,12 @@ public sealed partial class MapDocumentSurfaceSource
     internal IMapSurfaceAcquisitionSession OpenAcquisition(MapSurfaceScope scope, MapSurfaceAcquisitionWork? work) =>
         new Acquisition(this, new(scope, SnapshotId, RootSha256, work));
 
-    sealed class Acquisition(MapDocumentSurfaceSource source, MapSurfaceSessionState state) : IMapSurfacePageVisitSession
+    sealed class Acquisition(MapDocumentSurfaceSource source, MapSurfaceSessionState state) : IMapSurfacePageVisitSession, IMapSurfaceWorkSession
     {
         public bool CanObservePageVisits => true;
+        public bool CanObserveWork => true;
+        public event Action? MetadataInspecting { add => state.Budget.MetadataInspecting += value; remove => state.Budget.MetadataInspecting -= value; }
+        public event Action? RangeAdding { add => state.Budget.RangeAdding += value; remove => state.Budget.RangeAdding -= value; }
         public event Action? PageVisiting { add => state.Budget.PageVisiting += value; remove => state.Budget.PageVisiting -= value; }
         public string SnapshotId => state.SnapshotId;
         public string RootSha256 => state.RootSha256;

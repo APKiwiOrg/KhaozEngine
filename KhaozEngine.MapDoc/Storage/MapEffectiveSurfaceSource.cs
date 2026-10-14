@@ -80,7 +80,7 @@ internal sealed class MapEffectiveSurfaceSource : IMapSurfaceAcquisitionSource, 
     }
     public IMapSurfaceAcquisitionSession OpenAcquisition(MapSurfaceScope scope) => new Acquisition(this, scope);
 
-    sealed class Acquisition : IMapSurfacePageVisitSession
+    sealed class Acquisition : IMapSurfacePageVisitSession, IMapSurfaceWorkSession
     {
         readonly MapEffectiveSurfaceSource _source;
         readonly MapSurfaceScope _scope;
@@ -90,6 +90,9 @@ internal sealed class MapEffectiveSurfaceSource : IMapSurfaceAcquisitionSource, 
         long _recordsCharged;
         bool _disposed;
         public bool CanObservePageVisits => true;
+        public bool CanObserveWork => true;
+        public event Action? MetadataInspecting { add => _budget.MetadataInspecting += value; remove => _budget.MetadataInspecting -= value; }
+        public event Action? RangeAdding { add => _budget.RangeAdding += value; remove => _budget.RangeAdding -= value; }
         public event Action? PageVisiting { add => _budget.PageVisiting += value; remove => _budget.PageVisiting -= value; }
         public string SnapshotId => _source.SnapshotId;
         public string RootSha256 => _source.RootSha256;

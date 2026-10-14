@@ -57,8 +57,19 @@ internal sealed class FilteredSurfaceSource : IMapSurfaceAcquisitionSource
         Detail = "filtered fixture patch is unloaded",
     };
 
-    sealed class Acquisition(FilteredSurfaceSource source, IMapSurfaceAcquisitionSession inner) : IMapSurfacePageVisitSession
+    sealed class Acquisition(FilteredSurfaceSource source, IMapSurfaceAcquisitionSession inner) : IMapSurfacePageVisitSession, IMapSurfaceWorkSession
     {
+        public bool CanObserveWork => inner is IMapSurfaceWorkSession { CanObserveWork: true };
+        public event Action? MetadataInspecting
+        {
+            add { if (inner is IMapSurfaceWorkSession observable) observable.MetadataInspecting += value; }
+            remove { if (inner is IMapSurfaceWorkSession observable) observable.MetadataInspecting -= value; }
+        }
+        public event Action? RangeAdding
+        {
+            add { if (inner is IMapSurfaceWorkSession observable) observable.RangeAdding += value; }
+            remove { if (inner is IMapSurfaceWorkSession observable) observable.RangeAdding -= value; }
+        }
         public bool CanObservePageVisits => inner is IMapSurfacePageVisitSession { CanObservePageVisits: true };
         public event Action? PageVisiting
         {

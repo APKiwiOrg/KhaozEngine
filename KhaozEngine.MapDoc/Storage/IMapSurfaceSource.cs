@@ -25,7 +25,11 @@ public enum MapFindStatus { Complete, Incomplete, CapacityExceeded }
 /// <remarks>PagesRead counts newly decoded pages, not cached or unread metadata visits.</remarks>
 public sealed record MapPatchFindResult(MapFindStatus Status, MapSurfaceScope Scope, string SnapshotId,
     IReadOnlyList<MapPatchRead> Patches, IReadOnlyList<MapCoveredRange> KnownEmpty,
-    IReadOnlyList<MapPatchRead> Unavailable, int PagesRead);
+    IReadOnlyList<MapPatchRead> Unavailable, int PagesRead)
+{
+    // A composition refusal names its missing observation capability here. Ordinary capacity refusals leave it null.
+    internal string? Diagnostic { get; init; }
+}
 
 /// <summary>A trusted producer of generation-pinned, defensively copied surface payloads.</summary>
 public interface IMapSurfaceSource

@@ -69,34 +69,7 @@ public static partial class NameplateRenderer
         if (size.X <= 0f || size.Y <= 0f) return false;
 
         Vector4 panelRect = NameplatePlacement.Place(pixel, size, viewportWidth, viewportHeight, template, ref placementState);
-        float opacity = float.IsFinite(content.Opacity) ? Math.Clamp(content.Opacity, 0f, 1f) : 1f;
-        if (colors.PanelFill.A > 0f)
-            canvas.FillRounded(panelRect, WithOpacity(colors.PanelFill, opacity), template.CornerRadius);
-        if (template.PanelBorderThickness > 0f && colors.PanelBorder.A > 0f)
-            canvas.StrokeRounded(panelRect, WithOpacity(colors.PanelBorder, opacity), template.CornerRadius, template.PanelBorderThickness);
-
-        Vector2 screenOffset = new(panelRect.X + template.PadX - resolution.Bounds.X,
-            panelRect.Y + template.PadY - resolution.Bounds.Y);
-        for (int i = 0; i < template.Components.Count; i++)
-        {
-            ref NameplateResolvedComponent resolved = ref resolution[i];
-            if (!resolved.Drawn) continue;
-
-            Vector4 rect = new(resolved.Rect.X + screenOffset.X, resolved.Rect.Y + screenOffset.Y,
-                resolved.Rect.Width, resolved.Rect.Height);
-            switch (template.Components[i])
-            {
-                case NameplateTextComponent text when content.TryGetText(text.Slot, out var value):
-                    DrawTemplateText(ref canvas, rect, resolved.Text, text, colors.ShadowFor(text), value, opacity);
-                    break;
-                case NameplateBadgeComponent badge when content.TryGetText(badge.Slot, out var value):
-                    DrawTemplateBadge(ref canvas, rect, resolved.Text, badge, value, opacity);
-                    break;
-                case NameplateBarComponent bar when content.TryGetBar(bar.Slot, out var value):
-                    DrawTemplateBar(ref canvas, rect, bar, value, opacity);
-                    break;
-            }
-        }
+        DrawResolvedTemplateAtRect(ref canvas, panelRect, template, content, colors, resolution);
         return true;
     }
 

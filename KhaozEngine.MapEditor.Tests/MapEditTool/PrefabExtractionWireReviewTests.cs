@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
-using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Prefabs;
@@ -16,6 +15,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.MapEditTool;
 
+[Collection(McpWireCollection.Name)]
 public sealed class PrefabExtractionWireReviewTests
 {
     [Fact]
@@ -23,11 +23,10 @@ public sealed class PrefabExtractionWireReviewTests
     {
         var f = PrefabFixtures.Transformed(0.371f, 1.2f, new(30000.25f, -450, -29999.75f));
         var stored = PrefabEditorFixtures.Session(f);
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-        await using var harness = await McpAdapterTests.McpHarness.StartAsync(cts.Token);
+        await using var harness = await McpWire.StartAsync();
         async Task<CallToolResult> Call(string name, Dictionary<string, object?> args)
         {
-            var result = await harness.Client.CallToolAsync(name, args, cancellationToken: cts.Token);
+            var result = await harness.Client.CallAsync(name, args);
             Assert.NotEqual(true, result.IsError);
             return result;
         }

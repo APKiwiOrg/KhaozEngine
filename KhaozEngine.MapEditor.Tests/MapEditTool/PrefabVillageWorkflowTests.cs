@@ -5,7 +5,6 @@ using System.Linq;
 using System.Numerics;
 using System.Text;
 using System.Text.Json;
-using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Editing;
@@ -22,6 +21,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.MapEditTool;
 
+[Collection(McpWireCollection.Name)]
 public sealed class PrefabVillageWorkflowTests
 {
     [Fact]
@@ -179,8 +179,7 @@ public sealed class PrefabVillageWorkflowTests
     public async Task McpVillageWorkflow_PublishesImmutableAssetsAndAtomicInteriors()
     {
         var seed = PrefabEditorFixtures.Session(PrefabFixtures.Village());
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-        await using var harness = await McpAdapterTests.McpHarness.StartAsync(cts.Token);
+        await using var harness = await McpWire.StartAsync();
         await Call("map_open", new() { ["path"] = seed.DocumentPath });
         var live = harness.Services.GetRequiredService<MapEditSession>();
         string before = Bytes(live);
@@ -209,7 +208,7 @@ public sealed class PrefabVillageWorkflowTests
 
         async Task<CallToolResult> Call(string name, Dictionary<string, object?> args)
         {
-            var result = await harness.Client.CallToolAsync(name, args, cancellationToken: cts.Token);
+            var result = await harness.Client.CallAsync(name, args);
             Assert.False(result.IsError == true, name + ": " + string.Join("\n", result.Content.OfType<TextContentBlock>().Select(c => c.Text)));
             return result;
         }

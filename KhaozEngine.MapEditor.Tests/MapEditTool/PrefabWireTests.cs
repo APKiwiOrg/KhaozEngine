@@ -1,7 +1,6 @@
 using System;
 using System.Linq;
 using System.Collections.Generic;
-using System.Threading;
 using System.Threading.Tasks;
 using System.Text;
 using System.Text.Json;
@@ -22,6 +21,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.MapEditTool;
 
+[Collection(McpWireCollection.Name)]
 public sealed class PrefabWireTests
 {
     [Theory]
@@ -178,32 +178,31 @@ public sealed class PrefabWireTests
     public async Task RealMcpWire_RoundTripsClosedChildrenCapturedRowsAndHistory()
     {
         var session = PrefabEditorFixtures.Session(PrefabEditorFixtures.LocalCapturedFixture());
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-        await using var harness = await McpAdapterTests.McpHarness.StartAsync(cts.Token);
-        var opened = await harness.Client.CallToolAsync("map_open", new Dictionary<string, object?> { ["path"] = session.DocumentPath }, cancellationToken: cts.Token);
+        await using var harness = await McpWire.StartAsync();
+        var opened = await harness.Client.CallAsync("map_open", new Dictionary<string, object?> { ["path"] = session.DocumentPath });
         Assert.NotEqual(true, opened.IsError);
-        var result = await harness.Client.CallToolAsync("prefab_open", new Dictionary<string, object?> { ["resourceId"] = "captured" }, cancellationToken: cts.Token);
+        var result = await harness.Client.CallAsync("prefab_open", new Dictionary<string, object?> { ["resourceId"] = "captured" });
         Assert.NotEqual(true, result.IsError);
         string payload = Assert.Single(result.Content.OfType<TextContentBlock>()).Text;
         var asset = MapPrefabFile.Read(Encoding.UTF8.GetBytes(payload), "captured");
         Assert.Equal(2, asset.MaterializedAttachments.Count);
         var light = asset.Children.OfType<MapPrefabLightChild>().Single();
-        var edited = await harness.Client.CallToolAsync("prefab_edit", new Dictionary<string, object?>
-        { ["childJson"] = Encoding.UTF8.GetString(MapPrefabJson.Bytes<MapPrefabChild>(light with { Value = light.Value with { Radius = 4, Position = new(0, 2.5f, 0) } })) }, cancellationToken: cts.Token);
+        var edited = await harness.Client.CallAsync("prefab_edit", new Dictionary<string, object?>
+        { ["childJson"] = Encoding.UTF8.GetString(MapPrefabJson.Bytes<MapPrefabChild>(light with { Value = light.Value with { Radius = 4, Position = new(0, 2.5f, 0) } })) });
         Assert.NotEqual(true, edited.IsError);
-        var saved = await harness.Client.CallToolAsync("prefab_save", new Dictionary<string, object?> { ["resourceId"] = "captured", ["relativeDirectory"] = "published" }, cancellationToken: cts.Token);
+        var saved = await harness.Client.CallAsync("prefab_save", new Dictionary<string, object?> { ["resourceId"] = "captured", ["relativeDirectory"] = "published" });
         Assert.NotEqual(true, saved.IsError);
         using var savedJson = JsonDocument.Parse(Assert.Single(saved.Content.OfType<TextContentBlock>()).Text);
         string version = savedJson.RootElement.GetProperty("resource").GetProperty("id").GetString()!;
-        var reopen = await harness.Client.CallToolAsync("prefab_open", new Dictionary<string, object?> { ["resourceId"] = version }, cancellationToken: cts.Token);
+        var reopen = await harness.Client.CallAsync("prefab_open", new Dictionary<string, object?> { ["resourceId"] = version });
         Assert.NotEqual(true, reopen.IsError);
         var reopened = MapPrefabFile.Read(Encoding.UTF8.GetBytes(Assert.Single(reopen.Content.OfType<TextContentBlock>()).Text), "captured");
         Assert.Equal(4, reopened.Children.OfType<MapPrefabLightChild>().Single().Value.Radius);
         var live = harness.Services.GetRequiredService<MapEditSession>();
         Assert.Equal((1, 1, 1L), live.NativeHistoryState);
-        Assert.NotEqual(true, (await harness.Client.CallToolAsync("prefab_undo", new Dictionary<string, object?>(), cancellationToken: cts.Token)).IsError);
+        Assert.NotEqual(true, (await harness.Client.CallAsync("prefab_undo", new Dictionary<string, object?>())).IsError);
         Assert.Equal((0, 1, 2L), live.NativeHistoryState);
-        Assert.NotEqual(true, (await harness.Client.CallToolAsync("prefab_redo", new Dictionary<string, object?>(), cancellationToken: cts.Token)).IsError);
+        Assert.NotEqual(true, (await harness.Client.CallAsync("prefab_redo", new Dictionary<string, object?>())).IsError);
         Assert.Equal((1, 1, 3L), live.NativeHistoryState);
     }
 

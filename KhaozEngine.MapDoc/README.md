@@ -103,8 +103,9 @@ the manifest, lists directories or trusts a stored hash without reading the file
 the same document rules as the loaded document, through the same code and with the same messages.
 
 Both overloads hash exactly these inputs under `kemap/native-authored/2`: the root digest, the authored
-content digest, ordered `(patchKey, semanticDigest)` facts, the verified asset closure hash, builder ID and
-version, options hash and resolver version. The content digest (`kemap/native-content/1`) covers
+content digest, ordered `(patchKey, semanticDigest)` facts, `kemap/effective-resources/1`, query policy 2,
+the verified asset closure hash, builder ID and version, options hash and resolver version. The content digest
+(`kemap/native-content/1`) covers
 placements (including explicit `Y` and `SupportBinding`), spawns, player spawns and sculpt tiles. Each entry
 is normalized as scheme 1 normalizes it, ordered by ordinal id or sculpt tile, with placement display names
 stripped and an empty sculpt block equal to an absent one. `MapSurfaceSemantics.RootDigest` covers globals
@@ -247,8 +248,9 @@ so no later read touches the producer, even one pinned to the same generation.
 
 **Later rounds.** R3 owns physics sidedness, floor support and headroom, picking, placement supports, movement
 integration and tiled nav capture. R4 owns flooded and dry containment and water bed semantics over R2
-space geometry. R5 owns free prefab transforms, interior domains and roof links over the R2 compiler and
-queries in local space. R8 owns bounded surface and asset residency, lighting, occlusion, HLOD, render-origin
+space geometry. R5 provides free prefab transforms, interior domains and roof links over the R2 compiler
+and queries in local space, described below. R8 owns bounded surface and asset residency, lighting, occlusion,
+HLOD, render-origin
 adapters and backend water captures. Each must keep legacy fallback cells non-capture and emit no physics,
 nav or water faces for them. R2 claims no physics, nav, water or rendering capability.
 
@@ -315,7 +317,8 @@ the complete set, including terrain and unrelated placement edits, and every com
 Document-level water rules and render material closure run on both in-memory and stored native identity paths.
 `MapBoundDocumentValidation.ValidateEffectiveWater(resources, assets)` is the complete effective publication gate
 for prefab, placement and roof edits. It checks material closure and requires every body to compile completely.
-Identity validation remains geometry-free. R5 editor publication wiring consumes this gate separately.
+Identity validation remains geometry-free. Prefab and interior editor publication uses this gate before
+accepting history.
 
 `MapWaterCompiler.Compile(view, water, limits)` captures the set and emits `MapCompiledWaterBody` values in id order,
 with exact up-facing region triangles split into `FreeSurface`, `Closed` and `Unresolved` at every ceiling transition,
@@ -558,6 +561,11 @@ section requires resolver identity (1, 2) and `AuthoredBindingsV2`. The sections
 never in tile placements. Monolithic and tiled persistence, loaded identity and stored identity use the same
 canonical codec. Null sections are omitted and preserve the released analytic projections.
 
+In 20.40.0, `MapPrefabResolver.Expand` publishes one immutable `MapEffectiveResources` snapshot using
+`kemap/effective-resources/1` and query policy 2. Support, physical geometry, paint, water, membership and
+annotations consume that same captured closure and effective source. Authored, effective, scoped and build
+identities carry the policy, so a consumer cannot reuse a pre-R5 capture as equivalent evidence.
+
 `MapPrefabSet` payload 1 and expansion version 1 retain instances, typed bindings, overrides and transfers.
 Instance poses use free XYZ, yaw radians and finite positive uniform scale. `ParentSpace` may be absent for a
 parent-independent rigid prefab. Rooms, water and `$parent` occurrences require explicit authored context.
@@ -715,7 +723,10 @@ v5 -> v6 (`MapWaterMigration.Upgrade`) adds no member, so a migrated document ha
 legacy global water. It accepts only format 5 or 6 input.
 v6 -> v7 (`MapPrefabMigration.Upgrade`) clones input and changes only `formatVersion`. It accepts format 6 or 7.
 Format 7 moves every native root digest and resolver-2 authored identity once, including maps without prefabs.
-Absent prefab sections preserve analytic execution and document hashing.
+Rebuild identity-keyed caches and navigation captures after this migration. Absent prefab sections preserve
+analytic execution and document hashing. Portals remain AuthoredOpen, with live state gated by #1363.
+Headless doorway clearance and roof intent are available. Native controller routes and R8 rendering retain
+the separate gates in the handoff table above.
 
 `MapDocument.SupportRecipe` pairs resolver 1 with `LegacyXzCallbackV1` and resolver 2 with
 `AuthoredBindingsV2`. Resolver 1 refuses authored surfaces and placement support bindings. A placement

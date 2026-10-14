@@ -205,6 +205,11 @@ Light extents use the effective position and scaled metre radius with outward ro
 world point. Both contribute to world bounds and residency invalidation. They never register physics shapes.
 `Build` remains the static-only ownership list and `BuildWater` remains the compiled-water list.
 
+Format-7 builds consume `kemap/effective-resources/1` with query policy 2 from the captured MapDoc snapshot.
+Rebuild identity-keyed world and navigation captures when adopting 20.40.0, including prefab-free native maps.
+AuthoredOpen doorway clearance is a geometry proof. Controller walking and layered routes still require G1b,
+#1355 and #438, and intent does not supply R8 pixels or live door state.
+
 ## Independent synthetic village heads
 
 `MapPrefabVillageAcceptanceTests.IndependentHeads_ResolveIdenticalEffectiveVillage` builds two heads

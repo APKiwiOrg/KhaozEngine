@@ -954,6 +954,11 @@ KhaozEngine.MapEdit.Tool -> KhaozEngine.MapDoc.Physics  (NativeCollisionService 
 
 ### Prefab runtime and authoring non-edges
 
+The 20.40.0 R5 surface adds no package or umbrella edge. `Foundation` carries MapDoc, and Game3D and Server
+inherit it. The effective resource policy `kemap/effective-resources/1` and query policy 2 identify one
+captured GPU-free resource view. The Light/Support `resourceSchema` discriminant does not move decoding into
+a renderer or physics backend, and unmarked bytes retain the released opaque path.
+
 Rigid prefab payloads, persisted bindings, format-7 identity, strict immutable resource closure,
 local support ownership, partial paint, room parenting, AuthoredOpen portals, bounded effective
 witnesses, roof flags and versioned marker/light values stay in `MapDoc`. `MapDoc.Physics` consumes

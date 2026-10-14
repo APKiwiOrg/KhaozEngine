@@ -46,7 +46,7 @@ T1 to T9 began as orchestrator proposals. The controller supplied the owner's ex
 
 ## OA9 design gates and future exit proofs
 
-These constraints extend the approved direction. They do not claim implementation or new authored content. R1 remains approved under OA8. R2 onward require the following refinements in addition to their existing gates. R5 to R11 remain drafts.
+These constraints extend the approved direction. They do not claim implementation or new authored content. R1 remains approved under OA8. R2 onward require the following refinements in addition to their existing gates. R5 is implemented and reviewed under OA33/OA34. R6 to R11 remain drafts.
 
 ### DG9.1 Cave representation, before R2 approval
 
@@ -244,17 +244,37 @@ hash. Loading also refuses repeated or case-variant JSON members anywhere, where
 
 ### C5 Prefabs, buildings, interior volumes and roofs
 
+**R5 implementation boundary.** The approved thirteen-task plan and final fixes prepare 20.40.0 with
+format 7, prefab payload 1, effective resource policy `kemap/effective-resources/1` and query policy 2.
+The [MapDoc](../../KhaozEngine.MapDoc/README.md#rigid-prefab-payloads-and-building-intent) and
+[consumer](../USING-KHAOZENGINE.md#free-buildings-and-effective-resources) references own the API contract.
+Native identity-keyed caches and navigation captures rebuild, including maps without prefabs. Typed Light and
+Support payloads require the leading `resourceSchema` discriminant, leaving released opaque bytes unchanged.
+
 **Data.** Format 7 adds version 1 native prefab assets and free-transform instances. A prefab has stable local child keys, placements, native local floor surfaces/paint, lights, markers, interior volumes and optional prefab-local C4 water bodies. The optional local water uses the R4 bounded-domain/medium contract, including the containment semantics approved at DG9.2, and one parent/local transform, resolving J5.1 without a new water algorithm. Instance overrides address those keys for transforms, tags, asset variants, additions/removals, floor paint and volume/roof membership. A persisted child binding map gives resolved children stable world placement/numeric IDs. The approved rigid prefab v1 boundary includes free transforms, stable children, overrides, local floors/volumes and optional snapping. No nested prefab references, generated stairs/foundations or architectural CAD in v1. A building needs no world tile footprint or plane [E1, E3, E13, E21].
 
-Interior volumes are local polygon prisms with explicit lower/upper Y and stable storey/volume keys. Roof child keys attach to the volumes they conceal. Hidden roofs still cast shadows. AlwaysVisible/AlwaysHidden remain view modes. Auto hides only linked roofs above the observer's occupied volume, not all roofs on a global plane. Roof-aware camera blockers and indoor lighting use that same membership result. An open pasture shelter has no indoor volume and stays visible in Auto [E13, G3].
+Interior volumes are local polygon prisms with explicit lower/upper Y and stable storey/volume keys. Roof child keys attach to the volumes they conceal. Hidden roofs still cast shadows. AlwaysVisible/AlwaysHidden remain view modes. Auto hides only linked roofs above the observer's occupied volume, not all roofs on a global plane. R5 returns that membership and separate colour/shadow/camera-boom/sky-picking intent. R8 integrates
+roof-aware camera blockers, lighting and rendering. Portals remain AuthoredOpen. Live door state and
+generation-fenced collision/navigation/water swaps belong to [#1363](https://github.com/APKiwiOrg/KhaozEngine/issues/1363). An open pasture shelter has no indoor volume and stays visible in Auto [E13, G3].
 
 World transforms compose parent and local position/yaw/uniform scale once for child shapes, interaction envelopes, floors, lights, volumes, markers and optional local water. A doorway hole remains open under free rotation/scale. Optional local snapping improves authoring but is not a runtime constraint. Uneven-site seating is a diagnostic, not an automatic procedural foundation. Arbitrary authored storeys fit as local surfaces and volumes, without adding stairs generation, CAD or structural simulation [E3, E7, E8, E21].
 
 **Import rule.** Keep all seven reusable definitions, then reconstruct each actual building using a checked membership manifest over original objects/cells/markers/roofs. A nominal old stamp does not recover actual instance differences. Use explicit overrides or a native variant asset for differences, with every original object represented exactly once. Parent containers are new identities, while original leaf numeric IDs survive. Uncertain grouping refuses and reports the unassigned evidence instead of guessing [E3, E21, G2, G3, S1].
 
-**Editor/tool.** Prefab mode opens one native asset, edits the same placement/floor/water/marker/volume commands in local space, optionally snaps, previews its collider/openings and saves a validated asset. World mode places/transforms an instance and inspects overrides. Extract/save/list/place/edit/override/unpack use one command layer. Asset edits invalidate every referring instance. Undo/redo restores the same child IDs [E4, E16, E21, E38].
+**Editor/tool.** Prefab mode opens one native asset, edits the same placement/floor/water/marker/volume commands in local space, optionally snaps, previews its collider/openings and saves a validated asset. World mode places/transforms an instance and inspects overrides. Extract/save/list/place/edit/override/unpack use one command layer. R5 implements pure preparation,
+detached asset editing and immutable digest-addressed publication before one accepted switch of every
+referring instance in the open complete map. Other maps and materialized leaf pins retain their old bytes.
+R9 owns GUI prefab mode and real pointer/key acceptance. Undo/redo restores the same child IDs [E4, E16, E21, E38].
 
-**Validation and proof.** Reject dangling overrides/roof links, duplicated child bindings, cycles, unsupported nesting, invalid volume geometry and double-owned floors. Prove seven definitions plus nine actual interiors, cottage/bank door routes, crafting-hall differences, unchanged higher roof transforms, shadow-only hiding, multi-storey observer separation, and free building placement at non-quarter yaw/non-grid position/scales 0.8 and 1.2. Reload must preserve each leaf ID and transform [E13, E21, G3, S1].
+**Validation and proof.** Reject dangling overrides/roof links, duplicated child bindings, cycles, unsupported
+nesting, invalid volume geometry and double-owned floors. R5's public synthetic village proves independent
+headless builds, physical doorway clearance, two storeys, local support/paint/water, annotation and roof intent,
+free yaw/non-grid placement/scales 0.8 and 1.2, strict closure and edit/save/reload identity. The controller-only
+private comparison separately checks the frozen seven definitions, nine actual buildings and an inventoried
+standalone unlinked shelter. Keep every source leaf once and retain actual instance differences. Native walking
+and layered door routes wait for G1b, #1355 and #438. R8 owns roof/shadow/camera/light pixels, and R11/G2 owns
+import refreeze and named differential acceptance. Candidate gates, private comparison and hosted CI must pass
+before integration. Reload preserves each leaf ID and transform [E13, E21, G3, S1].
 
 ### C6 Markers, spawn readers and habitat inputs
 
@@ -330,9 +350,9 @@ All 50 baseline MCP verbs are included. Names in the middle column are required 
 | height_smooth | surface_height_smooth, 1 to 64 iterations with legacy 3x3 prior-pass blur | Smooth brush [E37] |
 | height_get_rect | surface_height_get_rect, roundtrips set | Height inspector [E37] |
 | height_import | surface_height_import, explicit image range/orientation | Heightmap import [E37] |
-| prefab_save | prefab_save, extract selected children/surfaces/volumes with stable local keys | Prefab extract/save [E40] |
-| prefab_place | prefab_place, free world transform and child ID bindings | Prefab placement [E40] |
-| prefab_list | prefab_list, version/digest/closure | Prefab palette [E40] |
+| prefab_save | `prefab_extract` selects complete typed World references, then `prefab_save` publishes digest-addressed immutable bytes and a verified closure before one map switch | R5 shared commands and detached local asset editing [E40] |
+| prefab_place | `prefab_place`, free XYZ/yaw/positive scale with persisted child bindings and optional explicit parent | R5 placement command, undo/redo preserves IDs [E40] |
+| prefab_list | `prefab_list`, verified immutable resource versions/digests from the captured closure | R5 service and MCP tool, GUI palette remains R9 [E40] |
 | foliage_layer_set | foliage_layer_set, complete versioned native layer | Layer inspector [E39] |
 | foliage_get | foliage_get, layer/list plus raster metadata | Foliage list [E39] |
 | foliage_density_set | foliage_density_set, exact bytes | Density import [E39] |
@@ -348,6 +368,11 @@ All 50 baseline MCP verbs are included. Names in the middle column are required 
 | archetype_set_collision_heights | asset_set_collision_heights, versioned descriptor/dry-run/closure update | Collision height edit [E42] |
 
 Additional required native verbs are placement_scale, placement_batch_transform, placements_remove, map_translate (moves terrain, placements, markers, water and foliage atomically), surface_layer_add/remove, material_set, water_body_add/set/get/list/remove, prefab_open/edit/override/unpack, interior_volume_add/set/remove, roof_link_set and collision_shape_set. The GUI has matching scale/group transform, layer/paint, water, prefab and volume tools. Existing mapedit procedural/scatter/spawn/region/storage verbs continue to work for old maps. Authored mode never turns analytic regeneration into an implicit edit [E4, E5, E16, E46].
+
+R5 also registers `prefab_open`, `prefab_edit`, `prefab_override`, `prefab_unpack`, `prefab_undo`,
+`prefab_redo`, `interior_volume_add/set/remove` and `roof_link_set`. Atomic Room/prism edits, resource-derived
+effects and complete native history use the same editor commands. R9 supplies the GUI host and R10 completes
+remaining native verb parity, including route tooling.
 
 Automated command tests compare GUI command invocation with the MCP operation's resulting native document/hash and dirty bounds, including rejected edits and undo/redo. Route tools must report missing nav profile/capture instead of pretending the existing slope/global-water query proves prop clearance. Height measurement/catalog writing remain explicit asset operations, with their own atomic writes and refresh reporting [E24, E32, E36, E42].
 
@@ -386,7 +411,7 @@ Each round below is one separately reviewed implementation plan and one independ
 | R2 Exact authored terrain | C2, format 5, shared triangle compiler and surface commands | R1, DG9.1 cave choice and DG9.4 precision contract | Exact legacy terrain/paint plus selected cave geometry and layer ownership proofs |
 | R3 Shared shape and headless world | C3, asset collision payload 1 and GPU-free MapDoc.Physics | R1/R2 | Identical two-head statics/pick/reach/stance, doorway/bridge and cave floor/ceiling proofs, tiled nav/multi-cell evidence under the approved DG9.3 dependency split and DG9.4 |
 | [R4 Bounded water](../superpowers/plans/2026-10-11-world-authoring-r4-bounded-water.md) | C4, format 6, exact contained point/column queries, counted region compiler and undoable typed tools, implemented for 20.32.0 | R2/R3, OA27 to OA30 | Synthetic water oracle, approved vertical containment and ceiling ties, counted limits including MaxBoundCells, immutable build/residency/nav identity, editor/service parity and five DG9.5 headless scenes. Private source comparison stays outside this repository. G1b walker/capsule acceptance and R8 optical captures remain downstream |
-| R5 Free buildings and interiors | C5, format 7 and prefab payload 1 | R1 to R4 | Actual interiors preserved, free building transform and stable children, volume/roof/shadow/door proof |
+| [R5 Free buildings and interiors](../superpowers/plans/2026-10-12-world-authoring-r5-free-buildings-prefabs-interiors.md) | C5, format 7 and prefab payload 1, implemented and reviewed for 20.40.0 | R1 to R4, OA33/OA34 | Public synthetic geometry/ownership/membership/water/roof intent and shared command/MCP proofs. Candidate gates, private exhaustive comparison and hosted CI precede integration. Native routes, live doors and rendered roof/shadow/camera/light proof retain the later owners named in C5 |
 | R6 General markers | C6, format 8, typed spawn projections | R1/R2/R5 | 38 exact fixture markers, elevated/local/free markers and no fake region discs |
 | R7 Native foliage | C7, format 9 and deterministic density commands | R2/R3/R5/R6 | Every density byte and generated sample, rotated building/door exclusions and reload stability |
 | R8 Native view and captures | C8, shared Render3D adapter/residency/capture | R2 to R7 | DG9.3/DG9.4 residency/HLOD/far-origin and cave lighting/camera proofs, DG9.5 water captures, preserved legacy goldens |
@@ -399,7 +424,8 @@ Engine exit tests run synchronously in the owning plan's area projects. Renderin
 R1 to R4 execution plans are [native document and identity](../superpowers/plans/2026-10-05-world-authoring-r1-native-document-identity-assets.md), [authored terrain and paint](../superpowers/plans/2026-10-05-world-authoring-r2-authored-terrain-paint.md), [shared shapes and headless world](../superpowers/plans/2026-10-10-world-authoring-r3-shared-shapes-headless-world.md) and [bounded water](../superpowers/plans/2026-10-11-world-authoring-r4-bounded-water.md).
 R1 to R3 are released prerequisites. OA27 to OA29 settle R4's containment, authored-space and downstream adapter
 contracts, and OA30 approves its executable plan. All eleven R4 tasks and the whole-branch fix wave are implemented
-and reviewed, with release preparation staging 20.32.0. R5 to R11 remain drafts refined and approved at their rounds.
+and reviewed, released as 20.32.0. R5's OA33 gate and OA34 executable plan are implemented and reviewed,
+with release preparation staging 20.40.0. R6 to R11 remain drafts refined and approved at their rounds.
 Game adoption, native G1b acceptance and R8 optical captures are separate gates.
 
 ## Risks, mitigations and estimate
@@ -430,8 +456,9 @@ Approval IDs are OA4 specs, OA5 revised T4, OA6 prefab/estimate and OA7 water bo
 OA8 R1 plan approval persists, and R1 to R3 have released. On 2026-10-11, OA27 approves R4's water gate decisions,
 OA28 limits water to authored spaces and supersedes OA27 decision 4, OA29 assigns capsule classification and the span
 certificate to G1b, and OA30 approves the revised R4 plan at dda6e5bde with controller rulings R4-P1 to R4-P4.
-R4 implementation and review are complete, and 20.32.0 release preparation is staged. Approval does not authorize
-game adoption or native G1b acceptance. R5 to R11 retain their own approval gates, and release integration and tags
+R4 released as 20.32.0. OA33 approves the R5 gate, and OA34 approves its revised thirteen-task plan. R5
+implementation and review are complete, with 20.40.0 staged for candidate gates. Approval does not authorize
+game adoption or native G1b acceptance. R6 to R11 retain their own approval gates, and release integration and tags
 remain with the owning controller under OA25.
 
 Policy approval does not waive actual import differences. Each changed target, distance, occlusion, stance and exact water-boundary sample needs a named old/new case and acceptance reference at R11/game import. Physical collider parity is separate and cannot be traded for green reach tests. No manual playtest is needed for this documentation revision.

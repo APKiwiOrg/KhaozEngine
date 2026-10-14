@@ -937,6 +937,10 @@ and both identities unchanged. `SetPlacementLabelCommand` names that behavior ex
 placement references, including unpacked binding inventories, transfers, precise owner frames and light
 owners. Tags and asset/resource IDs are never rewritten.
 
+Format-7 native commands use the effective resource policy `kemap/effective-resources/1` and query policy 2.
+Their complete bound validation includes support, paint, room coverage and water before publication. Native
+GUI closure/bounds binding, prefab mode and pointer/key acceptance remain R9 and #1349 work.
+
 `PrefabEditCommand(MapPrefabEdit)` and `InteriorEditCommand(MapInteriorEdit)` prepare pure edits against the
 closure bound to `EditorHistory`. Fresh commands need no constructor capture. Direct `Apply` or `Revert`
 without a closure refuses before preparation. Accepted undo and redo restore captured roots, child IDs,

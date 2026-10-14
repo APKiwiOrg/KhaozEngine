@@ -10520,9 +10520,11 @@ version or the load fails. The engine's own steps are pre-registered: v1 to v2 d
 `terrainOverrides` placeholder, v2 to v3 stamps `tileSize` with `MapDocumentFile.DefaultTileSize`
 (512 m), v3 to v4 adds `playableBounds` from `bounds` when it is absent, and v4 to v5 stamps the
 `LegacyXzCallbackV1` support recipe. The v5 to v6 step (`MapWaterMigration.Upgrade`) adds no member.
-`MapDocumentFile.CurrentFormatVersion` is 6, and saving always writes it. Version and layout are independent
+The v6 to v7 step (`MapPrefabMigration.Upgrade`) clones input and changes only `formatVersion`.
+`MapDocumentFile.CurrentFormatVersion` is 7, and saving always writes it. Version and layout are independent
 axes, so a monolithic file at the current version is legal. Format 5 and the v4 to v5 step arrived in
-20.30.0. Format 6 adds optional bounded water in 20.32.0. Releases up to 20.29.1 write format 4.
+20.30.0. Format 6 adds optional bounded water in 20.32.0, and format 7 adds rigid prefabs and building intent
+in 20.40.0. Releases up to 20.29.1 write format 4.
 
 Format 6 moves every native root digest and every resolver-2 authored identity once, including documents
 without water. Rebuild caches and navigation captures keyed on them. Documents without water keep their
@@ -10534,6 +10536,61 @@ identity token changes exactly once at that format advance, with no continuity t
 recompute any stored token after the first load. That token change arrives with 20.30.0 too. Resolver-v1
 options, including the caller's `OptionsHash`, and resolver-v1 execution are unchanged. The authored-surface
 resolver version 2 is new in 20.30.0 and is opt-in through a document's resolver identity.
+
+### Free buildings and effective resources
+
+Format 7 adds optional `Prefabs`, `BuildingIntent` and `NativeResourceTransforms` root sections for resolver
+identity `(1, 2)` with `AuthoredBindingsV2`. Rigid prefab payload 1 has stable typed child keys, persisted
+world bindings and optional placement numeric IDs encoded as decimal int64 strings. A building can compose
+rooms, storeys, roof links/groups, lights, XYZ markers, local support, partial-face paint and bounded water.
+Free XYZ, yaw radians and finite positive uniform scale compose once. Parent-dependent rooms and water
+require explicit authored context. Nested prefabs, generated stairs and foundations are outside payload 1.
+
+Format 7 changes every native root digest and resolver-2 authored identity once, including documents without
+prefabs. Rebuild identity-keyed caches and navigation captures after migration. Resolver-1 execution and
+absent-section document hashing keep their released paths. The effective resource policy is
+`kemap/effective-resources/1`, with query policy 2 in authored, effective, scoped and world-build identities.
+
+```csharp
+using KhaozEngine.MapDoc.Prefabs;
+
+MapEffectiveResources resources = MapPrefabResolver.Expand(document, closure);
+var surfaceSource = resources.SurfaceSource;
+var lights = MapEffectiveAnnotations.Lights(resources);
+var markers = MapEffectiveAnnotations.Markers(resources);
+```
+
+These APIs are in `KhaozEngine.MapDoc.Prefabs`. Share this captured effective snapshot across support,
+geometry, water, membership and annotations. Acquire bounded views from its `SurfaceSource` and pair water
+with the matching effective set and view. Floor resources install before nullable-Y support sampling. A
+prefab-local support request transforms from the pre-seat frame, while a standalone request stays world-space.
+Paint clips inside unchanged canonical physical triangles and never creates a second floor owner. Expansion
+and composition refuse missing closure, unsupported work reporting and capacity overflow without partial facts.
+
+Typed Light and Support payloads begin with `resourceSchema`, valued `kemap/light-resource` or
+`kemap/support-resource`. Writers emit it first and closed decoders require it. Closure reads decode only
+marked bytes. Released opaque resources, including JSON, stay opaque. A prefab light or typed support consumer
+refuses opaque bytes clearly. Shared leaf resource pins remain distinct from prefab version addresses.
+
+A prefab resource keeps its logical asset ID and accepts either that ID or
+`prefab/<escaped-logical-id>/<sha256>`. The lowercase SHA-256 suffix must match its immutable bytes.
+`MapPrefabEdits.Prepare` and `MapInteriorEdits.Prepare` return detached validated after states and named write
+sets. MapEditor publishes them through `PrefabEditCommand`, `InteriorEditCommand` and `PrefabAssetEditCommand`.
+Unpack transfers live children with their IDs and precise poses, retaining removed-source reservations and
+materialized support/light pins. Extraction preserves explicit parent context and the requested origin.
+`PrefabService` edits detached assets, then publishes immutable bytes and a verified replacement closure before
+one accepted switch of every referring instance in the open complete map. Other maps retain their pins.
+
+Doors remain AuthoredOpen. `MapRoofPolicy` returns separate colour, shadow, camera-boom and sky-picking flags.
+Auto concealment uses occupied rooms and explicit links/groups, and leaves unlinked shelters visible. Hidden
+roofs still cast shadows and block sky picking, and never change physics statics. R8 owns rendering, cameras
+and local-light pixels. Live door state waits for [#1363](https://github.com/APKiwiOrg/KhaozEngine/issues/1363).
+Native controller walking and layered routes remain gated by G1b, #1355 and #438. Physical doorway clearance
+is headless R5 evidence. R9 owns the GUI host and real input, and R10 owns the remaining verb-map parity.
+
+See the [MapDoc reference](../KhaozEngine.MapDoc/README.md#rigid-prefab-payloads-and-building-intent),
+[headless world builder](../KhaozEngine.MapDoc.Physics/README.md#independent-synthetic-village-heads) and
+[ke-mapedit prefab workflow](../KhaozEngine.MapEdit.Tool/README.md#prefab-assets-and-native-history).
 
 ### Bounded water
 
@@ -10824,11 +10881,14 @@ each tile's parsed content against its pinned tile hash. A removed tile file ref
 altered content with `Corrupt`.
 
 The `kemap/native-authored/2` token covers exactly the root digest, the authored content digest, ordered
-patch keys and semantic digests, the closure hash, the builder ID and version, the options hash and the
-resolver version. The content digest (`kemap/native-content/1`) covers placements, including explicit `Y`
+patch keys and semantic digests, the effective resource policy and query policy 2, the closure hash,
+the builder ID and version, the options hash and the resolver version. The content digest
+(`kemap/native-content/1`) covers placements, including explicit `Y`
 and `SupportBinding`, spawns, player spawns and sculpt tiles, normalized as scheme 1 normalizes them with
-placement display names stripped. `MapSurfaceSemantics.RootDigest` and scoped identity cover globals and
-surfaces only, never tile content. Repacking, embedding and incident bookkeeping do not change the token.
+placement display names stripped. `MapSurfaceSemantics.RootDigest` covers native globals, including format-7
+prefab and building intent,
+and surface metadata, never tile content. Scoped identity covers its acquired effective facts and policies.
+Repacking, embedding and incident bookkeeping do not change the token.
 Equivalent complete in-memory, monolithic, tiled and repacked documents share a token. Resolver 1 uses
 `MapAuthoredIdentity`.
 

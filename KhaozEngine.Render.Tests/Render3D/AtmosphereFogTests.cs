@@ -195,7 +195,11 @@ public sealed class AtmosphereFogTests
         var horizonUv = new Vector2((float)(azimuth - Math.Floor(azimuth)), 53.5f / 108);
         var eye = new Vector3(0, heightWorld, 0);
         var displacement = new Vector3(x, -10, z) * 1e6f;
-        Close(model.SkyViewValue(heightKm, horizonUv, Noon),
+        // The horizon sample at the view's azimuth, rescaled to the view's true scattering angle.
+        var ratio = AtmosphereFogScattering.Evaluate(s, model, Noon, heightKm)
+            .Ratio(Vector3.Normalize(displacement), s.PlanetRadiusKm + (double)heightKm, s.PlanetRadiusKm);
+        Assert.NotEqual(Vector3.One, ratio);
+        Close(model.SkyViewValue(heightKm, horizonUv, Noon, ratio),
             AtmosphereFog.Shade(s, model, Noon, Vector3.One, eye, eye + displacement, Vector3.Zero));
     }
 

@@ -37,6 +37,11 @@ vec3 atmosphereSegmentView(vec3 fragmentRelative, out float distanceWorld) {
     distanceWorld = scale * scaledLength;
     return scaled / scaledLength;
 }
+// Mirrors AtmosphereFog.OnsetDistance. Zero onset and infinite distance keep the linear distance.
+float atmosphereOnsetDistance(float distanceWorld, float onsetWorld) {
+    return onsetWorld == 0.0 || isinf(distanceWorld) ? distanceWorld
+        : distanceWorld * (distanceWorld / (distanceWorld + onsetWorld));
+}
 // Mirrors AtmosphereFog.Transmittance. Settings are validated before the shared UBO is uploaded.
 vec3 atmosphereTransmittance(vec3 fragmentRelative) {
     if (Atmo.Tint.w < 0.5 || Atmo.Planet.w == 0.0) return vec3(1.0);
@@ -44,7 +49,7 @@ vec3 atmosphereTransmittance(vec3 fragmentRelative) {
     atmosphereSegmentView(fragmentRelative, distanceWorld);
     if (distanceWorld == 0.0) return vec3(1.0);
     float k = Atmo.Planet.w / Atmo.Planet.z;
-    float distanceKm = distanceWorld * k;
+    float distanceKm = atmosphereOnsetDistance(distanceWorld, Atmo.FogSource.w) * k;
     float startHeightKm = max(Atmo.Camera.y + Atmo.Origin.y, 0.0) * k;
     float endHeightKm = max(fragmentRelative.y + Atmo.Origin.y, 0.0) * k;
     float rayleighDepth = all(equal(Atmo.Rayleigh.rgb, vec3(0.0))) ? 0.0
@@ -70,13 +75,38 @@ vec2 atmosphereFogSkyUv(vec3 view, float radius) {
     float u = all(equal(view.xz, vec2(0.0))) ? 0.0 : fract(atan(view.z, view.x) / (2.0 * ATMO_PI));
     return vec2(u, (53.5 - weight) / 108.0);
 }
+// Mirrors AtmosphereFogScattering.Source: sun and moon slab in-scatter plus the multiple-scattering source.
+vec3 atmosphereFogSource(vec3 direction) {
+    float sunMu = dot(direction, normalize(Atmo.Sun.xyz)), moonMu = dot(direction, normalize(Atmo.Moon.xyz));
+    vec3 sun = Atmo.FogScatter.rgb * AtmoRayleighPhase(sunMu) + vec3(Atmo.FogScatter.w * AtmoMiePhase(sunMu));
+    vec3 moon = Atmo.FogScatter.rgb * AtmoRayleighPhase(moonMu) + vec3(Atmo.FogScatter.w * AtmoMiePhase(moonMu));
+    return Atmo.SunT.rgb * sun + Atmo.MoonT.rgb * (moon * Atmo.Moon.w) + Atmo.FogSource.rgb;
+}
+// Mirrors AtmosphereFogScattering.Ratio and AtmosphereFogSampling.BelowHorizon. Below the horizon the sky-view
+// sample is the horizon texel at the view's azimuth. Rescale it to the view's true scattering angle, eased in
+// over one final sky texel span so the horizon join keeps zero slope. One at and above the horizon and in vacuum.
+vec3 atmosphereFogPhaseRatio(vec3 view, float radius) {
+    float horizon = AtmoHorizonAngle(radius);
+    float theta = acos(clamp(view.y, -1.0, 1.0));
+    if (theta <= horizon) return vec3(1.0);
+    float cell = horizon / (53.0 * 53.0);
+    float t = (theta - horizon) / cell;
+    float zenith = t < 1.0 ? horizon + cell * t * t * t * (3.0 - 2.0 * t) : theta;
+    vec2 planar = all(equal(view.xz, vec2(0.0))) ? vec2(1.0, 0.0) : normalize(view.xz);
+    vec3 actual = atmosphereFogSource(vec3(planar.x * sin(zenith), cos(zenith), planar.y * sin(zenith)));
+    vec3 horizonSource = atmosphereFogSource(vec3(planar.x * sin(horizon), cos(horizon), planar.y * sin(horizon)));
+    return vec3(horizonSource.x > 0.0 ? actual.x / horizonSource.x : 1.0,
+        horizonSource.y > 0.0 ? actual.y / horizonSource.y : 1.0,
+        horizonSource.z > 0.0 ? actual.z / horizonSource.z : 1.0);
+}
 // Mirrors AtmosphereFog.Shade's physical sky lookup.
 vec3 atmosphereFogColour(vec3 fragmentRelative) {
     float distanceWorld;
     vec3 view = atmosphereSegmentView(fragmentRelative, distanceWorld);
     float cameraHeightKm = max((Atmo.Camera.y + Atmo.Origin.y) / Atmo.Planet.z, 0.0);
     float radius = Atmo.Planet.x + cameraHeightKm;
-    vec3 radiance = textureLod(sampler2D(AtmoSkyView, AtmoSkySampler), atmosphereFogSkyUv(view, radius), 0.0).rgb;
+    vec3 radiance = textureLod(sampler2D(AtmoSkyView, AtmoSkySampler), atmosphereFogSkyUv(view, radius), 0.0).rgb
+        * atmosphereFogPhaseRatio(view, radius);
     return max(radiance * (Atmo.Sun.w * ATMO_PI) * Atmo.Tint.rgb, Atmo.Floors.w * Atmo.NightTint.rgb);
 }
 // Mirrors AtmosphereFog.Shade and AtmosphereFog.Compose. SkyValue already applies tint exactly once.

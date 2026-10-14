@@ -32,6 +32,7 @@ public sealed class AtmosphereSettingsTests
         Assert.Equal(.004675f, s.SunAngularRadiusRadians);
         Assert.Equal(1000f, s.WorldUnitsPerKilometre);
         Assert.Equal(20f, s.AerialDistanceScale);
+        Assert.Equal(0f, s.AerialOnsetDistance);
         Assert.Equal(1f, s.AmbientScale);
         Assert.Equal(1f, s.FillScale);
         Assert.Equal(.05f, s.NightAmbientFloor);
@@ -96,6 +97,7 @@ public sealed class AtmosphereSettingsTests
     [InlineData(nameof(AtmosphereSettings.SunAngularRadiusRadians), 0f)]
     [InlineData(nameof(AtmosphereSettings.SunAngularRadiusRadians), .1001f)]
     [InlineData(nameof(AtmosphereSettings.AerialDistanceScale), -1f)]
+    [InlineData(nameof(AtmosphereSettings.AerialOnsetDistance), -1f)]
     [InlineData(nameof(AtmosphereSettings.AmbientScale), -1f)]
     [InlineData(nameof(AtmosphereSettings.FillScale), -1f)]
     [InlineData(nameof(AtmosphereSettings.NightAmbientFloor), -1f)]
@@ -255,6 +257,7 @@ public sealed class AtmosphereSettingsTests
     [InlineData(nameof(AtmosphereSettings.SunAngularRadiusRadians), true)]
     [InlineData(nameof(AtmosphereSettings.WorldUnitsPerKilometre), true)]
     [InlineData(nameof(AtmosphereSettings.AerialDistanceScale), true)]
+    [InlineData(nameof(AtmosphereSettings.AerialOnsetDistance), true)]
     [InlineData(nameof(AtmosphereSettings.AmbientScale), true)]
     [InlineData(nameof(AtmosphereSettings.FillScale), true)]
     [InlineData(nameof(AtmosphereSettings.NightAmbientFloor), true)]

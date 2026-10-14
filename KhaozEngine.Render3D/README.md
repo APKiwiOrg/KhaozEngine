@@ -636,8 +636,11 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   sun and moon. Ambient and fill scales default to 1 and affect lighting only.
   `WorldUnitsPerKilometre = 1000` maps absolute Y = 0 to the planet surface. Lighting interpolates physical
   altitude across eight cached quadratic slices. `AerialDistanceScale = 20` compresses fog distance and endpoint
-  heights together, without changing sky or lighting altitude. Zero disables fog. `HazeDensityPerKm = 0`
-  defaults to no extra mist, with `HazeScaleHeightKm = 0.25`. Physical sky follows world view rays regardless of
+  heights together, without changing sky or lighting altitude. Zero disables fog. `AerialOnsetDistance = 0`
+  keeps the linear distance, and a positive onset `s` uses `d * d / (d + s)` so near geometry stays clear while
+  distant fog loses at most `s`. `HazeDensityPerKm = 0` defaults to no extra mist, with `HazeScaleHeightKm = 0.25`.
+  Downward fog rescales the horizon sky sample to the view's true scattering angle, so a low sun's aureole stays
+  on horizontal rays. Physical sky follows world view rays regardless of
   `SkyHorizon`. Static half-float LUTs are transmittance 256 by 64 and multi-scattering 32 by 32. Sky-view is
   192 by 108, rebuilt each enabled frame with separate horizon endpoints for sky and ground.
 
@@ -649,8 +652,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   composition with alpha-aware and additive handling. CPU fog samples sky-view texels directly at the same UV
   as GPU fog, with bilinear filtering and periodic azimuth. Sky texel membership prevents a rounded tangent
   from entering the ground branch. Fog samples only the sky hemisphere. Its final sky texel
-  eases into the constant downward horizon colour with zero slope, without changing the sky or reflection LUT
-  mapping. Additive effects attenuate without adding fog glow.
+  eases into the geometric-horizon colour with zero slope, without changing the sky or reflection LUT
+  mapping. Below the horizon the phase ratio eases in from one with zero slope as well. Additive effects
+  attenuate without adding fog glow.
 
   Phase 1 fog can be too bright in deep valleys under a low sun. The aerial perspective volume remains
   [#1364](https://github.com/APKiwiOrg/KhaozEngine/issues/1364). Diffuse sky light reflected off the transport's

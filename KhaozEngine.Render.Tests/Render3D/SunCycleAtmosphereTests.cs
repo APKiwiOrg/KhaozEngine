@@ -2,6 +2,7 @@ using System;
 using System.Numerics;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render3D;
+using KhaozEngine.Render3D.Internal;
 using KhaozEngine.Render3D.Rendering;
 using Xunit;
 
@@ -146,7 +147,9 @@ public sealed class SunCycleAtmosphereTests
             var model = post.ResolveAtmosphereModel();
             var frame = AtmosphereRenderer.ResolveFrame(post, model);
             var lighting = model.EvaluateLighting(post.Atmosphere.HeightKm(cameraHeight), frame);
-            var atmosphere = AtmosphereRenderer.PackUbo(post.Atmosphere, frame, lighting, camera,
+            var scattering = AtmosphereFogScattering.Evaluate(post.Atmosphere, model, frame,
+                post.Atmosphere.HeightKm(cameraHeight), lighting.SunTransmittance, lighting.MoonTransmittance);
+            var atmosphere = AtmosphereRenderer.PackUbo(post.Atmosphere, frame, lighting, scattering, camera,
                 Vector3.Zero, view, projection, 480, 320, post.Hdr);
             Assert.Equal(1, atmosphere.SunT.W);
         }

@@ -4980,9 +4980,15 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     fog kilometres, compressing the atmosphere's scale heights into the playable world. It does not scale the
     sky or lighting altitude. Set it to 0 to disable fog while retaining atmosphere. `HazeDensityPerKm = 0`
     adds no extra mist by default, with `HazeScaleHeightKm = 0.25` available for an additional exponential layer.
-    Rayleigh and Mie extinction plus haze use a closed-form height integral. Opaque and alpha draws blend toward
-    directional sky colour using only the sky hemisphere. The final sky texel eases into the constant downward
-    geometric-horizon colour with zero slope. The CPU oracle samples sky-view texels at the fog UV directly,
+    Rayleigh and Mie extinction plus haze use a closed-form height integral. `AerialOnsetDistance = 0` keeps the
+    linear distance. A positive onset `s` in world units replaces the segment distance `d` with `d * d / (d + s)`,
+    which is clear at the camera and tends to `d - s`, so near geometry keeps its contrast while the world edge
+    keeps its haze. Heights are not shaped. With a haze tuned to dissolve the edge, an onset of 60 to 80 m clears
+    the first few dozen metres. Opaque and alpha draws blend toward directional sky colour using only the sky
+    hemisphere. The final sky texel eases into the geometric-horizon colour with zero slope. Below the horizon that
+    colour is rescaled per channel to the view's true scattering angle by the ratio of the sun and moon in-scatter
+    of a slab of the air at the camera's scaled altitude, eased in over one sky texel span. Downward views toward
+    a low sun no longer take the horizon's aureole. The ratio is exactly one at and above the horizon. The CPU oracle samples sky-view texels at the fog UV directly,
     including bilinear filtering and periodic azimuth, without reconstructing a tangent for the ordinary sky
     lookup. Sky and reflection mappings remain unchanged. Additive effects lose
     transmitted energy only. Models, dissolved and skinned models, splat and tile terrain, foliage, water, decals,
@@ -4993,7 +4999,8 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
     body directions, moon fraction, tint and key visibility. `EvaluateLighting(cameraHeightKm, frame)` returns
     `AtmosphereLighting` (`Key`, `Ambient`, `Fill`, `Horizon`, and untinted source transmittances). `SkyValue` applies
     illuminance, pi, tint and the sky floor, whereas `SkyRadiance` is unit-source radiance. Transport positions are
-    planet-centred kilometres. `AtmosphereFog.Transmittance` accepts world distance and absolute endpoint heights.
+    planet-centred kilometres. `AtmosphereFog.Transmittance` accepts world distance and absolute endpoint heights
+    and applies the onset itself.
     `Shade` accepts camera-relative positions plus the render origin, and `Compose`/`ComposePremultiplied` expose
     the blend oracle. Call `model.UpdateSettings(settings)` after changing the caller's settings.
   - **GPU work and precedence.** Half-float transmittance (256 by 64) and multi-scattering (32 by 32) LUTs rebuild
@@ -8182,7 +8189,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.39.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.40.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -8516,7 +8523,7 @@ On the dev Mac a 36,864-column flat world wrote 664,689 bytes and loaded in abou
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.39.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.40.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -9275,7 +9282,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.39.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.40.0" />
 ```
 
 ```csharp
@@ -16819,7 +16826,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.39.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.40.0" />
 ```
 
 ```csharp
@@ -16855,7 +16862,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.39.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.40.0" />
 ```
 
 ```csharp
@@ -17097,7 +17104,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.39.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.40.0" />
 ```
 
 ```csharp
@@ -21457,7 +21464,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.39.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.40.0" />
 </ItemGroup>
 ```
 

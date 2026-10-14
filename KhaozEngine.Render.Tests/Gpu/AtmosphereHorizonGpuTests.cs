@@ -62,7 +62,9 @@ void main() {
             var model = post.ResolveAtmosphereModel();
             var frame = AtmosphereRenderer.ResolveFrame(post, model);
             var lighting = model.EvaluateLighting(post.Atmosphere.HeightKm(camera.Eye.Y), frame);
-            var uniforms = AtmosphereRenderer.PackUbo(post.Atmosphere, frame, lighting,
+            var scattering = AtmosphereFogScattering.Evaluate(post.Atmosphere, model, frame,
+                post.Atmosphere.HeightKm(camera.Eye.Y), lighting.SunTransmittance, lighting.MoonTransmittance);
+            var uniforms = AtmosphereRenderer.PackUbo(post.Atmosphere, frame, lighting, scattering,
                 camera.Eye - origin, origin, camera.View, camera.Projection,
                 AtmosphereGoldenScene.Width, AtmosphereGoldenScene.Height, post.Hdr);
             commands.UpdateBuffer(scene.AtmosphereForTests.Bindings.Uniforms, 0, in uniforms);

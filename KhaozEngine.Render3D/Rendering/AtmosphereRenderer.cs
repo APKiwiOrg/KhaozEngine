@@ -12,7 +12,7 @@ namespace KhaozEngine.Render3D.Rendering;
 /// Targets and consumer bindings remain stable across physical settings changes and enable toggles.</summary>
 internal sealed class AtmosphereRenderer : IDisposable
 {
-    internal const uint UboBytes = 320;
+    internal const uint UboBytes = 352;
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct AtmosphereUbo
@@ -37,6 +37,8 @@ internal sealed class AtmosphereRenderer : IDisposable
         public Vector4 Res;
         public Vector4 Tone;
         public Vector4 NightTint;
+        public Vector4 FogScatter;
+        public Vector4 FogSource;
     }
 
     readonly IGpuDevice _gd;
@@ -122,8 +124,12 @@ internal sealed class AtmosphereRenderer : IDisposable
         }
         var model = post.ResolveAtmosphereModel();
         var frame = ResolveFrame(post, model);
-        var lighting = model.EvaluateLighting(post.Atmosphere.HeightKm(cameraRelative.Y + renderOrigin.Y), frame);
-        var ubo = PackUbo(post.Atmosphere, frame, lighting, cameraRelative, renderOrigin, view, projection, width, height, post.Hdr);
+        float cameraHeightKm = post.Atmosphere.HeightKm(cameraRelative.Y + renderOrigin.Y);
+        var lighting = model.EvaluateLighting(cameraHeightKm, frame);
+        var scattering = AtmosphereFogScattering.Evaluate(post.Atmosphere, model, frame, cameraHeightKm,
+            lighting.SunTransmittance, lighting.MoonTransmittance);
+        var ubo = PackUbo(post.Atmosphere, frame, lighting, scattering, cameraRelative, renderOrigin, view, projection,
+            width, height, post.Hdr);
         cl.UpdateBuffer(Bindings.Uniforms, 0, in ubo);
         Bindings.Enabled = true;
         EnsureStaticTargets();
@@ -161,8 +167,8 @@ internal sealed class AtmosphereRenderer : IDisposable
     }
 
     internal static AtmosphereUbo PackUbo(AtmosphereSettings settings, in AtmosphereFrame frame,
-        in AtmosphereLighting lighting, Vector3 cameraRelative, Vector3 renderOrigin, Matrix4x4 view,
-        Matrix4x4 projection, int width, int height, HdrSettings hdr) => new()
+        in AtmosphereLighting lighting, in AtmosphereFogScattering scattering, Vector3 cameraRelative,
+        Vector3 renderOrigin, Matrix4x4 view, Matrix4x4 projection, int width, int height, HdrSettings hdr) => new()
         {
             Planet = new(settings.PlanetRadiusKm, settings.PlanetRadiusKm + settings.AtmosphereHeightKm,
                 settings.WorldUnitsPerKilometre, settings.AerialDistanceScale),
@@ -189,6 +195,8 @@ internal sealed class AtmosphereRenderer : IDisposable
             Tone = new(hdr.Enabled ? 1f : 0f, MathF.Max(hdr.Exposure, 0f), (float)hdr.Operator,
                 Math.Clamp(hdr.ChromaPreservation, 0f, 1f)),
             NightTint = new(settings.NightTint, 0f),
+            FogScatter = new(scattering.RayleighScattering, scattering.MieScattering),
+            FogSource = new(scattering.MultipleScattering, settings.AerialOnsetDistance),
         };
 
     public void Dispose()

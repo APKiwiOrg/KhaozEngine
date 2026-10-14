@@ -170,12 +170,35 @@ One shared GLSL chunk, `AtmosphereFogGlsl`, with its bindings chunk, spliced by 
   atmosphere's ground-level Rayleigh and Mie extinction and the haze term, each with its scale height, all scaled
   by the aerial distance scale. Each exponential term has a closed-form integral along the segment, with the
   equal-height limit handled. `T = exp(-tau)` per channel.
+- **Near onset (20.40.0, #1406).** `AerialOnsetDistance` `s`, in world units, replaces the segment distance `d`
+  with `d * d / (d + s)` before the kilometre scaling, in every closed-form term. It has zero value and slope at
+  the camera, never exceeds `d` and tends to `d - s`. Heights are not shaped, so the height falloff keeps its
+  meaning, and a horizontal ray still reaches `T = 0` at infinity. Plain Beer-Lambert grows linearly from the
+  camera, so a haze tuned to dissolve the world edge also put 11 to 25 percent fog on anything 25 to 50 m away.
+  An 80 m onset leaves 3 percent at 25 m while the edge keeps 83 to 93 percent. The default 0 keeps the linear
+  distance exactly.
 - **Colour.** The sky-view LUT sampled along the view direction, with elevation clamped at the horizon for
   downward views, then tinted. The result is `colour * T + haze * (1 - T)`.
+- **Downward phase ratio (20.40.0, #1406).** The clamped sample is the horizon texel at the view's azimuth, so
+  toward a low sun it carries the Mie aureole at the horizon's scattering angle. A ray 30 to 60 degrees down has
+  a true angle 30 to 60 degrees wider, and the glow was 6 to 10 times too bright. Below the horizon the sample is
+  scaled per channel by `R = S(true) / S(sample)`, where
+  `S(mu) = Tsun * (sigmaR * Prayleigh(mu) + sigmaM * Pmie(mu)) + f * Tmoon * (...) + Psi * (sigmaR + sigmaM)`.
+  That is the in-scatter of a homogeneous slab of the Earth air at the camera's scaled altitude, with the moon key
+  included because the LUT also holds it. `Tsun` and `Tmoon` are the lighting's source transmittances already in
+  the UBO, `f` is the moon fraction and `Psi` the sun's plus `f` times the moon's multiple-scattering source at
+  the physical camera altitude. The slab's extinction cancels in the ratio, so the LUT keeps its exact colour at
+  the horizon. Against that slab at the true angle the fog colour is within 6 percent of luma for views 10 to 60
+  degrees down at dawn, morning and noon, the same agreement the LUT has with the slab at the horizon. `R` is
+  exactly one at and above the geometric horizon. The true angle eases in over one final sky texel span below the
+  horizon, mirroring the sky side's last-cell easing, so the downward colour leaves the horizon with zero slope
+  and the 20.39.0 eye-level join is unchanged. In vacuum `R` is one.
 - **Why that colour.** A horizontal ray at infinite distance has `T = 0`, so distant terrain converges exactly to
-  the sky behind it and the horizon has no seam. The forward-scattering glow toward a low sun comes for free
-  because it is in the LUT. The known error is haze that is too bright in deep shadowed valleys under a low sun.
-  The volume in #1364 removes it.
+  the sky behind it and the horizon has no seam. The forward-scattering glow toward a low sun comes from the LUT
+  on horizontal rays and from the phase ratio below them. Two known errors remain with the volume in #1364: haze
+  in deep shadowed valleys under a low sun is too bright, because the in-scatter is not shadowed by geometry, and
+  there is no separate ground-mist layer with its own base height. Haze extinguishes only and takes the Earth
+  air's colour.
 - **Where it applies.** `ModelFrag`, `ModelDissolveFrag`, `SkinnedModelFrag`, `SkinnedModelDissolveFrag`,
   `SplatFrag`, `TileGroundFrag`, the foliage path, `WaterFrag`, `DecalFrag`, `BillboardFrag`,
   `TexturedBillboardFrag`, `ParticleFrag`, `TrailFrag` and `BeamFrag`. Debug lines and `DistortionFrag` are left
@@ -184,7 +207,8 @@ One shared GLSL chunk, `AtmosphereFogGlsl`, with its bindings chunk, spliced by 
   over an already fogged surface stays correct. Additive effects are attenuated by `T` only, so sparks do not turn
   into glowing fog.
 - **Bindings.** A small atmosphere UBO plus the sky-view LUT at one binding shared by every participating
-  pipeline. The exact slots are fixed in the plan against each pipeline's layout. When the atmosphere is off, a
+  pipeline. Since 20.40.0 the UBO ends with `FogScatter` (Rayleigh and Mie scattering at the camera's scaled
+  altitude) and `FogSource` (the multiple-scattering term and the onset), 352 bytes in all. The exact slots are fixed in the plan against each pipeline's layout. When the atmosphere is off, a
   uniform flag makes the chunk a no-op, so there are no pipeline permutations.
 
 ## Phase 1, lighting

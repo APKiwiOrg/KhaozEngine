@@ -5,6 +5,17 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.40.0
+
+- `AtmosphereSettings.AerialOnsetDistance` fades physical atmosphere fog in from the camera. The optical distance
+  becomes `d * d / (d + onset)` in world units, so near buildings and trees stay clear while the world edge keeps
+  its haze. The default 0 keeps the linear distance exactly.
+- Physical atmosphere fog below the horizon follows the true scattering angle. The horizon sky sample is rescaled
+  by the slab in-scatter of the sun and the moon key at the view's angle against the sample's, which removes the
+  glare column toward a low sun on downward views. Views at and above the horizon, the sky, water reflections and
+  the zero-slope eye-level join are unchanged. The CPU fog oracle matches the GPU. The atmosphere UBO grows to
+  352 bytes. Closes [#1406](https://github.com/APKiwiOrg/KhaozEngine/issues/1406).
+
 ## 20.39.0
 
 - Navigation bake doors normalize effective profile kinds before identity work or stream reads. Malformed Contact

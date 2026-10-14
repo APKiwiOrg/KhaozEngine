@@ -47,6 +47,10 @@ public sealed class AtmosphereSettings
     public float WorldUnitsPerKilometre { get; set; } = 1000f;
     /// <summary>Non-negative multiplier on the distance used for aerial attenuation.</summary>
     public float AerialDistanceScale { get; set; } = 20f;
+    /// <summary>Non-negative world distance over which aerial attenuation fades in from the camera. The optical
+    /// distance d becomes d * d / (d + onset), so near geometry stays clear while distant fog is reduced by at
+    /// most the onset. Zero keeps the linear distance.</summary>
+    public float AerialOnsetDistance { get; set; }
     /// <summary>Non-negative multiplier on ambient lighting only.</summary>
     public float AmbientScale { get; set; } = 1f;
     /// <summary>Non-negative multiplier on fill lighting only.</summary>
@@ -101,6 +105,7 @@ public sealed class AtmosphereSettings
         && SunAngularRadiusRadians.Equals(other.SunAngularRadiusRadians)
         && WorldUnitsPerKilometre.Equals(other.WorldUnitsPerKilometre)
         && AerialDistanceScale.Equals(other.AerialDistanceScale)
+        && AerialOnsetDistance.Equals(other.AerialOnsetDistance)
         && AmbientScale.Equals(other.AmbientScale)
         && FillScale.Equals(other.FillScale)
         && NightAmbientFloor.Equals(other.NightAmbientFloor)
@@ -157,6 +162,7 @@ public sealed class AtmosphereSettings
                 "Solar angular radius must be finite, greater than zero and at most .1 radians.");
         Positive(WorldUnitsPerKilometre, nameof(WorldUnitsPerKilometre));
         NonNegative(AerialDistanceScale, nameof(AerialDistanceScale));
+        NonNegative(AerialOnsetDistance, nameof(AerialOnsetDistance));
         NonNegative(AmbientScale, nameof(AmbientScale));
         NonNegative(FillScale, nameof(FillScale));
         NonNegative(NightAmbientFloor, nameof(NightAmbientFloor));

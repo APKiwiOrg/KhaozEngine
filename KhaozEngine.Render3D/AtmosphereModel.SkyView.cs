@@ -9,6 +9,11 @@ public sealed partial class AtmosphereModel
     /// <summary>CPU sky-view lookup for fog. Samples the sky half of the 192 by 108 LUT with
     /// periodic azimuth and texel-centred bilinear filtering, then applies the shader's controls.</summary>
     internal Vector3 SkyViewValue(float cameraHeightKm, Vector2 skyUv, in AtmosphereFrame frame)
+        => SkyViewValue(cameraHeightKm, skyUv, frame, Vector3.One);
+
+    /// <summary>Scales the filtered radiance per channel before tint, pi conversion and the night floor,
+    /// as the fog's phase ratio does in GLSL.</summary>
+    internal Vector3 SkyViewValue(float cameraHeightKm, Vector2 skyUv, in AtmosphereFrame frame, Vector3 scale)
     {
         ValidateLightingInputs(cameraHeightKm, frame);
         const int width = 192, horizonRow = AtmosphereLutMapping.SkyHeight / 2 - 1;
@@ -45,6 +50,6 @@ public sealed partial class AtmosphereModel
 
         var upper = Vector3.Lerp(Texel(left, top), Texel(left + 1, top), fx);
         var lower = bottom == top ? upper : Vector3.Lerp(Texel(left, bottom), Texel(left + 1, bottom), fx);
-        return ApplySkyControls(Vector3.Lerp(upper, lower, fy), frame.Tint);
+        return ApplySkyControls(Vector3.Lerp(upper, lower, fy) * scale, frame.Tint);
     }
 }

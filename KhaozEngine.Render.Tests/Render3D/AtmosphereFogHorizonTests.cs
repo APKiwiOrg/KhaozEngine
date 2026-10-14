@@ -22,6 +22,27 @@ public sealed class AtmosphereFogHorizonTests
     [InlineData(100f, 45f)]
     [InlineData(2000f, 45f)]
     public void FogColour_HasNoJumpAtTheHorizon(float heightWorld, float sunDegrees)
+        => AssertNoJumpAcrossTheHorizon(heightWorld, sunDegrees, 0);
+
+    // The phase ratio varies below the horizon only. Toward, beside and away from a dawn sun it must start
+    // from exactly the horizon colour.
+    [Theory]
+    [InlineData(2f, 0f)]
+    [InlineData(2f, 30f)]
+    [InlineData(2f, 90f)]
+    [InlineData(2f, 180f)]
+    [InlineData(16f, 0f)]
+    [InlineData(16f, 30f)]
+    [InlineData(16f, 90f)]
+    [InlineData(16f, 180f)]
+    [InlineData(100f, 0f)]
+    [InlineData(100f, 30f)]
+    [InlineData(100f, 90f)]
+    [InlineData(100f, 180f)]
+    public void DawnFogColour_HasNoJumpAtTheHorizonAtAnyAzimuth(float heightWorld, float azimuthDegrees)
+        => AssertNoJumpAcrossTheHorizon(heightWorld, 6.37f, azimuthDegrees);
+
+    static void AssertNoJumpAcrossTheHorizon(float heightWorld, float sunDegrees, float azimuthDegrees)
     {
         var settings = AtmosphereSettings.Earth();
         settings.Enabled = true;
@@ -35,10 +56,12 @@ public sealed class AtmosphereFogHorizonTests
         var eye = new Vector3(0, heightWorld, 0);
         double radius = settings.PlanetRadiusKm + heightWorld / 1000d;
         double horizon = -Math.Acos(settings.PlanetRadiusKm / radius);
+        double azimuth = azimuthDegrees * Math.PI / 180;
         const double step = .0001 * Math.PI / 180;
         Vector3 Sample(double angle)
         {
-            var view = new Vector3((float)Math.Cos(angle), (float)Math.Sin(angle), 0);
+            var view = new Vector3((float)(Math.Cos(angle) * Math.Cos(azimuth)), (float)Math.Sin(angle),
+                (float)(Math.Cos(angle) * Math.Sin(azimuth)));
             return AtmosphereFog.Shade(settings, model, frame, Vector3.Zero, eye,
                 eye + view * 100000, Vector3.Zero);
         }
@@ -47,7 +70,7 @@ public sealed class AtmosphereFogHorizonTests
         var above = Sample(horizon + step);
         float scale = MathF.Max(above.Length(), .01f);
         float jump = MathF.Max(Vector3.Distance(below, at), Vector3.Distance(at, above)) / scale;
-        Console.WriteLine($"FOG_HORIZON height={heightWorld} sun={sunDegrees} below={below} at={at} above={above} relativeJump={jump}");
+        Console.WriteLine($"FOG_HORIZON height={heightWorld} sun={sunDegrees} azimuth={azimuthDegrees} below={below} at={at} above={above} relativeJump={jump}");
         Assert.True(jump < .001f, $"Fog colour jumps by {jump} over a {step} radian step at height {heightWorld}.");
         const double bandStep = .01 * Math.PI / 180;
         // Sweep the reported eye-level line. The tiny geometric-horizon check above is separate at altitude.

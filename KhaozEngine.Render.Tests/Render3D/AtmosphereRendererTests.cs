@@ -197,7 +197,7 @@ public sealed class AtmosphereRendererTests
             Assert.Equal(new[] { 6, 6, 7, 14 }, frameSets.Select(set => set.Resources.Length).OrderBy(n => n));
             uniforms = Assert.IsType<FakeBuffer>(frameSets[0].Resources[^3]);
             sky = Assert.IsType<FakeTexture>(frameSets[0].Resources[^2]);
-            Assert.Equal(320u, uniforms.SizeInBytes);
+            Assert.Equal(AtmosphereRenderer.UboBytes, uniforms.SizeInBytes);
             Assert.All(frameSets, set =>
             {
                 Assert.Same(uniforms, set.Resources[^3]);
@@ -361,7 +361,7 @@ public sealed class AtmosphereRendererTests
         if (!KhaozEngineMetal.IsPlatformSupported) return;
         using var device = new MetalBackendProvider().CreateHeadless().Device;
         using var renderer = new AtmosphereRenderer(device);
-        Assert.Equal(320u, renderer.Bindings.Uniforms.SizeInBytes);
+        Assert.Equal(AtmosphereRenderer.UboBytes, renderer.Bindings.Uniforms.SizeInBytes);
         Assert.Null(renderer.TransmittanceTexture);
         Assert.Null(renderer.MultiScatteringTexture);
         Assert.Equal(0, renderer.StaticBuildCount);
@@ -447,9 +447,10 @@ public sealed class AtmosphereRendererTests
     internal static void VerifyUboLayout()
     {
         string[] names = { "Planet", "Rayleigh", "Mie", "Ozone", "GroundHaze", "Sun", "Moon", "Tint",
-                "Floors", "Camera", "Origin", "SunT", "MoonT", "Right", "Up", "Back", "Ray", "Res", "Tone", "NightTint" };
-        Assert.Equal(320, Marshal.SizeOf<AtmosphereRenderer.AtmosphereUbo>());
-        Assert.Equal(320u, AtmosphereRenderer.UboBytes);
+                "Floors", "Camera", "Origin", "SunT", "MoonT", "Right", "Up", "Back", "Ray", "Res", "Tone", "NightTint",
+                "FogScatter", "FogSource" };
+        Assert.Equal(352, Marshal.SizeOf<AtmosphereRenderer.AtmosphereUbo>());
+        Assert.Equal(352u, AtmosphereRenderer.UboBytes);
         for (int i = 0; i < names.Length; i++)
             Assert.Equal(i * 16, (int)Marshal.OffsetOf<AtmosphereRenderer.AtmosphereUbo>(names[i]));
         foreach (string source in new[] { ConsumerBindings(1), ConsumerBindings(3), ConsumerBindings(4),
@@ -548,10 +549,13 @@ public sealed class AtmosphereRendererTests
         var frame = new AtmosphereFrame(Vector3.UnitY, -Vector3.UnitY, .03f, new(.8f, .9f, 1f),
             SunOpacity: .6f, MoonOpacity: .4f);
         var lighting = new AtmosphereLighting(default, default, default, default, new(.1f, .2f, .3f), new(.4f, .5f, .6f));
+        s.AerialOnsetDistance = 80f;
+        var scattering = new AtmosphereFogScattering(new(.7f, .8f, .9f), .5f, new(.01f, .02f, .03f), .8f,
+            Vector3.UnitY, new(.1f, .2f, .3f), -Vector3.UnitY, new(.4f, .5f, .6f), .03f);
         var projection = Matrix4x4.CreatePerspectiveFieldOfView(1f, 2f, .1f, 100f);
         projection.M31 = .02f;
         projection.M32 = -.03f;
-        var u = AtmosphereRenderer.PackUbo(s, frame, lighting, new(2f, 500f, 3f), new(100f, 1500f, 200f),
+        var u = AtmosphereRenderer.PackUbo(s, frame, lighting, scattering, new(2f, 500f, 3f), new(100f, 1500f, 200f),
             Matrix4x4.Identity, projection, 800, 600, new HdrSettings());
         Assert.Equal(new Vector4(2f, 500f, 3f, 2f), u.Camera);
         Assert.Equal(new Vector4(100f, 1500f, 200f, 0f), u.Origin);
@@ -567,9 +571,11 @@ public sealed class AtmosphereRendererTests
         Assert.Equal(7f, u.Planet.W);
         Assert.Equal(1f, u.Tint.W);
         Assert.Equal(new Vector4(.45f, .65f, 1f, 0f), u.NightTint);
+        Assert.Equal(new Vector4(.7f, .8f, .9f, .5f), u.FogScatter);
+        Assert.Equal(new Vector4(.01f, .02f, .03f, 80f), u.FogSource);
         Assert.Equal(new Vector4(1f, 1f, 0f, .75f), u.Tone);
         projection = Matrix4x4.CreateOrthographic(10f, 5f, .1f, 100f);
-        u = AtmosphereRenderer.PackUbo(s, frame, lighting, default, default, Matrix4x4.Identity,
+        u = AtmosphereRenderer.PackUbo(s, frame, lighting, scattering, default, default, Matrix4x4.Identity,
             projection, 800, 600, new HdrSettings { Enabled = false });
         Assert.Equal(1f, u.Res.Z);
         Assert.Equal(0f, u.Tone.X);

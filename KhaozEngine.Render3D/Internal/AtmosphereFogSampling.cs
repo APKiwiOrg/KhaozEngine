@@ -20,6 +20,30 @@ internal static class AtmosphereFogSampling
             (float)((HorizonRow + .5 - weight) / AtmosphereLutMapping.SkyHeight));
     }
 
+    /// <summary>For a view below the geometric horizon, returns the horizon direction the sky UV samples at the
+    /// view's azimuth and the view's eased true direction. Depression eases in over one final sky texel span
+    /// with zero value, slope and curvature, then joins the true depression with matching slope, so the
+    /// downward colour keeps the horizon's zero-slope join. Views at or above the horizon return false.</summary>
+    internal static bool BelowHorizon(Vector3 view, double radiusKm, float bottomKm, out Vector3 horizonView,
+        out Vector3 easedView)
+    {
+        double horizon = HorizonAngle(radiusKm, bottomKm);
+        double theta = Math.Acos(Math.Clamp(view.Y / Length(view), -1, 1));
+        horizonView = easedView = default;
+        if (theta <= horizon) return false;
+        double cell = horizon / (HorizonRow * HorizonRow);
+        double t = (theta - horizon) / cell;
+        double zenith = t < 1 ? horizon + cell * t * t * t * (3 - 2 * t) : theta;
+        double planar = Math.Sqrt((double)view.X * view.X + (double)view.Z * view.Z);
+        double x = planar == 0 ? 1 : view.X / planar, z = planar == 0 ? 0 : view.Z / planar;
+        horizonView = Direction(x, z, horizon);
+        easedView = Direction(x, z, zenith);
+        return true;
+    }
+
+    static Vector3 Direction(double x, double z, double zenith)
+        => new((float)(x * Math.Sin(zenith)), (float)Math.Cos(zenith), (float)(z * Math.Sin(zenith)));
+
     // t is angular distance above the horizon in units of the final sky texel's angular span.
     // w(0)=w'(0)=w''(0)=0, w(1)=1 and w'(1)=1/2, matching sqrt(t) at the join.
     static double HorizonWeight(double t) => t < 1 ? t * t * t * (3.5 - 2.5 * t) : Math.Sqrt(t);

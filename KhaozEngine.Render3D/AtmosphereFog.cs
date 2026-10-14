@@ -31,8 +31,9 @@ public static class AtmosphereFog
         return distanceKm * lowerEndpointDensity * ExponentialSegmentAverage(Math.Abs(heightChange));
     }
 
-    /// <summary>RGB segment transmission. The aerial scale maps both distance and clamped endpoint
-    /// heights into kilometres. Disabled fog, zero scale and zero distance transmit exactly one.</summary>
+    /// <summary>RGB segment transmission. The aerial onset shapes the distance, then the aerial scale maps
+    /// it and the clamped endpoint heights into kilometres. Heights are not shaped. Disabled fog, zero scale and
+    /// zero distance transmit exactly one.</summary>
     public static Vector3 Transmittance(AtmosphereSettings settings, float distanceWorld,
         float startAbsoluteHeightWorld, float endAbsoluteHeightWorld)
     {
@@ -44,7 +45,7 @@ public static class AtmosphereFog
         if (!settings.Enabled || settings.AerialDistanceScale == 0 || distanceWorld == 0) return Vector3.One;
 
         double kilometresPerWorldUnit = (double)settings.AerialDistanceScale / settings.WorldUnitsPerKilometre;
-        double distanceKm = distanceWorld * kilometresPerWorldUnit;
+        double distanceKm = OnsetDistance(distanceWorld, settings.AerialOnsetDistance) * kilometresPerWorldUnit;
         double startHeightKm = Math.Max((double)startAbsoluteHeightWorld, 0) * kilometresPerWorldUnit;
         double endHeightKm = Math.Max((double)endAbsoluteHeightWorld, 0) * kilometresPerWorldUnit;
         var rayleigh = settings.RayleighScatteringPerKm;
@@ -61,6 +62,13 @@ public static class AtmosphereFog
             (float)Math.Exp(-(CoefficientOpticalDepth(rayleigh.Y, rayleighDepth) + greyDepth)),
             (float)Math.Exp(-(CoefficientOpticalDepth(rayleigh.Z, rayleighDepth) + greyDepth)));
     }
+
+    /// <summary>Optical distance for <see cref="AtmosphereSettings.AerialOnsetDistance"/>: d * d / (d + s).
+    /// It has zero value and slope at the camera, never exceeds d and tends to d - s, so distant rays keep
+    /// their fog. A zero onset and an infinite distance return the distance unchanged.</summary>
+    internal static double OnsetDistance(double distanceWorld, double onsetWorld)
+        => onsetWorld == 0 || double.IsPositiveInfinity(distanceWorld) ? distanceWorld
+            : distanceWorld * (distanceWorld / (distanceWorld + onsetWorld));
 
     /// <summary>Blends surface colour toward fog colour. Additive effects only lose transmitted energy.</summary>
     public static Vector3 Compose(Vector3 colour, Vector3 transmittance, Vector3 haze, bool additive = false)
@@ -92,7 +100,8 @@ public static class AtmosphereFog
 
     /// <summary>Shades a camera-relative segment with absolute heights recovered from renderOrigin.Y.
     /// Displacement remains relative. Sky colour uses the unscaled physical camera altitude and view
-    /// UV joined smoothly to the sky-side geometric horizon, preserving azimuth or using +X at the nadir.</summary>
+    /// UV joined smoothly to the sky-side geometric horizon, preserving azimuth or using +X at the nadir.
+    /// Below the horizon the sample is rescaled to the view's true scattering angle.</summary>
     public static Vector3 Shade(AtmosphereSettings settings, AtmosphereModel model, in AtmosphereFrame frame,
         Vector3 colour, Vector3 cameraRelative, Vector3 fragmentRelative, Vector3 renderOrigin, bool additive = false)
     {
@@ -112,7 +121,10 @@ public static class AtmosphereFog
         float cameraHeightKm = Math.Max(settings.HeightKm(cameraAbsoluteHeight), 0);
         double radius = settings.PlanetRadiusKm + (double)cameraHeightKm;
         var skyUv = AtmosphereFogSampling.SkyUv(view, radius, settings.PlanetRadiusKm);
-        var haze = model.SkyViewValue(cameraHeightKm, skyUv, frame);
+        // The geometric horizon never rises above zero elevation, so upward views skip the source integrals.
+        var ratio = view.Y >= 0 ? Vector3.One : AtmosphereFogScattering.Evaluate(settings, model, frame, cameraHeightKm)
+            .Ratio(view, radius, settings.PlanetRadiusKm);
+        var haze = model.SkyViewValue(cameraHeightKm, skyUv, frame, ratio);
         return Compose(colour, transmittance, haze);
     }
 

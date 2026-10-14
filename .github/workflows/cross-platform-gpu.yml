@@ -684,9 +684,8 @@ jobs:
       # alone: that is the only place Server.Tests and MapEditor.Tests have been seen dropping into a mode
       # several times slower than normal, and every loopback HTTP timeout and MCP cancellation in the family
       # came from a run in that mode. The watchdog is TestSupport's ThreadPoolStarvationWatchdog. It logs each
-      # episode of pool queue latency past two seconds and takes one heap dump per test host on the first
-      # episode that lasts ten, so the stacks holding the pool can be read with dotnet-dump afterwards. It
-      # changes nothing about what the leg tests or how it gates.
+      # episode of pool queue latency past two seconds. Heap dumps require the separate KE_POOL_WATCH_DUMP=1
+      # opt-in and stay off here: the runtime suspends the host while dumping, which can itself time out tests.
       POOL_WATCH_ARMED: ${{ (matrix.backend == 'direct3d11-native' && (matrix.fullSuite == 'always' || (matrix.fullSuite == 'scheduled' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'))) && !(github.event_name == 'workflow_dispatch' && inputs.renderTestFilter)) && '1' || '' }}
     steps:
       # THE TIER-EDIT GUARD (https://github.com/APKiwiOrg/KhaozEngine/issues/614), and the only step in this job
@@ -1149,6 +1148,8 @@ jobs:
           # Absolute, because each test host runs from its own output directory.
           KE_POOL_WATCH: ${{ env.POOL_WATCH_ARMED }}
           KE_POOL_WATCH_DIR: ${{ github.workspace }}/TestResults/pool-watch
+          # Logging must not suspend the test host. Dumps belong to an explicit diagnostic run.
+          KE_POOL_WATCH_DUMP: ''
           # THE THREE SHADER DISK CACHES, ALL FROM ONE VALUE (#614). Blank on every ordinary trigger, which is
           # the shipped default location, and `off` on a dispatch that asked for it. Each variable belongs to one
           # backend and is inert on the other two legs, so setting all three on every leg costs nothing and is
@@ -1176,6 +1177,9 @@ jobs:
           KE_UPDATE_GOLDENS: ${{ (github.event_name == 'workflow_dispatch' && inputs.bake) && '1' || '' }}
           KE_RENDER_TEST_FILTER: ${{ github.event_name == 'workflow_dispatch' && inputs.renderTestFilter || '' }}
           KE_TEST_FILTER: ${{ (github.event_name == 'workflow_dispatch' && inputs.renderTestFilter) || ((matrix.fullSuite == 'always' || (matrix.fullSuite == 'scheduled' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'))) && 'Category!=LiveSocket' || 'FullyQualifiedName~Golden|FullyQualifiedName~FoliageGpuTests') }}
+          # WARP saturates the Windows runner's CPUs. Keep Render.Tests out of the other hosts' pass while
+          # retaining parallel execution among those hosts. Golden-only and targeted render runs stay single-pass.
+          KE_TEST_ISOLATE_RENDER: ${{ (matrix.backend == 'direct3d11-native' && (matrix.fullSuite == 'always' || (matrix.fullSuite == 'scheduled' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'))) && !(github.event_name == 'workflow_dispatch' && inputs.renderTestFilter)) && '1' || '' }}
           # BOTH Vulkan legs' full-suite runs: serialize MSBuild projects, target frameworks, test hosts
           # and xUnit collections, one live device at a time. Collection settings alone cannot stop two
           # assemblies opening devices at once
@@ -1199,11 +1203,44 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p TestResults
-          test_target=()
-          if [ -n "$KE_RENDER_TEST_FILTER" ]; then
-            test_target=(KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj)
+          : > TestResults/suite-output.log
+          read -r -a build_args <<< "$KE_TEST_BUILD_ARGS"
+          read -r -a logger_args <<< "$KE_TEST_LOGGER_ARGS"
+          read -r -a extra_args <<< "$KE_TEST_EXTRA_ARGS"
+          run_suite() {
+            dotnet test "$@" -c Release --no-build "${build_args[@]}" --filter "$KE_TEST_FILTER" --blame --results-directory "$PWD/TestResults" "${logger_args[@]}" "${extra_args[@]}" 2>&1 | tee -a TestResults/suite-output.log
+          }
+          status=0
+          if [ "$KE_TEST_ISOLATE_RENDER" = "1" ]; then
+            # The root keeps exactly one solution. Rebase project paths into the generated solution's directory.
+            python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          solution = ET.parse("KhaozEngine.slnx")
+          excluded = 0
+          for parent in solution.iter():
+              for project in list(parent):
+                  if project.tag != "Project":
+                      continue
+                  if project.attrib["Path"] == "KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj":
+                      parent.remove(project)
+                      excluded += 1
+                  else:
+                      project.set("Path", "../" + project.attrib["Path"])
+          assert excluded == 1, "Expected exactly one Render.Tests project"
+          solution.write("TestResults/KhaozEngine.NonRender.slnx", encoding="unicode")
+          PY
+            # Run both passes even after a test failure, and retain either failure as the step's exit status.
+            run_suite TestResults/KhaozEngine.NonRender.slnx || status=$?
+            run_suite KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj || status=$?
+            rm TestResults/KhaozEngine.NonRender.slnx
+          else
+            test_target=()
+            if [ -n "$KE_RENDER_TEST_FILTER" ]; then
+              test_target=(KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj)
+            fi
+            run_suite "${test_target[@]}" || status=$?
           fi
-          dotnet test "${test_target[@]}" -c Release --no-build $KE_TEST_BUILD_ARGS --filter "$KE_TEST_FILTER" --blame --results-directory TestResults $KE_TEST_LOGGER_ARGS $KE_TEST_EXTRA_ARGS 2>&1 | tee TestResults/suite-output.log
+          exit "$status"
         shell: bash
 
       # WHAT THE BOOT'S GPU ACTUALLY WAS (#614), on the macOS leg. That issue's whole difficulty is that a red
@@ -1434,8 +1471,8 @@ jobs:
 
       # THE POOL WATCHDOG'S EVIDENCE, on always() and only where POOL_WATCH_ARMED armed it: a green run's
       # episode lines are as much a reading as a red run's. The watch directory holds one log per armed test host
-      # (an armed line, then one line per episode) and at most one heap dump per host, and the trx files give
-      # every test's start and end. A dump can run to a gigabyte or two, hence the short retention.
+      # (an armed line, then one line per episode), and the trx files give every test's start and end from both
+      # passes. The directory also carries dumps from explicit diagnostic runs, never the default full tier.
       - name: Upload thread pool watch evidence
         if: always() && env.POOL_WATCH_ARMED != ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

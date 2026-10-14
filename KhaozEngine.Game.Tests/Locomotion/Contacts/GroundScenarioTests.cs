@@ -16,6 +16,7 @@ using static KhaozEngine.Tests.Locomotion.Contacts.FootSupportScenes;
 
 namespace KhaozEngine.Tests.Locomotion.Contacts;
 
+[Collection("AllocSensitive")]
 public class GroundScenarioTests(ITestOutputHelper output)
 {
     static readonly MoveTuning Tuning = MoveTuning.Default;
@@ -464,9 +465,11 @@ public class GroundScenarioTests(ITestOutputHelper output)
         using FootSupportScene scene = built;
         SupportSample warm = FootSupport.Find(null, null, scene.World, scene.Lease, query);
 
+        using var allocationRegion = AllocationRegion.Start($"{nameof(SupportFindAllocation)} {name}");
         long before = GC.GetAllocatedBytesForCurrentThread();
         SupportSample support = FootSupport.Find(null, null, scene.World, scene.Lease, query);
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        allocationRegion.Dispose();
 
         output.WriteLine($"ALLOC {name}: {allocated} bytes, status {support.Status} (warm {warm.Status}), " +
             $"stack at most {SupportFindStackBytes()} bytes");

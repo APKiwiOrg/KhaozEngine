@@ -28,4 +28,8 @@
     <ProjectReference Include="../KhaozEngine.Catalog.GameTypes/KhaozEngine.Catalog.GameTypes.csproj" />
     <ProjectReference Include="../KhaozEngine.Catalog.Sqlite/KhaozEngine.Catalog.Sqlite.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../test-shared/AllocationRegion.cs" Link="Shared/AllocationRegion.cs" />
+    <Compile Include="../test-shared/AllocationMeasurement.cs" Link="Shared/AllocationMeasurement.cs" />
+  </ItemGroup>
 </Project>

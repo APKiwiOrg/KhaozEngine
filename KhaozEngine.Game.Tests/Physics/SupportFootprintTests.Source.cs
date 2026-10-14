@@ -243,8 +243,12 @@ public partial class SupportFootprintTests
         var request = Request(radius: 5 * s, upper: 7);
         var polygon = Assert.Single(CapturedMesh(scene, request));
         using var region = SupportAllocationRegion.Start();
+        long coldThread = GC.GetAllocatedBytesForCurrentThread();
+        long coldProcess = GC.GetTotalAllocatedBytes(true);
         Assert.Equal(GeometrySign.Positive, SupportFootprintPolygon.Measure(polygon, request, out _));
         Assert.Equal(GeometrySign.Positive, SupportFootprintProposalGeometry.Lowest(polygon, request.FootProposal, out _));
+        long coldThreadBytes = GC.GetAllocatedBytesForCurrentThread() - coldThread;
+        long coldProcessBytes = GC.GetTotalAllocatedBytes(true) - coldProcess;
         SupportQueryDiagnostics.Reset();
         long before = GC.GetAllocatedBytesForCurrentThread();
         var footprint = SupportFootprintPolygon.Measure(polygon, request, out _);
@@ -254,7 +258,7 @@ public partial class SupportFootprintTests
         Assert.Equal(GeometrySign.Positive, footprint);
         Assert.Equal(GeometrySign.Positive, contact);
         Assert.Equal(0, bytes);
-        _output.WriteLine($"Point-map source strata warmBytes={bytes}");
+        _output.WriteLine($"Point-map source strata coldThreadBytes={coldThreadBytes} coldProcessBytes={coldProcessBytes} warmBytes={bytes}");
         AssertSourceFallbacks();
     }
 

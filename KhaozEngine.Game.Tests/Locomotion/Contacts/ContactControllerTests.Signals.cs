@@ -9,6 +9,7 @@ using static KhaozEngine.Tests.Locomotion.Contacts.FootSupportScenes;
 
 namespace KhaozEngine.Tests.Locomotion.Contacts;
 
+[Collection("AllocSensitive")]
 public partial class ContactControllerTests
 {
     public static IEnumerable<object[]> SignalRows()
@@ -656,11 +657,13 @@ public partial class ContactControllerTests
         GroundSignals.Resolve(input, 0, 0, false, false, 0f, travel, feet, axisSupport, true, Dt, Tuning, 0.2f, cosGate,
             DryQueries.For(g.Height, g.Normal, g.World, g.Lease, Tuning));
 
+        using var allocationRegion = AllocationRegion.Start(nameof(WarmSignalResolveAllocatesNothing));
         long before = GC.GetAllocatedBytesForCurrentThread();
         var result = GroundSignals.Resolve(input, 0, 0, false, false, 0f, travel, feet, axisSupport, true, Dt, Tuning, 0.2f,
             cosGate, DryQueries.For(g.Height, g.Normal, g.World, g.Lease, Tuning));
         long after = GC.GetAllocatedBytesForCurrentThread();
 
+        allocationRegion.Dispose();
         Assert.Equal(before, after);
         Assert.True(result.ClimbRate > 0);
     }

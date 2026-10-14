@@ -13,6 +13,10 @@ internal static class MapSpaceBoundaryCoverage
     sealed record Band(string Id, IReadOnlyList<MapWidePoint> Lower, IReadOnlyList<MapWidePoint>? Upper,
         IReadOnlyList<MapSide>? Sides = null);
     readonly record struct Interval(MapWideRational Lower, MapWideRational? Upper, bool Authored);
+    [ThreadStatic] static long t_neighbourTests;
+
+    /// <summary>Column neighbour tests run on the calling thread. Bounds the side work of one validation.</summary>
+    internal static long ThreadNeighbourTests => t_neighbourTests;
 
     internal static void Validate(MapScopedSurfaces view, IReadOnlyList<MapTopologyRecord> records,
         IReadOnlyList<MapSpaceColumn> columns, Action<string, int, string> add)
@@ -64,8 +68,10 @@ internal static class MapSpaceBoundaryCoverage
             catch (MapDocumentException error) { add(portal.Id, -1, $"missing geometry: portal '{portal.Id}' ({error.Message})"); }
             catch (MapExactOverflowException) { add(portal.Id, -1, $"not representable: portal '{portal.Id}'"); }
         }
-        foreach (MapSpaceColumn column in columns)
+        IReadOnlyList<MapSpaceColumn>[] near = Near(columns);
+        for (int index = 0; index < columns.Count; index++)
         {
+            MapSpaceColumn column = columns[index];
             if (column.Lower.Count == 0) continue;
             try
             {
@@ -75,7 +81,7 @@ internal static class MapSpaceBoundaryCoverage
                 foreach (MapCellEdge edge in Enum.GetValues<MapCellEdge>())
                 {
                     var (a, b) = Edge(column, edge);
-                    MapSpaceColumn[] adjacent = columns.Where(c => !ReferenceEquals(c, column) && Neighbour(column, c, edge)).ToArray();
+                    MapSpaceColumn[] adjacent = near[index].Where(c => Neighbour(column, c, edge)).ToArray();
                     MapSpaceColumn[] peers = adjacent.Where(c => MapSpaceGeometry.Owner(view, c.Space) == MapSpaceGeometry.Owner(view, column.Space)).ToArray();
                     if (column.Space.Kind == MapSpaceKind.Exterior && adjacent.Length == 0) continue;
                     var cuts = Cuts(a, b, adjacent.Append(column), bands);
@@ -129,6 +135,21 @@ internal static class MapSpaceBoundaryCoverage
             }
             return resolved;
         }
+    }
+
+    // A neighbour shares a closed rectangle overlap, so each column tests only the columns an exact bounds sweep pairs it
+    // with, in column order, rather than every column.
+    static IReadOnlyList<MapSpaceColumn>[] Near(IReadOnlyList<MapSpaceColumn> columns)
+    {
+        var bounds = columns.Select(c => MapWaterPolygons.Bounds.Of(MapWideXz.From(c.Min), MapWideXz.From(c.Max))).ToArray();
+        var near = new List<int>[columns.Count];
+        for (int i = 0; i < near.Length; i++) near[i] = [];
+        foreach (var (a, b) in MapWaterBoundsSweep.Pairs(bounds, touching: true, new MapWaterWorkBudget(long.MaxValue)))
+        {
+            near[a].Add(b);
+            near[b].Add(a);
+        }
+        return near.Select(list => (IReadOnlyList<MapSpaceColumn>)list.Order().Select(i => columns[i]).ToArray()).ToArray();
     }
 
     static bool AirContains(MapSpaceColumn column, Band band, MapWideXz point)
@@ -188,6 +209,7 @@ internal static class MapSpaceBoundaryCoverage
     };
     static bool Neighbour(MapSpaceColumn a, MapSpaceColumn b, MapCellEdge edge)
     {
+        t_neighbourTests++;
         if (MapSpaceGeometry.Max(a.Min.X, b.Min.X).CompareTo(MapSpaceGeometry.Min(a.Max.X, b.Max.X)) > 0 ||
             MapSpaceGeometry.Max(a.Min.Z, b.Min.Z).CompareTo(MapSpaceGeometry.Min(a.Max.Z, b.Max.Z)) > 0) return false;
         var (first, last) = Edge(a, edge);

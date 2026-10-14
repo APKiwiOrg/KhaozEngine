@@ -17,6 +17,7 @@ using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Water;
 using KhaozEngine.Physics;
+using KhaozEngine.Primitives;
 using KhaozEngine.Tests.MapDoc;
 using KhaozEngine.Tests.MapDocCompatibility;
 using KhaozEngine.TileWorld;
@@ -94,6 +95,25 @@ public sealed class ShippedBuildingInputGuardTests
         Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(reportPath));
         Assert.Contains("independent-heads", File.ReadAllText(reportPath));
         Assert.Throws<PrivateOracleInputException>(() => PrivateOracleInputs.Require(fixture.Environment));
+    }
+
+    [Fact]
+    public void RoomCellsNearerAnotherFrameAnchor_AreQueriedInTheAcquiredFrame()
+    {
+        // F-R14. A decoy patch anchors the complete view one frame east, so every room cell lies nearer the origin anchor.
+        using var fixture = ShippedBuildingGuardFixtures.Create("foreign-frame");
+        Exception? failure = Record.Exception(() => PrivateOracleEntry.Run(fixture.Environment, (i, report) =>
+        {
+            var inputs = ShippedBuildingInputs.Read(i);
+            var view = MapNativeResolution.Resolve(inputs.NativeDocument, inputs.Assets, new("guard", 1, "guard/1", 2)).EffectiveResources!.CompleteView();
+            Assert.NotEqual(WorldFrame.Nearest(new Vector3(0.5f, 1, -0.5f)), view.Scope.Frame);
+            Assert.Equal(WorldFrame.Nearest(new Vector3(1.5f, 1, -1.5f)), WorldFrame.Nearest(new Vector3(0.5f, 1, -0.5f)));
+            var result = ShippedBuildingComparison.Compare(inputs);
+            report.Record("buildings", result.DetailJson);
+            report.Check("building-parity", result.Failures.Count == 0, result.DetailJson);
+        }));
+        string reportPath = fixture.Environment["KHAOZ_R2_ORACLE_REPORT"]!;
+        Assert.True(failure is null, File.Exists(reportPath) ? File.ReadAllText(reportPath) : failure?.ToString());
     }
 
     [Theory]
@@ -524,6 +544,18 @@ internal sealed class ShippedBuildingGuardFixtures : IDisposable
             SemanticSha256 = MapSurfaceSemantics.SurfaceDigest(converted.Surface,
             new[] { new KeyValuePair<MapPatchKey, string>(anchor, MapSurfaceSemantics.PatchDigest(patch)) })
         });
+        if (variant == "foreign-frame")
+        {
+            // F-R14. An empty patch that sorts first and lies nearer the next anchor east picks the view's frame.
+            var decoy = new MapSurfacePatch { Key = new("a-decoy", 1, 0), CellMinX = 1, Width = 1, Depth = 1, Heights = new int[4], Cells = new MapSurfaceCell[1], Presence = new ulong[1] };
+            var decoySurface = new MapSurfaceRef("a-decoy", MapLatticeFrame.ImportedMetreCentimetre, MapSurfaceRole.SupportFloor, MapPresencePolicy.Native, null, null, new string('a', 64));
+            document.Surfaces.Patches.Add(decoy.Key, decoy);
+            document.Surfaces.Refs.Add(decoySurface with
+            {
+                SemanticSha256 = MapSurfaceSemantics.SurfaceDigest(decoySurface,
+                new[] { new KeyValuePair<MapPatchKey, string>(decoy.Key, MapSurfaceSemantics.PatchDigest(decoy)) })
+            });
+        }
         document.NativeAssets = new() { manifestRef };
         document.NumericIdHighWaterMark = world.AllObjects().Max(o => o.Id);
         document.BuildingIntent = new(1, [], [], [], []);

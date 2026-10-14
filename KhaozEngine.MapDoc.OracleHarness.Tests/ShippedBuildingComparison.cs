@@ -10,6 +10,7 @@ using KhaozEngine.MapDoc.Interiors;
 using KhaozEngine.MapDoc.Physics;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Spaces;
+using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
@@ -257,7 +258,7 @@ internal static class ShippedBuildingComparison
             {
                 var key = CellKey(cell);
                 Vector3 centre = new((key.X + 0.5f) * inputs.World.TileSize, key.Y, -(key.Z + 0.5f) * inputs.World.TileSize);
-                var actual = membership.Query(Frame(centre));
+                var actual = membership.Query(Frame(world.Surfaces, centre));
                 evidence.Check("room-cell-centre", actual.Status == MapMembershipStatus.Resolved && actual.SpaceId == roomId,
                     new { cell, roomId, actual.Status, actual.SpaceId, actual.DomainKeys });
             }
@@ -283,9 +284,10 @@ internal static class ShippedBuildingComparison
         }
         foreach (var probe in Array(inputs.Comparison, "probes"))
         {
-            var point = Frame(Vector(probe.GetProperty("position")));
+            var position = Vector(probe.GetProperty("position"));
+            var point = Frame(world.Surfaces, position);
             var actual = membership.Query(point);
-            var second = new MapSpaceMembership(other.Surfaces).Query(point);
+            var second = new MapSpaceMembership(other.Surfaces).Query(Frame(other.Surfaces, position));
             string? expected = NullableText(probe, "spaceId"), source = NullableText(probe, "sourceSpaceId");
             evidence.Check("membership-" + Text(probe, "kind"), actual.SpaceId == expected &&
                 actual.Status == (expected is null ? MapMembershipStatus.Outside : MapMembershipStatus.Resolved), new { probe, actual.Status, actual.SpaceId, actual.DomainKeys });
@@ -390,7 +392,7 @@ internal static class ShippedBuildingComparison
             evidence.Check("standalone-roof-inventory", intent.Roofs.Contains(new MapPrefabReference(MapPrefabReferenceScope.World, MapPrefabChildKind.Placement, worldId)) &&
                 intent.RoofLinks.All(l => l.Roof.Id != worldId), new { worldId, intent.Roofs });
             Vector3 site = TileObjectPlacement.AnchorPosition(inputs.World, inputs.Catalogs.Archetype(source.ArchetypeId)!, source);
-            var auto = MapRoofPolicy.Evaluate(resources, world.Surfaces, Frame(site + new Vector3(0, 0.5f, 0)), MapRoofMode.Auto).Roofs
+            var auto = MapRoofPolicy.Evaluate(resources, world.Surfaces, Frame(world.Surfaces, site + new Vector3(0, 0.5f, 0)), MapRoofMode.Auto).Roofs
                 .SingleOrDefault(r => r.RoofPlacementId == worldId);
             evidence.Check("standalone-roof-auto-visible", auto is not null && auto.ColourVisible && auto.CameraBoomBlocks, new { worldId, auto });
         }
@@ -478,8 +480,8 @@ internal static class ShippedBuildingComparison
     static double[] Components(MapExactPoint p) => new[] { p.X.ToDouble(), p.Y.ToDouble(), p.Z.ToDouble() };
     static double[] Components(Coordinates p) => new[] { p.X, p.Y, p.Z };
     static double[] Components(Vector3 p) => new[] { (double)p.X, p.Y, p.Z };
-    static MapFramePoint Frame(Vector3 p)
-    { var frame = WorldFrame.Nearest(p); return new(frame, p - frame.Anchor); }
+    // F-R14. Membership refuses a point outside the acquired view's frame, so every query point uses that frame.
+    internal static MapFramePoint Frame(MapScopedSurfaces view, Vector3 p) => new(view.Scope.Frame, view.Scope.Frame.ToLocal(p));
     static string? NullableText(JsonElement row, string name) => row.GetProperty(name).ValueKind == JsonValueKind.Null ? null : Text(row, name);
 
     sealed class Evidence

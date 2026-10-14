@@ -233,7 +233,8 @@ internal sealed class ShippedBuildingInputs
                 int minZ = checked((int)Math.Floor(-corners.Max(p => p.Z.ToDouble()) / World.TileSize));
                 int maxZ = checked((int)Math.Ceiling(-corners.Min(p => p.Z.ToDouble()) / World.TileSize));
                 Require((long)(maxX - minX) * (maxZ - minZ) <= 1048576, "room cell closure exceeds input budget");
-                var membership = new MapSpaceMembership(effective.CompleteView());
+                var view = effective.CompleteView();
+                var membership = new MapSpaceMembership(view);
                 foreach (var layer in cells.Select(CellKey).GroupBy(k => (k.Plane, k.Y)))
                 {
                     var expected = new HashSet<(int X, int Z)>();
@@ -241,8 +242,7 @@ internal sealed class ShippedBuildingInputs
                         for (int x = minX; x < maxX; x++)
                         {
                             var point = new Vector3((x + 0.5f) * World.TileSize, layer.Key.Y, -(z + 0.5f) * World.TileSize);
-                            var frame = WorldFrame.Nearest(point);
-                            var member = membership.Query(new(frame, point - frame.Anchor));
+                            var member = membership.Query(ShippedBuildingComparison.Frame(view, point));
                             Require(member.Status is MapMembershipStatus.Resolved or MapMembershipStatus.Outside, "incomplete room centre geometry");
                             if (member.SpaceId == domain.Space.Id) expected.Add((x, z));
                         }

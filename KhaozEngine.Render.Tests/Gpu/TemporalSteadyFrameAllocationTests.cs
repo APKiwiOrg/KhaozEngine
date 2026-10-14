@@ -107,18 +107,11 @@ namespace KhaozEngine.Tests.Gpu
             Frames(Warm);
             AssertTheFrameIsTheMeasuredOne(scene, SceneDebugView.None, bloom);
             recorded = 0;
-            long whole = Allocated(() => Frames(Measured));
-            long firstRecorded = recorded;
-            recorded = 0;
-            // One retry, as AllocAssert allows. The whole frame holds the recording, so a clean whole frame is both.
-            long wholeRetry = whole == 0 ? 0 : Allocated(() => Frames(Measured));
-            long retryRecorded = recorded;
+            long whole = AllocationMeasurement.Measure($"{Measured} whole steady temporal frames", () => Frames(Measured));
             output.WriteLine($"{Measured} steady temporal frames on {gd.Backend}, bloom {bloom}: recording "
-                + $"{firstRecorded} bytes (retry {retryRecorded}), whole frame {whole} bytes (retry {wholeRetry})");
-            Assert.True(firstRecorded == 0 || retryRecorded == 0,
-                $"recording {Measured} steady temporal frames allocated {firstRecorded} bytes, then {retryRecorded}");
-            Assert.True(whole == 0 || wholeRetry == 0,
-                $"{Measured} whole steady temporal frames allocated {whole} bytes, then {wholeRetry}");
+                + $"{recorded} bytes, whole frame {whole} bytes");
+            Assert.True(recorded == 0, $"recording {Measured} steady temporal frames allocated {recorded} bytes");
+            Assert.True(whole == 0, $"{Measured} whole steady temporal frames allocated {whole} bytes");
         }
 
         /// <summary>
@@ -199,23 +192,15 @@ namespace KhaozEngine.Tests.Gpu
             gd.WaitForIdle();
             AssertTheFrameIsTheMeasuredOne(scene, SceneDebugView.None, bloom);
             long begun = gd.Counters.FramesBegun;
-            long first = Allocated(() => Frames(Measured));
-            long retry = first == 0 ? 0 : Allocated(() => Frames(Measured));   // one retry, as AllocAssert allows
+            long allocated = AllocationMeasurement.Measure($"{Measured} presented steady temporal frames",
+                () => Frames(Measured));
             gd.WaitForIdle();
             long presented = gd.Counters.FramesBegun - begun;
             output.WriteLine($"{Measured} steady temporal frames presented through a {w}x{h} swapchain on "
-                + $"{gd.Backend}, bloom {bloom}: {first} bytes (retry {retry}), {presented} frames begun");
+                + $"{gd.Backend}, bloom {bloom}: {allocated} bytes, {presented} frames begun");
             Assert.True(presented >= Measured,
                 $"the present boundary opened {presented} frames for {Measured} presents");
-            Assert.True(retry == 0,
-                $"{Measured} presented steady temporal frames allocated {first} bytes, then {retry}");
-        }
-
-        static long Allocated(Action frames)
-        {
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            frames();
-            return GC.GetAllocatedBytesForCurrentThread() - before;
+            Assert.True(allocated == 0, $"{Measured} presented steady temporal frames allocated {allocated} bytes");
         }
 
         // The warm frames built what the measured frames run: the resolve, the default sharpen, the display chain's

@@ -275,9 +275,14 @@ public sealed class NameplateTemplateDrawTests
         int warmCalls = canvas.Calls;
         GC.GetAllocatedBytesForCurrentThread();
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        bool drawn = NameplateRenderer.DrawTemplateAt(ref canvas, anchor, template, content, 1000, 1000, ref state);
-        long after = GC.GetAllocatedBytesForCurrentThread();
+        long before, after;
+        bool drawn;
+        using (AllocationRegion.Start("a warm outlined template draw with a badge"))
+        {
+            before = GC.GetAllocatedBytesForCurrentThread();
+            drawn = NameplateRenderer.DrawTemplateAt(ref canvas, anchor, template, content, 1000, 1000, ref state);
+            after = GC.GetAllocatedBytesForCurrentThread();
+        }
 
         Assert.True(drawn);
         Assert.Equal(warmCalls + 10, canvas.Calls);

@@ -113,8 +113,6 @@ namespace KhaozEngine.Tests.Render3D
             limb.Update(Vector3.Zero, Vector3.UnitZ, Vector3.UnitY, 0.1f);
 
             // The motion path must not allocate: drive many frames and assert the GC allocated byte count is flat.
-            // Retries once before failing (see AllocAssert.NoPerCallAllocation) to ride out an unrelated gen-0
-            // collision from the rest of the process, per issue #284.
             AllocAssert.NoPerCallAllocation("Update over 400 calls", () =>
             {
                 for (int f = 0; f < 200; f++)

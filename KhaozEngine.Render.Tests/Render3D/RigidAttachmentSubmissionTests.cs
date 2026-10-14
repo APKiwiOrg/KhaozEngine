@@ -194,11 +194,11 @@ public sealed class RigidAttachmentSubmissionTests
         fixture.Rig.Scene.Begin();
         fixture.Capability.Clear();
         fixture.Source.OnRead = _ => throw new InvalidOperationException("Frame submission cannot read source assets.");
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        fresh.WriteDraws(fixture.Skeleton, fixture.Palette, Model, Key, Template, draws);
-        fresh.Queue(fixture.Skeleton, fixture.Palette, Model, Key, Template);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-        Assert.Equal(0L, allocated);
+        AllocAssert.NoPerCallAllocation("a first submission with descriptor writing", () =>
+        {
+            fresh.WriteDraws(fixture.Skeleton, fixture.Palette, Model, Key, Template, draws);
+            fresh.Queue(fixture.Skeleton, fixture.Palette, Model, Key, Template);
+        });
         Assert.Equal(2, fixture.Capability.Count);
     }
 

@@ -69,13 +69,12 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(scene.TemporalPostTargetsForTests!.BloomAllocated && scene.BloomAllocated);
             Assert.True(warm.HistoryValid);
 
-            long first = Allocated(() => Frames(Measured));
-            long retry = first == 0 ? 0 : Allocated(() => Frames(Measured));   // one retry, as AllocAssert allows
+            long allocated = AllocationMeasurement.Measure($"{Measured} steady frames without a request",
+                () => Frames(Measured));
             TemporalDiagnostics steady = scene.LastTemporalDiagnostics;
-            output.WriteLine($"{Measured} steady resolving frames with a capture each and the probe built: {first} "
-                + $"bytes, retry {retry}, readbacks {scene.TemporalCountReadbacksForTests}");
-            Assert.True(retry == 0,
-                $"{Measured} steady frames without a request allocated {first} bytes and {retry} on the retry");
+            output.WriteLine($"{Measured} steady resolving frames with a capture each and the probe built: {allocated} "
+                + $"bytes, readbacks {scene.TemporalCountReadbacksForTests}");
+            Assert.True(allocated == 0, $"{Measured} steady frames without a request allocated {allocated} bytes");
             Assert.Equal(1, scene.TemporalCountReadbacksForTests);
             Assert.Equal(warm.CountsFrameIndex, steady.CountsFrameIndex);
 
@@ -89,6 +88,7 @@ namespace KhaozEngine.Tests.Gpu
         static IGpuTexture Target(IGpuDevice gd) => gd.Factory.CreateTexture(GpuTextureDescription.Texture2D(W, H,
             GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
 
+        // Record-only reading for the requested frame. Asserted windows use AllocationMeasurement.
         static long Allocated(Action frames)
         {
             long before = GC.GetAllocatedBytesForCurrentThread();

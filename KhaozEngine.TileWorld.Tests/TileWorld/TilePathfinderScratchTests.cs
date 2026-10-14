@@ -7,9 +7,8 @@ namespace KhaozEngine.Tests.TileWorld;
 
 /// <summary>Pins the reusable-scratch entry point of <see cref="TilePathfinder"/> against the allocating one:
 /// same walk, same reached flag, same end, and the window arrays stop being allocated once a scratch is reused.
-/// <para>No <c>DisableParallelization</c> collection: the allocation assertion reads
-/// <c>GC.GetAllocatedBytesForCurrentThread</c>, which is thread local, so a class running in parallel on
-/// another thread cannot move the number this test measures.</para></summary>
+/// <para>Joins <c>AllocSensitive</c> because its allocation windows hold a process-wide no-GC region.</para></summary>
+[Collection("AllocSensitive")]
 public class TilePathfinderScratchTests
 {
     static readonly TileWorldCatalogs Cat = TileWorldCatalogs.Greybox();
@@ -78,13 +77,10 @@ public class TilePathfinderScratchTests
         Run(map, q, scratch);
 
         const int Calls = 16;
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < Calls; i++) Run(map, q, null);
-        long fresh = GC.GetAllocatedBytesForCurrentThread() - before;
-
-        before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < Calls; i++) Run(map, q, scratch);
-        long pooled = GC.GetAllocatedBytesForCurrentThread() - before;
+        long fresh = AllocationMeasurement.Measure($"{Calls} fresh-array paths",
+            () => { for (int i = 0; i < Calls; i++) Run(map, q, null); });
+        long pooled = AllocationMeasurement.Measure($"{Calls} scratch paths",
+            () => { for (int i = 0; i < Calls; i++) Run(map, q, scratch); });
 
         // The window arrays are about 83 KB a call at radius 64, so the fresh leg is over a megabyte and the
         // scratch leg is the result list and nothing else. A tenth is a loose bound on a gap of about 100x.

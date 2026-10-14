@@ -173,7 +173,7 @@ namespace KhaozEngine.Tests.Gpu
         /// ZERO STEADY-STATE ALLOCATION, asserted rather than reasoned about, because everything that keeps it
         /// zero is easy to break by accident: the scope is a readonly struct, the slot factory is a cached static
         /// lambda, the owner names are literals, and the lock is uncontended. Any per-call allocation at all would
-        /// be tens of bytes times ten thousand, so a real regression still fails both passes of the retry below.
+        /// be tens of bytes times ten thousand.
         /// </summary>
         [Fact]
         public void Opening_and_closing_allocates_nothing_in_the_steady_state()
@@ -184,8 +184,6 @@ namespace KhaozEngine.Tests.Gpu
             for (int i = 0; i < 10_000; i++)
                 using (GpuRecording.Open(device, cl, "the window's frame list")) { }
 
-            // Retries once before failing (see AllocAssert.NoPerCallAllocation) to ride out an unrelated gen-0
-            // collision from the rest of the process, per issue #284.
             AllocAssert.NoPerCallAllocation("10000 open+dispose pairs", () =>
             {
                 for (int i = 0; i < 10_000; i++)

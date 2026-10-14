@@ -43,13 +43,13 @@ namespace KhaozEngine.Tests.Gpu
 
                 Frames(WarmFrames);
                 slotsRead = 0;
-                long first = Frames(MeasuredFrames);
+                long allocated;
+                using (AllocationRegion.Start($"{MeasuredFrames} steady display chain frames"))
+                    allocated = Frames(MeasuredFrames);
                 Assert.Equal(0b11, slotsRead);   // both history targets were the source inside the measured window
-                long retry = first == 0 ? 0 : Frames(MeasuredFrames);
 
-                output.WriteLine($"{MeasuredFrames} steady display chain frames: {first} bytes, retry {retry}");
-                Assert.True(retry == 0,
-                    $"{MeasuredFrames} steady display chain frames allocated {first} bytes and {retry} on the retry");
+                output.WriteLine($"{MeasuredFrames} steady display chain frames: {allocated} bytes");
+                Assert.True(allocated == 0, $"{MeasuredFrames} steady display chain frames allocated {allocated} bytes");
 
                 long Frames(int count)
                 {

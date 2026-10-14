@@ -21,11 +21,11 @@ namespace KhaozEngine.Tests.ItemInstances.Generation;
 /// and <see cref="ScriptedRandomSource"/> is what puts a draw on a chosen entry.
 /// </para>
 /// <para>
-/// Every registry and every generator a fact builds is its OWN, so nothing here writes process-global state
-/// and no <c>DisableParallelization</c> collection is needed. The allocation fact reads
-/// <c>GC.GetAllocatedBytesForCurrentThread()</c>, which is per thread.
+/// Every registry and every generator a fact builds is its OWN, so nothing here writes process-global state.
+/// The class joins <c>AllocSensitive</c> because the allocation fact holds a process-wide no-GC region.
 /// </para>
 /// </summary>
+[Collection("AllocSensitive")]
 public class ItemGeneratorTests
 {
     /// <summary>The greatsword's prefix pool: sharp at three tiers, heavy and strong at one each.</summary>
@@ -303,17 +303,22 @@ public class ItemGeneratorTests
         }
         _ = PayloadArrayAllocation(1);
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        GenerationResult result = generator.Generate(context);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-        long payloadArray = PayloadArrayAllocation(result.Payload.Length);
+        GenerationResult result;
+        long allocated, payloadArray, repeated;
+        using (AllocationRegion.Start("two warmed generations and their payload reference"))
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            result = generator.Generate(context);
+            allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            payloadArray = PayloadArrayAllocation(result.Payload.Length);
+            long second = GC.GetAllocatedBytesForCurrentThread();
+            _ = generator.Generate(context);
+            repeated = GC.GetAllocatedBytesForCurrentThread() - second;
+        }
 
         Assert.True(result.Payload.Length > 0);
         Assert.Equal(payloadArray, allocated);
-
-        long second = GC.GetAllocatedBytesForCurrentThread();
-        _ = generator.Generate(context);
-        Assert.Equal(allocated, GC.GetAllocatedBytesForCurrentThread() - second);
+        Assert.Equal(allocated, repeated);
     }
 
     [Fact]

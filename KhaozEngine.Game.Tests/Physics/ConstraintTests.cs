@@ -796,11 +796,11 @@ public class ConstraintMotorAllocTests
             world.Step(Dt);
         }
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 1000; i++)
-            world.SetConstraintTarget(winch, 2.0f + 0.5f * (i % 2));
-        long after = GC.GetAllocatedBytesForCurrentThread();
-
-        Assert.Equal(0, after - before); // per-frame target updates allocate nothing at steady state
+        // Per-frame target updates allocate nothing at steady state.
+        AllocAssert.NoPerCallAllocation("1000 SetConstraintTarget calls", () =>
+        {
+            for (int i = 0; i < 1000; i++)
+                world.SetConstraintTarget(winch, 2.0f + 0.5f * (i % 2));
+        });
     }
 }

@@ -702,8 +702,7 @@ public class TileDrawPriorityFadeTests
 /// <summary>
 /// The allocation half, serialized in the AllocSensitive collection so byte counting is not disturbed by parallel
 /// test threads, and split from <see cref="TileDrawPriorityTests"/> so the behavioural tests there keep the
-/// assembly's parallelism. Same shape as <c>TileRemoteReadAllocationTests</c>, which carries the long note on why
-/// the smallest of several passes is the honest reading.
+/// assembly's parallelism. Same shape as <c>TileRemoteReadAllocationTests</c>.
 /// </summary>
 [Collection("AllocSensitive")]
 public class TileDrawPriorityAllocationTests
@@ -730,19 +729,9 @@ public class TileDrawPriorityAllocationTests
         for (int i = 0; i < 200; i++) priority.Rebuild(loop.Client);
         Assert.Equal(2, priority.Count);
 
-        // THE BEST OF SEVERAL PASSES, for the reason the remote reads' own allocation test spells out: the thread
-        // counter is only accurate to one allocation context, so a background collection retiring a context inside
-        // the window charges this thread for bytes it never allocated. A rebuild that genuinely allocated would do
-        // so on every pass and cannot hide behind the minimum.
         const int iterations = 5000;
-        const int passes = 5;
-        long allocated = long.MaxValue;
-        for (int pass = 0; pass < passes; pass++)
-        {
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            for (int i = 0; i < iterations; i++) priority.Rebuild(loop.Client);
-            allocated = Math.Min(allocated, GC.GetAllocatedBytesForCurrentThread() - before);
-        }
+        long allocated = AllocationMeasurement.Measure($"{iterations} draw priority rebuilds",
+            () => { for (int i = 0; i < iterations; i++) priority.Rebuild(loop.Client); });
 
         Assert.Equal(2, priority.Count);            // sanity: it really did rebuild a two tile answer every time
         Assert.True(allocated < 4096,

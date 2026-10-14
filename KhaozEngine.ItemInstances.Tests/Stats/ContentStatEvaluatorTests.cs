@@ -13,12 +13,14 @@ namespace KhaozEngine.Tests.ItemInstances.Stats;
 /// for the fold and six for the scope and the conditions, then five more this file adds where the plan's
 /// prose names a property with no fact against it.
 /// <para>
-/// Every fact builds its OWN snapshot and its OWN evaluator, so nothing here writes process-global state
-/// and no <c>DisableParallelization</c> collection is needed. Every expected number is a literal worked
+/// Every fact builds its OWN snapshot and its OWN evaluator, so nothing here writes process-global state.
+/// The class joins <c>AllocSensitive</c> because the allocation fact holds a process-wide no-GC region.
+/// Every expected number is a literal worked
 /// out by hand from contracts 13.2, never recomputed by a second copy of the formula: an oracle that
 /// shares the implementation's arithmetic pins nothing.
 /// </para>
 /// </summary>
+[Collection("AllocSensitive")]
 public sealed class ContentStatEvaluatorTests
 {
     /// <summary>The one stat nearly every fact folds, id 1.</summary>
@@ -356,16 +358,16 @@ public sealed class ContentStatEvaluatorTests
             evaluator.CopyValuesTo(statIds, destination, context);
         }
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int index = 0; index < 20_000; index++)
+        long allocated = AllocationMeasurement.Measure("20000 warmed recomputes and reads", () =>
         {
-            evaluator.Recompute(key);
-            _ = evaluator.Value(Hottest, context);
-            _ = evaluator.Value(Hottest, context);
-            evaluator.CopyValuesTo(statIds, destination, context);
-        }
-
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            for (int index = 0; index < 20_000; index++)
+            {
+                evaluator.Recompute(key);
+                _ = evaluator.Value(Hottest, context);
+                _ = evaluator.Value(Hottest, context);
+                evaluator.CopyValuesTo(statIds, destination, context);
+            }
+        });
         Assert.Equal(0L, allocated);
         Assert.Equal(173, destination[0]);
         Assert.Equal(57, destination[1]);

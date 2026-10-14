@@ -184,9 +184,14 @@ public sealed class NameplateTemplateLayoutTests
         NameplateTemplateLayout.Measure(Font, HeaderTemplate, content);
         GC.GetAllocatedBytesForCurrentThread();
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        Vector2 size = NameplateTemplateLayout.Measure(Font, HeaderTemplate, content);
-        long after = GC.GetAllocatedBytesForCurrentThread();
+        long before, after;
+        Vector2 size;
+        using (AllocationRegion.Start("a warm template resolve"))
+        {
+            before = GC.GetAllocatedBytesForCurrentThread();
+            size = NameplateTemplateLayout.Measure(Font, HeaderTemplate, content);
+            after = GC.GetAllocatedBytesForCurrentThread();
+        }
 
         Assert.Equal(new Vector2(114f, 25f), size);
         Assert.Equal(before, after);

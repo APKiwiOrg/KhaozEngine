@@ -439,10 +439,11 @@ public class PhysicsRebaseCostTests
         world.Rebase(Vector3.Zero);
 
         // The structural half, taken on the warmed world before any clock is involved.
-        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
-        world.Rebase(shift);
-        world.Rebase(Vector3.Zero);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        long allocated = AllocationMeasurement.Measure("two warmed rebases", () =>
+        {
+            world.Rebase(shift);
+            world.Rebase(Vector3.Zero);
+        });
         Assert.True(allocated == 0L,
             $"two rebases of this world allocated {allocated} managed bytes. A rebase is a pose write plus an " +
             "UpdateBounds per static and per body, straight over Bepu's unmanaged buffers, so it allocates " +

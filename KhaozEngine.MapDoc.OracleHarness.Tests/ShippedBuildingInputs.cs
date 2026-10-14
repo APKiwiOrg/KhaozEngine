@@ -184,8 +184,10 @@ internal sealed class ShippedBuildingInputs
                 Shape(bounds, "min", "max"); Vector(bounds.GetProperty("min")); Vector(bounds.GetProperty("max"));
             }
         }
-        foreach (var material in Catalogs.Materials.Values)
-            if (material.Texture is { Length: > 0 } path) _source.Bytes(path);
+        // The game resolves a material texture against the catalog file that declared it. Resolve the same way, under
+        // the catalog containment and attestation rule, and never read a raw unresolved texture path.
+        foreach (var (id, material) in Catalogs.Materials)
+            if (material.Texture is { Length: > 0 } texture) _source.Bytes(_source.CatalogRelative(Catalogs.MaterialSource(id), texture));
         ValidateRooms(buildings);
         ValidateAnnotations(byLeaf, buildings);
     }
@@ -382,6 +384,16 @@ internal sealed class ShippedBuildingInputs
             string full = Path.GetFullPath(Path.Combine(_root, directory, path));
             Require(full.StartsWith(_root + Path.DirectorySeparatorChar, StringComparison.Ordinal), "dependency escapes extraction");
             return Path.GetRelativePath(_root, full).Replace('\\', '/');
+        }
+        // A catalog-relative dependency resolves from the owning catalog file's directory, which must lie inside the
+        // extraction. Parent segments are valid only within that resolution, and the result must stay inside it.
+        internal string CatalogRelative(string? catalogFile, string path)
+        {
+            Require(catalogFile is not null, "catalog-relative dependency has no owning catalog file");
+            string directory = Path.GetRelativePath(_root, Path.GetDirectoryName(Path.GetFullPath(catalogFile!))!).Replace('\\', '/');
+            Require(!Path.IsPathRooted(directory) && directory != ".." && !directory.StartsWith("../", StringComparison.Ordinal),
+                "owning catalog escapes extraction");
+            return RelativeTo(directory == "." ? "" : directory, path);
         }
         internal string FullPath(string path)
         {

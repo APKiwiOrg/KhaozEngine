@@ -104,6 +104,9 @@ internal static class ShippedBuildingGeometry
         if (a.Kind == "ConvexHull") return Complete(Match(a.Points, b.Points, (x, y) => Near(x, y, VertexTolerance)), a.Points.Length);
         if (a.Kind == "Box") return Complete(Match(a.Faces, b.Faces, (x, y) => FaceNear(a, x, b, y)), a.Faces.Length);
         if (a.Kind != "TriangleMesh") return false;
+        // Conservative by design. The vertex bijection is chosen from coordinates alone before topology is checked. When
+        // two vertex occurrences share a position, it can pick the wrong correspondence for an equivalent renumbered
+        // mesh and refuse it. That is a false refusal, never a false pass: connectivity and winding are still enforced.
         int[] vertexMap = Match(a.Points, b.Points, (x, y) => Near(x, y, VertexTolerance));
         if (!Complete(vertexMap, a.Points.Length)) return false;
         var sourceToActual = new int[a.Points.Length];

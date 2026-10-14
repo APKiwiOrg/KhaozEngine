@@ -305,7 +305,11 @@ All provenance file names use `/`, are relative to the extraction root and conta
 parent segments, absolute roots, backslashes, colons or control characters. Prefab, mesh, native resource,
 selection and native document paths use that same root. Catalog paths in `world.json` resolve relative to
 its directory. A catalog may use `../catalog.json` only when normalization stays within the extraction and
-the normalized file is attested. Every component of a dependency path must be free of symlinks, including
+the normalized file is attested. Ground material textures resolve the same way against the directory of the
+catalog file that declared them, as the game resolves them. A texture such as `../textures/x.png` is valid only
+inside that resolution, and only when the owning catalog and the normalized result both stay within the
+extraction and the result is attested. A raw unresolved texture path is never read. A rooted texture or one
+whose resolution escapes the extraction is refused. Every component of a dependency path must be free of symlinks, including
 dangling links. There is no fallback search. The reader snapshots and hashes every attested file, checks
 manifest dependencies before source loaders, and checks the extraction again after those loaders finish.
 Native closure reloads use captured bytes rather than rereading files.
@@ -322,7 +326,9 @@ Derived vertices compare at 0.00001 m and normal components at 0.000001. Geometr
 bijectively within those component tolerances, without depending on exact float sorting at rotations.
 Collider and selection occurrences retain primitive type. Box primitives retain their oriented quad faces
 and corners together, including within compounds. Meshes retain the shared vertex mapping, triangle
-connectivity and cyclic winding. Cross-shape equivalence is refused. Every exceeded component is
+connectivity and cyclic winding. The mesh vertex mapping is chosen from coordinates before topology is
+checked, so two vertex occurrences at one position can make an equivalent renumbered mesh refuse. That is a
+conservative false refusal, never a false pass. Cross-shape equivalence is refused. Every exceeded component is
 recorded with its source correspondence and exact tolerance in the private report. Integers, ordered tags,
 identity and metadata compare exactly. Native revised-T4 envelopes compare between heads and after reload.
 The private generator measures original mesh-local visual bounds from the frozen mesh data and records

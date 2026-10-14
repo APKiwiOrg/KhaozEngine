@@ -46,6 +46,8 @@ public sealed class ShippedBuildingInputGuardTests
     [InlineData("missing-doorway")]
     [InlineData("missing-light-owner")]
     [InlineData("duplicate-json-member")]
+    [InlineData("escaping-texture")]
+    [InlineData("rooted-texture")]
     public void PrivateBuildingClosure_RefusesMissingOrUnverifiedInput(string variant)
     {
         using var input = ShippedBuildingGuardFixtures.Create(variant);
@@ -65,6 +67,7 @@ public sealed class ShippedBuildingInputGuardTests
     [InlineData("shared-concealment")]
     [InlineData("curved-selection")]
     [InlineData("quarter-turn")]
+    [InlineData("nested-texture")]
     public void CompleteInventedBuilding_ClosesInputsAndComparesBothHeads(string variant)
     {
         using var fixture = ShippedBuildingGuardFixtures.Create(variant);
@@ -184,6 +187,28 @@ public sealed class ShippedBuildingInputGuardTests
     }
 
     [Fact]
+    public void MeshGeometry_DuplicatePositionRenumberingRefusesConservatively()
+    {
+        // Vertices 0 and 3 share a position and belong to different triangles. Swapping their indices yields the same
+        // mesh, but the coordinate-first vertex matching keeps the identity correspondence and refuses it. This
+        // documents a false refusal, not a false pass. Topology and winding enforcement stay unchanged.
+        var vertices = new[] { Vector3.Zero, Vector3.UnitX, Vector3.UnitY, Vector3.Zero, -Vector3.UnitX, -Vector3.UnitY };
+        var original = new TriangleMeshShape(vertices, new[] { 0, 1, 2, 3, 4, 5 });
+        var renumbered = new TriangleMeshShape(vertices, new[] { 3, 1, 2, 0, 4, 5 });
+        List<string> Failures(TriangleMeshShape candidate)
+        {
+            var failures = new List<string>();
+            ShippedBuildingGeometry.Compare("mesh-guard",
+                ShippedBuildingGeometry.Capture(original, p => p, n => n).ToArray(),
+                ShippedBuildingGeometry.Capture(candidate, p => p, n => n).ToArray(), "invented",
+                (category, ok, _) => { if (!ok) failures.Add(category); }, (_, _, _, _, _) => { });
+            return failures;
+        }
+        Assert.Empty(Failures(original));
+        Assert.Equal(new[] { "mesh-guard-primitive", "mesh-guard-unexpected" }, Failures(renumbered));
+    }
+
+    [Fact]
     public void SourcePickingDelta_RecordsBothQueriesAndMeasuredNonzeroDifference()
     {
         using var fixture = ShippedBuildingGuardFixtures.Create("picking-delta");
@@ -267,7 +292,9 @@ internal sealed class ShippedBuildingGuardFixtures : IDisposable
         Directory.CreateDirectory(Path.Combine(root, "definitions"));
         Directory.CreateDirectory(Path.Combine(root, "assets"));
         var world = new TileWorldDocument { Id = "invented-building" };
-        world.CatalogPaths.Add("../catalog.json");
+        // F-R4. A nested catalog's texture climbs back to a sibling directory, as catalog-relative paths may.
+        string catalogFile = variant == "nested-texture" ? "catalogs/catalog.json" : "catalog.json";
+        world.CatalogPaths.Add("../" + catalogFile);
         world.GetOrCreateRegion(new(0, 0));
         for (int z = 0; z < 4; z++)
             for (int x = 0; x < 4; x++) world.SetUnderlay(x, z, 0, 1);
@@ -280,8 +307,23 @@ internal sealed class ShippedBuildingGuardFixtures : IDisposable
         var objects = names.Select((name, index) => world.AddObject(name, index, 0, 0, variant == "quarter-turn" && name == "wall" ? 1 : 0, new[] { "first", "second" })).ToArray();
         var otherObjects = variant == "shared-concealment" ? names.Select((name, index) => world.AddObject(name, index, 2, 0, 0, new[] { "first", "second" })).ToArray() : [];
         TileWorldFile.Save(world, Path.Combine(root, "world"));
-        File.WriteAllText(Path.Combine(root, "catalog.json"), """
-            {"materials":[{"id":1,"name":"Stone","color":"#888888"}],"archetypes":[
+        string? texture = variant switch
+        {
+            "nested-texture" or "escaping-texture" => "../textures/stone.png",
+            "rooted-texture" => "/textures/stone.png",
+            _ => null,
+        };
+        if (texture is not null)
+        {
+            // Invented bytes. The escaping copy sits outside the extraction, so only containment can refuse it.
+            string textures = Path.Combine(variant == "escaping-texture" ? Path.GetDirectoryName(root)! : root, "textures");
+            Directory.CreateDirectory(textures);
+            File.WriteAllText(Path.Combine(textures, "stone.png"), "invented-public-texture");
+        }
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.Combine(root, catalogFile))!);
+        string material = texture is null ? "" : ",\"texture\":\"" + texture + "\"";
+        File.WriteAllText(Path.Combine(root, catalogFile), "{\"materials\":[{\"id\":1,\"name\":\"Stone\",\"color\":\"#888888\"" + material + "}]," + """
+            "archetypes":[
             {"id":"wall","name":"Wall","meshRef":"assets/wall.mesh","collisionKind":"Wall","collisionHeight":3},
             {"id":"roof","name":"Roof","meshRef":"assets/roof.mesh","isRoof":true},
             {"id":"lamp","name":"Lamp","meshRef":"assets/lamp.mesh"},
@@ -293,7 +335,7 @@ internal sealed class ShippedBuildingGuardFixtures : IDisposable
             File.WriteAllText(catalogPath, File.ReadAllText(catalogPath).Replace("\"id\":\"lamp\",\"name\":\"Lamp\",\"meshRef\":\"assets/lamp.mesh\"",
                 "\"id\":\"lamp\",\"name\":\"Lamp\",\"meshRef\":\"assets/lamp.mesh\",\"collisionKind\":\"Solid\",\"collisionHeight\":0.4", StringComparison.Ordinal));
         }
-        var catalogs = TileWorldCatalogs.Load(new[] { Path.Combine(root, "catalog.json") });
+        var catalogs = TileWorldCatalogs.Load(new[] { Path.Combine(root, catalogFile) });
         var sourcePrefab = new TilePrefab
         {
             Name = "Invented cabin",

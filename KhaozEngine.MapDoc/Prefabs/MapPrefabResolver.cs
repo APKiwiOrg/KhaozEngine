@@ -16,12 +16,18 @@ namespace KhaozEngine.MapDoc.Prefabs;
 /// <summary>Expands persisted identities through one captured effective resource snapshot.</summary>
 public static class MapPrefabResolver
 {
+    [ThreadStatic] static long t_expansions;
+
+    /// <summary>Complete expansions started on the calling thread. Bounds the expansion work of one synchronous operation.</summary>
+    internal static long ThreadExpansions => t_expansions;
+
     public static MapEffectiveResources Expand(MapDocument document, MapAssetClosure assets, MapPrefabExpansionLimits? limits = null) =>
         Expand(document, assets, limits ?? new(), null);
 
     internal static MapEffectiveResources Expand(MapDocument document, MapAssetClosure assets, MapPrefabExpansionLimits limits,
         MapPrefabExpansionObserver? observer, IMapSurfaceSource? nativeSource = null)
     {
+        t_expansions++;
         _ = MapPrefabPreflight.Count(document, assets, limits);
         observer?.EnterStage("Copies");
         MapPrefabIdentity.RequireOwnership(document, assets);

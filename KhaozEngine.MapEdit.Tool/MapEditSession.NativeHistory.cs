@@ -79,6 +79,8 @@ public sealed partial class MapEditSession
         {
             T result = fn(candidate, _registry);
             var staged = _pendingNative;
+            // fn can still edit the candidate it shares with a publication it staged, so that publication is checked again.
+            bool revalidate = staged is not null;
             if (SemanticHash(before) == SemanticHash(staged?.Candidate ?? candidate)) return result;
             if (staged is null)
             {
@@ -87,16 +89,20 @@ public sealed partial class MapEditSession
                 var command = new NativeSessionSnapshotCommand("Native document edit", before, candidate, _nativeAssets, _nativeAssets, effects);
                 staged = _nativeHistory.StageExecute(before, command);
             }
-            PublishNative(staged, worldChanged: worldChanged);
+            PublishNative(staged, worldChanged: worldChanged, revalidate: revalidate);
             return result;
         }
         finally { _pendingNative = null; _nativeMutation = false; }
     }
-    MapNativeEditEffects PublishNative(NativeStagedPublication staged, Action? checkpoint = null, bool worldChanged = true)
+    // Staging validated the candidate against its closure. Only a candidate that may have changed since is validated again.
+    MapNativeEditEffects PublishNative(NativeStagedPublication staged, Action? checkpoint = null, bool worldChanged = true, bool revalidate = false)
     {
-        MapBoundDocumentValidation.Validate(staged.Candidate, staged.Assets!, _registry);
-        if (staged.Candidate.Prefabs is not null || staged.Candidate.NativeResourceTransforms is not null || staged.Candidate.BuildingIntent is not null)
-            MapBoundDocumentValidation.ValidateEffectiveWater(MapPrefabResolver.Expand(staged.Candidate, staged.Assets!), staged.Assets!);
+        if (revalidate)
+        {
+            MapBoundDocumentValidation.Validate(staged.Candidate, staged.Assets!, _registry);
+            if (staged.Candidate.Prefabs is not null || staged.Candidate.NativeResourceTransforms is not null || staged.Candidate.BuildingIntent is not null)
+                MapBoundDocumentValidation.ValidateEffectiveWater(MapPrefabResolver.Expand(staged.Candidate, staged.Assets!), staged.Assets!);
+        }
         BeforeNativePublication?.Invoke();
         checkpoint?.Invoke();
         NativeDocumentTransaction.Publish(_doc!, staged);

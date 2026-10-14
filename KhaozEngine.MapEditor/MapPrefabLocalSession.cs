@@ -24,6 +24,10 @@ public sealed class MapPrefabLocalSession
     readonly EditorHistory _history = new();
     MapDocument _document;
     MapAssetClosure _assets;
+    // The fixed context without the source, checked and expanded once per session.
+    MapDocument? _authoring;
+    // The canonical export of the current document, until the next publication.
+    byte[]? _exported;
     bool _cancelled;
     /// <summary>A detached snapshot of the local command document, including its stable typed binding inventory.</summary>
     public MapDocument Document => NativeDocumentSnapshot.Clone(_document, MapDocRegistry.CreateDefault());
@@ -75,6 +79,7 @@ public sealed class MapPrefabLocalSession
     {
         NativeDocumentTransaction.Publish(_document, staged);
         _assets = staged.Assets!;
+        _exported = null;
         staged.Accept();
         return staged.Effects;
     }
@@ -91,6 +96,7 @@ public sealed class MapPrefabLocalSession
     public MapPrefabAsset Export()
     {
         RequireOpen();
+        if (_exported is { } bytes) return MapPrefabFile.Read(bytes, _assetId);
         var instance = _document.Prefabs!.Instances.Single(i => i.Id == _localInstance);
         var schema = _assets.GetPrefab(instance.ResourceId);
         var selected = _document.Prefabs.Transfers.Where(t => t.InstanceId == _localInstance && !t.Retired && !t.Binding.Removed)
@@ -114,7 +120,8 @@ public sealed class MapPrefabLocalSession
                 { SourceDigest = MapDoc.Identity.MapPrefabIdentity.ChildDigest(children.Single(x => x.Key == new MapPrefabChildKey(c.Child.Kind, c.Child.Id))) }).ToArray()
             }).ToArray()
         };
-        return MapPrefabFile.Read(MapPrefabFile.Write(asset), _assetId);
+        _exported = MapPrefabFile.Write(asset);
+        return MapPrefabFile.Read(_exported, _assetId);
     }
     public void Cancel() => _cancelled = true;
     void RequireOpen()
@@ -137,7 +144,8 @@ public sealed class MapPrefabLocalSession
         roots[0] = root with { Sha256 = Convert.ToHexStringLower(SHA256.HashData(manifestBytes)) };
         var source = new CapturedSource(_sourceAssets, roots[0], manifestBytes, reference, prefabBytes);
         MapAssetClosure assets = MapAssetClosure.Load(roots, source);
-        var document = MapPrefabAuthoringContext.Create(_context, _sourceAssets, _excluded);
+        _authoring ??= MapPrefabAuthoringContext.Create(_context, _sourceAssets, _excluded);
+        var document = NativeDocumentSnapshot.Clone(_authoring, MapDocRegistry.CreateDefault());
         document.NativeAssets = roots.ToList();
         // Context supplies authored world references and the explicit parent. Local payloads get their own typed IDs.
         var placed = MapPrefabEdits.Prepare(document, assets,

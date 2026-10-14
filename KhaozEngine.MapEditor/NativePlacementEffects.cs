@@ -25,12 +25,20 @@ public interface INativePlacementBounds
         IReadOnlyList<string> placementIds);
 }
 
+/// <summary>Sizes placements already resolved from the complete expansion the caller holds, as
+/// <see cref="INativePlacementBounds.Bounds"/> sizes the same placements after expanding the same document.</summary>
+internal interface INativeResolvedPlacementBounds
+{
+    NativePlacementExtent Bounds(MapAssetClosure assets, IReadOnlyList<MapResolvedPlacement> placements);
+}
+
 internal static class NativePlacementEffects
 {
     const MapNativeInvalidation Spatial = MapNativeInvalidation.Physics | MapNativeInvalidation.Nav | MapNativeInvalidation.Residency;
     const MapNativeInvalidation FullReset = MapNativeInvalidation.Placements | Spatial | MapNativeInvalidation.Unbounded;
     internal static MapNativeEditEffects Describe(MapDocument before, MapDocument after, MapAssetClosure? assets,
-        MapDocRegistry registry, INativePlacementBounds? bounds, MapAssetClosure? beforeAssets = null)
+        MapDocRegistry registry, INativePlacementBounds? bounds, MapAssetClosure? beforeAssets = null,
+        Lazy<MapEffectiveResources>? expandedBefore = null, Lazy<MapEffectiveResources>? expandedAfter = null)
     {
         var old = ById(before); var current = ById(after);
         var changed = old.Keys.Union(current.Keys).Where(id => !old.TryGetValue(id, out var a) || !current.TryGetValue(id, out var b) || !SameGeometry(a, b))
@@ -48,8 +56,8 @@ internal static class NativePlacementEffects
         {
             try
             {
-                aResources = MapPrefabResolver.Expand(before, beforeAssets!);
-                bResources = MapPrefabResolver.Expand(after, assets!);
+                aResources = expandedBefore?.Value ?? MapPrefabResolver.Expand(before, beforeAssets!);
+                bResources = expandedAfter?.Value ?? MapPrefabResolver.Expand(after, assets!);
                 var a = aResources.Placements.ToDictionary(p => p.PlacementId);
                 var b = bResources.Placements.ToDictionary(p => p.PlacementId);
                 foreach (string id in a.Keys.Union(b.Keys))
@@ -108,7 +116,12 @@ internal static class NativePlacementEffects
         }).ToList();
         projected.NativeResourceTransforms = selected.Select(p => new MapStandaloneResourceTransform(MapPrefabChildKind.Placement, p.PlacementId,
             resources.Transforms[MapEffectiveContext.Key(MapPrefabChildKind.Placement, p.PlacementId)], new string('0', 64))).ToArray();
-        var extent = bounds.Bounds(authored ? document : projected, assets, registry, selected.Select(p => p.PlacementId).ToArray());
+        // Resolver 2 sizes authored placements of a document with prefabs or resource poses from its complete expansion,
+        // which is resources. Reuse it rather than expanding the document again.
+        var extent = authored && bounds is INativeResolvedPlacementBounds resolved && document.ResolverIdentity?.ResolverVersion == 2 &&
+            (document.Prefabs is not null || document.NativeResourceTransforms is not null)
+            ? resolved.Bounds(assets, selected)
+            : bounds.Bounds(authored ? document : projected, assets, registry, selected.Select(p => p.PlacementId).ToArray());
         if ((document.Prefabs is not null || document.NativeResourceTransforms is not null) && (extent.SpatialBounds ?? extent.Bounds) is { } spatial)
         {
             double radius = Math.Max(spatial.MaxX - spatial.MinX, Math.Max(spatial.MaxY - spatial.MinY, spatial.MaxZ - spatial.MinZ));
@@ -130,7 +143,8 @@ internal static class NativePlacementEffects
 
     internal static MapNativeEditEffects Combine(MapNativeEditEffects named, MapNativeEditEffects placements,
         MapDocument before, MapDocument after, MapAssetClosure? beforeAssets, MapAssetClosure? afterAssets,
-        MapNativeWriteSet writes, MapNativePublicationMode mode)
+        MapNativeWriteSet writes, MapNativePublicationMode mode,
+        Lazy<MapEffectiveResources>? expandedBefore = null, Lazy<MapEffectiveResources>? expandedAfter = null)
     {
         var result = named with
         {
@@ -151,7 +165,8 @@ internal static class NativePlacementEffects
             return result with { Invalidates = result.Invalidates | resourceReset | MapNativeInvalidation.Unbounded };
         try
         {
-            var a = MapPrefabResolver.Expand(before, beforeAssets); var b = MapPrefabResolver.Expand(after, afterAssets);
+            var a = expandedBefore?.Value ?? MapPrefabResolver.Expand(before, beforeAssets);
+            var b = expandedAfter?.Value ?? MapPrefabResolver.Expand(after, afterAssets);
             var oldExtent = ResourceBounds(a, b, writes, named);
             var newExtent = ResourceBounds(b, a, writes, named);
             result = result with

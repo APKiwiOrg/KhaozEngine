@@ -19,7 +19,7 @@ namespace KhaozEngine.MapEdit;
 /// report and conservative spatial extent separate. A placement whose asset declares neither contributes nothing and is never
 /// resolved. A placement whose asset shapes, support or geometry refuse with <see cref="MapDocumentException"/> marks the
 /// extent unknown, so an edit is never refused for its bounds. Stateless.</summary>
-public sealed class NativePlacementBoundsProvider : INativePlacementBounds
+public sealed class NativePlacementBoundsProvider : INativePlacementBounds, INativeResolvedPlacementBounds
 {
     /// <summary>The shared instance.</summary>
     public static NativePlacementBoundsProvider Instance { get; } = new();
@@ -63,9 +63,32 @@ public sealed class NativePlacementBoundsProvider : INativePlacementBounds
             if (asset.Refused) unknown = true;
             else if (asset.Shapes is not null) shaped.Add(id);
         }
+        return Measure(Resolve(document, assets, registry, shaped, ref unknown), shapes, unknown);
+    }
 
+    NativePlacementExtent INativeResolvedPlacementBounds.Bounds(MapAssetClosure assets, IReadOnlyList<MapResolvedPlacement> placements)
+    {
+        ArgumentNullException.ThrowIfNull(assets);
+        ArgumentNullException.ThrowIfNull(placements);
+        bool unknown = false;
+        var shapes = new Dictionary<string, (bool Refused, MapAssetShapes? Shapes)>(StringComparer.Ordinal);
+        var shaped = new List<MapResolvedPlacement>(placements.Count);
+        foreach (MapResolvedPlacement placement in placements)
+        {
+            if (!shapes.TryGetValue(placement.AssetId, out (bool Refused, MapAssetShapes? Shapes) asset))
+                shapes.Add(placement.AssetId, asset = ReadShapes(assets, placement.AssetId));
+            if (asset.Refused) unknown = true;
+            else if (asset.Shapes is not null) shaped.Add(placement);
+        }
+        return Measure(shaped, shapes, unknown);
+    }
+
+    // Unions the tight and spatial bounds of resolved placements. A placement whose geometry refuses marks the extent unknown.
+    static NativePlacementExtent Measure(IReadOnlyList<MapResolvedPlacement> resolved,
+        Dictionary<string, (bool Refused, MapAssetShapes? Shapes)> shapes, bool unknown)
+    {
         MapBox3? union = null, spatialUnion = null;
-        foreach (MapResolvedPlacement placement in Resolve(document, assets, registry, shaped, ref unknown))
+        foreach (MapResolvedPlacement placement in resolved)
         {
             try
             {

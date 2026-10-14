@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Prefabs;
@@ -87,18 +88,21 @@ internal static class NativeDocumentTransaction
         }
         if (localOnly) MapBoundDocumentValidation.ValidateLocal(publication, registry);
         else MapBoundDocumentValidation.Validate(publication, selected!, registry);
-        ValidateSurfaces(publication, preparation.WriteSet, preparation.Mode, selected);
-        if (selected is not null && (publication.Prefabs is not null || publication.NativeResourceTransforms is not null || publication.BuildingIntent is not null))
-        {
-            var effective = MapPrefabResolver.Expand(publication, selected);
-            RequireValid(MapPrismCoverage.Validate(effective.CompleteView(), new()));
-            MapBoundDocumentValidation.ValidateEffectiveWater(effective, selected);
-        }
         var beforeAssets = command is INativeAssetClosureCommand pair ? pair.Closure(!undo) : assets;
-        var effects = NativePlacementEffects.Describe(document, publication, selected, registry, placementBounds, beforeAssets);
+        // Validation and effects read one complete expansion of each document, built on first use.
+        var expanded = selected is null ? null : Expansion(publication, selected);
+        var expandedBefore = (beforeAssets ?? selected) is { } closure ? Expansion(document, closure) : null;
+        ValidateSurfaces(publication, preparation.WriteSet, preparation.Mode, selected, expanded);
+        if (expanded is not null && (publication.Prefabs is not null || publication.NativeResourceTransforms is not null || publication.BuildingIntent is not null))
+        {
+            var effective = expanded.Value;
+            RequireValid(MapPrismCoverage.Validate(effective.CompleteView(), new()));
+            MapBoundDocumentValidation.ValidateEffectiveWater(effective, selected!);
+        }
+        var effects = NativePlacementEffects.Describe(document, publication, selected, registry, placementBounds, beforeAssets, expandedBefore, expanded);
         var named = NativePlacementEffects.NameResources(preparation.Effects, document, publication, preparation.WriteSet);
         effects = NativePlacementEffects.Combine(named, effects,
-            document, publication, beforeAssets, selected, preparation.WriteSet, preparation.Mode);
+            document, publication, beforeAssets, selected, preparation.WriteSet, preparation.Mode, expandedBefore, expanded);
         return new(publication, preparation.WriteSet, preparation.Mode, selected, effects, preparation.Accept);
     }
 
@@ -130,13 +134,19 @@ internal static class NativeDocumentTransaction
         return new(writes, new(null, null, [], [], [], [], MapNativeInvalidation.Placements), accept);
     }
 
-    static void ValidateSurfaces(MapDocument publication, MapNativeWriteSet writeSet, MapNativePublicationMode mode, MapAssetClosure? assets)
+    /// <summary>One complete expansion of a document that does not change while it is read. A refusal is kept and
+    /// thrown again, as a second expansion of the same inputs would refuse.</summary>
+    static Lazy<MapEffectiveResources> Expansion(MapDocument document, MapAssetClosure assets) =>
+        new(() => MapPrefabResolver.Expand(document, assets), LazyThreadSafetyMode.None);
+
+    static void ValidateSurfaces(MapDocument publication, MapNativeWriteSet writeSet, MapNativePublicationMode mode, MapAssetClosure? assets,
+        Lazy<MapEffectiveResources>? expanded)
     {
         MapSurfaceSet surfaces = publication.Surfaces;
         foreach (MapPatchKey key in mode == MapNativePublicationMode.CompleteSnapshot ? (IEnumerable<MapPatchKey>)surfaces.Patches.Keys : writeSet.Patches)
             if (surfaces.Patches.TryGetValue(key, out MapSurfacePatch? patch)) RequireValid(patch.ValidateLocal());
-        MapScopedSurfaces view = assets is not null && (publication.Prefabs is not null || publication.NativeResourceTransforms is not null)
-            ? MapPrefabResolver.Expand(publication, assets).CompleteView() : MapScopedSurfaces.CompleteView(surfaces);
+        MapScopedSurfaces view = expanded is not null && (publication.Prefabs is not null || publication.NativeResourceTransforms is not null)
+            ? expanded.Value.CompleteView() : MapScopedSurfaces.CompleteView(surfaces);
         foreach (MapSurfaceSeam seam in surfaces.AllRecords().OfType<MapSurfaceSeam>())
             RequireValid(MapSeamValidator.Validate(seam, view));
         // An edited owner can invalidate a dependency in an otherwise untouched patch.

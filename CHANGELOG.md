@@ -15,6 +15,11 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   glare column toward a low sun on downward views. Views at and above the horizon, the sky, water reflections and
   the zero-slope eye-level join are unchanged. The CPU fog oracle matches the GPU. The atmosphere UBO grows to
   352 bytes. Closes [#1406](https://github.com/APKiwiOrg/KhaozEngine/issues/1406).
+- The four SQL Server backends (`Accounts.SqlServer`, `Catalog.SqlServer`, `Commerce.SqlServer` and
+  `WorldStore.SqlServer`) now reference `System.Security.Cryptography.Pkcs` 9.0.21 directly. That overrides the
+  vulnerable 9.0.11 that `Microsoft.Data.SqlClient` 6.1.6 pulls in (GHSA-846f-f764-76mx, high, and
+  GHSA-2fmv-rv2c-59x7, moderate), so Release restore passes the NuGet audit again (#1407). The override goes
+  once SqlClient references a patched Pkcs itself.
 
 ## 20.39.0
 

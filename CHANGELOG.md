@@ -7,11 +7,14 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 20.39.1
 
+- The four SQL Server backends (`Accounts.SqlServer`, `Catalog.SqlServer`, `Commerce.SqlServer` and
+  `WorldStore.SqlServer`) now reference `System.Security.Cryptography.Pkcs` 9.0.21 directly. That overrides the
+  vulnerable 9.0.11 that `Microsoft.Data.SqlClient` 6.1.6 pulls in (GHSA-846f-f764-76mx, high, and
+  GHSA-2fmv-rv2c-59x7, moderate), so Release restore passes the NuGet audit again (#1407). The override goes
+  once SqlClient references a patched Pkcs itself.
 - TileWorld animated foliage replaces a cached split only when an archetype it draws changes selection or
   effective style. Style validation still covers the whole selection, and regions that do not draw the changed
   archetype keep their retained batches.
-- The four SqlServer backends reference System.Security.Cryptography.Pkcs 10.0.13 directly, so their packages no
-  longer resolve the 9.0.11 build that GHSA-846f-f764-76mx and GHSA-2fmv-rv2c-59x7 flag through Microsoft.Data.SqlClient.
 
 ## 20.39.0
 

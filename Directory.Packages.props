@@ -80,11 +80,12 @@
     <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.9" />
     <PackageVersion Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.50.3" />
     <PackageVersion Include="Microsoft.Data.SqlClient" Version="6.1.6" />
-    <!-- SqlClient through 7.1.1 still resolves System.Security.Cryptography.Pkcs 9.0.x, which carries the .NET
-         denial of service advisories GHSA-846f-f764-76mx and GHSA-2fmv-rv2c-59x7. Every SqlServer backend
-         references the patched line directly so its package carries the fix to consumers. Drop the direct
-         references once a SqlClient release depends on a patched Pkcs itself. -->
-    <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
+    <!-- The patched Pkcs for GHSA-846f-f764-76mx (NU1903) and GHSA-2fmv-rv2c-59x7 (NU1902). SqlClient
+         6.1.6 and 6.1.7 both pull the vulnerable 9.0.11 on net9.0 and up, and the next SqlClient that
+         moves it is the 7.x major. Each SQL Server backend references it directly, the same override
+         shape as SQLitePCLRaw.lib.e_sqlite3 above. 9.0.21 is the first patched build on the line SqlClient
+         declares. Drop the pin and the four references once SqlClient pulls a patched Pkcs itself. -->
+    <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="9.0.21" />
     <!-- The blob SDK, for the catalog's public-origin pack store (KhaozEngine.Catalog.AzureBlob). Newest
          stable of the 12.x line. NOTE what is NOT here for the shipped package: Azure.Identity. The store
          takes a ready BlobContainerClient, so the host builds the credential and a consumer that already

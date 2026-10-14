@@ -18,12 +18,14 @@
     <None Include="NetWorld/Fixtures/cell-v1-32bit.blob" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Contacts/SupportAllocationRegion.cs" Link="NetWorld/Fixtures/SupportAllocationRegion.cs" />
     <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Fixtures/AnalyticMovementEnvironment.cs" Link="NetWorld/Fixtures/AnalyticMovementEnvironment.cs" />
     <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Fixtures/AnalyticMovementEnvironment.ContactSupport.cs" Link="NetWorld/Fixtures/AnalyticMovementEnvironment.ContactSupport.cs" />
     <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Fixtures/AnalyticCapsuleVolume.cs" Link="NetWorld/Fixtures/AnalyticCapsuleVolume.cs" />
     <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Fixtures/AnalyticBoxComplement.cs" Link="NetWorld/Fixtures/AnalyticBoxComplement.cs" />
     <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Fixtures/EnvironmentAcquisitionFixture.cs" Link="NetWorld/Fixtures/EnvironmentAcquisitionFixture.cs" />
     <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Fixtures/EnvironmentAcquisitionFixture.ContactSupport.cs" Link="NetWorld/Fixtures/EnvironmentAcquisitionFixture.ContactSupport.cs" />
+    <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Fixtures/EnvironmentAcquisitionFixture.Witness.cs" Link="NetWorld/Fixtures/EnvironmentAcquisitionFixture.Witness.cs" />
   </ItemGroup>
   <ItemGroup>
     <!-- ServerAdminEndpoint/AdminHttpServerTests.cs drives POST /ban and /unban over AccountBanStore, the store that

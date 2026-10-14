@@ -57,7 +57,8 @@ internal static class CapsuleFeatureGeometry
     /// <summary>Captures and admits one box or hull leaf. With <paramref name="scratch"/> every array, working
     /// collection and the leaf itself are reused from it, and the admitted leaf is valid until its next reset.</summary>
     internal static CapsuleFeatureStatus CaptureLeaf(Simulation simulation, TypedIndex index, in RigidPose pose,
-        in RigidPose localPose, int leafId, CapsuleFeatureCaptureScratch? scratch, out CapsuleFeaturePolyhedron? leaf)
+        in RigidPose localPose, int leafId, CapsuleFeatureCaptureScratch? scratch, out CapsuleFeaturePolyhedron? leaf,
+        bool topologyOnly = false)
     {
         leaf = null;
         // The operator proves the pose here and maps the vertices below. It is a function of the pose alone.
@@ -132,7 +133,9 @@ internal static class CapsuleFeatureGeometry
         if (transformed != CapsuleFeatureStatus.Complete) return transformed;
         CapsuleFeaturePolyhedron candidate = scratch?.Leaf() ?? new CapsuleFeaturePolyhedron();
         candidate.Reset(index, localPose, pose, leafId, local, world, polygons, transform);
-        CapsuleFeatureStatus validation = candidate.Validate(scratch);
+        CapsuleFeatureStatus validation;
+        using (ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportLocalValidation))
+            validation = candidate.Validate(scratch, topologyOnly);
         if (validation == CapsuleFeatureStatus.Complete) leaf = candidate;
         return validation;
     }
@@ -149,7 +152,7 @@ internal static class CapsuleFeatureGeometry
     }
 
     // Every vertex through the operator already created for the pose.
-    static CapsuleFeatureStatus TransformVertices(Vector3[] local, in RigidPose pose,
+    internal static CapsuleFeatureStatus TransformVertices(Vector3[] local, in RigidPose pose,
         in InstalledPoseOperator transform, FeaturePoint[] world)
     {
         var seamPose = new Pose(pose.Position, pose.Orientation);
@@ -164,16 +167,16 @@ internal static class CapsuleFeatureGeometry
     /// <summary>One local vertex through a proved installed pose, with the coordinate bounds and finite checks every
     /// captured vertex passes.</summary>
     internal static CapsuleFeatureStatus TransformVertex(Vector3 point, in Pose seamPose,
-        in InstalledPoseOperator transform, out FeaturePoint world)
+        in InstalledPoseOperator transform, out FeaturePoint world, bool exactZeroProducts = false)
     {
         world = default;
-        if (!Within(point, 64)) return CapsuleFeatureStatus.Unsupported;
+        if (!Within(point, RepresentedGeometryTransforms.MaximumLocalMagnitude)) return CapsuleFeatureStatus.Unsupported;
         GeometryVector enclosure = RepresentedGeometryTransforms.PosePoint(seamPose, point);
         if (!enclosure.IsResolved) return CapsuleFeatureStatus.Unsupported;
         // PosePoint is an operation correspondence record only. The common certified affine
         // operator below contains real and actual represented coefficients through every
         // witness expression. Independently rounded point outputs never define topology.
-        world = transform.Point(point);
+        world = transform.Point(point, exactZeroProducts);
         if (!world.IsResolved) return CapsuleFeatureStatus.Unresolved;
         if (!world.Within(2048)) return CapsuleFeatureStatus.Unsupported;
         return CapsuleFeatureStatus.Complete;

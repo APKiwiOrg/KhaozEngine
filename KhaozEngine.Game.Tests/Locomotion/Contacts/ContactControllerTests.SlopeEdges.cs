@@ -20,12 +20,16 @@ public partial class ContactControllerTests
     }
 
     // A slab ramp over x 0 to 2. Uphill walks over its top edge onto a floor 0.1 m below it. Downhill walks off its
-    // low end onto a floor 0.1 m below it. Past the top edge the support is the edge's level height, so the only
-    // step is the authored drop. Off the low end the switch point between samples is unknown, so a drop may read
-    // short (#1354) but never with the wrong sign.
+    // low end onto a floor 0.1 m below it. Past the top edge the ramp's support is the edge's level height, so the
+    // only downward step is the authored drop. The upper floor first meets the closed foot disc with the axis r
+    // short of the edge, where the ramp's axis plane is r * grade below the edge. When r * grade exceeds the drop,
+    // the floor is the higher support on the plateau from 2 - r to 2 - drop / grade, an up step of
+    // r * grade - drop. Whether a ground or signal sample lands on that short plateau depends on the sample grid,
+    // so the uphill sum is the drop alone or that step less the drop. Off the low end the switch point between
+    // samples is unknown, so a drop may read short (#1354) but never with the wrong sign.
     [Theory]
     [MemberData(nameof(SlopeEdgeRows))]
-    public void SlopeEdgesReportOnlyTheirDrop(SceneVariant variant, int hz, bool run, float degrees, bool up)
+    public void SlopeEdgesReportDiscBoundaryStepsAndAuthoredDrop(SceneVariant variant, int hz, bool run, float degrees, bool up)
     {
         // 14 degrees is the reviewer's 0.5 m rise over 2 m.
         float rise = degrees == 30f ? 2 * MathF.Tan(Radians(30)) : 0.5f;
@@ -36,7 +40,8 @@ public partial class ContactControllerTests
         using var g = new Ground(scene, Abyss);
         float x0 = up ? 0.5f : 1.5f, end = up ? 4f : -2f, direction = up ? 1 : -1;
         MoveState s = Standing(new Vector3(x0, rise / 2 * x0, 0.3f));
-        double sum = 0;
+        double sum = 0, climbed = 0;
+        var events = new List<string>();
         for (int tick = 0; tick < 2 * hz; tick++)
         {
             bool moving = direction * Feet(s).X < direction * end;
@@ -49,9 +54,19 @@ public partial class ContactControllerTests
             Assert.True(s.StepDeltaY == 0 || Math.Sign(s.StepDeltaY) == Math.Sign(change), context);
             if (!up) Assert.True(s.StepDeltaY <= 0, context);
             sum += s.StepDeltaY;
+            climbed += Math.Max(0, s.StepDeltaY);
+            if (s.StepDeltaY != 0) events.Add(context);
         }
         Assert.True(direction * Feet(s).X >= direction * end, Show(s));
-        if (up) AssertNear(-EdgeDrop, sum, Skin, $"sum {sum:R}");
-        else Assert.True(Math.Abs(sum) <= EdgeDrop + Skin, $"sum {sum:R}");
+        string trace = $"sum {sum:R}, climbed {climbed:R}\n{string.Join("\n", events)}";
+        if (up)
+        {
+            double plateau = Math.Max(0, (double)Settings.FootRadiusFraction * Tuning.CapsuleRadius * rise / 2 - EdgeDrop);
+            double entry = climbed > Skin ? plateau : 0;
+            Assert.True(plateau > 0 || climbed == 0, trace);
+            AssertNear(entry, climbed, Skin, trace);
+            AssertNear(entry - EdgeDrop, sum, Skin, trace);
+        }
+        else Assert.True(Math.Abs(sum) <= EdgeDrop + Skin, trace);
     }
 }

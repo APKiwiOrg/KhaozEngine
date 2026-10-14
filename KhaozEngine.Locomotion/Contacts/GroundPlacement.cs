@@ -27,6 +27,7 @@ internal readonly record struct GroundPlacement(bool Valid, Vector3 Feet, Suppor
         float footRadius, in MoveTuning tuning, float cosMaxSlope, double budget, ref ContactMotionRoute route,
         bool clearSteep = false)
     {
+        using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.Placement);
         float feetY = seat.Outcome switch
         {
             SeatOutcome.Seated => Paced(start, startFeetY, seat, ref budget),
@@ -84,7 +85,7 @@ internal readonly record struct GroundPlacement(bool Valid, Vector3 Feet, Suppor
     // A touching shell is clear.
     static bool Overlaps(ContactQueryContext queries, in MoveTuning tuning, Vector3 target) =>
         queries.HasShell &&
-        queries.PenetrationShell(ShellGeometry.Shape(tuning), ShellGeometry.Centre(target, tuning),
+        queries.PenetrationShell(ShellGeometry.Shape(tuning, queries.Shapes), ShellGeometry.Centre(target, tuning),
             out Vector3 mtv) &&
         mtv != Vector3.Zero;
 
@@ -94,7 +95,7 @@ internal readonly record struct GroundPlacement(bool Valid, Vector3 Feet, Suppor
     {
         placed = target;
         if (!queries.HasShell) return true;
-        CapsuleShape shape = ShellGeometry.Shape(tuning);
+        CapsuleShape shape = ShellGeometry.Shape(tuning, queries.Shapes);
         if (!queries.PenetrationShell(shape, ShellGeometry.Centre(target, tuning), out Vector3 mtv))
             return true;
         float depth = mtv.Length();

@@ -7,23 +7,36 @@ namespace KhaozEngine.Movement;
 
 /// <summary>Captures bounded immutable absolute columns from caller-owned static physics.
 /// Capture and later profile construction are sequential. Keep statics and origin unchanged until
-/// profile construction finishes, then dispose the builder to release its context references.</summary>
+/// profile construction finishes, then dispose the builder to release its provider references.</summary>
 public sealed partial class PhysicsNavBake : IDisposable
 {
     private GroundMoveContext? _context;
+    private PhysicsNavCaptureBasis? _basis;
+    private NavAreaClassifier? _classifier;
 
     private PhysicsNavBake(GroundMoveContext context, PhysicsNavBakeOptions options,
-        Vector3 origin, PhysicsNavColumns columns)
+        Vector3 origin, PhysicsNavColumns columns, PhysicsNavCaptureBasis? basis, NavAreaClassifier classifier)
     {
         _context = context;
         Options = options;
         Origin = origin;
         Columns = columns;
+        _basis = basis;
+        _classifier = classifier;
     }
 
     internal PhysicsNavBakeOptions Options { get; }
     internal Vector3 Origin { get; }
     internal PhysicsNavColumns Columns { get; }
+    internal PhysicsNavCaptureBasis? Basis
+    {
+        get
+        {
+            if (_context is null) throw new ObjectDisposedException(nameof(PhysicsNavBake));
+            return _basis;
+        }
+    }
+    internal NavAreaClassifier Classifier => _classifier ?? throw new ObjectDisposedException(nameof(PhysicsNavBake));
     internal GroundMoveContext Context
     {
         get
@@ -43,18 +56,21 @@ public sealed partial class PhysicsNavBake : IDisposable
     /// option the medium is never called.</summary>
     /// <exception cref="ArgumentException">The context has no physics, or the options sample water and the context has
     /// no medium.</exception>
+    /// <exception cref="InvalidOperationException">The physics basis changes during capture, or water sampling
+    /// needs a medium delegate for a contact water field.</exception>
     public static PhysicsNavBake Capture(GroundMoveContext context, PhysicsNavBakeOptions options, NavAreaClassifier classify)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(classify);
         IPhysicsWorld world = context.Physics ?? throw new ArgumentException("Capture requires a physics world.", nameof(context));
-        Vector3 origin = world.Origin;
+        PhysicsNavCaptureBasis? basis = PhysicsNavCaptureBasis.Capture(world);
+        Vector3 origin = basis?.Origin ?? world.Origin;
         if (!float.IsFinite(origin.X) || !float.IsFinite(origin.Y) || !float.IsFinite(origin.Z))
             throw new InvalidOperationException("The physics origin must be finite.");
         (int width, int height, int cells, int maxSamples) = options.Validate(origin);
         Func<float, float, float, MovementMedium>? medium = !options.SampleWater ? null
-            : context.Medium ?? throw new ArgumentException("Water sampling requires a medium.", nameof(context));
+            : context.CaptureMedium ?? throw new ArgumentException("Water sampling requires a medium.", nameof(context));
         var starts = new int[cells + 1];
         var surfaces = new PhysicsNavSurface[maxSamples];
         PhysicsNavWater[] water = medium is null ? [] : new PhysicsNavWater[cells];
@@ -94,6 +110,7 @@ public sealed partial class PhysicsNavBake : IDisposable
                         float.IsNaN(surface.Headroom) || surface.Headroom < 0f)
                         throw new InvalidOperationException("Physics surfaces must have finite ascending heights and nonnegative headroom.");
                     uint areas = classify(new Vector3(absoluteX, absoluteY, absoluteZ));
+                    basis?.AssertCurrent();
                     EnsureOrigin(world, origin);
                     surfaces[stored++] = new PhysicsNavSurface(absoluteY, surface.Headroom, areas);
                     previous = absoluteY;
@@ -104,18 +121,25 @@ public sealed partial class PhysicsNavBake : IDisposable
                 EnsureOrigin(world, origin);
                 if (!sample.InWater || !float.IsFinite(sample.WaterSurfaceY) || sample.WaterSurfaceY <= feetY) continue;
                 uint waterAreas = classify(new Vector3(absoluteX, sample.WaterSurfaceY, absoluteZ));
+                basis?.AssertCurrent();
                 EnsureOrigin(world, origin);
                 water[wet++] = new PhysicsNavWater(cell, sample.WaterSurfaceY, waterAreas);
             }
         }
         starts[cells] = stored;
+        basis?.AssertCurrent();
         EnsureOrigin(world, origin);
         var columns = new PhysicsNavColumns(options, width, height, starts, surfaces.AsSpan(0, stored), water.AsSpan(0, wet));
-        return new PhysicsNavBake(context, options, origin, columns);
+        return new PhysicsNavBake(context, options, origin, columns, basis, classify);
     }
 
     /// <summary>Releases retained builder providers without disposing or changing caller-owned physics.</summary>
-    public void Dispose() => _context = null;
+    public void Dispose()
+    {
+        _context = null;
+        _basis = null;
+        _classifier = null;
+    }
 
     private static void EnsureOrigin(IPhysicsWorld world, Vector3 origin)
     {

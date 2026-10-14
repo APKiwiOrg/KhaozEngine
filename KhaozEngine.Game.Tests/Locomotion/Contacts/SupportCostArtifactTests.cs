@@ -1,0 +1,307 @@
+using System;
+using System.Diagnostics;
+using System.IO;
+using System.Numerics;
+using System.Text.Json.Nodes;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Xunit;
+using KhaozEngine.Locomotion;
+
+namespace KhaozEngine.Tests.Locomotion.Contacts;
+
+[Collection("AllocSensitive")]
+public sealed class SupportCostArtifactTests
+{
+    [Theory]
+    [InlineData(0, true)]
+    [InlineData(1, false)]
+    public void ArtifactAppliesTheMeasuredExplicitLifetimeInventory(int extraBytes, bool expected)
+    {
+        var tokens = ContactLifetimeAllocationTests.Inventory();
+        string path = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".json");
+        try
+        {
+            SupportCostSample candidate = Sample() with
+            {
+                Operation = "ExplicitTick",
+                GeometryPassed = true,
+                Refusal = false,
+                Height = 0,
+                HeightError = 0,
+                AchievedMotion = Vector3.UnitX,
+                Substeps = 1,
+                WarmMicroseconds = 50,
+                WarmBytes = tokens.Movement + tokens.Physics + tokens.Pin + extraBytes
+            };
+            SupportCostSample legacy = candidate with { Operation = "LegacyTick", WarmMicroseconds = 20, WarmBytes = 64 };
+            SupportCostArtifact.Write(path, [candidate, legacy], "base", "candidate", "command");
+            JsonNode gate = JsonNode.Parse(File.ReadAllText(path))!["baseline"]!["Samples"]![0]!["GatePassed"]!;
+            Assert.Equal(expected, gate.GetValue<bool>());
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public void ArtifactRetainsBaselineWhenChangedSamplesAreFinalized()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        string path = Path.Combine(directory, "cost.json");
+        try
+        {
+            SupportCostArtifact.Write(path, [Sample()], "base", "candidate", "command");
+            Assert.Equal(0, Finalize(path, 1, true));
+            JsonObject root = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+            string baseline = root["baseline"]!.ToJsonString();
+            Assert.Equal(1, root["baseline"]!["ProcessExitStatus"]!.GetValue<int>());
+            SupportCostArtifact.Write(path, [Sample()], "base", "changed", "command");
+            Assert.Equal(0, Finalize(path, 0, true));
+            root = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+            Assert.Equal(baseline, root["baseline"]!.ToJsonString());
+            Assert.Equal(0, root["changed"]!["ProcessExitStatus"]!.GetValue<int>());
+            Assert.Equal("harness-corrected", root["changed"]!["RecordingLabel"]?.GetValue<string>());
+            Assert.Equal(1, root["changed"]!["UnmeasuredPrimingCallsPerRow"]?.GetValue<int>());
+            JsonNode inventory = root["changed"]!["LifetimeInventory"]!;
+            Assert.NotNull(inventory);
+            long movement = inventory["MovementQueryLeaseAndReleaseBindingBytes"]!.GetValue<long>();
+            long physics = inventory["PhysicsReadLeaseBytes"]!.GetValue<long>();
+            long pin = inventory["ProducerPinBytes"]!.GetValue<long>();
+            Assert.True(movement > 0 && physics > 0 && pin > 0);
+            Assert.Equal(movement + physics + pin, inventory["AcquiredExplicitTickBytes"]!.GetValue<long>());
+            Assert.Null(root["pendingFinalization"]);
+            Assert.NotEqual(0, Finalize(path, 0));
+            string firstChanged = root["changed"]!.ToJsonString();
+            SupportCostArtifact.Write(path, [Sample()], "base", "third", "command");
+            Assert.Equal(0, Finalize(path, 0));
+            root = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+            Assert.Equal(baseline, root["baseline"]!.ToJsonString());
+            Assert.Equal(firstChanged, root["changed"]!.ToJsonString());
+            Assert.Equal("third", root["changed-third"]!["CandidateSha"]!.GetValue<string>());
+            Assert.Equal(0, root["changed-third"]!["ProcessExitStatus"]!.GetValue<int>());
+            Assert.Throws<InvalidOperationException>(() => SupportCostArtifact.Write(path, [Sample()], "base", "third", "command"));
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
+    [Fact]
+    public void ArtifactPreservesInputAndFirstUseAndWarmStates()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        string path = Path.Combine(directory, "cost.json");
+        try
+        {
+            var row = new SupportCostRow("fixture") { Feet = new(1, 2, 3) };
+            var sample = Sample() with
+            {
+                Input = row,
+                EndState = new MoveState { Position = Vector3.One },
+                ColdEndState = new MoveState { Position = new(2, 3, 4) },
+                ColdHeight = 2,
+                Height = 1
+            };
+            SupportCostArtifact.Write(path, [sample, sample with { Operation = "DryTick", Height = 3 }], "base", "candidate", "command");
+            Assert.Equal(0, Finalize(path, 0, true));
+            JsonNode root = JsonNode.Parse(File.ReadAllText(path))!;
+            Assert.Equal(2, root["schemaVersion"]!.GetValue<int>());
+            JsonNode section = root["baseline"]!;
+            JsonNode input = section["Scenes"]!["fixture"]!;
+            Assert.Single(section["Scenes"]!.AsObject());
+            Assert.Equal(1, input["InputState"]!["Position"]!["X"]!.GetValue<float>());
+            Assert.Equal(2.9f, input["InputState"]!["Position"]!["Y"]!.GetValue<float>());
+            JsonNode record = section["Samples"]![0]!;
+            Assert.Null(record["Input"]);
+            Assert.Equal("fixture", record["Scene"]!.GetValue<string>());
+            Assert.Equal("fixture", section["Samples"]![1]!["Scene"]!.GetValue<string>());
+            Assert.Equal(3, section["Samples"]![1]!["Height"]!.GetValue<double>());
+            Assert.Equal(2, section["Samples"]!.AsArray().Count);
+            Assert.Equal(16, record["ColdBytes"]!.GetValue<long>());
+            Assert.Equal(0, record["WarmBytes"]!.GetValue<long>());
+            Assert.Equal(1, record["ColdMicroseconds"]!.GetValue<double>());
+            Assert.Equal(2, record["WarmMicroseconds"]!.GetValue<double>());
+            Assert.Equal(1, record["EndState"]!["Position"]!["X"]!.GetValue<float>());
+            Assert.Equal(4, record["ColdEndState"]!["Position"]!["Z"]!.GetValue<float>());
+            Assert.Equal(2, record["ColdHeight"]!.GetValue<double>());
+            Assert.Equal(1, record["Height"]!.GetValue<double>());
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
+    [Fact]
+    public void ArtifactRejectsConflictingSceneInputsWithoutWriting()
+    {
+        string path = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".json");
+        SupportCostSample first = Sample() with { Input = new("fixture") { Feet = Vector3.Zero } };
+        SupportCostSample second = Sample() with { Input = new("fixture") { Feet = Vector3.One } };
+        try
+        {
+            Assert.Throws<ArgumentException>(() => SupportCostArtifact.Write(path, [first, second], "base", "candidate", "command"));
+            Assert.False(File.Exists(path));
+        }
+        finally { if (File.Exists(path)) File.Delete(path); }
+    }
+
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("stale")]
+    [InlineData("mismatch")]
+    [InlineData("empty")]
+    public void FinalizerRefusesInvalidSamplesWithoutChangingTheArtifact(string fault)
+    {
+        string directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        string path = Path.Combine(directory, "cost.json");
+        try
+        {
+            if (fault != "missing")
+            {
+                SupportCostArtifact.Write(path, [Sample()], "base", "candidate", "command");
+                JsonObject root = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+                if (fault == "stale") root["baseline"]!["CapturedAtUtc"] = DateTimeOffset.UtcNow.AddHours(-1).ToString("O");
+                if (fault == "mismatch") root["pendingFinalization"]!["RunId"] = "wrong";
+                if (fault == "empty") root["baseline"]!["Samples"] = new JsonArray();
+                File.WriteAllText(path, root.ToJsonString());
+            }
+            string? before = File.Exists(path) ? File.ReadAllText(path) : null;
+            Assert.NotEqual(0, Finalize(path, 0));
+            Assert.Equal(before, File.Exists(path) ? File.ReadAllText(path) : null);
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(5)]
+    [InlineData(7)]
+    public void FinalizerAcceptsDotnetIsoFractionPrecision(int digits)
+    {
+        string directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        string path = Path.Combine(directory, "cost.json");
+        try
+        {
+            SupportCostArtifact.Write(path, [Sample()], "base", "candidate", "command");
+            JsonObject root = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+            string format = "yyyy-MM-dd'T'HH:mm:ss." + new string('f', digits) + "zzz";
+            root["baseline"]!["CapturedAtUtc"] = DateTimeOffset.UtcNow.ToString(format,
+                System.Globalization.CultureInfo.InvariantCulture);
+            File.WriteAllText(path, root.ToJsonString());
+            Assert.Equal(0, Finalize(path, 0, true));
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
+    [Fact]
+    public void Exit75DoesNotRequireOrAlterSamples()
+    {
+        string path = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".json");
+        Assert.Equal(0, Finalize(path, 75, true));
+        Assert.False(File.Exists(path));
+        File.WriteAllText(path, "untouched");
+        try
+        {
+            Assert.Equal(0, Finalize(path, 75, true));
+            Assert.Equal("untouched", File.ReadAllText(path));
+        }
+        finally { File.Delete(path); }
+    }
+
+    static SupportCostSample Sample() => new("Find", "fixture", false, "Refused", double.NaN,
+        double.NaN, Vector3.Zero, 0, default, 16, 0, 1, 2, 128, 4352)
+    { Refusal = true };
+
+    [Theory]
+    [InlineData(200, 25, true)]
+    [InlineData(200, 26, false)]
+    [InlineData(800, 100, true)]
+    [InlineData(800, 101, false)]
+    [InlineData(0, 1, false)]
+    public void HostedArtifactUsesReadOnlyCalibration(double hostedTime, double findTime, bool expected)
+    {
+        string directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        string referencePath = Path.Combine(directory, "reference.json");
+        string path = Path.Combine(directory, "support-cost", "run-1.json");
+        var options = new JsonSerializerOptions { IncludeFields = true, NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals };
+        var input = new SupportCostRow("flat box");
+        JsonObject reference = SupportGateCostTests.HostedSection(400, true);
+        reference["Tuning"] = JsonSerializer.SerializeToNode(SupportGateCostScenes.Tuning, options);
+        File.WriteAllText(referencePath, new JsonObject { ["schemaVersion"] = 2, ["baseline"] = reference }.ToJsonString());
+        string before = File.ReadAllText(referencePath);
+        SupportCostSample legacy = SupportGateCostTests.HostedSection(hostedTime)["Samples"]![0]!.Deserialize<SupportCostSample>(options)! with { Input = input };
+        SupportCostSample candidate = legacy with { Operation = "Find", WarmMicroseconds = findTime };
+        string? tiered = Environment.GetEnvironmentVariable("DOTNET_TieredCompilation");
+        try
+        {
+            Environment.SetEnvironmentVariable("DOTNET_TieredCompilation", "0");
+            SupportCostArtifact.Write(path, [candidate, legacy, legacy with { Operation = "LegacyDownPass" }], "base", "candidate", "command", referencePath);
+            JsonNode section = JsonNode.Parse(File.ReadAllText(path))!["baseline"]!;
+            if (hostedTime > 0) Assert.True(section["HostedNormalizationPassed"]!.GetValue<bool>(),
+                "The matching hosted record must calibrate.");
+            Assert.Equal(expected, section["Samples"]![0]!["GatePassed"]!.GetValue<bool>());
+            if (hostedTime > 0) Assert.Equal(hostedTime / 400, section["HostScale"]!.GetValue<double>());
+            else Assert.Null(section["HostScale"]);
+            Assert.Equal(before, File.ReadAllText(referencePath));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("DOTNET_TieredCompilation", tiered);
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("malformed")]
+    [InlineData("pending")]
+    [InlineData("schema")]
+    public void HostedArtifactCannotPassWithoutFinalizedReference(string fault)
+    {
+        string directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        string referencePath = Path.Combine(directory, "reference.json"), path = Path.Combine(directory, "run-1.json");
+        var options = new JsonSerializerOptions { IncludeFields = true, NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals };
+        SupportCostSample legacy = SupportGateCostTests.HostedSection(200)["Samples"]![0]!.Deserialize<SupportCostSample>(options)! with { Input = new("flat box") };
+        string? tiered = Environment.GetEnvironmentVariable("DOTNET_TieredCompilation");
+        try
+        {
+            Environment.SetEnvironmentVariable("DOTNET_TieredCompilation", "0");
+            if (fault == "malformed") File.WriteAllText(referencePath, "{");
+            if (fault is "pending" or "schema")
+            {
+                var root = new JsonObject { ["schemaVersion"] = fault == "schema" ? 1 : 2, ["baseline"] = SupportGateCostTests.HostedSection(400, true) };
+                if (fault == "pending") root["pendingFinalization"] = new JsonObject();
+                File.WriteAllText(referencePath, root.ToJsonString());
+            }
+            SupportCostArtifact.Write(path, [legacy with { Operation = "Find", WarmMicroseconds = 1 }, legacy,
+                legacy with { Operation = "LegacyDownPass" }], "base", "candidate", "command", referencePath);
+            JsonNode section = JsonNode.Parse(File.ReadAllText(path))!["baseline"]!;
+            Assert.False(section["Samples"]![0]!["GatePassed"]!.GetValue<bool>());
+            Assert.Null(section["HostScale"]);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("DOTNET_TieredCompilation", tiered);
+            Directory.Delete(directory, true);
+        }
+    }
+
+    static int Finalize(string artifact, int status, bool expectedSuccess = false)
+    {
+        string? root = Directory.GetCurrentDirectory();
+        while (root is not null && !File.Exists(Path.Combine(root, "scripts", "record-support-cost-exit.py")))
+            root = Path.GetDirectoryName(root);
+        Assert.NotNull(root);
+        var info = new ProcessStartInfo("python3") { UseShellExecute = false, RedirectStandardError = true };
+        info.ArgumentList.Add(Path.Combine(root!, "scripts", "record-support-cost-exit.py"));
+        info.ArgumentList.Add(artifact);
+        info.ArgumentList.Add(status.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        using Process process = Process.Start(info)!;
+        string error = process.StandardError.ReadToEnd();
+        process.WaitForExit();
+        if (expectedSuccess) Assert.True(process.ExitCode == 0, error);
+        if (process.ExitCode == 0) Assert.Equal("", error);
+        return process.ExitCode;
+    }
+}

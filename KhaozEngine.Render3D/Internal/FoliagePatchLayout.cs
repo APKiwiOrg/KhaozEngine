@@ -41,7 +41,8 @@ internal sealed class FoliagePatchLayout
             MeshBounds world = TransformBounds(bounds, instance.Transform, out float height);
             // Double division keeps tiny cells and large finite coordinates away from integer overflow.
             var key = new PatchKey(Math.Floor((double)instance.Transform.M41 / patchSize),
-                Math.Floor((double)instance.Transform.M43 / patchSize), meshKey.Index, meshKey.Generation);
+                Math.Floor((double)instance.Transform.M43 / patchSize), meshKey.Index, meshKey.Generation,
+                instance.CastsShadows);
             entries.Add(new Entry(key, instance, world, height, i));
         }
 
@@ -51,6 +52,7 @@ internal sealed class FoliagePatchLayout
             if (comparison == 0) comparison = a.Key.Z.CompareTo(b.Key.Z);
             if (comparison == 0) comparison = a.Key.MeshIndex.CompareTo(b.Key.MeshIndex);
             if (comparison == 0) comparison = a.Key.MeshGeneration.CompareTo(b.Key.MeshGeneration);
+            if (comparison == 0) comparison = a.Key.CastsShadows.CompareTo(b.Key.CastsShadows);
             if (comparison == 0) comparison = a.Instance.ThinningRank.CompareTo(b.Instance.ThinningRank);
             return comparison != 0 ? comparison : a.InputOrder.CompareTo(b.InputOrder);
         });
@@ -64,6 +66,8 @@ internal sealed class FoliagePatchLayout
             Vector3 min = first.Bounds.Min, max = first.Bounds.Max;
             Vector2 rootMin = Root(first.Instance), rootMax = rootMin;
             float height = first.Height;
+            float maxLeanHeight = 0f, shiverHeight = 0f, windScaleHeight = 0f;
+            bool customMotion = false;
             int end = start;
             do
             {
@@ -75,11 +79,17 @@ internal sealed class FoliagePatchLayout
                 rootMin = Vector2.Min(rootMin, root);
                 rootMax = Vector2.Max(rootMax, root);
                 height = MathF.Max(height, entry.Height);
+                FoliageMotionProfile motion = entry.Instance.Motion;
+                maxLeanHeight = MathF.Max(maxLeanHeight, motion.MaxLean * entry.Height);
+                shiverHeight = MathF.Max(shiverHeight, motion.Shiver * entry.Height);
+                windScaleHeight = MathF.Max(windScaleHeight, motion.WindScale * entry.Height);
+                customMotion |= motion != FoliageMotionProfile.Blade;
                 end++;
             } while (end < entries.Count && entries[end].Key == first.Key);
 
             patches.Add(new FoliagePatch(first.Instance.Mesh, start, end - start,
-                new MeshBounds(min, max), rootMin, rootMax, height));
+                new MeshBounds(min, max), rootMin, rootMax, height, first.Key.CastsShadows,
+                maxLeanHeight, shiverHeight, windScaleHeight, customMotion));
             start = end;
         }
         return new FoliagePatchLayout(ordered, patches.ToArray());
@@ -136,6 +146,6 @@ internal sealed class FoliagePatchLayout
 
     static bool Finite(Vector3 value) => float.IsFinite(value.X) && float.IsFinite(value.Y) && float.IsFinite(value.Z);
 
-    readonly record struct PatchKey(double X, double Z, int MeshIndex, int MeshGeneration);
+    readonly record struct PatchKey(double X, double Z, int MeshIndex, int MeshGeneration, bool CastsShadows);
     readonly record struct Entry(PatchKey Key, FoliageInstance Instance, MeshBounds Bounds, float Height, int InputOrder);
 }

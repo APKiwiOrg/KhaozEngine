@@ -418,7 +418,7 @@ public class PhysicsRebaseCostTests
     [Fact]
     public void Rebase_StaysWithinASmallMultipleOfOneStep_AtAResidentStreamingScale()
     {
-        // Ruinborne's resident shape: a gameplay ring of terrain statics, a few thousand props, a few hundred
+        // The reference consumer's resident shape: a gameplay ring of terrain statics, a few thousand props, a few hundred
         // dynamics. Terrain statics are triangle meshes, which is the expensive collidable to refit.
         using var world = new BepuPhysicsWorld();
         for (int i = 0; i < 25; i++)

@@ -152,7 +152,7 @@ public sealed partial class GridPathPlanner
     {
         NavGrid grid = _space.Layers[layer];
         Vector2 centre = grid.CellCenter(x, z);
-        return new Vector3(centre.X, grid.SurfaceHeightAt(x, z)!.Value, centre.Y);
+        return new Vector3(centre.X, grid.RestingHeightAt(x, z)!.Value, centre.Y);
     }
 
     static double RegionDistanceXz(Vector2 from, Vector2 to)

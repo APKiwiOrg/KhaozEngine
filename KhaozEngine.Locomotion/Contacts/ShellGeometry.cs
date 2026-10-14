@@ -9,12 +9,21 @@ namespace KhaozEngine.Locomotion.Contacts;
 /// left to foot support.</summary>
 internal static class ShellGeometry
 {
-    /// <summary>Throws when the shell span cannot hold its radius or the shell cannot clear its steepest walkable
-    /// plane with the contact skin. A footed body keeps footing to <c>MaxSlopeRadians + TractionHysteresisRadians</c>,
+    /// <summary>Throws when the default half-radius footprint is below 0.01 m, the shell span cannot hold its radius
+    /// or the shell cannot clear its steepest walkable plane with the contact skin. A footed body keeps footing to <c>MaxSlopeRadians + TractionHysteresisRadians</c>,
     /// so that is the steepest walkable plane. A band that is not positive widens nothing, as in the traction
     /// gate.</summary>
-    internal static void Validate(in MoveTuning tuning)
+    internal static void Validate(in MoveTuning tuning) => Validate(tuning, new GroundCoreSettings());
+
+    /// <summary>As <see cref="Validate(in MoveTuning)"/>, and throws <see cref="ArgumentOutOfRangeException"/>
+    /// when <c>FootRadiusFraction * CapsuleRadius</c> is below the 0.01 m footprint minimum or not finite.</summary>
+    internal static void Validate(in MoveTuning tuning, in GroundCoreSettings settings)
     {
+        float fraction = settings.FootRadiusFraction, footprint = fraction * tuning.CapsuleRadius;
+        if (!float.IsFinite(fraction) || fraction <= 0 || !float.IsFinite(footprint) ||
+            !(footprint >= FootSupport.AxisProbeRadius))
+            throw new ArgumentOutOfRangeException(nameof(settings),
+                "FootRadiusFraction * CapsuleRadius must be finite and at least 0.01 metres.");
         float span = Span(tuning);
         float diameter = 2f * tuning.CapsuleRadius;
         if (!(span >= diameter))
@@ -34,8 +43,9 @@ internal static class ShellGeometry
 
     /// <summary>The shell capsule. Its cylindrical length takes the same 0.01 floor as the body capsule, so a
     /// span of exactly one diameter is a sphere.</summary>
-    internal static CapsuleShape Shape(in MoveTuning tuning)
-        => new(tuning.CapsuleRadius, MathF.Max(0.01f, Span(tuning) - 2f * tuning.CapsuleRadius));
+    internal static CapsuleShape Shape(in MoveTuning tuning, ContactCapsuleShapes? shapes = null)
+        => (shapes ?? ContactCapsuleShapes.ForThread).Get(ContactCapsuleRole.Shell, tuning.CapsuleRadius,
+            MathF.Max(0.01f, Span(tuning) - 2f * tuning.CapsuleRadius));
 
     /// <summary>The shell centre for a body whose feet are at <paramref name="feet"/>.</summary>
     internal static Vector3 Centre(Vector3 feet, in MoveTuning tuning)

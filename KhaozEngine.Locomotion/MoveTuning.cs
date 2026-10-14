@@ -43,6 +43,15 @@ public readonly partial record struct MoveTuning(
     float BackpedalSpeedScale = 1f,
     bool BackpedalAllowsRun = true)
 {
+    /// <summary>The ordinary movement controller. The default preserves released legacy motion.</summary>
+    public MovementControllerKind Controller { get; init; } = MovementControllerKind.Legacy;
+
+    /// <summary>The contact foot disc radius as a fraction of the capsule radius.</summary>
+    public float FootRadiusFraction { get; init; } = 0.5f;
+
+    /// <summary>Ordinary contact water traversal. Explicit configurations supply their own policy.</summary>
+    public WaterTraversalPolicy Water { get; init; } = default;
+
     /// <summary>Walkable-slice defaults: walk 6 m/s, run 12 m/s, capsule half-height 0.9 m, max slope 45 deg
     /// (steep enough for normal hills, low enough that a RimFeature mountain wall is too steep to stand on, so the
     /// rim stays un-climbable when a <c>groundNormal</c> delegate is supplied), capsule footprint radius
@@ -217,7 +226,7 @@ public readonly partial record struct MoveTuning(
     /// <c>MaxSlopeRadians + this</c>, so the walkability decision has a memory instead of being re-taken from scratch
     /// every tick. Default 3 degrees.
     /// <para>It exists because a bare threshold chatters on real terrain, which was measured rather than argued: a
-    /// Ruinborne bank whose columns run 40.0 to 41.8 degrees against a 40 degree gate flipped footing 43 times in
+    /// The reference consumer bank whose columns run 40.0 to 41.8 degrees against a 40 degree gate flipped footing 43 times in
     /// 330 ticks and stalled part-way up, and re-tuning the gate to clear that bank simply moved the same failure onto
     /// banks peaking 0.4 and 2.8 degrees past the new one. 3 degrees covers every straddle in those measurements (the
     /// worst excursion above a gate was 2.8 degrees) with margin to spare, and stays small enough that the ground a

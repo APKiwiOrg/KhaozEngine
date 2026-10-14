@@ -26,11 +26,11 @@ internal static class ExplicitMotionProbe
             MovementStepResult hold = context.StepExplicit(start, Vector2.Zero, false, profile, queries, boundary);
             if (!Usable(hold.Outcome)) return Failed(Status(hold.Outcome), 1, key, identity);
             var current = hold.State;
-            if (!Supported(current.State) || !Near(current.State.Position, start.State.Position, current.State.Swimming, profile))
+            if (!Supported(current.State) || !Near(current.State, start.State.Position, current.State.Swimming, profile))
                 return Failed(ExplicitMotionProofStatus.Blocked, 1, key, identity);
             for (int step = 1; step <= profile.MaxSteps; step++)
             {
-                if (current.State.Swimming == targetSwimming && Near(current.State.Position, target, targetSwimming, profile))
+                if (current.State.Swimming == targetSwimming && Near(current.State, target, targetSwimming, profile))
                 {
                     queries.AssertCurrent();
                     return new(ExplicitMotionProofStatus.Proven, current, step, key, identity);
@@ -67,12 +67,14 @@ internal static class ExplicitMotionProbe
     static bool Supported(in MoveState state) => state.Grounded || state.Swimming;
     static bool Usable(MovementStepOutcome outcome) => outcome is MovementStepOutcome.Advanced or MovementStepOutcome.Blocked;
     static bool Finite(Vector3 point) => float.IsFinite(point.X) && float.IsFinite(point.Y) && float.IsFinite(point.Z);
-    static bool Near(Vector3 point, Vector3 target, bool swimming, ExplicitMovementProfile profile)
+    static bool Near(in MoveState state, Vector3 target, bool swimming, ExplicitMovementProfile profile)
     {
+        if (!swimming) return GroundTraversalProbe.GroundArrived(state, state.Position, target, profile.Tuning);
+        Vector3 point = state.Position;
         double x = (double)point.X - target.X, z = (double)point.Z - target.Z;
         double tolerance = GroundTraversalProbe.ArrivalTolerance;
-        double vertical = swimming ? profile.Water.SurfaceContactToleranceMetres : tolerance;
-        return x * x + z * z <= tolerance * tolerance && Math.Abs((double)point.Y - target.Y) <= vertical;
+        return x * x + z * z <= tolerance * tolerance &&
+            Math.Abs((double)point.Y - target.Y) <= profile.Water.SurfaceContactToleranceMetres;
     }
     static ExplicitMotionProofStatus Status(MovementStepOutcome outcome) => outcome switch
     {

@@ -22,7 +22,7 @@ internal static class ExplicitProfileRecipe
             writer.Write(footprintFraction);
             writer.Write(placementOffset);
             writer.Write(1u); // Within-tick ownership handoff recipe.
-            writer.Write(1u); // Shell, footprint and complete medium-route proof recipe.
+            writer.Write(2u); // Shell, footprint and complete medium-route proof recipe with spherical grounded arrival.
         }
         LongString(NavBakeIdentity.CurrentEngineVersion);
         ShortString(profile.Name);

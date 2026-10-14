@@ -22,6 +22,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsQueryLeaseSource
         {
             if (_readLease is not null)
                 throw new InvalidOperationException("Physics query leases cannot be nested.");
+            SupportQueryDiagnostics.Record(SupportQueryCounter.PhysicsLeases);
             var lease = new ReadLease(this, operation);
             _readLease = lease;
             return lease;

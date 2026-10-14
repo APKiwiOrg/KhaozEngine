@@ -245,7 +245,7 @@ public static partial class CharacterMovement
     // This paragraph used to be headed "why the slide needs one and no other path does". It was wrong about the
     // WALL CONTACT'S OWN PROJECTED STEP, which is the destination height plane's CONTOUR and is therefore exactly
     // as level, exactly as much a difference of world heights, and exactly as much decided by rounding - measured
-    // on Ruinborne's island, an unslacked comparison there stopped a walker dead on open terrain for asks as small
+    // on the reference consumer's island, an unslacked comparison there stopped a walker dead on open terrain for asks as small
     // as +0.000 m. That comparison now carries ProjectedRiseSlack, a sibling of this constant rather than this
     // constant: the two are the same size for the same reason, but they are two different comparisons and both are
     // live on a sliding tick (this one inside the reach the slide hands down, that one against the projected step),

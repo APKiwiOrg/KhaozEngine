@@ -10,7 +10,7 @@ heads predict it. Program issue: [#670](https://github.com/APKiwiOrg/KhaozEngine
 of the Grimhollow program, following sub-project 1 ([TILE-WORLD-DESIGN-2026-08-15.md](TILE-WORLD-DESIGN-2026-08-15.md),
 [#629](https://github.com/APKiwiOrg/KhaozEngine/issues/629)), whose tile world, collision map, pathfinder and
 renderer this design moves players across. Game-side issue:
-[Grimhollow #6](https://github.com/APKiwiOrg/Grimhollow/issues/6). Written against engine 17.39.0 and Ruinborne main.
+[Grimhollow #6](https://github.com/APKiwiOrg/Grimhollow/issues/6). Written against engine 17.39.0 and the reference consumer main.
 
 Two rounds, each with its own plan: R1 is the engine package `KhaozEngine.TileWorld.Netcode` with headless loopback
 tests, R2 is the Grimhollow heads on it (server, auth, client player and camera).
@@ -45,7 +45,7 @@ integrator internally and take terrain in their constructors.
    fit without fighting its float grid is to feed it tile coordinates as the plane (section 7).
 4. **Discord identity end to end in SP2.** A guest-first client with the token gate in place was offered. The user
    chose the full path: the exchange service, the client OAuth flow through the engine's `IdentitySession`, and a
-   whitelist store. All of it is engine plumbing already exercised by Ruinborne, the game-specific part is two files.
+   whitelist store. All of it is engine plumbing already exercised by the reference consumer, the game-specific part is two files.
 5. **Walk plus the interaction seam, no real actions.** Clicking an `Interactive` archetype routes to a reach tile,
    faces the target, and sends one `Interact`. The server validates reach on its tick and runs a one-deep action
    queue whose only action here is a logged no-op with an `OnInteract` event. Declined: walk only (the reach rules
@@ -94,13 +94,13 @@ Persistence: `IWorldStore` (`IWorldStore.cs:16`) is a keyed blob store. `PlayerR
 version, `float X, Y, Z` and an opaque `byte[]? Game`, tolerant JSON. `WorldPersistence` (`WorldPersistence.cs:200`)
 owns the save interval, dirty pass, quarantine, guest policy and resume hints, and is driven through
 `IWorldPersistenceHost`. Both store backends share one `world_store(key, data, updated_at)` table
-(`SqliteWorldStore.cs:33`, `SqlServerWorldStore.cs:45`). Ruinborne picks by `RUINBORNE_SQL_CONNECTION` and has never
-used the Sqlite backend (`Ruinborne.Server/Program.cs:161-165`).
+(`SqliteWorldStore.cs:33`, `SqlServerWorldStore.cs:45`). The reference consumer picks by `CONSUMER_GAME_SQL_CONNECTION` and has never
+used the Sqlite backend (`Consumer.Server/Program.cs:161-165`).
 
 Identity: `IIdentityValidator`, `VerifiedIdentity`, `IdentitySession`, `SessionToken.Mint/TryVerify` and the Discord
 provider are engine. The connect gate is `IConnectionAuthenticator` (`Netcode/IConnectionAuthenticator.cs:12`) with
-`HmacTokenAuthenticator` (`SignedToken.cs:229`) and `AllowAllAuthenticator`. Ruinborne's `ConnectionGate.Wrap(inner,
-protocolVersion, worldHash, log)` (`Ruinborne.Server/Auth/ConnectionGate.cs`) and its two-file `Ruinborne.Auth`
+`HmacTokenAuthenticator` (`SignedToken.cs:229`) and `AllowAllAuthenticator`. The reference consumer's `ConnectionGate.Wrap(inner,
+protocolVersion, worldHash, log)` (`Consumer.Server/Auth/ConnectionGate.cs`) and its two-file `Consumer.Auth`
 exchange (`AuthExchange.cs:28-51`) are the only game-side pieces.
 
 Interaction: nothing. `Simulation` is a tick host and two job schedulers, `Ecs` is a pure archetype ECS, and the
@@ -124,8 +124,8 @@ directly rather than through an umbrella.
 
 Two engine changes outside the package:
 
-- `ConnectionGate` moves from Ruinborne into `Netcode` as `ConnectionGate(inner, protocolVersion, worldHash, log)`
-  (engine-first rule: two games need the identical gate). Ruinborne's copy becomes a one-line alias until its next
+- `ConnectionGate` moves from the reference consumer into `Netcode` as `ConnectionGate(inner, protocolVersion, worldHash, log)`
+  (engine-first rule: two games need the identical gate). The reference consumer's copy becomes a one-line alias until its next
   repin.
 - `WorldPersistence`'s core becomes record-agnostic (section 8). `NetWorld.WorldPersistence` keeps its name, its
   public surface and its tests, as the float binding over that core.
@@ -407,7 +407,7 @@ region. `OnBeforeTick`, `OnGameMessage` and `OnInteract` are the game seams, dra
 the ban store are the operational ones, copied in shape from `ShardedWorldServer`.
 
 Known and accepted cost: `ShardedWorldServer`'s connection lifecycle, residency and rate-limiting plumbing is
-re-implemented here for tiles rather than extracted into a generic core. Extracting it from Ruinborne's live server
+re-implemented here for tiles rather than extracted into a generic core. Extracting it from the reference consumer's live server
 is a refactor of a shipping MMO stack and is not this sub-project. It is filed as a follow-up the moment the two
 servers are seen to converge.
 
@@ -422,7 +422,7 @@ its tests as the float binding. `TilePlayerRecord` is `Version`, `TileX`, `TileZ
 `Game` blob, tolerant JSON through a source-generated context like `PlayerRecord`. The key stays
 `player:{accountId}` where the account id is the verified token subject. `SqliteWorldStore` locally and in tests,
 `SqlServerWorldStore` hosted, one env var picks, fail-closed when the hosted store is set without the token secret,
-the Ruinborne rule.
+The reference consumer rule.
 
 ## 9. Client
 
@@ -466,9 +466,9 @@ bad or expired token, banned.
 ## 11. Grimhollow heads (R2)
 
 `Grimhollow.Shared`: port, protocol version, `TickSeconds = 0.25f`, `RunStepTicks = 2`, `WalkStepTicks = 4`.
-`Grimhollow.Server`: the Ruinborne host shape, in order: session log, load the world headless, bake collision, shard
+`Grimhollow.Server`: the reference consumer host shape, in order: session log, load the world headless, bake collision, shard
 config, store by env var, token auth and gate, `TileWorldServer`, persistence, tick loop, drain on SIGINT and
-SIGTERM, heartbeat, into the existing Dockerfile. `Grimhollow.Auth`: Ruinborne's two-file Discord exchange over
+SIGTERM, heartbeat, into the existing Dockerfile. `Grimhollow.Auth`: the reference consumer's two-file Discord exchange over
 `IIdentityValidator`, plus a minimal accounts store (subject, display name, whitelisted, banned) on the same Sqlite
 or SqlServer choice. Client: a login screen (Discord sign-in through `IdentitySession`, every string through the
 catalog), the fly rig replaced by a player with an OSRS-style orbit camera, left click on the ground through
@@ -500,7 +500,7 @@ Headless, in `KhaozEngine.TileWorld.Netcode.Tests` (a new per-area test project 
 - Reach: the reach sets of 1x1, 2x1 and 2x2 footprints with and without walls, `Nearest` tie-breaking matches scan
   order, a fully walled object has no reach tile.
 - Prediction: a client and a server over an in-process transport walking a route, with the client's predict phase
-  offset from the server tick (the loopback lesson from the Ruinborne harness). Zero corrections on a clean map.
+  offset from the server tick (the loopback lesson from the reference consumer harness). Zero corrections on a clean map.
   Then a server map with one extra blocker: exactly one snap, then agreement.
 - Action queue: arrival on a reach tile raises `OnInteract` once, a second click replaces the pending action, a
   walled target yields `CannotReach`.

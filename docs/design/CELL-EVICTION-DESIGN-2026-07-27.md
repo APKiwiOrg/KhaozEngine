@@ -1,7 +1,7 @@
 # Cell eviction: persist-then-evict
 
 Rationale for the shard-cell eviction path ([#336](https://github.com/APKiwiOrg/KhaozEngine/issues/336)), engine
-side of the Ruinborne 100 km world program. Shipped API and usage live in `CHANGELOG.md`,
+side of the reference consumer 100 km world program. Shipped API and usage live in `CHANGELOG.md`,
 `docs/USING-KHAOZENGINE.md` and the `KhaozEngine.Sharding` / `KhaozEngine.NetWorld` READMEs. What stays here is the
 why.
 

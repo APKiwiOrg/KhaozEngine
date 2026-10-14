@@ -55,6 +55,7 @@ public partial class ContactLeasedQueryTests
             var acquired = Environment.Acquire();
             Assert.Equal(MovementAvailability.Known, acquired.Status);
             Lease = Assert.IsType<MovementQueryLease>(acquired.Lease);
+            Assert.Equal(1, View.Acquisitions);
         }
 
         public LeasedContactQueryContext Queries(float offset = Skin) => new(Lease, Tuning,
@@ -63,18 +64,32 @@ public partial class ContactLeasedQueryTests
     }
 
     sealed class ContactQueryView(IPhysicsWorldQueryView inner) : IPhysicsWorldQueryView,
-        IPhysicsQueryLeaseSource, IPhysicsSupportNeighborhood, IPhysicsCapsuleSweep, IPhysicsCapsuleContacts
+        IPhysicsQueryLeaseSource, IPhysicsSupportNeighborhood, IPhysicsSupportFootprint, IPhysicsCapsuleSweep, IPhysicsCapsuleContacts
     {
-        public int Calls;
+        public int Calls, Acquisitions, FootprintCalls;
+        // FailFootprintAt expires the interval at that call. RefuseFootprintFrom returns an atomic capacity
+        // refusal from that call on, with both output spans untouched.
+        public int FailFootprintAt, RefuseFootprintFrom;
+        public bool FailPushedSupport, RefusePushedSupport;
+        public Vector3 PushMtv;
+        public SupportFootprintRequest? PushedSupportRequest;
+        bool _supportAfterPush;
+        public IPhysicsQueryLease? AcquiredLease, FootprintLease;
         public CapsuleShape? RawShape;
         public IPhysicsWorld SourceWorld => inner.SourceWorld;
         public Vector3 Origin => inner.Origin;
-        public IPhysicsQueryLease AcquireQueryReadLease() => ((IPhysicsQueryLeaseSource)inner).AcquireQueryReadLease();
+        public IPhysicsQueryLease AcquireQueryReadLease()
+        { Acquisitions++; return AcquiredLease = ((IPhysicsQueryLeaseSource)inner).AcquireQueryReadLease(); }
         public bool SweepCapsule(CapsuleShape shape, Pose pose, Vector3 direction, float distance,
             out SweepHit hit, QueryFilter filter = default)
         { Calls++; RawShape = shape; return inner.SweepCapsule(shape, pose, direction, distance, out hit, filter); }
         public bool ComputePenetration(CapsuleShape shape, Pose pose, out Vector3 mtv)
-        { Calls++; RawShape = shape; return inner.ComputePenetration(shape, pose, out mtv); }
+        {
+            Calls++; RawShape = shape;
+            bool overlapping = inner.ComputePenetration(shape, pose, out mtv);
+            if (overlapping && mtv != Vector3.Zero) { PushMtv = mtv; _supportAfterPush = true; }
+            return overlapping;
+        }
         public CapsuleSweepResult SweepCapsuleCertified(CapsuleShape shape, Pose pose, Vector3 delta,
             QueryFilter filter = default)
         { Calls++; return ((IPhysicsCapsuleSweep)inner).SweepCapsuleCertified(shape, pose, delta, filter); }
@@ -84,6 +99,39 @@ public partial class ContactLeasedQueryTests
         public SupportNeighborhoodResult QuerySupportNeighborhood(IPhysicsQueryLease lease, CapsuleShape probe,
             Pose pose, float band, Span<SupportElement> elements, Span<ulong> joins, QueryFilter filter = default)
         { Calls++; return ((IPhysicsSupportNeighborhood)inner).QuerySupportNeighborhood(lease, probe, pose, band, elements, joins, filter); }
+        public SupportFootprintResult QuerySupportFootprint(IPhysicsQueryLease lease, in SupportFootprintRequest request,
+            Span<SupportFootprintMember> members, Span<ulong> joins, QueryFilter filter = default)
+        {
+            Calls++;
+            FootprintCalls++;
+            FootprintLease ??= lease;
+            Assert.Same(AcquiredLease, lease);
+            Assert.Same(FootprintLease, lease);
+            if (_supportAfterPush)
+            {
+                _supportAfterPush = false;
+                PushedSupportRequest = request;
+                if (FailPushedSupport) throw new InvalidOperationException("The pushed-axis interval expired.");
+                if (RefusePushedSupport)
+                    return SupportFootprintResult.Refused(CapsuleFeatureStatus.CapacityExceeded,
+                        SupportFootprintResult.MaximumElements + 1);
+            }
+            if (FootprintCalls == FailFootprintAt) throw new InvalidOperationException("The test interval expired.");
+            if (RefuseFootprintFrom > 0 && FootprintCalls >= RefuseFootprintFrom)
+                return SupportFootprintResult.Refused(CapsuleFeatureStatus.CapacityExceeded, SupportFootprintResult.MaximumElements + 1);
+            SupportFootprintResult result = ((IPhysicsSupportFootprint)inner).QuerySupportFootprint(lease, request, members, joins, filter);
+            if (result.Status == CapsuleFeatureStatus.Complete)
+            {
+                Assert.Same(lease, result.Lease);
+                Assert.Same(inner, result.QueryWorld);
+                Assert.Same(SourceWorld, result.SourceWorld);
+            }
+            return result;
+        }
+
+        public void AssertFootprintCurrent(in SupportFootprintResult result, IPhysicsQueryLease lease) =>
+            ((IPhysicsSupportFootprint)inner).AssertFootprintCurrent(result, lease);
+
         public void AssertNeighborhoodCurrent(in SupportNeighborhoodResult result, IPhysicsQueryLease lease) =>
             ((IPhysicsSupportNeighborhood)inner).AssertNeighborhoodCurrent(result, lease);
         public bool Raycast(Vector3 origin, Vector3 direction, float distance, out RayHit hit, QueryFilter filter = default) =>

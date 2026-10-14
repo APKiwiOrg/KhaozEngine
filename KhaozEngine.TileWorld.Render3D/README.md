@@ -143,6 +143,21 @@ emits slots supplied by the set.
    the texture.
 3. Make every textured file the SAME pixel size. The set is one texture array, so the first textured material
    fixes the size for the whole catalog and any other of a different size throws rather than being resampled.
+4. Optionally give a material a `steep` companion, `{ "material": 14, "fromDegrees": 40, "toDegrees": 55 }`, so
+   it blends toward that material as the ground under it steepens. `Build` turns the companion id into the slot
+   that id occupies and the omitted band ends into `GroundMaterialSteep.DefaultFromDegrees` (40) and
+   `DefaultToDegrees` (55). This is how a cliff whose foot corners voted for the grass below renders rock on the
+   face: the corner vote is untouched, and every grass tap on the face becomes rock instead.
+
+**Steep ground is drawn from the side.** Independently of any companion, a fragment whose ground normal is past
+45 degrees adds two side projections to every material it samples, fully weighted by 60 degrees, so a cliff
+carries its texture up its height rather than one row of it smeared into vertical streaks. Below 45 degrees the
+projection is the single top-down tap it always was. That is the projection only: a material with a `steep`
+companion starts blending toward it at its own `fromDegrees`, 40 by default, so its ground can change below 45.
+Materials without one are unchanged there. Both read the interpolated lattice normal, so they are
+continuous across tiles and regions. The shading lives in Render3D, see `TileGroundSteepShading` in that package's
+README. The set refuses a companion on its reserved missing-material layer or one naming it, so the magenta that
+marks a dangling id is never hidden or spread.
 
 **Every layer costs that size, textured or not.** A flat colour layer is a full-size fill, because a texture
 array's slices all match, so one 1024x1024 texture in a catalog makes each of its untextured materials a 4 MB
@@ -203,7 +218,7 @@ contributes, one per rectangle of each body `TileWaterBodies.Collect` returns, i
 
 `TileWaterLooks.River` is the shipped per-plane `WaterLook`: procedural waves off the shared FFT ocean, no swell,
 a small normal strength, no surf, foam only in a narrow shore band, silty colours and a 0.8 m `ShallowDepth` so a
-60 to 80 cm bed still darkens. It is modelled on Ruinborne's inland lake, and every value that differs from it
+60 to 80 cm bed still darkens. It is modelled on the reference consumer's inland lake, and every value that differs from it
 differs because of SCALE (the sea's 1.6 m foam band and 2.5 m ripple wavelength would each consume a river whole).
 **It is one shared instance of a class of public fields, so do not mutate it**: copy it, or pass a look of your
 own through `TileWorldViewOptions.WaterLook`.
@@ -358,6 +373,12 @@ material base colour. So a palette-painted kit needs neither textures nor a mate
 
 ## The scene seam (`ITileWorldScene`, `Scene3DTileWorldScene`)
 
+`Scene3DTileWorldScene` also implements the optional `IRigidAttachmentScene` capability from
+`KhaozEngine.Attachments.Render3D`. `UploadAttachment(parts)` delegates transactional upload to
+`Scene3DAttachmentScene`, returns an owning `IAttachmentMeshLease`, and retains the full-descriptor
+`DrawMesh` path. Headless scenes may implement the same optional capability with recording leases.
+`ITileWorldScene` does not require it. Dispose attachment caches or leases before disposing the scene.
+
 Everything the view does to a scene goes through `ITileWorldScene`: `LoadMesh`, `UnloadMesh`, `DrawMesh`,
 `DrawOverlayMesh`,
 `LoadPropMeshes`, `UnloadPropMeshes`, `DrawProps`, plus the ground-material trio `LoadTileGroundMaterial`,
@@ -463,9 +484,15 @@ catalog archetype up front, so a region load is placements alone.
   Marks coalesce, so a stroke that touches the same tiles a hundred times remeshes each region-plane once.
 - `Flush()` rebuilds queued region-planes oldest first, up to `MaxRebuildsPerFlush` (default 16) of them, and
   `PendingRebuilds` counts what the budget deferred to the next call. `Flush(int)` overrides the budget for one
-  call, and `int.MaxValue` is the settle-now form a loading moment wants. The budget bounds UPLOADS, not mesher
-  CPU: a rebuild that produces no mesh does not spend it. A rebuild that THROWS is dropped along with everything
-  completed ahead of it, so that region-plane keeps its previous mesh instead of being retried every frame.
+  call, and `int.MaxValue` is the settle-now form a loading moment wants. The budget bounds UPLOADS, not mesher CPU:
+  a rebuild that produces no mesh does not spend it. A rebuild that THROWS is dropped along with everything
+  completed ahead of it, so that region-plane keeps its previous mesh instead of being retried every frame. These
+  rebuilds run on the calling thread only for a view without a residency profile. A region kept by a three-state
+  profile is never meshed in `Flush`. Each mark submits detached ground to the background queue and spends one unit
+  of budget. A gameplay region also requests its cover once per region per drain, while a decor region submits
+  coarse ground only. The previous mesh and cover keep drawing until their replacements apply. So
+  `Flush(int.MaxValue)` no longer settles profile ground. Only `TileRegionResidency.PrimeAround` and headless
+  capture build profile work on the calling thread.
 - `Draw(focus)` flushes, then queues every loaded region: each plane's ground mesh at its world transform, that
   plane's ground props, and its roofs. `focus` is the point the prop draw radius (`PropDrawRadius`, 96 m) is
   measured from, which is the camera subject rather than the observer tile.
@@ -525,18 +552,52 @@ catalog archetype up front, so a region load is placements alone.
 - `Dispose` cancels and drains the background queues, releases region ground, cover and cluster state, frees the
   optional LOD uploads and every archetype mesh set, and disposes the shared cluster owner. The scene is not owned.
 
-## Animated authored grass
+## Animated authored foliage
 
-`TileWorldViewOptions.GroundCover.UseGpuBatches` enables persistent GPU cover when height fading and
-no-shadow drawing are selected. The view releases retained batches on rebuild, unload and disposal through
+`TileWorldViewOptions.GroundCover.UseGpuBatches` enables persistent GPU cover with
+`FadeMode = GroundCoverFadeMode.HeightScale`, including casting cover. `GroundCover.MotionProfiles`
+and `GroundCover.ModelCastsShadows` are model-keyed overrides for short cover. Missing entries use
+Blade motion and global `GroundCover.CastsShadows` (false by default). The CPU fallback ignores these
+maps. The view releases retained batches on rebuild, unload and disposal through
 `ITileWorldScene.ReleaseGroundCover`, whose default is a no-op for existing scene implementations.
 
-`AnimatedFoliageArchetypes` selects placed ground-prop model IDs for the same wind and bending shader.
-Selected props keep their authored transforms, ordinary prop draw radius and full density. Turning short
-cover off does not hide them. Wind settings, including `WindFadeBladePixels`, and up to four
-`GroundCover.Interactors` are shared with short cover. The host advances `Scene3D.EffectTimeSeconds`.
-Selection, overrides and dirty rebuilds invalidate only affected cached splits. This changes presentation
-only, with picking and collision left to world data.
+`AnimatedFoliageArchetypes` selects authored ground-prop archetype IDs for the same foliage shader.
+It remains the only selection, and is empty by default. Selected props keep their authored transforms,
+ordinary `PropDrawRadius` and full density. Turning short cover off does not hide them. Wind settings,
+including `WindFadeBladePixels`, and up to four `GroundCover.Interactors` are shared with short cover.
+The host advances `Scene3D.EffectTimeSeconds`.
+
+`AnimatedFoliageStyles` maps exact authored IDs in that selection to
+`AnimatedFoliageStyle(FoliageMotionProfile Motion, bool CastsShadows)`. It starts empty and refuses
+null. A selected archetype without a style uses `FoliageMotionProfile.Blade` `(1, 0.65, 1, 0)` with
+casting off, independently of short cover's global casting. A style outside the selection or not
+exactly naming an authored selected archetype throws `ArgumentException` naming its ID. Selected
+archetypes sharing a catalog mesh reference or any resolved multipart mesh handle must have the same
+effective motion and casting style, including omitted defaults. A conflict names both IDs.
+
+```csharp
+options.AnimatedFoliageArchetypes = new HashSet<string> { "grass_tall", "bush" };
+options.AnimatedFoliageStyles = new Dictionary<string, AnimatedFoliageStyle>
+{
+    ["bush"] = new(new FoliageMotionProfile(0.3f, 0.15f, 0.4f, 0.035f), CastsShadows: true),
+};
+```
+
+Use IDs from your own catalogs. Styles are detached snapshots, validated before submission and
+compared by value each draw. Changing the selection or a style, including mutating a supplied map,
+invalidates affected cached splits. Removing a style restores Blade motion and casting off. Overrides
+and dirty rebuilds also invalidate affected splits. Short-cover motion/casting maps do not override
+selected props' styles. This changes presentation only, with picking and collision left to world data.
+
+Feed `FoliageInteractor.Agitation` from one retained `FoliageAgitation.Update(position, deltaTime)`
+tracker per actor. Agitation defaults to 0 and accepts finite values in `[0, 1]`. The helper defaults
+are 2 m/s reference speed, 0.6 s settle time and 5 m teleport reset distance. Shiver runs at 14 rad/s
+and uses the strongest single interactor, settling to rest when movement stops. Profiles and their
+coefficient ranges are in [Render3D's foliage reference](../KhaozEngine.Render3D/README.md#persistent-grass-and-foliage).
+Retained instances use 96 GPU bytes each, with 288-byte uniform payloads in 512-byte slots.
+Casting cascade shadows follow animation and alpha cutout. Point-light shadows draw at the authored
+rest pose, lazily allocating 128 GPU bytes per casting instance for the caster-only proxy stream when
+point shadows need it. Non-casting foliage allocates no such stream.
 
 ## Streaming (`TileRegionResidency`, `TileResidencyConfig`)
 
@@ -558,13 +619,23 @@ collision, navigation, simulation, replication or hashes.
 - `Update(observer)` drops what has fallen past `UnloadRadius`, then loads up to `MaxLoadsPerUpdate` (default 2)
   of what is missing, nearest first with a deterministic tie-break. A settled update allocates nothing.
   `Resident` snapshots the resident set and `CollectResident(into)` fills a reused buffer instead.
-- `PrimeAround(observer)` fills the whole legacy ring ignoring the budget. Under a three-state profile it drains
-  gameplay full-ground work synchronously, while coarse ground and HLOD remain budgeted. A teleport therefore
-  restores the interactive ring immediately without making the far decor horizon one blocking frame.
-- Ground and HLOD CPU work runs on background workers over detached snapshots. Completed generations are applied
-  on the scene thread, nearest region first, with independent full-ground, coarse-ground and HLOD caps. A pure
-  focus move reuses accepted clusters. Replacement failures keep the last accepted HLOD handle. Initial failures
-  retry three times, log once, and keep individual geometry where it is resident.
+- `PrimeAround(observer)` fills the whole legacy ring ignoring the budget and settles it with
+  `Flush(int.MaxValue)`, unchanged from earlier releases. Under a three-state profile it loads the ring ignoring
+  the budget, then settles synchronously only what would otherwise draw a hole: full ground for the regions it
+  loaded from `Unloaded` straight into gameplay, and for the already gameplay neighbours whose borders any
+  arrival dirties (the `DirtyRegionMargin` ground reach). A neighbour promoted by the same prime is not
+  settled. A prime with no arrivals builds nothing on the calling thread. Promotions, coarse ground, HLOD and
+  every cover build, arrival cover included, stay on the budgeted background path. A teleport therefore
+  restores the interactive ground immediately, and arrival cover lands a few frames after its ground.
+- **A promotion never stalls the frame.** A `Decor` region that moves into the gameplay radius, through
+  `Update` or `PrimeAround`, builds its full ground and its cover in the background. Its coarse ground and far
+  clusters keep drawing until the full ground replaces them, so a promotion never shows a hole. A promotion
+  changes only that region's representation and marks no neighbour.
+- Ground, cover and HLOD CPU work runs on background workers over detached snapshots. Completed generations are
+  applied on the scene thread, nearest region first, with independent full-ground, cover, coarse-ground and HLOD
+  caps. A generation stamp rejects a result whose region was demoted, unloaded or reloaded since it was asked
+  for. A pure focus move reuses accepted clusters. Replacement failures keep the last accepted HLOD handle.
+  Initial failures retry three times, log once, and keep individual geometry where it is resident.
 - **Streaming a region dirties its dependants** in both directions. Ground meshes rebuild across their fixed
   border reach. Ground-cover caches also rebuild where a streamed solid footprint, upper roof or tagged door can
   change eligibility, including regions reached by the door clearance.

@@ -105,7 +105,7 @@ this doc cannot silently drift apart.
 | Server heartbeat (liveness) | `KhaozEngine.ServerStatus` (`IServerHeartbeatSink`, `ServerHeartbeat`, `Null`/`InMemory` reference sinks, `ServerHeartbeatService`) | **game-side** (the one-table upsert against the status DB), no engine backend package | Microsoft.Data.SqlClient / any - in the game, never the engine |
 | Social / presence | `KhaozEngine.Social` (`ISocialProvider`, whose `TryInitialize` must be re-attemptable on the same instance and whose `IsConnected` is the RECOVERABLE way to report a dropped connection where a throw is the terminal one, value types, `NullSocialProvider` no-op, `SocialPresenceController` + `SocialPresenceState`/`SocialPresenceOptions`) | `KhaozEngine.Social.Discord` (`DiscordSocialProvider`) | none - hand-rolled Discord IPC over `System.IO.Pipes` / `System.Net.Sockets` (no third-party lib) |
 | Player identity | `KhaozEngine.Identity` (`IIdentityProvider`, `IIdentityValidator` + `IdentityValidation` - the three-outcome result of `ValidateDetailedAsync`, so a backend can report a provider outage instead of flattening it onto a refused credential, `ITokenCache` + `FileTokenCache`, `IBrowserLauncher`, `ILoopbackListener`, shared `Interactive.SystemBrowserLauncher` and `Interactive.HttpLoopbackListener` adapters, `IdentitySession` orchestrator, `SessionToken` HMAC, `SignInException` - the shared base a backend's own sign-in failure derives from, so a consumer catches one type across every provider, and the `/auth/exchange` wire DTOs `AuthExchangeRequest`, `AuthExchangeResponse` and `AuthExchangeStatuses` a client and an auth service share) | `KhaozEngine.Identity.Oidc` (`OidcClientProvider`, `OidcTokenValidator`, legacy adapter wrappers), `KhaozEngine.Identity.Discord` (`DiscordClientProvider`, `DiscordTokenValidator`) | Microsoft.IdentityModel.Protocols.OpenIdConnect + Microsoft.IdentityModel.JsonWebTokens (Oidc only). Discord backend has no third-party lib (plain HTTP token-introspection call) |
-| Sign-in exchange | `KhaozEngine.Identity.Exchange` (`AuthExchange`, the pure decision behind `/auth/exchange`: any `IIdentityValidator` keyed by provider id, any `IAccountStore`, a signing key of at least `SigningSecret.MinimumBytes`, and the fixed shape, provider deadline, find-or-create, admissible-subject, ban-then-whitelist and mint sequence. `AuthExchangeResult` with `AuthExchangeOutcome` and the log-only `AuthExchangeCause`, `AuthExchangeOptions`, `AuthAdmission.Decide`, and `IAuthExchangePolicy` + `SessionClaims`, the game's display name and token claims hooks, which cannot reorder the gate) | the game's own `IAuthExchangePolicy` (Ruinborne's character shell and v3 persistence key), or the defaults (Grimhollow's provider-subject name fallback and v2). The HTTP handler is `KhaozEngine.Identity.Exchange.AspNetCore`, a separate package over the core (`MapAuthExchange`, `AddAuthExchangeHosting`, `TrustedProxyNetworks`, `AuthExchangeClientKey`), so the core stays testable with no web server | (no extra dep in the core. Engine edges to `Identity`, `Accounts` and `Netcode` only, and no HTTP type. The handler takes the `Microsoft.AspNetCore.App` shared framework through a `FrameworkReference` and no package) |
+| Sign-in exchange | `KhaozEngine.Identity.Exchange` (`AuthExchange`, the pure decision behind `/auth/exchange`: any `IIdentityValidator` keyed by provider id, any `IAccountStore`, a signing key of at least `SigningSecret.MinimumBytes`, and the fixed shape, provider deadline, find-or-create, admissible-subject, ban-then-whitelist and mint sequence. `AuthExchangeResult` with `AuthExchangeOutcome` and the log-only `AuthExchangeCause`, `AuthExchangeOptions`, `AuthAdmission.Decide`, and `IAuthExchangePolicy` + `SessionClaims`, the game's display name and token claims hooks, which cannot reorder the gate) | the game's own `IAuthExchangePolicy` (the reference consumer's character shell and v3 persistence key), or the defaults (Grimhollow's provider-subject name fallback and v2). The HTTP handler is `KhaozEngine.Identity.Exchange.AspNetCore`, a separate package over the core (`MapAuthExchange`, `AddAuthExchangeHosting`, `TrustedProxyNetworks`, `AuthExchangeClientKey`), so the core stays testable with no web server | (no extra dep in the core. Engine edges to `Identity`, `Accounts` and `Netcode` only, and no HTTP type. The handler takes the `Microsoft.AspNetCore.App` shared framework through a `FrameworkReference` and no package) |
 | Windowing / input | `KhaozEngine.Windowing` `AppWindow` is the sole toucher; everyone reads the immutable `InputState` via `InputManager`/`Pointer` (input IN), and drives gamepad rumble OUT through `AppWindow.Rumble` (`IRumble`; pure `RumbleMixer` + Silk `IRumbleOutput` sink; `NoopRumble` headless). GLFW backend exposes no motors, so rumble no-ops there | (containment, not a swap) | Silk.NET / GLFW |
 | glTF load | `KhaozEngine.Render3D` `GltfLoader` (returns engine `GltfMesh`/`AnimationClip`/`Skeleton`) | (containment, in loader) | SharpGLTF |
 | Image decode | `KhaozEngine.Render2D` `ImageRgba` (`Decode`/`Load` -> engine RGBA8 value type) | (containment, in `ImageRgba`) | StbImageSharp |
@@ -508,6 +508,29 @@ exposes the property. `World.DefaultScheduler` itself is the per-world seam in `
 `SingleThreadedJobScheduler`, so a world stays byte-identical until a game opts in, and an explicit per-call
 scheduler still wins over it.
 
+## Rigid attachment definitions: a GPU-free leaf
+
+`KhaozEngine.Attachments` has no project or third-party dependency. It owns immutable definitions,
+canonical JSON, reference checks, the `IAttachmentAssetSource` byte seam, directory source policy and
+embedded rigid GLB preflight. JSON uses `System.Text.Json` from the BCL. No renderer or particular
+skeleton type appears in its API. Publishers reference it directly. Foundation and Server do not
+gain an attachment dependency.
+
+`ArchitectureTests.ZeroDependencyLeaves_CarryNoProjectReferences` pins the leaf alongside Primitives.
+The renderer's existing dependency allowlist and ECS-free closure remain unchanged.
+
+`KhaozEngine.Attachments.Render3D` references only Attachments and Render3D. It resolves contract
+joints to skin-bone indices and composes rigid part transforms from the body's current palette.
+Game3D carries this arm. `RendererArms_ReferenceOnlyTheirOwnerAndRender3D` pins its two edges
+alongside the Render3D.Ecs arm, and the umbrella membership lock includes it. Foundation and Server
+remain unchanged. Render3D's material-part memory importer reuses its existing glTF decoding.
+
+The arm also owns verified byte snapshots, per-scene upload sharing and transactional resource leases.
+`IRigidAttachmentScene` is an optional upload and full-descriptor draw capability. Its Scene3D adapter
+uses the renderer's deferred unload APIs. The shipped tile-world scene implements this capability
+without adding attachment members to `ITileWorldScene`. The tile renderer references the attachment arm,
+and the attachment arm has no dependency back to TileWorld. Dispose attachment caches before their scene.
+
 ## Render3D ECS arm: the renderer carries no Ecs edge
 
 `KhaozEngine.Render3D` references no ECS. Entity rendering is its own arm, split off exactly as
@@ -526,7 +549,7 @@ from a kit manifest, and `SnapshotTool` compares rendered PNGs, and neither touc
 base namespace `KhaozEngine.Render3D`, so source compiles unchanged once the package is referenced. It uses only
 public `Render3D` surface and needs no `InternalsVisibleTo`. `Render3D_StaysSeamsOnly` no longer allows `Ecs`,
 `Render3D_ClosureStaysEcsFree` refuses `Ecs`, `Simulation` and `Serialization` anywhere in the `Render3D` closure,
-and `Render3DEcs_ReferencesOnlyEcsAndRender3D` pins the arm's two edges.
+and `RendererArms_ReferenceOnlyTheirOwnerAndRender3D` pins the arm's two edges.
 
 ## Determinism at the scheduling boundary: Simulation references Determinism
 
@@ -664,9 +687,27 @@ threshold arithmetic use double intermediates, with explicit finite-float result
 See the [package README](../KhaozEngine.Movement/README.md) for the exact public contract.
 
 The rest of Movement is the composition seam for absolute ground movement and physics-backed navigation.
+`OrdinaryMovementEnvironment`, its pin, `OrdinaryServedDomain`, `OrdinaryMovementBoundary` and
+`EffectiveMovementBinding` live in Locomotion. They use Locomotion and Physics types only, so NetWorld and
+Game.Render3D gain no Movement dependency. Their public factories and `Preflight` own configuration checks.
+MapDoc's legacy-only context restriction is a public construction option, with no production friend access
+added for the phase 5a heads. Ordinary frames capture the boundary once, retain space-aware analytic delegates
+and pass the physics origin into certified water queries. Owned views dispose with the binding. Supplied views
+and public explicit contexts remain borrowed. Ordinary offset zero and public explicit offset 0.001 share one
+contact kernel. Ordinary contact navigation creates separate source and proof bindings over the context's borrowed
+view. Locomotion owns anchor discovery and movement outcomes, while Movement admits nodes, proves traversal and
+projects resting heights through Navigation's internal raw-field copy and public `WithRestingHeights`.
+Contact ground navigation, KENB format 2 serialization and public runtime validation are implemented in staged
+20.38.0, with no wire generation or legacy bake byte change. Contact aquatic navigation, footprint-only seeds and
+public explicit bake profiles remain deferred to [#1389](https://github.com/APKiwiOrg/KhaozEngine/issues/1389).
+Phase 6 game adoption remains separate.
 `GroundMoveContext` adapts absolute ground, normal, bounds and medium providers to a caller-owned local-origin
-`IPhysicsWorld`, and changes only the state position's frame during a sequential step. It does not step,
-dispose or rebase that world. `PhysicsNavBake.Capture` samples static columns through
+`IPhysicsWorld`, and changes only the state position's frame during a sequential step. Its ordinary contact overload
+accepts the Locomotion field, registration and boundary, caches tuning validation and owns only an engine-created
+query view. Its public construction restriction keeps resolver-1 MapDoc contexts legacy-only until native G1b.
+It does not step, dispose or rebase the physics source. Movement gains no renderer dependency. The input adapter
+`CharacterController3D` stays in Game.Render3D, uses the same Locomotion binding and owns its created view.
+`PhysicsNavBake.Capture` samples static columns through
 `PhysicsColumnProbe`, freezes absolute surface heights, headroom and caller-defined `uint` area tags, and keeps
 the classifier and world out of the resulting immutable column store. `PhysicsNavBakeOptions` supplies checked
 half-open bounds, probe settings and cell, layer, surface and edge budgets. Missing columns and outer-edge misses
@@ -728,10 +769,12 @@ KhaozEngine.TileWorld.Render3D -> KhaozEngine.Render3D           (Scene3D, GltfM
 KhaozEngine.TileWorld.Render3D -> KhaozEngine.Render2D           (ImageRgba, to decode a catalog material's texture into a ground material layer)
 KhaozEngine.TileWorld.Render3D -> KhaozEngine.Terrain            (GroundCoverDistribution and its render-free sample contract)
 KhaozEngine.TileWorld.Render3D -> KhaozEngine.Terrain.Render3D   (prop and ground-cover instancing paths)
+KhaozEngine.TileWorld.Render3D -> KhaozEngine.Attachments.Render3D (optional attachment upload leases and rigid draws)
 KhaozEngine.Game3D -> KhaozEngine.TileWorld.Render3D             (umbrella ProjectReference, like every other Game3D package)
 ```
 
-All six are forward edges onto packages that already sit below it, and nothing references back. The
+All seven are forward edges onto packages that already sit below it, and nothing references back.
+`TileWorldRenderer_ReferencesTheOptionalAttachmentCapability` pins the tile renderer's reference set. The
 `Terrain.Render3D` edge is the one worth naming: the tile world reuses `PropRenderer` for instancing and
 complementary LOD transitions, `PropClusterRenderer` for generation-safe HLOD build, apply, draw and lifetime,
 and the ground-cover renderer rather than growing a second placement path. `Scene3DChunkSink` and TileWorld now
@@ -849,16 +892,37 @@ stays physics-free for a server or a tool that never needs a collider:
 ```
 KhaozEngine.TileWorld.Physics -> KhaozEngine.TileWorld    (the document it reads, plus the ground, water and object placement rules)
 KhaozEngine.TileWorld.Physics -> KhaozEngine.Physics      (IPhysicsWorld and the shapes the static colliders are registered as)
-KhaozEngine.TileWorld.Physics -> KhaozEngine.Locomotion   (MovementMedium, the one Locomotion type the medium sampler returns)
+KhaozEngine.TileWorld.Physics -> KhaozEngine.Locomotion   (MovementMedium, certified water fields and ordinary registration)
 ```
 
 Three forward edges and no backend: the caller picks the `IPhysicsWorld`, and only the test project references
-`Physics.Bepu`. The `Locomotion` edge exists for `MovementMedium` alone. The height and normal delegates are plain
+`Physics.Bepu`. The `Locomotion` edge carries `MovementMedium`, `IMovementWaterField` and captured ordinary
+registration/extent values. Water column candidates are indexed by their actual rounded bounds. The height and normal delegates are plain
 `Func` types, so the floor sampler would need no reference by itself. `KhaozEngine.TileWorld` grants it
 `InternalsVisibleTo` for `TileObjectPlacement.PlanarBasis` and `AnchorPlanar`, so an object's box uses the
 quarter-turn basis its drawn model uses.
 `ArchitectureTests.TileWorldPhysics_ReferencesOnlyTileWorldPhysicsAndLocomotion` pins the three edges and the
 absence of any package reference, and `TileWorld.Physics` is on the `OptInBackends` list.
+
+## World map package edges
+
+The world map family has three package boundaries, each pinned by the architecture tests:
+
+```
+KhaozEngine.WorldMap -> KhaozEngine.Primitives
+KhaozEngine.TileWorld.WorldMap -> KhaozEngine.WorldMap, KhaozEngine.TileWorld
+KhaozEngine.WorldMap.Gui -> KhaozEngine.WorldMap, KhaozEngine.Gui
+```
+
+The core owns `IWorldMapSource`, styles, CPU rasterization, feature anchors and the chunk cache and worker.
+Its only edge is the foundation leaf, so a headless tool can produce imagery without TileWorld or a GPU.
+The TileWorld adapter adds document reads without pulling in rendering. The Gui arm adds `WorldMapView`
+over the existing UI stack, with frame-thread texture uploads and game-supplied icons, text and fonts.
+
+All three are opt-in and outside every umbrella. The core is optional for consumers without maps, the
+adapter is optional for worlds using another format, and the view is optional for headless consumers or
+games with another presentation. No third-party package is added. `ArchitectureTests.WorldMap.cs` pins the
+exact project references and the opt-in exclusions. See [World map](USING-KHAOZENGINE.md#world-map) for wiring.
 
 ## Map document physics package edges
 

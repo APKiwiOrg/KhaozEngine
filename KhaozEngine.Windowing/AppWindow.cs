@@ -461,6 +461,7 @@ namespace KhaozEngine.Windowing
                     () => GlfwClipboard.ReadText(glfwWindow),
                     text => GlfwClipboard.WriteText(glfwWindow, text));
             }
+            WireNativeGestures();
         }
 
         static GpuWindowHandle BuildHandle(IWindow window)
@@ -645,7 +646,7 @@ namespace KhaozEngine.Windowing
             {
                 m.MouseDown += (_, btn) => { if (MapMouse(btn, out MouseButton b)) _accumulator.OnMouseDown(b); };
                 m.MouseUp += (_, btn) => { if (MapMouse(btn, out MouseButton b)) _accumulator.OnMouseUp(b); };
-                m.Scroll += (_, wheel) => _accumulator.OnScroll(wheel.Y);
+                m.Scroll += (_, wheel) => RecordWheel(m, wheel.X, wheel.Y);
             }
             WireKeyRepeat();
             WireTextInput();
@@ -741,6 +742,7 @@ namespace KhaozEngine.Windowing
 
         public void Dispose()
         {
+            _nativeGestures?.Dispose();
             // Unregister the GLFW clipboard provider before GLFW is torn down so a later Clipboard call can
             // never dereference this window's freed GLFW handle.
             try { Clipboard.ClearTextProvider(); } catch { }

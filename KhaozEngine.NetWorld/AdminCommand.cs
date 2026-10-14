@@ -10,10 +10,12 @@ namespace KhaozEngine.NetWorld;
 // state, submitted from an arbitrary thread, that must land at one deterministic point in the tick.
 // SetPosition is Teleport's twin: the same placement, applied through the same case, differing only in whether the
 // teleport epoch advances. It is a separate KIND rather than a flag on the struct so the drain reads the intent
-// straight off the command.
+// straight off the command. HoldMovement and ReleaseMovement carry a target and, for a slot target, the seat
+// turnover captured at enqueue, and edit the head's held-slot set only while that seat has not turned over.
 internal enum AdminCommandKind : byte
 {
     Teleport, Kick, Broadcast, SpeedScale, SetPosition, BeginMovementCommitment, AbortMovementCommitment,
+    HoldMovement, ReleaseMovement,
 }
 
 /// <summary>A queued admin mutation, applied on the host thread during the next tick.</summary>
@@ -28,6 +30,11 @@ internal readonly struct AdminCommand
     public float Scale { get; init; }
 
     public uint Sequence { get; init; }
+
+    /// <summary>The target slot's turnover count captured at enqueue for a slot-targeted
+    /// <see cref="AdminCommandKind.HoldMovement"/> or <see cref="AdminCommandKind.ReleaseMovement"/>, unused
+    /// otherwise.</summary>
+    public int SeatTurnover { get; init; }
     public MovementCommitmentRequest MovementCommitment { get; init; }
 }
 

@@ -3,7 +3,6 @@
 // budget of MaxStepClimbSpeed * dt = 3.5 / 30 per tick.
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -450,7 +449,7 @@ public class GroundScenarioTests(ITestOutputHelper output)
 
     // The most stack FootSupport.Find takes for its spans, at the backend's member cap: SupportCertification's planes
     // and kinds, sized by the member count, for one probe at a time. The neighborhood spans are thread-static scratch.
-    static int SupportFindStackBytes()
+    internal static int SupportFindStackBytes()
     {
         const int capacity = SupportNeighborhoodResult.MaximumElements;
         return capacity * (2 * sizeof(double) + Unsafe.SizeOf<CertifiedSupportKind>());
@@ -477,30 +476,4 @@ public class GroundScenarioTests(ITestOutputHelper output)
         if (name != "fan 96") Assert.Equal(0, allocated);
     }
 
-    // Recorded, not asserted: the mean time of warm Find calls. Tiered compilation first runs every method
-    // unoptimized, so the row calls Find for a quarter of a second, long enough for the optimized code to be
-    // installed, before it times. The fan takes ten timed calls, every other scene 200.
-    [Theory]
-    [MemberData(nameof(CostScenes))]
-    public void SupportFindTiming(string name)
-    {
-        int calls = name == "fan 96" ? 10 : 200;
-        (FootSupportScene built, FootSupportQuery query) = CostScene(name);
-        using FootSupportScene scene = built;
-        SupportSample support = FootSupport.Find(null, null, scene.World, scene.Lease, query);
-        long warm = Stopwatch.GetTimestamp();
-        int warmCalls = 0;
-        while (Stopwatch.GetElapsedTime(warm).TotalMilliseconds < 250 && warmCalls < 2000)
-        {
-            support = FootSupport.Find(null, null, scene.World, scene.Lease, query);
-            warmCalls++;
-        }
-
-        long start = Stopwatch.GetTimestamp();
-        for (int i = 0; i < calls; i++) support = FootSupport.Find(null, null, scene.World, scene.Lease, query);
-        TimeSpan elapsed = Stopwatch.GetElapsedTime(start);
-
-        output.WriteLine($"TIMING {name}: mean {elapsed.TotalMicroseconds / calls:0.###} us over {calls} calls " +
-            $"after {warmCalls} warm-up calls, status {support.Status}");
-    }
 }

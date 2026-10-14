@@ -84,10 +84,10 @@ internal sealed partial class ModelRenderer
 
     /// <summary>Ensure the per-draw main UBO holds at least <paramref name="slotCount"/> slots (each
     /// <see cref="SkinnedMainSlotBytes"/>), growing geometrically and retiring the old buffer + its set. Rebuilds
-    /// the set-0 resource set, which carries both of the pipeline's uniform buffers: the shared frame block at
+    /// the set-0 resource set, which carries the shared frame block at
     /// binding 0, the point-light buffers at bindings 1 and 2, and a single-slot window over the per-draw
-    /// buffer at binding 3, the
-    /// one the dynamic offset indexes. One shared set, cheap to rebuild on the rare geometric grow. Call once
+    /// buffer at binding 3, the one the dynamic offset indexes. Atmosphere follows at bindings 4 through 6.
+    /// One shared set, cheap to rebuild on the rare geometric grow. Call once
     /// before packing this frame's skinned main slots.</summary>
     public void EnsureSkinnedMainCapacity(uint slotCount)
     {
@@ -101,8 +101,8 @@ internal sealed partial class ModelRenderer
         _skinnedMainUbo = _gd.Factory.CreateBuffer(
             new GpuBufferDescription(_skinnedMainSlots * SkinnedMainSlotBytes, GpuBufferUsage.UniformBuffer));
         _skinnedMainSet = _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(
-            _skinnedMainLayout, _ubo, _pointLightBuffer, _pointLightClusterBuffer,
-            new GpuBufferRange(_skinnedMainUbo, 0, SkinnedMainSlotBytes)));
+            _skinnedMainLayout, _atmosphere.AppendResources(_ubo, _pointLightBuffer, _pointLightClusterBuffer,
+            new GpuBufferRange(_skinnedMainUbo, 0, SkinnedMainSlotBytes))));
     }
 
     /// <summary>Pack one skinned draw's per-draw slot: the two-matrix header alone (<c>Model</c> for world

@@ -77,11 +77,14 @@ namespace KhaozEngine.Render3D
                         $"tile-ground layer {i} is {layers[i].AlbedoRgba.Length} bytes, expected {expected} for {width}x{height} RGBA8.",
                         nameof(layers));
 
+            // Packed, and so validated, BEFORE any GPU resource exists: a layer whose steep companion is refused
+            // throws here, and a throw after the upload below would leak the texture array it created.
+            Vector4[] tail = TileGroundMaterialConfig.BuildParams(layers, baseSpecStrength);
+
             uint w = (uint)width, h = (uint)height, mips = TileGroundMaterialConfig.MipLevelCount(width, height);
             // Created, uploaded and mipped in one transient list, and freed if that list is refused mid-frame (#424).
             IGpuTexture albedo = TextureUploads.CreateAlbedoArray(_gd, w, h, mips, layers, "Scene3D.LoadTileGroundMaterial");
 
-            Vector4[] tail = TileGroundMaterialConfig.BuildParams(layers, baseSpecStrength);
             // The material's OWN uniform buffer, holding these params alone and written once, here. The frame
             // uniforms are not in it: the pipeline reads those from the renderer's shared block at set 0 (#727).
             IGpuBuffer ubo = _model.CreateTileGroundParamsUbo(tail);

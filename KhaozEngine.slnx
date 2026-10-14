@@ -3,6 +3,9 @@
   <Project Path="KhaozEngine.Accounts.Sqlite/KhaozEngine.Accounts.Sqlite.csproj" />
   <Project Path="KhaozEngine.Accounts.SqlServer/KhaozEngine.Accounts.SqlServer.csproj" />
   <Project Path="KhaozEngine.App/KhaozEngine.App.csproj" />
+  <Project Path="KhaozEngine.Attachments/KhaozEngine.Attachments.csproj" />
+  <Project Path="KhaozEngine.Attachments.Render3D/KhaozEngine.Attachments.Render3D.csproj" />
+  <Project Path="KhaozEngine.Attachments.Tests/KhaozEngine.Attachments.Tests.csproj" />
   <Project Path="KhaozEngine.Audio/KhaozEngine.Audio.csproj" />
   <Project Path="KhaozEngine.Automation/KhaozEngine.Automation.csproj" />
   <Project Path="KhaozEngine.Catalog/KhaozEngine.Catalog.csproj" />
@@ -54,6 +57,10 @@
   <Project Path="KhaozEngine.MapDoc.Compatibility.Tests/KhaozEngine.MapDoc.Compatibility.Tests.csproj" />
   <Project Path="KhaozEngine.MapDoc.Physics/KhaozEngine.MapDoc.Physics.csproj" />
   <Project Path="KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj" />
+  <Project Path="KhaozEngine.WorldMap/KhaozEngine.WorldMap.csproj" />
+  <Project Path="KhaozEngine.WorldMap.Tests/KhaozEngine.WorldMap.Tests.csproj" />
+  <Project Path="KhaozEngine.WorldMap.Gui/KhaozEngine.WorldMap.Gui.csproj" />
+  <Project Path="KhaozEngine.WorldMap.Gui.Tests/KhaozEngine.WorldMap.Gui.Tests.csproj" />
   <Project Path="KhaozEngine.MapEditor/KhaozEngine.MapEditor.csproj" />
   <Project Path="KhaozEngine.NetWorld/KhaozEngine.NetWorld.csproj" />
   <Project Path="KhaozEngine.Navigation/KhaozEngine.Navigation.csproj" />
@@ -97,6 +104,7 @@
   <Project Path="KhaozEngine.TileWorld.Render3D/KhaozEngine.TileWorld.Render3D.csproj" />
   <Project Path="KhaozEngine.TileWorld.Netcode/KhaozEngine.TileWorld.Netcode.csproj" />
   <Project Path="KhaozEngine.TileWorld.Physics/KhaozEngine.TileWorld.Physics.csproj" />
+  <Project Path="KhaozEngine.TileWorld.WorldMap/KhaozEngine.TileWorld.WorldMap.csproj" />
   <Project Path="KhaozEngine.Serialization/KhaozEngine.Serialization.csproj" />
   <Project Path="KhaozEngine.Http/KhaozEngine.Http.csproj" />
   <Project Path="KhaozEngine.ServerStatus/KhaozEngine.ServerStatus.csproj" />
@@ -130,10 +138,12 @@
   <Project Path="KhaozEngine.TileWorld.Tests/KhaozEngine.TileWorld.Tests.csproj" />
   <Project Path="KhaozEngine.TileWorld.Netcode.Tests/KhaozEngine.TileWorld.Netcode.Tests.csproj" />
   <Project Path="KhaozEngine.TileWorld.Physics.Tests/KhaozEngine.TileWorld.Physics.Tests.csproj" />
+  <Project Path="KhaozEngine.TileWorld.WorldMap.Tests/KhaozEngine.TileWorld.WorldMap.Tests.csproj" />
   <Project Path="KhaozEngine.TileEdit.Tests/KhaozEngine.TileEdit.Tests.csproj" />
   <Project Path="KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj" />
   <Project Path="KhaozEngine.Showcase.Tests/KhaozEngine.Showcase.Tests.csproj" />
   <Project Path="KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />
+  <Project Path="KhaozEngine.Windowing.Tests/KhaozEngine.Windowing.Tests.csproj" />
   <Project Path="KhaozEngine.Updates/KhaozEngine.Updates.csproj" />
   <Project Path="KhaozEngine.Updates.Tool/KhaozEngine.Updates.Tool.csproj" />
   <Project Path="KhaozEngine.Showcase/KhaozEngine.Showcase.csproj" />
@@ -146,6 +156,7 @@
   <Project Path="tools/KeDungeon.Tests/KeDungeon.Tests.csproj" />
   <Project Path="tools/DungeonKitGen/DungeonKitGen.csproj" />
   <Project Path="tools/TestModelGen/TestModelGen.csproj" />
+  <Project Path="tools/GestureInputProbe/GestureInputProbe.csproj" />
   <Project Path="KhaozEngine.Physics.AotProbe/KhaozEngine.Physics.AotProbe.csproj" />
   <Project Path="KhaozEngine.Server.AotProbe/KhaozEngine.Server.AotProbe.csproj" />
 </Solution>

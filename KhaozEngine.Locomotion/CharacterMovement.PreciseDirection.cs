@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using KhaozEngine.Locomotion.Contacts;
 using KhaozEngine.Physics;
 
 namespace KhaozEngine.Locomotion;
@@ -17,6 +18,10 @@ public static partial class CharacterMovement
     {
         if (groundHeight is null) throw new ArgumentNullException(nameof(groundHeight));
         (Vector2 moveDir, float speedFraction) = ResolveWorldDir(worldDir, preserveSmallMagnitude);
+        if (tuning.Controller == MovementControllerKind.Contact)
+            return ContactController.Step(state, moveDir, speedFraction, run, jump: false, dt, groundHeight, tuning,
+                groundNormal, world, clampXz, medium, settings: new GroundCoreSettings(tuning.FootRadiusFraction));
+        MovementConfigurationValidation.ValidateLegacy(tuning);
         return StepCore(state, moveDir, speedFraction, run, jump: false, dt, groundHeight, tuning,
             groundNormal, world, clampXz, medium);
     }

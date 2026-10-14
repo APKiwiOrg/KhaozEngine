@@ -74,8 +74,8 @@ public class QuaternionGeometryTransformTests
     {
         Assert.True(Probe(Pose.At(new Vector3(2048, -2048, 2048)), Vector3.Zero).IsResolved);
         Assert.False(Probe(Pose.At(new Vector3(MathF.BitIncrement(2048f), 0, 0)), Vector3.Zero).IsResolved);
-        Assert.True(Probe(Pose.Identity, new Vector3(64, -64, 64)).IsResolved);
-        Assert.False(Probe(Pose.Identity, new Vector3(MathF.BitIncrement(64f), 0, 0)).IsResolved);
+        Assert.True(Probe(Pose.Identity, new Vector3(2048, -2048, 2048)).IsResolved);
+        Assert.False(Probe(Pose.Identity, new Vector3(MathF.BitIncrement(2048f), 0, 0)).IsResolved);
         Assert.False(Probe(Pose.At(new Vector3(float.PositiveInfinity)), Vector3.Zero).IsResolved);
     }
 

@@ -123,13 +123,15 @@ internal readonly struct InstalledPoseOperator
             Math.Max(real.Bounds.Upper, high)));
     }
 
-    internal FeaturePoint Direction(FeaturePoint local) => !IsResolved ? default : FeaturePoint.Add(
-        FeaturePoint.Add(FeaturePoint.Scale(X, local.X), FeaturePoint.Scale(Y, local.Y)), FeaturePoint.Scale(Z, local.Z));
+    internal FeaturePoint Direction(FeaturePoint local, bool exactZeroProducts = false) => !IsResolved ? default : FeaturePoint.Add(
+        FeaturePoint.Add(FeaturePoint.Scale(X, local.X, exactZeroProducts), FeaturePoint.Scale(Y, local.Y, exactZeroProducts)),
+        FeaturePoint.Scale(Z, local.Z, exactZeroProducts));
 
-    internal FeaturePoint Point(Vector3 local) => FeaturePoint.Add(Direction(FeaturePoint.Exact(local)), Translation);
+    internal FeaturePoint Point(Vector3 local, bool exactZeroProducts = false) =>
+        FeaturePoint.Add(Direction(FeaturePoint.Exact(local), exactZeroProducts), Translation);
 
-    internal FeaturePoint Edge(Vector3 a, Vector3 b) =>
-        Direction(FeaturePoint.Subtract(FeaturePoint.Exact(b), FeaturePoint.Exact(a)));
+    internal FeaturePoint Edge(Vector3 a, Vector3 b, bool exactZeroProducts = false) =>
+        Direction(FeaturePoint.Subtract(FeaturePoint.Exact(b), FeaturePoint.Exact(a)), exactZeroProducts);
 
     // Transpose is the pinned operational local map. It is deliberately not called an inverse.
     internal GeometryVector RoundedTranspose(GeometryVector world) => new(

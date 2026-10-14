@@ -162,14 +162,17 @@ vertices has at most 2V - 4 faces and 6V - 12 face entries, so a hull of 130 poi
 over 130 points is flagged, even one the query would still capture.
 
 Every diagnostic predicts `IPhysicsCapsuleFeatures` capture and nothing else. The #438 contact controller's
-foot-support primitive, not yet used by movement, certifies through `IPhysicsSupportNeighborhood`, which has
-different limits. It captures sphere, capsule and cylinder leaves, so `CurvedLeaf` does not apply to it. It reads only
-the mesh triangles near its probe, so `MeshTriangleCapacity` does not apply either, and it caps one query at 256
-elements. It shares the 64 leaf limit of `LeafCapacity` and the hull face limits behind `HullCapacity`. It applies its
-own 64 m local bound to the radius and half length of a curved leaf and to the mesh triangles near its probe.
-`LocalExtent` does not predict that bound: the builder never flags it on a curved leaf, and a mesh it flags may still
-pass when the triangles near the probe stay within 64 m. One unsupported static near a probe refuses the whole
-neighborhood query.
+foot-support primitive certifies explicit movement through `IPhysicsSupportFootprint`, which has different
+limits. It captures sphere, capsule and cylinder leaves, so `CurvedLeaf` does not apply to it. It reads mesh
+triangles in the complete admitted foot column, so `MeshTriangleCapacity` does not apply either, and it caps
+one query at 256 relevant raw elements. It shares the 64 leaf limit of `LeafCapacity` and the hull face limits
+behind `HullCapacity`. Local vertex admission for feature and footprint queries is 2048 m, with precision
+enforced per query by unchanged publication ceilings, exact-arithmetic capacity and the 256 m incidence bound.
+Curved leaf sizes retain their separate 64 m limit, and full capsule-feature mesh capture retains its
+explicit 64 m subset. Complete footprints apply the 2048 m vertex domain to admitted mesh triangles.
+`LocalExtent` still describes the builder's separate 64 m chunk diagnostic. It does not predict this admission
+domain, and a mesh it flags may still pass a footprint query. One unsupported
+static in the column refuses the whole footprint query. Native adoption remains separately gated.
 
 `MapBackendPoseAdapter` is the explicit frame-local binary32 approximation of a retained `MapEffectiveTransform`.
 `ErrorMetres` bounds origin, scale, quaternion and local-coordinate rounding. Semantic support stays exact.
@@ -438,7 +441,7 @@ separate spatial values fall back to their reported bounds.
 | Placement-local support surfaces (`Surface` resources) | R5 | Installed in MapDoc before sampling and compiled here with canonical owners |
 | Live portal and door state | [#1363](https://github.com/APKiwiOrg/KhaozEngine/issues/1363) | Portals remain authored open |
 | Clearance body model confirmation | Owner, #1344 | Clearance uses the #438 shell through `ContactShell` |
-| Support certification of curved statics, creases and one-sided back faces | #438 phase 2b | Landed. The controller's foot-support primitive, not yet used by movement, certifies through `IPhysicsSupportNeighborhood`, and the diagnostics here still predict `IPhysicsCapsuleFeatures` |
+| Support certification of curved statics, creases and one-sided back faces | #438 phase 2b | Landed. Staged complete-footprint discovery uses `IPhysicsSupportFootprint` for explicit movement, and diagnostics here still predict only `IPhysicsCapsuleFeatures`. Native adoption remains separately gated |
 | Editor placement edits reporting old and new placement bounds with Physics, Nav and Residency | R3 | Done, see Editor tooling |
 | GUI native editing: `MapEditorScene`, hosted by Showcase, binds no closure or placement bounds provider yet | R3 follow-up, [#1349](https://github.com/APKiwiOrg/KhaozEngine/issues/1349) | Wiring it needs the provider reachable from that host, in this package or a shared adapter, since Showcase does not reference ke-mapedit |
 | Import-time acceptance of changed targets, distances, occlusion and stances | R11 and G2 | Named differentials at import |

@@ -23,7 +23,7 @@ public sealed partial class BepuPhysicsWorld
     }
 
     private sealed class QueryView : IPhysicsWorldQueryView, IPhysicsQueryLeaseSource, IPhysicsCapsuleContacts,
-        IPhysicsCapsuleSweep, IPhysicsCapsuleFeatures, IPhysicsSupportNeighborhood
+        IPhysicsCapsuleSweep, IPhysicsCapsuleGeometryQueries, IPhysicsCapsuleFeatures, IPhysicsSupportNeighborhood, IPhysicsSupportFootprint, IPhysicsStaticGeometrySource
     {
         private readonly BepuPhysicsWorld _owner;
         private readonly StaticQueryExclusions _exclusions;
@@ -36,6 +36,11 @@ public sealed partial class BepuPhysicsWorld
         }
 
         public IPhysicsWorld SourceWorld => _owner;
+
+        public long StaticGeometryGeneration
+        {
+            get { ThrowIfDisposed(); return _owner.StaticGeometryGeneration; }
+        }
 
         public IPhysicsQueryLease AcquireQueryReadLease()
         {
@@ -90,6 +95,21 @@ public sealed partial class BepuPhysicsWorld
             _owner.AssertNeighborhoodCurrentCore(this, result, lease);
         }
 
+        public SupportFootprintResult QuerySupportFootprint(IPhysicsQueryLease lease, in SupportFootprintRequest request,
+            Span<SupportFootprintMember> members, Span<ulong> joins, QueryFilter filter = default)
+        {
+            _owner.AuthenticateFeatureLease(lease);
+            ThrowIfDisposed();
+            return _owner.QuerySupportFootprintCore(this, lease, request, members, joins, filter, _exclusions);
+        }
+
+        public void AssertFootprintCurrent(in SupportFootprintResult result, IPhysicsQueryLease lease)
+        {
+            _owner.AuthenticateFeatureLease(lease);
+            ThrowIfDisposed();
+            _owner.AssertFootprintCurrentCore(this, result, lease);
+        }
+
         public Vector3 Origin
         {
             get
@@ -132,6 +152,22 @@ public sealed partial class BepuPhysicsWorld
         }
 
         public CapsuleSweepResult SweepCapsuleCertified(CapsuleShape capsule, Pose pose, Vector3 displacement,
+            QueryFilter filter = default)
+        {
+            using QueryOperation scope = _owner.EnterQuery();
+            ThrowIfDisposed();
+            return _owner.SweepCapsuleCertifiedCore(capsule, pose, displacement, filter, _exclusions);
+        }
+
+        public CapsuleContactResult QueryCapsuleContacts(in CapsuleQueryDimensions capsule, Pose pose, float maxSeparationMetres,
+            Span<CapsuleContact> destination, QueryFilter filter = default)
+        {
+            using QueryOperation scope = _owner.EnterQuery();
+            ThrowIfDisposed();
+            return _owner.QueryCapsuleContactsCore(capsule, pose, maxSeparationMetres, destination, filter, _exclusions);
+        }
+
+        public CapsuleSweepResult SweepCapsuleCertified(in CapsuleQueryDimensions capsule, Pose pose, Vector3 displacement,
             QueryFilter filter = default)
         {
             using QueryOperation scope = _owner.EnterQuery();

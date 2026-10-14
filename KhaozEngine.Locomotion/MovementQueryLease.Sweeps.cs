@@ -9,10 +9,10 @@ public sealed partial class MovementQueryLease
     /// <summary>Accepts sweep data for this complete request under the current read interval.
     /// Known validates the backend's declared result, not its geometric proof or a safe placement.</summary>
     internal MovementAvailability QuerySolidSweep(in MovementBodyQuery body, Vector3 displacement,
-        out CapsuleSweepResult result) => QuerySolidSweepFiltered(body, displacement, out result, default);
+        out CapsuleSweepResult result) => QuerySolidSweepFiltered(body, displacement, out result, default, ContactCapsuleRole.Body);
 
     internal MovementAvailability QuerySolidSweepFiltered(in MovementBodyQuery body, Vector3 displacement,
-        out CapsuleSweepResult result, QueryFilter filter)
+        out CapsuleSweepResult result, QueryFilter filter, ContactCapsuleRole role = ContactCapsuleRole.RoundedSweep)
     {
         result = default;
         AssertUsable();
@@ -32,8 +32,13 @@ public sealed partial class MovementQueryLease
         try
         {
             AssertCurrent();
-            var capsule = new CapsuleShape(body.Radius, 2f * (body.HalfHeight - body.Radius));
-            CapsuleSweepResult query = sweep.SweepCapsuleCertified(capsule, Pose.At(body.Centre), displacement, filter);
+            var dimensions = new CapsuleQueryDimensions(body.Radius, 2f * (body.HalfHeight - body.Radius));
+            // Endpoint rounding can change the enclosing dimensions on every tick. Geometric queries
+            // retain those exact values without constructing a persistent shape for each variation.
+            CapsuleSweepResult query = sweep is IPhysicsCapsuleGeometryQueries geometry
+                ? geometry.SweepCapsuleCertified(dimensions, Pose.At(body.Centre), displacement, filter)
+                : sweep.SweepCapsuleCertified(Workspace.Shapes.Get(role, dimensions.Radius, dimensions.Length),
+                    Pose.At(body.Centre), displacement, filter);
             AssertCurrent();
             if (!query.IsValid) return MovementAvailability.Invalid;
             if (!query.IsComplete || query.CertifiedErrorMetres > CoverageSkinMetres)

@@ -8,7 +8,7 @@ using KhaozEngine.Commerce;
 using KhaozEngine.Commerce.SqlServer;
 
 IWalletStore store = new SqlServerWalletStore(
-    "Server=tcp:my.database.windows.net,1433;Database=ruinborne;Authentication=Active Directory Default;Encrypt=True;");
+    "Server=tcp:my.database.windows.net,1433;Database=consumer_game;Authentication=Active Directory Default;Encrypt=True;");
 CreditResult r = await store.CreditAsync(new AccountId("acct:1"), new CurrencyId("shard"),
     100, "grant:daily:2026-07-07", LedgerReason.Grant, sourceRef: null);
 ```

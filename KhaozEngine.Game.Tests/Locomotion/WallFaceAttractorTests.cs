@@ -10,7 +10,7 @@ namespace KhaozEngine.Tests.Locomotion;
 // A WALL CONTACT'S FACE DIRECTION IS NOT A 0.4 M FACET OF THE BANK (#501, 17.32.0). Ninth round of the steep-terrain
 // chain, split out of #498 before that fix closed it, and like #475, #486 and #498 it comes from a playtest.
 //
-// WHAT WAS REPORTED, AND WHAT MAKES IT A DIFFERENT BUG FROM #498. Walking along a bank on Ruinborne stops the
+// WHAT WAS REPORTED, AND WHAT MAKES IT A DIFFERENT BUG FROM #498. Walking along a bank on the reference consumer stops the
 // character dead in localised sticky PLACES. The #498 dead stop was the anti-tunnel re-test refusing a projected
 // step, and it left a trace full of refusals. About fifteen percent of the dead rows in that sweep had ZERO refusals:
 // the projection itself was handing the ladder almost nothing to walk. Confirmed at bank (56.7, 293.0) at 50, 40 and
@@ -45,7 +45,7 @@ namespace KhaozEngine.Tests.Locomotion;
 // tone, so no stencil width can null it by landing on a half wavelength.
 //
 // THE NORMAL DELEGATE IS THE SAME 0.4 M CENTRAL DIFFERENCE THE HEIGHT PLANE USES, which is deliberate and is what
-// Ruinborne's own GroundNormal does. #468 exists because a consumer's normal delegate and height field can describe
+// The reference consumer's own GroundNormal does. #468 exists because a consumer's normal delegate and height field can describe
 // DIFFERENT surfaces, and this bug is not that: the census confirmed the two agree exactly at the sticky sites. So
 // the fixture removes the confound rather than reproducing it, and every reading here is about the WIDTH a single
 // surface is read at.
@@ -57,7 +57,7 @@ namespace KhaozEngine.Tests.Locomotion;
 // WHICH LEANS SHOW IT, AND WHY THAT BAND AND NOT THE CENSUS'S OWN. The facet's outward can only reach anti-parallel
 // to a command if the wiggle tilts the local contour far enough, and the tilt needed is cot(lean): the shallower the
 // heading, the rougher the bank has to be. This fixture's wiggle reaches a contour gradient of 0.448, which puts the
-// attractor at leans of about 66 degrees and steeper. Ruinborne's island is rougher than that relative to its banks
+// attractor at leans of about 66 degrees and steeper. The reference consumer's island is rougher than that relative to its banks
 // and shows the same park at 30 degrees off the normal. The amplitude here is NOT simply raised to match, and that
 // is a measurement rather than a preference: past about 0.7 the wiggle stops being micro-geometry and starts being
 // terrain in its own right, with past-gate facets standing across the traverse, and then the walk is stopped by the
@@ -153,7 +153,7 @@ public class WallFaceAttractorTests
         }
 
         /// <summary>The ground normal, as the SAME capsule-radius central difference the engine's height plane reads
-        /// (and as Ruinborne's own GroundNormal computes it). See the file header: this is not a #468 mismatched-pair
+        /// (and as the reference consumer's own GroundNormal computes it). See the file header: this is not a #468 mismatched-pair
         /// fixture, and making the two delegates agree exactly is what keeps it from becoming one.</summary>
         public static Vector3 NormalAt(float x, float z)
         {

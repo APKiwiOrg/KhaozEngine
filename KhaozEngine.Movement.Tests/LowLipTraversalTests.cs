@@ -131,7 +131,7 @@ public class LowLipTraversalTests
         return body;
     }
 
-    private static BepuPhysicsWorld LipWorld(float lip = DeckTop)
+    internal static BepuPhysicsWorld LipWorld(float lip = DeckTop)
     {
         BepuPhysicsWorld world = GroundTraversalProbeTests.FlatWorld();
         world.AddStatic(new BoxShape(new Vector3(1f, lip / 2f, 2f)), Pose.At(new Vector3(1f, lip / 2f, 0f)));

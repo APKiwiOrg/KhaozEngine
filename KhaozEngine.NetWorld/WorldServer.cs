@@ -154,7 +154,7 @@ public sealed partial class WorldServerConfig
 /// The multi-cell variant is <see cref="ShardedWorldServer"/> (the same movement stack run across a cell grid);
 /// this is the single-world slice. Both share <see cref="WorldPersistence"/> via <see cref="IWorldPersistenceHost"/>.
 /// </summary>
-public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControllable, IWorldPickupHost
+public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControllable, IWorldPickupHost, IDisposable
 {
     private readonly WorldServerConfig config;
     private readonly ReplicationRegistry registry;
@@ -228,6 +228,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
         commands = new RemoteCommandQueue<MoveCommand>(neutralCommand: default,
             maxSlots: Math.Max(64, this.config.MaxPlayers),
             catchUpThreshold: Math.Max(0, this.config.MaxInputBacklog));
+        seatTurnoverBySlot = new int[Math.Max(0, this.config.MaxPlayers)];
         // A framed step queries the island's physics world in the island's space, so that world has to be able to
         // follow the frame. Refuse the combination at construction rather than serve queries from another space:
         // the failure that would produce is a character standing on nothing, not a rounding artifact.
@@ -238,17 +239,22 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
                 "colliders in a space its state is not in.", nameof(physics));
         this.physics = physics;
         simulator = new PlayerMoveSimulator(groundHeight, tuning, groundNormal, bounds, physics, medium,
-            this.config.SamplerSpace, this.config.ExplicitMovement);
-        // Always enforce the engine wire generation at connect (independent of any consumer version gate), so a
-        // wire-skewed or version-less client is rejected cleanly instead of admitted and left to misparse the wire.
-        var admission = new ReplicationAdmissionGate(WireGenerationAuthenticator.Install(authenticator));
-        net = new NetServer(transport, config.MaxPlayers, admission, maxQueuedEvents: config.MaxQueuedEvents,
-            duplicateSessions: config.DuplicateSessions, maxPendingConnections: config.MaxPendingConnections);
-        replication = new RebuildServerStreams(net, admission, deltaReplicator, this.config.ReplicationStream,
-            replicationLimits, this.config.TickSeconds, commands, slot => Raise(slot, SuspiciousReason.MalformedPacket),
-            Disconnect);
-        this.banStore = banStore;
-        interest = new InterestGrid(MathF.Max(1f, config.InterestRadius));
+            this.config.SamplerSpace, this.config.ExplicitMovement, this.config.MovementWaterField,
+            this.config.MovementRegistration, this.config.MovementBoundary);
+        try
+        {
+            // Always enforce the engine wire generation at connect (independent of any consumer version gate), so a
+            // wire-skewed or version-less client is rejected cleanly instead of admitted and left to misparse the wire.
+            var admission = new ReplicationAdmissionGate(WireGenerationAuthenticator.Install(authenticator));
+            net = new NetServer(transport, config.MaxPlayers, admission, maxQueuedEvents: config.MaxQueuedEvents,
+                duplicateSessions: config.DuplicateSessions, maxPendingConnections: config.MaxPendingConnections);
+            replication = new RebuildServerStreams(net, admission, deltaReplicator, this.config.ReplicationStream,
+                replicationLimits, this.config.TickSeconds, commands, slot => Raise(slot, SuspiciousReason.MalformedPacket),
+                Disconnect);
+            this.banStore = banStore;
+            interest = new InterestGrid(MathF.Max(1f, config.InterestRadius));
+        }
+        catch { simulator.Dispose(); throw; }
     }
 
     /// <summary>Raised when the server flags a connection as suspicious: a malformed/NaN move packet, a per-
@@ -531,6 +537,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
         {
             MoveCommand cmd = commands.Dequeue(slot, out int ack);
             lastAckBySlot[slot] = ack;
+            if (heldMovementSlots.Contains(slot)) cmd = MoveCommand.Idle;   // acknowledged, never acted on
             // Everything this island owns is stepped in the island's frame. Unframed (the default) that frame is
             // WorldFrame.Origin, whose anchor is exactly zero, so every line below is byte-identical to the
             // pre-frame server: a state converted from Origin to Origin is the same state, and InFrame(Origin, p)
@@ -692,6 +699,10 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
                 break;
             case AdminCommandKind.AbortMovementCommitment:
                 ApplyAbortMovementCommitment(cmd.Target, cmd.Sequence, MovementCommitmentEndReason.Aborted);
+                break;
+            case AdminCommandKind.HoldMovement:
+            case AdminCommandKind.ReleaseMovement:
+                ApplyMovementHold(cmd);
                 break;
             case AdminCommandKind.Kick:
                 {

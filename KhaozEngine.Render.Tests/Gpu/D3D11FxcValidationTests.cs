@@ -145,6 +145,8 @@ void main() { Data[gl_GlobalInvocationID.x] = 1.0; }";
         /// </summary>
         [Theory]
         [InlineData("ShadowDepth")]
+        [InlineData("FoliageDepth")]
+        [InlineData("FoliageDepthCutout")]
         [InlineData("ShadowDepthDissolve")]
         [InlineData("ShadowDepthDissolveInverted")]
         [InlineData("SkinnedShadowDepth")]
@@ -177,6 +179,8 @@ void main() { Data[gl_GlobalInvocationID.x] = 1.0; }";
         [InlineData("ShadowDepthCutout")]
         [InlineData("ShadowDepthCutoutInverted")]
         [InlineData("SkinnedShadowDepthDissolve")]
+        [InlineData("FoliageDepth")]
+        [InlineData("FoliageDepthCutout")]
         public void TheShadowDepthFragments_ReadAGapFreeInterpolantPrefix(string programName)
         {
             ShippedGraphicsProgram program = Program(programName);

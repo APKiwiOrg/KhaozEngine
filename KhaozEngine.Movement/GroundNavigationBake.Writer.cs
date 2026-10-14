@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
+using KhaozEngine.Locomotion;
 using KhaozEngine.Navigation;
 
 namespace KhaozEngine.Movement;
@@ -21,7 +22,7 @@ public sealed partial class GroundNavigationBake
         byte[] payload = EncodePayload();
         var header = new NavBakeWriter();
         header.WriteBytes(Magic);
-        header.WriteUInt16(NavBakeIdentity.FormatVersion);
+        header.WriteUInt16(_formatVersion);
         header.WriteUInt16(0);
         header.WriteUInt32((uint)_identity.Length);
         header.WriteUInt64((ulong)payload.Length);
@@ -103,6 +104,8 @@ public sealed partial class GroundNavigationBake
             for (int i = 0; i < cells; i++)
                 if (grid.ClearanceAt(i % grid.Width, i / grid.Width) != 0)
                     writer.WriteUInt8(traversal.ExitMask(i % grid.Width, i / grid.Width));
+            if (profile.Identity.Kind == EffectiveMovementBindingKind.OrdinaryContact)
+                WriteRestingHeights(writer, grid);
         }
 
         IReadOnlyList<NavLink> candidates = space.Links, accepted = graph.Links;
@@ -118,6 +121,16 @@ public sealed partial class GroundNavigationBake
         if (next != accepted.Count)
             throw new InvalidOperationException("Accepted links must be an ordered subset of the candidate links.");
         writer.WriteBytes(bits);
+    }
+
+    // Resting feet are a separate payload section. The raw heights above remain the topology identity.
+    private static void WriteRestingHeights(NavBakeWriter writer, NavGrid grid)
+    {
+        if (!grid.HasRestingHeights)
+            throw new InvalidOperationException("A contact navigation layer requires resting heights.");
+        for (int z = 0; z < grid.Height; z++)
+            for (int x = 0; x < grid.Width; x++)
+                if (grid.RestingHeightAt(x, z) is float y) writer.WriteSingle(y);
     }
 
     private static int BitsetLength(int count) => (int)(((long)count + 7) / 8);

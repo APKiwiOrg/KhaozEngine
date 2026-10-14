@@ -176,7 +176,7 @@ pack per the release ritual.
   trivial).
 - **Grammar/mission layer** on top of the embedder for declarative macro-structure control, if growth
   heuristics prove insufficient.
-- **Ruinborne adoption** (game-side): engine pin bump, far-corner plot allocation, teleport hook, and
+- **the reference consumer adoption** (game-side): engine pin bump, far-corner plot allocation, teleport hook, and
   verifying authoritative movement resolves against the 3D physics world inside dungeons.
 - **Decoration passes** (WFC-style interior detailing, themed clutter): possible later layer, never the
   structural generator.

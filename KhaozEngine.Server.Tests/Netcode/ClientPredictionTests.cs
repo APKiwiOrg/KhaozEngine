@@ -20,7 +20,7 @@ public class ClientPredictionTests
     }
 
     // A state with a real vertical axis, to exercise the 3D render smoothing (jumps/falls) generically - no
-    // Ruinborne/NetWorld dependency. Planar = XZ ground plane (gates reconcile error), Height = vertical axis.
+    // ConsumerGame/NetWorld dependency. Planar = XZ ground plane (gates reconcile error), Height = vertical axis.
     private readonly record struct V3State(Vector2 Planar, float Height) : IPredictedState<V3State>
     {
         Vector2 IPredictedState<V3State>.Position => Planar;
@@ -535,7 +535,7 @@ public class ClientPredictionTests
     {
         // #409: a transport reconnect reseeds prediction (fresh session, fresh net id, fresh authoritative entity) but
         // moves the player nowhere. Reporting that as a teleport made every reconnect cost a consumer its full
-        // teleport reaction - Ruinborne rebuilt its whole terrain ring while the player stood still, and a lossy link
+        // teleport reaction - the reference consumer rebuilt its whole terrain ring while the player stood still, and a lossy link
         // paid it again on every drop. The seed still happens, only the signal is withheld.
         var p = NewEpoch(seedEpoch: 1);
         p.Reconcile(0, new EpochState(Vector2.Zero, 1), lastAcknowledgedSeq: -1);   // join

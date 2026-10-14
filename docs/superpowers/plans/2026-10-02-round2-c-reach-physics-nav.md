@@ -86,7 +86,7 @@
   ```
   Access internals through `InternalsVisibleTo` for Movement.Tests only. The small local validateWideShortBody function calls context Step with invalid tuning. Never normalize a bad radius/height silently.
 - [x] **Step 2: Run** `dotnet test KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj -c Release --filter 'FullyQualifiedName~GroundMoveContextTests'`. Expected missing API or behavior failure.
-- [x] **Step 3: Implement context and frame adapters.** Forward medium, unlike the optional Ruinborne lift source. Delegate collision and gravity to CharacterMovement. Do not dispose caller-owned physics or guess a ground height.
+- [x] **Step 3: Implement context and frame adapters.** Forward medium, unlike the optional consumer lift source. Delegate collision and gravity to CharacterMovement. Do not dispose caller-owned physics or guess a ground height.
 - [x] **Step 4: Run** the same filter. Expected nonzero and zero failures.
 - [x] **Step 5: Commit.** Subject `feat(movement): share absolute ground context across movement and navigation`. Obtain task review.
 

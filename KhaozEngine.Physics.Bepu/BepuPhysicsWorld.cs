@@ -124,7 +124,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsWorld
 
     public SeamHandle AddStatic(PhysicsShape shape, Pose pose, PhysicsMaterial? material = null)
     {
-        using QueryOperation scope = EnterMutation();
+        using QueryOperation scope = EnterStaticMutation();
         CapsuleSweepEvidence.Mutation evidence = BeginSweepMutation();
         var shapeIndex = ShapeFactory.Add(_sim, _pool, shape);
         var desc = new StaticDescription(pose.Position, pose.Orientation, shapeIndex);
@@ -142,6 +142,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsWorld
         CapsuleSweepEvidence.Mutation evidence = BeginSweepMutation();
         if (_handles.TryGetValue(handle.Value, out var entry))
         {
+            StaticGeometryChanged();
             _sim.Statics.Remove(entry.Handle);
             // Remove the shape from the shape pool. Compound shapes need recursive removal
             // to free child shapes; simple convex shapes (Box, Sphere, Capsule, etc.) use Remove.
@@ -472,6 +473,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsWorld
         BeginSweepMutation();
         if (_disposed) return;
         _disposed = true;
+        StaticGeometryChanged();
         _sim.Dispose();
         _pool.Clear();
     }

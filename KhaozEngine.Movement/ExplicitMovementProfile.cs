@@ -13,7 +13,7 @@ public sealed class ExplicitMovementProfile
 {
     public const string ControllerModel = "contact-shell-footprint-swim-v1";
     const uint HandoffRecipeVersion = 1;
-    const uint RouteProofRecipeVersion = 1;
+    const uint RouteProofRecipeVersion = 2;
     public const int MaximumProbeSteps = 65536;
     public string Name { get; }
     public MoveTuning Tuning { get; }
@@ -32,9 +32,7 @@ public sealed class ExplicitMovementProfile
         ArgumentNullException.ThrowIfNull(semanticInputs);
         ArgumentNullException.ThrowIfNull(boundaryIdentity);
         GroundMoveContext.CheckTuning(tuning);
-        if (tuning.Gravity <= 0 || tuning.MaxFallSpeed <= 0 || tuning.SwimEnterDepthFraction <= 0 ||
-            !water.IsValid || water.Mode == WaterTraversalMode.Legacy)
-            throw new ArgumentException("The profile requires valid explicit movement tuning.", nameof(tuning));
+        MovementConfigurationValidation.ValidateExplicit(tuning, water);
         if (!float.IsFinite(stepSeconds) || stepSeconds <= 0 || maxSteps < 1 || maxSteps > MaximumProbeSteps ||
             !float.IsFinite(stepSeconds * maxSteps)) throw new ArgumentOutOfRangeException(nameof(stepSeconds));
         var sources = semanticInputs.Snapshot();
@@ -51,8 +49,8 @@ public sealed class ExplicitMovementProfile
         var writer = new NavBakeWriter();
         writer.WriteUInt16(1);
         writer.WriteLongString(utf8.GetBytes(ControllerModel));
-        // Fixed explicit body mapping and phase 4b recipes. Phase 5 owns selectable tuning/bakes.
-        writer.WriteSingle(new GroundCoreSettings().FootRadiusFraction);
+        // Selectable foot geometry and the unchanged explicit placement and handoff recipes.
+        writer.WriteSingle(tuning.FootRadiusFraction);
         writer.WriteSingle(LeasedContactQueryContext.PlacementSkin);
         writer.WriteUInt32(HandoffRecipeVersion);
         writer.WriteUInt32(RouteProofRecipeVersion);

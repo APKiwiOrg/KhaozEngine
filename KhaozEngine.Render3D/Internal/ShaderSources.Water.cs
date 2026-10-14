@@ -27,7 +27,7 @@ namespace KhaozEngine.Render3D.Internal
     vec4 DetailParams;  // x=warpStrength, y=detailFadeDistance, z=distantDetailScale, w=shallowDepth
     vec4 SkyHorizon;    // rgb, the reflected sky's horizon colour
     vec4 SkyZenith;     // rgb, the reflected sky's zenith colour
-    vec4 SkyParams;     // x = reflected disc count, yzw unused
+    vec4 SkyParams;     // x = reflected disc count, y = physical atmosphere enabled
     vec4 ReflectGlint;  // x=skyReflectionStrength, y=skyReflectionSunStrength, z=glintRoughness, w=glintDistantRoughness
     vec4 SwellParams;   // x=amplitude, y=wavelength, z=directionRadians, w=spreadRadians
     vec4 SwellShape;    // x=steepness, y=speedScale, z=componentCount, w=seed
@@ -52,7 +52,7 @@ namespace KhaozEngine.Render3D.Internal
     vec4 SkyGround;        // rgb = the reflected sky's ground band below the world horizon, a = blend depth (negative = no ground)
     vec4 SkyDiscColor[8];  // per reflected disc: rgb colour, a = opacity
     vec4 SkyDiscDir[8];    // xyz = unit direction TO the body, w = radius
-    vec4 SkyDiscHalo[8];   // x = halo strength, y = halo falloff
+    vec4 SkyDiscHalo[8];   // x = halo strength, y = halo falloff, z = physical primary marker
 };";
 
         // ---- Stylized ocean surface. Drawn AFTER the sky and the ground decals into ColorDepthFB (lit colour +
@@ -209,7 +209,8 @@ void main() {
         /// <see cref="SkyMath.ShadeDirection"/> (the reflected sky) exactly.
         /// </summary>
         public const string WaterFrag = @"#version 450
-" + WaterShoreBindingsGlsl + WaterFftBindingsGlsl + @"
+" + AtmosphereBindingsAt7Glsl + AtmosphereFogGlsl
+    + WaterShoreBindingsGlsl + WaterFftBindingsGlsl + @"
 layout(set=0, binding=4) uniform texture2D DepthTex;   // .r = resolved scene linear depth (single-channel R32F)
 layout(set=0, binding=5) uniform sampler Samp;
 " + WaterUboGlsl + WaterFftCommonGlsl + WaterShoreCommonGlsl + WaterSwellCommonGlsl + @"
@@ -321,6 +322,27 @@ vec3 slopeToNormal(float dhdx, float dhdz, float normalStrength) {
 // radius/falloff read as angular sizes here. This is what replaces the flat HorizonColor and kills the two-tone
 // banding: every fragment gets the colour of the sky it is actually pointing at.
 vec3 skyAlongDirection(vec3 dir, float sunStrength) {
+    // Mirrors SkyMath.ShadeDirectionDiscs. Physical ground radiance is already in the shared sky-view LUT.
+    if (SkyParams.y > 0.5) {
+        vec3 direction = normalize(dir);
+        vec3 physical = atmosphereSkyValue(direction);
+        float reflectedStrength = clamp(sunStrength, 0.0, 1.0);
+        for (int i = 0; i < 8; i++) {
+            if (i >= int(SkyParams.x)) break;
+            if (SkyDiscHalo[i].z > 0.5) {
+                physical += atmosphereSunDisc(direction) * reflectedStrength;
+            } else {
+                vec3 body = normalize(SkyDiscDir[i].xyz);
+                float angle = atan(length(cross(direction, body)), clamp(dot(direction, body), -1.0, 1.0));
+                float radius = SkyDiscDir[i].w, feather = max(fwidth(angle), 1e-6);
+                float edge = 1.0 - smoothstep(radius - feather * 0.5, radius + feather * 0.5, angle);
+                vec3 p = vec3(0.0, Atmo.Planet.x + max(Atmo.Camera.w, 0.0), 0.0);
+                if (!AtmoPlanetOccludes(p, direction))
+                    physical += SkyDiscColor[i].rgb * (edge * clamp(sunStrength * SkyDiscColor[i].a, 0.0, 1.0));
+            }
+        }
+        return physical;
+    }
     float up = clamp(dir.y, 0.0, 1.0);
     float t = smoothstep(0.0, 1.0, up);
     vec3 col = mix(SkyHorizon.rgb, SkyZenith.rgb, t);
@@ -654,6 +676,7 @@ void main() {
     rgb = mix(rgb, FoamColor.rgb, foam);
     alpha = mix(alpha, max(alpha, FoamColor.a * opacity * shoreFade), foam);
     if (alpha <= 0.001) discard;
+    rgb = atmosphereFog(rgb, vWorldPos, false, SkyParams.y > 0.5);
     oColor = vec4(rgb, alpha);
 }";
     }

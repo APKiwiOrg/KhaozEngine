@@ -23,7 +23,7 @@ namespace KhaozEngine.Tests.Locomotion;
 // cap 4.67, so run is paced and walk is not.
 public class StairRunTangentPacingTests
 {
-    // Consumer tuning (Ruinborne): walk 3, run 6, radius 0.4, half-height 0.9, StepHeight 0.4, climb 3.5.
+    // Consumer tuning (the reference consumer): walk 3, run 6, radius 0.4, half-height 0.9, StepHeight 0.4, climb 3.5.
     static MoveTuning BaseTuning(float radius) => MoveTuning.Default with { WalkSpeed = 3f, RunSpeed = 6f, CapsuleRadius = radius };
 
     // Solid-box staircase climbing in -Z from Z=0, approached head-on from +Z (yaw 0 => forward -Z). Step i has its

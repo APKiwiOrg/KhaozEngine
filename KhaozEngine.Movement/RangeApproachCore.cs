@@ -23,8 +23,18 @@ internal static class RangeApproachCore
     internal static float TravelBound(in MoveState body, in MoveTuning tuning, bool run, float dt,
         GroundMoveContext context)
     {
-        float wade = CharacterMovement.WadeSpeedScale(body.Position.X, body.Position.Z,
-            body.Position.Y - tuning.CapsuleHalfHeight, tuning, context.Medium);
+        float wade;
+        if (tuning.Controller == MovementControllerKind.Contact)
+            context.SampleWaterForPacing(body, tuning, out wade);
+        else
+            wade = CharacterMovement.WadeSpeedScale(body.Position.X, body.Position.Z,
+                body.Position.Y - tuning.CapsuleHalfHeight, tuning, context.Medium);
+        return LandTravelBound(body, tuning, run, dt, context, wade);
+    }
+
+    internal static float LandTravelBound(in MoveState body, in MoveTuning tuning, bool run, float dt,
+        GroundMoveContext context, float wade)
+    {
         if (!float.IsFinite(wade)) throw new ArgumentOutOfRangeException(nameof(context), "Medium pace must be finite.");
         float bound = (run ? tuning.RunSpeed : tuning.WalkSpeed) * (MathF.Max(1f, wade) * body.SpeedScale) * dt;
         if (!float.IsFinite(bound)) throw new ArgumentOutOfRangeException(nameof(dt), "Commanded travel must be finite.");

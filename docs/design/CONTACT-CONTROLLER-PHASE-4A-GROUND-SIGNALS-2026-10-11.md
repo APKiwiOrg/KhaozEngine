@@ -212,8 +212,9 @@ disables pacing now sees step events it did not see before.
 - The signals never feed movement. Only the signal computation reads the input `ClimbRate`, `ClimbRateEwma` and
   `StepDeltaY`: the trigger, the EWMA update and the carried-lag test.
 - Replay is bit-identical (invariant 1), signals included.
-- The signal computation allocates nothing on a warm tick. The whole tick already allocates the backend's read lease
-  object (208 bytes measured), which belongs to the #1334 cost gate, not to this phase.
+- The signal computation allocates nothing on a warm tick. The historical whole-tick observation was 208 bytes,
+  not an isolated ReadLease object size. The staged support-gates inventory measures 64 bytes per acquired dry
+  tick and 312 bytes per acquired explicit tick of named one-use tokens. #1334 still owns the cost gate.
 
 ## Suite
 

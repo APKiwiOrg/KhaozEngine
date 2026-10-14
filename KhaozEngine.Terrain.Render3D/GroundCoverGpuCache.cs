@@ -21,7 +21,7 @@ internal sealed class GroundCoverGpuCache
             entry = new Entry(cover);
             _entries.Add(cover, entry);
         }
-        bool changed = entry.Bindings.Refresh(meshes);
+        bool changed = entry.Bindings.Refresh(meshes, options);
         FoliageBatch? batch = entry.Batch;
         if (changed || batch is null || batch.IsDisposed)
         {
@@ -40,7 +40,7 @@ internal sealed class GroundCoverGpuCache
 
     internal static bool CanRetain(IReadOnlyList<GroundCoverInstance> cover, GroundCoverRenderOptions options) =>
         options.UseGpuBatches && cover is GroundCoverBatch &&
-        options.FadeMode == GroundCoverFadeMode.HeightScale && !options.CastsShadows;
+        options.FadeMode == GroundCoverFadeMode.HeightScale;
 
     internal static FoliageRenderSettings ReadOptions(GroundCoverRenderOptions options, Vector3 focus,
         Span<FoliageInteractor> interactors, out int count)

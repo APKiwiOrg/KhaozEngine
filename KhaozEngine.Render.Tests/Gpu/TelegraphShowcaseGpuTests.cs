@@ -110,7 +110,7 @@ namespace KhaozEngine.Tests.Gpu
             preview.Scene.Camera.Frame(new Vector3(0f, 0f, 0f), new Vector3(17f, 1f, 21f));
             MeshHandle floor = preview.Scene.LoadMesh(MeshPrimitives.Tile(26f, 0.1f));
 
-            // Borderless variants (FillMode.Fill): the no-outline look consumers like Ruinborne ship. The base
+            // Borderless variants (FillMode.Fill): the no-outline look consumers like the reference consumer ship. The base
             // fill carries the extent, the sweep brightens across it, no outline band at all.
             static TelegraphStyle Borderless(TelegraphStyle s)
             {

@@ -52,7 +52,7 @@ internal static class AirPass
     /// slide. Analytic terrain at the new axis more than <see cref="MoveTuning.StepHeight"/> above the feet, or steep
     /// and above them, is a wall. <paramref name="velocity"/> is the tick's horizontal velocity and
     /// <paramref name="verticalVelocity"/> the carried one before gravity. <paramref name="tractionSlopeRadians"/> is
-    /// the tick's traction gate. The <paramref name="queries"/> context enforces the <see cref="FootSupport.Find"/>
+    /// the tick's traction gate. The <paramref name="queries"/> context enforces the <see cref="FootSupport"/>
     /// contract. <paramref name="climbBudget"/> is the climb the tick may still pay, in metres. Null means a whole
     /// tick's <c>MaxStepClimbSpeed * dt</c>. <paramref name="clampXz"/> is the play-area clamp. It cuts every
     /// substep's horizontal move before the sweep, a terrain wall's rerun included, and every slide of the shell
@@ -334,7 +334,7 @@ internal static class AirPass
             !float.IsFinite(tuning.CapsuleHalfHeight) || !float.IsFinite(tuning.StepHeight) ||
             tuning.StepHeight < 0 || !float.IsFinite(tuning.MaxFallSpeed) || tuning.MaxFallSpeed < 0)
             throw new ArgumentOutOfRangeException(nameof(tuning), "The air pass tuning values must be finite.");
-        ShellGeometry.Validate(tuning);
+        ShellGeometry.Validate(tuning, settings);
         // The foot probe meets the steepest walkable plane footRadius (1 / cos - 1) above the plane at the axis, and
         // the landing band reaches StepHeight above the feet. A footed body keeps footing to the banded gate.
         float band = tuning.TractionHysteresisRadians;

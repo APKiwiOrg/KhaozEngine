@@ -41,7 +41,7 @@ layout(location=7) in vec4 IPattern;   // x=pattern index, y=speed, z=cells per 
 layout(location=8) in vec4 IEnergy;    // x=rimGlow, y=sweepGlow, z=sparkle, w=runner
 layout(location=9) in vec4 IExtra;     // x=baseFill, y=voidPath (0/1), z=voidDim, w=wantsFallback (0/1)
 layout(location=10) in vec4 IAccent;   // MoltenCracks hot colour (rgb + a), zero for every other pattern
-layout(location=11) in vec4 IMisc;     // x=patternParam, y=edgeErosion, z/w reserved
+layout(location=11) in vec4 IMisc;     // x=patternParam, y=edgeErosion, z=additivity, w reserved
 layout(location=0) out vec4 vCenter;
 layout(location=1) out vec4 vSize;
 layout(location=2) out vec4 vFill;
@@ -75,6 +75,7 @@ void main() {
 }";
 
         public const string DecalFrag = @"#version 450
+" + AtmosphereBindingsAt4Glsl + AtmosphereFogGlsl + @"
 layout(set=0, binding=0) uniform texture2D DepthTex;   // .r = linear depth (single-channel R32F)
 layout(set=0, binding=1) uniform sampler Samp;
 // ONE uniform buffer, which the retired Veldrid Metal backend needed (it mis-bound a second) and #604 no longer
@@ -508,6 +509,7 @@ void main() {
     // decals (all-new lanes zero) already keep a = max(fillA, outlineA) in [0,1], so this clamp is an identity
     // for them and only bites the modern energy path.
     a = clamp(a, 0.0, 1.0);
+    rgb = atmosphereFog(rgb, world, Misc.z > 0.5, RenderOrigin.w > 0.5);
     oColor = vec4(rgb, a);
 }";
     }

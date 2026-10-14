@@ -8,40 +8,49 @@ namespace KhaozEngine.TileWorld;
 public sealed partial class TileWorldView
 {
     readonly Dictionary<RegionHandles, AnimatedPropSplit?[]> _animatedPropSplits = new();
+    AnimatedFoliageStyleSnapshot _animatedFoliageStyles;
     readonly GroundCoverRenderOptions _animatedFoliageOptions = new()
     {
         UseGpuBatches = true,
         FadeMode = GroundCoverFadeMode.HeightScale,
         QualityDensity = 1f,
         DistantDensity = 1f,
+        CastsShadows = false,
     };
+
+    void ValidateAnimatedFoliageStyles()
+    {
+        if (!_animatedFoliageStyles.Matches(_options.AnimatedFoliageArchetypes, _options.AnimatedFoliageStyles))
+            _animatedFoliageStyles = new AnimatedFoliageStyleSnapshot(_options.AnimatedFoliageArchetypes,
+                _options.AnimatedFoliageStyles, _catalogs, _propMeshes);
+    }
 
     int DrawGroundProps(RegionHandles handles, int plane, Vector3 focus)
     {
         IReadOnlyList<PropPlacement> ground = handles.Props[plane].Ground;
         IReadOnlySet<string> selection = _options.AnimatedFoliageArchetypes;
-        ArgumentNullException.ThrowIfNull(selection);
         _animatedPropSplits.TryGetValue(handles, out AnimatedPropSplit?[]? splits);
         AnimatedPropSplit? split = splits?[plane];
         // Builds and archetype overrides replace their ground list. A slot owns its previous split until
         // replacement is observed here or the region is freed, so discarded lists never accumulate.
-        if (split is not null && (selection.Count == 0 ||
-            !ReferenceEquals(split.Source, ground) || !split.Matches(selection)))
+        if (split is null || !ReferenceEquals(split.Source, ground) ||
+            !split.Matches(selection, _options.AnimatedFoliageStyles))
         {
-            ReleaseAnimatedFoliage(handles, plane);
-            split = null;
-        }
-        if (selection.Count == 0 || ground.Count == 0) return DrawOrdinaryProps(ground, focus);
-        if (split is null)
-        {
-            split = new AnimatedPropSplit(ground, selection);
-            if (splits is null)
+            AnimatedPropSplit? replacement = selection.Count == 0 || ground.Count == 0
+                ? null : new AnimatedPropSplit(ground, _animatedFoliageStyles);
+            if (split is not null) ReleaseAnimatedFoliage(handles, plane);
+            split = replacement;
+            if (split is not null)
             {
-                splits = new AnimatedPropSplit?[_planes];
-                _animatedPropSplits.Add(handles, splits);
+                if (splits is null)
+                {
+                    splits = new AnimatedPropSplit?[_planes];
+                    _animatedPropSplits.Add(handles, splits);
+                }
+                splits[plane] = split;
             }
-            splits[plane] = split;
         }
+        if (split is null) return DrawOrdinaryProps(ground, focus);
         int drawn = DrawOrdinaryProps(split.Ordinary, focus);
         if (split.Foliage.Count == 0) return drawn;
         GroundCoverRenderOptions source = _options.GroundCover;
@@ -54,6 +63,8 @@ public sealed partial class TileWorldView
         _animatedFoliageOptions.WindSpatialFrequency = source.WindSpatialFrequency;
         _animatedFoliageOptions.WindFadeBladePixels = source.WindFadeBladePixels;
         _animatedFoliageOptions.Interactors = source.Interactors;
+        _animatedFoliageOptions.MotionProfiles = split.Styles.MotionProfiles;
+        _animatedFoliageOptions.ModelCastsShadows = split.Styles.ModelCastsShadows;
         return drawn + _scene.DrawGroundCover(split.Foliage, _propMeshes, focus, _animatedFoliageOptions);
     }
 
@@ -76,24 +87,20 @@ public sealed partial class TileWorldView
 
     sealed class AnimatedPropSplit
     {
-        readonly Dictionary<string, bool> _selectedModels = new(StringComparer.Ordinal);
+        public AnimatedFoliageStyleSnapshot Styles { get; }
         public IReadOnlyList<PropPlacement> Source { get; }
         public IReadOnlyList<PropPlacement> Ordinary { get; }
         public GroundCoverBatch Foliage { get; }
 
-        public AnimatedPropSplit(IReadOnlyList<PropPlacement> source, IReadOnlySet<string> selection)
+        public AnimatedPropSplit(IReadOnlyList<PropPlacement> source, AnimatedFoliageStyleSnapshot styles)
         {
+            Styles = styles;
             Source = source;
             var ordinary = new List<PropPlacement>();
             var foliage = new List<GroundCoverInstance>();
             foreach (PropPlacement prop in source)
             {
-                if (!_selectedModels.TryGetValue(prop.Id, out bool selected))
-                {
-                    selected = selection.Contains(prop.Id);
-                    _selectedModels.Add(prop.Id, selected);
-                }
-                if (!selected)
+                if (!styles.MotionProfiles.ContainsKey(prop.Id))
                 {
                     ordinary.Add(prop);
                     continue;
@@ -107,11 +114,7 @@ public sealed partial class TileWorldView
             Foliage = new GroundCoverBatch(foliage);
         }
 
-        public bool Matches(IReadOnlySet<string> selection)
-        {
-            foreach (KeyValuePair<string, bool> model in _selectedModels)
-                if (selection.Contains(model.Key) != model.Value) return false;
-            return true;
-        }
+        public bool Matches(IReadOnlySet<string> selection, IReadOnlyDictionary<string, AnimatedFoliageStyle> styles) =>
+            Styles.Matches(selection, styles);
     }
 }

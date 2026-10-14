@@ -25,7 +25,7 @@ namespace KhaozEngine.Tests.Gpu
     {
         const int W = 256, H = 256;
 
-        // A big, opaque magenta ground disc centred on the origin with a tall Y-band (like Ruinborne's hazard band)
+        // A big, opaque magenta ground disc centred on the origin with a tall Y-band (like the reference consumer's hazard band)
         // so an object standing on the ground has its whole in-band portion inside the decal footprint.
         static void QueueBandDecal(Scene3D s) => s.DrawGroundDecal(new GroundDecal
         {

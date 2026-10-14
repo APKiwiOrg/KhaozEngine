@@ -48,8 +48,34 @@ registration, add the new registration and create a new view. The source world m
 The query selection never mutates or removes ground from the complete capture world.
 
 After an edit, remove the old registration, build again and add the new colliders. The ground sampler reads the
-document live, but its bounds were captured at build, and the medium sampler snapshots the water. Both answer for
-the world as it was built, so rebuild both.
+document live, but its bounds were captured at build, and the medium sampler snapshots the water. Rebuild after edits.
+
+For the ordinary contact controller, use `Build(document, catalogs, worldId)` and
+`registration.CreateMovementRegistration(worldId)`. The same identity names the captured water field and
+installed support owners. Pass `MovementGroundHeight`, `MovementGroundNormal` and `Medium` to
+`EffectiveMovementBinding.Ordinary`, together with that registration and the playable boundary.
+The binding creates its movement view with ground handles excluded. Ground meshes remain installed in the
+complete physics world. Use `CreateMovementRegistrationBuilder(worldId, combinedExtent)` to retain tile owners
+and exclusions while adding other installed statics. Build that combined registration under a fresh source lease.
+
+The contact delegates capture terrain layers at build. Resident islands may share a declared bounding extent.
+An analytic query inside a non-resident hole answers unresolved, while physics and water remain available.
+Outside the loaded bounding rectangle, captured analytic terrain extends the nearest edge like the legacy sampler.
+`MovementExtent` contains the loaded terrain range, every transformed collider and finite water columns,
+including objects outside their anchor region.
+
+`TileMediumSampler` implements `IMovementWaterField` with immutable body identities, finite beds and free surfaces.
+A point is in a column when the exact framed centre lies in X [minimum, maximum), Z (minimum, maximum] and its
+feet in [bed, surface). Its trace certifies rounded capsule coverage of the framed sweep against column unions,
+including exposed face patches and dry volume.
+Point and trace queries receive the physics-local body plus its frame origin and compare their double sum
+against the captured absolute column bounds. An immutable column index searches the actual rounded XZ bounds,
+including large tile addresses whose rounded faces move across several nominal tiles. Candidate generation
+does not assume a fixed neighbouring-tile radius and never turns a missing candidate into a false dry fact.
+Equal-height bodies in different regions keep distinct identities. Internal same-body faces are suppressed.
+Capacity refusals publish no prefix. `MediumAt` and `MediumDelegate` retain the legacy surface-only behavior,
+including water below a finite certified bed. Legacy builders derive a stable content identity independent of
+`DisplayName`. Explicit identities remain the adoption door for matching server and client worlds.
 
 If the world refuses a static partway through `AddTo`, the statics already added are removed and the world's
 exception is rethrown. If that rollback fails too, `AddTo` throws an `AggregateException` whose first inner
@@ -142,8 +168,9 @@ document's lattice height, `TileWorldDocument.HeightAt`, with a straight up norm
 standing on a deck above a river is dry. The surface is the body's rim less `TileWaterBodies.SurfaceDropMetres`. An
 in-water answer is always built through the `MovementMedium` constructor and leaves the wade speed to the tuning.
 
-`TileGroundSampler` and `TileMediumSampler` are read-only after construction, with no cache and no shared scratch
-buffer, so several threads may call them at once as long as nothing edits the document meanwhile.
+The legacy samplers have no shared scratch. The ground sampler needs its document to remain unedited while read.
+The water field and certified ground delegates retain immutable captured data. Water tracing uses bounded
+per-thread scratch and precomputed exact rectangular unions, so independent readers do not share scratch.
 
 ## Hash
 

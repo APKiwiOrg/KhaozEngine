@@ -126,7 +126,7 @@ public sealed class ExplicitContactWaterHandoffTests
 
     [Theory]
     [InlineData(100f, 1.652174f)]
-    [InlineData(6f, 2.111111f)]
+    [InlineData(6f, 1.7407407f)]
     public void WaterOriginLandingImpactUsesOnlyTheConsumedDuration(float cap, float impact)
     {
         using var scene = new Crossing([Wet(-8, 8)], bank: true);
@@ -135,8 +135,10 @@ public sealed class ExplicitContactWaterHandoffTests
         var result = scene.Step(state, 0.5f, tuning: Tuning with { MaxFallSpeed = cap });
         Assert.Equal(MovementStepOutcome.Advanced, result.Outcome);
         Assert.True(result.State.State.SupportGranted);
-        // The uncapped proposal lands at 3/46. The capped proposal lands at 3/27.
-        // At 2/27 the radius-0.125 probe's bank-edge contact is below the travelled span.
+        // The uncapped segment lands after 3 of 46 substeps. After 2 of 27 the capped segment's axis is 0.0889
+        // short of the bank edge, inside the 0.125 disc, and the bank top 0.25 lies in the travelled band from
+        // 0.2268. The rounded foot probe would meet the edge only at 0.2129, below its sweep end, but the
+        // complete footprint finds the top there. Impact is 1 + 20 * (0.5 * n/N).
         Assert.InRange(result.State.State.LandingImpactSpeed, impact - 0.0005f, impact + 0.0005f);
     }
 

@@ -18,6 +18,18 @@ public sealed class TileFoliageSurface
 
     public TileFoliageSurface(TileWorldDocument doc, TileWorldCatalogs catalogs, TileFoliageLayer layer,
         bool smoothNormals = true)
+        : this(doc, catalogs, layer, smoothNormals, true) { }
+
+    internal TileFoliageSurface(TileWorldDocument doc, TileWorldCatalogs catalogs, TileFoliageLayer layer,
+        bool smoothNormals, IReadOnlyList<TileCoverObject> exclusions, TileRect sampleBounds)
+        : this(doc, catalogs, layer, smoothNormals, false)
+    {
+        ArgumentNullException.ThrowIfNull(exclusions);
+        foreach (TileCoverObject obj in exclusions) IndexObject(obj, sampleBounds);
+    }
+
+    TileFoliageSurface(TileWorldDocument doc, TileWorldCatalogs catalogs, TileFoliageLayer layer,
+        bool smoothNormals, bool indexAll)
     {
         _doc = doc ?? throw new ArgumentNullException(nameof(doc));
         _catalogs = catalogs ?? throw new ArgumentNullException(nameof(catalogs));
@@ -25,7 +37,7 @@ public sealed class TileFoliageSurface
         _smoothNormals = smoothNormals;
         if ((uint)layer.Plane >= (uint)doc.PlaneCount)
             throw new ArgumentException($"Foliage layer '{layer.Id}' uses plane {layer.Plane}, the world has planes 0 through {doc.PlaneCount - 1}.", nameof(layer));
-        IndexObjects();
+        if (indexAll) IndexObjects();
     }
 
     /// <summary>Samples height, upward normal and final normalized density at world XZ.</summary>
@@ -60,18 +72,24 @@ public sealed class TileFoliageSurface
         {
             TileObjectArchetype? archetype = _catalogs.Archetype(obj.ArchetypeId);
             if (archetype is null) continue;
-            TileRect footprint = TileFootprint.Of(archetype, obj.X, obj.Z, obj.Rotation);
-            if (_layer.ExcludeSolidObjects && obj.Plane == _layer.Plane && archetype.CollisionKind == TileCollisionKind.Solid)
-                AddTiles(_solid, footprint);
-            if (_layer.ExcludeIndoors && archetype.IsRoof && obj.Plane > _layer.Plane)
-                AddTiles(_roofed, footprint);
-            if (_layer.DoorClearance > 0f && obj.Plane == _layer.Plane && IsDoor(obj, archetype))
-            {
-                float centreX = footprint.X + footprint.Width * 0.5f;
-                float centreZ = footprint.Z + footprint.Height * 0.5f;
-                _doors.Add(new Vector2(TileWorldSpace.WorldX(centreX, _doc.TileSize),
-                    TileWorldSpace.WorldZ(centreZ, _doc.TileSize)));
-            }
+            IndexObject(TileCoverObjectIndex.Capture(obj, archetype), null);
+        }
+    }
+
+    void IndexObject(TileCoverObject obj, TileRect? sampleBounds)
+    {
+        TileRect footprint = obj.Footprint;
+        TileRect sampled = sampleBounds is { } bounds ? footprint.Intersect(bounds) : footprint;
+        if (_layer.ExcludeSolidObjects && obj.Plane == _layer.Plane && obj.Solid)
+            AddTiles(_solid, sampled);
+        if (_layer.ExcludeIndoors && obj.Roof && obj.Plane > _layer.Plane)
+            AddTiles(_roofed, sampled);
+        if (_layer.DoorClearance > 0f && obj.Plane == _layer.Plane && obj.Door)
+        {
+            float centreX = footprint.X + footprint.Width * 0.5f;
+            float centreZ = footprint.Z + footprint.Height * 0.5f;
+            _doors.Add(new Vector2(TileWorldSpace.WorldX(centreX, _doc.TileSize),
+                TileWorldSpace.WorldZ(centreZ, _doc.TileSize)));
         }
     }
 
@@ -79,16 +97,6 @@ public sealed class TileFoliageSurface
     {
         for (int z = rect.Z; z < rect.Z1; z++)
             for (int x = rect.X; x < rect.X1; x++) into.Add((x, z));
-    }
-
-    static bool IsDoor(TileObject obj, TileObjectArchetype archetype) =>
-        HasTag(obj.Tags, "door") || HasTag(archetype.Tags, "door");
-
-    static bool HasTag(IReadOnlyList<string>? tags, string wanted)
-    {
-        for (int i = 0; i < (tags?.Count ?? 0); i++)
-            if (string.Equals(tags![i], wanted, StringComparison.OrdinalIgnoreCase)) return true;
-        return false;
     }
 
     bool TileAllowed(int x, int z, float localX = 0.5f, float localZ = 0.5f) =>

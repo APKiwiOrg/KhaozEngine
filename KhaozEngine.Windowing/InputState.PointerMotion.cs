@@ -5,6 +5,25 @@ namespace KhaozEngine.Windowing;
 
 public sealed partial class InputState
 {
+    /// <summary>Create a snapshot with ordered gestures, independent legacy horizontal scroll and explicit motion.</summary>
+    public InputState(
+        PointerGestureFrame gestures, float horizontalScrollDelta, Vector2 mouseDeltaPoints, Vector2 framebufferScale,
+        IReadOnlySet<Key> down, IReadOnlySet<Key> pressed, IReadOnlySet<Key> released,
+        IReadOnlySet<MouseButton> mouseDown, IReadOnlySet<MouseButton> mousePressed,
+        Vector2 mousePosition, Vector2 mouseDelta, float scrollDelta, int width, int height,
+        IReadOnlyList<GamepadState>? gamepads = null, IReadOnlyList<TouchPoint>? touches = null,
+        bool windowFocused = true, IReadOnlySet<Key>? repeated = null,
+        IReadOnlySet<MouseButton>? mouseReleased = null,
+        string textInput = "", bool textInputAvailable = false, bool pointerCaptured = false)
+        : this(mouseDeltaPoints, framebufferScale, down, pressed, released, mouseDown, mousePressed,
+            mousePosition, mouseDelta, scrollDelta, width, height, gamepads, touches, windowFocused,
+            repeated, mouseReleased, textInput, textInputAvailable, pointerCaptured)
+    {
+        System.ArgumentNullException.ThrowIfNull(gestures);
+        Gestures = gestures;
+        HorizontalScrollDelta = horizontalScrollDelta;
+    }
+
     /// <summary>
     /// Mouse movement in window points, both before and during pointer capture. Native snapshots report zero on
     /// the first cursor sample, a missing-mouse frame and either capture transition. The original constructor

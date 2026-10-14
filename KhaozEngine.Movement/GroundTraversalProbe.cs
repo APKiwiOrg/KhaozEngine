@@ -64,7 +64,7 @@ internal static class GroundTraversalProbe
     private static Vector3 Feet(in MoveState body, in MoveTuning tuning)
         => body.Position - Vector3.UnitY * tuning.CapsuleHalfHeight;
 
-    private static bool Near(Vector3 a, Vector3 b)
+    internal static bool Near(Vector3 a, Vector3 b)
     {
         double x = (double)a.X - b.X, y = (double)a.Y - b.Y, z = (double)a.Z - b.Z;
         return x * x + y * y + z * z <= (double)ArrivalTolerance * ArrivalTolerance;

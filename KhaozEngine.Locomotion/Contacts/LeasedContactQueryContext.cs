@@ -9,43 +9,77 @@ namespace KhaozEngine.Locomotion.Contacts;
 internal sealed partial class LeasedContactQueryContext
 {
     internal const float PlacementSkin = 0.001f;
-    readonly MovementQueryLease _lease;
-    readonly MoveTuning _tuning;
-    readonly MovementSelection _selection;
-    readonly MovementTransitionContext _transition;
-    readonly float _offset;
+    MovementQueryLease _lease = null!;
+    internal ContactCapsuleShapes Shapes => _lease.Workspace.Shapes;
+    MoveTuning _tuning;
+    MovementSelection _selection;
+    MovementTransitionContext _transition;
+    ContactComposition _composition;
 
-    // Zero is the internal parity profile. Production explicit composition uses the default fixed skin.
     internal LeasedContactQueryContext(MovementQueryLease lease, MoveTuning tuning, MovementSelection selection,
         MovementTransitionContext transition, float placementOffset = PlacementSkin,
         WaterTraversalMode waterMode = WaterTraversalMode.DryOnly, MovementBoundary? boundary = null)
+        => Initialize(lease, tuning, selection, transition, placementOffset, waterMode, boundary);
+
+    internal LeasedContactQueryContext(MovementQueryLease lease, MoveTuning tuning, MovementSelection selection,
+        MovementTransitionContext transition, in ContactComposition composition,
+        WaterTraversalMode waterMode = WaterTraversalMode.DryOnly, MovementBoundary? boundary = null)
+        => Initialize(lease, tuning, selection, transition, composition, waterMode, boundary);
+
+    internal LeasedContactQueryContext() { }
+
+    internal void Reset()
     {
+        _lease = null!;
+        _tuning = default;
+        _selection = default;
+        _transition = default;
+        _composition = default;
+        _waterMode = default;
+        _boundary = null;
+        Outcome = MovementStepOutcome.Advanced;
+        RecoveryDenied = false;
+    }
+
+    internal void Initialize(MovementQueryLease lease, MoveTuning tuning, MovementSelection selection,
+        MovementTransitionContext transition, float placementOffset = PlacementSkin,
+        WaterTraversalMode waterMode = WaterTraversalMode.DryOnly, MovementBoundary? boundary = null)
+    {
+        Reset();
         ArgumentNullException.ThrowIfNull(lease);
-        if (placementOffset != 0 && placementOffset != PlacementSkin)
-            throw new ArgumentOutOfRangeException(nameof(placementOffset));
+        Initialize(lease, tuning, selection, transition,
+            new ContactComposition(placementOffset, new(tuning.FootRadiusFraction)), waterMode, boundary);
+    }
+
+    internal void Initialize(MovementQueryLease lease, MoveTuning tuning, MovementSelection selection,
+        MovementTransitionContext transition, in ContactComposition composition,
+        WaterTraversalMode waterMode = WaterTraversalMode.DryOnly, MovementBoundary? boundary = null)
+    {
+        Reset();
+        ArgumentNullException.ThrowIfNull(lease);
         lease.AssertCurrent();
         if (!selection.IsValid || selection.Identity != lease.Identity ||
             selection.Space.WorldId != lease.Witness.Scope.WorldId || !transition.IsValid ||
             transition.OriginSpace.WorldId != selection.Space.WorldId)
             throw new ContactQueryFailure(MovementAvailability.Invalid);
-        (_lease, _tuning, _selection, _transition, _offset) = (lease, tuning, selection, transition, placementOffset);
+        (_lease, _tuning, _selection, _transition, _composition) = (lease, tuning, selection, transition, composition);
         (_waterMode, _boundary) = (waterMode, boundary);
     }
 
     internal bool HasShell => true;
     internal Vector3 KernelFeet(Vector3 centre, in MoveTuning tuning) =>
-        new(centre.X, _offset == 0 ? centre.Y - tuning.CapsuleHalfHeight :
-            Mapped((double)centre.Y - tuning.CapsuleHalfHeight - _offset), centre.Z);
+        new(centre.X, _composition.PlacementOffset == 0 ? centre.Y - tuning.CapsuleHalfHeight :
+            Mapped((double)centre.Y - tuning.CapsuleHalfHeight - _composition.PlacementOffset), centre.Z);
     internal Vector3 BodyCentre(Vector3 feet) =>
-        new(feet.X, _offset == 0 ? feet.Y + _tuning.CapsuleHalfHeight :
-            Mapped((double)feet.Y + _tuning.CapsuleHalfHeight + _offset), feet.Z);
+        new(feet.X, _composition.PlacementOffset == 0 ? _composition.RestingFeet(feet.Y + _tuning.CapsuleHalfHeight) :
+            Mapped(_composition.RestingFeet((double)feet.Y + _tuning.CapsuleHalfHeight)), feet.Z);
     internal float HeightAt(Vector3 feet) => Analytic(feet)?.Height ?? float.NaN;
     internal Vector3? NormalAt(Vector3 feet) => Analytic(feet)?.Normal;
 
     MovementAnalyticGround? Analytic(Vector3 feet)
     {
         var query = new FootSupportQuery(new(feet.X, feet.Z), feet.Y,
-            new GroundCoreSettings().FootRadiusFraction * _tuning.CapsuleRadius,
+            _composition.Foot.FootRadiusFraction * _tuning.CapsuleRadius,
             _tuning.StepHeight, _tuning.StepHeight, MathF.Cos(_tuning.MaxSlopeRadians));
         MovementSupportRequest request = Request(query);
         Require(_lease.CheckContactSupportQuery(request, query));
@@ -56,6 +90,7 @@ internal sealed partial class LeasedContactQueryContext
     internal SupportSample FindSupport(in FootSupportQuery query) => FindSupport(query, out _);
     internal SupportSample FindSupport(in FootSupportQuery query, out MovementContactSupportBinding? binding)
     {
+        using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportRead);
         Require(_lease.FindContactSupport(Request(query), query, out SupportSample support, out binding));
         return support;
     }
@@ -71,12 +106,14 @@ internal sealed partial class LeasedContactQueryContext
     internal bool SweepShell(CapsuleShape shape, Vector3 centre, Vector3 direction, float distance,
         out SweepHit hit, QueryFilter filter = default)
     {
+        using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.ShellSweep);
         Require(_lease.SweepContactShell(ShellBody(shape, centre), shape, direction, distance, filter, out bool blocked, out hit));
         return blocked;
     }
 
     internal bool PenetrationShell(CapsuleShape shape, Vector3 centre, out Vector3 mtv)
     {
+        using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.ShellSweep);
         Require(_lease.PenetrateContactShell(ShellBody(shape, centre), shape, out bool overlapping, out mtv));
         return overlapping;
     }
@@ -84,6 +121,7 @@ internal sealed partial class LeasedContactQueryContext
     internal CapsuleContactResult QueryShellContacts(CapsuleShape shape, Vector3 centre,
         Span<CapsuleContact> contacts)
     {
+        using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.ShellSweep);
         Require(_lease.QuerySolidContactsFiltered(ShellBody(shape, centre), 0, contacts, out var result, QueryFilter.StaticsOnly));
         return result;
     }
@@ -112,7 +150,8 @@ internal sealed partial class LeasedContactQueryContext
         _tuning.CapsuleHalfHeight, _selection.Space, _selection.Support);
     MovementBodyQuery ShellBody(CapsuleShape shape, Vector3 centre)
     {
-        var body = new MovementBodyQuery(new(centre.X, _offset == 0 ? centre.Y : Mapped((double)centre.Y + _offset), centre.Z),
+        var body = new MovementBodyQuery(new(centre.X, _composition.PlacementOffset == 0 ? centre.Y :
+            Mapped(_composition.RestingFeet((double)centre.Y)), centre.Z),
             shape.Radius, GroundPlacement.NotBelow((double)shape.Radius + (double)shape.Length / 2),
             _selection.Space, _selection.Support);
         // The certificate encloses the original cylinder, including the body-to-shape float conversion.

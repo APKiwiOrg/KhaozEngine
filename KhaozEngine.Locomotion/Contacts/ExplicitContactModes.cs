@@ -7,9 +7,9 @@ namespace KhaozEngine.Locomotion.Contacts;
 /// footprint landing and climb payment. Only selected substeps update this medium history.</summary>
 internal sealed class ExplicitContactModes : ContactMediumPolicy
 {
-    readonly ContactQueryContext _queries;
-    readonly MoveTuning _tuning;
-    readonly WaterTraversalPolicy _water;
+    ContactQueryContext _queries;
+    MoveTuning _tuning;
+    WaterTraversalPolicy _water;
     MoveState _state;
     bool _surfacePress;
     internal bool EnteredWater { get; private set; }
@@ -20,7 +20,23 @@ internal sealed class ExplicitContactModes : ContactMediumPolicy
 
     internal ExplicitContactModes(ContactQueryContext queries, in MoveState state, in MoveTuning tuning,
         in WaterTraversalPolicy water, bool jump)
+        => Initialize(queries, state, tuning, water, jump);
+
+    internal ExplicitContactModes() { }
+
+    internal void Reset()
     {
+        _queries = default;
+        _state = default;
+        _tuning = default;
+        _water = default;
+        _surfacePress = EnteredWater = PressConsumed = false;
+    }
+
+    internal void Initialize(ContactQueryContext queries, in MoveState state, in MoveTuning tuning,
+        in WaterTraversalPolicy water, bool jump)
+    {
+        Reset();
         (_queries, _state, _tuning, _water) = (queries, state, tuning, water);
         _surfacePress = state.Swimming && jump;
         PressConsumed = IsFluid || water.Mode == WaterTraversalMode.SurfaceSwimmer && jump && !state.Grounded &&

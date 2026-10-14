@@ -46,6 +46,9 @@ either value shifts the bit-exact result legitimately.
 - **`Step(dt)`**, **`Raycast`**, **`SweepCapsule`**, **`ComputePenetration`** - the last is one
   CollisionBatcher manifold query over every shape type, deepest contact wins.
 - **Complete capsule contacts** - the owner and restricted views implement `IPhysicsCapsuleContacts`.
+  A bounded empty selection returns a complete empty result with zero error, without capsule/hull
+  face selection. Excessive coordinate spacing still refuses. Every candidate query retains the
+  existing radius-scaled error formula and 0.001 m limit.
   The query selects convex leaves with margin-expanded bounds, bypasses final contact-count reduction, applies mesh seam
   smoothing, then sorts geometric constraints with local provenance. Distinct normals survive even when
   a deeper bed contact exists. Mobility and view exclusions apply before gathering. Nonzero layer masks
@@ -80,6 +83,24 @@ either value shifts the bit-exact result legitimately.
   is valid only through that view and its original lease. The owner and its views also implement
   `IPhysicsSupportNeighborhood` for boxes, convex hulls, meshes, spheres, capsules, cylinders and compounds of
   those, under the same lease and receiver rules.
+- **Complete support footprints** - owners and restricted views implement `IPhysicsSupportFootprint`.
+  Both proposal sweeps run after authenticating the lease. Admission covers the outward expanded disc
+  column and retains full polygons for exact disc maxima and released whole-polygon joins. Sphere,
+  capsule and cylinder parts publish attained axis/footprint witnesses with independent upward bounds.
+  Closed-form and certified tilted-region enclosures cover the admitted curved poses. Ring-only members
+  supply cap/guard context. The cap counts 256 relevant raw pairs, at most 512 witness slots, and refuses
+  atomically at 257 without touching either output span. Unsupported mesh scales, uncertified shapes,
+  predicates or work domains refuse. Radius is 0.01 to 2 m and proposal probes are upright with length
+  at most 8 m. Selected exclusions and original receiver/lease currentness apply to all work.
+  Immutable installed local geometry is keyed by owner, installation identity and static-geometry version.
+  Static add/remove/replacement and changed rebase invalidate it. Simulation steps and dynamic mutations
+  do not. Results still authenticate the global lease generation. No selected-support result is cached.
+  See [complete footprint use](../docs/USING-KHAOZENGINE.md#complete-support-footprints).
+  Local vertex components are admitted through 2048 m. This is a range domain, not a precision guarantee.
+  Each query still enforces its position, separation and normal publication ceilings, exact-arithmetic
+  capacity and the 256 m incidence bound. A failed precision certificate refuses rather than widening a budget.
+  `IPhysicsStaticGeometrySource.StaticGeometryGeneration` changes on actual static mutations. Removing an
+  unknown handle is a no-op and leaves ordinary registrations current. Steps and pure rebases preserve them.
 - **`Origin`/`CanRebase`/`Rebase(newOrigin)`** (floating origin) - `CanRebase` is true here. A rebase is a bulk of
   direct pose writes plus broadphase refits, NOT a remove-and-re-add: `BodyReference.Pose` and
   `StaticReference.Pose` are ref-returning in Bepu 2.4 and `UpdateBounds` refits the broadphase for the new pose
@@ -198,6 +219,11 @@ The shape factory papers over three Bepu behaviours so seam shapes act like thei
   unload with a flat pool across thousands of cycles (no leak).
 
 ## Certified sweep development status
+
+The owner and restricted views also implement `IPhysicsCapsuleGeometryQueries`. Its
+`CapsuleQueryDimensions` value inputs share the shape-input sweep and contact cores with exact represented
+dimensions, identical restrictions and validation. Changing an endpoint-rounding enclosure does not
+allocate a persistent shape.
 
 The owner and restricted query views implement `IPhysicsCapsuleSweep` for an initial identity-box
 geometry domain. This development implementation is not ready for consumer adoption: numerical-domain

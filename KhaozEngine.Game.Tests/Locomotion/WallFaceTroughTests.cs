@@ -97,7 +97,7 @@ public class WallFaceTroughTests
         }
 
         /// <summary>The ground normal, as the SAME capsule-radius central difference the engine's height plane reads
-        /// (and as Ruinborne's own GroundNormal computes it). Like the neighbouring attractor fixture this is
+        /// (and as the reference consumer's own GroundNormal computes it). Like the neighbouring attractor fixture this is
         /// deliberately NOT a #468 mismatched-pair case: the two delegates describe one surface, and the whole
         /// question here is what WIDTH that one surface is read at.</summary>
         public Vector3 NormalAt(float x, float z)

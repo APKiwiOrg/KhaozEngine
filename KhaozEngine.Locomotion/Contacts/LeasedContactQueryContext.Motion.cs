@@ -5,8 +5,8 @@ namespace KhaozEngine.Locomotion.Contacts;
 
 internal sealed partial class LeasedContactQueryContext
 {
-    readonly WaterTraversalMode _waterMode;
-    readonly MovementBoundary? _boundary;
+    WaterTraversalMode _waterMode;
+    MovementBoundary? _boundary;
     internal MovementStepOutcome Outcome { get; private set; } = MovementStepOutcome.Advanced;
     internal bool RecoveryDenied { get; private set; }
 
@@ -48,7 +48,7 @@ internal sealed partial class LeasedContactQueryContext
             written = 1;
             return true;
         }
-        var shape = ShellGeometry.Shape(_tuning);
+        var shape = ShellGeometry.Shape(_tuning, Shapes);
         MovementBodyQuery shell = ShellBody(shape, ShellGeometry.Centre(from, _tuning));
         Require(MovementCapsuleResolver.TryResolveContact(shell, body, delta, _lease, _waterMode,
             _tuning.SwimEnterDepthFraction, _boundary, path, out written, out blocked, velocity,

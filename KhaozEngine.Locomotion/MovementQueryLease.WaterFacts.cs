@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Numerics;
 
 namespace KhaozEngine.Locomotion;
@@ -8,18 +7,13 @@ public sealed partial class MovementQueryLease
 {
     /// <summary>Distinct level bodies observable during one bounded read interval, not a world-size limit.</summary>
     public const int MaxWaterDomainsPerLease = 256;
-    Dictionary<MovementDomainKey, float>? _waterLevels;
 
     MovementAvailability RememberWaterPoint(in MovementWaterPoint point)
     {
         if (!point.InWater) return MovementAvailability.Known;
         MovementDomainKey key = point.Domain!.Value;
         float level = point.Interval!.Value.NominalSurfaceY;
-        if (_waterLevels is { } previous && previous.TryGetValue(key, out float value))
-            return value == level ? MovementAvailability.Known : MovementAvailability.Invalid;
-        if (_waterLevels?.Count == MaxWaterDomainsPerLease) return MovementAvailability.CapacityExceeded;
-        (_waterLevels ??= new()).Add(key, level);
-        return MovementAvailability.Known;
+        return Workspace.RememberWater(key, level);
     }
 
     MovementAvailability RememberWaterContacts(ReadOnlySpan<MovementDomainContact> contacts)
@@ -30,7 +24,7 @@ public sealed partial class MovementQueryLease
             MovementDomainContact current = contacts[i];
             float level = current.Interval.NominalSurfaceY;
             bool known = false;
-            if (_waterLevels is { } previous && previous.TryGetValue(current.Domain, out float value))
+            if (Workspace.TryGetWater(current.Domain, out float value))
             {
                 known = true;
                 if (value != level) return MovementAvailability.Invalid;
@@ -45,13 +39,12 @@ public sealed partial class MovementQueryLease
             }
             if (!known && !duplicate) added++;
         }
-        if ((_waterLevels?.Count ?? 0) + added > MaxWaterDomainsPerLease) return MovementAvailability.CapacityExceeded;
+        if (Workspace.WaterCount + added > MaxWaterDomainsPerLease) return MovementAvailability.CapacityExceeded;
         // Commit facts only after the entire result, including its located-column checks, passed.
         if (added > 0)
         {
-            _waterLevels ??= new();
             foreach (MovementDomainContact contact in contacts)
-                _waterLevels.TryAdd(contact.Domain, contact.Interval.NominalSurfaceY);
+                Workspace.RememberWater(contact.Domain, contact.Interval.NominalSurfaceY);
         }
         return MovementAvailability.Known;
     }

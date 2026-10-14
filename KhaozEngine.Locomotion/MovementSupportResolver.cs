@@ -34,6 +34,7 @@ public static class MovementSupportResolver
         ArgumentNullException.ThrowIfNull(queries);
         if (tuning.CapsuleRadius != request.Body.Radius || tuning.CapsuleHalfHeight != request.Body.HalfHeight ||
             tuning.MaxSlopeRadians != request.MaxSlopeRadians) return MovementAvailability.Invalid;
+        ContactComposition composition = ContactComposition.PublicExplicit(tuning);
         MovementSupportCandidate[] candidates = ArrayPool<MovementSupportCandidate>.Shared.Rent(MovementQueryLease.MaxSupportCandidates);
         try
         {
@@ -57,7 +58,7 @@ public static class MovementSupportResolver
                 if (candidate.Feet.Y < minimumY || candidate.Feet.Y > maximumY ||
                     normal.Y <= 0f || normal.Y < minimumNormalY) continue;
 
-                MovementAvailability status = ClearPlacement(request, candidate, normal, tuning, queries,
+                MovementAvailability status = ClearPlacement(request, candidate, normal, tuning, queries, composition,
                     out MovementSupportPlacement? cleared);
                 if (status != MovementAvailability.Known) return status;
                 if (cleared is not { } eligible) continue;
@@ -88,14 +89,14 @@ public static class MovementSupportResolver
     }
 
     static MovementAvailability ClearPlacement(in MovementSupportRequest request, in MovementSupportCandidate candidate,
-        Vector3 normal, in MoveTuning tuning, MovementQueryLease queries,
+        Vector3 normal, in MoveTuning tuning, MovementQueryLease queries, in ContactComposition composition,
         out MovementSupportPlacement? placement)
     {
         placement = null;
-        ContactShell.Validate(tuning);
+        ShellGeometry.Validate(tuning, composition.Foot);
         var contact = new LeasedContactQueryContext(queries, tuning,
-            new(candidate.Space, candidate.Owner, queries.Identity), request.Transition);
-        SupportSample support = ContactPlacement.Find(contact, candidate.Feet, tuning,
+            new(candidate.Space, candidate.Owner, queries.Identity), request.Transition, composition);
+        SupportSample support = ContactPlacement.Find(contact, candidate.Feet, tuning, composition,
             tuning.StepHeight, tuning.GroundedEpsilon, out var binding);
         if (support.Status != SupportStatus.Walkable || binding is null) return MovementAvailability.Unresolved;
         // A higher footprint in the legs band makes this lower candidate ineligible. Its binding
@@ -107,7 +108,7 @@ public static class MovementSupportResolver
             return MovementAvailability.Invalid;
         if (Vector3.Dot(support.Normal, normal) < 0.9999f) return MovementAvailability.Invalid;
         Vector3 feet = candidate.Feet with { Y = support.Height };
-        if (!ContactPlacement.Clear(contact, feet, tuning)) return MovementAvailability.Known;
+        if (!ContactPlacement.Clear(contact, feet, tuning, composition)) return MovementAvailability.Known;
         placement = new MovementSupportPlacement(candidate, contact.BodyCentre(feet));
         return MovementAvailability.Known;
     }

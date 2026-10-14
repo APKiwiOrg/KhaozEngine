@@ -163,8 +163,8 @@ namespace KhaozEngine.Tests.Gpu
 
             VulkanResourceSet material = harness.Set("Model");
 
-            // Albedo, NormalMap, RoughnessMap, ShadowMap and both point-shadow atlas textures.
-            Assert.Equal(6, material.Images.Length);
+            // Albedo, NormalMap, RoughnessMap, ShadowMap, both point-shadow atlases and atmosphere sky-view.
+            Assert.Equal(7, material.Images.Length);
             foreach (VulkanBoundImage image in material.Images)
             {
                 Assert.False(image.Storage);
@@ -336,10 +336,9 @@ namespace KhaozEngine.Tests.Gpu
         {
             VulkanCmdCallCounts counts = DrawFrame(meshes: 5, drawsPerMesh: 4);
 
-            // The frame's sets: one windowed vertex-block set at slot 0 and one per-mesh Model set at slot 1, and
-            // each declares exactly one uniform buffer, which under V-D4 is one dynamic descriptor whether or not
-            // the engine flagged it dynamic. Every bind therefore carries exactly one offset per set it names.
-            Assert.Equal(counts.DescriptorSetsBound, counts.DynamicOffsetsPassed);
+            // The windowed vertex block contributes one offset per draw. Each of the five Model sets has both
+            // frame and atmosphere uniforms, so its one bind contributes an additional offset under V-D4.
+            Assert.Equal(counts.DescriptorSetsBound + 5, counts.DynamicOffsetsPassed);
         }
 
         // ---- (c) Trace identity ----
@@ -380,7 +379,7 @@ namespace KhaozEngine.Tests.Gpu
         // THE MATERIAL SET IS A TEXTURE-CARRYING SHIPPED LAYOUT AND THAT IS LOAD-BEARING. It used to be a second
         // windowed uniform set, so the frame bound no image at all, the per-draw transition walk had nothing to
         // walk, and AFramesWorthOfBinds_EmitsNoBarrier passed BY CONSTRUCTION rather than as a finding. "Model"
-        // carries four sampled textures, so the walk really asks the tracker to place four images per draw.
+        // carries seven sampled textures, so the walk really asks the tracker to place seven images per draw.
         static VulkanCmdCallCounts DrawFrame(int meshes, int drawsPerMesh)
         {
             using var harness = new VulkanBindHarness();

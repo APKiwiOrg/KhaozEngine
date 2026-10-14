@@ -8,10 +8,10 @@ Date: 2026-07-16. Branch: `feature/particles-vfx`. Status: approved for implemen
 Every 3D effect the engine can produce today is a uniform camera-facing soft-blob billboard.
 `Scene3D.DrawBillboard(worldPos, size, color, blend)` draws an untextured smoothstep disc with no
 depth test, after the post chain, and `KhaozEngine.Particles` interpolates size and color linearly
-from start to end. Stacked additively these read as 2005-era smoke puffs. Ruinborne's ability VFX
+from start to end. Stacked additively these read as 2005-era smoke puffs. The reference consumer's ability VFX
 exposed the ceiling. The goal is modern ARPG/MMO-quality spell and combat effects.
 
-Consumer-documented gaps (SpaceGame port notes, Ruinborne registry): no per-particle color
+Consumer-documented gaps (SpaceGame port notes, the reference consumer registry): no per-particle color
 variation within a burst, no velocity tails, no emission shapes, no rate-to-system wiring, no
 depth interaction (effects float on top of the world), one blend per draw site.
 

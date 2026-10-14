@@ -16,11 +16,27 @@ public sealed partial class BepuPhysicsWorld : IPhysicsCapsuleSweep
     public CapsuleSweepResult SweepCapsuleCertified(CapsuleShape capsule, Pose pose, Vector3 displacement,
         QueryFilter filter = default) => SweepCapsuleCertifiedCore(capsule, pose, displacement, filter, null);
 
+    /// <inheritdoc/>
+    public CapsuleSweepResult SweepCapsuleCertified(in CapsuleQueryDimensions capsule, Pose pose, Vector3 displacement,
+        QueryFilter filter = default) => SweepCapsuleCertifiedCore(capsule, pose, displacement, filter, null);
+
     CapsuleSweepResult SweepCapsuleCertifiedCore(CapsuleShape capsule, Pose pose, Vector3 displacement,
         QueryFilter filter, StaticQueryExclusions? exclusions)
     {
+        if (capsule is null)
+        {
+            using QueryOperation operation = EnterQuery();
+            return default;
+        }
+        return SweepCapsuleCertifiedCore(new CapsuleQueryDimensions(capsule.Radius, capsule.Length),
+            pose, displacement, filter, exclusions);
+    }
+
+    CapsuleSweepResult SweepCapsuleCertifiedCore(in CapsuleQueryDimensions capsule, Pose pose, Vector3 displacement,
+        QueryFilter filter, StaticQueryExclusions? exclusions)
+    {
         using QueryOperation operation = EnterQuery();
-        if (capsule is null || !float.IsFinite(capsule.Radius) || capsule.Radius <= 0 ||
+        if (!float.IsFinite(capsule.Radius) || capsule.Radius <= 0 ||
             !float.IsFinite(capsule.Length) || capsule.Length < 0 || pose.Orientation != Quaternion.Identity ||
             filter.Layers != 0 || filter.Mobility is not (QueryMobility.All or QueryMobility.Statics or QueryMobility.Dynamics) ||
             !_sweepEvidence.IsCurrent(this, _queryGeneration) || !SweepRecordCountsMatch() ||

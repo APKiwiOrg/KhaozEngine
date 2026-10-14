@@ -114,7 +114,7 @@ public static class TileWaterPlanes
 
     /// <summary>Throws when any two rectangles share a tile. Two overlapping planes double-darken, because the
     /// water pass blends with depth write off, and their boundary reads as a crisp step in brightness (the
-    /// failure Ruinborne's inland lake cover was rebuilt to avoid). The decomposition cannot produce one, so a
+    /// failure the reference consumer's inland lake cover was rebuilt to avoid). The decomposition cannot produce one, so a
     /// hit here is a bug in <see cref="TileWaterBodies"/> rather than anything an author did.</summary>
     /// <param name="rects">The rectangles one region-plane emitted.</param>
     /// <param name="region">The region, quoted in the message.</param>

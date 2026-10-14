@@ -31,7 +31,7 @@ new dependency is taken.
 | B. Game side code in Grimhollow | 10 | 2 | 9 | 9 | 7 | 37 |
 | C. No uploader, the deploy stays the only producer | 3 | 5 | 2 | 10 | 10 | 30 |
 
-A wins because Ruinborne needs the same uploader against the same storage account shape, and the engine-first
+A wins because the reference consumer needs the same uploader against the same storage account shape, and the engine-first
 rule says build a thing once rather than twice. Its price is real and accepted: one more package to release,
 and an Azure SDK dependency, which only a game that opts in ever links.
 

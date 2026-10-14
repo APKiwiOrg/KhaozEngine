@@ -76,7 +76,7 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>Load + normalize a manifest entry as a multi-material prop: one <see cref="GltfMeshPart"/> per
-        /// source material (via <see cref="GltfLoader.LoadPartsWithMaterials"/>), each with its own auto-read
+        /// source material (via <see cref="GltfLoader.LoadPartsWithMaterials(string)"/>), each with its own auto-read
         /// baseColor/normal/roughness maps. This is the multi-texture-per-primitive path - a tree with a separate
         /// bark and leaf material returns two textured parts, drawable each with its own texture, instead of the
         /// single flattened mesh <see cref="LoadPropWithMaterial"/> returns. All parts share ONE normalization
@@ -134,7 +134,7 @@ namespace KhaozEngine.Render3D
         /// <summary>Normalize a set of raw material parts as ONE prop: scale + recentre every part by a single
         /// transform derived from their combined bounds (so parts stay aligned), validated against
         /// <paramref name="validation"/> like <see cref="Normalize(GltfMesh,float,PropValidation?)"/>. Public for a
-        /// consumer that already has parts in hand (e.g. from <see cref="GltfLoader.LoadPartsWithMaterials"/>).</summary>
+        /// consumer that already has parts in hand (e.g. from <see cref="GltfLoader.LoadPartsWithMaterials(string)"/>).</summary>
         public static IReadOnlyList<GltfMeshPart> NormalizeParts(IReadOnlyList<GltfMeshPart> parts, float heightMeters,
                                                                  PropValidation? validation = null)
             => NormalizeParts(parts, heightMeters, validation, null);

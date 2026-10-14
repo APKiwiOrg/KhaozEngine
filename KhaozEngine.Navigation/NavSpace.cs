@@ -119,9 +119,9 @@ public sealed class NavSpace
     }
 
     /// <summary>
-    /// Resolves the layer a world position belongs to, surface-aware. With a single layer, always 0.
-    /// Otherwise, among the layers that carry surface heights (<see cref="NavGrid.HasSurfaceHeights"/>)
-    /// and have a passable surface at the position's cell, the layer whose surface Y is nearest to
+    /// Resolves the layer a world position belongs to, using physical feet heights. With a single layer, always 0.
+    /// Otherwise, among the layers that carry surface heights and have an open cell at
+    /// the position, the layer whose <see cref="NavGrid.RestingHeightAt"/> is nearest to
     /// <paramref name="position"/>.Y wins (ties to the lowest index), so an agent standing on a bridge
     /// deck resolves to the deck layer even when its Y also falls inside the ground layer's band.
     /// When no layer has a surface there (or none carries heights, e.g. the dungeon adapter's
@@ -140,10 +140,10 @@ public sealed class NavSpace
             if (!layer.HasSurfaceHeights) continue;
 
             (int cx, int cz) = layer.CellOf(position.X, position.Z);
-            float? surface = layer.SurfaceHeightAt(cx, cz);
-            if (surface is null) continue;
+            float? resting = layer.RestingHeightAt(cx, cz);
+            if (resting is null) continue;
 
-            float distance = Math.Abs(position.Y - surface.Value);
+            float distance = Math.Abs(position.Y - resting.Value);
             if (distance < bestDistance)
             {
                 bestDistance = distance;

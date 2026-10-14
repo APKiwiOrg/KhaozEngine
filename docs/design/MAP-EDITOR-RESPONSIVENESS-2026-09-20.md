@@ -9,7 +9,7 @@ and 21 measured samples. It reports median and p95 duration plus current-thread 
 separate assertions with no timing threshold.
 
 The retained evidence used .NET 10.0.12 on macOS 27.0 and an Apple M2 Max with 32 GiB memory. The representative
-Ruinborne island was copied before the run and loaded as a tiled map. The loaded copy contained 17,281 authored
+The reference consumer island was copied before the run and loaded as a tiled map. The loaded copy contained 17,281 authored
 placements, 115 NPC spawns, two player spawns, and 64 sculpt tiles. The source map was not modified.
 
 These are CPU-only timings. They are not FPS, GPU time, presentation time, or rendered stroke latency. Other build
@@ -71,12 +71,12 @@ a document-history rewrite.
 
 ## Reproduction
 
-Run from a KhaozEngine worktree whose Ruinborne sibling has the representative map. The profile copies the map to a
+Run from a KhaozEngine worktree whose consumer sibling has the representative map. The profile copies the map to a
 temporary directory and never writes the source.
 
 ```sh
 profile_root=$(mktemp -d /tmp/ke-map-editor-profile.XXXXXX)
-cp -R ~/Ruinborne/Ruinborne.Core/assets/maps/island "$profile_root/island"
+cp -R ~/ConsumerGame/Consumer.Core/assets/maps/island "$profile_root/island"
 KE_MAP_EDITOR_PROFILE_MAP="$profile_root/island" \
 KE_MAP_EDITOR_PROFILE_COMMIT="$(git rev-parse --short HEAD)" \
 dotnet test KhaozEngine.MapEditor.Tests/KhaozEngine.MapEditor.Tests.csproj \
@@ -85,9 +85,9 @@ dotnet test KhaozEngine.MapEditor.Tests/KhaozEngine.MapEditor.Tests.csproj \
 ```
 
 The automated harness cannot measure rendered stroke latency or subjective camera response. Run this command from
-the Ruinborne worktree for the remaining manual check. It opens a window, so it was documented and not run here.
+The reference consumer worktree for the remaining manual check. It opens a window, so it was documented and not run here.
 
 ```sh
-dotnet run --project Ruinborne.Editor/Ruinborne.Editor.csproj -- \
-  --map Ruinborne.Core/assets/maps/island
+dotnet run --project Consumer.Editor/Consumer.Editor.csproj -- \
+  --map Consumer.Core/assets/maps/island
 ```

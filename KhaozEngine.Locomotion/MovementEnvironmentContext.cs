@@ -12,6 +12,7 @@ public sealed class MovementEnvironmentContext
     readonly IMovementEnvironmentProvider _provider;
     readonly MovementQueryIdentity _identity;
     readonly string _worldId;
+    readonly ContactTickWorkspace _workspace = new();
     int _inUse;
 
     public MovementEnvironmentContext(IPhysicsWorldQueryView physics, IMovementEnvironmentProvider provider,
@@ -31,6 +32,7 @@ public sealed class MovementEnvironmentContext
     /// <summary>Enter outside other physics leases. Success retains both gates until the returned lease is disposed.</summary>
     public MovementAvailability TryAcquire(in MovementQueryScope scope, out MovementQueryLease? lease)
     {
+        using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.AcquisitionBody);
         lease = null;
         if (!scope.IsValid || scope.Identity != _identity ||
             !string.Equals(scope.WorldId, _worldId, StringComparison.Ordinal) ||
@@ -44,20 +46,23 @@ public sealed class MovementEnvironmentContext
         bool transferred = false;
         try
         {
-            MovementPreparationResult prepared = _provider.Prepare(scope);
+            MovementPreparationResult prepared;
+            using (ContactAllocationDiagnostics.Begin(ContactAllocationPhase.Preparation)) prepared = _provider.Prepare(scope);
             if (!MovementEnvironmentValidation.Availability(prepared.Availability)) return MovementAvailability.Invalid;
             if (prepared.Availability != MovementAvailability.Known) return prepared.Availability;
             if (prepared.Identity != _identity || !string.Equals(_provider.WorldId, _worldId, StringComparison.Ordinal))
                 return MovementAvailability.Invalid;
 
-            physicsLease = leaseSource.AcquireQueryReadLease();
+            using (ContactAllocationDiagnostics.Begin(ContactAllocationPhase.PhysicsLease)) physicsLease = leaseSource.AcquireQueryReadLease();
             if (physicsLease is null) return MovementAvailability.Invalid;
             physicsLease.AssertCurrent();
             if (!ReferenceEquals(physicsLease.SourceWorld, _source) ||
                 !ReferenceEquals(_physics.SourceWorld, _source) || physicsLease.Origin != scope.Frame.PhysicsOrigin)
                 return MovementAvailability.Invalid;
 
-            MovementAvailability availability = _provider.TryPinPrepared(scope, physicsLease, out pin);
+            SupportQueryDiagnostics.Record(SupportQueryCounter.ProducerPins);
+            MovementAvailability availability;
+            using (ContactAllocationDiagnostics.Begin(ContactAllocationPhase.ProducerPin)) availability = _provider.TryPinPrepared(scope, physicsLease, out pin);
             if (!MovementEnvironmentValidation.Availability(availability)) return MovementAvailability.Invalid;
             if (availability != MovementAvailability.Known) return availability;
             if (pin is null) return MovementAvailability.Invalid;
@@ -78,7 +83,10 @@ public sealed class MovementEnvironmentContext
             try { pin.AssertCurrent(); }
             catch (InvalidOperationException) { return MovementAvailability.Stale; }
             physicsLease.AssertCurrent();
-            lease = new MovementQueryLease(_physics, physicsLease, pin, witness, scope.Frame, environmentGeneration, Release);
+            SupportQueryDiagnostics.Record(SupportQueryCounter.MovementLeases);
+            using (ContactAllocationDiagnostics.Begin(ContactAllocationPhase.MovementLease))
+                lease = new MovementQueryLease(_physics, physicsLease, pin, witness, scope.Frame, environmentGeneration, Release, _workspace);
+            _workspace.Enter(lease);
             transferred = true;
             return MovementAvailability.Known;
         }
@@ -96,5 +104,13 @@ public sealed class MovementEnvironmentContext
         }
     }
 
-    void Release() => Interlocked.Exchange(ref _inUse, 0);
+    // Each context owns one workspace. Equal scopes or a shared view do not share that acquisition identity.
+    internal bool OwnsLease(MovementQueryLease lease) =>
+        lease.UsesPhysicsView(_physics) && ReferenceEquals(lease.Workspace, _workspace);
+
+    void Release()
+    {
+        _workspace.EndInterval();
+        Interlocked.Exchange(ref _inUse, 0);
+    }
 }

@@ -7,10 +7,10 @@ camera at Grimhollow 0.2.0, then R5: textured ground through a new `TileGround` 
 the engine's water pass, sections 7.5 and 7.6, engine 17.38.0), R6
 pending (editor kernel extraction and the GUI tile editor). Section 13 carries the delivery-order
 reasoning. Program issue: [#629](https://github.com/APKiwiOrg/KhaozEngine/issues/629). First adopter: Grimhollow, a new low-poly 3D
-MMO on the Ruinborne shell (repo to be scaffolded, `APKiwiOrg/Grimhollow`).
+MMO on the reference consumer shell (repo to be scaffolded, `APKiwiOrg/Grimhollow`).
 
 This is sub-project 1 of the Grimhollow program. The full program, for orientation only, is: (1) this tile
-world plus its tools and one authored starter world, (2) the game bootstrap on Ruinborne's client/server/auth
+world plus its tools and one authored starter world, (2) the game bootstrap on the reference consumer's client/server/auth
 shell, (3) tick-based click-to-walk movement, pathing and combat on the tile grid, (4) skills, XP, inventory,
 bank, equipment, (5) NPCs, drops, shops, quests, (6) the passive skill tree(s). Only (1) is specified here.
 The others are named so that (1) is shaped to serve them, and each gets its own spec when it starts.
@@ -58,14 +58,14 @@ document and its tools come first, and they are a sibling of the existing map st
 |---|---|---|---|
 | Fit to the OSRS model (planes, corner heights, edge walls, tile objects) | 9 | 6 | 3 |
 | Reuse of what the engine has | 7 | 8 | 10 |
-| Blast radius on Ruinborne and the existing editor | 8 | 3 | 6 |
+| Blast radius on the reference consumer and the existing editor | 8 | 3 | 6 |
 | Time to first authored region | 6 | 5 | 8 |
 | Extensibility (prefabs, dungeons emitting into it, a third doc kind) | 9 | 5 | 3 |
 | God-file / KESIZE ratchet risk | 9 | 2 | 5 |
 | **Total** | **48** | **29** | **35** |
 
 Fold-in keeps the `Terrain` dependency in the doc, grows both god-files past the ratchet by construction, and
-puts Ruinborne's live editor at risk on every change. The overlay keeps Ruinborne's visual identity (smooth
+puts the reference consumer's live editor at risk on every change. The overlay keeps the reference consumer's visual identity (smooth
 splatted LOD terrain, no corner lattice, no planes) and every OSRS feature fights the base representation
 forever.
 
@@ -83,8 +83,8 @@ What the sibling stack reuses, verified against the code:
   attribute-registered verbs (`[McpServerToolType]`, `[McpServerTool]`) behind `ToolGuard`, headless PNG
   via `Render3DSnapshot`. `MapEdit.Tool` already references `MapEditor` for `ViewportWorld`, which is the
   precedent for `TileEdit.Tool` referencing `TileEditor` for the command set.
-- Ruinborne's 208-line `Ruinborne.Editor` head is the template for `Grimhollow.Editor`, and Ruinborne loads
-  its world at exactly three call sites (`RuinborneWorld`, `BootCoordinator`, server `Program`), which is
+- the reference consumer's 208-line `Consumer.Editor` head is the template for `Grimhollow.Editor`, and the reference consumer loads
+  its world at exactly three call sites (`ConsumerWorld`, `BootCoordinator`, server `Program`), which is
   what sub-project 2 re-points.
 
 ## 4. Package plan
@@ -215,7 +215,7 @@ One form only, a directory:
   hand edit that forgot the manifest, and the load refuses, naming the region.
 - `WorldHash`: SHA-256 over the canonical manifest bytes, which compose the per-region hashes, so it is
   independent of region write order and computed without re-serialising the regions. This is the value
-  Grimhollow's client and server will compare, the way Ruinborne's `MapDocumentDigest` compares
+  Grimhollow's client and server will compare, the way the reference consumer's `MapDocumentDigest` compares
   `MapDocumentHash`.
 - Canonical region bytes: dense layers are written as base64 of little-endian arrays (a `short[4096]` is
   8 KB raw, about 11 KB in base64), objects and markers sorted by `(Plane, Z, X, Id)` before writing.
@@ -474,7 +474,7 @@ and tiles-per-metre, lit and shadowed by the same `LightingCommonGlsl` block the
 `GltfMesh`. What it cannot do is N materials: its layer count is a `const 5`, the four leading weights ride in
 `ModelVertex.Color` and the fifth is the remainder, the tint UBO is `vec4[5]`. A tile world's catalog is open
 ended (Hollowmere's ground catalog has 13 materials and one region touches 11 of them), so five fixed slots per
-mesh cannot hold it. Fold-in (widen the splat pipeline to N) was weighed and rejected: it is Ruinborne's live
+mesh cannot hold it. Fold-in (widen the splat pipeline to N) was weighed and rejected: it is the reference consumer's live
 terrain path with goldens of its own, and the tile ground's vertex needs differ (a palette per triangle, a
 jitter scalar, no per-vertex splat weights over a fixed set). What IS reused is everything around the pipeline:
 the texture-array creation (`TextureUploads.CreateSplatArrays` or its sibling), the lighting block, the MRT
@@ -530,6 +530,12 @@ it is one more entry in the memoised shader set, so the second `Scene3D` in a pr
 The ground CASTS shadows, as it does today through the model path (the splat terrain is the one that opts
 out), so the shadow-caster loop treats a tile-ground mesh like a model mesh, and the rebaked goldens move only
 for the texturing.
+
+Later extension (#1289, engine 20.36.0): the top-down `uv` above is now the tap for ground below 45 degrees only.
+Steeper fragments add two side projections, and a catalog material may name a `steep` companion it blends toward
+over a slope band, both read off the interpolated lattice normal. The params block grew a `Triplanar` vector and
+`SteepBand[64]` behind `Misc`. The living reference is the Render3D package README and
+`docs/USING-KHAOZENGINE.md`.
 
 **The material set: `Scene3D.LoadTileGroundMaterial(...) -> TileGroundMaterialHandle`,
 `LoadMesh(mesh, TileGroundMaterialHandle)`.** (As shipped the `Scene3D` call takes the size and the layer list
@@ -589,7 +595,7 @@ hard line. Per-vertex texture rotation (the OSRS trick that hides tiling): noted
 
 ### 7.6 Water (R5): the engine's water pass, one plane per water body
 
-Water is the existing `Scene3D.DrawWater(in WaterPlane)` pass with a per-plane `WaterLook`, the pass Ruinborne
+Water is the existing `Scene3D.DrawWater(in WaterPlane)` pass with a per-plane `WaterLook`, the pass the reference consumer
 uses for its sea and its inland lake. Nothing new is drawn: the depth tint, the shore foam band and the
 waterline feather all read the SCENE DEPTH BUFFER (the pass reconstructs the ground under each water pixel from
 the resolved depth), so no bathymetry map, no scene-wide setting, no new shader. The tile world's part is
@@ -609,7 +615,7 @@ deciding WHERE the planes are:
   bounding box per component: a box over-covers at bends, and water over-cover is only hidden where the ground
   under it is ABOVE the surface (the pass is depth-test-less with depth-write off, and discards only once the
   ground is at or above the surface). A ditch beside a bend, a cave mouth, a sunk road cut, any non-water
-  ground below the rim inside the box would render as water, which is the exact failure Ruinborne's inland
+  ground below the rim inside the box would render as water, which is the exact failure the reference consumer's inland
   lake was built to avoid (it covers a round basin with inscribed strips for this reason). The rectangles are
   the component's own tiles and nothing else, so nothing that is not water gets a surface. The collector
   asserts pairwise disjointness over every plane a region-plane emits, because two overlapping planes
@@ -621,7 +627,7 @@ deciding WHERE the planes are:
 - **`TileWaterLooks.River`** is a `static readonly WaterLook` in `TileWorld.Render3D` (a per-plane look, not an
   `OceanPreset`, which mutates scene-wide water settings): procedural waves, zero swell, small normal strength,
   no surf, no foam beyond the shore band, a browner shallow colour and a shorter `ShallowDepth` (0.8 m) than
-  the sea, so a 60 to 80 cm bed reads as deep enough to darken. Ruinborne's inland lake look is the reference
+  the sea, so a 60 to 80 cm bed reads as deep enough to darken. The reference consumer's inland lake look is the reference
   values. `TileWorldViewOptions.WaterLook` overrides it for a world that wants something else. The grid mode
   stays the scene's (camera focused by default, the clipmap mode is scene-wide and camera centred, neither is
   chosen per plane).
@@ -660,11 +666,11 @@ Lifted out of `MapEditor` into `KhaozEngine.Editor`, keeping behaviour and tests
   repeat `MapEditor`'s closed `EditorToolMode` enum. `MapEditor` is NOT migrated onto `IEditorTool` in this
   program (that is a refactor of a 3276-line scene for no functional gain), the seam is for new editors.
 - `MapEditor` keeps forwarding types under the old names (`MapEditorLandingScene : EditorLandingScene`,
-  `MapEditorLandingOptions : EditorLandingOptions`, and any other lifted public type Ruinborne's head
-  touches), doc-commented as source-compatibility aliases, so Ruinborne's repin is not forced. They are
+  `MapEditorLandingOptions : EditorLandingOptions`, and any other lifted public type the reference consumer's head
+  touches), doc-commented as source-compatibility aliases, so the reference consumer's repin is not forced. They are
   deliberately NOT `[Obsolete]`: warnings are errors fleet-wide, so an obsolete alias would fail
-  `Ruinborne.Editor`'s build on repin exactly as the rename would, and the alias would buy nothing.
-  Additive: a minor bump. The aliases drop at the next major, and Ruinborne's 208-line head moves to the
+  `Consumer.Editor`'s build on repin exactly as the rename would, and the alias would buy nothing.
+  Additive: a minor bump. The aliases drop at the next major, and the reference consumer's 208-line head moves to the
   kernel names then (or earlier, at its convenience).
 
 ### 8.2 The tile editor
@@ -701,7 +707,7 @@ debug toggle (edges red, blocked tinted, corners marked). Every mutation is an `
 remesh, Ctrl+S saves. Deliberately absent (AI-first): auto-tiling road brushes, heightmap import (MCP verb
 only), multi-object marquee. Filed as follow-ups if wanted, not built.
 
-`Grimhollow.Editor` is Ruinborne's head cloned: `EditorApp : GameApp3D`, discovers worlds under
+`Grimhollow.Editor` is the reference consumer's head cloned: `EditorApp : GameApp3D`, discovers worlds under
 `assets/worlds/`, resolves catalogs from the manifest, opens `TileEditorScene`.
 
 ## 9. The MCP tool (`KhaozEngine.TileEdit.Tool`, `ke-tileedit`)
@@ -741,7 +747,7 @@ Verb families:
 | Render | `render_topdown(rect, plane, pxPerTile, overlays, savePath?)`, `render_view(eye, target, size, observer?, savePath?)` |
 
 `tiles_get_rect` and `walkable_rect` exist so the AI can read an area for a few hundred tokens instead of
-thousands. Grimhollow registers the tool in its `.mcp.json` the way Ruinborne registers `ke-mapedit`.
+thousands. Grimhollow registers the tool in its `.mcp.json` the way the reference consumer registers `ke-mapedit`.
 
 **What shipped against this table: its 43 verbs, with four argument shapes corrected.** The corrections, each
 because the spec's shape did not survive contact:
@@ -771,7 +777,7 @@ because the spec's shape did not survive contact:
 
 Repo `APKiwiOrg/Grimhollow` at `~/Grimhollow` via the `scaffold-game-repo` skill. Sub-project 1 keeps the
 game side minimal: `Grimhollow.Editor`, `Grimhollow.Tests`, `assets/`, `.mcp.json`, `tools/kitgen/`. Client,
-server, auth and persistence come in sub-project 2 by cloning Ruinborne's shell onto the tile world.
+server, auth and persistence come in sub-project 2 by cloning the reference consumer's shell onto the tile world.
 
 - `assets/catalogs/ground.json`: three grasses, dirt, mud, sand, gravel, cobble, road, wood floor, stone
   floor, snow, water.
@@ -799,7 +805,7 @@ server, auth and persistence come in sub-project 2 by cloning Ruinborne's shell 
 a C# program of hand-chosen placements (every building, road, marker at a coordinate a person picked) driven
 through the `TileWorld.Editing` commands, plus `objects_scatter` for the forest edge and a hash function for the
 grass tints. It was the fastest route to a first world from a session that could not reach the MCP tool, and it
-is not the authoring model: the map is hand authored, like OSRS and like Ruinborne's, and AI-first means through
+is not the authoring model: the map is hand authored, like OSRS and like the reference consumer's, and AI-first means through
 `ke-tileedit` verbs in a session with the tool registered, not through a generator. From R5's Grimhollow round
 on, Hollowmere is edited by hand through `ke-tileedit` (the river bed and banks, road shoulders, crop rows, the
 tints that follow slope and water rather than a hash), `Grimhollow.WorldGen` is retired once that pass lands

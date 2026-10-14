@@ -14,11 +14,14 @@
     <ProjectReference Include="../KhaozEngine.Physics.Bepu/KhaozEngine.Physics.Bepu.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Contacts/SupportAllocationRegion.cs" Link="Fixtures/SupportAllocationRegion.cs" />
+    <Compile Include="../KhaozEngine.Server.Tests/NetWorld/Fixtures/ObservedPhysicsWorld.cs" Link="Fixtures/ContactLifecyclePhysics.cs" />
     <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Fixtures/AnalyticMovementEnvironment.cs" Link="Fixtures/AnalyticMovementEnvironment.cs" />
     <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Fixtures/AnalyticMovementEnvironment.ContactSupport.cs" Link="Fixtures/AnalyticMovementEnvironment.ContactSupport.cs" />
     <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Fixtures/AnalyticCapsuleVolume.cs" Link="Fixtures/AnalyticCapsuleVolume.cs" />
     <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Fixtures/AnalyticBoxComplement.cs" Link="Fixtures/AnalyticBoxComplement.cs" />
     <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Fixtures/EnvironmentAcquisitionFixture.cs" Link="Fixtures/EnvironmentAcquisitionFixture.cs" />
     <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Fixtures/EnvironmentAcquisitionFixture.ContactSupport.cs" Link="Fixtures/EnvironmentAcquisitionFixture.ContactSupport.cs" />
+    <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Fixtures/EnvironmentAcquisitionFixture.Witness.cs" Link="Fixtures/EnvironmentAcquisitionFixture.Witness.cs" />
   </ItemGroup>
 </Project>

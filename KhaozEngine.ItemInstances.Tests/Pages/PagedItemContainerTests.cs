@@ -8,7 +8,7 @@ using Xunit;
 namespace KhaozEngine.Tests.ItemInstances.Pages;
 
 /// <summary>
-/// Spec 5.2, 5.3 and 5.7: the page geometry, the two things that dirty a page, and Ruinborne's capacity
+/// Spec 5.2, 5.3 and 5.7: the page geometry, the two things that dirty a page, and the reference consumer's capacity
 /// model restated as engine behaviour. Capacity is a GATE rather than a size, so the address space and the
 /// number of occupied slots a grant may leave behind are two different numbers here and one number in
 /// <c>ItemContainer</c>.
@@ -294,7 +294,7 @@ public class PagedItemContainerTests
         Assert.False(reloaded.Pages[0].IsDirty);
 
         // A remap rewrites slot 2 and the hole is still a hole afterwards: nothing on this path compacts,
-        // so the dense renumber Ruinborne's repair refuses to do cannot happen here by accident.
+        // so the dense renumber the reference consumer's repair refuses to do cannot happen here by accident.
         ItemSlot target = reloaded.SlotAt(2);
         Assert.True(reloaded.Pages[0].ApplyRemap(
             2, target with { Stack = target.Stack with { ItemId = 4300 } }, activeContentVersion: 12));

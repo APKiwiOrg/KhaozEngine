@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Numerics;
 using BepuPhysics;
@@ -54,19 +55,70 @@ internal static class SupportNeighborhoodPolyhedra
         return CapsuleFeatureStatus.Complete;
     }
 
+    /// <summary>Complete-volume capture shares the released leaf installation and polygon ids. Curved leaves
+    /// retain their released independent raw leaf identity for the footprint owner.</summary>
+    internal static CapsuleFeatureStatus Capture(Simulation simulation, TypedIndex shape, in RigidPose pose,
+        in SupportFootprintBounds bounds, CapsuleFeatureCaptureScratch scratch,
+        List<CapsuleFeaturePolyhedron> leaves, List<SupportCurvedLeaf> curved)
+    {
+        leaves.Clear();
+        curved.Clear();
+        if (shape.Type != default(Compound).TypeId)
+            return CaptureFootprintLeaf(simulation, shape, pose, new RigidPose(Vector3.Zero, Quaternion.Identity),
+                0, bounds, scratch, leaves, curved);
+        if (!CapsuleFeatureGeometry.ProveInstalledPose(pose)) return CapsuleFeatureStatus.Unsupported;
+        ref Compound installed = ref simulation.Shapes.GetShape<Compound>(shape.Index);
+        if (installed.Children.Length == 0) return CapsuleFeatureStatus.Unsupported;
+        for (int i = 0; i < installed.Children.Length; i++)
+        {
+            ref var child = ref installed.Children[i];
+            if (!CapsuleFeatureGeometry.ProveInstalledPose(child.LocalPose)) return CapsuleFeatureStatus.Unsupported;
+            Compound.GetWorldPose(child.LocalPose, pose, out RigidPose worldPose);
+            if (!InstalledPoseOperations.ProveComposition(child.LocalPose, pose, worldPose))
+                return CapsuleFeatureStatus.Unsupported;
+            CapsuleFeatureStatus status = CaptureFootprintLeaf(simulation, child.ShapeIndex, worldPose,
+                child.LocalPose, i, bounds, scratch, leaves, curved);
+            if (status != CapsuleFeatureStatus.Complete) return status;
+        }
+        return CapsuleFeatureStatus.Complete;
+    }
+
+    static CapsuleFeatureStatus CaptureFootprintLeaf(Simulation simulation, TypedIndex shape, in RigidPose pose,
+        in RigidPose local, int id, in SupportFootprintBounds bounds, CapsuleFeatureCaptureScratch scratch,
+        List<CapsuleFeaturePolyhedron> leaves, List<SupportCurvedLeaf> curved)
+    {
+        if (Polyhedral(shape))
+        {
+            CapsuleFeatureStatus status = CapsuleFeatureGeometry.CaptureLeaf(simulation, shape, pose, local, id,
+                scratch, out CapsuleFeaturePolyhedron? leaf);
+            if (status != CapsuleFeatureStatus.Complete) return Admission(status);
+            leaves.Add(leaf!);
+            return CapsuleFeatureStatus.Complete;
+        }
+        if (shape.Type != default(Sphere).TypeId && shape.Type != default(Capsule).TypeId &&
+            shape.Type != default(Cylinder).TypeId) return CapsuleFeatureStatus.Unsupported;
+        return SupportNeighborhoodCurved.Leaf(simulation, shape, pose, id, curved);
+    }
+
     /// <summary>Every face of an admitted leaf, with edges and the outward normal from the leaf's common
     /// installed operator rather than from independently rounded world vertices.</summary>
     internal static void Polygons(StaticHandle owner, CapsuleFeaturePolyhedron leaf, SupportPolygonPool pool,
-        List<SupportPolygon> output)
+        List<SupportPolygon> output, bool footprint = false)
     {
         for (int face = 0; face < leaf.Faces.Length; face++)
         {
             int[] indices = leaf.Faces[face];
             SupportPolygon polygon = pool.Rent();
             polygon.Begin(owner, leaf.LeafId * FaceStride + face, indices.Length);
+            polygon.BeginSource(leaf.SourceMap);
             for (int i = 0; i < indices.Length; i++)
-                polygon.Set(i, leaf.Vertices[indices[i]], leaf.EdgeDirection(indices[i], indices[(i + 1) % indices.Length]));
-            polygon.Finish(leaf.Normals[face]);
+            {
+                polygon.SetSource(i, leaf.LocalVertices[indices[i]]);
+                polygon.Set(i, footprint ? leaf.FootprintVertex(indices[i]) : leaf.Vertices[indices[i]],
+                    leaf.EdgeDirection(indices[i], indices[(i + 1) % indices.Length], footprint));
+            }
+            polygon.Finish(footprint ? FeaturePoint.Cross(leaf.EdgeDirection(indices[0], indices[1], true),
+                leaf.EdgeDirection(indices[0], indices[2], true), exactZeroProducts: true) : leaf.Normals[face]);
             output.Add(polygon);
         }
     }

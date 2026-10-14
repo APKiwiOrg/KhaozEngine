@@ -14,19 +14,15 @@ public sealed partial class PlayerMovementSystem
 {
     readonly PlayerMoveSimulator? explicitSimulator;
 
-    /// <summary>Builds a cell-local explicit simulator. Its lease remains held through every ECS
+    /// <summary>Builds a cell-local leased simulator. Its lease remains held through every ECS
     /// result write. Each cell owns a distinct simulator and physics view.</summary>
     public PlayerMovementSystem(Func<float, float, float> groundHeight, MoveTuning tuning,
         Func<float, float, Vector3>? groundNormal, WorldBounds? bounds, IPhysicsWorld? physics,
         Func<float, float, float, MovementMedium>? medium, WorldFrame frame, SamplerSpace samplerSpace,
         ExplicitPlayerMovement? explicitMovement)
-        : this(groundHeight, tuning, groundNormal, bounds, physics, medium, frame, samplerSpace)
-    {
-        if (explicitMovement is not null)
-            explicitSimulator = new(groundHeight, tuning, groundNormal, bounds, physics, medium,
-                samplerSpace, explicitMovement)
-            { Frame = frame };
-    }
+        : this(groundHeight, tuning, groundNormal, bounds, physics, medium, frame, samplerSpace,
+            explicitMovement, null, null, null, null)
+    { }
 
     static void PrepareExplicitOwners(World world)
     {

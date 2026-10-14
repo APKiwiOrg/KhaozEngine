@@ -15,7 +15,7 @@ namespace KhaozEngine.Tests.Gpu
     /// below the threshold. The fragment attenuates the fold toward a floor as the pixel footprint grows, calibrated so
     /// the far field keeps about the coverage the per-vertex fold gave it. This pins that band.
     /// <para>
-    /// The scene is the Ruinborne lake's water (the clipmap at its defaults and the 42 m swell) on a 600 m sea, seen
+    /// The scene is reference lake's water (the clipmap at its defaults and the 42 m swell) on a 600 m sea, seen
     /// from 6 m up looking out to the horizon, with everything but the foam painted black. Coverage is the fraction of
     /// water pixels at least half white whose still-water point is 64 m or more from the clipmap focus, the 8 m rings
     /// and beyond, pooled over several frozen times and headings.

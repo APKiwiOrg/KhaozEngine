@@ -73,7 +73,13 @@ public sealed partial class ShardHost
     public bool RemoveCell(CellCoord coord)
     {
         if (!CanRemoveCell(coord)) return false;
-        CellSim cell = cells[coord];
+        RemoveCellCore(cells[coord]);
+        return true;
+    }
+
+    private void RemoveCellCore(CellSim cell)
+    {
+        CellCoord coord = cell.Coord;
 
         // The ownership index can only point here for netIds this cell's owned index also holds (both are written
         // by the same register hook, and the unregister hook clears the host entry only while it still points
@@ -102,9 +108,8 @@ public sealed partial class ShardHost
         cell.OwnedRegisteredHook = null;   // a late register on the detached cell must not write back into the index
         cell.OwnedUnregisteredHook = null;
 
-        CellRemoved?.Invoke(cell);
-        cell.Retire();
-        return true;
+        try { CellRemoved?.Invoke(cell); }
+        finally { cell.Retire(); }
     }
 
     /// <summary>

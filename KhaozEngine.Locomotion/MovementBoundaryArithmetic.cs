@@ -11,9 +11,30 @@ internal static class MovementBoundaryArithmetic
 
     internal static int Compare(float start, float delta, double plane)
     {
-        Span<Term> terms = stackalloc Term[3] { Split(start), Split(delta), Split(plane) };
-        int exponent = Common(terms);
-        return (Expand(terms[0], exponent) + Expand(terms[1], exponent) - Expand(terms[2], exponent)).Sign;
+        // Two binary32 operands cannot reach a plane outside this range. Keeping the plane
+        // inside it also prevents overflow in the exact binary64 expansion below.
+        if (Math.Abs(plane) > 2d * float.MaxValue) return plane > 0 ? -1 : 1;
+        Span<double> expansion = stackalloc double[3];
+        int count = 0;
+        Grow(expansion, ref count, start);
+        Grow(expansion, ref count, delta);
+        Grow(expansion, ref count, -plane);
+        for (int i = count - 1; i >= 0; i--)
+            if (expansion[i] != 0) return Math.Sign(expansion[i]);
+        return 0;
+    }
+
+    static void Grow(Span<double> expansion, ref int count, double value)
+    {
+        double carry = value;
+        for (int i = 0; i < count; i++)
+        {
+            double sum = carry + expansion[i];
+            double virtualPart = sum - carry;
+            expansion[i] = (carry - (sum - virtualPart)) + (expansion[i] - virtualPart);
+            carry = sum;
+        }
+        expansion[count++] = carry;
     }
 
     internal static bool InCircle(float x, float z, float dx, float dz, double cx, double cz, double radius)

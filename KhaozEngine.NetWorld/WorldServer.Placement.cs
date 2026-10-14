@@ -34,7 +34,7 @@ public sealed partial class WorldServer
         if (teleport)
         {
             next.Move.Commitment = default;
-            if (config.ExplicitMovement is not null)
+            if (simulator.Binding.UsesLease)
             {
                 next.Move = MovementStepResult.HoldState(next.Move);
                 next.Move.WaterExcursion = WaterExcursionState.None;
@@ -47,10 +47,9 @@ public sealed partial class WorldServer
         using (var read = simulator.BeginExplicitRead(next))
         {
             if (read?.BasisValid == false) return false;
-            if (read?.Queries is { } queries)
+            if (read?.Queries is not null)
             {
-                var placement = ExplicitCharacterMovement.SettlePlacement(new(next.Move, queries.Frame, null),
-                    tuning, config.ExplicitMovement!.Water, queries, read.Boundary);
+                var placement = simulator.SettlePlacement(next, read);
                 if (placement.Outcome != MovementStepOutcome.Advanced) return false;
                 next.Move = placement.State.State;
             }

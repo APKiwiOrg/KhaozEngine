@@ -9,6 +9,8 @@ internal abstract class AnalyticBoundary(string identity) : MovementBoundary
         ? throw new ArgumentException("A boundary identity is required.", nameof(identity)) : identity;
     protected abstract bool Inside(float x, float z, float dx, float dz);
     protected abstract Vector2 Project(Vector2 desired, double inset);
+    /// <summary>The same shape and identity in a physics frame, translated with double arithmetic.</summary>
+    internal abstract AnalyticBoundary InFrame(Vector3 physicsOrigin);
 
     public sealed override MovementAvailability Classify(Vector3 centre, out bool inside)
     {
@@ -53,6 +55,8 @@ internal abstract class AnalyticBoundary(string identity) : MovementBoundary
 
 internal sealed class RectangleBoundary(double minX, double minZ, double maxX, double maxZ, string identity) : AnalyticBoundary(identity)
 {
+    internal override AnalyticBoundary InFrame(Vector3 physicsOrigin) => new RectangleBoundary(minX - physicsOrigin.X,
+        minZ - physicsOrigin.Z, maxX - physicsOrigin.X, maxZ - physicsOrigin.Z, SemanticIdentity);
     protected override bool Inside(float x, float z, float dx, float dz) =>
         MovementBoundaryArithmetic.Compare(x, dx, minX) >= 0 && MovementBoundaryArithmetic.Compare(x, dx, maxX) <= 0 &&
         MovementBoundaryArithmetic.Compare(z, dz, minZ) >= 0 && MovementBoundaryArithmetic.Compare(z, dz, maxZ) <= 0;
@@ -66,6 +70,8 @@ internal sealed class RectangleBoundary(double minX, double minZ, double maxX, d
 
 internal sealed class CircleBoundary(double x, double z, double radius, string identity) : AnalyticBoundary(identity)
 {
+    internal override AnalyticBoundary InFrame(Vector3 physicsOrigin) =>
+        new CircleBoundary(x - physicsOrigin.X, z - physicsOrigin.Z, radius, SemanticIdentity);
     protected override bool Inside(float px, float pz, float dx, float dz) =>
         MovementBoundaryArithmetic.InCircle(px, pz, dx, dz, x, z, radius);
     protected override Vector2 Project(Vector2 desired, double inset)

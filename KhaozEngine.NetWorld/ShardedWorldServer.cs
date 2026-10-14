@@ -93,6 +93,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         if (!float.IsFinite(config.CellOrigin.X) || !float.IsFinite(config.CellOrigin.Y))
             throw new ArgumentException($"CellOrigin {config.CellOrigin} must be finite on both axes.", nameof(config));
         ValidateCellSizeAgainstFrameGrid(config);
+        OrdinaryPlayerMovement.ValidateSharded(config, tuning, bounds, medium is not null);
 
         // Consumer-injectable registry (shared with the client) so NPCs/enemies carry game components across every
         // cell's replication + handoff + ghosting; default = movement-only. Assigned before the host so cells use it.
@@ -108,6 +109,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         commands = new RemoteCommandQueue<MoveCommand>(neutralCommand: default,
             maxSlots: Math.Max(64, this.config.MaxPlayers),
             catchUpThreshold: Math.Max(0, this.config.MaxInputBacklog));
+        seatTurnoverBySlot = new int[Math.Max(0, this.config.MaxPlayers)];
         // The per-cell runtime (its movement system and its spawn clamp) is built lazily against the cell's own
         // physics world and the cell's own frame. These are the pieces every cell's copy shares.
         cellGroundHeight = groundHeight;
@@ -127,12 +129,15 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         host.CellCreated += cell =>
         {
             cell.FrameAdapter = ReplicatedPositionFrameAdapter.Instance;
-            if (config.ExplicitMovementFactory is not null) EnsureWired(cell);
+            if (tuning.Controller == MovementControllerKind.Contact || config.ExplicitMovementFactory is not null) EnsureWired(cell);
             CellCreated?.Invoke(cell.Coord);
         };
         // An unloaded coordinate comes back as a genuinely fresh cell with an empty world, so the record of having
         // wired its movement system has to go with it or the recreated cell would never simulate.
-        host.CellRemoved += cell => cellRuntime.Remove(cell.Coord);
+        host.CellRemoved += cell =>
+        {
+            if (cellRuntime.Remove(cell.Coord, out var runtime)) runtime.Dispose();
+        };
         // Always enforce the engine wire generation at connect (see WorldServer): a wire-skewed / version-less client
         // is rejected cleanly rather than admitted and left to misparse the wire.
         var admission = new ReplicationAdmissionGate(WireGenerationAuthenticator.Install(authenticator));
@@ -158,7 +163,12 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
     /// live (the ordinary shutdown case, since eviction is opt-in and cold) leaked that cell's physics world. Call this
     /// when the server itself is done, not per-cell: individual cells still come and go through eviction as before.
     /// </summary>
-    public void Dispose() => host.Dispose();
+    public void Dispose()
+    {
+        foreach (var runtime in cellRuntime.Values) runtime.Dispose();
+        cellRuntime.Clear();
+        host.Dispose();
+    }
 
     // --- ICellPersistenceHost: per-cell world-state persistence (non-player entities). ---
 
@@ -491,6 +501,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         {
             MoveCommand cmd = commands.Dequeue(slot, out int ack);
             lastAckBySlot[slot] = ack;
+            if (heldMovementSlots.Contains(slot)) cmd = MoveCommand.Idle;   // acknowledged, never acted on
             if (host.TryGetOwner(netIdBySlot[slot], out CellSim cell, out Entity e))
             {
                 cell.World.Set(e, new PendingMove { Command = cmd });
@@ -698,6 +709,10 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
                 break;
             case AdminCommandKind.AbortMovementCommitment:
                 ApplyAbortMovementCommitment(cmd.Target, cmd.Sequence, MovementCommitmentEndReason.Aborted);
+                break;
+            case AdminCommandKind.HoldMovement:
+            case AdminCommandKind.ReleaseMovement:
+                ApplyMovementHold(cmd);
                 break;
             case AdminCommandKind.Kick:
                 {

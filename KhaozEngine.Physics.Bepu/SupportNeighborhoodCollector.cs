@@ -75,6 +75,7 @@ internal sealed class SupportNeighborhoodCollector
         IReadOnlyDictionary<int, int> reverseHandles, StaticQueryExclusions? exclusions, CapsuleShape probe,
         Pose pose, float bandMetres)
     {
+        SupportQueryDiagnostics.Record(SupportQueryCounter.Volumes);
         // Every bound is summed outward in binary64 and rounded outward to binary32.
         GeometryInterval reach = GeometryInterval.Exact(probe.Radius).Add(GeometryInterval.Exact(bandMetres))
             .Add(GeometryInterval.Exact(BroadphaseMargin));
@@ -94,6 +95,7 @@ internal sealed class SupportNeighborhoodCollector
             if (!reverseHandles.TryGetValue(collidable.StaticHandle.Value, out int seam) || !_seen.Add(seam)) continue;
             _candidates.Add((new SeamStaticHandle(seam), collidable.StaticHandle));
         }
+        SupportQueryDiagnostics.Record(SupportQueryCounter.SelectedStatics, _candidates.Count);
         _candidates.Sort(static (a, b) => a.Seam.Value.CompareTo(b.Seam.Value));
         return _candidates;
     }
@@ -138,7 +140,11 @@ internal sealed class SupportNeighborhoodCollector
                 GeometrySign member = _tangents.Measure(seam, leaf, part, out SupportElement element);
                 if (member == GeometrySign.Unresolved) return CapsuleFeatureStatus.Unsupported;
                 // Tangent elements are never joined, so they carry no polygon.
-                if (member == GeometrySign.Positive) _members.Add(new(null, element));
+                if (member == GeometrySign.Positive)
+                {
+                    SupportQueryDiagnostics.Record(SupportQueryCounter.Members);
+                    _members.Add(new(null, element));
+                }
             }
         }
         return CapsuleFeatureStatus.Complete;
@@ -147,8 +153,10 @@ internal sealed class SupportNeighborhoodCollector
     /// <summary>Adds the polygon when it is a member. Unresolved means the bounded arithmetic failed.</summary>
     internal GeometrySign Consider(SupportPolygon polygon)
     {
+        SupportQueryDiagnostics.Record(SupportQueryCounter.Polygons);
         double reach = _radius.Bounds.Add(GeometryInterval.Exact(_band)).Upper;
         if (SupportGeometry.BoxGap(_low, _high, polygon.Low, polygon.High) > reach) return GeometrySign.Negative;
+        SupportQueryDiagnostics.Record(SupportQueryCounter.Extrema);
         SupportDistance distance = _kernel.Measure(_start, _direction, polygon, _band);
         if (!distance.IsResolved) return GeometrySign.Unresolved;
         GeometryInterval separation = GeometryInterval.Enclose(distance.Lower, distance.Upper)
@@ -159,6 +167,7 @@ internal sealed class SupportNeighborhoodCollector
             GeometryVectorOperations.Normalize(polygon.Normal.Bounds));
         GeometryVectorOutput witness = GeometryVectorOperations.Publish(distance.Witness);
         if (!normal.IsResolved || !witness.IsResolved) return GeometrySign.Unresolved;
+        SupportQueryDiagnostics.Record(SupportQueryCounter.Members);
         _members.Add(new(polygon, new SupportElement(polygon.Static, SupportElementKind.Polygon, polygon.ElementId,
             normal.Value, normal.Error, witness.Value, witness.Error, separation.Lower, separation.Upper)));
         return GeometrySign.Positive;
@@ -176,11 +185,13 @@ internal sealed class SupportNeighborhoodCollector
         int stride = SupportNeighborhoodResult.JoinWordsFor(count);
         if (count > SupportNeighborhoodResult.MaximumElements || elements.Length < count ||
             joins.Length < count * stride)
+        {
+            SupportQueryDiagnostics.Refusal(CapsuleFeatureStatus.CapacityExceeded);
             return SupportNeighborhoodResult.Refused(CapsuleFeatureStatus.CapacityExceeded, count);
+        }
         if (_matrix.Length < count * stride) _matrix = new ulong[count * stride];
         Span<ulong> matrix = _matrix.AsSpan(0, count * stride);
         matrix.Clear();
-        double apart = 2 * _band + Apart;
         for (int first = 0; first < count; first++)
         {
             SupportPolygon? a = _members[first].Polygon;
@@ -188,11 +199,17 @@ internal sealed class SupportNeighborhoodCollector
             for (int second = first + 1; second < count; second++)
             {
                 SupportPolygon? b = _members[second].Polygon;
-                if (b is null || Separated(a, b, apart)) continue;
+                SupportQueryDiagnostics.Record(SupportQueryCounter.JoinPairs);
+                if (b is null || SupportNeighborhoodJoins.Separated(a, b, _band))
+                {
+                    SupportQueryDiagnostics.Record(SupportQueryCounter.JoinsPruned);
+                    continue;
+                }
                 GeometrySign joined = SupportNeighborhoodJoins.Joined(a, b, _band, _kernel);
                 if (joined == GeometrySign.Unresolved)
                     return SupportNeighborhoodResult.Refused(CapsuleFeatureStatus.Unsupported);
                 if (joined != GeometrySign.Positive) continue;
+                SupportQueryDiagnostics.Record(SupportQueryCounter.JoinsProved);
                 matrix[first * stride + second / 64] |= 1UL << (second % 64);
                 matrix[second * stride + first / 64] |= 1UL << (first % 64);
             }
@@ -204,19 +221,4 @@ internal sealed class SupportNeighborhoodCollector
         return result;
     }
 
-    // Lossless pruning of the join pass. Joined returns Negative at its first test whenever the BoxGap lower bound
-    // of the two polygons' bounds exceeds the band, before any arithmetic that could refuse. When the raw gap on one
-    // axis exceeds twice the band plus 2^-400, that bound does: each of BoxGap's outward steps (the difference, its
-    // square, three sums and the square root) gives up at most one or two units in the last place, a relative loss
-    // far below one half, and the margin keeps every intermediate value normal. A pair is skipped only then.
-    // Certification never reads a pair whose member may face sideways or down, but those joins are part of the
-    // published matrix, so they are still decided.
-    static readonly double Apart = Math.ScaleB(1, -400);
-
-    static bool Separated(SupportPolygon a, SupportPolygon b, double apart)
-    {
-        for (int axis = 0; axis < 3; axis++)
-            if (b.Low[axis] - a.High[axis] > apart || a.Low[axis] - b.High[axis] > apart) return true;
-        return false;
-    }
 }

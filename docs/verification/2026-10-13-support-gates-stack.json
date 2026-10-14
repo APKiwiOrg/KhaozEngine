@@ -1,0 +1,2452 @@
+{
+  "CandidateSha": "c96d68d34ee4b6c3cdb659c03405c7c2f9b5a8cb",
+  "Hardware": "Apple M2 Max",
+  "Runtime": ".NET 10.0.12",
+  "Architecture": "Arm64",
+  "TieredCompilation": "0",
+  "Evidence": "Release FullOpts ARM64 prologs from task-9-final-stack-jit.asm. Fixed engine frames, not a sampled native stack peak.",
+  "CollectorBeforeBytes": 3584,
+  "CollectorCaptureBytes": 64,
+  "CollectorPolygonBytes": 1856,
+  "CollectorCurvedBytes": 2368,
+  "CurvedCollectorAggregateBytes": 2432,
+  "CurvedCollectorReductionBytes": 1152,
+  "BackendBoundaryChainBytes": 12816,
+  "FindBoundaryChainBytes": 13920,
+  "FindBoundaryChain": [
+    {
+      "Method": "FootSupport.Find",
+      "FixedFrameBytes": 608
+    },
+    {
+      "Method": "FootSupport.Certify",
+      "FixedFrameBytes": 384
+    },
+    {
+      "Method": "QueryView.QuerySupportFootprint",
+      "FixedFrameBytes": 112
+    },
+    {
+      "Method": "QuerySupportFootprintCore",
+      "FixedFrameBytes": 272
+    },
+    {
+      "Method": "CollectFootprint",
+      "FixedFrameBytes": 736
+    },
+    {
+      "Method": "Collector.Collect",
+      "FixedFrameBytes": 64
+    },
+    {
+      "Method": "Collector.CollectCurves",
+      "FixedFrameBytes": 2368
+    },
+    {
+      "Method": "Curved.Measure",
+      "FixedFrameBytes": 1328
+    },
+    {
+      "Method": "Tilted.Measure",
+      "FixedFrameBytes": 1520
+    },
+    {
+      "Method": "Tilted.Maximum",
+      "FixedFrameBytes": 96
+    },
+    {
+      "Method": "Geometry.Side",
+      "FixedFrameBytes": 2336
+    },
+    {
+      "Method": "Geometry.Boundaries",
+      "FixedFrameBytes": 208
+    },
+    {
+      "Method": "Root.Traverse",
+      "FixedFrameBytes": 288
+    },
+    {
+      "Method": "Root.Evaluate",
+      "FixedFrameBytes": 288
+    },
+    {
+      "Method": "Geometry.InterfaceEvaluate",
+      "FixedFrameBytes": 2144
+    },
+    {
+      "Method": "Geometry.BoundaryValue",
+      "FixedFrameBytes": 1168
+    }
+  ],
+  "ReleasedCertificateSpanBytes": 4352,
+  "FootprintCertificateMaximumDynamicSpanBytes": 4352,
+  "SourceExpressionNodeCapacity": 4096,
+  "SourceRecursiveFrameBytes": {
+    "Sign": 128,
+    "Split": 176,
+    "Compile": 192,
+    "PolynomialSign": 112
+  },
+  "ConservativeSignPlusCompileFrameContributionBytes": 1310720,
+  "ConservativeFindBoundaryPlusSourceFrameSumBytes": 1324752,
+  "Limitations": "The recursive frame sum is a deliberately loose structural bound, not an observed peak. Leaf arithmetic, controller callers, Bepu and runtime frames are additional. Do not call the boundary-chain subtotal a universal whole-tick native stack bound. RS sets no new kernel ceiling.",
+  "MeasuredFrames": [
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld:.ctor(System.Numerics.Vector3,int,int):this (FullOpts)",
+      "FixedFrameBytes": 304
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleContactCollector:.ctor():this (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintCollector:.ctor():this (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportPolygonPool:.ctor():this (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintSourcePredicates:.ctor():this (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportSourcePolynomialWorkspace:.ctor():this (FullOpts)",
+      "FixedFrameBytes": 96
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeatureCaptureScratch:.ctor():this (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.ExactLengthArrays`1[System.Numerics.Vector3]:.ctor():this (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.ExactLengthArrays`1[KhaozEngine.Physics.Bepu.FeaturePoint]:.ctor():this (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.ExactLengthArrays`1[int]:.ctor():this (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.ExactLengthArrays`1[System.__Canon]:.ctor():this (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintCurved:.ctor():this (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic:.ctor():this (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurved:.ctor():this (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:.ctor():this (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportCurvedRootRegions:.ctor():this (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportCurvedSurfaceAdmission:.ctor():this (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTangentKernel:.ctor():this (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportNeighborhoodCollector:.ctor():this (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.PhysicsNarrowPhaseCallbacks:Initialize(BepuPhysics.Simulation):this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld:AddStatic(KhaozEngine.Physics.PhysicsShape,KhaozEngine.Physics.Pose,System.Nullable`1[KhaozEngine.Physics.PhysicsMaterial]):KhaozEngine.Physics.StaticHandle:this (FullOpts)",
+      "FixedFrameBytes": 176
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld:EnterOperation(bool,bool,bool):KhaozEngine.Physics.Bepu.BepuPhysicsWorld+QueryOperation:this (FullOpts)",
+      "FixedFrameBytes": 64
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleSweepEvidence:BeginMutation(long):KhaozEngine.Physics.Bepu.CapsuleSweepEvidence+Mutation:this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.ShapeFactory:AddConvexHull(BepuPhysics.Simulation,BepuUtilities.Memory.BufferPool,KhaozEngine.Physics.ConvexHullShape):BepuPhysics.Collidables.TypedIndex (FullOpts)",
+      "FixedFrameBytes": 400
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld:CompleteSweepMutation(KhaozEngine.Physics.Bepu.CapsuleSweepEvidence+Mutation,System.Nullable`1[int],bool):this (FullOpts)",
+      "FixedFrameBytes": 192
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld:ObserveStaticSweepBounds(int):bool:this (FullOpts)",
+      "FixedFrameBytes": 112
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld:SameSweepShape(BepuPhysics.Collidables.TypedIndex,BepuPhysics.Collidables.TypedIndex):bool (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld:ReadSweepStoredBounds(byref,int,byref,byref):bool (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld:IdentityBoxSweepBounds(BepuPhysics.Collidables.TypedIndex,BepuPhysics.RigidPose,System.Numerics.Vector3,System.Numerics.Vector3):bool:this (FullOpts)",
+      "FixedFrameBytes": 96
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleSweepGeometry:TryReadIdentityBox(BepuPhysics.Collidables.Shapes,BepuPhysics.Collidables.TypedIndex,BepuPhysics.RigidPose,byref):bool (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld:SetSweepBoundStatus(System.Collections.Generic.Dictionary`2[int,bool],System.Collections.Generic.HashSet`1[int],int,bool) (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld:SweepRecordCountsMatch():bool:this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleSweepEvidence:CompleteMutation(System.Nullable`1[KhaozEngine.Physics.Bepu.CapsuleSweepEvidence+Mutation],long,bool):bool:this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld:.cctor() (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld:AcquireQueryReadLease():KhaozEngine.Physics.IPhysicsQueryLease:this (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld:QuerySupportNeighborhood(KhaozEngine.Physics.IPhysicsQueryLease,KhaozEngine.Physics.CapsuleShape,KhaozEngine.Physics.Pose,float,System.Span`1[KhaozEngine.Physics.SupportElement],System.Span`1[ulong],KhaozEngine.Physics.QueryFilter):KhaozEngine.Physics.SupportNeighborhoodResult:this (FullOpts)",
+      "FixedFrameBytes": 64
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.FootSupport:Validate(byref) (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld:QuerySupportNeighborhoodCore(KhaozEngine.Physics.IPhysicsWorld,KhaozEngine.Physics.IPhysicsQueryLease,KhaozEngine.Physics.CapsuleShape,KhaozEngine.Physics.Pose,float,System.Span`1[KhaozEngine.Physics.SupportElement],System.Span`1[ulong],KhaozEngine.Physics.QueryFilter,KhaozEngine.Physics.Bepu.StaticQueryExclusions):KhaozEngine.Physics.SupportNeighborhoodResult:this (FullOpts)",
+      "FixedFrameBytes": 400
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.FootSupport:Find(System.Nullable`1[KhaozEngine.Locomotion.Contacts.FootAnalyticGround],KhaozEngine.Physics.IPhysicsWorld,KhaozEngine.Physics.IPhysicsQueryLease,byref,System.Nullable`1[KhaozEngine.Physics.SupportFootprintBounds]):KhaozEngine.Locomotion.Contacts.SupportSample (FullOpts)",
+      "FixedFrameBytes": 608
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld:AuthenticateFeatureLease(KhaozEngine.Physics.IPhysicsQueryLease):this (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.FootSupport:DescribeFootprint(byref):KhaozEngine.Physics.SupportFootprintRequest (FullOpts)",
+      "FixedFrameBytes": 304
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld+ReadLease:AssertCurrent():this (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld+ReadLease:AssertThread():this (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.FootSupport:.cctor() (FullOpts)",
+      "FixedFrameBytes": 80
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.FootSupport+ProbeScratch:.ctor():this (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.FootSupport:<DescribeFootprint>g__Proposal|9_0(KhaozEngine.Physics.CapsuleShape,byref):KhaozEngine.Physics.SupportFootprintProposal (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.FootSupport+ProbeScratch:FootProbe(float):KhaozEngine.Physics.CapsuleShape:this (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.FootSupport+Selection:.ctor(byref):this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.FootSupport:Certify(KhaozEngine.Physics.IPhysicsSupportFootprint,KhaozEngine.Physics.IPhysicsQueryLease,byref,byref,System.Nullable`1[KhaozEngine.Physics.SupportFootprintBounds],KhaozEngine.Locomotion.Contacts.FootSupport+ProbeScratch,byref,byref) (FullOpts)",
+      "FixedFrameBytes": 384
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.RepresentedGeometryTransforms:PosePoint(byref,System.Numerics.Vector3):KhaozEngine.Physics.Bepu.GeometryVector (FullOpts)",
+      "FixedFrameBytes": 1952
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld:KhaozEngine.Physics.IPhysicsSupportFootprint.QuerySupportFootprint(KhaozEngine.Physics.IPhysicsQueryLease,byref,System.Span`1[KhaozEngine.Physics.SupportFootprintMember],System.Span`1[ulong],KhaozEngine.Physics.QueryFilter):KhaozEngine.Physics.SupportFootprintResult:this (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld:QuerySupportFootprintCore(KhaozEngine.Physics.IPhysicsWorld,KhaozEngine.Physics.IPhysicsQueryLease,byref,System.Span`1[KhaozEngine.Physics.SupportFootprintMember],System.Span`1[ulong],KhaozEngine.Physics.QueryFilter,KhaozEngine.Physics.Bepu.StaticQueryExclusions):KhaozEngine.Physics.SupportFootprintResult:this (FullOpts)",
+      "FixedFrameBytes": 272
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld:CollectFootprint(KhaozEngine.Physics.Bepu.SupportFootprintCollector,KhaozEngine.Physics.IPhysicsWorld,KhaozEngine.Physics.IPhysicsQueryLease,byref,System.Span`1[KhaozEngine.Physics.SupportFootprintMember],System.Span`1[ulong],KhaozEngine.Physics.QueryFilter,KhaozEngine.Physics.Bepu.StaticQueryExclusions):KhaozEngine.Physics.SupportFootprintResult:this (FullOpts)",
+      "FixedFrameBytes": 736
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintCollector:Begin(byref):bool:this (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:ResetStatistics():this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportCurvedRootRegions:ResetStatistics():this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportCurvedSurfaceAdmission:ResetStatistics():this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeatureCaptureScratch:Reset():this (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.RepresentedGeometryTransforms:QuaternionNormWithinBand(System.Numerics.Quaternion):bool (FullOpts)",
+      "FixedFrameBytes": 496
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.ExactLengthArrays`1[System.Numerics.Vector3]:Reset():this (FullOpts)",
+      "FixedFrameBytes": 64
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.ExactLengthArrays`1[KhaozEngine.Physics.Bepu.FeaturePoint]:Reset():this (FullOpts)",
+      "FixedFrameBytes": 64
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.ExactLengthArrays`1[int]:Reset():this (FullOpts)",
+      "FixedFrameBytes": 64
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.ExactLengthArrays`1[System.__Canon]:Reset():this (FullOpts)",
+      "FixedFrameBytes": 0
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.GeometryInterval:Square():KhaozEngine.Physics.Bepu.GeometryInterval:this (FullOpts)",
+      "FixedFrameBytes": 80
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.RepresentedGeometryTransforms:QuaternionCoefficients(System.Numerics.Quaternion,byref,byref,byref) (FullOpts)",
+      "FixedFrameBytes": 2928
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.GeometryInterval:EncloseSingleRounding():KhaozEngine.Physics.Bepu.GeometryInterval:this (FullOpts)",
+      "FixedFrameBytes": 96
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.GeometryInterval:.ctor(double,double):this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.GeometryInterval:Corners(double,double,double,double):KhaozEngine.Physics.Bepu.GeometryInterval (FullOpts)",
+      "FixedFrameBytes": 64
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.GeometryVector:.ctor(KhaozEngine.Physics.Bepu.GeometryInterval,KhaozEngine.Physics.Bepu.GeometryInterval,KhaozEngine.Physics.Bepu.GeometryInterval):this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.GeometryInterval:Multiply(KhaozEngine.Physics.Bepu.GeometryInterval):KhaozEngine.Physics.Bepu.GeometryInterval:this (FullOpts)",
+      "FixedFrameBytes": 64
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.GeometryVector:get_IsResolved():bool:this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.RepresentedGeometryTransforms:AddTranslation(KhaozEngine.Physics.Bepu.GeometryInterval,float):KhaozEngine.Physics.Bepu.GeometryInterval (FullOpts)",
+      "FixedFrameBytes": 112
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld:Collect(KhaozEngine.Physics.Bepu.SupportNeighborhoodCollector,KhaozEngine.Physics.IPhysicsWorld,KhaozEngine.Physics.IPhysicsQueryLease,KhaozEngine.Physics.CapsuleShape,KhaozEngine.Physics.Pose,float,System.Span`1[KhaozEngine.Physics.SupportElement],System.Span`1[ulong],KhaozEngine.Physics.QueryFilter,KhaozEngine.Physics.Bepu.StaticQueryExclusions):KhaozEngine.Physics.SupportNeighborhoodResult:this (FullOpts)",
+      "FixedFrameBytes": 192
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld:SweepCapsuleCore(KhaozEngine.Physics.CapsuleShape,KhaozEngine.Physics.Pose,System.Numerics.Vector3,float,byref,KhaozEngine.Physics.QueryFilter,KhaozEngine.Physics.Bepu.StaticQueryExclusions):bool:this (FullOpts)",
+      "FixedFrameBytes": 272
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportNeighborhoodCollector:Begin(KhaozEngine.Physics.CapsuleShape,KhaozEngine.Physics.Pose,float):this (FullOpts)",
+      "FixedFrameBytes": 1952
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.FeaturePoint:Exact(System.Numerics.Vector3):KhaozEngine.Physics.Bepu.FeaturePoint (FullOpts)",
+      "FixedFrameBytes": 96
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.FeatureNumber:Multiply(KhaozEngine.Physics.Bepu.FeatureNumber,bool):KhaozEngine.Physics.Bepu.FeatureNumber:this (FullOpts)",
+      "FixedFrameBytes": 224
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BoundedGeometryArithmetic:CompareProducts(double,double,double,double):byte (FullOpts)",
+      "FixedFrameBytes": 160
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BoundedGeometryArithmetic:Sign(double):byte (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.FeatureNumber:Negate():KhaozEngine.Physics.Bepu.FeatureNumber:this (FullOpts)",
+      "FixedFrameBytes": 64
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.FeatureNumber:Add(KhaozEngine.Physics.Bepu.FeatureNumber):KhaozEngine.Physics.Bepu.FeatureNumber:this (FullOpts)",
+      "FixedFrameBytes": 272
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.FeaturePoint:Within(double):bool:this (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.FeaturePoint:get_IsResolved():bool:this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTangentKernel:Reset(KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.GeometryInterval,double):this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SweepHitHandler:IsMeshBackFace(BepuPhysics.Collidables.CollidableReference,int):bool:this (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportNeighborhoodCollector:Candidates(BepuPhysics.Simulation,System.Collections.Generic.IReadOnlyDictionary`2[int,int],KhaozEngine.Physics.Bepu.StaticQueryExclusions,KhaozEngine.Physics.CapsuleShape,KhaozEngine.Physics.Pose,float):System.Collections.Generic.List`1[System.ValueTuple`2[KhaozEngine.Physics.StaticHandle,BepuPhysics.StaticHandle]]:this (FullOpts)",
+      "FixedFrameBytes": 416
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportNeighborhoodCollector:Down(float,KhaozEngine.Physics.Bepu.GeometryInterval):float (FullOpts)",
+      "FixedFrameBytes": 112
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportNeighborhoodCollector:Up(float,KhaozEngine.Physics.Bepu.GeometryInterval):float (FullOpts)",
+      "FixedFrameBytes": 112
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportNeighborhoodCollector+<>c:.cctor() (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportNeighborhoodCollector:Collect(BepuPhysics.Simulation,KhaozEngine.Physics.StaticHandle,byref):byte:this (FullOpts)",
+      "FixedFrameBytes": 3264
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportNeighborhoodMesh:IsMesh(BepuPhysics.Collidables.TypedIndex):bool (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportNeighborhoodPolyhedra:Capture(BepuPhysics.Simulation,BepuPhysics.Collidables.TypedIndex,byref,KhaozEngine.Physics.Bepu.CapsuleFeatureCaptureScratch,System.Collections.Generic.List`1[KhaozEngine.Physics.Bepu.CapsuleFeaturePolyhedron]):byte (FullOpts)",
+      "FixedFrameBytes": 2960
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportNeighborhoodPolyhedra:Polyhedral(BepuPhysics.Collidables.TypedIndex):bool (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeatureGeometry:CaptureLeaf(BepuPhysics.Simulation,BepuPhysics.Collidables.TypedIndex,byref,byref,int,KhaozEngine.Physics.Bepu.CapsuleFeatureCaptureScratch,byref):byte (FullOpts)",
+      "FixedFrameBytes": 3024
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.InstalledPoseOperator:TryCreate(byref,byref):bool (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld:ResolveSeamHandle(BepuPhysics.StaticHandle):System.Nullable`1[KhaozEngine.Physics.StaticHandle]:this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintCollector:Proposal(int,bool,byref):this (FullOpts)",
+      "FixedFrameBytes": 272
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.InstalledPoseOperator:RealCoefficients(System.Numerics.Quaternion,byref,byref,byref) (FullOpts)",
+      "FixedFrameBytes": 2336
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintCollector:Candidates(BepuPhysics.Simulation,System.Collections.Generic.IReadOnlyDictionary`2[int,int],KhaozEngine.Physics.Bepu.StaticQueryExclusions):System.Collections.Generic.List`1[System.ValueTuple`2[KhaozEngine.Physics.StaticHandle,BepuPhysics.StaticHandle]]:this (FullOpts)",
+      "FixedFrameBytes": 176
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintCollector+<>c:.cctor() (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintCollector+<>c:<Candidates>b__26_0(System.ValueTuple`2[KhaozEngine.Physics.StaticHandle,BepuPhysics.StaticHandle],System.ValueTuple`2[KhaozEngine.Physics.StaticHandle,BepuPhysics.StaticHandle]):int:this (FullOpts)",
+      "FixedFrameBytes": 0
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.InstalledPoseOperator:Certify(KhaozEngine.Physics.Bepu.FeatureNumber,KhaozEngine.Physics.Bepu.GeometryInterval,float,System.Numerics.Vector`1[float],byref):KhaozEngine.Physics.Bepu.FeatureNumber (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintCollector:Collect(BepuPhysics.Simulation,KhaozEngine.Physics.StaticHandle,byref):byte:this (FullOpts)",
+      "FixedFrameBytes": 64
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.InstalledPoseOperator:.ctor(KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeaturePoint,System.Numerics.Vector3,KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeaturePoint):this (FullOpts)",
+      "FixedFrameBytes": 144
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportNeighborhoodPolyhedra:Capture(BepuPhysics.Simulation,BepuPhysics.Collidables.TypedIndex,byref,byref,KhaozEngine.Physics.Bepu.CapsuleFeatureCaptureScratch,System.Collections.Generic.List`1[KhaozEngine.Physics.Bepu.CapsuleFeaturePolyhedron],System.Collections.Generic.List`1[KhaozEngine.Physics.Bepu.SupportCurvedLeaf]):byte (FullOpts)",
+      "FixedFrameBytes": 2976
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.FeaturePoint:Cross(KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeaturePoint,bool):KhaozEngine.Physics.Bepu.FeaturePoint (FullOpts)",
+      "FixedFrameBytes": 1024
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.FeatureNumber:get_Sign():byte:this (FullOpts)",
+      "FixedFrameBytes": 0
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.FeaturePoint:get_Bounds():KhaozEngine.Physics.Bepu.GeometryVector:this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.FeatureNumber:Divide(KhaozEngine.Physics.Bepu.FeatureNumber):KhaozEngine.Physics.Bepu.FeatureNumber:this (FullOpts)",
+      "FixedFrameBytes": 272
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.GeometryVectorOperations:Cross(KhaozEngine.Physics.Bepu.GeometryVector,KhaozEngine.Physics.Bepu.GeometryVector):KhaozEngine.Physics.Bepu.GeometryVector (FullOpts)",
+      "FixedFrameBytes": 464
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.GeometryVectorOperations:Dot(KhaozEngine.Physics.Bepu.GeometryVector,KhaozEngine.Physics.Bepu.GeometryVector):KhaozEngine.Physics.Bepu.GeometryInterval (FullOpts)",
+      "FixedFrameBytes": 272
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.GeometryInterval:Divide(KhaozEngine.Physics.Bepu.GeometryInterval):KhaozEngine.Physics.Bepu.GeometryInterval:this (FullOpts)",
+      "FixedFrameBytes": 64
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.ExactLengthArrays`1[System.Numerics.Vector3]:Rent(int):System.Numerics.Vector3[]:this (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeatureGeometry:.cctor() (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.ExactLengthArrays`1[KhaozEngine.Physics.Bepu.FeaturePoint]:Rent(int):KhaozEngine.Physics.Bepu.FeaturePoint[]:this (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeatureGeometry:TransformVertices(System.Numerics.Vector3[],byref,byref,KhaozEngine.Physics.Bepu.FeaturePoint[]):byte (FullOpts)",
+      "FixedFrameBytes": 96
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.InstalledPoseOperations:ProveComposition(byref,byref,byref):bool (FullOpts)",
+      "FixedFrameBytes": 0
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeatureGeometry:TransformVertex(System.Numerics.Vector3,byref,byref,byref,bool):byte (FullOpts)",
+      "FixedFrameBytes": 2816
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeatureCaptureScratch:Leaf():KhaozEngine.Physics.Bepu.CapsuleFeaturePolyhedron:this (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeaturePolyhedron:.ctor():this (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.InstalledPoseOperator:Contains(KhaozEngine.Physics.Bepu.GeometryInterval,double):bool (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.InstalledPoseOperator:RoundedDirection(KhaozEngine.Physics.Bepu.GeometryVector):KhaozEngine.Physics.Bepu.GeometryVector:this (FullOpts)",
+      "FixedFrameBytes": 416
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.InstalledPoseOperations:Dot(KhaozEngine.Physics.Bepu.GeometryVector,KhaozEngine.Physics.Bepu.GeometryVector):KhaozEngine.Physics.Bepu.GeometryInterval (FullOpts)",
+      "FixedFrameBytes": 848
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeaturePolyhedron:Validate(KhaozEngine.Physics.Bepu.CapsuleFeatureCaptureScratch):byte:this (FullOpts)",
+      "FixedFrameBytes": 0
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.InstalledPoseOperations:Hull(KhaozEngine.Physics.Bepu.GeometryInterval,KhaozEngine.Physics.Bepu.GeometryInterval):KhaozEngine.Physics.Bepu.GeometryInterval (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.InstalledPoseOperations:Add(KhaozEngine.Physics.Bepu.GeometryVector,KhaozEngine.Physics.Bepu.GeometryVector):KhaozEngine.Physics.Bepu.GeometryVector (FullOpts)",
+      "FixedFrameBytes": 288
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.InstalledPoseOperations:Contains(KhaozEngine.Physics.Bepu.GeometryVector,System.Numerics.Vector3):bool (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.InstalledPoseOperations:Broadcast(System.Numerics.Quaternion):BepuUtilities.QuaternionWide (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportNeighborhoodPolyhedra:CaptureFootprintLeaf(BepuPhysics.Simulation,BepuPhysics.Collidables.TypedIndex,byref,byref,int,byref,KhaozEngine.Physics.Bepu.CapsuleFeatureCaptureScratch,System.Collections.Generic.List`1[KhaozEngine.Physics.Bepu.CapsuleFeaturePolyhedron],System.Collections.Generic.List`1[KhaozEngine.Physics.Bepu.SupportCurvedLeaf]):byte (FullOpts)",
+      "FixedFrameBytes": 80
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.ExactLengthArrays`1[System.__Canon]:Rent(int):System.__Canon[]:this (FullOpts)",
+      "FixedFrameBytes": 64
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.ExactLengthArrays`1[int]:Rent(int):int[]:this (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeatureGeometry:Canonical(System.Numerics.Vector3):System.Numerics.Vector3 (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeaturePolyhedron:Distinct(System.Numerics.Vector3[],KhaozEngine.Physics.Bepu.CapsuleFeatureCaptureScratch):int (FullOpts)",
+      "FixedFrameBytes": 80
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeatureCaptureScratch:ClearedIncidence(int):System.Collections.Generic.List`1[int]:this (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeaturePolyhedron:Distinct(int[],KhaozEngine.Physics.Bepu.CapsuleFeatureCaptureScratch):int (FullOpts)",
+      "FixedFrameBytes": 64
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeaturePolyhedron:Projection(System.Numerics.Vector3,System.Numerics.Vector3,System.Numerics.Vector3):int (FullOpts)",
+      "FixedFrameBytes": 64
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeaturePolyhedron:ProjectedOrient(System.Numerics.Vector3,System.Numerics.Vector3,System.Numerics.Vector3,int):byte (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BoundedGeometryArithmetic:Orient2D(float,float,float,float,float,float):byte (FullOpts)",
+      "FixedFrameBytes": 176
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.ExactExpansion:Add(double):this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BoundedGeometryArithmetic:Orient3D(System.Numerics.Vector3,System.Numerics.Vector3,System.Numerics.Vector3,System.Numerics.Vector3):byte (FullOpts)",
+      "FixedFrameBytes": 160
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BoundedGeometryArithmetic:Differences(System.Numerics.Vector3,System.Numerics.Vector3,System.Span`1[double]) (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BoundedGeometryArithmetic:AddTriple(byref,System.ReadOnlySpan`1[double],int,System.ReadOnlySpan`1[double],int,System.ReadOnlySpan`1[double],int,double) (FullOpts)",
+      "FixedFrameBytes": 160
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeaturePolyhedron:Connected(System.Collections.Generic.List`1[int],System.Collections.Generic.List`1[KhaozEngine.Physics.Bepu.CapsuleFeaturePolyhedronEdge],int,System.Collections.Generic.HashSet`1[int],System.Collections.Generic.Queue`1[int]):bool (FullOpts)",
+      "FixedFrameBytes": 128
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportNeighborhoodPolyhedra:Polygons(KhaozEngine.Physics.StaticHandle,KhaozEngine.Physics.Bepu.CapsuleFeaturePolyhedron,KhaozEngine.Physics.Bepu.SupportPolygonPool,System.Collections.Generic.List`1[KhaozEngine.Physics.Bepu.SupportPolygon],bool) (FullOpts)",
+      "FixedFrameBytes": 80
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportPolygonPool:Rent():KhaozEngine.Physics.Bepu.SupportPolygon:this (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportPolygon:.ctor(KhaozEngine.Physics.Bepu.SupportFootprintSourcePredicates):this (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportPolygon:Begin(KhaozEngine.Physics.StaticHandle,int,int):this (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportPolygon:BeginSource(byref):this (FullOpts)",
+      "FixedFrameBytes": 624
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportPolygon:Finish(KhaozEngine.Physics.Bepu.FeaturePoint):this (FullOpts)",
+      "FixedFrameBytes": 400
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportGeometry:Length(KhaozEngine.Physics.Bepu.GeometryVector):KhaozEngine.Physics.Bepu.GeometryInterval (FullOpts)",
+      "FixedFrameBytes": 224
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportGeometry:NonnegativeSqrt(KhaozEngine.Physics.Bepu.GeometryInterval):KhaozEngine.Physics.Bepu.GeometryInterval (FullOpts)",
+      "FixedFrameBytes": 64
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.GeometryInterval:Sqrt():KhaozEngine.Physics.Bepu.GeometryInterval:this (FullOpts)",
+      "FixedFrameBytes": 80
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportJoinIncidence:Certify(KhaozEngine.Physics.Bepu.SupportPolygon):bool (FullOpts)",
+      "FixedFrameBytes": 1312
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.FeaturePoint:get_IsExact():bool:this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportJoinIncidence:Coordinate(double):bool (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintCollector:CollectPolygons():byte:this (FullOpts)",
+      "FixedFrameBytes": 1856
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportNeighborhoodCurved:Capture(BepuPhysics.Simulation,BepuPhysics.Collidables.TypedIndex,byref,System.Collections.Generic.List`1[KhaozEngine.Physics.Bepu.SupportCurvedLeaf]):byte (FullOpts)",
+      "FixedFrameBytes": 80
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportNeighborhoodCurved:Curved(BepuPhysics.Collidables.TypedIndex):bool (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportNeighborhoodCollector:Consider(KhaozEngine.Physics.Bepu.SupportPolygon):byte:this (FullOpts)",
+      "FixedFrameBytes": 912
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintPolygon:Measure(KhaozEngine.Physics.Bepu.SupportPolygon,byref,byref):byte (FullOpts)",
+      "FixedFrameBytes": 2192
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportGeometry:BoxGap(System.ReadOnlySpan`1[double],System.ReadOnlySpan`1[double],System.ReadOnlySpan`1[double],System.ReadOnlySpan`1[double]):double (FullOpts)",
+      "FixedFrameBytes": 400
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintPolygon:Extrema(KhaozEngine.Physics.Bepu.SupportPolygon,byref,KhaozEngine.Physics.Bepu.FeatureNumber,byref):byte (FullOpts)",
+      "FixedFrameBytes": 3424
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportSegmentPolygon:Measure(KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.SupportPolygon,double):KhaozEngine.Physics.Bepu.SupportDistance:this (FullOpts)",
+      "FixedFrameBytes": 0
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintPolygon:.cctor() (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintPolygon:Orientation(KhaozEngine.Physics.Bepu.SupportPolygon):byte (FullOpts)",
+      "FixedFrameBytes": 224
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintPolygon:OnPlane(KhaozEngine.Physics.Bepu.SupportPolygon,KhaozEngine.Physics.Bepu.FeaturePoint):KhaozEngine.Physics.Bepu.FeaturePoint (FullOpts)",
+      "FixedFrameBytes": 1248
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintPolygon:Interior(KhaozEngine.Physics.Bepu.SupportPolygon,KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeatureNumber,KhaozEngine.Physics.Bepu.FeatureNumber,KhaozEngine.Physics.Bepu.FeatureNumber,byte,int):byte (FullOpts)",
+      "FixedFrameBytes": 1584
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintPolygon:RadicalSign(KhaozEngine.Physics.Bepu.FeatureNumber,KhaozEngine.Physics.Bepu.FeatureNumber,KhaozEngine.Physics.Bepu.FeatureNumber,KhaozEngine.Physics.Bepu.FeatureNumber):byte (FullOpts)",
+      "FixedFrameBytes": 224
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportSegmentPolygon:Vertex(KhaozEngine.Physics.Bepu.FeaturePoint):this (FullOpts)",
+      "FixedFrameBytes": 80
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintPolygon+Range:Add(KhaozEngine.Physics.Bepu.FeaturePoint):this (FullOpts)",
+      "FixedFrameBytes": 464
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintPolygon:InDisc(KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeatureNumber):byte (FullOpts)",
+      "FixedFrameBytes": 1200
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportSegmentPolygon:.cctor() (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportSegmentPolygon:Open(byte,byte):bool (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintPolygon:Edge(KhaozEngine.Physics.Bepu.SupportPolygon,int,KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeatureNumber,byref):bool (FullOpts)",
+      "FixedFrameBytes": 80
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportSegmentPolygon:Edge(KhaozEngine.Physics.Bepu.SupportPolygon,int):this (FullOpts)",
+      "FixedFrameBytes": 80
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.GeometryVectorOperations:Normalize(KhaozEngine.Physics.Bepu.GeometryVector):KhaozEngine.Physics.Bepu.GeometryVector (FullOpts)",
+      "FixedFrameBytes": 528
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.GeometryVectorOperations:TryNormalizeExactly(KhaozEngine.Physics.Bepu.GeometryVector,byref):bool (FullOpts)",
+      "FixedFrameBytes": 0
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BoundedGeometryArithmetic:CompareSquaredDistances(System.ReadOnlySpan`1[double],System.ReadOnlySpan`1[double],System.ReadOnlySpan`1[double],System.ReadOnlySpan`1[double]):byte (FullOpts)",
+      "FixedFrameBytes": 208
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BoundedGeometryArithmetic:InRange(System.ReadOnlySpan`1[double]):bool (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BoundedGeometryArithmetic:AddSquaredDistance(byref,System.ReadOnlySpan`1[double],System.ReadOnlySpan`1[double],double) (FullOpts)",
+      "FixedFrameBytes": 112
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.GeometryVectorOperations:Publish(KhaozEngine.Physics.Bepu.GeometryVector):KhaozEngine.Physics.Bepu.GeometryVectorOutput (FullOpts)",
+      "FixedFrameBytes": 464
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.GeometryVectorOperations:IsExact(KhaozEngine.Physics.Bepu.GeometryInterval,float):bool (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportSegmentPolygon:EdgeEndpoint(KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeatureNumber,KhaozEngine.Physics.Bepu.FeaturePoint):this (FullOpts)",
+      "FixedFrameBytes": 64
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintCollector:ContactMember(KhaozEngine.Physics.Bepu.SupportPolygon,int):byte:this (FullOpts)",
+      "FixedFrameBytes": 1760
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportSegmentPolygon:MeasureFootprintContact(KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.SupportPolygon,double):KhaozEngine.Physics.Bepu.SupportDistance:this (FullOpts)",
+      "FixedFrameBytes": 976
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportSegmentPolygon:Face(KhaozEngine.Physics.Bepu.SupportPolygon):this (FullOpts)",
+      "FixedFrameBytes": 64
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportSegmentPolygon:FacePoint(KhaozEngine.Physics.Bepu.SupportPolygon,KhaozEngine.Physics.Bepu.FeatureNumber,KhaozEngine.Physics.Bepu.FeaturePoint):KhaozEngine.Physics.Bepu.FeaturePoint:this (FullOpts)",
+      "FixedFrameBytes": 64
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportPolygon:Inside(KhaozEngine.Physics.Bepu.FeaturePoint):byte:this (FullOpts)",
+      "FixedFrameBytes": 2160
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintCollector:ContactHeight(KhaozEngine.Physics.Bepu.SupportPolygon,int,bool):bool:this (FullOpts)",
+      "FixedFrameBytes": 144
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportNeighborhoodCollector:Publish(KhaozEngine.Physics.IPhysicsWorld,KhaozEngine.Physics.IPhysicsQueryLease,System.Span`1[KhaozEngine.Physics.SupportElement],System.Span`1[ulong]):KhaozEngine.Physics.SupportNeighborhoodResult:this (FullOpts)",
+      "FixedFrameBytes": 352
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintProposalGeometry:Lowest(KhaozEngine.Physics.Bepu.SupportPolygon,byref,byref,bool):byte (FullOpts)",
+      "FixedFrameBytes": 3376
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld+ReadLease:get_SourceWorld():KhaozEngine.Physics.IPhysicsWorld:this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld+ReadLease:get_Origin():System.Numerics.Vector3:this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld+ReadLease:get_GeometryGeneration():long:this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintProposalGeometry:.cctor() (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.SupportCertification:CertifyNeighborhood(KhaozEngine.Physics.IPhysicsSupportNeighborhood,KhaozEngine.Physics.IPhysicsQueryLease,byref,System.ReadOnlySpan`1[KhaozEngine.Physics.SupportElement],System.ReadOnlySpan`1[ulong],System.Numerics.Vector2,float,System.Span`1[KhaozEngine.Locomotion.Contacts.SupportContribution]):int (FullOpts)",
+      "FixedFrameBytes": 464
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintProposalGeometry+Maximum:Add(KhaozEngine.Physics.Bepu.SupportPolygon,int,KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeatureNumber):bool:this (FullOpts)",
+      "FixedFrameBytes": 1072
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld:KhaozEngine.Physics.IPhysicsSupportNeighborhood.AssertNeighborhoodCurrent(byref,KhaozEngine.Physics.IPhysicsQueryLease):this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld:AssertNeighborhoodCurrentCore(KhaozEngine.Physics.IPhysicsWorld,byref,KhaozEngine.Physics.IPhysicsQueryLease):this (FullOpts)",
+      "FixedFrameBytes": 64
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.SupportCertification:Finite(byref):bool (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.SupportCertification:LowerBound(float,float):double (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.SupportCertification:PlaneAtAxis(System.Numerics.Vector3,float,System.Numerics.Vector3,float,double,System.Numerics.Vector2,byref,byref):bool (FullOpts)",
+      "FixedFrameBytes": 192
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.SupportCertification:Difference(float,float,float):System.ValueTuple`2[double,double] (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintProposalGeometry:Edge(KhaozEngine.Physics.Bepu.SupportPolygon,int,KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeatureNumber,byref):bool (FullOpts)",
+      "FixedFrameBytes": 0
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.SupportCertification:UpperBound(float,float):double (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.SupportCertification:Product(System.ValueTuple`2[double,double],System.ValueTuple`2[double,double]):System.ValueTuple`2[double,double] (FullOpts)",
+      "FixedFrameBytes": 64
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.SupportCertification:Quotient(System.ValueTuple`2[double,double],System.ValueTuple`2[double,double]):System.ValueTuple`2[double,double] (FullOpts)",
+      "FixedFrameBytes": 64
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.SupportCertification+PlaneMinimum:get_Empty():KhaozEngine.Locomotion.Contacts.SupportCertification+PlaneMinimum (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintProposalGeometry:Root(KhaozEngine.Physics.Bepu.FeatureNumber):KhaozEngine.Physics.Bepu.FeatureNumber (FullOpts)",
+      "FixedFrameBytes": 192
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportNeighborhoodCollector+<>c:<Publish>b__31_0(KhaozEngine.Physics.Bepu.SupportMember,KhaozEngine.Physics.Bepu.SupportMember):int:this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportPolygon:get_SourcePredicates():KhaozEngine.Physics.Bepu.SupportFootprintSourcePredicates:this (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportNeighborhoodJoins:Separated(KhaozEngine.Physics.Bepu.SupportPolygon,KhaozEngine.Physics.Bepu.SupportPolygon,double):bool (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintSourcePredicates:HorizontalPlaneHeight(KhaozEngine.Physics.Bepu.SupportPolygon,byref):bool:this (FullOpts)",
+      "FixedFrameBytes": 160
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportNeighborhoodJoins:.cctor() (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintSourcePredicates:Begin(KhaozEngine.Physics.Bepu.SupportPolygon):bool:this (FullOpts)",
+      "FixedFrameBytes": 336
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportSourcePolynomialWorkspace:Reset():this (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportSourcePolynomial:ReleaseCoefficients():this (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportSourcePolynomialWorkspace:Coefficient(KhaozEngine.Physics.Bepu.GeometryInterval):KhaozEngine.Physics.Bepu.SupportSourcePolynomial:this (FullOpts)",
+      "FixedFrameBytes": 160
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportSourcePolynomialWorkspace:Rent(int):KhaozEngine.Physics.Bepu.SupportSourcePolynomial:this (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportSourcePolynomial:Reset(int,int):this (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportSourcePolynomial:Index(ulong):int:this (FullOpts)",
+      "FixedFrameBytes": 64
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportNeighborhoodJoins:Joined(KhaozEngine.Physics.Bepu.SupportPolygon,KhaozEngine.Physics.Bepu.SupportPolygon,double,KhaozEngine.Physics.Bepu.SupportSegmentPolygon):byte (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportNeighborhoodJoins:BoundsOverlap(KhaozEngine.Physics.Bepu.SupportPolygon,KhaozEngine.Physics.Bepu.SupportPolygon):bool (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportSourcePolynomial:Find(ulong):int:this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportSourceCoefficient:Reset():this (FullOpts)",
+      "FixedFrameBytes": 0
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportNeighborhoodJoins:Below(KhaozEngine.Physics.Bepu.SupportPolygon,KhaozEngine.Physics.Bepu.SupportPolygon,double):byte (FullOpts)",
+      "FixedFrameBytes": 0
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportSourceCoefficient:AddScalar(double):this (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportSourceCoefficient:Grow(KhaozEngine.Physics.Bepu.SupportSourceCoefficient+Part):this (FullOpts)",
+      "FixedFrameBytes": 96
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportSourceCoefficient+BufferPool:Rent(int):KhaozEngine.Physics.Bepu.SupportSourceCoefficient+Buffer:this (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportJoinIncidence:SamePlane(KhaozEngine.Physics.Bepu.SupportPolygon,KhaozEngine.Physics.Bepu.SupportPolygon):bool (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportSourcePolynomial:Complete(int):this (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportJoinIncidence:CommonVertex(KhaozEngine.Physics.Bepu.SupportPolygon,KhaozEngine.Physics.Bepu.SupportPolygon):bool (FullOpts)",
+      "FixedFrameBytes": 320
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportSourceCoefficient:get_IsZero():bool:this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportSourcePolynomialWorkspace:Accumulate(KhaozEngine.Physics.Bepu.SupportSourcePolynomial,KhaozEngine.Physics.Bepu.SupportSourcePolynomial,float,float) (FullOpts)",
+      "FixedFrameBytes": 64
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportNeighborhoodJoins:Meets(KhaozEngine.Physics.Bepu.SupportPolygon,KhaozEngine.Physics.Bepu.SupportPolygon,double,KhaozEngine.Physics.Bepu.SupportSegmentPolygon):byte (FullOpts)",
+      "FixedFrameBytes": 400
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportSourcePolynomial:AddScaled(ulong,KhaozEngine.Physics.Bepu.SupportSourceCoefficient,double):this (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportSourceCoefficient:AddScaled(KhaozEngine.Physics.Bepu.SupportSourceCoefficient,double):this (FullOpts)",
+      "FixedFrameBytes": 80
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportSourceCoefficient:AddProduct(KhaozEngine.Physics.Bepu.SupportSourceCoefficient+Part,KhaozEngine.Physics.Bepu.SupportSourceCoefficient+Part):this (FullOpts)",
+      "FixedFrameBytes": 96
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportSourcePolynomialWorkspace:Sign(KhaozEngine.Physics.Bepu.SupportSourcePolynomial):byte:this (FullOpts)",
+      "FixedFrameBytes": 80
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportSourcePolynomialWorkspace:Bounds(KhaozEngine.Physics.Bepu.SupportSourcePolynomial):KhaozEngine.Physics.Bepu.GeometryInterval:this (FullOpts)",
+      "FixedFrameBytes": 208
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintCollector:Retain(byref):byte:this (FullOpts)",
+      "FixedFrameBytes": 752
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintCollector:BelowBand(byref):bool:this (FullOpts)",
+      "FixedFrameBytes": 1712
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintCollector:CollectCurves(KhaozEngine.Physics.StaticHandle):byte:this (FullOpts)",
+      "FixedFrameBytes": 2368
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld+ReadLease:Dispose():this (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld:Dispose():this (FullOpts)",
+      "FixedFrameBytes": 64
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportJoinIncidence:.cctor() (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintPolygon:Sqrt(KhaozEngine.Physics.Bepu.FeatureNumber):KhaozEngine.Physics.Bepu.FeatureNumber (FullOpts)",
+      "FixedFrameBytes": 160
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportSegmentPolygon:LineDistance(KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeaturePoint):KhaozEngine.Physics.Bepu.GeometryInterval:this (FullOpts)",
+      "FixedFrameBytes": 752
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintProposalGeometry:Parameter(KhaozEngine.Physics.Bepu.SupportPolygon,int,KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeatureNumber,KhaozEngine.Physics.Bepu.FeatureNumber,int,byref):bool (FullOpts)",
+      "FixedFrameBytes": 1488
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintProposalGeometry+Maximum:Add(KhaozEngine.Physics.Bepu.GeometryInterval,bool):this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportSourceCoefficient:get_Sign():byte:this (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintCollector:Publish(KhaozEngine.Physics.IPhysicsWorld,KhaozEngine.Physics.IPhysicsQueryLease,System.Span`1[KhaozEngine.Physics.SupportFootprintMember],System.Span`1[ulong]):KhaozEngine.Physics.SupportFootprintResult:this (FullOpts)",
+      "FixedFrameBytes": 464
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintCollector:BandUncertain(double,double):bool:this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintCollector+<>c:<Publish>b__34_0(KhaozEngine.Physics.Bepu.SupportFootprintCollector+Member,KhaozEngine.Physics.Bepu.SupportFootprintCollector+Member):int:this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.SupportCertification:CertifyFootprint(KhaozEngine.Physics.IPhysicsSupportFootprint,KhaozEngine.Physics.IPhysicsQueryLease,byref,System.ReadOnlySpan`1[KhaozEngine.Physics.SupportFootprintMember],System.ReadOnlySpan`1[ulong],System.Numerics.Vector2,float,System.Span`1[KhaozEngine.Locomotion.Contacts.FootprintContribution],System.Span`1[KhaozEngine.Locomotion.Contacts.SupportContribution],System.Nullable`1[KhaozEngine.Locomotion.Contacts.FootprintScope]):int (FullOpts)",
+      "FixedFrameBytes": 1024
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld:KhaozEngine.Physics.IPhysicsSupportFootprint.AssertFootprintCurrent(byref,KhaozEngine.Physics.IPhysicsQueryLease):this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld:AssertFootprintCurrentCore(KhaozEngine.Physics.IPhysicsWorld,byref,KhaozEngine.Physics.IPhysicsQueryLease):this (FullOpts)",
+      "FixedFrameBytes": 64
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.SupportCertification:FootprintFinite(byref):bool (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.SupportCertification:Classify(double,float):byte (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.FootSupport:Guard(byref,byte,int,KhaozEngine.Locomotion.Contacts.FootSupport+ProbeScratch,double,byref) (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.FootSupport+Selection:Offer(byref):this (FullOpts)",
+      "FixedFrameBytes": 240
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.FootSupport+Selection:Beats(byref,byref):bool:this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.FootSupport+Selection:Result():KhaozEngine.Locomotion.Contacts.SupportSample:this (FullOpts)",
+      "FixedFrameBytes": 128
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.FootSupport+Selection:RoundUp(double):float (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.ShapeFactory:AddTriangleMesh(BepuPhysics.Simulation,BepuUtilities.Memory.BufferPool,KhaozEngine.Physics.TriangleMeshShape):BepuPhysics.Collidables.TypedIndex (FullOpts)",
+      "FixedFrameBytes": 304
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportNeighborhoodMesh:Polygons(BepuPhysics.Simulation,BepuPhysics.Collidables.TypedIndex,byref,KhaozEngine.Physics.StaticHandle,byref,System.Collections.Generic.List`1[int],KhaozEngine.Physics.Bepu.SupportPolygonPool,System.Collections.Generic.List`1[KhaozEngine.Physics.Bepu.SupportPolygon]):byte (FullOpts)",
+      "FixedFrameBytes": 2592
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportNeighborhoodMesh:Capture(BepuPhysics.Simulation,BepuPhysics.Collidables.TypedIndex,byref,KhaozEngine.Physics.StaticHandle,byref,System.Numerics.Vector3,System.Numerics.Vector3,System.ReadOnlySpan`1[double],System.ReadOnlySpan`1[double],KhaozEngine.Physics.Bepu.GeometryInterval,System.Collections.Generic.List`1[int],KhaozEngine.Physics.Bepu.SupportPolygonPool,System.Collections.Generic.List`1[KhaozEngine.Physics.Bepu.SupportPolygon],bool):byte (FullOpts)",
+      "FixedFrameBytes": 144
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportNeighborhoodMesh:Degenerate(System.Numerics.Vector3,System.Numerics.Vector3,System.Numerics.Vector3):bool (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintPolygon:Union(KhaozEngine.Physics.Bepu.GeometryVector,KhaozEngine.Physics.Bepu.GeometryVector):KhaozEngine.Physics.Bepu.GeometryVector (FullOpts)",
+      "FixedFrameBytes": 96
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportJoinIncidence:Same(KhaozEngine.Physics.Bepu.FeatureNumber,KhaozEngine.Physics.Bepu.FeatureNumber):bool (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportJoinIncidence:MagnitudeLower(KhaozEngine.Physics.Bepu.GeometryInterval):double (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.ShapeFactory:AddCompound(BepuPhysics.Simulation,BepuUtilities.Memory.BufferPool,KhaozEngine.Physics.CompoundShape):BepuPhysics.Collidables.TypedIndex (FullOpts)",
+      "FixedFrameBytes": 208
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.ShapeFactory:AddFlattenedChild(BepuPhysics.Simulation,BepuUtilities.Memory.BufferPool,byref,KhaozEngine.Physics.PhysicsShape,KhaozEngine.Physics.Pose) (FullOpts)",
+      "FixedFrameBytes": 624
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportSourceCoefficient:get_Bounds():KhaozEngine.Physics.Bepu.GeometryInterval:this (FullOpts)",
+      "FixedFrameBytes": 160
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintSourcePredicates:EdgeStationary(KhaozEngine.Physics.Bepu.SupportPolygon,int,KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeatureNumber,bool):byte:this (FullOpts)",
+      "FixedFrameBytes": 208
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintSourcePredicates:Offset(int,KhaozEngine.Physics.Bepu.FeaturePoint):KhaozEngine.Physics.Bepu.SupportFootprintSourcePredicates+Point:this (FullOpts)",
+      "FixedFrameBytes": 128
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportSourcePolynomialWorkspace:Constant(double):KhaozEngine.Physics.Bepu.SupportSourcePolynomial:this (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportSourcePolynomialWorkspace:Add(KhaozEngine.Physics.Bepu.SupportSourcePolynomial,KhaozEngine.Physics.Bepu.SupportSourcePolynomial,int):KhaozEngine.Physics.Bepu.SupportSourcePolynomial:this (FullOpts)",
+      "FixedFrameBytes": 80
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintSourcePredicates:Edge(int):KhaozEngine.Physics.Bepu.SupportFootprintSourcePredicates+Point:this (FullOpts)",
+      "FixedFrameBytes": 144
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportSourcePolynomialWorkspace:Multiply(KhaozEngine.Physics.Bepu.SupportSourcePolynomial,KhaozEngine.Physics.Bepu.SupportSourcePolynomial):KhaozEngine.Physics.Bepu.SupportSourcePolynomial:this (FullOpts)",
+      "FixedFrameBytes": 80
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportSourcePolynomialWorkspace:Scale(KhaozEngine.Physics.Bepu.SupportSourcePolynomial,double):KhaozEngine.Physics.Bepu.SupportSourcePolynomial:this (FullOpts)",
+      "FixedFrameBytes": 64
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportSourcePolynomial:AddProduct(ulong,KhaozEngine.Physics.Bepu.SupportSourceCoefficient,KhaozEngine.Physics.Bepu.SupportSourceCoefficient):this (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportSourceCoefficient:AddProduct(KhaozEngine.Physics.Bepu.SupportSourceCoefficient,KhaozEngine.Physics.Bepu.SupportSourceCoefficient):this (FullOpts)",
+      "FixedFrameBytes": 96
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportSourceCoefficient:Add(KhaozEngine.Physics.Bepu.SupportSourceCoefficient,int):this (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportSourcePolynomial:Add(ulong,KhaozEngine.Physics.Bepu.SupportSourceCoefficient,int):this (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintSourcePredicates:Dot(KhaozEngine.Physics.Bepu.SupportFootprintSourcePredicates+Point,KhaozEngine.Physics.Bepu.SupportFootprintSourcePredicates+Point):KhaozEngine.Physics.Bepu.SupportSourcePolynomial:this (FullOpts)",
+      "FixedFrameBytes": 64
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintSourcePredicates:ProposalInterior(KhaozEngine.Physics.Bepu.SupportPolygon,KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeatureNumber):byte:this (FullOpts)",
+      "FixedFrameBytes": 2304
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintSourcePredicates:Interior(KhaozEngine.Physics.Bepu.SupportPolygon,int,KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeatureNumber,int,bool):byte:this (FullOpts)",
+      "FixedFrameBytes": 176
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintSourcePredicates:Normal():KhaozEngine.Physics.Bepu.SupportFootprintSourcePredicates+Point:this (FullOpts)",
+      "FixedFrameBytes": 192
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintSourcePredicates:Radical(KhaozEngine.Physics.Bepu.SupportSourcePolynomial,KhaozEngine.Physics.Bepu.SupportSourcePolynomial,KhaozEngine.Physics.Bepu.SupportSourcePolynomial):byte:this (FullOpts)",
+      "FixedFrameBytes": 80
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportNeighborhoodMesh:LocalBounds(byref,KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.GeometryInterval,byref,byref):bool (FullOpts)",
+      "FixedFrameBytes": 3456
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportNeighborhoodCurved:Leaf(BepuPhysics.Simulation,BepuPhysics.Collidables.TypedIndex,byref,int,System.Collections.Generic.List`1[KhaozEngine.Physics.Bepu.SupportCurvedLeaf]):byte (FullOpts)",
+      "FixedFrameBytes": 3904
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportNeighborhoodCurved:Negate(KhaozEngine.Physics.Bepu.GeometryInterval):KhaozEngine.Physics.Bepu.GeometryInterval (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTangentKernel:Measure(KhaozEngine.Physics.StaticHandle,byref,int,byref):byte:this (FullOpts)",
+      "FixedFrameBytes": 3824
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTangentKernel:Reach(byref,int,double,byref):bool:this (FullOpts)",
+      "FixedFrameBytes": 272
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTangentKernel:Evaluate(byref,int,KhaozEngine.Physics.Bepu.GeometryInterval):KhaozEngine.Physics.Bepu.SupportTangentKernel+Sample:this (FullOpts)",
+      "FixedFrameBytes": 112
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportCurvedArithmetic:Subtract(KhaozEngine.Physics.Bepu.GeometryVector,KhaozEngine.Physics.Bepu.GeometryVector):KhaozEngine.Physics.Bepu.GeometryVector (FullOpts)",
+      "FixedFrameBytes": 208
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportCurvedArithmetic:Divide(KhaozEngine.Physics.Bepu.GeometryVector,KhaozEngine.Physics.Bepu.GeometryInterval):KhaozEngine.Physics.Bepu.GeometryVector (FullOpts)",
+      "FixedFrameBytes": 208
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.InstalledPoseOperations:Abs(KhaozEngine.Physics.Bepu.GeometryInterval):KhaozEngine.Physics.Bepu.GeometryInterval (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportCurvedArithmetic:Scale(KhaozEngine.Physics.Bepu.GeometryVector,KhaozEngine.Physics.Bepu.GeometryInterval):KhaozEngine.Physics.Bepu.GeometryVector (FullOpts)",
+      "FixedFrameBytes": 208
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportCurvedArithmetic:Add(KhaozEngine.Physics.Bepu.GeometryVector,KhaozEngine.Physics.Bepu.GeometryVector):KhaozEngine.Physics.Bepu.GeometryVector (FullOpts)",
+      "FixedFrameBytes": 208
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTangentKernel:Prune(double):this (FullOpts)",
+      "FixedFrameBytes": 304
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTangentKernel:Lowest():double:this (FullOpts)",
+      "FixedFrameBytes": 272
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTangentKernel:Narrow():bool:this (FullOpts)",
+      "FixedFrameBytes": 272
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTangentKernel:Clamp(KhaozEngine.Physics.Bepu.GeometryInterval,double):KhaozEngine.Physics.Bepu.GeometryInterval (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.ShapeFactory:AddBaseAlignedCylinder(BepuPhysics.Simulation,BepuUtilities.Memory.BufferPool,KhaozEngine.Physics.CylinderShape):BepuPhysics.Collidables.TypedIndex (FullOpts)",
+      "FixedFrameBytes": 224
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTangentKernel:Positive(KhaozEngine.Physics.Bepu.GeometryInterval):KhaozEngine.Physics.Bepu.GeometryInterval (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTangentKernel:Hypot(KhaozEngine.Physics.Bepu.GeometryInterval,KhaozEngine.Physics.Bepu.GeometryInterval):KhaozEngine.Physics.Bepu.GeometryInterval (FullOpts)",
+      "FixedFrameBytes": 112
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTangentKernel:Shrink(KhaozEngine.Physics.Bepu.GeometryInterval,double):KhaozEngine.Physics.Bepu.GeometryInterval (FullOpts)",
+      "FixedFrameBytes": 256
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld:QueryCapsuleFeature(KhaozEngine.Physics.IPhysicsQueryLease,KhaozEngine.Physics.StaticHandle,KhaozEngine.Physics.CapsuleShape,KhaozEngine.Physics.Pose,float,System.Span`1[KhaozEngine.Physics.CapsuleIncidentFace],KhaozEngine.Physics.QueryFilter):KhaozEngine.Physics.CapsuleFeatureResult:this (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld:QueryCapsuleFeatureCore(KhaozEngine.Physics.IPhysicsWorld,KhaozEngine.Physics.IPhysicsQueryLease,KhaozEngine.Physics.StaticHandle,KhaozEngine.Physics.CapsuleShape,KhaozEngine.Physics.Pose,float,System.Span`1[KhaozEngine.Physics.CapsuleIncidentFace],KhaozEngine.Physics.QueryFilter,KhaozEngine.Physics.Bepu.StaticQueryExclusions):KhaozEngine.Physics.CapsuleFeatureResult:this (FullOpts)",
+      "FixedFrameBytes": 448
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeatureGeometry:Capture(BepuPhysics.Simulation,BepuPhysics.Collidables.TypedIndex,byref,byref):byte (FullOpts)",
+      "FixedFrameBytes": 2976
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeatureGeometryQuery:Query(KhaozEngine.Physics.Bepu.CapsuleFeaturePolyhedron[],KhaozEngine.Physics.IPhysicsWorld,KhaozEngine.Physics.IPhysicsQueryLease,KhaozEngine.Physics.StaticHandle,KhaozEngine.Physics.CapsuleShape,KhaozEngine.Physics.Pose,float,System.Span`1[KhaozEngine.Physics.CapsuleIncidentFace]):KhaozEngine.Physics.CapsuleFeatureResult (FullOpts)",
+      "FixedFrameBytes": 4096
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeaturePolyhedraClosest:Enumerate(KhaozEngine.Physics.Bepu.CapsuleFeaturePolyhedron):byte:this (FullOpts)",
+      "FixedFrameBytes": 160
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeaturePolyhedron:Contains(KhaozEngine.Physics.Bepu.FeaturePoint):byte:this (FullOpts)",
+      "FixedFrameBytes": 1792
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeaturePolyhedraClosest:Vertex(KhaozEngine.Physics.Bepu.CapsuleFeaturePolyhedron,int):this (FullOpts)",
+      "FixedFrameBytes": 2784
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeaturePolyhedraClosest:Far(System.ReadOnlySpan`1[KhaozEngine.Physics.Bepu.FeaturePoint]):bool:this (FullOpts)",
+      "FixedFrameBytes": 320
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeaturePolyhedraClosest:Edge(KhaozEngine.Physics.Bepu.CapsuleFeaturePolyhedron,int):this (FullOpts)",
+      "FixedFrameBytes": 80
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeaturePolyhedraClosest:Interior(KhaozEngine.Physics.Bepu.FeatureNumber):bool:this (FullOpts)",
+      "FixedFrameBytes": 160
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeaturePolyhedraClosest:Admit(KhaozEngine.Physics.Bepu.CapsuleFeaturePolyhedron,int,byte,KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeaturePoint,int[]):this (FullOpts)",
+      "FixedFrameBytes": 2032
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.FeaturePoint:CompareDistanceToRadius(KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeaturePoint,double):byte (FullOpts)",
+      "FixedFrameBytes": 96
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeaturePolyhedraClosest:Face(KhaozEngine.Physics.Bepu.CapsuleFeaturePolyhedron,int):this (FullOpts)",
+      "FixedFrameBytes": 80
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeaturePolyhedron:FaceInterior(int,KhaozEngine.Physics.Bepu.FeaturePoint):byte:this (FullOpts)",
+      "FixedFrameBytes": 96
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.FeaturePoint:SameExact(KhaozEngine.Physics.Bepu.FeaturePoint):bool:this (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeatureGeometryQuery:Publish(int,int,byte,KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeatureNumber,int[],KhaozEngine.Physics.Bepu.FeaturePoint[],int,KhaozEngine.Physics.IPhysicsWorld,KhaozEngine.Physics.IPhysicsQueryLease,KhaozEngine.Physics.StaticHandle,KhaozEngine.Physics.Bepu.FeatureNumber,System.Span`1[KhaozEngine.Physics.CapsuleIncidentFace]):KhaozEngine.Physics.CapsuleFeatureResult (FullOpts)",
+      "FixedFrameBytes": 2320
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeatureGeometryQuery:WithinCeiling(double,double):bool (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeaturePolyhedraClosest:Clamp(KhaozEngine.Physics.Bepu.FeatureNumber,byref):bool:this (FullOpts)",
+      "FixedFrameBytes": 176
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeatureMesh:Capture(BepuPhysics.Simulation,BepuPhysics.Collidables.TypedIndex,byref,byref):byte (FullOpts)",
+      "FixedFrameBytes": 2992
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeatureMesh:Validate():byte:this (FullOpts)",
+      "FixedFrameBytes": 96
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeatureMesh:ValidateLink(int,int[][],byref):byte:this (FullOpts)",
+      "FixedFrameBytes": 128
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeatureMesh:ProveFlatCycle(int):byte:this (FullOpts)",
+      "FixedFrameBytes": 224
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeatureMesh:ProjectedOrient(System.Numerics.Vector3,System.Numerics.Vector3,System.Numerics.Vector3,int):byte (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeatureMesh:PolarHalf(System.Numerics.Vector3,System.Numerics.Vector3,int):int (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeatureMesh:ClassifyFlatBoundary(int,int[][],byref):byte:this (FullOpts)",
+      "FixedFrameBytes": 3472
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeatureMeshQuery:Query(KhaozEngine.Physics.Bepu.CapsuleFeatureMesh,KhaozEngine.Physics.IPhysicsWorld,KhaozEngine.Physics.IPhysicsQueryLease,KhaozEngine.Physics.StaticHandle,KhaozEngine.Physics.CapsuleShape,KhaozEngine.Physics.Pose,float,System.Span`1[KhaozEngine.Physics.CapsuleIncidentFace]):KhaozEngine.Physics.CapsuleFeatureResult (FullOpts)",
+      "FixedFrameBytes": 4112
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeatureMeshClosest:Enumerate():byte:this (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeatureMeshClosest:Vertex(int):this (FullOpts)",
+      "FixedFrameBytes": 3280
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeatureMeshBounds:Far(KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeatureNumber,System.ReadOnlySpan`1[KhaozEngine.Physics.Bepu.FeaturePoint]):bool (FullOpts)",
+      "FixedFrameBytes": 336
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeatureMeshBounds:Range(System.ReadOnlySpan`1[KhaozEngine.Physics.Bepu.FeaturePoint],int,byref,byref):bool (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeatureMeshClosest:Clamp(KhaozEngine.Physics.Bepu.FeatureNumber,byref):bool:this (FullOpts)",
+      "FixedFrameBytes": 176
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeatureMeshClosest:Admit(int,byte,KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeaturePoint,int[]):this (FullOpts)",
+      "FixedFrameBytes": 112
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeatureMeshClosest:Edge(int):this (FullOpts)",
+      "FixedFrameBytes": 80
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeatureMeshClosest:Interior(KhaozEngine.Physics.Bepu.FeatureNumber):bool:this (FullOpts)",
+      "FixedFrameBytes": 160
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeatureMeshClosest:Face(int):this (FullOpts)",
+      "FixedFrameBytes": 64
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.InstalledMeshSides:Agree(KhaozEngine.Physics.Bepu.InstalledPoseOperator,System.Numerics.Vector3,System.Numerics.Vector3,System.Numerics.Vector3,KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeaturePoint,byref,byref):bool (FullOpts)",
+      "FixedFrameBytes": 112
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeatureMesh:FaceMembership(int,KhaozEngine.Physics.Bepu.FeaturePoint):byte:this (FullOpts)",
+      "FixedFrameBytes": 96
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.FeaturePoint:CompareDistances(KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeaturePoint):byte (FullOpts)",
+      "FixedFrameBytes": 144
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeatureMesh:ProveIncidence(KhaozEngine.Physics.Bepu.FeaturePoint,int[]):byte:this (FullOpts)",
+      "FixedFrameBytes": 2384
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeatureMeshBounds:Disjoint(KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeaturePoint):bool (FullOpts)",
+      "FixedFrameBytes": 432
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.InstalledPoseOperations:Subtract(KhaozEngine.Physics.Bepu.GeometryVector,KhaozEngine.Physics.Bepu.GeometryVector):KhaozEngine.Physics.Bepu.GeometryVector (FullOpts)",
+      "FixedFrameBytes": 288
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.InstalledPoseOperations:Cross(KhaozEngine.Physics.Bepu.GeometryVector,KhaozEngine.Physics.Bepu.GeometryVector):KhaozEngine.Physics.Bepu.GeometryVector (FullOpts)",
+      "FixedFrameBytes": 912
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.InstalledMeshSides:Sign(KhaozEngine.Physics.Bepu.GeometryInterval):byte (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.InstalledPoseOperations:Scale(KhaozEngine.Physics.Bepu.GeometryVector,KhaozEngine.Physics.Bepu.GeometryInterval):KhaozEngine.Physics.Bepu.GeometryVector (FullOpts)",
+      "FixedFrameBytes": 288
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.InstalledPoseOperations:Negate(KhaozEngine.Physics.Bepu.GeometryVector):KhaozEngine.Physics.Bepu.GeometryVector (FullOpts)",
+      "FixedFrameBytes": 128
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.InstalledPoseOperations:Negate(KhaozEngine.Physics.Bepu.GeometryInterval):KhaozEngine.Physics.Bepu.GeometryInterval (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.InstalledPoseOperator:RoundedTranspose(KhaozEngine.Physics.Bepu.GeometryVector):KhaozEngine.Physics.Bepu.GeometryVector:this (FullOpts)",
+      "FixedFrameBytes": 528
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.InstalledPoseOperations:Normalize(KhaozEngine.Physics.Bepu.GeometryVector):KhaozEngine.Physics.Bepu.GeometryVector (FullOpts)",
+      "FixedFrameBytes": 368
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleFeatureMeshClosest:AdmitEdge(int,KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeaturePoint):this (FullOpts)",
+      "FixedFrameBytes": 80
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintCurved:Measure(KhaozEngine.Physics.StaticHandle,byref,int,byref,byref):byte:this (FullOpts)",
+      "FixedFrameBytes": 1328
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintCurved:Begin(byref,double,double):bool:this (FullOpts)",
+      "FixedFrameBytes": 816
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic:Reset(KhaozEngine.Physics.Bepu.FeaturePoint):this (FullOpts)",
+      "FixedFrameBytes": 336
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic:New(byte,KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number,KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number,KhaozEngine.Physics.Bepu.FeatureNumber,double):KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number:this (FullOpts)",
+      "FixedFrameBytes": 128
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic:Constant(double):KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number:this (FullOpts)",
+      "FixedFrameBytes": 80
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic:Subtract(KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number,KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number):KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number:this (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic:Negate(KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number):KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number:this (FullOpts)",
+      "FixedFrameBytes": 208
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic:Multiply(KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number,KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number):KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number:this (FullOpts)",
+      "FixedFrameBytes": 304
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic:Value(KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number):KhaozEngine.Physics.Bepu.FeatureNumber:this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic:Add(KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number,KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number):KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number:this (FullOpts)",
+      "FixedFrameBytes": 160
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic:Sign(KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number):byte:this (FullOpts)",
+      "FixedFrameBytes": 128
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurved:Measure(KhaozEngine.Physics.StaticHandle,byref,int,byref,byref):byte:this (FullOpts)",
+      "FixedFrameBytes": 1520
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:Begin(byref,double,double,double):bool:this (FullOpts)",
+      "FixedFrameBytes": 848
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic:Abs(KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number):KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number:this (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic:Root(KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number):KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number:this (FullOpts)",
+      "FixedFrameBytes": 448
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic:Divide(KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number,KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number):KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number:this (FullOpts)",
+      "FixedFrameBytes": 176
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:NormalizedYBounds():KhaozEngine.Physics.Bepu.GeometryInterval:this (FullOpts)",
+      "FixedFrameBytes": 160
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportCurvedSurfaceAdmission:Measure(KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry,byte,int,double,double,KhaozEngine.Physics.Bepu.GeometryInterval,double,double,bool):byte:this (FullOpts)",
+      "FixedFrameBytes": 768
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:Surface(int,KhaozEngine.Physics.Bepu.GeometryInterval,KhaozEngine.Physics.Bepu.GeometryInterval):KhaozEngine.Physics.Bepu.GeometryVector:this (FullOpts)",
+      "FixedFrameBytes": 2720
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:PositiveRoot(KhaozEngine.Physics.Bepu.GeometryInterval):KhaozEngine.Physics.Bepu.GeometryInterval (FullOpts)",
+      "FixedFrameBytes": 64
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:SurfacePointInside(int,double,double,double,double,double,double,double):bool:this (FullOpts)",
+      "FixedFrameBytes": 544
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:SourceSurface(int,KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number,KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number):KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry+Vector:this (FullOpts)",
+      "FixedFrameBytes": 800
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:Scale(KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry+Vector,KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number):KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry+Vector:this (FullOpts)",
+      "FixedFrameBytes": 64
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:Add(KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry+Vector,KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry+Vector):KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry+Vector:this (FullOpts)",
+      "FixedFrameBytes": 80
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:N(KhaozEngine.Physics.Bepu.GeometryInterval):KhaozEngine.Physics.Bepu.GeometryInterval (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BoundedGeometryArithmetic:CompareSumOfFourSquares(double,double,double,double,double):byte (FullOpts)",
+      "FixedFrameBytes": 112
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:CapNeedsUpperCoverage(int):bool:this (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurved:Maximum(byref,int,bool,double,byref,byref):byte:this (FullOpts)",
+      "FixedFrameBytes": 96
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:CapFacesDown(int):bool:this (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:Axis(bool,int,byref):byte:this (FullOpts)",
+      "FixedFrameBytes": 2720
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:CapNormal(int):KhaozEngine.Physics.Bepu.GeometryVector:this (FullOpts)",
+      "FixedFrameBytes": 256
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:Cap(int,bool,byref,byref):byte:this (FullOpts)",
+      "FixedFrameBytes": 1520
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:Keep(KhaozEngine.Physics.Bepu.GeometryInterval,double,bool,bool,int):bool:this (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:Boundaries(double,int):bool:this (FullOpts)",
+      "FixedFrameBytes": 208
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportCurvedRootRegions:Traverse(double,double):bool:this (FullOpts)",
+      "FixedFrameBytes": 288
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportCurvedRootRegions:Evaluate(KhaozEngine.Physics.Bepu.GeometryInterval,bool):KhaozEngine.Physics.Bepu.GeometryInterval:this (FullOpts)",
+      "FixedFrameBytes": 288
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:KhaozEngine.Physics.Bepu.ISupportCurvedRootFunction.Evaluate(KhaozEngine.Physics.Bepu.GeometryInterval,bool):KhaozEngine.Physics.Bepu.GeometryInterval:this (FullOpts)",
+      "FixedFrameBytes": 2144
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:BoundaryValue(KhaozEngine.Physics.Bepu.GeometryInterval,bool):KhaozEngine.Physics.Bepu.GeometryInterval:this (FullOpts)",
+      "FixedFrameBytes": 1168
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportCurvedRootRegions:StrictSign(KhaozEngine.Physics.Bepu.GeometryInterval):int (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportCurvedRootRegions:EndpointSign(double):int:this (FullOpts)",
+      "FixedFrameBytes": 208
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:KhaozEngine.Physics.Bepu.ISupportCurvedRootFunction.DerivativeSign(KhaozEngine.Physics.Bepu.GeometryInterval):byte:this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:BoundaryDerivativeSign(KhaozEngine.Physics.Bepu.GeometryInterval):byte:this (FullOpts)",
+      "FixedFrameBytes": 368
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:ObserveRoots():this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:CapPoint(KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry+Candidate,double,bool,byref,byref):byte:this (FullOpts)",
+      "FixedFrameBytes": 2592
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintCollector:CurvedContactMember(KhaozEngine.Physics.StaticHandle,byref,int,int):byte:this (FullOpts)",
+      "FixedFrameBytes": 1296
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintCollector:CurvedContactHeight(byref,int,int):bool:this (FullOpts)",
+      "FixedFrameBytes": 144
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintCurved:Lowest(byref,int,byref,double,double,byref):byte:this (FullOpts)",
+      "FixedFrameBytes": 272
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurved:Lowest(byref,int,byref,double,double,byref):byte:this (FullOpts)",
+      "FixedFrameBytes": 80
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:Contact(byte,int,double,double,double,byref):byte:this (FullOpts)",
+      "FixedFrameBytes": 576
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportCurvedRootRegions:Refine(KhaozEngine.Physics.Bepu.GeometryInterval,int):KhaozEngine.Physics.Bepu.GeometryInterval:this (FullOpts)",
+      "FixedFrameBytes": 384
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportCurvedRootRegions:Keep(KhaozEngine.Physics.Bepu.GeometryInterval):bool:this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintCollector:Enclose(float,float):KhaozEngine.Physics.Bepu.GeometryInterval (FullOpts)",
+      "FixedFrameBytes": 96
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:get_RootCellCount():long:this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:get_RootLiveHighWater():int:this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:get_RootTerminalHighWater():int:this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportCurvedSurfaceAdmission:get_TotalCells():long:this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportCurvedSurfaceAdmission:get_FrontierHighWater():int:this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:Round(bool,double,byref,byref):byte:this (FullOpts)",
+      "FixedFrameBytes": 432
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:RoundEnd(int,bool,double,byref):byte:this (FullOpts)",
+      "FixedFrameBytes": 2672
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:Side(double,byref,byref):byte:this (FullOpts)",
+      "FixedFrameBytes": 2336
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:Stationary():bool:this (FullOpts)",
+      "FixedFrameBytes": 384
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:SidePoint(KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry+Candidate,double,byref,byref):byte:this (FullOpts)",
+      "FixedFrameBytes": 2400
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic:Max(KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number,KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number):KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number:this (FullOpts)",
+      "FixedFrameBytes": 560
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:Hull(KhaozEngine.Physics.Bepu.GeometryInterval,KhaozEngine.Physics.Bepu.GeometryInterval):KhaozEngine.Physics.Bepu.GeometryInterval (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic:Split(KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number,int):KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Fraction:this (FullOpts)",
+      "FixedFrameBytes": 176
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic:PolynomialSign(KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number):byte:this (FullOpts)",
+      "FixedFrameBytes": 112
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic:Compile(KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number):System.Nullable`1[KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Polynomial]:this (FullOpts)",
+      "FixedFrameBytes": 192
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic:Product(KhaozEngine.Physics.Bepu.SupportSourcePolynomial,KhaozEngine.Physics.Bepu.SupportSourcePolynomial):KhaozEngine.Physics.Bepu.SupportSourcePolynomial:this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic:Rent(byte,KhaozEngine.Physics.Bepu.SupportSourcePolynomial,KhaozEngine.Physics.Bepu.SupportSourcePolynomial,double):KhaozEngine.Physics.Bepu.SupportSourcePolynomial:this (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:RefineCapUpward(int,double,byref):this (FullOpts)",
+      "FixedFrameBytes": 448
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportCurvedRootRegions:Solve(KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic,System.ReadOnlySpan`1[KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number],double,double):bool:this (FullOpts)",
+      "FixedFrameBytes": 128
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintCurved:get_Up():KhaozEngine.Physics.Bepu.SupportFootprintCurved+Point:this (FullOpts)",
+      "FixedFrameBytes": 240
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintCurved:Admission(byref,int,KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number,KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number,KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number):byte:this (FullOpts)",
+      "FixedFrameBytes": 144
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintCurved:RoundAdmission(KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number,KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number,KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number):byte:this (FullOpts)",
+      "FixedFrameBytes": 368
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintCurved+Point:Bounds(KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic):KhaozEngine.Physics.Bepu.GeometryVector:this (FullOpts)",
+      "FixedFrameBytes": 208
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintCurved:HorizontalCoreMaximum(KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number,byref):bool:this (FullOpts)",
+      "FixedFrameBytes": 304
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld:CreateQueryViewExcludingStatics(System.ReadOnlySpan`1[KhaozEngine.Physics.StaticHandle]):KhaozEngine.Physics.IPhysicsWorldQueryView:this (FullOpts)",
+      "FixedFrameBytes": 144
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld+QueryView:KhaozEngine.Physics.IPhysicsSupportFootprint.QuerySupportFootprint(KhaozEngine.Physics.IPhysicsQueryLease,byref,System.Span`1[KhaozEngine.Physics.SupportFootprintMember],System.Span`1[ulong],KhaozEngine.Physics.QueryFilter):KhaozEngine.Physics.SupportFootprintResult:this (FullOpts)",
+      "FixedFrameBytes": 112
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld+QueryView:Dispose():this (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintCurved:CoreParameter():KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number:this (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintCurved:Overlap(KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number,KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number,KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number,KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number):byte:this (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintCurved:Maximum(byref,int,double,double,KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number,byref):byte:this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintCurved:HorizontalMaximum(int,KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number,byref):byte:this (FullOpts)",
+      "FixedFrameBytes": 384
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintCurved:Scale(KhaozEngine.Physics.Bepu.SupportFootprintCurved+Point,KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number):KhaozEngine.Physics.Bepu.SupportFootprintCurved+Point:this (FullOpts)",
+      "FixedFrameBytes": 64
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintCurved:Add(KhaozEngine.Physics.Bepu.SupportFootprintCurved+Point,KhaozEngine.Physics.Bepu.SupportFootprintCurved+Point):KhaozEngine.Physics.Bepu.SupportFootprintCurved+Point:this (FullOpts)",
+      "FixedFrameBytes": 80
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintCurved:Publish(KhaozEngine.Physics.Bepu.SupportFootprintCurved+Witness,byte,double,byref):bool:this (FullOpts)",
+      "FixedFrameBytes": 400
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintPublication:TryWitness(byte,KhaozEngine.Physics.Bepu.GeometryVector,KhaozEngine.Physics.Bepu.GeometryVector,byref):bool (FullOpts)",
+      "FixedFrameBytes": 160
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintCurved:RoundMaximum(double,double,KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number,byref):byte:this (FullOpts)",
+      "FixedFrameBytes": 496
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintCurved:UprightMaximum(int,double,double,KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number,byref):byte:this (FullOpts)",
+      "FixedFrameBytes": 608
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportCurvedArithmetic:Hull(KhaozEngine.Physics.Bepu.GeometryVector,KhaozEngine.Physics.Bepu.GeometryVector):KhaozEngine.Physics.Bepu.GeometryVector (FullOpts)",
+      "FixedFrameBytes": 96
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.SupportSample:Equals(KhaozEngine.Locomotion.Contacts.SupportSample):bool:this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:CapUniformlyUp(int):bool:this (FullOpts)",
+      "FixedFrameBytes": 128
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportCurvedSurfaceAdmission:get_CapacityRefused():bool:this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:AxisParameter(KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number,KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic+Number,double,double,byref):byte:this (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:KhaozEngine.Physics.Bepu.ISupportCurvedRootFunction.Sign(double):byte:this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:AxisSign(double):byte:this (FullOpts)",
+      "FixedFrameBytes": 112
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:SignedStationary():bool:this (FullOpts)",
+      "FixedFrameBytes": 224
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:StationaryValue(KhaozEngine.Physics.Bepu.GeometryInterval,bool):KhaozEngine.Physics.Bepu.GeometryInterval:this (FullOpts)",
+      "FixedFrameBytes": 1008
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:Hull(KhaozEngine.Physics.Bepu.GeometryVector,KhaozEngine.Physics.Bepu.GeometryVector):KhaozEngine.Physics.Bepu.GeometryVector (FullOpts)",
+      "FixedFrameBytes": 96
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld:RemoveStatic(KhaozEngine.Physics.StaticHandle):this (FullOpts)",
+      "FixedFrameBytes": 144
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld+QueryView:ThrowIfDisposed():this (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintPolygon:ExactDiscriminant(KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeatureNumber):byte (FullOpts)",
+      "FixedFrameBytes": 368
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintPolygon:Parameter(KhaozEngine.Physics.Bepu.SupportPolygon,int,KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeatureNumber,bool,byref):bool (FullOpts)",
+      "FixedFrameBytes": 1920
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintCollector:RefineContact(byref,int):bool:this (FullOpts)",
+      "FixedFrameBytes": 544
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld+QueryView:KhaozEngine.Physics.IPhysicsSupportFootprint.AssertFootprintCurrent(byref,KhaozEngine.Physics.IPhysicsQueryLease):this (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintVolume:TryBounds(byref,byref,byref):bool (FullOpts)",
+      "FixedFrameBytes": 320
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.FeaturePoint:Scale(KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeatureNumber,bool):KhaozEngine.Physics.Bepu.FeaturePoint (FullOpts)",
+      "FixedFrameBytes": 368
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.FeaturePoint:Add(KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeaturePoint):KhaozEngine.Physics.Bepu.FeaturePoint (FullOpts)",
+      "FixedFrameBytes": 400
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintSourcePredicates:Cross(KhaozEngine.Physics.Bepu.SupportFootprintSourcePredicates+Point,KhaozEngine.Physics.Bepu.SupportFootprintSourcePredicates+Point):KhaozEngine.Physics.Bepu.SupportSourcePolynomial:this (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintSourcePredicates:NormalSlope(KhaozEngine.Physics.Bepu.SupportPolygon,double):byte:this (FullOpts)",
+      "FixedFrameBytes": 128
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportTiltedCurvedGeometry:BoundarySign(double):byte:this (FullOpts)",
+      "FixedFrameBytes": 192
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportCurvedRootRegions:get_CapacityRefused():bool:this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.SupportFootprintSourcePredicates:EdgeRoot(KhaozEngine.Physics.Bepu.SupportPolygon,int,KhaozEngine.Physics.Bepu.FeaturePoint,KhaozEngine.Physics.Bepu.FeatureNumber,int,bool):byte:this (FullOpts)",
+      "FixedFrameBytes": 176
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld:Rebase(System.Numerics.Vector3):this (FullOpts)",
+      "FixedFrameBytes": 128
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.ContactController:Step(byref,System.Numerics.Vector2,float,bool,bool,float,System.Func`3[float,float,float],byref,System.Func`3[float,float,System.Numerics.Vector3],KhaozEngine.Physics.IPhysicsWorld,System.Func`3[float,float,System.Numerics.Vector2],System.Func`4[float,float,float,KhaozEngine.Locomotion.MovementMedium],System.Nullable`1[float],System.Nullable`1[KhaozEngine.Locomotion.Contacts.GroundCoreSettings]):KhaozEngine.Locomotion.MoveState (FullOpts)",
+      "FixedFrameBytes": 624
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.ShellGeometry:Validate(byref,byref) (FullOpts)",
+      "FixedFrameBytes": 144
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.ShellGeometry:Span(byref):float (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld+QueryView:AcquireQueryReadLease():KhaozEngine.Physics.IPhysicsQueryLease:this (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.ContactController:StepWithQueries(byref,System.Numerics.Vector2,float,bool,bool,float,byref,KhaozEngine.Locomotion.Contacts.ContactQueryContext,byref,System.Func`3[float,float,System.Numerics.Vector2],System.Nullable`1[float],System.Nullable`1[KhaozEngine.Locomotion.Contacts.GroundCoreSettings],KhaozEngine.Locomotion.Contacts.ExplicitContactModes):KhaozEngine.Locomotion.MoveState (FullOpts)",
+      "FixedFrameBytes": 480
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.ContactController:StepCore(byref,System.Numerics.Vector2,float,bool,bool,float,byref,KhaozEngine.Locomotion.Contacts.ContactQueryContext,System.Func`3[float,float,System.Numerics.Vector2],System.Nullable`1[float],System.Nullable`1[KhaozEngine.Locomotion.Contacts.GroundCoreSettings],KhaozEngine.Locomotion.Contacts.ExplicitContactModes,byref):KhaozEngine.Locomotion.MoveState (FullOpts)",
+      "FixedFrameBytes": 3312
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.ContactController:Move(byref,byref,byte,KhaozEngine.Locomotion.Contacts.SupportSample,System.Numerics.Vector3,System.Numerics.Vector2,System.Numerics.Vector2,System.Numerics.Vector2,System.Numerics.Vector2,float):KhaozEngine.Locomotion.Contacts.ContactController+ContactTickContinuation (FullOpts)",
+      "FixedFrameBytes": 3008
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.ContactController+ContactTickContinuation:.ctor(System.Numerics.Vector3,float,bool,float,System.Numerics.Vector2,KhaozEngine.Locomotion.Contacts.ContactController+Segment,bool,double,byte,KhaozEngine.Locomotion.Contacts.SupportSample,float,float,System.Numerics.Vector2,bool,bool,float,float,KhaozEngine.Locomotion.Contacts.ContactQueryContext,float):this (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.GroundCore:Move(System.Numerics.Vector3,System.Numerics.Vector2,float,byref,byref,KhaozEngine.Locomotion.Contacts.ContactQueryContext,float,bool,System.Nullable`1[double],System.Func`3[float,float,System.Numerics.Vector2],bool,KhaozEngine.Locomotion.Contacts.ContactMediumPolicy):KhaozEngine.Locomotion.Contacts.GroundStepResult (FullOpts)",
+      "FixedFrameBytes": 1984
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.GroundCore:Validate(System.Numerics.Vector3,System.Numerics.Vector2,float,byref,byref):int (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.GroundCore:Length(System.Numerics.Vector2):double (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.ShellMotion:RecoverWithQueries(KhaozEngine.Locomotion.Contacts.ContactQueryContext,System.Numerics.Vector3,byref,byref):System.Numerics.Vector3 (FullOpts)",
+      "FixedFrameBytes": 464
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld+QueryView:ComputePenetration(KhaozEngine.Physics.CapsuleShape,KhaozEngine.Physics.Pose,byref):bool:this (FullOpts)",
+      "FixedFrameBytes": 64
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld:ComputePenetrationCore(KhaozEngine.Physics.CapsuleShape,KhaozEngine.Physics.Pose,byref,KhaozEngine.Physics.Bepu.StaticQueryExclusions):bool:this (FullOpts)",
+      "FixedFrameBytes": 960
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.FootSupport:Find(System.Func`3[float,float,float],System.Func`3[float,float,System.Numerics.Vector3],KhaozEngine.Physics.IPhysicsWorld,KhaozEngine.Physics.IPhysicsQueryLease,byref):KhaozEngine.Locomotion.Contacts.SupportSample (FullOpts)",
+      "FixedFrameBytes": 144
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.FootSupport+Selection:Terrain(byref):this (FullOpts)",
+      "FixedFrameBytes": 80
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.GroundCore:CarriedLag(byref,float):double (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.GroundCore:Footing(byte):byte (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.GroundStepResult:.ctor(System.Numerics.Vector3,byte,KhaozEngine.Locomotion.Contacts.SupportSample,float,System.Numerics.Vector2,bool):this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.ContactQueryContext:RequireRecoveryAccepted():this (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.GroundSignals:Resolve(byref,float,float,bool,bool,float,System.Numerics.Vector2,System.Numerics.Vector3,byref,bool,float,byref,float,float,KhaozEngine.Locomotion.Contacts.ContactQueryContext):System.ValueTuple`3[float,float,float] (FullOpts)",
+      "FixedFrameBytes": 464
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.ContactController:Finite(byref):bool (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld+QueryView:get_Origin():System.Numerics.Vector3:this (FullOpts)",
+      "FixedFrameBytes": 64
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld+QueryView:get_SourceWorld():KhaozEngine.Physics.IPhysicsWorld:this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.LeasedContactQueryContext:Reset():this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.ExplicitContactModes:Reset():this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.ContactController:StepLeased(byref,System.Numerics.Vector2,float,bool,bool,float,byref,byref,KhaozEngine.Locomotion.MovementQueryLease,KhaozEngine.Locomotion.MovementBoundary,System.Nullable`1[float],System.Nullable`1[KhaozEngine.Locomotion.Contacts.GroundCoreSettings]):KhaozEngine.Locomotion.MovementStepResult (FullOpts)",
+      "FixedFrameBytes": 3552
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.LeasedContactQueryContext:Initialize(KhaozEngine.Locomotion.MovementQueryLease,KhaozEngine.Locomotion.MoveTuning,KhaozEngine.Locomotion.MovementSelection,KhaozEngine.Locomotion.MovementTransitionContext,float,int,KhaozEngine.Locomotion.MovementBoundary):this (FullOpts)",
+      "FixedFrameBytes": 336
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.LeasedContactQueryContext:KernelFeet(System.Numerics.Vector3,byref):System.Numerics.Vector3:this (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.LeasedContactQueryContext:Mapped(double):float (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.LeasedContactQueryContext:SampleMedium(System.Numerics.Vector3):System.Nullable`1[KhaozEngine.Locomotion.MovementWaterPoint]:this (FullOpts)",
+      "FixedFrameBytes": 528
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.LeasedContactQueryContext:BodyCentre(System.Numerics.Vector3):System.Numerics.Vector3:this (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.LeasedContactQueryContext:Require(int) (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.LeasedContactQueryContext:FindSupport(byref,byref):KhaozEngine.Locomotion.Contacts.SupportSample:this (FullOpts)",
+      "FixedFrameBytes": 288
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.LeasedContactQueryContext:Request(byref):KhaozEngine.Locomotion.MovementSupportRequest:this (FullOpts)",
+      "FixedFrameBytes": 368
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.ExplicitContactModes:Initialize(KhaozEngine.Locomotion.Contacts.ContactQueryContext,byref,byref,byref,bool):this (FullOpts)",
+      "FixedFrameBytes": 528
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.LeasedContactQueryContext:ValidatePlacement(System.Numerics.Vector3):this (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.LeasedContactQueryContext:AcceptSegment(System.Numerics.Vector3,System.Numerics.Vector3):bool:this (FullOpts)",
+      "FixedFrameBytes": 400
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.LeasedContactQueryContext:Analytic(System.Numerics.Vector3):System.Nullable`1[KhaozEngine.Locomotion.MovementAnalyticGround]:this (FullOpts)",
+      "FixedFrameBytes": 320
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.ExplicitContactModes:get_IsFluid():bool:this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.ExplicitContactModes:Step(byref,byref,byref,System.Func`3[float,float,System.Numerics.Vector2]):KhaozEngine.Locomotion.Contacts.AirStepResult:this (FullOpts)",
+      "FixedFrameBytes": 992
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.AirPass:StepWithMedium(System.Numerics.Vector3,System.Numerics.Vector2,float,float,float,byref,byref,float,KhaozEngine.Locomotion.Contacts.ContactQueryContext,System.Nullable`1[double],System.Func`3[float,float,System.Numerics.Vector2],KhaozEngine.Locomotion.Contacts.ContactMediumPolicy,System.Nullable`1[float]):KhaozEngine.Locomotion.Contacts.AirStepResult (FullOpts)",
+      "FixedFrameBytes": 2032
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.AirPass:Validate(System.Numerics.Vector3,System.Numerics.Vector2,float,float,float,byref,byref,float) (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.AirPass:Substeps(System.Numerics.Vector3,byref):int (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.LeasedContactQueryContext:ShellBody(KhaozEngine.Physics.CapsuleShape,System.Numerics.Vector3):KhaozEngine.Locomotion.MovementBodyQuery:this (FullOpts)",
+      "FixedFrameBytes": 288
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.GroundPlacement:NotBelow(double):float (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld+QueryView:KhaozEngine.Physics.IPhysicsCapsuleGeometryQueries.QueryCapsuleContacts(byref,KhaozEngine.Physics.Pose,float,System.Span`1[KhaozEngine.Physics.CapsuleContact],KhaozEngine.Physics.QueryFilter):KhaozEngine.Physics.CapsuleContactResult:this (FullOpts)",
+      "FixedFrameBytes": 112
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld:QueryCapsuleContactsCore(byref,KhaozEngine.Physics.Pose,float,System.Span`1[KhaozEngine.Physics.CapsuleContact],KhaozEngine.Physics.QueryFilter,KhaozEngine.Physics.Bepu.StaticQueryExclusions):KhaozEngine.Physics.CapsuleContactResult:this (FullOpts)",
+      "FixedFrameBytes": 848
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleContactCollector:Reset():this (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleContactCollector:FinishChildren(BepuPhysics.Collidables.Shapes,BepuUtilities.Memory.BufferPool):this (FullOpts)",
+      "FixedFrameBytes": 432
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleContactCollector:SortAndDeduplicate():this (FullOpts)",
+      "FixedFrameBytes": 192
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleContactCollector+ContactOrder:.cctor() (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleContactCollector:CopyTo(System.Span`1[KhaozEngine.Physics.CapsuleContact]):this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.PlayArea:Clamp(System.Numerics.Vector2,byref,System.Func`3[float,float,System.Numerics.Vector2]):bool (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.ShellMotion:FlyWithQueries(KhaozEngine.Locomotion.Contacts.ContactQueryContext,System.Numerics.Vector3,System.Numerics.Vector3,byref,byref,float,System.Func`3[float,float,System.Numerics.Vector2]):KhaozEngine.Locomotion.Contacts.ShellFlight (FullOpts)",
+      "FixedFrameBytes": 944
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.ShellGeometry:Shape(byref,KhaozEngine.Locomotion.ContactCapsuleShapes):KhaozEngine.Physics.CapsuleShape (FullOpts)",
+      "FixedFrameBytes": 48
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld+QueryView:KhaozEngine.Physics.IPhysicsCapsuleGeometryQueries.SweepCapsuleCertified(byref,KhaozEngine.Physics.Pose,System.Numerics.Vector3,KhaozEngine.Physics.QueryFilter):KhaozEngine.Physics.CapsuleSweepResult:this (FullOpts)",
+      "FixedFrameBytes": 112
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld:SweepCapsuleCertifiedCore(byref,KhaozEngine.Physics.Pose,System.Numerics.Vector3,KhaozEngine.Physics.QueryFilter,KhaozEngine.Physics.Bepu.StaticQueryExclusions):KhaozEngine.Physics.CapsuleSweepResult:this (FullOpts)",
+      "FixedFrameBytes": 432
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld:SelectedSweepBoundsProved(int,KhaozEngine.Physics.Bepu.StaticQueryExclusions):bool:this (FullOpts)",
+      "FixedFrameBytes": 64
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleSweepAperture:TryCreate(System.Numerics.Vector3,float,float,System.Numerics.Vector3,byref,byref):bool (FullOpts)",
+      "FixedFrameBytes": 448
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleSweepPath:Point(System.Numerics.Vector3,System.Numerics.Vector3,double):KhaozEngine.Physics.Bepu.GeometryVector (FullOpts)",
+      "FixedFrameBytes": 144
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleSweepPath:Coordinate(double,double,double):KhaozEngine.Physics.Bepu.GeometryInterval (FullOpts)",
+      "FixedFrameBytes": 320
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleSweepAperture:Axis(KhaozEngine.Physics.Bepu.GeometryInterval,KhaozEngine.Physics.Bepu.GeometryInterval,KhaozEngine.Physics.Bepu.GeometryInterval,byref,byref):bool (FullOpts)",
+      "FixedFrameBytes": 240
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleTreePreflight:TryValidate(byref,System.Numerics.Vector3,System.Numerics.Vector3,int,int,int,byref,byref,byref):bool (FullOpts)",
+      "FixedFrameBytes": 176
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleTreePreflight:ValidBounds(System.Numerics.Vector3,System.Numerics.Vector3):bool (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld+QueryView:SweepCapsule(KhaozEngine.Physics.CapsuleShape,KhaozEngine.Physics.Pose,System.Numerics.Vector3,float,byref,KhaozEngine.Physics.QueryFilter):bool:this (FullOpts)",
+      "FixedFrameBytes": 96
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.ContactMotionRoute:Move(System.Numerics.Vector3,byref,System.Span`1[System.Numerics.Vector3]):bool:this (FullOpts)",
+      "FixedFrameBytes": 112
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.LeasedContactQueryContext:ResolveSegment(System.Numerics.Vector3,System.Numerics.Vector3,System.Span`1[System.Numerics.Vector3],byref,byref,System.Span`1[System.Numerics.Vector3]):bool:this (FullOpts)",
+      "FixedFrameBytes": 528
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.ContactMotionRoute:Count():this (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.AirPass:TerrainWall(KhaozEngine.Locomotion.Contacts.ContactQueryContext,System.Numerics.Vector3,byref,byref,float):System.Nullable`1[System.Numerics.Vector2] (FullOpts)",
+      "FixedFrameBytes": 288
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.AirPass:.cctor() (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.ExplicitContactModes:ChangesOwner(System.Numerics.Vector3,float,byref,bool):bool:this (FullOpts)",
+      "FixedFrameBytes": 736
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.ExplicitContactModes:AllowsFooting(System.Numerics.Vector3,byref):bool:this (FullOpts)",
+      "FixedFrameBytes": 272
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.GroundPlacement:Try(KhaozEngine.Locomotion.Contacts.ContactQueryContext,byref,float,System.Numerics.Vector2,System.Numerics.Vector2,byref,float,byref,float,double,byref,bool):KhaozEngine.Locomotion.Contacts.GroundPlacement (FullOpts)",
+      "FixedFrameBytes": 1152
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.GroundPlacement:Paced(byref,float,byref,byref):float (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.GroundPlacement:Clear(KhaozEngine.Locomotion.Contacts.ContactQueryContext,byref,System.Numerics.Vector3,System.Numerics.Vector2,byref,byref,byref):bool (FullOpts)",
+      "FixedFrameBytes": 464
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.ExplicitContactModes:Accept(System.Numerics.Vector3,float,byref,bool,bool):bool:this (FullOpts)",
+      "FixedFrameBytes": 864
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.ContactHorizontalRounding:Accept(KhaozEngine.Locomotion.Contacts.ContactController+ContactTickContinuation,System.Numerics.Vector2,double,bool,byref):KhaozEngine.Locomotion.Contacts.ContactController+ContactTickContinuation (FullOpts)",
+      "FixedFrameBytes": 592
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.LeasedContactQueryContext:BindSupport(System.Numerics.Vector3,byref,float,float):KhaozEngine.Locomotion.MovementContactSupportBinding:this (FullOpts)",
+      "FixedFrameBytes": 304
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.ShellMotion:LiftWithQueries(KhaozEngine.Locomotion.Contacts.ContactQueryContext,System.Numerics.Vector3,byref):float (FullOpts)",
+      "FixedFrameBytes": 272
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.GroundCore+Tick:.ctor(KhaozEngine.Locomotion.Contacts.ContactQueryContext,byref,float,float,System.Numerics.Vector3,float,byref,bool,System.Func`3[float,float,System.Numerics.Vector2],double):this (FullOpts)",
+      "FixedFrameBytes": 96
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.GroundCore+Tick:Run(System.Numerics.Vector2,int,byref,byref,byref,byref,KhaozEngine.Locomotion.Contacts.ContactMediumPolicy,byref):System.Numerics.Vector2:this (FullOpts)",
+      "FixedFrameBytes": 656
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.GroundCore+Tick:PayLag(byref):bool:this (FullOpts)",
+      "FixedFrameBytes": 240
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.GroundCore+Tick:Resolve(System.Numerics.Vector2,System.Nullable`1[System.Numerics.Vector2],double):KhaozEngine.Locomotion.Contacts.GroundCore+Attempt:this (FullOpts)",
+      "FixedFrameBytes": 448
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.GroundCore+Tick:ResolveUnconstrained(System.Numerics.Vector2,System.Nullable`1[System.Numerics.Vector2],double):KhaozEngine.Locomotion.Contacts.GroundCore+Attempt:this (FullOpts)",
+      "FixedFrameBytes": 736
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.GroundCore+Tick:Try(System.Numerics.Vector2,float,System.Nullable`1[System.Numerics.Vector2],double):KhaozEngine.Locomotion.Contacts.GroundCore+Attempt:this (FullOpts)",
+      "FixedFrameBytes": 1520
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.ShellMotion:SweepWithQueries(KhaozEngine.Locomotion.Contacts.ContactQueryContext,System.Numerics.Vector3,float,System.Numerics.Vector2,byref,float,byref,System.Func`3[float,float,System.Numerics.Vector2]):KhaozEngine.Locomotion.Contacts.ShellSweep (FullOpts)",
+      "FixedFrameBytes": 1664
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.GroundCore:Direction(System.Numerics.Vector2):System.Numerics.Vector2 (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.GroundSeat:Resolve(KhaozEngine.Locomotion.Contacts.ContactQueryContext,byref,System.Numerics.Vector2,float,System.Numerics.Vector2,System.Numerics.Vector2,float,byref,float):KhaozEngine.Locomotion.Contacts.GroundSeatResult (FullOpts)",
+      "FixedFrameBytes": 1072
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.GroundSeat:Query(System.Numerics.Vector2,byref,float,float,byref,float):KhaozEngine.Locomotion.Contacts.FootSupportQuery (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.GroundSeat:StepPart(float,byref,System.Numerics.Vector2,float,System.Numerics.Vector2):float (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.GroundSeat:DiscreteStep(byref,System.Numerics.Vector2,byref,System.Numerics.Vector2):float (FullOpts)",
+      "FixedFrameBytes": 112
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.GroundSeat:PlaneRise(byref,System.Numerics.Vector2,double,double):double (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.GroundCore+Tick:AccountDiscrete(double):this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.SupportCertification:RequirePolygonScope(int,byte,double,System.ReadOnlySpan`1[KhaozEngine.Physics.SupportFootprintMember],System.ReadOnlySpan`1[ulong],int,System.ReadOnlySpan`1[double],System.ReadOnlySpan`1[byte],System.Numerics.Vector2,byref) (FullOpts)",
+      "FixedFrameBytes": 368
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.SupportCertification:RequirePlaneInScope(System.Numerics.Vector2,double,double,byref) (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.SupportCertification:RequireWitnessInScope(byref,byref) (FullOpts)",
+      "FixedFrameBytes": 64
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.CapsuleTreePreflight:ValidChild(byref,byref):bool (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.GroundPlacement:NotAbove(double):float (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.SupportSample:ToString():System.String:this (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.SupportSample:PrintMembers(System.Text.StringBuilder):bool:this (FullOpts)",
+      "FixedFrameBytes": 80
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.GroundCore:Budget(byref,float):double (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.PenetrationCallbacks:Accumulate[BepuPhysics.CollisionDetection.ConvexContactManifold](byref):this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld+QueryView:Raycast(System.Numerics.Vector3,System.Numerics.Vector3,float,byref,KhaozEngine.Physics.QueryFilter):bool:this (FullOpts)",
+      "FixedFrameBytes": 96
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.BepuPhysicsWorld:RaycastCore(System.Numerics.Vector3,System.Numerics.Vector3,float,byref,KhaozEngine.Physics.QueryFilter,KhaozEngine.Physics.Bepu.StaticQueryExclusions):bool:this (FullOpts)",
+      "FixedFrameBytes": 384
+    },
+    {
+      "Method": "KhaozEngine.Physics.Bepu.PenetrationCallbacks:Accumulate[BepuPhysics.CollisionDetection.NonconvexContactManifold](byref):this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.ContactController:Bound(byref,byref,System.Func`3[float,float,System.Numerics.Vector2]):KhaozEngine.Locomotion.Contacts.ContactController+ContactTickContinuation (FullOpts)",
+      "FixedFrameBytes": 2096
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.AirPass:<StepWithMedium>g__Handoff|3_0(System.Numerics.Vector3,KhaozEngine.Locomotion.Contacts.SupportSample,byte,float,byref):KhaozEngine.Locomotion.Contacts.AirStepResult (FullOpts)",
+      "FixedFrameBytes": 144
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.ContactController:.cctor() (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.GroundCore+Tick:DeniedMediumSeat(KhaozEngine.Locomotion.Contacts.GroundCore+Attempt,KhaozEngine.Locomotion.Contacts.GroundCore+Attempt):KhaozEngine.Locomotion.Contacts.GroundCore+Attempt:this (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.LeasedContactQueryContext:ConstrainGroundDescent(System.Numerics.Vector3,System.Numerics.Vector3,System.Numerics.Vector3,float,float,byref):bool:this (FullOpts)",
+      "FixedFrameBytes": 544
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.GroundSeat:Wall(float,byref,System.Numerics.Vector3,System.Numerics.Vector2):KhaozEngine.Locomotion.Contacts.GroundSeatResult (FullOpts)",
+      "FixedFrameBytes": 144
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.SlideCore:Step(System.Numerics.Vector3,System.Numerics.Vector2,float,System.Numerics.Vector2,float,byref,byref,float,byref,KhaozEngine.Locomotion.Contacts.ContactQueryContext,System.Nullable`1[double],System.Func`3[float,float,System.Numerics.Vector2],KhaozEngine.Locomotion.Contacts.ContactMediumPolicy):KhaozEngine.Locomotion.Contacts.SlideStepResult (FullOpts)",
+      "FixedFrameBytes": 1120
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.GroundCore:SlideSubsteps(System.Numerics.Vector2,System.Numerics.Vector3,byref):int (FullOpts)",
+      "FixedFrameBytes": 32
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.SlideCore:Toward(float,float):float (FullOpts)",
+      "FixedFrameBytes": 16
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.SlideCore:Opposed(System.Numerics.Vector3,byref,byref,byref,float,KhaozEngine.Locomotion.Contacts.ContactQueryContext):bool (FullOpts)",
+      "FixedFrameBytes": 224
+    },
+    {
+      "Method": "KhaozEngine.Locomotion.Contacts.SlideCore:InContact(System.Numerics.Vector3,byref,byref,float,KhaozEngine.Locomotion.Contacts.ContactQueryContext,byref):bool (FullOpts)",
+      "FixedFrameBytes": 224
+    }
+  ]
+}

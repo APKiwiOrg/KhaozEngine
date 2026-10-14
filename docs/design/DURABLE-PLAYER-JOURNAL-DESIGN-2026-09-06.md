@@ -1,5 +1,7 @@
 # Durable player mutation journal design
 
+Consumer-prefixed paths and `c-consumer.md` citations describe an anonymized historical consumer snapshot.
+
 **Status:** R1 code targets KhaozEngine 18.31.0. The in-memory, SQLite, SQL Server, recovery, process-kill,
 scaling, benchmark, and packaging gates passed. Publication is authoritative only when the remote `v18.31.0` tag
 and package exist. Current API and operations guidance lives in the
@@ -7,7 +9,7 @@ and package exist. Current API and operations guidance lives in the
 [`USING-KHAOZENGINE.md`](../USING-KHAOZENGINE.md). This document keeps the rationale. Engine program
 [#835](https://github.com/APKiwiOrg/KhaozEngine/issues/835), first consumer
 [Grimhollow #137](https://github.com/APKiwiOrg/Grimhollow/issues/137), sibling adoption
-[Ruinborne #467](https://github.com/APKiwiOrg/Ruinborne/issues/467).
+consumer report.
 
 ## 1. Decision
 
@@ -36,7 +38,7 @@ The admin inspection publisher also rebuilds every online player's full detail d
 At 1,000 players that fixed scan performs roughly 2.1 million slot and skill reads per second before JSON
 allocation and transport.
 
-Ruinborne is further ahead. Inventory and equipment are relational and most inventory operations commit in
+The reference consumer is further ahead. Inventory and equipment are relational and most inventory operations commit in
 SQL transactions before the new bag is sent to the client. The remaining gap is the operation boundary.
 Loot pickup can commit the item and then lose the reply, kill rewards span several independent writes, and
 the forensic economy ledger uses a drop-oldest batcher. Those pieces cannot prove one durable outcome after
@@ -541,7 +543,7 @@ backend conformance cases. Aggregate limits prevent the larger per-field maxima 
 unbounded allocation or SQL transaction. A commit also verifies that its replacement sections leave the
 stream at no more than 64 sections and 8 MiB total. Request-local size failures throw before I/O. A stored-state
 projection limit discovered only after locking current section metadata rolls back and raises
-`ConstraintViolation` with `DefinitelyNotCommitted`. Grimhollow and Ruinborne fit far below these limits.
+`ConstraintViolation` with `DefinitelyNotCommitted`. Grimhollow and the reference consumer fit far below these limits.
 
 ## 8. Recovery and compaction
 
@@ -778,18 +780,18 @@ The admin detail view merges the returned changed sections into its local model.
 version and last update time. Inventory, worn equipment, bank, skills, health, and quests therefore stay near
 live without adding a simulation tick payload.
 
-## 13. Ruinborne adoption scope
+## 13. The reference consumer adoption scope
 
-Ruinborne gets a committed game-side adoption design in this program, but its gameplay migration follows after
+The reference consumer gets a committed game-side adoption design in this program, but its gameplay migration follows after
 Grimhollow proves the released engine contract.
 
-Ruinborne initializes a version-zero journal snapshot from `player_character` and `character_inventory`. It
+The reference consumer initializes a version-zero journal snapshot from `player_character` and `character_inventory`. It
 does not manufacture historical events. Existing relational rows remain game-owned materialized read models
 during adoption, each guarded by a source journal version so an asynchronous projector can apply replacement
 state idempotently. Gameplay recovery reads the journal snapshot and tail, not a potentially lagging projection.
 Commit completion updates the compatibility rows in normal operation. Login recovery and a partitioned audit
 sweep compare their source versions with journal heads and repair any crash gap. They are transition aids, not
-the exact near-live admin source. Ruinborne's adoption design decides whether to retire them or add a dedicated
+the exact near-live admin source. The reference consumer's adoption design decides whether to retire them or add a dedicated
 game-owned change feed before calling the migration complete.
 
 The later gameplay implementation routes these boundaries through the journal:
@@ -806,7 +808,7 @@ The existing `world_store` transform and ability-cooldown checkpoint remains sep
 buff, and selected-weapon caches are reviewed individually and move only if the game decides they must survive
 a crash. The current batched economy ledger stays a best-effort forensic sink and cannot decide ownership.
 
-Ruinborne's admin app reads exact current ownership from the journal's synchronous section projections during
+The reference consumer's admin app reads exact current ownership from the journal's synchronous section projections during
 adoption. Existing relational screens may remain where their materializer is current, but they show source
 journal version and projection freshness. Any lag or materializer failure is visible rather than silently
 presenting an old bank as current.
@@ -926,15 +928,15 @@ the affected stream and refuses login. It is not skipped to keep the player movi
 - add process-kill, unknown-outcome, SQL-outage, and load tests
 - deploy behind an explicit migration gate, observe, then remove the legacy state writer
 
-### R3. Ruinborne design handoff
+### R3. The reference consumer design handoff
 
-- commit the game-side adoption design against Ruinborne's exact tables and mutation services
+- commit the game-side adoption design against the reference consumer's exact tables and mutation services
 - map every route to an operation identity and stream set
 - specify versioned materializer changes and rollout gates
 - leave gameplay changes tracked in
-  [Ruinborne #467](https://github.com/APKiwiOrg/Ruinborne/issues/467)
+  consumer report
 
-R3 documentation may proceed beside R2. Ruinborne gameplay code waits until the Grimhollow proof and the engine
+R3 documentation may proceed beside R2. The reference consumer gameplay code waits until the Grimhollow proof and the engine
 release are available.
 
 ## 18. Alternatives rejected
@@ -987,4 +989,4 @@ The program is complete when:
 - Grimhollow's tick has no full-player inspection or dirty-discovery scan for journal-owned state
 - the admin app reads one selected player's changed projection sections from the database
 - the engine package is released and pinned by Grimhollow
-- Ruinborne has a committed, issue-linked adoption design against its current schema
+- the reference consumer has a committed, issue-linked adoption design against its current schema

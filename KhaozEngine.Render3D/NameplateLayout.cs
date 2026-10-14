@@ -52,21 +52,31 @@ namespace KhaozEngine.Render3D
         /// <paramref name="scale"/>, suffixed with three ASCII dots when it had to be trimmed (the baked font only
         /// covers ASCII 32-126, so the single "…" glyph is deliberately avoided). Returns the text unchanged when it
         /// already fits or <paramref name="maxWidth"/> is non-positive. Used by <see cref="NameplateRenderer"/> to
-        /// honour <see cref="NameplateStyle.MaxWidth"/>.
+        /// honour <see cref="NameplateStyle.MaxWidth"/>. Trimmed text is reused from a bounded cache per thread
+        /// when the measurer, source text, width cap and scale are unchanged.
         /// </summary>
         internal static string Ellipsize(ITextMeasurer font, string text, float maxWidth, float scale)
         {
             if (string.IsNullOrEmpty(text) || maxWidth <= 0f) return text;
             if (font.Measure(text).X * scale <= maxWidth) return text;
 
+            NameplateEllipsisCache cache = NameplateEllipsisCache.Shared;
+            if (cache.TryGet(font, text, maxWidth, scale, out string trimmed)) return trimmed;
+
             const string ellipsis = "...";
             float ellipsisW = font.Measure(ellipsis).X * scale;
+            trimmed = ellipsis;
             for (int len = text.Length - 1; len >= 1; len--)
             {
-                if (font.Measure(text.Substring(0, len)).X * scale + ellipsisW <= maxWidth)
-                    return text.Substring(0, len) + ellipsis;
+                string prefix = text.Substring(0, len);
+                if (font.Measure(prefix).X * scale + ellipsisW <= maxWidth)
+                {
+                    trimmed = prefix + ellipsis;
+                    break;
+                }
             }
-            return ellipsis;
+            cache.Store(font, text, maxWidth, scale, trimmed);
+            return trimmed;
         }
     }
 }

@@ -31,7 +31,7 @@ namespace KhaozEngine.NetWorld;
 /// symptom of losing that race is a player in the wrong cell's coordinates for one tick, which is a 128 m teleport.
 /// </para>
 /// </summary>
-public sealed partial class PlayerMovementSystem : ISystem
+public sealed partial class PlayerMovementSystem : ISystem, IDisposable
 {
     private readonly Func<float, float, float> groundHeight;
     private readonly Func<float, float, Vector3>? groundNormal;
@@ -55,6 +55,16 @@ public sealed partial class PlayerMovementSystem : ISystem
         Func<float, float, Vector3>? groundNormal = null, WorldBounds? bounds = null, IPhysicsWorld? physics = null,
         Func<float, float, float, MovementMedium>? medium = null, WorldFrame frame = default,
         SamplerSpace samplerSpace = SamplerSpace.World)
+        : this(groundHeight, tuning, groundNormal, bounds, physics, medium, frame, samplerSpace,
+            null, null, null, null, null)
+    { }
+
+    private PlayerMovementSystem(Func<float, float, float> groundHeight, MoveTuning tuning,
+        Func<float, float, Vector3>? groundNormal, WorldBounds? bounds, IPhysicsWorld? physics,
+        Func<float, float, float, MovementMedium>? medium, WorldFrame frame, SamplerSpace samplerSpace,
+        ExplicitPlayerMovement? explicitMovement, IMovementWaterField? movementWaterField,
+        OrdinaryMovementRegistration? movementRegistration, MovementBoundary? movementBoundary,
+        EffectiveMovementBinding? borrowedBinding)
     {
         this.groundHeight = groundHeight ?? throw new ArgumentNullException(nameof(groundHeight));
         this.tuning = tuning;
@@ -73,6 +83,17 @@ public sealed partial class PlayerMovementSystem : ISystem
         // Optional fluid-medium provider, mirrored from the authoritative server so every cell wades identically to
         // the client's prediction. Null = dry land everywhere = bit-identical to the pre-medium system.
         this.medium = medium;
+        Binding = borrowedBinding ?? OrdinaryPlayerMovement.Resolve(this.groundHeight, tuning, groundNormal, bounds,
+            physics, medium, samplerSpace, explicitMovement, movementWaterField, movementRegistration, movementBoundary);
+        ownsBinding = borrowedBinding is null;
+        try
+        {
+            if (Binding.UsesLease)
+                explicitSimulator = new(groundHeight, tuning, groundNormal, bounds, physics, medium,
+                    samplerSpace, Binding, explicitMovement)
+                { Frame = frame };
+        }
+        catch { if (ownsBinding) Binding.Dispose(); throw; }
     }
 
     /// <summary>The island frame this system steps in - the owning cell's, fixed at construction.</summary>
@@ -108,7 +129,8 @@ public sealed partial class PlayerMovementSystem : ISystem
 
     public void Update(World world, float dt)
     {
-        if (explicitSimulator is not null) PrepareExplicitOwners(world);
+        ObjectDisposedException.ThrowIf(disposed, this);
+        if (Binding.UsesLease) PrepareExplicitOwners(world);
         // Built once per Update rather than per entity, and skipped entirely on an unframed cell, so the framed path
         // costs one delegate allocation per cell per tick and the unframed path costs nothing.
         Func<float, float, float> ground = adaptSamplers ? GroundHeightIn : groundHeight;

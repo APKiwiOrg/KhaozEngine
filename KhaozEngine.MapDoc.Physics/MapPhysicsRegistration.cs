@@ -125,7 +125,8 @@ public sealed class MapPhysicsRegistration : IDisposable
     /// <summary>A ground move context over a resolver-1 world, with its global water medium only when
     /// <paramref name="legacyGlobalWater"/> is true. Feet strictly below <see cref="MapBuiltWorld.LegacyWaterLevel"/>
     /// are in water. Keeps the analytic support height, physics world, playable clamp, no ground normal and no query
-    /// selection. Throws <see cref="MapDocumentException"/> for a native world.</summary>
+    /// selection. Throws <see cref="MapDocumentException"/> for a native world. The context records a legacy-only
+    /// construction restriction and refuses a later contact tuning with a message naming native G1b.</summary>
     public GroundMoveContext CreateLegacyMoveContext(bool legacyGlobalWater)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -137,7 +138,8 @@ public sealed class MapPhysicsRegistration : IDisposable
             medium = (_, _, feetY) => feetY < level ? new MovementMedium(level, true) : MovementMedium.Dry;
         return new GroundMoveContext(height, null, Physics,
             (x, z) => new Vector2(Math.Clamp(x, playable.MinX, playable.MaxX), Math.Clamp(z, playable.MinZ, playable.MaxZ)),
-            medium, null);
+            medium, null, null, null, null,
+            legacyOnlyContactRefusal: "Resolver-1 MapDoc contexts are legacy-only. Native contact movement requires G1b.");
     }
 
     /// <summary>Throws <see cref="ObjectDisposedException"/> once every static has been removed.</summary>

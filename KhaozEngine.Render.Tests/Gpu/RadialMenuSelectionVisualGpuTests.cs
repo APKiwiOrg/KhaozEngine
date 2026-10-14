@@ -50,8 +50,7 @@ namespace KhaozEngine.Tests.Gpu
                 viewport.Update(Width, Height);
 
                 ctx.Batch.Begin(viewport);
-                // AllocAssert may run the 32-call workload twice. Warm that full retained-list capacity so the
-                // retry measures Draw rather than a capacity increase caused by its own accumulated first pass.
+                // Warm twice the measured 32-call workload so the measurement sees Draw rather than list growth.
                 for (int i = 0; i < 64; i++) menu.Draw(ctx.Batch, white, font);
                 ctx.Batch.End();
 

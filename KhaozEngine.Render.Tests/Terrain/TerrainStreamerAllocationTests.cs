@@ -30,8 +30,6 @@ namespace KhaozEngine.Tests.Terrain
 
             for (int i = 0; i < 4; i++) streamer.NearestFirstForTest(pos, cs);   // warm-up
 
-            // Retries once before failing (see AllocAssert.NoPerCallAllocation) to ride out an unrelated gen-0
-            // collision from the rest of the process, per issue #284.
             AllocAssert.NoPerCallAllocation("NearestFirst over 20 calls", () =>
             {
                 for (int i = 0; i < 20; i++) streamer.NearestFirstForTest(pos, cs);

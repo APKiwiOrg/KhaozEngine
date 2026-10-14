@@ -94,7 +94,7 @@ public static class ItemsBenchmarkRunner
 
         GeneratedRares pool = GeneratedRares.Build(generator, content, random, 10_000);
         ResidentMeasurement resident = ItemsMemoryMeasurements.MeasureResident(
-            pool, allocator, config.Players, config.BankPagesPerPlayer, ContentVersion);
+            pool, allocator, config.ResidentPlayers, config.BankPagesPerPlayer, ContentVersion);
         ScaleMeasurement scale = ItemsMemoryMeasurements.MeasureScale(
             pool, allocator, config.ScaleInstances, ContentVersion);
         GC.KeepAlive(pool);
@@ -177,7 +177,7 @@ public static class ItemsBenchmarkRunner
             Budget11GroundInstances = ItemsCodecMeasurements.GroundInstancesInInterest,
             Budget11TickSeconds = ItemsCodecMeasurements.TileTickSeconds,
             Budget11BytesPerViewerPerSecond = codec.GroundBytesPerViewerPerSecond,
-            Budget12Players = config.Players,
+            Budget12Players = config.ResidentPlayers,
             Budget12PagesPerPlayer = config.BankPagesPerPlayer,
             Budget12PageBytesSum = resident.PageBytesSum,
             Budget12PageResidentBytes = resident.PageResidentBytes,

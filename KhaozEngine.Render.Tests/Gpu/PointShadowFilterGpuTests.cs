@@ -199,26 +199,6 @@ public sealed class PointShadowFilterGpuTests(PointShadowScene fixture, ITestOut
         }
     }
 
-    /// <summary>A series with its least-squares straight line taken out, so a local bump is readable against a
-    /// slow trend.</summary>
-    static float[] Detrend(float[] series)
-    {
-        int n = series.Length;
-        float meanX = (n - 1) / 2f, meanY = 0f;
-        foreach (float y in series) meanY += y;
-        meanY /= n;
-        float sxx = 0f, sxy = 0f;
-        for (int i = 0; i < n; i++)
-        {
-            sxx += (i - meanX) * (i - meanX);
-            sxy += (i - meanX) * (series[i] - meanY);
-        }
-        float slope = sxy / sxx;
-        var residual = new float[n];
-        for (int i = 0; i < n; i++) residual[i] = series[i] - (meanY + slope * (i - meanX));
-        return residual;
-    }
-
     /// <summary>
     /// NO SEAM WHERE THE EDGE CROSSES A CUBE FACE. A wider kernel built the old way, with every tap clamped inside
     /// its own face cell, stops reading at the 45 degree plane and the average jumps the moment the edge crosses
@@ -226,12 +206,17 @@ public sealed class PointShadowFilterGpuTests(PointShadowScene fixture, ITestOut
     /// along z = 1.5x, crossing from the -Y face onto the +Z face at x = 3.333, and the case walks ALONG that edge
     /// through the crossing.
     /// <para>
-    /// WHAT IS MEASURED AT EACH STATION IS AN INTEGRAL, not a level. The filter's disc is rotated per fragment, so
-    /// one texel of a nine-tap average carries up to a ninth of dither noise and a single-texel reading cannot
-    /// resolve anything smaller than that. Each station instead scans ACROSS the edge and sums the shadowed part of
-    /// the profile, which is how far the shadow reaches into a fixed window, in metres. That number is smooth
-    /// along a clean edge, it moves if either the position or the width of the penumbra moves, and averaging forty
-    /// probes takes the dither out of it.
+    /// WHAT IS MEASURED AT EACH STATION IS AN AREA INTEGRAL, not a level and not a row of probes. The filter's
+    /// disc is rotated per fragment, so one pixel of a nine-tap average carries up to a ninth of dither noise.
+    /// <see cref="FaceSeamReach"/> averages the shadowed part of every pixel in a band across the edge, which is
+    /// how far the shadow reaches into a fixed window, in metres, and fits the edge's own drift on the stations
+    /// away from the crossing. A clamped kernel is a bump about three stations wide centred on the crossing, so
+    /// the bump is the mean of stations 3 to 5 against that line.
+    /// </para>
+    /// <para>
+    /// THE BOUND IS PROVEN TO CATCH THE SEAM IT NAMES. Rendered with every tap projected onto the receiver's own
+    /// face and clamped inside its cell, this scene measures +24.6 mm against the 8 mm bound, and
+    /// <see cref="FaceSeamReachTests"/> replays that capture headless so the proof runs on every leg.
     /// </para>
     /// </summary>
     [GpuFact]
@@ -244,46 +229,23 @@ public sealed class PointShadowFilterGpuTests(PointShadowScene fixture, ITestOut
         PointShadowScene.Shot plain = Wall(light, LightShadow.None, budget);
         PointShadowScene.Shot soft = Wall(light, LightShadow.Static(307), budget);
 
-        // Across the edge: the boundary line runs along (1, 1.5) normalised, so this points out of the lit side
-        // and into the shadowed one.
-        var across = Vector3.Normalize(new Vector3(1.5f, 0f, -1f));
-        const float window = 0.9f;
-        const int stations = 13, probes = 60;
+        FaceSeamReach.Measurement seam = FaceSeamReach.Measure(PointShadowScene.Width, PointShadowScene.Height,
+            fixture.Pixel, (x, y) =>
+            {
+                int at = (y * PointShadowScene.Width + x) * 4;
+                int lit = plain.Rgba[at];
+                Assert.True(lit > 24,
+                    $"the unshadowed capture reads {lit} at pixel ({x}, {y}), too dark to divide by. Move the "
+                    + "band inside the light's reach or raise the intensity.");
+                return soft.Rgba[at] / (float)lit;
+            });
+        output.WriteLine("face seam: " + seam.Describe());
 
-        var reach = new float[stations];
-        for (int s = 0; s < stations; s++)
-        {
-            float x = 2.9f + s * 0.1f;                       // the crossing at x = 3.333 falls in station 4 to 5
-            var on = new Vector3(x, 0f, 1.5f * x);
-            float[] profile = Profile(soft, plain, on - across * window, on + across * window, probes);
-            Assert.True(profile[0] > 0.9f && profile[^1] < 0.1f,
-                $"the cross-edge window at {on} runs {profile[0]:0.00} to {profile[^1]:0.00}, so it does not "
-                + "reach clear of the penumbra at both ends and the integral below is clipped");
-            float sum = 0f;
-            foreach (float v in profile) sum += 1f - v;
-            reach[s] = sum * 2f * window / probes;
-        }
-
-        // The reach drifts slowly along the edge, because the receiver is getting further from the light and the
-        // penumbra is widening with it, so the drift is taken out with a least-squares line and what is left is
-        // the RESIDUAL. A clamped kernel does not show up as one step: it is a bump three stations wide, centred
-        // on the crossing, which is why the residuals are averaged over that neighbourhood rather than differenced
-        // pairwise. Station 4 is x = 3.30 and station 5 is x = 3.40, so stations 3 to 5 straddle the crossing at
-        // 3.333 with the kernel's own reach either side of it.
-        float[] residual = Detrend(reach);
-        float bump = (residual[3] + residual[4] + residual[5]) / 3f;
-        float worstElsewhere = 0f;
-        for (int s = 0; s < stations; s++)
-            if (s is < 3 or > 5) worstElsewhere = Math.Max(worstElsewhere, Math.Abs(residual[s]));
-        output.WriteLine($"face seam: crossing bump {bump:0.0000} m, largest residual elsewhere "
-            + $"{worstElsewhere:0.0000} m; reach "
-            + string.Join(", ", Array.ConvertAll(reach, r => r.ToString("0.000"))));
-
-        Assert.True(Math.Abs(bump) <= 0.008f,
-            $"the shadow's reach into the window sits {bump:0.0000} m off its own trend across the three stations "
-            + $"either side of the cube face boundary at x = 3.333, against {worstElsewhere:0.0000} m anywhere "
-            + "else along the same edge. That is a tap clamped inside its own face cell instead of crossing to "
-            + "the neighbouring face");
+        Assert.True(Math.Abs(seam.Bump) <= FaceSeamReach.Bound,
+            $"the shadow's reach into the window sits {seam.Bump * 1000f:0.00} mm off the edge's own trend across "
+            + "the three stations either side of the cube face boundary at x = 3.333, against "
+            + $"{seam.WorstElsewhere * 1000f:0.00} mm at any other station. That is a tap clamped inside its own "
+            + "face cell instead of crossing to the neighbouring face");
     }
 
     /// <summary>

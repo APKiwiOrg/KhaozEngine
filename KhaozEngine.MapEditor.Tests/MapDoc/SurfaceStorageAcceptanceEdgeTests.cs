@@ -13,6 +13,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.MapDoc;
 
+[Collection("AllocSensitive")]
 public sealed class SurfaceStorageAcceptanceEdgeTests
 {
     static readonly MapPatchKey Crossed = new("ground", 0, 0), Anchor = new("ridge", 0, 0),
@@ -53,10 +54,11 @@ public sealed class SurfaceStorageAcceptanceEdgeTests
             Assert.Equal(tiny, MapSurfaceStorageLayout.Read(dir, 'i', tinyDigest));
 
             MapDocumentException? refusal = null;
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            try { _ = MapSurfaceStorageLayout.Read(dir, 'i', digest); }
-            catch (MapDocumentException ex) { refusal = ex; }
-            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            long allocated = AllocationMeasurement.Measure("An oversized surface file read", () =>
+            {
+                try { _ = MapSurfaceStorageLayout.Read(dir, 'i', digest); }
+                catch (MapDocumentException ex) { refusal = ex; }
+            });
             Assert.NotNull(refusal);
             Assert.Contains("byte limit", refusal!.Message);
             // The entire measured call must allocate less than the oversized file's byte count.

@@ -74,22 +74,14 @@ namespace KhaozEngine.Tests.Gpu
                 "the measured frames must run the default sharpen on the display chain and not on the capture's");
             Assert.True(scene.LastTemporalDiagnostics.HistoryValid);
 
-            long first = Allocated(() => Frames(Measured));
-            long retry = first == 0 ? 0 : Allocated(() => Frames(Measured));   // one retry, as AllocAssert allows
-            output.WriteLine($"{Measured} steady resolving frames with a capture each: {first} bytes, retry {retry}");
-            Assert.True(retry == 0,
-                $"{Measured} steady resolving frames with a capture each allocated {first} bytes and {retry} on the retry");
+            string what = $"{Measured} steady resolving frames with a capture each";
+            long allocated = AllocationMeasurement.Measure(what, () => Frames(Measured));
+            output.WriteLine($"{what}: {allocated} bytes");
+            Assert.True(allocated == 0, $"{what} allocated {allocated} bytes");
             Assert.True(scene.LastTemporalDiagnostics.HistoryValid, "the captures reset the main view's history");
         }
 
         static IGpuTexture Target(IGpuDevice gd) => gd.Factory.CreateTexture(GpuTextureDescription.Texture2D(W, H,
             GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
-
-        static long Allocated(Action frames)
-        {
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            frames();
-            return GC.GetAllocatedBytesForCurrentThread() - before;
-        }
     }
 }

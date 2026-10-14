@@ -19,7 +19,9 @@ namespace KhaozEngine.Tests.Catalog.Format;
 /// refusals are taken from the 36 header bytes BEFORE any allocation, because the hash is over the
 /// uncompressed bytes and so cannot bound the decompression it sits behind.
 /// </para>
+/// The size refusal's allocation bound holds a process-wide no-GC region, so the class joins <c>AllocSensitive</c>.
 /// </summary>
+[Collection("AllocSensitive")]
 public class ContentChunkCodecTests
 {
     /// <summary>Spec 7.9's worked chunk, 36 header bytes then the 25 body bytes, as the hash sees them.</summary>
@@ -394,9 +396,11 @@ public class ContentChunkCodecTests
             ContentChunkCodec.TryDecode(file, registry, out _, out _);
         }
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        bool decoded = ContentChunkCodec.TryDecode(file, registry, out ContentChunk? chunk, out string? reason);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        bool decoded = true;
+        ContentChunk? chunk = null;
+        string? reason = null;
+        long allocated = AllocationMeasurement.Measure("a size refusal",
+            () => decoded = ContentChunkCodec.TryDecode(file, registry, out chunk, out reason));
 
         Assert.False(decoded);
         Assert.Null(chunk);

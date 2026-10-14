@@ -163,9 +163,7 @@ namespace KhaozEngine.Tests.Render3D.Animation
             int layersAfterFirst = anim.LayerCount;
 
             // Now play several more, each start-to-retire. The layer count must NOT grow (slot reused), and the steady
-            // state must allocate nothing (PlayAction on a reused slot + the compositing frames). Retries once
-            // before failing (see AllocAssert.NoPerCallAllocation) to ride out an unrelated gen-0 collision from
-            // the rest of the process, per issue #284.
+            // state must allocate nothing (PlayAction on a reused slot + the compositing frames).
             AllocAssert.NoPerCallAllocation("sequential actions (slot not reused?)", () =>
             {
                 for (int i = 0; i < 6; i++) RunOneAction(anim, skel, action, dt);

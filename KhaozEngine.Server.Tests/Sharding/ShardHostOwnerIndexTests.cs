@@ -205,10 +205,9 @@ public class ShardHostOwnerIndexTests
 /// to the rest of the assembly, because xUnit reuses worker threads across collections and a gen-0 collection
 /// triggered by a parallel class can land inside the measurement window and be attributed here.
 /// <para>That is issue #264, nine sightings across CI legs and dev machines measuring 440, 1464, 1944, 2360, 5976,
-/// 7384 and 8192 bytes, every one of them passing in isolation immediately afterwards. Two defences, matching
-/// what the assembly's other allocation-sensitive classes already carry: this collection keeps the measurement off
-/// the parallel pool, and <see cref="AllocAssert.NoPerCallAllocation"/> retries once so a single stray collection
-/// cannot fail the run while a real per-lookup allocation still fails both passes.</para>
+/// 7384 and 8192 bytes, every one of them passing in isolation immediately afterwards. This collection keeps the
+/// measurement off the parallel pool, and <see cref="AllocAssert.NoPerCallAllocation"/> measures once inside a
+/// checked no-GC region, so a collection inside the window fails as an invalid measurement instead of a byte count.</para>
 /// </summary>
 [Collection("AllocSensitive")]
 public class ShardHostOwnerIndexAllocationTests

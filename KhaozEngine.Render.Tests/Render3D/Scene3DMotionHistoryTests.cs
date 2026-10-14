@@ -210,7 +210,6 @@ public sealed class Scene3DMotionHistoryTests
         for (int i = 0; i < 4; i++) Frame();
         Assert.Equal((500, 16, 0), scene.MotionKeyCounts);   // not vacuous: every draw is keyed and recorded
 
-        // Retries once before failing (see AllocAssert.NoPerCallAllocation), per issue #284.
         AllocAssert.NoPerCallAllocation("20 steady temporal frames of 500 keyed rigid and 16 keyed skinned draws", () =>
         {
             for (int i = 0; i < 20; i++) Frame();

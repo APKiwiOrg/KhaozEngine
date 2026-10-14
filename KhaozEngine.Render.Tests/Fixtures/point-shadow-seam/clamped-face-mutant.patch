@@ -1,0 +1,48 @@
+diff --git a/KhaozEngine.Render3D/Internal/ShaderSources.Lighting.cs b/KhaozEngine.Render3D/Internal/ShaderSources.Lighting.cs
+index 68c12ffc8..5962d83e0 100644
+--- a/KhaozEngine.Render3D/Internal/ShaderSources.Lighting.cs
++++ b/KhaozEngine.Render3D/Internal/ShaderSources.Lighting.cs
+@@ -187,6 +187,25 @@ float pointShadowDepthAt(texture2D atlas, sampler samp, vec3 dir, float slot) {
+     return textureLod(sampler2D(atlas, samp), tap, 0.0).r;
+ }
+ 
++// SEAM CONTROL MUTANT: every tap projected onto the RECEIVER's face and clamped inside that face's cell.
++float pointShadowDepthAtClamped(texture2D atlas, sampler samp, vec3 t, vec3 base, float slot) {
++    float face; vec2 unusedUv;
++    pointShadowFace(base, face, unusedUv);
++    float ma; float sc; float tc;
++    if (face < 0.5) { ma = t.x; sc = -t.z; tc = -t.y; }
++    else if (face < 1.5) { ma = -t.x; sc = t.z; tc = -t.y; }
++    else if (face < 2.5) { ma = t.y; sc = t.x; tc = t.z; }
++    else if (face < 3.5) { ma = -t.y; sc = t.x; tc = -t.z; }
++    else if (face < 4.5) { ma = t.z; sc = t.x; tc = -t.y; }
++    else { ma = -t.z; sc = -t.x; tc = -t.y; }
++    vec2 uv = (vec2(sc, tc) / max(ma, 1e-6)) * 0.5 + 0.5;
++    vec2 texel = PointShadowAtlas.xy;
++    vec2 cellSize = vec2(1.0 / PointShadowAtlas.w, 1.0 / max(PointShadowAtlas.z, 1.0));
++    vec2 cellMin = vec2(face, slot) * cellSize;
++    vec2 tap = clamp(cellMin + uv * cellSize, cellMin + texel * 0.5, cellMin + cellSize - texel * 0.5);
++    return textureLod(sampler2D(atlas, samp), tap, 0.0).r;
++}
++
+ // The per-fragment rotation of both discs below, off the ABSOLUTE world position (the render-frame one plus the
+ // render origin). Nailing it to the world rather than to the screen is what stops the dither crawling over a
+ // surface as the camera moves, and taking the origin in means a floating-origin shift does not re-roll it either.
+@@ -214,7 +233,7 @@ float pointShadowBlockerSearch(texture2D atlas, sampler samp, vec3 dir, vec3 tx,
+             float r = (i % 2 == 0) ? 0.55 : 1.0;                // two rings on one pass
+             t = normalize(dir + (tx * cos(a) + ty * sin(a)) * (searchAngle * r));
+         }
+-        float stored = pointShadowDepthAt(atlas, samp, t, slot);
++        float stored = pointShadowDepthAtClamped(atlas, samp, t, dir, slot);
+         if (stored + bias < d) { sum += stored; hits += 1.0; }  // this tap has something in front of the receiver
+     }
+     return hits > 0.0 ? sum / hits : -1.0;
+@@ -231,7 +250,7 @@ float pointShadowFilterDisc(texture2D atlas, sampler samp, vec3 dir, vec3 tx, ve
+         float a = rotation + float(i) * 0.7853982;              // 45 degrees apart
+         float r = (i % 2 == 0) ? 0.6 : 1.0;
+         vec3 t = normalize(dir + (tx * cos(a) + ty * sin(a)) * (angle * r));
+-        lit += step(d, pointShadowDepthAt(atlas, samp, t, slot) + bias);
++        lit += step(d, pointShadowDepthAtClamped(atlas, samp, t, dir, slot) + bias);
+     }
+     return lit / 9.0;
+ }

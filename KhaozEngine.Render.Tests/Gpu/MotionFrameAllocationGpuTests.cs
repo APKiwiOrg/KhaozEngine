@@ -49,9 +49,8 @@ public sealed class MotionFrameAllocationGpuTests(ITestOutputHelper output)
         };
 
         fx.Frames(Warm, draw);
-        // The control is measured twice and the smaller kept, so a one-off foreign allocation cannot raise the bar.
-        long without = Math.Min(Allocated(() => fx.Frames(Measured, draw)),
-            Allocated(() => fx.Frames(Measured, draw)));
+        long without = AllocationMeasurement.Measure($"{Measured} steady frames without temporal rendering",
+            () => fx.Frames(Measured, draw));
 
         if (resolve) scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
         else scene.ForceTemporalForTests = true;
@@ -59,8 +58,7 @@ public sealed class MotionFrameAllocationGpuTests(ITestOutputHelper output)
         Assert.NotNull(scene.MotionResourcesForTests);
         Assert.Equal(resolve, scene.ResolvedLastRenderForTests);
         if (resolve) Assert.True(scene.TemporalPostTargetsForTests!.BloomAllocated, "the display chain ran without bloom");
-        long with = Allocated(() => fx.Frames(Measured, draw));
-        if (with > without) with = Allocated(() => fx.Frames(Measured, draw));   // one retry, as AllocAssert allows
+        long with = AllocationMeasurement.Measure($"{Measured} steady temporal frames", () => fx.Frames(Measured, draw));
 
         output.WriteLine($"{Measured} steady frames: {without} bytes without temporal rendering, {with} bytes with it"
             + (resolve ? " and the resolve" : ""));
@@ -68,12 +66,5 @@ public sealed class MotionFrameAllocationGpuTests(ITestOutputHelper output)
         Assert.True(without == 0, $"{Measured} steady frames without temporal rendering allocated {without} bytes");
         Assert.True(with <= without,
             $"{Measured} steady temporal frames allocated {with} bytes, and the same frames without temporal rendering {without}");
-    }
-
-    static long Allocated(Action frames)
-    {
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        frames();
-        return GC.GetAllocatedBytesForCurrentThread() - before;
     }
 }

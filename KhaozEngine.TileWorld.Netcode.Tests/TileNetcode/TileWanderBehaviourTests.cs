@@ -9,6 +9,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.TileNetcode;
 
+[Collection("AllocSensitive")]  // the walk-home measurement holds a process-wide no-GC region
 public class TileWanderBehaviourTests
 {
     // The helpers below are internal rather than private: TileActorStandTests drives the same harness for the
@@ -630,8 +631,8 @@ public class TileWanderBehaviourTests
         WalkHomeUnderOneCommand();
         WalkHomeUnderTheLeash();
 
-        long control = Measure(WalkHomeUnderOneCommand);
-        long leashed = Measure(WalkHomeUnderTheLeash);
+        long control = AllocationMeasurement.Measure("the walk home under one command", () => WalkHomeUnderOneCommand());
+        long leashed = AllocationMeasurement.Measure("the walk home under the leash", () => WalkHomeUnderTheLeash());
 
         // A FindPath at the actor path radius of 12 allocates about 4 KB, and the walk under test is 36 ticks
         // outside the leash, so the budget is four pathfinds of headroom against a re-path that would spend 36.
@@ -639,13 +640,6 @@ public class TileWanderBehaviourTests
         // same walk costing the same bytes.
         Assert.True(leashed - control < 20_000,
             $"the leash walk home allocated {leashed} bytes against {control} for the same walk under one command");
-    }
-
-    static long Measure(Func<int> workload)
-    {
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        workload();
-        return GC.GetAllocatedBytesForCurrentThread() - before;
     }
 
     // The control: an actor whose leash cannot fire on this drag, dragged out and then walked home by ONE latched

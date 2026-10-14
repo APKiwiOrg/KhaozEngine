@@ -66,19 +66,12 @@ public class ProfileAllocationTests
         using var bake = PhysicsNavBake.Capture(new GroundMoveContext((_, _) => 0f, physics: world),
             new PhysicsNavBakeOptions(-8f, -8f, 8f, 8f, 0.25f, 5f, 6f, 0.8f, 4096, 4096), _ => 0u);
 
-        // One retry, as AllocAssert does, so a foreign gen-0 collection inside the window cannot fail a clean build.
-        long allocated = Measure(bake, out GroundNavigation nav);
-        if (allocated > Budget) allocated = Measure(bake, out nav);
+        GroundNavigation nav = null!;
+        long allocated = AllocationMeasurement.Measure("BuildProfile for 4096 columns",
+            () => nav = bake.BuildProfile(Tuning, default), budget: 2 * Budget);
 
         Assert.True(nav.Graph.IsNodePassable(0, 32, 32));
         Assert.True(nav.Graph.CanTraverse(0, 32, 32, 0, 33, 32));
         Assert.True(allocated <= Budget, $"BuildProfile allocated {allocated} bytes for 4096 columns");
-    }
-
-    private static long Measure(PhysicsNavBake bake, out GroundNavigation nav)
-    {
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        nav = bake.BuildProfile(Tuning, default);
-        return GC.GetAllocatedBytesForCurrentThread() - before;
     }
 }

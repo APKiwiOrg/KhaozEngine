@@ -309,8 +309,9 @@ dotnet run --project KhaozEngine.Benchmarks -c Release -- --items --quick --play
 dotnet run --project KhaozEngine.Benchmarks -c Release -- --items --database /tmp/khaoz-items.db
 ```
 
-`--players` drives budgets 12 and 13, `--generations` budget 5, and `--crafts` budget 4. `--seed` picks
-the content set and every draw in it. Always `-c Release`.
+`--players` drives budgets 12 and 13, `--generations` budget 5, and `--crafts` budget 4.
+`--resident-players` sets budget 12's players apart from budget 13's. `--seed` picks the content set and
+every draw in it. Always `-c Release`.
 
 **Baseline note: what the spike's deletion moved.** Replacing the spike's own generator with the shipped
 one re-baselined seed 915, and the fields it moved are wider than budgets 5 and 9. Every one below is

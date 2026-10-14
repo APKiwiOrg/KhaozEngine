@@ -308,33 +308,21 @@ public class TileRemoteReadAllocationTests
             loop.Client.TryGetLatestRemoteTile(remote, out _, out _);
         }
 
-        // THE BEST OF SEVERAL PASSES, because the counter is only accurate to one allocation context. The runtime
-        // reports a thread's allocated bytes as the bytes its contexts were charged less the unused remainder of the
-        // context it is holding, so a context retired inside the measurement window is charged here in full and
-        // reads as thousands of bytes this thread never allocated. Measured on this assembly: one window took 32664
-        // phantom bytes with GC.CollectionCount unmoved in all three generations across it, which is a background
-        // collection that both began and ended outside the window retiring the context inside it. The loop below
-        // allocates nothing and so provokes none of that itself, but the rest of the assembly leaves a heap the
-        // background GC comes for on its own schedule, which is why this only ever failed in a full run.
-        //
-        // A pass that overlapped nothing reads the true cost, so the smallest is taken. A read that genuinely
-        // allocated would allocate on EVERY pass and cannot hide behind the minimum.
+        // A context retired inside a plain counter window is charged to this thread in full, and a background
+        // collection that began and ended outside the window can retire one. The checked no-GC region keeps
+        // collections out of the window, so one measurement reads the true cost.
         const int iterations = 20000;
-        const int passes = 5;
         int hits = 0;
-        long allocated = long.MaxValue;
-        for (int pass = 0; pass < passes; pass++)
+        long allocated = AllocationMeasurement.Measure($"{iterations * 2} remote tile reads", () =>
         {
-            long before = GC.GetAllocatedBytesForCurrentThread();
             for (int i = 0; i < iterations; i++)
             {
                 if (loop.Client.TryGetLatestRemoteTile(remote, out _, out _)) hits++;
                 if (loop.Client.TryGetLatestRemoteTile(9999, out _, out _)) hits++;
             }
-            allocated = Math.Min(allocated, GC.GetAllocatedBytesForCurrentThread() - before);
-        }
+        });
 
-        Assert.Equal(iterations * passes, hits);   // sanity: the loop actually read a live remote every time
+        Assert.Equal(iterations, hits);   // sanity: the loop actually read a live remote every time
         Assert.True(allocated < 4096,
             $"the read allocated {allocated} bytes over {iterations * 2} calls, which is not a free read");
     }

@@ -139,10 +139,14 @@ public sealed class NameplateLegacyTemplateTests
                 Assert.True(NameplateRenderer.DrawAt(ref canvas, anchor, plate, style, 1000, 1000, ref state));
         GC.GetAllocatedBytesForCurrentThread();
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < styles.Length; i++)
-            NameplateRenderer.DrawAt(ref canvas, anchor, plate, styles[i], 1000, 1000, ref state);
-        long after = GC.GetAllocatedBytesForCurrentThread();
+        long before, after;
+        using (AllocationRegion.Start("warm legacy draws across twelve styles"))
+        {
+            before = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < styles.Length; i++)
+                NameplateRenderer.DrawAt(ref canvas, anchor, plate, styles[i], 1000, 1000, ref state);
+            after = GC.GetAllocatedBytesForCurrentThread();
+        }
 
         Assert.Equal(before, after);
     }
@@ -163,9 +167,14 @@ public sealed class NameplateLegacyTemplateTests
         int warmCalls = canvas.Calls;
         GC.GetAllocatedBytesForCurrentThread();
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        bool drawn = NameplateRenderer.DrawAt(ref canvas, anchor, plate, style, 1000, 1000, ref state);
-        long after = GC.GetAllocatedBytesForCurrentThread();
+        long before, after;
+        bool drawn;
+        using (AllocationRegion.Start($"a warm legacy draw with {barCount} bars"))
+        {
+            before = GC.GetAllocatedBytesForCurrentThread();
+            drawn = NameplateRenderer.DrawAt(ref canvas, anchor, plate, style, 1000, 1000, ref state);
+            after = GC.GetAllocatedBytesForCurrentThread();
+        }
 
         Assert.True(drawn);
         Assert.Equal(warmCalls + warmCalls / 2, canvas.Calls);

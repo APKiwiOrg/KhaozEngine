@@ -211,10 +211,15 @@ public sealed class NameplateContentTests
         Assert.True(SetAndGet(content));
         GC.GetAllocatedBytesForCurrentThread();
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        content.Clear();
-        bool found = SetAndGet(content);
-        long after = GC.GetAllocatedBytesForCurrentThread();
+        long before, after;
+        bool found;
+        using (AllocationRegion.Start("a warm content set and get"))
+        {
+            before = GC.GetAllocatedBytesForCurrentThread();
+            content.Clear();
+            found = SetAndGet(content);
+            after = GC.GetAllocatedBytesForCurrentThread();
+        }
 
         Assert.True(found);
         Assert.Equal(before, after);

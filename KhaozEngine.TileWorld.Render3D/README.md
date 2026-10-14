@@ -585,7 +585,8 @@ options.AnimatedFoliageStyles = new Dictionary<string, AnimatedFoliageStyle>
 
 Use IDs from your own catalogs. Styles are detached snapshots, validated before submission and
 compared by value each draw. Changing the selection or a style, including mutating a supplied map,
-invalidates affected cached splits. Removing a style restores Blade motion and casting off. Overrides
+invalidates only the cached splits that draw a changed archetype. Other splits keep their retained
+batches. Removing a style restores Blade motion and casting off. Overrides
 and dirty rebuilds also invalidate affected splits. Short-cover motion/casting maps do not override
 selected props' styles. This changes presentation only, with picking and collision left to world data.
 

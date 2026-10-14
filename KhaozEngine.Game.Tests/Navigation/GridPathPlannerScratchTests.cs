@@ -144,23 +144,8 @@ public class GridPathPlannerScratchTests
         // An equal path built directly allocates its waypoint array, the read-only view and the path.
         Func<NavPath> pathOnly = () => new NavPath(path.Status, new NavWaypoint[path.Waypoints.Count]);
         pathOnly();
-        long expected = Measure(pathOnly);
-        long actual = Measure(query);
-        if (actual != expected)
-        {
-            // One retry, as AllocAssert does, for a foreign collection landing in the window.
-            expected = Measure(pathOnly);
-            actual = Measure(query);
-        }
+        long expected = AllocationMeasurement.Measure($"{description} path alone", () => GC.KeepAlive(pathOnly()));
+        long actual = AllocationMeasurement.Measure(description, () => GC.KeepAlive(query()));
         Assert.True(actual == expected, $"{description} allocated {actual} bytes, its path alone costs {expected}");
-    }
-
-    static long Measure(Func<NavPath> work)
-    {
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        NavPath path = work();
-        long after = GC.GetAllocatedBytesForCurrentThread();
-        GC.KeepAlive(path);
-        return after - before;
     }
 }

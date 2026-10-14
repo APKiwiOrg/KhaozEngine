@@ -25,6 +25,9 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   vulnerable 9.0.11 that `Microsoft.Data.SqlClient` 6.1.6 pulls in (GHSA-846f-f764-76mx, high, and
   GHSA-2fmv-rv2c-59x7, moderate), so Release restore passes the NuGet audit again (#1407). The override goes
   once SqlClient references a patched Pkcs itself.
+- TileWorld animated foliage replaces a cached split only when an archetype it draws changes selection or
+  effective style. Style validation still covers the whole selection, and regions that do not draw the changed
+  archetype keep their retained batches.
 
 ## 20.39.0
 

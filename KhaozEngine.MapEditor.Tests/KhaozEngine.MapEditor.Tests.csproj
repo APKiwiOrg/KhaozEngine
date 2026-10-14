@@ -43,4 +43,8 @@
     <Compile Include="../KhaozEngine.MapDoc.Tests/**/*Fixtures.cs" Link="MapDocFixtures/%(RecursiveDir)%(Filename)%(Extension)" />
     <None Include="../KhaozEngine.MapDoc.Tests/Fixtures/**" Link="Fixtures/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../test-shared/AllocationRegion.cs" Link="Shared/AllocationRegion.cs" />
+    <Compile Include="../test-shared/AllocationMeasurement.cs" Link="Shared/AllocationMeasurement.cs" />
+  </ItemGroup>
 </Project>

@@ -72,9 +72,8 @@ public class TileMovementScratchAllocationTests
         movement.Update(world, TileMoveSimulatorTests.Dt);
         Rearm(world, actors);
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        movement.Update(world, TileMoveSimulatorTests.Dt);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        long allocated = AllocationMeasurement.Measure("six actor repaths",
+            () => movement.Update(world, TileMoveSimulatorTests.Dt));
 
         // Six fresh radius 64 window pairs alone cost about 500 KB. Route materialization remains allowed.
         Assert.True(allocated < 160_000,

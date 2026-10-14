@@ -17,8 +17,8 @@ namespace KhaozEngine.Tests.Gpu
     /// <para>
     /// <b>ONLY THE RECORDING IS MEASURED.</b> Each frame reads the counter around <c>Begin</c> to <c>End</c> and
     /// submits and drains outside that window, because the submit path and the drain are not what #1114 changed,
-    /// and a drain per frame is what makes the arena's recycling deterministic. The retry policy is
-    /// <see cref="AllocAssert"/>'s, spelled out here because the window is split across frames.
+    /// and a drain per frame is what makes the arena's recycling deterministic. One checked no-GC region spans
+    /// every frame of a reading, as <see cref="AllocAssert"/> does for a single window.
     /// </para>
     /// <para>
     /// <b>ALLOCSENSITIVE, WHICH ALSO SERIALISES THE DEVICE IT BUILDS</b>: the collection disables parallelization,
@@ -57,12 +57,12 @@ namespace KhaozEngine.Tests.Gpu
 
             StagedFrames(device, list, buffer, payload, UploadsPerFrame, WarmFrames);
 
-            long first = StagedFrames(device, list, buffer, payload, UploadsPerFrame, MeasuredFrames);
-            long retry = first == 0 ? 0 : StagedFrames(device, list, buffer, payload, UploadsPerFrame, MeasuredFrames);
+            long first;
+            using (AllocationRegion.Start($"{MeasuredFrames} frames of {UploadsPerFrame} staged uploads"))
+                first = StagedFrames(device, list, buffer, payload, UploadsPerFrame, MeasuredFrames);
 
-            Assert.True(retry == 0,
-                $"{MeasuredFrames} frames of {UploadsPerFrame} staged uploads allocated {first} bytes while "
-                + $"recording on the first pass and {retry} on the retry, expected zero on at least one");
+            Assert.True(first == 0,
+                $"{MeasuredFrames} frames of {UploadsPerFrame} staged uploads allocated {first} bytes while recording");
             Assert.True(list.Arena.BlocksCreated > 0,
                 "no staging block was ever created, so these uploads never staged and this row measured nothing");
             Assert.Null(device.Diagnostics.DeviceLossReason);
@@ -90,12 +90,12 @@ namespace KhaozEngine.Tests.Gpu
             StagedFrames(device, list, buffer, payload, 1, WarmFrames);
             int createdBefore = list.Arena.BlocksCreated;
 
-            long first = StagedFrames(device, list, buffer, payload, 1, MeasuredFrames);
-            long retry = first == 0 ? 0 : StagedFrames(device, list, buffer, payload, 1, MeasuredFrames);
+            long recorded;
+            using (AllocationRegion.Start($"{MeasuredFrames} frames of one over-cap staged upload"))
+                recorded = StagedFrames(device, list, buffer, payload, 1, MeasuredFrames);
 
-            Assert.True(retry == 0,
-                $"{MeasuredFrames} frames of one over-cap staged upload allocated {first} managed bytes while "
-                + $"recording on the first pass and {retry} on the retry, expected zero on at least one");
+            Assert.True(recorded == 0,
+                $"{MeasuredFrames} frames of one over-cap staged upload allocated {recorded} managed bytes while recording");
             Assert.True(list.Arena.BlocksCreated - createdBefore >= MeasuredFrames,
                 "the over-cap upload was pooled, so this row measured the under-cap path instead");
             Assert.Null(device.Diagnostics.DeviceLossReason);
@@ -119,12 +119,11 @@ namespace KhaozEngine.Tests.Gpu
 
             ClearFrames(device, list, framebuffer, WarmFrames);
 
-            long first = ClearFrames(device, list, framebuffer, MeasuredFrames);
-            long retry = first == 0 ? 0 : ClearFrames(device, list, framebuffer, MeasuredFrames);
+            long recorded;
+            using (AllocationRegion.Start($"{MeasuredFrames} clear-only passes"))
+                recorded = ClearFrames(device, list, framebuffer, MeasuredFrames);
 
-            Assert.True(retry == 0,
-                $"{MeasuredFrames} clear-only passes allocated {first} bytes while recording on the first pass and "
-                + $"{retry} on the retry, expected zero on at least one");
+            Assert.True(recorded == 0, $"{MeasuredFrames} clear-only passes allocated {recorded} bytes while recording");
             Assert.Null(device.Diagnostics.DeviceLossReason);
         }
 

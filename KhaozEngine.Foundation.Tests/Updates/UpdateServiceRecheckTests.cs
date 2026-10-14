@@ -1,5 +1,4 @@
 using System;
-using System.Diagnostics;
 using System.IO;
 using System.Threading.Tasks;
 using KhaozEngine.Updates;
@@ -72,14 +71,28 @@ public sealed class UpdateServiceRecheckTests : IDisposable
     /// <summary>Points the feed at an up-to-date answer so a subsequent check lands back at Idle.</summary>
     private void FeedUpToDate() => source.Latest = new LatestVersionInfo("1.0.0", "1.0.0", ManifestUrl, false);
 
-    private static async Task WaitUntil(Func<bool> condition, int timeoutMs = 3000)
+    // Deadlock guard only. The settle is awaited through StateChanged, so this bound never paces the test.
+    private static readonly TimeSpan HangGuard = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Completes when the service raises StateChanged into <paramref name="target"/>. Subscribe before
+    /// releasing the work that causes the transition, so the signal cannot be missed.
+    /// </summary>
+    private static Task StateReached(UpdateService svc, UpdateState target)
     {
-        var sw = Stopwatch.StartNew();
-        while (!condition() && sw.ElapsedMilliseconds < timeoutMs)
+        var reached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        svc.StateChanged += () =>
         {
-            await Task.Delay(10);
+            if (svc.State == target)
+            {
+                reached.TrySetResult();
+            }
+        };
+        if (svc.State == target)
+        {
+            reached.TrySetResult();
         }
-        Assert.True(condition(), "condition not met within timeout");
+        return reached.Task;
     }
 
     [Fact]
@@ -269,9 +282,11 @@ public sealed class UpdateServiceRecheckTests : IDisposable
         Assert.Equal(1, source.CheckCalls);
         Assert.Equal(UpdateState.Checking, svc.State);
 
-        // Release the in-flight check and let it settle to UpdateAvailable.
+        // Release the in-flight check and await its own transition to UpdateAvailable.
+        Task settled = StateReached(svc, UpdateState.UpdateAvailable);
         gate.SetResult(true);
-        await WaitUntil(() => svc.State == UpdateState.UpdateAvailable);
+        await settled.WaitAsync(HangGuard);
+        Assert.Equal(UpdateState.UpdateAvailable, svc.State);
         Assert.Equal(1, source.CheckCalls);
     }
 

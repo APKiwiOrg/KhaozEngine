@@ -17,10 +17,9 @@ public sealed class JournalReadAllocationTests
         var projection = new JournalProjectionWrite("stream", "section", "schema", 1, payload);
 
         _ = projection.Data.Span[0];
-        long before = GC.GetAllocatedBytesForCurrentThread();
         int observed = 0;
-        for (int i = 0; i < reads; i++) observed += projection.Data.Span[0];
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        long allocated = AllocationMeasurement.Measure($"{reads} defensive Data reads",
+            () => { for (int i = 0; i < reads; i++) observed += projection.Data.Span[0]; });
 
         Assert.Equal(reads * 7, observed);
         Assert.True(allocated >= reads * payload.Length,

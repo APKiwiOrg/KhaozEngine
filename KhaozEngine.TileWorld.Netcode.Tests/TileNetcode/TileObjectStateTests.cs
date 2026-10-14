@@ -340,9 +340,8 @@ public class TileObjectStateAllocationTests
         for (int i = 0; i < 8; i++) client.CollectObjectStates(into);
         Assert.Equal(placed, into.Count);
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 64; i++) client.CollectObjectStates(into);
-        long after = GC.GetAllocatedBytesForCurrentThread();
-        Assert.Equal(0L, after - before);
+        long allocated = AllocationMeasurement.Measure("64 object state collections",
+            () => { for (int i = 0; i < 64; i++) client.CollectObjectStates(into); });
+        Assert.Equal(0L, allocated);
     }
 }

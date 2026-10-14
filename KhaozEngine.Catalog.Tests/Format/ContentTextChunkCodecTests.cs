@@ -479,22 +479,22 @@ public class ContentTextChunkCodecTests
         _ = new string('a', resultLength);
         _ = ContentTextKey.Derive(typeKey, contentKey, fieldName);
 
-        long beforeReference = GC.GetAllocatedBytesForCurrentThread();
         int referenceLength = 0;
-        for (int i = 0; i < 1000; i++)
+        long referenceBytes = AllocationMeasurement.Measure("1000 reference strings", () =>
         {
-            referenceLength += new string('a', resultLength).Length;
-        }
-
-        long referenceBytes = GC.GetAllocatedBytesForCurrentThread() - beforeReference;
-        long beforeDerive = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < 1000; i++)
+            {
+                referenceLength += new string('a', resultLength).Length;
+            }
+        });
         int derivedLength = 0;
-        for (int i = 0; i < 1000; i++)
+        long derivedBytes = AllocationMeasurement.Measure("1000 derived text keys", () =>
         {
-            derivedLength += ContentTextKey.Derive(typeKey, contentKey, fieldName).Length;
-        }
-
-        long derivedBytes = GC.GetAllocatedBytesForCurrentThread() - beforeDerive;
+            for (int i = 0; i < 1000; i++)
+            {
+                derivedLength += ContentTextKey.Derive(typeKey, contentKey, fieldName).Length;
+            }
+        });
 
         Assert.Equal(referenceLength, derivedLength);
         Assert.True(referenceBytes > 0);

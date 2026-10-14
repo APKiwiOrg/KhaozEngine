@@ -224,7 +224,7 @@ public partial class SupportFootprintTests
         .GetProperty(name, BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(target)!;
     static object ObjectField(object target, string name) => target.GetType()
         .GetField(name, BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(target)!;
-    static object CurvedScratch(object world) => ObjectField(ObjectField(world, "_footprintScratch"), "_curvedKernel");
+    static object CurvedScratch(object world) => ObjectField(FootprintScratch((KhaozEngine.Physics.Bepu.BepuPhysicsWorld)world), "_curvedKernel");
 
     static (object Tilted, object Roots, object Admission) TiltedScratch(object world)
     {

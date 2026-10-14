@@ -36,32 +36,37 @@ public sealed partial class PhysicsNavBake
     /// <exception cref="ArgumentException">An aquatic profile's capture did not sample water, or its swim fractions
     /// are not ordered <c>Exit &lt;= Submersion &lt;= Enter</c>.</exception>
     public GroundNavigation BuildProfile(in MoveTuning tuning, NavAreaFilter areas, GroundProfileOptions options)
+        => BuildProfile(tuning, areas, options, null);
+
+    /// <summary>Bakes one capsule class as <see cref="BuildProfile(in MoveTuning, NavAreaFilter, GroundProfileOptions)"/>
+    /// does, scheduled by <paramref name="execution"/>. A null execution or a degree of 1 runs the serial build. Above
+    /// degree 1 an ordinary contact profile proves on worker threads over one build snapshot and produces the same
+    /// profile, and its first failure in serial order is the exception the serial build throws. Legacy profiles always
+    /// build serially. See <see cref="NavBakeExecution"/> for what the caller's physics and providers must support.</summary>
+    /// <exception cref="ArgumentOutOfRangeException">The execution's degree is below 1. This is checked first.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
+    /// <exception cref="NotSupportedException">A contact profile above degree 1 has a physics source or selected
+    /// query view without <see cref="KhaozEngine.Physics.IPhysicsConcurrentReadSource"/>. Checked after every other
+    /// argument and before any worker exists.</exception>
+    /// <exception cref="InvalidOperationException">The build snapshot changed during a parallel contact build.</exception>
+    public GroundNavigation BuildProfile(in MoveTuning tuning, NavAreaFilter areas, GroundProfileOptions? options,
+        NavBakeExecution? execution)
     {
-        ArgumentNullException.ThrowIfNull(options);
-        EffectiveMovementBindingKind kind = new NavBakeProfile("", tuning, areas) { Aquatic = options.Aquatic }.ResolveKind();
-        GroundMoveContext context = Context;
-        if (kind == EffectiveMovementBindingKind.OrdinaryContact)
+        int degree = NavBakeExecution.Degree(execution, nameof(execution));
+        using ProfileCheck check = CheckProfile(tuning, areas, options);
+        EffectiveMovementBindingKind kind = check.Kind;
+        GroundMoveContext context = check.Context;
+        EffectiveMovementBinding? source = check.Source;
+        float height = check.Height;
+        bool aquatic = check.Aquatic;
+        PhysicsNavColumns columns = check.Columns;
+        NavAreaFootprint footprint = check.Footprint;
+        if (degree > 1 && kind == EffectiveMovementBindingKind.OrdinaryContact)
         {
-            PhysicsNavCaptureBasis basis = Basis
-                ?? throw new InvalidOperationException("Contact navigation requires a capture from an IPhysicsQueryLeaseSource.");
-            basis.AssertCurrent();
+            RequireConcurrentReads(context);
+            return BuildContactProfileInParallel(context, source!, tuning, footprint, height,
+                Options.MaxSurfacesPerColumn, degree);
         }
-        using EffectiveMovementBinding? source = kind == EffectiveMovementBindingKind.OrdinaryContact
-            ? context.CreateNavigationBinding(tuning) : null;
-        if (kind == EffectiveMovementBindingKind.Legacy) context.ValidateTuning(tuning);
-        if (tuning.MaxSlopeRadians != Options.MaxSlopeRadians)
-            throw new ArgumentException("Profile slope must equal the capture slope.", nameof(tuning));
-        float height = 2f * tuning.CapsuleHalfHeight;
-        if (!float.IsFinite(height))
-            throw new ArgumentOutOfRangeException(nameof(tuning), "Profile height must be finite.");
-        bool aquatic = options.Aquatic;
-        if (aquatic && !Options.SampleWater)
-            throw new ArgumentException("An aquatic profile needs a capture that sampled water.", nameof(options));
-        if (aquatic && !(tuning.SwimExitDepthFraction <= tuning.SwimSurfaceSubmersionFraction &&
-            tuning.SwimSurfaceSubmersionFraction <= tuning.SwimEnterDepthFraction))
-            throw new ArgumentException("An aquatic profile needs swim fractions ordered exit, submersion, enter.", nameof(tuning));
-        PhysicsNavColumns columns = aquatic ? AquaticColumns.Derive(Columns, tuning) : Columns;
-        var footprint = new NavAreaFootprint(columns, Options, tuning, areas);
         using ContactNavigationProof? contact = kind == EffectiveMovementBindingKind.OrdinaryContact
             ? new(this, context, source!, footprint) : null;
         var candidates = new CandidateColumns(this, context, tuning, footprint, columns, contact);
@@ -128,6 +133,62 @@ public sealed partial class PhysicsNavBake
         _ = Context;
         var graph = new NavTraversalGraph(space, tuning.CapsuleRadius, height, layers, links);
         return new GroundNavigation(graph, tuning, footprint, aquatic);
+    }
+
+    /// <summary>Runs every profile's argument checks in order, then the concurrent-read capability check, before any
+    /// profile builds. A multi-profile build above degree 1 with a contact profile calls this, so an undeclared backend
+    /// refuses before an earlier profile spends its build, and an argument failure still wins over the capability.</summary>
+    internal void CheckProfiles(IReadOnlyList<NavBakeProfile> profiles)
+    {
+        foreach (NavBakeProfile profile in profiles)
+            CheckProfile(profile.Tuning, profile.Areas, new GroundProfileOptions { Aquatic = profile.Aquatic }).Dispose();
+        RequireConcurrentReads(Context);
+    }
+
+    // Every existing argument check of one profile build, in order. The caller disposes the contact source binding.
+    private ProfileCheck CheckProfile(in MoveTuning tuning, NavAreaFilter areas, GroundProfileOptions? options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        EffectiveMovementBindingKind kind = new NavBakeProfile("", tuning, areas) { Aquatic = options.Aquatic }.ResolveKind();
+        GroundMoveContext context = Context;
+        if (kind == EffectiveMovementBindingKind.OrdinaryContact)
+        {
+            PhysicsNavCaptureBasis basis = Basis
+                ?? throw new InvalidOperationException("Contact navigation requires a capture from an IPhysicsQueryLeaseSource.");
+            basis.AssertCurrent();
+        }
+        EffectiveMovementBinding? source = kind == EffectiveMovementBindingKind.OrdinaryContact
+            ? context.CreateNavigationBinding(tuning) : null;
+        try
+        {
+            if (kind == EffectiveMovementBindingKind.Legacy) context.ValidateTuning(tuning);
+            if (tuning.MaxSlopeRadians != Options.MaxSlopeRadians)
+                throw new ArgumentException("Profile slope must equal the capture slope.", nameof(tuning));
+            float height = 2f * tuning.CapsuleHalfHeight;
+            if (!float.IsFinite(height))
+                throw new ArgumentOutOfRangeException(nameof(tuning), "Profile height must be finite.");
+            bool aquatic = options.Aquatic;
+            if (aquatic && !Options.SampleWater)
+                throw new ArgumentException("An aquatic profile needs a capture that sampled water.", nameof(options));
+            if (aquatic && !(tuning.SwimExitDepthFraction <= tuning.SwimSurfaceSubmersionFraction &&
+                tuning.SwimSurfaceSubmersionFraction <= tuning.SwimEnterDepthFraction))
+                throw new ArgumentException("An aquatic profile needs swim fractions ordered exit, submersion, enter.", nameof(tuning));
+            PhysicsNavColumns columns = aquatic ? AquaticColumns.Derive(Columns, tuning) : Columns;
+            var footprint = new NavAreaFootprint(columns, Options, tuning, areas);
+            return new(kind, context, source, height, aquatic, columns, footprint);
+        }
+        catch
+        {
+            source?.Dispose();
+            throw;
+        }
+    }
+
+    private readonly record struct ProfileCheck(EffectiveMovementBindingKind Kind, GroundMoveContext Context,
+        EffectiveMovementBinding? Source, float Height, bool Aquatic, PhysicsNavColumns Columns,
+        NavAreaFootprint Footprint) : IDisposable
+    {
+        public void Dispose() => Source?.Dispose();
     }
 
     private bool Prove(GroundMoveContext context, in MoveTuning tuning, Vector3 from, bool fromFloats,

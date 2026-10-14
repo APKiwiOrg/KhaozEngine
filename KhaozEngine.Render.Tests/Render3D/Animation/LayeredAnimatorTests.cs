@@ -704,8 +704,6 @@ namespace KhaozEngine.Tests.Render3D.Animation
             // Warm up (JIT, lazy additive-reference sample, dictionary build).
             for (int i = 0; i < 8; i++) { anim.Update(1f / 60f); anim.GetBonePalette(palette); }
 
-            // Retries once before failing (see AllocAssert.NoPerCallAllocation) to ride out an unrelated gen-0
-            // collision from the rest of the process, per issue #284.
             AllocAssert.NoPerCallAllocation("steady-state Update+GetBonePalette", () =>
             {
                 for (int i = 0; i < 240; i++) { anim.Update(1f / 60f); anim.GetBonePalette(palette); }

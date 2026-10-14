@@ -61,8 +61,9 @@ public sealed class GroundCoverGpuBindingsTests
         Assert.False(before[2].CastsShadows);
         Assert.False(bindings.Refresh(meshes, options));
         profiles["grass"] = new(.2f, .1f, .3f, .02f);
-        Assert.Equal(.3f, before[0].Motion.BendScale);
+        Assert.Equal(.3f, bindings.Expand()[0].Motion.BendScale);
         Assert.True(bindings.Refresh(meshes, options));
+        Assert.Equal(.2f, bindings.Expand()[0].Motion.BendScale);
         profiles.Remove("grass");
         casting.Remove("grass");
         Assert.True(bindings.Refresh(meshes, options));

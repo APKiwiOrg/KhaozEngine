@@ -13,11 +13,12 @@ namespace KhaozEngine.Tests;
 /// <para>When armed it runs on its own dedicated thread, never a pool thread, so a starved pool cannot silence
 /// it. Every <see cref="ProbeInterval"/> it queues one probe work item on the pool and reads how long that item
 /// has waited. A wait of <see cref="EpisodeThreshold"/> or more is a starvation episode, reported as one line when
-/// the pool recovers (or at process exit if it never does) to stderr and to a log file. The first time a still
-/// queued probe has waited <see cref="DumpThreshold"/>, or an episode has lasted that long, the watchdog asks the
-/// runtime's diagnostic server for a dump of this process through <see cref="DiagnosticsIpcDump"/>, once per
-/// process, with the heap included so SOS can walk the managed stacks of the threads that were holding the pool.
-/// The runtime then runs its own <c>createdump</c>, which Windows refuses to run from outside against a pid.</para>
+/// the pool recovers (or at process exit if it never does) to stderr and to a log file.</para>
+///
+/// <para>Heap dumps require the separate opt-in <c>KE_POOL_WATCH_DUMP=1</c> while the watchdog is armed.
+/// Only then does the first still-queued probe or episode that reaches <see cref="DumpThreshold"/> request
+/// one heap dump through <see cref="DiagnosticsIpcDump"/>. Dumping suspends the test process and can take
+/// minutes, so episode logging never enables it implicitly.</para>
 ///
 /// <para>Output goes to the directory named by <c>KE_POOL_WATCH_DIR</c>, or <c>ke-pool-watch</c> under the temp
 /// directory when that is unset. The log file also gets one <c>pool-watch-armed</c> line per process, so an empty
@@ -30,6 +31,9 @@ public static class ThreadPoolStarvationWatchdog
 
     /// <summary>Directory for the log file and the dump.</summary>
     public const string DirectoryVariable = "KE_POOL_WATCH_DIR";
+
+    /// <summary>Set to <c>1</c> to allow one suspending heap dump while the watchdog is armed. Off by default.</summary>
+    public const string DumpEnableVariable = "KE_POOL_WATCH_DUMP";
 
     private static readonly TimeSpan ProbeInterval = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan EpisodeThreshold = TimeSpan.FromSeconds(2);
@@ -83,12 +87,15 @@ public static class ThreadPoolStarvationWatchdog
         private readonly int pid;
         private readonly string logPath;
         private readonly object gate = new();
-        private readonly StarvationEpisodeTracker tracker = new(EpisodeThreshold, DumpThreshold);
+        private readonly bool dumpEnabled;
+        private readonly StarvationEpisodeTracker tracker;
 
         public Watch(string host, string directory)
         {
             this.host = host;
             this.directory = directory;
+            dumpEnabled = Environment.GetEnvironmentVariable(DumpEnableVariable) == "1";
+            tracker = new StarvationEpisodeTracker(EpisodeThreshold, DumpThreshold, captureDump: dumpEnabled);
             using Process self = Process.GetCurrentProcess();
             processName = self.ProcessName;
             pid = Environment.ProcessId;
@@ -102,7 +109,8 @@ public static class ThreadPoolStarvationWatchdog
                 Directory.CreateDirectory(directory);
                 ThreadPool.GetMinThreads(out int minWorkers, out _);
                 WriteFile($"{Stamp(DateTime.UtcNow)} pool-watch-armed {Identity()} min_workers={minWorkers} " +
-                          $"episode_ms={(long)EpisodeThreshold.TotalMilliseconds} dump_ms={(long)DumpThreshold.TotalMilliseconds}");
+                          $"episode_ms={(long)EpisodeThreshold.TotalMilliseconds} dump_ms={(long)DumpThreshold.TotalMilliseconds} " +
+                          $"dump_enabled={(dumpEnabled ? 1 : 0)}");
                 AppDomain.CurrentDomain.ProcessExit += (_, _) => ReportOpenAtExit();
                 Loop();
             }

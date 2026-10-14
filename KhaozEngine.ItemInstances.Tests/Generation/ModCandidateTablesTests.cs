@@ -21,10 +21,11 @@ namespace KhaozEngine.Tests.ItemInstances.Generation;
 /// implementation.
 /// </para>
 /// <para>
-/// Every registry a fact builds is its OWN and nothing here writes process-global state, so no
-/// <c>DisableParallelization</c> collection is needed.
+/// Every registry a fact builds is its OWN and nothing here writes process-global state. The class joins
+/// <c>AllocSensitive</c> because the allocation fact holds a process-wide no-GC region.
 /// </para>
 /// </summary>
+[Collection("AllocSensitive")]
 public class ModCandidateTablesTests
 {
     [Fact]
@@ -319,11 +320,10 @@ public class ModCandidateTablesTests
         // Nothing is allocated, memoized or evicted at a roll, so there is no cache, no hit rate and no
         // pathological pack that degrades to a merge per roll.
         Sweep(tables);
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        long live = Sweep(tables);
-        long after = GC.GetAllocatedBytesForCurrentThread();
+        long live = 0;
+        long allocated = AllocationMeasurement.Measure("a warmed candidate sweep", () => live = Sweep(tables));
 
-        Assert.Equal(0L, after - before);
+        Assert.Equal(0L, allocated);
         Assert.True(live > 0, "The sweep read nothing, so the zero allocation above proves nothing.");
     }
 

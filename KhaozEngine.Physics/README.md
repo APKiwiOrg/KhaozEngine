@@ -24,8 +24,11 @@ explicitly, it is in no umbrella). Depends only on `System.Numerics`.
   must outlive the view.
 - **`IPhysicsQueryLeaseSource` / `IPhysicsQueryLease`** - optional stable read intervals over a live
   owner. `AcquireQueryReadLease()` captures the exact owner, origin and process-local mutation generation.
-  Queries remain available on the acquiring thread. Nested leases and same-thread mutations are refused,
-  while other threads serialize behind the owner gate. Call `AssertCurrent()` before publishing pure
+  Queries remain available on the acquiring thread. Nested leases and same-thread mutations are refused.
+  Other threads wait behind the owner gate unless the receiver also declares `IPhysicsConcurrentReadSource`,
+  which admits simultaneous readers while writers stay exclusive. A parallel contact navigation bake
+  (`NavBakeExecution` above degree 1 in `KhaozEngine.Movement`) requires it on both the physics source and the
+  selected query view. Call `AssertCurrent()` before publishing pure
   results, then dispose on that same thread before applying physics mutations. Disposal is idempotent on
   the acquiring thread. A restricted view leases its complete owner and cannot be disposed during the
   interval. A lease does not certify water/terrain residency, portable world identity or scope completeness.

@@ -10,6 +10,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Terrain;
 
+[Collection("AllocSensitive")]
 public class GroundCoverRendererTests
 {
     static GroundCoverInstance Instance(string id, float x, float rank) => new(
@@ -143,11 +144,8 @@ public class GroundCoverRendererTests
         GroundCoverRenderer.Queue(queue, cover, meshes, Vector3.Zero, options);
         queue.Begin();
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        GroundCoverRenderer.Queue(queue, cover, meshes, Vector3.Zero, options);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-
-        Assert.Equal(0, allocated);
+        AllocAssert.NoPerCallAllocation("a warmed ground cover queue",
+            () => GroundCoverRenderer.Queue(queue, cover, meshes, Vector3.Zero, options));
     }
 
     sealed class CountingMeshes : IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>

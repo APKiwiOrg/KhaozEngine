@@ -10,6 +10,7 @@ namespace KhaozEngine.Tests.TileWorld.Editing;
 /// <summary>Headless tests for <see cref="PgmReader"/> against hand-built byte arrays: the 8 and 16 bit
 /// rasters, the header rules (comments, the single whitespace byte before the raster), and every malformed
 /// file it has to refuse by name rather than decode into a wrong heightmap.</summary>
+[Collection("AllocSensitive")]
 public class PgmReaderTests
 {
     // A PGM built from an ASCII header and the exact raster bytes that follow it, so each test states the file
@@ -195,9 +196,9 @@ public class PgmReaderTests
         // out-of-memory allocation rather than a TileWorldException. The allocation bound below pins it.
         byte[] bytes = Pgm("P5\n100000 100000\n255\n", 1, 2, 3, 4);
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        var ex = Assert.Throws<TileWorldException>(() => PgmReader.Read(bytes));
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        TileWorldException ex = null!;
+        long allocated = AllocationMeasurement.Measure("A giant raster refusal",
+            () => ex = Assert.Throws<TileWorldException>(() => PgmReader.Read(bytes)));
 
         Assert.Contains("10000000000 bytes", ex.Message, StringComparison.Ordinal);
         Assert.True(allocated < 1024 * 1024, $"the refusal allocated {allocated} bytes, it should allocate only its message");

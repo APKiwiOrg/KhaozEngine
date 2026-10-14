@@ -69,22 +69,13 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(scene.TemporalPostTargetsForTests!.BloomAllocated && scene.BloomAllocated);
             Assert.True(scene.LastTemporalDiagnostics.HistoryValid);
 
-            long first = Allocated(() => Frames(Measured));
-            long retry = first == 0 ? 0 : Allocated(() => Frames(Measured));   // one retry, as AllocAssert allows
-            output.WriteLine($"{view}: {Measured} steady resolving frames with a capture each: {first} bytes, "
-                + $"retry {retry}");
-            Assert.True(retry == 0,
-                $"{view}: {Measured} steady resolving frames allocated {first} bytes and {retry} on the retry");
+            long allocated = AllocationMeasurement.Measure($"{view}: {Measured} steady resolving frames",
+                () => Frames(Measured));
+            output.WriteLine($"{view}: {Measured} steady resolving frames with a capture each: {allocated} bytes");
+            Assert.True(allocated == 0, $"{view}: {Measured} steady resolving frames allocated {allocated} bytes");
         }
 
         static IGpuTexture Target(IGpuDevice gd) => gd.Factory.CreateTexture(GpuTextureDescription.Texture2D(W, H,
             GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
-
-        static long Allocated(Action frames)
-        {
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            frames();
-            return GC.GetAllocatedBytesForCurrentThread() - before;
-        }
     }
 }

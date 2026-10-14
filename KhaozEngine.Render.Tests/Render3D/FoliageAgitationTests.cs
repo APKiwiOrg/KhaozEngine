@@ -43,6 +43,7 @@ public sealed class FoliageAgitationTests
         Assert.Equal(0f, agitation.Update(new Vector3(.2f, 0f, 0f), .3f));
         Assert.Equal(0f, agitation.Update(new Vector3(6f, 0f, 0f), .1f));
         Assert.Equal(1f, agitation.Update(new Vector3(6.2f, 0f, 0f), .1f), 1e-5f);
+        Assert.Equal(0f, agitation.Update(new Vector3(6.2f, 6f, 0f), .1f));
         agitation.Reset();
         Assert.Equal(0f, agitation.Value);
         Assert.Equal(0f, agitation.Update(Vector3.Zero, .1f));
@@ -85,7 +86,7 @@ public sealed class FoliageAgitationTests
         agitation.Update(Vector3.Zero, .1f);
         Assert.Equal(0f, agitation.Update(Vector3.UnitY, .1f));
         Assert.Equal(1f, agitation.Update(new Vector3(.2f, 1f, 0f), .1f));
-        Assert.Equal(0f, agitation.Update(new Vector3(.2f, 7f, 0f), .1f));
+        Assert.Equal(.5f, agitation.Update(new Vector3(.2f, 1.5f, 0f), .3f), 1e-6f);
     }
 
     [Fact]
@@ -93,10 +94,16 @@ public sealed class FoliageAgitationTests
     {
         var agitation = new FoliageAgitation();
         agitation.Update(Vector3.Zero, .1f);
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        float value = agitation.Update(Vector3.UnitX * .2f, .1f);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-        Assert.Equal(1f, value);
+        agitation.Update(Vector3.UnitX * .2f, .1f);
+        agitation.Update(Vector3.UnitX * .2f, .1f);
+        float rise = 0f, settle = 0f;
+        long allocated = AllocationMeasurement.Measure("a warmed rise and settle", () =>
+        {
+            rise = agitation.Update(Vector3.UnitX * .4f, .1f);
+            settle = agitation.Update(Vector3.UnitX * .4f, .3f);
+        });
+        Assert.Equal(1f, rise);
+        Assert.Equal(.5f, settle, 1e-6f);
         Assert.Equal(0, allocated);
     }
 }

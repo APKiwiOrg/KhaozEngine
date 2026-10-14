@@ -436,6 +436,51 @@ public sealed class TileWorldViewAnimatedFoliageTests
     }
 
     [Fact]
+    public void ChangesToArchetypesARegionDoesNotDrawKeepItsBatch()
+    {
+        var east = new RegionCoord(1, 0);
+        TileWorldDocument doc = TileRenderTestData.HillWorld();
+        doc.AddObject("bush", 2, 2, 0, 0);
+        doc.GetOrCreateRegion(east);
+        doc.AddObject("tree", east.OriginX + 2, 2, 0, 0);
+        var scene = new RecordingTileWorldScene();
+        TileWorldViewOptions options = Options();
+        var selection = (HashSet<string>)options.AnimatedFoliageArchetypes;
+        var styles = new Dictionary<string, AnimatedFoliageStyle>(StringComparer.Ordinal);
+        options.AnimatedFoliageStyles = styles;
+        using TileWorldView view = View(scene, doc, options);
+        view.LoadRegion(TileRenderTestData.Region);
+        view.LoadRegion(east);
+        view.Draw(Vector3.Zero);
+        IReadOnlyList<GroundCoverInstance> bushes = Assert.Single(scene.FoliageDraws).Instances;
+        selection.Add("tree");
+        scene.ClearFrame();
+
+        view.Draw(Vector3.Zero);
+
+        Assert.Same(bushes, FoliageDrawOf(scene, "bush").Instances);
+        IReadOnlyList<GroundCoverInstance> trees = FoliageDrawOf(scene, "tree").Instances;
+        Assert.Empty(scene.FoliageReleases);
+        styles["tree"] = new(new FoliageMotionProfile(.3f, .15f, .4f, .035f), true);
+        scene.ClearFrame();
+
+        view.Draw(Vector3.Zero);
+
+        TileFoliageDrawRecord bush = FoliageDrawOf(scene, "bush");
+        TileFoliageDrawRecord tree = FoliageDrawOf(scene, "tree");
+        Assert.Same(bushes, bush.Instances);
+        Assert.NotSame(trees, tree.Instances);
+        Assert.Same(trees, Assert.Single(scene.FoliageReleases));
+        Assert.Equal(FoliageMotionProfile.Blade, bush.Options.MotionProfiles["bush"]);
+        Assert.False(bush.Options.ModelCastsShadows["bush"]);
+        Assert.Equal(new FoliageMotionProfile(.3f, .15f, .4f, .035f), tree.Options.MotionProfiles["tree"]);
+        Assert.True(tree.Options.ModelCastsShadows["tree"]);
+    }
+
+    static TileFoliageDrawRecord FoliageDrawOf(RecordingTileWorldScene scene, string id) =>
+        Assert.Single(scene.FoliageDraws, draw => draw.Instances.All(instance => instance.ModelId == id));
+
+    [Fact]
     public void ArchetypeOverridesInvalidateTheCachedGroundListWithoutChangingAuthoredObjects()
     {
         TileWorldDocument doc = World();

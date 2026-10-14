@@ -272,7 +272,15 @@ that only Veldrid's Vulkan binding needed.
 
 Vulkan full-suite runs serialize both test assemblies and the collections inside each assembly (#218).
 The workflow uses MSBuild `-m:1`, disables parallel target frameworks, and sets VSTest host concurrency
-and xUnit collection concurrency to one. Other backend and golden-only paths retain their existing policy.
+and xUnit collection concurrency to one. Metal and golden-only paths retain their existing policy.
+
+The Windows full tier runs the solution without `KhaozEngine.Render.Tests` first, retaining parallel execution
+among those assemblies, then runs `Render.Tests` alone. WARP saturates the hosted runner's CPUs and can starve
+loopback HTTP and MCP hosts that run alongside it
+([#1396](https://github.com/APKiwiOrg/KhaozEngine/issues/1396),
+[#720](https://github.com/APKiwiOrg/KhaozEngine/issues/720)). The non-render solution is derived from the current
+solution at runtime, so new projects remain covered. Both passes run even if one fails, either failure fails
+the job, and both retain the trx logger, blame sequence files and combined suite log.
 
 The suite each leg runs is split by trigger, from measured hosted-runner cost
 (`KE_GPU_TESTS=1`, `fail-fast: false`).
@@ -761,11 +769,14 @@ PASSED:
   [#553](https://github.com/APKiwiOrg/KhaozEngine/issues/553)). `POOL_WATCH_ARMED` sets `KE_POOL_WATCH=1` for
   that tier alone, and `KhaozEngine.Server.Tests` and `KhaozEngine.MapEditor.Tests` then arm
   `ThreadPoolStarvationWatchdog` from `KhaozEngine.TestSupport`. Each armed host writes a `pool-watch-armed` line,
-  then one `pool-starvation` line per episode of pool queue latency past two seconds, and takes one heap dump on
-  the first episode that lasts ten, which `dotnet-dump analyze` reads with `threadpool` and `clrstack -all`. An
-  armed line with nothing after it is a clean run. The same tier adds a trx logger, and the artifact carries those
-  files too, so an episode's timestamps can be laid against every test that was running beside it. Retention is
-  three days because a dump can run to gigabytes.
+  then one `pool-starvation` line per episode of pool queue latency past two seconds. Heap dumps are off by
+  default, including on this tier. An explicit diagnostic run can also set `KE_POOL_WATCH_DUMP=1` to request
+  one heap dump on the first still-queued probe or episode that reaches ten seconds. Dumping suspends the
+  process and can take minutes, so logging must not opt a test host into that operation. The armed line records
+  whether dumping is enabled. An armed line with nothing after it is a clean run. The same tier adds a trx logger,
+  and the artifact carries those files from both passes, so an episode's timestamps can be laid against every
+  test that was running beside it. Retention is three days. Explicit dumps use the same directory and can be read
+  with `dotnet-dump analyze`, `threadpool` and `clrstack -all`.
 
 The fast inner-loop CI (`.github/workflows/ci.yml`: build/test/pack/publish, GPU tests skipped) is separate and
 untouched.

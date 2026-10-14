@@ -67,21 +67,13 @@ namespace KhaozEngine.Tests.Gpu
             Frames(Warm);
 
             presentBytes = 0;
-            long first = Allocated(() => Frames(Measured));
-            long firstPresent = presentBytes;
-            long retry = first == 0 ? 0 : Allocated(() => Frames(Measured));   // one retry, as AllocAssert allows
+            long allocated = AllocationMeasurement.Measure($"{Measured} steady presenting frames on {gd.Backend}",
+                () => Frames(Measured));
 
-            output.WriteLine($"{Measured} steady presenting frames on {gd.Backend}: {first} bytes ({firstPresent} in "
-                + $"Present), retry {retry}");
-            Assert.True(retry == 0, $"{Measured} steady presenting frames on {gd.Backend} allocated {first} bytes, "
-                + $"{firstPresent} of them in Present, and {retry} on the retry");
-        }
-
-        static long Allocated(Action frames)
-        {
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            frames();
-            return GC.GetAllocatedBytesForCurrentThread() - before;
+            output.WriteLine($"{Measured} steady presenting frames on {gd.Backend}: {allocated} bytes ({presentBytes} in "
+                + "Present)");
+            Assert.True(allocated == 0, $"{Measured} steady presenting frames on {gd.Backend} allocated {allocated} bytes, "
+                + $"{presentBytes} of them in Present");
         }
     }
 }

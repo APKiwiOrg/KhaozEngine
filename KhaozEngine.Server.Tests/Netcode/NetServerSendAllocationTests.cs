@@ -43,11 +43,10 @@ public class NetServerSendAllocationTests
         for (int i = 0; i < 8; i++) server.Broadcast(payload, NetChannelReliability.UnreliableSequenced);
 
         const int measured = 100;
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < measured; i++) server.Broadcast(payload, NetChannelReliability.UnreliableSequenced);
-        long after = GC.GetAllocatedBytesForCurrentThread();
-
-        Assert.Equal(0, after - before);
+        AllocAssert.NoPerCallAllocation($"{measured} broadcasts to {Players} peers", () =>
+        {
+            for (int i = 0; i < measured; i++) server.Broadcast(payload, NetChannelReliability.UnreliableSequenced);
+        });
         Assert.Equal(Players + (8 + measured) * Players, transport.Sends);   // every peer really was sent to
     }
 
@@ -60,11 +59,10 @@ public class NetServerSendAllocationTests
         for (int i = 0; i < 8; i++) server.SendTo(0, payload, NetChannelReliability.ReliableOrdered);
 
         const int measured = 100;
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < measured; i++) server.SendTo(0, payload, NetChannelReliability.ReliableOrdered);
-        long after = GC.GetAllocatedBytesForCurrentThread();
-
-        Assert.Equal(0, after - before);
+        AllocAssert.NoPerCallAllocation($"{measured} sends to one peer", () =>
+        {
+            for (int i = 0; i < measured; i++) server.SendTo(0, payload, NetChannelReliability.ReliableOrdered);
+        });
         Assert.Equal(Players + 8 + measured, transport.Sends);
     }
 

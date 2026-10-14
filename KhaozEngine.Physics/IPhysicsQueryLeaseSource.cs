@@ -6,8 +6,10 @@ namespace KhaozEngine.Physics;
 /// <summary>Optional capability for a stable, synchronous read interval over a live physics owner.</summary>
 public interface IPhysicsQueryLeaseSource
 {
-    /// <summary>Acquires an exclusive, thread-affine read lease. Queries on the acquiring thread remain
-    /// available. Mutations on that thread and nested leases are refused until disposal.</summary>
+    /// <summary>Acquires a thread-affine read lease that keeps mutations out until disposal. Queries on the
+    /// acquiring thread remain available. Mutations on that thread and nested leases are refused until
+    /// disposal. Other threads' leases are admitted at the same time only by a receiver that declares
+    /// <see cref="IPhysicsConcurrentReadSource"/>.</summary>
     IPhysicsQueryLease AcquireQueryReadLease();
 }
 

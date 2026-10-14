@@ -155,7 +155,7 @@ public class AmbientLoggerTests
             Loop(captured);                      // JIT the whole path before measuring it
             Assert.Empty(sink.Entries);          // and confirm the level filter really did swallow them
 
-            NoAllocation("a filtered call through a cached ambient logger", () => Loop(captured));
+            AllocAssert.NoPerCallAllocation("a filtered call through a cached ambient logger", () => Loop(captured));
             Assert.Empty(sink.Entries);
         }
         finally { Log.Shutdown(); }
@@ -163,29 +163,6 @@ public class AmbientLoggerTests
         static void Loop(ILogger logger)
         {
             for (int i = 0; i < 2000; i++) logger.Debug(message);
-        }
-    }
-
-    /// <summary>
-    /// Measures bytes allocated on this thread around <paramref name="loop"/> and asserts zero, retrying once.
-    /// Same shape and same reason as <c>KhaozEngine.Tests.AllocAssert</c> in the Render tests, which cannot be
-    /// referenced from here: a gen-0 collection provoked elsewhere in the process can land inside the measurement
-    /// window and bill this thread for foreign bytes, while a genuine per-call allocation fails both passes.
-    /// </summary>
-    private static void NoAllocation(string description, Action loop)
-    {
-        long first = Measure(loop);
-        if (first == 0) return;
-
-        long retry = Measure(loop);
-        Assert.True(retry == 0,
-            $"{description} allocated {first} bytes on the first pass and {retry} on the retry, expected zero on at least one");
-
-        static long Measure(Action loop)
-        {
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            loop();
-            return GC.GetAllocatedBytesForCurrentThread() - before;
         }
     }
 }

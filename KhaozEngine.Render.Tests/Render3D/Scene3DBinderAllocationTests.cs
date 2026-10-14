@@ -30,9 +30,7 @@ public sealed class Scene3DBinderAllocationTests
 
         world.Set(first, new Transform3D { Position = new Vector3(10f, 2f, 3f), Scale = new Vector3(2f) });
         harness.Scene.Begin();
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        Scene3DBinder.Submit(world, harness.Scene);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        long allocated = AllocationMeasurement.Measure("a warmed binder submit", () => Scene3DBinder.Submit(world, harness.Scene));
 
         var queued = harness.Scene.QueuedInstancesForTests;
         Assert.Equal(2, queued.Count);

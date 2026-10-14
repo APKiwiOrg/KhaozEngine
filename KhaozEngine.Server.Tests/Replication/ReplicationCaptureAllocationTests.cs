@@ -98,10 +98,9 @@ public class ReplicationCaptureAllocationTests
         for (int i = 0; i < 64; i++) Tick();
 
         const int measured = 200;
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < measured; i++) Tick();
-        long after = GC.GetAllocatedBytesForCurrentThread();
-        long perTick = (after - before) / measured;
+        // The steady state allocates near 36 MB across the window, so the region reserves room for all of it.
+        long perTick = AllocationMeasurement.Measure($"{measured} steady capture ticks",
+            () => { for (int i = 0; i < measured; i++) Tick(); }, budget: 64L * 1024 * 1024) / measured;
 
         // Budget breakdown (per tick), everything the segment scheme legitimately still allocates:
         //  - one shared world capture rebuilt each tick (retained while a slot's last sent projection references it):

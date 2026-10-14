@@ -210,6 +210,11 @@ public sealed partial class PhysicsNavBake
         in MoveTuning tuning,
         NavAreaFilter areas,
         GroundProfileOptions options);
+    public GroundNavigation BuildProfile(
+        in MoveTuning tuning,
+        NavAreaFilter areas,
+        GroundProfileOptions? options,
+        NavBakeExecution? execution);
 }
 
 public sealed record GroundProfileOptions
@@ -240,7 +245,7 @@ Both overloads, `GroundNavigationBake.Create` and every `GroundNavigationBake.Lo
 controller and water selection before other profile work or stream reads. Malformed Contact selections throw
 `ArgumentException`. Contact aquatic profiles throw `NotSupportedException` naming #1389. Contact ground profiles
 require an ordinary-constructed context and an unchanged leased capture basis. Phase 5b ground navigation is
-implemented in staged 20.39.0. Contact aquatic navigation, footprint-only seeds and public explicit bake profiles
+released in 20.39.0. Contact aquatic navigation, footprint-only seeds and public explicit bake profiles
 are deferred to [#1389](https://github.com/APKiwiOrg/KhaozEngine/issues/1389). Legacy v1 bytes remain unchanged.
 
 Capture records a lease's geometry generation and origin when physics supports `IPhysicsQueryLeaseSource`, then
@@ -311,6 +316,67 @@ each tick, and allowing for the height alone did not cure the miss. So uphill an
 arrival tolerance and drop out of the graph, and at runtime `MoveToRange` can stall short of a waypoint on a smooth
 slope. This is open as [#1265](https://github.com/APKiwiOrg/KhaozEngine/issues/1265)
 and is not fixed in this release. Check routes over sloped physics ground in the game's own world.
+
+### Parallel contact bake
+
+```csharp
+public sealed record NavBakeExecution(int MaxDegreeOfParallelism);
+```
+
+`NavBakeExecution` schedules a bake's proof work and is implemented in staged 20.40.0. A null execution or a degree
+of 1 runs exactly the serial build, and the existing `BuildProfile` and `Create` forms forward a null execution. The
+setting is not part of `PhysicsNavBakeOptions` or the bake identity. Every degree produces the same graphs, resting
+heights and file bytes.
+
+Above degree 1 an ordinary contact profile proves admissions, edges and Stair links on up to
+`MaxDegreeOfParallelism` worker threads. Each phase splits its rows into `min(rows, workers * 4)` contiguous bands,
+workers claim bands in ascending order, and the build never starts more workers than bands. Layering stays serial.
+Legacy profiles always build serially, including in an all-legacy bake above degree 1.
+
+Checks run in a fixed order. A degree below 1 throws `ArgumentOutOfRangeException` first. Every existing argument
+and profile check follows in its usual order. Only then does a contact profile above degree 1 require
+`IPhysicsConcurrentReadSource` on both the capture's physics source and the context's selected query view, and throw
+`NotSupportedException` when either lacks it. `BepuPhysicsWorld` and its restricted views declare it. A borrowed
+wrapper without it refuses above degree 1 and still builds at degree 1. A mixed `Create` above degree 1 checks every
+profile before it builds any.
+
+**Provider contract.** Above degree 1 every provider the caller supplied (ground height and normal delegates, medium
+delegate, water field, registration and area classifier) must answer as a deterministic function of its inputs over
+one fixed build snapshot, independent of call order and thread, and be safe for concurrent reads. Keep every
+underlying datum fixed through capture and build, as the serial bake already requires. The build captures the
+physics basis and the environment producer identity (physics source, registration, boundary, water field and its
+generation, extent) once, authenticates each worker's first lease against it and checks it again after every worker
+joins. Any difference refuses the whole build with `InvalidOperationException`, and so does a worker lease that
+meets a changed basis.
+
+These TileWorld providers were audited against the contract and are endorsed:
+
+- `TileWorldColliders.MovementGroundHeight` and `MovementGroundNormal`, which read a private captured copy of the
+  terrain.
+- `TileGroundSampler.HeightAt`, `NormalAt`, `HeightDelegate` and `NormalDelegate`, which read the live document and
+  so need it unedited for the whole build.
+- `TileMediumSampler` as an `IMovementWaterField` (`SampleCentreWater`, `TraceWater`, `SemanticIdentity`,
+  `Generation`, `Extent`) and through `MediumAt` and `MediumDelegate`.
+- The `OrdinaryMovementRegistration` from `TileColliderRegistration.CreateMovementRegistration` or
+  `CreateMovementRegistrationBuilder`, which is immutable once built.
+
+MapDoc providers are not endorsed. MapDoc has no ordinary contact factory, and `MapWaterDomain` triangulation and
+`MapScopedSurfaces.Patch` hold unaudited state.
+
+Failures match the serial build. Every work item carries its position in the serial order, and the build rethrows the
+failure with the lowest position, with its original type and stack, which is the exception the serial build throws
+first. Nothing is published, every worker is joined and its leases released, and the caller's physics and borrowed
+views stay usable. When cleanup also fails, those failures ride on the primary exception as an `AggregateException`
+under `Exception.Data["CleanupFailures"]`. Workers copy the caller's diagnostic enablement, record into their own
+recorders and merge into the caller's after the join, and the caller's thread-local diagnostic state is restored.
+
+On a 576-column fixture, degree 12 builds identical graph bits and spends 0.85 to 0.93 of the serial CPU time per proof,
+which projects to about 8 to 10 times faster on a 12-core machine the bake has to itself. Wall-clock speedups on a
+shared machine follow the CPU share each worker gets, so the 1.7 and 4.6 times first measured under heavy load are not
+the bake's limit. The
+[parallel contact bake cost record](../docs/superpowers/plans/proofs/2026-10-14-parallel-contact-bake-cost.md) has the
+metrics and the [parallel proof slowdown record](../docs/superpowers/plans/proofs/2026-10-14-parallel-proof-slowdown.md)
+the CPU-time analysis and the updated Hollowmere extrapolation. Both are local samples, not the hosted cost gate.
 
 ### Aquatic profiles
 
@@ -388,6 +454,8 @@ public sealed class GroundNavigationBake
 {
     public static GroundNavigationBake Create(PhysicsNavBake capture, NavBakeSources sources,
         IReadOnlyList<NavBakeProfile> profiles);
+    public static GroundNavigationBake Create(PhysicsNavBake capture, NavBakeSources sources,
+        IReadOnlyList<NavBakeProfile> profiles, NavBakeExecution? execution);
     public static NavBakeLoadResult Load(Stream source, NavBakeExpectation expected);
     public void WriteTo(Stream destination);
     public ReadOnlySpan<byte> Fingerprint { get; }
@@ -397,7 +465,9 @@ public sealed class GroundNavigationBake
 ```
 
 `Create` builds every profile through `capture.BuildProfile` with its `Aquatic` flag while the capture is live, so each
-profile is exactly the fresh build. An aquatic profile from a capture without `SampleWater` is refused there.
+profile is exactly the fresh build. The `execution` overload builds profiles one after another and passes the setting to
+each contact profile, as [Parallel contact bake](#parallel-contact-bake) describes. An aquatic profile from a capture
+without `SampleWater` is refused there.
 `WriteTo` writes a little-endian `KENB` file. All-Legacy sets retain format 1 and their exact bytes. Any contact
 profile selects format 2 for the whole set, including mixed contact ground and legacy aquatic profiles. Format 2
 adds each profile's effective kind, foot fraction, water policy and zero placement offset to the identity. Only
@@ -950,8 +1020,8 @@ through `NavGrid.RestingHeightAt` while raw heights still define layers, areas a
 The bake owns separate source and proof bindings for each profile, preserving the context's cached runtime binding
 and borrowed view. Its full outward query envelope must fit the ordinary served scope. Every anchor, placement and
 step takes a fresh lease, and a non-Known anchor query or changed physics, environment or frame basis throws without
-publishing a partial graph. Phase 5b ground navigation, KENB format 2 and public runtime `Validate` are implemented
-in staged 20.39.0. Contact aquatic navigation, footprint-only seeds and public explicit bake profiles remain deferred
+publishing a partial graph. Phase 5b ground navigation, KENB format 2 and public runtime `Validate` are released
+in 20.39.0. Contact aquatic navigation, footprint-only seeds and public explicit bake profiles remain deferred
 to [#1389](https://github.com/APKiwiOrg/KhaozEngine/issues/1389). The frozen v1 fingerprint and legacy bake bytes
 are unchanged. Native G1b and the remaining adoption gates stay open. Local timing in the
 [5a proof](../docs/superpowers/plans/proofs/2026-10-13-contact-controller-phase5a-cost.md) and the

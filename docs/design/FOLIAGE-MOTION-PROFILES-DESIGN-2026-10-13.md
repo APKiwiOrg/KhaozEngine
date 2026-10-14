@@ -75,7 +75,7 @@ The public seams, from lowest to highest:
   only selection. A style for an id outside the set is refused with an `ArgumentException` naming the id. Two
   selected archetypes that share one mesh must share one style, and a conflict is refused the same way. A selected
   archetype with no style behaves exactly as today. Changing styles invalidates the animated split the way changing
-  the selection does.
+  the selection does, limited to splits that draw a changed archetype.
 - **Native world.** Native foliage (world-authoring R7, then the shared native rendering path in R8) reaches
   retained foliage through the same Render3D and Terrain seams, so it inherits profiles and casting without a
   second mechanism. The R7 plan consumes these seams instead of adding its own motion model.

@@ -93,4 +93,47 @@ internal static class ContactNavigationFixture
                 }
         }
     }
+
+    internal static void SameGraphBits(GroundNavigation expected, GroundNavigation actual)
+    {
+        Assert.Equal(Bits(expected.AgentRadius), Bits(actual.AgentRadius));
+        Assert.Equal(Bits(expected.AgentHeight), Bits(actual.AgentHeight));
+        Assert.Equal(expected.Space.Layers.Count, actual.Space.Layers.Count);
+        Assert.Equal(expected.Graph.Layers.Count, actual.Graph.Layers.Count);
+        Assert.Equal(expected.Space.Links, actual.Space.Links);
+        Assert.Equal(expected.Graph.Links, actual.Graph.Links);
+        var expectedLinks = new HashSet<NavLink>(expected.Graph.Links);
+        var actualLinks = new HashSet<NavLink>(actual.Graph.Links);
+        for (int candidate = 0; candidate < expected.Space.Links.Count; candidate++)
+            Assert.Equal(expectedLinks.Contains(expected.Space.Links[candidate]),
+                actualLinks.Contains(actual.Space.Links[candidate]));
+
+        for (int layer = 0; layer < expected.Space.Layers.Count; layer++)
+        {
+            NavGrid a = expected.Space.Layers[layer], b = actual.Space.Layers[layer];
+            Assert.Equal(a.Width, b.Width);
+            Assert.Equal(a.Height, b.Height);
+            Assert.Equal(Bits(a.CellSize), Bits(b.CellSize));
+            Assert.Equal(Bits(a.OriginX), Bits(b.OriginX));
+            Assert.Equal(Bits(a.OriginZ), Bits(b.OriginZ));
+            Assert.Equal(Bits(a.YawRadians), Bits(b.YawRadians));
+            Assert.Equal(Bits(a.YMin), Bits(b.YMin));
+            Assert.Equal(Bits(a.YMax), Bits(b.YMax));
+            Assert.Equal(a.HasSurfaceHeights, b.HasSurfaceHeights);
+            Assert.Equal(a.HasRestingHeights, b.HasRestingHeights);
+            Assert.Equal(expected.Graph.Layers[layer].Width, actual.Graph.Layers[layer].Width);
+            Assert.Equal(expected.Graph.Layers[layer].Height, actual.Graph.Layers[layer].Height);
+            for (int z = 0; z < a.Height; z++)
+                for (int x = 0; x < a.Width; x++)
+                {
+                    Assert.Equal(a.ClearanceAt(x, z), b.ClearanceAt(x, z));
+                    Assert.Equal(Bits(a.SurfaceHeightAt(x, z)), Bits(b.SurfaceHeightAt(x, z)));
+                    Assert.Equal(Bits(a.RestingHeightAt(x, z)), Bits(b.RestingHeightAt(x, z)));
+                    Assert.Equal(expected.Graph.Layers[layer].IsAccepted(x, z), actual.Graph.Layers[layer].IsAccepted(x, z));
+                    Assert.Equal(expected.Graph.Layers[layer].ExitMask(x, z), actual.Graph.Layers[layer].ExitMask(x, z));
+                }
+        }
+
+        static int? Bits(float? value) => value.HasValue ? BitConverter.SingleToInt32Bits(value.Value) : null;
+    }
 }

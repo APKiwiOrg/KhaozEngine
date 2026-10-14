@@ -102,6 +102,8 @@ public sealed class ItemsBenchmarkTests
         nameof(ItemsBenchmarkResult.Budget11ComponentBytes),
         nameof(ItemsBenchmarkResult.Budget11BytesPerViewerPerSecond),
         nameof(ItemsBenchmarkResult.Budget12PageBytesSum),
+        nameof(ItemsBenchmarkResult.Budget12PageResidentBytes),
+        nameof(ItemsBenchmarkResult.Budget12AdmittedResidentBytes),
         nameof(ItemsBenchmarkResult.Budget12TotalResidentBytes),
         nameof(ItemsBenchmarkResult.Budget13OfferedPerSecond),
         nameof(ItemsBenchmarkResult.Budget13AcceptedPerSecond),
@@ -126,6 +128,7 @@ public sealed class ItemsBenchmarkTests
 
         Assert.False(config.Quick);
         Assert.Equal(2_000, config.Players);
+        Assert.Equal(2_000, config.ResidentPlayers);
         Assert.Equal(5_000, config.Generations);
         Assert.Equal(7, config.Crafts);
         Assert.Equal(915, config.Seed);
@@ -135,6 +138,7 @@ public sealed class ItemsBenchmarkTests
         Assert.Throws<ArgumentOutOfRangeException>(() => ItemsBenchmarkConfig.Parse(
             new[] { "--items", "--players", (ItemsBenchmarkConfig.MaximumPlayers + 1).ToString(CultureInfo.InvariantCulture) }));
         Assert.Throws<ArgumentOutOfRangeException>(() => ItemsBenchmarkConfig.Parse(new[] { "--items", "--players", "0" }));
+        Assert.Throws<ArgumentOutOfRangeException>(() => ItemsBenchmarkConfig.Parse(new[] { "--items", "--resident-players", "0" }));
         Assert.Throws<ArgumentOutOfRangeException>(() => ItemsBenchmarkConfig.Parse(
             new[] { "--items", "--generations", (ItemsBenchmarkConfig.MaximumGenerations + 1).ToString(CultureInfo.InvariantCulture) }));
         Assert.Throws<ArgumentOutOfRangeException>(() => ItemsBenchmarkConfig.Parse(new[] { "--items", "--generations", "999" }));
@@ -165,6 +169,11 @@ public sealed class ItemsBenchmarkTests
         Assert.True(quick.ScaleInstances < full.ScaleInstances);
         Assert.True(quick.HotBaseCount < full.HotBaseCount);
         Assert.Equal(3, asked.Players);
+        Assert.Equal(3, asked.ResidentPlayers);
+        Assert.Equal(quick.Players, quick.ResidentPlayers);
+        ItemsBenchmarkConfig apart = ItemsBenchmarkConfig.Parse(new[] { "--items", "--players", "3", "--resident-players", "40" });
+        Assert.Equal(3, apart.Players);
+        Assert.Equal(40, apart.ResidentPlayers);
         Assert.Equal(1_000, asked.Generations);
 
         // The owner's content scale is not a knob in either mode: budget 9 measures the table build at it.
@@ -281,10 +290,15 @@ public sealed class ItemsBenchmarkTests
         string output = Path.Combine(directory, "items-sqlite-v1-seed915.json");
         try
         {
+            // Budget 12 is a live heap difference, and two idle readings of that instrument may disagree by
+            // ResidentMemoryTests.NoiseBytes, 4 MiB. Two players hold about 113 KB of pages, so their sign was
+            // noise: hosted Metal read the admitted layer as -28,032 bytes (#1380). The quick default of 200
+            // holds about 11 MB of pages and 12 MB more in the admitted layer, clear of that band, while budget
+            // 13 keeps two players so its busy loop stays cheap.
             ItemsBenchmarkConfig config = ItemsBenchmarkConfig.Parse(new[]
             {
-                "--items", "--quick", "--players", "2", "--generations", "1000", "--crafts", "20",
-                "--seed", "915", "--database", database, "--output", output,
+                "--items", "--quick", "--players", "2", "--resident-players", "200", "--generations", "1000",
+                "--crafts", "20", "--seed", "915", "--database", database, "--output", output,
             });
             var console = new StringWriter(CultureInfo.InvariantCulture);
 
@@ -309,7 +323,7 @@ public sealed class ItemsBenchmarkTests
             Assert.Equal("sqlite", result.Provider);
             Assert.Equal("items-sqlite-v1", result.Workload);
             Assert.Equal(915, result.Seed);
-            Assert.Equal(2, result.Budget12Players);
+            Assert.Equal(200, result.Budget12Players);
             Assert.Equal(2, result.Budget13Players);
             Assert.Equal(config.ThroughputSeconds, result.Budget13Seconds);
             Assert.Equal(config.ScaleInstances, result.ScaleInstances);

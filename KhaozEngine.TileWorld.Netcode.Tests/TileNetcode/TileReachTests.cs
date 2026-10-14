@@ -318,19 +318,9 @@ public class TileReachAllocationTests
         for (int i = 0; i < 8; i++)
             Assert.False(TileReach.TryNearest(map, far, 0, from, 1, 64, out _, out _));
 
-        // The BEST of several passes, for the reason TileRemoteReadAllocationTests states at length: the per
-        // thread counter is only accurate to one allocation context, and a background collection that retires a
-        // context inside the window charges bytes this thread never allocated. A call that really searched would
-        // allocate on every pass and cannot hide behind the minimum.
         const int iterations = 16;
-        const int passes = 5;
-        long allocated = long.MaxValue;
-        for (int pass = 0; pass < passes; pass++)
-        {
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            for (int i = 0; i < iterations; i++) TileReach.TryNearest(map, far, 0, from, 1, 64, out _, out _);
-            allocated = Math.Min(allocated, GC.GetAllocatedBytesForCurrentThread() - before);
-        }
+        long allocated = AllocationMeasurement.Measure($"{iterations} refused reach searches",
+            () => { for (int i = 0; i < iterations; i++) TileReach.TryNearest(map, far, 0, from, 1, 64, out _, out _); });
 
         Assert.True(allocated < 4096,
             $"the refused reach search allocated {allocated} bytes over {iterations} calls, which is a search");
@@ -360,16 +350,8 @@ public class TileReachAllocationTests
             Assert.Equal(4, path.Tiles.Count);
         }
 
-        // Best of several passes, for the reason the sibling above states: the per thread counter is only
-        // accurate to one allocation context. A second window cannot hide under the minimum of a one-window bound.
-        const int passes = 5;
-        long allocated = long.MaxValue;
-        for (int pass = 0; pass < passes; pass++)
-        {
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            TileReach.TryNearest(map, footprint, 0, from, 1, 64, out _, out _);
-            allocated = Math.Min(allocated, GC.GetAllocatedBytesForCurrentThread() - before);
-        }
+        long allocated = AllocationMeasurement.Measure("one reach search",
+            () => TileReach.TryNearest(map, footprint, 0, from, 1, 64, out _, out _));
 
         Assert.True(allocated < 150_000,
             $"the reach search allocated {allocated} bytes, which is more than the one search it should have run");

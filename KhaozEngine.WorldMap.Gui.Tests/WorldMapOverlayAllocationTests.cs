@@ -39,9 +39,7 @@ public sealed class WorldMapOverlayAllocationTests
         view.Update(pointer, 0f);
         Assert.Contains(view.DrawList, item => item.Texture is not null);
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        view.Update(pointer, 0f);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        long allocated = AllocationMeasurement.Measure("a warmed map view update", () => view.Update(pointer, 0f));
 
         Assert.Equal(0L, allocated);
         Assert.Equal(level, view.CurrentLevel);
@@ -87,9 +85,8 @@ public sealed class WorldMapOverlayAllocationTests
         Assert.Equal(new WorldMapHover(WorldMapHoverKind.Icon, "bank", new Vector2(60f, 60f)), view.Hovered);
 
         // Isolate the overlay entry point. Whole-frame streaming is covered by the allocation test above.
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        view.RebuildOverlays(pointer.Position);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        long allocated = AllocationMeasurement.Measure("a warmed overlay rebuild",
+            () => view.RebuildOverlays(pointer.Position));
 
         Assert.Equal(0L, allocated);
         Assert.Equal(4, view.OverlayPlacement.Icons.Count);

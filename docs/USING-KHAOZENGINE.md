@@ -8311,6 +8311,8 @@ public sealed partial class PhysicsNavBake : IDisposable
 
     public GroundNavigation BuildProfile(in MoveTuning tuning, NavAreaFilter areas);
     public GroundNavigation BuildProfile(in MoveTuning tuning, NavAreaFilter areas, GroundProfileOptions options);
+    public GroundNavigation BuildProfile(in MoveTuning tuning, NavAreaFilter areas, GroundProfileOptions? options,
+        NavBakeExecution? execution);
     public void Dispose();
 }
 ```
@@ -8360,7 +8362,7 @@ Both `BuildProfile` overloads, `GroundNavigationBake.Create` and every `GroundNa
 validate Contact selection before other profile work or stream reads. Malformed configurations throw
 `ArgumentException`, and Contact aquatic profiles throw `NotSupportedException` naming #1389. Ground construction
 requires an ordinary-constructed context and a leased capture whose geometry and origin remain unchanged.
-Phase 5b ground navigation is implemented in staged 20.39.0. Contact aquatic navigation, footprint-only seeds and
+Phase 5b ground navigation is released in 20.39.0. Contact aquatic navigation, footprint-only seeds and
 public explicit bake profiles are deferred to [#1389](https://github.com/APKiwiOrg/KhaozEngine/issues/1389).
 Raw surfaces retain layer and area identity. Certified resting anchors supply physical node poses through
 `NavGrid.RestingHeightAt`. Placement and Hold require grounded `Advanced` outcomes within 1 mm, and directed
@@ -8436,6 +8438,8 @@ public sealed class GroundNavigationBake
 {
     public static GroundNavigationBake Create(PhysicsNavBake capture, NavBakeSources sources,
         IReadOnlyList<NavBakeProfile> profiles);
+    public static GroundNavigationBake Create(PhysicsNavBake capture, NavBakeSources sources,
+        IReadOnlyList<NavBakeProfile> profiles, NavBakeExecution? execution);
     public static NavBakeLoadResult Load(Stream source, NavBakeExpectation expected);
     public void WriteTo(Stream destination);
     public ReadOnlySpan<byte> Fingerprint { get; }
@@ -8510,6 +8514,42 @@ changes, and keep a game test that loads the shipped bake and expects `Loaded`.
 
 On the dev Mac a 36,864-column flat world wrote 664,689 bytes and loaded in about 20 to 23 ms, allocating
 1,958,264 bytes against about 0.85 to 0.96 MB retained. These are single observations, not startup guarantees.
+
+### Parallel contact bake (`NavBakeExecution`)
+
+Contact profiles cost far more to bake than legacy ones, so a content pipeline can spread one contact profile over
+worker threads. This is implemented in staged 20.40.0:
+
+```csharp
+var execution = new NavBakeExecution(Environment.ProcessorCount);
+GroundNavigationBake bake = GroundNavigationBake.Create(capture, sources, profiles, execution);
+```
+
+A null execution or a degree of 1 runs the serial build, and the older overloads forward null. The setting is not
+part of the options or the bake identity, so every degree writes the same bytes and loads against the same
+expectation. Above degree 1 an ordinary contact profile proves its admissions, edges and Stair links on up to
+`MaxDegreeOfParallelism` workers, over `min(rows, workers * 4)` row bands claimed in order. Legacy profiles always
+build serially. `Create` builds profiles one after another and passes the setting to each contact profile.
+
+A degree below 1 throws `ArgumentOutOfRangeException` before any other check. After every existing check, a contact
+profile above degree 1 needs `IPhysicsConcurrentReadSource` on both the capture's physics source and the context's
+selected query view, or it throws `NotSupportedException`. `BepuPhysicsWorld` and its restricted views declare it.
+Every provider the game supplies (ground height and normal, medium, water field, registration and area classifier)
+must answer deterministically from its inputs, whatever the call order or thread, and be safe for concurrent reads.
+Keep their data fixed through capture and build. The audited TileWorld providers are endorsed:
+`TileWorldColliders.MovementGroundHeight` and `MovementGroundNormal`, the `TileGroundSampler` delegates while the
+document stays unedited, `TileMediumSampler` and the registration from `TileColliderRegistration`. MapDoc providers
+are not endorsed yet. The [Movement README](../KhaozEngine.Movement/README.md#parallel-contact-bake) names each
+method.
+
+The build snapshots the physics basis and the environment producer identity, and refuses the whole build with
+`InvalidOperationException` when either changes. A failing build throws the exception the serial build would have thrown
+first, publishes nothing and leaves the caller's world and views usable. On a 576-column fixture, degree 12 spends 0.85
+to 0.93 of the serial CPU time per proof, about 8 to 10 times faster on a 12-core machine the bake has to itself.
+Wall-clock speedup on a shared machine follows each worker's CPU share, so bake contact navigation with the machine
+otherwise idle. See the [cost record](superpowers/plans/proofs/2026-10-14-parallel-contact-bake-cost.md) and the
+[slowdown record](superpowers/plans/proofs/2026-10-14-parallel-proof-slowdown.md) for the metrics and the Hollowmere
+extrapolation.
 
 ### Range steering, NPC stepping and client path commands
 
@@ -9140,8 +9180,14 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
   `SourceWorld`, `Origin` and process-local `GeometryGeneration`. `AssertCurrent()` rejects expired or
   wrong-thread use. Perform queries and publish pure state under the lease, then dispose it on its
   acquiring thread before changing physics. Same-thread writes and nested leases are refused, other
-  threads serialize behind the gate, and view disposal cannot invalidate an active interval. This does
+  threads' writes wait behind the gate, and view disposal cannot invalidate an active interval. This does
   not certify native environment residency or provide a cross-head world/bake identity.
+- Optional marker `IPhysicsConcurrentReadSource` declares that the exact receiver accepts simultaneous
+  read leases and queries from several threads. Bepu owners and their restricted views declare it: each
+  reader interval borrows private query scratch, nested reads on one thread never wait, and writers are
+  exclusive, run in arrival order and hold back new readers once queued. Forwarding wrappers stay serial
+  unless they declare it after auditing their own state. The read-path audit is in
+  `docs/verification/2026-10-14-bepu-concurrent-read-audit.md`.
 - Optional `IPhysicsCapsuleContacts.QueryCapsuleContacts(capsule, pose, maxSeparationMetres,
   destination, filter) -> CapsuleContactResult` gathers independent constraints, including positive
   separations within the margin. Check `Complete` and `CertifiedErrorMetres` before using the output.
@@ -11358,7 +11404,8 @@ casting. Entries outside the selection or not exactly naming an authored selecte
 `ArgumentException` naming the ID. Selected archetypes sharing a catalog mesh reference or any resolved
 mesh part must agree on their effective style, including omitted defaults. Conflicts name both IDs.
 Styles are detached snapshots validated before submission and compared by value each draw. A changed
-selection or style, including an in-place map edit, invalidates affected splits. Removing a style restores
+selection or style, including an in-place map edit, invalidates only the splits that draw a changed
+archetype, and other splits keep their retained batches. Removing a style restores
 Blade motion and casting off. Short-cover maps do not override these styles.
 
 `FoliageMotionProfile(BendScale, MaxLean, WindScale, Shiver)` has these finite inclusive ranges:
@@ -12821,7 +12868,7 @@ maximum fall speed and swim-enter depth fraction, a non-Legacy water policy, reg
 with query leases, capsule contacts, complete support footprints and certified capsule sweeps. A medium
 delegate requires a field. Public explicit configuration governs its own water policy and rejects conflicting
 tuning water. Contact plus public explicit configuration is refused as two selections.
-Phase 5a is released in 20.37.0. Phase 5b ground navigation is staged in 20.39.0.
+Phase 5a is released in 20.37.0. Phase 5b ground navigation is released in 20.39.0.
 
 The retained `MoveCommand(move, run, cameraYaw, jump, faceCamera)` constructor and `default(MoveCommand)` leave
 `ScaleSpeedByAxis` false. They keep nonzero player axes normalized to full speed and keep the legacy dead zone. The

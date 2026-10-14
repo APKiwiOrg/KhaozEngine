@@ -71,8 +71,6 @@ public sealed class PointShadowAllocationTests
         commands.Begin();
         for (int i = 0; i < 4; i++) scene.PreparePointShadows(commands, eye);   // warm every reused buffer
 
-        // Retries once before failing (see AllocAssert.NoPerCallAllocation) to ride out an unrelated gen-0
-        // collision from the rest of the process, per issue #284.
         AllocAssert.NoPerCallAllocation("PreparePointShadows over 20 steady frames", () =>
         {
             for (int i = 0; i < 20; i++) scene.PreparePointShadows(commands, eye);

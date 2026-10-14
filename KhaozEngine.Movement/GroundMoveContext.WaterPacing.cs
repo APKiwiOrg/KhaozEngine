@@ -48,8 +48,12 @@ public sealed partial class GroundMoveContext
 
     void CaptureContactFrame()
     {
-        if (_frameCaptured && _contactFrame.PhysicsOrigin == _origin) return;
-        _contactFrame = new(default, _origin, _frameCaptured ? checked(_contactFrame.Epoch + 1) : 1);
+        _contactFrame = ContactFrameAt(_origin);
         _frameCaptured = true;
     }
+
+    // A new origin starts the next epoch. The current frame is reused while the origin holds.
+    MovementFrameDescriptor ContactFrameAt(Vector3 origin) =>
+        _frameCaptured && _contactFrame.PhysicsOrigin == origin ? _contactFrame
+            : new(default, origin, _frameCaptured ? checked(_contactFrame.Epoch + 1) : 1);
 }

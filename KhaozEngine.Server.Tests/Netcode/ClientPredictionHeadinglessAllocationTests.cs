@@ -60,7 +60,7 @@ public class ClientPredictionHeadinglessAllocationTests
         bool snapped = false;
         int maxPending = 0;
         float x = 0f;
-        AllocAssert.NoPerCallAllocation("Predict, Reconcile, AdvancePresentation and RenderedState without InterpolateYaw", () =>
+        void Steady()
         {
             for (int i = 0; i < 100; i++)
             {
@@ -70,7 +70,12 @@ public class ClientPredictionHeadinglessAllocationTests
                 maxPending = Math.Max(maxPending, p.PendingCommandCount);
                 x = p.RenderedState.Position.X;
             }
-        });
+        }
+
+        // One unmeasured pass warms the first Reconcile, which creates the pending list's cached key view once.
+        Steady();
+        AllocAssert.NoPerCallAllocation("Predict, Reconcile, AdvancePresentation and RenderedState without InterpolateYaw",
+            Steady);
 
         // Every Reconcile was applied and acknowledged its command, so none was ignored as stale.
         Assert.False(snapped);

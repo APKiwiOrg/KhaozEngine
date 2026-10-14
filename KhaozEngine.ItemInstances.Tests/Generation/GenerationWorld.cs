@@ -22,9 +22,8 @@ namespace KhaozEngine.Tests.ItemInstances.Generation;
 /// repeats a mod so the overlap has something to suppress, a unique and a two word rare name.
 /// </para>
 /// <para>
-/// Every registry a fact builds is its OWN, so nothing here writes process-global state and no
-/// <c>DisableParallelization</c> collection is needed. The allocation fact reads
-/// <c>GC.GetAllocatedBytesForCurrentThread()</c>, which is per thread, so it needs no collection either.
+/// Every registry a fact builds is its OWN, so nothing here writes process-global state. The allocation
+/// fact's class joins <c>AllocSensitive</c> because the measurement holds a process-wide no-GC region.
 /// </para>
 /// </summary>
 internal static class GenerationWorld

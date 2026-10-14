@@ -13,6 +13,8 @@ namespace KhaozEngine.Tests.MapDoc
     /// writer at a named step, so it runs headless and deterministically with no process kill, and each
     /// asserts that the document still LOADS and equals the expected whole version, which is the invariant,
     /// rather than asserting on files.</summary>
+    // The streaming regression measures the process-wide heap, so other test classes must not allocate in its window.
+    [Collection("AllocSensitive")]
     public class MapTiledDurabilityTests
     {
         static MapDocumentSaveOptions ThrowAt(MapTiledSaveStep step) => new()

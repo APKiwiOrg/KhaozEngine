@@ -8543,10 +8543,12 @@ are not endorsed yet. The [Movement README](../KhaozEngine.Movement/README.md#pa
 method.
 
 The build snapshots the physics basis and the environment producer identity, and refuses the whole build with
-`InvalidOperationException` when either changes. A failing build throws the exception the serial build would have
-thrown first, publishes nothing and leaves the caller's world and views usable. On a 576-column fixture at 12 cores,
-degree 12 ran 1.7 times faster cold and 4.6 times faster warm than degree 1. See the
-[cost record](superpowers/plans/proofs/2026-10-14-parallel-contact-bake-cost.md) for the metrics and the Hollowmere
+`InvalidOperationException` when either changes. A failing build throws the exception the serial build would have thrown
+first, publishes nothing and leaves the caller's world and views usable. On a 576-column fixture, degree 12 spends 0.85
+to 0.93 of the serial CPU time per proof, about 8 to 10 times faster on a 12-core machine the bake has to itself.
+Wall-clock speedup on a shared machine follows each worker's CPU share, so bake contact navigation with the machine
+otherwise idle. See the [cost record](superpowers/plans/proofs/2026-10-14-parallel-contact-bake-cost.md) and the
+[slowdown record](superpowers/plans/proofs/2026-10-14-parallel-proof-slowdown.md) for the metrics and the Hollowmere
 extrapolation.
 
 ### Range steering, NPC stepping and client path commands

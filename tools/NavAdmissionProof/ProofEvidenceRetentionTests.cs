@@ -155,8 +155,13 @@ public sealed class ProofEvidenceRetentionTests
             (label, stable) =>
             {
                 if (label == "B") bStarted = true;
-                var attempt = new ChildAttempt { Label = label, UseStableLegacyReadScope = stable,
-                    ExitStatus = exit, TimedOut = timedOut };
+                var attempt = new ChildAttempt
+                {
+                    Label = label,
+                    UseStableLegacyReadScope = stable,
+                    ExitStatus = exit,
+                    TimedOut = timedOut
+                };
                 pair.Samples.Add(attempt);
                 ProofChildAcceptance.Retain(files.Directory, attempt);
                 return Task.FromResult(attempt);
@@ -227,8 +232,13 @@ public sealed class ProofEvidenceRetentionTests
                     child = child with { Environment = SyntheticEnvironment() with { BinarySetSha256 = "different" } };
             }
             File.WriteAllBytes(Path.Combine(files.Directory, label + ".kenb"), bytes);
-            var attempt = new ChildAttempt { Label = label, UseStableLegacyReadScope = stable,
-                ExitStatus = 0, Result = child };
+            var attempt = new ChildAttempt
+            {
+                Label = label,
+                UseStableLegacyReadScope = stable,
+                ExitStatus = 0,
+                Result = child
+            };
             pair.Samples.Add(attempt);
             return Task.FromResult(attempt);
         });
@@ -255,10 +265,16 @@ public sealed class ProofEvidenceRetentionTests
 
     private static ChildResult CompletedChild(string label, bool stable) => NewChild() with
     {
-        Label = label, UseStableLegacyReadScope = stable, Metrics = SyntheticMetrics(),
-        GraphValidation = AcceptedGraph(), KenbLength = 52,
+        Label = label,
+        UseStableLegacyReadScope = stable,
+        Metrics = SyntheticMetrics(),
+        GraphValidation = AcceptedGraph(),
+        KenbLength = 52,
         KenbSha256 = "9DDEEAE5A13658B7BD119004DFFF5F31DD24FB5ECD9C9DDA4B8CD39754D61286",
-        CanonicalRoundTrip = true, ScopeReleasedAfterBuild = true, Stage = "Completed", Status = "Succeeded",
+        CanonicalRoundTrip = true,
+        ScopeReleasedAfterBuild = true,
+        Stage = "Completed",
+        Status = "Succeeded",
     };
 
     private static ProfileMetrics SyntheticMetrics() => new(1.25, 1, 0.75, 128, 64, 1, 0, 0, 2);

@@ -13,8 +13,12 @@ internal sealed class ProofFixture : IDisposable
     internal const int Width = 164, Height = 204;
     internal static MoveTuning Tuning => MoveTuning.Default with
     {
-        CapsuleRadius = 0.2f, CapsuleHalfHeight = 0.75f, MaxSlopeRadians = 0.8f,
-        StepHeight = 0.4f, WalkSpeed = 9f, RunSpeed = 18f,
+        CapsuleRadius = 0.2f,
+        CapsuleHalfHeight = 0.75f,
+        MaxSlopeRadians = 0.8f,
+        StepHeight = 0.4f,
+        WalkSpeed = 9f,
+        RunSpeed = 18f,
     };
     internal static PhysicsNavBakeOptions Options => new(-20.5f, -25.5f, 20.5f, 25.5f, 0.25f,
         5, 8, Tuning.MaxSlopeRadians, Width * Height, Width * Height * 4, MaxSurfacesPerColumn: 4);

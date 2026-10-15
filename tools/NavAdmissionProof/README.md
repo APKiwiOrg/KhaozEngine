@@ -10,9 +10,10 @@ with one layer, 32582 accepted nodes, 874 rejected cells and 258106 directed edg
 The finalized outer exit is 1. There is no valid A/B outcome or performance conclusion.
 Keep the candidate parked.
 
-A 144-cell correctness reproduction proves the old predicate mistook a walkable box roof at Y=2
-for obstructed ground at Y=0. The repaired contract checks real adjacent ground approaches into the
-capsule-expanded box sides and permits the roof. The large fixture has not been rerun with this repair.
+A 144-cell correctness reproduction demonstrates that the old predicate can reject a valid box roof at
+Y=2. The failed representative run retained no center height, so its roof attribution remains
+unproven. The repaired contract checks real adjacent ground approaches into the capsule-expanded box
+sides and permits the roof. The large fixture has not been rerun with this repair.
 
 Approval for that attempt is exhausted. This correctness repair authorizes no new measurement.
 Obtain separate explicit owner approval before any further comparison. No automatic retry is allowed.

@@ -4,12 +4,17 @@ This is a manual proof harness for the held stable legacy read-scope candidate. 
 `KhaozEngine.slnx` and normal selective CI test discovery. It is non-packable and uses the repository's
 existing .NET target, centrally pinned test packages and engine project references.
 
-The approved [hosted attempt](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/38802161651)
-failed after A returned from its single BuildProfile, during graph acceptance. B never started.
-Its metrics, graph counts and canonical output were not retained, so the failed predicate remains
-unknown. There is no valid A/B outcome or performance conclusion. Keep the candidate parked.
+The latest approved [hosted attempt](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/38807384252)
+failed during A's graph acceptance. Retained evidence identifies only `CentralObstacleRejected=false`,
+with one layer, 32582 accepted nodes, 874 rejected cells and 258106 directed edges. B never started.
+The finalized outer exit is 1. There is no valid A/B outcome or performance conclusion.
+Keep the candidate parked.
 
-Approval for that attempt is exhausted. This evidence-retention repair authorizes no new measurement.
+A 144-cell correctness reproduction proves the old predicate mistook a walkable box roof at Y=2
+for obstructed ground at Y=0. The repaired contract checks real adjacent ground approaches into the
+capsule-expanded box sides and permits the roof. The large fixture has not been rerun with this repair.
+
+Approval for that attempt is exhausted. This correctness repair authorizes no new measurement.
 Obtain separate explicit owner approval before any further comparison. No automatic retry is allowed.
 Run only on a Linux GitHub-hosted Actions runner through the existing manual stress workflow.
 Local execution and self-hosted runners are refused.
@@ -68,6 +73,19 @@ build-slot --label e2-proof-evidence-fix -- \
   --filter 'FullyQualifiedName~KhaozEngine.Tests.Movement.Research.ProofEvidenceRetentionTests&FullyQualifiedName!~SingleUnprofiledPair'
 ```
 
+Small deterministic correctness tests are also permitted locally with this exact selection. Each of
+three tests captures one 12 by 12 window and builds one degree-1 legacy profile without timing it.
+They use the same public floor, central box and tuning through `PublicBoxCapture`, with bounds
+`[-1.5,1.5) x [-1.5,1.5)` and 0.25 m cells. Two cases omit the central box to verify clear traversal
+and rejection of a missing obstacle. They never construct `ProofFixture`, start a child process or
+invoke the representative pair. The retention cases remain purely synthetic.
+
+```bash
+build-slot --label nav-fixture-correctness -- \
+  dotnet test tools/NavAdmissionProof/NavAdmissionProof.csproj -c Release \
+  --filter '(FullyQualifiedName~KhaozEngine.Tests.Movement.Research.SmallFixtureCorrectnessTests|FullyQualifiedName~KhaozEngine.Tests.Movement.Research.ProofEvidenceRetentionTests)&FullyQualifiedName!~SingleUnprofiledPair'
+```
+
 ## Bounded comparison
 
 One wrapper launches exactly two fresh helper processes, serially, using the same binary set.
@@ -87,11 +105,13 @@ The maximum representative child execution is six minutes. Process termination h
 The fixture is a deterministic 164 by 204 cell window at 0.25 m spacing, with half-open XZ bounds
 `[-20.5,20.5) x [-25.5,25.5)`. A complete physics owner contains a flat floor at Y=0 and three public
 box obstacles. The authenticated movement view excludes only the floor and uses matching analytic
-ground. `ProofFixture.cs` holds the fixed box geometry, capture options and tuning derived from the
-public `MoveTuning.Default` and the existing parity-fixture pattern. No consumer source or input is used.
+ground. `PublicBoxCapture.cs` holds the shared geometry. `ProofFixture.cs` holds capture options and
+tuning derived from the public `MoveTuning.Default` and the existing parity-fixture pattern.
+No consumer source or input is used.
 
-Checks require nontrivial accepted directed edges and a refused central ground obstacle. Both graph
-counts and complete canonical KENB bytes must match. Every child also loads and rewrites its KENB
+Checks require nontrivial accepted directed edges and refused adjacent ground entries at all four
+central box sides. An accepted roof is valid. Both graph counts and complete canonical KENB bytes
+must match. Every child also loads and rewrites its KENB
 and verifies that a physics mutation succeeds after the build releases its read scope.
 
 There is no public API that packages an already-built profile without building it again. The
@@ -117,10 +137,24 @@ because the shared workflow removes passing console logs and TRX files.
 Each child writes its environment, fixture, selected flag, invocation identity and running stage
 before fixture setup. It checkpoints each later stage and saves the measured counters immediately
 when the single measurement returns, before graph inspection or acceptance. Graph evidence contains
-all observed layer dimensions, counts and six independent acceptance predicates. The existing limits
-remain unchanged. Every layer must be 164 by 204, accepted nodes must be at least 10000, directed
-edges at least 50000, rejected cells nonzero, the clear edge accepted and the central obstacle rejected.
-An acceptance error includes the exact counts, dimensions and each predicate value.
+all observed layer dimensions, counts and eight independent acceptance predicates. The size and count
+limits remain unchanged. Every layer must be 164 by 204, accepted nodes must be at least 10000,
+directed edges at least 50000, rejected cells nonzero and the original clear edge accepted.
+
+The three ground predicates require all four sides to pass. Sample positions come from the public
+box bounds, capsule radius and grid lattice. Each side has a clear cell, an accepted ground approach
+and its immediate inward neighbor. Clear-to-approach traversal must succeed on a layer selected by
+measured ground height. The inward cell must have captured ground at Y=0, lie outside the solid box
+but inside its capsule-expanded side, and have no accepted ground node. Traversal from the accepted
+ground approach into that adjacent cell must be refused across every target layer. Missing ground
+approaches cannot pass through a vacuous `CanTraverse=false` result.
+
+Evidence includes the center and all side cells, world positions, captured heights, graph layer
+indices, visible surface heights, node acceptance and each side's three predicates. A null graph
+height means a blocked or absent surface, so captured heights independently establish the ground
+under a rejected cell. The center roof is diagnostic, not a ground rejection predicate. An acceptance
+error includes the counts, dimensions, predicates and these geometry diagnostics. Synthetic retention
+tests still exercise every top-level predicate independently before failure.
 
 Completed canonical bytes and their length/hash are retained before load/rewrite and scope-release
 checks. A later failure retains those bytes and the failed stage. An orderly exception writes

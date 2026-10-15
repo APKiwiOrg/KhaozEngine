@@ -61,7 +61,7 @@ internal sealed record ProfileMetrics(double WallSeconds, double ProcessCpuSecon
     int Gen1Collections, int Gen2Collections, long MonitorLockContentions);
 
 internal sealed record GraphCounts(int Layers, int AcceptedNodes, int RejectedLayerCells, int DirectedEdges,
-    int CandidateLinks, int AcceptedLinks, bool ClearEdgeAccepted, bool CentralObstacleRejected);
+    int CandidateLinks, int AcceptedLinks, bool ClearEdgeAccepted, bool ClearGroundApproaches, bool AdjacentGroundObstructions, bool GroundEntriesRefused);
 
 internal sealed record ChildResult(string RunId, string Label, bool UseStableLegacyReadScope, string Fixture,
     ProofEnvironment Environment)

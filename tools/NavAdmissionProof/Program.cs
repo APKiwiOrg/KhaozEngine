@@ -31,7 +31,7 @@ internal static class Program
                 state.RecordMeasurement(metrics);
                 Console.WriteLine("BuildProfile complete. Graph and canonical byte checks begin outside timing.");
                 state.Begin("GraphInspection");
-                state.CheckGraph(ProofFixture.InspectGraph(navigation));
+                state.CheckGraph(ProofFixture.InspectGraph(navigation, fixture.Capture));
                 state.Begin("CanonicalSerialization");
                 byte[] bytes = canonical.Write(navigation);
                 state.RecordCanonical(bytes);

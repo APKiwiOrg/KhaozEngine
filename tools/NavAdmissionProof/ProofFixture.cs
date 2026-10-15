@@ -4,8 +4,6 @@ using System.Text;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Movement;
 using KhaozEngine.Navigation;
-using KhaozEngine.Physics;
-using KhaozEngine.Physics.Bepu;
 
 namespace KhaozEngine.Tests.Movement.Research;
 
@@ -25,36 +23,10 @@ internal sealed class ProofFixture : IDisposable
         Identity + ";floor-half=(24,0.1,29),center=(0,-0.1,0)" +
         ";boxes-half/center=(0.6,1,0.6)/(0,1,0),(0.125,1,2)/(-6,1,5),(1.25,1,0.5)/(7,1,-8)"));
 
-    private readonly BepuPhysicsWorld world;
-    private readonly IDisposable view;
-    private readonly GroundMoveContext context;
-    internal PhysicsNavBake Capture { get; }
+    private readonly PublicBoxCapture fixture = new(Options, distantObstacles: true);
+    internal PhysicsNavBake Capture => fixture.Capture;
 
-    internal ProofFixture()
-    {
-        world = new BepuPhysicsWorld();
-        try
-        {
-            StaticHandle floor = world.AddStatic(new BoxShape(new(24, 0.1f, 29)), Pose.At(new(0, -0.1f, 0)));
-            world.AddStatic(new BoxShape(new(0.6f, 1, 0.6f)), Pose.At(new(0, 1, 0)));
-            world.AddStatic(new BoxShape(new(0.125f, 1, 2)), Pose.At(new(-6, 1, 5)));
-            world.AddStatic(new BoxShape(new(1.25f, 1, 0.5f)), Pose.At(new(7, 1, -8)));
-            var selectedView = world.CreateQueryViewExcludingStatics([floor]);
-            view = selectedView;
-            try
-            {
-                // Capture sees the complete owner. Movement sees matching analytic ground and props.
-                context = new GroundMoveContext((_, _) => 0, (_, _) => Vector3.UnitY,
-                    world, null, null, selectedView);
-                try { Capture = PhysicsNavBake.Capture(context, Options, _ => 0); }
-                catch { context.Dispose(); throw; }
-            }
-            catch { view.Dispose(); throw; }
-        }
-        catch { world.Dispose(); throw; }
-    }
-
-    internal static GraphAcceptance InspectGraph(GroundNavigation navigation)
+    internal static GraphAcceptance InspectGraph(GroundNavigation navigation, PhysicsNavBake capture)
     {
         NavTraversalGraph graph = CanonicalProfileFile.Graph(navigation);
         int accepted = 0, rejected = 0, edges = 0;
@@ -73,18 +45,12 @@ internal sealed class ProofFixture : IDisposable
                 }
         }
         bool clearEdge = graph.CanTraverse(0, 10, 10, 0, 11, 10);
-        bool obstacleRejected = !graph.IsNodePassable(0, 82, 102);
+        GroundObstacleEvidence obstacle = GroundObstacleInspection.Inspect(navigation, capture);
         return new GraphAcceptance(new GraphCounts(graph.Layers.Count, accepted, rejected, edges,
-            navigation.Space.Links.Count, graph.Links.Count, clearEdge, obstacleRejected), dimensions);
+            navigation.Space.Links.Count, graph.Links.Count, clearEdge, obstacle.ClearGroundApproaches,
+            obstacle.AdjacentGroundObstructions, obstacle.GroundEntriesRefused), dimensions, obstacle);
     }
 
-    internal void CheckScopeReleased() => world.Rebase(Vector3.Zero);
-
-    public void Dispose()
-    {
-        Capture.Dispose();
-        context.Dispose();
-        view.Dispose();
-        world.Dispose();
-    }
+    internal void CheckScopeReleased() => fixture.CheckScopeReleased();
+    public void Dispose() => fixture.Dispose();
 }

@@ -45,19 +45,26 @@ public sealed class ProofEvidenceRetentionTests
     }
 
     [Theory]
-    [InlineData("DimensionsMatch", 10000, 1, 50000, true, true, 163)]
-    [InlineData("EnoughAcceptedNodes", 9999, 1, 50000, true, true, 164)]
-    [InlineData("EnoughDirectedEdges", 10000, 1, 49999, true, true, 164)]
-    [InlineData("HasRejectedLayerCells", 10000, 0, 50000, true, true, 164)]
-    [InlineData("ClearEdgeAccepted", 10000, 1, 50000, false, true, 164)]
-    [InlineData("CentralObstacleRejected", 10000, 1, 50000, true, false, 164)]
+    [InlineData("DimensionsMatch", 10000, 1, 50000, true, true, true, true, 163)]
+    [InlineData("EnoughAcceptedNodes", 9999, 1, 50000, true, true, true, true, 164)]
+    [InlineData("EnoughDirectedEdges", 10000, 1, 49999, true, true, true, true, 164)]
+    [InlineData("HasRejectedLayerCells", 10000, 0, 50000, true, true, true, true, 164)]
+    [InlineData("ClearEdgeAccepted", 10000, 1, 50000, false, true, true, true, 164)]
+    [InlineData("ClearGroundApproaches", 10000, 1, 50000, true, false, true, true, 164)]
+    [InlineData("AdjacentGroundObstructions", 10000, 1, 50000, true, true, false, true, 164)]
+    [InlineData("GroundEntriesRefused", 10000, 1, 50000, true, true, true, false, 164)]
     public void GraphFailureRetainsMetricsCountsAndEveryPredicate(string predicate, int accepted,
-        int rejected, int edges, bool clear, bool obstacle, int width)
+        int rejected, int edges, bool clear, bool approaches, bool obstruction, bool refused, int width)
     {
         using var files = new EvidenceFiles();
         var evidence = new ProofChildEvidence(files.Directory, NewChild());
-        var counts = new GraphCounts(1, accepted, rejected, edges, 3, 2, clear, obstacle);
-        var validation = new GraphAcceptance(counts, [new(0, width, 204)]);
+        var counts = new GraphCounts(1, accepted, rejected, edges, 3, 2, clear, approaches, obstruction, refused);
+        var center = new ObstacleCellEvidence(82, 102, 0.125f, 0.125f, [2f], [new(0, 2f, true)]);
+        var approach = new ObstacleCellEvidence(85, 102, 0.875f, 0.125f, [0f], [new(2, 0f, true)]);
+        var target = new ObstacleCellEvidence(84, 102, 0.625f, 0.125f, [0f], [new(2, null, false)]);
+        var diagnostics = new GroundObstacleEvidence(center,
+            [new("synthetic-east", approach, approach, target, 2, approaches, obstruction, refused)]);
+        var validation = new GraphAcceptance(counts, [new(0, width, 204)], diagnostics);
         InvalidOperationException failure = Assert.Throws<InvalidOperationException>(() => evidence.Run(state =>
         {
             state.Begin("BuildProfile");
@@ -75,13 +82,26 @@ public sealed class ProofEvidenceRetentionTests
         using JsonDocument json = JsonDocument.Parse(File.ReadAllText(files.ChildPath));
         JsonElement predicates = json.RootElement.GetProperty("GraphValidation");
         string[] names = ["DimensionsMatch", "EnoughAcceptedNodes", "EnoughDirectedEdges",
-            "HasRejectedLayerCells", "ClearEdgeAccepted", "CentralObstacleRejected"];
+            "HasRejectedLayerCells", "ClearEdgeAccepted", "ClearGroundApproaches",
+            "AdjacentGroundObstructions", "GroundEntriesRefused"];
         foreach (string name in names)
             Assert.Equal(name != predicate, predicates.GetProperty(name).GetBoolean());
         Assert.Contains("\"" + predicate + "\": false", failure.Message);
         Assert.Contains("\"AcceptedNodes\": " + accepted, failure.Message);
         Assert.Contains("\"DirectedEdges\": " + edges, retained.Failure!);
         Assert.Equal(width, retained.GraphValidation.LayerDimensions[0].Width);
+        GroundObstacleEvidence saved = Assert.IsType<GroundObstacleEvidence>(retained.GraphValidation.GroundObstacle);
+        Assert.Equal(2f, Assert.Single(saved.Center.CapturedHeights));
+        Assert.Equal(0, Assert.Single(saved.Center.Surfaces).Layer);
+        GroundSideEvidence side = Assert.Single(saved.Sides);
+        Assert.Equal(2, side.GroundLayer);
+        Assert.Equal(0f, Assert.Single(side.Approach.Surfaces).Height);
+        Assert.Equal(0f, Assert.Single(side.Obstruction.CapturedHeights));
+        Assert.Null(Assert.Single(side.Obstruction.Surfaces).Height);
+        Assert.False(Assert.Single(side.Obstruction.Surfaces).Accepted);
+        Assert.Equal(approaches, side.ClearGroundApproach);
+        Assert.Equal(obstruction, side.AdjacentGroundObstruction);
+        Assert.Equal(refused, side.GroundEntryRefused);
         Assert.Null(retained.KenbLength);
         Assert.False(File.Exists(files.KenbPath));
     }
@@ -243,7 +263,7 @@ public sealed class ProofEvidenceRetentionTests
 
     private static ProfileMetrics SyntheticMetrics() => new(1.25, 1, 0.75, 128, 64, 1, 0, 0, 2);
     private static GraphAcceptance AcceptedGraph() => new(
-        new GraphCounts(1, 10000, 1, 50000, 3, 2, true, true), [new(0, 164, 204)]);
+        new GraphCounts(1, 10000, 1, 50000, 3, 2, true, true, true, true), [new(0, 164, 204)]);
 
     private static byte[] SyntheticKenb()
     {

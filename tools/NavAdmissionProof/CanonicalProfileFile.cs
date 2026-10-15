@@ -30,6 +30,10 @@ internal sealed class CanonicalProfileFile
             { typeof(byte[]), typeof(Vector3), columns.GetType(), typeof(string[]), typeof(GroundNavigation[]) }));
     }
 
+    internal static INavColumnProvider CapturedColumns(PhysicsNavBake capture) =>
+        (INavColumnProvider)typeof(PhysicsNavBake).GetProperty("Columns", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .GetValue(capture)!;
+
     internal static NavTraversalGraph Graph(GroundNavigation navigation) =>
         (NavTraversalGraph)typeof(GroundNavigation).GetProperty("Graph", BindingFlags.NonPublic | BindingFlags.Instance)!
             .GetValue(navigation)!;

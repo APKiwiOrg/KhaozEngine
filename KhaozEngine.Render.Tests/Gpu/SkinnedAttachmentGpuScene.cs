@@ -44,7 +44,7 @@ public sealed class SkinnedAttachmentGpuScene : IDisposable
     {
         EnsureScene();
         Configure(_fixture!.Scene, gpuSkinning, light);
-        return _fixture.Frame((scene, _) =>
+        void DrawFrame(Scene3D scene, int _)
         {
             scene.EffectTimeSeconds = 0;
             if (light != 0)
@@ -72,7 +72,10 @@ public sealed class SkinnedAttachmentGpuScene : IDisposable
                 scene.DrawSkinnedOutlineDissolved(group, _garmentControl, ControlPose(posed), Model, dissolve, complement > .5f);
                 scene.DrawMeshOutlineDissolved(group, _rigid, RigidWorld(posed), dissolve, complement > .5f);
             }
-        });
+        }
+        // Point shadows allocate at the next Begin after the first request. Compare settled captures in both scenes.
+        if (light == 2) _fixture.Frame(DrawFrame);
+        return _fixture.Frame(DrawFrame);
     }
 
     void Draw(Scene3D scene, Control control, bool posed, RigidInstanceDraw template)

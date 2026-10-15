@@ -13514,7 +13514,7 @@ foreach (EntityRenderState e in client.Snapshot())
     Vector4 naturalRect = NameplatePlacement.Place(pixel, size,
         designViewport.Width, designViewport.Height, plate.Template, ref state);
     stackPlacementStates[id] = state;
-    float rank = Vector3.Distance(localPlayerPos, worldPos);
+    float rank = Vector3.Distance(camera.Eye, worldPos + offset);
     stacker.Add(id, naturalRect, rank, pinned: combat.IsEngagedWith(e.Id));
 }
 stacker.Resolve(dt);

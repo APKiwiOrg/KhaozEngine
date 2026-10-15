@@ -369,9 +369,10 @@ void main() {
         //      (ShadowMapRenderer.PackSkinnedShadowSlot). LightMvp stays the folded matrix the plain vertex uses, so
         //      a zero threshold records identical depth. The noise needs the ABSOLUTE world position, which is
         //      reconstructed as the rigid variant does: Model is the render-relative world transform and
-        //      RenderOrigin is added back. DissolveParams.x is this cascade's noise scale and .y the threshold, which
-        //      reaches the fragment with a zero complement, because a character dissolve is always the plain keep
-        //      set (SkinnedModelDissolveFrag's `mask < threshold` discard). ----
+        //      RenderOrigin is added back. DissolveParams.x is this cascade's noise scale, .y the threshold and .z the
+        //      draw's dissolve complement, which reaches the fragment as vDissolveComplement exactly as the rigid
+        //      instance attribute does. ShadowDepthDissolveFrag then keeps `mask < threshold` for a complement
+        //      caster and `mask >= threshold` otherwise. ----
         public const string SkinnedShadowDepthDissolveVert = @"#version 450
 layout(set=0, binding=0) uniform VBlock {
     mat4 LightMvp;         // Model * clip-corrected LightViewProj (folded per draw)

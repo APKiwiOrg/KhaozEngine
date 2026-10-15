@@ -39,12 +39,14 @@ internal static class ProofHost
         if (alternative is not null && alternative != "0")
             throw new InvalidOperationException("Conflicting compilation environment.");
         foreach (string key in new[] { "CORECLR_ENABLE_PROFILING", "COR_ENABLE_PROFILING", "DOTNET_EnableEventPipe",
-            "COMPlus_EnableEventPipe", "DOTNET_DiagnosticPorts", "COMPlus_DiagnosticPorts", "DOTNET_StartupHooks" })
+            "COMPlus_EnableEventPipe", "DOTNET_DiagnosticPorts", "COMPlus_DiagnosticPorts" })
         {
             string? value = Environment.GetEnvironmentVariable(key);
             if (!string.IsNullOrEmpty(value) && value != "0")
                 throw new InvalidOperationException("Profiler or diagnostic injection refused via " + key);
         }
+        if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DOTNET_STARTUP_HOOKS")))
+            throw new InvalidOperationException("Startup hook injection refused via DOTNET_STARTUP_HOOKS");
         _ = Required("KHAOZ_SUPPORT_COST_ARTIFACT");
         string commit = Required("GITHUB_SHA");
         if (commit.Length != 40 || MovementVersion().Split('+').Last() != commit)

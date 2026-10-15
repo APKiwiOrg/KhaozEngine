@@ -7,7 +7,7 @@ Production behavior and bake formats were not changed.
 
 ## Final disposition
 
-Whole-window and complete consumer-suite savings remain unmeasured for [#1417](https://github.com/APKiwiOrg/KhaozEngine/issues/1417). The original capture remains the valid isolated capture result at 0.541884 process CPU seconds, 2.3564423 wall seconds and 4,417,632 managed bytes. The separately authorized hosted pair below gives one unprofiled ordered A/B result for the stable-read candidate on a public fixture, but it does not establish statistical significance, a native Mac gain or Grimhollow full-suite savings. The research and the reviewed backend fix below do not change the bake format or public API.
+End-to-end consumer-window and complete consumer-suite savings remain unmeasured for [#1417](https://github.com/APKiwiOrg/KhaozEngine/issues/1417). The original capture remains the valid isolated capture result at 0.541884 process CPU seconds, 2.3564423 wall seconds and 4,417,632 managed bytes. The separately authorized hosted pair below gives one unprofiled ordered A/B result for the stable-read candidate on a public fixture, but it does not establish statistical significance, a native Mac gain or Grimhollow full-suite savings. The research and the reviewed backend fix below do not change the bake format or public API.
 
 ### Experimental stable-read candidate
 
@@ -55,7 +55,7 @@ This is a coherent public-fixture CPU reduction that supports reconsidering the 
 
 The measured stable legacy read-scope option is separately owned by the integration work on `feature/nav-stable-read-1417`, based on current `main`. The current `fix/nav-query-cost-1417` branch contains only the lazy penetration-batcher fix and this research documentation. It does not contain the stable-read option or hosted harness. This documentation update is not option integration or consumer adoption.
 
-The [fixture repair](https://github.com/APKiwiOrg/KhaozEngine/commit/8d91a7c575a57920fa2f8ed6977df98c6f9a51a1) proves with a 144-cell correctness test that the center is accepted as a Y=2 roof. Its replacement four-sided check tests adjacent ground obstruction using real accepted sources, permits the roof and keeps the other thresholds. Independent review passed, and parent evidence reports 26 small and pure tests passed. The repaired harness remains on the proof branch, not main. No larger run was made after the fix.
+The [fixture repair](https://github.com/APKiwiOrg/KhaozEngine/commit/8d91a7c575a57920fa2f8ed6977df98c6f9a51a1) proves with a 144-cell correctness test that the center is accepted as a Y=2 roof. Its replacement four-sided check tests adjacent ground obstruction using real accepted sources, permits the roof and keeps the other thresholds. Independent review passed, and parent evidence reports 26 small and pure tests passed. The repaired harness remains on the proof branch, not main. The later approved hosted run above exercised this corrected acceptance.
 
 ### Issue status
 

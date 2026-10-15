@@ -148,6 +148,19 @@ public sealed class PrefabServiceTests
         Assert.Equal(before, PrefabEditorFixtures.State(session));
     }
     [Fact]
+    public void BackslashParentPath_RefusesWithoutWritingOutsideTheRoot()
+    {
+        var session = PrefabEditorFixtures.Session(PrefabFixtures.Create("roomless"));
+        var before = PrefabEditorFixtures.State(session);
+        var service = new PrefabService(session); service.Open("hut");
+        string root = Path.GetDirectoryName(session.DocumentPath)!;
+        string name = "escape-" + Guid.NewGuid().ToString("N");
+        Assert.Throws<MapDocumentException>(() => service.Save("hut", "..\\" + name));
+        Assert.False(Directory.Exists(Path.Combine(Path.GetDirectoryName(root)!, name)));
+        Assert.False(Directory.Exists(Path.Combine(root, "..\\" + name)));
+        Assert.Equal(before, PrefabEditorFixtures.State(session));
+    }
+    [Fact]
     public void ParentContext_IsRequiredOnlyForParentDependentAssets()
     {
         var roomless = PrefabFixtures.Create("roomless");

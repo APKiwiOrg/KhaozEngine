@@ -147,8 +147,7 @@ public sealed partial class MapEditSession
         if (Path.IsPathRooted(relativePath)) throw new MapDocumentException("Prefab publication paths must be relative to the resource root.");
         string root = MapDocumentStorage.ResourceRoot(_storagePath!, _storageForm);
         string target = Path.GetFullPath(relativePath, root);
-        string relative = Path.GetRelativePath(root, target);
-        if (relative == ".." || relative.StartsWith("../", StringComparison.Ordinal) || Path.IsPathRooted(relative) ||
+        if (!ResourcePathContainment.IsInsideRoot(Path.GetRelativePath(root, target)) ||
             MapDocumentStorage.IsReserved(_storagePath!, _storageForm, target))
             throw new MapDocumentException("Prefab publication path escapes the resource root or enters writer-owned map storage.");
         return target;

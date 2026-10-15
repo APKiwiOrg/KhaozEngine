@@ -376,7 +376,11 @@ material base colour. So a palette-painted kit needs neither textures nor a mate
 `Scene3DTileWorldScene` also implements the optional `IAttachmentScene` capability from
 `KhaozEngine.Attachments.Render3D`. `UploadAttachment(parts)` delegates transactional upload to
 `Scene3DAttachmentScene`, returns an owning `IAttachmentMeshLease`, and retains the full-descriptor
-`DrawMesh` path. Headless scenes may implement the same optional capability with recording leases.
+`DrawMesh` path. `UploadSkinnedAttachment(parts)` returns an owning `ISkinnedAttachmentMeshLease`.
+The capability forwards complete skinned descriptors, including material, dissolve, shadow flags and
+motion keys, directly to Scene3D rather than using the legacy tile-interface fallback. Rigid and
+skinned dissolved outline calls add to a caller-created `MeshOutlineGroup` through the existing
+Scene3D paths. Headless scenes may implement the same optional capability with recording leases.
 `ITileWorldScene` does not require it. Dispose attachment caches or leases before disposing the scene.
 
 Everything the view does to a scene goes through `ITileWorldScene`: `LoadMesh`, `UnloadMesh`, `DrawMesh`,

@@ -276,6 +276,12 @@ internal sealed class AttachmentRecordingScene(Scene3D scene) : IAttachmentScene
         return lease;
     }
     public void DrawMesh(in RigidInstanceDraw draw) => _adapter.DrawMesh(draw);
+    public void DrawSkinned(in SkinnedInstanceDraw draw, ReadOnlySpan<Matrix4x4> bones) => _adapter.DrawSkinned(draw, bones);
+    public void DrawMeshOutlineDissolved(MeshOutlineGroup group, MeshHandle mesh, Matrix4x4 world, float dissolve, bool complement) =>
+        _adapter.DrawMeshOutlineDissolved(group, mesh, world, dissolve, complement);
+    public void DrawSkinnedOutlineDissolved(MeshOutlineGroup group, SkinnedMeshHandle mesh,
+        ReadOnlySpan<Matrix4x4> bones, Matrix4x4 world, float dissolve, bool complement) =>
+        _adapter.DrawSkinnedOutlineDissolved(group, mesh, bones, world, dissolve, complement);
 }
 
 internal sealed class AttachmentTestSource : IAttachmentAssetSource

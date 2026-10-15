@@ -152,6 +152,21 @@ public sealed class RigidAttachmentSubmissionTests
     }
 
     [Fact]
+    public void Invalid_shadow_only_template_writes_no_rigid_descriptors()
+    {
+        using var fixture = new SubmissionFixture();
+        BoundAttachmentSet bound = fixture.Load(2, twoParts: true);
+        RigidInstanceDraw invalid = Template with { ShadowOnly = true, CastsShadows = false };
+        RigidInstanceDraw[] draws = Enumerable.Repeat(Template, bound.DrawCount).ToArray();
+
+        Assert.Throws<ArgumentException>(() => bound.WriteDraws(fixture.Skeleton, fixture.Palette, Model, Key, invalid, draws));
+        Assert.All(draws, draw => Assert.Equal(Template, draw));
+        Assert.Throws<ArgumentException>(() => bound.Queue(fixture.Skeleton, fixture.Palette, Model, Key, invalid));
+        Assert.Equal(0, fixture.Capability.Count);
+        Assert.Empty(fixture.Rig.Scene.QueuedInstancesForTests);
+    }
+
+    [Fact]
     public void Default_queue_draws_opaque_white_and_casts_shadows()
     {
         using var fixture = new SubmissionFixture();
@@ -254,5 +269,11 @@ public sealed class RigidAttachmentSubmissionTests
             _adapter.DrawMesh(draw);
         }
         internal void Clear() => Count = 0;
+        public void DrawSkinned(in SkinnedInstanceDraw draw, ReadOnlySpan<Matrix4x4> bones) => _adapter.DrawSkinned(draw, bones);
+        public void DrawMeshOutlineDissolved(MeshOutlineGroup group, MeshHandle mesh, Matrix4x4 world, float dissolve, bool complement) =>
+            _adapter.DrawMeshOutlineDissolved(group, mesh, world, dissolve, complement);
+        public void DrawSkinnedOutlineDissolved(MeshOutlineGroup group, SkinnedMeshHandle mesh,
+            ReadOnlySpan<Matrix4x4> bones, Matrix4x4 world, float dissolve, bool complement) =>
+            _adapter.DrawSkinnedOutlineDissolved(group, mesh, bones, world, dissolve, complement);
     }
 }

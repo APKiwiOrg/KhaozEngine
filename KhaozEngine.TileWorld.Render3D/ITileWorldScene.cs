@@ -308,7 +308,8 @@ public sealed class Scene3DTileWorldScene : ITileWorldScene, IAttachmentScene
         _scene.DrawSkinned(handle, boneMatrices, world, tint, Material.None, dissolve, edgeWidth, edgeColor);
 
     /// <summary>Forwards the whole descriptor, motion key included, to
-    /// <see cref="Scene3D.DrawSkinned(in SkinnedInstanceDraw, ReadOnlySpan{Matrix4x4})"/>. Nothing is dropped, unlike
+    /// <see cref="Scene3D.DrawSkinned(in SkinnedInstanceDraw, ReadOnlySpan{Matrix4x4})"/>. Both scene interfaces use
+    /// this implementation, retaining material, shadow, dissolve and motion fields. Nothing is dropped, unlike
     /// the interface's fallback.</summary>
     public void DrawSkinned(in SkinnedInstanceDraw draw, ReadOnlySpan<Matrix4x4> boneMatrices) =>
         _scene.DrawSkinned(in draw, boneMatrices);

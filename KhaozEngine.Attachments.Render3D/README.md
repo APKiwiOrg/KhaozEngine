@@ -82,8 +82,8 @@ BoundAttachmentSet bound = loaded.Bind(map);
 
 For a skinned or mixed set, use `loaded.Bind(map, hostMesh)`. It binds the cache's captured skin
 metadata without reading assets or importing geometry again. It retains both rigid and skinned
-material handles, and `DrawCount` includes both kinds. The rigid descriptor submission overloads
-below accept rigid-only views.
+material handles, and `DrawCount` includes both kinds. `BoundAttachmentSet` allocates one garment
+palette per skinned part using `SkinnedJointCount`, shared by that part's material draws.
 
 `DefinitionSha256` records the exact source bytes. `Definition.SemanticSha256` records canonical content.
 Binding resolves every joint before returning a view. `Skeleton` retains the exact bound skeleton and
@@ -98,7 +98,9 @@ render thread, with no overlapping calls.
 
 The `IAttachmentScene` overload accepts an optional scene capability for recording or headless
 consumers. `Scene3DAttachmentScene` uploads through Scene3D and forwards complete `RigidInstanceDraw`
-descriptors. `UploadAttachment(parts)` returns an `IAttachmentMeshLease` with material-ordered
+and `SkinnedInstanceDraw` descriptors, including material, dissolve, shadow and motion fields. Its
+rigid and skinned dissolved outline methods forward into the caller's existing outline group.
+`UploadAttachment(parts)` returns an `IAttachmentMeshLease` with material-ordered
 `MeshHandle` values. `UploadSkinnedAttachment(parts)` returns an `ISkinnedAttachmentMeshLease` with
 material-ordered `SkinnedMeshHandle` values. Both uploads are transactional, and their immutable handles
 remain borrowed until lease disposal. The shipped `Scene3DTileWorldScene` also offers this optional capability.
@@ -119,24 +121,49 @@ bound.Queue(map.Skeleton, jointPalette, characterWorld, visualIncarnationKey, te
 ```
 
 The convenience overload constructs opaque white, matte, solid, visible descriptors with shadow
-casting enabled. The template overload replaces `Mesh`, `World` and `Motion` and preserves every
-other descriptor field, including dissolve and shadow options. The whole pose is validated before
-the first scene call, so an invalid later joint cannot queue a prefix.
+casting enabled. Both overloads submit rigid, skinned and mixed sets. The template overload replaces
+`Mesh`, `World` or `Model`, and `Motion`. It preserves every other field, including tint, material,
+dissolve and edge, casting, shadow-only, inverted shadow dissolve and dissolve complement. Skinned
+parts receive the unchanged character model and host joint model matrices reordered into garment
+skin order. Scene3D alone applies inverse binds. The entire pose and template are prepared before
+any scene call or output write. An invalid later joint or shadow-only template without casting
+cannot publish a prefix.
 
-For a recording scene or outline pass, allocate a descriptor buffer once after binding:
+For synchronous descriptor consumers, allocate the mixed buffer once after binding:
 
 ```csharp
-var draws = new RigidInstanceDraw[bound.DrawCount];
+var draws = new AttachmentDraw[bound.DrawCount];
 int count = bound.WriteDraws(map.Skeleton, jointPalette, characterWorld,
     visualIncarnationKey, template, draws);
 for (int i = 0; i < count; i++)
-    scene.DrawMeshOutline(outlineGroup, draws[i].Mesh, draws[i].World);
+{
+    AttachmentDraw draw = draws[i];
+    if (draw.IsSkinned) scene.DrawSkinned(draw.Skinned, draw.BoneMatrices.Span);
+    else scene.Draw(draw.Rigid);
+}
 ```
 
 `WriteDraws` returns `DrawCount` descriptors in ascending part-ID order and stable material order.
-They borrow cache-owned mesh handles. An insufficient buffer or invalid pose throws before writing
-any descriptor, and the unused buffer suffix stays untouched. Submission and descriptor writing
-throw `ObjectDisposedException` after cache disposal.
+`PartId` and `MaterialIndex` identify each draw. `IsSkinned` selects `Rigid` or `Skinned`. Each
+`BoneMatrices` borrows its part's preallocated palette, shared by all its materials. Consume it
+synchronously before the bound view's next preparation, submission or cache disposal. The rigid
+`WriteDraws` overload taking `Span<RigidInstanceDraw>` remains supported for rigid-only sets and
+throws `InvalidOperationException` for a set containing skinned parts before writing anything.
+An insufficient buffer or invalid pose or template throws before any descriptor is written, and
+the unused buffer suffix stays untouched.
+
+Create the outline group through the scene's `BeginMeshOutline` API, then queue the complete set:
+
+```csharp
+var outlineGroup = scene.BeginMeshOutline(outlineColor, widthPixels, occlusion);
+bound.QueueOutline(map.Skeleton, jointPalette, characterWorld, outlineGroup,
+    dissolve: .5f, dissolveComplement: true);
+```
+
+`QueueOutline` prepares the same pose and uses the existing rigid and skinned dissolved outline
+paths for every material group. Dissolve defaults to zero and complement to false. Occlusion and
+target settings belong to the caller's group. Queue, descriptor writing and outlines all throw
+`ObjectDisposedException` after cache disposal.
 
 Temporal keys nest the caller key, the semantic revision's first 64 bits as two little-endian `uint`
 values, stable part ID and material ordinal with `MotionKey.Combine`. Source reordering preserves

@@ -6350,6 +6350,21 @@ Version 21 removes the old rigid-only set type names without aliases. See the
 [migration and design record](design/SKINNED-ATTACHMENT-PARTS-DESIGN-2026-10-15.md) and the
 [renderer package reference](../KhaozEngine.Attachments.Render3D/README.md) for the full contract.
 
+#### Migrating from 20.x
+
+Besides the set type renames in the design record table:
+
+- `IAttachmentScene` implementers, test fakes included, add `UploadSkinnedAttachment`,
+  `DrawSkinned`, `DrawMeshOutlineDissolved` and `DrawSkinnedOutlineDissolved`.
+- `AttachmentSetDefinition.Parts` holds abstract `AttachmentPartDefinition` values. Code that
+  reads `Joint` or `Local` pattern-matches `RigidAttachmentPartDefinition` first.
+- `AttachmentSetJson.CurrentFormatVersion` changed from 1 to 2. Code that meant format 1 uses
+  `AttachmentSetJson.RigidOnlyFormatVersion`.
+- `GltfLoader.LoadPartsWithMaterials(ReadOnlyMemory<byte>, string)` and
+  `GltfLoader.LoadSkinnedPartsWithMaterials(ReadOnlyMemory<byte>, string)` throw
+  `InvalidDataException` for a malformed glTF. The message names the identity and the importer's
+  diagnostic is the inner exception. Catch that instead of a SharpGLTF type.
+
 ### Skinned body contracts (any body shape)
 
 A game with more than one skinned body states each body's joints once as a `SkeletonContract` and checks every

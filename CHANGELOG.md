@@ -16,6 +16,10 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - Document theme scopes for both controls that copy construction-time colors and live theme readers.
   Navigation CPU research is recorded separately. No navigation performance option or bake format
   change ships in this version.
+- Bepu penetration queries now initialize a collision batcher only after finding an eligible static.
+  Excluded-only and non-static-only overlaps avoid native task-table work while preserving collision
+  results, submission order and query cleanup. Cold ignored-query scratch capacity drops from 128 KiB
+  to zero in the regression fixtures. This is not a measured whole-navigation CPU improvement.
 
 ## 21.0.0
 

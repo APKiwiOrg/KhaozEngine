@@ -1469,15 +1469,18 @@ paragraph prescribes.
 
 ## `KE_VULKAN_DEVICE`, `KE_VULKAN_VALIDATION`, `KE_VULKAN_FRAMES_IN_FLIGHT` and `KE_VULKAN_ACQUIRE`
 
-**`KE_VULKAN_VALIDATION`'s messages go to YOUR logging, so a session that configured none sees none.** The pump
-writes through the ambient `Log` facade in `KhaozEngine.Diagnostics`, and that facade discards everything until
-something calls `Log.Configure`. Arm the lever in an app that never configured logging and the layer still runs,
-the rate limiter still counts, `strict` still latches and throws at the next controlled point, and not one
-message is printed anywhere. Configure a `LogManager` with a `ConsoleSink` (or any other sink) before creating
-the device if you want to read them. The Khronos layer's own stdout is independent of that and arrives either
-way, which is why such a run can look half instrumented: layer output present, engine-formatted validation lines
-absent. The engine's own CI hit exactly this, and its test host now configures a sink whenever the lever arms a
-rung ([#565](https://github.com/APKiwiOrg/KhaozEngine/issues/565)).
+**`KE_VULKAN_VALIDATION`'s messages go to YOUR logging, so a session with neither an async-flow scope nor a process manager selected sees none.** The pump writes through the ambient
+`Log` facade in `KhaozEngine.Diagnostics`, and that facade discards messages when neither an async-flow scope nor
+a process manager is selected. A `Log.Use(manager)` scope can receive entries on its current async flow without
+`Log.Configure`, but a construction-only scope does not guarantee capture of later native callbacks on unrelated
+driver threads. For native validation callbacks, configure a process `LogManager` with a `ConsoleSink` (or any
+other sink) through `Log.Configure` before creating the device, because unrelated driver threads need not inherit
+the calling execution context. Arm the lever with neither selected and the layer still runs, the rate limiter
+still counts, `strict` still latches and throws at the next controlled point, and not one message is printed
+anywhere. The Khronos layer's own stdout is independent of that and arrives either way, which is why such a run
+can look half instrumented: layer output present, engine-formatted validation lines absent. The engine's own CI hit
+exactly this, and its test host now configures a sink whenever the lever arms a rung
+([#565](https://github.com/APKiwiOrg/KhaozEngine/issues/565)).
 
 **`KE_VULKAN_PIPELINE_CACHE` controls the persisted `VkPipelineCache`.** Point it at a directory to relocate the
 blob (a CI workspace, or a machine whose local app data is not writable), or set it to any of `off`, `0`,

@@ -17379,13 +17379,15 @@ environment variable can conjure one that is not on the machine. On Debian and U
 and a device created without validation, which is the right behaviour on a developer box and a silently vacuous
 gate anywhere that was relying on it.
 
-**The messages go to YOUR logging, so a session that configured none sees none.** The pump writes through the
-ambient `Log` facade, and that facade discards everything until something calls `Log.Configure`. Set the lever in
-an app that never configured logging and the layer runs, the rate limiter counts, `strict` still latches and
-throws, and not one message is printed. Configure a `LogManager` with a `ConsoleSink` (or any other sink) before
-creating the device if you want to read them. The Khronos layer's own stdout is separate and arrives either way,
-which is why a run can look half-instrumented. The engine's own CI hit exactly this and its test host now
-configures a sink whenever the lever arms a rung
+**The messages go to YOUR logging, so a session with neither an async-flow scope nor a process manager selected sees none.** The pump writes through the ambient `Log` facade, and that facade discards messages when neither an
+async-flow scope nor a process manager is selected. A `Log.Use(manager)` scope can receive entries on its current
+async flow without `Log.Configure`, but a construction-only scope does not guarantee capture of later native
+callbacks on unrelated driver threads. For native validation callbacks, configure a process `LogManager` with a
+`ConsoleSink` (or any other sink) through `Log.Configure` before creating the device, because unrelated driver
+threads need not inherit the calling execution context. Set the lever with neither selected and the layer runs,
+the rate limiter counts, `strict` still latches and throws, and not one message is printed. The Khronos layer's own
+stdout is separate and arrives either way, which is why a run can look half-instrumented. The engine's own CI hit
+exactly this and its test host now configures a sink whenever the lever arms a rung
 ([#565](https://github.com/APKiwiOrg/KhaozEngine/issues/565)).
 
 **Both tiers are CI gates in the engine's own matrix**, which is what they were built for. The scheduled full

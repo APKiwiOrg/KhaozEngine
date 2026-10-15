@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Numerics;
 using SharpGLTF.Schema2;
@@ -25,8 +26,12 @@ namespace KhaozEngine.Render3D
         /// mutation. Uses the same decoder and skin joint order as the path overload. The caller's
         /// <paramref name="identity"/> names the asset in validation diagnostics.</summary>
         /// <remarks>Attachment consumers must apply their embedded skinned asset policy before import.</remarks>
+        /// <exception cref="InvalidDataException">The glTF is malformed. The message names
+        /// <paramref name="identity"/> and the importer's diagnostic is the inner exception.</exception>
+        /// <exception cref="InvalidOperationException">The glTF has no skin, exceeds the bone cap or fails index
+        /// validation.</exception>
         public static SkinnedGltfMesh LoadSkinned(ReadOnlyMemory<byte> glb, string identity) =>
-            BuildSkinned(LoadModel(glb, identity), identity);
+            TranslateModelErrors(identity, () => BuildSkinned(LoadModel(glb, identity), identity));
 
         /// <summary>Opt-in convenience: load a rigged glb/glTF AND auto-read its first textured material's
         /// baseColor/normal/metallicRoughness textures, decoded to raw RGBA8 (no GPU). The

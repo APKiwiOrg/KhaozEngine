@@ -160,9 +160,10 @@ public sealed class GltfSkinnedMaterialPartsTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Malformed_accessor_through_a_byte_overload_throws_invalid_data_naming_the_identity(bool skinned)
+    [InlineData("rigid-parts")]
+    [InlineData("skinned-parts")]
+    [InlineData("skinned")]
+    public void Malformed_accessor_through_a_byte_overload_throws_invalid_data_naming_the_identity(string overload)
     {
         var fixture = new SkinnedAttachmentGlbFixture();
         int normals = fixture.Accessors.Count;
@@ -177,9 +178,13 @@ public sealed class GltfSkinnedMaterialPartsTests
         fixture.Primitives[0]!["attributes"]!["NORMAL"] = normals;
         byte[] glb = fixture.Build();
         const string identity = "malformed-normal.glb";
-        Action load = skinned
-            ? () => GltfLoader.LoadSkinnedPartsWithMaterials(glb, identity)
-            : () => GltfLoader.LoadPartsWithMaterials(glb, identity);
+        Action load = overload switch
+        {
+            "rigid-parts" => () => GltfLoader.LoadPartsWithMaterials(glb, identity),
+            "skinned-parts" => () => GltfLoader.LoadSkinnedPartsWithMaterials(glb, identity),
+            "skinned" => () => GltfLoader.LoadSkinned(glb, identity),
+            _ => throw new ArgumentOutOfRangeException(nameof(overload), overload, null),
+        };
 
         InvalidDataException error = Assert.Throws<InvalidDataException>(load);
 

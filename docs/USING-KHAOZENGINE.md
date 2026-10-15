@@ -6360,10 +6360,11 @@ Besides the set type renames in the design record table:
   reads `Joint` or `Local` pattern-matches `RigidAttachmentPartDefinition` first.
 - `AttachmentSetJson.CurrentFormatVersion` changed from 1 to 2. Code that meant format 1 uses
   `AttachmentSetJson.RigidOnlyFormatVersion`.
-- `GltfLoader.LoadPartsWithMaterials(ReadOnlyMemory<byte>, string)` and
-  `GltfLoader.LoadSkinnedPartsWithMaterials(ReadOnlyMemory<byte>, string)` throw
-  `InvalidDataException` for a malformed glTF. The message names the identity and the importer's
-  diagnostic is the inner exception. Catch that instead of a SharpGLTF type.
+- `GltfLoader.LoadPartsWithMaterials(ReadOnlyMemory<byte>, string)`,
+  `GltfLoader.LoadSkinnedPartsWithMaterials(ReadOnlyMemory<byte>, string)` and
+  `GltfLoader.LoadSkinned(ReadOnlyMemory<byte>, string)` throw `InvalidDataException` for a malformed glTF.
+  The message names the identity and the importer's diagnostic is the inner exception. Catch that instead of a
+  SharpGLTF type.
 
 ### Skinned body contracts (any body shape)
 

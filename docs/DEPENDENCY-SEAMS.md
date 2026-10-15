@@ -725,6 +725,13 @@ retains only accepted Stair links for guarded queries, and does not generate Hop
 owns pure data and outlives the builder and its caller-owned physics world. This edge keeps Navigation and
 Physics free of a reverse Movement reference.
 
+`NavBakeExecution.UseStableLegacyReadScope`, default false, optionally reuses one thread-affine
+`IPhysicsQueryLeaseSource` read interval per synchronous legacy profile. The complete source and any selected
+movement view must declare that existing Physics capability themselves. Its live lease authenticates the exact owner,
+view origin and captured geometry without acquiring a nested lease. Providers must be stable, deterministic and
+read-only, with no mutation or incompatible explicit lease in a callback. Contact profiles ignore the property.
+Default callers retain their existing path. No backend dependency, new seam or bake identity field is added.
+
 `GroundNavigationBake` writes one capture's columns and named profiles as a versioned `KENB` file and loads them
 without physics, rebuilding layer grids through `NavGrid.FromBlockedSurfaces`. Hashing uses the base library's
 `IncrementalHash` and encoding uses `BinaryPrimitives`, so the bake adds no reference or package.

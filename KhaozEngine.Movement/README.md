@@ -320,11 +320,14 @@ and is not fixed in this release. Check routes over sloped physics ground in the
 ### Parallel contact bake
 
 ```csharp
-public sealed record NavBakeExecution(int MaxDegreeOfParallelism);
+public sealed record NavBakeExecution(int MaxDegreeOfParallelism)
+{
+    public bool UseStableLegacyReadScope { get; init; } // default false
+}
 ```
 
 `NavBakeExecution` schedules a bake's proof work and is implemented in staged 20.40.0. A null execution or a degree
-of 1 runs exactly the serial build, and the existing `BuildProfile` and `Create` forms forward a null execution. The
+of 1 runs the serial build, and the existing `BuildProfile` and `Create` forms forward a null execution. The
 setting is not part of `PhysicsNavBakeOptions` or the bake identity. Every degree produces the same graphs, resting
 heights and file bytes.
 
@@ -332,6 +335,36 @@ Above degree 1 an ordinary contact profile proves admissions, edges and Stair li
 `MaxDegreeOfParallelism` worker threads. Each phase splits its rows into `min(rows, workers * 4)` contiguous bands,
 workers claim bands in ascending order, and the build never starts more workers than bands. Layering stays serial.
 Legacy profiles always build serially, including in an all-legacy bake above degree 1.
+
+### Stable legacy read scope
+
+`UseStableLegacyReadScope = true` opts each synchronous legacy profile into one thread-affine physics read lease
+covering its holds, directed edges and Stair proofs. `BuildProfile` and `GroundNavigationBake.Create` accept it
+through their existing execution argument. It leaves every proof, budget, origin check, graph ordering and bake byte
+unchanged, and is excluded from bake identity. Ordinary contact profiles ignore this property and keep their existing
+scheduling and lease behavior. The default false preserves the existing legacy path, including mutable callbacks
+and builds inside a caller's explicit lease.
+
+Opting in asserts that all providers used by the build are deterministic, stable and read-only for its duration.
+This includes ground height and normal, bounds, medium, water and area data. Callbacks must neither mutate physics
+nor acquire an incompatible explicit nested lease, nor synchronously wait for another thread to mutate the owner.
+An opted-in build under an existing explicit lease is refused by the backend's non-nesting contract. That refusal
+leaves the caller's lease live. Mutating a leased owner from a callback is refused, and the build releases its own
+scope on success and on any failure.
+
+After existing degree and profile argument checks, the complete physics source and any selected movement query view
+must themselves declare `IPhysicsQueryLeaseSource`. A wrapper does not inherit its backend's capability. Otherwise
+the opted-in legacy profile throws `NotSupportedException` before providers or proofs execute. The selected view
+must still name that exact owner and origin, and its live lease must match the captured geometry generation and
+origin. An identity or captured-basis change throws `InvalidOperationException`. Disposed and wrong-thread lease
+refusals propagate. No second lease is acquired to validate the basis within the scope.
+
+```csharp
+var execution = new NavBakeExecution(1) { UseStableLegacyReadScope = true };
+GroundNavigationBake bake = GroundNavigationBake.Create(capture, sources, profiles, execution);
+```
+
+### Parallel contact provider contract
 
 Checks run in a fixed order. A degree below 1 throws `ArgumentOutOfRangeException` first. Every existing argument
 and profile check follows in its usual order. Only then does a contact profile above degree 1 require

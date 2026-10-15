@@ -3,7 +3,9 @@
 Research for [#1417](https://github.com/APKiwiOrg/KhaozEngine/issues/1417).
 One representative caller-selected ground window was captured on engine commit
 `cbeff834a55f1e982dbaaeea21a154ff49e9ea31`, in Release, on ARM64 with .NET 10.0.13.
-Production behavior and bake formats were not changed.
+The original capture and baseline profile experiments changed neither production behavior nor bake formats.
+The implementation and single after observation below add a default-off legacy read scope. They preserve bytes
+but do not establish a performance improvement.
 
 ## Result and decision boundary
 
@@ -354,3 +356,85 @@ Keep the original capture, restored bytes, exact options and complete profile
 baseline for one separately authorized after comparison. No such comparison or
 production change ran here. Any changed captured or shipped byte returns to the
 orchestrator for owner approval before adoption.
+
+## Stable legacy scope implementation and single after observation
+
+The approved implementation adds `NavBakeExecution.UseStableLegacyReadScope`, default false. It is a caller
+assertion that every provider used for a synchronous legacy profile is deterministic, stable and read-only.
+`BuildProfile` and `GroundNavigationBake.Create` reuse one thread-affine lease per selected legacy profile.
+The exact complete source and selected movement view must declare `IPhysicsQueryLeaseSource` themselves.
+The helper authenticates the live lease against the exact owner, view origin and captured geometry without
+acquiring another lease inside it. Existing degree and profile argument checks keep their order.
+
+This explicit contract preserves mutable callbacks and existing outer leases on the default path. True refuses
+unsupported capability before proofs, refuses physics mutation and incompatible explicit nested leases in
+callbacks, and receives the backend's existing non-nesting refusal under a caller lease. Scope cleanup runs on
+success and failure. Ordinary contact profiles ignore the property. Legacy work stays serial. No proof, budget,
+footprint, origin check, floating-point operation, graph order, capture format or bake identity changed.
+The [Movement contract](../../KhaozEngine.Movement/README.md#stable-legacy-read-scope) owns API usage details.
+
+The single authorized after profile restored the retained columns. It did not call `Capture` again. The exact
+source, input, tuning, scene, collider, capture-option and snapshot identities were checked before and after.
+The adapter, runtime, architecture, trace providers and stage-counter implementation matched the baseline.
+Fresh Release assemblies included the new option. The same seven inner stage boundaries were reproduced,
+with scope admission included in profile checks and its release included in the outer profile interval.
+Temporary instrumentation was removed afterwards and every authored Movement source matched its saved
+pre-instrumentation hash. Raw traces and private reproduction data stay outside the public repository.
+
+| Outer stage | Baseline CPU s | After CPU s | Baseline wall s | After wall s | After managed B | After GC 0 / 1 / 2 |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| context-rebuild | 1.785892 | 2.134660 | 1.7981888 | 10.9853080 | 173,177,848 | 20 / 9 / 6 |
+| snapshot-reconstruction | 0.009516 | 0.013190 | 0.0094449 | 0.0286770 | 2,116,296 | 0 / 0 / 0 |
+| restore-validation | 0.022923 | 0.093096 | 0.0243743 | 0.6198890 | 1,167,312 | 0 / 0 / 0 |
+| build-profile | 15.199555 | 16.399351 | 15.8554580 | 88.2522843 | 3,186,856 | 0 / 0 / 0 |
+| bake-assembly | 0.005084 | 0.006690 | 0.0049077 | 0.0122319 | 23,800 | 0 / 0 / 0 |
+| serialization | 0.018377 | 0.039455 | 0.0179106 | 0.2249139 | 2,692,680 | 0 / 0 / 0 |
+| load-validation | 0.037254 | 0.061391 | 0.0375760 | 0.2838634 | 6,266,096 | 0 / 0 / 0 |
+
+Current-thread and process allocation counts were equal in every downstream after stage. Setup's current-thread
+count was 173,115,800 bytes. BuildProfile allocated 96 bytes more than the baseline and collected no GC.
+
+| After subdivision | Wall s | Process CPU s | Managed B | GC 0 / 1 / 2 |
+| --- | ---: | ---: | ---: | --- |
+| profile-checks | 0.0058455 | 0.005502 | 1,544 | 0 / 0 / 0 |
+| layered-candidates | 3.9592816 | 1.169047 | 2,962,224 | 0 / 0 / 0 |
+| node-arrays | 0.0235628 | 0.021091 | 67,264 | 0 / 0 / 0 |
+| directed-edges | 84.2401606 | 15.185862 | 67,360 | 0 / 0 / 0 |
+| stair-links | 0.0010351 | 0.001222 | 304 | 0 / 0 / 0 |
+| graph-finalization | 0.0051887 | 0.005085 | 1,392 | 0 / 0 / 0 |
+
+**The performance gate was not met.** Profile CPU rose from 15.199555 to 16.399351 seconds, an observed 7.9%
+increase. Wall time rose from 15.8554580 to 88.2522843 seconds, 5.57 times the baseline. Directed-edge CPU
+rose from 14.301217 to 15.185862 seconds. These observations establish no performance win and do not resolve
+[#1417](https://github.com/APKiwiOrg/KhaozEngine/issues/1417). The default-off candidate is retained for review,
+without a claim that it should be integrated as a performance fix.
+
+The host was under different contention. After-run load averages were approximately 58 / 85 / 80 before and
+42 / 71 / 76 afterwards, compared with the baseline profile's 29 / 36 / 61 and 27 / 35 / 60.
+Profile process CPU per wall second fell from 0.96 to 0.19. No competing query or mutation thread was deliberately
+introduced inside the measured owner. A single profiled cold observation cannot isolate the scope's cost from
+host scheduling, runtime, profiler and JIT effects. Native allocation remains uncounted. There was no warm-up,
+baseline rerun, second after trial or stress run. Further representative measurement needs separate authorization.
+
+Offline decoding of the same after trace reported 71,901 events, no lost-event callback and one unresolved native
+address. Its directed-edge interval contained 11,374 main-thread sample events with zero
+`Monitor.Enter_Slowpath` leaves, compared with 2,312 of 3,246 baseline events. The trace also decoded 1,406
+allocation ticks, 1,405 with stacks and one without. Removing the sampled monitor leaf did not produce a measured
+CPU saving. Sample counts and thread-time weights remain unsuitable as exclusive CPU percentages or savings
+estimates, especially across these different wall-time and scheduling conditions.
+
+The complete 588,425-byte KENB was equal to the baseline, SHA-256
+`7D07149A3DA1582016A9DE4872B56348AF6A945BD4050453DB6B845BFEA6876A`.
+The complete 535,326-byte diagnostic snapshot was equal too, SHA-256
+`E6D195C94B5A7F7E2746119DBDF39B837E6AAE1FDB87C8FDF949BDD45662FDB5`.
+All 86 retained input and baseline hashes matched. Profile counts stayed at one layer, 29,401 accepted nodes,
+232,388 directed edges and no cross-layer links. Canonical load and rewrite remained byte-identical.
+
+The focused Release verification passed 282 tests, including 27 new scope and fixture parity cases. Complete
+canonical KENB comparisons cover flat and sloped analytic ground over a complete physics capture, two capsule
+sizes, restricted movement views, thin walls and doors, stacked surfaces and Stair links, rebase, missing and padded
+columns, area footprints, water, aquatic float routing and dry fallback. Behavioral cases cover capability and live
+owner/view/lease identity, captured geometry, callbacks, cleanup, disposed and wrong-thread tokens, preserved caller
+leases and ignored contact execution. Existing capture, profile, lifetime, scheduling, format and traversal coverage
+also ran. No existing test was weakened or skipped. This is focused verification, not a full engine suite or consumer
+adoption proof. No consumer file or pin changed.

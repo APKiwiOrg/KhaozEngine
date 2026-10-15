@@ -8608,7 +8608,7 @@ A null execution or a degree of 1 runs the serial build, and the older overloads
 part of the options or the bake identity, so every degree writes the same bytes and loads against the same
 expectation. Above degree 1 an ordinary contact profile proves its admissions, edges and Stair links on up to
 `MaxDegreeOfParallelism` workers, over `min(rows, workers * 4)` row bands claimed in order. Legacy profiles always
-build serially. `Create` builds profiles one after another and passes the setting to each contact profile.
+build serially. `Create` builds profiles one after another and passes execution options to each profile.
 
 A degree below 1 throws `ArgumentOutOfRangeException` before any other check. After every existing check, a contact
 profile above degree 1 needs `IPhysicsConcurrentReadSource` on both the capture's physics source and the context's
@@ -8629,6 +8629,30 @@ Wall-clock speedup on a shared machine follows each worker's CPU share, so bake 
 otherwise idle. See the [cost record](superpowers/plans/proofs/2026-10-14-parallel-contact-bake-cost.md) and the
 [slowdown record](superpowers/plans/proofs/2026-10-14-parallel-proof-slowdown.md) for the metrics and the Hollowmere
 extrapolation.
+
+### Stable legacy profile reads
+
+An audited content pipeline can reuse one synchronous physics read interval for each legacy profile:
+
+```csharp
+var execution = new NavBakeExecution(1) { UseStableLegacyReadScope = true };
+GroundNavigationBake bake = GroundNavigationBake.Create(capture, sources, profiles, execution);
+// The same execution argument is accepted by capture.BuildProfile(tuning, areas, profileOptions, execution).
+```
+
+The default is false. True is a caller assertion that every provider used by the build is deterministic, stable and
+read-only. Keep ground, normals, bounds, medium, water and area data fixed. Callbacks must not mutate physics,
+acquire an incompatible explicit nested lease or wait for another thread to mutate that owner. The complete physics
+source and any selected movement query view must each declare `IPhysicsQueryLeaseSource` themselves. Unsupported
+true throws `NotSupportedException` after argument checks and before proofs, with no capability inferred from an
+underlying backend. The live lease authenticates the exact owner, selected view, origin and captured geometry.
+
+The scope is thread-affine and releases on success or exception. An opted-in build inside an existing explicit lease
+receives the backend's non-nesting refusal and leaves that caller lease live. False retains historical callback and
+outer-lease behavior. Legacy proofs remain serial at every degree. Contact profiles ignore this property, and their
+existing scheduling stays unchanged. Both paths keep every hold, directed edge, Stair proof and origin check. The
+option does not enter bake identity or change canonical bytes. See the
+[Movement contract](../KhaozEngine.Movement/README.md#stable-legacy-read-scope) for failure details.
 
 ### Range steering, NPC stepping and client path commands
 

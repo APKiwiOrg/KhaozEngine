@@ -21,13 +21,13 @@ Offline analysis found 39.58 seconds of suspension-coordination intervals in the
 
 The [`CollectPenetration` lazy-batcher fix](https://github.com/APKiwiOrg/KhaozEngine/commit/ffa70bad4ce0e4403ec606a922a76d8a1a5bbbe4) constructs the collision batcher only after the first eligible static. On excluded-only and dynamic-only cold queries, retained native scratch capacity changed from 131,072 B to 0 B. Existing empty-query controls remained at 0, and an eligible query remained positive. This is cold retained native capacity, not per-call cleared bytes, warm rental count or CPU gain. Original pair order, penetration math and `Flush` finally ownership are retained.
 
-Worker evidence reports 62 physics and 3 movement tests passed, and the independent review passed. Parent owns full-suite integration and verification, so this note does not claim that those broader checks passed. The normalized nine-cell, 516-byte canonical hash was pinned before the fix and matched after:
+The Release build passed with zero warnings or errors. The focused 62 physics and 3 movement tests passed. The full suite passed with 33,109 passed, 0 failed and 1,386 existing opt-in skips across 37 project runs. Whole-tree guards are being finalized separately and are not claimed here. The normalized nine-cell, 516-byte canonical test deliberately substitutes only the engine identity. Its matching hash proves unchanged normalized header and payload, not cross-version load compatibility:
 
 ```text
 8dc879897a4cdfed8602306ff7fc9d7c6d316988270a01de71ee5c55a523bc17
 ```
 
-No bake format or API change was made, and this fix requires no rebake. The staged 21.1.0 version remains unchanged. No new version is claimed.
+The lazy-batcher fix preserves bake output for a fixed engine version and introduces no bake format or API change. The existing loader checks the Movement assembly's normalized engine version, so consumers upgrading from an older engine version to 21.1.0 must regenerate bakes to avoid `EngineChanged`, even though the format and payload algorithm are unchanged. Existing 21.1.0 bakes gain no additional invalidation from this same-version backend fix. The staged 21.1.0 version remains unchanged. No new version is claimed.
 
 ### Original approved hosted outcome
 
@@ -41,7 +41,7 @@ The [fixture repair](https://github.com/APKiwiOrg/KhaozEngine/commit/8d91a7c575a
 
 ### Issue status
 
-Issue #1417 stays open because overall window performance remains unmeasured. The collision-batcher lead now has a bounded native work reduction. Source-hold reuse and point-footprint observations remain unproven leads. The three leads are not all unresolved, and they are not all resolved. After parent integration, main receives the research record plus the bounded backend fix. No whole-navigation CPU gain is claimed.
+Issue #1417 stays open because overall window performance remains unmeasured. The collision-batcher lead now has a bounded native work reduction. Source-hold reuse and point-footprint observations remain unproven leads. After parent integration, main receives the research record plus the bounded backend fix. No whole-navigation CPU gain is claimed.
 
 ## Historical capture result and decision boundary
 

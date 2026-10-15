@@ -20,6 +20,12 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   or submission. CPU and GPU skinning preserve tint, material, dissolve, shadows and grouped outlines.
   Rigid-only map binding and rigid descriptor writing remain valid. Mixed sets explicitly refuse the
   rigid descriptor overload. See the [design record](docs/design/SKINNED-ATTACHMENT-PARTS-DESIGN-2026-10-15.md).
+- New public surface: `SkinnedInstanceDraw.ShadowOnly`, `InvertShadowDissolve` and `DissolveComplement`,
+  `GltfLoader.LoadSkinned(ReadOnlyMemory<byte>, string)`, both `LoadSkinnedPartsWithMaterials` overloads,
+  `GltfSkinnedMeshPart`, `AttachmentGlb.ValidateSkinnedEmbedded`, `ISkinnedAttachmentMeshLease`,
+  `AttachmentDraw` and `BoundAttachmentSet.QueueOutline`. The `LoadPartsWithMaterials` and
+  `LoadSkinnedPartsWithMaterials` byte overloads report a malformed glTF as `InvalidDataException` naming the
+  caller's identity, with the importer's diagnostic as the inner exception.
 
 - Render3D adds opt-in nameplate stacking with pinned plates, sticky rank order and eased upward offsets, plus template drawing at caller-resolved panel rects, and makes NameplateAnchorProjection public so callers place plates exactly as the renderer does. Existing nameplate draw calls are unchanged.
 

@@ -7,21 +7,41 @@ Production behavior and bake formats were not changed.
 
 ## Final disposition
 
-E2 is a parked research outcome, not a shipping performance fix for [#1417](https://github.com/APKiwiOrg/KhaozEngine/issues/1417). The original capture remains the valid isolated capture result at 0.541884 process CPU seconds, 2.3564423 wall seconds and 4,417,632 managed bytes.
+E2 remains inconclusive for whole-window performance in [#1417](https://github.com/APKiwiOrg/KhaozEngine/issues/1417). The original capture remains the valid isolated capture result at 0.541884 process CPU seconds, 2.3564423 wall seconds and 4,417,632 managed bytes. The research and the reviewed backend fix below do not change the bake format or public API.
 
-### Local candidate
+### Experimental stable-read candidate
 
-The local comparison did not demonstrate a speedup. The baseline profile used 15.199555 process CPU seconds and 15.855458 wall seconds. The candidate used 16.399351 process CPU seconds and 88.2522843 wall seconds under different conditions. Complete KENB output was equal at 588425 bytes, and the complete snapshot was equal at 535326 bytes. The candidate at [commit 7f51f266](https://github.com/APKiwiOrg/KhaozEngine/commit/7f51f266b91452fd82391df82b3ce21c7e438f98) is functionally reviewed and remains parked, not a shipping API recommendation. `UseStableLegacyReadScope` exists only on the retained experiment branch.
+The local comparison did not demonstrate a speedup. The baseline profile used 15.199555 process CPU seconds and 15.855458 wall seconds. The candidate used 16.399351 process CPU seconds and 88.2522843 wall seconds under different conditions. Complete KENB output was equal at 588425 bytes, and the complete snapshot was equal at 535326 bytes. The candidate at [commit 7f51f266](https://github.com/APKiwiOrg/KhaozEngine/commit/7f51f266b91452fd82391df82b3ce21c7e438f98) is functionally reviewed and remains experimental and off main. `UseStableLegacyReadScope` has no demonstrated whole-navigation CPU win. No new large performance comparison is authorized.
 
 ### Offline limits
 
 Offline analysis found 39.58 seconds of suspension-coordination intervals in the after trace. That is not 39.58 seconds of CPU and not disjoint application-paused time, so it cannot be subtracted from process CPU. Sampling safe points and off-CPU inclusion prevent claiming that `Monitor` was the dominant CPU cost. The trace supports research leads only.
 
-### Approved hosted outcome
+### Accepted narrow backend work reduction
 
-The approved unprofiled hosted run was [run 38802161651](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/38802161651) at `fc9a6a7d2` on GitHub-hosted Ubuntu 26.04 x64. A false completed one profile, then graph validation failed. B never started. The final process exit status was 1 with one failed test and no retries. Whole-child elapsed time was 13.0587502 seconds. It is not profile wall time. Profile metrics, counts and KENB output were not retained, so no performance or parity comparison exists. Harness repair is separate, and no fresh run is approved.
+The [`CollectPenetration` lazy-batcher fix](https://github.com/APKiwiOrg/KhaozEngine/commit/ffa70bad4ce0e4403ec606a922a76d8a1a5bbbe4) constructs the collision batcher only after the first eligible static. On excluded-only and dynamic-only cold queries, retained native scratch capacity changed from 131,072 B to 0 B. Existing empty-query controls remained at 0, and an eligible query remained positive. This is cold retained native capacity, not per-call cleared bytes, warm rental count or CPU gain. Original pair order, penetration math and `Flush` finally ownership are retained.
 
-Issue #1417 remains open. There is no proven engine performance fix, bake format change or rebake from this research. E1 is a separate accepted feature. The bounded collision-batcher initialization, repeated source holds and point-footprint observations remain research leads under #1417 with unproven CPU benefit. They are not resolved defects or a new implementation plan. Future timing needs separate owner approval and must not imply active automatic repetitions. The experiment sources and valid research remain preserved in pushed branch history. Main receives the research record only.
+Worker evidence reports 62 physics and 3 movement tests passed, and the independent review passed. Parent owns full-suite integration and verification, so this note does not claim that those broader checks passed. The normalized nine-cell, 516-byte canonical hash was pinned before the fix and matched after:
+
+```text
+8dc879897a4cdfed8602306ff7fc9d7c6d316988270a01de71ee5c55a523bc17
+```
+
+No bake format or API change was made, and this fix requires no rebake. The staged 21.1.0 version remains unchanged. No new version is claimed.
+
+### Original approved hosted outcome
+
+The approved unprofiled hosted run was [run 38802161651](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/38802161651) at `fc9a6a7d2` on GitHub-hosted Ubuntu 26.04 x64. A false completed one profile, then graph validation failed. B never started. The final process exit status was 1 with one failed test and no retries. Whole-child elapsed time was 13.0587502 seconds. It is not profile wall time. Profile metrics, counts and KENB output were not retained, so no performance or parity comparison exists. The later harness repair and hosted run below supersede its unknown predicate, but not its lost metrics.
+
+### Later hosted outcome and harness repair
+
+The separately approved [hosted run 38807384252](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/38807384252) at [`24c83b0e4`](https://github.com/APKiwiOrg/KhaozEngine/commit/24c83b0e49f60be6e51fe3ba3b2bd98dc8b4f35a) identified only `CentralObstacleRejected=false`. A ran, B did not run, and the failure exit status was 1. Baseline A retained 7.3916306 wall seconds, 7.391034 process CPU seconds and 7.390059832 calling-thread CPU seconds. There is no A/B comparison. This supersedes the first failed run's unknown predicate, not its lost metrics.
+
+The [fixture repair](https://github.com/APKiwiOrg/KhaozEngine/commit/8d91a7c575a57920fa2f8ed6977df98c6f9a51a1) proves with a 144-cell correctness test that the center is accepted as a Y=2 roof. Its replacement four-sided check tests adjacent ground obstruction using real accepted sources, permits the roof and keeps the other thresholds. Independent review passed, and parent evidence reports 26 small and pure tests passed. The repaired harness remains on the proof branch, not main. No larger run was made after the fix.
+
+### Issue status
+
+Issue #1417 stays open because overall window performance remains unmeasured. The collision-batcher lead now has a bounded native work reduction. Source-hold reuse and point-footprint observations remain unproven leads. The three leads are not all unresolved, and they are not all resolved. After parent integration, main receives the research record plus the bounded backend fix. No whole-navigation CPU gain is claimed.
 
 ## Historical capture result and decision boundary
 
@@ -113,7 +133,7 @@ The code explains the relevant paths without proving their individual costs.
   `PhysicsNavColumns.cs` copies the retained arrays. Allocation stacks were not
   separately decoded, so the relative allocation contributions remain unmeasured.
 
-## Alternatives for the orchestrator
+## Historical alternatives for the orchestrator
 
 Scores are 1 to 10, with higher better. They rank the next action for this measured
 window, not general engine architecture. Equal weighting is used.

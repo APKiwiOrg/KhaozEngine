@@ -16,11 +16,16 @@ icon-atlas key, not player text, so it is unchanged. See the App package for
 `GuiTheme.Use(GuiTheme theme)` returns an `IDisposable` that selects a value copy for the current async flow.
 `GuiTheme.Default` reads the innermost scope, then the current process default. Its setter always changes
 the process default. The nullable `Use(GuiTheme? theme)` overload rejects null with `ArgumentNullException`.
-Widgets capture colors when constructed, so leaving a scope does not restyle widgets already created.
+Controls that snapshot default colors at construction, such as `Toggle`, retain those colors after disposal.
+Live readers such as `PatchNotesTheme` (used by `PatchNotesView`) and `PanelFrame` must be read or drawn inside
+the desired scope. Already constructed live readers follow a newly entered scope and return to the enclosing
+scope or current process default after disposal. Changing the process default still retunes unscoped live readers.
+It does not restyle controls that already copied their default colors. Per-widget color overrides still apply.
 This uses the same internal ambient primitive as localization and logging because all three select an
 async-flow override over a process fallback. No package dependency is added.
 
-Use `using (GuiTheme.Use(theme))` to build a themed subtree without swapping the process default. Scopes flow
+Use `using (GuiTheme.Use(theme))` during construction for controls that snapshot defaults and during reads or
+drawing for live readers, without swapping the process default. Scopes flow
 across awaits and into child tasks, whose overrides and disposal cannot change parents or siblings. Dispose
 in reverse creation order in each flow. Disposing an active outer scope throws `InvalidOperationException`
 without changing selection. Repeating disposal after removal, or disposing a token absent from the current
@@ -525,7 +530,7 @@ chat.Draw(batch, white);
   several of them. `Screen` itself is unchanged, hosts compose the list as a field.
 - **Theming (`GuiTheme` + `GuiStyle`).** Since 10.11.0 the default widget look is crisp: a neutral-dark palette
   with a blue accent, subtle 3px corners, and 1px hairline borders (no shadow/gradient/glow). `GuiTheme` is the
-  central semantic palette every retained widget reads at construction (`Surface`/`Accent`/`Border`/`Text`/... plus
+  central semantic palette for control defaults and live readers (`Surface`/`Accent`/`Border`/`Text`/... plus
   `CornerRadius`/`BorderThickness`). `SelectionFill` is the fill under a selected row (a list's current item, a
   `Dropdown`'s chosen option) and `FocusFill` the fill under the keyboard cursor row, a shade under it. The
   `Dropdown` used to hardcode that pair, so a rebranded palette still drew a blue selected row. Both presets
@@ -535,7 +540,9 @@ chat.Draw(batch, white);
   `ActiveText`, and `ActiveSelectedFill` fields drive `GuiStyle.Active`. Both built-in themes retain the prior
   preset values, and `GuiStyle.Legacy` plus `GuiStyle.Modern` remain independent. Set the ambient
   `GuiTheme.Default` once at startup (before building widgets) to
-  rebrand the whole UI; set it to `GuiTheme.Legacy` to keep the pre-10.11.0 flat blue-grey look. `GuiStyle` carries
+  rebrand the whole UI. Set it to `GuiTheme.Legacy` to keep the pre-10.11.0 flat blue-grey look. Controls that
+  snapshot defaults retain them. Live readers such as `PatchNotesTheme` and `PanelFrame` follow the theme at
+  read or draw time, including runtime retuning and the current scope. `GuiStyle` carries
   the button palette + the modern-affordance knobs, with presets: `Default` (crisp, == `Primary`), `Secondary`
   (muted), `Danger` (red), `Active` (bright-accent selected), `Modern` (rounded + glow + shadow), and `Legacy` (the
   exact old flat button). Per-widget colour fields still override the theme. Alongside the single `Border` and

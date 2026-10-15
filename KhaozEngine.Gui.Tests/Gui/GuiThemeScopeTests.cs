@@ -36,6 +36,35 @@ public sealed class GuiThemeScopeTests
     }
 
     [Fact]
+    public void SnapshotControlsRetainColorsWhileLiveReadersFollowEachScope()
+    {
+        var previous = GuiTheme.Default;
+        try
+        {
+            GuiTheme.Default = GuiTheme.Crisp;
+            Toggle toggle;
+            PatchNotesView view;
+            using (GuiTheme.Use(GuiTheme.Legacy))
+            {
+                toggle = new Toggle(new Rect(0, 0, 40, 20));
+                view = new PatchNotesView(PatchNotesDocument.Empty);
+                Assert.Equal(GuiTheme.Legacy.Surface, toggle.OffColor);
+                Assert.Equal((Color)GuiTheme.Legacy.Surface, view.Theme.PanelFill);
+            }
+
+            Assert.Equal(GuiTheme.Legacy.Surface, toggle.OffColor);
+            Assert.Equal((Color)GuiTheme.Crisp.Surface, view.Theme.PanelFill);
+
+            using (GuiTheme.Use(GuiTheme.Legacy))
+                Assert.Equal((Color)GuiTheme.Legacy.Surface, view.Theme.PanelFill);
+
+            Assert.Equal((Color)GuiTheme.Crisp.Surface, view.Theme.PanelFill);
+            Assert.Equal(GuiTheme.Legacy.Surface, toggle.OffColor);
+        }
+        finally { GuiTheme.Default = previous; }
+    }
+
+    [Fact]
     public void SetterInsideScopeChangesProcessFallbackAndScopesCaptureValueCopies()
     {
         var previous = GuiTheme.Default;

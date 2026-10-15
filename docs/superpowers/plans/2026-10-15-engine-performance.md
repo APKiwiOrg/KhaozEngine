@@ -35,6 +35,8 @@
 
 **Interfaces:** Add IDisposable-returning LocalizationContext.Use(IStringCatalog? catalog), Log.Use(LogManager manager), and GuiTheme.Use(GuiTheme theme). Reject null log managers and themes. Scope lifetime borrows values and does not shut down managers.
 
+**Theme consumers:** Controls such as Toggle snapshot default colors at construction and retain them after disposal. Live readers such as PatchNotesTheme and PanelFrame must be read or drawn inside the desired scope, even when constructed earlier. Preserve runtime retuning through the process default.
+
 - [x] Add failing headless contracts for nested restore, await flow, concurrent isolation, exceptions, nullable localization, cached loggers, process setters during scopes and crash routing.
 - [x] Implement one shared primitive using immutable scope nodes and flow-local stack state. Keep it internal through narrowly declared friend assemblies if needed. App and Gui already reference Diagnostics, so no new package dependency is required.
 - [x] Gate async-local reads behind a monotonic first-use flag for each ambient slot. No scope means the existing process read plus a predictable flag branch, with no locks, allocations or execution-context lookup.

@@ -7,9 +7,10 @@ namespace KhaozEngine.Gui
     /// <summary>
     /// The central semantic palette every retained widget reads for its default colours: a crisp, modern
     /// neutral-dark theme with a single blue accent, subtle 3px corners, and 1px hairline borders (no shadow /
-    /// gradient / glow). Widgets capture <see cref="Default"/> at construction, so setting <see cref="Default"/>
-    /// ONCE at startup rebrands the whole UI (change the accent, go light, etc.). <see cref="Legacy"/> reproduces
-    /// the pre-10.11.0 flat blue-grey look for a one-line revert.
+    /// gradient / glow). Controls such as <see cref="Toggle"/> snapshot <see cref="Default"/> at construction.
+    /// Live readers such as <see cref="PatchNotesTheme"/> and <see cref="PanelFrame"/> use it when read or drawn.
+    /// Set <see cref="Default"/> at startup to rebrand the whole UI (change the accent, go light, etc.).
+    /// <see cref="Legacy"/> reproduces the pre-10.11.0 flat blue-grey look for a one-line revert.
     /// </summary>
     public struct GuiTheme
     {
@@ -133,10 +134,11 @@ namespace KhaozEngine.Gui
             new(color.X * factor, color.Y * factor, color.Z * factor, color.W);
 
         /// <summary>
-        /// The ambient theme new widgets read at construction. Defaults to <see cref="Crisp"/>. Set it once at
-        /// startup (before building widgets) to rebrand the whole UI. Assignment always changes the process
-        /// default, even inside a scope. Reads select the innermost <see cref="Use(GuiTheme)"/> scope first.
-        /// Changing it later does not restyle widgets already constructed.
+        /// The ambient palette for control defaults and live theme readers. Defaults to <see cref="Crisp"/>.
+        /// Set it at startup (before building widgets) to rebrand the whole UI. Assignment always changes the
+        /// process default, even inside a scope. Reads select the innermost <see cref="Use(GuiTheme)"/> scope
+        /// first. Later process changes retune unscoped live readers, including <see cref="PatchNotesTheme"/>
+        /// and <see cref="PanelFrame"/>, but do not restyle controls that already copied their default colors.
         /// </summary>
         public static GuiTheme Default
         {
@@ -145,10 +147,13 @@ namespace KhaozEngine.Gui
         }
 
         /// <summary>
-        /// Selects a theme value copy for this async flow, across awaits and in child tasks. Widgets capture it
-        /// at construction. Dispose in reverse creation order within each flow. Disposing an active outer
-        /// scope throws without changing selection. Repeat disposal after removal is a no-op in that flow.
-        /// Inherited child copies dispose independently. Assignment to <see cref="Default"/> stays process-wide.
+        /// Selects a theme value copy for this async flow, across awaits and in child tasks. Controls that
+        /// snapshot default colors at construction retain those colors after disposal. Live readers such as
+        /// <see cref="PatchNotesTheme"/> and <see cref="PanelFrame"/> must be read or drawn inside the desired
+        /// scope, including when already constructed. Dispose in reverse creation order within each flow.
+        /// Disposing an active outer scope throws without changing selection. Repeat disposal after removal
+        /// is a no-op in that flow. Inherited child copies dispose independently. Assignment to
+        /// <see cref="Default"/> stays process-wide.
         /// </summary>
         public static IDisposable Use(GuiTheme theme) => scopes.Use(theme);
 

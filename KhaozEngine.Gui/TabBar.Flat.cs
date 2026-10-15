@@ -36,8 +36,8 @@ namespace KhaozEngine.Gui
 
         /// <summary>
         /// The palette <see cref="TabBarDrawMode.Flat"/> draws from, captured from <see cref="GuiTheme.Default"/>
-        /// at construction the way every other widget captures its colours, so setting the ambient theme once at
-        /// startup rebrands this strip with the rest of the UI. It carries the two tab colours the mode is built
+        /// at construction, so setting the ambient theme once at startup rebrands this strip with the rest of
+        /// the UI. It carries the two tab colours the mode is built
         /// on, <see cref="GuiTheme.TabFill"/> and <see cref="GuiTheme.TabActiveFill"/>, and each derives from the
         /// palette a game did set when it named neither. Ignored by <see cref="TabBarDrawMode.Button"/>, which
         /// draws from <see cref="ActiveStyle"/> and <see cref="InactiveStyle"/>.

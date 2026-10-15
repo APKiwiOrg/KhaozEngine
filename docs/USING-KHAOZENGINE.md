@@ -1559,7 +1559,7 @@ Four lines of wiring for N components, and none of them grows when N does. Point
 
 **Theming: `GuiTheme` + `GuiStyle` (crisp default, 10.11.0)** - the default widget look is crisp: a neutral-dark
 palette with a blue accent, subtle 3px corners, 1px hairline borders, no bloom. `GuiTheme` is the central semantic
-palette every retained widget reads at construction. Set its semantic colors at startup before building
+palette for control defaults and live theme readers. Set its semantic colors at startup before building
 widgets:
 
 ```csharp
@@ -1575,10 +1575,14 @@ GuiTheme.Default = GuiTheme.Default with
 GuiTheme.Default = GuiTheme.Legacy;
 ```
 
-For a subtree in one async flow, construct its widgets inside `using (GuiTheme.Use(theme))`. Widgets keep
-the palette captured at construction after disposal. `GuiTheme.Default` reads the innermost scope, then
-the current process default. Assigning it always updates that process default. `GuiTheme` remains a value
-type, and its nullable `Use(GuiTheme? theme)` overload rejects null. See the
+In one async flow, construct controls that snapshot default colors, such as `Toggle`, inside
+`using (GuiTheme.Use(theme))`. Those controls retain their copied colors after disposal. Live readers such as
+`PatchNotesTheme` (used by `PatchNotesView`) and `PanelFrame` must be read or drawn inside the desired scope.
+Already constructed live readers follow a newly entered scope. `GuiTheme.Default` reads the innermost scope,
+then the current process default. Assigning it always updates that process default. Runtime process retuning
+still updates unscoped live readers, while controls that snapshot defaults keep their copied colors and
+per-widget overrides remain available. `GuiTheme` remains a value type, and its nullable `Use(GuiTheme? theme)`
+overload rejects null. See the
 [ambient scope contract](#async-flow-ambient-scopes).
 
 `SelectionFill` / `FocusFill` are what a `Dropdown`'s open list fills its chosen row and its keyboard-cursor row
@@ -2817,8 +2821,10 @@ reference each other just to agree on how versions order.
 `LocalizationContext.Use(IStringCatalog? catalog)`, `Log.Use(LogManager manager)` and
 `GuiTheme.Use(GuiTheme theme)` return `IDisposable` overrides for the current async flow. Reads choose the
 innermost override, then the latest process fallback. They share one internal primitive in Diagnostics,
-already referenced by App and Gui. Theme selection has the same lifetime and fallback rules, with widgets
-capturing their palette at construction.
+already referenced by App and Gui. Theme selection has the same lifetime and fallback rules. Controls such as
+`Toggle` snapshot default colors at construction and retain them after disposal. Live readers such as
+`PatchNotesTheme` and `PanelFrame` must be read or drawn inside the desired scope, even when constructed
+earlier. Outside a scope, live readers follow the current process default, including runtime retuning.
 
 ```csharp
 using (LocalizationContext.Use(catalog))
@@ -3053,8 +3059,8 @@ behaviour, so a bar that asks for none of them draws and behaves exactly as befo
   tap. Clear it for a strip inside a frame that reserves its own bounds.
 - `DrawMode` (default `TabBarDrawMode.Button`) switches a fixed-size strip to `TabBarDrawMode.Flat`: a flat
   fill, a one-unit border and a centred label truncated to the tab and scaled by `TextScale`. Its colours come
-  from `FlatTheme`, captured off the ambient `GuiTheme` at construction the way every other widget captures
-  its colours, so a startup rebrand carries the strip with the rest of the UI. `GuiTheme.TabFill` and
+  from `FlatTheme`, captured off the ambient `GuiTheme` at construction, so a startup rebrand carries the
+  strip with the rest of the UI. `GuiTheme.TabFill` and
   `GuiTheme.TabActiveFill` are the two slots it is built on. The even-split layout ignores the mode: its tabs
   abut with no gutter, so a per-tab border would draw every interior seam twice, which is what its single
   shared border grid exists to avoid.
@@ -3170,10 +3176,11 @@ below), `SettingsScreen`-style 0.18s in/out transitions, and it exits itself the
 so a menu just pushes it and never has to poll for close. Use `PatchNotesView` directly for a `GuiSurface`
 Run-loop game with no `ScreenStack`.
 
-`PatchNotesTheme` (a settable `Theme` on the view, `PatchNotesTheme.Default` the crisp built-in palette) supplies
+`PatchNotesTheme` (a settable `Theme` on the view, with defaults derived live from `GuiTheme.Default`) supplies
 panel/header fills, body/muted text, the code-span accent, and `CategoryColor(PatchNoteCategory)` per-category
-badge colors (Rebalance is a warm amber, distinct from the Bug red). `PatchNotesStrings` supplies the chrome text
-(title, close, empty-state, the six category labels) as `StringId`s; a built-in English `IStringCatalog`
+badge colors (Rebalance is a warm amber, distinct from the Bug red). Draw the view inside the desired
+`GuiTheme.Use` scope to select its live colors. `PatchNotesStrings` supplies the chrome text
+(title, close, empty-state, the six category labels) as `StringId`s. A built-in English `IStringCatalog`
 fallback means the panel renders correctly even before a game wires its own localization catalog.
 
 ---

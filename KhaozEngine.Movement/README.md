@@ -295,8 +295,8 @@ Stair link. It checks a complete segment Y interval conservatively, so a direct 
 even when a sequence of baked edges is eligible. Live collision, support and the final movement result still
 come from the shared movement core.
 
-Legacy profile building allocates no garbage per proof. Penetration queries reuse one overlap scratch list per physics
-world, the footprint predicate and the dry probe context are built once per profile, and the movement core reuses
+Legacy profile building allocates no garbage per proof. Penetration queries reuse the reader interval's overlap
+scratch, the footprint predicate and the dry probe context are built once per profile, and the movement core reuses
 its step and slide capsules per thread. Engine tests in the allocation-sensitive collections gate these targets:
 
 | Measured unit | Before | Measured | Target |

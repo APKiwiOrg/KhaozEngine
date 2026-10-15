@@ -8643,7 +8643,10 @@ collider options, catalog rows that drive colliders, heights and medium, the gro
 the clamp bounds and the classifier policy. Normalise text to LF before digesting so a CRLF checkout matches.
 Prefer authored inputs to `TileWorldColliders.Hash` for walk surfaces yawed off a quarter turn, since that hash is
 not promised equal across x64 and ARM64. Rebake when any input, option, probed tuning field or the engine pin
-changes, and keep a game test that loads the shipped bake and expects `Loaded`.
+changes, and keep a game test that loads the shipped bake and expects `Loaded`. Load also compares the normalized
+`KhaozEngine.Movement` assembly version. An upgrade from an older engine version to 21.1.0 therefore requires
+regeneration and returns `EngineChanged`, even when the format and payload algorithm are unchanged. A backend fix
+within the same engine version does not add another invalidation when the bake identity and payload remain unchanged.
 
 On the dev Mac a 36,864-column flat world wrote 664,689 bytes and loaded in about 20 to 23 ms, allocating
 1,958,264 bytes against about 0.85 to 0.96 MB retained. These are single observations, not startup guarantees.

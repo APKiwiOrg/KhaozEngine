@@ -19,6 +19,10 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   Existing callbacks and contact scheduling keep their behavior. Canonical bake bytes and identity stay equal.
   See the [bounded hosted evidence](docs/design/NAV-CAPTURE-CPU-RESEARCH-2026-10-15.md#successful-hosted-pair-and-staged-integration)
   for the public-fixture result and its limits.
+- Bepu penetration queries now initialize a collision batcher only after finding an eligible static.
+  Excluded-only and non-static-only overlaps avoid native task-table work while preserving collision
+  results, submission order and query cleanup. Cold ignored-query scratch capacity drops from 128 KiB
+  to zero in the regression fixtures. This is not a measured whole-navigation CPU improvement.
 
 ## 21.0.0
 

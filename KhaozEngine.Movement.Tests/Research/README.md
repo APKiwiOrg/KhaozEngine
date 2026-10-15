@@ -39,3 +39,36 @@ For an approved after comparison, preserve the original input identity and
 byte. A changed snapshot requires investigation and owner approval before adopting
 changed bake semantics. Full bake parity still needs engine fixture coverage of
 profile derivation and KENB serialization.
+
+
+## Restoring an existing diagnostic capture
+
+`NavCaptureSnapshot.Restore(input, path)` reconstructs the test-only builder from
+PCAP1 without calling `PhysicsNavBake.Capture` or any ground, medium or classifier
+callback. It validates the supplied dimensions and origin bits, surface counts,
+ascending finite heights, headroom, water ordering and complete consumption.
+`NavCaptureSnapshot.Write(capture, path)` uses the original diagnostic writer, so
+compare the reconstructed bytes with the saved snapshot before deriving a profile.
+
+Restoration does not authenticate a rebuilt scene from a file alone. The caller
+must first verify the original input and source digests, every option including
+float bits, collider identity, provider selection, bounds and classifier semantics.
+The utility captures a new basis from that rebuilt owner. A saved process-local
+basis cannot be transferred to a different physics instance. Keep the rebuilt
+scene unchanged through profile construction.
+
+Only the private builder constructor uses reflection. This utility lives in the
+test assembly and adds no production restore API or supported file format. A
+changed constructor fails explicitly. The fixture tests preserve negative zero,
+infinite headroom, area bits and water bits without sampling, then compare a
+complete KENB bake from restored columns with one from a fresh tiny fixture capture.
+They also refuse trailing bytes.
+
+For downstream research, call `BuildProfile` once with the actual caller tuning,
+area filter and options. It constructs its traversal graph internally. Separate
+rebuild, reconstruction, validation, profile construction, bake assembly and
+serialization counters. Calling `GroundNavigationBake.Create` after `BuildProfile`
+would derive another profile. A private research adapter may assemble the already
+built profile through reflection, provided it reproduces Create's identity and
+candidate-link checks and validates load and canonical rewrite. Keep this adapter,
+raw traces, reconstructed columns and bake bytes outside the public repository.

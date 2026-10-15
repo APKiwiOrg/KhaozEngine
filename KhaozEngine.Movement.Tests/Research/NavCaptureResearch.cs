@@ -85,7 +85,7 @@ public static class NavCaptureResearch
 
     // Diagnostic parity bytes, independent of profile derivation and the shipped KENB format.
     // BinaryWriter writes little-endian values. Columns and water retain the engine's canonical order.
-    private static void WriteColumns(PhysicsNavBake capture, string path)
+    internal static void WriteColumns(PhysicsNavBake capture, string path)
     {
         PhysicsNavColumns columns = capture.Columns;
         using (var writer = new BinaryWriter(File.Create(path)))

@@ -8190,7 +8190,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.40.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.41.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -8564,7 +8564,7 @@ extrapolation.
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.40.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.41.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -9329,7 +9329,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.40.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.41.0" />
 ```
 
 ```csharp
@@ -13407,6 +13407,128 @@ animate such a plate through a template instead.
 Template files, an editor and a mod surface for templates are future work, tracked in
 [KhaozEngine#1378](https://github.com/APKiwiOrg/KhaozEngine/issues/1378).
 
+#### Opt-in nameplate stacking (20.41.0)
+
+Keep one `NameplateStacker` as long as the consumer's plates. Existing `NameplateRenderer.Draw` callers keep
+their behavior. The stacker accepts natural panel rects `(x, y, width, height)` and a finite distance rank,
+larger meaning farther away. Its public members are:
+
+```csharp
+public NameplateStacker(float topMargin = 4f);
+public const float Gap = 2f, RankBand = 0.5f, TimeConstant = 0.12f;
+public void Begin();
+public void Add(long id, Vector4 rect, float rank, bool pinned);
+public void Resolve(float dt);
+public Vector4 RectOf(long id);
+public ReadOnlySpan<long> DrawOrder { get; }
+
+// NameplateRenderer
+public static bool DrawAtRect(SpriteBatch batch, SpriteFont font, Texture2D white, Vector4 panelRect,
+    NameplateTemplate template, NameplateContent content, int viewportWidth, int viewportHeight);
+public static bool DrawAtRect(SpriteBatch batch, SpriteFont font, Texture2D white, Vector4 panelRect,
+    NameplateTemplate template, NameplateContent content, IDesignViewport designViewport);
+
+// NameplateAnchorProjection, now public
+public static bool Project(IIsoCamera3D camera, Vector3 worldPos, Vector3 offset,
+    int viewportWidth, int viewportHeight, out Vector2 pixel);
+public static bool Project(IIsoCamera3D camera, Vector3 worldPos, Vector3 offset,
+    IDesignViewport designViewport, out Vector2 pixel);
+```
+
+The frame protocol is `Begin`, `Add` each natural rect, `Resolve(dt)` once, then query and draw. `Begin`
+invalidates the preceding frame's public output but retains private history until `Resolve` drops ids not
+submitted this frame. `RectOf` throws `KeyNotFoundException` before resolution or for an absent id.
+`DrawOrder` is a borrowed span valid until the next `Begin`. Traverse it directly, farthest first in sticky
+rank order with pinned plates last, so nearer pins draw on top. Equal initial ranks use ascending id for
+placement and reverse id for drawing. The last valid `Add` for a duplicate id replaces its rect, rank and pin
+flag without adding another draw entry.
+
+Pins are fixed obstacles first and never move, including overlapping pins. Other plates stack upward only,
+preserving their natural X, width and height even for panels wider than the viewport. `Gap` is 2 units on both
+axes. The top margin defaults to 4, matching `NameplateTemplate.EdgeMargin`, and the constructor throws
+`ArgumentOutOfRangeException` for a negative or non-finite margin. Match the margin to the placement template.
+All rects, gap and margin use framebuffer pixels or design units consistently. Stacking constants are design
+units in a design pass. Panels stop at the top margin, or their natural Y if already above it, so top
+saturation can leave overlaps. Solved geometry is otherwise collision-free when there is room, except
+overlapping pins.
+
+Rank is sticky across frames. Plates swap only when their ranks differ by more than `RankBand` (0.5 rank
+units, metres when ranked by world-space distance). New plates start at their solved position. Retained
+vertical offsets ease exponentially with `TimeConstant = 0.12f` seconds, independently of frame rate.
+Non-positive or non-finite dt does not advance an existing offset, while new plates still start solved and
+pins reset immediately. Easing happens after solving, so moving layouts can temporarily overlap during a
+rank reversal or new collision. This is not a collision-safe animation guarantee. Non-finite rect coordinates
+or rank, non-positive dimensions and overflowing rect edges are ignored by `Add` and never become obstacles.
+After storage and layouts warm up, submissions, resolution, `DrawOrder` traversal, rect lookup and the new
+draw path allocate nothing.
+
+`NameplateAnchorProjection.Project` uses the same body-column X, head-point Y and head-only fallback as
+`NameplateRenderer.Draw` and `WorldLabel`. A failed head projection returns false. `DrawAtRect` returns false
+for missing resources, non-positive viewport dimensions, non-finite panel coordinates or edges, non-positive
+panel size, or empty content. It does not project, distance-cull, clamp, deflect, resize components or call
+`NameplatePlacement.Place`. Keep the measured panel dimensions. The design overload accepts a rect already
+in design space and uses the SpriteBatch pass's existing transform without another screen-to-design
+conversion.
+
+This design-space example reuses `hostilePlate` from above. Each id retains its own template, content and
+placement state. The game supplies cached `levelText`, `healthFraction`, `fadeFor` and the combat pin signal.
+Keep content unchanged between measuring and drawing. Remove the caller's retained entries when an entity
+despawns. Skipping a frame alone lets the stacker prune its own history at `Resolve`.
+
+```csharp
+// Built once, outside the frame loop.
+var stacker = new NameplateStacker(topMargin: hostilePlate.EdgeMargin);
+var plateById = new Dictionary<long, (NameplateTemplate Template, NameplateContent Content)>();
+var stackPlacementStates = new Dictionary<long, NameplatePlacementState>();
+
+// Each frame, in the same design space for projection, placement, stacking and drawing.
+stacker.Begin();
+foreach (EntityRenderState e in client.Snapshot())
+{
+    if (e.DisplayName is not { } name)
+        continue;
+    Vector3 worldPos = e.Position;
+    Vector3 offset = new(0f, headHeight, 0f);
+    if (!NameplateAnchorProjection.Project(camera, worldPos, offset, designViewport, out Vector2 pixel))
+        continue;
+    if (NameplateRenderer.ShouldCull(worldPos, localPlayerPos, maxDistance: 90f))
+        continue;
+
+    long id = e.Id.Value;
+    if (!plateById.TryGetValue(id, out var plate))
+    {
+        plate = (hostilePlate, new NameplateContent());
+        plateById.Add(id, plate);
+    }
+    NameplateContent content = plate.Content;
+    content.Clear();
+    content.SetText(NameplateSlot.Name, name, Color.White);
+    content.SetText(NameplateSlot.Level, levelText[e.Id], Color.White, tint: hostileRed);
+    content.SetBar(NameplateSlot.Health, healthFraction[e.Id], green, darkTrack);
+    content.Opacity = fadeFor(e.Id);
+
+    Vector2 size = NameplateTemplateLayout.Measure(font, plate.Template, content);
+    if (size.X <= 0f || size.Y <= 0f)
+        continue;
+    NameplatePlacementState state = stackPlacementStates.TryGetValue(id, out var s) ? s : default;
+    Vector4 naturalRect = NameplatePlacement.Place(pixel, size,
+        designViewport.Width, designViewport.Height, plate.Template, ref state);
+    stackPlacementStates[id] = state;
+    float rank = Vector3.Distance(localPlayerPos, worldPos);
+    stacker.Add(id, naturalRect, rank, pinned: combat.IsEngagedWith(e.Id));
+}
+stacker.Resolve(dt);
+
+batch.Begin(designViewport, SamplerMode.Point);
+foreach (long id in stacker.DrawOrder)
+{
+    var plate = plateById[id];
+    NameplateRenderer.DrawAtRect(batch, font, white, stacker.RectOf(id),
+        plate.Template, plate.Content, designViewport);
+}
+batch.End();
+```
+
 ### Simulating far from the world origin (island frames, ON by default)
 
 Camera-relative rendering fixes how a distant world LOOKS. This fixes how it SIMULATES. At 100 km one float32
@@ -16957,7 +17079,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.40.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.41.0" />
 ```
 
 ```csharp
@@ -16993,7 +17115,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.40.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.41.0" />
 ```
 
 ```csharp
@@ -17235,7 +17357,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.40.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.41.0" />
 ```
 
 ```csharp
@@ -21595,7 +21717,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.40.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.41.0" />
 </ItemGroup>
 ```
 

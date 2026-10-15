@@ -64,8 +64,10 @@ internal sealed class SkinnedAttachmentGlbFixture
         int view = AddView(new byte[count * stride], strided ? stride : null);
         var accessor = new JsonObject
         {
-            ["bufferView"] = view, ["componentType"] = componentType,
-            ["count"] = count, ["type"] = type,
+            ["bufferView"] = view,
+            ["componentType"] = componentType,
+            ["count"] = count,
+            ["type"] = type,
         };
         if (normalized) accessor["normalized"] = true;
         Accessors.Add(accessor);

@@ -21,7 +21,8 @@ public sealed class AttachmentSetBinding
     public AttachmentSetBinding(AttachmentSetDefinition definition, ContractJointMap map,
         SkinnedGltfMesh hostMesh, IReadOnlyDictionary<AttachmentMeshRef, SkinnedGltfMesh> skinnedMeshes)
         : this(definition, map, hostMesh ?? throw new ArgumentNullException(nameof(hostMesh)),
-            skinnedMeshes ?? throw new ArgumentNullException(nameof(skinnedMeshes)), null) { }
+            skinnedMeshes ?? throw new ArgumentNullException(nameof(skinnedMeshes)), null)
+    { }
 
     internal AttachmentSetBinding(AttachmentSetDefinition definition, ContractJointMap map,
         SkinnedGltfMesh hostMesh, IReadOnlyList<AttachmentPartResources> resources)

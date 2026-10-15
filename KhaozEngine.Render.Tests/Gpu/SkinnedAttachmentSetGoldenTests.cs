@@ -20,7 +20,7 @@ public sealed class SkinnedAttachmentSetGoldenTests(SkinnedAttachmentGpuScene sc
         byte[] cpuSkinningPixels = scene.Capture(SkinnedAttachmentGpuScene.Control.Attachments, false);
         byte[] gpuSkinningPixels = scene.Capture(SkinnedAttachmentGpuScene.Control.Attachments, true);
         Evidence($"posed-{gpuSkinning}", attachmentPixels, independentControlPixels);
-        int garmentColoredPixels = Count(attachmentPixels, 0);
+        int garmentColoredPixels = GarmentCount(attachmentPixels);
         int hostColoredPixels = Count(attachmentPixels, 1);
         Assert.True(garmentColoredPixels > 500);
         Assert.True(hostColoredPixels > 500);
@@ -57,7 +57,7 @@ public sealed class SkinnedAttachmentSetGoldenTests(SkinnedAttachmentGpuScene sc
             gpuSkinning, dissolve: dissolve, complement: complement, invert: invert, light: light, castsShadows: false);
         // Restrict this comparison to visible receiver pixels, excluding the host and red garment.
         int receiverChanges = DarkenedReceiver(noShadow, skinnedGarmentPixels);
-        if (dissolve == 0f && complement == 0f)
+        if (dissolve == .5f || (dissolve == 0f && complement == 0f))
             Assert.True(receiverChanges > 100, $"light {light} changed only {receiverChanges} receiver pixels");
         output.WriteLine($"{scene.Backend}: {name}, receiver changes {receiverChanges}, exact colour and receiver parity.");
     }
@@ -70,9 +70,9 @@ public sealed class SkinnedAttachmentSetGoldenTests(SkinnedAttachmentGpuScene sc
     public void Shadow_only_omits_colour_and_still_changes_the_receiver(bool gpuSkinning, int light)
     {
         byte[] receiverOnlyPixels = scene.Capture(SkinnedAttachmentGpuScene.Control.Attachments,
-            gpuSkinning, receiverOnly: true);
+            gpuSkinning, light: 3, receiverOnly: true);
         byte[] shadowOnlyColourPixels = scene.Capture(SkinnedAttachmentGpuScene.Control.Attachments,
-            gpuSkinning, shadowOnly: true);
+            gpuSkinning, light: 3, shadowOnly: true);
         Assert.Equal(receiverOnlyPixels, shadowOnlyColourPixels);
         byte[] litReceiver = scene.Capture(SkinnedAttachmentGpuScene.Control.Attachments,
             gpuSkinning, light: light, receiverOnly: true);
@@ -96,8 +96,8 @@ public sealed class SkinnedAttachmentSetGoldenTests(SkinnedAttachmentGpuScene sc
         byte[] complement = scene.Capture(SkinnedAttachmentGpuScene.Control.Attachments,
             gpuSkinning, dissolve: .5f, complement: 1);
         Evidence($"complement-{gpuSkinning}", ordinary, complement);
-        Assert.True(Count(ordinary, 0) > 100);
-        Assert.True(Count(complement, 0) > 100);
+        Assert.True(GarmentCount(ordinary) > 100);
+        Assert.True(GarmentCount(complement) > 100);
         for (int i = 0; i < solid.Length; i += 4)
             if (solid[i] > 80 && solid[i] > solid[i + 1] * 2 && solid[i] > solid[i + 2] * 2)
                 Assert.NotEqual(ordinary[i] == solid[i], complement[i] == solid[i]);
@@ -159,12 +159,23 @@ public sealed class SkinnedAttachmentSetGoldenTests(SkinnedAttachmentGpuScene sc
         SkinnedAttachmentGpuScene.Evidence(name + "-control", control);
     }
 
-    static int Count(byte[] pixels, int channel)
+    int GarmentCount(byte[] pixels)
+    {
+        scene.Fixture.Scene.Camera.WorldToScreen(new Vector3(12, 2, 0),
+            SkinnedAttachmentGpuScene.W, SkinnedAttachmentGpuScene.H, out Vector2 probe);
+        return Count(pixels, 0, probe.X > SkinnedAttachmentGpuScene.W / 2);
+    }
+
+    static int Count(byte[] pixels, int channel, bool? rightHalf = null)
     {
         int count = 0;
         for (int i = 0; i < pixels.Length; i += 4)
+        {
+            if (rightHalf.HasValue && (i / 4 % SkinnedAttachmentGpuScene.W >= SkinnedAttachmentGpuScene.W / 2) != rightHalf.Value)
+                continue;
             if (pixels[i + channel] > 80 && pixels[i + channel] > pixels[i + (channel + 1) % 3] * 2
                 && pixels[i + channel] > pixels[i + (channel + 2) % 3] * 2) count++;
+        }
         return count;
     }
 

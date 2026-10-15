@@ -46,7 +46,7 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>The main pass's GPU-skinned draws. An entry with <c>VisibleMain</c> false is camera-culled and
-        /// retained for a key or point shadow, so it must NOT also draw here. Packs
+        /// retained for a key or point shadow, or shadow-only, so it must NOT also draw here. Packs
         /// every visible draw's 128-byte header slot, uploads them in one write, then draws through the skinned
         /// pipeline: rest-pose buffer at vertex slot 0, set 0 = shared frame block + this draw's header window,
         /// set 1 = material, set 2 = this caster's palette (already uploaded by
@@ -61,7 +61,7 @@ namespace KhaozEngine.Render3D
                 GpuSkinnedDraw dr = _gpuSkinnedDraws[d];
                 if (!dr.VisibleMain) continue;
                 _model.PackSkinnedMainSlot(dr.Slot, dr.World, dr.Tint, dr.Emissive, dr.SpecParams,
-                    dr.DissolveParams);
+                    dr.DissolveParams, dissolveComplement: dr.DissolveComplement);
                 // Model + P alone: 1072 bytes left with #604's frame block and 3072 more with #407's palette.
                 _frameStats.AddSkinnedUniformUpload(ModelRenderer.SkinnedHeaderBytes);
                 packedMainSlots = true;

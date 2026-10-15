@@ -131,8 +131,8 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   through the same deferred queue. Unload the meshes that reference a map bundle first. All-absent bundles
   neither upload textures nor release scene defaults.
 - `RigidInstanceDraw` / `SkinnedInstanceDraw` / `MotionKey` - draw descriptors and motion keys. A descriptor carries
-  every knob of one draw (mesh, absolute transform, tint, material, dissolve and edge, shadow casting, and for a
-  rigid draw the shadow-only flag, the inverted shadow dither and the complement phase) plus a `Motion` key.
+  every knob of one draw (mesh, absolute transform, tint, material, dissolve and edge, shadow casting, the
+  shadow-only flag, inverted shadow dither and complement phase) plus a `Motion` key, for rigid and skinned draws.
   `Scene3D.Draw(in RigidInstanceDraw)` and `Scene3D.DrawSkinned(in SkinnedInstanceDraw, boneMatrices)` queue one.
   Every older `Draw`, `DrawShadowOnly` and `DrawSkinned` overload builds a descriptor with no key and forwards, so
   existing callers queue exactly what they did, and a new draw knob becomes a descriptor property rather than another
@@ -341,7 +341,13 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   pipeline culls nothing, so a single-sided card casts whichever face it turns to the sun. Only those spans sample
   the albedo: an opaque caster keeps the depth-only pipeline with no texture sample and no discard. Skinned draws follow the same policy: `DrawSkinned(..., material, castsShadows: false)` (and the
   dissolve overload's `castsShadows` argument) keeps a character out of the depth pass, and a dissolving skinned
-  draw sheds its shadow with its body on both skinning paths. `DrawShadowOnly(handle, transform)` is the opposite
+  draw sheds its shadow with its body on both skinning paths. Both descriptors default `ShadowOnly` and
+  `InvertShadowDissolve` to `false` and `DissolveComplement` to `0f`. `ShadowOnly` suppresses colour and motion
+  while retaining key and point shadows. A skinned shadow-only draw without casting is refused before palette
+  or queue mutation. `DissolveComplement = 1f` keeps the opposite noise samples in colour and ordinary shadow
+  dissolve, including no colour coverage at threshold zero and complementary coverage at threshold one.
+  `InvertShadowDissolve` independently selects the inverted shadow dither while dissolving, leaving colour
+  coverage unchanged. These policies work with CPU and GPU skinning. `DrawShadowOnly(handle, transform)` is the opposite
   of the opt-out: the instance records depth for the key light and never draws in the COLOUR pass, so a view can
   hide geometry from the eye and keep the shadow the world still throws (a tile world's hidden roof), counted by
   `ShadowOnlyInstances` and by neither `DrawnInstances` nor `CulledInstances`. The per-draw ones are inert at

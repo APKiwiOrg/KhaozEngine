@@ -4026,7 +4026,7 @@ for (int i = 0; i < parts.Count; i++)
 
 Every older `Draw(MeshHandle, ...)`, `Draw(PropHandle, ...)`, `DrawShadowOnly` and `DrawSkinned` overload builds a
 descriptor with no key and forwards to these two, so existing code queues exactly what it did and needs no change. A
-new draw knob becomes a descriptor property rather than another overload. The rigid descriptor also carries
+new draw knob becomes a descriptor property rather than another overload. Both descriptors also carry
 `ShadowOnly`, `InvertShadowDissolve` and `DissolveComplement`. `ShadowOnly = true` with `CastsShadows = false` draws
 nowhere and throws the same `ArgumentException` the instance queue has always thrown for that pair. A `default`
 descriptor is not the plain draw (its tint is transparent, its material is not `Material.None` and it casts no

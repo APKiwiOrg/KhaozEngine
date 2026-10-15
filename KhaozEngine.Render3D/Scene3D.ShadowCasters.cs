@@ -429,11 +429,11 @@ namespace KhaozEngine.Render3D
                         var dr = _gpuSkinnedDraws[d];
                         if (dr.ShadowKind == ShadowCastKind.None) continue;   // opted out: no slot, no draw
                         uint slot = (uint)(c * gpuCount + d);
-                        if (dr.ShadowKind == ShadowCastKind.Dissolving)
+                        if (dr.ShadowKind is ShadowCastKind.Dissolving or ShadowCastKind.DissolvingInverted)
                         {
                             // The dedicated dissolve vector carries the threshold, independently of alpha cutoff.
                             _model.PackSkinnedShadowSlot(slot, dr.World, _cascadeDepthVps[c], _frameOrigin,
-                                _cascadeNoiseScales[c], dr.DissolveParams.X);
+                                _cascadeNoiseScales[c], dr.DissolveParams.X, dr.DissolveComplement);
                             _frameStats.AddSkinnedUniformUpload(ShadowMapRenderer.SkinnedDissolvePayloadBytes);
                         }
                         else
@@ -455,7 +455,9 @@ namespace KhaozEngine.Render3D
                         ShadowDepthVariant variant = ShadowDepthSelection.ForGpuSkinned(dr.ShadowKind);
                         if (variant != boundSkinned)
                         {
-                            _model.BindShadowCascadeSkinned(cl, c, dissolve: variant == ShadowDepthVariant.SkinnedDissolve);
+                            _model.BindShadowCascadeSkinned(cl, c,
+                                dissolve: variant != ShadowDepthVariant.Skinned,
+                                invertedDissolve: variant == ShadowDepthVariant.SkinnedDissolveInverted);
                             boundSkinned = variant;
                         }
                         _model.DrawGpuSkinnedShadowCaster(cl, dr.RestVb, dr.Ib, dr.IndexCount, dr.IndexFormat,

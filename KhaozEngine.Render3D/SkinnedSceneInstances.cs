@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Primitives;
@@ -15,14 +16,20 @@ namespace KhaozEngine.Render3D
             public readonly Matrix4x4 World;
             public readonly Vector4 Tint;             // stored as Vector4 (Color converts implicitly), like SceneInstances
             public readonly Material Material;
-            // Teleport CharDissolve: DissolveThreshold 0 = no dissolve (normal pipeline), and > 0 routes this draw through
-            // the dissolve pipeline variant (SpecParams.z=threshold, .w=edge width, Emissive=edge colour).
+            // Teleport CharDissolve: a positive threshold or complement routes this draw through
+            // the dissolve pipeline variant (Dissolve carries threshold and edge width, Emissive the edge colour).
             public readonly float DissolveThreshold;
             public readonly float DissolveEdgeWidth;
             public readonly Vector4 DissolveEdge;
             // Shadow-caster opt-out (issue #387): false keeps this draw out of the key light's depth pass while it
             // still draws and receives. CPU-side only, like SceneInstances.Instance.CastsShadows.
             public readonly bool CastsShadows;
+            /// <summary>Shadow depth only, with no colour or motion. Requires <see cref="CastsShadows"/>.</summary>
+            public readonly bool ShadowOnly;
+            /// <summary>Invert only the shadow dither while dissolving, matching the rigid policy.</summary>
+            public readonly bool InvertShadowDissolve;
+            /// <summary>Complement colour and shadow dissolve coverage, matching the rigid policy.</summary>
+            public readonly float DissolveComplement;
             // Motion key (TEMPORAL-FOUNDATIONS-DESIGN section 3): which body this is across frames. CPU-side only,
             // like CastsShadows. None from every constructor except the descriptor's. Only Scene3D.DrawSkinned with a
             // descriptor records it into motion history, so a key on a standalone queue is never recorded.
@@ -31,25 +38,33 @@ namespace KhaozEngine.Render3D
                 float dissolveThreshold = 0f, float dissolveEdgeWidth = 0f, Vector4 dissolveEdge = default,
                 bool castsShadows = true)
                 : this(mesh, world, tint, material, dissolveThreshold, dissolveEdgeWidth, dissolveEdge, castsShadows,
-                    MotionKey.None)
+                    false, false, 0f, MotionKey.None)
             { }
 
             /// <summary>One queued draw from its descriptor, motion key included.</summary>
             internal Instance(in SkinnedInstanceDraw draw)
                 : this(draw.Mesh, draw.Model, draw.Tint, draw.Material, draw.Dissolve, draw.DissolveEdgeWidth,
-                    draw.DissolveEdgeColor, draw.CastsShadows, draw.Motion)
+                    draw.DissolveEdgeColor, draw.CastsShadows, draw.ShadowOnly, draw.InvertShadowDissolve,
+                    draw.DissolveComplement, draw.Motion)
             { }
 
             Instance(SkinnedMeshHandle mesh, Matrix4x4 world, Color tint, Material material, float dissolveThreshold,
-                float dissolveEdgeWidth, Vector4 dissolveEdge, bool castsShadows, MotionKey motion)
+                float dissolveEdgeWidth, Vector4 dissolveEdge, bool castsShadows, bool shadowOnly,
+                bool invertShadowDissolve, float dissolveComplement, MotionKey motion)
             {
+                if (shadowOnly && !castsShadows)
+                    throw new ArgumentException(
+                        "A shadow-only instance must cast shadows: shadowOnly with castsShadows false draws in neither pass.",
+                        nameof(shadowOnly));
                 Mesh = mesh; World = world; Tint = tint; Material = material;
                 DissolveThreshold = dissolveThreshold; DissolveEdgeWidth = dissolveEdgeWidth; DissolveEdge = dissolveEdge;
                 CastsShadows = castsShadows; Motion = motion;
+                ShadowOnly = shadowOnly; InvertShadowDissolve = invertShadowDissolve;
+                DissolveComplement = dissolveComplement;
             }
 
             /// <summary>True when this draw should go through the dissolve pipeline variant.</summary>
-            public bool Dissolving => DissolveThreshold > 0f;
+            public bool Dissolving => DissolveThreshold > 0f || DissolveComplement > 0f;
         }
 
         readonly List<Instance> _items = new();

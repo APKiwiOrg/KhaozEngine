@@ -36,7 +36,7 @@ layout(location=12) out vec4 vPrevClip;"),
     /// <c>SkinnedMotionPalette</c>, which holds this frame's own when the key has no usable last frame. Set 3 is the last
     /// set Vulkan guarantees, so the motion block shares it. vDissolve stays at 9 and the pair sits at 10 and 11.</summary>
     public static readonly string SkinnedModelMotionVert = ShaderText.BeforeEndOfMain(
-        ShaderText.After(SkinnedModelVert, "layout(location=9) out vec2 vDissolve;", @"
+        ShaderText.After(SkinnedModelVert, "layout(location=9) out vec3 vDissolve;", @"
 layout(set=3, binding=0) uniform MotionFrame {" + MotionFrameMembersGlsl + @"};
 // This caster's last frame, at the per-caster dynamic offset its palette at set 2 uses.
 layout(set=3, binding=1) uniform PrevPalette {

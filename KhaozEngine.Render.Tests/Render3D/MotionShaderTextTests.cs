@@ -16,11 +16,10 @@ public sealed class MotionShaderTextTests
     {
         ["ModelMotionFrag"] = (ShaderSources.ModelMotionFrag, ShaderSources.ModelFrag, ""),
         ["SkinnedModelMotionFrag"] = (ShaderSources.SkinnedModelMotionFrag, ShaderSources.SkinnedModelFrag,
-            "layout(location=9) in vec2 vDissolve;"),
+            "layout(location=9) in vec3 vDissolve;"),
         ["SkinnedModelDissolveMotionFrag"] = (ShaderSources.SkinnedModelDissolveMotionFrag,
             ShaderSources.SkinnedModelDissolveFrag, ""),
-        ["ModelDissolveMotionFrag"] = (ShaderSources.ModelDissolveMotionFrag, ShaderSources.ModelDissolveFrag,
-            "layout(location=10) in float vDissolveComplement;"),
+        ["ModelDissolveMotionFrag"] = (ShaderSources.ModelDissolveMotionFrag, ShaderSources.ModelDissolveFrag, ""),
         ["SplatMotionFrag"] = (ShaderSources.SplatMotionFrag, ShaderSources.SplatFrag, ""),
         ["TileGroundMotionFrag"] = (ShaderSources.TileGroundMotionFrag, ShaderSources.TileGroundFrag, ""),
         ["TexturedBillboardMotionFrag"] = (ShaderSources.TexturedBillboardMotionFrag, ShaderSources.TexturedBillboardFrag, ""),

@@ -26,6 +26,9 @@ public readonly struct SkinnedInstanceDraw
         DissolveEdgeWidth = 0f;
         DissolveEdgeColor = default;
         CastsShadows = true;
+        ShadowOnly = false;
+        InvertShadowDissolve = false;
+        DissolveComplement = 0f;
         Motion = MotionKey.None;
     }
 
@@ -53,6 +56,18 @@ public readonly struct SkinnedInstanceDraw
 
     /// <summary>Whether the draw writes into the key light's depth pass (issue #387). True by default.</summary>
     public bool CastsShadows { get; init; }
+
+    /// <summary>Draw into shadow depth only, with no colour or motion. False by default. Requires
+    /// <see cref="CastsShadows"/>, exactly like <see cref="RigidInstanceDraw.ShadowOnly"/>.</summary>
+    public bool ShadowOnly { get; init; }
+
+    /// <summary>Invert only the shadow dissolve's dither while dissolving. False by default. Independent of
+    /// <see cref="DissolveComplement"/>, exactly like <see cref="RigidInstanceDraw.InvertShadowDissolve"/>.</summary>
+    public bool InvertShadowDissolve { get; init; }
+
+    /// <summary>Complement the dissolve coverage in colour and shadow. Zero (the default) keeps the ordinary
+    /// coverage, one keeps its inverse, exactly like <see cref="RigidInstanceDraw.DissolveComplement"/>.</summary>
+    public float DissolveComplement { get; init; }
 
     /// <summary>The draw's identity across frames, for temporal effects. <see cref="MotionKey.None"/> (the default)
     /// marks a draw that reports camera-only motion. See <see cref="MotionKey"/>.</summary>

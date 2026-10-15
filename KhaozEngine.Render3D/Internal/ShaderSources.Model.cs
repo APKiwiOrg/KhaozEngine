@@ -266,6 +266,7 @@ layout(location=6) in vec4 vSpecParams; // x=spec strength, y=shininess, z=alpha
 layout(location=7) in vec4 vTangent;
 layout(location=8) in float vDynamic;   // dynamic-geometry decal mask (0 static / 1 skinned); written to oNormal.a
 layout(location=9) in vec2 vDissolve;
+layout(location=10) in float vDissolveComplement;
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oNormal;
 layout(location=2) out vec4 oDepth;
@@ -286,7 +287,8 @@ void main() {
     float threshold = clamp(vDissolve.x, 0.0, 1.0);
     float edgeW = max(vDissolve.y, 1e-3);
     float mask = dnoise((vWorldPos + RenderOrigin.xyz) * " + ShadowDissolveNoise.BaseScaleGlsl + @");   // 0..1 world-space dissolve mask
-    if (mask < threshold) discard;          // dissolved away
+    bool keep = vDissolveComplement > 0.5 ? mask < threshold : mask >= threshold;
+    if (!keep) discard;
 
     vec3 Ngeo = normalize(vNormalW);
     vec3 texRgb = texRgba.rgb;
@@ -392,7 +394,7 @@ layout(location=5) out vec4 vEmissive;
 layout(location=6) out vec4 vSpecParams;
 layout(location=7) out vec4 vTangent;
 layout(location=8) out float vDynamic;
-layout(location=9) out vec2 vDissolve;
+layout(location=9) out vec3 vDissolve;
 void main() {
     // 4-bone blend, mirroring SkinningMath.BlendSkinMatrix: raw (un-renormalized) weights, identity on ~0 total so an
     // unrigged vertex stays in place. bones[i] uploaded raw (System.Numerics row-major) reads column-major here as its
@@ -433,7 +435,7 @@ void main() {
     vSpecParams = P[2];
     vTangent = vec4(mat3(Model) * tLocal.xyz, tLocal.w);   // zero tangent -> (0,0,0,0), so the fragment uses Ngeo
     vDynamic = P[3].x;   // dynamic-geometry decal mask (issue #235): GPU-skinned draws default to 1 (see PackSkinnedMainSlot)
-    vDissolve = P[3].zw;
+    vDissolve = vec3(P[3].z, P[3].w, P[3].y);
 }";
 
         // Skinned fragment: byte-for-byte ModelFrag lighting, off byte-for-byte ModelFrag's frame block, which since
@@ -560,7 +562,7 @@ layout(location=5) in vec4 vEmissive;
 layout(location=6) in vec4 vSpecParams;
 layout(location=7) in vec4 vTangent;
 layout(location=8) in float vDynamic;   // dynamic-geometry decal mask (0 static / 1 skinned); written to oNormal.a
-layout(location=9) in vec2 vDissolve;
+layout(location=9) in vec3 vDissolve;
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oNormal;
 layout(location=2) out vec4 oDepth;
@@ -581,7 +583,8 @@ void main() {
     float threshold = clamp(vDissolve.x, 0.0, 1.0);
     float edgeW = max(vDissolve.y, 1e-3);
     float mask = dnoise((vWorldPos + RenderOrigin.xyz) * " + ShadowDissolveNoise.BaseScaleGlsl + @");
-    if (mask < threshold) discard;
+    bool keep = vDissolve.z > 0.5 ? mask < threshold : mask >= threshold;
+    if (!keep) discard;
 
     vec3 Ngeo = normalize(vNormalW);
     vec3 texRgb = texRgba.rgb;

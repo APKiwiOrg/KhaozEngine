@@ -91,9 +91,9 @@ public sealed class SkinnedColorCutoutContractTests
             Assert.Contains($"layout(location={location}) in ", ShaderSources.SkinnedModelDissolveFrag);
         }
         Assert.Contains("layout(location=9) in vec2 vDissolve;", ShaderSources.ModelDissolveFrag);
-        Assert.Contains("layout(location=9) out vec2 vDissolve;", ShaderSources.SkinnedModelVert);
-        Assert.Contains("vDissolve = P[3].zw;", ShaderSources.SkinnedModelVert);
-        Assert.Contains("layout(location=9) in vec2 vDissolve;", ShaderSources.SkinnedModelDissolveFrag);
+        Assert.Contains("layout(location=9) out vec3 vDissolve;", ShaderSources.SkinnedModelVert);
+        Assert.Contains("vDissolve = vec3(P[3].z, P[3].w, P[3].y);", ShaderSources.SkinnedModelVert);
+        Assert.Contains("layout(location=9) in vec3 vDissolve;", ShaderSources.SkinnedModelDissolveFrag);
         Assert.Contains("texRgba.a < vSpecParams.z", ShaderSources.ModelDissolveFrag);
         Assert.Contains("texRgba.a < vSpecParams.z", ShaderSources.SkinnedModelDissolveFrag);
         Assert.Contains("float threshold = clamp(vDissolve.x", ShaderSources.ModelDissolveFrag);

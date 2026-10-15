@@ -106,7 +106,8 @@ internal sealed partial class ModelRenderer
     }
 
     /// <summary>Pack one skinned draw's per-draw slot: the two-matrix header alone (<c>Model</c> for world
-    /// pos/normal/tangent, <c>P</c> packing tint/emissive/specParams into its three columns).
+    /// pos/normal/tangent, <c>P</c> packing tint/emissive/specParams into its first three columns, followed by
+    /// the dynamic mask, complement, threshold and edge width).
     /// <para>
     /// NEITHER THE FRAME BLOCK NOR THE PALETTE IS WRITTEN HERE ANY MORE. The slot used to open with a CPU-folded
     /// <c>Mvp</c> and carry a whole copy of the frame block, re-packed into every draw each frame, because the
@@ -116,19 +117,21 @@ internal sealed partial class ModelRenderer
     /// shadow cascade. What is left is 128 bytes that really are per draw.
     /// </para></summary>
     public void PackSkinnedMainSlot(uint slot, in Matrix4x4 model,
-        Vector4 tint, Vector4 emissive, Vector4 specParams, Vector2 dissolve, float isDynamic = 1f)
+        Vector4 tint, Vector4 emissive, Vector4 specParams, Vector2 dissolve, float isDynamic = 1f,
+        float dissolveComplement = 0f)
     {
         uint baseOff = slot * SkinnedMainSlotBytes;
         _skinnedHeaderScratch[0] = model;
         // Row 3 is the P matrix's 4th column in the shader (GLSL reads the raw bytes column-major). Its .x carries
         // the dynamic-geometry decal mask (SkinnedModelVert -> vDynamic): every GPU-skinned draw is a skinned
         // character, so it defaults to 1 (dynamic), and the skinned fragment writes normal-target alpha 0 to keep
-        // the main ground-decal pass off it. The row's last two components carry the dissolve parameters.
+        // the main ground-decal pass off it. Its .y stores the complement at header byte 116, and the last two
+        // components carry the dissolve parameters. The header remains 128 bytes.
         _skinnedHeaderScratch[1] = new Matrix4x4(
             tint.X, tint.Y, tint.Z, tint.W,
             emissive.X, emissive.Y, emissive.Z, emissive.W,
             specParams.X, specParams.Y, specParams.Z, specParams.W,
-            isDynamic, 0f, dissolve.X, dissolve.Y);
+            isDynamic, dissolveComplement, dissolve.X, dissolve.Y);
         // Straight into the persistent full-buffer image. UploadSkinnedMainSlots sends that image once every
         // slot is ready.
         Span<byte> destination = _skinnedMainImage.AsSpan(checked((int)baseOff), checked((int)SkinnedMainSlotBytes));
@@ -201,20 +204,24 @@ internal sealed partial class ModelRenderer
 
     /// <summary>Pack one DISSOLVING GPU-skinned caster's shadow-depth slot for one cascade (issue #387): the
     /// folded <c>LightMvp</c> plus the render-relative <paramref name="model"/>, <paramref name="renderOrigin"/>,
-    /// that cascade's <paramref name="noiseScale"/> and the caster's <paramref name="dissolveThreshold"/>. Forwards
+    /// that cascade's <paramref name="noiseScale"/>, the caster's <paramref name="dissolveThreshold"/> and
+    /// <paramref name="dissolveComplement"/>. Forwards
     /// to <see cref="ShadowMapRenderer"/>.</summary>
     public void PackSkinnedShadowSlot(uint slot, in Matrix4x4 model, in Matrix4x4 cascadeDepthMat,
-        Vector3 renderOrigin, float noiseScale, float dissolveThreshold) =>
-        _shadowMap.PackSkinnedShadowSlot(slot, model, cascadeDepthMat, renderOrigin, noiseScale, dissolveThreshold);
+        Vector3 renderOrigin, float noiseScale, float dissolveThreshold, float dissolveComplement = 0f) =>
+        _shadowMap.PackSkinnedShadowSlot(slot, model, cascadeDepthMat, renderOrigin, noiseScale, dissolveThreshold,
+            dissolveComplement);
 
     /// <summary>Upload every packed GPU-skinned shadow slot in one whole-buffer write.</summary>
     public void UploadSkinnedShadowSlots(IGpuCommandList cl) => _shadowMap.UploadSkinnedShadowSlots(cl);
 
     /// <summary>Bind cascade <paramref name="cascade"/> for the GPU-skinning depth draws: scissor its atlas column
     /// and switch to the skinned depth pipeline, or its dissolve-aware sibling when <paramref name="dissolve"/> is
-    /// set (issue #387). Call per cascade after the rigid runs. Forwards to <see cref="ShadowMapRenderer"/>.</summary>
-    public void BindShadowCascadeSkinned(IGpuCommandList cl, int cascade, bool dissolve = false) =>
-        _shadowMap.BindCascadeSkinned(cl, cascade, dissolve);
+    /// set (issue #387), inverted when <paramref name="invertedDissolve"/> is set. Call per cascade after the
+    /// rigid runs. Forwards to <see cref="ShadowMapRenderer"/>.</summary>
+    public void BindShadowCascadeSkinned(IGpuCommandList cl, int cascade, bool dissolve = false,
+        bool invertedDissolve = false) =>
+        _shadowMap.BindCascadeSkinned(cl, cascade, dissolve, invertedDissolve);
 
     /// <summary>Draw one GPU-skinned caster into the CURRENTLY-BOUND cascade (rest-pose vertex buffer, the
     /// caster-cascade light-matrix slot at <paramref name="slot"/>, and the shared per-caster palette at

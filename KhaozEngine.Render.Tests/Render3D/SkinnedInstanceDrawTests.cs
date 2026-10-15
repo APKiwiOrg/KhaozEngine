@@ -127,6 +127,9 @@ public sealed class SkinnedInstanceDrawTests
         Assert.Equal(0f, draw.DissolveEdgeWidth);
         Assert.Equal(default(Color), draw.DissolveEdgeColor);
         Assert.True(draw.CastsShadows);
+        Assert.False(draw.ShadowOnly);
+        Assert.False(draw.InvertShadowDissolve);
+        Assert.Equal(0f, draw.DissolveComplement);
         Assert.True(draw.Motion.IsNone);
     }
 

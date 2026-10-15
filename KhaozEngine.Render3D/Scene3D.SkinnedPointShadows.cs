@@ -106,8 +106,7 @@ public sealed partial class Scene3D
         foreach (GpuSkinnedDraw draw in _gpuSkinnedDraws)
         {
             if (draw.ShadowKind == ShadowCastKind.None) continue;
-            float complement = draw.ShadowKind == ShadowCastKind.DissolvingInverted ? 1f : 0f;
-            renderer.PackSkinnedCaster(draw.Slot, draw.World, draw.DissolveParams.X, complement);
+            renderer.PackSkinnedCaster(draw.Slot, draw.World, draw.DissolveParams.X, draw.DissolveComplement);
         }
         renderer.UploadSkinnedCasters(cl);
     }

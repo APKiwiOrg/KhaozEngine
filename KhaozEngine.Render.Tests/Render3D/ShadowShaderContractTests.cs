@@ -132,20 +132,20 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Fact]
-        public void TheSkinnedDissolveDepthVertex_FeedsTheRigidDissolveFragmentThePlainKeepSet()
+        public void TheSkinnedDissolveDepthVertex_FeedsTheRigidDissolveFragmentTheQueuedKeepSet()
         {
             // Issue #387. The skinned dissolve vertex reuses ShadowDepthDissolveFrag unchanged, so it must emit
-            // exactly that fragment's four interpolants, with the threshold from its slot and a zero complement (a
-            // character dissolve is SkinnedModelDissolveFrag's plain `mask < threshold` discard).
+            // exactly that fragment's four interpolants, with the threshold and complement from its slot.
             string vert = ShaderSources.SkinnedShadowDepthDissolveVert;
             Assert.Contains("layout(location=0) out float vLightDepth;", vert, StringComparison.Ordinal);
             Assert.Contains("layout(location=1) out vec3 vNoisePos;", vert, StringComparison.Ordinal);
             Assert.Contains("layout(location=2) out vec2 vDissolve;", vert, StringComparison.Ordinal);
             Assert.Contains("layout(location=3) out float vDissolveComplement;", vert, StringComparison.Ordinal);
             Assert.Contains("vDissolve = vec2(DissolveParams.y, 0.0);", vert, StringComparison.Ordinal);
-            Assert.Contains("vDissolveComplement = 0.0;", vert, StringComparison.Ordinal);
+            Assert.Contains("vDissolveComplement = DissolveParams.z;", vert, StringComparison.Ordinal);
             Assert.Contains("vNoisePos = (world.xyz + RenderOrigin.xyz) * DissolveParams.x;", vert, StringComparison.Ordinal);
-            Assert.Contains("if (mask < threshold) discard;", ShaderSources.SkinnedModelDissolveFrag, StringComparison.Ordinal);
+            Assert.Contains("bool keep = vDissolve.z > 0.5 ? mask < threshold : mask >= threshold;",
+                ShaderSources.SkinnedModelDissolveFrag, StringComparison.Ordinal);
         }
 
         [Theory]

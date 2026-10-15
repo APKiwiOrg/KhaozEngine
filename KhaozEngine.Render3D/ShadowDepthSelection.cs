@@ -23,6 +23,8 @@ namespace KhaozEngine.Render3D
         Skinned = 5,
         /// <summary>The dissolve-aware GPU-skinned depth pipeline (issue #387).</summary>
         SkinnedDissolve = 6,
+        /// <summary>The GPU-skinned depth pipeline with an inverted shadow dissolve.</summary>
+        SkinnedDissolveInverted = 7,
     }
 
     /// <summary>
@@ -66,6 +68,7 @@ namespace KhaozEngine.Render3D
         {
             ShadowCastKind.Opaque => ShadowDepthVariant.Opaque,
             ShadowCastKind.Dissolving => ShadowDepthVariant.Dissolve,
+            ShadowCastKind.DissolvingInverted => ShadowDepthVariant.DissolveInverted,
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "not a skinned caster kind"),
         };
 
@@ -75,15 +78,18 @@ namespace KhaozEngine.Render3D
         {
             ShadowCastKind.Opaque => ShadowDepthVariant.Skinned,
             ShadowCastKind.Dissolving => ShadowDepthVariant.SkinnedDissolve,
+            ShadowCastKind.DissolvingInverted => ShadowDepthVariant.SkinnedDissolveInverted,
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "not a skinned caster kind"),
         };
 
         /// <summary>How one queued skinned draw takes part in the depth pass (issue #387): opted out with
         /// <c>castsShadows: false</c>, dissolving, or plain. Opted out wins over dissolving, as on the rigid side.
-        /// Never <see cref="ShadowCastKind.DissolvingInverted"/>: a character dissolve has no crossfade partner.</summary>
+        /// Complementary coverage also dissolves at threshold zero. Shadow-only affects colour visibility,
+        /// while inverted shadow dissolve selects the same shadow dither as on the rigid side.</summary>
         internal static ShadowCastKind ClassifySkinnedCaster(in SkinnedSceneInstances.Instance instance)
             => !instance.CastsShadows ? ShadowCastKind.None
-             : instance.Dissolving ? ShadowCastKind.Dissolving
-             : ShadowCastKind.Opaque;
+             : !instance.Dissolving ? ShadowCastKind.Opaque
+             : instance.InvertShadowDissolve ? ShadowCastKind.DissolvingInverted
+             : ShadowCastKind.Dissolving;
     }
 }

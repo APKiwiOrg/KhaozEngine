@@ -24,7 +24,7 @@ namespace KhaozEngine.Tests.Gpu
     /// a program from this list.
     ///
     /// <para>
-    /// DEDUPLICATED BY SOURCE PAIR, not by call site. The catalog contains 84 graphics pairs and eight compute
+    /// DEDUPLICATED BY SOURCE PAIR, not by call site. The catalog contains 85 graphics pairs and eight compute
     /// kernels. The <c>Line</c> pair is created three times (<c>DepthLineRenderer</c>, and <c>LineRenderer</c> plus
     /// <c>FillRenderer</c> through <c>OverlayRenderer</c>), and identical sources cross-compile to identical
     /// HLSL, so three rows would be three copies of one fact. Where a pair has several call sites the name is its
@@ -48,7 +48,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>The cascade resolutions <c>OceanFftProducer</c> can compile a kernel for.</summary>
         public static readonly int[] OceanResolutions = { 32, 64, 128, 256 };
 
-        /// <summary>Every distinct shipped vertex and fragment pair, 84 of them.</summary>
+        /// <summary>Every distinct shipped vertex and fragment pair, 85 of them.</summary>
         public static IEnumerable<ShippedGraphicsProgram> GraphicsPrograms()
         {
             // Render2D.
@@ -107,6 +107,8 @@ namespace KhaozEngine.Tests.Gpu
                 ShaderSources.ShadowDepthCutoutVert, ShaderSources.ShadowDepthCutoutInvertedFrag);
             yield return new("SkinnedShadowDepthDissolve",
                 ShaderSources.SkinnedShadowDepthDissolveVert, ShaderSources.ShadowDepthDissolveFrag);
+            yield return new("SkinnedShadowDepthDissolveInverted",
+                ShaderSources.SkinnedShadowDepthDissolveVert, ShaderSources.ShadowDepthDissolveInvertedFrag);
 
             // Render3D point-light shadow atlas, the same three caster variants one geometry over plus the
             // per-row clear quad. The casters carry the same input sink the cascade ones do, for the same

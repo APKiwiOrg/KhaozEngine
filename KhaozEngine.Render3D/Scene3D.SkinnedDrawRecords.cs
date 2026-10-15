@@ -12,7 +12,7 @@ public sealed partial class Scene3D
     /// set-1 material set, the composed bone-palette slice (offset into <c>_boneMatrices</c> + bone count), the
     /// compacted per-caster slot, and the per-draw matrices/material the vertex shader folds. The shadow depth
     /// pass packs + draws each casting entry reached by a key or point-light shadow volume. The
-    /// main pass skips a <see cref="VisibleMain"/>-false entry (camera-culled, kept only as a shadow caster).</summary>
+    /// main pass skips a <see cref="VisibleMain"/>-false entry (camera-culled or shadow-only).</summary>
     readonly struct GpuSkinnedDraw
     {
         public readonly IGpuBuffer RestVb, Ib;
@@ -26,6 +26,7 @@ public sealed partial class Scene3D
         public readonly PointShadowCasterSphere PointSphere;
         public readonly Vector4 Tint, Emissive, SpecParams;
         public readonly Vector2 DissolveParams;
+        public readonly float DissolveComplement;
         public readonly bool VisibleMain;
         public readonly bool Dissolve;
         public readonly ShadowCastKind ShadowKind;   // how it takes part in the depth pass (issue #387)
@@ -33,13 +34,14 @@ public sealed partial class Scene3D
         public GpuSkinnedDraw(IGpuBuffer restVb, IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat,
             IGpuResourceSet? skinnedMaterialSet, int boneSpanStart, int boneCount, uint slot,
             in Matrix4x4 world, Vector4 tint, Vector4 emissive, Vector4 specParams, Vector2 dissolveParams,
-            bool visibleMain, bool dissolve,
+            float dissolveComplement, bool visibleMain, bool dissolve,
             ShadowCastKind shadowKind, PointShadowCasterSphere pointSphere, MotionKey motion)
         {
             RestVb = restVb; Ib = ib; IndexCount = indexCount; IndexFormat = indexFormat;
             SkinnedMaterialSet = skinnedMaterialSet; BoneSpanStart = boneSpanStart; BoneCount = boneCount; Slot = slot;
             World = world; Tint = tint; Emissive = emissive; SpecParams = specParams;
             DissolveParams = dissolveParams; VisibleMain = visibleMain; Dissolve = dissolve;
+            DissolveComplement = dissolveComplement;
             ShadowKind = shadowKind;
             PointSphere = pointSphere;
             Motion = motion;
@@ -51,7 +53,7 @@ public sealed partial class Scene3D
     /// Every entry here was CPU-skinned and uploaded (needed by at least one of the main or shadow pass). The
     /// key and point shadow passes select entries whose <see cref="ShadowKind"/> casts,
     /// while the main pass draw loop skips an entry whose <see cref="VisibleMain"/> is false (camera-culled,
-    /// kept only because it is still a shadow caster).</summary>
+    /// kept only because it is still a shadow caster), including a shadow-only draw.</summary>
     readonly struct CpuSkinnedDraw
     {
         public readonly IGpuBuffer Ib;
@@ -60,7 +62,7 @@ public sealed partial class Scene3D
         public readonly int BaseVertex;
         public readonly IGpuResourceSet? MaterialSet;
         public readonly bool Dissolve;   // route through the CharDissolve pipeline variant
-        public readonly bool VisibleMain;   // draw in the main visible pass, always true when culling is off
+        public readonly bool VisibleMain;   // draw in the main visible pass, false for shadow-only draws
         public readonly ShadowCastKind ShadowKind;   // how it takes part in the depth pass (issue #387)
         public readonly PointShadowCasterSphere PointSphere;
         public readonly MotionKey Motion;      // the submission's key, None when unkeyed

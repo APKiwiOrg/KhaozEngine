@@ -377,7 +377,7 @@ layout(set=0, binding=0) uniform VBlock {
     mat4 LightMvp;         // Model * clip-corrected LightViewProj (folded per draw)
     mat4 Model;            // render-relative world transform, for the world-anchored noise
     vec4 RenderOrigin;     // xyz = this frame's render origin
-    vec4 DissolveParams;   // x = this cascade's dissolve noise scale, y = the caster's dissolve threshold
+    vec4 DissolveParams;   // x = cascade noise scale, y = caster threshold, z = complement
 };
 layout(set=1, binding=0) uniform Palette {
     mat4 bones[128];       // this CASTER's composed palette (inverseBind*jointWorld), shared with the main pass
@@ -414,7 +414,7 @@ void main() {
     vec4 world = Model * localPos;
     vNoisePos = (world.xyz + RenderOrigin.xyz) * DissolveParams.x;
     vDissolve = vec2(DissolveParams.y, 0.0);
-    vDissolveComplement = 0.0;
+    vDissolveComplement = DissolveParams.z;
 }";
     }
 }

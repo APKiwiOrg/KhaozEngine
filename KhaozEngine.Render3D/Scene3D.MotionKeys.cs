@@ -64,7 +64,7 @@ public sealed partial class Scene3D
     // uploads, so a previous-palette skin pass reads the same kind of matrix as the current one.
     void RecordSkinnedMotion(in SkinnedInstanceDraw draw, int slot, int boneCount)
     {
-        if (draw.Motion.IsNone || !TemporalActive) return;
+        if (draw.Motion.IsNone || draw.ShadowOnly || !TemporalActive) return;
         ReadOnlySpan<Matrix4x4> composed = CollectionsMarshal.AsSpan(_boneMatrices)
             .Slice(slot * SkinningMath.MaxBonesPerDraw, boneCount);
         (_motionHistory ??= new MotionHistory()).RecordSkinned(draw.Motion, draw.Model, composed);

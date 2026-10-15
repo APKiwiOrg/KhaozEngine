@@ -68,10 +68,15 @@ namespace KhaozEngine.Render3D
         /// <see cref="MotionKey.None"/>. A stale or default handle queues nothing, and a bone count that differs from
         /// the mesh's throws <see cref="ArgumentException"/>. While temporal rendering is active, a keyed draw's model
         /// transform and composed palette are remembered for the next frame. Presentation only - never feed
-        /// sim/RNG/netcode from bone state.
+        /// sim/RNG/netcode from bone state. Shadow-only without casting throws <see cref="ArgumentException"/>
+        /// before changing either the palette or the queue.
         /// </summary>
         public void DrawSkinned(in SkinnedInstanceDraw draw, ReadOnlySpan<Matrix4x4> boneMatrices)
         {
+            if (draw.ShadowOnly && !draw.CastsShadows)
+                throw new ArgumentException(
+                    "A shadow-only instance must cast shadows: shadowOnly with castsShadows false draws in neither pass.",
+                    nameof(draw));
             SkinnedMeshHandle h = draw.Mesh;
             if (!_skinnedSlots.IsValid(h.Index, h.Generation)) return;
             var entry = _skinnedMeshes[h.Index];

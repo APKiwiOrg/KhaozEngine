@@ -67,8 +67,10 @@ namespace KhaozEngine.Tests.Render3D
         {
             Assert.Equal(ShadowDepthVariant.Opaque, ShadowDepthSelection.ForCpuSkinned(ShadowCastKind.Opaque));
             Assert.Equal(ShadowDepthVariant.Dissolve, ShadowDepthSelection.ForCpuSkinned(ShadowCastKind.Dissolving));
+            Assert.Equal(ShadowDepthVariant.DissolveInverted, ShadowDepthSelection.ForCpuSkinned(ShadowCastKind.DissolvingInverted));
             Assert.Equal(ShadowDepthVariant.Skinned, ShadowDepthSelection.ForGpuSkinned(ShadowCastKind.Opaque));
             Assert.Equal(ShadowDepthVariant.SkinnedDissolve, ShadowDepthSelection.ForGpuSkinned(ShadowCastKind.Dissolving));
+            Assert.Equal(ShadowDepthVariant.SkinnedDissolveInverted, ShadowDepthSelection.ForGpuSkinned(ShadowCastKind.DissolvingInverted));
         }
 
         static SkinnedSceneInstances.Instance Skinned(float dissolve = 0f, bool castsShadows = true)
@@ -124,12 +126,14 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Theory]
-        [InlineData(false)]
-        [InlineData(true)]
-        public void A_gpu_skinned_variant_is_refused_by_the_rigid_bind(bool dissolving)
+        [InlineData(false, false)]
+        [InlineData(true, false)]
+        [InlineData(true, true)]
+        public void A_gpu_skinned_variant_is_refused_by_the_rigid_bind(bool dissolving, bool inverted)
         {
             // The variant travels as a bool because the enum is internal and a public test may not name it.
-            ShadowDepthVariant variant = dissolving ? ShadowDepthVariant.SkinnedDissolve : ShadowDepthVariant.Skinned;
+            ShadowDepthVariant variant = inverted ? ShadowDepthVariant.SkinnedDissolveInverted
+                : dissolving ? ShadowDepthVariant.SkinnedDissolve : ShadowDepthVariant.Skinned;
             var gd = new FakeGpuDevice();
             using IGpuFramebuffer fb = NewTarget(gd.Factory);
             using var scene = new Scene3D(gd, fb.Outputs);

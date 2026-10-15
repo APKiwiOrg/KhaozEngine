@@ -24,6 +24,7 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [Action-bar icons and cooldowns (SlotContent + CooldownOverlay)](#action-bar-icons-and-cooldowns-slotcontent--cooldownoverlay)
 - [Number + duration formatting (`NumberFormatter` / `TimeFormatter`)](#number--duration-formatting-numberformatter--timeformatter)
 - [Version comparison (`VersionComparer`)](#version-comparison-versioncomparer)
+- [Async-flow ambient scopes](#async-flow-ambient-scopes)
 - [Compile-time localization enforcement (`StringId` / `LocalizedText`)](#compile-time-localization-enforcement-stringid--localizedtext)
 - [File-size ratchet (KESIZE analyzer)](#file-size-ratchet-kesize-analyzer)
 - [In-game patch notes (`PatchNotesLoader` / `PatchNotesView` / `PatchNotesScreen`, 10.45.0)](#in-game-patch-notes-patchnotesloader--patchnotesview--patchnotesscreen-10450)
@@ -1574,6 +1575,12 @@ GuiTheme.Default = GuiTheme.Default with
 GuiTheme.Default = GuiTheme.Legacy;
 ```
 
+For a subtree in one async flow, construct its widgets inside `using (GuiTheme.Use(theme))`. Widgets keep
+the palette captured at construction after disposal. `GuiTheme.Default` reads the innermost scope, then
+the current process default. Assigning it always updates that process default. `GuiTheme` remains a value
+type, and its nullable `Use(GuiTheme? theme)` overload rejects null. See the
+[ambient scope contract](#async-flow-ambient-scopes).
+
 `SelectionFill` / `FocusFill` are what a `Dropdown`'s open list fills its chosen row and its keyboard-cursor row
 with (`SelectedColor` / `FocusColor`, both still overridable per instance). The `Dropdown` hardcoded that pair
 before, so a rebranded palette still drew a blue selected row. `Crisp` and `Legacy` carry the same two values, so
@@ -2804,6 +2811,46 @@ that keep their own existing call sites - they exist so `Updates` and `ServerSta
 reference each other just to agree on how versions order.
 
 ---
+
+## Async-flow ambient scopes
+
+`LocalizationContext.Use(IStringCatalog? catalog)`, `Log.Use(LogManager manager)` and
+`GuiTheme.Use(GuiTheme theme)` return `IDisposable` overrides for the current async flow. Reads choose the
+innermost override, then the latest process fallback. They share one internal primitive in Diagnostics,
+already referenced by App and Gui. Theme selection has the same lifetime and fallback rules, with widgets
+capturing their palette at construction.
+
+```csharp
+using (LocalizationContext.Use(catalog))
+using (Log.Use(manager))
+using (GuiTheme.Use(theme))
+{
+    await BuildScreenAsync();
+}
+```
+
+Scopes survive awaits and flow into child tasks. An override or disposal in a child cannot change its
+parent or siblings. A child retains the scope it inherited even if the parent leaves first. Suppressing
+execution-context flow prevents inheritance. Values are borrowed, so await children before releasing any
+catalog or manager they use. A scope never disposes a catalog or shuts down a manager. Theme values are
+copied. `Use(null)` is an explicit localization override that renders keys as placeholders. Logging rejects
+a null manager. The nullable theme overload rejects a null theme.
+
+Dispose in reverse creation order within each flow. Disposing an outer token while a nested scope is active
+throws `InvalidOperationException` and leaves selection intact. Disposing a token no longer in that flow's
+stack is a no-op, including repeat disposal. Inherited flows dispose their copies independently.
+
+Process mutation stays process-wide. `LocalizationContext.Catalog` assignment and `WireResx`,
+`GuiTheme.Default` assignment, `Log.Configure`, `Log.Shutdown` and the `Log.MinimumLevel` setter always change
+the process fallback. The corresponding getters select the current scope. `Log.Manager`, `Log.IsConfigured`,
+`Log.Flush`, category defaults, filtering and timestamps follow it too. Cached `Log.For<T>()` and `Log.Get`
+loggers reselect on each call. An injected `LogManager.GetLogger` stays pinned. `CrashHandler.Install()` reads
+the process manager regardless of scopes, while `Install(manager)` remains pinned to its argument.
+
+Before a facade's first `Use`, a monotonic flag bypasses async-local lookup. Reads take no locks and allocate
+no delegates or per-read objects. Logging preserves its volatile process-manager read. After first use,
+scope lookup also has no per-read allocations, including after disposal. Allocation checks establish this
+contract without claiming equal execution time.
 
 ## Compile-time localization enforcement (`StringId` / `LocalizedText`)
 
@@ -16408,12 +16455,15 @@ Rules for consumers:
   afterwards to swap the sink set, leaves that field writing to the live manager either way (17.37.0, #616). The one
   logger this does NOT apply to is `LogManager.GetLogger(...)`, which is bound to the manager you took it from,
   on purpose, so an injected manager and its sink keep meaning what they say.
-- **`CrashHandler.Install()` follows the facade too, so install it wherever you like** (17.37.0, #633). It arms
-  the process handlers and captures no manager, and resolves the configured one when a crash is actually
+- **`CrashHandler.Install()` follows the process default, so install it wherever you like** (17.37.0, #633). It arms
+  the process handlers and captures no manager, and resolves the process manager when a crash is actually
   reported, so installing it before `Log.Configure` arms normally and starts reporting the moment configuration
   lands, and a later reconfigure takes the fatal crash line with it. There is no re-install step any more. The
   overload that takes a manager, `CrashHandler.Install(myManager)`, is the injected shape and PINS to that
-  manager on purpose, the same split as `LogManager.GetLogger` against `Log.For<T>()`.
+  manager on purpose. Both install shapes ignore `Log.Use` overrides.
+- `Log.Use(manager)` borrows a manager for one async flow. Cached category loggers, `Manager`, `IsConfigured`,
+  the `MinimumLevel` getter and `Flush` follow it. `Configure`, `Shutdown` and the `MinimumLevel` setter remain
+  process-wide. See the [ambient scope contract](#async-flow-ambient-scopes) for inheritance and disposal.
 - Pick a **category**, then log under it (pass an exception as the optional second argument):
   - A single class's logging → `Log.For<T>()` (category = the type name).
   - A feature/subsystem spanning several classes, or a game-side module with no single owning type → 

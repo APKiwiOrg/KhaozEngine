@@ -280,8 +280,9 @@ a compile error. `KhaozEngine.Localization.Analyzers` (in the `Game2D`/`Game3D` 
   string shown = a.Resolve();                            // resolves against the ambient catalog
   ```
 
-- **`LocalizationContext.Catalog`** - the ambient `IStringCatalog` a `LocalizedText` resolves against when no
-  catalog is passed. Wire it once at startup. `LocalizationContext.WireResx` is the one-liner (it builds the
+- **`LocalizationContext.Catalog`** - the innermost async-flow catalog, falling back to the current process
+  catalog. Its setter always changes the process default, including inside a scope. Wire that default once at
+  startup. `LocalizationContext.WireResx` is the one-liner (it builds the
   `ResourceStringCatalog`, installs it, and returns it) that replaces the bridge class every game used to write
   by hand:
 
@@ -294,6 +295,17 @@ a compile error. `KhaozEngine.Localization.Analyzers` (in the `Game2D`/`Game3D` 
   Culture stays live (the catalog reads `CurrentUICulture` at resolve time), so a runtime `SetCulture` shows up on
   the next draw with nothing to invalidate. Null is legal (headless tests, non-localized apps): a localizable
   value then renders its key as a visible placeholder rather than throwing.
+
+- **`LocalizationContext.Use(IStringCatalog? catalog)`** - borrows a catalog for the current async flow and
+  returns an `IDisposable`. `using (LocalizationContext.Use(catalog))` affects `LocalizedText.Resolve()` across
+  awaits and flows into child tasks. `Use(null)` explicitly selects key placeholders even when a process
+  catalog exists. An explicit `Resolve(catalog)` still uses that argument. Scopes neither dispose nor own
+  catalogs. Dispose in reverse creation order within each flow. Disposing an active outer scope throws
+  `InvalidOperationException` without changing the stack. Repeated disposal after removal is a no-op in that
+  flow. A child can dispose its inherited copy without invalidating the parent or sibling copies.
+  `Catalog` assignment and `WireResx` remain process-wide and become visible on leaving the scope. Child tasks
+  retain the scope captured when they started, so await them before releasing borrowed resources. Suppressing
+  execution-context flow suppresses inheritance. Before the first `Use`, reads bypass async-local lookup.
 
 - **`[LocalizationExempt]`** (assembly/type/member) marks a scope where `LocalizedText.Raw` is intentional, so
   the analyzer stays silent there (debug overlays, tools, sample chrome). **`[LocalizationStringSink]`**

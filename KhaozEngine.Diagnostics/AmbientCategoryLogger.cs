@@ -8,9 +8,9 @@ namespace KhaozEngine.Diagnostics;
 /// out, and it is the reason a logger cached in a <c>static readonly</c> field cannot go silent (#616): it holds
 /// no manager to be left pointing at, and finds the configured one when it is asked to log.
 ///
-/// <para><b>ONE VOLATILE READ PER CALL, AND NOTHING ELSE.</b> That read is <see cref="Log.Current"/>, and it
-/// replaces the field read a manager-pinned logger did, so the write path costs the same and allocates nothing
-/// it did not allocate before. The read happens ONCE per message, into a local, so an entry cannot be split
+/// <para><see cref="Log.Current"/> selects the innermost async-flow scope or current process manager, preserving
+/// the volatile process read. Before the first scope, a monotonic flag bypasses async-local lookup. Selection
+/// takes no locks and allocates nothing. It happens ONCE per message, into a local, so an entry cannot be split
 /// across a concurrent <see cref="Log.Configure(LoggerOptions)"/>: it is filtered, stamped and submitted against
 /// a single manager, whichever one was configured when the call started. If that manager is shut down before the
 /// submit lands, the entry is dropped rather than thrown, which is what <see cref="LogManager.Submit"/> already

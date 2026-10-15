@@ -13,6 +13,20 @@ overload, so a bare literal is a compile error. The `KhaozEngine.Localization.An
 icon-atlas key, not player text, so it is unchanged. See the App package for
 `StringId` / `LocalizedText` / `LocalizationContext`.
 
+`GuiTheme.Use(GuiTheme theme)` returns an `IDisposable` that selects a value copy for the current async flow.
+`GuiTheme.Default` reads the innermost scope, then the current process default. Its setter always changes
+the process default. The nullable `Use(GuiTheme? theme)` overload rejects null with `ArgumentNullException`.
+Widgets capture colors when constructed, so leaving a scope does not restyle widgets already created.
+This uses the same internal ambient primitive as localization and logging because all three select an
+async-flow override over a process fallback. No package dependency is added.
+
+Use `using (GuiTheme.Use(theme))` to build a themed subtree without swapping the process default. Scopes flow
+across awaits and into child tasks, whose overrides and disposal cannot change parents or siblings. Dispose
+in reverse creation order in each flow. Disposing an active outer scope throws `InvalidOperationException`
+without changing selection. Repeating disposal after removal, or disposing a token absent from the current
+flow, does nothing. Inherited copies dispose independently. Suppressed execution-context flow does not
+inherit scopes. See [the ambient scope contract](../docs/USING-KHAOZENGINE.md#async-flow-ambient-scopes).
+
 The opt-in rich-text adapters take `MarkupText`, built only from a `StringId`. It has no raw root factory.
 Non-localizable names, numbers and input labels enter as `MarkupText.Of` arguments, which are formatted and
 markup-escaped before insertion into the trusted catalog template.

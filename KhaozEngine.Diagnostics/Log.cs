@@ -4,13 +4,14 @@ using System.Threading;
 namespace KhaozEngine.Diagnostics;
 
 /// <summary>
-/// Process-wide ambient logging facade over a single configured <see cref="LogManager"/>. Games call
+/// Ambient logging facade over async-flow overrides and a configured process <see cref="LogManager"/>. Games call
 /// <see cref="Configure(LoggerOptions)"/> once at startup, then log via <see cref="For{T}"/> /
-/// <see cref="Get(string)"/> or the convenience methods. Calls before configuration are safe no-ops.
+/// <see cref="Get(string)"/> or the convenience methods. Calls with neither a scope nor a process manager are
+/// safe no-ops. <see cref="Use"/> borrows a manager without changing the process default or its lifetime.
 ///
 /// <para><b>A LOGGER FROM THIS FACADE FOLLOWS THE FACADE, FOR AS LONG AS IT IS HELD (#616).</b>
 /// <see cref="For{T}"/> and <see cref="Get(string)"/> hand back a logger bound to a CATEGORY and to nothing
-/// else, which reads the currently configured manager on every call. So a logger resolved BEFORE
+/// else, which reads the innermost scope or current process manager on every call. So a logger resolved BEFORE
 /// <see cref="Configure(LoggerOptions)"/> starts writing the moment configuration lands, and a logger resolved
 /// before a RECONFIGURE follows the new manager instead of the shut-down one.</para>
 ///
@@ -30,6 +31,7 @@ public static class Log
 {
     private static readonly object gate = new();
     private static LogManager? manager;
+    private static readonly AmbientScope<LogManager?> scopes = new();
 
     /// <summary>
     /// The logger the category-free convenience methods write through. One instance for the process: it carries
@@ -49,22 +51,37 @@ public static class Log
     }
 
     /// <summary>
-    /// The currently configured manager, read without taking <see cref="gate"/>. One volatile read is the whole
-    /// per-message cost of the ambient binding described on this type, and the acquire semantics are what stop a
-    /// caller seeing a manager reference before the writes that built it.
+    /// The process manager, independent of async-flow scopes. Preserve the volatile publication read for
+    /// process mutation and process crash reporting without taking <see cref="gate"/>.
     /// </summary>
-    internal static LogManager? Current => Volatile.Read(ref manager);
+    internal static LogManager? ProcessManager => Volatile.Read(ref manager);
 
-    /// <summary>True once a manager has been configured.</summary>
+    /// <summary>The innermost async-flow manager, then the current process default.</summary>
+    internal static LogManager? Current => scopes.GetValueOrDefault(ProcessManager);
+
+    /// <summary>True when this flow has a scoped or process manager.</summary>
     public static bool IsConfigured => Current is not null;
 
-    /// <summary>The configured manager, or <c>null</c>.</summary>
+    /// <summary>The selected async-flow or process manager, or <c>null</c>.</summary>
     public static LogManager? Manager => Current;
 
-    /// <summary>Builds and adopts a manager from <paramref name="options"/>.</summary>
+    /// <summary>
+    /// Borrows a manager for this async flow, across awaits and in child tasks. Dispose in reverse creation
+    /// order in each flow. Disposing an active outer scope throws without changing selection. Disposal after
+    /// removal is a no-op in that flow. Inherited copies dispose independently. The manager is never shut down
+    /// or disposed by the scope. Process configuration and mutation stay process-wide.
+    /// </summary>
+    /// <exception cref="ArgumentNullException"><paramref name="manager"/> is null.</exception>
+    public static IDisposable Use(LogManager manager)
+    {
+        ArgumentNullException.ThrowIfNull(manager);
+        return scopes.Use(manager);
+    }
+
+    /// <summary>Builds and adopts a process manager from <paramref name="options"/>.</summary>
     public static void Configure(LoggerOptions options) => Configure(new LogManager(options));
 
-    /// <summary>Adopts an existing manager (for example one built via DI). Shuts down any previous manager.</summary>
+    /// <summary>Adopts a process manager (for example one built via DI). Shuts down the previous process manager.</summary>
     public static void Configure(LogManager newManager)
     {
         LogManager? previous;
@@ -76,15 +93,18 @@ public static class Log
         previous?.Shutdown();
     }
 
-    /// <summary>Minimum level of the configured manager (no-op getter returns <see cref="LogLevel.Info"/> when unconfigured).</summary>
+    /// <summary>
+    /// Reads the selected async-flow manager's level, or <see cref="LogLevel.Info"/> when unconfigured.
+    /// Assignment always changes the process manager's level and is a no-op without a process manager.
+    /// </summary>
     public static LogLevel MinimumLevel
     {
         get { return Current?.MinimumLevel ?? LogLevel.Info; }
-        set { var m = Current; if (m is not null) m.MinimumLevel = value; }
+        set { var m = ProcessManager; if (m is not null) m.MinimumLevel = value; }
     }
 
     /// <summary>
-    /// Returns a logger for category <c>typeof(T).Name</c>. Safe to cache in a field: it resolves the configured
+    /// Returns a logger for category <c>typeof(T).Name</c>. Safe to cache in a field: it resolves the selected
     /// manager per call, so it is never left pointing at a shut-down one (see the note on <see cref="Log"/>).
     /// </summary>
     public static ILogger For<T>() => Ambient<T>.Instance;
@@ -109,10 +129,10 @@ public static class Log
     /// <summary>Logs at <see cref="LogLevel.Fatal"/> under the default category.</summary>
     public static void Fatal(string message, Exception? exception = null) => defaultLogger.Fatal(message, exception);
 
-    /// <summary>Flushes the configured manager (no-op when unconfigured).</summary>
+    /// <summary>Flushes the selected async-flow or process manager (no-op when unconfigured).</summary>
     public static void Flush() => Current?.Flush();
 
-    /// <summary>Shuts down and detaches the configured manager.</summary>
+    /// <summary>Shuts down and detaches the process manager. Borrowed scoped managers stay selected and alive.</summary>
     public static void Shutdown()
     {
         LogManager? previous;

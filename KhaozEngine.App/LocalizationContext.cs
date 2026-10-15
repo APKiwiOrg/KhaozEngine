@@ -1,24 +1,46 @@
+using System;
 using System.Reflection;
 using System.Resources;
+using System.Threading;
+using KhaozEngine.Diagnostics;
 
 namespace KhaozEngine.App;
 
 /// <summary>
 /// The ambient <see cref="IStringCatalog"/> that <see cref="LocalizedText.Resolve()"/> reads when no catalog
-/// is passed explicitly. An app sets this once at startup (there is no global <see cref="ServiceLocator"/>
-/// singleton, and threading a catalog through every Gui draw call would be invasive). Null is legal - a
+/// is passed explicitly. Reads select the innermost <see cref="Use"/> scope, then the current process default.
+/// An app sets that default once at startup. Null is legal, including as an explicit scoped override - a
 /// localizable <see cref="LocalizedText"/> then renders its key as a visible placeholder, never throwing.
 /// Because <see cref="ResourceStringCatalog"/> reads <c>CurrentUICulture</c> live and <see cref="LocalizedText"/>
 /// re-resolves on every access, a runtime locale switch shows up on the next draw with nothing to invalidate.
 /// </summary>
 public static class LocalizationContext
 {
-    /// <summary>The ambient catalog, or null when unset.</summary>
-    public static IStringCatalog? Catalog { get; set; }
+    private static readonly AmbientScope<IStringCatalog?> scopes = new();
+    private static IStringCatalog? catalog;
 
     /// <summary>
-    /// Installs a <see cref="ResourceStringCatalog"/> over <paramref name="resources"/> as the ambient
-    /// <see cref="Catalog"/> and returns it. The one-liner every game used to hand-wire in a bridge class whose
+    /// The current async-flow catalog, falling back to the process default. Assignment always changes the
+    /// process default, even inside a scope. Null renders localizable keys as visible placeholders.
+    /// </summary>
+    public static IStringCatalog? Catalog
+    {
+        get => scopes.GetValueOrDefault(Volatile.Read(ref catalog));
+        set => Volatile.Write(ref catalog, value);
+    }
+
+    /// <summary>
+    /// Borrows a catalog for this async flow, including across awaits and in child tasks. Null explicitly
+    /// overrides the process catalog. Dispose in reverse creation order in each flow. Disposing an active
+    /// outer scope throws without changing selection. Repeating disposal after removal is a no-op in that
+    /// flow. Inherited child copies dispose independently. The catalog is never disposed by the scope.
+    /// </summary>
+    public static IDisposable Use(IStringCatalog? catalog) => scopes.Use(catalog);
+
+    /// <summary>
+    /// Installs a <see cref="ResourceStringCatalog"/> over <paramref name="resources"/> as the process
+    /// <see cref="Catalog"/> default and returns it. Active scopes keep their override. The one-liner every
+    /// game used to hand-wire in a bridge class whose
     /// entire body was <c>Catalog = new ResourceStringCatalog(...)</c>. Call once at startup, before any
     /// <see cref="LocalizedText"/> sink draws. Idempotent: a repeat call just replaces the ambient catalog with an
     /// equivalent fresh one. Culture stays live - the catalog reads <c>CurrentUICulture</c> at resolve time, so a

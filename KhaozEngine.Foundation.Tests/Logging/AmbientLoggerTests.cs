@@ -141,8 +141,8 @@ public class AmbientLoggerTests
     [Fact]
     public void FilteredCallThroughACachedLogger_AllocatesNothing()
     {
-        // The per-message cost of the ambient binding is one volatile read of the configured manager, and this is
-        // the assertion that keeps it there. Logging BELOW the minimum level isolates that binding: the call
+        // Ambient selection must not add per-call allocation, with or without an async-flow scope. Logging
+        // BELOW the minimum level isolates that binding: the call
         // resolves the manager, asks it whether the level passes, and returns, so anything the write path itself
         // allocates (the sink-array snapshot, the formatter) is out of the window.
         const string message = "filtered";

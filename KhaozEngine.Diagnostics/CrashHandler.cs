@@ -11,7 +11,7 @@ namespace KhaozEngine.Diagnostics;
 ///
 /// <para><b>THE AMBIENT INSTALL RESOLVES THE MANAGER WHEN THE CRASH HAPPENS, NOT WHEN IT IS INSTALLED (#633).</b>
 /// <see cref="Install()"/> arms the handlers and captures nothing, and the report reads
-/// <see cref="Log.Current"/> on the crash path, the same volatile read every ambient logger does since #616. So
+/// <see cref="Log.ProcessManager"/> on the crash path, ignoring async-flow <see cref="Log.Use"/> overrides. So
 /// install order stopped mattering in both directions: installing BEFORE <see cref="Log.Configure(LoggerOptions)"/>
 /// arms normally and starts reporting the moment configuration lands, and a later reconfigure moves the crash
 /// line to the new manager with it. Arming unconditionally widens one thing beyond logging: the task handler
@@ -39,7 +39,7 @@ public static class CrashHandler
 
     /// <summary>
     /// The manager an <see cref="Install(LogManager)"/> caller handed in, or <c>null</c> for an ambient install,
-    /// which resolves <see cref="Log.Current"/> per report instead.
+    /// which resolves <see cref="Log.ProcessManager"/> per report instead.
     /// </summary>
     private static LogManager? pinned;
 
@@ -66,7 +66,8 @@ public static class CrashHandler
     }
 
     /// <summary>
-    /// Installs handlers that route crashes to the ambient <see cref="Log"/>, resolved when a crash is reported.
+    /// Installs handlers that route crashes to the process <see cref="Log"/> default when a crash is reported.
+    /// Async-flow <see cref="Log.Use"/> overrides never affect crash routing.
     /// Safe to call before <see cref="Log.Configure(LoggerOptions)"/> (it arms, and reports once logging is
     /// configured) and unaffected by any later reconfigure. Idempotent.
     /// </summary>
@@ -104,7 +105,8 @@ public static class CrashHandler
 
     /// <summary>
     /// The manager this report is written to: the injected one when there is one, otherwise whatever the ambient
-    /// facade holds right now. Null when nothing is installed or nothing is configured, which is the
+    /// process facade holds right now, regardless of async-flow overrides. Null when nothing is installed or
+    /// no process manager is configured, which is the
     /// do-nothing case. Takes <see cref="gate"/> only for the two fields, and never while calling into
     /// <see cref="Log"/>, so the crashing thread cannot meet a <see cref="Log.Configure(LoggerOptions)"/> holding
     /// the facade's own gate.
@@ -120,7 +122,7 @@ public static class CrashHandler
         }
 
         if (!armed) return null;
-        return injected ?? Log.Current;
+        return injected ?? Log.ProcessManager;
     }
 
     private static void OnUnhandled(object exceptionObject, bool isTerminating)

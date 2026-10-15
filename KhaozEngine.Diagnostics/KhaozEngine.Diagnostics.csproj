@@ -14,6 +14,9 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>
+    <!-- These facades share the internal async-flow slot without exposing a generic public helper. -->
+    <InternalsVisibleTo Include="KhaozEngine.App" />
+    <InternalsVisibleTo Include="KhaozEngine.Gui" />
     <InternalsVisibleTo Include="KhaozEngine.Foundation.Tests" />
     <!-- GameApp's arming decision is tested where GameApp lives, and driving the ARMED path (rather than a
          plain Write) is what proves a head's own Install survived. CrashReport.OnCrash is that seam. -->

@@ -32,20 +32,38 @@ Log.For<Game>().Info("started");
 Log.Shutdown();
 ```
 
-**When `Configure` takes effect: everywhere, immediately, including code that resolved its logger first.** A
+**`Configure` changes the process default, including for code that resolved its logger first.** A
 logger from `Log.For<T>()` / `Log.Get(...)` is bound to its CATEGORY and to the facade, not to whichever manager
 was configured when you asked for it, so it reads the current one on every call. That means the usual shape is
 safe: cache the logger in a `static readonly ILogger` field, touch the type whenever you like, and configure
 logging whenever the process gets round to it. It also means a `Log.Configure` late in startup, or a second one
 that swaps the sink set, does not strand anything that already holds a logger. `Log.Configure` shuts down the
-manager it replaces (flushing, then disposing its sinks), so the manager is what changes, never your logger.
+manager it replaces (flushing, then disposing its sinks). An active `Log.Use` override stays selected until its
+scope ends, then the logger reads the latest process fallback.
+
+`Log.Use(LogManager manager)` borrows a manager for the current async flow and returns an `IDisposable`.
+Null throws `ArgumentNullException`. Inside `using (Log.Use(manager))`, cached `Log.For<T>()` and `Log.Get(...)`
+loggers follow that manager, including its minimum level, default category, timestamps and sinks.
+`Log.Manager`, `Log.IsConfigured`, the `Log.MinimumLevel` getter and `Log.Flush()` select it too. A scope
+never shuts down or disposes its manager. `Log.Configure`, `Log.Shutdown` and the `Log.MinimumLevel` setter
+always mutate the process manager, even inside a scope. Scope disposal restores the current process fallback,
+including a reconfigured or shut-down default.
+
+Scopes nest and survive awaits. Child tasks inherit their starting scope, while their overrides and disposal
+do not change parents or siblings. Dispose in reverse creation order in each flow. Disposing an active outer
+scope throws `InvalidOperationException` without changing selection. Disposing a token already absent from
+the current flow is a no-op, including repeat disposal. A token has no shared disposed flag, so inherited
+flows can each restore independently. Await children before disposing their borrowed managers. Suppressed
+execution-context flow does not inherit scopes. Before the first `Use` for a facade, reads bypass async-local
+lookup. Subsequent reads, including after disposal, allocate nothing for manager selection. This is an
+allocation contract, not a timing guarantee.
 
 A logger from `LogManager.GetLogger(...)` is the deliberate opposite: it belongs to THAT manager for its whole
 life, which is what makes the injected path (DI, and a test asserting against a manager it owns) mean what it
 says.
 
-`CrashHandler.Install()` is on the facade side of that split. It arms the process handlers and holds no manager,
-resolving the configured one when a crash is reported, so install it before or after `Log.Configure` and
+`CrashHandler.Install()` arms process handlers and holds no manager, resolving the process default when a
+crash is reported. It ignores `Log.Use` scopes. Install it before or after `Log.Configure` and
 reconfigure as often as you like: the fatal crash line follows the live manager and needs no re-install.
 `CrashHandler.Install(myManager)` is the injected shape and pins to the manager you hand it. Because arming no
 longer depends on a manager being configured, an unobserved task exception is marked observed while the handler
@@ -137,7 +155,7 @@ Do **not** prefix the message with the category: `Log.Info("[CloudSave] saved")`
 
 ## Pieces
 
-- `Log` - static ambient facade (`Log.For<T>()`, `Log.Info(...)`, `Log.Configure`, `Log.Flush`, `Log.Shutdown`). No-op before `Configure`, and its loggers follow the facade across a later `Configure` (see above), so caching one in a field is safe.
+- `Log` - static ambient facade (`Log.For<T>()`, `Log.Info(...)`, `Log.Use`, `Log.Configure`, `Log.Flush`, `Log.Shutdown`). Without a scope or process manager logging is a no-op. Cached loggers follow the current scope and process fallback.
 - `LogManager` + `LoggerOptions` - injectable instance core (DI/tests). Runtime-settable `MinimumLevel`. Async by default, and set `Synchronous = true` for deterministic tests. A logger from `LogManager.GetLogger` stays bound to that manager.
 - `ILogger` - category logger (`Trace`/`Debug`/`Info`/`Warn`/`Error`/`Fatal`, each with an optional exception).
 - `ILogSink` + `FileSink` (rotate-on-launch + size rotation + retention), `ConsoleSink`, `DebugSink`, `InMemorySink`. Implement `ILogSink` for custom targets (in-game console, crash uploader).

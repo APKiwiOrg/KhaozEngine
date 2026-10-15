@@ -1,4 +1,6 @@
+using System;
 using System.Numerics;
+using KhaozEngine.Diagnostics;
 
 namespace KhaozEngine.Gui
 {
@@ -11,6 +13,9 @@ namespace KhaozEngine.Gui
     /// </summary>
     public struct GuiTheme
     {
+        private static readonly AmbientScope<GuiTheme> scopes = new();
+        private static GuiTheme processDefault = Crisp;
+
         /// <summary>App background (behind everything).</summary>
         public Vector4 Background;
         /// <summary>Resting control / panel fill.</summary>
@@ -129,10 +134,28 @@ namespace KhaozEngine.Gui
 
         /// <summary>
         /// The ambient theme new widgets read at construction. Defaults to <see cref="Crisp"/>. Set it once at
-        /// startup (before building widgets) to rebrand the whole UI; changing it later does not restyle widgets
-        /// already constructed. Set it to <see cref="Legacy"/> to keep the pre-10.11.0 look.
+        /// startup (before building widgets) to rebrand the whole UI. Assignment always changes the process
+        /// default, even inside a scope. Reads select the innermost <see cref="Use(GuiTheme)"/> scope first.
+        /// Changing it later does not restyle widgets already constructed.
         /// </summary>
-        public static GuiTheme Default { get; set; } = Crisp;
+        public static GuiTheme Default
+        {
+            get => scopes.GetValueOrDefault(processDefault);
+            set => processDefault = value;
+        }
+
+        /// <summary>
+        /// Selects a theme value copy for this async flow, across awaits and in child tasks. Widgets capture it
+        /// at construction. Dispose in reverse creation order within each flow. Disposing an active outer
+        /// scope throws without changing selection. Repeat disposal after removal is a no-op in that flow.
+        /// Inherited child copies dispose independently. Assignment to <see cref="Default"/> stays process-wide.
+        /// </summary>
+        public static IDisposable Use(GuiTheme theme) => scopes.Use(theme);
+
+        /// <summary>Selects a nullable theme value, rejecting null rather than creating an absent override.</summary>
+        /// <exception cref="ArgumentNullException"><paramref name="theme"/> is null.</exception>
+        public static IDisposable Use(GuiTheme? theme) =>
+            theme.HasValue ? Use(theme.Value) : throw new ArgumentNullException(nameof(theme));
 
         /// <summary>The crisp neutral-dark palette with a blue accent (the 10.11.0 default look).</summary>
         public static GuiTheme Crisp => new()

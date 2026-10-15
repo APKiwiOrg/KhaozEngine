@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Numerics;
 using SharpGLTF.Schema2;
 using GltfMaterial = SharpGLTF.Schema2.Material;
@@ -67,8 +68,11 @@ namespace KhaozEngine.Render3D
         /// material ordering, node-transform bake and decoded maps as the path overload. The caller's
         /// <paramref name="identity"/> names the asset in validation diagnostics.</summary>
         /// <remarks>Attachment consumers must apply their embedded rigid asset policy before import.</remarks>
+        /// <exception cref="InvalidDataException">The glTF is malformed. The message names
+        /// <paramref name="identity"/> and the importer's diagnostic is the inner exception.</exception>
+        /// <exception cref="InvalidOperationException">The glTF has no triangles or fails index validation.</exception>
         public static IReadOnlyList<GltfMeshPart> LoadPartsWithMaterials(ReadOnlyMemory<byte> glb, string identity) =>
-            BuildParts(LoadModel(glb, identity), identity);
+            TranslateModelErrors(identity, () => BuildParts(LoadModel(glb, identity), identity));
 
         // As AppendMeshCorners, but only primitives that reference exactly <paramref name="material"/>
         // (reference-equality; a null target matches primitives with no material) contribute. Used by

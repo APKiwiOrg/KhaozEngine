@@ -1058,6 +1058,11 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   mutation, and `identity` names malformed indices in diagnostics. Attachment consumers apply
   `AttachmentGlb.ValidateRigidEmbedded` before import through `KhaozEngine.Attachments`.
   `KhaozEngine.Attachments.Render3D` supplies the skeleton binding and ships in Game3D.
+- Byte import exception contract: since 21.0.0 both `LoadPartsWithMaterials(glb, identity)` and
+  `LoadSkinnedPartsWithMaterials(glb, identity)` report a malformed glTF as `InvalidDataException`. Its
+  message names `identity` and the importer's diagnostic is the inner exception, so callers never name a
+  SharpGLTF type. Missing triangles, a missing skin, the bone cap and bad indices still throw
+  `InvalidOperationException`.
 - Skinned material parts: `GltfLoader.LoadSkinnedPartsWithMaterials(path)` and its
   `(ReadOnlyMemory<byte> glb, string identity)` overload return one `GltfSkinnedMeshPart(Mesh, Maps)` per
   source material in first-use order, including an untextured group for primitives without a material.

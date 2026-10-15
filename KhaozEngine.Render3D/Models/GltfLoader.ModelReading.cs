@@ -24,6 +24,17 @@ namespace KhaozEngine.Render3D
             });
         }
 
+        // The byte overloads' exception contract: SharpGLTF's own exception types stay inside the loader, so a
+        // malformed GLB reaches the caller as InvalidDataException naming its identity, with the original inner.
+        static T TranslateModelErrors<T>(string identity, Func<T> load)
+        {
+            try { return load(); }
+            catch (SharpGLTF.Validation.ModelException ex)
+            {
+                throw new InvalidDataException($"glTF asset '{identity}' is malformed: {ex.Message}", ex);
+            }
+        }
+
         // identity names the asset in errors: a file path, or the caller's identity for bytes. read takes null for
         // SharpGLTF's default strict settings, or the fallback's validation-skipping settings.
         static ModelRoot LoadModel(string identity, Func<ReadSettings?, ModelRoot> read)

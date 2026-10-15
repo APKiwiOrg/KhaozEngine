@@ -159,6 +159,34 @@ public sealed class GltfSkinnedMaterialPartsTests
             () => GltfLoader.LoadSkinnedPartsWithMaterials(overCap, "over-cap")).Message);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Malformed_accessor_through_a_byte_overload_throws_invalid_data_naming_the_identity(bool skinned)
+    {
+        var fixture = new SkinnedAttachmentGlbFixture();
+        int normals = fixture.Accessors.Count;
+        fixture.Accessors.Add(new JsonObject
+        {
+            ["bufferView"] = fixture.AddView(new byte[3 * sizeof(float)]),
+            ["componentType"] = 5126,
+            ["count"] = 1,
+            ["type"] = "VEC3",
+        });
+        fixture.SetElement(normals, 0, 0, 0, 1);
+        fixture.Primitives[0]!["attributes"]!["NORMAL"] = normals;
+        byte[] glb = fixture.Build();
+        const string identity = "malformed-normal.glb";
+        Action load = skinned
+            ? () => GltfLoader.LoadSkinnedPartsWithMaterials(glb, identity)
+            : () => GltfLoader.LoadPartsWithMaterials(glb, identity);
+
+        InvalidDataException error = Assert.Throws<InvalidDataException>(load);
+
+        Assert.Contains(identity, error.Message);
+        Assert.Equal("SharpGLTF.Validation", error.InnerException?.GetType().Namespace);
+    }
+
     static SkinnedAttachmentGlbFixture Fixture(string? colorType = "VEC4", int colorComponentType = 5126)
     {
         var fixture = new SkinnedAttachmentGlbFixture(2);

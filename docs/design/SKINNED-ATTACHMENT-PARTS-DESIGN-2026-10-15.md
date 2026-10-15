@@ -1,8 +1,8 @@
 # Skinned attachment parts
 
-Status: implemented on `feature/skinned-attachment-parts`, staged for 21.0.0. Integration waits
-for exact-head draft PR checks, the unfiltered hosted GPU proof and whole-branch review.
-No merge, release tag or consumer adoption is authorized by this record.
+Status: integrated into main for 21.0.0 through PR #1414, after exact-head draft PR checks, the
+unfiltered hosted GPU proof and whole-branch review. The 21.0.0 release also carries the work
+previously staged as 20.41.0. Consumers adopt it from the released tag.
 
 The owner-approved [skinned stone armour straps spec](https://github.com/APKiwiOrg/Grimhollow/blob/0112d03c0144ff1f85526ff1057c5355bf260ee2/docs/superpowers/specs/2026-10-15-skinned-armour-straps-design.md)
 defines the requirement. The [implementation plan](../superpowers/plans/2026-10-15-skinned-attachment-parts.md)

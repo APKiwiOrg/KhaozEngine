@@ -115,7 +115,7 @@ public sealed class SkinnedAttachmentSetGoldenTests(SkinnedAttachmentGpuScene sc
         byte[] control = scene.Capture(SkinnedAttachmentGpuScene.Control.Skinned,
             gpuSkinning, dissolve: .5f, complement: complement, outlines: true);
         Evidence($"outline-{gpuSkinning}-{complement}", actual, control);
-        Assert.True(Count(actual, 2) > 100);
+        Assert.True(GarmentCount(actual, 2) > 100);
         Assert.Equal(control, actual);
     }
 
@@ -159,11 +159,11 @@ public sealed class SkinnedAttachmentSetGoldenTests(SkinnedAttachmentGpuScene sc
         SkinnedAttachmentGpuScene.Evidence(name + "-control", control);
     }
 
-    int GarmentCount(byte[] pixels)
+    int GarmentCount(byte[] pixels, int channel = 0)
     {
         scene.Fixture.Scene.Camera.WorldToScreen(new Vector3(12, 2, 0),
             SkinnedAttachmentGpuScene.W, SkinnedAttachmentGpuScene.H, out Vector2 probe);
-        return Count(pixels, 0, probe.X > SkinnedAttachmentGpuScene.W / 2);
+        return Count(pixels, channel, probe.X > SkinnedAttachmentGpuScene.W / 2);
     }
 
     static int Count(byte[] pixels, int channel, bool? rightHalf = null)

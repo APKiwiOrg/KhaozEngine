@@ -6264,42 +6264,91 @@ because no rigid orientation can be recovered.
 
 ### Attachment sets
 
-`KhaozEngine.Attachments` contains GPU-free immutable rigid and skinned part definitions, canonical
-format-1 and format-2 JSON, strict mesh references and embedded rigid GLB validation. Format 1 is rigid
-only. Format 2 requires an exact `rigid` or `skinned` kind per part. Rigid-only sets write the original
-format-1 bytes and semantic hashes, while sets containing skinned parts write format 2.
-Reference it explicitly from headless publishers. The
-`KhaozEngine.Attachments.Render3D` renderer arm ships in Game3D and binds each named part to a
-`ContractJointMap`. Mesh node transforms are baked during import. Part-local corrections compose with
-the joint's body alignment and the body's current skin-bone palette.
+`KhaozEngine.Attachments` is a GPU-free, BCL-only package with immutable `AttachmentSetDefinition`
+values whose `AttachmentPartDefinition` parts are either `RigidAttachmentPartDefinition` or
+`SkinnedAttachmentPartDefinition`. `AttachmentSetJson` reads format 1 as rigid and format 2 with a
+required exact `rigid` or `skinned` kind on every part. Rigid parts keep `joint` and `local`. Skinned
+parts contain only `id`, `kind` and `mesh`. Unknown or duplicate members are refused. Rigid-only sets
+write the original canonical format-1 bytes and keep their semantic hashes. Mixed or skinned sets
+write format 2. Reference this package explicitly from headless publishers.
 
-The current cache and map-only binding refuse skinned parts with `InvalidDataException`. Skinned
-definitions can be authored and validated without loading them through the rigid renderer path.
+`AttachmentGlb.ValidateRigidEmbedded` and `ValidateSkinnedEmbedded` check self-contained glTF 2.0
+GLBs before import. The garment policy requires one embedded buffer, exactly one skin referenced by
+every mesh node, unique non-blank joint names and at most 128 joints. Every primitive needs
+`JOINTS_0` and `WEIGHTS_0` with at most four influences. External URIs, duplicate keys, further
+influence sets, all-zero weights, out-of-range joints, animations, morph targets and mesh weights
+are refused. Rigid and skinned imports retain the same material factors, vertex colours and maps.
+
+The renderer arm `KhaozEngine.Attachments.Render3D` ships in Game3D. Load and bind once:
 
 ```csharp
 using var cache = new AttachmentSetCache(scene, new DirectoryAttachmentAssetSource(assetRoot));
-BoundAttachmentSet bound = cache.Get(definitionKey, definitionSha256).Bind(map);
-// Every frame, using the exact bound skeleton and the body's current palette.
+LoadedAttachmentSet loaded = cache.Get(definitionKey, definitionSha256);
+BoundAttachmentSet bound = loaded.Bind(map, hostMesh);
+// Every frame, using host joint model matrices in full host skin-bone order.
 bound.Queue(map.Skeleton, jointPalette, characterWorld, visualIncarnationKey);
 ```
 
-One cache owns uploads for one scene and shares verified mesh revisions across its sets. Dispose it
-before the scene. Loaded and bound views borrow resources and throw `ObjectDisposedException` after
-cache disposal. Use the cache and its views on the scene's render thread without overlapping calls.
-Binding allocates scratch once. Valid frame calls load, hash and allocate nothing.
+The explicit host mesh carries the exact `map.Skeleton` instance and its actual inverse binds.
+Garment joints match host skin bones by ordinal name, including reordered subsets. A matching node
+outside the skin is insufficient. Every garment inverse bind must be finite and match the host
+within an inclusive absolute `1e-4` per element over all 16 elements. Binding precomputes the index
+table. Rigid parts retain part-local correction, body alignment and scale-free joint composition.
+Rigid-only `loaded.Bind(map)` remains valid and refuses garments with `InvalidDataException`.
 
-The convenience `Queue` overload uses opaque white tint, `Material.None`, no dissolve and shadow casting.
-Its template overload replaces `Mesh`, `World` and `Motion` and preserves every other `RigidInstanceDraw`
-field. `WriteDraws` writes the same borrowed descriptors into a caller-owned span for a recording scene
-or outline pass and returns `DrawCount`. Parts follow ascending stable ID and material groups follow
-their GLB order. Insufficient capacity or an invalid pose changes no descriptor and queues no prefix.
+One cache owns uploads for one scene, shares verified mesh revisions by key, hash and kind, and
+refuses a mesh reference requested under both kinds even when its upload is warm. Dispose it before
+the scene. Loaded and bound views borrow resources and throw `ObjectDisposedException` after cache
+disposal. Use each cache and bound view on its scene's render thread without overlapping calls.
+Binding allocates scratch and one garment palette per skinned part, shared by that part's materials.
+Valid frame calls load, hash, search names and allocate nothing. They never advance animation.
+The host palette contains joint model matrices. Scene3D alone applies garment inverse binds.
 
-Each material group gets its own temporal key, nested from the caller key, semantic definition revision,
-part ID and material ordinal. Source-array reordering preserves keys. Changed mesh bytes change the
-revision and keys. Keep `visualIncarnationKey` stable for one visual lifetime and replace it when that
-incarnation changes, including a replacement with identical asset bytes. `MotionKey.None` stays untracked.
-The optional `IAttachmentScene` capability accepts uploads and complete descriptors. Its default
-Scene3D adapter and the native tile-world scene facade forward to the same renderer path.
+The convenience `Queue` overload uses opaque white tint, `Material.None`, no dissolve and shadow
+casting. Its `RigidInstanceDraw` template overload replaces mesh, world or model, and motion while
+preserving tint, material, dissolve and edge, shadow casting, shadow-only, inverted shadow dissolve
+and dissolve complement on both kinds. CPU and GPU skinning follow the same rendering policy.
+Each material group produces one rigid or skinned draw in ascending part-ID and stable material order.
+For a synchronous descriptor consumer, allocate an `AttachmentDraw[]` once and pass its span:
+
+```csharp
+Span<AttachmentDraw> destination = draws.AsSpan(); // draws.Length >= bound.DrawCount
+int count = bound.WriteDraws(map.Skeleton, jointPalette, characterWorld,
+    visualIncarnationKey, template, destination);
+for (int i = 0; i < count; i++)
+{
+    AttachmentDraw draw = destination[i];
+    if (draw.IsSkinned) scene.DrawSkinned(draw.Skinned, draw.BoneMatrices.Span);
+    else scene.Draw(draw.Rigid);
+}
+```
+
+`BoneMatrices` borrows the bound view's preallocated garment palette. Consume every descriptor
+synchronously before the next preparation or submission on that view, or cache disposal. Scene3D
+records the current and previous palettes for motion. Rigid-only `WriteDraws` with
+`Span<RigidInstanceDraw>` remains valid. A set containing garments refuses that overload with
+`InvalidOperationException` before writing anything. Insufficient capacity, an invalid later pose
+or an invalid template changes no descriptor and queues no prefix. The unused output suffix stays intact.
+
+Create one outline group through the scene, then add the complete mixed set:
+
+```csharp
+var outlineGroup = scene.BeginMeshOutline(outlineColor, widthPixels, occlusion);
+bound.QueueOutline(map.Skeleton, jointPalette, characterWorld, outlineGroup,
+    dissolve: .5f, dissolveComplement: true);
+```
+
+The group's occlusion and target settings cover rigid and skinned material groups through the
+existing dissolved outline paths. Each material draw gets its own temporal key, nested from the
+caller key, semantic revision, part ID and material ordinal. Source reordering preserves keys.
+Changed mesh bytes change the revision and keys. Keep `visualIncarnationKey` stable for one visual
+lifetime and replace it when that incarnation changes, including replacement with identical bytes.
+`MotionKey.None` stays untracked. The optional `IAttachmentScene` capability, its Scene3D adapter
+and the native tile-world scene facade forward complete rigid and skinned descriptors.
+
+Version 21 removes the old rigid-only set type names without aliases. See the
+[migration and design record](design/SKINNED-ATTACHMENT-PARTS-DESIGN-2026-10-15.md) and the
+[renderer package reference](../KhaozEngine.Attachments.Render3D/README.md) for the full contract.
 
 ### Skinned body contracts (any body shape)
 
@@ -8196,7 +8245,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.41.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.0.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -8570,7 +8619,7 @@ extrapolation.
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.41.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.0.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -9335,7 +9384,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.41.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.0.0" />
 ```
 
 ```csharp
@@ -17085,7 +17134,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.41.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.0.0" />
 ```
 
 ```csharp
@@ -17121,7 +17170,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.41.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.0.0" />
 ```
 
 ```csharp
@@ -17363,7 +17412,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.41.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.0.0" />
 ```
 
 ```csharp
@@ -21723,7 +21772,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.41.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="21.0.0" />
 </ItemGroup>
 ```
 

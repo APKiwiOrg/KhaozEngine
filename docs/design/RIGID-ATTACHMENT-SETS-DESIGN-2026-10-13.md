@@ -5,6 +5,14 @@ The [implementation plan](../superpowers/plans/2026-10-13-rigid-attachment-sets.
 This document records the design rationale. The package READMEs and consumer guide describe current APIs.
 Package availability is determined by release tags, with consumer adoption gated on an approved release.
 
+## Current API supersession
+
+The [skinned attachment design](SKINNED-ATTACHMENT-PARTS-DESIGN-2026-10-15.md) supersedes this
+record for current set APIs in staged 21.0.0. Sets now use kind-neutral names and may mix rigid
+parts and skinned garments. This document's audit, historical gate decisions and original plan
+remain a record of the rigid feature. They do not waive any skinned-branch verification gate.
+Use the living consumer guide and package READMEs for current signatures.
+
 ## Implementation checkpoint, 2026-10-14
 
 All four implementation tasks and their scoped reviews are complete. The final review corrections are

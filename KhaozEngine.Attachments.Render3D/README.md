@@ -77,7 +77,7 @@ binds and rest poses as immutable metadata. Loading allocates no frame palettes.
 using var scene = new Scene3D(device, output);
 using var cache = new AttachmentSetCache(scene, new DirectoryAttachmentAssetSource(assetRoot));
 LoadedAttachmentSet loaded = cache.Get(definitionKey, definitionHash);
-BoundAttachmentSet bound = loaded.Bind(map);
+BoundAttachmentSet bound = loaded.Bind(map, hostMesh);
 ```
 
 For a skinned or mixed set, use `loaded.Bind(map, hostMesh)`. It binds the cache's captured skin
@@ -132,9 +132,10 @@ cannot publish a prefix.
 For synchronous descriptor consumers, allocate the mixed buffer once after binding:
 
 ```csharp
-var draws = new AttachmentDraw[bound.DrawCount];
+var draws = new AttachmentDraw[bound.DrawCount]; // Allocate once after binding.
+Span<AttachmentDraw> destination = draws.AsSpan();
 int count = bound.WriteDraws(map.Skeleton, jointPalette, characterWorld,
-    visualIncarnationKey, template, draws);
+    visualIncarnationKey, template, destination);
 for (int i = 0; i < count; i++)
 {
     AttachmentDraw draw = draws[i];
@@ -174,3 +175,6 @@ replacement uses the same asset bytes.
 Binding allocates all submission scratch. Valid frame calls perform no loading, hashing or managed
 allocation. One cache belongs to one scene, and its views belong to that scene's render thread.
 Calls on the same bound view must not overlap.
+
+For the version-21 set-level rename and its rationale, see the
+[skinned attachment design](../docs/design/SKINNED-ATTACHMENT-PARTS-DESIGN-2026-10-15.md).

@@ -1069,6 +1069,13 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   `AttachmentGlb.ValidateSkinnedEmbedded` before import. `GltfLoader.LoadSkinned(glb, identity)` also
   imports a flattened mesh from bytes. The existing `LoadSkinned(path)` and
   `LoadSkinnedWithMaterial(path)` keep their flattened geometry and first-textured-material behaviour.
+- Mixed attachment sets: the [attachment renderer arm](../KhaozEngine.Attachments.Render3D/README.md)
+  binds garments with `loaded.Bind(map, hostMesh)` against actual host inverse binds. It queues one
+  `DrawSkinned` per material group using borrowed joint model palettes. CPU and GPU skinning preserve
+  tint, material maps, dissolve and complement, casting, shadow-only and inverted shadow dissolve,
+  motion history and both outline presentations. Use one scene-created outline group for the body
+  and its attachments. Consume mixed descriptors before their bound view's next preparation or
+  submission. Steady-state attachment submission allocates no managed memory.
 - Named nodes and sockets: `GltfLoader.LoadNamedNodes(path) -> IReadOnlyList<GltfNamedNode>` returns every logical
   node with a non-empty name, empties included, in logical-node order. Each `GltfNamedNode(Name, WorldTransform)`
   carries the node's world matrix exactly as `Load` bakes a mesh node's vertices, so an empty named `socket_nose`

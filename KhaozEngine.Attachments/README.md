@@ -91,3 +91,6 @@ Unsigned byte and unsigned short joints, float or normalized unsigned byte/short
 views and sparse overrides are supported. Accessor and sparse ranges are checked against the declared
 embedded buffer before reading. Optional inverse-bind accessors must contain one finite MAT4 per
 joint. Host joint-name mapping and bind-pose compatibility are renderer-level checks.
+
+Version 21 removes the rigid-only set type names without compatibility aliases. See the
+[migration record](../docs/design/SKINNED-ATTACHMENT-PARTS-DESIGN-2026-10-15.md).

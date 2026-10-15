@@ -5,7 +5,21 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 20.41.0
+## 21.0.0
+
+- Breaking attachment API rename removes the rigid-only set names in favour of `AttachmentSetDefinition`,
+  `AttachmentSetJson`, `AttachmentSetBinding`, `AttachmentSetCache`, `LoadedAttachmentSet`,
+  `BoundAttachmentSet` and `IAttachmentScene`. Parts derive from `AttachmentPartDefinition` as rigid
+  or skinned definitions. No compatibility aliases are retained.
+- Attachment sets may combine rigid pieces and skinned garments. Format 1 keeps its canonical bytes and
+  semantic hashes. Format 2 requires an explicit part kind, while rigid-only writes still emit format 1.
+  Strict embedded garment GLB validation checks actual joints and weights before import. Bind mixed sets
+  with `loaded.Bind(map, hostMesh)` to verify ordinal host skin names and every inverse-bind element.
+- Bound sets submit one draw per material group with preallocated garment palettes, complete template
+  parity and stable material motion keys. Mixed descriptors borrow palettes until the next preparation
+  or submission. CPU and GPU skinning preserve tint, material, dissolve, shadows and grouped outlines.
+  Rigid-only map binding and rigid descriptor writing remain valid. Mixed sets explicitly refuse the
+  rigid descriptor overload. See the [design record](docs/design/SKINNED-ATTACHMENT-PARTS-DESIGN-2026-10-15.md).
 
 - Render3D adds opt-in nameplate stacking with pinned plates, sticky rank order and eased upward offsets, plus template drawing at caller-resolved panel rects, and makes NameplateAnchorProjection public so callers place plates exactly as the renderer does. Existing nameplate draw calls are unchanged.
 

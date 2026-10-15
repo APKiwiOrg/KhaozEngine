@@ -381,7 +381,10 @@ The capability forwards complete skinned descriptors, including material, dissol
 motion keys, directly to Scene3D rather than using the legacy tile-interface fallback. Rigid and
 skinned dissolved outline calls add to a caller-created `MeshOutlineGroup` through the existing
 Scene3D paths. Headless scenes may implement the same optional capability with recording leases.
-`ITileWorldScene` does not require it. Dispose attachment caches or leases before disposing the scene.
+`ITileWorldScene` does not require it. Mixed sets use `loaded.Bind(map, hostMesh)` and either `Queue`
+or `Span<AttachmentDraw>` descriptors. Consume borrowed garment palettes synchronously before the
+bound view's next preparation or submission. The same caller-created outline group can hold the
+body, rigid parts and garments. Dispose attachment caches or leases before disposing the scene.
 
 Everything the view does to a scene goes through `ITileWorldScene`: `LoadMesh`, `UnloadMesh`, `DrawMesh`,
 `DrawOverlayMesh`,

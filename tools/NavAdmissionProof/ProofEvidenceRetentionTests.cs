@@ -56,8 +56,8 @@ public sealed class ProofEvidenceRetentionTests
     {
         using var files = new EvidenceFiles();
         var evidence = new ProofChildEvidence(files.Directory, NewChild());
-        var counts = new GraphCounts(1, accepted, rejected, edges, 3, 2, clear, obstacle);
-        var validation = new GraphAcceptance(counts, [new(0, width, 204)]);
+        var counts = new GraphCounts(1, accepted, rejected, edges, 0, 0, clear, obstacle);
+        var validation = AcceptedGraph() with { Counts = counts, LayerDimensions = [new(0, width, 204)] };
         InvalidOperationException failure = Assert.Throws<InvalidOperationException>(() => evidence.Run(state =>
         {
             state.Begin("BuildProfile");
@@ -72,6 +72,9 @@ public sealed class ProofEvidenceRetentionTests
         Assert.Equal("Failed", retained.Status);
         Assert.Equal("GraphAcceptance", retained.Stage);
         Assert.False(retained.GraphValidation!.Passed);
+        Assert.True(retained.GraphValidation.ObstacleProbe!.DataComplete);
+        Assert.Equal(64, retained.GraphValidation.ObstacleProbe.Nodes!.Length);
+        Assert.Equal(604, retained.GraphValidation.ObstacleProbe.Neighbors!.Length);
         using JsonDocument json = JsonDocument.Parse(File.ReadAllText(files.ChildPath));
         JsonElement predicates = json.RootElement.GetProperty("GraphValidation");
         string[] names = ["DimensionsMatch", "EnoughAcceptedNodes", "EnoughDirectedEdges",
@@ -84,6 +87,34 @@ public sealed class ProofEvidenceRetentionTests
         Assert.Equal(width, retained.GraphValidation.LayerDimensions[0].Width);
         Assert.Null(retained.KenbLength);
         Assert.False(File.Exists(files.KenbPath));
+    }
+
+    [Theory]
+    [InlineData(float.NaN)]
+    [InlineData(float.PositiveInfinity)]
+    [InlineData(float.NegativeInfinity)]
+    public void MalformedProbeRetainsNonFiniteEvidence(float height)
+    {
+        using var files = new EvidenceFiles();
+        var evidence = new ProofChildEvidence(files.Directory, NewChild());
+        GraphAcceptance validation = AcceptedGraph();
+        GraphProbeNode[] nodes = (GraphProbeNode[])validation.ObstacleProbe!.Nodes!.Clone();
+        nodes[14] = nodes[14] with { SurfaceHeight = height };
+        validation = validation with { ObstacleProbe = validation.ObstacleProbe with { Nodes = nodes } };
+        Assert.Throws<InvalidOperationException>(() => evidence.Run(state =>
+        {
+            state.RecordMeasurement(SyntheticMetrics());
+            state.CheckGraph(validation);
+        }));
+        ChildResult retained = ProofJson.ReadChild(files.ChildPath);
+        Assert.Equal("GraphAcceptance", retained.Stage);
+        Assert.Equal("Failed", retained.Status);
+        Assert.Equal(SyntheticMetrics(), retained.Metrics);
+        Assert.NotNull(retained.GraphValidation);
+        Assert.False(retained.GraphValidation.Passed);
+        Assert.False(retained.GraphValidation.ObstacleProbe!.DataComplete);
+        Assert.Equal(height, retained.GraphValidation.ObstacleProbe.Nodes![14].SurfaceHeight);
+        Assert.Contains("Public fixture graph acceptance failed.", retained.Failure!);
     }
 
     [Theory]
@@ -202,7 +233,7 @@ public sealed class ProofEvidenceRetentionTests
             {
                 if (difference == "bytes") bytes[^1] = 1;
                 if (difference == "graph")
-                    child.GraphValidation = new(AcceptedGraph().Counts with { AcceptedLinks = 1 }, [new(0, 164, 204)]);
+                    child.GraphValidation = AcceptedGraph() with { Counts = AcceptedGraph().Counts with { AcceptedNodes = 10001 } };
                 if (difference == "binary")
                     child = child with { Environment = SyntheticEnvironment() with { BinarySetSha256 = "different" } };
             }
@@ -242,8 +273,7 @@ public sealed class ProofEvidenceRetentionTests
     };
 
     private static ProfileMetrics SyntheticMetrics() => new(1.25, 1, 0.75, 128, 64, 1, 0, 0, 2);
-    private static GraphAcceptance AcceptedGraph() => new(
-        new GraphCounts(1, 10000, 1, 50000, 3, 2, true, true), [new(0, 164, 204)]);
+    private static GraphAcceptance AcceptedGraph() => ProofObstacleAcceptanceTests.AcceptedEnvelope();
 
     private static byte[] SyntheticKenb()
     {

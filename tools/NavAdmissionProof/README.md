@@ -4,12 +4,22 @@ This is a manual proof harness for the held stable legacy read-scope candidate. 
 `KhaozEngine.slnx` and normal selective CI test discovery. It is non-packable and uses the repository's
 existing .NET target, centrally pinned test packages and engine project references.
 
-The approved [hosted attempt](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/38802161651)
+The first approved [hosted attempt](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/38802161651)
 failed after A returned from its single BuildProfile, during graph acceptance. B never started.
 Its metrics, graph counts and canonical output were not retained, so the failed predicate remains
-unknown. There is no valid A/B outcome or performance conclusion. Keep the candidate parked.
+unknown.
 
-Approval for that attempt is exhausted. This evidence-retention repair authorizes no new measurement.
+The next approved [hosted attempt](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/38807384252)
+at `24c83b0e4` retained A's failure at `CentralObstacleRejected=false`. Its graph had one 164 by 204
+layer, 32582 accepted nodes, 874 rejected cells and 258106 directed edges. The clear edge passed.
+B never started and no canonical bytes were produced. That evidence contains no center-node height,
+so it does not establish whether the accepted center was a roof or an invalid floor. The previous
+predicate assumed layer 0 meant ground and rejected any accepted center, including a valid roof.
+Capture records exposed tops, and layers can combine disjoint regions at different heights.
+The height-aware contract below repairs that assumption. It does not establish that the failed
+graph would pass. There is no valid A/B outcome or performance conclusion. Keep the candidate parked.
+
+Approval for both attempts is exhausted. This acceptance repair authorizes no new measurement.
 Obtain separate explicit owner approval before any further comparison. No automatic retry is allowed.
 Run only on a Linux GitHub-hosted Actions runner through the existing manual stress workflow.
 Local execution and self-hosted runners are refused.
@@ -17,7 +27,7 @@ Local execution and self-hosted runners are refused.
 ## Approval-gated invocation
 
 Only after new approval, the owning orchestrator must commit and push the proof branch before
-dispatching this command. Do not run it as verification of an evidence-retention change.
+dispatching this command. Do not run it as verification of a harness repair.
 
 ```bash
 gh workflow run stress-test.yml \
@@ -58,14 +68,15 @@ build-slot --label e2-hosted-proof-build -- \
   dotnet build tools/NavAdmissionProof/NavAdmissionProof.csproj -c Release
 ```
 
-Pure failure-path tests are also permitted locally with this exact selection. They use synthetic
-metrics, graph records and bytes. They construct no physics fixture, perform no capture or profile,
-start no helper processes and execute no timing comparison. The representative pair remains excluded.
+Pure correctness and failure-path tests are also permitted locally with this exact selection. They
+use small constructed navigation graphs, synthetic metrics and bytes. They construct no physics
+fixture, perform no capture or profile, start no helper processes and execute no timing comparison.
+The representative pair remains excluded.
 
 ```bash
 build-slot --label e2-proof-evidence-fix -- \
   dotnet test tools/NavAdmissionProof/NavAdmissionProof.csproj -c Release \
-  --filter 'FullyQualifiedName~KhaozEngine.Tests.Movement.Research.ProofEvidenceRetentionTests&FullyQualifiedName!~SingleUnprofiledPair'
+  --filter '(FullyQualifiedName~ProofObstacleAcceptanceTests|FullyQualifiedName~ProofEvidenceRetentionTests)&FullyQualifiedName!~SingleUnprofiledPair'
 ```
 
 ## Bounded comparison
@@ -90,7 +101,10 @@ box obstacles. The authenticated movement view excludes only the floor and uses 
 ground. `ProofFixture.cs` holds the fixed box geometry, capture options and tuning derived from the
 public `MoveTuning.Default` and the existing parity-fixture pattern. No consumer source or input is used.
 
-Checks require nontrivial accepted directed edges and a refused central ground obstacle. Both graph
+Checks require nontrivial accepted directed edges and a refused central ground obstacle. An accepted
+roof surface is allowed. All layers are checked for accepted surfaces beneath the roof and illegal
+ascending connections or ground-level crossings through the box. Accepted descents retain their
+direction and do not authorize the reverse ascent. Both graph
 counts and complete canonical KENB bytes must match. Every child also loads and rewrites its KENB
 and verifies that a physics mutation succeeds after the build releases its read scope.
 
@@ -117,10 +131,33 @@ because the shared workflow removes passing console logs and TRX files.
 Each child writes its environment, fixture, selected flag, invocation identity and running stage
 before fixture setup. It checkpoints each later stage and saves the measured counters immediately
 when the single measurement returns, before graph inspection or acceptance. Graph evidence contains
-all observed layer dimensions, counts and six independent acceptance predicates. The existing limits
-remain unchanged. Every layer must be 164 by 204, accepted nodes must be at least 10000, directed
-edges at least 50000, rejected cells nonzero, the clear edge accepted and the central obstacle rejected.
-An acceptance error includes the exact counts, dimensions and each predicate value.
+all observed layer dimensions, counts and six acceptance predicates. Every declared layer must have
+one matching dimension record in order. Empty, missing or duplicate dimension records fail. Every
+layer must be 164 by 204, accepted nodes must be at least 10000, directed edges at least 50000,
+rejected cells nonzero and the real clear-space directed edge must remain accepted.
+
+The central obstacle probe records all 64 cells in an 8 by 8 window at centers from -0.875 to 0.875
+on each axis, on every layer. Each node records its grid and world coordinates, in-bounds status,
+surface height, physical feet height and passability. It also records all 604 directed neighbor
+queries with either endpoint in each window, including both directions across the boundary, and
+every candidate link with its accepted status and both endpoints, even outside the window.
+Missing, duplicate, incomplete or malformed probe data fails acceptance. Link evidence must match
+the candidate and accepted link counts. Non-finite coordinates or heights are retained as the JSON
+strings `NaN`, `Infinity` or `-Infinity` and fail `DataComplete`. They cannot prevent the failure
+checkpoint from being serialized.
+
+Inside the box footprint `(-0.6,0.6) x (-0.6,0.6)`, an accepted node must have both surface and feet
+height at the Y=2 roof, within 0.001 m. An accepted Y=0 floor beneath a roof fails on any layer.
+Accepted ascents into the footprint above the fixture's 0.4 m step limit fail. Accepted traversals
+with both endpoints below roof height fail when their XZ segment crosses the solid footprint,
+including links whose endpoints lie outside it. Roof-to-roof traversal and accepted roof-to-ground
+descents are allowed. This preserves the graph's directed proof semantics. Four pairs of ground
+cells beside the box, at 0.875 and 1.125 m on each signed axis with the other coordinate at 0.125 m,
+must have finite Y=0 surface and feet heights and accepted edges in both directions. The inner
+cell is 0.275 m beyond the wall, outside the 0.2 m capsule radius. This prevents a wholly rejected
+near-box stencil from satisfying the obstacle check. The probe reports `DataComplete`,
+`GroundNodesRejected`, `IllegalTraversalRejected` and `ClearGroundBesideBox` separately, and all must pass.
+An acceptance error includes the counts, dimensions, observed probes and each predicate value.
 
 Completed canonical bytes and their length/hash are retained before load/rewrite and scope-release
 checks. A later failure retains those bytes and the failed stage. An orderly exception writes

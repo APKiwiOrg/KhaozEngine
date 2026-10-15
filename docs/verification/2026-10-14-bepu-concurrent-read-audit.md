@@ -68,6 +68,15 @@ Restricted views (`BepuPhysicsWorld.QueryView.cs`) forward each read to the same
 Their own state is the immutable exclusion snapshot and a disposal flag changed only inside a writer interval, so
 they declare `IPhysicsConcurrentReadSource` as well.
 
+`CollectPenetration` constructs its per-call batcher only when a candidate passes the static-mobility and view
+exclusion predicates, in that order. An empty eligible subsequence performs no native batcher rental, clear or
+flush. Broad-phase gathering and the managed overlap loan remain. Construction completes before the initialized
+flag is set, and `finally` flushes exactly once when that flag is set. This preserves the existing behavior if
+later pair setup throws, without adding a guarantee that upstream `Flush` cleans up after a throwing collision task.
+`PenetrationEligibilityTests` pins the cold native-capacity boundary, positive-zero misses, eligible MTV bits,
+equal-depth tie order, nested overlap loans and lease lifetime. Retained capacity is not a warm rental counter or
+a measurement of whole-navigation CPU cost.
+
 ## Installed support geometry
 
 `InstalledSupportGeometryCache` keys a `ConcurrentDictionary` by owner, installation and static geometry version.

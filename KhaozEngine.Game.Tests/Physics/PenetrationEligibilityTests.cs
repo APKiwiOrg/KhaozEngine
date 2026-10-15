@@ -39,11 +39,13 @@ public sealed class PenetrationEligibilityTests
 
             Assert.False(view.ComputePenetration(Capsule, Pose.Identity, out Vector3 ignored));
             AssertZeroBits(ignored);
+            Assert.Equal(0, scratch.NativeCapacity);
             Assert.Same(overlapList, scratch.Overlaps.Idle);
 
             Assert.True(view.ComputePenetration(Capsule, Pose.At(new Vector3(10f, 0f, 0f)), out Vector3 hit));
             // The right box begins at x=10.25, leaving exactly 0.25 of capsule penetration.
             Assert.Equal(new Vector3(-0.25f, 0f, 0f), hit);
+            AssertBits(unchecked((int)0xBE800000), hit);
             Assert.True(scratch.NativeCapacity > 0);
             Assert.False(view.ComputePenetration(Capsule, Pose.Identity, out Vector3 afterHit));
             AssertZeroBits(afterHit);
@@ -76,6 +78,7 @@ public sealed class PenetrationEligibilityTests
         using IPhysicsQueryLease lease = world.AcquireQueryReadLease();
         Assert.True(view.ComputePenetration(Capsule, Pose.Identity, out Vector3 hit));
         Assert.Equal(new Vector3(reverse ? -0.25f : 0.25f, 0f, 0f), hit);
+        AssertBits(reverse ? unchecked((int)0xBE800000) : 0x3E800000, hit);
         lease.AssertCurrent();
     }
 
@@ -93,6 +96,7 @@ public sealed class PenetrationEligibilityTests
         {
             Assert.True(world.ComputePenetration(Capsule, Pose.Identity, out Vector3 hit));
             Assert.Equal(new Vector3(-0.25f, 0f, 0f), hit);
+            AssertBits(unchecked((int)0xBE800000), hit);
             Assert.Single(outer);
             Assert.NotSame(outer, scratch.Overlaps.Idle);
             Assert.Equal(1, gate.ActiveReaders);
@@ -109,9 +113,11 @@ public sealed class PenetrationEligibilityTests
         Assert.Equal(1, gate.ScratchPool.IdleCount);
     }
 
-    static void AssertZeroBits(Vector3 value)
+    static void AssertZeroBits(Vector3 value) => AssertBits(0, value);
+
+    static void AssertBits(int x, Vector3 value)
     {
-        Assert.Equal(0, BitConverter.SingleToInt32Bits(value.X));
+        Assert.Equal(x, BitConverter.SingleToInt32Bits(value.X));
         Assert.Equal(0, BitConverter.SingleToInt32Bits(value.Y));
         Assert.Equal(0, BitConverter.SingleToInt32Bits(value.Z));
     }

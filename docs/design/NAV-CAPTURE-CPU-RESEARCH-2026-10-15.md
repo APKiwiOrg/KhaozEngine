@@ -5,7 +5,27 @@ One representative caller-selected ground window was captured on engine commit
 `cbeff834a55f1e982dbaaeea21a154ff49e9ea31`, in Release, on ARM64 with .NET 10.0.13.
 Production behavior and bake formats were not changed.
 
-## Result and decision boundary
+## Final disposition
+
+E2 is a parked research outcome, not a shipping performance fix for [#1417](https://github.com/APKiwiOrg/KhaozEngine/issues/1417). The original capture remains the valid isolated capture result at 0.541884 process CPU seconds, 2.3564423 wall seconds and 4,417,632 managed bytes.
+
+### Local candidate
+
+The local comparison did not demonstrate a speedup. The baseline profile used 15.199555 process CPU seconds and 15.855458 wall seconds. The candidate used 16.399351 process CPU seconds and 88.2522843 wall seconds under different conditions. Complete KENB output was equal at 588425 bytes, and the complete snapshot was equal at 535326 bytes. The candidate at [commit 7f51f266](https://github.com/APKiwiOrg/KhaozEngine/commit/7f51f266b91452fd82391df82b3ce21c7e438f98) is functionally reviewed and remains parked, not a shipping API recommendation. `UseStableLegacyReadScope` exists only on the retained experiment branch.
+
+### Offline limits
+
+Offline analysis found 39.58 seconds of suspension-coordination intervals in the after trace. That is not 39.58 seconds of CPU and not disjoint application-paused time, so it cannot be subtracted from process CPU. Sampling safe points and off-CPU inclusion prevent claiming that `Monitor` was the dominant CPU cost. The trace supports research leads only.
+
+### Approved hosted outcome
+
+The approved unprofiled hosted run was [run 38802161651](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/38802161651) at `fc9a6a7d2` on GitHub-hosted Ubuntu 26.04 x64. A false completed one profile, then graph validation failed. B never started. The final process exit status was 1 with one failed test and no retries. Whole-child elapsed time was 13.0587502 seconds. It is not profile wall time. Profile metrics, counts and KENB output were not retained, so no performance or parity comparison exists. Harness repair is separate, and no fresh run is approved.
+
+Issue #1417 remains open. There is no proven engine performance fix, bake format change or rebake from this research. E1 is a separate accepted feature. The bounded collision-batcher initialization, repeated source holds and point-footprint observations remain research leads under #1417 with unproven CPU benefit. They are not resolved defects or a new implementation plan. Future timing needs separate owner approval and must not imply active automatic repetitions. The experiment sources and valid research remain preserved in pushed branch history. Main receives the research record only.
+
+## Historical capture result and decision boundary
+
+This section records the original capture-only result. Its recommendation to isolate downstream profile CPU was historical and is superseded by the E2 disposition above.
 
 The 41 by 51 metre window, at 0.25 metre cells, contained 164 by 204 columns
 (33,456 cells). Its single cold capture used 0.541884 process CPU seconds and
@@ -135,7 +155,7 @@ program and does not remove this window's per-cell work.
 [#1301](https://github.com/APKiwiOrg/KhaozEngine/issues/1301) already owns that
 direction and records its split with world authoring.
 
-The original recommendation was to isolate the long downstream stage before choosing a fix for
+Historical recommendation. Isolate the long downstream stage before choosing a fix for
 #1417. No production fix was supported by the capture-only experiment. In
 particular, do not change ray descent semantics, add capture workers or redesign
 the physics lease contract on the strength of these samples alone.
@@ -287,7 +307,7 @@ query admission work, but do not prove contention or a broken gate. The closed
 preemption rather than contention in a different parallel contact workload. It
 must not be reinterpreted as an unresolved contention defect from this trace.
 
-### Ranked implementation recommendation
+### Historical ranked implementation recommendation
 
 Scores are 1 to 10, higher better, with equal weighting. They rank a next
 implementation trial for this measured serial legacy profile.
@@ -301,7 +321,7 @@ implementation trial for this measured serial legacy profile.
 | Parallelize capture cells | 1 | 5 | 3 | 7 | 16 |
 | Tiled windows | 2 | 3 | 1 | 10 | 16 |
 
-Recommend a focused trial reducing repeated backend read admission inside one
+The historical recommendation was a focused trial reducing repeated backend read admission inside one
 serial legacy `GroundTraversalProbe.TryEdge`, with its movement steps and origin
 checks sharing an authenticated stable read interval. Keep every directed proof,
 step budget, footprint check, movement operation and floating-point decision.

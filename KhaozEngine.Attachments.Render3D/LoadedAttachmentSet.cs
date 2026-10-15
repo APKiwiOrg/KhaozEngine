@@ -1,6 +1,4 @@
 using System.Collections.Generic;
-using System.IO;
-using System.Linq;
 using KhaozEngine.Render3D;
 
 namespace KhaozEngine.Attachments.Render3D;
@@ -42,9 +40,15 @@ public sealed class LoadedAttachmentSet
     public BoundAttachmentSet Bind(ContractJointMap map)
     {
         _owner.ThrowIfDisposed();
-        for (int i = 0; i < _resources.Count; i++)
-            if (_resources[i].IsSkinned)
-                throw new InvalidDataException($"Attachment part {_definition.Parts[i].Id}: skinned parts require a skin binding, not a map-only binding.");
-        return new BoundAttachmentSet(_owner, _definition, _resources.Select(part => part.RigidHandles.ToArray()).ToArray(), map);
+        return new BoundAttachmentSet(_owner, _definition, _resources, new AttachmentSetBinding(_definition, map));
+    }
+
+    /// <summary>Bind garment metadata to the explicit host skin and snapshot every joint index once.</summary>
+    public BoundAttachmentSet Bind(ContractJointMap map, SkinnedGltfMesh hostMesh)
+    {
+        _owner.ThrowIfDisposed();
+        System.ArgumentNullException.ThrowIfNull(hostMesh);
+        return new BoundAttachmentSet(_owner, _definition, _resources,
+            new AttachmentSetBinding(_definition, map, hostMesh, _resources));
     }
 }

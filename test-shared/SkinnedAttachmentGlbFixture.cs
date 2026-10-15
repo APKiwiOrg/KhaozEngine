@@ -98,6 +98,20 @@ internal sealed class SkinnedAttachmentGlbFixture
         matrix.M11, matrix.M12, matrix.M13, matrix.M14, matrix.M21, matrix.M22, matrix.M23, matrix.M24,
         matrix.M31, matrix.M32, matrix.M33, matrix.M34, matrix.M41, matrix.M42, matrix.M43, matrix.M44);
 
+    internal void SetSkinJoints(params int[] nodes)
+    {
+        if (nodes.Length != JointCount) throw new ArgumentException("Provide one node per skin joint.", nameof(nodes));
+        var joints = new JsonArray();
+        foreach (int node in nodes)
+        {
+            if (node < 0 || node >= JointCount) throw new ArgumentOutOfRangeException(nameof(nodes));
+            joints.Add(node);
+        }
+        Skin["joints"] = joints;
+        for (int vertex = 0; vertex < 3; vertex++)
+            SetElement(1, vertex, 0, Math.Min(1, JointCount - 1), Math.Min(2, JointCount - 1), Math.Min(3, JointCount - 1));
+    }
+
     internal void SetSparse(int accessorIndex, int[] indices, float[][] values, bool omitBase = false)
     {
         JsonNode accessor = Accessors[accessorIndex]!;

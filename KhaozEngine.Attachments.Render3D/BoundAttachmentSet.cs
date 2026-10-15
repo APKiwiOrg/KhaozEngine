@@ -1,5 +1,6 @@
 using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Render3D;
 
@@ -12,20 +13,25 @@ public sealed class BoundAttachmentSet
     readonly AttachmentSetCache _owner;
     readonly AttachmentSetBinding _binding;
     readonly AttachmentSetDefinition _definition;
-    readonly MeshHandle[][] _partHandles;
+    readonly IReadOnlyList<AttachmentPartResources> _resources;
     readonly Matrix4x4[] _worlds;
     readonly RigidInstanceDraw[] _draws;
     readonly uint _revisionLow, _revisionHigh;
     readonly int _drawCount;
+    readonly bool _hasSkinnedParts;
 
     internal BoundAttachmentSet(AttachmentSetCache owner, AttachmentSetDefinition definition,
-        MeshHandle[][] partHandles, ContractJointMap map)
+        IReadOnlyList<AttachmentPartResources> resources, AttachmentSetBinding binding)
     {
         _owner = owner;
-        _binding = new AttachmentSetBinding(definition, map);
+        _binding = binding;
         _definition = definition;
-        _partHandles = partHandles;
-        foreach (MeshHandle[] handles in partHandles) _drawCount += handles.Length;
+        _resources = resources;
+        foreach (AttachmentPartResources part in resources)
+        {
+            _hasSkinnedParts |= part.IsSkinned;
+            _drawCount += part.IsSkinned ? part.SkinnedHandles.Count : part.RigidHandles.Count;
+        }
         _worlds = new Matrix4x4[_binding.PartCount];
         _draws = new RigidInstanceDraw[_drawCount];
         byte[] revision = Convert.FromHexString(definition.SemanticSha256.AsSpan(0, 16));
@@ -52,16 +58,18 @@ public sealed class BoundAttachmentSet
         Span<RigidInstanceDraw> destination)
     {
         _owner.ThrowIfDisposed();
+        if (_hasSkinnedParts)
+            throw new InvalidOperationException("Skinned attachment parts require mixed draw submission, not rigid descriptors.");
         if (destination.Length < _drawCount)
             throw new ArgumentException($"Output capacity {destination.Length} must hold {_drawCount} attachment draws.", nameof(destination));
         _binding.ComposeWorlds(skeleton, palette, model, _worlds);
         MotionKey revision = MotionKey.Combine(MotionKey.Combine(instanceKey, _revisionLow), _revisionHigh);
         int draw = 0;
-        for (int part = 0; part < _partHandles.Length; part++)
+        for (int part = 0; part < _resources.Count; part++)
         {
             MotionKey partKey = MotionKey.Combine(revision, _definition.Parts[part].Id);
-            MeshHandle[] handles = _partHandles[part];
-            for (int material = 0; material < handles.Length; material++)
+            IReadOnlyList<MeshHandle> handles = _resources[part].RigidHandles;
+            for (int material = 0; material < handles.Count; material++)
                 destination[draw++] = template with
                 {
                     Mesh = handles[material],

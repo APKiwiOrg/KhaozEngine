@@ -5,7 +5,7 @@ references `KhaozEngine.Attachments` and `KhaozEngine.Render3D` and ships in `Kh
 
 `AttachmentSetCache.Get` loads rigid, skinned and mixed sets. The map-only `AttachmentSetBinding`
 constructor and `LoadedAttachmentSet.Bind(map)` refuse sets containing skinned parts with
-`InvalidDataException`. Skin binding and submission are supplied separately from asset loading.
+`InvalidDataException` explaining that an explicit host mesh is required.
 
 Construct `AttachmentSetBinding(definition, map)` once with a `ContractJointMap`. Every rigid part must
 name a contract joint in the skin. Unresolved references throw `InvalidDataException` naming the
@@ -27,6 +27,29 @@ animation. `ComposeWorlds` writes canonical part-ID order using
 `BoneSocket.ComposeRigid(part.Local * map.BodyAlignment(node), palette[bone], characterWorld)`.
 Body alignment cancels the joint's base orientation while retaining its translation. Joint scale
 and shear are removed, and reflected handedness is preserved.
+
+For skinned or mixed definitions, construct `AttachmentSetBinding(definition, map, hostMesh,
+skinnedMeshes)`. The dictionary maps each skinned mesh reference to its imported `SkinnedGltfMesh`.
+The host mesh must carry the exact `map.Skeleton` instance. Garment skin joints resolve by ordinal
+name against host skin bones, so a named node outside the skin cannot bind. A garment may use a
+subset of the host and a different skin order. Its skin must contain 1 to 128 joints, with one
+inverse bind and rest pose per joint. Every inverse-bind matrix must be finite and match the
+corresponding actual host inverse bind with an inclusive absolute tolerance of `1e-4` over all 16
+elements. Rest poses are never inverted to infer binds. Missing mesh metadata, unresolved joints or
+mismatched binds throw contextual `InvalidDataException`.
+
+`SkinnedJointCount(partId)` gives the destination capacity for a garment, or zero for a rigid part.
+Allocate the destination once in the caller. `CopySkinnedPalette(skeleton, hostPalette, partId,
+destination)` copies host joint model matrices into garment skin order. It does not multiply inverse
+binds. The renderer alone applies the garment's inverse binds. The binding snapshots index tables
+and owns no garment frame palettes. Later source-skeleton changes cannot reorder its copies.
+An unknown part, a rigid palette-copy request, a foreign skeleton, a palette whose length differs
+from the full host skin, insufficient destination capacity or invalid referenced joint matrices
+throws `ArgumentException` before writing. The unused destination tail remains untouched. Valid
+copies allocate no managed memory and perform no name searches.
+
+`ComposeWorlds` still writes every canonical part. Rigid parts use the composition above, and
+skinned parts receive the unchanged character model matrix.
 
 Another skeleton instance, a palette whose length differs from the skin, insufficient output
 space or invalid pose matrices throws `ArgumentException`. Matrices must be finite, affine and
@@ -56,6 +79,11 @@ using var cache = new AttachmentSetCache(scene, new DirectoryAttachmentAssetSour
 LoadedAttachmentSet loaded = cache.Get(definitionKey, definitionHash);
 BoundAttachmentSet bound = loaded.Bind(map);
 ```
+
+For a skinned or mixed set, use `loaded.Bind(map, hostMesh)`. It binds the cache's captured skin
+metadata without reading assets or importing geometry again. It retains both rigid and skinned
+material handles, and `DrawCount` includes both kinds. The rigid descriptor submission overloads
+below accept rigid-only views.
 
 `DefinitionSha256` records the exact source bytes. `Definition.SemanticSha256` records canonical content.
 Binding resolves every joint before returning a view. `Skeleton` retains the exact bound skeleton and

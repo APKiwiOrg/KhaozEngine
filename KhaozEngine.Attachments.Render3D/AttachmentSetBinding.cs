@@ -6,25 +6,54 @@ using KhaozEngine.Render3D;
 
 namespace KhaozEngine.Attachments.Render3D;
 
-/// <summary>Rigid parts resolved once against a contract map and composed from the body's current pose.</summary>
+/// <summary>Attachment parts resolved once against a contract map and an explicit host skin.</summary>
 /// <remarks>Scratch storage is allocated at construction. Use each binding on its owning render thread.
 /// Calls to ComposeWorlds on the same binding must not overlap.</remarks>
 public sealed class AttachmentSetBinding
 {
     readonly ResolvedPart[] _parts;
+    readonly Dictionary<uint, int> _partIndices = [];
     readonly Matrix4x4[] _worlds;
 
     public AttachmentSetBinding(AttachmentSetDefinition definition, ContractJointMap map)
+        : this(definition, map, null, null, null) { }
+
+    public AttachmentSetBinding(AttachmentSetDefinition definition, ContractJointMap map,
+        SkinnedGltfMesh hostMesh, IReadOnlyDictionary<AttachmentMeshRef, SkinnedGltfMesh> skinnedMeshes)
+        : this(definition, map, hostMesh ?? throw new ArgumentNullException(nameof(hostMesh)),
+            skinnedMeshes ?? throw new ArgumentNullException(nameof(skinnedMeshes)), null) { }
+
+    internal AttachmentSetBinding(AttachmentSetDefinition definition, ContractJointMap map,
+        SkinnedGltfMesh hostMesh, IReadOnlyList<AttachmentPartResources> resources)
+        : this(definition, map, hostMesh, null, resources) { }
+
+    AttachmentSetBinding(AttachmentSetDefinition definition, ContractJointMap map, SkinnedGltfMesh? hostMesh,
+        IReadOnlyDictionary<AttachmentMeshRef, SkinnedGltfMesh>? skinnedMeshes,
+        IReadOnlyList<AttachmentPartResources>? resources)
     {
         ArgumentNullException.ThrowIfNull(definition);
         ArgumentNullException.ThrowIfNull(map);
-        foreach (AttachmentPartDefinition part in definition.Parts)
-            if (part is SkinnedAttachmentPartDefinition)
-                throw new InvalidDataException($"Attachment part {part.Id}: map-only binding does not support skinned parts.");
         Skeleton = map.Skeleton;
+        if (hostMesh is null)
+        {
+            foreach (AttachmentPartDefinition part in definition.Parts)
+                if (part is SkinnedAttachmentPartDefinition)
+                    throw new InvalidDataException($"Attachment part {part.Id}: skinned parts require an explicit host mesh, not a map-only binding.");
+        }
+        else SkinnedAttachmentBinding.ValidateHost(map, hostMesh);
         _parts = new ResolvedPart[definition.Parts.Count];
         for (int i = 0; i < _parts.Length; i++)
         {
+            AttachmentPartDefinition definitionPart = definition.Parts[i];
+            _partIndices.Add(definitionPart.Id, i);
+            if (definitionPart is SkinnedAttachmentPartDefinition skinned)
+            {
+                SkinnedAttachmentBinding skin = resources is null
+                    ? SkinnedAttachmentBinding.FromMesh(skinned, map, hostMesh!, skinnedMeshes!)
+                    : SkinnedAttachmentBinding.FromResources(skinned, map, hostMesh!, resources[i]);
+                _parts[i] = new ResolvedPart(skinned.Id, string.Empty, -1, Matrix4x4.Identity, skin);
+                continue;
+            }
             var part = (RigidAttachmentPartDefinition)definition.Parts[i];
             try
             {
@@ -44,16 +73,27 @@ public sealed class AttachmentSetBinding
     public Skeleton Skeleton { get; }
     public int PartCount => _parts.Length;
 
+    /// <summary>The garment palette capacity for a named part, or zero for a rigid part.</summary>
+    public int SkinnedJointCount(uint partId) => Part(partId).Skin?.JointCount ?? 0;
+
+    /// <summary>Copy host joint model matrices into garment skin order without applying inverse binds.</summary>
+    /// <remarks>Valid calls allocate no managed memory. The renderer applies the garment's inverse binds.</remarks>
+    public void CopySkinnedPalette(Skeleton skeleton, ReadOnlySpan<Matrix4x4> hostPalette,
+        uint partId, Span<Matrix4x4> destination)
+    {
+        ValidateFrame(skeleton, hostPalette);
+        SkinnedAttachmentBinding skin = Part(partId).Skin
+            ?? throw new ArgumentException($"Attachment part {partId} is rigid and has no garment palette.", nameof(partId));
+        skin.CopyPalette(hostPalette, destination);
+    }
+
     /// <summary>Write canonical part-ID order after validating the whole result. Output may overlap the palette.</summary>
     /// <remarks>Valid calls allocate no managed memory. Calls on the same binding must not overlap.</remarks>
     /// <exception cref="ArgumentException">The skeleton, palette, capacity or pose matrices are invalid.</exception>
     public void ComposeWorlds(Skeleton skeleton, ReadOnlySpan<Matrix4x4> palette,
         in Matrix4x4 model, Span<Matrix4x4> destination)
     {
-        if (!ReferenceEquals(skeleton, Skeleton))
-            throw new ArgumentException("The attachment binding requires its exact skeleton instance.", nameof(skeleton));
-        if (palette.Length != Skeleton.BoneCount)
-            throw new ArgumentException($"Palette length {palette.Length} must equal skin bone count {Skeleton.BoneCount}.", nameof(palette));
+        ValidateFrame(skeleton, palette);
         if (destination.Length < PartCount)
             throw new ArgumentException($"Output capacity {destination.Length} must hold {PartCount} attachment parts.", nameof(destination));
         if (!ValidMatrix(model))
@@ -63,6 +103,12 @@ public sealed class AttachmentSetBinding
         for (int i = 0; i < _parts.Length; i++)
         {
             ResolvedPart part = _parts[i];
+            if (part.Skin is { } skin)
+            {
+                skin.ValidatePalette(palette);
+                worlds[i] = model;
+                continue;
+            }
             Matrix4x4 joint = palette[part.Bone];
             try
             {
@@ -81,11 +127,23 @@ public sealed class AttachmentSetBinding
         worlds.CopyTo(destination);
     }
 
-    static bool ValidMatrix(in Matrix4x4 matrix) => Finite(matrix)
+    ResolvedPart Part(uint partId) => _partIndices.TryGetValue(partId, out int index)
+        ? _parts[index]
+        : throw new ArgumentException($"Attachment part {partId} is not in this binding.", nameof(partId));
+
+    void ValidateFrame(Skeleton skeleton, ReadOnlySpan<Matrix4x4> palette)
+    {
+        if (!ReferenceEquals(skeleton, Skeleton))
+            throw new ArgumentException("The attachment binding requires its exact skeleton instance.", nameof(skeleton));
+        if (palette.Length != Skeleton.BoneCount)
+            throw new ArgumentException($"Palette length {palette.Length} must equal skin bone count {Skeleton.BoneCount}.", nameof(palette));
+    }
+
+    internal static bool ValidMatrix(in Matrix4x4 matrix) => Finite(matrix)
         && matrix.M14 == 0 && matrix.M24 == 0 && matrix.M34 == 0 && matrix.M44 == 1
         && Matrix4x4.Invert(matrix, out Matrix4x4 inverse) && Finite(inverse);
 
-    static bool Finite(in Matrix4x4 matrix)
+    internal static bool Finite(in Matrix4x4 matrix)
     {
         for (int row = 0; row < 4; row++)
             for (int column = 0; column < 4; column++)
@@ -93,5 +151,6 @@ public sealed class AttachmentSetBinding
         return true;
     }
 
-    readonly record struct ResolvedPart(uint Id, string Joint, int Bone, Matrix4x4 LocalAligned);
+    readonly record struct ResolvedPart(uint Id, string Joint, int Bone, Matrix4x4 LocalAligned,
+        SkinnedAttachmentBinding? Skin = null);
 }

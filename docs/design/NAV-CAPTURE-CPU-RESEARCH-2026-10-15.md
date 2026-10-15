@@ -7,11 +7,11 @@ Production behavior and bake formats were not changed.
 
 ## Final disposition
 
-E2 remains inconclusive for whole-window performance in [#1417](https://github.com/APKiwiOrg/KhaozEngine/issues/1417). The original capture remains the valid isolated capture result at 0.541884 process CPU seconds, 2.3564423 wall seconds and 4,417,632 managed bytes. The research and the reviewed backend fix below do not change the bake format or public API.
+Whole-window and complete consumer-suite savings remain unmeasured for [#1417](https://github.com/APKiwiOrg/KhaozEngine/issues/1417). The original capture remains the valid isolated capture result at 0.541884 process CPU seconds, 2.3564423 wall seconds and 4,417,632 managed bytes. The separately authorized hosted pair below gives one unprofiled ordered A/B result for the stable-read candidate on a public fixture, but it does not establish statistical significance, a native Mac gain or Grimhollow full-suite savings. The research and the reviewed backend fix below do not change the bake format or public API.
 
 ### Experimental stable-read candidate
 
-The local comparison did not demonstrate a speedup. The baseline profile used 15.199555 process CPU seconds and 15.855458 wall seconds. The candidate used 16.399351 process CPU seconds and 88.2522843 wall seconds under different conditions. Complete KENB output was equal at 588425 bytes, and the complete snapshot was equal at 535326 bytes. The candidate at [commit 7f51f266](https://github.com/APKiwiOrg/KhaozEngine/commit/7f51f266b91452fd82391df82b3ce21c7e438f98) is functionally reviewed and remains experimental and off main. `UseStableLegacyReadScope` has no demonstrated whole-navigation CPU win. No new large performance comparison is authorized.
+The local comparison remained inconclusive. The baseline profile used 15.199555 process CPU seconds and 15.855458 wall seconds. The candidate used 16.399351 process CPU seconds and 88.2522843 wall seconds under different conditions. Complete KENB output was equal at 588425 bytes, and the complete snapshot was equal at 535326 bytes. The candidate at [commit 7f51f266](https://github.com/APKiwiOrg/KhaozEngine/commit/7f51f266b91452fd82391df82b3ce21c7e438f98) is functionally reviewed and remains experimental and off main. The local data alone did not demonstrate a whole-navigation CPU win. The later separately authorized hosted ordered pair is recorded below. No further timing run is authorized.
 
 ### Offline limits
 
@@ -21,7 +21,7 @@ Offline analysis found 39.58 seconds of suspension-coordination intervals in the
 
 The [`CollectPenetration` lazy-batcher fix](https://github.com/APKiwiOrg/KhaozEngine/commit/ffa70bad4ce0e4403ec606a922a76d8a1a5bbbe4) constructs the collision batcher only after the first eligible static. On excluded-only and dynamic-only cold queries, retained native scratch capacity changed from 131,072 B to 0 B. Existing empty-query controls remained at 0, and an eligible query remained positive. This is cold retained native capacity, not per-call cleared bytes, warm rental count or CPU gain. Original pair order, penetration math and `Flush` finally ownership are retained.
 
-The Release build passed with zero warnings or errors. The focused 62 physics and 3 movement tests passed. The full suite passed with 33,109 passed, 0 failed and 1,386 existing opt-in skips across 37 project runs. Whole-tree guards are being finalized separately and are not claimed here. The normalized nine-cell, 516-byte canonical test deliberately substitutes only the engine identity. Its matching hash proves unchanged normalized header and payload, not cross-version load compatibility:
+The Release build passed with zero warnings or errors. The focused 62 physics and 3 movement tests passed. The full suite passed with 33,109 passed, 0 failed and 1,386 existing opt-in skips across 37 project runs. All five whole-tree guards passed. The normalized nine-cell, 516-byte canonical test deliberately substitutes only the engine identity. Its matching hash proves unchanged normalized header and payload, not cross-version load compatibility:
 
 ```text
 8dc879897a4cdfed8602306ff7fc9d7c6d316988270a01de71ee5c55a523bc17
@@ -35,13 +35,31 @@ The approved unprofiled hosted run was [run 38802161651](https://github.com/APKi
 
 ### Later hosted outcome and harness repair
 
-The separately approved [hosted run 38807384252](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/38807384252) at [`24c83b0e4`](https://github.com/APKiwiOrg/KhaozEngine/commit/24c83b0e49f60be6e51fe3ba3b2bd98dc8b4f35a) identified only `CentralObstacleRejected=false`. A ran, B did not run, and the failure exit status was 1. Baseline A retained 7.3916306 wall seconds, 7.391034 process CPU seconds and 7.390059832 calling-thread CPU seconds. There is no A/B comparison. This supersedes the first failed run's unknown predicate, not its lost metrics.
+The separately approved [hosted run 38807384252](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/38807384252) at [`24c83b0e4`](https://github.com/APKiwiOrg/KhaozEngine/commit/24c83b0e49f60be6e51fe3ba3b2bd98dc8b4f35a) identified only `CentralObstacleRejected=false`. A ran, B did not run, and the failure exit status was 1. Baseline A retained 7.3916306 wall seconds, 7.391034 process CPU seconds and 7.390059832 calling-thread CPU seconds. There is no A/B comparison from this run. This supersedes the first failed run's unknown predicate, not its lost metrics.
+
+### Final authorized hosted comparison
+
+The separately owner-approved [hosted run 38813435238](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/38813435238) at [`1883c7b03`](https://github.com/APKiwiOrg/KhaozEngine/commit/1883c7b031a28728dace1540537c2204e3263818) ran one unprofiled ordered pair on GitHub-hosted Ubuntu 26.04 x64 with `iterations=1`, `load=0`, `Release` and `support-cost=true`. Both children succeeded with finalized process exit status 0. The approval is consumed. No further timing run is authorized.
+
+| Metric | Baseline | Stable read scope | Reduction |
+| --- | ---: | ---: | ---: |
+| BuildProfile wall seconds | 12.7162112 | 7.7351701 | 39.1708% |
+| Process CPU seconds | 12.716042 | 7.735654 | 39.1662% |
+| Main-thread CPU seconds | 12.714819959 | 7.734685588 | 39.1680% |
+
+The complete baseline and stable-read KENB files were each 602,366 bytes and equal, with matching recorded SHA-256. All eight acceptance predicates passed. The graph contained 32,582 accepted nodes and 258,106 directed edges. Canonical roundtrip and scope-release checks passed. Recorded binary-set hashes matched, but executable binaries were not retained for independent hashing. Managed allocation increased by 128 bytes, GC counts remained at one per generation and recorded Monitor contention was zero. Setup and capture were outside profile timing. First-use JIT and measurement boundaries remained included.
+
+This is a coherent public-fixture CPU reduction that supports reconsidering the measured opt-in. It is one ordered pair, not evidence of statistical significance, a native Mac gain or Grimhollow full-suite savings. It is not a timing measurement of the lazy-batcher fix.
+
+### Ownership boundary
+
+The measured stable legacy read-scope option is separately owned by the integration work on `feature/nav-stable-read-1417`, based on current `main`. The current `fix/nav-query-cost-1417` branch contains only the lazy penetration-batcher fix and this research documentation. It does not contain the stable-read option or hosted harness. This documentation update is not option integration or consumer adoption.
 
 The [fixture repair](https://github.com/APKiwiOrg/KhaozEngine/commit/8d91a7c575a57920fa2f8ed6977df98c6f9a51a1) proves with a 144-cell correctness test that the center is accepted as a Y=2 roof. Its replacement four-sided check tests adjacent ground obstruction using real accepted sources, permits the roof and keeps the other thresholds. Independent review passed, and parent evidence reports 26 small and pure tests passed. The repaired harness remains on the proof branch, not main. No larger run was made after the fix.
 
 ### Issue status
 
-Issue #1417 stays open because overall window performance remains unmeasured. The collision-batcher lead now has a bounded native work reduction. Source-hold reuse and point-footprint observations remain unproven leads. After parent integration, main receives the research record plus the bounded backend fix. No whole-navigation CPU gain is claimed.
+Issue #1417 remains open pending stable-read option integration and consumer adoption. The hosted pair establishes a measured public-fixture result, while whole-navigation, native Mac and Grimhollow full-suite savings remain unmeasured. The collision-batcher lead has a bounded native work reduction with no timing claim. Source-hold reuse and point-footprint observations remain unproven leads. This branch carries the research record plus the bounded backend fix. No release.
 
 ## Historical capture result and decision boundary
 

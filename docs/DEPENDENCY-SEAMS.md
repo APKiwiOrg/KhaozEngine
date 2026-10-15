@@ -508,11 +508,11 @@ exposes the property. `World.DefaultScheduler` itself is the per-world seam in `
 `SingleThreadedJobScheduler`, so a world stays byte-identical until a game opts in, and an explicit per-call
 scheduler still wins over it.
 
-## Rigid attachment definitions: a GPU-free leaf
+## Attachment definitions: a GPU-free leaf
 
 `KhaozEngine.Attachments` has no project or third-party dependency. It owns immutable definitions,
 canonical JSON, reference checks, the `IAttachmentAssetSource` byte seam, directory source policy and
-embedded rigid GLB preflight. JSON uses `System.Text.Json` from the BCL. No renderer or particular
+embedded rigid and skinned GLB preflight. JSON uses `System.Text.Json` from the BCL. No renderer or particular
 skeleton type appears in its API. Publishers reference it directly. Foundation and Server do not
 gain an attachment dependency.
 
@@ -520,7 +520,8 @@ gain an attachment dependency.
 The renderer's existing dependency allowlist and ECS-free closure remain unchanged.
 
 `KhaozEngine.Attachments.Render3D` references only Attachments and Render3D. It resolves contract
-joints to skin-bone indices and composes rigid part transforms from the body's current palette.
+joints to skin-bone indices, composes rigid transforms and binds garment palettes against an explicit
+host mesh's inverse binds. Both kinds use the body's current joint model palette.
 Game3D carries this arm. `RendererArms_ReferenceOnlyTheirOwnerAndRender3D` pins its two edges
 alongside the Render3D.Ecs arm, and the umbrella membership lock includes it. Foundation and Server
 remain unchanged. Render3D's material-part memory importer reuses its existing glTF decoding.

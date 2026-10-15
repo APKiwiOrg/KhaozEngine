@@ -8,7 +8,7 @@
 
 **Tech Stack:** C#, repository .NET SDK, System.Numerics, System.Text.Json, existing SharpGLTF importer behind Render3D, xUnit, headless recording GPU seams, hosted native Metal/D3D11/Vulkan verification.
 
-**Spec:** `~/Grimhollow/.worktrees/skinned-armour-straps/docs/superpowers/specs/2026-10-15-skinned-armour-straps-design.md`, especially sections 2, 3, 6 and 8. The owner approved the written spec on 2026-10-15.
+**Spec:** [Approved skinned stone armour straps design](https://github.com/APKiwiOrg/Grimhollow/blob/0112d03c0144ff1f85526ff1057c5355bf260ee2/docs/superpowers/specs/2026-10-15-skinned-armour-straps-design.md), especially sections 2, 3, 6 and 8. The owner approved the written spec on 2026-10-15.
 
 ## Global Constraints
 

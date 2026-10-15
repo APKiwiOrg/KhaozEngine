@@ -5,6 +5,18 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.1.0
+
+- Add nested async-flow overrides through `LocalizationContext.Use`, `Log.Use` and `GuiTheme.Use`.
+  Reads select the innermost scope, then the current process default. Disposal restores the enclosing
+  scope without disposing borrowed catalogs or shutting down log managers.
+- Preserve process-wide setters, logging configuration and shutdown, and process-wide crash routing.
+  Cached ambient category loggers follow the active scope. Before first scope use, ambient reads bypass
+  async-local lookup. Localization and cached logging read paths retain zero per-call allocations.
+- Document theme scopes for both controls that copy construction-time colors and live theme readers.
+  Navigation CPU research is recorded separately. No navigation performance option or bake format
+  change ships in this version.
+
 ## 21.0.0
 
 - Breaking attachment API rename removes the rigid-only set names in favour of `AttachmentSetDefinition`,

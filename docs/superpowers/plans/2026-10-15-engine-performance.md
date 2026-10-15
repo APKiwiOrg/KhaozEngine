@@ -10,6 +10,13 @@
 
 **Spec:** The owner-supplied execution contract and engine issues [1416](https://github.com/APKiwiOrg/KhaozEngine/issues/1416) and [1417](https://github.com/APKiwiOrg/KhaozEngine/issues/1417).
 
+**Integration disposition:** E1 is accepted after review and focused verification. E2 contributes its
+research utilities and [outcome record](../../design/NAV-CAPTURE-CPU-RESEARCH-2026-10-15.md) only. The
+navigation candidate remains on its experiment branch because it has no demonstrated speedup. The
+approved hosted pair failed after A and never started B. Issue 1417 remains open, with no further
+representative timing run authorized. Task 3 below records the original intended implementation gate,
+which was not satisfied and is not part of this integration.
+
 ## Global constraints
 
 - Workers commit only in their assigned worktree. The orchestrator owns reconciliation, versioning, pushing and packaging.

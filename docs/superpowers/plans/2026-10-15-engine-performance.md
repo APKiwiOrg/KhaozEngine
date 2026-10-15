@@ -10,12 +10,14 @@
 
 **Spec:** The owner-supplied execution contract and engine issues [1416](https://github.com/APKiwiOrg/KhaozEngine/issues/1416) and [1417](https://github.com/APKiwiOrg/KhaozEngine/issues/1417).
 
-**Integration disposition:** E1 is accepted after review and focused verification. E2 contributes its
-research utilities and [outcome record](../../design/NAV-CAPTURE-CPU-RESEARCH-2026-10-15.md) only. The
-navigation candidate remains on its experiment branch because it has no demonstrated speedup. The
-approved hosted pair failed after A and never started B. Issue 1417 remains open, with no further
-representative timing run authorized. Task 3 below records the original intended implementation gate,
-which was not satisfied and is not part of this integration.
+**Integration disposition:** E1 is accepted after review and focused verification. E2 originally contributed
+research utilities and its [outcome record](../../design/NAV-CAPTURE-CPU-RESEARCH-2026-10-15.md) while the
+local candidate remained parked. The initial hosted pair failed after A and never started B. A later
+authorized [hosted pair](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/38813435238) preserved
+complete KENB bytes and reduced profile CPU by 39.17% on one public fixture. The default-off
+`NavBakeExecution.UseStableLegacyReadScope` feature is now selected for staged 21.1.0. Issue 1417
+remains open. This is not a measured consumer-suite or macOS saving, and no further timing run is
+authorized. Task 3 below retains the original intended gate as history.
 
 ## Global constraints
 

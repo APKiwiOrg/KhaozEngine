@@ -42,13 +42,16 @@ public sealed partial class PhysicsNavBake
     /// does, scheduled by <paramref name="execution"/>. A null execution or a degree of 1 runs the serial build. Above
     /// degree 1 an ordinary contact profile proves on worker threads over one build snapshot and produces the same
     /// profile, and its first failure in serial order is the exception the serial build throws. Legacy profiles always
-    /// build serially. See <see cref="NavBakeExecution"/> for what the caller's physics and providers must support.</summary>
+    /// build serially. <see cref="NavBakeExecution.UseStableLegacyReadScope"/> optionally reuses one authenticated
+    /// physics read lease for a legacy profile. See <see cref="NavBakeExecution"/> for provider obligations.</summary>
     /// <exception cref="ArgumentOutOfRangeException">The execution's degree is below 1. This is checked first.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
     /// <exception cref="NotSupportedException">A contact profile above degree 1 has a physics source or selected
     /// query view without <see cref="KhaozEngine.Physics.IPhysicsConcurrentReadSource"/>. Checked after every other
-    /// argument and before any worker exists.</exception>
-    /// <exception cref="InvalidOperationException">The build snapshot changed during a parallel contact build.</exception>
+    /// argument and before any worker exists. Also when a stable legacy scope lacks
+    /// <see cref="KhaozEngine.Physics.IPhysicsQueryLeaseSource"/> on its exact source or selected view.</exception>
+    /// <exception cref="InvalidOperationException">The build snapshot changed during a parallel contact build,
+    /// a stable legacy scope's owner or captured basis differs, or its backend refuses a nested explicit lease.</exception>
     public GroundNavigation BuildProfile(in MoveTuning tuning, NavAreaFilter areas, GroundProfileOptions? options,
         NavBakeExecution? execution)
     {
@@ -67,6 +70,8 @@ public sealed partial class PhysicsNavBake
             return BuildContactProfileInParallel(context, source!, tuning, footprint, height,
                 Options.MaxSurfacesPerColumn, degree);
         }
+        using LegacyNavigationReadScope? stable = kind == EffectiveMovementBindingKind.Legacy &&
+            execution?.UseStableLegacyReadScope == true ? LegacyNavigationReadScope.Acquire(context, Basis, Origin) : null;
         using ContactNavigationProof? contact = kind == EffectiveMovementBindingKind.OrdinaryContact
             ? new(this, context, source!, footprint) : null;
         var candidates = new CandidateColumns(this, context, tuning, footprint, columns, contact);
@@ -131,6 +136,7 @@ public sealed partial class PhysicsNavBake
                     Feet(toGrid, link.ToX, link.ToZ), toFloats, footprint)) links.Add(link);
         }
         _ = Context;
+        stable?.AssertCurrent();
         var graph = new NavTraversalGraph(space, tuning.CapsuleRadius, height, layers, links);
         return new GroundNavigation(graph, tuning, footprint, aquatic);
     }

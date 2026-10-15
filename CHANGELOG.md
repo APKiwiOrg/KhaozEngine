@@ -14,8 +14,11 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   Cached ambient category loggers follow the active scope. Before first scope use, ambient reads bypass
   async-local lookup. Localization and cached logging read paths retain zero per-call allocations.
 - Document theme scopes for both controls that copy construction-time colors and live theme readers.
-  Navigation CPU research is recorded separately. No navigation performance option or bake format
-  change ships in this version.
+- Add default-off `NavBakeExecution.UseStableLegacyReadScope` for synchronous legacy navigation profiles.
+  Stable, deterministic and read-only providers can reuse one authenticated physics read lease per profile.
+  Existing callbacks and contact scheduling keep their behavior. Canonical bake bytes and identity stay equal.
+  See the [bounded hosted evidence](docs/design/NAV-CAPTURE-CPU-RESEARCH-2026-10-15.md#successful-hosted-pair-and-staged-integration)
+  for the public-fixture result and its limits.
 
 ## 21.0.0
 

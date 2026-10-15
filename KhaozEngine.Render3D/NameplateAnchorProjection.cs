@@ -22,13 +22,13 @@ namespace KhaozEngine.Render3D
     /// the vertical float height), so it stays folded into the body column's X projection rather than being
     /// dropped, keeping a caller-side lateral offset meaningful.
     /// </remarks>
-    internal static class NameplateAnchorProjection
+    public static class NameplateAnchorProjection
     {
         /// <summary>
         /// Projects the composed anchor pixel for a nameplate/world-label. Returns <c>false</c> with
         /// <paramref name="pixel"/> = <c>default</c> exactly when the head point (<paramref name="worldPos"/> +
         /// <paramref name="offset"/>) does not project (the existing cull: behind the camera, or outside the
-        /// depth range) - unchanged from before this fix. When the head point projects but the body column
+        /// depth range). When the head point projects but the body column
         /// (the steep-edge case where the head clears the near plane but the feet do not) does not, the head
         /// pixel is used alone rather than failing the whole anchor.
         /// </summary>
@@ -42,7 +42,7 @@ namespace KhaozEngine.Render3D
         /// <param name="pixel">The composed anchor pixel (body-column X, head-point Y), or <c>default</c> when
         /// culled.</param>
         /// <returns><c>true</c> if the head point projects (drawable), <c>false</c> if culled.</returns>
-        internal static bool Project(IIsoCamera3D camera, Vector3 worldPos, Vector3 offset, int viewportWidth,
+        public static bool Project(IIsoCamera3D camera, Vector3 worldPos, Vector3 offset, int viewportWidth,
             int viewportHeight, out Vector2 pixel)
         {
             if (!camera.WorldToScreen(worldPos + offset, viewportWidth, viewportHeight, out Vector2 topPixel))
@@ -73,7 +73,7 @@ namespace KhaozEngine.Render3D
         /// <param name="pixel">The composed anchor pixel (body-column X, head-point Y) in design space, or
         /// <c>default</c> when culled.</param>
         /// <returns><c>true</c> if the head point projects (drawable), <c>false</c> if culled.</returns>
-        internal static bool Project(IIsoCamera3D camera, Vector3 worldPos, Vector3 offset,
+        public static bool Project(IIsoCamera3D camera, Vector3 worldPos, Vector3 offset,
             IDesignViewport designViewport, out Vector2 pixel)
         {
             if (!camera.WorldToScreen(worldPos + offset, designViewport, out Vector2 topPixel))

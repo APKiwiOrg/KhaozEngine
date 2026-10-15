@@ -1201,6 +1201,61 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     instead. The point rules come from
     `AttachPoint` and `Attach` in Primitives, the outline from `TextOutline` in Render2D. Template files, an
     editor and a mod surface are tracked in https://github.com/APKiwiOrg/KhaozEngine/issues/1378.
+  - Opt-in nameplate stacking (20.41.0). Keep one `NameplateStacker` for the lifetime of the plates. Each
+    frame calls `Begin()`, `Add(long id, Vector4 rect, float rank, bool pinned)` for each natural panel,
+    `Resolve(float dt)` once, then `RectOf(long id)` and `ReadOnlySpan<long> DrawOrder { get; }` to draw.
+    `NameplateStacker(float topMargin = 4f)` accepts a finite non-negative margin, otherwise throwing
+    `ArgumentOutOfRangeException`. Match it to `NameplateTemplate.EdgeMargin`. The public constants are
+    `Gap = 2f`, `RankBand = 0.5f` and `TimeConstant = 0.12f`. Rects `(x, y, width, height)`, gap and margin
+    use framebuffer pixels or, for a design pass, design units consistently. Rank is finite distance,
+    larger meaning farther away. Retained ranks swap only beyond the 0.5 band. Equal initial ranks place
+    by ascending id and draw by reverse id. Pins stay exact and are obstacles first. Other panels move
+    upward only, preserving X, width and height even when wider than the viewport. Overlapping pins stay
+    overlapped. A panel stops at the top margin, or its natural Y if already above it, so top saturation
+    can leave overlaps. Solved panels otherwise clear each other by 2 units when room exists.
+    Non-finite coordinates or rank, non-positive dimensions and overflowing edges are ignored by `Add`
+    and never become obstacles. The last valid submission for an id wins, including rank and pin flag.
+    `Begin` invalidates public results but retains private history until `Resolve` prunes missing ids.
+    `RectOf` throws `KeyNotFoundException` before resolution or for an absent id. `DrawOrder` is borrowed
+    until the next `Begin`, farthest first in sticky rank order with pins last and nearer pins on top.
+    New plates start at the solved spot. Retained upward offsets ease exponentially with time constant
+    0.12 seconds, independently of frame rate. Non-positive or non-finite dt does not advance retained
+    offsets, while new plates still start solved and pins reset immediately. Easing follows solving,
+    so a rank reversal or new collision can temporarily overlap. Collision-safe animation is not promised.
+    Warm submissions, resolution, span traversal, rect lookup and drawing allocate nothing.
+  - Caller-resolved template drawing and shared anchor projection (20.41.0) expose these overloads:
+
+    ```csharp
+    // NameplateStacker
+    public NameplateStacker(float topMargin = 4f);
+    public const float Gap = 2f, RankBand = 0.5f, TimeConstant = 0.12f;
+    public void Begin();
+    public void Add(long id, Vector4 rect, float rank, bool pinned);
+    public void Resolve(float dt);
+    public Vector4 RectOf(long id);
+    public ReadOnlySpan<long> DrawOrder { get; }
+
+    // NameplateRenderer
+    public static bool DrawAtRect(SpriteBatch batch, SpriteFont font, Texture2D white, Vector4 panelRect,
+        NameplateTemplate template, NameplateContent content, int viewportWidth, int viewportHeight);
+    public static bool DrawAtRect(SpriteBatch batch, SpriteFont font, Texture2D white, Vector4 panelRect,
+        NameplateTemplate template, NameplateContent content, IDesignViewport designViewport);
+    // NameplateAnchorProjection, now public
+    public static bool Project(IIsoCamera3D camera, Vector3 worldPos, Vector3 offset,
+        int viewportWidth, int viewportHeight, out Vector2 pixel);
+    public static bool Project(IIsoCamera3D camera, Vector3 worldPos, Vector3 offset,
+        IDesignViewport designViewport, out Vector2 pixel);
+    ```
+
+    `Project` uses body-column X and head-point Y with the renderer's head-only fallback. `DrawAtRect`
+    returns false for missing resources, non-positive viewport dimensions, invalid panel geometry or
+    empty content. Geometry must be finite with positive size and finite edges. It does not project,
+    distance-cull, clamp, deflect, resize components or call `NameplatePlacement.Place`. Keep the measured
+    dimensions and matching template/content until drawing. The design overload takes a rect already in
+    design space and uses the batch pass's existing transform without another screen-to-design conversion.
+    Existing `Draw` calls remain unchanged. See the
+    [canonical stacking example](../docs/USING-KHAOZENGINE.md#opt-in-nameplate-stacking-20410) for the complete
+    project, cull, measure, place, stack and draw sequence with retained per-id content.
 
 - Animation (`Animation/`, pure + GPU-free, driven off a `Skeleton` + glTF `AnimationClip`s):
   - `BoneSocket.Compose(local, jointModel, model)` attaches a rigid piece with the row-vector order

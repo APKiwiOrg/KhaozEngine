@@ -5,6 +5,10 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.41.0
+
+- Render3D adds opt-in nameplate stacking with pinned plates, sticky rank order and eased upward offsets, plus template drawing at caller-resolved panel rects, and makes NameplateAnchorProjection public so callers place plates exactly as the renderer does. Existing nameplate draw calls are unchanged.
+
 ## 20.40.0
 
 - MapDoc format 7 adds rigid prefab payload 1, digest-addressed immutable asset versions, persisted child

@@ -139,7 +139,8 @@ public sealed class AttachmentSetCache : IDisposable
                 ? new PendingMesh(identity, bytes, null, GltfLoader.LoadSkinnedPartsWithMaterials(bytes, context))
                 : new PendingMesh(identity, bytes, GltfLoader.LoadPartsWithMaterials(bytes, context), null);
         }
-        catch (Exception error) when (error is IOException or InvalidOperationException or ArgumentException or FormatException or NotSupportedException)
+        catch (Exception error) when (error is IOException or InvalidOperationException or ArgumentException
+            or FormatException or NotSupportedException or SharpGLTF.Validation.ModelException)
         {
             string kind = identity.Skinned ? "skinned" : "rigid";
             throw new InvalidDataException($"{context}: {kind} geometry cannot be decoded.", error);

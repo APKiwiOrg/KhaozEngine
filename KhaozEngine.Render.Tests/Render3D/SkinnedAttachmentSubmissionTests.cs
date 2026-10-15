@@ -261,8 +261,12 @@ internal sealed class MixedAttachmentSubmissionFixture : IDisposable
     {
         Tint = new Color(.4f, .5f, .6f, .7f),
         Material = new Material(new Color(1, 0, 0, 1), .6f, 48f),
-        Dissolve = .3f, DissolveEdgeWidth = .12f, DissolveEdgeColor = new Color(0, 0, 1, 1),
-        CastsShadows = true, InvertShadowDissolve = true, DissolveComplement = 1f,
+        Dissolve = .3f,
+        DissolveEdgeWidth = .12f,
+        DissolveEdgeColor = new Color(0, 0, 1, 1),
+        CastsShadows = true,
+        InvertShadowDissolve = true,
+        DissolveComplement = 1f,
     };
     readonly AttachmentAssetHarness _harness = new();
     internal Scene3D Scene => _harness.Scene;

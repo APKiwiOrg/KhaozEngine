@@ -218,7 +218,9 @@ public sealed class GltfSkinnedMaterialPartsTests
         var definition = new JsonObject
         {
             ["bufferView"] = fixture.AddView(new byte[values.Length * values[0].Length * size]),
-            ["componentType"] = componentType, ["count"] = values.Length, ["type"] = type,
+            ["componentType"] = componentType,
+            ["count"] = values.Length,
+            ["type"] = type,
         };
         if (componentType != 5126) definition["normalized"] = true;
         fixture.Accessors.Add(definition);

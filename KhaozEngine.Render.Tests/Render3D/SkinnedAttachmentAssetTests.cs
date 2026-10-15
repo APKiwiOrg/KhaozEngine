@@ -84,7 +84,9 @@ public sealed class SkinnedAttachmentAssetTests
         fixture.Accessors.Add(new JsonObject
         {
             ["bufferView"] = fixture.AddView(new byte[3 * sizeof(float)]),
-            ["componentType"] = 5126, ["count"] = 1, ["type"] = "VEC3",
+            ["componentType"] = 5126,
+            ["count"] = 1,
+            ["type"] = "VEC3",
         });
         fixture.SetElement(normals, 0, 0, 0, 1);
         fixture.Primitives[0]!["attributes"]!["NORMAL"] = normals;
@@ -338,7 +340,8 @@ public sealed class SkinnedAttachmentAssetTests
             byte[] png = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==");
             fixture.Root["images"] = new JsonArray(new JsonObject
             {
-                ["bufferView"] = fixture.AddView(png), ["mimeType"] = "image/png",
+                ["bufferView"] = fixture.AddView(png),
+                ["mimeType"] = "image/png",
             });
             fixture.Root["textures"] = JsonNode.Parse("""[{"source":0}]""");
         }
@@ -347,7 +350,9 @@ public sealed class SkinnedAttachmentAssetTests
         fixture.Accessors.Add(new JsonObject
         {
             ["bufferView"] = fixture.AddView(new byte[3 * 2 * sizeof(float)]),
-            ["componentType"] = 5126, ["count"] = 3, ["type"] = "VEC2",
+            ["componentType"] = 5126,
+            ["count"] = 3,
+            ["type"] = "VEC2",
         });
         first["attributes"]!["TEXCOORD_0"] = uvAccessor;
         fixture.SetElement(uvAccessor, 1, 1, 0);

@@ -59,8 +59,12 @@ public sealed class SkinnedAttachmentGpuScene : IDisposable
                     posed ? _posed : _rest);
             var template = new RigidInstanceDraw(default, Model)
             {
-                Tint = Red, Dissolve = dissolve, DissolveComplement = complement, InvertShadowDissolve = invert,
-                ShadowOnly = shadowOnly, CastsShadows = castsShadows,
+                Tint = Red,
+                Dissolve = dissolve,
+                DissolveComplement = complement,
+                InvertShadowDissolve = invert,
+                ShadowOnly = shadowOnly,
+                CastsShadows = castsShadows,
             };
             Draw(scene, control, posed, template);
             if (!outlines) return;
@@ -91,8 +95,11 @@ public sealed class SkinnedAttachmentGpuScene : IDisposable
         else
             scene.DrawSkinned(new SkinnedInstanceDraw(_garmentControl, Model)
             {
-                Tint = template.Tint, Dissolve = template.Dissolve, DissolveComplement = template.DissolveComplement,
-                InvertShadowDissolve = template.InvertShadowDissolve, ShadowOnly = template.ShadowOnly,
+                Tint = template.Tint,
+                Dissolve = template.Dissolve,
+                DissolveComplement = template.DissolveComplement,
+                InvertShadowDissolve = template.InvertShadowDissolve,
+                ShadowOnly = template.ShadowOnly,
                 CastsShadows = template.CastsShadows,
             }, ControlPose(posed));
     }
@@ -178,8 +185,13 @@ public sealed class SkinnedAttachmentGpuScene : IDisposable
         byte[] normals = new byte[36];
         for (int i = 0; i < 3; i++) BinaryPrimitives.WriteSingleLittleEndian(normals.AsSpan(i * 12 + 8), 1);
         int normalAccessor = fixture.Accessors.Count;
-        fixture.Accessors.Add(new JsonObject { ["bufferView"] = fixture.AddView(normals),
-            ["componentType"] = 5126, ["count"] = 3, ["type"] = "VEC3" });
+        fixture.Accessors.Add(new JsonObject
+        {
+            ["bufferView"] = fixture.AddView(normals),
+            ["componentType"] = 5126,
+            ["count"] = 3,
+            ["type"] = "VEC3"
+        });
         fixture.Primitives[0]!["attributes"]!["NORMAL"] = normalAccessor;
         if (rigid)
         {
@@ -208,8 +220,11 @@ public sealed class SkinnedAttachmentGpuScene : IDisposable
 
     static SkinnedVertex Vertex(Vector3 position, float upperWeight) => new()
     {
-        Position = position, Normal = Vector3.UnitZ, Color = Vector4.One,
-        BoneIndices = new Vector4(1, 0, 0, 0), BoneWeights = new Vector4(upperWeight, 1 - upperWeight, 0, 0),
+        Position = position,
+        Normal = Vector3.UnitZ,
+        Color = Vector4.One,
+        BoneIndices = new Vector4(1, 0, 0, 0),
+        BoneWeights = new Vector4(upperWeight, 1 - upperWeight, 0, 0),
     };
 
     static GltfMesh Triangle(Vector3[] positions) => new(

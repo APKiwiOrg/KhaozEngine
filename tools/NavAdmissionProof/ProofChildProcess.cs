@@ -50,18 +50,17 @@ internal static class ProofChildProcess
             }
             attempt.ExitStatus = process.ExitCode;
             await Task.WhenAll(output, errorOutput).WaitAsync(TimeSpan.FromSeconds(10));
-            if (attempt.TimedOut || attempt.ExitStatus != 0)
-                throw new InvalidOperationException("Child " + label + " failed or exceeded its three-minute limit. No retry is allowed.");
-            ChildResult result = ProofJson.ReadChild(Path.Combine(directory, label + ".json"));
-            attempt.Result = result;
+            ProofChildAcceptance.Retain(directory, attempt);
+            ProofChildAcceptance.RequireCompleted(attempt);
+            ChildResult result = attempt.Result!;
             byte[] bytes = File.ReadAllBytes(Path.Combine(directory, label + ".kenb"));
             if (result.RunId != pair.RunId || result.Label != label || result.UseStableLegacyReadScope != stable ||
-                result.Fixture != ProofFixture.Identity || !result.CanonicalRoundTrip || !result.ScopeReleasedAfterBuild ||
+                result.Fixture != ProofFixture.Identity || result.CanonicalRoundTrip != true || result.ScopeReleasedAfterBuild != true ||
                 result.Graph is null || result.Environment is null || result.Metrics is null || bytes.Length < 52 ||
                 !bytes.AsSpan(0, 4).SequenceEqual("KENB"u8) ||
                 result.KenbLength != bytes.Length || result.KenbSha256 != Convert.ToHexString(SHA256.HashData(bytes)))
                 throw new InvalidDataException("Child evidence is missing, malformed or inconsistent with its KENB file.");
-            ProfileMetrics metrics = result.Metrics;
+            ProfileMetrics metrics = result.Metrics!;
             if (!double.IsFinite(metrics.WallSeconds) || metrics.WallSeconds <= 0 ||
                 !double.IsFinite(metrics.ProcessCpuSeconds) || metrics.ProcessCpuSeconds <= 0 ||
                 !double.IsFinite(metrics.MainThreadCpuSeconds) || metrics.MainThreadCpuSeconds <= 0 ||
@@ -94,6 +93,8 @@ internal static class ProofChildProcess
                 catch (Exception error) { attempt.Failure += "\nDiagnostic drain failed: " + error; }
             }
             attempt.ElapsedSeconds = elapsed.Elapsed.TotalSeconds;
+            // Retain the latest checkpoint even after nonzero exits, timeout or diagnostic drain failure.
+            ProofChildAcceptance.Retain(directory, attempt);
             // Logs are flushed as they arrive, including progress preceding a timeout or error.
             if (File.Exists(outputPath)) attempt.StandardOutput = File.ReadAllText(outputPath);
             if (File.Exists(errorPath)) attempt.StandardError = File.ReadAllText(errorPath);

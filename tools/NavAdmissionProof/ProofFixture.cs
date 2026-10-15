@@ -54,16 +54,18 @@ internal sealed class ProofFixture : IDisposable
         catch { world.Dispose(); throw; }
     }
 
-    internal static GraphCounts CheckGraph(GroundNavigation navigation)
+    internal static GraphAcceptance InspectGraph(GroundNavigation navigation)
     {
         NavTraversalGraph graph = CanonicalProfileFile.Graph(navigation);
         int accepted = 0, rejected = 0, edges = 0;
+        var dimensions = new GraphLayerDimensions[graph.Layers.Count];
+        int index = 0;
         foreach (NavTraversalLayer layer in graph.Layers)
         {
-            if (layer.Width != Width || layer.Height != Height)
-                throw new InvalidOperationException("The public fixture dimensions changed.");
-            for (int z = 0; z < Height; z++)
-                for (int x = 0; x < Width; x++)
+            dimensions[index] = new(index, layer.Width, layer.Height);
+            index++;
+            for (int z = 0; z < layer.Height; z++)
+                for (int x = 0; x < layer.Width; x++)
                 {
                     if (layer.IsAccepted(x, z)) accepted++;
                     else rejected++;
@@ -72,10 +74,8 @@ internal sealed class ProofFixture : IDisposable
         }
         bool clearEdge = graph.CanTraverse(0, 10, 10, 0, 11, 10);
         bool obstacleRejected = !graph.IsNodePassable(0, 82, 102);
-        if (accepted < 10000 || edges < 50000 || rejected == 0 || !clearEdge || !obstacleRejected)
-            throw new InvalidOperationException("The public fixture lacks nontrivial open edges or obstacle refusals.");
-        return new GraphCounts(graph.Layers.Count, accepted, rejected, edges,
-            navigation.Space.Links.Count, graph.Links.Count, clearEdge, obstacleRejected);
+        return new GraphAcceptance(new GraphCounts(graph.Layers.Count, accepted, rejected, edges,
+            navigation.Space.Links.Count, graph.Links.Count, clearEdge, obstacleRejected), dimensions);
     }
 
     internal void CheckScopeReleased() => world.Rebase(Vector3.Zero);

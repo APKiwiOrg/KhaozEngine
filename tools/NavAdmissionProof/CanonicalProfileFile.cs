@@ -34,20 +34,23 @@ internal sealed class CanonicalProfileFile
         (NavTraversalGraph)typeof(GroundNavigation).GetProperty("Graph", BindingFlags.NonPublic | BindingFlags.Instance)!
             .GetValue(navigation)!;
 
-    internal byte[] WriteAndCheck(GroundNavigation navigation)
+    internal byte[] Write(GroundNavigation navigation)
     {
         var regenerated = NavLayerLinks.GenerateGrounded(navigation.Space.Layers, ProofFixture.Tuning.StepHeight);
         if (!regenerated.SequenceEqual(navigation.Space.Links))
             throw new InvalidDataException("Candidate links differ from canonical grid regeneration.");
         var bake = (GroundNavigationBake)compose.Invoke(
             [identity, Vector3.Zero, columns, new[] { ProofFixture.Profile.Name }, new[] { navigation }]);
-        byte[] bytes = Write(bake);
+        return Write(bake);
+    }
+
+    internal void CheckRoundTrip(byte[] bytes)
+    {
         using var input = new MemoryStream(bytes, writable: false);
         NavBakeLoadResult loaded = GroundNavigationBake.Load(input, expected);
         if (loaded.Status != NavBakeLoadStatus.Loaded || loaded.Bake is null ||
             !bytes.AsSpan().SequenceEqual(Write(loaded.Bake)))
             throw new InvalidDataException("KENB load and canonical rewrite failed.");
-        return bytes;
     }
 
     private static byte[] Write(GroundNavigationBake bake)

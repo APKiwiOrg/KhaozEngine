@@ -1,17 +1,23 @@
 # Manual hosted navigation admission proof
 
-This is a preparation harness for the held stable legacy read-scope candidate. It is excluded from
+This is a manual proof harness for the held stable legacy read-scope candidate. It is excluded from
 `KhaozEngine.slnx` and normal selective CI test discovery. It is non-packable and uses the repository's
 existing .NET target, centrally pinned test packages and engine project references.
 
-Owner approval has not been obtained by preparing this harness. Obtain explicit approval for this
-one comparison before executing it anywhere. Run only on a Linux GitHub-hosted Actions runner through
-the existing manual stress workflow. Local execution and self-hosted runners are refused.
+The approved [hosted attempt](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/38802161651)
+failed after A returned from its single BuildProfile, during graph acceptance. B never started.
+Its metrics, graph counts and canonical output were not retained, so the failed predicate remains
+unknown. There is no valid A/B outcome or performance conclusion. Keep the candidate parked.
 
-## Exact approved invocation
+Approval for that attempt is exhausted. This evidence-retention repair authorizes no new measurement.
+Obtain separate explicit owner approval before any further comparison. No automatic retry is allowed.
+Run only on a Linux GitHub-hosted Actions runner through the existing manual stress workflow.
+Local execution and self-hosted runners are refused.
 
-After approval, the owning orchestrator must commit and push the proof branch before dispatching
-this command. Preparation does not push or dispatch it.
+## Approval-gated invocation
+
+Only after new approval, the owning orchestrator must commit and push the proof branch before
+dispatching this command. Do not run it as verification of an evidence-retention change.
 
 ```bash
 gh workflow run stress-test.yml \
@@ -52,6 +58,16 @@ build-slot --label e2-hosted-proof-build -- \
   dotnet build tools/NavAdmissionProof/NavAdmissionProof.csproj -c Release
 ```
 
+Pure failure-path tests are also permitted locally with this exact selection. They use synthetic
+metrics, graph records and bytes. They construct no physics fixture, perform no capture or profile,
+start no helper processes and execute no timing comparison. The representative pair remains excluded.
+
+```bash
+build-slot --label e2-proof-evidence-fix -- \
+  dotnet test tools/NavAdmissionProof/NavAdmissionProof.csproj -c Release \
+  --filter 'FullyQualifiedName~KhaozEngine.Tests.Movement.Research.ProofEvidenceRetentionTests&FullyQualifiedName!~SingleUnprofiledPair'
+```
+
 ## Bounded comparison
 
 One wrapper launches exactly two fresh helper processes, serially, using the same binary set.
@@ -86,9 +102,9 @@ fail if the layout changes. It adds no production API or instrumentation.
 
 ## Retained evidence and decision
 
-The `support-cost` artifact retains `run-1.json` plus both child JSON files, KENB files and stdout/stderr
-logs under its invocation directory. Successful JSON contains the following evidence because the
-shared workflow removes passing console logs and TRX files.
+The `support-cost` artifact retains `run-1.json` plus attempted-child JSON, available KENB files and
+stdout/stderr logs under its invocation directory. Successful JSON contains the following evidence
+because the shared workflow removes passing console logs and TRX files.
 
 - Stopwatch wall seconds, process CPU seconds and calling-thread CPU seconds through Linux
   [`CLOCK_THREAD_CPUTIME_ID`](https://man7.org/linux/man-pages/man3/clock_gettime.3.html).
@@ -97,6 +113,26 @@ shared workflow removes passing console logs and TRX files.
 - Runtime, build SDK, architecture, OS, Actions commit/run, configuration, compilation settings and
   a hash of the complete DLL/deps/runtimeconfig binary set. Order, child exit statuses, elapsed times,
   timeout flags, fixture identity, graph counts, KENB lengths/hashes and complete byte equality.
+
+Each child writes its environment, fixture, selected flag, invocation identity and running stage
+before fixture setup. It checkpoints each later stage and saves the measured counters immediately
+when the single measurement returns, before graph inspection or acceptance. Graph evidence contains
+all observed layer dimensions, counts and six independent acceptance predicates. The existing limits
+remain unchanged. Every layer must be 164 by 204, accepted nodes must be at least 10000, directed
+edges at least 50000, rejected cells nonzero, the clear edge accepted and the central obstacle rejected.
+An acceptance error includes the exact counts, dimensions and each predicate value.
+
+Completed canonical bytes and their length/hash are retained before load/rewrite and scope-release
+checks. A later failure retains those bytes and the failed stage. An orderly exception writes
+`Status=Failed` and the exception. A killed child can retain `Status=Running` at its last checkpoint.
+Null fields mean the stage did not complete. Neither state is a successful child.
+
+The wrapper loads the latest child checkpoint even after a nonzero exit, timeout or diagnostic-drain
+failure and embeds available partial evidence in its sample. Missing or malformed checkpoints retain
+an evidence-read error. A zero exit alone is insufficient. Only an explicitly completed, successful
+child that passes all existing JSON, metric and KENB checks can allow B to start. Any A failure stops
+the pair without a retry. Partial metrics and default false parity flags are diagnostic evidence,
+not a pairwise comparison or an observed mismatch. Ratios remain null until complete parity succeeds.
 
 Wall timing encloses only the single `BuildProfile` call. CPU, GC, allocation and contention snapshots
 bracket it and include their boundary costs. Process counters include runtime threads. First-use JIT
@@ -108,7 +144,10 @@ The section contains fresh `CapturedAtUtc`, nonempty `Samples` and null `Process
 After `dotnet test` returns, the shared workflow invokes `scripts/record-support-cost-exit.py` to
 record its actual exit and remove the pending marker. Missing or malformed evidence, failed children,
 timeouts, invalid measurements and unequal bytes fail the proof. The wrapper never finalizes its
-own process exit. Require finalized `ProcessExitStatus=0` before using a successful artifact.
+own process exit. Failure envelopes keep the same pending-finalization contract and the workflow
+records the actual nonzero outer exit. Require finalized `ProcessExitStatus=0`, two successful
+completed children and complete parity before using a successful artifact. Retained partial evidence
+never converts a failed proof into a successful outcome.
 
 Parity success is not performance acceptance. A clear coherent reduction in process and main-thread
 CPU, together with byte and graph parity, supports reconsideration for this public fixture.

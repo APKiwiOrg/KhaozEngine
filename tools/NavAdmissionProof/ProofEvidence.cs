@@ -46,6 +46,7 @@ internal sealed class ChildAttempt
     public string StandardOutput { get; set; } = "";
     public string StandardError { get; set; } = "";
     public ChildResult? Result { get; set; }
+    public string? EvidenceReadFailure { get; set; }
 }
 
 internal sealed record ProofEnvironment(string Runtime, string RuntimeVersion, string OperatingSystem,
@@ -63,8 +64,19 @@ internal sealed record GraphCounts(int Layers, int AcceptedNodes, int RejectedLa
     int CandidateLinks, int AcceptedLinks, bool ClearEdgeAccepted, bool CentralObstacleRejected);
 
 internal sealed record ChildResult(string RunId, string Label, bool UseStableLegacyReadScope, string Fixture,
-    ProofEnvironment Environment, ProfileMetrics Metrics, GraphCounts Graph, int KenbLength, string KenbSha256,
-    bool CanonicalRoundTrip, bool ScopeReleasedAfterBuild);
+    ProofEnvironment Environment)
+{
+    public string Stage { get; set; } = "SetupAndCapture";
+    public string Status { get; set; } = "Running";
+    public string? Failure { get; set; }
+    public ProfileMetrics? Metrics { get; set; }
+    public GraphAcceptance? GraphValidation { get; set; }
+    public GraphCounts? Graph => GraphValidation?.Counts;
+    public int? KenbLength { get; set; }
+    public string? KenbSha256 { get; set; }
+    public bool? CanonicalRoundTrip { get; set; }
+    public bool? ScopeReleasedAfterBuild { get; set; }
+}
 
 internal static class ProofJson
 {

@@ -3,9 +3,9 @@
 Attachment definitions bound to a posed `KhaozEngine.Render3D` skeleton. This renderer arm
 references `KhaozEngine.Attachments` and `KhaozEngine.Render3D` and ships in `KhaozEngine.Game3D`.
 
-The current renderer supports rigid parts. `AttachmentSetCache.Get` refuses any skinned part with
-`InvalidDataException` before reading or decoding meshes. The map-only `AttachmentSetBinding`
-constructor also refuses sets containing skinned parts.
+`AttachmentSetCache.Get` loads rigid, skinned and mixed sets. The map-only `AttachmentSetBinding`
+constructor and `LoadedAttachmentSet.Bind(map)` refuse sets containing skinned parts with
+`InvalidDataException`. Skin binding and submission are supplied separately from asset loading.
 
 Construct `AttachmentSetBinding(definition, map)` once with a `ContractJointMap`. Every rigid part must
 name a contract joint in the skin. Unresolved references throw `InvalidDataException` naming the
@@ -42,9 +42,13 @@ already baked. Material groups retain first-use order. The importer creates no G
 ## Loading and ownership
 
 Create one `AttachmentSetCache` per scene with an `IAttachmentAssetSource`. `Get(key, expectedSha256)`
-checks the exact definition bytes and every distinct mesh revision, applies embedded rigid GLB policy,
-and decodes all new assets before uploading. The cache copies source memory and shares each `(key, hash)`
-upload across its sets. A failure releases newly acquired resources and preserves earlier cached assets.
+checks the exact definition bytes and every distinct mesh revision, applies the requested rigid or skinned
+embedded GLB policy, and decodes all new geometry and material maps before uploading. The cache classifies
+all references before using warm uploads. A reference requested under both kinds is refused, including
+reuse after a different set warmed the cache. The cache copies source memory and shares each compatible
+`(key, hash, kind)` upload across its parts and sets. A failure releases newly acquired resources and
+preserves earlier cached assets. Skinned material groups retain their skin-order joint names, inverse
+binds and rest poses as immutable metadata. Loading allocates no frame palettes.
 
 ```csharp
 using var scene = new Scene3D(device, output);
@@ -66,8 +70,10 @@ render thread, with no overlapping calls.
 
 The `IAttachmentScene` overload accepts an optional scene capability for recording or headless
 consumers. `Scene3DAttachmentScene` uploads through Scene3D and forwards complete `RigidInstanceDraw`
-descriptors. `UploadAttachment(parts)` returns an `IAttachmentMeshLease` whose immutable handles remain
-borrowed until lease disposal. The shipped `Scene3DTileWorldScene` also offers this optional capability.
+descriptors. `UploadAttachment(parts)` returns an `IAttachmentMeshLease` with material-ordered
+`MeshHandle` values. `UploadSkinnedAttachment(parts)` returns an `ISkinnedAttachmentMeshLease` with
+material-ordered `SkinnedMeshHandle` values. Both uploads are transactional, and their immutable handles
+remain borrowed until lease disposal. The shipped `Scene3DTileWorldScene` also offers this optional capability.
 `ITileWorldScene` has no attachment member.
 
 ## Submission

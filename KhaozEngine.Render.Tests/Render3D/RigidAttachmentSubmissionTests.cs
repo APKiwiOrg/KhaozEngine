@@ -246,6 +246,8 @@ public sealed class RigidAttachmentSubmissionTests
         internal readonly RigidInstanceDraw[] Draws = new RigidInstanceDraw[32];
         internal int Count;
         public IAttachmentMeshLease UploadAttachment(IReadOnlyList<GltfMeshPart> parts) => _adapter.UploadAttachment(parts);
+        public ISkinnedAttachmentMeshLease UploadSkinnedAttachment(IReadOnlyList<GltfSkinnedMeshPart> parts) =>
+            _adapter.UploadSkinnedAttachment(parts);
         public void DrawMesh(in RigidInstanceDraw draw)
         {
             Draws[Count++] = draw;

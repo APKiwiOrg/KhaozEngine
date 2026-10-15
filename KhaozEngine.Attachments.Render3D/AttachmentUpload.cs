@@ -4,8 +4,14 @@ using KhaozEngine.Render3D;
 
 namespace KhaozEngine.Attachments.Render3D;
 
+/// <summary>Separates mesh retirement from texture retirement across a cache transaction.</summary>
+internal interface IAttachmentUpload : IDisposable
+{
+    void UnloadMeshes();
+}
+
 /// <summary>Owns only the mesh and texture handles created by one upload transaction.</summary>
-internal sealed class AttachmentUpload : IAttachmentMeshLease
+internal sealed class AttachmentUpload : IAttachmentMeshLease, IAttachmentUpload
 {
     readonly Scene3D _scene;
     readonly MeshHandle[] _handles;
@@ -48,7 +54,7 @@ internal sealed class AttachmentUpload : IAttachmentMeshLease
         get { ObjectDisposedException.ThrowIf(_disposed, this); return _view; }
     }
 
-    internal void UnloadMeshes()
+    public void UnloadMeshes()
     {
         if (_meshesUnloaded) return;
         _meshesUnloaded = true;

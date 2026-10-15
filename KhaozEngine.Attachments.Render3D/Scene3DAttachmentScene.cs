@@ -16,5 +16,7 @@ public sealed class Scene3DAttachmentScene : IAttachmentScene
     }
 
     public IAttachmentMeshLease UploadAttachment(IReadOnlyList<GltfMeshPart> parts) => AttachmentUpload.Create(_scene, parts);
+    public ISkinnedAttachmentMeshLease UploadSkinnedAttachment(IReadOnlyList<GltfSkinnedMeshPart> parts) =>
+        SkinnedAttachmentUpload.Create(_scene, parts);
     public void DrawMesh(in RigidInstanceDraw draw) => _scene.Draw(draw);
 }

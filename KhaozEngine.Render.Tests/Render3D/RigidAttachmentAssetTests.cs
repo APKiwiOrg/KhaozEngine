@@ -21,17 +21,15 @@ namespace KhaozEngine.Tests.Render3D;
 
 public sealed class RigidAttachmentAssetTests
 {
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Skinned_parts_are_refused_before_any_mesh_read_or_upload(bool mixed)
+    [Fact]
+    public void Conflicting_part_kinds_are_refused_before_any_mesh_read_or_upload()
     {
         using var harness = new AttachmentAssetHarness();
         var source = new AttachmentTestSource();
         var mesh = new AttachmentMeshRef("parts/unread.glb", new string('a', 64));
         var skinned = new SkinnedAttachmentPartDefinition(7, mesh);
-        var definition = new AttachmentSetDefinition(mixed
-            ? [new RigidAttachmentPartDefinition(1, mesh, "hip", Matrix4x4.Identity), skinned] : [skinned]);
+        var definition = new AttachmentSetDefinition(
+            [new RigidAttachmentPartDefinition(1, mesh, "hip", Matrix4x4.Identity), skinned]);
         string hash = source.Add("set.json", AttachmentSetJson.Write(definition));
         using var cache = new AttachmentSetCache(harness.Scene, source);
         int buffers = harness.Factory.Buffers.Count, textures = harness.Factory.Textures.Count;
@@ -262,10 +260,19 @@ internal sealed class AttachmentRecordingScene(Scene3D scene) : IAttachmentScene
 {
     readonly Scene3DAttachmentScene _adapter = new(scene);
     internal List<IReadOnlyList<MeshHandle>> Uploads { get; } = [];
+    internal List<IReadOnlyList<SkinnedMeshHandle>> SkinnedUploads { get; } = [];
+    internal List<IReadOnlyList<GltfSkinnedMeshPart>> SkinnedParts { get; } = [];
     public IAttachmentMeshLease UploadAttachment(IReadOnlyList<GltfMeshPart> parts)
     {
         IAttachmentMeshLease lease = _adapter.UploadAttachment(parts);
         Uploads.Add(lease.Handles);
+        return lease;
+    }
+    public ISkinnedAttachmentMeshLease UploadSkinnedAttachment(IReadOnlyList<GltfSkinnedMeshPart> parts)
+    {
+        ISkinnedAttachmentMeshLease lease = _adapter.UploadSkinnedAttachment(parts);
+        SkinnedUploads.Add(lease.Handles);
+        SkinnedParts.Add(parts);
         return lease;
     }
     public void DrawMesh(in RigidInstanceDraw draw) => _adapter.DrawMesh(draw);

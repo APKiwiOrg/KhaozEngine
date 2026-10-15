@@ -259,6 +259,10 @@ public sealed class Scene3DTileWorldScene : ITileWorldScene, IAttachmentScene
     public IAttachmentMeshLease UploadAttachment(IReadOnlyList<GltfMeshPart> parts) =>
         _attachments.UploadAttachment(parts);
 
+    /// <summary>Upload owned skinned attachment resources through the optional scene capability.</summary>
+    public ISkinnedAttachmentMeshLease UploadSkinnedAttachment(IReadOnlyList<GltfSkinnedMeshPart> parts) =>
+        _attachments.UploadSkinnedAttachment(parts);
+
     /// <inheritdoc />
     public ITileWorldPropClusterOwner CreatePropClusterOwner() => new ScenePropClusterOwner(_scene);
 

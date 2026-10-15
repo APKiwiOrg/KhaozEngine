@@ -13,7 +13,7 @@ public sealed class AttachmentSetCache : IDisposable
 {
     readonly IAttachmentAssetSource _source;
     readonly Dictionary<AttachmentMeshRef, CachedDefinition> _definitions = [];
-    readonly Dictionary<AttachmentMeshRef, CachedMesh> _meshes = [];
+    readonly Dictionary<MeshIdentity, CachedMesh> _meshes = [];
     bool _disposed;
 
     public AttachmentSetCache(Scene3D scene, IAttachmentAssetSource source)
@@ -34,44 +34,84 @@ public sealed class AttachmentSetCache : IDisposable
         ThrowIfDisposed();
         ValidateRequest(key, expectedSha256);
         var identity = new AttachmentMeshRef(key, expectedSha256);
-        if (_definitions.TryGetValue(identity, out CachedDefinition? cached)) return cached.View;
+        _definitions.TryGetValue(identity, out CachedDefinition? cached);
+        byte[] definitionBytes = cached?.Bytes ?? ReadVerified(identity, key);
+        AttachmentSetDefinition definition = cached?.View.Definition ?? AttachmentSetJson.Parse(definitionBytes, key);
+        Dictionary<AttachmentMeshRef, MeshIdentity> requested = Classify(definition, key);
+        if (cached is not null) return cached.View;
 
-        byte[] definitionBytes = ReadVerified(identity, key);
-        AttachmentSetDefinition definition = AttachmentSetJson.Parse(definitionBytes, key);
-        foreach (AttachmentPartDefinition part in definition.Parts)
-            if (part is SkinnedAttachmentPartDefinition)
-                throw new InvalidDataException($"{key}: attachment part {part.Id}, skinned parts cannot be loaded by this cache yet.");
         var pending = new List<PendingMesh>();
         foreach (AttachmentMeshRef mesh in definition.Meshes)
         {
-            if (_meshes.ContainsKey(mesh)) continue;
+            MeshIdentity meshIdentity = requested[mesh];
+            if (_meshes.ContainsKey(meshIdentity)) continue;
             uint id = definition.Parts.First(part => part.Mesh == mesh).Id;
             string context = $"{key}: attachment part {id}, mesh '{mesh.Key}'";
             byte[] bytes = ReadVerified(mesh, context);
-            AttachmentGlb.ValidateRigidEmbedded(bytes, context);
-            pending.Add(new PendingMesh(mesh, bytes, Decode(bytes, context)));
+            pending.Add(Decode(meshIdentity, bytes, context));
         }
 
-        var staged = new Dictionary<AttachmentMeshRef, CachedMesh>();
+        var staged = new Dictionary<MeshIdentity, CachedMesh>();
         try
         {
             foreach (PendingMesh mesh in pending)
-                staged.Add(mesh.Reference, new CachedMesh(mesh.Bytes, Scene.UploadAttachment(mesh.Parts)));
-            var handles = new MeshHandle[definition.Parts.Count][];
-            for (int i = 0; i < handles.Length; i++)
+                staged.Add(mesh.Identity, Upload(mesh));
+            var resources = new AttachmentPartResources[definition.Parts.Count];
+            for (int i = 0; i < resources.Length; i++)
             {
-                AttachmentMeshRef mesh = definition.Parts[i].Mesh;
+                MeshIdentity mesh = requested[definition.Parts[i].Mesh];
                 CachedMesh upload = _meshes.TryGetValue(mesh, out CachedMesh? existing) ? existing : staged[mesh];
-                handles[i] = upload.Lease.Handles.ToArray();
+                resources[i] = upload.Resources;
             }
-            var loaded = new LoadedAttachmentSet(this, definition, expectedSha256, handles);
-            foreach (KeyValuePair<AttachmentMeshRef, CachedMesh> mesh in staged) _meshes.Add(mesh.Key, mesh.Value);
+            var loaded = new LoadedAttachmentSet(this, definition, expectedSha256, resources);
+            foreach (KeyValuePair<MeshIdentity, CachedMesh> mesh in staged) _meshes.Add(mesh.Key, mesh.Value);
             _definitions.Add(identity, new CachedDefinition(definitionBytes, loaded));
             return loaded;
         }
         catch
         {
             Release(staged.Values);
+            throw;
+        }
+    }
+
+    Dictionary<AttachmentMeshRef, MeshIdentity> Classify(AttachmentSetDefinition definition, string key)
+    {
+        var requested = new Dictionary<AttachmentMeshRef, MeshIdentity>();
+        foreach (AttachmentPartDefinition part in definition.Parts)
+        {
+            var identity = new MeshIdentity(part.Mesh, part is SkinnedAttachmentPartDefinition);
+            if ((requested.TryGetValue(part.Mesh, out MeshIdentity previous) && previous != identity)
+                || _meshes.ContainsKey(identity with { Skinned = !identity.Skinned }))
+                throw new InvalidDataException($"{key}: attachment part {part.Id}, mesh '{part.Mesh.Key}' cannot use both rigid and skinned policies.");
+            requested[part.Mesh] = identity;
+        }
+        return requested;
+    }
+
+    CachedMesh Upload(PendingMesh mesh)
+    {
+        IDisposable? lease = null;
+        try
+        {
+            AttachmentPartResources resources;
+            if (mesh.SkinnedParts is { } skinned)
+            {
+                ISkinnedAttachmentMeshLease upload = Scene.UploadSkinnedAttachment(skinned);
+                lease = upload;
+                resources = new AttachmentPartResources(upload.Handles, skinned[0].Mesh);
+            }
+            else
+            {
+                IAttachmentMeshLease upload = Scene.UploadAttachment(mesh.RigidParts!);
+                lease = upload;
+                resources = new AttachmentPartResources(upload.Handles);
+            }
+            return new CachedMesh(mesh.Bytes, lease, resources);
+        }
+        catch
+        {
+            lease?.Dispose();
             throw;
         }
     }
@@ -89,12 +129,20 @@ public sealed class AttachmentSetCache : IDisposable
         return bytes;
     }
 
-    static IReadOnlyList<GltfMeshPart> Decode(byte[] bytes, string context)
+    static PendingMesh Decode(MeshIdentity identity, byte[] bytes, string context)
     {
-        try { return GltfLoader.LoadPartsWithMaterials(bytes, context); }
+        if (identity.Skinned) AttachmentGlb.ValidateSkinnedEmbedded(bytes, context);
+        else AttachmentGlb.ValidateRigidEmbedded(bytes, context);
+        try
+        {
+            return identity.Skinned
+                ? new PendingMesh(identity, bytes, null, GltfLoader.LoadSkinnedPartsWithMaterials(bytes, context))
+                : new PendingMesh(identity, bytes, GltfLoader.LoadPartsWithMaterials(bytes, context), null);
+        }
         catch (Exception error) when (error is IOException or InvalidOperationException or ArgumentException or FormatException or NotSupportedException)
         {
-            throw new InvalidDataException($"{context}: rigid geometry cannot be decoded.", error);
+            string kind = identity.Skinned ? "skinned" : "rigid";
+            throw new InvalidDataException($"{context}: {kind} geometry cannot be decoded.", error);
         }
     }
 
@@ -122,11 +170,13 @@ public sealed class AttachmentSetCache : IDisposable
     static void Release(IEnumerable<CachedMesh> meshes)
     {
         foreach (CachedMesh mesh in meshes)
-            if (mesh.Lease is AttachmentUpload upload) upload.UnloadMeshes();
+            if (mesh.Lease is IAttachmentUpload upload) upload.UnloadMeshes();
         foreach (CachedMesh mesh in meshes) mesh.Lease.Dispose();
     }
 
-    sealed record PendingMesh(AttachmentMeshRef Reference, byte[] Bytes, IReadOnlyList<GltfMeshPart> Parts);
-    sealed record CachedMesh(byte[] Bytes, IAttachmentMeshLease Lease);
+    readonly record struct MeshIdentity(AttachmentMeshRef Reference, bool Skinned);
+    sealed record PendingMesh(MeshIdentity Identity, byte[] Bytes,
+        IReadOnlyList<GltfMeshPart>? RigidParts, IReadOnlyList<GltfSkinnedMeshPart>? SkinnedParts);
+    sealed record CachedMesh(byte[] Bytes, IDisposable Lease, AttachmentPartResources Resources);
     sealed record CachedDefinition(byte[] Bytes, LoadedAttachmentSet View);
 }

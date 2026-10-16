@@ -10,7 +10,7 @@
 
 **Spec:** [Approved equipment coverage design](../../design/EQUIPMENT-COVERAGE-DESIGN-2026-10-16.md), approved with its visible collar implication on 2026-10-16. Source audit base is `0bd787b5c`, written draft was `73e763bea`.
 
-**Status:** Owner approved this plan and subagent-driven execution. Task 1 is implemented and reviewed at `b4664f739`, with [checkpoint evidence](proofs/2026-10-16-equipment-coverage-task1.md). Tasks 2 to 10 remain open. Work belongs on `feature/equipment-coverage` in the existing engine equipment-coverage worktree. Do not change consumer art or its acceptance gates in these tasks.
+**Status:** Owner approved this plan and subagent-driven execution. Tasks 1 to 3 are implemented and reviewed through `2304c2c0`, with [Task 1 checkpoint evidence](proofs/2026-10-16-equipment-coverage-task1.md). Task 4 safety fixes are separately reviewed through `afd0fbae3`. Task 4 continues under the owner-approved [construction and render-error amendment](../../design/EQUIPMENT-COVERAGE-AMENDMENT-2026-10-16.md) and its [execution supplement](2026-10-16-equipment-coverage-amendment.md), which supersede the affected interfaces and steps below. Tasks 4 to 10 remain open. Work belongs on `feature/equipment-coverage` in the existing engine equipment-coverage worktree. Do not change consumer art or its acceptance gates.
 
 ## Global Constraints
 

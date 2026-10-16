@@ -106,6 +106,8 @@ public sealed partial class MapEditSession
         BeforeNativePublication?.Invoke();
         checkpoint?.Invoke();
         NativeDocumentTransaction.Publish(_doc!, staged);
+        // The callback may have edited the staged candidate after its expansion was built, so it is not remembered.
+        if (revalidate) NativeAcceptedExpansions.Forget(_doc!);
         _nativeAssets = staged.Assets;
         staged.Accept();
         _dirty = true;

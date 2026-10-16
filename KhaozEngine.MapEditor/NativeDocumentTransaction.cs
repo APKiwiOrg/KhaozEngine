@@ -30,7 +30,11 @@ internal sealed record NativeDocumentPreparation(MapNativeWriteSet WriteSet, Map
     internal MapNativePublicationMode Mode { get; init; } = MapNativePublicationMode.NamedWriteSet;
 }
 internal sealed record NativeStagedPublication(MapDocument Candidate, MapNativeWriteSet WriteSet,
-    MapNativePublicationMode Mode, MapAssetClosure? Assets, MapNativeEditEffects Effects, Action Accept);
+    MapNativePublicationMode Mode, MapAssetClosure? Assets, MapNativeEditEffects Effects, Action Accept)
+{
+    /// <summary>The candidate's complete expansion against <see cref="Assets"/>, when staging built one.</summary>
+    internal Lazy<MapEffectiveResources>? Expansion { get; init; }
+}
 
 /// <summary>Validates and publishes exactly one native document write set.</summary>
 internal static class NativeDocumentTransaction
@@ -55,6 +59,9 @@ internal static class NativeDocumentTransaction
     {
         if (staged.Mode == MapNativePublicationMode.CompleteSnapshot) NativeDocumentSnapshot.Publish(document, staged.Candidate);
         else NativeDocumentSnapshot.PublishWriteSet(document, staged.Candidate, staged.WriteSet);
+        // Only an expansion already built during staging is a snapshot of what was published. Anything else clears it.
+        if (staged is { Assets: { } assets, Expansion: { IsValueCreated: true } expansion }) NativeAcceptedExpansions.Remember(document, assets, expansion);
+        else NativeAcceptedExpansions.Forget(document);
     }
 
     internal static NativeStagedPublication Stage(MapDocument document, IEditorCommand command, bool undo,
@@ -91,7 +98,9 @@ internal static class NativeDocumentTransaction
         var beforeAssets = command is INativeAssetClosureCommand pair ? pair.Closure(!undo) : assets;
         // Validation and effects read one complete expansion of each document, built on first use.
         var expanded = selected is null ? null : Expansion(publication, selected);
-        var expandedBefore = (beforeAssets ?? selected) is { } closure ? Expansion(document, closure) : null;
+        // The accepted expansion of the live document is its before side, when it was expanded against the same closure.
+        var expandedBefore = (beforeAssets ?? selected) is { } closure
+            ? NativeAcceptedExpansions.TryBefore(document, closure, out var accepted) ? accepted : Expansion(document, closure) : null;
         ValidateSurfaces(publication, preparation.WriteSet, preparation.Mode, selected, expanded);
         if (expanded is not null && (publication.Prefabs is not null || publication.NativeResourceTransforms is not null || publication.BuildingIntent is not null))
         {
@@ -103,7 +112,22 @@ internal static class NativeDocumentTransaction
         var named = NativePlacementEffects.NameResources(preparation.Effects, document, publication, preparation.WriteSet);
         effects = NativePlacementEffects.Combine(named, effects,
             document, publication, beforeAssets, selected, preparation.WriteSet, preparation.Mode, expandedBefore, expanded);
-        return new(publication, preparation.WriteSet, preparation.Mode, selected, effects, preparation.Accept);
+        if (expandedBefore is not null && expanded is not null && (HoldsMarkers(document) || HoldsMarkers(publication)))
+            effects = MarkerEffects(effects, expandedBefore, expanded);
+        return new(publication, preparation.WriteSet, preparation.Mode, selected, effects, preparation.Accept) { Expansion = expanded };
+    }
+
+    static bool HoldsMarkers(MapDocument document) => document.Prefabs is not null || document.BuildingIntent is { Markers.Count: > 0 };
+
+    // One diff of the complete before and after expansions, whatever the write set. A marker whose support the edit
+    // removed refuses with the after expansion, before publication. An old document that no longer resolves keeps the
+    // released effects, as a repair cannot know its old markers.
+    static MapNativeEditEffects MarkerEffects(MapNativeEditEffects effects, Lazy<MapEffectiveResources> before, Lazy<MapEffectiveResources> after)
+    {
+        MapEffectiveResources old;
+        try { old = before.Value; }
+        catch (MapDocumentException) { return effects; }
+        return NativeMarkerEffects.Combine(effects, old, after.Value);
     }
 
     static NativeDocumentPreparation PreparePlacement(MapDocument before, MapDocument candidate,

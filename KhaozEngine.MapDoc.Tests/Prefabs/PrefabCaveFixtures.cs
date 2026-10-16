@@ -6,6 +6,7 @@ using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Interiors;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Spaces;
+using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Water;
 
@@ -257,6 +258,27 @@ internal static partial class PrefabFixtures
             for (int i = 0; i < patch.Records.Count; i++)
                 if (patch.Records[i] is MapPrismDomain prism) patch.Records[i] = prism with { InstanceId = "" };
         return new(doc, f.Assets);
+    }
+
+    /// <summary>StandalonePrism without the records outside the room and its prism whose typed references name the room.
+    /// In the released asset that is exactly the room portal. The prism, floor and parent stay.</summary>
+    internal static PrefabFixture RoomFreeStandalonePrism()
+    {
+        const string room = "a/room";
+        var f = StandalonePrism();
+        foreach (var patch in f.Document.Surfaces.Patches.Values)
+            patch.Records.RemoveAll(r => r.Id != room && r is not MapPrismDomain { Space.Id: room } &&
+                MapSurfaceReferences.Records(r).Any(reference => reference.Id == room));
+        for (int i = 0; i < f.Document.Surfaces.Refs.Count; i++)
+        {
+            var surface = f.Document.Surfaces.Refs[i];
+            f.Document.Surfaces.Refs[i] = surface with
+            {
+                SemanticSha256 = MapSurfaceSemantics.SurfaceDigest(surface, f.Document.Surfaces.Patches.Where(p => p.Key.SurfaceId == surface.Id)
+                    .Select(p => new KeyValuePair<MapPatchKey, string>(p.Key, MapSurfaceSemantics.PatchDigest(p.Value))))
+            };
+        }
+        return f;
     }
 
     static PrefabFixture StackedPrisms()

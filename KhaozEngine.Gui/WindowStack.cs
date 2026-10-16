@@ -19,10 +19,13 @@ namespace KhaozEngine.Gui
     /// raise waits for the release, so a drag in progress keeps its window on top.</para>
     /// <para>A fresh left or right press raises the front-most open window containing its press origin, tested
     /// against where the windows were before this frame's updates. No press raises anything while a window
-    /// captures the pointer.</para>
+    /// captures the pointer, while the other mouse button is held from an earlier frame, or on a frame that
+    /// receives no input.</para>
     /// <para>Each window updates with every window above it occluded on the pointer, so a covered area answers
-    /// no hit query. After <see cref="Update"/> every open window stays occluded and reserved with
-    /// <see cref="Pointer.BlockRegion"/>, so the layers beneath treat windows as UI. Update the stack before
+    /// no hit query. A window that closes during its own update still occludes for the rest of that frame,
+    /// because the player saw it, and is skipped from the next frame on. After <see cref="Update"/> every
+    /// window that updated stays occluded and reserved with <see cref="Pointer.BlockRegion"/>, so the layers
+    /// beneath treat windows as UI. Update the stack before
     /// anything beneath reads the pointer. <see cref="Draw"/> clears occlusion when it finishes, so content drawn
     /// after it, such as tooltips, reads the pointer as uncovered.</para>
     /// </remarks>
@@ -110,8 +113,8 @@ namespace KhaozEngine.Gui
             if (!receivesInput)
             {
                 pointer.OccludeAll();
-                for (int i = 0; i < snapshot.Count; i++) UpdateOne(snapshot, i, pointer, input, dt, false);
-                BlockOpen(snapshot, pointer);
+                for (int i = 0; i < snapshot.Count; i++)
+                    if (UpdateOne(snapshot, i, pointer, input, dt, false)) pointer.BlockRegion(snapshot[i].Bounds);
                 snapshot.Clear();
                 return;
             }
@@ -127,22 +130,22 @@ namespace KhaozEngine.Gui
                 for (int i = _order.Count - 1; i >= 0; i--)
                     if (_order[i].IsOpen) snapshot.Add(_order[i]);
 
+                // A window that closed during its own update still occludes: the tap that closed it must not
+                // reach the window behind on the same frame.
                 for (int i = 0; i < snapshot.Count; i++)
                 {
-                    UpdateOne(snapshot, i, pointer, input, dt, true);
-                    var window = snapshot[i];
-                    if (!window.IsOpen) continue;
-                    window.Occlude(pointer);
-                    pointer.BlockRegion(window.Bounds);
+                    if (!UpdateOne(snapshot, i, pointer, input, dt, true)) continue;
+                    snapshot[i].Occlude(pointer);
+                    pointer.BlockRegion(snapshot[i].Bounds);
                 }
             }
             else
             {
-                UpdateOne(snapshot, captor, pointer, input, dt, true);
+                if (UpdateOne(snapshot, captor, pointer, input, dt, true)) pointer.BlockRegion(snapshot[captor].Bounds);
                 pointer.OccludeAll();
                 for (int i = 0; i < snapshot.Count; i++)
-                    if (i != captor) UpdateOne(snapshot, i, pointer, input, dt, true);
-                BlockOpen(snapshot, pointer);
+                    if (i != captor && UpdateOne(snapshot, i, pointer, input, dt, true))
+                        pointer.BlockRegion(snapshot[i].Bounds);
             }
             snapshot.Clear();
         }
@@ -225,11 +228,16 @@ namespace KhaozEngine.Gui
             _pendingRaise.Clear();
         }
 
-        // Rule 3: both targets are chosen from the order and places the player saw, before anything moves.
+        // Rule 3: both targets are chosen from the order and places the player saw, before anything moves. A
+        // press raises nothing while the other button is held from an earlier frame, so a gesture in progress
+        // keeps its window on top.
         void RaiseOnPress(List<IStackWindow> topToBottom, Pointer pointer)
         {
-            IStackWindow? left = pointer.IsPressOriginFresh ? FrontMostAt(topToBottom, pointer.PressOrigin) : null;
-            IStackWindow? right = pointer.IsRightPressOriginFresh
+            bool leftHeld = pointer.IsDown && !pointer.IsPressOriginFresh;
+            bool rightHeld = pointer.IsRightDown && !pointer.IsRightPressOriginFresh;
+            IStackWindow? left = pointer.IsPressOriginFresh && !rightHeld
+                ? FrontMostAt(topToBottom, pointer.PressOrigin) : null;
+            IStackWindow? right = pointer.IsRightPressOriginFresh && !leftHeld
                 ? FrontMostAt(topToBottom, pointer.RightPressOrigin) : null;
             if (left is not null) BringToFront(left);
             if (right is not null) BringToFront(right);
@@ -242,12 +250,14 @@ namespace KhaozEngine.Gui
             return null;
         }
 
-        void UpdateOne(List<IStackWindow> topToBottom, int index, Pointer pointer, InputState input, float dt,
+        // Update one window unless another window closed it earlier this frame. Reports whether it updated.
+        bool UpdateOne(List<IStackWindow> topToBottom, int index, Pointer pointer, InputState input, float dt,
             bool receivesInput)
         {
             var window = topToBottom[index];
-            if (!window.IsOpen) return;
+            if (!window.IsOpen) return false;
             window.Update(new WindowUpdate(pointer, input, dt, receivesInput, IsFrontAt(topToBottom, index)));
+            return true;
         }
 
         // Front of its band: no window above it in the same band is still open.
@@ -260,12 +270,6 @@ namespace KhaozEngine.Gui
                 if (above.IsOpen && _bandOf.TryGetValue(above, out var aboveBand) && aboveBand == band) return false;
             }
             return true;
-        }
-
-        static void BlockOpen(List<IStackWindow> windows, Pointer pointer)
-        {
-            foreach (var window in windows)
-                if (window.IsOpen) pointer.BlockRegion(window.Bounds);
         }
 
         void RebuildOrder()

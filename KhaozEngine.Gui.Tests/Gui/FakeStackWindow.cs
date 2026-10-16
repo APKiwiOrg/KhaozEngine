@@ -43,6 +43,7 @@ namespace KhaozEngine.Tests.Gui
         public bool Hover { get; private set; }
         public bool Tap { get; private set; }
         public bool ProbeHover { get; private set; }
+        public bool Dragging { get; private set; }
         public bool DrawHover { get; private set; }
 
         public void Close()
@@ -60,6 +61,7 @@ namespace KhaozEngine.Tests.Gui
             Hover = update.Pointer.IsHoveringIn(Bounds);
             Tap = update.Pointer.IsTapIn(Bounds);
             ProbeHover = update.Pointer.IsHoveringIn(Probe);
+            Dragging = update.Pointer.IsDraggingIn(Bounds);
             OnUpdate?.Invoke(update);
         }
 

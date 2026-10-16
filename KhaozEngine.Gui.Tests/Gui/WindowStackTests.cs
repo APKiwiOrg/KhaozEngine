@@ -224,7 +224,7 @@ namespace KhaozEngine.Tests.Gui
         }
 
         [Fact]
-        public void ClosedDuringUpdate_AddsNoOccluderAndDoesNotDraw()
+        public void ClosedDuringUpdate_OccludesForThatFrameAndDoesNotDraw()
         {
             AddBoth();
             _f.OnUpdate = u =>
@@ -235,15 +235,84 @@ namespace KhaozEngine.Tests.Gui
             Frame(Overlap, held: true);
             _log.Clear();
 
+            // The closing frame: the player saw F, so the tap that closed it does not reach B behind it.
             Frame(Overlap);
             Assert.False(_f.IsOpen);
-            Assert.False(_pointer.IsOccluded(FrontOnly));
+            Assert.False(_b.Tap);
+            Assert.False(_b.Hover);
+            Assert.True(_pointer.IsOccluded(FrontOnly));
+            Assert.True(_pointer.IsBlocked(FrontOnly));
             Draw();
             Assert.DoesNotContain("draw:F", _log);
             Assert.Contains("draw:B", _log);
 
+            // From the next frame F is skipped as closed.
+            _log.Clear();
             Frame(Overlap);
             Assert.True(_b.Hover);
+            Assert.DoesNotContain("update:F", _log);
+            Assert.False(_pointer.IsOccluded(FrontOnly));
+        }
+
+        [Fact]
+        public void RightPress_WhileLeftHeld_RaisesNothingAndDragKeepsItsWindow()
+        {
+            AddBoth();
+            var title = new Vector2(400f, 160f);
+            Frame(title);
+            Frame(title, held: true);
+            Assert.True(_f.Dragging);
+
+            Frame(title + new Vector2(-40f, 0f), held: true);
+            Assert.True(_f.Dragging);
+
+            // A right press on B's visible area while the left drag is held.
+            Frame(BackOnly, held: true, rightHeld: true);
+            AssertOrder(_b, _f);
+            Assert.True(_f.Dragging);
+            Frame(BackOnly, held: true, rightHeld: true);
+            AssertOrder(_b, _f);
+            Assert.True(_f.Dragging);
+            Frame(BackOnly, held: true);
+            AssertOrder(_b, _f);
+            Assert.True(_f.Dragging);
+
+            Frame(BackOnly);
+            AssertOrder(_b, _f);
+            Assert.False(_f.Dragging);
+        }
+
+        [Fact]
+        public void LeftPress_WhileRightHeld_RaisesNothing()
+        {
+            AddBoth();
+            Frame(FrontOnly);
+            Frame(FrontOnly, rightHeld: true);
+            AssertOrder(_b, _f);
+
+            Frame(BackOnly, held: true, rightHeld: true);
+            AssertOrder(_b, _f);
+            Frame(BackOnly, rightHeld: true);
+            Frame(BackOnly);
+            AssertOrder(_b, _f);
+        }
+
+        [Fact]
+        public void ReceivesInputFalse_PressRaisesNothing()
+        {
+            AddBoth();
+            Frame(BackOnly);
+            Frame(BackOnly, held: true, receivesInput: false);
+            AssertOrder(_b, _f);
+            Frame(BackOnly, receivesInput: false);
+
+            Frame(BackOnly, rightHeld: true, receivesInput: false);
+            AssertOrder(_b, _f);
+            Frame(BackOnly, receivesInput: false);
+
+            // The same press with input on does raise, so the facts above are not vacuous.
+            Frame(BackOnly, held: true);
+            AssertOrder(_f, _b);
         }
 
         [Fact]

@@ -10,10 +10,26 @@ public static class CoverageCertification
 {
     const byte Changed = 1, Commanded = 2;
 
-    /// <inheritdoc cref="Validate(CoverageRefinement, ReadOnlySpan{ModelVertex}, ReadOnlySpan{ModelVertex}, in Matrix4x4, ReadOnlySpan{CoverageCommandPose}, CoverageScratch, out CoverageCertificate, out CoverageFailure)"/>
     public static bool Validate(CoverageRefinement topology, ReadOnlySpan<ModelVertex> before, ReadOnlySpan<ModelVertex> after,
+        in Matrix4x4 actorModel, ReadOnlySpan<CoverageCommandPose> commands, in CoverageRenderContext context,
+        CoverageScratch scratch, out CoverageFailure failure) =>
+        Validate(topology, before, after, actorModel, commands, context, scratch, out _, out failure);
+
+    public static bool Validate(CoverageRefinement topology, ReadOnlySpan<ModelVertex> before, ReadOnlySpan<ModelVertex> after,
+        in Matrix4x4 actorModel, ReadOnlySpan<CoverageCommandPose> commands, in CoverageRenderContext context,
+        CoverageScratch scratch, out CoverageCertificate certificate, out CoverageFailure failure)
+    {
+        bool accepted = ValidateCandidate(topology, before, after, actorModel, commands, context, true, scratch,
+            out var geometry, out double renderError, out failure);
+        certificate = accepted ? new(geometry.FullCoreClearance, geometry.MinimumCoreClearance,
+            renderError, geometry.DisplacedVertices, context.Stamp) : default;
+        return accepted;
+    }
+
+    /// <inheritdoc cref="ValidateGeometry(CoverageRefinement, ReadOnlySpan{ModelVertex}, ReadOnlySpan{ModelVertex}, in Matrix4x4, ReadOnlySpan{CoverageCommandPose}, CoverageScratch, out CoverageGeometryCertificate, out CoverageFailure)"/>
+    public static bool ValidateGeometry(CoverageRefinement topology, ReadOnlySpan<ModelVertex> before, ReadOnlySpan<ModelVertex> after,
         in Matrix4x4 actorModel, ReadOnlySpan<CoverageCommandPose> commands, CoverageScratch scratch, out CoverageFailure failure) =>
-        Validate(topology, before, after, actorModel, commands, scratch, out _, out failure);
+        ValidateGeometry(topology, before, after, actorModel, commands, scratch, out _, out failure);
 
     /// <summary>before is the interpolated posed surface and after the candidate final surface, both exactly VertexCount
     /// in actor model space. Checks, in order: finite positions, exact protected bytes and positional welds, caps, world
@@ -21,10 +37,16 @@ public static class CoverageCertification
     /// faces, new nonadjacent host intersections through the refitted host hierarchy, then for each full-weight command
     /// the certified world clearance and solid containment of every commanded core and collar triangle and the analytic
     /// whole-core side behind the inward sheet. Other commanded regions must stay separated from that equipment too.</summary>
-    public static bool Validate(CoverageRefinement topology, ReadOnlySpan<ModelVertex> before, ReadOnlySpan<ModelVertex> after,
+    public static bool ValidateGeometry(CoverageRefinement topology, ReadOnlySpan<ModelVertex> before, ReadOnlySpan<ModelVertex> after,
         in Matrix4x4 actorModel, ReadOnlySpan<CoverageCommandPose> commands, CoverageScratch scratch,
-        out CoverageCertificate certificate, out CoverageFailure failure)
+        out CoverageGeometryCertificate certificate, out CoverageFailure failure) =>
+        ValidateCandidate(topology, before, after, actorModel, commands, default, false, scratch, out certificate, out _, out failure);
+
+    static bool ValidateCandidate(CoverageRefinement topology, ReadOnlySpan<ModelVertex> before, ReadOnlySpan<ModelVertex> after,
+        in Matrix4x4 actorModel, ReadOnlySpan<CoverageCommandPose> commands, in CoverageRenderContext context, bool render,
+        CoverageScratch scratch, out CoverageGeometryCertificate certificate, out double renderError, out CoverageFailure failure)
     {
+        renderError = 0;
         ArgumentNullException.ThrowIfNull(topology); ArgumentNullException.ThrowIfNull(scratch);
         if (before.Length != topology.VertexCount || after.Length != topology.VertexCount)
             throw new ArgumentException("Coverage certification requires exact topology lengths.");
@@ -34,8 +56,15 @@ public static class CoverageCertification
         double magnitude = Magnitude(before, after);
         if (!double.IsFinite(magnitude))
             return CoverageFrames.Refuse(topology, CoverageFailureCode.UnsupportedTransform, 0, 0, 0, 0, out failure);
-        return CoverageFrames.TryPrepare(topology, actorModel, commands, scratch, magnitude, out failure)
-            && Certify(topology, before, after, commands, scratch, out certificate, out failure);
+        if (!CoverageFrames.TryPrepare(topology, actorModel, commands, scratch, magnitude, out failure)
+            || !Certify(topology, before, after, commands, scratch, out certificate, out failure)
+            || render && (!CoverageRenderError.TryBound(topology, after, actorModel, commands, scratch, context, out renderError, out failure)
+                || scratch.ActiveCommands > 1 && !Certify(topology, before, after, commands, scratch, out certificate, out failure)))
+        {
+            certificate = default;
+            return false;
+        }
+        return true;
     }
 
     internal static double Magnitude(ReadOnlySpan<ModelVertex> first, ReadOnlySpan<ModelVertex> second)
@@ -47,7 +76,7 @@ public static class CoverageCertification
     }
 
     internal static bool Certify(CoverageRefinement topology, ReadOnlySpan<ModelVertex> before, ReadOnlySpan<ModelVertex> after,
-        ReadOnlySpan<CoverageCommandPose> commands, CoverageScratch scratch, out CoverageCertificate certificate, out CoverageFailure failure)
+        ReadOnlySpan<CoverageCommandPose> commands, CoverageScratch scratch, out CoverageGeometryCertificate certificate, out CoverageFailure failure)
     {
         certificate = default;
         var tally = new CoverageTally();
@@ -66,7 +95,7 @@ public static class CoverageCertification
             for (int slot = 0; slot < scratch.ActiveCommands; slot++)
             {
                 ref readonly CoverageCommandFrame frame = ref scratch.Frames[slot];
-                errorBound = Math.Max(errorBound, frame.ErrorBound);
+                errorBound = Math.Max(errorBound, frame.ConstructionErrorBound);
                 if (!frame.Full) { full = false; continue; }
                 Equipment(topology, after, commands, scratch, slot, stack, ref minimumCore, ref tally);
                 if (!tally.Failed) Containment(topology, after, commands, scratch, slot, ref tally);
@@ -266,7 +295,7 @@ public static class CoverageCertification
             byte flags = scratch.TriangleFlags[t];
             if ((flags & Commanded) == 0) continue;
             bool own = flags >> 2 == slot;
-            double threshold = own ? frame.Clearance : frame.ErrorBound;
+            double threshold = own ? frame.Clearance : Math.Max(frame.ConstructionErrorBound, frame.RenderErrorBound);
             var box = CoverageBox.Empty;
             for (int corner = 0; corner < 3; corner++) box.Add(frame.HostToCoverage.Apply(after[(int)indices[t * 3 + corner]].Position));
             box.Expand(threshold / frame.SigmaMin + frame.Uncertainty + 1e-12 * (Math.Max(Math.Abs(box.MinX), Math.Abs(box.MaxX)) + 1));

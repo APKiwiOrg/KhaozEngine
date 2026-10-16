@@ -9,19 +9,42 @@ namespace KhaozEngine.Render3D;
 /// Nothing is clamped, enlarged or approximated into acceptance.</summary>
 public static class CoverageEvaluator
 {
-    /// <inheritdoc cref="TryEvaluate(CoverageRefinement, ReadOnlySpan{ModelVertex}, in Matrix4x4, ReadOnlySpan{CoverageCommandPose}, CoverageScratch, Span{ModelVertex}, out CoverageCertificate, out CoverageFailure)"/>
+    /// <summary>Requires actual captured render evidence. No caller output or drawable certificate is issued on refusal.</summary>
     public static bool TryEvaluate(CoverageRefinement topology, ReadOnlySpan<ModelVertex> posedSource, in Matrix4x4 actorModel,
+        ReadOnlySpan<CoverageCommandPose> commands, in CoverageRenderContext context, CoverageScratch scratch,
+        Span<ModelVertex> finalVertices, out CoverageFailure failure) =>
+        TryEvaluate(topology, posedSource, actorModel, commands, context, scratch, finalVertices, out _, out failure);
+
+    public static bool TryEvaluate(CoverageRefinement topology, ReadOnlySpan<ModelVertex> posedSource, in Matrix4x4 actorModel,
+        ReadOnlySpan<CoverageCommandPose> commands, in CoverageRenderContext context, CoverageScratch scratch,
+        Span<ModelVertex> finalVertices, out CoverageCertificate certificate, out CoverageFailure failure)
+    {
+        bool accepted = Evaluate(topology, posedSource, actorModel, commands, context, true, scratch, finalVertices,
+            out var geometry, out double renderError, out failure);
+        certificate = accepted ? new(geometry.FullCoreClearance, geometry.MinimumCoreClearance,
+            renderError, geometry.DisplacedVertices, context.Stamp) : default;
+        return accepted;
+    }
+
+    /// <inheritdoc cref="TryEvaluateGeometry(CoverageRefinement, ReadOnlySpan{ModelVertex}, in Matrix4x4, ReadOnlySpan{CoverageCommandPose}, CoverageScratch, Span{ModelVertex}, out CoverageGeometryCertificate, out CoverageFailure)"/>
+    public static bool TryEvaluateGeometry(CoverageRefinement topology, ReadOnlySpan<ModelVertex> posedSource, in Matrix4x4 actorModel,
         ReadOnlySpan<CoverageCommandPose> commands, CoverageScratch scratch, Span<ModelVertex> finalVertices, out CoverageFailure failure) =>
-        TryEvaluate(topology, posedSource, actorModel, commands, scratch, finalVertices, out _, out failure);
+        TryEvaluateGeometry(topology, posedSource, actorModel, commands, scratch, finalVertices, out _, out failure);
 
     /// <summary>Skins nothing itself. posedSource holds exactly SourceVertexCount already skinned source vertices in actor
     /// model space, and finalVertices exactly VertexCount outputs, disjoint from it. Wrong lengths, overlap or foreign
     /// scratch throw ArgumentException. A refusal writes nothing to finalVertices, so no partial or stale surface is
     /// produced by this call, and the caller must present the uncovered pose instead. Warm calls allocate nothing.</summary>
-    public static bool TryEvaluate(CoverageRefinement topology, ReadOnlySpan<ModelVertex> posedSource, in Matrix4x4 actorModel,
+    public static bool TryEvaluateGeometry(CoverageRefinement topology, ReadOnlySpan<ModelVertex> posedSource, in Matrix4x4 actorModel,
         ReadOnlySpan<CoverageCommandPose> commands, CoverageScratch scratch, Span<ModelVertex> finalVertices,
-        out CoverageCertificate certificate, out CoverageFailure failure)
+        out CoverageGeometryCertificate certificate, out CoverageFailure failure) =>
+        Evaluate(topology, posedSource, actorModel, commands, default, false, scratch, finalVertices, out certificate, out _, out failure);
+
+    static bool Evaluate(CoverageRefinement topology, ReadOnlySpan<ModelVertex> posedSource, in Matrix4x4 actorModel,
+        ReadOnlySpan<CoverageCommandPose> commands, in CoverageRenderContext context, bool render, CoverageScratch scratch,
+        Span<ModelVertex> finalVertices, out CoverageGeometryCertificate certificate, out double renderError, out CoverageFailure failure)
     {
+        renderError = 0;
         ArgumentNullException.ThrowIfNull(topology); ArgumentNullException.ThrowIfNull(scratch);
         if (posedSource.Length != topology.SourceVertexCount || finalVertices.Length != topology.VertexCount || posedSource.Overlaps(finalVertices))
             throw new ArgumentException("Coverage evaluation requires exact source and final lengths and disjoint buffers.");
@@ -35,6 +58,8 @@ public static class CoverageEvaluator
             || !topology.TryInterpolate(posedSource, scratch.Before, out failure)
             || !Construct(topology, actorModel, commands, scratch, out failure)
             || !CoverageCertification.Certify(topology, scratch.Before, scratch.After, commands, scratch, out certificate, out failure)
+            || render && (!CoverageRenderError.TryBound(topology, scratch.After, actorModel, commands, scratch, context, out renderError, out failure)
+                || scratch.ActiveCommands > 1 && !CoverageCertification.Certify(topology, scratch.Before, scratch.After, commands, scratch, out certificate, out failure))
             || !CoverageSurfaceNormals.Update(topology, scratch.Before, scratch.After, scratch, out failure))
         {
             certificate = default;

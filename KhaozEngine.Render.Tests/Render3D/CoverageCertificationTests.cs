@@ -33,7 +33,7 @@ public sealed class CoverageCertificationTests
         var (topology, posed, actor, commands, scratch) = Scenario(kind);
         var sentinel = new ModelVertex(new(7, 7, 7), Vector3.UnitY, Vector4.One);
         var final = Enumerable.Repeat(sentinel, topology.VertexCount).ToArray();
-        Assert.False(CoverageEvaluator.TryEvaluate(topology, posed, actor, commands, scratch, final, out var certificate, out var failure));
+        Assert.False(CoverageEvaluator.TryEvaluateGeometry(topology, posed, actor, commands, scratch, final, out var certificate, out var failure));
         Assert.Equal(expected, failure.Code);
         Assert.Equal(topology.HostIdentity, failure.HostIdentity);
         Assert.Equal(default, certificate);
@@ -95,9 +95,9 @@ public sealed class CoverageCertificationTests
         }
         Assert.True(moved > 1);
         Assert.True(CoverageCommands.Witness(fixture, topology, before, candidate).ClearanceViolations > 0);
-        Assert.False(CoverageCertification.Validate(topology, before, candidate, Matrix4x4.Identity, commands, new CoverageScratch(topology), out var failure));
+        Assert.False(CoverageCertification.ValidateGeometry(topology, before, candidate, Matrix4x4.Identity, commands, new CoverageScratch(topology), out var failure));
         Assert.Equal(CoverageFailureCode.EquipmentIntersection, failure.Code);
-        Assert.True(CoverageEvaluator.TryEvaluate(topology, fixture.Posed, Matrix4x4.Identity, commands, new CoverageScratch(topology),
+        Assert.True(CoverageEvaluator.TryEvaluateGeometry(topology, fixture.Posed, Matrix4x4.Identity, commands, new CoverageScratch(topology),
             new ModelVertex[topology.VertexCount], out failure), failure.ToString());
     }
 
@@ -113,9 +113,9 @@ public sealed class CoverageCertificationTests
         var blended = first.Zip(second, (a, b) => Matrix4x4.Lerp(a, b, .5f)).ToArray();
         var final = new ModelVertex[topology.VertexCount];
         foreach (var palette in new[] { first, second })
-            Assert.True(CoverageEvaluator.TryEvaluate(topology, Skin(fixture, palette), Matrix4x4.Identity, commands, scratch, final, out var accepted),
+            Assert.True(CoverageEvaluator.TryEvaluateGeometry(topology, Skin(fixture, palette), Matrix4x4.Identity, commands, scratch, final, out var accepted),
                 accepted.ToString());
-        Assert.False(CoverageEvaluator.TryEvaluate(topology, Skin(fixture, blended), Matrix4x4.Identity, commands, scratch, final, out var failure));
+        Assert.False(CoverageEvaluator.TryEvaluateGeometry(topology, Skin(fixture, blended), Matrix4x4.Identity, commands, scratch, final, out var failure));
         Assert.Equal(CoverageFailureCode.FoldedPatch, failure.Code);
     }
 
@@ -128,8 +128,8 @@ public sealed class CoverageCertificationTests
         var scratch = new CoverageScratch(topology);
         var before = CoverageCommands.Surface(topology, fixture.Posed);
         var final = new ModelVertex[topology.VertexCount];
-        Assert.True(CoverageEvaluator.TryEvaluate(topology, fixture.Posed, Matrix4x4.Identity, commands, scratch, final, out var failure));
-        Assert.True(CoverageCertification.Validate(topology, before, final, Matrix4x4.Identity, commands, scratch, out failure));
+        Assert.True(CoverageEvaluator.TryEvaluateGeometry(topology, fixture.Posed, Matrix4x4.Identity, commands, scratch, final, out var failure));
+        Assert.True(CoverageCertification.ValidateGeometry(topology, before, final, Matrix4x4.Identity, commands, scratch, out failure));
 
         var tampered = final.ToArray();
         int protectedVertex = Enumerable.Range(0, final.Length).First(i => topology.Vertices[i].Strength == 0);
@@ -144,13 +144,13 @@ public sealed class CoverageCertificationTests
 
         Assert.Equal(CoverageFailureCode.EquipmentIntersection, Refusal(before));
         var tight = commands.Select(c => c with { MaxWorldRecession = .05f }).ToArray();
-        Assert.False(CoverageCertification.Validate(topology, before, final, Matrix4x4.Identity, tight, scratch, out failure));
+        Assert.False(CoverageCertification.ValidateGeometry(topology, before, final, Matrix4x4.Identity, tight, scratch, out failure));
         Assert.Equal(CoverageFailureCode.RecessionExceeded, failure.Code);
         Assert.Equal(1u, failure.CommandId);
 
         CoverageFailureCode Refusal(ModelVertex[] surface)
         {
-            Assert.False(CoverageCertification.Validate(topology, before, surface, Matrix4x4.Identity, commands, scratch, out var refused));
+            Assert.False(CoverageCertification.ValidateGeometry(topology, before, surface, Matrix4x4.Identity, commands, scratch, out var refused));
             return refused.Code;
         }
     }

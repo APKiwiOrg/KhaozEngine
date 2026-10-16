@@ -19,7 +19,7 @@ public sealed class CoverageSafetyRegressionTests
         var (topology, before, command) = Fan(kind);
         var after = before.ToArray();
         after[0].Position.Z = kind == "shared-edge-crossing" ? -.25f : -.3f;
-        Assert.False(CoverageCertification.Validate(topology, before, after, Matrix4x4.Identity, [command],
+        Assert.False(CoverageCertification.ValidateGeometry(topology, before, after, Matrix4x4.Identity, [command],
             new CoverageScratch(topology), out var certificate, out var failure));
         Assert.Equal(CoverageFailureCode.HostIntersection, failure.Code);
         Assert.Equal(default, certificate);
@@ -37,7 +37,7 @@ public sealed class CoverageSafetyRegressionTests
         var (topology, before, command) = Fan(kind);
         var after = before.ToArray();
         after[0].Position.Z = -.3f;
-        Assert.True(CoverageCertification.Validate(topology, before, after, Matrix4x4.Identity, [command],
+        Assert.True(CoverageCertification.ValidateGeometry(topology, before, after, Matrix4x4.Identity, [command],
             new CoverageScratch(topology), out var failure), failure.ToString());
     }
 
@@ -58,7 +58,7 @@ public sealed class CoverageSafetyRegressionTests
         Vector3[] points = [new(0, 0, 0), new(1, 0, 0), new(0, 1, 0), new(0, e, 0), new(1, -1, 0), new(1, e, 0)];
         var topology = Host(points, [0, 1, 2, 3, 4, 5], 2, -1);
         var before = points.Select(Vertex).ToArray();
-        Assert.False(CoverageCertification.Validate(topology, before, before, Matrix4x4.Identity, [Command(topology)],
+        Assert.False(CoverageCertification.ValidateGeometry(topology, before, before, Matrix4x4.Identity, [Command(topology)],
             new CoverageScratch(topology), out var failure));
         Assert.Equal(CoverageFailureCode.FoldedPatch, failure.Code);
     }
@@ -76,7 +76,7 @@ public sealed class CoverageSafetyRegressionTests
         var equipment = Matrix4x4.CreateTranslation(0, 0, 1e6f);
         var actor = Matrix4x4.CreateTranslation(1e8f, 1e8f, 0);
         var command = new CoverageCommandPose(1, 1, topology, 0, support, equipment, equipment, -2e6f, 2e6f, .4f, 20000, 0);
-        Assert.False(CoverageCertification.Validate(topology, before, before, actor, [command], new CoverageScratch(topology), out var failure));
+        Assert.False(CoverageCertification.ValidateGeometry(topology, before, before, actor, [command], new CoverageScratch(topology), out var failure));
         Assert.Equal(CoverageFailureCode.FoldedPatch, failure.Code);
     }
 
@@ -92,7 +92,7 @@ public sealed class CoverageSafetyRegressionTests
         command = command with { CoverageWorld = drifted };
         var sentinel = Vertex(new(7, 7, 7));
         var output = Enumerable.Repeat(sentinel, topology.VertexCount).ToArray();
-        Assert.False(CoverageEvaluator.TryEvaluate(topology, fixture.Posed, actor, [command], new CoverageScratch(topology), output, out var failure));
+        Assert.False(CoverageEvaluator.TryEvaluateGeometry(topology, fixture.Posed, actor, [command], new CoverageScratch(topology), output, out var failure));
         Assert.Equal(CoverageFailureCode.StaleFrame, failure.Code);
         Assert.All(output, v => Assert.Equal(sentinel, v));
     }
@@ -105,7 +105,7 @@ public sealed class CoverageSafetyRegressionTests
         var (topology, before, command) = Fan("none");
         var mirror = Matrix4x4.CreateScale(-1, 1, 1);
         command = equipmentMirror ? command with { EquipmentWorld = mirror } : command with { CoverageWorld = mirror };
-        Assert.False(CoverageCertification.Validate(topology, before, before, Matrix4x4.Identity, [command], new CoverageScratch(topology), out var failure));
+        Assert.False(CoverageCertification.ValidateGeometry(topology, before, before, Matrix4x4.Identity, [command], new CoverageScratch(topology), out var failure));
         Assert.Equal(CoverageFailureCode.UnsupportedTransform, failure.Code);
     }
 
@@ -115,7 +115,7 @@ public sealed class CoverageSafetyRegressionTests
         var (topology, before, command) = Fan("none");
         // The centre is 2e-7 below the required min cap plus clearance, within the old slack waiver.
         command = command with { MinZ = -1.02f + 2e-7f };
-        Assert.False(CoverageCertification.Validate(topology, before, before, Matrix4x4.Identity, [command], new CoverageScratch(topology), out var failure));
+        Assert.False(CoverageCertification.ValidateGeometry(topology, before, before, Matrix4x4.Identity, [command], new CoverageScratch(topology), out var failure));
         Assert.Equal(CoverageFailureCode.CapContact, failure.Code);
     }
 
@@ -126,7 +126,7 @@ public sealed class CoverageSafetyRegressionTests
         var after = before.ToArray();
         after[0].Position.Z = -.300001f;
         command = command with { MaxWorldRecession = .3f };
-        Assert.False(CoverageCertification.Validate(topology, before, after, Matrix4x4.Identity, [command], new CoverageScratch(topology), out var failure));
+        Assert.False(CoverageCertification.ValidateGeometry(topology, before, after, Matrix4x4.Identity, [command], new CoverageScratch(topology), out var failure));
         Assert.Equal(CoverageFailureCode.RecessionExceeded, failure.Code);
     }
 
@@ -138,9 +138,9 @@ public sealed class CoverageSafetyRegressionTests
         after[0].Position.Z = -.25f;
         CoverageCommandPose[] commands = [command with { MaxWorldRecession = .25f }];
         var scratch = new CoverageScratch(topology);
-        Assert.True(CoverageCertification.Validate(topology, before, after, Matrix4x4.Identity, commands, scratch, out var failure), failure.ToString());
+        Assert.True(CoverageCertification.ValidateGeometry(topology, before, after, Matrix4x4.Identity, commands, scratch, out var failure), failure.ToString());
         long start = GC.GetAllocatedBytesForCurrentThread();
-        bool accepted = CoverageCertification.Validate(topology, before, after, Matrix4x4.Identity, commands, scratch, out _);
+        bool accepted = CoverageCertification.ValidateGeometry(topology, before, after, Matrix4x4.Identity, commands, scratch, out _);
         long allocated = GC.GetAllocatedBytesForCurrentThread() - start;
         Assert.True(accepted);
         Assert.Equal(0, allocated);
@@ -154,7 +154,7 @@ public sealed class CoverageSafetyRegressionTests
         var after = before.ToArray();
         after[0].Position.Z = MathF.BitDecrement(-.25f);
         command = command with { MaxWorldRecession = .25f };
-        Assert.False(CoverageCertification.Validate(topology, before, after, Matrix4x4.Identity, [command], new CoverageScratch(topology),
+        Assert.False(CoverageCertification.ValidateGeometry(topology, before, after, Matrix4x4.Identity, [command], new CoverageScratch(topology),
             out var certificate, out var failure));
         Assert.Equal(CoverageFailureCode.RecessionExceeded, failure.Code);
         Assert.Equal(default, certificate);
@@ -189,7 +189,7 @@ public sealed class CoverageSafetyRegressionTests
         Assert.False(support.InwardOfClosedSolid);
         var (topology, before, command) = Fan("none");
         command = command with { Support = support };
-        Assert.False(CoverageCertification.Validate(topology, before, before, Matrix4x4.Identity, [command], new CoverageScratch(topology), out var failure));
+        Assert.False(CoverageCertification.ValidateGeometry(topology, before, before, Matrix4x4.Identity, [command], new CoverageScratch(topology), out var failure));
         Assert.Equal(CoverageFailureCode.UnsupportedSupport, failure.Code);
     }
 
@@ -215,7 +215,7 @@ public sealed class CoverageSafetyRegressionTests
         var command = CoverageCommands.Poses(fixture, topology, CoverageCommands.Plate(fixture), Matrix4x4.Identity)[0];
         var above = CoverageCommands.Surface(topology, fixture.Posed);
         for (int i = 0; i < above.Length; i++) above[i].Position.Z = 1;
-        Assert.False(CoverageCertification.Validate(topology, above, above, Matrix4x4.Identity, [command], new CoverageScratch(topology), out var failure));
+        Assert.False(CoverageCertification.ValidateGeometry(topology, above, above, Matrix4x4.Identity, [command], new CoverageScratch(topology), out var failure));
         Assert.Equal(CoverageFailureCode.EquipmentIntersection, failure.Code);
     }
 
@@ -243,7 +243,7 @@ public sealed class CoverageSafetyRegressionTests
         Assert.False(support.TryGetBoundaryBounds(CoverageAffinePoint.FromDouble(q.X, q.Y), out _));
         var sentinel = Vertex(new(7, 7, 7));
         var output = Enumerable.Repeat(sentinel, topology.VertexCount).ToArray();
-        Assert.False(CoverageEvaluator.TryEvaluate(topology, posed, Matrix4x4.Identity, [command], scratch, output, out var certificate, out failure));
+        Assert.False(CoverageEvaluator.TryEvaluateGeometry(topology, posed, Matrix4x4.Identity, [command], scratch, output, out var certificate, out failure));
         Assert.Equal(CoverageFailureCode.UnsupportedSupport, failure.Code);
         Assert.Equal(default, certificate);
         Assert.All(output, v => Assert.Equal(sentinel, v));

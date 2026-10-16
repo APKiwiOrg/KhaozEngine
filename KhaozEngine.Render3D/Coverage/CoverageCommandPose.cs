@@ -39,11 +39,15 @@ public readonly record struct CoverageCommandPose
     public float TransitionWeight { get; init; }
 }
 
-/// <summary>What an accepted surface certifies. FullCoreClearance holds only when every command has TransitionWeight 1
-/// and its region passed the complete equipment clearance, containment and overlay checks. MinimumCoreClearance is then
-/// the certified lower bound of world distance from core triangles to their own equipment, otherwise NaN.
-/// WorldErrorBound is the render rounding allowance that displayed geometry may lose from the certified values.</summary>
-public readonly record struct CoverageCertificate(bool FullCoreClearance, double MinimumCoreClearance, double WorldErrorBound, int DisplacedVertices);
+/// <summary>CPU/world geometry only. This result is never permission to draw. FullCoreClearance holds only at full
+/// transition weight. ConstructionErrorBound retains construction uncertainty in world lengths.</summary>
+public readonly record struct CoverageGeometryCertificate(bool FullCoreClearance, double MinimumCoreClearance,
+    double ConstructionErrorBound, int DisplacedVertices);
+
+/// <summary>Geometry and actual render-position arithmetic proof bound to one owned capture. WorldErrorBound is the
+/// combined host/equipment world displacement allowance. Native raster, depth and temporal gates remain separate.</summary>
+public readonly record struct CoverageCertificate(bool FullCoreClearance, double MinimumCoreClearance,
+    double WorldErrorBound, int DisplacedVertices, CoverageRenderStamp RenderStamp);
 
 /// <summary>Double affine map for row vectors, p' = p * L + T, built only from finite affine float matrices.</summary>
 internal readonly struct CoverageAffine
@@ -147,16 +151,13 @@ internal struct CoverageCommandFrame
     internal CoverageVector Recess;
     internal CoverageBoundedAffine BoundedHostToCoverage, BoundedActor, HostToActualSheet;
     internal double CapMarginUpper;
-    internal double ZScale, SigmaMin, ClearanceCoverage, Slack, Uncertainty, ErrorBound, CapMargin, Clearance;
+    internal double ZScale, SigmaMin, ClearanceCoverage, Slack, Uncertainty, ConstructionErrorBound, RenderErrorBound, CapMargin, Clearance;
     internal bool Full;
 }
 
 /// <summary>Validates commands, identities and transforms before any work, and derives their frames.</summary>
 internal static class CoverageFrames
 {
-    /// <summary>Displayed vertex transforms in the renderer may each round by a few float ulps of the actor-relative
-    /// magnitude. The certified geometry may differ from what is displayed by this fraction of that magnitude.</summary>
-    internal const double RenderRelativeError = 1.0 / (1 << 18);
     /// <summary>Share of the authored clearance that numerical uncertainty may consume before a frame refuses.</summary>
     internal const double MarginFraction = .25;
     const double MaxCondition = 1e6;
@@ -181,7 +182,7 @@ internal static class CoverageFrames
         for (int slot = 0; slot < order.Length; slot++)
         {
             CoverageCommandPose command = commands[order[slot]];
-            if (!ReferenceEquals(command.Topology, topology) || command.Support is null || slot > 0 && commands[order[slot - 1]].Id == command.Id)
+            if (command.Id == 0 || command.EquipmentInstanceId == 0 || !ReferenceEquals(command.Topology, topology) || command.Support is null || slot > 0 && commands[order[slot - 1]].Id == command.Id)
                 return Refuse(topology, CoverageFailureCode.IdentityMismatch, command, out failure);
             if (command.RegionIndex < 0 || command.RegionIndex >= scratch.RegionCommands.Length)
                 return Refuse(topology, CoverageFailureCode.UnknownRegion, command, out failure);
@@ -252,15 +253,14 @@ internal static class CoverageFrames
         // exact compiled projection bounds the inverse and composition error of the supplied float frames.
         frame.Uncertainty = CoverageAffine.Deviation(CoverageAffine.Multiply(equipment, coverageInverse), support.SourceToCoverage,
             support.MaxSourceMagnitude) * (1 + 1e-9) + 1e-12 * (support.MaxSourceMagnitude + 1e-30);
-        double worldHost = hostMagnitude * actor.MaxGain, recessionModel = command.MaxWorldRecession * actorInverse.Frobenius;
-        double worldEquipment = support.MaxSourceMagnitude * equipment.MaxGain + (equipment.Translation - actor.Translation).MaxAbs;
+        double recessionModel = command.MaxWorldRecession * actorInverse.Frobenius;
         // Final positions round once to float in model space. Carry that through to coverage Z, with double headroom.
         double rounding = (hostMagnitude + recessionModel) * (1.0 / (1 << 22)) * Math.Sqrt(3) * frame.HostToCoverage.Frobenius;
         // Max-norm coordinate error has XY Euclidean length at most sqrt(2) times that error.
         frame.Slack = (frame.Uncertainty + rounding) * (1 + Math.Sqrt(2) * slope) * (1 + 1e-9);
         frame.ClearanceCoverage = command.Clearance * Math.Sqrt(1 + slope * slope) / frame.SigmaMin * (1 + 1e-12);
-        frame.ErrorBound = RenderRelativeError * Math.Max(worldHost + command.MaxWorldRecession, worldEquipment);
-        double consumed = frame.ErrorBound + frame.Slack * frame.ZScale;
+        frame.ConstructionErrorBound = CoverageIntervals.Multiply(new(frame.Slack, frame.Slack), new(frame.ZScale, frame.ZScale)).Max;
+        double consumed = frame.ConstructionErrorBound;
         return double.IsFinite(consumed) && double.IsFinite(frame.ClearanceCoverage) && consumed <= command.Clearance * MarginFraction;
     }
 

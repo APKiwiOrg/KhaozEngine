@@ -23,11 +23,11 @@ public sealed class CoverageEvaluatorTests
         Assert.True(baseline.BreakthroughArea > 0);
 
         var final = new ModelVertex[topology.VertexCount];
-        bool accepted = CoverageEvaluator.TryEvaluate(topology, fixture.Posed, Matrix4x4.Identity, commands, new CoverageScratch(topology),
+        bool accepted = CoverageEvaluator.TryEvaluateGeometry(topology, fixture.Posed, Matrix4x4.Identity, commands, new CoverageScratch(topology),
             final, out var certificate, out var failure);
         var result = CoverageCommands.Witness(fixture, topology, before, final);
         float requiredClearance = fixture.Commands[0].Clearance;
-        double certifiedErrorBound = certificate.WorldErrorBound;
+        double certifiedErrorBound = certificate.ConstructionErrorBound;
         Assert.True(accepted, failure.ToString());
         Assert.True(result.CoreMovedArea > 0);
         Assert.Equal(0, result.ProtectedPositionChanges);
@@ -53,7 +53,7 @@ public sealed class CoverageEvaluatorTests
                 Assert.True(Math.Abs(final[i].Position.X - before[i].Position.X) < 1e-6f && Math.Abs(final[i].Position.Y - before[i].Position.Y) < 1e-6f);
             }
         }
-        Assert.True(CoverageCertification.Validate(topology, before, final, Matrix4x4.Identity, commands, new CoverageScratch(topology), out var check), check.ToString());
+        Assert.True(CoverageCertification.ValidateGeometry(topology, before, final, Matrix4x4.Identity, commands, new CoverageScratch(topology), out var check), check.ToString());
 
         // Removal-only control: hiding the covered core opens a visible gap under the floating rim.
         var removal = Enumerable.Range(0, topology.TriangleCount).Where(t => topology.Triangles[t].Role != CoverageTriangleRole.Core || topology.Triangles[t].RegionIndex < 0)
@@ -80,7 +80,7 @@ public sealed class CoverageEvaluatorTests
         var before = CoverageCommands.Surface(topology, fixture.Posed);
         Assert.True(CoverageCommands.Witness(fixture, topology, before, before).BreakthroughArea > 0);
         var final = new ModelVertex[topology.VertexCount];
-        Assert.True(CoverageEvaluator.TryEvaluate(topology, fixture.Posed, Matrix4x4.Identity, commands, new CoverageScratch(topology), final,
+        Assert.True(CoverageEvaluator.TryEvaluateGeometry(topology, fixture.Posed, Matrix4x4.Identity, commands, new CoverageScratch(topology), final,
             out var certificate, out var failure), failure.ToString());
         var result = CoverageCommands.Witness(fixture, topology, before, final);
         Assert.True(certificate.FullCoreClearance); Assert.True(result.CoreMovedArea > 0);
@@ -88,7 +88,7 @@ public sealed class CoverageEvaluatorTests
         Assert.Equal(0, result.EquipmentIntersections); Assert.Equal(0, result.NonadjacentIntersections);
         Assert.Equal(0, result.Folds); Assert.Equal(0, result.UnmatchedInteriorEdges); Assert.Equal(0, result.OpenBoundaryEdges);
         Assert.Equal(0, result.WeldedPositionChanges); Assert.Equal(0, result.ProtectedPositionChanges);
-        Assert.True(result.MinimumCoreClearance >= fixture.Commands[0].Clearance - certificate.WorldErrorBound);
+        Assert.True(result.MinimumCoreClearance >= fixture.Commands[0].Clearance - certificate.ConstructionErrorBound);
         int rear = 0;
         for (int i = 0; i < final.Length; i++)
             if (before[i].Position.Z <= 0) { Assert.Equal(before[i], final[i]); rear++; }
@@ -104,11 +104,11 @@ public sealed class CoverageEvaluatorTests
         var actor = new Matrix4x4(1.3f, 0, 0, 0, .25f, .8f, 0, 0, 0, .1f, 1.1f, 0, 2, -1, .5f, 1);
         var commands = CoverageCommands.Poses(fixture, topology, support, actor);
         var final = new ModelVertex[topology.VertexCount];
-        Assert.True(CoverageEvaluator.TryEvaluate(topology, fixture.Posed, actor, commands, new CoverageScratch(topology), final,
+        Assert.True(CoverageEvaluator.TryEvaluateGeometry(topology, fixture.Posed, actor, commands, new CoverageScratch(topology), final,
             out var certificate, out var failure), failure.ToString());
         var world = CoverageCommands.World(fixture, actor);
         var direct = new ModelVertex[topology.VertexCount];
-        Assert.True(CoverageEvaluator.TryEvaluate(topology, world.Posed, Matrix4x4.Identity, commands, new CoverageScratch(topology), direct,
+        Assert.True(CoverageEvaluator.TryEvaluateGeometry(topology, world.Posed, Matrix4x4.Identity, commands, new CoverageScratch(topology), direct,
             out _, out failure), failure.ToString());
         var placed = CoverageCommands.Place(final, actor);
         for (int i = 0; i < placed.Length; i++) Assert.True(Vector3.Distance(placed[i].Position, direct[i].Position) < 2e-5f);
@@ -116,7 +116,7 @@ public sealed class CoverageEvaluatorTests
         var result = CoverageCommands.Witness(world, topology, before, placed);
         Assert.True(result.CoreMovedArea > 0); Assert.Equal(0, result.ClearanceViolations);
         Assert.Equal(0, result.EquipmentIntersections); Assert.Equal(0, result.Folds); Assert.Equal(0, result.ProtectedPositionChanges);
-        Assert.True(result.MinimumCoreClearance >= fixture.Commands[0].Clearance - certificate.WorldErrorBound);
+        Assert.True(result.MinimumCoreClearance >= fixture.Commands[0].Clearance - certificate.ConstructionErrorBound);
     }
 
     [Fact]
@@ -130,8 +130,8 @@ public sealed class CoverageEvaluatorTests
         var commands = CoverageCommands.Poses(fixture, topology, support, Matrix4x4.Identity);
         var scratch = new CoverageScratch(topology);
         var forward = new ModelVertex[topology.VertexCount]; var reverse = new ModelVertex[topology.VertexCount];
-        Assert.True(CoverageEvaluator.TryEvaluate(topology, fixture.Posed, Matrix4x4.Identity, commands, scratch, forward, out var failure), failure.ToString());
-        Assert.True(CoverageEvaluator.TryEvaluate(topology, fixture.Posed, Matrix4x4.Identity, commands.Reverse().ToArray(), scratch, reverse, out failure), failure.ToString());
+        Assert.True(CoverageEvaluator.TryEvaluateGeometry(topology, fixture.Posed, Matrix4x4.Identity, commands, scratch, forward, out var failure), failure.ToString());
+        Assert.True(CoverageEvaluator.TryEvaluateGeometry(topology, fixture.Posed, Matrix4x4.Identity, commands.Reverse().ToArray(), scratch, reverse, out failure), failure.ToString());
         Assert.Equal(forward, reverse);
         var before = CoverageCommands.Surface(topology, fixture.Posed);
         foreach (int region in new[] { 0, 1 })
@@ -142,10 +142,10 @@ public sealed class CoverageEvaluatorTests
         // A second actor shares the compiled topology and support but owns its scratch and pose.
         var other = fixture.SecondActor();
         var otherFinal = new ModelVertex[topology.VertexCount];
-        Assert.True(CoverageEvaluator.TryEvaluate(topology, other.Posed, Matrix4x4.Identity, CoverageCommands.Poses(other, topology, support, Matrix4x4.Identity),
+        Assert.True(CoverageEvaluator.TryEvaluateGeometry(topology, other.Posed, Matrix4x4.Identity, CoverageCommands.Poses(other, topology, support, Matrix4x4.Identity),
             new CoverageScratch(topology), otherFinal, out failure), failure.ToString());
         var again = new ModelVertex[topology.VertexCount];
-        Assert.True(CoverageEvaluator.TryEvaluate(topology, fixture.Posed, Matrix4x4.Identity, commands, scratch, again, out failure));
+        Assert.True(CoverageEvaluator.TryEvaluateGeometry(topology, fixture.Posed, Matrix4x4.Identity, commands, scratch, again, out failure));
         Assert.Equal(forward, again);
         for (int i = 0; i < forward.Length; i++)
             Assert.True(Vector3.Distance(forward[i].Position + new Vector3(3, 0, 0), otherFinal[i].Position) < 1e-5f);
@@ -159,9 +159,9 @@ public sealed class CoverageEvaluatorTests
         var support = CoverageCommands.Plate(fixture);
         var before = CoverageCommands.Surface(topology, fixture.Posed);
         var full = new ModelVertex[topology.VertexCount]; var half = new ModelVertex[topology.VertexCount];
-        Assert.True(CoverageEvaluator.TryEvaluate(topology, fixture.Posed, Matrix4x4.Identity,
+        Assert.True(CoverageEvaluator.TryEvaluateGeometry(topology, fixture.Posed, Matrix4x4.Identity,
             CoverageCommands.Poses(fixture, topology, support, Matrix4x4.Identity), new CoverageScratch(topology), full, out var complete, out var failure));
-        Assert.True(CoverageEvaluator.TryEvaluate(topology, fixture.Posed, Matrix4x4.Identity,
+        Assert.True(CoverageEvaluator.TryEvaluateGeometry(topology, fixture.Posed, Matrix4x4.Identity,
             CoverageCommands.Poses(fixture, topology, support, Matrix4x4.Identity, .5f), new CoverageScratch(topology), half, out var partial, out failure), failure.ToString());
         Assert.True(complete.FullCoreClearance);
         Assert.False(partial.FullCoreClearance); Assert.True(double.IsNaN(partial.MinimumCoreClearance));
@@ -185,11 +185,11 @@ public sealed class CoverageEvaluatorTests
         var scratch = new CoverageScratch(topology);
         var final = new ModelVertex[topology.VertexCount];
         var before = CoverageCommands.Surface(topology, fixture.Posed);
-        Assert.True(CoverageEvaluator.TryEvaluate(topology, fixture.Posed, Matrix4x4.Identity, commands, scratch, final, out var failure), failure.ToString());
-        Assert.True(CoverageCertification.Validate(topology, before, final, Matrix4x4.Identity, commands, scratch, out failure), failure.ToString());
+        Assert.True(CoverageEvaluator.TryEvaluateGeometry(topology, fixture.Posed, Matrix4x4.Identity, commands, scratch, final, out var failure), failure.ToString());
+        Assert.True(CoverageCertification.ValidateGeometry(topology, before, final, Matrix4x4.Identity, commands, scratch, out failure), failure.ToString());
         long start = GC.GetAllocatedBytesForCurrentThread();
-        bool evaluated = CoverageEvaluator.TryEvaluate(topology, fixture.Posed, Matrix4x4.Identity, commands, scratch, final, out _);
-        bool validated = CoverageCertification.Validate(topology, before, final, Matrix4x4.Identity, commands, scratch, out _);
+        bool evaluated = CoverageEvaluator.TryEvaluateGeometry(topology, fixture.Posed, Matrix4x4.Identity, commands, scratch, final, out _);
+        bool validated = CoverageCertification.ValidateGeometry(topology, before, final, Matrix4x4.Identity, commands, scratch, out _);
         long allocated = GC.GetAllocatedBytesForCurrentThread() - start;
         Assert.True(evaluated && validated);
         Assert.Equal(0, allocated);

@@ -8,7 +8,7 @@ namespace KhaozEngine.Render3D;
 internal sealed class CoverageMotionHistory
 {
     internal readonly record struct Surface(MotionKey Actor, ulong Revision, int Start, int Count,
-        Matrix4x4 Model, MeshBounds Bounds);
+        Matrix4x4 Model, CoverageSurfaceBounds Bounds);
 
     sealed class Generation
     {
@@ -71,11 +71,11 @@ internal sealed class CoverageMotionHistory
     }
 
     internal void RecordVertices(MotionKey actorKey, ulong revision, ReadOnlySpan<ModelVertex> finalVertices,
-        in Matrix4x4 absoluteModel, double worldError = 0)
+        in Matrix4x4 absoluteModel, double worldError = 0, Vector3? boundsOrigin = null)
     {
         int start = Start(actorKey, finalVertices.Length);
         for (int i = 0; i < finalVertices.Length; i++) pending.Positions[start + i] = finalVertices[i].Position;
-        Finish(actorKey, revision, start, finalVertices.Length, absoluteModel, worldError);
+        Finish(actorKey, revision, start, finalVertices.Length, absoluteModel, worldError, boundsOrigin);
     }
 
     int Start(MotionKey actor, int count)
@@ -88,19 +88,16 @@ internal sealed class CoverageMotionHistory
         return pending.Used;
     }
 
-    void Finish(MotionKey actor, ulong revision, int start, int count, Matrix4x4 model, double worldError = 0)
+    void Finish(MotionKey actor, ulong revision, int start, int count, Matrix4x4 model, double worldError = 0,
+        Vector3? boundsOrigin = null)
     {
-        Vector3 min = new(float.PositiveInfinity), max = new(float.NegativeInfinity);
+        Vector3 origin = boundsOrigin ?? model.Translation;
+        Matrix4x4 relative = model;
+        relative.Translation -= origin;
+        var bounds = new CoverageSurfaceBoundsBuilder(origin);
         for (int i = 0; i < count; i++)
-        {
-            Vector3 p = Vector3.Transform(pending.Positions[start + i], model);
-            min = Vector3.Min(min, p); max = Vector3.Max(max, p);
-        }
-        Vector3 error = new((float)worldError);
-        min -= error; max += error;
-        for (int axis = 0; axis < 3; axis++)
-        { min[axis] = MathF.BitDecrement(min[axis]); max[axis] = MathF.BitIncrement(max[axis]); }
-        pending.Surfaces[pending.Count++] = new(actor, revision, start, count, model, new(min, max));
+            bounds.Add(CoverageShaderPosition.Transform(relative, CoveragePositionBounds.From(pending.Positions[start + i])));
+        pending.Surfaces[pending.Count++] = new(actor, revision, start, count, model, bounds.Build(worldError)!.Value);
         pending.Used += count;
     }
 

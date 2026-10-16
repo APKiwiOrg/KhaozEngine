@@ -4,7 +4,7 @@ using System.Numerics;
 namespace KhaozEngine.Render3D;
 
 // Bounds the declared shader sink and its world.x addition. All sums use absolute input magnitudes.
-internal static class CoverageShaderPosition
+internal static partial class CoverageShaderPosition
 {
     const double U = 1.0 / 8388608, N = 1.1754943508222875e-38;
     internal static double Sum(double a, double b) => Math.BitIncrement(a + b);

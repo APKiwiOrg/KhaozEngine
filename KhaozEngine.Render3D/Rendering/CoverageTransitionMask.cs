@@ -7,7 +7,7 @@ using KhaozEngine.Render3D.Internal;
 
 namespace KhaozEngine.Render3D.Rendering;
 
-internal readonly record struct CoverageChangedBounds(MeshBounds? Current, MeshBounds? Previous, bool NearPlaneUncertain);
+internal readonly record struct CoverageChangedBounds(CoverageSurfaceBounds? Current, CoverageSurfaceBounds? Previous, bool NearPlaneUncertain);
 
 /// <summary>Conservative local history rejection, rendered before temporal accumulation.</summary>
 internal sealed class CoverageTransitionMask : IDisposable
@@ -100,29 +100,42 @@ internal sealed class CoverageTransitionMask : IDisposable
         commands.SetScissorRect(0, 0, 0, (uint)current.Width, (uint)current.Height);
     }
 
-    static void Project(MeshBounds? bounds, in FrameView view, ref Rectangle? rectangle, ref bool uncertain)
+    static void Project(CoverageSurfaceBounds? bounds, in FrameView view, ref Rectangle? rectangle, ref bool uncertain)
     {
         if (bounds is not { } b) return;
+        if (!b.Weight.IsFinite) { uncertain = true; return; }
         double minX = double.PositiveInfinity, minY = minX, minZ = minX, minW = minX;
         double maxX = double.NegativeInfinity, maxY = maxX, maxZ = maxX, maxW = maxX;
         Matrix4x4 vp = view.ViewProjection;
-        for (int bits = 0; bits < 8; bits++)
+        var ox = CoverageIntervals.Subtract(new(b.Origin.X, b.Origin.X), new(view.RenderOrigin.X, view.RenderOrigin.X));
+        var oy = CoverageIntervals.Subtract(new(b.Origin.Y, b.Origin.Y), new(view.RenderOrigin.Y, view.RenderOrigin.Y));
+        var oz = CoverageIntervals.Subtract(new(b.Origin.Z, b.Origin.Z), new(view.RenderOrigin.Z, view.RenderOrigin.Z));
+        for (int bits = 0; bits < 16; bits++)
         {
-            double x = (double)((bits & 1) == 0 ? b.Min.X : b.Max.X) - view.RenderOrigin.X;
-            double y = (double)((bits & 2) == 0 ? b.Min.Y : b.Max.Y) - view.RenderOrigin.Y;
-            double z = (double)((bits & 4) == 0 ? b.Min.Z : b.Max.Z) - view.RenderOrigin.Z;
-            double cx = x * vp.M11 + y * vp.M21 + z * vp.M31 + vp.M41;
-            double cy = x * vp.M12 + y * vp.M22 + z * vp.M32 + vp.M42;
-            double cz = x * vp.M13 + y * vp.M23 + z * vp.M33 + vp.M43;
-            double cw = x * vp.M14 + y * vp.M24 + z * vp.M34 + vp.M44;
-            if (!double.IsFinite(cx + cy + cz + cw)) { uncertain = true; return; }
-            minZ = Math.Min(minZ, cz); maxZ = Math.Max(maxZ, cz);
-            minW = Math.Min(minW, cw); maxW = Math.Max(maxW, cw);
-            minX = Math.Min(minX, cx / cw); maxX = Math.Max(maxX, cx / cw);
-            minY = Math.Min(minY, cy / cw); maxY = Math.Max(maxY, cy / cw);
+            float px = (bits & 1) == 0 ? b.Relative.Min.X : b.Relative.Max.X;
+            float py = (bits & 2) == 0 ? b.Relative.Min.Y : b.Relative.Max.Y;
+            float pz = (bits & 4) == 0 ? b.Relative.Min.Z : b.Relative.Max.Z;
+            double weight = (bits & 8) == 0 ? b.Weight.Min : b.Weight.Max;
+            var w = new CoverageScalarBounds(weight, weight);
+            var x = CoverageIntervals.Add(new(px, px), CoverageIntervals.Multiply(ox, w));
+            var y = CoverageIntervals.Add(new(py, py), CoverageIntervals.Multiply(oy, w));
+            var z = CoverageIntervals.Add(new(pz, pz), CoverageIntervals.Multiply(oz, w));
+            var cx = Clip(x, y, z, w, vp.M11, vp.M21, vp.M31, vp.M41);
+            var cy = Clip(x, y, z, w, vp.M12, vp.M22, vp.M32, vp.M42);
+            var cz = Clip(x, y, z, w, vp.M13, vp.M23, vp.M33, vp.M43);
+            var cw = Clip(x, y, z, w, vp.M14, vp.M24, vp.M34, vp.M44);
+            if (!cx.IsFinite || !cy.IsFinite || !cz.IsFinite || !cw.IsFinite) { uncertain = true; return; }
+            minZ = Math.Min(minZ, cz.Min); maxZ = Math.Max(maxZ, cz.Max);
+            minW = Math.Min(minW, cw.Min); maxW = Math.Max(maxW, cw.Max);
+            minX = Math.Min(minX, cx.Min); maxX = Math.Max(maxX, cx.Max);
+            minY = Math.Min(minY, cy.Min); maxY = Math.Max(maxY, cy.Max);
         }
         if (maxW < -1e-6 || maxZ < -1e-6) return;
         if (minW <= 1e-6 || minZ <= 1e-6) { uncertain = true; return; }
+        // Divide the entire clip intervals, preserving independence of per-coordinate shader rounding.
+        var nx = CoverageIntervals.Divide(new(minX, maxX), new(minW, maxW));
+        var ny = CoverageIntervals.Divide(new(minY, maxY), new(minW, maxW));
+        minX = nx.Min; maxX = nx.Max; minY = ny.Min; maxY = ny.Max;
         int left = (int)Math.Clamp(Math.Floor((minX + 1) * .5 * view.Width) - 2, 0, view.Width);
         int right = (int)Math.Clamp(Math.Ceiling((maxX + 1) * .5 * view.Width) + 2, 0, view.Width);
         int top = (int)Math.Clamp(Math.Floor((1 - maxY) * .5 * view.Height) - 2, 0, view.Height);
@@ -131,6 +144,10 @@ internal sealed class CoverageTransitionMask : IDisposable
         rectangle = rectangle is { } prior ? new(Math.Min(left, prior.X), Math.Min(top, prior.Y),
             Math.Max(right, prior.Right), Math.Max(bottom, prior.Bottom)) : new(left, top, right, bottom);
     }
+
+    static CoverageScalarBounds Clip(CoverageScalarBounds x, CoverageScalarBounds y, CoverageScalarBounds z,
+        CoverageScalarBounds w, float a, float b, float c, float translation) => CoverageShaderPosition.FloatDot4(
+            x, new(a, a), y, new(b, b), z, new(c, c), w, new(translation, translation));
 
     internal bool Rejects(int x, int y)
     {

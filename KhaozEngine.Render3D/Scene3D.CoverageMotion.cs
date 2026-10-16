@@ -82,7 +82,8 @@ public sealed partial class Scene3D
             p.MotionReusable = ValidCoveragePrevious(p);
             ReadOnlySpan<ModelVertex> uploaded = CollectionsMarshal.AsSpan(_cpuSkinnedVerts)
                 .Slice(p.BaseVertices[0], p.Owner.Topology.VertexCount);
-            _coverageMotion.RecordVertices(p.Actor, p.MotionRevision, uploaded, p.Model, p.Certificate.WorldErrorBound);
+            _coverageMotion.RecordVertices(p.Actor, p.MotionRevision, uploaded, p.Model, p.Certificate.WorldErrorBound,
+                CurrentFrameView.RenderOrigin);
             p.MotionPresented = true;
             if (!p.MotionReusable)
                 _coverageTransition?.AddChangedBounds(new(_coverageMotion.PendingSurfaces[^1].Bounds,
@@ -122,29 +123,24 @@ public sealed partial class Scene3D
         return false;
     }
 
-    MeshBounds? VisibleCoverageBounds(CoveragePreparation p)
+    CoverageSurfaceBounds? VisibleCoverageBounds(CoveragePreparation p)
     {
-        Vector3 min = new(float.PositiveInfinity), max = new(float.NegativeInfinity);
-        bool visible = false;
+        var bounds = new CoverageSurfaceBoundsBuilder(_frameOrigin);
+        Matrix4x4 renderModel = ToRender(p.Model);
         foreach (var draw in _cpuSkinnedDraws)
         {
             if (draw.MeshIndex >= 0 || !draw.VisibleMain || draw.Motion != p.Actor) continue;
             foreach (var indices in p.Owner.Indices)
             {
                 if (!ReferenceEquals(indices, draw.Ib)) continue;
-                visible = true;
                 foreach (var vertex in CollectionsMarshal.AsSpan(_cpuSkinnedVerts).Slice(draw.BaseVertex, draw.VertexCount))
-                {
-                    Vector3 point = Vector3.Transform(vertex.Position, p.Model);
-                    min = Vector3.Min(min, point); max = Vector3.Max(max, point);
-                }
+                    bounds.Add(CoverageShaderPosition.Transform(renderModel, CoveragePositionBounds.From(vertex.Position)));
             }
         }
-        return visible ? new MeshBounds(min - new Vector3((float)p.Certificate.WorldErrorBound),
-            max + new Vector3((float)p.Certificate.WorldErrorBound)) : null;
+        return bounds.Build(p.Certificate.WorldErrorBound);
     }
 
-    MeshBounds? PreviousCoverageBounds(MotionKey actor)
+    CoverageSurfaceBounds? PreviousCoverageBounds(MotionKey actor)
     {
         foreach (ref readonly var surface in _coverageMotion.PreviousSurfaces)
             if (surface.Actor == actor) return surface.Bounds;
@@ -154,9 +150,9 @@ public sealed partial class Scene3D
     // A restored ordinary surface has no correspondence with last frame's refined final vertices.
     bool RestoringCoverageSurface(MotionKey actor) => !actor.IsNone && PreviousCoverageBounds(actor) is not null;
 
-    MeshBounds? UncoveredCoverageBounds(MotionKey actor)
+    CoverageSurfaceBounds? UncoveredCoverageBounds(MotionKey actor)
     {
-        MeshBounds? bounds = null;
+        var bounds = new CoverageSurfaceBoundsBuilder(_frameOrigin);
         var items = _skinnedInstances.Items;
         for (int i = 0; i < items.Count; i++)
         {
@@ -166,15 +162,13 @@ public sealed partial class Scene3D
             if (TryFrozenCoverage(item.Coverage, out var preparation)
                 && preparation.Outcome.Presentation == CoveragePresentation.Covered) continue;
             var bones = CollectionsMarshal.AsSpan(_boneMatrices).Slice(i * SkinningMath.MaxBonesPerDraw, SkinningMath.MaxBonesPerDraw);
-            Vector3 min = bounds?.Min ?? new(float.PositiveInfinity), max = bounds?.Max ?? new(float.NegativeInfinity);
+            Matrix4x4 renderModel = ToRender(item.World);
             foreach (var vertex in source)
-            {
-                Vector3 point = Vector3.Transform(SkinningMath.SkinVertex(vertex, bones).Position, item.World);
-                min = Vector3.Min(min, point); max = Vector3.Max(max, point);
-            }
-            bounds = new(min, max);
+                bounds.Add(UseGpuSkinning ? CoverageShaderPosition.Skinned(vertex, bones, renderModel)
+                    : CoverageShaderPosition.Transform(renderModel,
+                        CoveragePositionBounds.From(SkinningMath.SkinVertex(vertex, bones).Position)));
         }
-        return bounds;
+        return bounds.Build();
     }
 
     // This observes successful scene command encoding. The caller still owns End, Submit and Present.

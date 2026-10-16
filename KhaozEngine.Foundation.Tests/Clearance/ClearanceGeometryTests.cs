@@ -58,28 +58,12 @@ public class ClearanceGeometryTests
     }
 
     [Fact]
-    public void SliverTriangleSamplesScaleWithItsArea()
-    {
-        const float pitch = 0.05f;
-        var a = new Vector3(0f, 0f, 0f);
-        var b = new Vector3(15f, 0f, 0f);
-        var c = new Vector3(0f, 0f, 0.2f);
-        var points = ClearanceSamples.Build(new ClearanceMesh(new[] { a, b, c }, new[] { 0, 1, 2 }), pitch).Points;
+    public void RightSliverSamplesScaleWithItsArea() =>
+        AssertSamplesCover(new Vector3(0f, 0f, 0f), new Vector3(15f, 0f, 0f), new Vector3(0f, 0f, 0.2f), 0.05f, 2000);
 
-        Assert.True(points.Count <= 2000, $"{points.Count} samples");
-        foreach (var p in points)
-        {
-            float wb = p.X / 15f;
-            float wc = p.Z / 0.2f;
-            Assert.True(wb >= -1e-4f && wc >= -1e-4f && wb + wc <= 1f + 1e-4f && MathF.Abs(p.Y) <= 1e-4f, $"{p} is off the triangle");
-        }
-
-        Assert.Contains(a, points);
-        Assert.Contains(b, points);
-        Assert.Contains(c, points);
-        foreach (var mid in new[] { (a + b) / 2f, (b + c) / 2f, (c + a) / 2f })
-            Assert.True(Nearest(points, mid) <= pitch, $"edge midpoint {mid} is {Nearest(points, mid)} from a sample");
-    }
+    [Fact]
+    public void ObtuseSliverSamplesScaleWithItsArea() =>
+        AssertSamplesCover(new Vector3(0f, 0f, 0f), new Vector3(15f, 0f, 0f), new Vector3(7.5f, 0f, 0.2f), 0.05f, 2000);
 
     [Fact]
     public void SamplePitchBelowTheFloorOrNonFiniteThrows()
@@ -189,6 +173,46 @@ public class ClearanceGeometryTests
         Quad(idx, 1, 2, 5, 4); // right slope
         return new ClearanceMesh(p, idx);
     }
+
+    /// <summary>Sample one triangle lying in the xz plane and check the sampler contract: at most
+    /// <paramref name="maxCount"/> samples, every sample on the triangle, the vertices present, and every edge
+    /// midpoint and a grid of 55 interior probes within one pitch of a sample.</summary>
+    static void AssertSamplesCover(Vector3 a, Vector3 b, Vector3 c, float pitch, int maxCount)
+    {
+        var points = ClearanceSamples.Build(new ClearanceMesh(new[] { a, b, c }, new[] { 0, 1, 2 }), pitch).Points;
+
+        Assert.True(points.Count <= maxCount, $"{points.Count} samples");
+        float area2 = Cross2(b - a, c - a);
+        foreach (var p in points)
+        {
+            float wb = Cross2(p - a, c - a) / area2;
+            float wc = Cross2(b - a, p - a) / area2;
+            Assert.True(wb >= -1e-4f && wc >= -1e-4f && wb + wc <= 1f + 1e-4f && MathF.Abs(p.Y) <= 1e-4f,
+                $"{p} is off the triangle");
+        }
+
+        Assert.Contains(a, points);
+        Assert.Contains(b, points);
+        Assert.Contains(c, points);
+
+        var probes = new List<Vector3> { (a + b) / 2f, (b + c) / 2f, (c + a) / 2f };
+        const int n = 10;
+        for (int i = 0; i < n; i++)
+        {
+            for (int j = 0; i + j < n; j++)
+            {
+                float wb = (i + 1f / 3f) / n;
+                float wc = (j + 1f / 3f) / n;
+                probes.Add(a * (1f - wb - wc) + b * wb + c * wc);
+            }
+        }
+
+        foreach (var probe in probes)
+            Assert.True(Nearest(points, probe) <= pitch, $"probe {probe} is {Nearest(points, probe)} from a sample");
+    }
+
+    /// <summary>The y component of the cross product of two vectors in the xz plane, twice a signed area.</summary>
+    static float Cross2(Vector3 u, Vector3 v) => u.Z * v.X - u.X * v.Z;
 
     static float Nearest(IReadOnlyList<Vector3> points, Vector3 target)
     {

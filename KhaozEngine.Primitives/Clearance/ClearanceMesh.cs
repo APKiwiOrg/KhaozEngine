@@ -78,11 +78,11 @@ public sealed class ClearanceMesh
     }
 
     /// <summary>Visit every triangle sample at <paramref name="pitch"/>, shared by both clearance builders. Each
-    /// triangle is sampled on a two-axis grid anchored at an endpoint of its shortest edge: u runs along the other
-    /// edge at that vertex and v along the shortest edge, each with <c>max(1, ceil(length / pitch))</c> steps, kept
-    /// to the points inside the triangle. The third edge gets its own samples at the same spacing. The three
-    /// vertices are always visited, every edge is sampled no coarser than <paramref name="pitch"/>, and the count
-    /// grows with the long side times the short side rather than with the square of the longest edge.</summary>
+    /// triangle is sampled in rows parallel to its longest edge, spaced no more than <paramref name="pitch"/> apart
+    /// across its height, each row sampled no coarser than <paramref name="pitch"/> along its length. The first row
+    /// is the longest edge and the last is the opposite vertex. The two other edges get their own samples at the
+    /// same spacing. The three vertices are always visited exactly, and the count grows with area plus perimeter
+    /// for every triangle shape.</summary>
     internal void ForEachSample(float pitch, Action<Vector3> visit)
     {
         RequireSamplePitch(pitch, nameof(pitch));
@@ -96,42 +96,52 @@ public sealed class ClearanceMesh
         float bc = Vector3.Distance(b, c);
         float ca = Vector3.Distance(c, a);
 
-        // Name the shortest edge anchor..side and the remaining vertex far. The anchor is the shortest edge's
-        // endpoint whose other edge is the shorter one.
-        Vector3 anchor, side, far;
-        if (ab <= bc && ab <= ca)
-            (anchor, side, far) = ca <= bc ? (a, b, c) : (b, a, c);
-        else if (bc <= ca)
-            (anchor, side, far) = ab <= ca ? (b, c, a) : (c, b, a);
+        // Name the longest edge start..end and the opposite vertex apex.
+        Vector3 start, end, apex;
+        float longest;
+        if (ab >= bc && ab >= ca)
+            (start, end, apex, longest) = (a, b, c, ab);
+        else if (bc >= ca)
+            (start, end, apex, longest) = (b, c, a, bc);
         else
-            (anchor, side, far) = bc <= ab ? (c, a, b) : (a, c, b);
+            (start, end, apex, longest) = (c, a, b, ca);
 
-        int nu = Steps(Vector3.Distance(anchor, far), pitch);
-        int nv = Steps(Vector3.Distance(anchor, side), pitch);
-        Vector3 du = (far - anchor) / nu;
-        Vector3 dv = (side - anchor) / nv;
-        long limit = (long)nu * nv;
-
-        for (int j = 0; j <= nv; j++)
+        if (longest == 0f)
         {
-            for (int i = 0; (long)i * nv + (long)j * nu <= limit; i++)
-            {
-                if (i == nu)
-                    visit(far);
-                else if (j == nv)
-                    visit(side);
-                else
-                    visit(anchor + du * i + dv * j);
-            }
+            visit(start);
+            return;
         }
 
-        // The third edge, side..far, between its endpoints the grid already visited.
-        int nw = Steps(Vector3.Distance(side, far), pitch);
-        for (int k = 1; k < nw; k++)
+        float height = Vector3.Cross(end - start, apex - start).Length() / longest;
+        int rows = Steps(height, pitch);
+        for (int r = 0; r < rows; r++)
         {
-            float w = k / (float)nw;
-            visit(side * (1f - w) + far * w);
+            float s = r / (float)rows;
+            Vector3 from = start * (1f - s) + apex * s;
+            Vector3 to = end * (1f - s) + apex * s;
+            SampleSegment(from, to, Steps(longest * (1f - s), pitch), includeEnds: true, visit);
         }
+
+        visit(apex);
+        SampleSegment(start, apex, Steps(Vector3.Distance(start, apex), pitch), includeEnds: false, visit);
+        SampleSegment(end, apex, Steps(Vector3.Distance(end, apex), pitch), includeEnds: false, visit);
+    }
+
+    /// <summary>Visit <paramref name="steps"/> + 1 evenly spaced points from <paramref name="from"/> to
+    /// <paramref name="to"/>, the end points exact, or only the interior ones when <paramref name="includeEnds"/>
+    /// is false.</summary>
+    static void SampleSegment(Vector3 from, Vector3 to, int steps, bool includeEnds, Action<Vector3> visit)
+    {
+        if (includeEnds)
+            visit(from);
+        for (int k = 1; k < steps; k++)
+        {
+            float w = k / (float)steps;
+            visit(from * (1f - w) + to * w);
+        }
+
+        if (includeEnds)
+            visit(to);
     }
 
     static int Steps(float length, float pitch) => Math.Max(1, (int)Math.Ceiling(length / (double)pitch));

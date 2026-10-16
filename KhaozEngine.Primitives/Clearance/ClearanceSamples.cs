@@ -5,9 +5,9 @@ using System.Numerics;
 namespace KhaozEngine.Primitives;
 
 /// <summary>Probe points spread over the surface of a subject <see cref="ClearanceMesh"/>, in the mesh's local
-/// frame. <see cref="ClearanceProbe.Deepest"/> tests each point against an obstacle. Every triangle is sampled on a
-/// grid at <c>pitch</c> spacing anchored at its shortest edge that always includes its vertices and edges, so a
-/// finer pitch finds shallower and narrower contacts at the cost of more points.</summary>
+/// frame. <see cref="ClearanceProbe.Deepest"/> tests each point against an obstacle. Every triangle is sampled in
+/// rows along its longest edge at <c>pitch</c> spacing, always including its vertices and edges, so a finer pitch
+/// finds shallower and narrower contacts at the cost of more points.</summary>
 public sealed class ClearanceSamples
 {
     readonly Vector3[] _points;

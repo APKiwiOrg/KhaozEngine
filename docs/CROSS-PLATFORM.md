@@ -696,6 +696,14 @@ gives two same-named `golden-deltas.direct3d11.txt` files that are two implement
 of references. The macOS pair is the one where mixing those up costs the most, because `metal` is the fleet's
 cross-backend reference family.
 
+A manual correctness dispatch filtered to `FullyQualifiedName~Coverage` also uploads
+`coverage-evidence-<backend>` on success or failure. Its synthetic captures use unique identities and
+atomic files, with full-resolution colour, the exact temporal reconstruction source, depth, normal,
+outline, cascade and selected point-row targets. JSON records the actual backend, adapter, source row
+and frame. Temporal edge records account for mixed reconstruction footprints. These are invariant
+proofs against current-surface controls. They do not read or write backend reference grids. Inspect the
+opaque packet after correctness passes before starting a separate backend-owned golden bake.
+
 Six artifacts carry no pixels at all and upload on `always()`, because each of them is read off a run that
 PASSED:
 

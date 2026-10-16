@@ -13,6 +13,31 @@ namespace KhaozEngine.Tests.Gpu;
 /// <summary>Native sequence source. Execution and backend evidence belong to the native acceptance task.</summary>
 public sealed class CoverageTemporalGpuTests
 {
+    [GpuFact]
+    public void Point_projection_arithmetic_refusal_presents_the_current_pose_in_every_pass()
+    {
+        using var scene = new CoverageGpuScene();
+        scene.AssertArithmeticRefusal();
+    }
+
+    [GpuFact]
+    public void Failed_equipment_replacement_rolls_back_the_rendered_native_identity()
+    {
+        using var scene = new CoverageGpuScene();
+        CoverageGpuBindingProof.AssertRollback(scene);
+    }
+
+    [GpuTheory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public void Transitions_leave_no_original_skin_history(bool split, bool upscale)
+    {
+        using var scene = new CoverageGpuScene();
+        scene.AssertTransitions(split, upscale);
+    }
+
     [GpuTheory]
     [InlineData(false, false)]
     [InlineData(true, false)]

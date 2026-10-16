@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Numerics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -26,6 +27,29 @@ public class JsonTests
         Assert.Equal(expectedSha, legacy.SemanticSha256);
         using JsonDocument document = JsonDocument.Parse(written);
         Assert.Equal(1, document.RootElement.GetProperty("formatVersion").GetInt32());
+    }
+
+    [Fact]
+    public void Legacy_attachment_bytes_are_unchanged()
+    {
+        string plate = $$"""{"key":"parts/plate.glb","sha256":"{{AttachmentFixtures.Hash}}"}""";
+        string cloth = $$"""{"key":"parts/cloth.glb","sha256":"{{new string('b', 64)}}"}""";
+        var shoulder = new RigidAttachmentPartDefinition(2, new("parts/plate.glb", AttachmentFixtures.Hash), "spine", Matrix4x4.CreateTranslation(0.5f, -0.25f, 2f));
+        var legacyRigid = new AttachmentSetDefinition([shoulder, AttachmentFixtures.Part(1)]);
+        var legacyMixed = new AttachmentSetDefinition([new SkinnedAttachmentPartDefinition(3, new("parts/cloth.glb", new string('b', 64))), AttachmentFixtures.Part(1)]);
+        byte[] legacyV1Bytes = Encoding.UTF8.GetBytes(
+            $$"""{"formatVersion":1,"parts":[{"id":1,"mesh":{{plate}},"joint":"hip","local":{{AttachmentFixtures.Identity}}},""" +
+            $$"""{"id":2,"mesh":{{plate}},"joint":"spine","local":[1,0,0,0,0,1,0,0,0,0,1,0,0.5,-0.25,2,1]}]}""");
+        byte[] legacyV2Bytes = Encoding.UTF8.GetBytes(
+            $$"""{"formatVersion":2,"parts":[{"id":1,"kind":"rigid","mesh":{{plate}},"joint":"hip","local":{{AttachmentFixtures.Identity}}},""" +
+            $$"""{"id":3,"kind":"skinned","mesh":{{cloth}}}]}""");
+
+        Assert.Equal(legacyV1Bytes, AttachmentSetJson.Write(legacyRigid));
+        Assert.Equal(legacyV2Bytes, AttachmentSetJson.Write(legacyMixed));
+        Assert.Equal(Convert.ToHexStringLower(SHA256.HashData(legacyV1Bytes)), legacyRigid.SemanticSha256);
+        Assert.Equal(Convert.ToHexStringLower(SHA256.HashData(legacyV2Bytes)), legacyMixed.SemanticSha256);
+        Assert.Equal(legacyV1Bytes, AttachmentSetJson.Write(AttachmentSetJson.Parse(legacyV1Bytes, "legacy-v1.json")));
+        Assert.Equal(legacyV2Bytes, AttachmentSetJson.Write(AttachmentSetJson.Parse(legacyV2Bytes, "legacy-v2.json")));
     }
 
     [Fact]

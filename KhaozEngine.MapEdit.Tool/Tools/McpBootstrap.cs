@@ -34,6 +34,7 @@ public static class McpBootstrap
         builder.WithTools<RenderTools>();
         builder.WithTools<PrefabTools>(MapPrefabJson.ToolOptions);
         builder.WithTools<InteriorTools>(MapPrefabJson.ToolOptions);
+        builder.WithTools<MarkerTools>(MapPrefabJson.ToolOptions);
         return builder;
     }
 }

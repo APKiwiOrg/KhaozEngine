@@ -168,7 +168,9 @@ and R10.
 `PrefabVillageWorkflowTests` drives the invented public village through these shared services and
 real MCP calls. A tool author opens an immutable definition with `prefab_open`, makes keyed local
 water, paint or marker edits with `prefab_edit`, then publishes with `prefab_save`. `prefab_place`
-accepts non-grid XYZ, yaw 0.371 and scales 0.8 or 1.2. Whole-building moves use
+accepts non-grid XYZ, yaw 0.371 and scales 0.8 or 1.2. Its optional `overridesJson` is a JSON array
+of closed keyed overrides that the new instance starts with, validated in the same placement, so a repeated
+marker-bearing prefab gives its marker a unique name in one accepted placement. Whole-building moves use
 `MutationService.PrefabApply(new MapMovePrefab(...))`. Overrides and unpack use `prefab_override`
 and `prefab_unpack`. Undo/redo restore matching roots, bindings, closure and effective resources.
 Save/reopen preserves leaf IDs and the digest-addressed versions. Other maps retain their pins.
@@ -178,6 +180,27 @@ Its `Mutation` carries `Verb`, `Detail` and `WorldChanged`, and `Effects` carrie
 invalidation flags and affected typed IDs. The same response shape comes from `PrefabApply` and
 `InteriorApply`. The [MapDoc handoff table](../KhaozEngine.MapDoc/README.md#public-synthetic-village-acceptance)
 records the remaining GUI input, rendering, controller and whole verb-map parity gates.
+
+## Markers
+
+`marker_set(markerJson)`, `marker_remove(id)` and `marker_list(...)` are additive verbs over
+`MutationService.MarkerApply` and `QueryService.MarkerList`, the same command and list the GUI uses. `markerJson` is
+one closed local marker in world terms, read by `MapPrefabJson.ReadMarker`. Payload 1 keeps its height in
+`Position.Y`. Payload 2 requires `heightMode`. Explicit keeps `Position.Y` as the height, and Support carries a
+`supportBinding` with `Position.Y` exactly 0. The marker ID is the upsert key. A set with a new name renames the
+marker and keeps its ID. A framed standalone marker stores the frame-local equivalent of the world values. A live
+prefab marker refuses with `prefab_override` guidance, and an ID held by a retained prefab reservation refuses. Both
+edit verbs return `MapPrefabMutationResult`, whose `Mutation.Verb` is the verb name, `Mutation.Id` the marker ID and
+`Mutation.WorldChanged` false. `Effects` is the shared marker diff: metadata edits carry the marker ID and rename row
+with no invalidation, and spatial edits add both point boxes with Residency only. Undo and redo use `prefab_undo` and
+`prefab_redo`.
+
+`marker_list(name?, role?, tag?, enabledOnly = false, minX?, minZ?, maxX?, maxZ?)` returns effective markers in
+ordinal ID order with resolved heights. Every given filter must match. The name is an exact optional filter, never a
+key. The rectangle is half-open, minima included and maxima excluded, and its four bounds are given together or not
+at all. A document with neither building intent nor prefabs returns an empty list without expansion. A resolver
+(1, 1) native document refuses `marker_set` and `marker_remove` and names resolver adoption through
+`MapResolverAdoption.ConvertToAuthoredSupport` as the prerequisite.
 
 ## Native colliders
 
@@ -308,7 +331,7 @@ GPU with a scatter-free document (flat terrain and a single marker placement), a
 to 1.4 s (the higher figure includes first device start-up) and a capped 2 km square about 0.9 s. A document with
 dense scatter layers pays for every scattered prop inside the widened ring as well, so expect longer renders.
 
-## Verb surface (92 tools)
+## Verb surface (95 tools)
 
 | Group | Verbs |
 |---|---|
@@ -325,6 +348,7 @@ dense scatter layers pays for every scattered prop inside the widened ring as we
 | Renders | `render_topdown`, `render_view` |
 | Prefabs | `prefab_open`, `prefab_edit`, `prefab_save`, `prefab_extract`, `prefab_place`, `prefab_list`, `prefab_override`, `prefab_unpack`, `prefab_undo`, `prefab_redo` |
 | Interiors | `interior_volume_add`, `interior_volume_set`, `interior_volume_remove`, `roof_link_set` |
+| Markers | `marker_set`, `marker_remove`, `marker_list` |
 
 `scatter_override_rename(index, name?)` renames the scatter override at `index`, a null or empty name
 clearing it back to unnamed. `scatter_override_reorder(fromIndex, toIndex)` moves a scatter override

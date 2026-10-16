@@ -715,6 +715,27 @@ instances, children and the effective roof, light and marker inventories. Empty 
 and the released positional write-set and effect constructors remain unchanged. Physical bounds and editor publication
 are later stages. These APIs have no editor, tool, rendering or physics dependency.
 
+`MapMarkerEdits.Prepare(document, assets, edit)` prepares one standalone marker edit through the same detached gate
+and returns a `MapPrefabEditResult`. `MapSetMarker(marker)` sets the marker whose immutable ID matches, or creates it.
+The name is an editable member and never a key, so a rename keeps the ID. `MapRemoveMarker(id)` removes one standalone
+marker. A set takes the marker in world terms, the form `MapEffectiveResources.BuildingIntent` publishes. An unframed
+standalone marker stores it as given. A framed standalone marker, such as one transferred by unpack, keeps its precise
+frame verbatim and stores the frame-local point, yaw, height and binding, so expansion applies the frame once. A
+component whose world value is unchanged keeps its stored local bits, so a metadata edit never rounds them.
+
+Preparation refuses a resolver (1, 1) document and names resolver adoption through
+`MapResolverAdoption.ConvertToAuthoredSupport` as the prerequisite. A live prefab marker belongs to its instance, so
+set and remove refuse with `prefab_override` guidance. An ID held by any marker reservation, live or dormant, refuses
+unless it is the active transfer of the standalone marker being edited, so a set never seizes a retired reservation.
+Removing a transferred marker retires its transfer and removes only its own frame. Payload rules, unique IDs and
+names, binding owners and every support-bound height are validated before the result exists. `MapPrefabJson.ReadMarker`
+is the closed decoder the tool uses, sharing the prefab child codec and binding converter.
+
+Marker effects come only from `MapMarkerEffects.Describe` over the before and after expansions. A metadata edit names
+the marker and any rename row with no bounds and no invalidation. A spatial edit adds both point boxes with Residency.
+Markers never add Physics, Nav or Unbounded. The write set names the building intent, plus the resource frames or
+prefab transfers only when a removal changed them.
+
 ## Public synthetic village acceptance
 
 `PrefabFixtures.Village()` in `MapDoc.Tests/Prefabs/PrefabVillageFixtures.cs` is invented public data.
@@ -737,11 +758,11 @@ verified bytes and separately loaded documents. They supply headless acceptance 
 
 | Later owner | Remaining proof |
 | --- | --- |
-| R6 | Marker commands and wire parity, legacy spawn adoption, consumer readouts and window anchors. Unique names, the registry, rectangle lookup, role findings and typed views are in place |
+| R6 | Legacy spawn adoption, consumer readouts and window anchors. Unique names, the registry, rectangle lookup, role findings, typed views, marker commands and marker wire parity are in place |
 | R7 | Distribution and foliage exclusions over effective canonical paint owners |
 | R8 | Partial-face drawing, roof colour and shadows, camera boom, sky picking, local-light pixels, bounded streaming, eviction, HLOD and on-demand navigation |
 | R9 and #1349 | GUI closure/bounds binding, prefab mode, inspectors and real pointer/key input |
-| R10 | Whole verb-map wire parity beyond the registered prefab/interior commands |
+| R10 | Whole verb-map wire parity beyond the registered prefab, interior and marker commands |
 | R11 and G2 | Private lossless importer, exhaustive source comparison, actual source freeze and import-time acceptance of target, distance, occlusion and stance changes |
 | G1b, #1355 and #438 phase 5 | Native controller walking, body certificates and complete layered routes |
 | #1363 | Live door state and generation-fenced collision, navigation and water swaps |

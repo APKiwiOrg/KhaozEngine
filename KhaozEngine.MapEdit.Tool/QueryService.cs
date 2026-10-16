@@ -13,7 +13,7 @@ namespace KhaozEngine.MapEdit;
 /// procedural setup read (<see cref="ProceduralInfo"/>), and the exclusion and scatter-override list reads
 /// (<see cref="ExclusionsInfo"/>, <see cref="ScatterOverridesInfo"/>). Every query reads through
 /// <see cref="MapEditSession.Field()"/> and <see cref="MapEditSession.WithDocument{T}"/>. None mutate.</summary>
-public sealed class QueryService(MapEditSession session)
+public sealed partial class QueryService(MapEditSession session)
 {
     /// <summary>Ground height, slope, and water depth at a single world point. <c>SlopeDegrees</c> is the angle
     /// between the surface normal and +Y, in degrees. <c>BelowWater</c> is <c>Height &lt; field.WaterLevel</c>.</summary>

@@ -25,6 +25,11 @@ public sealed partial class MapEditSession
     {
         get { lock (_lock) return (_nativeHistory.UndoDepth, _nativeHistory.UndoDepth + _nativeHistory.RedoDepth, _nativeEvents); }
     }
+    /// <summary>The labels of the next native undo and redo entries, null when that stack is empty.</summary>
+    internal (string? Undo, string? Redo) NativeHistoryLabels
+    {
+        get { lock (_lock) return (_nativeHistory.UndoLabel, _nativeHistory.RedoLabel); }
+    }
     /// <summary>Raised once after a native edit, undo or redo has been accepted.</summary>
     public event Action<MapNativeEditEffects>? NativeEdited;
 

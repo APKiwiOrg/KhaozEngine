@@ -107,6 +107,14 @@ internal static class MapPrefabJson
     internal static MapPrismDomain ReadDomain(string json) => ReadText<MapTopologyRecord>(json) as MapPrismDomain
         ?? throw new MapDocumentException("Interior volume JSON requires a prism domain.");
     internal static MapRoofLinkDoc ReadRoofLink(string json) => ReadText<MapRoofLinkDoc>(json);
+    /// <summary>One closed local marker through the same codec and binding converter as prefab marker children, then
+    /// the shared payload rules.</summary>
+    internal static MapLocalMarkerDoc ReadMarker(string json)
+    {
+        MapLocalMarkerDoc marker = ReadText<MapLocalMarkerDoc>(json);
+        Markers.MapMarkerValidation.Require(marker);
+        return marker;
+    }
     static T ReadText<T>(string json)
     {
         ArgumentNullException.ThrowIfNull(json);

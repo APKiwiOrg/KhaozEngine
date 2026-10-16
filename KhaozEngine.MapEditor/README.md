@@ -946,6 +946,14 @@ closure bound to `EditorHistory`. Fresh commands need no constructor capture. Di
 without a closure refuses before preparation. Accepted undo and redo restore captured roots, child IDs,
 storeys and frames, retaining the numeric high-water mark and dormant reservations.
 
+`MarkerEditCommand(MapMarkerEdit)` is the one standalone marker command that the GUI inspector and the tool session
+invoke. It prepares `MapMarkerEdits` against the bound closure through the same accepted before/after state as the
+prefab commands, so a refusal or retry consumes no history. It publishes the building intent, plus a marker frame or
+transfer only when a removal changed it. Its effects are the shared marker diff. A metadata edit carries its marker
+ID and any rename row with no bounds or invalidation, and a spatial edit adds both point boxes with Residency only.
+The generic resource combination keeps these narrow effects. `AffectsWorld` is false, since markers never change the
+terrain field. Inspector widgets and the native editor host remain R9 work.
+
 Native publication has two internal modes. Focused commands project their named write sets before
 validation, so unlisted edits cannot leak or satisfy dependencies. Complete snapshot commands clone and
 validate every semantic root and publish the captured document with its matching closure. Both stage

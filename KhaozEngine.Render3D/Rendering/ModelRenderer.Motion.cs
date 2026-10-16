@@ -33,11 +33,15 @@ internal sealed partial class ModelRenderer
         {
             if (_motion is not null) return;
             _motion = new ModelMotionResources(_gd, _retired);
-            if (_pendingCpuPrevious > 0) _motion.ReserveCpuPrevious(_pendingCpuPrevious);
-            _pendingCpuPrevious = 0;
+            if (_cpuPreviousReserve is { } reserve)
+            {
+                _motion.AdoptCpuPrevious(reserve, _cpuPreviousReserveCapacity);
+                _cpuPreviousReserve = null;
+                _cpuPreviousReserveCapacity = 0;
+            }
             return;
         }
-        _pendingCpuPrevious = 0;
+        ReleaseCpuPreviousReserve(retire: true);   // the target stayed or became non-temporal: no motion will adopt it
         if (_motion is null) return;
         _retired.Retire(_motion);
         _motion = null;
@@ -133,5 +137,6 @@ internal sealed partial class ModelRenderer
         _cpuSkinnedMotionPipeline = null;
         _motion?.Dispose();
         _motion = null;
+        ReleaseCpuPreviousReserve(retire: false);
     }
 }

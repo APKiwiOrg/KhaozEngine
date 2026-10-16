@@ -151,13 +151,50 @@ public sealed class CoverageResourceTests
         h.Scene.PrepareFrame();
         int vertices = h.Conformer.Topology.VertexCount;
         Assert.True(vertices < 4096);
+        // Nothing has been recorded yet: the actual previous-position buffer must already be owned here.
         var reserved = h.Scene.CoverageMotionReserveForTests;
+        int createdBeforeRecording = h.Factory.Buffers.Count;
         Assert.True(reserved.List >= vertices);
-        Assert.Equal(activatesThisFrame ? 0u : (uint)vertices, reserved.Gpu);
+        Assert.Equal((uint)vertices, reserved.Gpu);
+        var buffer = Assert.IsType<KhaozEngine.Tests.Gpu.FakeBuffer>(reserved.Buffer);
+        Assert.Equal((uint)vertices * 12, buffer.SizeInBytes);
+        Assert.InRange(h.Factory.Buffers.IndexOf(buffer), 0, createdBeforeRecording - 1);
         h.Render();
         Assert.Equal(CoveragePresentation.Covered, h.Scene.GetCoverageOutcome(frame).Presentation);
-        Assert.Equal(reserved.List, h.Scene.CoverageMotionReserveForTests.List);
-        Assert.Equal((uint)vertices, h.Scene.CoverageMotionReserveForTests.Gpu);
+        var after = h.Scene.CoverageMotionReserveForTests;
+        Assert.Equal(reserved.List, after.List);
+        Assert.Equal((uint)vertices, after.Gpu);
+        Assert.Same(buffer, after.Buffer);
+        Assert.False(buffer.Disposed);
+        Assert.Contains(h.Record.Uploads, u => ReferenceEquals(u.Buffer, buffer));
+        Assert.Contains(h.Record.Bindings, b => b.VertexBuffers.TryGetValue(2, out var bound) && ReferenceEquals(bound, buffer));
+    }
+
+    [Fact]
+    public void Temporal_reserve_grows_by_retirement_and_disposes_with_the_scene()
+    {
+        var h = new CoverageSceneFixture();
+        h.Scene.ForceTemporalForTests = true;
+        h.Begin();
+        var frame = h.Stage();
+        h.Scene.DrawSkinned(h.HostDraw(frame), h.Palette);
+        h.SubmitEquipment();
+        h.Scene.PrepareFrame();
+        var first = Assert.IsType<KhaozEngine.Tests.Gpu.FakeBuffer>(h.Scene.CoverageMotionReserveForTests.Buffer);
+        h.Scene.UseGpuSkinning = false;
+        h.Begin();
+        frame = h.Stage();
+        h.Scene.DrawSkinned(h.HostDraw(frame), h.Palette);
+        h.Scene.DrawSkinned(h.UncoveredDraw(), h.Palette);
+        h.SubmitEquipment();
+        h.Scene.PrepareFrame();
+        var grown = Assert.IsType<KhaozEngine.Tests.Gpu.FakeBuffer>(h.Scene.CoverageMotionReserveForTests.Buffer);
+        Assert.NotSame(first, grown);
+        Assert.Equal((uint)(h.Conformer.Topology.VertexCount + h.UncoveredMesh.Vertices.Length) * 12, grown.SizeInBytes);
+        Assert.False(first.Disposed);
+        h.Dispose();
+        Assert.True(first.Disposed);
+        Assert.True(grown.Disposed);
     }
 
     [Fact]

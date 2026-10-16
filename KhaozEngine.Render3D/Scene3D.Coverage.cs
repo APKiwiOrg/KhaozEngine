@@ -13,8 +13,8 @@ public sealed partial class Scene3D
 
     internal int CoverageSphereEvaluationsForTests { get; private set; }
     internal long CoverageSurfaceScansForTests { get; private set; }
-    internal (int List, uint Gpu) CoverageMotionReserveForTests =>
-        (_cpuSkinnedPrevious.Capacity, _model.Motion?.CpuPreviousCapacity ?? 0);
+    internal (int List, uint Gpu, KhaozEngine.Gpu.IGpuBuffer? Buffer) CoverageMotionReserveForTests =>
+        (_cpuSkinnedPrevious.Capacity, _model.CpuPreviousReservationForTests.Capacity, _model.CpuPreviousReservationForTests.Buffer);
     internal CoverageFrameOutcome CoverageOutcomeForTests(SkinnedCoverageFrame frame) =>
         TryFrozenCoverage(frame, out var p) ? p.Outcome : throw new InvalidOperationException("Coverage token is not owned.");
 

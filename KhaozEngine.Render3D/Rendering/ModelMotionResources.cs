@@ -176,10 +176,19 @@ internal sealed class ModelMotionResources : IDisposable
     internal void ReserveCpuPrevious(uint count)
     {
         if (_cpuPrevious is not null && _cpuPreviousCapacity >= count) return;
-        IGpuBuffer next = _gd.Factory.CreateBuffer(new GpuBufferDescription(count * 12, GpuBufferUsage.VertexBuffer));
+        AdoptCpuPrevious(CreateCpuPrevious(_gd, count), count);
+    }
+
+    internal static IGpuBuffer CreateCpuPrevious(IGpuDevice gd, uint count) =>
+        gd.Factory.CreateBuffer(new GpuBufferDescription(count * 12, GpuBufferUsage.VertexBuffer));
+
+    /// <summary>Take ownership of a CPU-skinned previous-position buffer reserved before these resources existed.
+    /// Any buffer it replaces retires through the deferred queue.</summary>
+    internal void AdoptCpuPrevious(IGpuBuffer buffer, uint capacity)
+    {
         _retired.Retire(_cpuPrevious);
-        _cpuPrevious = next;
-        _cpuPreviousCapacity = count;
+        _cpuPrevious = buffer;
+        _cpuPreviousCapacity = capacity;
     }
 
     public void Dispose()

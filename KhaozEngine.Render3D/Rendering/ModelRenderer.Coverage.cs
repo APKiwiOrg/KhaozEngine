@@ -5,8 +5,14 @@ namespace KhaozEngine.Render3D.Rendering;
 
 internal sealed partial class ModelRenderer
 {
-    // Previous positions requested before the motion resources exist, applied when they are created.
-    uint _pendingCpuPrevious;
+    // CPU-skinned previous positions reserved before recording while the motion resources do not exist yet. The
+    // renderer owns this buffer until EnsureMotionResources hands it to the motion resources it creates.
+    IGpuBuffer? _cpuPreviousReserve;
+    uint _cpuPreviousReserveCapacity;
+
+    internal (uint Capacity, IGpuBuffer? Buffer) CpuPreviousReservationForTests =>
+        _motion is { } motion ? (motion.CpuPreviousCapacity, motion.CpuPreviousCapacity == 0 ? null : motion.CpuPrevious)
+            : (_cpuPreviousReserveCapacity, _cpuPreviousReserve);
 
     internal void ReserveCoveredSkinning(int vertices, int instances, int previous)
     {
@@ -25,7 +31,19 @@ internal sealed partial class ModelRenderer
         if (nextInstances is not null)
         { _retired.Retire(_skinnedInstanceBuffer); _skinnedInstanceBuffer = nextInstances; _skinnedInstanceCapacity = ic; }
         if (previous <= 0) return;
-        if (_motion is { } motion) motion.ReserveCpuPrevious((uint)previous);
-        else _pendingCpuPrevious = Math.Max(_pendingCpuPrevious, (uint)previous);
+        if (_motion is { } motion) { motion.ReserveCpuPrevious((uint)previous); return; }
+        if (_cpuPreviousReserve is not null && _cpuPreviousReserveCapacity >= previous) return;
+        IGpuBuffer next = ModelMotionResources.CreateCpuPrevious(_gd, (uint)previous);
+        _retired.Retire(_cpuPreviousReserve);
+        _cpuPreviousReserve = next;
+        _cpuPreviousReserveCapacity = (uint)previous;
+    }
+
+    void ReleaseCpuPreviousReserve(bool retire)
+    {
+        if (retire) _retired.Retire(_cpuPreviousReserve);
+        else _cpuPreviousReserve?.Dispose();
+        _cpuPreviousReserve = null;
+        _cpuPreviousReserveCapacity = 0;
     }
 }

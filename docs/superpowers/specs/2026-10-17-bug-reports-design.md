@@ -2,6 +2,7 @@
 
 - **Date:** 2026-10-17
 - **Status:** design approved in conversation, written spec awaiting owner review
+- **Plans:** `docs/superpowers/plans/2026-10-17-bug-reports-contract.md` and the E1, E2 and E3 plans beside it
 - **First consumer:** Grimhollow, whose game-side spec is `docs/superpowers/specs/2026-10-17-in-game-bug-reports-design.md`
   on its `feature/bug-reports-design` branch. It covers hosting, infrastructure, cost and the game and server sections.
 - **Related:** https://github.com/APKiwiOrg/KhaozEngine/issues/1428 (this round), Grimhollow https://github.com/APKiwiOrg/Grimhollow/issues/559 (adoption)
@@ -34,7 +35,7 @@ server sections, its sign-in token, its relay hosting and its text.
   save-to-file option for players.
 - **BR8 Always included:** reporter identity and game and system information are always included and the screen says
   so. Game state is not personal data. The screenshot and the clip each have a toggle.
-- **BR9 Recording default:** the rolling clip is on by default with a settings toggle that removes all of its cost.
+- **BR9 Recording default:** the rolling clip is on by default with a settings toggle that removes the clip's capture, readback and encode cost. A standby screenshot tap keeps swapchain copy-source usage on, so F10 still gets a screenshot.
 - **BR10 Clip codec:** JPEG frames in the first version. The bundle, relay and viewer accept `clip.mp4` from the first
   version so hardware H.264 can land as the next engine phase without a format change.
 - **BR11 Limits:** 5 reports per hour and 20 per day per account, 100 per day across all accounts, 16 MB per report.
@@ -63,14 +64,15 @@ server sections, its sign-in token, its relay hosting and its text.
 | --- | --- | --- |
 | `KhaozEngine.Gpu` | `GpuReadbackRing` | existing |
 | `KhaozEngine.Windowing` | frame tap in `FramePhases`, swapchain usage flags on request | existing |
-| `KhaozEngine.Imaging` | `JpegWriter` | BCL only |
+| `KhaozEngine.Imaging` | `JpegWriter`, `JpegThumbnailDecoder` | BCL only |
 | `KhaozEngine.Diagnostics` | `RecentLogSink`, `ReportRedactor` | existing |
-| `KhaozEngine.Gui` | `TextArea`, `BugReportScreen` | existing |
+| `KhaozEngine.Gui` | `TextArea` | existing |
+| `KhaozEngine.Game` | `IGameOverlay` overlay seam, `GameApp.AddOverlay` | existing |
 | `KhaozEngine.BugReports.Contracts` (new) | manifest and index schema, limits, entry names, format version | BCL only |
-| `KhaozEngine.BugReports` (new) | model, sections, bundle writer, sinks, offline queue, `ServerSnapshotPoster` | Contracts, Diagnostics, Imaging, Http, Serialization |
-| `KhaozEngine.BugReports.Client` (new) | `FrameHistoryRecorder`, `BugReportService`, the trigger action, built-in client sections, screen wiring | BugReports, Gpu, Windowing, Gui, Game |
-| `KhaozEngine.BugReports.Relay` (new) | intake, quotas, validation, issue composer, GitHub App client, workers, viewer template | Contracts, Http, Serialization |
-| `KhaozEngine.BugReports.Relay.Azure` (new, opt-in backend) | blob media store, queue, table quota store | Relay, Azure.Storage.Blobs, Azure.Storage.Queues, Azure.Data.Tables |
+| `KhaozEngine.BugReports` (new) | model, sections, bundle writer, sinks, offline queue, viewer page renderer, server capture, `ServerSnapshotPoster` | Contracts, Diagnostics, Http, Platform |
+| `KhaozEngine.BugReports.Client` (new) | `FrameHistoryRecorder`, `BugReportService`, `BugReportScreen`, the trigger action, built-in client sections | BugReports, Gpu, Windowing, Gui, Game, Imaging |
+| `KhaozEngine.BugReports.Relay` (new) | intake, quotas, validation, issue composer, GitHub App client, workers | Contracts, BugReports, Http, Diagnostics |
+| `KhaozEngine.BugReports.Relay.Azure` (new, opt-in backend) | blob media store, queue, table quota store, poison requeuer | Relay, Azure.Storage.Blobs, Azure.Storage.Queues, Azure.Data.Tables |
 
 `KhaozEngine.BugReports` must stay headless so a server can reference it without windowing or GUI. The relay core has
 no ASP.NET Core or Azure Functions dependency. Its operations take a body `Stream`, request headers and a cancellation
@@ -112,8 +114,8 @@ measures the per-frame encode cost on each platform rather than assuming one.
 
 ### Frame history recorder
 
-`FrameHistoryRecorder` keeps a ring of encoded frames, each with its capture time and that frame's render time from
-`FrameStats`, so the viewer can show hitches.
+`FrameHistoryRecorder` keeps a ring of encoded frames, each with its capture time and that frame's unclamped render time from
+the frame loop, so the viewer can show hitches.
 
 | Option | Default |
 | --- | --- |
@@ -140,7 +142,7 @@ downscaled to a 2560 px long edge when larger and encoded per BR13 on the backgr
 
 `BugReportDraft` holds:
 
-- `ReportId`, a ULID generated at trigger, so the server snapshot and the client bundle share it before the player has
+- `ReportId`, a time-ordered UUID v7 (`Guid.CreateVersion7()`) generated at trigger, so the server snapshot and the client bundle share it before the player has
   typed anything
 - game id, kind (`Bug` now, `Crash` reserved), captured-at time
 - description, category
@@ -270,7 +272,7 @@ from client to server, because protocols are game-owned.
 5. If the report id was already accepted, return the same reference without storing again.
 6. Write the entries, `report.json` (the manifest plus the relay's identity and received time) and the rendered viewer
    page to `IReportMediaStore` under `reports/<game>/<yyyy-mm>/<reportId>-<token>/`, where the token is 128 random bits.
-   Every blob gets an explicit content type and `X-Content-Type-Options: nosniff`.
+   Every blob gets an explicit content type. Validation guarantees image bytes match their type, and the only HTML served is the engine's viewer page. Azure Blob Storage cannot set per-blob response headers, so nosniff is not used.
 7. Enqueue `CreateIssue(reportId)` on `IReportWorkQueue` and answer 202 with the reference.
 
 The reference code is derived from the report id (for example `R-6F3A2Q`) and appears in the issue, so a player who
@@ -281,8 +283,7 @@ quotes it can be matched to their report.
 - Loads `report.json` and any stored server snapshot.
 - Creates the issue through the GitHub App client and records the issue number in `report.json`. A message for a report
   that already has an issue number is a no-op, which makes redelivery safe.
-- Failures leave the message for the queue to redeliver with backoff. After 5 dequeues the backend moves it to a poison
-  queue and logs an error the host can alert on.
+- Failures leave the message for the queue to redeliver with backoff. After 5 dequeues the host moves it to a poison queue. The Azure backend's `PoisonQueueRequeuer`, run daily by the host, moves poison items back at most 3 times, which recovers from GitHub outages without an alert.
 - An `AppendServerSnapshot` message posts the snapshot summary as a comment.
 
 ### Server snapshot merge
@@ -316,7 +317,7 @@ the queue redelivers it later.
 
 ### Viewer
 
-A single self-contained HTML page rendered from an engine template with the report data embedded as escaped JSON and
+A single self-contained HTML page rendered by the core package's `BugReportViewerPage` with the report data embedded as escaped JSON and
 no external scripts or styles.
 
 - Plays the clip at its recorded timestamps, scrubs, and steps frame by frame.

@@ -23,35 +23,38 @@ internal static class CoverageSupportValidation
         + (double)m.M21 * m.M21 + (double)m.M22 * m.M22 + (double)m.M23 * m.M23
         + (double)m.M31 * m.M31 + (double)m.M32 * m.M32 + (double)m.M33 * m.M33);
 
-    internal static double Cross(Vector3 a, Vector3 b, Vector3 c) =>
-        ((double)b.X - a.X) * ((double)c.Y - a.Y) - ((double)b.Y - a.Y) * ((double)c.X - a.X);
+    internal static double Cross(CoverageAffinePoint a, CoverageAffinePoint b, CoverageAffinePoint c) => CoverageGeometry.Edge(a, b, c).Estimate;
 
-    internal static CoverageBoundaryEdge[] Validate(CoverageSourceTopology source, Vector3[] positions, int[] selected)
+    internal static int[] Validate(CoverageSourceTopology source, CoverageAffinePoint[] positions, int[] selected)
     {
-        var points = new List<Vector3>();
-        var welded = new Dictionary<Vector2, int>();
+        var points = new List<CoverageAffinePoint>();
+        var sourceVertices = new List<int>();
         var faces = new List<(int A, int B, int C)>();
         var edges = new Dictionary<(int A, int B), List<(int A, int B)>>();
-        double scale = 0;
         foreach (int index in selected)
         {
             CoverageSourceTriangle triangle = source.Triangles[index];
-            int a = Weld(positions[triangle.A]), b = Weld(positions[triangle.B]), c = Weld(positions[triangle.C]);
+            int a = Weld(triangle.A), b = Weld(triangle.B), c = Weld(triangle.C);
             faces.Add((a, b, c));
             Edge(a, b); Edge(b, c); Edge(c, a);
         }
-        Vector3 min = points[0], max = min;
-        foreach (Vector3 p in points) { min = Vector3.Min(min, p); max = Vector3.Max(max, p); }
-        scale = Math.Max((double)max.X - min.X, (double)max.Y - min.Y);
+        CoverageCoordinate minX = points[0].X, maxX = minX, minY = points[0].Y, maxY = minY;
+        foreach (CoverageAffinePoint point in points)
+        {
+            minX = CoverageGeometry.Min(minX, point.X); maxX = CoverageGeometry.Max(maxX, point.X);
+            minY = CoverageGeometry.Min(minY, point.Y); maxY = CoverageGeometry.Max(maxY, point.Y);
+        }
+        double scale = Math.Max(CoverageGeometry.Difference(maxX, minX).Bounds.Max, CoverageGeometry.Difference(maxY, minY).Bounds.Max);
         double tolerance = scale * scale * 1e-12;
         if (!(tolerance > 0) || !double.IsFinite(tolerance)) throw source.Error("Uncertifiable support scale.");
         int sign = 0;
         foreach (var face in faces)
         {
-            double area = Cross(points[face.A], points[face.B], points[face.C]);
-            if (Math.Abs(area) <= tolerance) throw source.Error("Projected support triangle is degenerate.");
-            if (sign != 0 && Math.Sign(area) != sign) throw source.Error("Support winding is inconsistent.");
-            sign = Math.Sign(area);
+            CoverageScalar area = CoverageGeometry.Edge(points[face.A], points[face.B], points[face.C]);
+            double minimumArea = area.Sign >= 0 ? area.Bounds.Min : -area.Bounds.Max;
+            if (!area.IsFinite || minimumArea <= tolerance) throw source.Error("Projected support triangle is degenerate.");
+            if (sign != 0 && area.Sign != sign) throw source.Error("Support winding is inconsistent.");
+            sign = area.Sign;
         }
         foreach (var edge in edges.Values)
             if (edge.Count > 2 || edge.Count == 2 && edge[0] != (edge[1].B, edge[1].A))
@@ -67,40 +70,38 @@ internal static class CoverageSupportValidation
         do
         {
             if (loop.Count >= boundary.Length || !next.TryGetValue(current, out int end)) throw source.Error("Support boundary has a gap.");
-            loop.Add(current);
-            current = end;
+            loop.Add(current); current = end;
         } while (current != start);
         if (loop.Count != boundary.Length) throw source.Error("Support sheet has a hole or disconnected occurrence.");
         for (int i = 0; i < loop.Count; i++)
-            if (Cross(points[loop[i]], points[loop[(i + 1) % loop.Count]], points[loop[(i + 2) % loop.Count]]) * sign < 0)
+            if (Sign(points[loop[i]], points[loop[(i + 1) % loop.Count]], points[loop[(i + 2) % loop.Count]]) * sign < 0)
                 throw source.Error("Support boundary is not convex.");
         for (int i = 0; i < faces.Count; i++)
             for (int j = i + 1; j < faces.Count; j++)
             {
                 var a = faces[i]; var b = faces[j];
-                if (Overlap(points[a.A], points[a.B], points[a.C], points[b.A], points[b.B], points[b.C], sign) > 0)
-                    throw source.Error("Projected support triangles overlap.");
-                foreach (int vertex in new[] { a.A, a.B, a.C })
-                    CheckJunction(vertex, b);
-                foreach (int vertex in new[] { b.A, b.B, b.C })
-                    CheckJunction(vertex, a);
+                if (!Separated(a, b) && !Separated(b, a)) throw source.Error("Projected support triangles overlap.");
+                foreach (int vertex in new[] { a.A, a.B, a.C }) CheckJunction(vertex, b);
+                foreach (int vertex in new[] { b.A, b.B, b.C }) CheckJunction(vertex, a);
             }
         double sumArea = faces.Sum(f => Cross(points[f.A], points[f.B], points[f.C]));
         double boundaryArea = 0;
         for (int i = 1; i + 1 < loop.Count; i++) boundaryArea += Cross(points[loop[0]], points[loop[i]], points[loop[i + 1]]);
         if (Math.Abs(sumArea - boundaryArea) > tolerance) throw source.Error("Support sheet does not cover its boundary.");
-        return loop.Select((vertex, i) => new CoverageBoundaryEdge(points[vertex], points[loop[(i + 1) % loop.Count]])).ToArray();
+        return loop.Select(vertex => sourceVertices[vertex]).ToArray();
 
-        int Weld(Vector3 point)
+        int Weld(int sourceVertex)
         {
-            var xy = new Vector2(point.X, point.Y);
-            if (welded.TryGetValue(xy, out int index))
+            CoverageAffinePoint point = positions[sourceVertex];
+            for (int i = 0; i < points.Count; i++)
             {
-                if (points[index].Z != point.Z) throw source.Error("Support has inconsistent shared heights or multiple depths.");
-                return index;
+                if (!CoverageGeometry.SameXY(point, points[i])) continue;
+                if (CoverageGeometry.Compare(point.Z, points[i].Z) != 0) throw source.Error("Support has inconsistent shared heights or multiple depths.");
+                positions[sourceVertex] = points[i];
+                return i;
             }
             int added = points.Count;
-            points.Add(point); welded.Add(xy, added); return added;
+            points.Add(point); sourceVertices.Add(sourceVertex); return added;
         }
         void Edge(int a, int b)
         {
@@ -108,44 +109,29 @@ internal static class CoverageSupportValidation
             if (!edges.TryGetValue(key, out var list)) edges.Add(key, list = new());
             list.Add((a, b));
         }
+        int Sign(CoverageAffinePoint a, CoverageAffinePoint b, CoverageAffinePoint c)
+        {
+            CoverageScalar value = CoverageGeometry.Edge(a, b, c);
+            if (!value.IsFinite) throw source.Error("Support predicate is numerically uncertifiable.");
+            return value.Sign;
+        }
+        bool Separated((int A, int B, int C) a, (int A, int B, int C) b)
+        {
+            foreach (var edge in new[] { (a.A, a.B), (a.B, a.C), (a.C, a.A) })
+                if (Sign(points[edge.Item1], points[edge.Item2], points[b.A]) * sign <= 0
+                    && Sign(points[edge.Item1], points[edge.Item2], points[b.B]) * sign <= 0
+                    && Sign(points[edge.Item1], points[edge.Item2], points[b.C]) * sign <= 0) return true;
+            return false;
+        }
         void CheckJunction(int vertex, (int A, int B, int C) face)
         {
             if (vertex == face.A || vertex == face.B || vertex == face.C) return;
             foreach (var edge in new[] { (face.A, face.B), (face.B, face.C), (face.C, face.A) })
             {
-                Vector3 p = points[vertex], a = points[edge.Item1], b = points[edge.Item2];
-                double dot = ((double)p.X - a.X) * ((double)p.X - b.X) + ((double)p.Y - a.Y) * ((double)p.Y - b.Y);
-                if (Math.Abs(Cross(a, b, p)) <= tolerance && dot < 0) throw source.Error("Support has an unmatched edge vertex.");
+                CoverageAffinePoint p = points[vertex], a = points[edge.Item1], b = points[edge.Item2];
+                if (Sign(a, b, p) == 0 && CoverageGeometry.Dot(a, p, b, p).Sign < 0)
+                    throw source.Error("Support has an unmatched edge vertex.");
             }
         }
-    }
-
-    // Double-precision convex clipping certifies nonadjacent projected interiors without sampling.
-    static double Overlap(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 e, Vector3 f, int sign)
-    {
-        var polygon = new List<(double X, double Y)> { (a.X, a.Y), (b.X, b.Y), (c.X, c.Y) };
-        foreach (var edge in new[] { (d, e), (e, f), (f, d) })
-        {
-            var output = new List<(double X, double Y)>();
-            for (int i = 0; i < polygon.Count; i++)
-            {
-                var p = polygon[i]; var q = polygon[(i + 1) % polygon.Count];
-                double cp = Side(p), cq = Side(q);
-                if (cp >= 0) output.Add(p);
-                if ((cp < 0) != (cq < 0))
-                {
-                    double t = cp / (cp - cq);
-                    output.Add((p.X + t * (q.X - p.X), p.Y + t * (q.Y - p.Y)));
-                }
-            }
-            polygon = output;
-            double Side((double X, double Y) p) => sign * (((double)edge.Item2.X - edge.Item1.X) * (p.Y - edge.Item1.Y)
-                - ((double)edge.Item2.Y - edge.Item1.Y) * (p.X - edge.Item1.X));
-        }
-        double area = 0;
-        for (int i = 1; i + 1 < polygon.Count; i++)
-            area += (polygon[i].X - polygon[0].X) * (polygon[i + 1].Y - polygon[0].Y)
-                - (polygon[i].Y - polygon[0].Y) * (polygon[i + 1].X - polygon[0].X);
-        return Math.Abs(area);
     }
 }

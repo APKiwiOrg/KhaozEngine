@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using KhaozEngine.Render3D;
 using Xunit;
 
@@ -127,6 +128,37 @@ public sealed class CoverageSafetyRegressionTests
         command = command with { MaxWorldRecession = .3f };
         Assert.False(CoverageCertification.Validate(topology, before, after, Matrix4x4.Identity, [command], new CoverageScratch(topology), out var failure));
         Assert.Equal(CoverageFailureCode.RecessionExceeded, failure.Code);
+    }
+
+    [Fact]
+    public void Exact_world_recession_budget_equality_is_accepted_without_allocation()
+    {
+        var (topology, before, command) = Fan("none");
+        var after = before.ToArray();
+        after[0].Position.Z = -.25f;
+        CoverageCommandPose[] commands = [command with { MaxWorldRecession = .25f }];
+        var scratch = new CoverageScratch(topology);
+        Assert.True(CoverageCertification.Validate(topology, before, after, Matrix4x4.Identity, commands, scratch, out var failure), failure.ToString());
+        long start = GC.GetAllocatedBytesForCurrentThread();
+        bool accepted = CoverageCertification.Validate(topology, before, after, Matrix4x4.Identity, commands, scratch, out _);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - start;
+        Assert.True(accepted);
+        Assert.Equal(0, allocated);
+        Assert.True(MemoryMarshal.AsBytes(before.AsSpan(1)).SequenceEqual(MemoryMarshal.AsBytes(after.AsSpan(1))));
+    }
+
+    [Fact]
+    public void Adjacent_representable_world_recession_above_budget_is_refused()
+    {
+        var (topology, before, command) = Fan("none");
+        var after = before.ToArray();
+        after[0].Position.Z = MathF.BitDecrement(-.25f);
+        command = command with { MaxWorldRecession = .25f };
+        Assert.False(CoverageCertification.Validate(topology, before, after, Matrix4x4.Identity, [command], new CoverageScratch(topology),
+            out var certificate, out var failure));
+        Assert.Equal(CoverageFailureCode.RecessionExceeded, failure.Code);
+        Assert.Equal(default, certificate);
+        Assert.True(MemoryMarshal.AsBytes(before.AsSpan(1)).SequenceEqual(MemoryMarshal.AsBytes(after.AsSpan(1))));
     }
 
     [Fact]

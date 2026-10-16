@@ -107,7 +107,9 @@ public static class CoverageCertification
                 tally.Note(CoverageFailureCode.CapContact, slot);
             CoverageBoundedVector delta = CoverageBoundedVector.From(a) - CoverageBoundedVector.From(b);
             CoverageScalarBounds distance = a == b ? CoverageIntervals.Zero : frame.BoundedActor.ApplyLinear(delta).Length;
-            if (!distance.IsFinite || distance.Max > command.MaxWorldRecession)
+            if ((!distance.IsFinite || distance.Max > command.MaxWorldRecession)
+                && !CoverageGeometry.SquaredDistanceWithinBudget(CoverageAffinePoint.Project(a, frame.ActorModel),
+                    CoverageAffinePoint.Project(b, frame.ActorModel), command.MaxWorldRecession))
                 tally.Note(CoverageFailureCode.RecessionExceeded, slot);
             if (topology.IsCoreVertex(i) && !CoverageSheetSide.Contains(command.Support, frame.HostToActualSheet.Apply(a)))
                 tally.Note(CoverageFailureCode.CoreEscaped, slot);

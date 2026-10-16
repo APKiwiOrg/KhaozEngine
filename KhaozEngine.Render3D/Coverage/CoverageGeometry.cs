@@ -86,6 +86,26 @@ internal static class CoverageGeometry
         static CoverageCoordinate Coordinate(CoverageAffinePoint p, int i) => i switch { 0 => p.X, 1 => p.Y, _ => p.Z };
     }
 
+    /// <summary>Compares exact squared distance with the squared float budget. Affine-sum and difference tails remain
+    /// in the expansion, so certifiable equality is accepted without widening the budget. Unsupported products refuse.</summary>
+    internal static bool SquaredDistanceWithinBudget(CoverageAffinePoint a, CoverageAffinePoint b, float budget)
+    {
+        if (!float.IsFinite(budget) || budget < 0) return false;
+        // Three squared eight-term differences emit at most 384 product terms, plus the exact float budget square.
+        Span<double> expansion = stackalloc double[512], difference = stackalloc double[8];
+        int length = 0;
+        Grow(expansion, ref length, -(double)budget * budget);
+        for (int i = 0; i < 3; i++)
+        {
+            CoverageCoordinate first = i switch { 0 => a.X, 1 => a.Y, _ => a.Z };
+            CoverageCoordinate second = i switch { 0 => b.X, 1 => b.Y, _ => b.Z };
+            int count = Difference(first, second, difference);
+            if (!Products(difference[..count], difference[..count], 1, expansion, ref length)) return false;
+        }
+        CoverageScalar result = Scalar(expansion[..length]);
+        return result.IsFinite && result.Sign <= 0;
+    }
+
     internal static CoverageScalar Difference(CoverageCoordinate a, CoverageCoordinate b)
     {
         Span<double> values = stackalloc double[8];

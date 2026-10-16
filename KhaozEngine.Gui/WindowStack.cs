@@ -16,7 +16,9 @@ namespace KhaozEngine.Gui
     /// <para>Windows live in three bands, <see cref="WindowBand.Docked"/>, <see cref="WindowBand.Floating"/> and
     /// <see cref="WindowBand.Topmost"/>, bottom to top. No window rises above a higher band.</para>
     /// <para>A window that becomes open is raised to the front of its band. While the left button is held that
-    /// raise waits for the release, so a drag in progress keeps its window on top.</para>
+    /// raise waits until the gesture has ended. <see cref="Update"/> skips it on the release frame too and that
+    /// frame's <see cref="Draw"/> applies it, so the release's taps and drops resolve against the order the player
+    /// saw and a drag in progress keeps its window on top.</para>
     /// <para>A fresh left or right press raises the front-most open window containing its press origin, tested
     /// against where the windows were before this frame's updates. No press raises anything while a window
     /// captures the pointer, while the other mouse button is held from an earlier frame, or on a frame that
@@ -57,6 +59,11 @@ namespace KhaozEngine.Gui
 
         /// <summary>Every registered window, open or closed, bottom to top with the bands in order.</summary>
         public IReadOnlyList<IStackWindow> Order => _orderView;
+
+        /// <summary>True when the last <see cref="Update"/> ran in capture mode, because an open window reported
+        /// <see cref="IStackWindow.CapturesPointer"/> on a frame that received input. The captor's own popup owns
+        /// that frame's keyboard, so gate global keys such as Escape on it.</summary>
+        public bool IsCapturing => _lastMode == UpdateMode.Capture;
 
         /// <summary>Register <paramref name="window"/> at the front of <paramref name="band"/>. A window already
         /// registered moves to the front of the given band.</summary>
@@ -109,7 +116,9 @@ namespace KhaozEngine.Gui
         public void Update(Pointer pointer, InputState input, float dt, bool receivesInput = true)
         {
             ArgumentNullException.ThrowIfNull(pointer);
-            SyncOpenEdges(pointer);
+            // The release frame's taps and drops resolve against the order the player saw, so a raise that waited
+            // for the release is applied by that frame's Draw, not here.
+            SyncOpenEdges(pointer.IsDown || pointer.IsJustReleased);
 
             var snapshot = _updateScratch;
             snapshot.Clear();
@@ -171,7 +180,7 @@ namespace KhaozEngine.Gui
         public void Draw(SpriteBatch batch, Pointer pointer)
         {
             ArgumentNullException.ThrowIfNull(pointer);
-            SyncOpenEdges(pointer);
+            SyncOpenEdges(pointer.IsDown);
 
             var open = _drawScratch;
             open.Clear();
@@ -223,9 +232,10 @@ namespace KhaozEngine.Gui
             return false;
         }
 
-        // Raise windows that became open since the last sync, in the order they opened, unless the left button
-        // is held. A window that closes again before the raise applies drops out of the queue.
-        void SyncOpenEdges(Pointer pointer)
+        // Raise windows that became open since the last sync, in the order they opened, unless the caller defers
+        // the raise for a gesture in progress. A window that closes again before the raise applies drops out of
+        // the queue.
+        void SyncOpenEdges(bool defer)
         {
             var all = _syncScratch;
             all.Clear();
@@ -243,7 +253,7 @@ namespace KhaozEngine.Gui
             }
             all.Clear();
 
-            if (pointer.IsDown || _pendingRaise.Count == 0) return;
+            if (defer || _pendingRaise.Count == 0) return;
             foreach (var window in _pendingRaise) BringToFront(window);
             _pendingRaise.Clear();
         }

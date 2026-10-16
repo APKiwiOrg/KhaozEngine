@@ -183,7 +183,37 @@ namespace KhaozEngine.Tests.Gui
             Frame(title + new Vector2(60f, 40f), held: true);
             AssertOrder(_b, _f);
 
+            // The release frame updates in the order the player saw. That frame's Draw applies the raise.
+            _log.Clear();
             Frame(title + new Vector2(60f, 40f));
+            AssertOrder(_b, _f);
+            Assert.Equal(new[] { "update:F", "update:B" }, _log);
+            Draw();
+            AssertOrder(_f, _b);
+            Assert.Equal(new[] { "update:F", "update:B", "draw:F", "draw:B" }, _log);
+        }
+
+        [Fact]
+        public void Open_DuringHeldPress_ReleaseTapResolvesAgainstSeenOrder()
+        {
+            _b.IsOpen = false;
+            AddBoth();
+            Frame(Overlap);
+            Frame(Overlap, held: true);
+            AssertOrder(_b, _f);
+
+            // B opens over F's press while it is held.
+            _b.IsOpen = true;
+            Frame(Overlap, held: true);
+            AssertOrder(_b, _f);
+
+            // The release lands in the overlap: the tap belongs to F, the window the player pressed.
+            Frame(Overlap);
+            Assert.True(_f.Tap);
+            Assert.False(_b.Tap);
+            AssertOrder(_b, _f);
+
+            Draw();
             AssertOrder(_f, _b);
         }
 
@@ -333,6 +363,29 @@ namespace KhaozEngine.Tests.Gui
             Frame(BackOnly);
             Frame(BackOnly, held: true);
             AssertOrder(_b, _f);
+        }
+
+        [Fact]
+        public void IsCapturing_ReportsWhetherTheLastUpdateCaptured()
+        {
+            AddBoth();
+            Assert.False(_stack.IsCapturing);
+            Frame(Outside);
+            Assert.False(_stack.IsCapturing);
+
+            _b.CapturesPointer = true;
+            Frame(Outside);
+            Assert.True(_stack.IsCapturing);
+
+            // A frame without input runs no capture, captor or not.
+            Frame(Outside, receivesInput: false);
+            Assert.False(_stack.IsCapturing);
+
+            Frame(Outside);
+            Assert.True(_stack.IsCapturing);
+            _b.CapturesPointer = false;
+            Frame(Outside);
+            Assert.False(_stack.IsCapturing);
         }
 
         [Fact]

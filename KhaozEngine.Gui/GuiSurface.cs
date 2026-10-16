@@ -335,7 +335,7 @@ namespace KhaozEngine.Gui
         public bool HoverEntered => _hoveredRect.HasValue && _hoveredRect != _prevHoveredRect;
 
         /// <summary>
-        /// True when the stored pointer's press-origin lies inside any widget reserved this frame (the
+        /// True when the stored pointer's press-origin is occluded or lies inside any widget reserved this frame (the
         /// click-through gate). Use to suppress world/board input when the user pressed on the UI. Always false
         /// while the window is unfocused (a background window captures nothing).
         /// </summary>
@@ -349,6 +349,7 @@ namespace KhaozEngine.Gui
                 // never-pressed pointer must not capture a widget that merely sits at the origin.
                 if (!_pointer.IsDown && !_pointer.IsJustReleased) return false;
                 Vector2 origin = _pointer.PressOrigin;
+                if (_pointer.IsOccluded(origin)) return true;
                 foreach (var r in _blocked)
                     if (r.Contains(origin)) return true;
                 return false;

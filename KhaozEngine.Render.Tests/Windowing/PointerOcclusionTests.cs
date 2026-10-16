@@ -63,6 +63,54 @@ namespace KhaozEngine.Tests.Windowing
         }
 
         [Fact]
+        public void TapFromTo_MissesWhenOriginOrReleaseOccluded()
+        {
+            Assert.False(Tap(Covered, Uncovered, occlude: true).IsTapFromTo(A, A));
+            Assert.False(Tap(Uncovered, Covered, occlude: true).IsTapFromTo(A, A));
+            Assert.True(Tap(Uncovered, Uncovered, occlude: true).IsTapFromTo(A, A));
+            Assert.True(Tap(Covered, Covered, occlude: false).IsTapFromTo(A, A));
+        }
+
+        [Fact]
+        public void PressingIn_MissesWhenOriginOrPositionOccluded()
+        {
+            var p = new Pointer();
+            p.Update(Frame(Covered, None));
+            p.Update(Frame(Covered, Left));
+            p.Occlude(C);
+            Assert.False(p.IsPressingIn(A));
+
+            var q = new Pointer();
+            q.Update(Frame(Uncovered, None));
+            q.Update(Frame(Uncovered, Left));
+            q.Update(Frame(Covered, Left));
+            q.Occlude(C);
+            Assert.False(q.IsPressingIn(A));
+
+            var r = new Pointer();
+            r.Update(Frame(Uncovered, None));
+            r.Update(Frame(Uncovered, Left));
+            r.Occlude(C);
+            Assert.True(r.IsPressingIn(A));
+        }
+
+        [Fact]
+        public void DragFromUncoveredOrigin_KeepsAnsweringWhenCursorEntersOccludedArea()
+        {
+            var p = new Pointer();
+            p.Update(Frame(Uncovered, None));
+            p.Update(Frame(Uncovered, Left));
+            p.Occlude(C);
+            Assert.True(p.IsDraggingIn(A));
+
+            p.Update(Frame(Covered, Left));
+            p.Occlude(C);
+            Assert.True(p.IsOccluded(p.Position));
+            Assert.True(p.IsDraggingIn(A));
+            Assert.NotEqual(Vector2.Zero, p.GetDragDelta(A));
+        }
+
+        [Fact]
         public void HoverAndPointerIn_MissInOccludedArea()
         {
             var p = new Pointer();

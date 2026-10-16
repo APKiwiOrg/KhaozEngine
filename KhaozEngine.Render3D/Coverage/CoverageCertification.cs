@@ -20,7 +20,7 @@ public static class CoverageCertification
     /// recession budgets and core support domain, then nondegenerate injective projected patches and unfolded changed
     /// faces, new nonadjacent host intersections through the refitted host hierarchy, then for each full-weight command
     /// the certified world clearance and solid containment of every commanded core and collar triangle and the analytic
-    /// core overlay behind the inward sheet. Other commanded regions must stay separated from that equipment too.</summary>
+    /// whole-core side behind the inward sheet. Other commanded regions must stay separated from that equipment too.</summary>
     public static bool Validate(CoverageRefinement topology, ReadOnlySpan<ModelVertex> before, ReadOnlySpan<ModelVertex> after,
         in Matrix4x4 actorModel, ReadOnlySpan<CoverageCommandPose> commands, CoverageScratch scratch,
         out CoverageCertificate certificate, out CoverageFailure failure)
@@ -57,7 +57,7 @@ public static class CoverageCertification
         Span<int> signs = stackalloc int[CoverageScratch.MaxCommands];
         Faces(topology, before, after, scratch, signs, ref tally);
         if (!tally.Failed) Injectivity(topology, after, scratch, signs, stack, ref tally);
-        if (!tally.Failed) HostIntersections(topology, before, after, scratch, stack, ref tally);
+        if (!tally.Failed) HostIntersections(topology, after, scratch, stack, ref tally);
         bool full = true;
         double minimumCore = double.PositiveInfinity, errorBound = 0;
         if (!tally.Failed)
@@ -70,7 +70,7 @@ public static class CoverageCertification
                 if (!frame.Full) { full = false; continue; }
                 Equipment(topology, after, commands, scratch, slot, stack, ref minimumCore, ref tally);
                 if (!tally.Failed) Containment(topology, after, commands, scratch, slot, ref tally);
-                if (!tally.Failed) Overlay(topology, after, commands, scratch, slot, stack, ref tally);
+                if (!tally.Failed) CoreSide(topology, after, commands, scratch, slot, ref tally);
                 if (tally.Failed) break;
             }
         }
@@ -100,12 +100,16 @@ public static class CoverageCertification
             }
             ref readonly CoverageCommandFrame frame = ref scratch.Frames[slot];
             ref readonly CoverageCommandPose command = ref commands[frame.Command];
-            CoverageVector qb = frame.HostToCoverage.Apply(b), qa = frame.HostToCoverage.Apply(a);
-            double low = command.MinZ + frame.CapMargin - frame.Slack, high = command.MaxZ - frame.CapMargin + frame.Slack;
-            if (qb.Z < low || qb.Z > high || qa.Z < low || qa.Z > high) tally.Note(CoverageFailureCode.CapContact, slot);
-            if (frame.ActorLinear.ApplyLinear(CoverageVector.From(a) - CoverageVector.From(b)).Length > command.MaxWorldRecession + frame.ErrorBound)
+            CoverageBoundedVector qb = frame.BoundedHostToCoverage.Apply(b), qa = frame.BoundedHostToCoverage.Apply(a);
+            double low = CoverageIntervals.Add(new(command.MinZ, command.MinZ), new(frame.CapMarginUpper, frame.CapMarginUpper)).Max;
+            double high = CoverageIntervals.Subtract(new(command.MaxZ, command.MaxZ), new(frame.CapMarginUpper, frame.CapMarginUpper)).Min;
+            if (!qb.IsFinite || !qa.IsFinite || qb.Z.Min < low || qb.Z.Max > high || qa.Z.Min < low || qa.Z.Max > high)
+                tally.Note(CoverageFailureCode.CapContact, slot);
+            CoverageBoundedVector delta = CoverageBoundedVector.From(a) - CoverageBoundedVector.From(b);
+            CoverageScalarBounds distance = a == b ? CoverageIntervals.Zero : frame.BoundedActor.ApplyLinear(delta).Length;
+            if (!distance.IsFinite || distance.Max > command.MaxWorldRecession)
                 tally.Note(CoverageFailureCode.RecessionExceeded, slot);
-            if (topology.IsCoreVertex(i) && !command.Support.TryGetHeightBounds(CoverageAffinePoint.FromDouble(qa.X, qa.Y), out _))
+            if (topology.IsCoreVertex(i) && !CoverageSheetSide.Contains(command.Support, frame.HostToActualSheet.Apply(a)))
                 tally.Note(CoverageFailureCode.CoreEscaped, slot);
         }
     }
@@ -140,7 +144,9 @@ public static class CoverageCertification
             double area = CoverageTriangleGeometry.Orient(p0.X, p0.Y, p1.X, p1.Y, p2.X, p2.Y);
             // A vertical, collapsed or overhanging face cannot be served by this directional mechanism.
             if (!(Math.Abs(area) > 1e-9 * (p1 - p0).Length * (p2 - p0).Length)) { tally.Note(CoverageFailureCode.FoldedPatch, slot); continue; }
-            int sign = Math.Sign(area);
+            CoverageScalar exactArea = CoverageProjectedGeometry.Orientation(after[i0].Position, after[i1].Position, after[i2].Position, frame);
+            if (!exactArea.IsFinite || exactArea.Sign == 0) { tally.Note(CoverageFailureCode.FoldedPatch, slot); continue; }
+            int sign = exactArea.Sign;
             if (signs[slot] == 0) signs[slot] = sign;
             else if (signs[slot] != sign) tally.Note(CoverageFailureCode.FoldedPatch, slot);
         }
@@ -170,12 +176,11 @@ public static class CoverageCertification
             while (walk.Next(out int u))
             {
                 byte other = scratch.TriangleFlags[u];
-                if (u <= t || (other & Commanded) == 0 || other >> 2 != slot || SharedGroups(topology, t, u) >= 2) continue;
-                if (CoverageTriangleGeometry.ProjectedInteriorsOverlap(
-                        frame.HostToCoverage.Apply(after[(int)indices[t * 3]].Position), frame.HostToCoverage.Apply(after[(int)indices[t * 3 + 1]].Position),
-                        frame.HostToCoverage.Apply(after[(int)indices[t * 3 + 2]].Position), frame.HostToCoverage.Apply(after[(int)indices[u * 3]].Position),
-                        frame.HostToCoverage.Apply(after[(int)indices[u * 3 + 1]].Position), frame.HostToCoverage.Apply(after[(int)indices[u * 3 + 2]].Position),
-                        signs[slot]))
+                if (u <= t || (other & Commanded) == 0 || other >> 2 != slot) continue;
+                if (CoverageProjectedGeometry.InteriorsOverlap(
+                        after[(int)indices[t * 3]].Position, after[(int)indices[t * 3 + 1]].Position, after[(int)indices[t * 3 + 2]].Position,
+                        after[(int)indices[u * 3]].Position, after[(int)indices[u * 3 + 1]].Position, after[(int)indices[u * 3 + 2]].Position,
+                        frame, signs[slot]))
                     tally.Note(CoverageFailureCode.FoldedPatch, slot);
             }
         }
@@ -185,16 +190,18 @@ public static class CoverageCertification
     {
         ref readonly CoverageCommandFrame frame = ref scratch.Frames[scratch.TriangleFlags[t] >> 2];
         var box = CoverageBox.Empty;
-        for (int corner = 0; corner < 3; corner++) box.Add(frame.HostToCoverage.Apply(after[(int)topology.Indices[t * 3 + corner]].Position));
-        box.Flatten();
-        box.Expand(1e-12 * (Math.Max(Math.Abs(box.MinX), Math.Max(Math.Abs(box.MaxX), Math.Max(Math.Abs(box.MinY), Math.Abs(box.MaxY)))) + 1e-30));
+        for (int corner = 0; corner < 3; corner++)
+        {
+            CoverageBoundedVector p = frame.BoundedHostToCoverage.Apply(after[(int)topology.Indices[t * 3 + corner]].Position);
+            box.Add(new(p.X.Min, p.Y.Min, 0)); box.Add(new(p.X.Max, p.Y.Max, 0));
+        }
         box.Flatten();
         return box;
     }
 
-    // Changed faces against every nonadjacent face through the refitted host hierarchy. A pair that already met in the
-    // unconformed pose is an existing fit defect, not a new intersection.
-    static void HostIntersections(CoverageRefinement topology, ReadOnlySpan<ModelVertex> before, ReadOnlySpan<ModelVertex> after,
+    // Affected pairs must be separated or meet only on their common topology. Baseline touching, ambiguity and
+    // penetration grant no waiver. An affected existing defect that cannot satisfy this proof refuses conservatively.
+    static void HostIntersections(CoverageRefinement topology, ReadOnlySpan<ModelVertex> after,
         CoverageScratch scratch, Span<int> stack, ref CoverageTally tally)
     {
         var indices = topology.Indices;
@@ -207,6 +214,8 @@ public static class CoverageCertification
         }
         if (!any) return;
         tree.Refit();
+        Span<CoverageVector> a = stackalloc CoverageVector[3], b = stackalloc CoverageVector[3];
+        Span<int> ag = stackalloc int[3], bg = stackalloc int[3];
         for (int t = 0; t < topology.TriangleCount; t++)
         {
             byte flags = scratch.TriangleFlags[t];
@@ -214,9 +223,16 @@ public static class CoverageCertification
             var walk = new CoverageBvhWalk(tree.Nodes, stack, ModelBox(after, indices, t));
             while (walk.Next(out int u))
             {
-                if (u == t || (scratch.TriangleFlags[u] & Changed) != 0 && u < t || SharedGroups(topology, t, u) > 0) continue;
-                if (Separation(after, indices, t, u) > 0 || !(Separation(before, indices, t, u) > 0)) continue;
-                tally.Note(CoverageFailureCode.HostIntersection, (flags & Commanded) != 0 ? flags >> 2 : -1);
+                if (u == t || (scratch.TriangleFlags[u] & Changed) != 0 && u < t) continue;
+                if (Separation(after, indices, t, u) > 0) continue;
+                for (int i = 0; i < 3; i++)
+                {
+                    int ai = (int)indices[t * 3 + i], bi = (int)indices[u * 3 + i];
+                    a[i] = CoverageVector.From(after[ai].Position); b[i] = CoverageVector.From(after[bi].Position);
+                    ag[i] = topology.Vertices[ai].PositionGroup; bg[i] = topology.Vertices[bi].PositionGroup;
+                }
+                if (!CoverageContact.OnlyCommonTopology(a, b, ag, bg))
+                    tally.Note(CoverageFailureCode.HostIntersection, (flags & Commanded) != 0 ? flags >> 2 : -1);
             }
         }
     }
@@ -233,19 +249,6 @@ public static class CoverageCertification
             CoverageVector.From(surface[(int)indices[t * 3 + 1]].Position), CoverageVector.From(surface[(int)indices[t * 3 + 2]].Position),
             CoverageVector.From(surface[(int)indices[u * 3]].Position), CoverageVector.From(surface[(int)indices[u * 3 + 1]].Position),
             CoverageVector.From(surface[(int)indices[u * 3 + 2]].Position));
-
-    static int SharedGroups(CoverageRefinement topology, int t, int u)
-    {
-        var indices = topology.Indices;
-        int shared = 0;
-        for (int i = 0; i < 3; i++)
-        {
-            int g = topology.Vertices[(int)indices[t * 3 + i]].PositionGroup;
-            for (int j = 0; j < 3; j++)
-                if (topology.Vertices[(int)indices[u * 3 + j]].PositionGroup == g) { shared++; break; }
-        }
-        return shared;
-    }
 
     // Every commanded face against one full-weight command's actual displayed solid in actor-relative world space. Its
     // own region keeps the authored clearance. Other commanded regions must at least stay certifiably apart from it.
@@ -338,44 +341,23 @@ public static class CoverageCertification
         }
     }
 
-    // Analytic overlay of each core face's coverage projection with the actual support triangles. The planar vertical gap
-    // is linear on every overlay cell, so its minimum lies at a cell corner.
-    static void Overlay(CoverageRefinement topology, ReadOnlySpan<ModelVertex> after, ReadOnlySpan<CoverageCommandPose> commands,
-        CoverageScratch scratch, int slot, Span<int> stack, ref CoverageTally tally)
+    // The convex-domain vertex certificates cover the complete affine face. Equipment has already proved rigorous
+    // whole-face separation from every actual solid triangle, including the sheet. The continuous signed height gap
+    // therefore cannot vanish anywhere on this connected face. One strict, outward-bounded side witness fixes its sign
+    // everywhere. Euclidean clearance is certified separately by Equipment, never by this side witness.
+    static void CoreSide(CoverageRefinement topology, ReadOnlySpan<ModelVertex> after, ReadOnlySpan<CoverageCommandPose> commands,
+        CoverageScratch scratch, int slot, ref CoverageTally tally)
     {
         ref readonly CoverageCommandFrame frame = ref scratch.Frames[slot];
         CoverageSupportSurface support = commands[frame.Command].Support;
-        ReadOnlySpan<CoveragePoint3> sheet = support.PrecisePositions;
-        double required = (frame.Clearance - frame.ErrorBound) / frame.ZScale - frame.Slack;
-        Span<CoverageVector> polygon = stackalloc CoverageVector[9];
-        Span<CoverageVector> clipped = stackalloc CoverageVector[9];
-        var indices = topology.Indices;
         for (int t = 0; t < topology.TriangleCount; t++)
         {
             if (scratch.TriangleFlags[t] >> 2 != slot || (scratch.TriangleFlags[t] & Commanded) == 0
                 || topology.Triangles[t].Role != CoverageTriangleRole.Core) continue;
-            CoverageVector c0 = frame.HostToCoverage.Apply(after[(int)indices[t * 3]].Position);
-            CoverageVector c1 = frame.HostToCoverage.Apply(after[(int)indices[t * 3 + 1]].Position);
-            CoverageVector c2 = frame.HostToCoverage.Apply(after[(int)indices[t * 3 + 2]].Position);
-            var box = CoverageBox.Empty;
-            box.Add(c0); box.Add(c1); box.Add(c2);
-            box.Expand(frame.Uncertainty + 1e-12 * (Math.Max(Math.Abs(box.MinX), Math.Abs(box.MaxX)) + 1));
-            box.Flatten();
-            var walk = new CoverageBvhWalk(support.ProjectedBvh.Nodes, stack, box);
-            while (walk.Next(out int s))
-            {
-                CoverageSourceTriangle triangle = support.InwardTriangles[s];
-                CoverageVector s0 = Point(sheet[triangle.A]), s1 = Point(sheet[triangle.B]), s2 = Point(sheet[triangle.C]);
-                polygon[0] = c0; polygon[1] = c1; polygon[2] = c2;
-                int count = CoverageTriangleGeometry.ClipToTriangle(polygon, 3, clipped, s0, s1, s2);
-                for (int k = 0; k < count; k++)
-                    if (!(CoverageTriangleGeometry.PlaneHeight(s0, s1, s2, polygon[k].X, polygon[k].Y) - polygon[k].Z >= required))
-                    {
-                        tally.Note(CoverageFailureCode.EquipmentIntersection, slot); break;
-                    }
-            }
+            Vector3 point = after[(int)topology.Indices[t * 3]].Position;
+            if (!CoverageSheetSide.Behind(support, frame.HostToActualSheet.Apply(point)))
+                tally.Note(CoverageFailureCode.EquipmentIntersection, slot);
         }
-        static CoverageVector Point(CoveragePoint3 p) => new(p.X, p.Y, p.Z);
     }
 
     static bool SameBytes(in ModelVertex a, in ModelVertex b) =>

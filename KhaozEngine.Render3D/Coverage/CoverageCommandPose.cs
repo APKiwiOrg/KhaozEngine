@@ -5,9 +5,9 @@ namespace KhaozEngine.Render3D;
 
 /// <summary>One posed conformation command for one frame. It targets exactly one region of one exact compiled host
 /// topology and one rigid part of one equipped instance. Matrices use System.Numerics row vectors. EquipmentWorld is the
-/// actual rigid part draw matrix and CoverageWorld must equal Support.CoverageLocal * EquipmentWorld up to float
-/// composition rounding. MinZ and MaxZ are coverage-local caps. CollarWidth is a coverage-local XY distance. Clearance
-/// and MaxWorldRecession are world lengths. TransitionWeight in [0,1] scales the full recession, while the budget and
+/// actual rigid part draw matrix and CoverageWorld must equal the canonical float composition
+/// Support.CoverageLocal * EquipmentWorld. MinZ and MaxZ are coverage-local caps. CollarWidth is a coverage-local XY
+/// distance. Clearance and MaxWorldRecession are world lengths. TransitionWeight in [0,1] scales the full recession, while the budget and
 /// uncertainty are judged at full weight so a transition never presents part of an invalid target. Values are checked
 /// at evaluation, so an invalid frame refuses with a structured failure rather than throwing.</summary>
 public readonly record struct CoverageCommandPose
@@ -125,19 +125,6 @@ internal readonly struct CoverageAffine
         return new(r1.X, r1.Y, r1.Z, r2.X, r2.Y, r2.Z, r3.X, r3.Y, r3.Z, t.X, t.Y, t.Z);
     }
 
-    /// <summary>Largest entry difference against a float matrix, and the entry magnitude scale it is judged against.</summary>
-    internal static double MaxDifference(in CoverageAffine a, in Matrix4x4 m, out double scale)
-    {
-        scale = Math.Max(Math.Max(Math.Abs(a.m11), Math.Max(Math.Abs(a.m12), Math.Abs(a.m13))),
-            Math.Max(Math.Max(Math.Abs(a.m21), Math.Max(Math.Abs(a.m22), Math.Abs(a.m23))),
-                Math.Max(Math.Abs(a.m31), Math.Max(Math.Abs(a.m32), Math.Abs(a.m33)))));
-        scale = Math.Max(scale, Math.Max(Math.Abs(a.t1), Math.Max(Math.Abs(a.t2), Math.Abs(a.t3))));
-        double d = Math.Max(Math.Max(Math.Abs(a.m11 - m.M11), Math.Max(Math.Abs(a.m12 - m.M12), Math.Abs(a.m13 - m.M13))),
-            Math.Max(Math.Max(Math.Abs(a.m21 - m.M21), Math.Max(Math.Abs(a.m22 - m.M22), Math.Abs(a.m23 - m.M23))),
-                Math.Max(Math.Abs(a.m31 - m.M31), Math.Max(Math.Abs(a.m32 - m.M32), Math.Abs(a.m33 - m.M33)))));
-        return Math.Max(d, Math.Max(Math.Abs(a.t1 - m.M41), Math.Max(Math.Abs(a.t2 - m.M42), Math.Abs(a.t3 - m.M43))));
-    }
-
     /// <summary>Max-norm gain of the linear difference from a float matrix, and its largest translation difference.</summary>
     internal static double Deviation(in CoverageAffine a, in Matrix4x4 m, double magnitude)
     {
@@ -153,9 +140,13 @@ internal readonly struct CoverageAffine
 internal struct CoverageCommandFrame
 {
     internal int Command;
+    internal Matrix4x4 ActorModel;
+    internal Vector3 CoverageZ;
     internal CoverageAffine HostToCoverage, ActorLinear, EquipmentRelative;
     /// <summary>Model-space displacement of one coverage unit along +Z. Recession subtracts a multiple of it.</summary>
     internal CoverageVector Recess;
+    internal CoverageBoundedAffine BoundedHostToCoverage, BoundedActor, HostToActualSheet;
+    internal double CapMarginUpper;
     internal double ZScale, SigmaMin, ClearanceCoverage, Slack, Uncertainty, ErrorBound, CapMargin, Clearance;
     internal bool Full;
 }
@@ -169,7 +160,6 @@ internal static class CoverageFrames
     /// <summary>Share of the authored clearance that numerical uncertainty may consume before a frame refuses.</summary>
     internal const double MarginFraction = .25;
     const double MaxCondition = 1e6;
-    const double FrameTolerance = 1.0 / (1 << 16);
 
     internal static bool TryPrepare(CoverageRefinement topology, in Matrix4x4 actorModel, ReadOnlySpan<CoverageCommandPose> commands,
         CoverageScratch scratch, double hostMagnitude, out CoverageFailure failure)
@@ -210,14 +200,15 @@ internal static class CoverageFrames
             if (!actorValid || !float.IsFinite(command.TransitionWeight) || command.TransitionWeight is < 0 or > 1
                 || !CoverageAffine.TryFrom(command.EquipmentWorld, out var equipment) || !Valid(equipment)
                 || !CoverageAffine.TryFrom(command.CoverageWorld, out var coverage) || !Valid(coverage)
-                || !CoverageAffine.TryFrom(support.CoverageLocal, out var local))
+                || !CoverageAffine.TryFrom(support.CoverageLocal, out _))
                 return Refuse(topology, CoverageFailureCode.UnsupportedTransform, command, out failure);
-            double drift = CoverageAffine.MaxDifference(CoverageAffine.Multiply(local, equipment), command.CoverageWorld, out double magnitude);
-            if (!(drift <= FrameTolerance * magnitude))
+            if (command.CoverageWorld != support.CoverageLocal * command.EquipmentWorld)
                 return Refuse(topology, CoverageFailureCode.StaleFrame, command, out failure);
             if (!Derive(actor, equipment, coverage, command, hostMagnitude, out scratch.Frames[slot]))
                 return Refuse(topology, CoverageFailureCode.UnsupportedTransform, command, out failure);
             scratch.Frames[slot].Command = order[slot];
+            scratch.Frames[slot].ActorModel = actorModel;
+            scratch.Frames[slot].CoverageZ = new(command.CoverageWorld.M31, command.CoverageWorld.M32, command.CoverageWorld.M33);
         }
         return true;
     }
@@ -235,6 +226,18 @@ internal static class CoverageFrames
         frame = default;
         if (!actor.TryInverse(out var actorInverse) || !coverage.TryInverse(out var coverageInverse)) return false;
         CoverageSupportSurface support = command.Support;
+        var boundedCoverage = CoverageBoundedAffine.From(coverage);
+        var boundedEquipment = CoverageBoundedAffine.From(equipment);
+        if (!boundedCoverage.TryInverse(out var boundedCoverageInverse) || !boundedEquipment.TryInverse(out var boundedEquipmentInverse)
+            || !CoverageAffine.TryFrom(support.SourceToCoverage, out var compiledProjection)
+            || !CoverageBoundedAffine.From(compiledProjection).TryInverse(out _)) return false;
+        frame.BoundedActor = CoverageBoundedAffine.From(actor);
+        frame.BoundedHostToCoverage = CoverageBoundedAffine.Compose(frame.BoundedActor, boundedCoverageInverse);
+        frame.HostToActualSheet = CoverageBoundedAffine.Compose(CoverageBoundedAffine.Compose(frame.BoundedActor, boundedEquipmentInverse),
+            CoverageBoundedAffine.From(compiledProjection));
+        if (!frame.BoundedHostToCoverage.IsFinite || !frame.HostToActualSheet.IsFinite) return false;
+        var capNormal = new CoverageBoundedVector(boundedCoverageInverse.R1.Z, boundedCoverageInverse.R2.Z, boundedCoverageInverse.R3.Z);
+        frame.CapMarginUpper = CoverageIntervals.Multiply(new(command.Clearance, command.Clearance), capNormal.Length).Max;
         frame.HostToCoverage = CoverageAffine.Multiply(actor, coverageInverse);
         frame.ActorLinear = actor.WithTranslation(default);
         frame.EquipmentRelative = equipment.WithTranslation(equipment.Translation - actor.Translation);
@@ -253,7 +256,8 @@ internal static class CoverageFrames
         double worldEquipment = support.MaxSourceMagnitude * equipment.MaxGain + (equipment.Translation - actor.Translation).MaxAbs;
         // Final positions round once to float in model space. Carry that through to coverage Z, with double headroom.
         double rounding = (hostMagnitude + recessionModel) * (1.0 / (1 << 22)) * Math.Sqrt(3) * frame.HostToCoverage.Frobenius;
-        frame.Slack = (frame.Uncertainty + rounding) * (1 + slope) * (1 + 1e-9);
+        // Max-norm coordinate error has XY Euclidean length at most sqrt(2) times that error.
+        frame.Slack = (frame.Uncertainty + rounding) * (1 + Math.Sqrt(2) * slope) * (1 + 1e-9);
         frame.ClearanceCoverage = command.Clearance * Math.Sqrt(1 + slope * slope) / frame.SigmaMin * (1 + 1e-12);
         frame.ErrorBound = RenderRelativeError * Math.Max(worldHost + command.MaxWorldRecession, worldEquipment);
         double consumed = frame.ErrorBound + frame.Slack * frame.ZScale;

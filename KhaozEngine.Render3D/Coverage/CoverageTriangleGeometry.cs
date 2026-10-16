@@ -142,24 +142,12 @@ internal static class CoverageTriangleGeometry
     internal static double Orient(double ax, double ay, double bx, double by, double cx, double cy) =>
         (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
 
-    /// <summary>True when the open XY interiors of two triangles with the given common orientation sign overlap beyond a
-    /// relative tolerance. Exactly collinear and shared corners count as touching, not overlapping.</summary>
+    /// <summary>True unless exact orientation signs prove disjoint open XY interiors. Exact topology touching is
+    /// valid. An uncertifiable predicate refuses as potential overlap, with no positive acceptance tolerance.</summary>
     internal static bool ProjectedInteriorsOverlap(in CoverageVector a0, in CoverageVector a1, in CoverageVector a2,
-        in CoverageVector b0, in CoverageVector b1, in CoverageVector b2, int sign)
-    {
-        double minX = Math.Min(Math.Min(Math.Min(a0.X, a1.X), Math.Min(a2.X, b0.X)), Math.Min(b1.X, b2.X));
-        double maxX = Math.Max(Math.Max(Math.Max(a0.X, a1.X), Math.Max(a2.X, b0.X)), Math.Max(b1.X, b2.X));
-        double minY = Math.Min(Math.Min(Math.Min(a0.Y, a1.Y), Math.Min(a2.Y, b0.Y)), Math.Min(b1.Y, b2.Y));
-        double maxY = Math.Max(Math.Max(Math.Max(a0.Y, a1.Y), Math.Max(a2.Y, b0.Y)), Math.Max(b1.Y, b2.Y));
-        double extent = Math.Max(maxX - minX, maxY - minY);
-        double tolerance = 1e-10 * extent * extent;
-        return !(Separates(a0, a1, b0, b1, b2) || Separates(a1, a2, b0, b1, b2) || Separates(a2, a0, b0, b1, b2)
-            || Separates(b0, b1, a0, a1, a2) || Separates(b1, b2, a0, a1, a2) || Separates(b2, b0, a0, a1, a2));
-
-        bool Separates(in CoverageVector u, in CoverageVector v, in CoverageVector p, in CoverageVector q, in CoverageVector r) =>
-            sign * Orient(u.X, u.Y, v.X, v.Y, p.X, p.Y) <= tolerance && sign * Orient(u.X, u.Y, v.X, v.Y, q.X, q.Y) <= tolerance
-            && sign * Orient(u.X, u.Y, v.X, v.Y, r.X, r.Y) <= tolerance;
-    }
+        in CoverageVector b0, in CoverageVector b1, in CoverageVector b2, int sign) => CoverageProjectedGeometry.InteriorsOverlap(
+            CoverageAffinePoint.FromDouble(a0.X, a0.Y), CoverageAffinePoint.FromDouble(a1.X, a1.Y), CoverageAffinePoint.FromDouble(a2.X, a2.Y),
+            CoverageAffinePoint.FromDouble(b0.X, b0.Y), CoverageAffinePoint.FromDouble(b1.X, b1.Y), CoverageAffinePoint.FromDouble(b2.X, b2.Y), Vector3.UnitZ, sign);
 
     /// <summary>Signed solid angle of a triangle seen from the origin, Van Oosterom and Strackee. Divide a closed
     /// surface's sum by 4 pi for its generalized winding number. Returns NaN when the origin is on a corner.</summary>
@@ -172,36 +160,4 @@ internal static class CoverageTriangleGeometry
         return 2 * Math.Atan2(numerator, denominator);
     }
 
-    /// <summary>Clips a convex XY polygon, stored as x,y,z triples where z is carried linearly, against one triangle.
-    /// Returns the new vertex count. Scratch must hold at least 9 vertices.</summary>
-    internal static int ClipToTriangle(Span<CoverageVector> polygon, int count, Span<CoverageVector> scratch,
-        in CoverageVector t0, in CoverageVector t1, in CoverageVector t2)
-    {
-        int sign = Math.Sign(Orient(t0.X, t0.Y, t1.X, t1.Y, t2.X, t2.Y));
-        if (sign == 0) return 0;
-        count = ClipEdge(polygon, count, scratch, t0, t1, sign); scratch[..count].CopyTo(polygon);
-        count = ClipEdge(polygon, count, scratch, t1, t2, sign); scratch[..count].CopyTo(polygon);
-        count = ClipEdge(polygon, count, scratch, t2, t0, sign); scratch[..count].CopyTo(polygon);
-        return count;
-    }
-
-    static int ClipEdge(ReadOnlySpan<CoverageVector> polygon, int count, Span<CoverageVector> output, in CoverageVector u, in CoverageVector v, int sign)
-    {
-        int written = 0;
-        for (int i = 0; i < count; i++)
-        {
-            CoverageVector p = polygon[i], q = polygon[(i + 1) % count];
-            double dp = sign * Orient(u.X, u.Y, v.X, v.Y, p.X, p.Y), dq = sign * Orient(u.X, u.Y, v.X, v.Y, q.X, q.Y);
-            if (dp >= 0) output[written++] = p;
-            if ((dp < 0) != (dq < 0)) output[written++] = p + (q - p) * (dp / (dp - dq));
-        }
-        return written;
-    }
-
-    /// <summary>Height of the plane through a triangle at an XY point, by barycentric interpolation.</summary>
-    internal static double PlaneHeight(in CoverageVector a, in CoverageVector b, in CoverageVector c, double x, double y)
-    {
-        double area = Orient(a.X, a.Y, b.X, b.Y, c.X, c.Y);
-        return (a.Z * Orient(b.X, b.Y, c.X, c.Y, x, y) + b.Z * Orient(c.X, c.Y, a.X, a.Y, x, y) + c.Z * Orient(a.X, a.Y, b.X, b.Y, x, y)) / area;
-    }
 }

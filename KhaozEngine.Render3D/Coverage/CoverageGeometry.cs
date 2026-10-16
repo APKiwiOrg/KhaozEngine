@@ -54,6 +54,38 @@ internal static class CoverageGeometry
         return Scalar(expansion[..length]);
     }
 
+    // Exact cross(b-a,c-a) dot axis. Affine coordinates retain their four terms and differences up to eight.
+    internal static CoverageScalar ProjectedArea(CoverageAffinePoint a, CoverageAffinePoint b, CoverageAffinePoint c, Vector3 axis)
+    {
+        var pa = CoverageBoundedVector.From(a);
+        CoverageScalarBounds bound = CoverageBoundedVector.Dot(CoverageBoundedVector.Cross(CoverageBoundedVector.From(b) - pa,
+            CoverageBoundedVector.From(c) - pa), CoverageBoundedVector.From(axis));
+        if (!bound.IsFinite) return CoverageScalar.Invalid;
+        if (bound.Min > 0 || bound.Max < 0) return new(bound.Min > 0 ? 1 : -1, bound.Midpoint, bound);
+        if (bound == CoverageIntervals.Zero) return new(0, 0, bound);
+        Span<double> differences = stackalloc double[48];
+        Span<int> lengths = stackalloc int[6];
+        for (int i = 0; i < 3; i++)
+        {
+            lengths[i] = Difference(Coordinate(b, i), Coordinate(a, i), differences.Slice(i * 8, 8));
+            lengths[i + 3] = Difference(Coordinate(c, i), Coordinate(a, i), differences.Slice((i + 3) * 8, 8));
+        }
+        Span<double> normal = stackalloc double[256], expansion = stackalloc double[1536], direction = stackalloc double[1];
+        int length = 0;
+        for (int i = 0; i < 3; i++)
+        {
+            int j = (i + 1) % 3, k = (i + 2) % 3, count = 0;
+            direction[0] = i switch { 0 => axis.X, 1 => axis.Y, _ => axis.Z };
+            if (direction[0] == 0) continue;
+            if (!Products(differences.Slice(j * 8, lengths[j]), differences.Slice((k + 3) * 8, lengths[k + 3]), 1, normal, ref count)
+                || !Products(differences.Slice(k * 8, lengths[k]), differences.Slice((j + 3) * 8, lengths[j + 3]), -1, normal, ref count)
+                || !Products(normal[..count], direction, 1, expansion, ref length)) return CoverageScalar.Invalid;
+        }
+        return Scalar(expansion[..length]);
+
+        static CoverageCoordinate Coordinate(CoverageAffinePoint p, int i) => i switch { 0 => p.X, 1 => p.Y, _ => p.Z };
+    }
+
     internal static CoverageScalar Difference(CoverageCoordinate a, CoverageCoordinate b)
     {
         Span<double> values = stackalloc double[8];

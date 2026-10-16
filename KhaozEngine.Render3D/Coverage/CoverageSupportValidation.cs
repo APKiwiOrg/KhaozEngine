@@ -34,78 +34,29 @@ internal static class CoverageSupportValidation
 
     internal static double Cross(CoverageAffinePoint a, CoverageAffinePoint b, CoverageAffinePoint c) => CoverageGeometry.Edge(a, b, c).Estimate;
 
-    /// <summary>Certifies the displayed solid against its actual orientation, not its authored winding sign. A source whose
-    /// position-welded directed edges all balance is closed, so its generalized winding number is integral off the surface.
-    /// The signed volume of the closed component holding the support gives its outward orientation. The support must be
-    /// that solid's inward side, whose outward normal points along coverage -Z toward the host. Returns false for an open
-    /// source, which cannot certify containment. Throws for a closed solid whose selected faces are its outer side.</summary>
-    internal static bool CertifySolid(CoverageSourceTopology source, CoverageAffinePoint[] positions, int[] selected)
-    {
-        var welds = new Dictionary<Vector3, int>();
-        var weld = new int[source.Positions.Length];
-        for (int i = 0; i < weld.Length; i++)
-        {
-            if (!welds.TryGetValue(source.Positions[i], out int id)) welds.Add(source.Positions[i], id = welds.Count);
-            weld[i] = id;
-        }
-        var balance = new Dictionary<(int, int), int>();
-        var faces = new Dictionary<(int, int), List<int>>();
-        for (int t = 0; t < source.Triangles.Count; t++)
-        {
-            CoverageSourceTriangle triangle = source.Triangles[t];
-            Directed(weld[triangle.A], weld[triangle.B], t); Directed(weld[triangle.B], weld[triangle.C], t); Directed(weld[triangle.C], weld[triangle.A], t);
-        }
-        if (balance.Values.Any(net => net != 0)) return false;
-        var component = new HashSet<int>(selected);
-        var pending = new Queue<int>(selected);
-        while (pending.Count > 0)
-        {
-            CoverageSourceTriangle triangle = source.Triangles[pending.Dequeue()];
-            foreach (var key in new[] { Key(weld[triangle.A], weld[triangle.B]), Key(weld[triangle.B], weld[triangle.C]), Key(weld[triangle.C], weld[triangle.A]) })
-                if (faces.TryGetValue(key, out var neighbours))
-                    foreach (int neighbour in neighbours)
-                        if (component.Add(neighbour)) pending.Enqueue(neighbour);
-        }
-        double volume = 0, extent = 0;
-        foreach (int t in component)
-        {
-            CoverageSourceTriangle triangle = source.Triangles[t];
-            Vector3 a = source.Positions[triangle.A], b = source.Positions[triangle.B], c = source.Positions[triangle.C];
-            volume += (double)a.X * ((double)b.Y * c.Z - (double)b.Z * c.Y) - (double)a.Y * ((double)b.X * c.Z - (double)b.Z * c.X)
-                + (double)a.Z * ((double)b.X * c.Y - (double)b.Y * c.X);
-            foreach (Vector3 p in new[] { a, b, c }) extent = Math.Max(extent, Math.Max(Math.Abs(p.X), Math.Max(Math.Abs(p.Y), Math.Abs(p.Z))));
-        }
-        if (!double.IsFinite(volume) || Math.Abs(volume) <= 1e-9 * extent * extent * extent)
-            throw source.Error("The closed solid holding the support has no certifiable volume.");
-        CoverageSourceTriangle first = source.Triangles[selected[0]];
-        int projected = CoverageGeometry.Edge(positions[first.A], positions[first.B], positions[first.C]).Sign;
-        // Outward normal = sign(volume) * face normal. Its coverage Z sign is the projected support orientation.
-        if (Math.Sign(volume) * projected >= 0) throw source.Error("Support is the outer side of its displayed solid, not its inward side.");
-        return true;
+    /// <summary>Certifies an embedded closed manifold and its actual inward orientation. Unsupported solids remain
+    /// usable for public height queries, but runtime conformation refuses them.</summary>
+    internal static bool CertifySolid(CoverageSourceTopology source, CoverageAffinePoint[] positions, int[] selected) =>
+        CoverageSolidCertificate.Inward(source, positions, selected);
 
-        void Directed(int a, int b, int triangle)
-        {
-            if (a == b) return;
-            var key = Key(a, b);
-            balance[key] = balance.GetValueOrDefault(key) + (a < b ? 1 : -1);
-            if (!faces.TryGetValue(key, out var list)) faces.Add(key, list = new());
-            list.Add(triangle);
-        }
-        static (int, int) Key(int a, int b) => a < b ? (a, b) : (b, a);
-    }
-
-    /// <summary>Upper bound of the inward sheet's height-field slope magnitude, inflated for double rounding.</summary>
+    /// <summary>Outward upper bound of the inward sheet's Euclidean height-field slope.</summary>
     internal static double MaxSlope(CoverageAffinePoint[] positions, IReadOnlyList<CoverageSourceTriangle> triangles)
     {
         double slope = 0;
         foreach (CoverageSourceTriangle triangle in triangles)
         {
-            CoveragePoint3 a = positions[triangle.A].Approximate, b = positions[triangle.B].Approximate, c = positions[triangle.C].Approximate;
-            double ux = b.X - a.X, uy = b.Y - a.Y, uz = b.Z - a.Z, vx = c.X - a.X, vy = c.Y - a.Y, vz = c.Z - a.Z;
-            double nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
-            slope = Math.Max(slope, Math.Sqrt(nx * nx + ny * ny) / Math.Abs(nz));
+            var a = CoverageBoundedVector.From(positions[triangle.A]);
+            var b = CoverageBoundedVector.From(positions[triangle.B]);
+            var c = CoverageBoundedVector.From(positions[triangle.C]);
+            CoverageBoundedVector normal = CoverageBoundedVector.Cross(b - a, c - a);
+            CoverageScalarBounds nz = normal.Z.Min > 0 ? normal.Z : CoverageIntervals.Negate(normal.Z);
+            if (!normal.IsFinite || nz.Min <= 0) return double.PositiveInfinity;
+            var xy = CoverageIntervals.Sqrt(CoverageIntervals.Add(CoverageIntervals.Square(normal.X), CoverageIntervals.Square(normal.Y)));
+            var ratio = CoverageIntervals.Divide(xy, nz);
+            if (!ratio.IsFinite) return double.PositiveInfinity;
+            slope = Math.Max(slope, ratio.Max);
         }
-        return slope * (1 + 1e-9) + 1e-12;
+        return slope;
     }
 
     internal static int[] Validate(CoverageSourceTopology source, CoverageAffinePoint[] positions, int[] selected)

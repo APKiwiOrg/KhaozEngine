@@ -74,7 +74,7 @@ public sealed class CoverageSupportSurface
     public CoverageBvh SolidBvh { get; }
     public CoverageBvh ProjectedBvh { get; }
     public CoverageBvh EdgeBvh { get; }
-    /// <summary>True when the displayed source is a closed, edge-balanced solid and the support is certified as its
+    /// <summary>True when the displayed source is an embedded closed manifold and the support is certified as its
     /// inward side. Runtime conformation refuses any other support, because it cannot certify solid containment.</summary>
     public bool InwardOfClosedSolid { get; }
     internal double MaxSlope { get; }

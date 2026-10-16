@@ -14,14 +14,14 @@ public sealed class NativePublicationWorkTests
 {
     /// <summary>Undo or redo of an unpack expands the open document and its staged candidate once each, shared by
     /// validation, effects and publication, plus the prefab-free projection that sizes the leaves the candidate keeps
-    /// inside the prefab. The undo's accepted candidate expansion is the redo's before side, so redo expands two. The
-    /// unpack itself is a revalidated session mutation, which leaves no accepted expansion for the undo.</summary>
+    /// inside the prefab. The unpack's and the undo's accepted candidate expansions are the next step's before side, so
+    /// undo and redo each expand two.</summary>
     [Fact]
     public void UndoAndRedo_ExpandEachDistinctDocumentOnce()
     {
         var session = PrefabEditorFixtures.Session(PrefabFixtures.Village());
         new MutationService(session).PrefabApply(new MapUnpackPrefab("a"));
-        Assert.Equal(3, Expansions(() => Assert.NotNull(session.UndoNative())));
+        Assert.Equal(2, Expansions(() => Assert.NotNull(session.UndoNative())));
         Assert.Equal(2, Expansions(() => Assert.NotNull(session.RedoNative())));
     }
 

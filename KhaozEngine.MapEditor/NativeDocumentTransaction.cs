@@ -121,7 +121,8 @@ internal static class NativeDocumentTransaction
 
     // One diff of the complete before and after expansions, whatever the write set. A marker whose support the edit
     // removed refuses with the after expansion, before publication. An old document that no longer resolves keeps the
-    // released effects, as a repair cannot know its old markers.
+    // released effects, including the preparation's marker list, as a repair cannot know its old markers. This is the
+    // one case where marker IDs do not come from the diff.
     static MapNativeEditEffects MarkerEffects(MapNativeEditEffects effects, Lazy<MapEffectiveResources> before, Lazy<MapEffectiveResources> after)
     {
         MapEffectiveResources old;

@@ -12,7 +12,8 @@ namespace KhaozEngine.MapEditor;
 internal static class NativeMarkerEffects
 {
     /// <summary>The diff's marker IDs and rename rows replace any the preparation named, so unchanged markers are never
-    /// reported. Spatial marker changes add their point boxes and Residency only.</summary>
+    /// reported. Spatial marker changes add their point boxes and Residency only. The one exception is a repair whose
+    /// before expansion refuses: no diff is possible, so the transaction keeps the preparation's marker list.</summary>
     internal static MapNativeEditEffects Combine(MapNativeEditEffects effects, MapEffectiveResources before, MapEffectiveResources after)
     {
         ArgumentNullException.ThrowIfNull(effects);

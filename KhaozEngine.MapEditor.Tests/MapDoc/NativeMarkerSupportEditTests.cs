@@ -62,6 +62,30 @@ public sealed class NativeMarkerSupportEditTests
         }
     }
 
+    /// <summary>The production terrain path, a session mutation that stages one command and leaves its candidate as
+    /// staged, keeps the accepted expansion. Each stroke after the first reads it as its before side, and reports exactly
+    /// what a cold session over the same document reports. The first stroke expands its before side, its candidate and
+    /// the unchanged session revalidation's candidate. Later strokes expand only the last two.</summary>
+    [Fact]
+    public void TerrainApplyStrokes_ReuseAcceptedExpansion()
+    {
+        var session = Session(MarkerFixtures.SupportEdits("stacked-bound"));
+        var service = new MutationService(session);
+        int[] heights = [2010, 2020, 2030];
+        for (int stroke = 0; stroke < heights.Length; stroke++)
+        {
+            var fixture = Fixture(session);
+            var cold = new MutationService(PrefabEditorFixtures.Session(new PrefabFixture(fixture.Document, fixture.Assets)));
+            var coldEffects = cold.TerrainApply(CornerEdit(heights[stroke])).Effects;
+            long before = MapPrefabResolver.ThreadExpansions;
+            var effects = service.TerrainApply(CornerEdit(heights[stroke])).Effects;
+            long delta = MapPrefabResolver.ThreadExpansions - before;
+            Assert.Equal(stroke == 0 ? 3 : 2, delta);
+            Assert.Equal(coldEffects.Describe(), effects.Describe());
+            Assert.Equal(new[] { "bound" }, effects.MarkerIds);
+        }
+    }
+
     /// <summary>A callback that edits its candidate after staging a publication shares that edit with the publication.
     /// The accepted expansion built before the edit is not remembered, so the next edit matches a cold session.</summary>
     [Fact]
@@ -88,7 +112,8 @@ public sealed class NativeMarkerSupportEditTests
     }
 
     // The four corners of the cell under the bound marker, so the stroke reseats it whatever the cell's diagonal.
-    static TerrainEditCommand Corner(int height) => new(new MapSetCornerHeights(Floor2, 0, 0, 2, 2, [height, height, height, height]));
+    static TerrainEditCommand Corner(int height) => new(CornerEdit(height));
+    static MapSetCornerHeights CornerEdit(int height) => new(Floor2, 0, 0, 2, 2, [height, height, height, height]);
 
     static void Terrain()
     {
@@ -143,7 +168,9 @@ public sealed class NativeMarkerSupportEditTests
 
         var session = Session(MarkerFixtures.SupportEdits("floor-bound"));
         string descriptor = Descriptor(session);
+        float movedFrom = Bound(session).Position.Y.ToSingle();
         var move = session.ExecuteNativeCommand(MovePrefab());
+        Assert.Equal(movedFrom + 1.5f, Bound(session).Position.Y.ToSingle());
         // The instance's own explicit marker moves with it. The bound world marker reseats on its floor.
         Assert.Equal(new[] { "a/entry", "bound" }, move.MarkerIds);
         AssertReseat(move, controlMove, 0, 1.5, 1.5);
@@ -219,7 +246,6 @@ public sealed class NativeMarkerSupportEditTests
     {
         var stateBefore = PrefabEditorFixtures.State(session);
         var removal = Assert.Throws<MapDocumentException>(() => session.ExecuteNativeCommand(command));
-        Assert.Contains("bound", removal.Message, StringComparison.Ordinal);
         Assert.Contains("Marker 'bound'", removal.Message, StringComparison.Ordinal);
         var stateAfterRefusal = PrefabEditorFixtures.State(session);
         Assert.Equal(stateBefore, stateAfterRefusal);

@@ -14,6 +14,9 @@ public sealed partial class MapEditSession
 {
     EditorHistory _nativeHistory = new();
     NativeStagedPublication? _pendingNative;
+    // The staged candidate's semantic hash and tile index when ApplyNative staged it, so publication can tell whether
+    // the callback edited the shared candidate afterwards.
+    (string Hash, MapTileIndex? Tiles)? _pendingNativeStamp;
     bool _nativeMutation;
     long _nativeEvents;
     internal Action? BeforeNativePublication { get; set; }
@@ -46,6 +49,7 @@ public sealed partial class MapEditSession
         var staged = _nativeHistory.StageExecute(_doc!, command);
         NativeDocumentTransaction.Publish(document, staged);
         _pendingNative = staged;
+        _pendingNativeStamp = (SemanticHash(staged.Candidate), staged.Candidate.Tiles);
         return staged.Effects;
     }
     internal MapNativeEditEffects ExecuteNativeCommand(EditorCommand command) => Mutate((doc, registry) =>
@@ -81,7 +85,16 @@ public sealed partial class MapEditSession
             var staged = _pendingNative;
             // fn can still edit the candidate it shares with a publication it staged, so that publication is checked again.
             bool revalidate = staged is not null;
-            if (SemanticHash(before) == SemanticHash(staged?.Candidate ?? candidate)) return result;
+            string published = SemanticHash(staged?.Candidate ?? candidate);
+            if (SemanticHash(before) == published) return result;
+            // The expansion staging built is the published state only if the callback left the staged candidate as staged.
+            // SemanticHash covers the format version, ID, globals including water, prefabs, building intent and resource
+            // transforms, the placement and spawn lists through the world hash, the native globals including surface refs,
+            // native assets and resolver identity, and every patch digest. It nulls Tiles, the storage index, which
+            // expansion never reads beyond refusing a partial document. The Tiles reference is compared as well, so a
+            // swapped index still counts as a change.
+            bool editedAfterStaging = staged is not null && _pendingNativeStamp is { } stamp &&
+                (stamp.Hash != published || !ReferenceEquals(stamp.Tiles, staged.Candidate.Tiles));
             if (staged is null)
             {
                 var effects = new MapNativeEditEffects(null, null, [], [], [], [],
@@ -89,13 +102,14 @@ public sealed partial class MapEditSession
                 var command = new NativeSessionSnapshotCommand("Native document edit", before, candidate, _nativeAssets, _nativeAssets, effects);
                 staged = _nativeHistory.StageExecute(before, command);
             }
-            PublishNative(staged, worldChanged: worldChanged, revalidate: revalidate);
+            PublishNative(staged, worldChanged: worldChanged, revalidate: revalidate, editedAfterStaging: editedAfterStaging);
             return result;
         }
-        finally { _pendingNative = null; _nativeMutation = false; }
+        finally { _pendingNative = null; _pendingNativeStamp = null; _nativeMutation = false; }
     }
     // Staging validated the candidate against its closure. Only a candidate that may have changed since is validated again.
-    MapNativeEditEffects PublishNative(NativeStagedPublication staged, Action? checkpoint = null, bool worldChanged = true, bool revalidate = false)
+    MapNativeEditEffects PublishNative(NativeStagedPublication staged, Action? checkpoint = null, bool worldChanged = true, bool revalidate = false,
+        bool editedAfterStaging = false)
     {
         if (revalidate)
         {
@@ -106,8 +120,8 @@ public sealed partial class MapEditSession
         BeforeNativePublication?.Invoke();
         checkpoint?.Invoke();
         NativeDocumentTransaction.Publish(_doc!, staged);
-        // The callback may have edited the staged candidate after its expansion was built, so it is not remembered.
-        if (revalidate) NativeAcceptedExpansions.Forget(_doc!);
+        // A callback edit after staging makes the staged expansion stale, so it is not remembered.
+        if (editedAfterStaging) NativeAcceptedExpansions.Forget(_doc!);
         _nativeAssets = staged.Assets;
         staged.Accept();
         _dirty = true;

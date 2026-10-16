@@ -4,11 +4,11 @@ Status: **Owner approved the written design and visible collar implication on 20
 
 Date: 2026-10-16. Source audit: `0bd787b5ccf25ea5a79afadc1bcfe315a2886016`.
 Engine program: [#1418](https://github.com/APKiwiOrg/KhaozEngine/issues/1418).
-Next review: [implementation plan](../superpowers/plans/2026-10-16-equipment-coverage.md).
+Execution: [approved implementation plan](../superpowers/plans/2026-10-16-equipment-coverage.md).
 Consumer handoff: [Grimhollow #547](https://github.com/APKiwiOrg/Grimhollow/issues/547).
 This is a design specification, not an implementation plan. All proposed API names below are
 unavailable features. Engine-first ownership, this algorithm and its host-deformation implication
-are approved. The implementation plan is the next review gate. Load measurements and any release
+are approved. The implementation plan and subagent-driven execution are also approved. Load measurements and any release
 retain separate authorization.
 
 ## 1. Intended outcome and recommendation
@@ -33,8 +33,8 @@ plane approximation and cleared the observed breakthrough without saturating the
 A smaller collar contour change remained. This is useful one-pose feasibility evidence, not
 accepted art, an engine GPU proof or acceptance of the full pose domain.
 
-The owner reviewed this written design and the private opaque A/B packet. The next step is a
-written implementation plan and its review before execution.
+The owner reviewed this written design, the private opaque A/B packet and the implementation plan.
+Execution is in progress. Geometry, native rendering and cost acceptance remain open.
 Do not implement a removal-only API that refuses every real case and call that a fix. If every
 exposed contour must remain exact while the required cut has a visible gap around the rigid
 plate, removal and conformation cannot both satisfy that restriction. Authored fit, a visible

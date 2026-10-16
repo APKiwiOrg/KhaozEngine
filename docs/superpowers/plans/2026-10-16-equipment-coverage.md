@@ -10,7 +10,7 @@
 
 **Spec:** [Approved equipment coverage design](../../design/EQUIPMENT-COVERAGE-DESIGN-2026-10-16.md), approved with its visible collar implication on 2026-10-16. Source audit base is `0bd787b5c`, written draft was `73e763bea`.
 
-**Status:** Plan for owner review. No implementation or performance run has started. Work belongs on `feature/equipment-coverage` in the existing engine equipment-coverage worktree. Do not change consumer art or its acceptance gates in these tasks.
+**Status:** Owner approved this plan and subagent-driven execution. Task 1 is implemented and reviewed at `b4664f739`, with [checkpoint evidence](proofs/2026-10-16-equipment-coverage-task1.md). Tasks 2 to 10 remain open. Work belongs on `feature/equipment-coverage` in the existing engine equipment-coverage worktree. Do not change consumer art or its acceptance gates in these tasks.
 
 ## Global Constraints
 
@@ -82,7 +82,7 @@ Test commands below run once for red and once after implementation for green, no
 - `EquipmentCoverageDefinition` exposes immutable exact `AttachmentSha256`, semantic `HostMapSha256` and ordered commands. Each command has `uint Id`, `uint PartId`, `string HostRegion`, `Matrix4x4 CoverageLocal`, inward source triangle ranges, `CollarWidth`, `MinZ`, `MaxZ`, `Clearance` and `MaxWorldRecession`. `Clearance` is a required world-space distance. Caps and collar width are in coverage coordinates.
 - Source triangle ranges are `(int Mesh, int Primitive, int FirstTriangle, int Count)`. Name the Render3D record `CoverageTriangleRange`. Keep each package's schema records inside its own dependency boundary. Equipment records do not reference Render3D types. Define the shared Render3D `CoverageFailure` and `CoverageFailureCode` values from the interface rules here, before later tasks consume them.
 
-- [ ] **Step 1: Write `Canonical_round_trip_has_fixed_bytes`, `Malformed_or_over_limit_sidecar_refuses` and `Legacy_attachment_bytes_are_unchanged`.** Construct minimal synthetic JSON inline. Pin member order, sorted command IDs/region keys, normalized negative zero, exact format 1, domain-separated semantic digests, independent byte hashes, and rejection before over-capacity allocation. Top-level host member order is `formatVersion`, `hostSha256`, `topology`, `regions`, `refinement`, `authoring`. Equipment order is `formatVersion`, `attachmentSha256`, `hostMapSha256`, `commands`. Nested fields use the interface declaration order above, fixed by literal expected JSON.
+- [x] **Step 1: Write `Canonical_round_trip_has_fixed_bytes`, `Malformed_or_over_limit_sidecar_refuses` and `Legacy_attachment_bytes_are_unchanged`.** Construct minimal synthetic JSON inline. Pin member order, sorted command IDs/region keys, normalized negative zero, exact format 1, domain-separated semantic digests, independent byte hashes, and rejection before over-capacity allocation. Top-level host member order is `formatVersion`, `hostSha256`, `topology`, `regions`, `refinement`, `authoring`. Equipment order is `formatVersion`, `attachmentSha256`, `hostMapSha256`, `commands`. Nested fields use the interface declaration order above, fixed by literal expected JSON.
 
 ```csharp
 Assert.Equal(canonical, HostCoverageMapJson.Write(HostCoverageMapJson.Read(canonical, "host")));
@@ -92,10 +92,10 @@ Assert.Equal(legacyV1Bytes, AttachmentSetJson.Write(legacyRigid));
 Assert.Equal(legacyV2Bytes, AttachmentSetJson.Write(legacyMixed));
 ```
 
-- [ ] **Step 2: Run red.** Use `build-slot --label coverage-map-red -- dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter FullyQualifiedName~HostCoverageMapTests`, then the Attachments project with filter `FullyQualifiedName~EquipmentCoverageJsonTests`.
-- [ ] **Step 3: Implement the immutable models and strict codecs.** Snapshot caller collections. Use distinct hash prefixes `KhaozEngine.HostCoverageMap/1\n` and `KhaozEngine.EquipmentCoverage/1\n` before canonical UTF-8. Reject duplicate/unknown fields, invalid hashes, duplicate keys/IDs, zero IDs, nonfinite numbers, invalid ranges, negative budgets, nonpositive clearance/collar and invalid caps. Preserve all existing attachment JSON bytes and identity rules.
-- [ ] **Step 4: Run green with both commands, then existing Attachments `JsonTests`.** Add boundary rows for 32/33 regions and 4/5 commands, including duplicate logical vertices and differing JSON member order. Counts exceeding the spec refuse, not silently slice.
-- [ ] **Step 5: Commit explicit paths** with `feat(coverage): add immutable host and equipment sidecars`.
+- [x] **Step 2: Run red.** Use `build-slot --label coverage-map-red -- dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter FullyQualifiedName~HostCoverageMapTests`, then the Attachments project with filter `FullyQualifiedName~EquipmentCoverageJsonTests`.
+- [x] **Step 3: Implement the immutable models and strict codecs.** Snapshot caller collections. Use distinct hash prefixes `KhaozEngine.HostCoverageMap/1\n` and `KhaozEngine.EquipmentCoverage/1\n` before canonical UTF-8. Reject duplicate/unknown fields, invalid hashes, duplicate keys/IDs, zero IDs, nonfinite numbers, invalid ranges, negative budgets, nonpositive clearance/collar and invalid caps. Preserve all existing attachment JSON bytes and identity rules.
+- [x] **Step 4: Run green with both commands, then existing Attachments `JsonTests`.** Add boundary rows for 32/33 regions and 4/5 commands, including duplicate logical vertices and differing JSON member order. Counts exceeding the spec refuse, not silently slice.
+- [x] **Step 5: Commit explicit paths** with `feat(coverage): add immutable host and equipment sidecars`.
 
 ### Task 2: Import provenance and compiled support surfaces
 
@@ -373,7 +373,7 @@ git diff --check
 | 12 and 13, independent oracle and native evidence | 3, 4, 8 |
 | 14, approval, release and consumer adoption boundary | This review gate, 9 and 10 |
 
-- [ ] Owner reviews this implementation plan and confirms execution method before Task 1.
-- [ ] Recommended method is subagent-driven execution, one implementer and one independent task reviewer at a time, followed by a whole-branch review. The geometry and renderer lifetime boundaries warrant independent checks at each task.
+- [x] Owner reviewed this implementation plan and confirmed execution before Task 1.
+- [x] Selected method is subagent-driven execution, one implementer and one independent task reviewer at a time, followed by a whole-branch review. The geometry and renderer lifetime boundaries warrant independent checks at each task.
 - [ ] Native execution is available if the owner prefers one implementer for all tasks followed by one independent whole-branch review.
 - [ ] Separate permission remains required for Task 9 load measurements and Task 10 release work.

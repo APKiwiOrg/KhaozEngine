@@ -23,9 +23,10 @@ public sealed class CoverageSupportSurface
     readonly CoverageScalar[] areas;
 
     CoverageSupportSurface(CoverageSourceTopology source, Matrix4x4 coverageLocal, Matrix4x4 sourceToCoverage,
-        CoverageAffinePoint[] projectedPositions, int[] selected, int[] boundarySourceVertices)
+        CoverageAffinePoint[] projectedPositions, int[] selected, int[] boundarySourceVertices, bool inwardOfClosedSolid)
     {
         Source = source;
+        InwardOfClosedSolid = inwardOfClosedSolid;
         CoverageLocal = coverageLocal;
         SourceToCoverage = sourceToCoverage;
         this.projectedPositions = projectedPositions;
@@ -36,6 +37,8 @@ public sealed class CoverageSupportSurface
         InwardTriangles = Array.AsReadOnly(selected.Select(index => source.Triangles[index]).ToArray());
         Boundary = Array.AsReadOnly(boundarySourceVertices.Select((vertex, i) => new CoverageBoundaryEdge(positions[vertex],
             positions[boundarySourceVertices[(i + 1) % boundarySourceVertices.Length]])).ToArray());
+        MaxSlope = CoverageSupportValidation.MaxSlope(projectedPositions, InwardTriangles);
+        foreach (Vector3 p in source.Positions) MaxSourceMagnitude = Math.Max(MaxSourceMagnitude, Math.Max(Math.Abs(p.X), Math.Max(Math.Abs(p.Y), Math.Abs(p.Z))));
         areas = InwardTriangles.Select(t => CoverageGeometry.Edge(projectedPositions[t.A], projectedPositions[t.B], projectedPositions[t.C])).ToArray();
         SolidBvh = new CoverageBvh(source.Triangles.Select(t => CoverageGeometry.Bounds(projectedPositions[t.A], projectedPositions[t.B], projectedPositions[t.C], false)).ToArray());
         ProjectedBvh = new CoverageBvh(InwardTriangles.Select(t => CoverageGeometry.Bounds(projectedPositions[t.A], projectedPositions[t.B], projectedPositions[t.C], true)).ToArray());
@@ -71,6 +74,11 @@ public sealed class CoverageSupportSurface
     public CoverageBvh SolidBvh { get; }
     public CoverageBvh ProjectedBvh { get; }
     public CoverageBvh EdgeBvh { get; }
+    /// <summary>True when the displayed source is a closed, edge-balanced solid and the support is certified as its
+    /// inward side. Runtime conformation refuses any other support, because it cannot certify solid containment.</summary>
+    public bool InwardOfClosedSolid { get; }
+    internal double MaxSlope { get; }
+    internal double MaxSourceMagnitude { get; }
 
     public static CoverageSupportSurface Compile(CoverageSourceTopology source, ReadOnlySpan<CoverageTriangleRange> inwardFaces,
         in Matrix4x4 coverageLocal)
@@ -95,7 +103,8 @@ public sealed class CoverageSupportSurface
                 throw source.Error("Coverage transform produced an uncertifiable position.");
         }
         int[] boundary = CoverageSupportValidation.Validate(source, positions, selected);
-        return new CoverageSupportSurface(source, coverageLocal, inverse, positions, selected, boundary);
+        bool closed = CoverageSupportValidation.CertifySolid(source, positions, selected);
+        return new CoverageSupportSurface(source, coverageLocal, inverse, positions, selected, boundary, closed);
     }
 
     /// <summary>Compatibility query with a rounded result. Certification uses TryGetHeightBounds.</summary>

@@ -13,7 +13,17 @@ internal static class CoverageGeometryOracle
     internal sealed record Result(int UnmatchedInteriorEdges, int WeldedPositionChanges,
         int ProtectedPositionChanges, int Folds, int NonadjacentIntersections,
         int ClearanceViolations, double MinimumClearance, double CoreRecession,
-        int EquipmentIntersections, double MinimumEquipmentDistance);
+        int EquipmentIntersections, double MinimumEquipmentDistance)
+    {
+        // Area of submitted triangles meeting any equipment triangle, before or after conformation.
+        public double BreakthroughArea { get; init; }
+        // Area of core triangles with at least one moved corner.
+        public double CoreMovedArea { get; init; }
+        // Edges used by one submitted triangle that are not on an original source boundary, a visible opening.
+        public int OpenBoundaryEdges { get; init; }
+        // Smallest distance from a core triangle to its own command's equipment.
+        public double MinimumCoreClearance { get; init; } = double.PositiveInfinity;
+    }
 
     internal static Result Validate(ModelVertex[] before, ModelVertex[] after, CoverageFixture fixture) =>
         Validate(before, after, fixture, fixture.SurfaceIndices, fixture.ProtectedVertices);
@@ -25,6 +35,8 @@ internal static class CoverageGeometryOracle
             throw new ArgumentException("The oracle requires complete explicit submitted topology and protection witnesses.");
         int cracks = 0, protectedChanges = 0, folds = 0, intersections = 0, unmatched = 0, violations = 0, equipmentIntersections = 0;
         double minClearance = double.PositiveInfinity, recession = 0, minDistance = double.PositiveInfinity;
+        double breakthrough = 0, coreMoved = 0, minCore = double.PositiveInfinity;
+        int open = 0;
         var welds = new Dictionary<Vector3, Vector3>();
         var edgeCounts = new Dictionary<(P, P), int>();
         var originalEdges = new Dictionary<(P, P), int>();
@@ -60,6 +72,7 @@ internal static class CoverageGeometryOracle
             }
             bool core = false;
             var command = owner >= 0 ? RegionCommand(fixture, owner, out core) : null;
+            bool breaks = false;
             foreach (var equipment in fixture.Commands)
             {
                 double distance = double.PositiveInfinity;
@@ -68,15 +81,18 @@ internal static class CoverageGeometryOracle
                     P d = Place(fixture.RigidPositions[fixture.RigidIndices[r]], equipment.CoverageLocal);
                     P e = Place(fixture.RigidPositions[fixture.RigidIndices[r + 1]], equipment.CoverageLocal);
                     P f = Place(fixture.RigidPositions[fixture.RigidIndices[r + 2]], equipment.CoverageLocal);
-                    if (Intersect(x, y, z, d, e, f)) equipmentIntersections++;
+                    if (Intersect(x, y, z, d, e, f)) { equipmentIntersections++; breaks = true; }
                     if (command == equipment) distance = Math.Min(distance, TriangleDistance(x, y, z, d, e, f));
                 }
                 if (command == equipment)
                 {
                     minDistance = Math.Min(minDistance, distance);
+                    if (core) minCore = Math.Min(minCore, distance);
                     if (distance < equipment.Clearance - 1e-7) violations++;
                 }
             }
+            if (breaks) breakthrough += Math.Sqrt(Dot(finalNormal, finalNormal)) / 2;
+            if (core && (a != x || b != y || c != z)) coreMoved += Math.Sqrt(Dot(finalNormal, finalNormal)) / 2;
             if (command is not null && core)
             {
                 P lx = Unplace(x, command.CoverageLocal), ly = Unplace(y, command.CoverageLocal), lz = Unplace(z, command.CoverageLocal);
@@ -114,8 +130,12 @@ internal static class CoverageGeometryOracle
             bool boundary = edge.Value == 1 && originalEdges.Any(e => e.Value == 1 && OnSegment(edge.Key.Item1, e.Key.Item1, e.Key.Item2)
                 && OnSegment(edge.Key.Item2, e.Key.Item1, e.Key.Item2));
             if (!boundary) unmatched++;
+            if (!boundary && edge.Value == 1) open++;
         }
-        return new(unmatched, cracks, protectedChanges, folds, intersections, violations, minClearance, recession, equipmentIntersections, minDistance);
+        return new(unmatched, cracks, protectedChanges, folds, intersections, violations, minClearance, recession, equipmentIntersections, minDistance)
+        {
+            BreakthroughArea = breakthrough, CoreMovedArea = coreMoved, OpenBoundaryEdges = open, MinimumCoreClearance = minCore,
+        };
     }
 
     static CoverageFixture.Command? RegionCommand(CoverageFixture fixture, int index, out bool core)

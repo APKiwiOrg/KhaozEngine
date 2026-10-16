@@ -32,12 +32,17 @@ public sealed class CoverageRefinement
     readonly uint[] indices;
     readonly PositionRecipe[] positionRecipes;
     readonly int[] positionRepresentatives;
+    readonly bool[] coreVertices;
 
-    CoverageRefinement(CoverageSourceTopology source, uint[] indices, CoverageRefinedVertex[] vertices,
+    CoverageRefinement(CoverageSourceTopology source, HostCoverageMap map, uint[] indices, CoverageRefinedVertex[] vertices,
         CoverageRefinedTriangle[] triangles, CoverageRefinedMaterialRange[] materials,
         CoverageEdgeSplit[] splits, CoverageSourceAlias[] aliases, PositionRecipe[] recipes)
     {
-        this.source = source; this.indices = indices; positionRecipes = recipes;
+        this.source = source; Map = map; this.indices = indices; positionRecipes = recipes;
+        coreVertices = new bool[vertices.Length];
+        for (int t = 0; t < triangles.Length; t++)
+            if (triangles[t].Role == CoverageTriangleRole.Core && triangles[t].RegionIndex >= 0)
+                for (int corner = 0; corner < 3; corner++) coreVertices[indices[t * 3 + corner]] = true;
         positionRepresentatives = Enumerable.Repeat(-1, recipes.Length).ToArray();
         for (int i = 0; i < vertices.Length; i++)
             if (positionRepresentatives[vertices[i].PositionGroup] == -1) positionRepresentatives[vertices[i].PositionGroup] = i;
@@ -46,6 +51,10 @@ public sealed class CoverageRefinement
         MaterialRanges = Array.AsReadOnly(materials); EdgeSplits = Array.AsReadOnly(splits); SourceAliases = Array.AsReadOnly(aliases);
     }
 
+    /// <summary>The validated immutable source this topology was compiled from.</summary>
+    public CoverageSourceTopology Source => source;
+    /// <summary>The immutable host map this topology was compiled from. Region indices index Map.Regions.</summary>
+    public HostCoverageMap Map { get; }
     public string HostIdentity => source.Identity;
     public int SourceVertexCount => source.Vertices.Count;
     public int VertexCount => Vertices.Count;
@@ -181,7 +190,7 @@ public sealed class CoverageRefinement
             int gcd = Gcd(k, Denominator);
             return new CoverageEdgeSplit(p.Key.A, p.Key.B, k / gcd, Denominator / gcd);
         })).ToArray();
-        return new(source, indexPlan.ToArray(), vertexPlan.ToArray(), trianglePlan.ToArray(), materialPlan.ToArray(), splits, aliases.ToArray(), recipes.ToArray());
+        return new(source, map, indexPlan.ToArray(), vertexPlan.ToArray(), trianglePlan.ToArray(), materialPlan.ToArray(), splits, aliases.ToArray(), recipes.ToArray());
 
         float Strength(int v) => strengths.TryGetValue(surfaces[v], out var s) ? s.Strength : 0;
         int Original(int v)
@@ -279,6 +288,20 @@ public sealed class CoverageRefinement
     }
 
     CoverageFailure Refusal(CoverageFailureCode code) => new(code, HostIdentity, 0, 0, 0, 0);
+
+    /// <summary>True for every vertex of an authored core triangle, whose region strength is exactly one.</summary>
+    internal bool IsCoreVertex(int vertex) => coreVertices[vertex];
+
+    /// <summary>Rest-pose refined position, used only to shape cold spatial hierarchies.</summary>
+    internal Vector3 RestPosition(int vertex)
+    {
+        var recipe = positionRecipes[Vertices[vertex].PositionGroup];
+        var p = source.Positions;
+        var b = recipe.Weights;
+        return new((float)(((double)p[recipe.A].X * b.A + (double)p[recipe.B].X * b.B + (double)p[recipe.C].X * b.C) / Denominator),
+            (float)(((double)p[recipe.A].Y * b.A + (double)p[recipe.B].Y * b.B + (double)p[recipe.C].Y * b.C) / Denominator),
+            (float)(((double)p[recipe.A].Z * b.A + (double)p[recipe.B].Z * b.B + (double)p[recipe.C].Z * b.C) / Denominator));
+    }
     static Vector3 Position(PositionRecipe recipe, ReadOnlySpan<ModelVertex> posed)
     {
         var b = recipe.Weights;

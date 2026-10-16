@@ -354,6 +354,22 @@ public sealed class CoverageRefinementTests
     }
 
     [Fact]
+    public void Opposite_handedness_midpoint_tie_resolves_to_positive_one()
+    {
+        var fixture = CoverageFixture.CurvedPanel(false);
+        var topology = CoverageRefinement.Build(fixture.Source, fixture.Map);
+        int midpoint = Enumerable.Range(0, topology.VertexCount).First(i =>
+            topology.Vertices[i].SourceVertex == -1 && new[] { topology.Vertices[i].A, topology.Vertices[i].B, topology.Vertices[i].C }.Count(n => n == 6) == 2);
+        var record = topology.Vertices[midpoint]; var triangle = fixture.Source.Triangles[record.SourceTriangle];
+        int a = record.A == 0 ? triangle.B : triangle.A, b = record.C == 0 ? triangle.B : triangle.C;
+        var posed = fixture.Posed.ToArray();
+        posed[a].Tangent = new(1, 0, 0, 1); posed[b].Tangent = new(1, 0, 0, -1);
+        var surface = new ModelVertex[topology.VertexCount];
+        Assert.True(topology.TryInterpolate(posed, surface, out var failure), failure.ToString());
+        Assert.Equal(new Vector4(1, 0, 0, 1), surface[midpoint].Tangent);
+    }
+
+    [Fact]
     public void Oracle_detects_crack_reversal_and_protected_movement()
     {
         var fixture = CoverageFixture.CurvedPanel();

@@ -37,7 +37,9 @@ internal static class CoverageWeightedAttributes
         unit = new((float)(x * scale), (float)(y * scale), (float)(z * scale)); return true;
     }
 
-    /// <summary>Tangent direction plus the sign of the weighted handedness. Absent directions return Vector4.Zero.</summary>
+    /// <summary>Tangent direction plus the sign of the weighted handedness. Absent directions return Vector4.Zero.
+    /// Handedness is the sign of the exact weighted sum of corner W values. A sum of exactly zero, such as an edge
+    /// midpoint between opposite handedness corners, deterministically resolves to +1.</summary>
     internal static bool TryTangent(Vector4 a, Vector4 b, Vector4 c, in CoverageRefinedVertex v, out Vector4 tangent)
     {
         tangent = Vector4.Zero;

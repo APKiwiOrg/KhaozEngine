@@ -239,10 +239,11 @@ public interface ITileWorldScene
 
 /// <summary>The shipped <see cref="ITileWorldScene"/>: every member forwards straight to a <see cref="Scene3D"/>
 /// and its prop-renderer extension, so the seam costs one virtual call and adds no behaviour of its own.</summary>
-public sealed class Scene3DTileWorldScene : ITileWorldScene, IAttachmentScene
+public sealed class Scene3DTileWorldScene : ITileWorldScene, IAttachmentCoverageScene
 {
     readonly Scene3D _scene;
     readonly Scene3DAttachmentScene _attachments;
+    public object CoverageResourceOwner => _scene;
 
     /// <summary>Wraps a scene. The scene stays owned by its creator, so disposing a view never disposes it.</summary>
     public Scene3DTileWorldScene(Scene3D scene)
@@ -262,6 +263,20 @@ public sealed class Scene3DTileWorldScene : ITileWorldScene, IAttachmentScene
     /// <summary>Upload owned skinned attachment resources through the optional scene capability.</summary>
     public ISkinnedAttachmentMeshLease UploadSkinnedAttachment(IReadOnlyList<GltfSkinnedMeshPart> parts) =>
         _attachments.UploadSkinnedAttachment(parts);
+
+    public SkinnedHostConformer CreateHostConformer(Skeleton skeleton, IReadOnlyList<SkinnedMeshHandle> meshes) =>
+        _attachments.CreateHostConformer(skeleton, meshes);
+    public bool TryStageCoverageEquipment(MotionKey actorKey, uint commandId, ulong equipmentInstanceId,
+        CoverageSupportSurface support, ReadOnlySpan<RigidInstanceDraw> draws,
+        Span<RigidInstanceDraw> frozenDraws, out CoverageFailure failure) =>
+        _attachments.TryStageCoverageEquipment(actorKey, commandId, equipmentInstanceId, support, draws, frozenDraws, out failure);
+    public bool TryStageCoverageEquipment(MotionKey actorKey, ulong equipmentInstanceId,
+        ReadOnlySpan<CoverageEquipmentCommand> commands, ReadOnlySpan<RigidInstanceDraw> draws,
+        Span<RigidInstanceDraw> frozenDraws, out CoverageFailure failure) =>
+        _attachments.TryStageCoverageEquipment(actorKey, equipmentInstanceId, commands, draws, frozenDraws, out failure);
+    public void DrawMeshOutline(MeshOutlineGroup group, in RigidInstanceDraw draw) => _scene.DrawMeshOutline(group, draw);
+    public void DrawSkinnedOutline(MeshOutlineGroup group, in SkinnedInstanceDraw draw, ReadOnlySpan<Matrix4x4> palette) =>
+        _scene.DrawSkinnedOutline(group, draw, palette);
 
     /// <inheritdoc />
     public ITileWorldPropClusterOwner CreatePropClusterOwner() => new ScenePropClusterOwner(_scene);

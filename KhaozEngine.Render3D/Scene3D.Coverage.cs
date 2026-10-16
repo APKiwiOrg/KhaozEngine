@@ -70,9 +70,10 @@ public sealed partial class Scene3D
             for (int i = 0; i < _coverageArena.EquipmentCount; i++)
             {
                 var stage = _coverageArena.Equipment[i];
-                if (stage.Actor == actor && stage.Command == command.Id && stage.Instance == command.EquipmentInstanceId) found = stage;
+                if (stage.Actor == actor && stage.Instance == command.EquipmentInstanceId
+                    && stage.TryCommand(command.Id, out var support) && ReferenceEquals(support, command.Support)) found = stage;
             }
-            if (found is null || !ReferenceEquals(found.Support, command.Support) || command.EquipmentWorld != found.Draws[0].World
+            if (found is null || command.EquipmentWorld != found.Draws[0].World
                 || !ReferenceEquals(command.Topology, conformer.Topology))
                 return Refuse(CoverageFailureCode.IdentityMismatch, out failure);
             p.Equipment[c] = found;

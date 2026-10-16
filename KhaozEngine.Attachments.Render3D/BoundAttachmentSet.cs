@@ -51,6 +51,10 @@ public sealed class BoundAttachmentSet
         get { _owner.ThrowIfDisposed(); return _binding.Skeleton; }
     }
 
+    internal AttachmentSetCache Owner => _owner;
+    internal AttachmentSetDefinition Definition => _definition;
+    internal IReadOnlyList<AttachmentPartResources> Resources => _resources;
+
     /// <summary>One draw per material group of every canonical part.</summary>
     public int DrawCount
     {

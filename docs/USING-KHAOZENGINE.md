@@ -6358,6 +6358,14 @@ Binding allocates scratch and one garment palette per skinned part, shared by th
 Valid frame calls load, hash, search names and allocate nothing. They never advance animation.
 The host palette contains joint model matrices. Scene3D alone applies garment inverse binds.
 
+Optional covered equipment uses `AttachmentSetCache.GetCoverage` and one `HostCoverageBinding` per actor
+incarnation. These verify exact source ownership, bind named host regions and prepare immutable equipment
+descriptors without queuing. The constructor requires an explicit `CoverageFallback.UncoveredCurrentPose`.
+Only the separate `IAttachmentCoverageScene` capability adds staging and descriptor outlines, so existing
+uncovered adapters remain compatible. The binding owns its conformer and borrows cached equipment. See
+the [attachment coverage contract](../KhaozEngine.Attachments.Render3D/README.md#optional-equipment-coverage)
+for transactional replacement, complete physical material submission, token lifetime and current-pose fallback.
+
 The convenience `Queue` overload uses opaque white tint, `Material.None`, no dissolve and shadow
 casting. Its `RigidInstanceDraw` template overload replaces mesh, world or model, and motion while
 preserving tint, material, dissolve and edge, shadow casting, shadow-only, inverted shadow dissolve

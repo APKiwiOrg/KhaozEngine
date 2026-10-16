@@ -151,6 +151,11 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   After `Begin`, `TryStageCoverageEquipment` verifies a complete rigid source against uploaded position and
   index fingerprints and returns frozen descriptors without queuing them. Submit those descriptors through
   `Draw` and the descriptor `DrawMeshOutline` overload. Asset-byte verification is still the caller's job.
+  The batch staging overload accepts up to four explicit `CoverageEquipmentCommand` memberships for one
+  physical source and complete material snapshot. One opaque material token records participation for every
+  registered command. It validates the complete batch before registry or destination mutation. The existing
+  one-command overload remains supported. `AttachmentSetCache.GetCoverage` and `HostCoverageBinding` in
+  `KhaozEngine.Attachments.Render3D` provide verified asset ownership and transactional equipment binding.
   `TryPrepare` requires an explicit `CoverageFallback.UncoveredCurrentPose` and returns a pending
   `SkinnedCoverageFrame`. Assign it to every host `SkinnedInstanceDraw.Coverage`, including descriptor-based
   outlines. Prepare the frame after all submissions. The scene captures actual pass matrices, certifies once

@@ -57,7 +57,7 @@ public sealed partial class Scene3D
                 {
                     if (!_slots.IsValid(equipment.Draws[i].Mesh.Index, equipment.Draws[i].Mesh.Generation)) { complete = false; continue; }
                     if (!equipment.Submitted[i] && !equipment.Outlined[i]) { complete = false; continue; }
-                    CaptureEquipmentPasses(p, equipment, i, shadows);
+                    CaptureEquipmentPasses(p, equipment, p.Commands[c], i, shadows);
                 }
             }
             CoverageFailure failure = new(CoverageFailureCode.IdentityMismatch, p.Owner.Topology.HostIdentity, 0, 0, 0, 0);
@@ -115,29 +115,29 @@ public sealed partial class Scene3D
         return true;
     }
 
-    void CaptureEquipmentPasses(CoveragePreparation p, CoverageEquipmentStage stage, int slice, bool shadows)
+    void CaptureEquipmentPasses(CoveragePreparation p, CoverageEquipmentStage stage, in CoverageCommandPose command, int slice, bool shadows)
     {
         RigidInstanceDraw draw = stage.Draws[slice];
         CoverageUploadEvidence upload = _coverageUploads[(draw.Mesh.Index, draw.Mesh.Generation)];
-        MeshBounds bounds = stage.Support.RenderEvidence.Bounds;
-        if (stage.Outlined[slice]) AddPass(p, stage.Command, stage.Instance, draw.World, bounds,
+        MeshBounds bounds = command.Support.RenderEvidence.Bounds;
+        if (stage.Outlined[slice]) AddPass(p, command.Id, stage.Instance, draw.World, bounds,
             GpuClip.Correct(CurrentFrameView.ViewProjection, _gd.Capabilities), Perturbation(draw.World, bounds, upload.OutlineAttributeSum, 0));
         if (!stage.Submitted[slice]) return;
-        if (!draw.ShadowOnly) AddPass(p, stage.Command, stage.Instance, draw.World, bounds,
+        if (!draw.ShadowOnly) AddPass(p, command.Id, stage.Instance, draw.World, bounds,
             GpuClip.Correct(CurrentFrameView.JitteredViewProjection, _gd.Capabilities), 0);
         if (!draw.ShadowOnly && _res.MotionAllocated)
-            AddPass(p, stage.Command, stage.Instance, draw.World, bounds, CurrentFrameView.ViewProjection, 0);
+            AddPass(p, command.Id, stage.Instance, draw.World, bounds, CurrentFrameView.ViewProjection, 0);
         if (!draw.CastsShadows) return;
         double perturbation = Perturbation(draw.World, bounds, upload.AttributeSum,
             DrawInputs(draw.Tint, draw.Material, draw.DissolveEdgeColor, draw.Dissolve > 0 || draw.DissolveComplement > 0, false));
         if (shadows)
-            for (int c = 0; c < _cascadeCount; c++) AddPass(p, stage.Command, stage.Instance, draw.World, bounds, _cascadeDepthVps[c], perturbation);
+            for (int c = 0; c < _cascadeCount; c++) AddPass(p, command.Id, stage.Instance, draw.World, bounds, _cascadeDepthVps[c], perturbation);
         foreach (var packed in _packedPointSlots)
         {
             if ((packed.Casters & PointShadowCasterSet.Rigid) == 0 || !InstanceTouchesLight(upload.Bounds, draw.World,
                 packed.LightPosAbsolute, packed.Radius, packed.NearRadius, packed.ExclusionMin, packed.ExclusionMax)) continue;
             for (int face = 0; face < PointShadowMath.FaceCount; face++)
-                AddPass(p, stage.Command, stage.Instance, draw.World, bounds, _coveragePointMatrices[packed.PackedIndex * 6 + face], perturbation);
+                AddPass(p, command.Id, stage.Instance, draw.World, bounds, _coveragePointMatrices[packed.PackedIndex * 6 + face], perturbation);
         }
     }
 

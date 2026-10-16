@@ -1,7 +1,11 @@
 using System;
 using System.Numerics;
+using System.Runtime.InteropServices;
 
 namespace KhaozEngine.Render3D;
+
+/// <summary>One explicit command membership for a complete physical equipment part snapshot.</summary>
+public readonly record struct CoverageEquipmentCommand(uint CommandId, CoverageSupportSurface Support);
 
 public sealed partial class Scene3D
 {
@@ -11,19 +15,46 @@ public sealed partial class Scene3D
         CoverageSupportSurface support, ReadOnlySpan<RigidInstanceDraw> draws, Span<RigidInstanceDraw> frozenDraws,
         out CoverageFailure failure)
     {
+        ArgumentNullException.ThrowIfNull(support);
+        var command = new CoverageEquipmentCommand(commandId, support);
+        return TryStageCoverageEquipment(actorKey, equipmentInstanceId, MemoryMarshal.CreateReadOnlySpan(in command, 1),
+            draws, frozenDraws, out failure);
+    }
+
+    /// <summary>Atomically registers explicit command memberships for one complete physical material snapshot.
+    /// Every support must retain the same exact source. Returned per-slice evidence records participation once.</summary>
+    public bool TryStageCoverageEquipment(MotionKey actorKey, ulong equipmentInstanceId,
+        ReadOnlySpan<CoverageEquipmentCommand> commands, ReadOnlySpan<RigidInstanceDraw> draws,
+        Span<RigidInstanceDraw> frozenDraws, out CoverageFailure failure)
+    {
         RequireCoverageThread();
         ObjectDisposedException.ThrowIf(_coverageDisposed, this);
-        ArgumentNullException.ThrowIfNull(support);
-        if (_coverageArena.Generation == 0 || _coverageArena.Closed || _framePrepared || actorKey.IsNone || commandId == 0 || equipmentInstanceId == 0)
+        uint commandId = commands.IsEmpty ? 0 : commands[0].CommandId;
+        if (_coverageArena.Generation == 0 || _coverageArena.Closed || _framePrepared || actorKey.IsNone || equipmentInstanceId == 0
+            || commands.Length == 1 && commandId == 0)
             return Refuse(CoverageFailureCode.StaleFrame, out failure);
+        if (commands.Length is < 1 or > CoverageScratch.MaxCommands)
+            return Refuse(CoverageFailureCode.CapacityExceeded, out failure, commands.Length, CoverageScratch.MaxCommands);
+        CoverageSupportSurface support = commands[0].Support;
+        if (support is null) return Refuse(CoverageFailureCode.IdentityMismatch, out failure);
+        for (int c = 0; c < commands.Length; c++)
+        {
+            var membership = commands[c];
+            if (membership.CommandId == 0 || membership.Support is null || !membership.Support.RenderEvidence.Supported
+                || !ReferenceEquals(membership.Support.Source, support.Source))
+                return Refuse(CoverageFailureCode.IdentityMismatch, out failure);
+            for (int prior = 0; prior < c; prior++)
+                if (commands[prior].CommandId == membership.CommandId) return Refuse(CoverageFailureCode.IdentityMismatch, out failure);
+        }
         CoverageRigidSourceEvidence evidence = support.RenderEvidence;
         if (!evidence.Supported || draws.Length != evidence.Slices.Count || frozenDraws.Length != draws.Length)
             return Refuse(CoverageFailureCode.IdentityMismatch, out failure);
         for (int i = 0; i < _coverageArena.EquipmentCount; i++)
         {
             CoverageEquipmentStage prior = _coverageArena.Equipment[i];
-            if (prior.Actor == actorKey && prior.Command == commandId && prior.Instance == equipmentInstanceId)
-                return Refuse(CoverageFailureCode.IdentityMismatch, out failure);
+            if (prior.Actor != actorKey || prior.Instance != equipmentInstanceId) continue;
+            for (int c = 0; c < commands.Length; c++)
+                if (prior.TryCommand(commands[c].CommandId, out _)) return Refuse(CoverageFailureCode.IdentityMismatch, out failure);
         }
         for (int i = 0; i < draws.Length; i++)
         {
@@ -42,19 +73,21 @@ public sealed partial class Scene3D
         if (stage.Draws.Length != draws.Length)
         { stage.Draws = new RigidInstanceDraw[draws.Length]; stage.Submitted = new bool[draws.Length]; stage.Outlined = new bool[draws.Length]; }
         stage.Scene = this; stage.Generation = _coverageArena.Generation; stage.Actor = actorKey;
-        stage.Command = commandId; stage.Instance = equipmentInstanceId; stage.Support = support; stage.Count = draws.Length;
+        stage.Instance = equipmentInstanceId; stage.Count = draws.Length; stage.CommandCount = commands.Length;
+        commands.CopyTo(stage.Commands);
         Array.Clear(stage.Submitted); Array.Clear(stage.Outlined);
+        draws.CopyTo(stage.Draws);
         for (int i = 0; i < draws.Length; i++)
         {
-            RigidInstanceDraw draw = draws[i] with { Coverage = new(stage, stage.Generation, i) };
+            RigidInstanceDraw draw = stage.Draws[i] with { Coverage = new(stage, stage.Generation, i) };
             stage.Draws[i] = draw; frozenDraws[i] = draw;
         }
         _coverageArena.EquipmentCount++;
         failure = default;
         return true;
 
-        bool Refuse(CoverageFailureCode code, out CoverageFailure refused)
-        { refused = new(code, null, equipmentInstanceId, commandId, 0, 0); return false; }
+        bool Refuse(CoverageFailureCode code, out CoverageFailure refused, int count = 0, int limit = 0)
+        { refused = new(code, null, equipmentInstanceId, commandId, count, limit); return false; }
     }
 
     void ValidateCoverageEquipment(in RigidInstanceDraw draw, bool outline)

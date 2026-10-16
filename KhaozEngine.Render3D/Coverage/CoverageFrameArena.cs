@@ -28,12 +28,20 @@ internal sealed class CoverageEquipmentStage
     internal Scene3D Scene = null!;
     internal ulong Generation;
     internal MotionKey Actor;
-    internal uint Command;
     internal ulong Instance;
-    internal CoverageSupportSurface Support = null!;
+    internal readonly CoverageEquipmentCommand[] Commands = new CoverageEquipmentCommand[CoverageScratch.MaxCommands];
+    internal int CommandCount;
     internal RigidInstanceDraw[] Draws = [];
     internal bool[] Submitted = [], Outlined = [];
     internal int Count;
+
+    internal bool TryCommand(uint id, out CoverageSupportSurface support)
+    {
+        for (int i = 0; i < CommandCount; i++)
+            if (Commands[i].CommandId == id) { support = Commands[i].Support; return true; }
+        support = null!;
+        return false;
+    }
 }
 
 internal sealed class CoveragePreparation

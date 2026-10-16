@@ -176,5 +176,61 @@ Binding allocates all submission scratch. Valid frame calls perform no loading, 
 allocation. One cache belongs to one scene, and its views belong to that scene's render thread.
 Calls on the same bound view must not overlap.
 
+## Optional equipment coverage
+
+`AttachmentSetCache.GetCoverage(loaded, key, expectedSha256)` verifies the exact companion bytes and its
+attachment-definition byte hash. It resolves rigid part IDs and support ranges against the cache's owned,
+verified displayed GLB bytes. It never reads mesh bytes again or uploads another copy. Companions, sources
+and immutable compiled supports belong to the cache. Missing or malformed companions, unknown or skinned
+target parts and unsupported support geometry throw `InvalidDataException` with asset context. Attachment
+JSON v1/v2 is unchanged.
+
+`HostCoverageBinding` owns one actor conformer and borrows equipped sets and coverage from their cache.
+Construct it with an `IAttachmentScene`, the exact bound `Skeleton`, every host material handle, a positive
+actor `MotionKey` and the required `CoverageFallback.UncoveredCurrentPose`. The host handles must belong
+to one complete compatible host coverage source and map. `TrySetEquipment` takes a span of
+`CoveredAttachmentInstance(ulong InstanceId, BoundAttachmentSet Set, LoadedEquipmentCoverage Coverage,
+float TransitionWeight = 1)`. Instance IDs are positive and unique. Transition weight is finite in `[0,1]`.
+The exact set/cache, skeleton instance, scene resource owner, host map semantic hash and named regions
+must match. No identity is inferred from labels or matching geometry.
+
+Equipment replacement is transactional. Every replacement is validated and its scratch acquired before
+the active list changes. A refusal retains the previous equipment. An empty replacement unequips all.
+Command IDs are distinct across combined equipment, stable while a command remains equipped, and never
+reused within the actor binding. Reordering retained equipment preserves those IDs. Re-equipping a
+removed incarnation gets fresh command IDs, providing a state-change boundary for later history use.
+
+After `Scene3D.Begin`, call `TryPrepare(skeleton, palette, model, equipmentTemplate, out frame, out failure)`.
+It copies the current palette, composes each set once through its existing contract alignment and joint
+composition, snapshots every material descriptor and garment palette, and stages each covered rigid part.
+Multiple commands for one part register in one atomic batch and share its exact physical source and
+complete material snapshot. Each physical material appears once in `PreparedEquipmentDraws`.
+No draw is queued by preparation, and valid warm preparation allocates no managed memory.
+
+On success, assign `frame` to every host material's `SkinnedInstanceDraw.Coverage`, use the same captured
+palette/model and actor key, and submit the returned equipment descriptors unchanged. Rigid equipment
+uses `DrawMesh(in RigidInstanceDraw)` and the descriptor `DrawMeshOutline` overload. Garments use their
+returned `BoneMatrices`. Consume the borrowed `PreparedEquipmentDraws` before the next preparation,
+state change or disposal. Do not compose another pose through `BoundAttachmentSet.Queue` for this frame.
+An empty equipped list succeeds with an empty token and ordinary current-pose host submission.
+
+On refusal, the token is empty and no prepared equipment descriptors are exposed. Present the current
+uncovered pose explicitly. Staging success is pending late render certification. Missing actual material
+participation or late certification failure selects the captured current-pose uncovered fallback across
+passes. Finish all submissions before `PrepareFrame`. A new `Begin` requires fresh preparation.
+
+`IAttachmentCoverageScene` is a separate opt-in interface. It adds conformer creation, single-command and
+batch equipment staging, descriptor outlines, and a non-null stable `CoverageResourceOwner` reference to
+the actual scene that owns uploads. `Scene3DAttachmentScene` and `Scene3DTileWorldScene` return their
+underlying `Scene3D` and forward opaque descriptors unchanged. Separate wrappers around that same scene
+are compatible. Another scene is incompatible even when handle values and geometry match. Existing
+`IAttachmentScene` adapters need no new members. Requested coverage through an unsupported adapter
+returns `UnsupportedAdapter`, and uncovered submission keeps its existing behavior.
+
+Dispose the actor binding before the cache and scene. Binding disposal retires only its conformer and
+leaves shared equipment uploads owned by the cache. Cache disposal invalidates borrowed coverage,
+bound sets and their actor bindings. Both disposals are idempotent. Previous final coverage motion
+history and native rendering acceptance are separate work.
+
 For the version-21 set-level rename and its rationale, see the
 [skinned attachment design](../docs/design/SKINNED-ATTACHMENT-PARTS-DESIGN-2026-10-15.md).

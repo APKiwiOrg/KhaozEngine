@@ -4,9 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
-using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Text.Json.Serialization;
 using KhaozEngine.Locomotion.Contacts;
 using Xunit;
 
@@ -17,9 +15,6 @@ namespace KhaozEngine.Tests.Locomotion.Contacts;
 /// It reads data only and never measures a locomotion operation.</summary>
 public sealed class SupportCostHostedRecordTests
 {
-    static readonly JsonSerializerOptions Options = new()
-    { IncludeFields = true, NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals };
-
     sealed record Row(string Scene, string Operation, bool Dense, long Lifetime, SupportCostSample[] Samples,
         SupportCostSample?[] Legacy, SupportCostGate[] Gates, double[] Scales);
 
@@ -47,19 +42,10 @@ public sealed class SupportCostHostedRecordTests
         {
             JsonObject hosted = JsonNode.Parse(File.ReadAllText(files[i]))!["baseline"]!.AsObject();
             Assert.StartsWith(commit, hosted["CandidateSha"]!.GetValue<string>(), StringComparison.Ordinal);
-            Assert.True(SupportCostVerdict.TryHostedScale(reference, hosted, out scales[i]), $"{files[i]} does not calibrate.");
+            Assert.True(SupportCostVerdict.TryJudgeHosted(reference, hosted, out scales[i], out var judged), $"{files[i]} does not calibrate.");
             long lifetime = hosted["LifetimeInventory"]!["AcquiredExplicitTickBytes"]!.GetValue<long>();
-            SupportCostSample[] samples = hosted["Samples"]!.Deserialize<SupportCostSample[]>(Options)!;
-            foreach (SupportCostSample sample in samples)
+            foreach (var (sample, (legacy, gate)) in judged)
             {
-                if (sample.Operation is not ("Find" or "DryTick" or "ExplicitTick") &&
-                    !sample.Operation.StartsWith("GroundSubstep", StringComparison.Ordinal)) continue;
-                string pair = sample.Operation == "Find" ? "LegacyDownPass" : "LegacyTick";
-                SupportCostSample? legacy = samples.FirstOrDefault(s => s.Scene == sample.Scene && s.Operation == pair);
-                // The same preconditions SupportCostArtifact.Write applies to a hosted row.
-                SupportCostGate gate = legacy is null ? SupportCostGate.Reject
-                    : SupportCostVerdict.Evaluate(sample, legacy, sample.Dense, scales[i].K, lifetime);
-                if (gate == SupportCostGate.Pass && !(sample.ColdGeometryPassed && sample.GeometryMatchesOracle)) gate = SupportCostGate.Reject;
                 if (!rows.TryGetValue((sample.Scene, sample.Operation), out Row? row))
                     rows[(sample.Scene, sample.Operation)] = row = new(sample.Scene, sample.Operation, sample.Dense, lifetime,
                         new SupportCostSample[files.Length], new SupportCostSample?[files.Length], new SupportCostGate[files.Length], new double[files.Length]);
@@ -70,6 +56,7 @@ public sealed class SupportCostHostedRecordTests
             }
         }
         Assert.All(rows.Values, row => Assert.All(row.Samples, sample => Assert.NotNull(sample)));
+        Assert.All(rows.Values, row => Assert.All(row.Legacy, legacy => Assert.NotNull(legacy)));
         // Allocation and eligibility fields are deterministic, so the median row reuses the first iteration's.
         Assert.All(rows.Values, row => Assert.All(row.Samples, sample => Assert.Equal(row.Samples[0].WarmBytes, sample.WarmBytes)));
         // Envelope classification uses deterministic fields only, so every iteration must agree.
@@ -130,8 +117,8 @@ public sealed class SupportCostHostedRecordTests
         foreach (Row row in dense)
         {
             SupportCostSample first = row.Samples[0];
-            long limit = first.Operation switch { "DryTick" => 208, "ExplicitTick" => row.Lifetime, _ => 0 };
-            bool allocation = row.Samples.All(sample => sample.WarmBytes <= limit);
+            bool allocation = Enumerable.Range(0, iterations).All(i => !SupportCostVerdict.Check(row.Samples[i], row.Legacy[i]!,
+                true, row.Scales[i], row.Lifetime, hosted: true).Allocation);
             text.AppendLine(($"| {row.Scene} | {Short(row.Operation)} | {Median(Equivalent(row, false)):F3} | {Median(Equivalent(row, true)):F3} | " +
                 $"{first.WarmBytes} | {(allocation ? "PASS" : "FAIL")} |"));
         }
@@ -145,22 +132,11 @@ public sealed class SupportCostHostedRecordTests
     {
         double candidate = Median(Equivalent(row, false)), legacy = Median(Equivalent(row, true));
         SupportCostSample sample = row.Samples[0] with { WarmMicroseconds = candidate };
-        SupportCostSample? pair = row.Legacy[0] is { } l ? l with { WarmMicroseconds = legacy } : null;
-        bool passed = pair is not null && sample.ColdGeometryPassed && sample.GeometryMatchesOracle &&
-            SupportCostVerdict.Evaluate(sample, pair, false, 1, row.Lifetime) == SupportCostGate.Pass;
-        double limit = Family(row.Operation) switch
-        {
-            "Find" => 50,
-            "Substep" => 200,
-            _ => Math.Min(1000, legacy + Math.Max(100, 0.25 * legacy)),
-        };
-        var codes = new List<string>();
-        if (candidate > limit) codes.Add("T");
-        if (!sample.GeometryPassed || sample.Refusal || !sample.ColdGeometryPassed || !sample.GeometryMatchesOracle) codes.Add("G");
-        if (Family(row.Operation) == "Whole tick" && (sample.AchievedMotion.X == 0 && sample.AchievedMotion.Z == 0 ||
-            sample.Substeps > 3 || sample.Counts.ModeSegments > 1 || !sample.Comparable)) codes.Add("E");
-        if (Family(row.Operation) == "Whole tick" && pair is { GeometryPassed: false }) codes.Add("L");
-        return new(candidate, legacy, limit, passed, string.Join(",", codes));
+        SupportCostSample pair = row.Legacy[0]! with { WarmMicroseconds = legacy };
+        SupportCostGate gate = SupportCostVerdict.JudgeRow(sample, [sample, pair], 1, row.Lifetime, hosted: true)!.Value.Gate;
+        SupportCostCheck check = SupportCostVerdict.Check(sample, pair, sample.Dense, 1, row.Lifetime, hosted: true);
+        Assert.Equal(check.Passed, gate == SupportCostGate.Pass);
+        return new(candidate, legacy, check.TimeLimit, gate == SupportCostGate.Pass, check.Codes);
     }
 
     static IEnumerable<double> Equivalent(Row row, bool legacy) => Enumerable.Range(0, row.Samples.Length)

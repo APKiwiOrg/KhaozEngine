@@ -216,13 +216,41 @@ public sealed class SupportCostArtifactTests
     const string HostedSha = "376971dda8964849cac1a13fa7cad17a26bd45a5";
     static readonly JsonSerializerOptions Options = new() { IncludeFields = true, NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals };
 
+    [Fact]
+    public void HostedArtifactRecordsOnly()
+    {
+        string path = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".json");
+        SupportCostSample[] samples = HostedSamples(200);
+        SupportCostSample find = NoSupport() with { Scene = samples[0].Scene, Input = samples[0].Input, OracleOutcome = "None", GeometryMatchesOracle = true };
+        try
+        {
+            SupportCostArtifact.Write(path, [samples[0] with { Operation = "Find", WarmMicroseconds = 1 }, find with { Scene = "legacy row 1", Input = samples[1].Input },
+                .. samples, samples[0] with { Operation = "LegacyDownPass" }, samples[1] with { Operation = "LegacyDownPass" }],
+                "base", HostedSha, "command", hosted: true);
+            JsonObject section = JsonNode.Parse(File.ReadAllText(path))!["baseline"]!.AsObject();
+            Assert.False(section.ContainsKey("HostedNormalizationPassed"));
+            Assert.Null(section["HostScale"]);
+            Assert.False(section.ContainsKey("HostScaleRows"));
+            Assert.Equal("reference-376971dda", section["ReferenceSection"]!.GetValue<string>());
+            Assert.Equal("hosted-support-cost", section["RecordingLabel"]!.GetValue<string>());
+            Assert.Contains("computed offline", section["Normalization"]!.GetValue<string>(), StringComparison.Ordinal);
+            Assert.All(section["Samples"]!.AsArray(), sample =>
+            {
+                Assert.Null(sample!["GatePassed"]);
+                Assert.Null(sample["Envelope"]);
+            });
+            Assert.Equal(1 / 200d, section["Samples"]![0]!["CandidateLegacyRatio"]!.GetValue<double>());
+        }
+        finally { File.Delete(path); }
+    }
+
     [Theory]
     [InlineData(200, 25, true)]
     [InlineData(200, 26, false)]
     [InlineData(800, 100, true)]
     [InlineData(800, 101, false)]
     [InlineData(0, 1, false)]
-    public void HostedArtifactUsesReadOnlyCalibration(double hostedTime, double findTime, bool expected)
+    public void OfflineVerdictJudgesARecordedHostedRun(double hostedTime, double findTime, bool expected)
     {
         string directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
@@ -237,18 +265,21 @@ public sealed class SupportCostArtifactTests
         {
             Environment.SetEnvironmentVariable("DOTNET_TieredCompilation", "0");
             SupportCostArtifact.Write(path, [candidate, .. samples, samples[0] with { Operation = "LegacyDownPass" }],
-                "base", HostedSha, "command", referencePath);
-            JsonNode section = JsonNode.Parse(File.ReadAllText(path))!["baseline"]!;
-            if (hostedTime > 0) Assert.True(section["HostedNormalizationPassed"]!.GetValue<bool>(),
-                "The matching hosted record must calibrate.");
-            Assert.Equal(expected, section["Samples"]![0]!["GatePassed"]!.GetValue<bool>());
-            if (hostedTime > 0)
+                "base", HostedSha, "command", hosted: true);
+            JsonObject hosted = JsonNode.Parse(File.ReadAllText(path))!["baseline"]!.AsObject();
+            hosted["ProcessExitStatus"] = 0;
+            JsonObject? reference = SupportCostArtifact.ReadReference(referencePath, hosted["CandidateSha"]!.GetValue<string>());
+            Assert.NotNull(reference);
+            bool judged = SupportCostVerdict.TryJudgeHosted(reference, hosted, out HostedScale scale, out var rows);
+            Assert.Equal(hostedTime > 0, judged);
+            if (judged)
             {
-                Assert.Equal(hostedTime / 400, section["HostScale"]!.GetValue<double>());
-                Assert.Equal(SupportGateCostTests.HostedRows, section["HostScaleRows"]!.GetValue<int>());
-                Assert.Equal("reference-376971dda", section["ReferenceSection"]!.GetValue<string>());
+                Assert.Equal(new HostedScale(hostedTime / 400, SupportGateCostTests.HostedRows, hostedTime / 400, hostedTime / 400), scale);
+                var find = Assert.Single(rows);
+                Assert.Equal("Find", find.Sample.Operation);
+                Assert.Equal(expected, find.Verdict.Gate == SupportCostGate.Pass);
             }
-            else Assert.Null(section["HostScale"]);
+            else Assert.Equal(default, scale);
             Assert.Equal(before, File.ReadAllText(referencePath));
         }
         finally
@@ -256,6 +287,23 @@ public sealed class SupportCostArtifactTests
             Environment.SetEnvironmentVariable("DOTNET_TieredCompilation", tiered);
             Directory.Delete(directory, true);
         }
+    }
+
+    [Fact]
+    public void OfflineVerdictRejectsAHostedRowWithFailedFirstUseGeometry()
+    {
+        SupportCostSample[] samples = HostedSamples(200);
+        SupportCostSample find = samples[0] with { Operation = "Find", WarmMicroseconds = 1 };
+        Assert.Equal(SupportCostGate.Pass, SupportCostVerdict.JudgeRow(find, [find, samples[0] with { Operation = "LegacyDownPass" }], 1, 0, hosted: true)!.Value.Gate);
+        foreach (SupportCostSample failed in new[] { find with { ColdGeometryPassed = false }, find with { GeometryMatchesOracle = false } })
+        {
+            SupportCostRowVerdict verdict = SupportCostVerdict.JudgeRow(failed, [failed, samples[0] with { Operation = "LegacyDownPass" }], 1, 0, hosted: true)!.Value;
+            Assert.Equal(SupportCostGate.Reject, verdict.Gate);
+            Assert.Equal("G", SupportCostVerdict.Check(failed, verdict.Legacy!, false, 1, 0, hosted: true).Codes);
+            Assert.Equal(SupportCostGate.Pass, SupportCostVerdict.JudgeRow(failed, [failed, verdict.Legacy!], 1, 0, hosted: false)!.Value.Gate);
+        }
+        Assert.Equal(SupportCostGate.Reject, SupportCostVerdict.JudgeRow(find, [find], 1, 0, hosted: true)!.Value.Gate);
+        Assert.Null(SupportCostVerdict.JudgeRow(samples[0], samples, 1, 0, hosted: true));
     }
 
     [Theory]
@@ -266,18 +314,21 @@ public sealed class SupportCostArtifactTests
     [InlineData("baseline only")]
     [InlineData("other commit")]
     [InlineData("mislabeled commit")]
-    public void HostedArtifactCannotPassWithoutFinalizedReference(string fault)
+    [InlineData("short commit")]
+    public void ReferenceLookupRefusesAnAbsentOrUnfinalizedSection(string fault)
     {
         string directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
-        string referencePath = Path.Combine(directory, "reference.json"), path = Path.Combine(directory, "run-1.json");
-        SupportCostSample[] samples = HostedSamples(200);
-        string? tiered = Environment.GetEnvironmentVariable("DOTNET_TieredCompilation");
+        string referencePath = Path.Combine(directory, "reference.json");
         try
         {
-            Environment.SetEnvironmentVariable("DOTNET_TieredCompilation", "0");
+            File.WriteAllText(referencePath, ReferenceRoot(HostedSha).ToJsonString());
+            Assert.NotNull(SupportCostArtifact.ReadReference(referencePath, HostedSha));
+            Assert.NotNull(SupportCostArtifact.ReadReference(referencePath, "376971dda"));
+            string commit = fault == "short commit" ? "376971dd" : HostedSha;
+            if (fault == "missing") File.Delete(referencePath);
             if (fault == "malformed") File.WriteAllText(referencePath, "{");
-            if (fault != "missing" && fault != "malformed")
+            if (fault is not ("missing" or "malformed" or "short commit"))
             {
                 JsonObject root = ReferenceRoot(fault == "other commit" ? "06b734c5722bc2cc95cea459255d6ec93e9236c7" : HostedSha);
                 if (fault == "schema") root["schemaVersion"] = 1;
@@ -290,18 +341,24 @@ public sealed class SupportCostArtifactTests
                 if (fault == "mislabeled commit") root["reference-376971dda"]!["CandidateSha"] = "376971ddb8964849cac1a13fa7cad17a26bd45a5";
                 File.WriteAllText(referencePath, root.ToJsonString());
             }
-            SupportCostArtifact.Write(path, [samples[0] with { Operation = "Find", WarmMicroseconds = 1 }, .. samples,
-                samples[0] with { Operation = "LegacyDownPass" }], "base", HostedSha, "command", referencePath);
-            JsonNode section = JsonNode.Parse(File.ReadAllText(path))!["baseline"]!;
-            Assert.False(section["HostedNormalizationPassed"]!.GetValue<bool>());
-            Assert.False(section["Samples"]![0]!["GatePassed"]!.GetValue<bool>());
-            Assert.Null(section["HostScale"]);
+            Assert.Null(SupportCostArtifact.ReadReference(referencePath, commit));
+            Assert.False(SupportCostVerdict.TryJudgeHosted(SupportCostArtifact.ReadReference(referencePath, commit),
+                SupportGateCostTests.HostedSection(200), out _, out _));
         }
-        finally
-        {
-            Environment.SetEnvironmentVariable("DOTNET_TieredCompilation", tiered);
-            Directory.Delete(directory, true);
-        }
+        finally { Directory.Delete(directory, true); }
+    }
+
+    [Theory]
+    [InlineData(40, 1.28125, 2.5625, 3.84375)]
+    [InlineData(41, 1.3125, 2.625, 3.9375)]
+    public void HostedScaleQuartilesInterpolateAtRankNPlusOneTimesP(int rows, double lower, double median, double upper)
+    {
+        // Ratios 1/8, 2/8, ... are exact in binary and are listed in descending order, so sorting is exercised.
+        JsonObject reference = SupportGateCostTests.HostedSection(1, true, rows), hosted = SupportGateCostTests.HostedSection(1, false, rows);
+        JsonArray samples = hosted["Samples"]!.AsArray();
+        for (int i = 0; i < rows; i++) samples[i]!["WarmMicroseconds"] = (rows - i) / 8d;
+        Assert.True(SupportCostVerdict.TryHostedScale(reference, hosted, out HostedScale scale));
+        Assert.Equal(new HostedScale(median, rows, lower, upper), scale);
     }
 
     static JsonObject ReferenceRoot(string commit)

@@ -705,9 +705,9 @@ pass their allocation limits. #1334 remains open.
 - Evaluator: `SupportCostHostedRecordTests.HostedRecordWithCorrectedCalibration`, run with
   `KHAOZ_SUPPORT_COST_HOSTED_RUNS` naming the artifact directory, `KHAOZ_SUPPORT_COST_REFERENCE_COMMIT=376971dda`
   and `KHAOZ_SUPPORT_COST_HOSTED_REPORT` naming the table output. It reads the artifacts in place, selects the
-  reference by commit, and calls `SupportCostVerdict.TryHostedScale` and `SupportCostVerdict.Evaluate` per
-  iteration with that run's own lifetime inventory and the hosted preconditions of `SupportCostArtifact.Write`.
-  It measures nothing.
+  reference by commit, and judges each iteration with `SupportCostVerdict.TryJudgeHosted`, using that run's own
+  lifetime inventory. Every row and median verdict, limit and failure code comes from the shared
+  `SupportCostVerdict.JudgeRow` and `SupportCostVerdict.Check`. It measures nothing.
 - Aggregation is unchanged from the section above: each candidate and paired legacy time is divided by its
   own iteration's `k`, the per-row median is taken, and the median row is judged at `k = 1`.
   Warm bytes and envelope classification are identical across all 20 iterations.

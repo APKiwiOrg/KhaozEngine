@@ -317,11 +317,9 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
                 Environment.GetEnvironmentVariable("FILTER") + "\" --logger \"trx;LogFileName=" + Path.GetFileNameWithoutExtension(path) +
                 ".trx\" --results-directory \"" + Path.GetDirectoryName(Path.GetDirectoryName(path)) + "\""
                 : " build-slot --label " + label + " -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --filter \"FullyQualifiedName~SupportGateCostTests.OneShotCostArtifact\"");
-        string? reference = hosted ? Path.Combine(GitOutput("rev-parse --show-toplevel"), "docs", "verification", "2026-10-11-support-gates-cost.json") : null;
-        SupportCostArtifact.Write(path, samples, BaseSha, sha, command, reference);
+        // A hosted run records only. Its verdict is computed offline against the reference recorded at this commit.
+        SupportCostArtifact.Write(path, samples, BaseSha, sha, command, hosted);
         Assert.True(File.Exists(path));
-        if (hosted) Assert.True(JsonNode.Parse(File.ReadAllText(path))!["baseline"]!["HostedNormalizationPassed"]!.GetValue<bool>(),
-            "Hosted calibration needs the M2 Max reference section for this commit, matching scenes, fixed compilation metadata and at least 40 comparable legacy rows.");
         Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
         output.WriteLine($"Recorded {samples.Count} first-use/warm operation pairs at {sha}.");
     }
@@ -488,9 +486,10 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
     public void HostedNormalizationMatchesCommittedPhysicalInputs(string tuning, bool expected)
     {
         string path = Path.Combine(GitOutput("rev-parse --show-toplevel"), "docs", "verification", "2026-10-11-support-gates-cost.json");
-        JsonObject baseline = JsonNode.Parse(File.ReadAllText(path))!["baseline"]!.AsObject();
+        JsonObject? reference = SupportCostArtifact.ReadReference(path, "376971dda");
+        Assert.NotNull(reference);
         JsonObject hosted = HostedSection(1);
-        hosted["Samples"] = baseline["Samples"]!.DeepClone();
+        hosted["Samples"] = reference["Samples"]!.DeepClone();
         foreach (JsonNode? sample in hosted["Samples"]!.AsArray())
             if (sample!["WarmMicroseconds"] is JsonValue time && time.TryGetValue(out double microseconds))
                 sample["WarmMicroseconds"] = microseconds / 2;
@@ -504,7 +503,7 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
             case "water mode": hosted["Tuning"]!["Water"]!["Mode"] = (int)WaterTraversalMode.WadeOnly; break;
             case "water launch": hosted["Tuning"]!["Water"]!["SurfaceJumpSpeed"] = 1f; break;
         }
-        Assert.Equal(expected, SupportCostVerdict.TryHostedScale(baseline, hosted, out HostedScale scale));
+        Assert.Equal(expected, SupportCostVerdict.TryHostedScale(reference, hosted, out HostedScale scale));
         Assert.Equal(expected ? 0.5 : 0, scale.K);
         if (expected) Assert.InRange(scale.Rows, SupportCostVerdict.MinimumCalibrationRows, int.MaxValue);
     }

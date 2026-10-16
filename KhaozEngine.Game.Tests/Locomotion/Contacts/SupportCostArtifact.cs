@@ -29,7 +29,7 @@ internal sealed record SupportCostSample(string Operation, string Scene, bool Ge
     public double? CandidateLegacyRatio { get; init; }
     public double? WholeTickDeltaMicroseconds { get; init; }
     public bool? GatePassed { get; init; }
-    public bool Envelope { get; init; }
+    public bool? Envelope { get; init; }
     public string OracleOutcome { get; init; } = "";
     public double OracleHeight { get; init; }
     public bool GeometryMatchesOracle { get; init; }
@@ -182,45 +182,103 @@ internal static class SupportCostVerdict
         !sample.Refusal && sample.GeometryMatchesOracle && sample.SupportReads.Length > 0 &&
         sample.SupportReads.All(read => (SupportStatus)read.Status is SupportStatus.None or SupportStatus.Steep);
 
-    internal static SupportCostGate Evaluate(in SupportCostSample candidate, in SupportCostSample legacy, bool dense,
-        double hostScale = 1, long explicitLifetimeBytes = 0)
+    internal static bool IsGated(string operation) => operation is "Find" or "DryTick" or "ExplicitTick" ||
+        operation.StartsWith("GroundSubstep", StringComparison.Ordinal);
+
+    /// <summary>The legacy row a cost row is compared with: the down pass for a Find, otherwise the legacy tick.</summary>
+    internal static SupportCostSample? PairedLegacy(SupportCostSample sample, IEnumerable<SupportCostSample> samples)
     {
-        if (!(hostScale > 0) || !double.IsFinite(hostScale)) throw new ArgumentOutOfRangeException(nameof(hostScale));
-        bool find = candidate.Operation == "Find";
-        if (!find && candidate.Operation is not ("DryTick" or "ExplicitTick") &&
-            !candidate.Operation.StartsWith("GroundSubstep", StringComparison.Ordinal)) return SupportCostGate.Reject;
-        if (find ? OracleCorrectRefusal(candidate) : OracleBlocked(candidate)) return SupportCostGate.Envelope;
-        return Passes(candidate, legacy, dense, hostScale, explicitLifetimeBytes) ? SupportCostGate.Pass : SupportCostGate.Reject;
+        string operation = sample.Operation == "Find" ? "LegacyDownPass" : "LegacyTick";
+        return samples.FirstOrDefault(s => s.Scene == sample.Scene && s.Operation == operation);
     }
 
-    static bool Passes(in SupportCostSample candidate, in SupportCostSample legacy, bool dense,
-        double hostScale, long explicitLifetimeBytes)
+    /// <summary>The verdict for one recorded row, or null for an operation without a cost gate. A row without
+    /// its legacy pair is rejected. <paramref name="hosted"/> adds the hosted precondition of <see cref="Check"/>.</summary>
+    internal static SupportCostRowVerdict? JudgeRow(SupportCostSample sample, IReadOnlyList<SupportCostSample> samples,
+        double hostScale, long explicitLifetimeBytes, bool hosted)
     {
-        if (!candidate.GeometryPassed || candidate.Refusal || !double.IsFinite(candidate.WarmMicroseconds) ||
-            candidate.WarmMicroseconds < 0 || candidate.WarmBytes < 0) return false;
-        if (candidate.Operation == "Find")
-            return candidate.WarmBytes == 0 && candidate.WarmMicroseconds <= (dense ? 500 : 50) * hostScale;
-        if (candidate.Operation.StartsWith("GroundSubstep", StringComparison.Ordinal))
-            return candidate.WarmBytes == 0 && candidate.WarmMicroseconds <= (dense ? 1000 : 200) * hostScale;
-        if (candidate.Operation is "DryTick" or "ExplicitTick")
-        {
-            long allocationLimit = candidate.Operation == "DryTick" ? 208 : explicitLifetimeBytes;
-            if (allocationLimit <= 0) return false;
-            if (candidate.AchievedMotion.X == 0 && candidate.AchievedMotion.Z == 0 || candidate.Substeps > 3 || candidate.Counts.ModeSegments > 1 || !candidate.Comparable ||
-                candidate.WarmBytes > allocationLimit || candidate.WarmMicroseconds > (dense ? 4000 : 1000) * hostScale)
-                return false;
-            return dense || legacy.GeometryPassed && double.IsFinite(legacy.WarmMicroseconds) &&
-                legacy.WarmMicroseconds >= 0 && candidate.WarmMicroseconds <= legacy.WarmMicroseconds +
-                Math.Max(hostScale * 100, 0.25 * legacy.WarmMicroseconds);
-        }
-        return false;
+        if (!IsGated(sample.Operation)) return null;
+        SupportCostSample? legacy = PairedLegacy(sample, samples);
+        return new(legacy, legacy is null ? SupportCostGate.Reject
+            : Evaluate(sample, legacy, sample.Dense, hostScale, explicitLifetimeBytes, hosted));
     }
+
+    /// <summary>Calibrates a finalized hosted section against its reference and judges every gated row offline.</summary>
+    internal static bool TryJudgeHosted(JsonObject? reference, JsonObject hosted, out HostedScale scale,
+        out (SupportCostSample Sample, SupportCostRowVerdict Verdict)[] rows)
+    {
+        rows = [];
+        if (!TryHostedScale(reference, hosted, out scale) ||
+            hosted["LifetimeInventory"]?["AcquiredExplicitTickBytes"]?.GetValue<long>() is not long lifetime) return false;
+        var options = new JsonSerializerOptions { IncludeFields = true, NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals };
+        SupportCostSample[] samples = hosted["Samples"]!.Deserialize<SupportCostSample[]>(options)!;
+        double k = scale.K;
+        rows = samples.Select(sample => (Sample: sample, Verdict: JudgeRow(sample, samples, k, lifetime, hosted: true)))
+            .Where(row => row.Verdict is not null).Select(row => (row.Sample, row.Verdict!.Value)).ToArray();
+        return true;
+    }
+
+    internal static SupportCostGate Evaluate(in SupportCostSample candidate, in SupportCostSample legacy, bool dense,
+        double hostScale = 1, long explicitLifetimeBytes = 0, bool hosted = false)
+    {
+        if (!(hostScale > 0) || !double.IsFinite(hostScale)) throw new ArgumentOutOfRangeException(nameof(hostScale));
+        if (!IsGated(candidate.Operation)) return SupportCostGate.Reject;
+        if (candidate.Operation == "Find" ? OracleCorrectRefusal(candidate) : OracleBlocked(candidate)) return SupportCostGate.Envelope;
+        return Check(candidate, legacy, dense, hostScale, explicitLifetimeBytes, hosted).Passed ? SupportCostGate.Pass : SupportCostGate.Reject;
+    }
+
+    /// <summary>The SG-12 limits for a gated row and every rule it breaks. A hosted row also needs successful
+    /// first-use geometry and oracle agreement, which counts as a geometry failure.</summary>
+    internal static SupportCostCheck Check(in SupportCostSample candidate, in SupportCostSample legacy, bool dense,
+        double hostScale, long explicitLifetimeBytes, bool hosted)
+    {
+        if (!IsGated(candidate.Operation)) throw new ArgumentException("Not a gated cost row.", nameof(candidate));
+        bool geometry = !candidate.GeometryPassed || candidate.Refusal ||
+            hosted && !(candidate.ColdGeometryPassed && candidate.GeometryMatchesOracle);
+        bool tick = candidate.Operation is "DryTick" or "ExplicitTick";
+        double timeLimit = (candidate.Operation == "Find" ? dense ? 500 : 50 : tick ? dense ? 4000 : 1000 : dense ? 1000 : 200) * hostScale;
+        long byteLimit = candidate.Operation switch { "DryTick" => 208, "ExplicitTick" => explicitLifetimeBytes, _ => 0 };
+        bool envelope = false, legacyFailed = false;
+        if (tick)
+        {
+            envelope = candidate.AchievedMotion.X == 0 && candidate.AchievedMotion.Z == 0 || candidate.Substeps > 3 ||
+                candidate.Counts.ModeSegments > 1 || !candidate.Comparable;
+            if (!dense)
+            {
+                bool legacyTimed = double.IsFinite(legacy.WarmMicroseconds) && legacy.WarmMicroseconds >= 0;
+                legacyFailed = !legacy.GeometryPassed || !legacyTimed;
+                if (legacyTimed) timeLimit = Math.Min(timeLimit,
+                    legacy.WarmMicroseconds + Math.Max(hostScale * 100, 0.25 * legacy.WarmMicroseconds));
+            }
+        }
+        bool time = !(double.IsFinite(candidate.WarmMicroseconds) && candidate.WarmMicroseconds >= 0 &&
+            candidate.WarmMicroseconds <= timeLimit);
+        bool allocation = candidate.WarmBytes < 0 || tick && byteLimit <= 0 || candidate.WarmBytes > byteLimit;
+        return new(timeLimit, byteLimit, time, geometry, envelope, legacyFailed, allocation);
+    }
+}
+
+/// <summary>One recorded row's verdict and the legacy row it was compared with.</summary>
+internal readonly record struct SupportCostRowVerdict(SupportCostSample? Legacy, SupportCostGate Gate);
+
+/// <summary>A gated row's limits and failures: <c>T</c> time, <c>G</c> geometry, oracle or refusal, <c>E</c> outside
+/// the comparable moving single-mode envelope, <c>L</c> unsuccessful ordinary legacy, <c>A</c> allocation.</summary>
+internal readonly record struct SupportCostCheck(double TimeLimit, long ByteLimit, bool Time, bool Geometry,
+    bool Envelope, bool Legacy, bool Allocation)
+{
+    public bool Passed => !(Time || Geometry || Envelope || Legacy || Allocation);
+
+    public string Codes => string.Join(",", new[] { (Time, "T"), (Geometry, "G"), (Envelope, "E"), (Legacy, "L"), (Allocation, "A") }
+        .Where(code => code.Item1).Select(code => code.Item2));
 }
 
 internal static class SupportCostArtifact
 {
+    /// <summary>Records one invocation. A local recording judges its own rows at scale 1. A hosted recording
+    /// only records: its scale and verdict are computed offline against the reference section recorded at
+    /// the run's commit (SC-2).</summary>
     internal static void Write(string path, IReadOnlyList<SupportCostSample> samples, string baseSha,
-        string candidateSha, string command, string? m2MaxArtifactPath = null)
+        string candidateSha, string command, bool hosted = false)
     {
         if (samples.Count == 0) throw new ArgumentException("A cost artifact needs samples.", nameof(samples));
         var scenes = new Dictionary<string, SupportCostRow?>();
@@ -288,39 +346,31 @@ internal static class SupportCostArtifact
             Samples = samples,
         }, options);
         JsonObject recording = root[section]!.AsObject();
-        var hostScale = new HostedScale(1, 0, 1, 1);
-        bool normalizationPassed = m2MaxArtifactPath is null ||
-            SupportCostVerdict.TryHostedScale(ReadReference(m2MaxArtifactPath, candidateSha), recording, out hostScale);
-        if (m2MaxArtifactPath is not null)
+        long explicitLifetime = lifetime.Movement + lifetime.Physics + lifetime.Pin;
+        if (hosted)
         {
-            recording["HostScale"] = normalizationPassed ? JsonValue.Create(hostScale.K) : null;
-            recording["HostScaleRows"] = normalizationPassed ? JsonValue.Create(hostScale.Rows) : null;
-            recording["HostScaleLowerQuartile"] = normalizationPassed ? JsonValue.Create(hostScale.LowerQuartile) : null;
-            recording["HostScaleUpperQuartile"] = normalizationPassed ? JsonValue.Create(hostScale.UpperQuartile) : null;
+            recording["HostScale"] = null;
             recording["ReferenceSection"] = ReferenceSection(candidateSha);
-            recording["HostedNormalizationPassed"] = normalizationPassed;
             recording["RecordingLabel"] = "hosted-support-cost";
             recording["MeasuredBeforeHarnessCommit"] = false;
-            recording["Normalization"] = "Median of hosted/M2 Max warm time over every legacy row present and successful in this invocation " +
-                "and in the finalized M2 Max reference section recorded at the same commit, with M2 warm time above 0.5 us. " +
-                "At least 40 rows. Only absolute time ceilings scale.";
+            recording["Normalization"] = "Recorded only. The scale and verdict are computed offline against the M2 Max " +
+                "reference section named in ReferenceSection, recorded at this run's commit in one invocation. The scale is the median " +
+                "hosted/M2 Max warm time over every legacy row present and successful in both, with M2 warm time above 0.5 us, " +
+                "over at least 40 rows. Only absolute time ceilings scale.";
         }
         var compared = samples.Select(sample =>
         {
-            if (sample.Operation is not ("Find" or "DryTick" or "ExplicitTick" or "GroundTickBorrowed") &&
-                !sample.Operation.StartsWith("GroundSubstep", StringComparison.Ordinal)) return sample;
-            string legacyOperation = sample.Operation == "Find" ? "LegacyDownPass" : "LegacyTick";
-            SupportCostSample? legacy = samples.FirstOrDefault(s => s.Scene == sample.Scene && s.Operation == legacyOperation);
-            if (legacy is null) return m2MaxArtifactPath is null ? sample : sample with { GatePassed = false };
-            SupportCostGate gate = normalizationPassed ? SupportCostVerdict.Evaluate(sample, legacy, sample.Dense, hostScale.K,
-                explicitLifetimeBytes: lifetime.Movement + lifetime.Physics + lifetime.Pin) : SupportCostGate.Reject;
+            if (sample.Operation != "GroundTickBorrowed" && !SupportCostVerdict.IsGated(sample.Operation)) return sample;
+            SupportCostSample? legacy = SupportCostVerdict.PairedLegacy(sample, samples);
+            if (legacy is null) return sample;
+            SupportCostRowVerdict? verdict = hosted ? null : SupportCostVerdict.JudgeRow(sample, samples, 1, explicitLifetime, hosted: false);
             return sample with
             {
                 CandidateLegacyRatio = sample.Operation is "Find" or "DryTick" or "ExplicitTick" && legacy.WarmMicroseconds > 0 ? sample.WarmMicroseconds / legacy.WarmMicroseconds : null,
                 WholeTickDeltaMicroseconds = sample.Operation is "DryTick" or "ExplicitTick" ? sample.WarmMicroseconds - legacy.WarmMicroseconds : null,
-                Envelope = gate == SupportCostGate.Envelope,
-                GatePassed = gate == SupportCostGate.Envelope ? null : gate == SupportCostGate.Pass &&
-                    (m2MaxArtifactPath is null || sample.ColdGeometryPassed && sample.GeometryMatchesOracle),
+                // A borrowed whole tick is compared but has no cost gate, so a local recording marks it failed.
+                Envelope = hosted ? null : verdict?.Gate == SupportCostGate.Envelope,
+                GatePassed = hosted || verdict?.Gate == SupportCostGate.Envelope ? null : verdict?.Gate == SupportCostGate.Pass,
             };
         }).ToArray();
         recording["Samples"] = JsonSerializer.SerializeToNode(compared, options);

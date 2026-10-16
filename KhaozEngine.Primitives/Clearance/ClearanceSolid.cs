@@ -98,7 +98,10 @@ public sealed class ClearanceSolid
         return MathF.Min(MathF.Min(top - local.Y, local.Y - baseY), _planarDepth[cell]);
     }
 
-    static double AxisCells(float extent, float cellSize) => Math.Max(1d, Math.Ceiling(extent / (double)cellSize));
+    /// <summary>Cells along one axis. An extent within <see cref="EdgeSlackCells"/> of a whole number of cells takes
+    /// that number, so float rounding never adds a phantom cell row on the max side.</summary>
+    static double AxisCells(float extent, float cellSize) =>
+        Math.Max(1d, Math.Ceiling(extent / (double)cellSize - EdgeSlackCells));
 
     /// <summary>Map an offset from the grid's min edge to a cell index. A coordinate exactly on the max edge
     /// clamps into the last cell. Anything further out than <see cref="EdgeSlackCells"/> is off the grid.</summary>
@@ -111,14 +114,19 @@ public sealed class ClearanceSolid
             return false;
         }
 
-        index = Math.Clamp((int)Math.Floor(t + EdgeSlackCells), 0, cells - 1);
+        index = ClampedCell(t, cells);
         return true;
     }
 
+    /// <summary>The cell holding <paramref name="t"/>, in cells from the min edge, clamped onto the grid.</summary>
+    static int ClampedCell(double t, int cells) => (int)Math.Clamp(Math.Floor(t + EdgeSlackCells), 0d, cells - 1d);
+
+    /// <summary>Fill the cell under a mesh sample and raise its top. Samples come from the mesh, so one that float
+    /// drift carries just past the grid edge belongs to the edge cell and is clamped there.</summary>
     void Mark(Vector3 sample)
     {
-        TryCell(sample.X - Min.X, _cellsX, out int x);
-        TryCell(sample.Z - Min.Z, _cellsZ, out int z);
+        int x = ClampedCell((sample.X - Min.X) / (double)CellSize, _cellsX);
+        int z = ClampedCell((sample.Z - Min.Z) / (double)CellSize, _cellsZ);
         int cell = z * _cellsX + x;
         if (sample.Y > _top[cell])
             _top[cell] = sample.Y;

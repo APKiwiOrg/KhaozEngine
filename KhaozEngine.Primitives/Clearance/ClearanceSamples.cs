@@ -6,8 +6,8 @@ namespace KhaozEngine.Primitives;
 
 /// <summary>Probe points spread over the surface of a subject <see cref="ClearanceMesh"/>, in the mesh's local
 /// frame. <see cref="ClearanceProbe.Deepest"/> tests each point against an obstacle. Every triangle is sampled on a
-/// barycentric grid at <c>pitch</c> spacing that always includes its vertices and edges, so a finer pitch finds
-/// shallower and narrower contacts at the cost of more points.</summary>
+/// grid at <c>pitch</c> spacing anchored at its shortest edge that always includes its vertices and edges, so a
+/// finer pitch finds shallower and narrower contacts at the cost of more points.</summary>
 public sealed class ClearanceSamples
 {
     readonly Vector3[] _points;
@@ -18,12 +18,11 @@ public sealed class ClearanceSamples
     public IReadOnlyList<Vector3> Points => _points;
 
     /// <summary>Sample every triangle of <paramref name="mesh"/> at <paramref name="pitch"/>. Throws
-    /// <see cref="ArgumentOutOfRangeException"/> when <paramref name="pitch"/> is not a positive finite number.</summary>
+    /// <see cref="ArgumentOutOfRangeException"/> when <paramref name="pitch"/> is not finite or is below 0.01.</summary>
     public static ClearanceSamples Build(ClearanceMesh mesh, float pitch)
     {
         ArgumentNullException.ThrowIfNull(mesh);
-        if (!(pitch > 0f && float.IsFinite(pitch)))
-            throw new ArgumentOutOfRangeException(nameof(pitch), pitch, "Sample pitch must be positive and finite.");
+        ClearanceMesh.RequireSamplePitch(pitch, nameof(pitch));
 
         var points = new List<Vector3>();
         mesh.ForEachSample(pitch, points.Add);

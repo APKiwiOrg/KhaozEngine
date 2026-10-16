@@ -37,6 +37,61 @@ public class ClearanceGeometryTests
     }
 
     [Fact]
+    public void WallHasNoPhantomMaxSideCell()
+    {
+        // 0.3f / 0.1f is a hair above 3 in float, which must not grow the wall a fourth cell row.
+        var solid = ClearanceSolid.Build(Box(new Vector3(0f, 0f, 0f), new Vector3(1f, 4f, 0.3f)), Cell);
+
+        Assert.Equal(0f, solid.DepthAt(new Vector3(0.5f, 2f, 0.35f)));
+        Assert.Equal(0.05f, solid.DepthAt(new Vector3(0.5f, 2f, 0.25f)), 0.051f);
+    }
+
+    [Fact]
+    public void SamplesDriftingOffTheGridClampIntoTheEdgeCell()
+    {
+        // Float sampling of the +z face lands a hair past z = 18, beyond the edge slack of the 720th cell.
+        var solid = ClearanceSolid.Build(Box(Vector3.Zero, new Vector3(0.55f, 0.55f, 18f)), 0.025f);
+
+        Assert.True(solid.DepthAt(new Vector3(0.275f, 0.3f, 17.99f)) > 0f);
+        Assert.True(solid.DepthAt(new Vector3(0.0125f, 0.3f, 17.99f)) > 0f);
+        Assert.True(solid.DepthAt(new Vector3(0.5375f, 0.3f, 17.99f)) > 0f);
+    }
+
+    [Fact]
+    public void SliverTriangleSamplesScaleWithItsArea()
+    {
+        const float pitch = 0.05f;
+        var a = new Vector3(0f, 0f, 0f);
+        var b = new Vector3(15f, 0f, 0f);
+        var c = new Vector3(0f, 0f, 0.2f);
+        var points = ClearanceSamples.Build(new ClearanceMesh(new[] { a, b, c }, new[] { 0, 1, 2 }), pitch).Points;
+
+        Assert.True(points.Count <= 2000, $"{points.Count} samples");
+        foreach (var p in points)
+        {
+            float wb = p.X / 15f;
+            float wc = p.Z / 0.2f;
+            Assert.True(wb >= -1e-4f && wc >= -1e-4f && wb + wc <= 1f + 1e-4f && MathF.Abs(p.Y) <= 1e-4f, $"{p} is off the triangle");
+        }
+
+        Assert.Contains(a, points);
+        Assert.Contains(b, points);
+        Assert.Contains(c, points);
+        foreach (var mid in new[] { (a + b) / 2f, (b + c) / 2f, (c + a) / 2f })
+            Assert.True(Nearest(points, mid) <= pitch, $"edge midpoint {mid} is {Nearest(points, mid)} from a sample");
+    }
+
+    [Fact]
+    public void SamplePitchBelowTheFloorOrNonFiniteThrows()
+    {
+        var mesh = Box(Vector3.Zero, Vector3.One);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => ClearanceSamples.Build(mesh, 0.005f));
+        Assert.Throws<ArgumentOutOfRangeException>(() => ClearanceSamples.Build(mesh, float.NaN));
+        Assert.Throws<ArgumentOutOfRangeException>(() => ClearanceSamples.Build(mesh, float.PositiveInfinity));
+    }
+
+    [Fact]
     public void GableAtticCountsAsSolid()
     {
         // Width 4 along x, depth 3 along z, eave at 2 and ridge at 4 over x = 2.
@@ -133,6 +188,14 @@ public class ClearanceGeometryTests
         Quad(idx, 0, 3, 5, 2); // left slope
         Quad(idx, 1, 2, 5, 4); // right slope
         return new ClearanceMesh(p, idx);
+    }
+
+    static float Nearest(IReadOnlyList<Vector3> points, Vector3 target)
+    {
+        float best = float.PositiveInfinity;
+        foreach (var p in points)
+            best = MathF.Min(best, Vector3.Distance(p, target));
+        return best;
     }
 
     static void Quad(List<int> idx, int a, int b, int c, int d)

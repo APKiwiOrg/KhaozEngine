@@ -66,31 +66,73 @@ public sealed class ClearanceMesh
     /// <summary>The largest corner of the box bounding every position.</summary>
     public Vector3 Max { get; }
 
-    /// <summary>Visit every triangle sample at <paramref name="pitch"/>: a barycentric grid with
-    /// <c>n = max(1, ceil(longestEdge / pitch))</c> steps per side and every <c>(i, j)</c> with
-    /// <c>i + j &lt;= n</c>, so vertices and edges are always included. Shared by both clearance builders.</summary>
+    /// <summary>The finest sample pitch the clearance builders accept, in local units.</summary>
+    internal const float MinSamplePitch = 0.01f;
+
+    /// <summary>Throw <see cref="ArgumentOutOfRangeException"/> unless <paramref name="pitch"/> is finite and at
+    /// least <see cref="MinSamplePitch"/>.</summary>
+    internal static void RequireSamplePitch(float pitch, string paramName)
+    {
+        if (!(pitch >= MinSamplePitch && float.IsFinite(pitch)))
+            throw new ArgumentOutOfRangeException(paramName, pitch, "Sample pitch must be finite and at least 0.01.");
+    }
+
+    /// <summary>Visit every triangle sample at <paramref name="pitch"/>, shared by both clearance builders. Each
+    /// triangle is sampled on a two-axis grid anchored at an endpoint of its shortest edge: u runs along the other
+    /// edge at that vertex and v along the shortest edge, each with <c>max(1, ceil(length / pitch))</c> steps, kept
+    /// to the points inside the triangle. The third edge gets its own samples at the same spacing. The three
+    /// vertices are always visited, every edge is sampled no coarser than <paramref name="pitch"/>, and the count
+    /// grows with the long side times the short side rather than with the square of the longest edge.</summary>
     internal void ForEachSample(float pitch, Action<Vector3> visit)
     {
+        RequireSamplePitch(pitch, nameof(pitch));
         for (int t = 0; t < _indices.Length; t += 3)
+            SampleTriangle(_positions[_indices[t]], _positions[_indices[t + 1]], _positions[_indices[t + 2]], pitch, visit);
+    }
+
+    static void SampleTriangle(Vector3 a, Vector3 b, Vector3 c, float pitch, Action<Vector3> visit)
+    {
+        float ab = Vector3.Distance(a, b);
+        float bc = Vector3.Distance(b, c);
+        float ca = Vector3.Distance(c, a);
+
+        // Name the shortest edge anchor..side and the remaining vertex far. The anchor is the shortest edge's
+        // endpoint whose other edge is the shorter one.
+        Vector3 anchor, side, far;
+        if (ab <= bc && ab <= ca)
+            (anchor, side, far) = ca <= bc ? (a, b, c) : (b, a, c);
+        else if (bc <= ca)
+            (anchor, side, far) = ab <= ca ? (b, c, a) : (c, b, a);
+        else
+            (anchor, side, far) = bc <= ab ? (c, a, b) : (a, c, b);
+
+        int nu = Steps(Vector3.Distance(anchor, far), pitch);
+        int nv = Steps(Vector3.Distance(anchor, side), pitch);
+        Vector3 du = (far - anchor) / nu;
+        Vector3 dv = (side - anchor) / nv;
+        long limit = (long)nu * nv;
+
+        for (int j = 0; j <= nv; j++)
         {
-            Vector3 a = _positions[_indices[t]];
-            Vector3 b = _positions[_indices[t + 1]];
-            Vector3 c = _positions[_indices[t + 2]];
-
-            float longest = MathF.Max(Vector3.Distance(a, b), MathF.Max(Vector3.Distance(b, c), Vector3.Distance(c, a)));
-            int n = Math.Max(1, (int)Math.Ceiling(longest / (double)pitch));
-            float inv = 1f / n;
-
-            for (int i = 0; i <= n; i++)
+            for (int i = 0; (long)i * nv + (long)j * nu <= limit; i++)
             {
-                for (int j = 0; i + j <= n; j++)
-                {
-                    float wb = i * inv;
-                    float wc = j * inv;
-                    float wa = (n - i - j) * inv;
-                    visit(a * wa + b * wb + c * wc);
-                }
+                if (i == nu)
+                    visit(far);
+                else if (j == nv)
+                    visit(side);
+                else
+                    visit(anchor + du * i + dv * j);
             }
         }
+
+        // The third edge, side..far, between its endpoints the grid already visited.
+        int nw = Steps(Vector3.Distance(side, far), pitch);
+        for (int k = 1; k < nw; k++)
+        {
+            float w = k / (float)nw;
+            visit(side * (1f - w) + far * w);
+        }
     }
+
+    static int Steps(float length, float pitch) => Math.Max(1, (int)Math.Ceiling(length / (double)pitch));
 }

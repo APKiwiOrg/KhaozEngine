@@ -155,7 +155,7 @@ and is skipped by update, draw, `Covers` and `CloseFront`.
    the window behind. It is skipped from the next frame on.
 5. With `receivesInput: false`, `OccludeAll` first and update every open window with `ReceivesInput` false.
 
-**Draw.** Sync open edges as in Update step 1, then draw open windows bottom to top. Before each window the
+**Draw.** Sync open edges, skipping only while the left button is held, then draw open windows bottom to top. Before each window the
 stack clears occlusion and re-applies the occluders of the windows above it, so draw-time hover reads, for
 example a close square lighting under the cursor, normally agree with what Update decided. Draw mirrors the mode of
 the last Update: after a capture frame the captor draws with nothing occluded and every other window draws

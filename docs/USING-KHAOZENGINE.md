@@ -1984,7 +1984,7 @@ window per band. For a single global focus read the last open entry of `Order`.
   `receivesInput: false`.
 - **A gesture keeps its owner.** Queries that test the press origin (`IsDragStartIn`, `IsDraggingIn`,
   `GetDragDelta`) keep answering for the window the press began in for the whole gesture. The press raised
-  that window, and a window opened mid-gesture rises only after the release frame.
+  that window, and a window opened mid-gesture rises only after the release frame's update.
 - **Update.** Each open window updates with every window above it occluded. A window that closes during its
   own update still occludes for the rest of that frame, so the tap that closed it cannot reach the window
   behind, and it is not drawn. A window another window closed or removed earlier in the frame is skipped.

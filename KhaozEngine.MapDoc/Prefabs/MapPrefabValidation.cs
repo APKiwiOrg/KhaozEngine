@@ -5,6 +5,7 @@ using System.Linq;
 using System.Numerics;
 using System.Text.Json;
 using KhaozEngine.MapDoc.Assets;
+using KhaozEngine.MapDoc.Markers;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Support;
 using KhaozEngine.MapDoc.Surfaces;
@@ -387,12 +388,7 @@ public static class MapPrefabValidation
         if (l.Colour.X < 0 || l.Colour.Y < 0 || l.Colour.Z < 0) Fail("Light colour must be nonnegative.");
         if (l.Owner is { } owner) { Reference(owner); if (owner.Kind != MapPrefabChildKind.Placement) Fail("Light owner requires a Placement reference."); }
     }
-    static void Marker(MapLocalMarkerDoc m)
-    {
-        if (m.PayloadVersion != 1) Fail("Unsupported local marker payload version.");
-        Text(m.Id); Text(m.Name); Text(m.Role); Vector(m.Position);
-        if (!float.IsFinite(m.YawRadians) || m.Tags is null || m.Tags.Any(t => t is null)) Fail("Invalid marker yaw/tags.");
-    }
+    static void Marker(MapLocalMarkerDoc m) => MapMarkerValidation.Require(m);
     static void Roof(MapRoofLinkDoc roof)
     {
         Text(roof.Id); RoofReference(roof.Roof);

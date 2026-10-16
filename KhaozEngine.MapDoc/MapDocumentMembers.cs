@@ -89,9 +89,14 @@ internal static class MapDocumentMembers
         }
     }
 
+    // The first admitted alternative is checked, as released. When that alternative is an object shape, a later
+    // admitted shape whose every const member matches is preferred, so payload and kind discriminants select their
+    // own closed shape. A node no shape fully matches keeps the released first choice.
     static void CheckUnion(JsonNode node, JsonArray? alternatives, string path, bool native)
     {
         if (alternatives is null) return;
+        JsonObject? first = null;
+        JsonObject? matched = null;
         foreach (JsonNode? alternative in alternatives)
         {
             JsonObject candidate = Resolve(alternative!.AsObject());
@@ -107,10 +112,27 @@ internal static class MapDocumentMembers
                 JsonNode? expected = fields["type"]?["const"];
                 if (expected is not null &&
                     (!TryGetProperty(obj, "type", out JsonNode? actual) || !JsonNode.DeepEquals(expected, actual))) continue;
+                first ??= candidate;
+                if (ConstantsMatch(obj, fields)) { matched = candidate; break; }
             }
-            Check(node, candidate, path, native);
-            return;
+            else
+            {
+                first ??= candidate;
+                break;
+            }
         }
+        if (first is null) return;
+        Check(node, first["properties"] is JsonObject ? matched ?? first : first, path, native);
+    }
+
+    static bool ConstantsMatch(JsonObject obj, JsonObject fields)
+    {
+        foreach (KeyValuePair<string, JsonNode?> field in fields)
+        {
+            if (field.Value is not JsonObject declared || declared["const"] is not { } expected) continue;
+            if (!TryGetProperty(obj, field.Key, out JsonNode? actual) || !JsonNode.DeepEquals(expected, actual)) return false;
+        }
+        return true;
     }
 
     static JsonObject Resolve(JsonObject schema)

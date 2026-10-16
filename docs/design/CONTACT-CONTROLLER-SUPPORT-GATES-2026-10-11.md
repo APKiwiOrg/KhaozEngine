@@ -693,6 +693,8 @@ in M2 Max units and its ratio is not. Task 10 checks the verdict code on a faste
 example without dispatching a run. Iterations and duration are named in an explicit owner approval before dispatch, requested at
 the phase 6 stop. Until the approved run passes, #1334 stays open with the local evidence linked. Cost
 if wrong: the legacy controller is a noisy yardstick, and a borderline row needs a second approved run.
+[SC-2](CONTACT-CONTROLLER-SUPPORT-COST-2026-10-17.md) replaces the single flat box `k` with the median
+over every comparable legacy row, against an M2 Max reference recorded at the hosted run's commit.
 
 **Ruling SG-21. Per-operation limits gate this work, the aggregate budget gates adoption.** This
 settles the draft's second open question. SG-12's per-Find, per-substep and per-tick limits, dense rows

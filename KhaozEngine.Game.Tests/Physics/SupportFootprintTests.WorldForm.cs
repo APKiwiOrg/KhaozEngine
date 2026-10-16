@@ -80,6 +80,8 @@ public partial class SupportFootprintTests
         SupportSample published = scene.Checked("published", out _);
         InstalledSupportWorldForm form = scene.Form(owner)!;
         Assert.NotNull(form);
+        int bound = scene.MaterializationPhases();
+        Assert.True(bound > 0);
 
         // A signed zero is equal as a float and different as bits. A writer that skipped the version bump is
         // the only way to present either change under the published key.
@@ -88,12 +90,14 @@ public partial class SupportFootprintTests
         SupportSample signedZero = scene.Checked("signed zero", out int builds);
         Assert.Equal(0, builds);
         Assert.Equal(published, signedZero);
+        Assert.Equal(2 * bound, scene.MaterializationPhases());
         Assert.Same(form, scene.Form(owner));
 
         scene.SetPose(owner, pose => pose with { Position = pose.Position with { Y = pose.Position.Y - 0.125f } });
         SupportSample moved = scene.Checked("moved", out builds);
         Assert.Equal(0, builds);
         Assert.Equal(published.Height - 0.125f, moved.Height);
+        Assert.Equal(2 * bound, scene.MaterializationPhases());
         Assert.Same(form, scene.Form(owner));
     }
 
@@ -117,11 +121,15 @@ public partial class SupportFootprintTests
         Assert.True(rotated.FeatureId >= SupportNeighborhoodPolyhedra.FaceStride, $"Feature {rotated.FeatureId}.");
         InstalledSupportWorldForm form = scene.Form(owner)!;
         Assert.NotNull(form);
+        int bound = scene.MaterializationPhases();
+        Assert.True(bound > 0);
 
-        // Local topology compares child poses as floats, so a signed zero keeps it and only the form refuses.
+        // Local topology compares child poses as floats, so a signed zero keeps it and only the form's child pose
+        // key refuses it, which materializes without publishing.
         scene.SetChildPose(owner, 0, pose => pose with { Position = pose.Position with { X = -0f } });
         Assert.Equal(rotated, scene.Checked("signed zero child", out builds));
         Assert.Equal(0, builds);
+        Assert.Equal(2 * bound, scene.MaterializationPhases());
         Assert.Same(form, scene.Form(owner));
 
         scene.SetChildPose(owner, 1, pose => pose with { Position = pose.Position with { Y = pose.Position.Y - 0.02f } });
@@ -374,6 +382,21 @@ public partial class SupportFootprintTests
             SupportFootprintEquivalence.AssertMatchesReference(() => GroundCore.Step(row.Feet,
                 row.Direction * tuning.WalkSpeed * row.Dt, row.Dt, tuning, new(),
                 DryQueries.For(_height, _normal, Target, lease, tuning)), context);
+        }
+
+        /// <summary>The materialization phase entries of one optimized Find. Binding a published form enters the
+        /// phase once per installed static visit, and the reference materialization enters it twice, once for the
+        /// leaves and once for their polygons.</summary>
+        internal int MaterializationPhases()
+        {
+            int entries = 0;
+            ContactAllocationDiagnostics.SetObserver((phase, entering) =>
+            {
+                if (entering && phase == ContactAllocationPhase.SupportMaterialization) entries++;
+            });
+            try { Find(); }
+            finally { ContactAllocationDiagnostics.SetObserver(null); }
+            return entries;
         }
 
         internal StaticHandle[] Owners() => [.. HandlesOf(World).Keys.Order().Select(id => new StaticHandle(id))];

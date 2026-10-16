@@ -569,6 +569,9 @@ to a Windows-only type, and nothing off Windows could reach past it. The Windows
 `Unmap` calls and nothing else. The device constructs
 `new D3D11StagingAccess(new D3D11ContextStagingMemory(context), submitLock, latch)`.
 
+`IGpuFencedReadback.MapForRead(staging, fence)` is this same read map behind a signaled-fence check, with no
+`DO_NOT_WAIT` loop, because a `Map(READ)` after a signaled fence has nothing left to wait on.
+
 **A failed map throws rather than handing back the null pointer it left behind**, and that is decision G3's
 second check site. Vortice's `Map` returns its result rather than throwing, so a caller that ignored it would
 read through null and report an empty readback with nothing logged. `D3D11StagingMaps.RequireMapped` is the one

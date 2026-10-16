@@ -492,6 +492,29 @@ there on `build` and on a rid-agnostic `publish`, no-op on Windows, macOS and `p
 because `Foundation` is not in this package's dependency closure, so a project that references this one and no
 umbrella would otherwise get nothing. One physical rule file, so the two copies cannot drift.
 
+## IGpuFencedReadback
+
+An optional device capability, tested with a type check on the device. The three native devices implement it.
+`MapForRead(staging, fence)` maps a `Staging` texture for reading when `fence` has signaled and covers the
+submission that wrote it, and it never waits on or drains the device. `IGpuDevice.Map(staging, Read)` drains the
+whole device on native Metal and Vulkan, which would make a readback ring stall every frame on the work submitted
+after the copy. Unmap with `IGpuDevice.Unmap(staging)`.
+
+- **Refusals.** An `InvalidOperationException` when the fence has not signaled, with nothing mapped. An
+  `ArgumentException` naming `staging` when the texture is not a staging texture of this device, or naming `fence`
+  when the fence belongs to another device.
+- **Metal.** The same pointer `Map` returns, with no setup flush and no wait. A staging texture is Shared storage
+  on every Mac, so there is no Managed resource to synchronise.
+- **Vulkan.** No setup flush and no timeline wait. The invalidate of a non-coherent range stays. Every copy into a
+  staging texture ends with a transfer-to-host barrier, because a timeline signal makes device writes available
+  to the device only.
+- **Direct3D 11.** The existing staging map. `Map(READ)` waits only on work touching that resource, which a
+  signaled fence has already completed.
+
+`FencedReadbackTests` drives the refusals and the no-drain rule on the Vulkan device over its fakes.
+`FencedReadbackGpuTests` reads a fenced copy back while later work is in flight and asserts no drain was asked
+for.
+
 ## GpuScaledCopy
 
 A fullscreen linear downscale pass. `new GpuScaledCopy(device)` builds its shaders, layout, sampler and pipeline

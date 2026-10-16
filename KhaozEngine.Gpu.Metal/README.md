@@ -338,6 +338,9 @@ first, so a texture uploaded and immediately read back sees the uploaded bytes. 
 drain rather than the timeline's, because a setup batch signals no timeline value and only a completed
 empty buffer covers one. A write mapping does not drain, because the caller is the producer.
 
+`IGpuFencedReadback.MapForRead(staging, fence)` returns the same pointer once the fence has signaled, with no
+flush, no drain and no storage-mode synchronisation, because a staging texture is Shared storage and never Managed.
+
 **A device-level `UpdateTexture` records into a device-owned setup command buffer rather than issuing its own
 queue submit.** The incumbent created a staging texture, a command list and a whole `SubmitCommands` per call.
 Here they accumulate into one buffer, flushed at the next device-level read. That trades the incumbent's one

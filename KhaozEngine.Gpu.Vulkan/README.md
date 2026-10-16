@@ -660,6 +660,10 @@ the other API did implicitly. A WRITE map does not wait, and neither did the inc
 creation and never unmapped, so a map is a pointer plus an offset and an unmap is bookkeeping plus, on a
 non-coherent memory type, a flush.
 
+`IGpuFencedReadback.MapForRead(staging, fence)` skips the setup flush and the drain once the fence has signaled
+and keeps the invalidate, and every copy into a staging texture ends with a transfer-to-host barrier so the copy's
+writes are available to the host when its fence signals.
+
 **And both `Map` overloads refuse a LOST device** ([#551](https://github.com/APKiwiOrg/KhaozEngine/issues/551)),
 with the reason the loss latch recorded. They used to guard the disposed flag alone, which says the consumer let
 the device go and answers false for a device the driver took: the host-visible chunk a staging resource is

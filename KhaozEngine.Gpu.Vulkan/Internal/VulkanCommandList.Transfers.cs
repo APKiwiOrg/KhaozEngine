@@ -91,6 +91,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                         VulkanStagingLayout.MipDimension(source.Height, level), "Copying a texture");
                 }
             }
+
+            FinishTransfer(buffer, destination, "Copying a texture");
         }
 
         /// <inheritdoc/>
@@ -131,6 +133,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             Region(buffer, source, srcMipLevel, srcArrayLayer, destination, dstMipLevel, dstArrayLayer,
                 width, height, "Copying a texture subresource");
+
+            FinishTransfer(buffer, destination, "Copying a texture subresource");
         }
 
         /// <inheritdoc/>
@@ -234,6 +238,16 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             return buffer;
         }
 
+        // AFTER THE LAST REGION OF A COPY INTO A STAGING TEXTURE: the transfer-to-host barrier
+        // (VulkanTransferBarrier.ToHost). The host is the only reader of a staging destination, and a timeline
+        // signal makes device writes available to the device only, so this is what lets the fenced read map read
+        // the bytes once the submission's fence has signaled, with no drain. One per copy call, not per region,
+        // and an image destination takes none.
+        void FinishTransfer(ulong buffer, VulkanTexture destination, string what)
+        {
+            if (destination.IsStaging) RequireTransfers(what).HostReadBarrier(buffer);
+        }
+
         // ONE REGION, IN WHICHEVER OF THE FOUR SHAPES THIS PAIR IS. The staging side supplies the buffer terms out
         // of its own software layout and the image side supplies the subresource, which is the split that is easy
         // to get backwards: the row length and image height are the STAGING mip's dimensions in TEXELS and the
@@ -274,9 +288,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 default:
                     // BOTH SIDES ARE VkBuffers, so this is a plain byte copy between two software layouts and the
                     // subresource offsets are the whole of what it needs. PrepareTransfer ordered it before the
-                    // first region. No barrier after it, unlike CopyBuffer: a staging texture is only ever read
-                    // through Map, which drains the timeline first (V-C8), or by a later copy, which carries its
-                    // own barrier.
+                    // first region. No device barrier after it, unlike CopyBuffer: a staging texture is only ever
+                    // read by the host, which FinishTransfer's host barrier covers, or by a later copy, which
+                    // carries its own barrier.
                     VulkanSubresourceLayout from =
                         VulkanStagingLayout.For(source.StagingShape, sourceMip, sourceLayer);
                     VulkanSubresourceLayout to =

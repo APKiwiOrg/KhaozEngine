@@ -72,6 +72,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
         long _totalDrainCount;
         long _totalDrainTicks;
+        long _waitForIdleCalls;
 
         bool _disposed;
 
@@ -145,6 +146,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <see cref="WaitTotals"/>.
         /// </summary>
         internal WaitTotals TotalDrain => WaitTotals.Sample(ref _totalDrainCount, ref _totalDrainTicks);
+
+        /// <summary>Every call to <see cref="WaitForIdle"/>, including the ones that returned without waiting.
+        /// <see cref="TotalDrain"/> counts only waits that blocked, so it cannot prove a path never asked for a
+        /// drain. This can, and the fenced read map's tests read it.</summary>
+        internal long WaitForIdleCalls => Interlocked.Read(ref _waitForIdleCalls);
 
         /// <summary>
         /// The counter's current value, as a NON-BLOCKING read, or the last value allocated once the device is
@@ -309,6 +315,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// </summary>
         internal void WaitForIdle()
         {
+            Interlocked.Increment(ref _waitForIdleCalls);
             if (_liveness.IsDead) return;
 
             ulong target = LastSubmitted;

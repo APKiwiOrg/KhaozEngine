@@ -32,7 +32,9 @@ namespace KhaozEngine.Tests.Gpu
         const VulkanMemoryTrait Cached = VulkanMemoryTrait.HostCached;
 
         /// <param name="framesInFlight">The device depth every pool ring and uniform ring is cut to.</param>
-        internal VulkanDeviceFixture(int framesInFlight = 3)
+        /// <param name="nonCoherentReadback">Make the cached host-visible type NOT coherent, so a readback staging
+        /// resource lands on memory whose reads need an invalidate.</param>
+        internal VulkanDeviceFixture(int framesInFlight = 3, bool nonCoherentReadback = false)
         {
             FramesInFlight = framesInFlight;
 
@@ -49,8 +51,9 @@ namespace KhaozEngine.Tests.Gpu
 
             // The same three-type ladder VulkanResourceFixture declares: one device-local, one coherent
             // host-visible, one cached host-visible, which is what the readback rung prefers.
+            VulkanMemoryTrait cached = nonCoherentReadback ? Visible | Cached : Visible | Coherent | Cached;
             var facts = new VulkanMemoryFacts(
-                [new(0, 0, Local), new(1, 1, Visible | Coherent), new(2, 1, Visible | Coherent | Cached)],
+                [new(0, 0, Local), new(1, 1, Visible | Coherent), new(2, 1, cached)],
                 NonCoherentAtomSize: 64,
                 MaxAllocationCount: 4096);
 

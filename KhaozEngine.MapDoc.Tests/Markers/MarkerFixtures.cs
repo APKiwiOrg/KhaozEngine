@@ -56,8 +56,18 @@ internal static partial class MarkerFixtures
         MapMarkerHeights.Apply(new(1, prefix + "space", prefix + "space-name", new Vector3(2, -4, -3), -1.5f, "guard-role", false, new[] { "upper" }), SpaceHeight()),
     ];
 
+    /// <summary>The payload-2 markers as prefab children. Each support owner is outside the asset, so its one typed
+    /// binding slot is World.</summary>
     internal static MapPrefabAsset PayloadTwoAsset() => new(1, PayloadTwoResource,
-        PayloadTwoMarkers("").Select(m => (MapPrefabChild)new MapPrefabMarkerChild(new(MapPrefabChildKind.Marker, m.Id), m)).ToArray());
+        PayloadTwoMarkers("").Select(m => (MapPrefabChild)new MapPrefabMarkerChild(new(MapPrefabChildKind.Marker, m.Id), m)
+        {
+            References = m.SupportBinding switch
+            {
+                { Kind: MapSupportBindingKind.Surface } b => [new("/value/supportBinding/surfaceId", new(MapPrefabReferenceScope.World, MapPrefabChildKind.Surface, b.SurfaceId!))],
+                { Kind: MapSupportBindingKind.Space } b => [new("/value/supportBinding/spaceId", new(MapPrefabReferenceScope.World, MapPrefabChildKind.Record, b.SpaceId!))],
+                _ => [],
+            },
+        }).ToArray());
 
     internal static MarkerFixture Create(string variant = "basic")
     {

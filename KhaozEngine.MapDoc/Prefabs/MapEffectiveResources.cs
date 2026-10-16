@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using KhaozEngine.MapDoc.Markers;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Interiors;
@@ -33,6 +34,9 @@ public sealed class MapEffectiveResources
     internal IReadOnlyDictionary<string, MapExactPoint> LightPoints { get; }
     internal IReadOnlyList<MapEffectiveLight> EffectiveLights { get; }
     internal IReadOnlyList<MapEffectiveMarker> EffectiveMarkers { get; }
+    /// <summary>The support answer of every Support-height marker, disabled ones included, in ordinal marker ID order.
+    /// Each carries its acquisition witness, so this channel stays out of annotation digests and marker equality.</summary>
+    public IReadOnlyList<MapMarkerSupport> MarkerSupports { get; }
     /// <summary>Versioned roof, light and marker intent, empty without annotations.</summary>
     public string AnnotationDigest { get; }
     internal IReadOnlyDictionary<string, IReadOnlyList<MapExactPoint>> WaterCorners { get; }
@@ -50,7 +54,7 @@ public sealed class MapEffectiveResources
         IReadOnlyList<MapResolvedPlacement> placements, IReadOnlyList<MapPlacementSupport> supports,
         MapWaterSet? water, MapBuildingIntent intent, IReadOnlyDictionary<string, MapExactPoint> lights,
         IReadOnlyDictionary<string, IReadOnlyList<MapExactPoint>> waterCorners, IReadOnlyList<MapPrefabAttachmentTransfer> attachments,
-        IReadOnlyDictionary<string, MapExactPoint> markers, IReadOnlyDictionary<string, string> markerInstances)
+        IReadOnlyList<MapEffectiveMarker> markers, IReadOnlyList<MapMarkerSupport> markerSupports)
     {
         _context = context;
         SurfaceSource = source;
@@ -64,7 +68,8 @@ public sealed class MapEffectiveResources
         { Roofs = _intent.Roofs.DistinctBy(r => (r.Kind, r.Id)).OrderBy(r => r.Id, StringComparer.Ordinal).ToArray(), Storeys = _intent.Storeys };
         MapPrefabValidation.RequireEffectiveAnnotations(_intent, placements, context.Surfaces);
         EffectiveLights = MapEffectiveAnnotations.CaptureLights(_intent, lights);
-        EffectiveMarkers = MapEffectiveAnnotations.CaptureMarkers(_intent, markers, markerInstances);
+        EffectiveMarkers = Array.AsReadOnly(markers.OrderBy(m => m.Id, StringComparer.Ordinal).ToArray());
+        MarkerSupports = Array.AsReadOnly(markerSupports.OrderBy(m => m.MarkerId, StringComparer.Ordinal).ToArray());
         AnnotationDigest = MapEffectiveAnnotations.Digest(_intent, EffectiveLights, EffectiveMarkers);
         LightPoints = new ReadOnlyDictionary<string, MapExactPoint>(new Dictionary<string, MapExactPoint>(lights, StringComparer.Ordinal));
         WaterCorners = new ReadOnlyDictionary<string, IReadOnlyList<MapExactPoint>>(waterCorners.ToDictionary(p => p.Key,

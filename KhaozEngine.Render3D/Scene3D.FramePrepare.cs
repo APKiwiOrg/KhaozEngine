@@ -49,6 +49,7 @@ namespace KhaozEngine.Render3D
         {
             if (_framePrepared) return;
             EnsurePointLightCapacity();
+            ReserveCoverageFrame();
             _framePrepared = true;
             HarvestTemporalCounts();   // an armed temporal count request: its one readback, here before any recording
             var frame = new FramePrepare(Post.Water, RelativeWaterPlanes(), EffectTimeSeconds);

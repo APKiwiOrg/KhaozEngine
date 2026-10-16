@@ -24,7 +24,9 @@ namespace KhaozEngine.Render3D
         /// </summary>
         public void Draw(in RigidInstanceDraw draw)
         {
+            ValidateCoverageEquipment(draw, false);
             _instances.Add(in draw);
+            RecordCoverageEquipment(draw, false);
             RecordRigidMotion(in draw);
         }
 
@@ -77,6 +79,7 @@ namespace KhaozEngine.Render3D
                 throw new ArgumentException(
                     "A shadow-only instance must cast shadows: shadowOnly with castsShadows false draws in neither pass.",
                     nameof(draw));
+            CoveragePreparation? coverage = ValidateCoverageDraw(draw, boneMatrices, false);
             SkinnedMeshHandle h = draw.Mesh;
             if (!_skinnedSlots.IsValid(h.Index, h.Generation)) return;
             var entry = _skinnedMeshes[h.Index];
@@ -87,6 +90,7 @@ namespace KhaozEngine.Render3D
             int slot = _skinnedInstances.Items.Count;
             ComposeBonesIntoSlot(_boneMatrices, slot, boneMatrices, entry.InverseBind);
             _skinnedInstances.Add(in draw);
+            RecordCoverageDraw(coverage, draw, false);
             RecordSkinnedMotion(in draw, slot, boneMatrices.Length);
         }
 

@@ -68,6 +68,15 @@ namespace KhaozEngine.Render3D
         /// <summary>Budget and render the prepared requests, then publish the receiver slot table.</summary>
         void PreparePointShadows(IGpuCommandList cl)
         {
+            PreparePointShadowSchedule();
+            ExecutePointShadowSchedule(cl);
+        }
+
+        bool _pointScheduleReady;
+        void PreparePointShadowSchedule()
+        {
+            _pointScheduleReady = false;
+            BeginPointShadowFrame(0);
             PointShadowedLights = 0;
             int frame = ++_pointShadowFrame;
             BeginFoliagePointShadowFrame();
@@ -103,9 +112,26 @@ namespace KhaozEngine.Render3D
             AcquirePointShadowSlots(cache, frame);
             ChoosePointShadowRebuilds(cache, settings);
             ScheduleSkinnedPointShadows(cache, settings, frame);
-            int draws = RenderChosenPointShadowRows(cl, cache, frame);
-            PublishPointShadowUniforms(cache, settings, frame);
-            cache.ReleaseUnrequested(frame);
+            PackChosenPointShadowRows();
+            _pointScheduleReady = true;
+        }
+
+        void ExecutePointShadowSchedule(IGpuCommandList cl)
+        {
+            if (!_pointScheduleReady || _pointSlotCache is not { } cache) return;
+            _pointScheduleReady = false;
+            int draws = 0;
+            if (_packedPointSlots.Count > 0)
+            {
+                UploadPointShadowFaces(cl);
+                if (_gpuSkinnedDraws.Count > 0 && (_selectedPointTransientRequests.Count > 0
+                    || Array.Exists(_pointDynamicSkinnedRequests, static selected => selected)))
+                    PrepareGpuSkinnedPointCasters(cl);
+                draws = RenderPointShadowSlots(cl);
+            }
+            foreach (int index in _pointRebuilds) cache.MarkClean(_pointRequests[index].Slot, _pointShadowFrame);
+            PublishPointShadowUniforms(cache, Post.Quality.Shadows.PointShadows, _pointShadowFrame);
+            cache.ReleaseUnrequested(_pointShadowFrame);
             RecordPointShadowDiagnostics(cache, draws);
         }
 
@@ -194,13 +220,12 @@ namespace KhaozEngine.Render3D
             }
         }
 
-        /// <summary>Record the pass for everything <see cref="ChoosePointShadowRebuilds"/> picked and mark those
-        /// rows clean. Returns the caster draw calls issued, which is what the diagnostics report.</summary>
-        int RenderChosenPointShadowRows(IGpuCommandList cl, PointShadowSlots cache, int frame)
+        /// <summary>Freeze the selected base and transient face matrices before any coverage draw.</summary>
+        void PackChosenPointShadowRows()
         {
             int rowCount = _pointRebuilds.Count + _selectedPointTransientRequests.Count;
             BeginPointShadowFrame(rowCount);
-            if (rowCount == 0) return 0;
+            if (rowCount == 0) return;
 
             for (int packed = 0; packed < _pointRebuilds.Count; packed++)
             {
@@ -220,13 +245,7 @@ namespace KhaozEngine.Render3D
                     _pointTransientRowsByRequest[requestIndex], r.Position, r.Radius,
                     r.NearRadius, r.ExclusionMin, r.ExclusionMax, requestIndex, PointShadowCasterSet.Skinned);
             }
-            UploadPointShadowFaces(cl);
-            if (UseGpuSkinning && (_selectedPointTransientRequests.Count > 0
-                || Array.Exists(_pointDynamicSkinnedRequests, static selected => selected)))
-                PrepareGpuSkinnedPointCasters(cl);
-            int draws = RenderPointShadowSlots(cl);
-            foreach (int index in _pointRebuilds) cache.MarkClean(_pointRequests[index].Slot, frame);
-            return draws;
+
         }
 
         /// <summary>

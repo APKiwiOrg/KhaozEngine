@@ -30,7 +30,11 @@ public readonly struct SkinnedInstanceDraw
         InvertShadowDissolve = false;
         DissolveComplement = 0f;
         Motion = MotionKey.None;
+        Coverage = default;
     }
+
+    /// <summary>Optional owned coverage snapshot for this frame.</summary>
+    public SkinnedCoverageFrame Coverage { get; init; }
 
     /// <summary>The already-uploaded skinned mesh.</summary>
     public SkinnedMeshHandle Mesh { get; init; }

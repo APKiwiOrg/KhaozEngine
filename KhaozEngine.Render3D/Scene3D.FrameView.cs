@@ -71,6 +71,7 @@ namespace KhaozEngine.Render3D
         /// next render is the frame's first, which fixes the frame's temporal state.</summary>
         internal void BeginFrameView()
         {
+            _coverageArena.Begin();
             _frameIndex++;
             _frameViewLatchedThisFrame = false;
             _frameTemporalActive = false;

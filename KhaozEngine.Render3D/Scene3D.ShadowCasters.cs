@@ -391,7 +391,7 @@ namespace KhaozEngine.Render3D
                     _shadowPassRigidDraws++;
                     CountMeshDraw(mesh.IndexCount, span.Count);
                 }
-                if (!UseGpuSkinning && _cpuSkinnedDraws.Count > 0)
+                if (_cpuSkinnedDraws.Count > 0)
                 {
                     // A CPU-skinned caster's deformed vertices and per-draw instance use the rigid layouts, so it
                     // takes the rigid pipeline for its kind: the plain one, or the dissolve one reading the
@@ -419,7 +419,7 @@ namespace KhaozEngine.Render3D
             // slot also carries its world matrix, the render origin and (noise scale, threshold) for the dissolve
             // depth pipeline (issue #387), 160 bytes. Pack every slot first, then bind + draw per cascade (the same
             // update-then-draw ordering the splat sync uses). A draw outside a cascade's ortho volume clips away.
-            if (UseGpuSkinning && _gpuSkinnedDraws.Count > 0)
+            if (_gpuSkinnedDraws.Count > 0)
             {
                 int gpuCount = _gpuSkinnedDraws.Count;
                 bool packedShadowSlots = false;

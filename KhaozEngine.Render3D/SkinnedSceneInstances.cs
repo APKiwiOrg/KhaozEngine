@@ -34,6 +34,7 @@ namespace KhaozEngine.Render3D
             // like CastsShadows. None from every constructor except the descriptor's. Only Scene3D.DrawSkinned with a
             // descriptor records it into motion history, so a key on a standalone queue is never recorded.
             public readonly MotionKey Motion;
+            internal SkinnedCoverageFrame Coverage { get; init; }
             public Instance(SkinnedMeshHandle mesh, Matrix4x4 world, Color tint, Material material,
                 float dissolveThreshold = 0f, float dissolveEdgeWidth = 0f, Vector4 dissolveEdge = default,
                 bool castsShadows = true)
@@ -46,7 +47,7 @@ namespace KhaozEngine.Render3D
                 : this(draw.Mesh, draw.Model, draw.Tint, draw.Material, draw.Dissolve, draw.DissolveEdgeWidth,
                     draw.DissolveEdgeColor, draw.CastsShadows, draw.ShadowOnly, draw.InvertShadowDissolve,
                     draw.DissolveComplement, draw.Motion)
-            { }
+            { Coverage = draw.Coverage; }
 
             Instance(SkinnedMeshHandle mesh, Matrix4x4 world, Color tint, Material material, float dissolveThreshold,
                 float dissolveEdgeWidth, Vector4 dissolveEdge, bool castsShadows, bool shadowOnly,

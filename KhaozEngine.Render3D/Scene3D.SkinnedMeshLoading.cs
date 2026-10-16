@@ -43,6 +43,7 @@ public sealed partial class Scene3D
         IGpuTexture? roughness,
         float alphaCutoff)
     {
+        mesh = SnapshotCoverageMesh(mesh);
         IGpuBuffer? vertexBuffer = null;
         IGpuBuffer? indexBuffer = null;
         IGpuResourceSet? material = null;
@@ -75,6 +76,7 @@ public sealed partial class Scene3D
                 _skinnedMeshes.Add(entry);
                 _skinnedCpuVerts.Add(mesh.Vertices);
             }
+            if (mesh.Coverage is not null) _coverageHostUploads.Add((index, generation), mesh);
             return new SkinnedMeshHandle(index, generation);
         }
         catch

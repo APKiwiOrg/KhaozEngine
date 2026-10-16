@@ -40,21 +40,16 @@ public sealed partial class Scene3D
 
     bool PointRequestTouchesSkinned(in PointShadowRequest request)
     {
-        if (UseGpuSkinning)
+        var items = _skinnedInstances.Items;
+        for (int i = 0; i < items.Count; i++)
         {
-            foreach (GpuSkinnedDraw draw in _gpuSkinnedDraws)
-                if (draw.ShadowKind != ShadowCastKind.None
-                    && draw.PointSphere.TouchesShadowingShell(request.Position, request.Radius,
-                        request.NearRadius, request.ExclusionMin, request.ExclusionMax))
-                    return true;
-        }
-        else
-        {
-            foreach (CpuSkinnedDraw draw in _cpuSkinnedDraws)
-                if (draw.ShadowKind != ShadowCastKind.None
-                    && draw.PointSphere.TouchesShadowingShell(request.Position, request.Radius,
-                        request.NearRadius, request.ExclusionMin, request.ExclusionMax))
-                    return true;
+            var item = items[i];
+            if (!item.CastsShadows || !_skinnedSlots.IsValid(item.Mesh.Index, item.Mesh.Generation)
+                || _skinnedMeshes[item.Mesh.Index] is not { } entry) continue;
+            PointShadowCasterSphere sphere = item.Coverage.Preparation is { } p ? CoverageSphere(p)
+                : PointShadowCasterSphere.FromRestBounds(entry.Bounds, item.World, SkinnedCullSafetyFactor);
+            if (sphere.TouchesShadowingShell(request.Position, request.Radius,
+                request.NearRadius, request.ExclusionMin, request.ExclusionMax)) return true;
         }
         return false;
     }
@@ -116,7 +111,6 @@ public sealed partial class Scene3D
     {
         PointShadowRequest request = _pointRequests[packed.RequestIndex];
         int draws = 0;
-        if (UseGpuSkinning)
         {
             foreach (GpuSkinnedDraw draw in _gpuSkinnedDraws)
             {
@@ -130,7 +124,7 @@ public sealed partial class Scene3D
                 draws++;
             }
         }
-        else if (_model.CpuSkinnedVertexBuffer is { } deformed
+        if (_model.CpuSkinnedVertexBuffer is { } deformed
             && _model.CpuSkinnedInstanceBuffer is { } instances)
         {
             for (int i = 0; i < _cpuSkinnedDraws.Count; i++)

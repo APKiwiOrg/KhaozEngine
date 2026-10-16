@@ -157,8 +157,8 @@ public sealed partial class Scene3D
         for (int d = 0; d < _cpuSkinnedDraws.Count; d++)
         {
             CpuSkinnedDraw dr = _cpuSkinnedDraws[d];
-            SkinnedVertex[]? source = _skinnedCpuVerts[dr.MeshIndex];
-            int bones = _skinnedMeshes[dr.MeshIndex]?.InverseBind.Length ?? -1;
+            SkinnedVertex[]? source = dr.MeshIndex < 0 ? null : _skinnedCpuVerts[dr.MeshIndex];
+            int bones = dr.MeshIndex < 0 ? -1 : _skinnedMeshes[dr.MeshIndex]?.InverseBind.Length ?? -1;
             if (history is not null && source is not null && !dr.Motion.IsNone
                 && history.TryGetPreviousSkinned(dr.Motion, out Matrix4x4 world, out ReadOnlySpan<Matrix4x4> palette)
                 && palette.Length == bones)

@@ -15,6 +15,7 @@ namespace KhaozEngine.Tests.Gpu
         IGpuBuffer? _currentIndexBuffer;
 
         internal IReadOnlyList<IndexedDraw> IndexedDraws => _indexedDraws;
+        internal System.Action<IndexedDraw>? BeforeIndexedDraw { get; set; }
 
         void NotePipeline(IGpuPipeline pipeline) => _currentPipeline = pipeline;
         void NoteVertexBuffer(uint slot, IGpuBuffer buffer)
@@ -25,6 +26,8 @@ namespace KhaozEngine.Tests.Gpu
         void NoteIndexBuffer(IGpuBuffer buffer) => _currentIndexBuffer = buffer;
         void NoteIndexedDraw(uint indexCount, uint indexStart, int vertexOffset)
         {
+            BeforeIndexedDraw?.Invoke(new IndexedDraw(indexCount, _currentPipeline, _currentVertexBuffer,
+                _currentIndexBuffer, indexStart, vertexOffset));
             _indexedDraws.Add(new IndexedDraw(indexCount, _currentPipeline, _currentVertexBuffer,
                 _currentIndexBuffer, indexStart, vertexOffset));
             NoteDrawBindings();

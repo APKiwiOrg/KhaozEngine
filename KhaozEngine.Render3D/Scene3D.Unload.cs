@@ -52,6 +52,7 @@ namespace KhaozEngine.Render3D
                 _retired.Retire(mesh.OutlineMaterialSet);
                 _retired.Retire(mesh.ShadowCutoutSet);
             }
+            _coverageUploads.Remove((h.Index, h.Generation));
             _meshes[h.Index] = null;
         }
 
@@ -126,6 +127,7 @@ namespace KhaozEngine.Render3D
         {
             if (h.Generation == 0) return;
             _skinnedSlots.Free(h.Index, h.Generation);
+            _coverageHostUploads.Remove((h.Index, h.Generation));
             if (_skinnedMeshes[h.Index] is { } e)
             {
                 // All five resources land in the same batch because a batch is one frame's retirements.

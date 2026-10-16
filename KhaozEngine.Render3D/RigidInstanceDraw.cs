@@ -34,7 +34,11 @@ public readonly struct RigidInstanceDraw
         InvertShadowDissolve = false;
         DissolveComplement = 0f;
         Motion = MotionKey.None;
+        Coverage = default;
     }
+
+    /// <summary>Optional owned coverage snapshot for this frame.</summary>
+    public CoverageEquipmentDraw Coverage { get; init; }
 
     /// <summary>The already-uploaded mesh.</summary>
     public MeshHandle Mesh { get; init; }

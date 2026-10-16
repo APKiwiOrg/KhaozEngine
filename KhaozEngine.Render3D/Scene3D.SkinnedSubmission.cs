@@ -20,6 +20,7 @@ public sealed partial class Scene3D
         _gpuSkinnedDraws.Clear();
         _drawnSkinnedInstances = 0;
         _culledSkinnedInstances = 0;
+        AppendCoverageSurfaces(camFrustum, shadowMapActive, shadowCascadeCount, hasPointShadowRequests);
         if (skinnedItems.Count > 0)
         {
             var boneSpan = CollectionsMarshal.AsSpan(_boneMatrices);
@@ -27,17 +28,22 @@ public sealed partial class Scene3D
             for (int i = 0; i < skinnedItems.Count; i++)
             {
                 var it = skinnedItems[i];
+                if (it.Coverage.Preparation is { Outcome.Presentation: CoveragePresentation.Covered }) continue;
                 if (!_skinnedSlots.IsValid(it.Mesh.Index, it.Mesh.Generation)) continue;
                 var entry = _skinnedMeshes[it.Mesh.Index];
                 if (entry is null) continue;
                 var src = _skinnedCpuVerts[it.Mesh.Index];
                 if (src is null) continue;
 
-                var (visibleMain, visibleShadow) = ClassifySkinnedVisibility(entry.Bounds, it.World, FrustumCulling,
-                    camFrustum, shadowMapActive && it.CastsShadows, _shadowFrustums.AsSpan(0, shadowCascadeCount));
+                CoveragePreparation? staged = it.Coverage.Preparation;
+                var (visibleMain, visibleShadow) = staged is null
+                    ? ClassifySkinnedVisibility(entry.Bounds, it.World, FrustumCulling,
+                        camFrustum, shadowMapActive && it.CastsShadows, _shadowFrustums.AsSpan(0, shadowCascadeCount))
+                    : ClassifyCoverageVisibility(staged, camFrustum, shadowMapActive && it.CastsShadows, shadowCascadeCount);
                 visibleMain &= !it.ShadowOnly;
-                PointShadowCasterSphere pointSphere = PointShadowCasterSphere.FromRestBounds(
-                    entry.Bounds, it.World, SkinnedCullSafetyFactor);
+                PointShadowCasterSphere pointSphere = staged is null
+                    ? PointShadowCasterSphere.FromRestBounds(entry.Bounds, it.World, SkinnedCullSafetyFactor)
+                    : CoverageSphere(staged);
                 bool visiblePointShadow = hasPointShadowRequests && it.CastsShadows
                     && PointRequestCanRetainSkinned(pointSphere, Post.Quality.Shadows.PointShadows);
                 if (!visibleMain && !visibleShadow && !visiblePointShadow)
@@ -88,10 +94,9 @@ public sealed partial class Scene3D
                         entry.MaterialSet, dissolving, visibleMain, shadowKind, pointSphere, it.Motion, it.Mesh.Index, src.Length));
                 }
             }
-            // Sizes the frame's three skinned destinations and uploads the ONE shared bone palette both passes
-            // read. See Scene3D.GpuSkinning.cs.
-            if (UseGpuSkinning) PrepareGpuSkinnedFrame(cl, shadowMapActive);
-            else if (_cpuSkinnedDraws.Count > 0) UploadCpuSkinnedFrame(cl);   // Scene3D.MotionTarget.cs
         }
+        // Both routes own independent streams and share their prepared data across passes.
+        if (_gpuSkinnedDraws.Count > 0) PrepareGpuSkinnedFrame(cl, shadowMapActive);
+        if (_cpuSkinnedDraws.Count > 0) UploadCpuSkinnedFrame(cl);
     }
 }

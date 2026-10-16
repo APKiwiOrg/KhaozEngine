@@ -146,6 +146,18 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   counts it. A rigid and a skinned draw never collide, and a shadow-only draw is never recorded. `CharacterAvatar`,
   `SkinnedLimb`, `Scene3DBinder.Submit` and `Scene3DTileWorldScene` key or forward keys themselves. See
   docs/USING-KHAOZENGINE.md.
+- Optional equipment coverage uses `CreateHostConformer` with every uploaded material slice of one
+  `HostCoveragePart` source. The actor-owned conformer exposes its exact `Topology` for command binding.
+  After `Begin`, `TryStageCoverageEquipment` verifies a complete rigid source against uploaded position and
+  index fingerprints and returns frozen descriptors without queuing them. Submit those descriptors through
+  `Draw` and the descriptor `DrawMeshOutline` overload. Asset-byte verification is still the caller's job.
+  `TryPrepare` requires an explicit `CoverageFallback.UncoveredCurrentPose` and returns a pending
+  `SkinnedCoverageFrame`. Assign it to every host `SkinnedInstanceDraw.Coverage`, including descriptor-based
+  outlines. Prepare the frame after all submissions. The scene captures actual pass matrices, certifies once
+  before drawing, then shares one covered CPU surface across colour, shadows and outlines alongside ordinary
+  GPU-skinned actors. `GetCoverageOutcome` reports covered or current-pose uncovered fallback. Missing actual
+  material submissions select fallback. Tokens expire at the next `Begin`, disposal or host unload. A covered
+  frame cannot be recorded again for another view. Previous final coverage motion history is a separate seam.
 - `Scene3D.GetOrLoadMesh` / `GetOrLoadSkinnedMesh` / `GetOrLoadTexture` - keyed, idempotent loads for a scene that
   outlives what it draws ([#250](https://github.com/APKiwiOrg/KhaozEngine/issues/250)). Each takes a key plus a
   loader and runs the loader only the FIRST time that key is seen, returning the cached handle after that, so a

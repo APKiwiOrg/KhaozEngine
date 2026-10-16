@@ -16,10 +16,8 @@ namespace KhaozEngine.Render3D
             if (shadowMapActive)
             {
                 long timingStart = EnableTiming ? Stopwatch.GetTimestamp() : 0;
-                // Always set the receiver tail so the model + splat fragments sample the atlas (whether or not its depth
-                // is re-rendered this frame). Then decide whether the depth pass must actually re-run: the atlas
-                // persists across frames, so an unchanged static scene reuses it and skips every caster draw.
-                SetShadowReceiverTail();
+                // Receiver matrices were frozen before coverage resolution. The persistent atlas still skips
+                // caster draws when its matrices and caster state remain unchanged.
                 BuildShadowCasterSpans(_shadowCasterRunsScratch, _shadowCasterModelsScratch);
                 bool hadPrevious = _shadowPassRendered;
                 bool anySkinnedCaster = skinnedCasterCount > 0;

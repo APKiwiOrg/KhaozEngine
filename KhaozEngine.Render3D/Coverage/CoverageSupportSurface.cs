@@ -15,6 +15,7 @@ public sealed class CoverageSupportSurface
 {
     public const int MaxTriangles = 1_024;
     public const int MaxBoundaryEdges = 256;
+    internal readonly CoverageRigidSourceEvidence RenderEvidence;
     readonly CoverageAffinePoint[] projectedPositions;
     readonly CoveragePoint3[] precisePositions;
     readonly Vector3[] positions;
@@ -27,6 +28,7 @@ public sealed class CoverageSupportSurface
     {
         Source = source;
         InwardOfClosedSolid = inwardOfClosedSolid;
+        RenderEvidence = new(source);
         CoverageLocal = coverageLocal;
         SourceToCoverage = sourceToCoverage;
         this.projectedPositions = projectedPositions;

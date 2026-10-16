@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using KhaozEngine.TileWorld;
 using KhaozEngine.TileWorld.Editing;
+using KhaozEngine.TileWorld.Render3D;
 
 namespace KhaozEngine.TileEdit;
 
@@ -30,6 +31,10 @@ public sealed class TileEditSession
     TileEditingDocument? _editing;
     string? _path;
     IReadOnlyList<string> _catalogPaths = Array.Empty<string>();
+    // One mesh source per open world and mesh root, because each one parses every glb it is asked for and a kit
+    // runs to a hundred or more. Dropped by OpenLocked and rebuilt when the resolved root moves.
+    GltfTileMeshGeometry? _clearanceMeshes;
+    string? _clearanceMeshRoot;
 
     /// <summary>Loads the world directory at <paramref name="path"/>, replacing whatever was open. Every entry
     /// of the manifest's catalog list is resolved against that directory (an absolute entry is taken as it
@@ -102,15 +107,21 @@ public sealed class TileEditSession
         }
     }
 
-    /// <summary>Validates the open world and, when it passes, writes it back to its own directory and marks the
-    /// current history position as saved. An invalid world throws and nothing is written, so the directory never
-    /// holds a world this engine would refuse to load.</summary>
+    /// <summary>Validates the open world and checks its clearance rules and, when both pass, writes it back to its
+    /// own directory and marks the current history position as saved. An invalid world throws and nothing is
+    /// written, so the directory never holds a world this engine would refuse to load. A clearance failure throws
+    /// listing every issue, one per line.</summary>
     public SaveResult Save()
     {
         lock (_lock)
         {
             TileEditingDocument e = RequireOpenLocked();
             TileWorldValidator.ValidateOrThrow(e.Document, e.Catalogs);
+            IReadOnlyList<TileWorldIssue> clearance = ClearanceIssuesLocked(e);
+            if (clearance.Count > 0)
+                throw new TileWorldException(
+                    $"world '{e.Document.Id}' has {clearance.Count} clearance issues:\n" +
+                    string.Join('\n', clearance.Select(i => $"[{i.Code}] {i.Message}")));
             TileWorldFile.Save(e.Document, _path!);
             e.MarkSaved();
             return new SaveResult(_path!, TileWorldHash.OfWorld(e.Document));
@@ -127,17 +138,53 @@ public sealed class TileEditSession
         }
     }
 
-    /// <summary>Validates the open world against its catalogs, reporting every issue as <c>[code] message</c>
-    /// rather than throwing, so a client can ask what is wrong without a failed call.</summary>
+    /// <summary>Validates the open world against its catalogs, then its clearance rules against its meshes,
+    /// reporting every issue as <c>[code] message</c> rather than throwing, so a client can ask what is wrong
+    /// without a failed call.</summary>
     public ValidateResult Validate()
     {
         lock (_lock)
         {
             TileEditingDocument e = RequireOpenLocked();
-            IReadOnlyList<TileWorldIssue> issues = TileWorldValidator.Validate(e.Document, e.Catalogs);
+            IReadOnlyList<TileWorldIssue> issues =
+                TileWorldValidator.Validate(e.Document, e.Catalogs).Concat(ClearanceIssuesLocked(e)).ToArray();
             return new ValidateResult(issues.Count == 0,
                 issues.Select(i => $"[{i.Code}] {i.Message}").ToArray());
         }
+    }
+
+    /// <summary>The open world's clearance issues against the meshes under its resolved mesh root, empty when it
+    /// declares no rules. A mesh root that is not a directory is one <c>clearance.mesh</c> issue, so a typo in the
+    /// root never reads as a world with nothing to check.
+    ///
+    /// <para>The meshes are read once per open world and mesh root (see <see cref="ClearanceMeshes"/>), so a glb
+    /// re-exported while the world is open is seen after <c>world_open</c>.</para></summary>
+    /// <exception cref="TileWorldException">No world is open.</exception>
+    public IReadOnlyList<TileWorldIssue> ClearanceIssues()
+    {
+        lock (_lock) return ClearanceIssuesLocked(RequireOpenLocked());
+    }
+
+    /// <summary>The mesh source the last clearance check used, or null before one has run on this open world.
+    /// Exposed for the tests that pin its reuse.</summary>
+    internal GltfTileMeshGeometry? ClearanceMeshes { get { lock (_lock) return _clearanceMeshes; } }
+
+    IReadOnlyList<TileWorldIssue> ClearanceIssuesLocked(TileEditingDocument e)
+    {
+        if (e.Document.Clearance is not { Rules.Count: > 0 } settings) return Array.Empty<TileWorldIssue>();
+        string root = TileWorldClearance.ResolveMeshRoot(_path!, settings);
+        if (!Directory.Exists(root))
+            return new[]
+            {
+                new TileWorldIssue(TileWorldClearance.MeshCode,
+                    $"mesh root '{settings.MeshRoot}' resolves to '{root}', which is not a directory", null, null),
+            };
+        if (_clearanceMeshes is null || !string.Equals(_clearanceMeshRoot, root, StringComparison.Ordinal))
+        {
+            _clearanceMeshes = new GltfTileMeshGeometry(root);
+            _clearanceMeshRoot = root;
+        }
+        return TileWorldClearance.Check(e.Document, e.Catalogs, _clearanceMeshes);
     }
 
     /// <summary>Runs <paramref name="fn"/> against the open editing document under the session lock, which is
@@ -353,6 +400,8 @@ public sealed class TileEditSession
         _editing = new TileEditingDocument(doc, catalogs);
         _path = Path.GetFullPath(path);
         _catalogPaths = resolved;
+        _clearanceMeshes = null;
+        _clearanceMeshRoot = null;
     }
 
     // The rects accumulated since the last acknowledgement, handed to the caller and cleared. Every mutation

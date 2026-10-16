@@ -37,8 +37,8 @@ per-operation limit until phase 6 measures it.
 **Ruling SC-2. The hosted scale is the median over every comparable legacy row.** SG-24 scales by
 `k = legacy hosted / legacy M2 Max` on the flat box whole tick alone. Its M2 reference is a single
 one-shot sample (SG-10), and the flat box legacy tick in the `baseline` section (23.916 us) is an outlier.
-Against that same section, the median hosted/M2 ratio over all 84 comparable legacy rows is 1.87
-(interquartile 1.42 to 2.15), while the single row gives 0.63. Raw hosted Find rows agree that the
+Against that same section and hosted run 1, the 57 legacy rows that succeed in both and exceed 0.5 us
+have a median hosted/M2 ratio of 1.98 (interquartile 1.46 to 2.25), while the single row gives 0.63. Raw hosted Find rows agree that the
 hosted runner is slower than the M2 Max, not faster: analytic-only Find 9.0 against 2.8 us, flat box
 legacy down pass 4.0 against 1.8 us. So every hosted M2-equivalent time in the #1334 record is
 overstated by about three times.
@@ -57,10 +57,15 @@ the interquartile range exposes.
 **Ruling SC-3. Oracle-correct refusals and stationary rows are envelope rows.** A row whose candidate
 result equals its geometry oracle and is `None`, or whose substep is stationary because the oracle says
 motion is blocked, cannot pass a cost row (SG-10). It also cannot fail the gate, since it can never
-pass by construction. The verdict reports such rows as envelope rows, outside both counts. A row whose
-candidate disagrees with its oracle stays a `G` failure. From the attribution, `explicit rounding
+pass by construction. The verdict reports such rows as envelope rows, outside both counts. A Find is
+oracle-correct when its outcome is `None` and its saved oracle outcome is `None` with the oracle in
+agreement. A substep or whole tick is oracle-blocked when it achieved no motion, was not refused, every
+support read in it matched its oracle, and no read was `Walkable`, since a body whose every certified
+support is steep or absent cannot walk. A stationary row with any `Walkable` read stays a rejection. A
+row whose candidate disagrees with its oracle stays a `G` failure. From the attribution, `explicit rounding
 handoff`, `explicit changed-axis rounding` and `explicit swim` (Find, feet over water, oracle `None`) and
-`slide opposing face` D0 (blocked against a 63 degree flank, legacy also stationary) are envelope rows.
+`slide opposing face` D0 and its Dry whole tick (blocked against a 63 degree flank, every read steep,
+legacy also stationary) are envelope rows.
 Cost if wrong: a scene that should support the body but hides behind an oracle bug is excused, which
 the SG-16 oracle tests guard.
 

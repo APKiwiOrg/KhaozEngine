@@ -1,8 +1,8 @@
 # Equipment coverage construction and render-error amendment
 
-Status: proposed, awaiting owner approval. This document changes no accepted code or release.
+Status: owner approved. Implementation is pending and no release is authorized.
 It amends sections 4, 7, 9, 10 and 12 of the
-[approved design](EQUIPMENT-COVERAGE-DESIGN-2026-10-16.md) only after approval.
+[approved design](EQUIPMENT-COVERAGE-DESIGN-2026-10-16.md).
 The engine work is tracked by [#1418](https://github.com/APKiwiOrg/KhaozEngine/issues/1418).
 
 ## Outcome and evidence
@@ -163,7 +163,7 @@ Source anchors are [render origin](../../KhaozEngine.Render3D/Scene3D.RenderOrig
 
 ## Acceptance and impact on the existing plan
 
-Task 4 remains open. After approval, update its construction and context interfaces under the
+Task 4 remains open. Update its construction and context interfaces under the
 existing subagent-driven plan. Preserve all source-verified safety corrections and independently
 review the amendment implementation before Task 5 proceeds.
 

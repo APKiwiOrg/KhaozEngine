@@ -537,3 +537,26 @@ The vertex stage is Render3D's fullscreen triangle copied verbatim, since this p
 Render3D. Every fullscreen pass over it renders vertically flipped on every backend, and the post chain undoes
 that with a parity flip in its final blit. No blit follows this pass, so the fragment flips V itself.
 `GpuScaledCopyGpuTests` pins the orientation and channel order with a four quadrant source.
+
+## GpuReadbackRing
+
+A ring of fenced staging slots for reading downscaled frames back without stalling a frame.
+`new GpuReadbackRing(device, width, height, slotCount = 3)` creates one `R8G8B8A8UNorm` `Staging` texture and one
+fence per slot.
+
+- **Requirement.** The device must report `GpuCapabilities.SupportsCompletionFences` and implement
+  `IGpuFencedReadback`. Anything else is refused with a `NotSupportedException` at construction.
+- **Record.** `TryRecordCopy(commands, source, tag, out fence)` records, into an open recording, a whole copy of
+  `source` into the next free slot. Hand `fence` to `Submit(commands, fence)`. With every slot in flight it
+  returns false and records nothing, so the caller drops that tick. The source must be single-mip, single-sample
+  `R8G8B8A8UNorm` at exactly the ring's size, the same rule `GpuReadback.ToRgba` enforces, or it is refused with an
+  `ArgumentException`.
+- **Read.** `TryReadCompleted(destination, out tag)` reads the oldest slot once its fence has signaled, through
+  `IGpuFencedReadback.MapForRead`, never through the draining `IGpuDevice.Map`. It de-strides into packed RGBA
+  rows, top row first, unmaps, resets the fence and frees the slot. It never waits. A later slot is never read
+  ahead of an earlier one. Call it only while nothing is recording.
+- **Dispose.** Frees every slot without draining. Retire the ring once `PendingCount` reaches zero, or after the
+  device drains at teardown.
+
+`GpuReadbackRingTests` drives the slot rules on a fake device. `GpuReadbackRingGpuTests` reads a copy back
+exactly and cycles three slots through six frames with no device drain.

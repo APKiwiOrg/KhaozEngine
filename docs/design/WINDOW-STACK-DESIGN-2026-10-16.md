@@ -45,7 +45,7 @@ inside it, without the window doing anything special.
 3. **Front on press.** On a fresh left or right press, the front-most open window whose area contains the
    press origin is raised to the front of its band. The test uses the windows' places from before this
    frame's updates, which is what the player saw when pressing. No press raises anything while a window
-   captures the pointer.
+   captures the pointer, while the other mouse button is held, or on a frame with `receivesInput: false`.
 4. **Only what is seen answers.** Each window is updated with every window above it occluded. A hit query
    whose test point lies in an occluded area misses. The uncovered part of a covered window works normally.
 5. **A gesture keeps its owner.** Queries that test the press origin (`IsDragStartIn`, `IsDraggingIn`,
@@ -144,10 +144,12 @@ and is skipped by update, draw, `Covers` and `CloseFront`.
 
 1. Raise windows that became open since the last sync (rule 2), unless the left button is held.
 2. On `IsPressOriginFresh` or `IsRightPressOriginFresh`, raise the front-most open window containing the
-   relevant origin (rule 3), unless a window captures.
+   relevant origin (rule 3), unless a window captures, the other button is held or input is off.
 3. If a window captures, update it with no occlusion, then `OccludeAll` and update the rest top to bottom.
-4. Otherwise update open windows top to bottom. After each one, if it is still open, call its `Occlude` and
-   reserve its `Bounds` with `BlockRegion`, so every window below sees only its uncovered area.
+4. Otherwise update open windows top to bottom. After each one, call its `Occlude` and reserve its `Bounds`
+   with `BlockRegion`, so every window below sees only its uncovered area. This holds for a window that
+   closed during its own update too: the player saw it this frame, so the tap that closed it must not reach
+   the window behind. It is skipped from the next frame on.
 5. With `receivesInput: false`, `OccludeAll` first and update every open window with `ReceivesInput` false.
 
 **Draw.** Sync open edges as in Update step 1, then draw open windows bottom to top. Before each window the
@@ -191,7 +193,8 @@ All headless, in `KhaozEngine.Render.Tests/Windowing` for `Pointer` (next to `Po
   bottom and draw bottom to top, a covered window sees no hover or tap in the covered area and full input in
   the uncovered area, capture updates the captor first and occludes the rest, `receivesInput: false` occludes
   everything, `CloseFront` respects bands and `ClosesOnEscape`, `Covers` ignores closed windows, a window that
-  closes during its update adds no occluder, and draw-time hover agrees with update.
+  closes during its update still occludes for the rest of that frame and is not drawn, a press while the
+  other button is held raises nothing, and draw-time hover agrees with update.
 - Two overlapping `WindowDrag` windows: only the front one moves, and a press on the front close square inside
   the back grip is the front window's tap.
 - A drop onto a covered `SlotGrid` slot is refused and an uncovered slot accepts it. `OfferTargetIn` refuses an

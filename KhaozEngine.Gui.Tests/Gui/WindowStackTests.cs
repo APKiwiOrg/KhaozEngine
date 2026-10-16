@@ -423,6 +423,64 @@ namespace KhaozEngine.Tests.Gui
         }
 
         [Fact]
+        public void DrawHover_AgreesWithUpdate_OnCaptureFrame()
+        {
+            AddBoth();
+            _b.CapturesPointer = true;
+
+            // F's close square sits at its top right, outside B: the captor's frame leaves F dead there.
+            var frontClose = new Vector2(585f, 165f);
+            Frame(frontClose);
+            Draw();
+            Assert.False(_f.Hover);
+            Assert.False(_f.DrawHover);
+
+            // In the overlap the captor answers although F lies above it.
+            Frame(Overlap);
+            Draw();
+            Assert.True(_b.Hover);
+            Assert.True(_b.DrawHover);
+            Assert.False(_f.DrawHover);
+            Assert.False(_pointer.IsOccluded(Overlap));
+        }
+
+        [Fact]
+        public void DrawHover_AgreesWithUpdate_OnNoInputFrame()
+        {
+            AddBoth();
+            Frame(Overlap, receivesInput: false);
+            Draw();
+            Assert.False(_f.DrawHover);
+            Assert.False(_b.DrawHover);
+
+            Frame(BackOnly, receivesInput: false);
+            Draw();
+            Assert.False(_b.DrawHover);
+            Assert.False(_pointer.IsOccluded(BackOnly));
+
+            // The next frame with input draws normally again.
+            Frame(Overlap);
+            Draw();
+            Assert.True(_f.DrawHover);
+            Assert.False(_b.DrawHover);
+        }
+
+        [Fact]
+        public void RemovedDuringAnotherUpdate_IsSkippedForTheFrame()
+        {
+            AddBoth();
+            _f.OnUpdate = _ => _stack.Remove(_b);
+
+            Frame(BackOnly);
+            Assert.Equal(new[] { "update:F" }, _log);
+            Assert.Equal(0, _b.UpdateCount);
+            Assert.False(_pointer.IsOccluded(BackOnly));
+            Assert.False(_pointer.IsBlocked(BackOnly));
+            Assert.True(_pointer.IsOccluded(FrontOnly));
+            AssertOrder(_f);
+        }
+
+        [Fact]
         public void AfterUpdate_WindowsStayOccludedAndBlocked()
         {
             AddBoth();

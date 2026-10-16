@@ -46,6 +46,12 @@ namespace KhaozEngine.Gui
         readonly List<IStackWindow> _drawScratch = new();
         readonly List<IStackWindow> _syncScratch = new();
 
+        // The mode of the last Update, which Draw mirrors so draw-time hover agrees with it.
+        UpdateMode _lastMode;
+        IStackWindow? _lastCaptor;
+
+        enum UpdateMode { Normal, Capture, NoInput }
+
         /// <summary>Build an empty stack.</summary>
         public WindowStack() => _orderView = _order.AsReadOnly();
 
@@ -110,8 +116,10 @@ namespace KhaozEngine.Gui
             for (int i = _order.Count - 1; i >= 0; i--)
                 if (_order[i].IsOpen) snapshot.Add(_order[i]);
 
+            _lastCaptor = null;
             if (!receivesInput)
             {
+                _lastMode = UpdateMode.NoInput;
                 pointer.OccludeAll();
                 for (int i = 0; i < snapshot.Count; i++)
                     if (UpdateOne(snapshot, i, pointer, input, dt, false)) pointer.BlockRegion(snapshot[i].Bounds);
@@ -125,6 +133,7 @@ namespace KhaozEngine.Gui
 
             if (captor < 0)
             {
+                _lastMode = UpdateMode.Normal;
                 RaiseOnPress(snapshot, pointer);
                 snapshot.Clear();
                 for (int i = _order.Count - 1; i >= 0; i--)
@@ -141,6 +150,8 @@ namespace KhaozEngine.Gui
             }
             else
             {
+                _lastMode = UpdateMode.Capture;
+                _lastCaptor = snapshot[captor];
                 if (UpdateOne(snapshot, captor, pointer, input, dt, true)) pointer.BlockRegion(snapshot[captor].Bounds);
                 pointer.OccludeAll();
                 for (int i = 0; i < snapshot.Count; i++)
@@ -151,9 +162,11 @@ namespace KhaozEngine.Gui
         }
 
         /// <summary>
-        /// Draw every open window bottom to top. Before each window the pointer carries exactly the occluders of
-        /// the open windows above it, so draw-time hover agrees with the update. Occlusion is cleared when it
-        /// finishes, so content drawn afterwards reads the pointer as uncovered.
+        /// Draw every open window bottom to top. Before each window the pointer carries exactly the occlusion the
+        /// last <see cref="Update"/> gave it, so draw-time hover agrees with the update: the occluders of the open
+        /// windows above it on a normal frame, nothing for the captor and the whole surface for every other window
+        /// after a capture frame, and the whole surface for every window after a frame that received no input.
+        /// Occlusion is cleared when it finishes, so content drawn afterwards reads the pointer as uncovered.
         /// </summary>
         public void Draw(SpriteBatch batch, Pointer pointer)
         {
@@ -168,10 +181,17 @@ namespace KhaozEngine.Gui
             for (int i = 0; i < open.Count; i++)
             {
                 var window = open[i];
-                if (!window.IsOpen) continue;
+                if (!IsLive(window)) continue;
                 pointer.ClearOcclusion();
-                for (int j = i + 1; j < open.Count; j++)
-                    if (open[j].IsOpen) open[j].Occlude(pointer);
+                if (_lastMode == UpdateMode.NoInput || (_lastMode == UpdateMode.Capture && window != _lastCaptor))
+                {
+                    pointer.OccludeAll();
+                }
+                else if (_lastMode == UpdateMode.Normal)
+                {
+                    for (int j = i + 1; j < open.Count; j++)
+                        if (IsLive(open[j])) open[j].Occlude(pointer);
+                }
                 window.Draw(batch, pointer);
             }
             pointer.ClearOcclusion();
@@ -250,20 +270,25 @@ namespace KhaozEngine.Gui
             return null;
         }
 
-        // Update one window unless another window closed it earlier this frame. Reports whether it updated.
+        // Open and still registered: a window another window closed or removed earlier this frame is skipped.
+        bool IsLive(IStackWindow window) => window.IsOpen && _bandOf.ContainsKey(window);
+
+        // Update one window unless another window closed or removed it earlier this frame. Reports whether it
+        // updated.
         bool UpdateOne(List<IStackWindow> topToBottom, int index, Pointer pointer, InputState input, float dt,
             bool receivesInput)
         {
             var window = topToBottom[index];
-            if (!window.IsOpen) return false;
+            if (!IsLive(window)) return false;
             window.Update(new WindowUpdate(pointer, input, dt, receivesInput, IsFrontAt(topToBottom, index)));
             return true;
         }
 
-        // Front of its band: no window above it in the same band is still open.
+        // Front of its band: no window above it in the same band is still open and registered. Only called for a
+        // registered window.
         bool IsFrontAt(List<IStackWindow> topToBottom, int index)
         {
-            var band = _bandOf.TryGetValue(topToBottom[index], out var b) ? b : WindowBand.Floating;
+            var band = _bandOf[topToBottom[index]];
             for (int i = 0; i < index; i++)
             {
                 var above = topToBottom[i];

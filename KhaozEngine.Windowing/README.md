@@ -326,6 +326,8 @@ Windowing + input foundation for the custom MonoGame-free stack.
   - `IsReleasedOutside` counts a release in an occluded area as outside.
   - `IsRightPressOriginFresh` is the right-button twin of `IsPressOriginFresh`.
   - `BlockRegion` and `IsBlocked` keep their meaning. Occlusion is the part the hit queries obey.
+  - `PanZoomController` admits no press, touch or gesture at an occluded point and records no tap on an
+    occluded release.
 - **Action maps + rebinding** (`KhaozEngine.Windowing.Actions`) - named actions instead of hardcoded key checks.
   A game declares `InputAction`s (`Button` / `Axis1D` / `Axis2D`) with default `InputBinding`s over `InputSource`s
   (key, mouse button, gamepad button, trigger, a whole stick via `WholeStick` for a 2D move/look, a single stick

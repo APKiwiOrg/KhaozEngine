@@ -130,6 +130,7 @@ public sealed class WindowStack
     public void Remove(IStackWindow window);
     public void BringToFront(IStackWindow window);
     public IReadOnlyList<IStackWindow> Order { get; }   // bottom to top, bands in order
+    public bool IsCapturing { get; }   // the last Update ran in capture mode
     public void Update(Pointer pointer, InputState input, float dt, bool receivesInput = true);
     public void Draw(SpriteBatch batch, Pointer pointer);
     public bool Covers(Vector2 point);
@@ -179,6 +180,10 @@ Every engine widget must decide pointer behaviour through a `Pointer` hit query 
 | `WorldMapViewCore` hover overlays | No hover overlay rebuild for an occluded position. |
 | `GuiSurface.HoverCaptured` | Also true when the pointer is occluded. |
 | `DraggableBottomSheet.Admits` | Also refuses an occluded press origin. |
+| `GuiSurface.PointerCaptured` | Also true when the press origin is occluded. |
+| `ScreenStack.PressBeganOverUi` | Also latches when the press origin is occluded. |
+| `PannableCanvas.TryGetTap` | No tap when the press origin or the release is occluded. |
+| `PanZoomController` | Admits no press, touch or gesture at an occluded point and records no tap on an occluded release. |
 
 Wheel handling needs no change. Every widget that reads the wheel gates it on `IsPointerIn` or receives it from
 a caller that does (`ScrollablePanel`, `TreeView`, `PatchNotesView`, `PannableCanvas`, `PopupPanel`).

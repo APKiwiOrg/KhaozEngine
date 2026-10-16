@@ -12,6 +12,10 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   pressed, updates open windows top to bottom with every window above occluded, and draws them bottom to top.
   `WindowUpdate` hands each window its pointer, input, `ReceivesInput` and `IsFront`. `CloseFront` closes the
   top-most window that closes on Escape and `Covers` reports whether an open window lies under a point.
+  `IsCapturing` reports whether the last update ran in capture mode, so a consumer can leave Escape to the
+  captor's popup.
+- A window that opens while the left button is held rises only after the release frame, so that release's
+  taps and drops resolve against the order the player saw.
 - A window that closes during its own update still occludes for that frame and is not drawn. No press raises
   a window while another window captures the pointer, while the other button is held or on a frame that
   receives no input. `Draw` mirrors the last update's capture and no-input occlusion, skips windows removed
@@ -25,8 +29,9 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   and on a `WindowStack` only the front window under a press can move. Windows without a stack still need
   their caller to order them. A single window behaves as before.
 - `SlotGrid` drops, `GuiDragContext.OfferTargetIn`, `TreeView` drop positions, `ScrollablePanel` drag edge
-  scroll, `PropertyGrid` hover, `WorldMapView` hover, `GuiSurface.HoverCaptured` and `DraggableBottomSheet`
-  presses now honour occlusion. Their behaviour with nothing occluded is unchanged. See the
+  scroll, `PropertyGrid` hover, `WorldMapView` hover, `GuiSurface.HoverCaptured` and `PointerCaptured`,
+  `ScreenStack.PressBeganOverUi`, `PannableCanvas.TryGetTap`, `PanZoomController` admission and taps, and
+  `DraggableBottomSheet` presses now honour occlusion. Their behaviour with nothing occluded is unchanged. See the
   [design record](docs/design/WINDOW-STACK-DESIGN-2026-10-16.md).
 
 ## 21.1.0

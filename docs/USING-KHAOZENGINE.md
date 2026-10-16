@@ -1968,17 +1968,23 @@ A window implements `IStackWindow`: `IsOpen`, `Bounds`, `Close()`, `Update(in Wi
 `Draw(batch, pointer)`. `CapturesPointer` defaults to false and `ClosesOnEscape` to true. `Contains(point)` and
 `Occlude(pointer)` default to `Bounds`, so override both for a window that is not one rectangle, such as a
 docked panel whose tab strip and body are separate rects. `WindowUpdate` carries the frame's `Pointer`,
-`Input`, `Dt`, `ReceivesInput` and `IsFront`, true for the top-most open window of its band.
+`Input`, `Dt`, `ReceivesInput` and `IsFront`, true for the top-most open window of its band, so up to one
+window per band. For a single global focus read the last open entry of `Order`.
 
 - **Bands.** `WindowBand.Docked`, `Floating` (the default) and `Topmost`, bottom to top. No window rises above
   a higher band. `Add` places a window at the front of its band, and `Add` on a registered window moves it.
   `BringToFront` raises within the band. `Order` lists every registered window bottom to top.
 - **Raise on open.** A window that becomes open goes to the front of its band. While the left button is held
-  that raise waits for the release, so a drag in progress keeps its window on top.
+  that raise waits until the gesture has ended. `Update` skips it on the release frame too and that frame's
+  `Draw` applies it, so the release's taps and drops resolve against the order the player saw and the window
+  draws on top from that frame.
 - **Raise on press.** A fresh left or right press raises the front-most open window containing the press
   origin, tested against where the windows were before this frame's updates. No press raises anything while a
   window captures the pointer, while the other button is held from an earlier frame, or on a frame with
   `receivesInput: false`.
+- **A gesture keeps its owner.** Queries that test the press origin (`IsDragStartIn`, `IsDraggingIn`,
+  `GetDragDelta`) keep answering for the window the press began in for the whole gesture. The press raised
+  that window, and a window opened mid-gesture rises only after the release frame.
 - **Update.** Each open window updates with every window above it occluded. A window that closes during its
   own update still occludes for the rest of that frame, so the tap that closed it cannot reach the window
   behind, and it is not drawn. A window another window closed or removed earlier in the frame is skipped.
@@ -1992,10 +1998,12 @@ docked panel whose tab strip and body are separate rects. `WindowUpdate` carries
   `Update`'s mode: after a capture frame the captor draws with nothing occluded and the rest fully occluded,
   and after a no-input frame every window draws fully occluded. Occluders come from the order and open state
   at draw time, so for one frame they can differ from the update, for example when a window closed during its
-  own update or a window was raised between `Update` and `Draw`.
+  own update or a window was raised between `Update` and `Draw`. Occluders a consumer adds to the pointer
+  before `Update` are respected by `Update` but not kept by `Draw`, which clears occlusion before each window.
 - **Escape and hit tests.** `CloseFront()` closes the top-most open window that closes on Escape, searching
   `Topmost`, then `Floating`, then `Docked`, and reports whether it closed one. `Covers(point)` is true over
   any open window. A closed window stays registered and is skipped by update, draw, `Covers` and `CloseFront`.
+  `IsCapturing` is true when the last `Update` ran in capture mode.
 
 Frame ordering is the part a consumer must get right:
 
@@ -2015,7 +2023,7 @@ _windows.Add(_debugMenu, WindowBand.Topmost);
 
 // Update: after Pointer.Update, before the world reads the pointer.
 // Escape goes to the stack only on a frame it receives input, so one press never closes an overlay and a window.
-bool escapeSpent = !overlayOpen && input.WasPressed(Key.Escape) && _windows.CloseFront();
+bool escapeSpent = !overlayOpen && !_windows.IsCapturing && input.WasPressed(Key.Escape) && _windows.CloseFront();
 _windows.Update(pointer, input, dt, receivesInput: !overlayOpen);
 UpdateWorld(pointer);   // windows are occluded and blocked here
 
@@ -2024,12 +2032,18 @@ _windows.Draw(batch, pointer);
 _tooltip.Draw(batch, pointer);
 ```
 
+`IsCapturing` reports the last `Update`, read here before this frame's. While a window captures, a capturing
+window's own popup, normally its context menu, handles Escape that frame, so the stack closes nothing.
+
 The engine widgets inside a window already honour occlusion. `WindowDrag` latches through `IsDragStartIn`.
 `SlotGrid` offers no drop slot, `GuiDragContext.OfferTargetIn` refuses, `TreeView` computes no drop position
 and `ScrollablePanel` does no drag edge scroll while the pointer is occluded. `PropertyGrid` hit-tests through
 `IsPointerIn`, `WorldMapViewCore` builds no hover overlay for an occluded position,
-`GuiSurface.HoverCaptured` is true over an occluded position and `DraggableBottomSheet` refuses an occluded
-press. A consumer's own widgets follow the same gate rule: a `Pointer` hit query or `IsOccluded` first, raw
+`GuiSurface.HoverCaptured` is true over an occluded position, `GuiSurface.PointerCaptured` and
+`ScreenStack.PressBeganOverUi` are true for an occluded press origin and `DraggableBottomSheet` refuses an
+occluded press. `PannableCanvas.TryGetTap` misses when the press origin or the release is occluded, and
+`PanZoomController` admits no press, touch or gesture at an occluded point and records no tap on an occluded
+release. A consumer's own widgets follow the same gate rule: a `Pointer` hit query or `IsOccluded` first, raw
 `Position` only after it. Out of scope for the stack: saved order or position, cascade placement, docking,
 minimising, keyboard focus beyond `IsFront`, and modal dialogs, which stay on `PopupPanel`.
 

@@ -873,12 +873,15 @@ chat.Draw(batch, white);
       and no-input modes, and clears occlusion at the end.
     - `Covers(point)` reports whether an open window lies under a point.
     - `CloseFront()` closes the top-most open window that closes on Escape.
+    - `IsCapturing` is true when the last `Update` ran in capture mode. Gate a global Escape on it, because a
+      capturing window's own popup handles Escape that frame.
     - `WindowBand` is `Docked`, `Floating` or `Topmost`, bottom to top. No window rises above a higher band.
     - `IStackWindow` is the window contract: `IsOpen`, `Bounds`, `CapturesPointer`, `ClosesOnEscape`,
       `Contains`, `Occlude`, `Close`, `Update` and `Draw`.
     - `WindowUpdate` carries `Pointer`, `Input`, `Dt`, `ReceivesInput` and `IsFront` to one window's update.
     - `SlotGrid`, `GuiDragContext.OfferTargetIn`, `TreeView`, `ScrollablePanel` drag edge scroll,
-      `PropertyGrid`, `GuiSurface.HoverCaptured` and `DraggableBottomSheet` honour occlusion.
+      `PropertyGrid`, `GuiSurface.HoverCaptured` and `PointerCaptured`, `ScreenStack.PressBeganOverUi`,
+      `PannableCanvas.TryGetTap` and `DraggableBottomSheet` honour occlusion.
   - `PopupPanel` - modal dialog: scrim + title + `PopupRow` content + dismiss/primary footer. `Update` reserves
     the whole `ScrimRect` (the full viewport the scrim dims) through `Pointer.BlockRegion`, not just the panel,
     so a click on the dimmed area cannot reach the UI underneath. That only matters when the popup is driven

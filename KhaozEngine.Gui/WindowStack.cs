@@ -171,11 +171,14 @@ namespace KhaozEngine.Gui
         }
 
         /// <summary>
-        /// Draw every open window bottom to top. Before each window the pointer carries exactly the occlusion the
-        /// last <see cref="Update"/> gave it, so draw-time hover agrees with the update: the occluders of the open
-        /// windows above it on a normal frame, nothing for the captor and the whole surface for every other window
-        /// after a capture frame, and the whole surface for every window after a frame that received no input.
-        /// Occlusion is cleared when it finishes, so content drawn afterwards reads the pointer as uncovered.
+        /// Draw every open window bottom to top. Before each window the stack clears occlusion and re-applies the
+        /// occluders of the open windows above it, and it mirrors the last <see cref="Update"/>'s capture and
+        /// no-input modes: nothing occluded for the captor and the whole surface for every other window after a
+        /// capture frame, and the whole surface for every window after a frame that received no input. Draw-time
+        /// hover therefore normally agrees with the update. It can differ on a frame a window closes or is raised
+        /// between <see cref="Update"/> and Draw, and occluders the consumer added before <see cref="Update"/> are
+        /// respected by the update but not kept here. Occlusion is cleared when it finishes, so content drawn
+        /// afterwards reads the pointer as uncovered.
         /// </summary>
         public void Draw(SpriteBatch batch, Pointer pointer)
         {

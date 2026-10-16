@@ -17,7 +17,9 @@ namespace KhaozEngine.Gui
             IsFront = isFront;
         }
 
-        /// <summary>The frame's pointer, with every window above this one occluded.</summary>
+        /// <summary>The frame's pointer, with every window above this one occluded. On a capture frame the captor
+        /// sees nothing occluded and every other window sees the whole surface occluded. On a frame that receives no
+        /// input every window sees the whole surface occluded.</summary>
         public Pointer Pointer { get; }
 
         /// <summary>The frame's input. Read the keyboard only while <see cref="ReceivesInput"/> is true.</summary>
@@ -30,7 +32,8 @@ namespace KhaozEngine.Gui
         /// and the window must not read keyboard input, the same contract as <see cref="Screen.Update"/>.</summary>
         public bool ReceivesInput { get; }
 
-        /// <summary>True for the top-most open window of its band, the one keyboard focus normally belongs to.</summary>
+        /// <summary>True for the top-most open window of its band, so up to one window per band carries it. For a
+        /// single global focus use the last open window in <see cref="WindowStack.Order"/>.</summary>
         public bool IsFront { get; }
     }
 }

@@ -9,6 +9,7 @@ using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using KhaozEngine.Physics;
 using KhaozEngine.Locomotion;
+using KhaozEngine.Locomotion.Contacts;
 
 namespace KhaozEngine.Tests.Locomotion.Contacts;
 
@@ -28,6 +29,7 @@ internal sealed record SupportCostSample(string Operation, string Scene, bool Ge
     public double? CandidateLegacyRatio { get; init; }
     public double? WholeTickDeltaMicroseconds { get; init; }
     public bool? GatePassed { get; init; }
+    public bool Envelope { get; init; }
     public string OracleOutcome { get; init; } = "";
     public double OracleHeight { get; init; }
     public bool GeometryMatchesOracle { get; init; }
@@ -49,33 +51,60 @@ internal sealed record SupportCostSample(string Operation, string Scene, bool Ge
         : Counts.Ambiguous > 0 ? "Ambiguous" : Counts.Unsupported > 0 ? "Unsupported" : Operation == "Find" ? "ProposalOrCertification" : "Environment";
 }
 
+/// <summary>The SC-2 hosted scale: the median hosted/M2 ratio over comparable legacy rows, with its spread.</summary>
+internal readonly record struct HostedScale(double K, int Rows, double LowerQuartile, double UpperQuartile);
+
+/// <summary>A cost row verdict. Envelope rows can never pass by construction and count as neither (SC-3).</summary>
+internal enum SupportCostGate { Reject, Pass, Envelope }
+
 internal static class SupportCostVerdict
 {
-    internal static bool TryHostedScale(JsonObject? m2MaxBaseline, JsonObject? hosted, out double scale)
+    internal const int MinimumCalibrationRows = 40;
+    internal const double MinimumReferenceMicroseconds = 0.5;
+
+    internal static bool TryHostedScale(JsonObject? m2MaxReference, JsonObject? hosted, out HostedScale scale)
     {
-        scale = 0;
+        scale = default;
         try
         {
-            if (!ValidMetadata(m2MaxBaseline) || !ValidMetadata(hosted) ||
-                m2MaxBaseline!["Hardware"]!.GetValue<string>() != "Apple M2 Max" ||
-                m2MaxBaseline["Architecture"]!.GetValue<string>() != "Arm64" ||
-                m2MaxBaseline["ProcessExitStatus"]?.GetValue<int>() != 0 ||
+            if (!ValidMetadata(m2MaxReference) || !ValidMetadata(hosted) ||
+                m2MaxReference!["Hardware"]!.GetValue<string>() != "Apple M2 Max" ||
+                m2MaxReference["Architecture"]!.GetValue<string>() != "Arm64" ||
+                m2MaxReference["ProcessExitStatus"]?.GetValue<int>() != 0 ||
                 hosted!["ProcessExitStatus"] is { } exit && exit.GetValue<int>() != 0 ||
-                !SameSceneInputs(m2MaxBaseline!["Scenes"], hosted!["Scenes"]) ||
-                !SameTuningInputs(m2MaxBaseline["Tuning"], hosted["Tuning"]))
+                !SameSceneInputs(m2MaxReference!["Scenes"], hosted!["Scenes"]) ||
+                !SameTuningInputs(m2MaxReference["Tuning"], hosted["Tuning"]))
                 return false;
-            SupportCostSample? reference = CalibrationTick(m2MaxBaseline);
-            SupportCostSample? current = CalibrationTick(hosted);
-            if (!ValidCalibration(reference) || !ValidCalibration(current)) return false;
-            double ratio = current!.WarmMicroseconds / reference!.WarmMicroseconds;
-            if (!(ratio > 0) || !double.IsFinite(ratio * 4000)) return false;
-            scale = ratio;
+            Dictionary<(string, string), SupportCostSample>? reference = LegacyRows(m2MaxReference), current = LegacyRows(hosted);
+            if (reference is null || current is null) return false;
+            var ratios = new List<double>();
+            foreach (var (key, m2) in reference)
+            {
+                if (!current.TryGetValue(key, out SupportCostSample? run) || !Succeeded(m2) || !Succeeded(run) ||
+                    !(m2.WarmMicroseconds > MinimumReferenceMicroseconds)) continue;
+                double ratio = run.WarmMicroseconds / m2.WarmMicroseconds;
+                if (ratio > 0 && double.IsFinite(ratio)) ratios.Add(ratio);
+            }
+            if (ratios.Count < MinimumCalibrationRows) return false;
+            ratios.Sort();
+            double k = Quantile(ratios, 0.5);
+            if (!(k > 0) || !double.IsFinite(k * 4000)) return false;
+            scale = new(k, ratios.Count, Quantile(ratios, 0.25), Quantile(ratios, 0.75));
             return true;
         }
         catch (Exception error) when (error is JsonException or InvalidOperationException or ArgumentException or OverflowException)
         {
             return false;
         }
+    }
+
+    /// <summary>Linear interpolation at rank (n + 1) p over the sorted ratios, clamped to the ends.</summary>
+    static double Quantile(List<double> sorted, double p)
+    {
+        double rank = Math.Clamp((sorted.Count + 1) * p - 1, 0, sorted.Count - 1);
+        int lower = (int)rank;
+        int upper = Math.Min(lower + 1, sorted.Count - 1);
+        return sorted[lower] + (rank - lower) * (sorted[upper] - sorted[lower]);
     }
 
     static bool ValidMetadata(JsonObject? section) => section is not null &&
@@ -124,29 +153,49 @@ internal static class SupportCostVerdict
         return JsonNode.DeepEquals(a, b);
     }
 
-    static SupportCostSample? CalibrationTick(JsonObject section)
+    /// <summary>Every legacy sample keyed by scene and operation, or null when a key repeats.</summary>
+    static Dictionary<(string, string), SupportCostSample>? LegacyRows(JsonObject section)
     {
         if (section["Samples"] is not JsonArray samples) return null;
-        JsonNode[] ticks = samples.Where(sample => sample is JsonObject &&
-            sample["Scene"]?.GetValue<string>() == "flat box" && sample["Operation"]?.GetValue<string>() == "LegacyTick")
-            .Select(sample => sample!).ToArray();
-        return ticks.Length == 1 ? ticks[0].Deserialize<SupportCostSample>(new JsonSerializerOptions
-        { IncludeFields = true, NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals }) : null;
+        var options = new JsonSerializerOptions { IncludeFields = true, NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals };
+        var rows = new Dictionary<(string, string), SupportCostSample>();
+        foreach (JsonNode? node in samples)
+        {
+            if (node is not JsonObject || node["Operation"]?.GetValue<string>() is not { } operation ||
+                !operation.StartsWith("Legacy", StringComparison.Ordinal)) continue;
+            SupportCostSample sample = node.Deserialize<SupportCostSample>(options)!;
+            if (!rows.TryAdd((sample.Scene, operation), sample)) return null;
+        }
+        return rows;
     }
 
-    static bool ValidCalibration(SupportCostSample? sample) => sample is not null &&
-        sample.GeometryPassed && sample.ColdGeometryPassed && sample.GeometryMatchesOracle && !sample.Refusal &&
-        sample.Outcome == "Grounded" && sample.ColdOutcome == "Grounded" &&
-        sample.Comparable && !sample.Dense && sample.WarmMicroseconds > 0 && double.IsFinite(sample.WarmMicroseconds) &&
-        Advances(sample.AchievedMotion) && Advances(sample.ColdAchievedMotion);
+    static bool Succeeded(SupportCostSample sample) => sample.GeometryPassed && sample.ColdGeometryPassed &&
+        sample.GeometryMatchesOracle && !sample.Refusal && sample.WarmMicroseconds > 0 && double.IsFinite(sample.WarmMicroseconds);
 
-    static bool Advances(Vector3 motion) => float.IsFinite(motion.X) && float.IsFinite(motion.Y) &&
-        float.IsFinite(motion.Z) && (motion.X != 0 || motion.Z != 0);
+    /// <summary>A Find whose outcome and saved oracle outcome are both None, with the oracle in agreement (SC-3).</summary>
+    static bool OracleCorrectRefusal(SupportCostSample sample) => sample.Outcome == "None" &&
+        sample.OracleOutcome == "None" && sample.GeometryMatchesOracle && !sample.Refusal;
 
-    internal static bool Evaluate(in SupportCostSample candidate, in SupportCostSample legacy, bool dense,
+    /// <summary>A stationary substep or tick whose every support read matched its oracle and was steep or
+    /// absent (SC-3). A refused read certifies nothing, so it does not count as steep or absent.</summary>
+    static bool OracleBlocked(SupportCostSample sample) => sample.AchievedMotion == Vector3.Zero &&
+        !sample.Refusal && sample.GeometryMatchesOracle && sample.SupportReads.Length > 0 &&
+        sample.SupportReads.All(read => (SupportStatus)read.Status is SupportStatus.None or SupportStatus.Steep);
+
+    internal static SupportCostGate Evaluate(in SupportCostSample candidate, in SupportCostSample legacy, bool dense,
         double hostScale = 1, long explicitLifetimeBytes = 0)
     {
         if (!(hostScale > 0) || !double.IsFinite(hostScale)) throw new ArgumentOutOfRangeException(nameof(hostScale));
+        bool find = candidate.Operation == "Find";
+        if (!find && candidate.Operation is not ("DryTick" or "ExplicitTick") &&
+            !candidate.Operation.StartsWith("GroundSubstep", StringComparison.Ordinal)) return SupportCostGate.Reject;
+        if (find ? OracleCorrectRefusal(candidate) : OracleBlocked(candidate)) return SupportCostGate.Envelope;
+        return Passes(candidate, legacy, dense, hostScale, explicitLifetimeBytes) ? SupportCostGate.Pass : SupportCostGate.Reject;
+    }
+
+    static bool Passes(in SupportCostSample candidate, in SupportCostSample legacy, bool dense,
+        double hostScale, long explicitLifetimeBytes)
+    {
         if (!candidate.GeometryPassed || candidate.Refusal || !double.IsFinite(candidate.WarmMicroseconds) ||
             candidate.WarmMicroseconds < 0 || candidate.WarmBytes < 0) return false;
         if (candidate.Operation == "Find")
@@ -239,16 +288,22 @@ internal static class SupportCostArtifact
             Samples = samples,
         }, options);
         JsonObject recording = root[section]!.AsObject();
-        double hostScale = 1;
+        var hostScale = new HostedScale(1, 0, 1, 1);
         bool normalizationPassed = m2MaxArtifactPath is null ||
-            SupportCostVerdict.TryHostedScale(ReadBaseline(m2MaxArtifactPath), recording, out hostScale);
+            SupportCostVerdict.TryHostedScale(ReadReference(m2MaxArtifactPath, candidateSha), recording, out hostScale);
         if (m2MaxArtifactPath is not null)
         {
-            recording["HostScale"] = normalizationPassed ? JsonValue.Create(hostScale) : null;
+            recording["HostScale"] = normalizationPassed ? JsonValue.Create(hostScale.K) : null;
+            recording["HostScaleRows"] = normalizationPassed ? JsonValue.Create(hostScale.Rows) : null;
+            recording["HostScaleLowerQuartile"] = normalizationPassed ? JsonValue.Create(hostScale.LowerQuartile) : null;
+            recording["HostScaleUpperQuartile"] = normalizationPassed ? JsonValue.Create(hostScale.UpperQuartile) : null;
+            recording["ReferenceSection"] = ReferenceSection(candidateSha);
             recording["HostedNormalizationPassed"] = normalizationPassed;
             recording["RecordingLabel"] = "hosted-support-cost";
             recording["MeasuredBeforeHarnessCommit"] = false;
-            recording["Normalization"] = "Legacy flat-box whole tick from this invocation divided by the finalized M2 Max baseline. Only absolute time ceilings scale.";
+            recording["Normalization"] = "Median of hosted/M2 Max warm time over every legacy row present and successful in this invocation " +
+                "and in the finalized M2 Max reference section recorded at the same commit, with M2 warm time above 0.5 us. " +
+                "At least 40 rows. Only absolute time ceilings scale.";
         }
         var compared = samples.Select(sample =>
         {
@@ -257,13 +312,15 @@ internal static class SupportCostArtifact
             string legacyOperation = sample.Operation == "Find" ? "LegacyDownPass" : "LegacyTick";
             SupportCostSample? legacy = samples.FirstOrDefault(s => s.Scene == sample.Scene && s.Operation == legacyOperation);
             if (legacy is null) return m2MaxArtifactPath is null ? sample : sample with { GatePassed = false };
+            SupportCostGate gate = normalizationPassed ? SupportCostVerdict.Evaluate(sample, legacy, sample.Dense, hostScale.K,
+                explicitLifetimeBytes: lifetime.Movement + lifetime.Physics + lifetime.Pin) : SupportCostGate.Reject;
             return sample with
             {
                 CandidateLegacyRatio = sample.Operation is "Find" or "DryTick" or "ExplicitTick" && legacy.WarmMicroseconds > 0 ? sample.WarmMicroseconds / legacy.WarmMicroseconds : null,
                 WholeTickDeltaMicroseconds = sample.Operation is "DryTick" or "ExplicitTick" ? sample.WarmMicroseconds - legacy.WarmMicroseconds : null,
-                GatePassed = normalizationPassed && (m2MaxArtifactPath is null || sample.ColdGeometryPassed && sample.GeometryMatchesOracle) &&
-                    SupportCostVerdict.Evaluate(sample, legacy, sample.Dense, hostScale,
-                        explicitLifetimeBytes: lifetime.Movement + lifetime.Physics + lifetime.Pin),
+                Envelope = gate == SupportCostGate.Envelope,
+                GatePassed = gate == SupportCostGate.Envelope ? null : gate == SupportCostGate.Pass &&
+                    (m2MaxArtifactPath is null || sample.ColdGeometryPassed && sample.GeometryMatchesOracle),
             };
         }).ToArray();
         recording["Samples"] = JsonSerializer.SerializeToNode(compared, options);
@@ -291,13 +348,20 @@ internal static class SupportCostArtifact
         return hardware;
     }
 
-    static JsonObject? ReadBaseline(string path)
+    /// <summary>The M2 Max reference section for a commit, named by its first nine hex digits (SC-2).</summary>
+    internal static string ReferenceSection(string commit) => "reference-" + (commit.Length >= 9 ? commit[..9] : commit);
+
+    /// <summary>The finalized M2 Max reference recorded at <paramref name="commit"/>, or null when it is absent.</summary>
+    internal static JsonObject? ReadReference(string path, string commit)
     {
+        if (commit.Length < 9) return null;
         try
         {
             JsonNode? root = JsonNode.Parse(File.ReadAllText(path));
-            return root is JsonObject && root["schemaVersion"]?.GetValue<int>() == 2 && root["pendingFinalization"] is null
-                ? root["baseline"] as JsonObject : null;
+            return root is JsonObject && root["schemaVersion"]?.GetValue<int>() == 2 && root["pendingFinalization"] is null &&
+                root[ReferenceSection(commit)] is JsonObject section &&
+                section["CandidateSha"]?.GetValue<string>() is { } recorded && recorded.StartsWith(commit, StringComparison.Ordinal)
+                ? section : null;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException)
         {

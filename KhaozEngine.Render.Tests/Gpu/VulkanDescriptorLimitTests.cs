@@ -55,10 +55,10 @@ namespace KhaozEngine.Tests.Gpu
         static GpuResourceLayoutDescription L(params GpuResourceLayoutElement[] elements) => new(elements);
 
         /// <summary>
-        /// EVERY SHIPPED <c>CreateResourceLayout</c> SITE, transcribed with its own source line. All of them are in
-        /// <c>KhaozEngine.Render2D</c> and <c>KhaozEngine.Render3D</c>: no other package declares a layout at all,
-        /// because every other renderer draws through those two. The count is asserted below rather than restated
-        /// here, so it cannot go stale.
+        /// EVERY SHIPPED <c>CreateResourceLayout</c> SITE, transcribed with its own source line. All but one are in
+        /// <c>KhaozEngine.Render2D</c> and <c>KhaozEngine.Render3D</c>, because every other renderer draws through
+        /// those two. The one exception is <c>KhaozEngine.Gpu</c>'s <c>GpuScaledCopy</c>, the frame capture
+        /// downscale. The count is asserted below rather than restated here, so it cannot go stale.
         /// </summary>
         internal static IReadOnlyDictionary<string, GpuResourceLayoutDescription> ShippedLayouts { get; } =
             new Dictionary<string, GpuResourceLayoutDescription>(StringComparer.Ordinal)
@@ -67,6 +67,9 @@ namespace KhaozEngine.Tests.Gpu
                 // in shipped code and why the pipeline grouping below is the load-bearing half of this table.
                 ["SpriteBatch.texture"] = L(T("Tex"), S("Samp")),
                 ["SpriteBatch.vp"] = L(U("Vp", V, dynamic: true)),
+
+                // Gpu/GpuScaledCopy.cs, the frame capture downscale. Fragment-stage, no uniform buffer.
+                ["GpuScaledCopy"] = L(T("Src"), S("Samp")),
 
                 // Render3D/Rendering/BeamRenderer.cs:54
                 ["Beam"] = L(AtmosphereBindings.AppendLayout(U("U", VF))),
@@ -232,6 +235,9 @@ namespace KhaozEngine.Tests.Gpu
             // Render2D/SpriteBatch.cs:214, both the alpha and the additive pipeline through one Describe(blend).
             ("SpriteBatch", ["SpriteBatch.texture", "SpriteBatch.vp"]),
 
+            // Gpu/GpuScaledCopy.cs, the frame capture downscale.
+            ("GpuScaledCopy", ["GpuScaledCopy"]),
+
             // Render3D/Rendering/ModelRenderer.cs:407 and :419. THREE slots since #407 added the shared palette.
             ("ModelRenderer skinned", ["Model.skinnedMain", "Model.skinnedFrag", "SkinnedBonePalette"]),
             ("ModelRenderer skinned dissolve", ["Model.skinnedMain", "Model.skinnedFrag", "SkinnedBonePalette"]),
@@ -318,10 +324,10 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void EveryShippedPipeline_StaysWithinTheRequiredMinimumDynamicUniformBuffers()
         {
-            // The atmosphere producers add three dense layouts and pipeline rows.
+            // The atmosphere producers add three dense layouts and pipeline rows. GpuScaledCopy adds one of each.
             // Both counts are stated so an emptied table cannot pass by agreeing with itself.
-            Assert.Equal(62, ShippedLayouts.Count);
-            Assert.Equal(67, ShippedPipelines.Count);
+            Assert.Equal(63, ShippedLayouts.Count);
+            Assert.Equal(68, ShippedPipelines.Count);
 
             foreach ((string pipeline, string[] slots) in ShippedPipelines)
             {

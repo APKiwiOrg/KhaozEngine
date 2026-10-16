@@ -50,6 +50,7 @@ namespace KhaozEngine.Tests.Gpu
             new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["Sprite2D"] = "SpriteBatch",
+                ["GpuScaledCopy"] = "GpuScaledCopy",
 
                 ["Model"] = "ModelRenderer",
                 ["Foliage"] = "ModelRenderer foliage",
@@ -286,7 +287,7 @@ namespace KhaozEngine.Tests.Gpu
                 .Select(p => p.Pipeline)
                 .ToHashSet(StringComparer.Ordinal);
 
-            Assert.Equal(85, catalog.Length);
+            Assert.Equal(86, catalog.Length);
             Assert.Equal(catalog.Length, ProgramPipelines.Count);
 
             foreach (string program in catalog)

@@ -21,6 +21,8 @@ public sealed partial class Scene3D
         _drawnSkinnedInstances = 0;
         _culledSkinnedInstances = 0;
         AppendCoverageSurfaces(camFrustum, shadowMapActive, shadowCascadeCount, hasPointShadowRequests);
+        CoverageStageObserverForTests?.Invoke(CoverageStageSpan.OrdinarySkinning, true);
+        int coveredVertices = _cpuSkinnedVerts.Count;
         if (skinnedItems.Count > 0)
         {
             var boneSpan = CollectionsMarshal.AsSpan(_boneMatrices);
@@ -95,9 +97,13 @@ public sealed partial class Scene3D
                 }
             }
         }
+        OrdinaryCpuSkinnedVerticesForTests = _cpuSkinnedVerts.Count - coveredVertices;
+        CoverageStageObserverForTests?.Invoke(CoverageStageSpan.OrdinarySkinning, false);
         // Both routes own independent streams and share their prepared data across passes.
         PrepareCoverageMotion();
+        CoverageStageObserverForTests?.Invoke(CoverageStageSpan.SkinnedUpload, true);
         if (_gpuSkinnedDraws.Count > 0) PrepareGpuSkinnedFrame(cl, shadowMapActive);
         if (_cpuSkinnedDraws.Count > 0) UploadCpuSkinnedFrame(cl);
+        CoverageStageObserverForTests?.Invoke(CoverageStageSpan.SkinnedUpload, false);
     }
 }

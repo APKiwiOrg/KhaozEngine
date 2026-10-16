@@ -44,15 +44,24 @@ internal sealed class CoverageCostWorkload : IDisposable
     readonly int[] declines = new int[Enum.GetValues<CoverageFailureCode>().Length];
     readonly int[] fallbacks = new int[Enum.GetValues<CoverageFailureCode>().Length];
     readonly Vector3 pointLight;
-    long skinStart, skinTicks, geometryStart, geometryTicks, certificationStart, certificationTicks;
+    readonly bool executesOnGpu;
+    // Certified contexts by role over measured accepted actor frames: totals, and minimum and maximum per actor frame.
+    readonly long[] roleTotals = new long[2 * CoveragePreparation.EquipmentRoleOffset];
+    readonly int[] roleMin = new int[2 * CoveragePreparation.EquipmentRoleOffset], roleMax = new int[2 * CoveragePreparation.EquipmentRoleOffset];
+    long roleActorFrames, pointFaceMatrices, outlineGroups, measuredFrames;
+    long skinStart, skinTicks, geometryStart, geometryTicks, geometryCertificationStart, geometryCertificationTicks;
+    long certificationStart, certificationTicks, ordinaryStart, ordinaryTicks, uploadStart, uploadTicks;
     long resolutionStart, resolutionTicks, resolutionBytesStart, resolutionBytes, surfaceStart, surfaceTicks, surfaceBytesStart, surfaceBytes;
-    int skinned, evaluated, certified, acceptedCount, declinedCount, lastAccepted = -1;
+    int skinned, evaluated, geometryCertified, certified, acceptedCount, declinedCount, lastCovered = -1;
     CoverageCostTopology? observed;
+    // The last accepted preparation. A later refusal resets the actor's token, but this actor-owned object remains.
+    CoveragePreparation? retained;
 
     internal CoverageCostWorkload(Scene3D scene, CoverageCostGeometry geometry, int actors, bool coverage, bool gpuSkinning,
-        CoverageCostPassSet passes, Func<long> clock)
+        CoverageCostPassSet passes, Func<long> clock, bool executesOnGpu = false)
     {
-        this.scene = scene; this.geometry = geometry; this.clock = clock; this.coverage = coverage;
+        this.scene = scene; this.geometry = geometry; this.clock = clock; this.coverage = coverage; this.executesOnGpu = executesOnGpu;
+        Array.Fill(roleMin, int.MaxValue);
         full = passes == CoverageCostPassSet.Full;
         int perRow = (int)Math.Ceiling(Math.Sqrt(actors));
         models = new Matrix4x4[actors];
@@ -104,6 +113,10 @@ internal sealed class CoverageCostWorkload : IDisposable
     internal CoverageFailure? FirstDecline { get; private set; }
     /// <summary>The first render-time fallback, kept whole for the same reason.</summary>
     internal CoverageFailure? FirstFallback { get; private set; }
+    /// <summary>Test seam: a palette that replaces the alternating poses, null for the ordinary poses.</summary>
+    internal Matrix4x4[]? PoseOverride { get; set; }
+    /// <summary>Test seam: disposes one actor's binding, so its submitted preparation resolves to the late fallback.</summary>
+    internal void DisposeBindingForTests(int actor) => bindings[actor].Dispose();
 
     static MotionKey Actor(int index) => MotionKey.From(100 + (ulong)index);
 
@@ -137,10 +150,13 @@ internal sealed class CoverageCostWorkload : IDisposable
     internal void Submit(int frame, ref CoverageCostFrameSample sample)
     {
         scene.Begin();
-        skinTicks = geometryTicks = certificationTicks = resolutionTicks = resolutionBytes = surfaceTicks = surfaceBytes = 0;
-        skinned = evaluated = certified = acceptedCount = declinedCount = 0;
+        skinTicks = geometryTicks = geometryCertificationTicks = certificationTicks = ordinaryTicks = uploadTicks = 0;
+        resolutionTicks = resolutionBytes = surfaceTicks = surfaceBytes = 0;
+        skinned = evaluated = geometryCertified = certified = acceptedCount = declinedCount = 0;
+        lastCovered = -1;
         long bytes = GC.GetAllocatedBytesForCurrentThread();
-        CoverageCostGeometry.Pose(frame, palette);
+        if (PoseOverride is { } pose) pose.CopyTo(palette, 0);
+        else CoverageCostGeometry.Pose(frame, palette);
         MeshOutlineGroup group = default;
         if (full)
         {
@@ -192,6 +208,7 @@ internal sealed class CoverageCostWorkload : IDisposable
         sample.SubmissionTicks = submission;
         sample.SkinningTicks = skinTicks;
         sample.GeometryTicks = geometryTicks;
+        sample.GeometryCertificationTicks = geometryCertificationTicks;
     }
 
     internal void Reserve(int width, int height, ref CoverageCostFrameSample sample)
@@ -203,10 +220,15 @@ internal sealed class CoverageCostWorkload : IDisposable
         sample.ReserveBytes = GC.GetAllocatedBytesForCurrentThread() - bytes;
     }
 
-    /// <summary>After encoding: resolution and surface spans, outcomes, pass evidence and engine frame counters.</summary>
-    internal void Collect(ref CoverageCostFrameSample sample)
+    /// <summary>After encoding: encode-side spans, outcomes, role evidence and engine frame counters. Evidence
+    /// accumulates only for measured frames.</summary>
+    internal void Collect(ref CoverageCostFrameSample sample, bool measured)
     {
         sample.ResolutionTicks = resolutionTicks;
+        sample.OrdinarySkinningTicks = ordinaryTicks;
+        sample.SkinnedUploadTicks = uploadTicks;
+        sample.OrdinaryCpuSkinnedVertices = scene.OrdinaryCpuSkinnedVerticesForTests;
+        sample.GeometryCertified = geometryCertified;
         sample.CertificationTicks = certificationTicks;
         sample.SurfaceTicks = surfaceTicks;
         sample.ResolutionBytes = resolutionBytes;
@@ -217,30 +239,82 @@ internal sealed class CoverageCostWorkload : IDisposable
         sample.Skinned = skinned;
         sample.Evaluated = evaluated;
         sample.Certified = certified;
-        var points = scene.CoveragePointMatricesForTests;
         for (int i = 0; i < models.Length; i++)
         {
             if (!accepted[i]) continue;
-            var outcome = scene.GetCoverageOutcome(frames[i]);
-            if (outcome.Presentation == CoveragePresentation.Covered) sample.Covered++;
+            // The frozen decision is readable even after a late disposal, when the public accessors refuse the owner.
+            var outcome = scene.CoverageOutcomeForTests(frames[i]);
+            if (outcome.Presentation == CoveragePresentation.Covered)
+            {
+                sample.Covered++;
+                lastCovered = i;
+            }
             else
             {
                 sample.Fallback++;
                 fallbacks[(int)outcome.Failure.Code]++;
                 FirstFallback ??= outcome.Failure;
             }
-            var passes = scene.CoveragePassesForTests(frames[i]);
-            sample.Passes += passes.Length;
-            foreach (ref readonly var pass in passes)
-                foreach (ref readonly var face in points)
-                    if (pass.ViewProjection == face) { sample.PointFacePasses++; break; }
+            retained = frames[i].Preparation;
+            if (!scene.CoverageFrameCurrentForTests(frames[i])) continue;
+            sample.Passes += scene.CoveragePassesForTests(frames[i]).Length;
+            if (measured)
+            {
+                int[] roles = frames[i].Preparation!.PassRoles;
+                for (int r = 0; r < roles.Length; r++)
+                {
+                    roleTotals[r] += roles[r];
+                    roleMin[r] = Math.Min(roleMin[r], roles[r]);
+                    roleMax[r] = Math.Max(roleMax[r], roles[r]);
+                }
+                roleActorFrames++;
+            }
             if (scene.CoverageMainVisibleForTests(frames[i])) sample.MainVisible++;
             if (observed is null) observed = CoverageCostGeometry.Observe(frames[i].Preparation!.Owner.Topology, geometry.Commands.Length);
-            lastAccepted = i;
         }
         sample.OutlineGroups = scene.TargetOutlineGroupsRenderedForTests;
         sample.Stats = scene.LastFrameStats;
         sample.PassTimings = scene.PassTimingsMs;
+        if (measured)
+        {
+            measuredFrames++;
+            pointFaceMatrices += scene.CoveragePointMatricesForTests.Length;
+            outlineGroups += sample.OutlineGroups;
+        }
+    }
+
+    /// <summary>Certified contexts are what render certification captured and checked for each preparation, by
+    /// role. Recorded counts are what the encoder scheduled. Neither is proof of GPU execution on the recording device.</summary>
+    internal IReadOnlyList<CoverageCostMetric> ReadEvidence()
+    {
+        string[] roles = ["main", "motion", "outline", "cascade", "pointFace"];
+        string recorded = executesOnGpu ? "recorded and submitted to the native device" : "recorded into a null command list, not executed on a GPU";
+        var result = new List<CoverageCostMetric>();
+        for (int owner = 0; owner < 2; owner++)
+            for (int r = 0; r < roles.Length; r++)
+            {
+                int index = owner * CoveragePreparation.EquipmentRoleOffset + r;
+                string name = $"certifiedContext.{(owner == 0 ? "host" : "equipment")}.{roles[r]}";
+                if (roleActorFrames == 0)
+                {
+                    var status = coverage ? CoverageCostStatus.Unavailable : CoverageCostStatus.NotApplicable;
+                    string reason = coverage ? "no accepted measured actor frame" : "coverage is off";
+                    result.Add(CoverageCostMetric.Missing(name + ".total", "count", status, reason));
+                    result.Add(CoverageCostMetric.Missing(name + ".minPerActorFrame", "count", status, reason));
+                    result.Add(CoverageCostMetric.Missing(name + ".maxPerActorFrame", "count", status, reason));
+                    continue;
+                }
+                const string Provenance = "render certification contexts tagged by role at capture over measured accepted actor frames, not GPU work";
+                result.Add(CoverageCostMetric.Measured(name + ".total", "count", roleTotals[index], Provenance));
+                result.Add(CoverageCostMetric.Measured(name + ".minPerActorFrame", "count", roleMin[index], Provenance));
+                result.Add(CoverageCostMetric.Measured(name + ".maxPerActorFrame", "count", roleMax[index], Provenance));
+            }
+        result.Add(CoverageCostMetric.Measured("evidence.certifiedActorFrames", "count", roleActorFrames, "measured accepted actor frames"));
+        result.Add(CoverageCostMetric.Measured("recorded.pointFaceMatrices", "count", pointFaceMatrices,
+            $"point shadow face matrices scheduled over {measuredFrames} measured frames, {recorded}"));
+        result.Add(CoverageCostMetric.Measured("recorded.outlineGroups", "count", outlineGroups,
+            $"target outline groups rendered over {measuredFrames} measured frames, {recorded}"));
+        return result;
     }
 
     /// <summary>Capacities after the last frame. Storage only grows, so these are the peaks the run observed.</summary>
@@ -248,33 +322,43 @@ internal sealed class CoverageCostWorkload : IDisposable
     {
         const string Peak = "read after the last frame, storage only grows";
         var result = new List<CoverageCostMetric>();
-        if (lastAccepted >= 0 && accepted[lastAccepted])
+        if (retained is { } p)
         {
-            var frame = frames[lastAccepted];
-            var p = frame.Preparation!;
+            // The preparation object is actor-owned and outlives its frame, so its capacities stay readable. A frame
+            // token is only read below when it is current and Covered.
             var scratch = p.Owner.Scratch;
             int vertex = Unsafe.SizeOf<ModelVertex>();
-            result.Add(CoverageCostMetric.Measured("actor.scratch.vertices", "elements", scratch.VertexCapacity, Peak));
-            result.Add(CoverageCostMetric.Measured("actor.scratch.triangles", "elements", scratch.TriangleCapacity, Peak));
-            result.Add(CoverageCostMetric.Measured("actor.preparation.posed", "elements", p.Posed.Length, Peak));
-            result.Add(CoverageCostMetric.Measured("actor.preparation.before", "elements", p.Before.Length, Peak));
-            result.Add(CoverageCostMetric.Measured("actor.preparation.candidate", "elements", p.Candidate.Length, Peak));
-            result.Add(CoverageCostMetric.Measured("actor.preparation.passes", "elements", p.Passes.Capacity, Peak));
+            const string Retained = "from the last accepted preparation, actor-owned storage that only grows";
+            result.Add(CoverageCostMetric.Measured("actor.scratch.vertices", "elements", scratch.VertexCapacity, Retained));
+            result.Add(CoverageCostMetric.Measured("actor.scratch.triangles", "elements", scratch.TriangleCapacity, Retained));
+            result.Add(CoverageCostMetric.Measured("actor.preparation.posed", "elements", p.Posed.Length, Retained));
+            result.Add(CoverageCostMetric.Measured("actor.preparation.before", "elements", p.Before.Length, Retained));
+            result.Add(CoverageCostMetric.Measured("actor.preparation.candidate", "elements", p.Candidate.Length, Retained));
+            result.Add(CoverageCostMetric.Measured("actor.preparation.passes", "elements", p.Passes.Capacity, Retained));
             double surfaces = (p.Posed.Length + p.Before.Length + p.Candidate.Length + scratch.Staged.Length + scratch.Before.Length
                 + scratch.After.Length) * (double)vertex;
             result.Add(CoverageCostMetric.Estimated("actor.surfaces.bytesEstimated", "bytes", surfaces,
                 $"six ModelVertex arrays times {vertex} bytes, excluding object headers and smaller scratch arrays"));
             result.Add(CoverageCostMetric.Estimated("actors.surfaces.bytesEstimated", "bytes", surfaces * bindings.Length,
                 "actor.surfaces.bytesEstimated times the covered actor count"));
-            var slice = scene.CoverageSliceForTests(frame, 0);
-            result.Add(CoverageCostMetric.Measured("shared.cpuSkinnedVertexBuffer.bytes", "bytes", slice.Vertices.SizeInBytes, Peak));
         }
         else
         {
-            foreach (string name in new[] { "actor.scratch.vertices", "actor.surfaces.bytesEstimated", "shared.cpuSkinnedVertexBuffer.bytes" })
-                result.Add(CoverageCostMetric.Missing(name, "elements", coverage ? CoverageCostStatus.Unavailable : CoverageCostStatus.NotApplicable,
-                    coverage ? "no accepted covered actor in the last frame" : "coverage is off"));
+            var status = coverage ? CoverageCostStatus.Unavailable : CoverageCostStatus.NotApplicable;
+            string reason = coverage ? "no preparation was accepted" : "coverage is off";
+            result.Add(CoverageCostMetric.Missing("actor.scratch.vertices", "elements", status, reason));
+            result.Add(CoverageCostMetric.Missing("actor.surfaces.bytesEstimated", "bytes", status, reason));
         }
+        // The CPU skinned vertex buffer is reached through a covered slice, so only a current Covered token is read.
+        if (lastCovered >= 0 && scene.CoverageFrameCurrentForTests(frames[lastCovered])
+            && scene.GetCoverageOutcome(frames[lastCovered]).Presentation == CoveragePresentation.Covered)
+            result.Add(CoverageCostMetric.Measured("shared.cpuSkinnedVertexBuffer.bytes", "bytes",
+                scene.CoverageSliceForTests(frames[lastCovered], 0).Vertices.SizeInBytes, Peak));
+        else
+            result.Add(CoverageCostMetric.Missing("shared.cpuSkinnedVertexBuffer.bytes", "bytes",
+                coverage ? CoverageCostStatus.Unavailable : CoverageCostStatus.NotApplicable,
+                !coverage ? "coverage is off" : lastCovered >= 0 ? "stale: the covered preparation's frame is no longer current"
+                    : "no current Covered preparation in the last frame"));
         var arena = scene.CoverageArenaCapacityForTests;
         result.Add(CoverageCostMetric.Measured("shared.arena.preparations", "elements", arena.Preparations, Peak));
         result.Add(CoverageCostMetric.Measured("shared.arena.equipmentStages", "elements", arena.EquipmentStages, Peak));
@@ -306,6 +390,13 @@ internal sealed class CoverageCostWorkload : IDisposable
             case CoverageStageSpan.Skinning: skinTicks += now - skinStart; skinned++; break;
             case CoverageStageSpan.GeometryEvaluation when entering: geometryStart = now; break;
             case CoverageStageSpan.GeometryEvaluation: geometryTicks += now - geometryStart; evaluated++; break;
+            case CoverageStageSpan.GeometryCertification when entering: geometryCertificationStart = now; break;
+            case CoverageStageSpan.GeometryCertification:
+                geometryCertificationTicks += now - geometryCertificationStart; geometryCertified++; break;
+            case CoverageStageSpan.OrdinarySkinning when entering: ordinaryStart = now; break;
+            case CoverageStageSpan.OrdinarySkinning: ordinaryTicks += now - ordinaryStart; break;
+            case CoverageStageSpan.SkinnedUpload when entering: uploadStart = now; break;
+            case CoverageStageSpan.SkinnedUpload: uploadTicks += now - uploadStart; break;
             case CoverageStageSpan.RenderCertification when entering: certificationStart = now; break;
             case CoverageStageSpan.RenderCertification: certificationTicks += now - certificationStart; certified++; break;
         }

@@ -44,6 +44,9 @@ internal sealed class CoverageEquipmentStage
     }
 }
 
+/// <summary>The render role of one captured coverage certification context.</summary>
+internal enum CoveragePassRole { Main, Motion, Outline, Cascade, PointFace }
+
 internal sealed class CoveragePreparation
 {
     internal readonly SkinnedHostConformer Owner;
@@ -52,6 +55,10 @@ internal sealed class CoveragePreparation
     internal readonly CoverageCommandPose[] Commands = new CoverageCommandPose[CoverageScratch.MaxCommands];
     internal readonly CoverageEquipmentStage[] Equipment = new CoverageEquipmentStage[CoverageScratch.MaxCommands];
     internal readonly List<CoverageRenderPass> Passes = new();
+    /// <summary>Captured certification contexts by role, host roles first, then equipment roles at
+    /// <see cref="EquipmentRoleOffset"/>. Tagged at capture, so aliased matrices never merge two roles.</summary>
+    internal readonly int[] PassRoles = new int[2 * EquipmentRoleOffset];
+    internal const int EquipmentRoleOffset = 5;
     internal readonly SkinnedInstanceDraw?[] Draws, Outlines;
     internal readonly int[] BaseVertices;
     internal ulong Generation, Id, View;

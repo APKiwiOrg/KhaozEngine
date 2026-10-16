@@ -38,7 +38,7 @@ internal sealed class CoverageCostNativeSession : ICoverageCostSession
         commands = factory.CreateCommandList();
         scene = new Scene3D(gpu.GpuDevice, target.Outputs) { RenderOrigin = System.Numerics.Vector3.Zero };
         workload = new CoverageCostWorkload(scene, CoverageCostGeometry.Build(manifest.Fixture), manifest.Actors, manifest.Coverage,
-            manifest.GpuSkinning, manifest.Passes, this.clock);
+            manifest.GpuSkinning, manifest.Passes, this.clock, executesOnGpu: true);
         Info = new(gpu.Selection.Backend.ToString(), gpu.AdapterDescription, adapterClass, workload.Camera, workload.Light,
             workload.Layout + $", {Width} x {Height} display target",
             "Stopwatch ticks, Scene3D.EnableTiming on, coverage stage, resolution and surface observers installed", workload.Topology);
@@ -46,6 +46,7 @@ internal sealed class CoverageCostNativeSession : ICoverageCostSession
 
     public bool Synthetic => false;
     public bool NativeDevice => true;
+    public bool ObservesOrdinarySkinning => true;
     public CoverageCostSessionInfo Info { get; private set; }
 
     internal static ICoverageCostSession Open(CoverageCostManifest manifest, CoverageCostClock clock)
@@ -92,7 +93,7 @@ internal sealed class CoverageCostNativeSession : ICoverageCostSession
         gpu.GpuDevice.Present();
         sample.EncodeTicks = submitted - encode;
         sample.SubmitWaitTicks = drained - submitted;
-        workload.Collect(ref sample);
+        workload.Collect(ref sample, measured);
         sample.FrameTicks = clock() - start;
         sample.FrameBytes = GC.GetAllocatedBytesForCurrentThread() - bytes;
         // The conformer's own topology is observed once a preparation is accepted.
@@ -101,6 +102,7 @@ internal sealed class CoverageCostNativeSession : ICoverageCostSession
 
     public IReadOnlyList<CoverageCostMetric> ReadCapacities() => workload.ReadCapacities();
     public IReadOnlyList<KeyValuePair<string, int>> ReadRefusals() => workload.ReadRefusals();
+    public IReadOnlyList<CoverageCostMetric> ReadEvidence() => workload.ReadEvidence();
 
     public void Dispose()
     {

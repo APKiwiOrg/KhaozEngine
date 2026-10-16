@@ -9,10 +9,11 @@ internal sealed record CoverageTargetReadback(int Width, int Height, int Channel
     internal int SourceRow { get; init; } = -1;
 }
 
-/// <summary>Disjoint CPU stages inside coverage staging and render resolution, for optional cost attribution.
-/// GeometryEvaluation is the whole evaluator call: construction, interpolation, geometry certification and normals.
-/// RenderCertification is the late per-preparation validation only, nested inside the render resolution.</summary>
-internal enum CoverageStageSpan { Skinning, GeometryEvaluation, RenderCertification }
+/// <summary>CPU stages for optional cost attribution. GeometryEvaluation is the whole evaluator call and contains
+/// GeometryCertification (each CoverageCertification.Certify call). RenderCertification is the late validation only,
+/// nested inside render resolution. OrdinarySkinning is the uncovered skinned draw loop, CPU vertex skinning or GPU
+/// draw records, and SkinnedUpload the shared skinned frame uploads after it. The last two follow surface append.</summary>
+internal enum CoverageStageSpan { Skinning, GeometryEvaluation, GeometryCertification, RenderCertification, OrdinarySkinning, SkinnedUpload }
 
 public sealed partial class Scene3D
 {
@@ -23,6 +24,11 @@ public sealed partial class Scene3D
     internal Action<CoverageStageSpan, bool>? CoverageStageObserverForTests { get; set; }
     internal (int Preparations, int EquipmentStages) CoverageArenaCapacityForTests =>
         (_coverageArena.Preparations.Capacity, _coverageArena.Equipment.Capacity);
+    /// <summary>Uncovered source vertices skinned on the CPU route in the last skinned preparation.</summary>
+    internal int OrdinaryCpuSkinnedVerticesForTests { get; private set; }
+    /// <summary>True only while the token's frame, scene and host are current, so diagnostics never read stale state.</summary>
+    internal bool CoverageFrameCurrentForTests(SkinnedCoverageFrame frame) =>
+        TryFrozenCoverage(frame, out var p) && !_coverageDisposed && !p.Owner.Disposed && CoverageHostLive(p);
     internal ReadOnlySpan<System.Numerics.Matrix4x4> CoveragePointMatricesForTests =>
         CollectionsMarshal.AsSpan(_coveragePointMatrices);
     internal bool CoverageMainVisibleForTests(SkinnedCoverageFrame frame)

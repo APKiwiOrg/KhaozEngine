@@ -1,8 +1,11 @@
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using KhaozEngine.Attachments;
 using KhaozEngine.Render3D;
 using SharpGLTF.Geometry;
@@ -23,6 +26,8 @@ namespace KhaozEngine.Tests.Gpu;
 /// (50 triangles each) refined at level 4. Only cells clear of a region's boundary ring are refined, so protected
 /// neighbours take conforming splits. One rigid equipment part carries a plate per region, attached to the root,
 /// with a four-triangle inward support sheet each. Fixed caps, clearance and recession limits are the engine's own.
+/// No vertex has a fractional strength, so these fixtures never exercise fractional collar evaluation. The existing
+/// coverage fixtures cover that.
 /// </summary>
 internal sealed class CoverageCostGeometry
 {
@@ -89,7 +94,30 @@ internal sealed class CoverageCostGeometry
         topology.Source.Materials.Count,
         string.Join(',', topology.Map.Refinement.Select(r => r.Level).Distinct().Order()
             .Select(l => l.ToString(System.Globalization.CultureInfo.InvariantCulture))),
-        topology.Map.Regions.Count);
+        topology.Map.Regions.Count, Fingerprint(topology));
+
+    // SHA-256 over the map's semantic hash, the source positions, the refined indices and every refined vertex record.
+    static string Fingerprint(CoverageRefinement topology)
+    {
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        hash.AppendData(System.Text.Encoding.UTF8.GetBytes(HostCoverageMapJson.SemanticSha256(topology.Map)));
+        hash.AppendData(MemoryMarshal.AsBytes(topology.Source.Positions));
+        hash.AppendData(MemoryMarshal.AsBytes(topology.Indices));
+        Span<byte> record = stackalloc byte[32];
+        foreach (var v in topology.Vertices)
+        {
+            BinaryPrimitives.WriteInt32LittleEndian(record, v.A);
+            BinaryPrimitives.WriteInt32LittleEndian(record[4..], v.B);
+            BinaryPrimitives.WriteInt32LittleEndian(record[8..], v.C);
+            BinaryPrimitives.WriteInt32LittleEndian(record[12..], v.Denominator);
+            BinaryPrimitives.WriteInt32LittleEndian(record[16..], v.PositionGroup);
+            BinaryPrimitives.WriteInt32LittleEndian(record[20..], v.ShadingGroup);
+            BinaryPrimitives.WriteInt32LittleEndian(record[24..], v.RegionIndex);
+            BinaryPrimitives.WriteSingleLittleEndian(record[28..], v.Strength);
+            hash.AppendData(record);
+        }
+        return Convert.ToHexStringLower(hash.GetHashAndReset());
+    }
 
     internal static Skeleton CreateSkeleton() => new([-1, 0], [JointPose.Identity, JointPose.Identity], [0, 1], [0, 1], ["root", "hip"]);
 

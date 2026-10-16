@@ -10,8 +10,9 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Gpu;
 
-// Manifest, report and driver accounting through a fake session and clock. Nothing here opens a device, renders a
-// frame or reads elapsed time, so the contract stays checkable in every ordinary test run.
+// Manifest, report and driver accounting through fake sessions and a fake clock. Nothing here opens a device, builds
+// a cost fixture, renders a frame or reads elapsed time. Real recording-session behaviour is checked once, bounded,
+// in CoverageCostFixtureTests.
 public sealed class CoverageCostContractTests
 {
     internal const string Valid = """
@@ -127,7 +128,7 @@ public sealed class CoverageCostContractTests
     [Fact]
     public void Recording_device_reports_submission_and_gpu_time_as_unavailable()
     {
-        var session = new FakeSession { NativeDevice = false };
+        var session = new CoverageCostFakeSession { NativeDevice = false };
         var report = CoverageCostDriver.Run(Bytes(With("\"backend\": \"vulkan-native\"", "\"backend\": \"recording-cpu\"")),
             (_, _) => session, FakeClock());
         Assert.Equal(CoverageCostRunStatus.Completed, report.Status);
@@ -137,25 +138,6 @@ public sealed class CoverageCostContractTests
         Assert.Equal(12, report.Span("prepare.total").Mean);
         Assert.Contains("\"backend\": \"recording-cpu\"", report.ToJson(), StringComparison.Ordinal);
         AssertMissingIsNull(report.ToJson());
-    }
-
-    [Fact]
-    public void Recording_session_runs_the_real_workload_with_a_fake_clock_as_a_synthetic_report()
-    {
-        string json = Valid.Replace("\"backend\": \"vulkan-native\"", "\"backend\": \"recording-cpu\"", StringComparison.Ordinal)
-            .Replace("\"actors\": 32", "\"actors\": 1", StringComparison.Ordinal)
-            .Replace("\"passes\": \"full\"", "\"passes\": \"colour-only\"", StringComparison.Ordinal)
-            .Replace("\"warmupFrames\": 4", "\"warmupFrames\": 2", StringComparison.Ordinal)
-            .Replace("\"measuredFrames\": 3", "\"measuredFrames\": 1", StringComparison.Ordinal);
-        var report = CoverageCostDriver.Run(Bytes(json), CoverageCostRecordingSession.Open, FakeClock());
-        Assert.True(report.Status == CoverageCostRunStatus.Completed, report.Reason);
-        Assert.True(report.Synthetic);
-        Assert.Equal("recording", report.Session!.AdapterClass);
-        Assert.Equal(2000, report.Session.Topology.SourceTriangles);
-        Assert.Equal(1, report.Metric("outcome.covered").Value);
-        Assert.Equal(0, report.Metric("outcome.declined").Value);
-        Assert.Equal(CoverageCostStatus.Unavailable, report.Span("submitWait.wall").Status);
-        Assert.All(report.Budgets, b => Assert.Equal(CoverageCostBudgetStatus.Unproved, b.Status));
     }
 
     [Fact]
@@ -174,7 +156,7 @@ public sealed class CoverageCostContractTests
     {
         int sessions = 0;
         string unauthorized = With("\"identity\": \"unit-test-only\"", "\"identity\": \"\"");
-        var report = CoverageCostDriver.Run(Bytes(unauthorized), (_, _) => { sessions++; return new FakeSession(); }, FakeClock());
+        var report = CoverageCostDriver.Run(Bytes(unauthorized), (_, _) => { sessions++; return new CoverageCostFakeSession(); }, FakeClock());
         Assert.Equal(0, sessions);
         Assert.Equal(CoverageCostRunStatus.Refused, report.Status);
         Assert.Contains("authorization", report.Reason, StringComparison.OrdinalIgnoreCase);
@@ -185,7 +167,7 @@ public sealed class CoverageCostContractTests
     [Fact]
     public void Session_refusal_is_reported_before_any_frame()
     {
-        var session = new FakeSession();
+        var session = new CoverageCostFakeSession();
         var report = CoverageCostDriver.Run(Bytes(Valid), (_, _) => throw new CoverageCostRefusedException("software adapter"), FakeClock());
         Assert.Equal(CoverageCostRunStatus.Refused, report.Status);
         Assert.Contains("software adapter", report.Reason, StringComparison.Ordinal);
@@ -195,7 +177,7 @@ public sealed class CoverageCostContractTests
     [Fact]
     public void Nested_spans_are_derived_without_double_counting()
     {
-        var session = new FakeSession();
+        var session = new CoverageCostFakeSession();
         var report = CoverageCostDriver.Run(Bytes(Valid), (_, _) => session, FakeClock());
         Assert.Equal(CoverageCostRunStatus.Completed, report.Status);
         Assert.True(report.Synthetic);
@@ -206,14 +188,19 @@ public sealed class CoverageCostContractTests
         Assert.Equal(12, report.Span("prepare.total").Mean);
         Assert.Equal(3, report.Span("prepare.skinning").Mean);
         Assert.Equal(4, report.Span("prepare.geometryEvaluation").Mean);
+        Assert.Equal(1, report.Span("prepare.geometryCertification").Mean);
+        Assert.Equal(3, report.Span("prepare.geometryConstruction").Mean);
+        Assert.Equal(CoverageCostStatus.Derived, report.Span("prepare.geometryConstruction").Status);
         Assert.Equal(5, report.Span("prepare.other").Mean);
         Assert.Equal(CoverageCostStatus.Derived, report.Span("prepare.other").Status);
         Assert.Equal(9, report.Span("encode.resolution").Mean);
         Assert.Equal(2, report.Span("encode.renderCertification").Mean);
         Assert.Equal(7, report.Span("encode.resolutionOther").Mean);
         Assert.Equal(1, report.Span("encode.surfaceAppend").Mean);
-        Assert.Equal(20, report.Span("encode.other").P50);
-        Assert.Equal(22, report.Span("encode.other").Max);
+        Assert.Equal(0, report.Span("encode.ordinarySkinning").Mean);
+        Assert.Equal(1, report.Span("encode.skinnedUpload").Mean);
+        Assert.Equal(19, report.Span("encode.other").P50);
+        Assert.Equal(21, report.Span("encode.other").Max);
         Assert.Equal(40, report.Span("submitWait.wall").Mean);
         Assert.Equal(new double?[] { 30, 30, 32 }, new[] { report.Span("encode.total").Min, report.Span("encode.total").P50,
             report.Span("encode.total").Max });
@@ -224,6 +211,7 @@ public sealed class CoverageCostContractTests
         Assert.Null(gpu.Value);
         // Every actor frame stays in the denominators, declines and fallbacks included.
         Assert.Equal(3 * 32, report.Metric("outcome.actorFrames").Value);
+        Assert.Equal(0, report.Metric("ordinary.cpuSkinnedVertices").Value);
         Assert.Equal(3 * 31, report.Metric("outcome.accepted").Value);
         Assert.Equal(3, report.Metric("outcome.declined").Value);
         Assert.Equal(3 * 30, report.Metric("outcome.covered").Value);
@@ -233,6 +221,8 @@ public sealed class CoverageCostContractTests
         Assert.Equal(96, report.Metric("upload.partitioned.bytesPerFrame").Value);
         Assert.Equal(0, report.Metric("alloc.prepareSubmit.bytesPerFrame").Value);
         Assert.Contains(report.Capacities, c => c.Name == "actor.scratch.vertices" && c.Status == CoverageCostStatus.Measured);
+        Assert.Contains(report.Evidence, e => e.Name == "certifiedContext.host.main.total");
+        Assert.Equal(4, report.Span("warmup.frame.wall").Samples);
 
         string json = report.ToJson();
         using var document = JsonDocument.Parse(json);
@@ -274,55 +264,52 @@ public sealed class CoverageCostContractTests
     [Fact]
     public void Coverage_off_reports_unobserved_baseline_stages_as_unavailable_not_zero()
     {
-        var session = new FakeSession { Coverage = false };
+        var session = new CoverageCostFakeSession { Coverage = false };
         var report = CoverageCostDriver.Run(Bytes(With("\"coverage\": \"on\"", "\"coverage\": \"off\"")), (_, _) => session, FakeClock());
         Assert.Equal(CoverageCostRunStatus.Completed, report.Status);
-        foreach (string name in new[] { "prepare.skinning", "prepare.geometryEvaluation", "encode.renderCertification" })
+        Assert.Equal(2, report.Span("encode.ordinarySkinning").Mean);
+        Assert.Equal(CoverageCostStatus.Measured, report.Span("encode.ordinarySkinning").Status);
+        Assert.Equal(3 * 1092 * 32, report.Metric("ordinary.cpuSkinnedVertices").Value);
+        foreach (string name in new[] { "prepare.skinning", "prepare.geometryEvaluation", "prepare.geometryCertification",
+            "encode.renderCertification" })
         {
             Assert.Equal(CoverageCostStatus.NotApplicable, report.Span(name).Status);
             Assert.Null(report.Span(name).Mean);
         }
-        var baseline = report.Metric("baseline.skinning");
-        Assert.Equal(CoverageCostStatus.Unavailable, baseline.Status);
-        Assert.Null(baseline.Value);
+        // A session that cannot observe the ordinary route reports it unavailable, never as a measured zero.
+        var blind = CoverageCostDriver.Run(Bytes(With("\"coverage\": \"on\"", "\"coverage\": \"off\"")),
+            (_, _) => new CoverageCostFakeSession { Coverage = false, ObservesOrdinarySkinning = false }, FakeClock());
+        Assert.Equal(CoverageCostStatus.Unavailable, blind.Span("encode.ordinarySkinning").Status);
+        Assert.Null(blind.Span("encode.ordinarySkinning").Mean);
         Assert.Equal(12, report.Span("prepare.total").Mean);
         AssertMissingIsNull(report.ToJson());
     }
 
     [Fact]
-    public void Budgets_cannot_pass_without_measured_native_inputs()
-    {
-        string off = With("\"coverage\": \"on\"", "\"coverage\": \"off\"");
-        var syntheticOn = CoverageCostDriver.Run(Bytes(Valid), (_, _) => new FakeSession(), FakeClock());
-        var syntheticOff = CoverageCostDriver.Run(Bytes(off), (_, _) => new FakeSession { Coverage = false }, FakeClock());
-        Assert.All(syntheticOn.Budgets, b => Assert.Equal(CoverageCostBudgetStatus.Unproved, b.Status));
-        Assert.Equal(CoverageCostBudgetStatus.Unproved, CoverageCostBudgets.TypicalAddedCpu(syntheticOn, syntheticOff).Status);
-        var gpu = CoverageCostBudgets.NativeGpuOverhead(syntheticOn, syntheticOff);
-        Assert.Equal(CoverageCostBudgetStatus.Unproved, gpu.Status);
-        Assert.Null(gpu.Observed);
-
-        // The comparison arithmetic itself, on non-synthetic fake numbers. A native GPU budget stays unproved even then.
-        var on = CoverageCostDriver.Run(Bytes(Valid), (_, _) => new FakeSession { Synthetic = false }, FakeClock());
-        var cheap = CoverageCostDriver.Run(Bytes(off), (_, _) => new FakeSession { Synthetic = false, Coverage = false, PrepareTicks = 11 }, FakeClock());
-        var dear = CoverageCostDriver.Run(Bytes(off), (_, _) => new FakeSession { Synthetic = false, Coverage = false, PrepareTicks = 1 }, FakeClock());
-        Assert.Equal((CoverageCostBudgetStatus.Pass, 1d), (CoverageCostBudgets.TypicalAddedCpu(on, cheap).Status, CoverageCostBudgets.TypicalAddedCpu(on, cheap).Observed!.Value));
-        Assert.Equal(CoverageCostBudgetStatus.Fail, CoverageCostBudgets.TypicalAddedCpu(on, dear).Status);
-        Assert.Equal(CoverageCostBudgetStatus.Unproved, CoverageCostBudgets.NativeGpuOverhead(on, cheap).Status);
-        var limit = CoverageCostDriver.Run(Bytes(Valid.Replace("\"fixture\": \"typical\"", "\"fixture\": \"limit\"")),
-            (_, _) => new FakeSession { Synthetic = false }, FakeClock());
-        Assert.Equal(CoverageCostBudgetStatus.Unproved, CoverageCostBudgets.TypicalAddedCpu(limit, cheap).Status);
-    }
-
-    [Fact]
     public void Frame_limit_stops_the_run_with_partial_counts()
     {
-        var session = new FakeSession { SlowFrame = 1 };
+        var session = new CoverageCostFakeSession { SlowFrame = 1 };
         var report = CoverageCostDriver.Run(Bytes(Valid), (_, _) => session, FakeClock());
         Assert.Equal(CoverageCostRunStatus.Failed, report.Status);
         Assert.Contains("maxFrameMilliseconds", report.Reason, StringComparison.Ordinal);
+        Assert.Contains("measured frame 1 took 51 ms", report.Reason, StringComparison.Ordinal);
         Assert.Equal(2, report.MeasuredFrames);
         Assert.Equal(2 * 32, report.Metric("outcome.actorFrames").Value);
         Assert.True(session.Disposed);
+    }
+
+    [Fact]
+    public void Warm_up_limit_reports_the_observed_time_and_warm_up_samples()
+    {
+        var report = CoverageCostDriver.Run(Bytes(Valid), (_, _) => new CoverageCostFakeSession { SlowFrame = -3 }, FakeClock());
+        Assert.Equal(CoverageCostRunStatus.Failed, report.Status);
+        Assert.Contains("warm-up frame 1 took 51 ms, above limits.maxFrameMilliseconds 50 ms", report.Reason, StringComparison.Ordinal);
+        Assert.Equal(0, report.MeasuredFrames);
+        var warm = report.Span("warmup.frame.wall");
+        Assert.Equal((CoverageCostStatus.Measured, 2, 51d), (warm.Status, warm.Samples, warm.Max!.Value));
+        Assert.Equal(50, report.Metric("limit.maxFrameMilliseconds").Value);
+        Assert.Equal(CoverageCostStatus.Measured, report.Metric("run.elapsedMilliseconds").Status);
+        Assert.Equal(CoverageCostStatus.Unavailable, report.Span("prepare.total").Status);
     }
 
     [Fact]
@@ -330,21 +317,62 @@ public sealed class CoverageCostContractTests
     {
         long now = 0;
         var clock = new CoverageCostClock(() => now += 20_000, 1000);
-        var report = CoverageCostDriver.Run(Bytes(Valid), (_, _) => new FakeSession(), clock);
+        var report = CoverageCostDriver.Run(Bytes(Valid), (_, _) => new CoverageCostFakeSession(), clock);
         Assert.Equal(CoverageCostRunStatus.Failed, report.Status);
-        Assert.Contains("maxWallSeconds", report.Reason, StringComparison.Ordinal);
+        Assert.Contains("above limits.maxWallSeconds 60 s", report.Reason, StringComparison.Ordinal);
+        Assert.Contains("elapsed 80 s after warm-up frame 3", report.Reason, StringComparison.Ordinal);
     }
 
     [Fact]
     public void Session_errors_fail_the_report_and_keep_counted_frames()
     {
-        var session = new FakeSession { ThrowAt = 5 };
+        var session = new CoverageCostFakeSession { ThrowAt = 5 };
         var report = CoverageCostDriver.Run(Bytes(Valid), (_, _) => session, FakeClock());
         Assert.Equal(CoverageCostRunStatus.Failed, report.Status);
-        Assert.Contains(nameof(InvalidOperationException), report.Reason, StringComparison.Ordinal);
+        Assert.Contains("measured frame 1 failed: InvalidOperationException", report.Reason, StringComparison.Ordinal);
         Assert.Equal(1, report.MeasuredFrames);
         Assert.Equal(1, report.Metric("outcome.errors").Value);
         Assert.True(session.Disposed);
+    }
+
+    [Fact]
+    public void Factory_failure_is_a_failed_report_with_its_cause()
+    {
+        var report = CoverageCostDriver.Run(Bytes(Valid), (_, _) => throw new InvalidOperationException("equipment was refused"), FakeClock());
+        Assert.Equal(CoverageCostRunStatus.Failed, report.Status);
+        Assert.Contains("InvalidOperationException: equipment was refused", report.Reason, StringComparison.Ordinal);
+        Assert.Equal(0, report.MeasuredFrames);
+        Assert.Contains("\"status\": \"failed\"", report.ToJson(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Secondary_diagnostic_and_cleanup_failures_never_replace_the_first_failure()
+    {
+        var session = new CoverageCostFakeSession { ThrowAt = 5, ThrowDiagnostics = true, ThrowDispose = true };
+        var report = CoverageCostDriver.Run(Bytes(Valid), (_, _) => session, FakeClock());
+        Assert.Equal(CoverageCostRunStatus.Failed, report.Status);
+        Assert.StartsWith("measured frame 1 failed: InvalidOperationException: fake failure", report.Reason, StringComparison.Ordinal);
+        Assert.Contains("capacity read failed", report.Reason, StringComparison.Ordinal);
+        Assert.Contains("dispose failed", report.Reason, StringComparison.Ordinal);
+        Assert.True(session.Disposed);
+        Assert.Contains(report.Capacities, c => c.Status == CoverageCostStatus.Unavailable && c.Provenance.Contains("capacity read failed", StringComparison.Ordinal));
+        Assert.Contains(report.Evidence, c => c.Status == CoverageCostStatus.Unavailable);
+        Assert.Equal(1, report.Metric("outcome.errors").Value);
+        using var json = JsonDocument.Parse(report.ToJson());
+        Assert.Equal("failed", json.RootElement.GetProperty("status").GetString());
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void Diagnostic_or_cleanup_failure_alone_fails_an_otherwise_complete_run(bool diagnostics, bool dispose)
+    {
+        var report = CoverageCostDriver.Run(Bytes(Valid), (_, _) => new CoverageCostFakeSession
+        { AllCovered = true, ThrowDiagnostics = diagnostics, ThrowDispose = dispose }, FakeClock());
+        Assert.Equal(CoverageCostRunStatus.Failed, report.Status);
+        Assert.Contains(diagnostics ? "diagnostics failed" : "cleanup failed", report.Reason, StringComparison.Ordinal);
+        Assert.Equal(3, report.MeasuredFrames);
+        Assert.All(report.Budgets, b => Assert.Equal(CoverageCostBudgetStatus.Unproved, b.Status));
     }
 
     [Fact]
@@ -380,60 +408,5 @@ public sealed class CoverageCostContractTests
     static string RepoRoot([CallerFilePath] string path = "") =>
         Path.GetFullPath(Path.Combine(Path.GetDirectoryName(path)!, "..", ".."));
 
-    static CoverageCostClock FakeClock()
-    {
-        long now = 0;
-        return new CoverageCostClock(() => ++now, 1000);
-    }
-
-    // One tick is one millisecond. Each measured frame reports fixed spans, the third a little slower to encode.
-    internal sealed class FakeSession : ICoverageCostSession
-    {
-        internal bool Coverage { get; init; } = true;
-        internal bool Synthetic { get; init; } = true;
-        internal long PrepareTicks { get; init; } = 12;
-        internal int SlowFrame { get; init; } = -1;
-        internal bool NativeDevice { get; init; } = true;
-        bool ICoverageCostSession.NativeDevice => NativeDevice;
-        internal int ThrowAt { get; init; } = -1;
-        internal int Frames { get; private set; }
-        internal bool Disposed { get; private set; }
-        bool ICoverageCostSession.Synthetic => Synthetic;
-        public CoverageCostSessionInfo Info => new("VulkanNative", "fake adapter", "unclassified",
-            "camera", "light", "layout", "timing", new CoverageCostTopology(2121, 2000, 200, 96, 2900, 2600, 2, 2, "2", 2));
-        public void Frame(bool measured, ref CoverageCostFrameSample sample)
-        {
-            int frame = Frames++;
-            if (frame == ThrowAt) throw new InvalidOperationException("fake failure");
-            int measuredIndex = frame - 4;
-            sample.PrepareTicks = PrepareTicks;
-            sample.SkinningTicks = Coverage ? 3 : 0;
-            sample.GeometryTicks = Coverage ? 4 : 0;
-            sample.SubmissionTicks = 2;
-            sample.ReserveTicks = 1;
-            sample.EncodeTicks = measuredIndex == 2 ? 32 : 30;
-            sample.ResolutionTicks = 9;
-            sample.CertificationTicks = Coverage ? 2 : 0;
-            sample.SurfaceTicks = 1;
-            sample.SubmitWaitTicks = 40;
-            sample.FrameTicks = measuredIndex >= 0 && measuredIndex == SlowFrame ? 51 : 49;
-            sample.ActorFrames = 32;
-            sample.Accepted = Coverage ? 31 : 0;
-            sample.Declined = Coverage ? 1 : 0;
-            sample.Covered = Coverage ? 30 : 0;
-            sample.Fallback = Coverage ? 1 : 0;
-            sample.Skinned = sample.Evaluated = sample.Accepted;
-            sample.Certified = sample.Covered + sample.Fallback;
-            sample.Passes = 10;
-            sample.Stats.DrawCalls = 7;
-            sample.Stats.Triangles = 5000;
-            sample.Stats.AddSkinnedUpload(64);
-            sample.Stats.AddInstanceUpload(32);
-        }
-        public IReadOnlyList<CoverageCostMetric> ReadCapacities() =>
-            [CoverageCostMetric.Measured("actor.scratch.vertices", "elements", 2900, "fake")];
-        public IReadOnlyList<KeyValuePair<string, int>> ReadRefusals() =>
-            Coverage ? [new("decline:CapacityExceeded", 2), new("decline:IdentityMismatch", 1), new("fallback:UnsupportedTransform", 3)] : [];
-        public void Dispose() => Disposed = true;
-    }
+    static CoverageCostClock FakeClock() => CoverageCostFakes.Clock();
 }

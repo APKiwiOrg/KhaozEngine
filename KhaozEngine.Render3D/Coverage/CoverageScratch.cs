@@ -63,6 +63,8 @@ public sealed class CoverageScratch
     /// <summary>Command indices sorted by command ID, so results never depend on submission order.</summary>
     internal int[] Order { get; }
     internal int ActiveCommands { get; set; }
+    /// <summary>Optional cost observation of geometry certification, null in ordinary use.</summary>
+    internal Action<CoverageStageSpan, bool>? StageObserver { get; set; }
     internal CoverageRefitBvh Tree { get; }
 
     int stamp;

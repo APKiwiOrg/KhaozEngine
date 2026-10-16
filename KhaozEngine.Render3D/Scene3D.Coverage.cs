@@ -85,6 +85,7 @@ public sealed partial class Scene3D
         ReadOnlySpan<SkinnedVertex> source = conformer.Topology.Source.SkinVertices;
         for (int i = 0; i < source.Length; i++) p.Posed[i] = SkinningMath.SkinVertex(source[i], composed[..palette.Length]);
         CoverageStageObserverForTests?.Invoke(CoverageStageSpan.Skinning, false);
+        conformer.Scratch.StageObserver = CoverageStageObserverForTests;
         CoverageStageObserverForTests?.Invoke(CoverageStageSpan.GeometryEvaluation, true);
         bool evaluated = CoverageEvaluator.TryEvaluateGeometry(conformer.Topology, p.Posed, model, commands, conformer.Scratch,
             p.Candidate, out failure);
@@ -100,7 +101,7 @@ public sealed partial class Scene3D
         p.Model = model; p.Actor = actor; p.CommandCount = commands.Length;
         commands.CopyTo(p.Commands);
         p.Generation = _coverageArena.Generation; p.Id = ++_coverageArena.NextPreparation; p.View = 0;
-        p.Outcome = default; p.Certificate = default; p.Passes.Clear(); p.Sphere = default; p.SphereView = 0;
+        p.Outcome = default; p.Certificate = default; p.Passes.Clear(); Array.Clear(p.PassRoles); p.Sphere = default; p.SphereView = 0;
         Array.Clear(p.Draws); Array.Clear(p.Outlines);
         conformer.Actor = actor;
         _coverageArena.Preparations.Add(p);

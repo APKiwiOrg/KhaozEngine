@@ -10,9 +10,10 @@ using Xunit.Abstractions;
 namespace KhaozEngine.Tests.CoverageCost;
 
 /// <summary>
-/// The only caller of <see cref="CoverageCostHarness.Measure"/>. Each row is one owner-authorized manifest committed
-/// under authorized/ and named after its case. With no committed manifest the theory is skipped, so this project
-/// measures nothing until approval exists. A process measures exactly one case, selected by an exact filter.
+/// The only caller of <see cref="CoverageCostHarness.MeasureUnit"/>. Each row is one owner-authorized file committed
+/// under authorized/ and named after its case or paired unit. A paired unit runs its two conditions in order in this
+/// process. With no committed file the theory is skipped, so this project measures nothing until approval exists. A
+/// process measures exactly one selected unit, chosen by an exact filter.
 /// </summary>
 public sealed class CoverageCostTests(ITestOutputHelper output)
 {
@@ -25,18 +26,16 @@ public sealed class CoverageCostTests(ITestOutputHelper output)
     public void Measure_authorized_case(string name)
     {
         if (Interlocked.Increment(ref started) > 1)
-            throw new InvalidOperationException("Select exactly one authorized case per run with an exact test filter.");
-        var manifest = CoverageCostManifest.Parse(File.ReadAllBytes(Path.Combine(CoverageCostTheoryAttribute.Folder, name + ".json")));
-        Assert.Equal(name, manifest.Case);
-        var report = CoverageCostHarness.Measure(manifest);
-        string json = report.ToJson();
+            throw new InvalidOperationException("Select exactly one authorized unit per run with an exact test filter.");
+        var (json, completed, reason) = CoverageCostHarness.MeasureUnit(
+            File.ReadAllBytes(Path.Combine(CoverageCostTheoryAttribute.Folder, name + ".json")), name);
         output.WriteLine(json);
         Console.WriteLine(json);
         string folder = Environment.GetEnvironmentVariable("KE_COVERAGE_COST_REPORTS") is { Length: > 0 } configured
             ? configured : Path.Combine(AppContext.BaseDirectory, "coverage-cost-reports");
         Directory.CreateDirectory(folder);
-        File.WriteAllText(Path.Combine(folder, $"{manifest.Case}-{DateTime.UtcNow:yyyyMMddTHHmmssfffZ}.json"), json);
-        Assert.True(report.Status == CoverageCostRunStatus.Completed, report.Reason);
+        File.WriteAllText(Path.Combine(folder, $"{name}-{DateTime.UtcNow:yyyyMMddTHHmmssfffZ}.json"), json);
+        Assert.True(completed, reason);
     }
 }
 

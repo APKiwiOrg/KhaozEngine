@@ -41,36 +41,45 @@ internal sealed class CoverageCostRecordingScene : IDisposable
 /// The CPU-only measurement target for a hosted CPU runner with no GPU driver. The engine's real preparation,
 /// certification, resolution and recording code runs against the recording device. Nothing is submitted, so
 /// Submit plus WaitForIdle and every GPU metric are unavailable, and encode time is recording into a null command
-/// list rather than a native backend encode. Reports are synthetic unless the clock is the Stopwatch clock.
+/// list rather than a native backend encode. Reports are synthetic when the clock is not the Stopwatch clock, and
+/// measurements otherwise, labelled as recording-device CPU work.
 /// </summary>
 internal sealed class CoverageCostRecordingSession : ICoverageCostSession
 {
     internal const int Width = CoverageCostNativeSession.Width, Height = CoverageCostNativeSession.Height;
-    readonly CoverageCostRecordingScene scene = new(Width, Height);
+    readonly CoverageCostRecordingScene scene;
     readonly CoverageCostWorkload workload;
     readonly Func<long> clock;
+    readonly int width, height;
     int frame;
 
-    CoverageCostRecordingSession(CoverageCostManifest manifest, CoverageCostClock clock)
+    CoverageCostRecordingSession(CoverageCostManifest manifest, CoverageCostClock clock, int width, int height)
     {
         this.clock = clock.Now;
+        this.width = width; this.height = height;
+        scene = new(width, height);
         Synthetic = !ReferenceEquals(clock, CoverageCostClock.Stopwatch);
         workload = new CoverageCostWorkload(scene.Scene, CoverageCostGeometry.Build(manifest.Fixture), manifest.Actors, manifest.Coverage,
             manifest.GpuSkinning, manifest.Passes, this.clock);
         Info = new("recording-cpu", "none", "recording", workload.Camera, workload.Light,
-            workload.Layout + $", {Width} x {Height} display target",
+            workload.Layout + $", {width} x {height} display target",
             (Synthetic ? "injected test clock" : "Stopwatch ticks")
             + ", Scene3D.EnableTiming on, coverage stage, resolution and surface observers installed, no GPU", workload.Topology);
     }
 
     public bool Synthetic { get; }
     public bool NativeDevice => false;
+    public bool ObservesOrdinarySkinning => true;
     public CoverageCostSessionInfo Info { get; private set; }
 
-    internal static ICoverageCostSession Open(CoverageCostManifest manifest, CoverageCostClock clock)
+    internal static ICoverageCostSession Open(CoverageCostManifest manifest, CoverageCostClock clock) =>
+        Open(manifest, clock, Width, Height);
+
+    /// <summary>A smaller display target keeps bounded functional tests cheap. Measurements use the default size.</summary>
+    internal static ICoverageCostSession Open(CoverageCostManifest manifest, CoverageCostClock clock, int width, int height)
     {
         if (!manifest.Recording) throw new ArgumentException("A recording session needs the recording-cpu device.", nameof(manifest));
-        return new CoverageCostRecordingSession(manifest, clock);
+        return new CoverageCostRecordingSession(manifest, clock, width, height);
     }
 
     public void Frame(bool measured, ref CoverageCostFrameSample sample)
@@ -78,11 +87,11 @@ internal sealed class CoverageCostRecordingSession : ICoverageCostSession
         long bytes = GC.GetAllocatedBytesForCurrentThread();
         long start = clock();
         workload.Submit(frame++, ref sample);
-        workload.Reserve(Width, Height, ref sample);
+        workload.Reserve(width, height, ref sample);
         long encode = clock();
         scene.Render();
         sample.EncodeTicks = clock() - encode;
-        workload.Collect(ref sample);
+        workload.Collect(ref sample, measured);
         sample.FrameTicks = clock() - start;
         sample.FrameBytes = GC.GetAllocatedBytesForCurrentThread() - bytes;
         if (frame == 1) Info = Info with { Topology = workload.Topology };
@@ -90,6 +99,7 @@ internal sealed class CoverageCostRecordingSession : ICoverageCostSession
 
     public IReadOnlyList<CoverageCostMetric> ReadCapacities() => workload.ReadCapacities();
     public IReadOnlyList<KeyValuePair<string, int>> ReadRefusals() => workload.ReadRefusals();
+    public IReadOnlyList<CoverageCostMetric> ReadEvidence() => workload.ReadEvidence();
 
     public void Dispose()
     {

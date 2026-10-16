@@ -11,6 +11,7 @@ using System.Text.Json.Serialization.Metadata;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Water;
+using KhaozEngine.MapDoc.Markers;
 
 namespace KhaozEngine.MapDoc.Prefabs;
 
@@ -115,6 +116,41 @@ internal static class MapPrefabJson
         Markers.MapMarkerValidation.Require(marker);
         return marker;
     }
+    /// <summary>A closed exhaustive adoption choice array. Reject malformed rows and repeated source keys before
+    /// constructing a dictionary, so no JSON member or source record silently wins over another.</summary>
+    internal static IReadOnlyDictionary<MapLegacySpawnKey, MapMarkerAdoptionChoice> ReadMarkerAdoption(string json)
+    {
+        JsonElement value = ReadText<JsonElement>(json);
+        RequireNonNull(value);
+        var rows = Read<MarkerAdoptionRow[]>(value);
+        var keys = new HashSet<MapLegacySpawnKey>();
+        foreach (var row in rows)
+        {
+            if (string.IsNullOrWhiteSpace(row.Id) || string.IsNullOrWhiteSpace(row.MarkerId) ||
+                string.IsNullOrWhiteSpace(row.Name) || string.IsNullOrWhiteSpace(row.Role))
+                throw new MapDocumentException("spawns_adopt requires a source ID, marker ID, name and role.");
+            if (!keys.Add(new(row.Kind, row.Id))) throw new MapDocumentException($"Duplicate spawns_adopt source {row.Kind} '{row.Id}'.");
+            if ((row.Height.ExplicitY is null) == (row.Height.SupportBinding is null) ||
+                row.Height.ExplicitY is { } y && !float.IsFinite(y) || row.YawRadians is { } yaw && !float.IsFinite(yaw))
+                throw new MapDocumentException("spawns_adopt requires exactly one finite explicitY or supportBinding, and a finite optional yawRadians.");
+        }
+        return rows.ToDictionary(r => new MapLegacySpawnKey(r.Kind, r.Id),
+            r => new MapMarkerAdoptionChoice(r.MarkerId, r.Name, r.Role, new(r.Height.ExplicitY, r.Height.SupportBinding), r.YawRadians));
+
+        static void RequireNonNull(JsonElement element)
+        {
+            if (element.ValueKind == JsonValueKind.Null) throw new MapDocumentException("spawns_adopt choices must not contain explicit nulls.");
+            if (element.ValueKind == JsonValueKind.Object)
+                foreach (var property in element.EnumerateObject()) RequireNonNull(property.Value);
+            else if (element.ValueKind == JsonValueKind.Array)
+                foreach (var item in element.EnumerateArray()) RequireNonNull(item);
+        }
+    }
+    sealed record MarkerAdoptionRow(MapLegacySpawnKind Kind, string Id, string MarkerId, string Name, string Role,
+        MarkerAdoptionHeight Height, float? YawRadians = null);
+    sealed record MarkerAdoptionHeight(float? ExplicitY = null,
+        [property: JsonConverter(typeof(MarkerBindingConverter))] MapSupportBinding? SupportBinding = null);
+
     static T ReadText<T>(string json)
     {
         ArgumentNullException.ThrowIfNull(json);

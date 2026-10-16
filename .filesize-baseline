@@ -39,7 +39,7 @@
 2141 KhaozEngine.MapEditor.Tests/MapEditor/EditorCommandsTests.cs
 1808 KhaozEngine.MapEditor.Tests/MapEditor/EditorToolTests.cs
 1632 KhaozEngine.Render.Tests/Gpu/GoldenSnapshotTests.cs
-1450 KhaozEngine.MapEdit.Tool/MutationService.cs
+1310 KhaozEngine.MapEdit.Tool/MutationService.cs
 1300 KhaozEngine.Showcase/Room2DGui.cs
 1017 KhaozEngine.MapEditor/EditorTool.cs
 1006 KhaozEngine.Updates/UpdateApplier.cs

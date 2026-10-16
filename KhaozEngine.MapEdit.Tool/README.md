@@ -202,6 +202,21 @@ at all. A document with neither building intent nor prefabs returns an empty lis
 (1, 1) native document refuses `marker_set` and `marker_remove` and names resolver adoption through
 `MapResolverAdoption.ConvertToAuthoredSupport` as the prerequisite.
 
+`spawns_adopt(choicesJson)` calls `MutationService.SpawnsAdopt` through the shared `AdoptSpawnsCommand`. It returns
+`MapPrefabMutationResult` with `Mutation.Verb` `spawns_adopt`, `WorldChanged` false and the shared marker effects.
+Undo and redo use `prefab_undo` and `prefab_redo`. The closed JSON array gives exactly one row for every source in
+both legacy lists. Each row has `kind` (`Spawn` or `PlayerSpawn`), `id`, `markerId`, `name`, `role`, `height` and
+optional `yawRadians`. Height is either `{"explicitY":12.25}` or `{"supportBinding":{"kind":"Surface","surfaceId":"floor"}}`.
+Space bindings use the same closed shape as marker_set. Unknown or duplicate fields, explicit nulls and duplicate
+source keys refuse before constructing the choice dictionary. Destination IDs and names must be distinct, and IDs
+cannot reuse live markers or retained reservations. NPC yaw defaults to 0 and player yaw is copied unless chosen.
+
+Both legacy lists clear together only after every marker and its support validates. Old native lists still load,
+save and survive unrelated edits. Every native legacy spawn mutation, element duplication and generic callback
+that changes either list refuses with marker and adoption guidance. Only the accepted adoption command and its
+exact undo restoration can change those lists. Resolver (1, 1) requires resolver adoption first. The eleven analytic
+`spawn_*` and `player_spawn_*` verbs keep their released behavior.
+
 ## Native colliders
 
 `NativeCollisionService(session)` measures and edits the colliders of the open native document. It is a service
@@ -331,7 +346,7 @@ GPU with a scatter-free document (flat terrain and a single marker placement), a
 to 1.4 s (the higher figure includes first device start-up) and a capped 2 km square about 0.9 s. A document with
 dense scatter layers pays for every scattered prop inside the widened ring as well, so expect longer renders.
 
-## Verb surface (95 tools)
+## Verb surface (96 tools)
 
 | Group | Verbs |
 |---|---|
@@ -348,7 +363,7 @@ dense scatter layers pays for every scattered prop inside the widened ring as we
 | Renders | `render_topdown`, `render_view` |
 | Prefabs | `prefab_open`, `prefab_edit`, `prefab_save`, `prefab_extract`, `prefab_place`, `prefab_list`, `prefab_override`, `prefab_unpack`, `prefab_undo`, `prefab_redo` |
 | Interiors | `interior_volume_add`, `interior_volume_set`, `interior_volume_remove`, `roof_link_set` |
-| Markers | `marker_set`, `marker_remove`, `marker_list` |
+| Markers | `marker_set`, `marker_remove`, `marker_list`, `spawns_adopt` |
 
 `scatter_override_rename(index, name?)` renames the scatter override at `index`, a null or empty name
 clearing it back to unnamed. `scatter_override_reorder(fromIndex, toIndex)` moves a scatter override

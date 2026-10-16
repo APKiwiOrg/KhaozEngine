@@ -954,6 +954,19 @@ ID and any rename row with no bounds or invalidation, and a spatial edit adds bo
 The generic resource combination keeps these narrow effects. `AffectsWorld` is false, since markers never change the
 terrain field. Inspector widgets and the native editor host remain R9 work.
 
+`AdoptSpawnsCommand(choices)` publishes `BuildingIntent` and both legacy spawn lists atomically as one history entry.
+Its choices are the exhaustive `MapMarkerAdoption` choices. It captures accepted before and after documents, so undo
+restores the exact legacy records and redo restores the same destination IDs and height modes. Failed preparation or
+publication consumes no command state. Marker effects use the same complete before/after diff as other native commands.
+
+Legacy native spawn commands refuse with `marker_set`, `marker_remove` and `spawns_adopt` guidance. Resolver (1, 1)
+also names resolver adoption through `MapResolverAdoption.ConvertToAuthoredSupport` as the prerequisite. Analytic
+spawn commands retain their released behavior. Native transactions compare canonical legacy-list bytes during
+staging and again as the first publication step, including undo and redo. Only the adoption command can obtain a
+permit for its exact captured transition. Generic snapshots and a `LegacySpawns` write-set flag cannot obtain one.
+The tool session checks before hooks and checkpoints, and refuses callback list changes after staging, including
+in-place edits to shared records and edits to an unshared callback list.
+
 Native publication has two internal modes. Focused commands project their named write sets before
 validation, so unlisted edits cannot leak or satisfy dependencies. Complete snapshot commands clone and
 validate every semantic root and publish the captured document with its matching closure. Both stage

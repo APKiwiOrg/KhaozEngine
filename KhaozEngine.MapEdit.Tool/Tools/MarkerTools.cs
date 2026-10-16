@@ -13,6 +13,12 @@ namespace KhaozEngine.MapEdit.Tools;
 [McpServerToolType]
 public sealed class MarkerTools(MutationService mutation, QueryService query)
 {
+    [McpServerTool(Name = "spawns_adopt"), Description("Explicitly adopts both native legacy spawn lists as markers in one undoable command. " +
+        "choicesJson is a closed exhaustive array of {kind,id,markerId,name,role,height,yawRadians?}. kind is Spawn or PlayerSpawn. " +
+        "height is {explicitY} or {supportBinding}, with an explicit Surface or Space marker binding. Resolver (1, 1) requires resolver adoption first.")]
+    public MapPrefabMutationResult SpawnsAdopt(string choicesJson) =>
+        ToolGuard.Guard(() => mutation.SpawnsAdopt(MapPrefabJson.ReadMarkerAdoption(choicesJson)));
+
     [McpServerTool(Name = "marker_set"), Description("Sets one standalone marker by its immutable ID, creating it when absent. markerJson is one closed " +
         "local marker in world terms: payload 1, or payload 2 with heightMode Explicit (Position.Y is the height) or Support (supportBinding and Position.Y 0). " +
         "The name is an editable member, never a key. A framed standalone marker stores the frame-local equivalent. A live prefab marker refuses, use prefab_override.")]

@@ -736,6 +736,19 @@ the marker and any rename row with no bounds and no invalidation. A spatial edit
 Markers never add Physics, Nav or Unbounded. The write set names the building intent, plus the resource frames or
 prefab transfers only when a removal changed them.
 
+`MapMarkerAdoption.ConvertSpawns(document, choices)` adopts both legacy lists on a detached, complete resolver-2
+native document. Choices are keyed by `MapLegacySpawnKey(Kind, Id)`, where `Kind` is `Spawn` or `PlayerSpawn`, so the
+same source ID in both lists stays distinct. Every source needs a `MapMarkerAdoptionChoice(MarkerId, Name, Role,
+Height, YawRadians?)` and extra choices refuse. Destinations must be distinct and cannot reuse live or retained
+marker IDs. Each `MapMarkerHeight` explicitly chooses Y or a support binding. The pure conversion encodes the height
+without sampling support. Bound command preparation validates the complete closure, names and support before acceptance.
+
+Adoption preserves XZ, enabled state, ordered tags and the NPC archetype. Without an explicit yaw choice, NPC yaw is
+0 and player yaw is copied. Both source lists clear only after every conversion succeeds. Partial and analytic
+documents refuse. Resolver (1, 1) requires `MapResolverAdoption.ConvertToAuthoredSupport` first. Old native legacy lists
+still load and save, but native editing changes them only through adoption and its exact captured undo restoration.
+`MapNativeWriteSet.LegacySpawns` publishes both lists together and does not itself authorize a legacy-list change.
+
 ## Public synthetic village acceptance
 
 `PrefabFixtures.Village()` in `MapDoc.Tests/Prefabs/PrefabVillageFixtures.cs` is invented public data.
@@ -758,7 +771,7 @@ verified bytes and separately loaded documents. They supply headless acceptance 
 
 | Later owner | Remaining proof |
 | --- | --- |
-| R6 | Legacy spawn adoption, consumer readouts and window anchors. Unique names, the registry, rectangle lookup, role findings, typed views, marker commands and marker wire parity are in place |
+| R6 | Consumer readouts and window anchors. Unique names, the registry, rectangle lookup, role findings, typed views, marker commands, legacy spawn adoption and the native legacy-list fence are in place |
 | R7 | Distribution and foliage exclusions over effective canonical paint owners |
 | R8 | Partial-face drawing, roof colour and shadows, camera boom, sky picking, local-light pixels, bounded streaming, eviction, HLOD and on-demand navigation |
 | R9 and #1349 | GUI closure/bounds binding, prefab mode, inspectors and real pointer/key input |

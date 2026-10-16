@@ -34,6 +34,7 @@ internal sealed record NativeStagedPublication(MapDocument Candidate, MapNativeW
 {
     /// <summary>The candidate's complete expansion against <see cref="Assets"/>, when staging built one.</summary>
     internal Lazy<MapEffectiveResources>? Expansion { get; init; }
+    internal NativeLegacySpawnPermit? LegacySpawns { get; init; }
 }
 
 /// <summary>Validates and publishes exactly one native document write set.</summary>
@@ -57,6 +58,7 @@ internal static class NativeDocumentTransaction
 
     internal static void Publish(MapDocument document, NativeStagedPublication staged)
     {
+        NativeLegacySpawnAdmission.RequireAdmitted(document, staged.Candidate, staged.LegacySpawns);
         if (staged.Mode == MapNativePublicationMode.CompleteSnapshot) NativeDocumentSnapshot.Publish(document, staged.Candidate);
         else NativeDocumentSnapshot.PublishWriteSet(document, staged.Candidate, staged.WriteSet);
         // Only an expansion already built during staging is a snapshot of what was published. Anything else clears it.
@@ -71,6 +73,7 @@ internal static class NativeDocumentTransaction
         ArgumentNullException.ThrowIfNull(document);
         if (document.Tiles is { IsPartial: true })
             throw new MapDocumentException("Native editing requires a complete document, not a windowed document.");
+        NativeLegacySpawnAdmission.RequireMarkerCommand(document, command);
         MapAssetClosure? selected = command is INativeAssetClosureCommand closures ? closures.Closure(undo) : assets;
         if (command is INativeBoundDocumentCommand && selected is null)
             throw new MapDocumentException("Prefab editing requires a verified asset closure.");
@@ -78,8 +81,10 @@ internal static class NativeDocumentTransaction
             throw new MapDocumentException("Native editing requires an explicit asset closure binding.");
         registry ??= MapDocRegistry.CreateDefault();
         MapDocument candidate = NativeDocumentSnapshot.Clone(document, registry);
+        NativeLegacySpawnPermit? permit = null;
         NativeDocumentPreparation preparation = command switch
         {
+            AdoptSpawnsCommand adoption => adoption.PrepareAdoption(candidate, undo, selected!, out permit),
             INativeBoundDocumentCommand bound => bound.Prepare(candidate, undo, selected!),
             TerrainEditCommand terrain => terrain.Prepare(candidate, undo, selected, registry),
             INativeDocumentCommand native => native.Prepare(candidate, undo),
@@ -93,6 +98,9 @@ internal static class NativeDocumentTransaction
             publication = NativeDocumentSnapshot.Clone(document, registry);
             NativeDocumentSnapshot.PublishWriteSet(publication, candidate, preparation.WriteSet);
         }
+        if (permit is not null && (permit.BeforeLists != NativeLegacySpawnAdmission.Canonical(document) ||
+            permit.AfterLists != NativeLegacySpawnAdmission.Canonical(publication))) permit = null;
+        NativeLegacySpawnAdmission.RequireAdmitted(document, publication, permit);
         if (localOnly) MapBoundDocumentValidation.ValidateLocal(publication, registry);
         else MapBoundDocumentValidation.Validate(publication, selected!, registry);
         var beforeAssets = command is INativeAssetClosureCommand pair ? pair.Closure(!undo) : assets;
@@ -114,7 +122,7 @@ internal static class NativeDocumentTransaction
             document, publication, beforeAssets, selected, preparation.WriteSet, preparation.Mode, expandedBefore, expanded);
         if (expandedBefore is not null && expanded is not null && (HoldsMarkers(document) || HoldsMarkers(publication)))
             effects = MarkerEffects(effects, expandedBefore, expanded);
-        return new(publication, preparation.WriteSet, preparation.Mode, selected, effects, preparation.Accept) { Expansion = expanded };
+        return new(publication, preparation.WriteSet, preparation.Mode, selected, effects, preparation.Accept) { Expansion = expanded, LegacySpawns = permit };
     }
 
     static bool HoldsMarkers(MapDocument document) => document.Prefabs is not null || document.BuildingIntent is { Markers.Count: > 0 };

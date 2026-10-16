@@ -53,8 +53,8 @@ public sealed partial class MapEditSession
         _nativeHistory.Registry = registry;
         var staged = _nativeHistory.StageExecute(_doc!, command);
         NativeDocumentTransaction.Publish(document, staged);
-        _pendingNative = staged;
         _pendingNativeStamp = (SemanticHash(staged.Candidate), staged.Candidate.Tiles);
+        _pendingNative = staged;
         return staged.Effects;
     }
     internal MapNativeEditEffects ExecuteNativeCommand(EditorCommand command) => Mutate((doc, registry) =>
@@ -88,6 +88,8 @@ public sealed partial class MapEditSession
         {
             T result = fn(candidate, _registry);
             var staged = _pendingNative;
+            if (staged is not null) NativeLegacySpawnAdmission.RequireAdmitted(staged.Candidate, candidate, null);
+            NativeLegacySpawnAdmission.RequireAdmitted(_doc!, staged?.Candidate ?? candidate, staged?.LegacySpawns);
             string published = SemanticHash(staged?.Candidate ?? candidate);
             if (SemanticHash(before) == published) return result;
             // fn can still edit the candidate it shares with a publication it staged. Only then is that publication
@@ -97,8 +99,8 @@ public sealed partial class MapEditSession
             // native assets and resolver identity, and every patch digest. It nulls Tiles, the storage index, which
             // expansion never reads beyond refusing a partial document. The Tiles reference is compared as well, so a
             // swapped index still counts as a change.
-            bool editedAfterStaging = staged is not null && _pendingNativeStamp is { } stamp &&
-                (stamp.Hash != published || !ReferenceEquals(stamp.Tiles, staged.Candidate.Tiles));
+            bool editedAfterStaging = staged is not null && (_pendingNativeStamp is not { } stamp ||
+                stamp.Hash != published || !ReferenceEquals(stamp.Tiles, staged.Candidate.Tiles));
             if (staged is null)
             {
                 var effects = new MapNativeEditEffects(null, null, [], [], [], [],
@@ -116,6 +118,7 @@ public sealed partial class MapEditSession
     MapNativeEditEffects PublishNative(NativeStagedPublication staged, Action? checkpoint = null, bool worldChanged = true,
         bool editedAfterStaging = false)
     {
+        NativeLegacySpawnAdmission.RequireAdmitted(_doc!, staged.Candidate, staged.LegacySpawns);
         if (editedAfterStaging)
         {
             MapBoundDocumentValidation.Validate(staged.Candidate, staged.Assets!, _registry);

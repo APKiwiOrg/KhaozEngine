@@ -6456,6 +6456,8 @@ carry no scale track, or it is refused before it is sampled. `BaseLocal` is the 
 `BaseWorld`, `ParentBaseInverse` and `BodyAlignment` return a contract joint's base model frame, the inverse of its
 parent's, and the rotation that takes its base orientation back out. They refuse a node outside the contract
 rather than return a zero matrix. `Node` resolves any named node and `Bone` its skin bone.
+The alignment's homogeneous component is exactly one, including when general inversion rounds it for oblique
+base axes. External attachment matrices still require an exact affine column.
 
 `ClipRefusals` words a skin loader's clip refusals one way, naming the clip, the rule and the joint. `Only` throws
 on a second clip of one name. The other checks return null for a clean clip and a message otherwise, so a loader

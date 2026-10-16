@@ -7,6 +7,9 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 21.1.0
 
+- Keep rigid attachment body alignments exactly affine when general inversion rounds their homogeneous
+  component on x64. Oblique base axes compose without rejecting a valid attachment world. External matrix
+  validation remains strict, and the alignment's other fifteen elements retain their existing values.
 - Add nested async-flow overrides through `LocalizationContext.Use`, `Log.Use` and `GuiTheme.Use`.
   Reads select the innermost scope, then the current process default. Disposal restores the enclosing
   scope without disposing borrowed catalogs or shutting down log managers.

@@ -14,7 +14,9 @@ public sealed record TileWorldIssue(string Code, string Message, RegionCoord? Re
 /// <c>region.planeCount</c>, <c>material.missing</c>, <c>overlay.shape</c>, <c>archetype.missing</c>,
 /// <c>object.plane</c>, <c>object.footprint</c>, <c>object.duplicateId</c>, <c>object.region</c>,
 /// <c>marker.plane</c>, <c>marker.duplicateName</c>, <c>marker.region</c>,
-/// <c>foliage.archetype</c>, <c>foliage.underlay</c>, <c>material.steep</c>.</summary>
+/// <c>foliage.archetype</c>, <c>foliage.underlay</c>, <c>material.steep</c>. The clearance codes
+/// <c>clearance.overlap</c>, <c>clearance.mesh</c> and <c>clearance.rule</c> share this issue type but come only from
+/// <see cref="TileWorldClearance.Check"/>, never from <see cref="Validate"/>, which has no meshes to read.</summary>
 public static class TileWorldValidator
 {
     /// <summary>Every issue in the document, header first and then region by region in a stable order.</summary>

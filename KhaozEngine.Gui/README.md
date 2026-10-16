@@ -869,7 +869,8 @@ chat.Draw(batch, white);
     - `Add(window, band)`, `Remove`, `BringToFront` and `Order` manage registration and order.
     - `Update(pointer, input, dt, receivesInput)` updates the windows and leaves their areas occluded and
       reserved with `BlockRegion` for the layers beneath.
-    - `Draw(batch, pointer)` mirrors the last update's occlusion per window and clears occlusion at the end.
+    - `Draw(batch, pointer)` occludes the open windows above each window, mirrors the last update's capture
+      and no-input modes, and clears occlusion at the end.
     - `Covers(point)` reports whether an open window lies under a point.
     - `CloseFront()` closes the top-most open window that closes on Escape.
     - `WindowBand` is `Docked`, `Floating` or `Topmost`, bottom to top. No window rises above a higher band.

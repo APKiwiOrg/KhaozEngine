@@ -22,7 +22,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - Add `Pointer.IsRightPressOriginFresh`, the right-button twin of `IsPressOriginFresh`, a same-frame right tap
   included.
 - `WindowDrag` now latches its grab through `Pointer.IsDragStartIn`, so an occluded press origin never grabs
-  and only the front window under a press can move. A single window behaves as before.
+  and on a `WindowStack` only the front window under a press can move. Windows without a stack still need
+  their caller to order them. A single window behaves as before.
 - `SlotGrid` drops, `GuiDragContext.OfferTargetIn`, `TreeView` drop positions, `ScrollablePanel` drag edge
   scroll, `PropertyGrid` hover, `WorldMapView` hover, `GuiSurface.HoverCaptured` and `DraggableBottomSheet`
   presses now honour occlusion. Their behaviour with nothing occluded is unchanged. See the

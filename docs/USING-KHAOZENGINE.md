@@ -1987,9 +1987,12 @@ docked panel whose tab strip and body are separate rects. `WindowUpdate` carries
   captor wins.
 - **No input.** `Update(..., receivesInput: false)` still updates every open window, with the whole surface
   occluded and `ReceivesInput` false. Read no keyboard input on such a frame, the `Screen.Update` contract.
-- **Draw.** Before each window the stack re-applies the occlusion the last `Update` gave it, so a draw-time
-  hover read such as a lit close square agrees with the update. After a capture frame the captor draws with
-  nothing occluded and the rest fully occluded, and after a no-input frame every window draws fully occluded.
+- **Draw.** Before each window the stack re-applies the occluders of the open windows above it, so a
+  draw-time hover read such as a lit close square normally agrees with the update. It mirrors the last
+  `Update`'s mode: after a capture frame the captor draws with nothing occluded and the rest fully occluded,
+  and after a no-input frame every window draws fully occluded. Occluders come from the order and open state
+  at draw time, so for one frame they can differ from the update, for example when a window closed during its
+  own update or a window was raised between `Update` and `Draw`.
 - **Escape and hit tests.** `CloseFront()` closes the top-most open window that closes on Escape, searching
   `Topmost`, then `Floating`, then `Docked`, and reports whether it closed one. `Covers(point)` is true over
   any open window. A closed window stays registered and is skipped by update, draw, `Covers` and `CloseFront`.
@@ -2011,7 +2014,8 @@ _windows.Add(_bank);
 _windows.Add(_debugMenu, WindowBand.Topmost);
 
 // Update: after Pointer.Update, before the world reads the pointer.
-bool escapeSpent = input.WasPressed(Key.Escape) && _windows.CloseFront();
+// Escape goes to the stack only on a frame it receives input, so one press never closes an overlay and a window.
+bool escapeSpent = !overlayOpen && input.WasPressed(Key.Escape) && _windows.CloseFront();
 _windows.Update(pointer, input, dt, receivesInput: !overlayOpen);
 UpdateWorld(pointer);   // windows are occluded and blocked here
 

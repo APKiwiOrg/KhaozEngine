@@ -13,7 +13,7 @@ namespace KhaozEngine.Tests.Render3D;
 
 internal sealed class CoverageSceneFixture : IDisposable
 {
-    readonly CoverageCaptureDevice device = new();
+    readonly CoverageCaptureDevice device;
     readonly UniformBufferTrackingGpuDevice tracker;
     internal RecordingGpuCommandList Record { get; private set; } = null!;
     internal FakeGpuResourceFactory Factory => (FakeGpuResourceFactory)device.Factory;
@@ -35,8 +35,9 @@ internal sealed class CoverageSceneFixture : IDisposable
     public ModelVertex[] Expected { get; }
     public ModelVertex[] Posed => data.Posed;
 
-    public CoverageSceneFixture(bool seams = false)
+    public CoverageSceneFixture(bool seams = false, GpuBackendKind backend = GpuBackendKind.Vulkan)
     {
+        device = new(backend);
         data = CoverageFixture.CurvedPanel(seams: seams, level: 2);
         tracker = new(device);
         targetTexture = tracker.Factory.CreateTexture(GpuTextureDescription.Texture2D(32, 24,
@@ -88,31 +89,35 @@ internal sealed class CoverageSceneFixture : IDisposable
 
     CoverageCommandPose[] Commands() => CoverageCommands.Poses(data, conformer.Topology, support, Matrix4x4.Identity);
     public void Begin() => Scene.Begin();
-    public SkinnedCoverageFrame Stage()
+    public SkinnedCoverageFrame Stage(Matrix4x4? model = null, ulong instance = 1, float weight = 1)
     {
-        Assert.True(Scene.TryStageCoverageEquipment(MotionKey.From(10), 1, 1, support,
-            [new RigidInstanceDraw(equipment, Matrix4x4.Identity)], stagedEquipment, out var failure), failure.ToString());
-        Assert.True(conformer.TryPrepare(Palette, Matrix4x4.Identity, Commands(), MotionKey.From(10),
+        Matrix4x4 world = model ?? Matrix4x4.Identity;
+        var commands = Commands();
+        for (int i = 0; i < commands.Length; i++) commands[i] = commands[i] with
+        { EquipmentInstanceId = instance, EquipmentWorld = world, CoverageWorld = support.CoverageLocal * world, TransitionWeight = weight };
+        Assert.True(Scene.TryStageCoverageEquipment(MotionKey.From(10), 1, instance, support,
+            [new RigidInstanceDraw(equipment, world)], stagedEquipment, out var failure), failure.ToString());
+        Assert.True(conformer.TryPrepare(Palette, world, commands, MotionKey.From(10),
             CoverageFallback.UncoveredCurrentPose, out var frame, out failure), failure.ToString());
         Assert.Equal(CoveragePresentation.Pending, Scene.GetCoverageOutcome(frame).Presentation);
         return frame;
     }
     public SkinnedInstanceDraw HostDraw(SkinnedCoverageFrame frame, bool shadowOnly = false, int slice = 0) =>
-        new(Host[slice], Matrix4x4.Identity) { Coverage = frame, Motion = MotionKey.From(10), ShadowOnly = shadowOnly };
+        new(Host[slice], frame.Preparation?.Model ?? Matrix4x4.Identity) { Coverage = frame, Motion = MotionKey.From(10), ShadowOnly = shadowOnly };
     public SkinnedInstanceDraw UncoveredDraw() => new(uncovered, Matrix4x4.CreateTranslation(2, 0, 0));
     public void SubmitEquipment() => Scene.Draw(stagedEquipment[0]);
     public void Outline(SkinnedInstanceDraw draw) =>
         Scene.DrawSkinnedOutline(Scene.BeginMeshOutline(Color.White, 1.25f), draw, Palette);
-    public void Render()
+    public void Render(int width = 32, int height = 24, bool prepare = true)
     {
-        Scene.PrepareFrame();
+        if (prepare) Scene.PrepareFrame(width, height);
         Record?.Dispose();
         Record = new RecordingGpuCommandList(new NullGpuCommandList())
         { CapturePayloads = true, CaptureBindings = true, UniformWindowsOfSet = tracker.WindowsOf, BeforeIndexedDraw = BeforeDraw };
-        Scene.RenderInternal(Record, 32, 24, target);
+        Scene.RenderInternal(Record, width, height, target);
     }
     internal void RenderUncaptured(IGpuCommandList cl)
-    { Scene.PrepareFrame(); Scene.RenderInternal(cl, 32, 24, target); }
+    { Scene.PrepareFrame(32, 24); Scene.RenderInternal(cl, 32, 24, target); }
     public void AssertCanonicalDraws(SkinnedCoverageFrame frame)
     {
         for (int slice = 0; slice < Host.Length; slice++)

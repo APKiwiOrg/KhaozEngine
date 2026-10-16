@@ -79,7 +79,7 @@ public sealed class TemporalFixture : IDisposable
         Scene.Begin();
         Scene.EffectTimeSeconds = n / 60f;
         draw(Scene, n);
-        Scene.PrepareFrame();
+        Scene.PrepareFrame(DisplayWidth, DisplayHeight);
         using (GpuRecording.Open(Device, _commands, "TemporalFixture.Frame"))
             Scene.RenderInternal(_commands, DisplayWidth, DisplayHeight, Target);
         long submitted = Stopwatch.GetTimestamp();

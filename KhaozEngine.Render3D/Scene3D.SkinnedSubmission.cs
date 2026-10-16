@@ -96,6 +96,7 @@ public sealed partial class Scene3D
             }
         }
         // Both routes own independent streams and share their prepared data across passes.
+        PrepareCoverageMotion();
         if (_gpuSkinnedDraws.Count > 0) PrepareGpuSkinnedFrame(cl, shadowMapActive);
         if (_cpuSkinnedDraws.Count > 0) UploadCpuSkinnedFrame(cl);
     }

@@ -148,11 +148,11 @@ namespace KhaozEngine.Tests.Gpu
             ("PixelPostProcess._applyLayout",
                 new[] { T("Src"), T("OffsetTex"), S("Samp"), U("Apply") }, "t0 t1 s0 b0"),
             ("TemporalSharpenPass._layout", new[] { T("Src"), S("Samp"), U("Sharpen") }, "t0 s0 b0"),
-            // The temporal resolve's two: textures first and the uniform buffer last, like the post chain.
+            // Coverage rejection follows the existing temporal bindings.
             ("TemporalResolveRenderer._resolveLayout",
                 new[] { T("SceneColor"), T("OpaqueColor"), T("SceneDepth"), T("MotionTex"), T("PrevDepth"),
-                    T("HistoryColor"), T("HistoryConfidence"), S("LinearClamp"), U("Resolve") },
-                "t0 t1 t2 t3 t4 t5 t6 s0 b0"),
+                    T("HistoryColor"), T("HistoryConfidence"), S("LinearClamp"), U("Resolve"), T("CoverageRejection") },
+                "t0 t1 t2 t3 t4 t5 t6 s0 b0 t7"),
             ("TemporalResolveRenderer._storeLayout",
                 new[] { T("SceneDepth"), T("MotionTex"), S("Samp"), U("DepthStore") }, "t0 t1 s0 b0"),
             ("TemporalDebugViewPass._modeLayout", new[] { U("DebugView") }, "b0"),

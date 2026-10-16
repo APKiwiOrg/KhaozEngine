@@ -3710,17 +3710,18 @@ scene.UnloadSharedTexture("art/hull.png");     // false when nothing was cached 
   its own key space, and a loader that throws caches nothing so the next call retries. `SharedAssetCount` is the
   diagnostic: a number that climbs across run restarts is a consumer still re-keying its assets.
 - **`PrepareFrame()`, the frame's pre-recording phase.** Runs once per frame, after every `Draw*`
-  call for that frame and **before the command list the scene renders into is opened**. Every host the engine
-  ships calls it for you - `Render3DSurface.Render` (so `GameApp3D` and any surface you build yourself are both
-  covered), `Render3DPreview.Capture`, `Render3DSnapshot.Capture` - so a game needs no change. Every way of
-  rendering a `Scene3D` goes through one of those (the record entry point itself is internal), so no
-  consumer-reachable path is left having to call it, and calling it by hand is only ever an early no-op. The order
-  it enforces, which is what those hosts do internally, is:
+  call for that frame and **before the command list the scene renders into is opened**. `GameApp3D`,
+  `Render3DPreview.Capture` and `Render3DSnapshot.Capture` also pass the known display size through
+  `PrepareFrame(displayWidth, displayHeight)`. That overload reserves the coverage transition mask at the configured
+  prospective temporal size, including when AA is activated after preparation. Direct window hosts call
+  `Render3DSurface.Prepare(frame)` in their pre-record callback. A covered temporal resolve with a missing or
+  wrong-sized mask reservation throws before recording scene commands. The parameterless overload preserves
+  once-only producer work and ordinary rendering. The order is:
 
 ```csharp
 scene.Begin();
 DrawTheWorld(scene);        // every Draw / DrawWater / DrawParticle for the frame
-scene.PrepareFrame();       // <- producers submit their own GPU work here, with NO list open
+scene.PrepareFrame(displayWidth, displayHeight); // producers and coverage resources, with no list open
 cl.Begin();
 // ... record the scene, submit cl
 ```
@@ -3733,7 +3734,8 @@ cl.Begin();
   frame's list believes is still bound and the device faults a few draws later (issue #423). A frame that queues no
   water does nothing here, and a host that skips the call gets an exception from the water pass rather than a
   stale ocean. Calling it twice for one `Begin` is harmless: the second call is a no-op, so a host that prepares by
-  hand and then hands the scene to `Render3DSurface.Render` does not prepare the frame twice. Queueing a draw AFTER
+  hand and then hands the scene to `Render3DSurface.Render` does not prepare the frame twice. The sized overload can
+  refresh coverage resources before recording after a display or temporal sizing change. Queueing a draw AFTER
   preparing is the one thing that is not harmless, and the water pass throws for it.
 
   **On a windowed host the effective call is the earlier one.** `Render3DSurface.Render` runs inside the frame's

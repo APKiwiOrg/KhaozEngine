@@ -8,7 +8,8 @@ namespace KhaozEngine.Tests.Render3D;
 
 internal sealed class CoverageCaptureDevice : IGpuDevice
 {
-    internal readonly FakeGpuDevice Inner = new();
+    internal readonly FakeGpuDevice Inner;
+    internal CoverageCaptureDevice(GpuBackendKind backend = GpuBackendKind.Vulkan) => Inner = new(backend);
     internal readonly Dictionary<IGpuBuffer, byte[]> Uploads = new();
     public GpuBackendKind Backend => Inner.Backend;
     public GpuCapabilities Capabilities => Inner.Capabilities;

@@ -159,7 +159,8 @@ namespace KhaozEngine.Render3D
             bool outline = PixelPostProcess.TemporalOutlineRuns(Post);
             if (!outline) _post.ReleaseTemporalOutline(_retired);   // the outline turned off: let the pass go
             _temporalResolve.BindInputs(new TemporalResolveInputs(outline ? _res.PingA : _res.ColorTex,
-                outline ? _res.PingB : _temporalPost.OpaqueColor, _res.DepthColorTex, motion), TemporalHistory, _retired);
+                outline ? _res.PingB : _temporalPost.OpaqueColor, _res.DepthColorTex, motion,
+                _coverageMaskThisRender ? _coverageTransition?.Texture : null), TemporalHistory, _retired);
 
             // The previous view is the one the motion target reprojects with (Scene3D.MotionTarget.cs): the last frame's
             // first render rebased to this frame's origin, or null without history. The starfield places its stars by
@@ -222,6 +223,11 @@ namespace KhaozEngine.Render3D
         void RunTemporalResolve(IGpuCommandList cl)
         {
             if (!_resolveThisRender) return;
+            if (_coverageMaskThisRender && _coverageTransition is not null)
+            {
+                _coverageTransition.Prepare(cl, CurrentFrameView);
+                _frameStats.DrawCalls += _coverageTransition.Rectangles.Length;
+            }
             if (PixelPostProcess.TemporalOutlineRuns(Post))
             {
                 _post.RunTemporalOutline(cl, _res, _temporalPost!.OpaqueColor, _retired);

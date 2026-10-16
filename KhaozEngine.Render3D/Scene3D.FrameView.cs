@@ -72,6 +72,7 @@ namespace KhaozEngine.Render3D
         internal void BeginFrameView()
         {
             _coverageArena.Begin();
+            _coverageMotion.DiscardPending();
             _frameIndex++;
             _frameViewLatchedThisFrame = false;
             _frameTemporalActive = false;

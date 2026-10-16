@@ -167,7 +167,19 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   material submissions select fallback. Tokens expire at the next `Begin`, disposal or host unload, and new
   submissions with an expired token throw. Disposal or unload after submission freezes the current-pose fallback
   with a recorded failure, and live slices keep their ordinary route. A covered
-  frame cannot be recorded again for another view. Previous final coverage motion history is a separate seam.
+  frame cannot be recorded again for another view. Begin and stage again for each view.
+  Coverage motion retains the previous final vertices and absolute model, rebased against the current origin.
+  Compatible weight changes keep surface motion. Equipment, topology, incarnation, refusal, missing-frame and
+  view changes seed current positions and reject history over conservative current and previous surface bounds.
+  Near-plane uncertainty rejects the viewport for that transition. Other actors keep their temporal history.
+  The single history bank requires the same camera object and consecutive successfully encoded scene frames.
+  This observes successful scene command encoding, not GPU submission or presentation.
+  Returning to ordinary CPU or GPU skinning after coverage seeds that actor's current surface for one frame.
+  Before opening the frame list, call `PrepareFrame(displayWidth, displayHeight)` after all submissions.
+  It reserves the temporal mask at the configured prospective temporal size, including when AA is initially off.
+  Call it again before recording after changing display or temporal sizing. A missing or wrong-sized reservation
+  refuses a covered temporal resolve before scene commands. Direct window hosts can call `Render3DSurface.Prepare(frame)`
+  in their pre-record callback. The parameterless overload remains available for ordinary scenes and warm size reuse.
 - `Scene3D.GetOrLoadMesh` / `GetOrLoadSkinnedMesh` / `GetOrLoadTexture` - keyed, idempotent loads for a scene that
   outlives what it draws ([#250](https://github.com/APKiwiOrg/KhaozEngine/issues/250)). Each takes a key plus a
   loader and runs the loader only the FIRST time that key is seen, returning the cached handle after that, so a

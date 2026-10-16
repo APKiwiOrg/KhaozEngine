@@ -200,6 +200,10 @@ namespace KhaozEngine.Tests.Gpu
             => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.TemporalResolveFrag, "TemporalResolve");
 
         [Fact]
+        public void CoverageTransition()
+            => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.CoverageTransitionFrag, "CoverageTransition");
+
+        [Fact]
         public void TemporalDepthStore()
             => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.TemporalDepthStoreFrag, "TemporalDepthStore");
 

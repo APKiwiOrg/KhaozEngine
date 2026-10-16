@@ -45,7 +45,7 @@ namespace KhaozEngine.Tests.Gpu
             using var harness = new VulkanBindHarness();
             IReadOnlyList<(string Name, string[] Slots, VulkanBoundPipeline Bound)> pipelines = Build(harness);
 
-            Assert.Equal(67, pipelines.Count);   // Includes atmosphere, target outlines, point-skinned and foliage depth.
+            Assert.Equal(68, pipelines.Count);   // Includes the coverage transition mask with no descriptor sets.
 
             int pairs = 0;
             var seen = new HashSet<int>();
@@ -70,7 +70,7 @@ namespace KhaozEngine.Tests.Gpu
                 }
             }
 
-            Assert.Equal(67 * 67, pairs);
+            Assert.Equal(68 * 68, pairs);
 
             // AND THE GUARD IS NOT VACUOUS. A walk over pairs that were all incompatible would pass an
             // always-answer-zero implementation, so the shipped table has to actually contain compatible pairs.
@@ -462,7 +462,8 @@ namespace KhaozEngine.Tests.Gpu
                 records.Flush(ref sink);
             }
 
-            Assert.Equal(VulkanDescriptorLimitTests.ShippedPipelines.Count, counts.BindDescriptorSetCalls);
+            // The coverage mask has no resource sets to bind.
+            Assert.Equal(VulkanDescriptorLimitTests.ShippedPipelines.Count - 1, counts.BindDescriptorSetCalls);
         }
 
         /// <summary>And a command list built by a device with validation on arms it, which is the wiring rather

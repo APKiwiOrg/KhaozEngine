@@ -10,7 +10,13 @@ namespace KhaozEngine.Render3D.Rendering
     /// <summary>The internal-resolution inputs of one resolve. The renderer rebuilds its resource sets when any of the
     /// four textures is a different one from those it last bound.</summary>
     internal readonly record struct TemporalResolveInputs(IGpuTexture SceneColor, IGpuTexture OpaqueColor,
-        IGpuTexture SceneDepth, IGpuTexture Motion);
+        IGpuTexture SceneDepth, IGpuTexture Motion)
+    {
+        internal IGpuTexture? CoverageRejection { get; init; }
+        internal TemporalResolveInputs(IGpuTexture sceneColor, IGpuTexture opaqueColor, IGpuTexture sceneDepth,
+            IGpuTexture motion, IGpuTexture? coverageRejection) : this(sceneColor, opaqueColor, sceneDepth, motion)
+            => CoverageRejection = coverageRejection;
+    }
 
     /// <summary>
     /// THE TEMPORAL RESOLVE (TEMPORAL-RESOLVE-UPSCALING-DESIGN section 3): one fullscreen fragment pass at the display
@@ -44,6 +50,7 @@ namespace KhaozEngine.Render3D.Rendering
         IGpuPipeline? _resolvePipeline, _storePipeline;
         readonly IGpuBuffer _resolveBuffer, _storeBuffer;
         readonly IGpuSampler _clampSampler;
+        readonly IGpuTexture _zeroCoverage;
         readonly IGpuResourceSet?[] _resolveSets = new IGpuResourceSet?[2];
         IGpuResourceSet? _storeSet;
         TemporalResolveInputs _boundInputs;
@@ -56,12 +63,14 @@ namespace KhaozEngine.Render3D.Rendering
             IGpuResourceFactory f = gd.Factory;
             _resolveLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 T("SceneColor"), T("OpaqueColor"), T("SceneDepth"), T("MotionTex"), T("PrevDepth"),
-                T("HistoryColor"), T("HistoryConfidence"), S("LinearClamp"), U("Resolve")));
+                T("HistoryColor"), T("HistoryConfidence"), S("LinearClamp"), U("Resolve"), T("CoverageRejection")));
             _storeLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 T("SceneDepth"), T("MotionTex"), S("Samp"), U("DepthStore")));
             _resolveBuffer = f.CreateBuffer(new GpuBufferDescription(TemporalResolveUniforms.SizeInBytes, GpuBufferUsage.UniformBuffer));
             _storeBuffer = f.CreateBuffer(new GpuBufferDescription(TemporalDepthStoreUniforms.SizeInBytes, GpuBufferUsage.UniformBuffer));
             _clampSampler = f.CreateSampler(GpuSamplerDescription.Linear);
+            _zeroCoverage = f.CreateTexture(GpuTextureDescription.Texture2D(1, 1, GpuPixelFormat.R8UNorm, GpuTextureUsage.Sampled));
+            gd.UpdateTexture(_zeroCoverage, [0], 0, 0, 1, 1);
         }
 
         // The fused entry point's programs and pipelines, built on the first frame that records it, so a device that
@@ -123,8 +132,9 @@ namespace KhaozEngine.Render3D.Rendering
         /// split drains and the sets go at once.</summary>
         public void BindInputs(in TemporalResolveInputs inputs, TemporalHistory history, GpuRetireQueue? retired = null)
         {
-            BindEntry(inputs, history, retired);
-            if (_storeSet is not null && SameInputs(inputs, _boundInputs) && ReferenceEquals(history, _boundHistory)
+            var bound = inputs with { CoverageRejection = inputs.CoverageRejection ?? _zeroCoverage };
+            BindEntry(bound, history, retired);
+            if (_storeSet is not null && SameInputs(bound, _boundInputs) && ReferenceEquals(history, _boundHistory)
                 && history.TargetGeneration == _boundTargets)
                 return;
             FreeSets(retired);
@@ -132,10 +142,10 @@ namespace KhaozEngine.Render3D.Rendering
             for (int read = 0; read < 2; read++)
                 _resolveSets[read] = f.CreateResourceSet(new GpuResourceSetDescription(_resolveLayout,
                     inputs.SceneColor, inputs.OpaqueColor, inputs.SceneDepth, inputs.Motion, history.PreviousDepth(read),
-                    history.Color(read), history.Confidence(read), _clampSampler, _resolveBuffer));
+                    history.Color(read), history.Confidence(read), _clampSampler, _resolveBuffer, bound.CoverageRejection!));
             _storeSet = f.CreateResourceSet(new GpuResourceSetDescription(_storeLayout,
                 inputs.SceneDepth, inputs.Motion, _clampSampler, _storeBuffer));
-            _boundInputs = inputs;
+            _boundInputs = bound;
             _boundTargets = history.TargetGeneration;
             _boundHistory = history;
         }
@@ -143,7 +153,8 @@ namespace KhaozEngine.Render3D.Rendering
         // By reference: the sets name these objects, and holding them keeps a replacement from ever being the same one.
         internal static bool SameInputs(in TemporalResolveInputs a, in TemporalResolveInputs b)
             => ReferenceEquals(a.SceneColor, b.SceneColor) && ReferenceEquals(a.OpaqueColor, b.OpaqueColor)
-                && ReferenceEquals(a.SceneDepth, b.SceneDepth) && ReferenceEquals(a.Motion, b.Motion);
+                && ReferenceEquals(a.SceneDepth, b.SceneDepth) && ReferenceEquals(a.Motion, b.Motion)
+                && ReferenceEquals(a.CoverageRejection, b.CoverageRejection);
 
         /// <summary>Let go of the sets, which name the history targets and the scene's inputs, and keep the pipelines,
         /// layouts, buffers and sampler. The sets go to <paramref name="retired"/>, since a frame the device has not
@@ -223,6 +234,7 @@ namespace KhaozEngine.Render3D.Rendering
             _resolveBuffer.Dispose();
             _storeBuffer.Dispose();
             _clampSampler.Dispose();
+            _zeroCoverage.Dispose();
         }
     }
 }

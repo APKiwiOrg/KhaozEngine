@@ -157,7 +157,7 @@ namespace KhaozEngine.Tests.Gpu
                 // Render3D/Rendering/TemporalResolveRenderer.cs, the resolve and the depth store. Fragment-stage,
                 // none dynamic.
                 ["Temporal.resolve"] = L(T("SceneColor"), T("OpaqueColor"), T("SceneDepth"), T("MotionTex"),
-                    T("PrevDepth"), T("HistoryColor"), T("HistoryConfidence"), S("LinearClamp"), U("Resolve", F)),
+                    T("PrevDepth"), T("HistoryColor"), T("HistoryConfidence"), S("LinearClamp"), U("Resolve", F), T("CoverageRejection")),
                 ["Temporal.depthStore"] = L(T("SceneDepth"), T("MotionTex"), S("Samp"), U("DepthStore", F)),
                 // Render3D/Rendering/TemporalSplitResolve.cs, the split entry point's two passes. Fragment-stage, none
                 // dynamic.
@@ -165,7 +165,7 @@ namespace KhaozEngine.Tests.Gpu
                     S("LinearClamp"), U("Resolve", F)),
                 ["Temporal.accumulate"] = L(T("SceneColor"), T("SceneDepth"), T("MotionTex"), T("PrevDepth"),
                     T("HistoryColor"), T("HistoryConfidence"), T("PreparedColour"), T("PreparedSurface"),
-                    T("PreparedExpected"), T("PreparedEdge"), S("LinearClamp"), U("Resolve", F)),
+                    T("PreparedExpected"), T("PreparedEdge"), S("LinearClamp"), U("Resolve", F), T("CoverageRejection")),
                 // Render3D/Rendering/TemporalDebugViewPass.cs, the debug views' immutable mode block at set 1, after
                 // the resolve's own layout at set 0.
                 ["Temporal.debugMode"] = L(U("DebugView", F)),
@@ -281,6 +281,7 @@ namespace KhaozEngine.Tests.Gpu
             ("PixelPostProcess tone", ["Pixel.tone"]),
             ("PixelPostProcess apply", ["Pixel.apply"]),
             ("TemporalSharpenPass", ["TemporalSharpen"]),
+            ("CoverageTransitionMask", []),
             ("TemporalResolveRenderer resolve", ["Temporal.resolve"]),
             ("TemporalResolveRenderer depth store", ["Temporal.depthStore"]),
             ("TemporalResolveRenderer debug view", ["Temporal.resolve", "Temporal.debugMode"]),
@@ -321,7 +322,7 @@ namespace KhaozEngine.Tests.Gpu
             // The atmosphere producers add three dense layouts and pipeline rows.
             // Both counts are stated so an emptied table cannot pass by agreeing with itself.
             Assert.Equal(62, ShippedLayouts.Count);
-            Assert.Equal(67, ShippedPipelines.Count);
+            Assert.Equal(68, ShippedPipelines.Count);
 
             foreach ((string pipeline, string[] slots) in ShippedPipelines)
             {

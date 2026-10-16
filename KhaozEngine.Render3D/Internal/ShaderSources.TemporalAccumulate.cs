@@ -390,6 +390,10 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
 
     // Step 2: Catmull-Rom history at the reprojected position. A NaN or an infinity never reaches the output, because
     // a comparison with either is false, which survives fast math where isnan may not.
+    ivec2 maskSize = textureSize(sampler2D(CoverageRejection, LinearClamp), 0);
+    bool coverageRejected = texelFetch(sampler2D(CoverageRejection, LinearClamp),
+        clamp(centreTexel, ivec2(0), maskSize - ivec2(1)), 0).r > 0.0;
+    disoccluded = disoccluded || coverageRejected;
     bool useHistory = historyValid && onScreen && !disoccluded;
     vec4 history = vec4(0.0);
     vec2 historyState = vec2(0.0);

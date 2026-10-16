@@ -88,6 +88,7 @@ layout(set=0, binding=9) uniform texture2D PreparedEdge;
 layout(set=0, binding=10) uniform sampler LinearClamp;
 // The members are TemporalResolveUniforms.GlslMembers, documented on the struct's fields.
 layout(set=0, binding=11) uniform Resolve {" + TemporalResolveUniforms.GlslMembers + @"};
+layout(set=0, binding=12) uniform texture2D CoverageRejection;
 " + TemporalCommonGlsl + TemporalResolveTuningGlsl + TemporalNarrowBothGlsl + TemporalPrepareGlsl
             + TemporalAccumulateGlsl + @"
 // The split's per-pixel resolve: its 3x3 gathered from the first pass's targets (temporalGather), its centre texel's

@@ -1356,6 +1356,7 @@ namespace KhaozEngine.Render3D
         /// </summary>
         internal void RenderInternal(IGpuCommandList cl, int viewportW, int viewportH, IGpuFramebuffer target)
         {
+            RequireCoverageTemporalPreparation(viewportW, viewportH);
             // Reset the always-on frame counters here (not in Begin), so they are finalized per rendered frame the
             // same way DrawnInstances / PassTimingsMs are - a Begin without a render leaves the last render's totals,
             // and a re-render never double-counts.
@@ -1701,6 +1702,7 @@ namespace KhaozEngine.Render3D
                 transparentsMs += ElapsedMs(timingStart);
                 _passTimingsMs = new Scene3DPassTimingsMs(shadowDepthMs, modelMs, transparentsMs, waterSyncMs, postMs);
             }
+            CompleteCoverageEncoding();
         }
 
         /// <summary>Elapsed milliseconds since <paramref name="startTimestamp"/> (a <see cref="Stopwatch.GetTimestamp"/>

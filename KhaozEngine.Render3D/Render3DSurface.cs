@@ -7,7 +7,7 @@ namespace KhaozEngine.Render3D
     /// A 3D scene bound to an <see cref="AppWindow"/>: builds a <see cref="Scene3D"/> on the window's GPU device
     /// and renders it into the window's frames, so a Render2D HUD can draw on top. The window owns the device
     /// and the frame loop; this records into the frame's command list. Composition order, per frame:
-    /// <see cref="Scene3D.Begin"/> + submit instances + <see cref="Scene3D.PrepareFrame"/> in the window's pre-record
+    /// <see cref="Scene3D.Begin"/> + submit instances + <see cref="Scene3D.PrepareFrame()"/> in the window's pre-record
     /// phase, then <see cref="Render"/> in the record phase, then the 2D surface draws the HUD over it. A host that
     /// does not use the pre-record phase still gets a correct frame: <see cref="Render"/> prepares if nobody did.
     /// </summary>
@@ -16,6 +16,9 @@ namespace KhaozEngine.Render3D
         readonly AppWindow _window;
 
         public Scene3D Scene { get; }
+
+        /// <summary>Prepares the queued scene using the latched display size, before the frame list opens.</summary>
+        public void Prepare(Frame frame) => Scene.PrepareFrame(frame.Width, frame.Height);
 
         /// <summary>Build the 3D surface on the window's GPU device. <paramref name="shadows"/> (optional) seeds the
         /// scene's construction-time shadow settings (issue #27): the atlas resolution / cascade count / step-blend
@@ -29,7 +32,7 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>Record the queued 3D scene into this frame's command list, ending on the window framebuffer.
-        /// Runs <see cref="Scene3D.PrepareFrame"/> first, so a consumer building a surface directly gets the frame's
+        /// Runs <see cref="Scene3D.PrepareFrame()"/> first, so a consumer building a surface directly gets the frame's
         /// pre-recording phase without having to know it exists (the queues are full by now and the scene is about
         /// to be recorded, which is exactly where it belongs).
         /// <para>
@@ -37,7 +40,7 @@ namespace KhaozEngine.Render3D
         /// command list is already recording by the time this runs, so a producer preparing here would still nest a
         /// list inside it. The fix is upstream, in the loop: <see cref="AppWindow.Run(Action{Frame}, Action{Frame})"/>
         /// takes a pre-record callback, and <c>GameApp3D</c> runs <c>Scene.Begin()</c> -> its draws ->
-        /// <see cref="Scene3D.PrepareFrame"/> there, so by the time this method runs the frame is already prepared and
+        /// <see cref="Scene3D.PrepareFrame()"/> there, so by the time this method runs the frame is already prepared and
         /// the call below no-ops (#429). A host driving a surface off a raw <see cref="AppWindow"/> should do the
         /// same: queue and prepare the scene in the <c>onPrepare</c> callback, and call this from <c>onFrame</c>.
         /// <b>A host that does not still nests</b>, because the call below then runs inside the frame's recording.

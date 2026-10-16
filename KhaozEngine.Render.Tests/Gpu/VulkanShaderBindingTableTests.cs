@@ -142,6 +142,7 @@ namespace KhaozEngine.Tests.Gpu
                 ["MotionVectorsView"] = "MotionVectorsView",
 
                 ["TemporalResolve"] = "TemporalResolveRenderer resolve",
+                ["CoverageTransition"] = "CoverageTransitionMask",
                 ["TemporalDepthStore"] = "TemporalResolveRenderer depth store",
                 ["TemporalDebugView"] = "TemporalResolveRenderer debug view",
                 ["TemporalCountProbe"] = "TemporalResolveRenderer count probe",
@@ -286,7 +287,7 @@ namespace KhaozEngine.Tests.Gpu
                 .Select(p => p.Pipeline)
                 .ToHashSet(StringComparer.Ordinal);
 
-            Assert.Equal(85, catalog.Length);
+            Assert.Equal(86, catalog.Length);
             Assert.Equal(catalog.Length, ProgramPipelines.Count);
 
             foreach (string program in catalog)

@@ -49,6 +49,7 @@ namespace KhaozEngine.Render3D
         {
             if (_framePrepared) return;
             EnsurePointLightCapacity();
+            ReserveCoverageMotion();
             ReserveCoverageFrame();
             _framePrepared = true;
             HarvestTemporalCounts();   // an armed temporal count request: its one readback, here before any recording

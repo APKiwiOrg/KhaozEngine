@@ -63,6 +63,7 @@ namespace KhaozEngine.Tests.Gpu
         readonly List<ColourClear> _colourClears = new();
         int _draws;
         int _framebufferBinds;
+        internal readonly List<(uint X, uint Y, uint Width, uint Height)> Scissors = new();
 
         /// <summary>Framebuffer binds recorded since the last <see cref="Clear"/>. Paired with
         /// <see cref="Upload.FramebufferBindsBefore"/> it tells a test whether an upload landed before the pass
@@ -102,6 +103,7 @@ namespace KhaozEngine.Tests.Gpu
             _resolves.Clear();
             _textureCopies.Clear();
             _colourClears.Clear();
+            Scissors.Clear();
             ClearDraws();
             _draws = 0;
             _framebufferBinds = 0;
@@ -163,7 +165,8 @@ namespace KhaozEngine.Tests.Gpu
         public void SetVertexBuffer(uint slot, IGpuBuffer b) { NoteVertexBuffer(slot, b); Inner.SetVertexBuffer(slot, b); }
         public void SetVertexBuffer(uint slot, IGpuBuffer b, uint offsetBytes) { NoteVertexBuffer(slot, b); Inner.SetVertexBuffer(slot, b, offsetBytes); }
         public void SetIndexBuffer(IGpuBuffer b, GpuIndexFormat fmt) { NoteIndexBuffer(b); Inner.SetIndexBuffer(b, fmt); }
-        public void SetScissorRect(uint index, uint x, uint y, uint w, uint h) => Inner.SetScissorRect(index, x, y, w, h);
+        public void SetScissorRect(uint index, uint x, uint y, uint w, uint h)
+        { Scissors.Add((x, y, w, h)); Inner.SetScissorRect(index, x, y, w, h); }
         public void SetFullScissorRects() => Inner.SetFullScissorRects();
         public void Draw(uint vertexCount, uint instanceCount, uint vertexStart, uint instanceStart)
         {

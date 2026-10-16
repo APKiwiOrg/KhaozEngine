@@ -29,7 +29,8 @@ public sealed partial class Scene3D
             (JointPose[])skeleton.RestLocal.Clone(), (int[])skeleton.NodeLogicalIndex.Clone(),
             (int[])skeleton.JointToNode.Clone(), skeleton.NodeNames);
         return new SkinnedGltfMesh((SkinnedVertex[])mesh.Vertices.Clone(), (uint[])mesh.Indices32.Clone(),
-            (Matrix4x4[])mesh.InverseBind.Clone(), (Matrix4x4[])mesh.RestPose.Clone(), copy) { Coverage = part };
+            (Matrix4x4[])mesh.InverseBind.Clone(), (Matrix4x4[])mesh.RestPose.Clone(), copy)
+        { Coverage = part };
     }
 
     /// <summary>Creates an actor-owned conformer from every material slice of one exact host source and map.</summary>
@@ -88,6 +89,8 @@ public sealed partial class Scene3D
 
     void DisposeCoverage()
     {
+        _coverageTransition?.Dispose();
+        _coverageMotion.Reset();
         _coverageDisposed = true;
         foreach (var conformer in _coverageConformers)
         {

@@ -64,6 +64,8 @@ internal sealed class CoveragePreparation
     internal ulong SphereView;
     internal CoverageFrameOutcome Outcome;
     internal CoverageCertificate Certificate;
+    internal ulong MotionRevision;
+    internal bool MotionReusable, MotionPresented;
     internal CoveragePreparation(SkinnedHostConformer owner, int bones, int materials)
     {
         Owner = owner;

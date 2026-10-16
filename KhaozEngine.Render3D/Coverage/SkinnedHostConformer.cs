@@ -16,6 +16,9 @@ public sealed class SkinnedHostConformer : IDisposable
     internal readonly int Thread = Environment.CurrentManagedThreadId;
     internal bool Disposed, Busy;
     internal MotionKey Actor;
+    internal ulong MotionRevision;
+    internal int MotionCommandCount;
+    internal readonly CoverageCommandPose[] MotionCommands = new CoverageCommandPose[CoverageScratch.MaxCommands];
 
     internal SkinnedHostConformer(Scene3D scene, SkinnedMeshHandle[] meshes, CoverageRefinement topology,
         Matrix4x4[] inverseBind, IGpuBuffer[] indices)

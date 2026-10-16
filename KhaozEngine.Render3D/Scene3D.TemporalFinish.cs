@@ -91,7 +91,7 @@ namespace KhaozEngine.Render3D
         /// Sample the temporal counts (<see cref="TemporalDiagnostics.DisoccludedPixels"/>,
         /// <see cref="TemporalDiagnostics.ReactivePixels"/>, <see cref="TemporalDiagnostics.ClippedPixels"/>) on the
         /// next frame the temporal resolve runs. They land in <see cref="LastTemporalDiagnostics"/> at the following
-        /// <see cref="PrepareFrame"/>, with <see cref="TemporalDiagnostics.CountsFrameIndex"/> naming the frame. The
+        /// <see cref="PrepareFrame()"/>, with <see cref="TemporalDiagnostics.CountsFrameIndex"/> naming the frame. The
         /// counts are estimates from a 32 by 18 grid of 16 samples a cell. Reading them back drains the device once
         /// on Metal and Vulkan, so request them from a debug overlay a few times a second at most, never every frame.
         /// <para>

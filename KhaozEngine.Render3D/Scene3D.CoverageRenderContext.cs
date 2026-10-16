@@ -22,6 +22,7 @@ public sealed partial class Scene3D
         CoverageSphereEvaluationsForTests = 0;
         if (_coverageArena.Preparations.Count > 0 && _coverageArena.Closed)
             throw new InvalidOperationException("Coverage must be staged again for a new render view.");
+        BeginCoverageMotion();
         if (shadows) SetShadowReceiverTail();
         _coverageView++;
         // Submissions are complete and the origin is latched, so one conservative sphere serves every consumer.

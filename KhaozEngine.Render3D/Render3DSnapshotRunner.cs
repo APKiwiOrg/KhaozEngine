@@ -44,7 +44,7 @@ internal static class Render3DSnapshotRunner
                 drawFrame(scene, frame);
                 // Producers run before opening the render list. Nested recording corrupts Direct3D11's
                 // immediate context, and PrepareFrame also advances pending temporal diagnostics.
-                scene.PrepareFrame();
+                scene.PrepareFrame(width, height);
                 using (GpuRecording.Open(gd, commands, "Render3DSnapshot.Capture"))
                     scene.RenderInternal(commands, width, height, framebuffer);
                 gd.Submit(commands);

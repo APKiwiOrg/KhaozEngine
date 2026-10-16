@@ -224,7 +224,11 @@ An empty equipped list succeeds with an empty token and ordinary current-pose ho
 On refusal, the token is empty and no prepared equipment descriptors are exposed. Present the current
 uncovered pose explicitly. Staging success is pending late render certification. Missing actual material
 participation or late certification failure selects the captured current-pose uncovered fallback across
-passes. Finish all submissions before `PrepareFrame`. A new `Begin` requires fresh preparation.
+passes. Finish all submissions before `PrepareFrame(displayWidth, displayHeight)`, outside the frame recording.
+A new `Begin` requires fresh preparation. Previous final host positions follow compatible weight changes.
+Changing the equipment identity rejects only the affected projected bounds. Failed replacement keeps the active
+identity and its history. Independent equipment fading must change `TransitionWeight` or disable its coverage.
+Whole-actor dissolve keeps conformation and ordinary, complementary and inverted-shadow dissolve behavior.
 
 `IAttachmentCoverageScene` is a separate opt-in interface. It adds conformer creation, single-command and
 batch equipment staging, descriptor outlines, and a non-null stable `CoverageResourceOwner` reference to

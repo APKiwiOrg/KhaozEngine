@@ -20,6 +20,8 @@ public sealed class CoverageScratch
         Before = new ModelVertex[topology.VertexCount]; After = new ModelVertex[topology.VertexCount];
         GroupPositions = new Vector3[topology.PositionGroupCount]; GroupStamps = new int[topology.PositionGroupCount];
         GroupParents = new int[topology.PositionGroupCount];
+        FullRecessions = new double[topology.PositionGroupCount]; Corrections = new double[topology.PositionGroupCount];
+        OverlayHost = new CoverageAffinePoint[3]; OverlaySupport = new CoverageAffinePoint[3];
         TriangleFlags = new byte[topology.TriangleCount];
         RegionCommands = new int[topology.Map.Regions.Count];
         Frames = new CoverageCommandFrame[commandCapacity]; Order = new int[commandCapacity];
@@ -47,6 +49,11 @@ public sealed class CoverageScratch
     /// <summary>Per position group construction result, valid when its stamp equals the current one.</summary>
     internal Vector3[] GroupPositions { get; }
     internal int[] GroupStamps { get; }
+    /// <summary>Full pointwise request and maximum incident core correction, each owned once per position group.</summary>
+    internal double[] FullRecessions { get; }
+    internal double[] Corrections { get; }
+    internal CoverageAffinePoint[] OverlayHost { get; }
+    internal CoverageAffinePoint[] OverlaySupport { get; }
     /// <summary>Union-find parents over position groups for connected containment components.</summary>
     internal int[] GroupParents { get; }
     internal byte[] TriangleFlags { get; }

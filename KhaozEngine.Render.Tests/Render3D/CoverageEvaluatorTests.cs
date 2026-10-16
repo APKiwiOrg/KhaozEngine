@@ -98,7 +98,7 @@ public sealed class CoverageEvaluatorTests
     [Fact]
     public void Positive_scale_and_shear_match_direct_world_geometry()
     {
-        var fixture = CoverageFixture.CurvedPanel(level: 1);
+        var fixture = CoverageFixture.CurvedPanel(level: 3);
         var topology = CoverageRefinement.Build(fixture.Source, fixture.Map);
         var support = CoverageCommands.Plate(fixture);
         var actor = new Matrix4x4(1.3f, 0, 0, 0, .25f, .8f, 0, 0, 0, .1f, 1.1f, 0, 2, -1, .5f, 1);
@@ -123,7 +123,7 @@ public sealed class CoverageEvaluatorTests
     public void Disjoint_regions_and_actors_are_independent_of_submission_order()
     {
         // The second patch poses lower than the first, so its own plate sits lower to give both regions real work.
-        var fixture = CoverageFixture.CurvedPanel(level: 1, secondRegion: true);
+        var fixture = CoverageFixture.CurvedPanel(level: 3, secondRegion: true);
         fixture = fixture with { Commands = [fixture.Commands[0], fixture.Commands[1] with { CoverageLocal = Matrix4x4.CreateTranslation(3.8f, 0, -.2f) }] };
         var topology = CoverageRefinement.Build(fixture.Source, fixture.Map);
         var support = CoverageCommands.Plate(fixture);
@@ -179,7 +179,7 @@ public sealed class CoverageEvaluatorTests
     [Fact]
     public void Warm_evaluation_and_validation_allocate_nothing()
     {
-        var fixture = CoverageFixture.CurvedPanel(level: 1, secondRegion: true);
+        var fixture = CoverageFixture.CurvedPanel(level: 3, secondRegion: true);
         var topology = CoverageRefinement.Build(fixture.Source, fixture.Map);
         var commands = CoverageCommands.Poses(fixture, topology, CoverageCommands.Plate(fixture), Matrix4x4.Identity);
         var scratch = new CoverageScratch(topology);

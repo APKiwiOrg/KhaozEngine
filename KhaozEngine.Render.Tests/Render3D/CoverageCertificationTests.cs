@@ -21,7 +21,6 @@ public sealed class CoverageCertificationTests
     [InlineData("budget", CoverageFailureCode.RecessionExceeded)]
     [InlineData("vertical", CoverageFailureCode.FoldedPatch)]
     [InlineData("support-gap", CoverageFailureCode.UnsupportedSupport)]
-    [InlineData("interior", CoverageFailureCode.EquipmentIntersection)]
     [InlineData("inside-solid", CoverageFailureCode.EquipmentIntersection)]
     [InlineData("rear-host", CoverageFailureCode.HostIntersection)]
     [InlineData("mirror", CoverageFailureCode.UnsupportedTransform)]
@@ -47,7 +46,7 @@ public sealed class CoverageCertificationTests
             // The refusal names the command, and its equipment instance, that cannot be served.
             Assert.Equal(1u, failure.CommandId); Assert.Equal(1ul, failure.EquipmentInstanceId);
         }
-        if (kind is "interior" or "escaped-core" or "budget" or "rear-host" or "vertical") Assert.True(failure.Count > 0);
+        if (kind is "escaped-core" or "budget" or "rear-host" or "vertical") Assert.True(failure.Count > 0);
     }
 
     [Fact]
@@ -98,9 +97,8 @@ public sealed class CoverageCertificationTests
         Assert.True(CoverageCommands.Witness(fixture, topology, before, candidate).ClearanceViolations > 0);
         Assert.False(CoverageCertification.Validate(topology, before, candidate, Matrix4x4.Identity, commands, new CoverageScratch(topology), out var failure));
         Assert.Equal(CoverageFailureCode.EquipmentIntersection, failure.Code);
-        Assert.False(CoverageEvaluator.TryEvaluate(topology, fixture.Posed, Matrix4x4.Identity, commands, new CoverageScratch(topology),
-            new ModelVertex[topology.VertexCount], out failure));
-        Assert.Equal(CoverageFailureCode.EquipmentIntersection, failure.Code);
+        Assert.True(CoverageEvaluator.TryEvaluate(topology, fixture.Posed, Matrix4x4.Identity, commands, new CoverageScratch(topology),
+            new ModelVertex[topology.VertexCount], out failure), failure.ToString());
     }
 
     [Fact]
@@ -163,7 +161,6 @@ public sealed class CoverageCertificationTests
         var fixture = kind switch
         {
             "overlap" or "capacity" => CoverageFixture.CurvedPanel(level: 1, secondRegion: kind == "capacity"),
-            "interior" => CoverageFixture.CurvedPanel(level: 2),
             "rear-host" => WithRearSheet(CoverageFixture.CurvedPanel(level: 1), -.16f, .12f),
             _ => CoverageFixture.CurvedPanel(level: 1),
         };

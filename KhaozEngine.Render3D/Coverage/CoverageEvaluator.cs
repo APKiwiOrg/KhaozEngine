@@ -5,7 +5,8 @@ namespace KhaozEngine.Render3D;
 
 /// <summary>Bounded directional conformation of one posed host surface, followed by every-pose certification and final
 /// normals. Eligible points recede along coverage -Z toward the actual inward support sheet, or the height of its nearest
-/// actual boundary point through the finite collar. Nothing is clamped, enlarged or approximated into acceptance.</summary>
+/// actual boundary point through the finite collar. One bounded incident core-face correction precedes transition scaling.
+/// Nothing is clamped, enlarged or approximated into acceptance.</summary>
 public static class CoverageEvaluator
 {
     /// <inheritdoc cref="TryEvaluate(CoverageRefinement, ReadOnlySpan{ModelVertex}, in Matrix4x4, ReadOnlySpan{CoverageCommandPose}, CoverageScratch, Span{ModelVertex}, out CoverageCertificate, out CoverageFailure)"/>
@@ -32,7 +33,7 @@ public static class CoverageEvaluator
             return CoverageFrames.Refuse(topology, CoverageFailureCode.UnsupportedTransform, 0, 0, 0, 0, out failure);
         if (!CoverageFrames.TryPrepare(topology, actorModel, commands, scratch, magnitude, out failure)
             || !topology.TryInterpolate(posedSource, scratch.Before, out failure)
-            || !Construct(topology, commands, scratch, out failure)
+            || !Construct(topology, actorModel, commands, scratch, out failure)
             || !CoverageCertification.Certify(topology, scratch.Before, scratch.After, commands, scratch, out certificate, out failure)
             || !CoverageSurfaceNormals.Update(topology, scratch.Before, scratch.After, scratch, out failure))
         {
@@ -43,9 +44,11 @@ public static class CoverageEvaluator
         return true;
     }
 
-    static bool Construct(CoverageRefinement topology, ReadOnlySpan<CoverageCommandPose> commands, CoverageScratch scratch, out CoverageFailure failure)
+    static bool Construct(CoverageRefinement topology, in Matrix4x4 actorModel, ReadOnlySpan<CoverageCommandPose> commands,
+        CoverageScratch scratch, out CoverageFailure failure)
     {
         var tally = new CoverageTally();
+        Array.Clear(scratch.FullRecessions);
         int stamp = scratch.NextStamp();
         ModelVertex[] before = scratch.Before, after = scratch.After;
         for (int i = 0; i < before.Length; i++)
@@ -63,7 +66,34 @@ public static class CoverageEvaluator
             // Welded members share one computed position, so every seam receives identical bits.
             after[i].Position = scratch.GroupPositions[group];
         }
-        return tally.Succeeded(topology, commands, scratch, out failure);
+        if (!tally.Succeeded(topology, commands, scratch, out failure)
+            || !CoverageCoreCorrection.TryApply(topology, before, after, actorModel, commands, scratch, out failure)) return false;
+        ApplyTransition(topology, commands, scratch);
+        return true;
+    }
+
+    static void ApplyTransition(CoverageRefinement topology, ReadOnlySpan<CoverageCommandPose> commands, CoverageScratch scratch)
+    {
+        int stamp = scratch.NextStamp();
+        for (int i = 0; i < scratch.After.Length; i++)
+        {
+            CoverageRefinedVertex record = topology.Vertices[i];
+            int slot = record.RegionIndex >= 0 && record.Strength > 0 ? scratch.RegionCommands[record.RegionIndex] : -1;
+            if (slot < 0) continue;
+            int group = record.PositionGroup;
+            if (scratch.GroupStamps[group] != stamp)
+            {
+                scratch.GroupStamps[group] = stamp;
+                Vector3 position = scratch.Before[i].Position;
+                ref readonly CoverageCommandFrame frame = ref scratch.Frames[slot];
+                double weight = commands[frame.Command].TransitionWeight;
+                double applied = weight * scratch.FullRecessions[group];
+                scratch.GroupPositions[group] = weight == 1 ? scratch.After[i].Position : applied == 0 ? position :
+                    new((float)(position.X - applied * frame.Recess.X), (float)(position.Y - applied * frame.Recess.Y),
+                        (float)(position.Z - applied * frame.Recess.Z));
+            }
+            scratch.After[i].Position = scratch.GroupPositions[group];
+        }
     }
 
     static Vector3 Conform(CoverageRefinement topology, int vertex, Vector3 position, in CoverageRefinedVertex record, int slot,
@@ -107,8 +137,8 @@ public static class CoverageEvaluator
         {
             tally.Note(CoverageFailureCode.RecessionExceeded, slot); return position;
         }
-        double applied = command.TransitionWeight * recessHigh;
-        if (applied == 0) return position;
+        scratch.FullRecessions[record.PositionGroup] = recessHigh;
+        double applied = recessHigh;
         if (q.Z - applied < command.MinZ + frame.CapMargin)
         {
             tally.Note(CoverageFailureCode.CapContact, slot); return position;

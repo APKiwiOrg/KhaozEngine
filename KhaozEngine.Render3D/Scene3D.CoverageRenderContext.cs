@@ -175,10 +175,10 @@ public sealed partial class Scene3D
         _cpuSkinnedVerts.EnsureCapacity(vertices); _cpuSkinnedInstances.EnsureCapacity(draws); _cpuSkinnedDraws.EnsureCapacity(draws);
         _coveragePointMatrices.EnsureCapacity(checked(_lights.Count * 12));
         _gpuSkinnedDraws.EnsureCapacity(draws);
-        // Motion may activate during this render, so the prediction comes from the live request, not last frame.
-        bool motion = TemporalActive;
-        if (motion) _cpuSkinnedPrevious.EnsureCapacity(vertices);
-        _model.ReserveCoveredSkinning(vertices, draws, motion ? vertices : 0);
+        // Public temporal requests may change after preparation. Reserve the bounded previous stream now,
+        // without activating motion resources or their bindings before the target requests them.
+        _cpuSkinnedPrevious.EnsureCapacity(vertices);
+        _model.ReserveCoveredSkinning(vertices, draws, vertices);
         _model.EnsureSkinnedMainCapacity((uint)draws);
         _model.EnsureSkinnedBonePaletteCapacity((uint)draws);
         _model.EnsureSkinnedShadowCapacity((uint)draws * ShadowSettings.MaxCascades);

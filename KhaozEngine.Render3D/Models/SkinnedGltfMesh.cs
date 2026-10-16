@@ -31,6 +31,9 @@ namespace KhaozEngine.Render3D
     {
         public SkinnedVertex[] Vertices { get; }
 
+        /// <summary>Optional validated source coverage and material-slice identity.</summary>
+        public HostCoveragePart? Coverage { get; init; }
+
         /// <summary>Authoritative index buffer (32-bit). Always valid regardless of mesh size.</summary>
         public uint[] Indices32 { get; }
 

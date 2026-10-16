@@ -707,9 +707,15 @@ adapter, source row, frame and jitter, the ghost envelope with every residual co
 completeness against host-only current-surface controls. Per-pixel history bounds originate in independent
 current-only captures, preserve joint luma through the exact filter footprint, and reset on coverage identity,
 rejection or absence. Captured motion, depth and view uniforms condition this colour proof. They are not an
-independent motion oracle. Every channel, including zero-clamped output, is checked. These are invariant proofs. They do not read
-or write backend reference grids. Inspect the opaque packet after correctness passes before starting a
-separate backend-owned golden bake.
+independent motion oracle. Every channel, including zero-clamped output, is checked. These are quantitative
+invariant and temporal/raw proofs. They do not read or write backend reference grids. Inspect the opaque packet
+after correctness passes before starting a separate backend-owned golden bake.
+
+The six accepted-surface views also have separate backend-owned reference grids. `CoverageGoldenTests` runs
+the invariant proof first, then calls the existing `GoldenCompare` for `coverage-front`, `coverage-rear`,
+`coverage-grazing-left`, `coverage-grazing-right`, `coverage-high` and `coverage-low-backlit`. Each reference
+is baked and owned by the actual backend that renders it through the existing backend golden workflow. These
+references complement the quantitative invariant and temporal/raw evidence.
 
 Six artifacts carry no pixels at all and upload on `always()`, because each of them is read off a run that
 PASSED:

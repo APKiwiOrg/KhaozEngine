@@ -64,8 +64,8 @@ public sealed class NativeMarkerSupportEditTests
 
     /// <summary>The production terrain path, a session mutation that stages one command and leaves its candidate as
     /// staged, keeps the accepted expansion. Each stroke after the first reads it as its before side, and reports exactly
-    /// what a cold session over the same document reports. The first stroke expands its before side, its candidate and
-    /// the unchanged session revalidation's candidate. Later strokes expand only the last two.</summary>
+    /// what a cold session over the same document reports. The first stroke expands its before side and its candidate.
+    /// Later strokes expand only the candidate, and a candidate left as staged is not validated again.</summary>
     [Fact]
     public void TerrainApplyStrokes_ReuseAcceptedExpansion()
     {
@@ -80,7 +80,7 @@ public sealed class NativeMarkerSupportEditTests
             long before = MapPrefabResolver.ThreadExpansions;
             var effects = service.TerrainApply(CornerEdit(heights[stroke])).Effects;
             long delta = MapPrefabResolver.ThreadExpansions - before;
-            Assert.Equal(stroke == 0 ? 3 : 2, delta);
+            Assert.Equal(stroke == 0 ? 2 : 1, delta);
             Assert.Equal(coldEffects.Describe(), effects.Describe());
             Assert.Equal(new[] { "bound" }, effects.MarkerIds);
         }
@@ -112,6 +112,25 @@ public sealed class NativeMarkerSupportEditTests
     }
 
     // The four corners of the cell under the bound marker, so the stroke reseats it whatever the cell's diagonal.
+    /// <summary>A callback edit after staging that leaves the shared candidate invalid is validated again and refuses,
+    /// with document, history, events and dirty state unchanged.</summary>
+    [Fact]
+    public void RevalidatedCallbackEdit_RefusesInvalidLaterEdit()
+    {
+        var session = Session(MarkerFixtures.SupportEdits("stacked-bound"));
+        var stateBefore = PrefabEditorFixtures.State(session);
+        var error = Assert.Throws<MapDocumentException>(() => session.Mutate((document, registry) =>
+        {
+            session.ApplyNative(Corner(2010), document, registry);
+            // The staged publication shares this patch object, so only publication-time validation can see the edit.
+            // Removing the cell under the bound marker leaves it without support.
+            document.Surfaces.Patches[Floor2].SetPresent(0, 0, false);
+            return 0;
+        }, true));
+        Assert.Contains("Marker 'bound'", error.Message, StringComparison.Ordinal);
+        Assert.Equal(stateBefore, PrefabEditorFixtures.State(session));
+    }
+
     static TerrainEditCommand Corner(int height) => new(CornerEdit(height));
     static MapSetCornerHeights CornerEdit(int height) => new(Floor2, 0, 0, 2, 2, [height, height, height, height]);
 

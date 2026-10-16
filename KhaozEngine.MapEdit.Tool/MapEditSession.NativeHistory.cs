@@ -83,11 +83,10 @@ public sealed partial class MapEditSession
         {
             T result = fn(candidate, _registry);
             var staged = _pendingNative;
-            // fn can still edit the candidate it shares with a publication it staged, so that publication is checked again.
-            bool revalidate = staged is not null;
             string published = SemanticHash(staged?.Candidate ?? candidate);
             if (SemanticHash(before) == published) return result;
-            // The expansion staging built is the published state only if the callback left the staged candidate as staged.
+            // fn can still edit the candidate it shares with a publication it staged. Only then is that publication
+            // validated again, and only then is the expansion staging built no longer the published state.
             // SemanticHash covers the format version, ID, globals including water, prefabs, building intent and resource
             // transforms, the placement and spawn lists through the world hash, the native globals including surface refs,
             // native assets and resolver identity, and every patch digest. It nulls Tiles, the storage index, which
@@ -102,16 +101,17 @@ public sealed partial class MapEditSession
                 var command = new NativeSessionSnapshotCommand("Native document edit", before, candidate, _nativeAssets, _nativeAssets, effects);
                 staged = _nativeHistory.StageExecute(before, command);
             }
-            PublishNative(staged, worldChanged: worldChanged, revalidate: revalidate, editedAfterStaging: editedAfterStaging);
+            PublishNative(staged, worldChanged: worldChanged, editedAfterStaging: editedAfterStaging);
             return result;
         }
         finally { _pendingNative = null; _pendingNativeStamp = null; _nativeMutation = false; }
     }
-    // Staging validated the candidate against its closure. Only a candidate that may have changed since is validated again.
-    MapNativeEditEffects PublishNative(NativeStagedPublication staged, Action? checkpoint = null, bool worldChanged = true, bool revalidate = false,
+    // Staging validated the candidate against its closure, including effective water. Only a candidate edited after
+    // staging is validated again.
+    MapNativeEditEffects PublishNative(NativeStagedPublication staged, Action? checkpoint = null, bool worldChanged = true,
         bool editedAfterStaging = false)
     {
-        if (revalidate)
+        if (editedAfterStaging)
         {
             MapBoundDocumentValidation.Validate(staged.Candidate, staged.Assets!, _registry);
             if (staged.Candidate.Prefabs is not null || staged.Candidate.NativeResourceTransforms is not null || staged.Candidate.BuildingIntent is not null)

@@ -40,7 +40,9 @@ inside it, without the window doing anything special.
 1. **Bands.** Every window belongs to one band: `Docked`, `Floating` or `Topmost`, in that order bottom to top.
    No window ever rises above a higher band. Within a band the stack keeps an order.
 2. **Front on open.** A window that becomes open is raised to the front of its band. While the left button is
-   held, that raise waits until release, so a drag in progress never loses its window.
+   held, that raise waits until the gesture has ended: it is skipped by `Update` on the release frame too and
+   applied by that frame's `Draw`, so the release's taps and drops resolve against the order the player saw and
+   a drag in progress never loses its window.
 3. **Front on press.** On a fresh left or right press, the front-most open window whose area contains the
    press origin is raised to the front of its band. The test uses the windows' places from before this
    frame's updates, which is what the player saw when pressing. No press raises anything while a window
@@ -141,7 +143,8 @@ and is skipped by update, draw, `Covers` and `CloseFront`.
 
 **Update, per frame.**
 
-1. Raise windows that became open since the last sync (rule 2), unless the left button is held.
+1. Raise windows that became open since the last sync (rule 2), unless the left button is held or was released
+   this frame.
 2. On `IsPressOriginFresh` or `IsRightPressOriginFresh`, raise the front-most open window containing the
    relevant origin (rule 3), unless a window captures, the other button is held or input is off.
 3. If a window captures, update it with no occlusion, then `OccludeAll` and update the rest top to bottom.
@@ -153,7 +156,7 @@ and is skipped by update, draw, `Covers` and `CloseFront`.
 
 **Draw.** Sync open edges as in Update step 1, then draw open windows bottom to top. Before each window the
 stack clears occlusion and re-applies the occluders of the windows above it, so draw-time hover reads, for
-example a close square lighting under the cursor, agree with what Update decided. Draw mirrors the mode of
+example a close square lighting under the cursor, normally agree with what Update decided. Draw mirrors the mode of
 the last Update: after a capture frame the captor draws with nothing occluded and every other window draws
 with the whole surface occluded, and after a `receivesInput: false` frame every window draws fully occluded.
 `ClearOcclusion` at the end. A window removed from the stack during another window's update is skipped for

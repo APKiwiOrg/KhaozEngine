@@ -340,7 +340,7 @@ internal sealed class CoverageAttachmentFixture : IDisposable
         Matrix4x4.Identity, [new(0, 0, 0, 4)], .4f, -2, 2, .02f, .8f);
     internal string Companion(string key, EquipmentCoverageCommand command) => Source.Add(key,
         EquipmentCoverageJson.Write(new EquipmentCoverageDefinition(Loaded.DefinitionSha256, MapHash, [command])));
-    internal void Submit(SkinnedCoverageFrame frame, AttachmentDraw[] equipment, ulong actor = 91,
+    internal void Submit(SkinnedCoverageFrame frame, ReadOnlySpan<AttachmentDraw> equipment, ulong actor = 91,
         Matrix4x4? model = null, Matrix4x4[]? palette = null)
     {
         var group = Scene.BeginMeshOutline(Color.White, 1);
@@ -364,7 +364,8 @@ internal sealed class CoverageAttachmentFixture : IDisposable
             }
         }
     }
-    internal void Render() => render.Render();
+    internal void Render(bool prepare = true) => render.Render(prepare: prepare);
+    internal RecordingGpuCommandList Record => render.Record;
     internal void DrainRetired()
     {
         for (int i = 0; i < GpuRetireQueue.DefaultFrameDelay; i++) Scene.Begin();

@@ -67,6 +67,8 @@ public sealed partial class Scene3D
             for (int slice = 0; slice < p.Owner.Meshes.Length; slice++)
             {
                 bool found = false;
+                if (p.Draws[slice] is not { } submitted || !CoverageHasMainFragments(submitted.Dissolve, submitted.DissolveComplement))
+                { presented = false; continue; }
                 foreach (var draw in _cpuSkinnedDraws)
                     found |= draw.MeshIndex < 0 && draw.VisibleMain && draw.Motion == p.Actor
                         && ReferenceEquals(draw.Ib, p.Owner.Indices[slice]) && draw.BaseVertex == p.BaseVertices[slice];
@@ -127,18 +129,22 @@ public sealed partial class Scene3D
     {
         var bounds = new CoverageSurfaceBoundsBuilder(_frameOrigin);
         Matrix4x4 renderModel = ToRender(p.Model);
-        foreach (var draw in _cpuSkinnedDraws)
+        for (int slice = 0; slice < p.Owner.Meshes.Length; slice++)
         {
-            if (draw.MeshIndex >= 0 || !draw.VisibleMain || draw.Motion != p.Actor) continue;
-            foreach (var indices in p.Owner.Indices)
+            if (p.Draws[slice] is not { } submitted || !CoverageHasMainFragments(submitted.Dissolve, submitted.DissolveComplement)) continue;
+            foreach (var draw in _cpuSkinnedDraws)
             {
-                if (!ReferenceEquals(indices, draw.Ib)) continue;
+                if (draw.MeshIndex >= 0 || !draw.VisibleMain || draw.Motion != p.Actor
+                    || !ReferenceEquals(p.Owner.Indices[slice], draw.Ib)) continue;
                 foreach (var vertex in CollectionsMarshal.AsSpan(_cpuSkinnedVerts).Slice(draw.BaseVertex, draw.VertexCount))
                     bounds.Add(CoverageShaderPosition.Transform(renderModel, CoveragePositionBounds.From(vertex.Position)));
             }
         }
         return bounds.Build(p.Certificate.WorldErrorBound);
     }
+
+    // A submitted draw can encode successfully while its colour shader discards every fragment.
+    static bool CoverageHasMainFragments(float dissolve, float complement) => complement > .5f ? dissolve > 0 : dissolve < 1;
 
     CoverageSurfaceBounds? PreviousCoverageBounds(MotionKey actor)
     {
@@ -158,7 +164,8 @@ public sealed partial class Scene3D
         {
             var item = items[i];
             if (item.Motion != actor || item.ShadowOnly || !_skinnedSlots.IsValid(item.Mesh.Index, item.Mesh.Generation)
-                || _skinnedCpuVerts[item.Mesh.Index] is not { } source) continue;
+                || _skinnedCpuVerts[item.Mesh.Index] is not { } source
+                || !CoverageHasMainFragments(item.DissolveThreshold, item.DissolveComplement)) continue;
             if (TryFrozenCoverage(item.Coverage, out var preparation)
                 && preparation.Outcome.Presentation == CoveragePresentation.Covered) continue;
             var bones = CollectionsMarshal.AsSpan(_boneMatrices).Slice(i * SkinningMath.MaxBonesPerDraw, SkinningMath.MaxBonesPerDraw);

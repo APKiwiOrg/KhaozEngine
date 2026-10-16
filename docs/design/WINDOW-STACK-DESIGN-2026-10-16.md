@@ -1,9 +1,8 @@
 # Window stack and pointer occlusion
 
-Status: **Design approved by the owner in conversation on 2026-10-16 (behaviour, engine API and first consumer
-adoption). This written spec awaits owner review. Implementation, release and consumer adoption are not yet
-approved.** Baseline: engine `e0dbb6da4` (v21.1.0). First consumer: Grimhollow at `780670d7` on 21.1.0.
-Tracking: [#1423](https://github.com/APKiwiOrg/KhaozEngine/issues/1423), consumer adoption
+Status: **Implemented in 21.2.0.** The design was approved by the owner in conversation on 2026-10-16. Consumer
+adoption follows the release. Baseline: engine `e0dbb6da4` (v21.1.0). First consumer: Grimhollow at `780670d7`
+on 21.1.0. Tracking: [#1423](https://github.com/APKiwiOrg/KhaozEngine/issues/1423), consumer adoption
 [Grimhollow #557](https://github.com/APKiwiOrg/Grimhollow/issues/557).
 
 ## Problem

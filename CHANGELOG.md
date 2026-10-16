@@ -5,6 +5,29 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.2.0
+
+- Add `WindowStack` to `KhaozEngine.Gui` for overlapping non-modal windows. Windows implement `IStackWindow`
+  and live in `WindowBand.Docked`, `Floating` or `Topmost`. The stack raises a window when it opens or is
+  pressed, updates open windows top to bottom with every window above occluded, and draws them bottom to top.
+  `WindowUpdate` hands each window its pointer, input, `ReceivesInput` and `IsFront`. `CloseFront` closes the
+  top-most window that closes on Escape and `Covers` reports whether an open window lies under a point.
+- A window that closes during its own update still occludes for that frame and is not drawn. No press raises
+  a window while another window captures the pointer, while the other button is held or on a frame that
+  receives no input. `Draw` mirrors the last update's capture and no-input occlusion, skips windows removed
+  mid-frame and clears occlusion when it finishes, so tooltips and menus drawn afterwards stay live.
+- Add opt-in `Pointer` occlusion with `Occlude`, `OccludeAll`, `IsOccluded` and `ClearOcclusion`. Every hit
+  query misses when its test point is occluded, and `IsReleasedOutside` counts an occluded release as
+  outside. Occlusion clears on every `Pointer.Update`. With nothing occluded every query behaves as in 21.1.0.
+- Add `Pointer.IsRightPressOriginFresh`, the right-button twin of `IsPressOriginFresh`, a same-frame right tap
+  included.
+- `WindowDrag` now latches its grab through `Pointer.IsDragStartIn`, so an occluded press origin never grabs
+  and only the front window under a press can move. A single window behaves as before.
+- `SlotGrid` drops, `GuiDragContext.OfferTargetIn`, `TreeView` drop positions, `ScrollablePanel` drag edge
+  scroll, `PropertyGrid` hover, `WorldMapView` hover, `GuiSurface.HoverCaptured` and `DraggableBottomSheet`
+  presses now honour occlusion. Their behaviour with nothing occluded is unchanged. See the
+  [design record](docs/design/WINDOW-STACK-DESIGN-2026-10-16.md).
+
 ## 21.1.0
 
 - Keep rigid attachment body alignments exactly affine when general inversion rounds their homogeneous

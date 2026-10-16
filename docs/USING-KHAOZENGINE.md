@@ -155,9 +155,14 @@ These are not style preferences. Breaking them re-introduces the exact bugs this
 4. **An overlay above a still-updating layer must reserve its footprint** with `BlockInputRegion(rect)` every
    frame, and the layer beneath must guard its actions with `IsInputBlocked(point)`. This is half of the
    click-through fix. The other half is `IsTapIn`.
-5. **Pass the design viewport to `Pointer.Update` / `InputManager.Update`** so hit-testing lines up with what's
+5. **Overlapping windows go on a `WindowStack`** (21.2.0). Register every non-modal window that can overlap
+   another, and update the stack before any layer beneath it reads the same pointer. Decide every pointer
+   behaviour through a `Pointer` hit query or `IsOccluded`, and read raw `Position` only after such a gate. A
+   covered area then answers nothing, engine widgets included. See
+   [Overlapping windows](#overlapping-windows-windowstack-2120).
+6. **Pass the design viewport to `Pointer.Update` / `InputManager.Update`** so hit-testing lines up with what's
    drawn. `GameApp` does this for you. If you build your own loop, do it yourself.
-6. **`System.Numerics` only** - `Vector2/3/4`, `Matrix4x4`. No XNA / MonoGame types anywhere. (An RGBA color
+7. **`System.Numerics` only** - `Vector2/3/4`, `Matrix4x4`. No XNA / MonoGame types anywhere. (An RGBA color
    is `KhaozEngine.Primitives.Color`, not a bare `Vector4`. GPU-layout structs still use `Vector4`.) To dim
    or brighten a color for a tint, use `color.ScaleRgb(factor)`: it scales RGB and keeps alpha. `color *
    factor` scales alpha too, which under the 2D batch's straight-alpha blend turns a dim into translucency
@@ -165,7 +170,7 @@ These are not style preferences. Breaking them re-introduces the exact bugs this
    `ScaleRgb` is unclamped, so a brighten factor over an already-bright color can overshoot 1.0 per channel.
    Use `color.ScaleRgbClamped(factor)` (same contract, each scaled channel clamped to 0..1) whenever the
    factor can push a channel out of range, e.g. a UI "selected" highlight tint.
-7. **Don't fork the packages.** Need an API that isn't there? Add it to KhaozEngine, ship a headless test, bump
+8. **Don't fork the packages.** Need an API that isn't there? Add it to KhaozEngine, ship a headless test, bump
    the version, and consume the new version. Pinned versions are how games stay green during each other's
    migrations.
 
@@ -938,6 +943,18 @@ interactive layout mid-gesture without a scene transition.
 
 **Region blocking (the other half of click-through):** `BlockInputRegion(Rect)` from the higher overlay each
 frame; `IsInputBlocked(Vector2)` from the layer beneath before acting. Cleared at the start of every `Update`.
+
+**Occlusion (21.2.0):** `Pointer.Occlude(Rect)` and `Pointer.OccludeAll()` mark an area, or the whole surface,
+as covered for the rest of the frame. `IsOccluded(Vector2)` reads it and `ClearOcclusion()` drops it early.
+Every `Pointer.Update` clears it, as it clears blocked regions. Unlike `BlockRegion`, which only answers
+`IsBlocked`, occlusion changes what the hit queries report: `IsTapIn`, `IsTapFromTo`, `IsPressingIn`,
+`IsRightTapIn` and `IsRightPressingIn` miss when the press origin or the cursor is occluded, `IsPointerIn` and
+`IsHoveringIn` miss when the cursor is, and `IsDraggingIn`, `GetDragDelta` and `IsDragStartIn` miss when the
+press origin is. `IsReleasedOutside` counts a release in an occluded area as outside, so a click on a window in
+front dismisses a dropdown or text focus in a window behind it. The `InputManager` pass-throughs inherit all of
+this. With nothing occluded every query reads exactly as in 21.1.0. `WindowStack` is the normal producer of
+occlusion. `IsRightPressOriginFresh` is the right-button twin of `IsPressOriginFresh`, true only on the frame
+`RightPressOrigin` latched, a same-frame right tap included.
 
 **Scroll:** `ScrollDelta`, `IsMouseWheelScrolledUp/Down`.
 
@@ -1901,7 +1918,9 @@ nothing catches that, so make it the first line of the window's update.
 `WindowDrag` is the title-bar drag. It stores an OFFSET from wherever the window's own layout put it, so a
 window keeps its placement rule (centred, docked, anchored) across a resize instead of being stranded at an
 absolute position. `Update(pointer, grip)` latches the grab ONCE on the press frame, through
-`Pointer.IsPressOriginFresh`, and holds it until the button goes up wherever the cursor wanders. Re-reading the
+`Pointer.IsPressOriginFresh` and `Pointer.IsDragStartIn(grip)`, and holds it until the button goes up wherever
+the cursor wanders. Since 21.2.0 an occluded press origin never latches, so of two overlapping windows on a
+`WindowStack` only the front one under the press can grab it. Re-reading the
 press origin every frame is the defect this exists to avoid: the grip travels with the window while the press
 origin stays where the button went down, so a window dragged further than its title row is tall moves the grip
 out from under its own press and drops the grab part way. A held drag calls `Pointer.ConsumeGesture`, so a
@@ -1930,13 +1949,85 @@ pointer.BlockRegion(bounds);   // this window's call, not the frame's
 PanelFrame.DrawFrame(batch, white, bounds);
 PanelFrame.DrawTitle(batch, font, white, bounds, stripHeight: 0f, title: Strings.BankTitle,
     readout: LocalizedText.Of(Strings.BankUsed, used, capacity), showClose: true,
-    closeHovered: close.Contains(pointer.Position));
+    closeHovered: pointer.IsPointerIn(close));
 DrawRows(batch, PanelFrame.ContentRect(bounds, stripHeight: 0f));
 ```
 
 What stays in the GAME: the palette values it assigns to `GuiTheme`, the metric numbers if the default shape is
 wrong for it, which taps it swallows through `BlockRegion`, each window's natural-bounds rule, the grip rect,
 and whatever fills the strip, content and footer bands.
+
+### Overlapping windows (`WindowStack`, 21.2.0)
+
+`WindowStack` owns the z-order of a consumer's non-modal windows. Register each window once with
+`Add(window, band)`. The stack raises a window when it opens or is pressed, updates open windows top to
+bottom so each sees only its uncovered area, and draws them bottom to top. A covered area of a window is dead
+to every pointer read, engine widgets included, with no extra code in the window.
+
+A window implements `IStackWindow`: `IsOpen`, `Bounds`, `Close()`, `Update(in WindowUpdate)` and
+`Draw(batch, pointer)`. `CapturesPointer` defaults to false and `ClosesOnEscape` to true. `Contains(point)` and
+`Occlude(pointer)` default to `Bounds`, so override both for a window that is not one rectangle, such as a
+docked panel whose tab strip and body are separate rects. `WindowUpdate` carries the frame's `Pointer`,
+`Input`, `Dt`, `ReceivesInput` and `IsFront`, true for the top-most open window of its band.
+
+- **Bands.** `WindowBand.Docked`, `Floating` (the default) and `Topmost`, bottom to top. No window rises above
+  a higher band. `Add` places a window at the front of its band, and `Add` on a registered window moves it.
+  `BringToFront` raises within the band. `Order` lists every registered window bottom to top.
+- **Raise on open.** A window that becomes open goes to the front of its band. While the left button is held
+  that raise waits for the release, so a drag in progress keeps its window on top.
+- **Raise on press.** A fresh left or right press raises the front-most open window containing the press
+  origin, tested against where the windows were before this frame's updates. No press raises anything while a
+  window captures the pointer, while the other button is held from an earlier frame, or on a frame with
+  `receivesInput: false`.
+- **Update.** Each open window updates with every window above it occluded. A window that closes during its
+  own update still occludes for the rest of that frame, so the tap that closed it cannot reach the window
+  behind, and it is not drawn. A window another window closed or removed earlier in the frame is skipped.
+- **Capture.** A window reporting `CapturesPointer`, normally while a context menu it owns stands, updates
+  first with nothing occluded. Every other window then updates with the whole surface occluded. The top-most
+  captor wins.
+- **No input.** `Update(..., receivesInput: false)` still updates every open window, with the whole surface
+  occluded and `ReceivesInput` false. Read no keyboard input on such a frame, the `Screen.Update` contract.
+- **Draw.** Before each window the stack re-applies the occlusion the last `Update` gave it, so a draw-time
+  hover read such as a lit close square agrees with the update. After a capture frame the captor draws with
+  nothing occluded and the rest fully occluded, and after a no-input frame every window draws fully occluded.
+- **Escape and hit tests.** `CloseFront()` closes the top-most open window that closes on Escape, searching
+  `Topmost`, then `Floating`, then `Docked`, and reports whether it closed one. `Covers(point)` is true over
+  any open window. A closed window stays registered and is skipped by update, draw, `Covers` and `CloseFront`.
+
+Frame ordering is the part a consumer must get right:
+
+1. `Pointer.Update` runs first, as `GameApp` already does.
+2. Update the stack before any layer beneath it reads the same pointer. After `Update` every window that
+   updated stays occluded and reserved with `BlockRegion` for the rest of the frame, so the world, a HUD and
+   `ScreenStack.PressBeganOverUi` treat the windows as UI. After a capture or no-input frame the whole surface
+   stays occluded for those layers.
+3. `Draw` clears occlusion when it finishes. Content drawn after `WindowStack.Draw`, such as tooltips, context
+   menus and drag ghosts, reads the pointer as uncovered and draws above every window.
+
+```csharp
+// Once, at construction.
+_windows.Add(_sidePanel, WindowBand.Docked);
+_windows.Add(_bank);
+_windows.Add(_debugMenu, WindowBand.Topmost);
+
+// Update: after Pointer.Update, before the world reads the pointer.
+bool escapeSpent = input.WasPressed(Key.Escape) && _windows.CloseFront();
+_windows.Update(pointer, input, dt, receivesInput: !overlayOpen);
+UpdateWorld(pointer);   // windows are occluded and blocked here
+
+// Draw: windows bottom to top, then content that floats above them.
+_windows.Draw(batch, pointer);
+_tooltip.Draw(batch, pointer);
+```
+
+The engine widgets inside a window already honour occlusion. `WindowDrag` latches through `IsDragStartIn`.
+`SlotGrid` offers no drop slot, `GuiDragContext.OfferTargetIn` refuses, `TreeView` computes no drop position
+and `ScrollablePanel` does no drag edge scroll while the pointer is occluded. `PropertyGrid` hit-tests through
+`IsPointerIn`, `WorldMapViewCore` builds no hover overlay for an occluded position,
+`GuiSurface.HoverCaptured` is true over an occluded position and `DraggableBottomSheet` refuses an occluded
+press. A consumer's own widgets follow the same gate rule: a `Pointer` hit query or `IsOccluded` first, raw
+`Position` only after it. Out of scope for the stack: saved order or position, cascade placement, docking,
+minimising, keyboard focus beyond `IsFront`, and modal dialogs, which stay on `PopupPanel`.
 
 ---
 
@@ -7562,7 +7653,9 @@ if (camController.OrbitTap) Select(camController.OrbitGesture!.TapPosition);
 
 Gate `UiBlocked` on `GuiSurface.HoverCaptured`, which tests the pointer against every UI rect reserved whichever
 button is pressed, and reads the frozen capture point while captured. `GuiSurface.PointerCaptured` tracks only the
-left button's press origin, so it would let a right drag start on an inventory slot.
+left button's press origin, so it would let a right drag start on an inventory slot. Since 21.2.0
+`HoverCaptured` is also true while the live position is occluded, so a camera gated after `WindowStack.Update`
+stays still under every window.
 
 `HoverCaptured` tests the rects reserved since the last `GuiSurface.Begin`, which clears them, against the live
 position of the `Pointer` handed to that `Begin`. A game that passes its one long-lived `Pointer` and sets
@@ -8317,7 +8410,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.1.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.2.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -8718,7 +8811,7 @@ option does not enter bake identity or change canonical bytes. See the
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.1.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.2.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -9483,7 +9576,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.1.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.2.0" />
 ```
 
 ```csharp
@@ -17236,7 +17329,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.1.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.2.0" />
 ```
 
 ```csharp
@@ -17272,7 +17365,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.1.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.2.0" />
 ```
 
 ```csharp
@@ -17516,7 +17609,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.1.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.2.0" />
 ```
 
 ```csharp
@@ -21876,7 +21969,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="21.1.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="21.2.0" />
 </ItemGroup>
 ```
 

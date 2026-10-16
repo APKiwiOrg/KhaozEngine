@@ -114,29 +114,74 @@ internal sealed partial class SupportFootprintCollector
             else
             {
                 captured = installed.GetOrCapture(simulation, owner, description.Shape, staticGeometryVersion, out var geometry);
-                if (captured == CapsuleFeatureStatus.Complete)
-                {
-                    using var materialization = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportMaterialization);
-                    captured = geometry!.Materialize(simulation, description, _capture, _leaves, _curved);
-                    if (captured != CapsuleFeatureStatus.Complete && captured != CapsuleFeatureStatus.Ambiguous)
-                        captured = CapsuleFeatureStatus.Unsupported;
-                }
+                if (captured == CapsuleFeatureStatus.Complete) captured = Installed(simulation, owner, description, geometry!);
                 else
                 {
                     // A local capture failure must keep the full evaluator's original refusal ordering. The cache
                     // retains no refusal, so readers never write invalidations.
                     captured = SupportNeighborhoodPolyhedra.Capture(simulation, description.Shape, description.Pose,
                         _bounds, _capture, _leaves, _curved);
+                    if (captured == CapsuleFeatureStatus.Complete) DerivePolygons(owner);
                 }
-                if (captured != CapsuleFeatureStatus.Complete) return captured;
-                using (ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportMaterialization))
-                    foreach (CapsuleFeaturePolyhedron leaf in _leaves)
-                        SupportNeighborhoodPolyhedra.Polygons(owner, leaf, _pool, _polygons, footprint: true);
             }
         }
         if (captured != CapsuleFeatureStatus.Complete) return captured;
         CapsuleFeatureStatus polygons = CollectPolygons();
         return polygons != CapsuleFeatureStatus.Complete ? polygons : CollectCurves(owner);
+    }
+
+    // Binds the published world form when its pose bits match the live description. Otherwise materializes as the
+    // reference does, and a reader that finds no published form also snapshots and publishes the result.
+    CapsuleFeatureStatus Installed(Simulation simulation, StaticHandle owner, in StaticDescription description,
+        InstalledSupportGeometry geometry)
+    {
+        if (SupportReferenceEvaluation.Active) return Materialize(simulation, owner, description, geometry);
+        InstalledSupportWorldForm? form = geometry.WorldForm;
+        if (form is null)
+        {
+            if (ContactAllocationDiagnostics.Observed) return BuildWorldForm(simulation, owner, description, geometry);
+            lock (geometry.WorldFormGate)
+            {
+                form = geometry.WorldForm;
+                if (form is null) return BuildWorldForm(simulation, owner, description, geometry);
+            }
+        }
+        if (!form.Matches(simulation, description)) return Materialize(simulation, owner, description, geometry);
+        using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportMaterialization);
+        form.Bind(owner, _pool, _polygons, _curved);
+        return CapsuleFeatureStatus.Complete;
+    }
+
+    // A refused materialization publishes nothing, so a later reader builds again.
+    CapsuleFeatureStatus BuildWorldForm(Simulation simulation, StaticHandle owner, in StaticDescription description,
+        InstalledSupportGeometry geometry)
+    {
+        CapsuleFeatureStatus status = Materialize(simulation, owner, description, geometry);
+        if (status != CapsuleFeatureStatus.Complete) return status;
+        using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportMaterialization);
+        SupportQueryDiagnostics.Record(SupportQueryCounter.WorldFormBuilds);
+        geometry.Publish(new InstalledSupportWorldForm(simulation, description, _leaves, _polygons, _curved));
+        return status;
+    }
+
+    // The reference materialization and polygon derivation, into this collector's scratch.
+    CapsuleFeatureStatus Materialize(Simulation simulation, StaticHandle owner, in StaticDescription description,
+        InstalledSupportGeometry geometry)
+    {
+        CapsuleFeatureStatus status;
+        using (ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportMaterialization))
+            status = geometry.Materialize(simulation, description, _capture, _leaves, _curved);
+        if (status != CapsuleFeatureStatus.Complete)
+            return status == CapsuleFeatureStatus.Ambiguous ? status : CapsuleFeatureStatus.Unsupported;
+        DerivePolygons(owner);
+        return status;
+    }
+
+    void DerivePolygons(StaticHandle owner)
+    {
+        using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportMaterialization);
+        foreach (CapsuleFeaturePolyhedron leaf in _leaves)
+            SupportNeighborhoodPolyhedra.Polygons(owner, leaf, _pool, _polygons, footprint: true);
     }
 
     GeometrySign ContactMember(SupportPolygon polygon, int index)

@@ -103,6 +103,24 @@ internal sealed class SupportPolygon
         HasJoinIncidenceCertificate = SupportJoinIncidence.Certify(this);
     }
 
+    /// <summary>Starts and finishes this polygon as a copy of a world form face, which a finished polygon of the
+    /// same face produced. Only the owner comes from the caller, and per-query operands start empty.</summary>
+    internal void Bind(StaticHandle owner, InstalledSupportWorldFace face)
+    {
+        Begin(owner, face.ElementId, face.Vertices.Length);
+        face.Vertices.CopyTo(_vertices);
+        face.Edges.CopyTo(_edges);
+        face.SourceVertices.CopyTo(_sourceVertices);
+        SourceMap = face.SourceMap;
+        HasSource = face.HasSource;
+        Normal = face.Normal;
+        NormalLength = face.NormalLength;
+        face.Low.CopyTo(Low);
+        face.High.CopyTo(High);
+        IsResolved = face.IsResolved;
+        HasJoinIncidenceCertificate = face.HasJoinIncidenceCertificate;
+    }
+
     /// <summary>The signed height of <paramref name="point"/> above this polygon's plane, in metres.</summary>
     internal GeometryInterval Height(FeaturePoint point) =>
         FeaturePoint.Dot(Normal, FeaturePoint.Subtract(point, Vertices[0])).Bounds.Divide(NormalLength);

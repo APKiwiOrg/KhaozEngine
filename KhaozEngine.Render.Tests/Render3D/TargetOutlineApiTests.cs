@@ -33,6 +33,31 @@ public sealed class TargetOutlineApiTests
     }
 
     [Fact]
+    public void Reused_group_starts_empty_with_its_new_settings()
+    {
+        using var device = new FakeGpuDevice();
+        using var scene = new Scene3D(device, Outputs);
+        MeshHandle mesh = scene.LoadMesh(MeshPrimitives.Box(1f));
+        scene.Begin();
+        MeshOutlineGroup old = scene.BeginMeshOutline(Color.White, 1.25f);
+        scene.DrawMeshOutlineDissolved(old, mesh, Matrix4x4.Identity, .75f, false);
+        scene.DrawMeshOutline(old, mesh, Matrix4x4.Identity);
+
+        scene.Begin();
+        MeshOutlineGroup group = scene.BeginMeshOutline(Color.White, 2f, MeshOutlineOcclusion.None);
+
+        Assert.Equal(old.Index, group.Index);
+        Assert.Equal(1, scene.MeshOutlineGroupCount);
+        Assert.Equal(0, scene.MeshOutlinePartCount);
+        Assert.Equal(MeshOutlineOcclusion.None, scene.MeshOutlineOcclusionAt(group.Index));
+        Assert.Throws<ArgumentOutOfRangeException>(() => scene.MeshOutlineDissolveAt(group.Index, 0));
+        Assert.Throws<ArgumentException>(() => scene.DrawMeshOutline(old, mesh, Matrix4x4.Identity));
+        scene.DrawMeshOutlineDissolved(group, mesh, Matrix4x4.Identity, .25f, false);
+        Assert.Equal(.25f, scene.MeshOutlineDissolveAt(group.Index, 0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => scene.MeshOutlineDissolveAt(group.Index, 1));
+    }
+
+    [Fact]
     public void Group_from_another_scene_is_rejected()
     {
         using var deviceA = new FakeGpuDevice();

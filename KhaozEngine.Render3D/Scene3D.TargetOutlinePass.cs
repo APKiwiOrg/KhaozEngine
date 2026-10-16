@@ -13,7 +13,9 @@ public sealed partial class Scene3D
     static int s_nextOutlineOwner;
 
     readonly int _outlineOwner = Interlocked.Increment(ref s_nextOutlineOwner);
+    // Groups are pooled across frames so warm outline submission reuses their part storage.
     readonly List<MeshOutlineDrawGroup> _meshOutlineGroups = new();
+    int _meshOutlineGroupCount;
     int _outlineFrame;
     int _meshOutlinePartCount;
 
@@ -45,8 +47,9 @@ public sealed partial class Scene3D
         if (!Enum.IsDefined(occlusion))
             throw new ArgumentOutOfRangeException(nameof(occlusion), occlusion, "unknown outline occlusion.");
 
-        int index = _meshOutlineGroups.Count;
-        _meshOutlineGroups.Add(new MeshOutlineDrawGroup(color, widthPixels, occlusion));
+        int index = _meshOutlineGroupCount++;
+        if (index == _meshOutlineGroups.Count) _meshOutlineGroups.Add(new MeshOutlineDrawGroup());
+        _meshOutlineGroups[index].Reset(color, widthPixels, occlusion);
         return new MeshOutlineGroup(_outlineOwner, _outlineFrame, index);
     }
 
@@ -72,7 +75,7 @@ public sealed partial class Scene3D
     MeshOutlineDrawGroup RequireMeshOutlineGroup(MeshOutlineGroup group)
     {
         if (group.Owner != _outlineOwner || group.Frame != _outlineFrame
-            || group.Index < 0 || group.Index >= _meshOutlineGroups.Count)
+            || group.Index < 0 || group.Index >= _meshOutlineGroupCount)
             throw new ArgumentException("outline group does not belong to this scene and frame.", nameof(group));
         return _meshOutlineGroups[group.Index];
     }
@@ -89,7 +92,7 @@ public sealed partial class Scene3D
         DrawMeshOutline(group, mesh, world);
     }
 
-    internal int MeshOutlineGroupCount => _meshOutlineGroups.Count;
+    internal int MeshOutlineGroupCount => _meshOutlineGroupCount;
     internal int MeshOutlinePartCount => _meshOutlinePartCount;
     internal MeshOutlineOcclusion MeshOutlineOcclusionAt(int groupIndex) => _meshOutlineGroups[groupIndex].Occlusion;
     internal float MeshOutlineDissolveAt(int groupIndex, int partIndex) =>
@@ -99,7 +102,9 @@ public sealed partial class Scene3D
     {
         _targetOutlines.BeginFrame();
         _outlineFrame = _outlineFrame == int.MaxValue ? 1 : _outlineFrame + 1;
-        _meshOutlineGroups.Clear();
+        // Clearing releases the previous frame's coverage tokens while keeping each group's capacity.
+        for (int i = 0; i < _meshOutlineGroupCount; i++) _meshOutlineGroups[i].Parts.Clear();
+        _meshOutlineGroupCount = 0;
         _outlineBoneMatrices.Clear();
         _meshOutlinePartCount = 0;
         _targetOutlineGroupsRendered = 0;
@@ -107,16 +112,17 @@ public sealed partial class Scene3D
 
     sealed class MeshOutlineDrawGroup
     {
-        public Color Color { get; }
-        public float WidthPixels { get; }
-        public MeshOutlineOcclusion Occlusion { get; }
+        public Color Color { get; private set; }
+        public float WidthPixels { get; private set; }
+        public MeshOutlineOcclusion Occlusion { get; private set; }
         public List<MeshOutlinePart> Parts { get; } = new();
 
-        public MeshOutlineDrawGroup(Color color, float widthPixels, MeshOutlineOcclusion occlusion)
+        public void Reset(Color color, float widthPixels, MeshOutlineOcclusion occlusion)
         {
             Color = color;
             WidthPixels = widthPixels;
             Occlusion = occlusion;
+            Parts.Clear();
         }
     }
 
@@ -155,7 +161,7 @@ public sealed partial class Scene3D
         Matrix4x4 clipViewProjection = GpuClip.Correct(viewProjection, _gd.Capabilities);
         _targetOutlines.EnsureCapacity(_meshOutlinePartCount);
         int drawIndex = 0;
-        for (int groupIndex = 0; groupIndex < _meshOutlineGroups.Count; groupIndex++)
+        for (int groupIndex = 0; groupIndex < _meshOutlineGroupCount; groupIndex++)
         {
             MeshOutlineDrawGroup group = _meshOutlineGroups[groupIndex];
             if (group.Parts.Count == 0) continue;

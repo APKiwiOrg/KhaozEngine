@@ -491,3 +491,26 @@ there on `build` and on a rid-agnostic `publish`, no-op on Windows, macOS and `p
 `<KhaozEngineFlattenHostNatives>false</KhaozEngineFlattenHostNatives>`. It ships here as well as in `Foundation`
 because `Foundation` is not in this package's dependency closure, so a project that references this one and no
 umbrella would otherwise get nothing. One physical rule file, so the two copies cannot drift.
+
+## GpuScaledCopy
+
+A fullscreen linear downscale pass. `new GpuScaledCopy(device)` builds its shaders, layout, sampler and pipeline
+once. `Record(commands, source, destination)` records, into an open recording, one triangle that samples
+`source` over the whole of `destination`. The frame capture path uses it to shrink a copy of the swapchain image
+to capture size before readback.
+
+- **Source.** Any size and any colour format with `Sampled` usage. Sampling returns logical RGBA, so a
+  `B8G8R8A8UNorm` source (every shipped swapchain) comes out in RGBA order with no CPU swizzle.
+- **Destination.** Exactly one single-sample `R8G8B8A8UNorm` colour attachment with no depth. Anything else is
+  refused with an `ArgumentException` naming `destination`. Alpha is written as one.
+- **Filter.** Four bilinear taps a quarter of a destination texel either side of its centre, which is a box
+  filter over a 4x4 source footprint up to a four to one reduction.
+- **Sampler.** The instance's own clamp-addressed `GpuSamplerDescription.Linear`, not the device's
+  wrap-addressed `LinearSampler`, so a border tap never reads the opposite edge.
+- **Resource set.** One, cached over the last source drawn and replaced when a different source instance is
+  passed.
+
+The vertex stage is Render3D's fullscreen triangle copied verbatim, since this package does not reference
+Render3D. Every fullscreen pass over it renders vertically flipped on every backend, and the post chain undoes
+that with a parity flip in its final blit. No blit follows this pass, so the fragment flips V itself.
+`GpuScaledCopyGpuTests` pins the orientation and channel order with a four quadrant source.

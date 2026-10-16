@@ -41,13 +41,15 @@ public sealed partial class QueryService(MapEditSession session)
     }
 
     /// <summary>Placements, NPC spawns, and player spawns whose position falls inside the inclusive rect
-    /// (<c>minX &lt;= p.X &lt;= maxX &amp;&amp; minZ &lt;= p.Z &lt;= maxZ</c>). A null-Y placement resolves to
-    /// the field's sampled ground height (<see cref="PlacementEntry.ExplicitY"/> flags which). NPC and player
-    /// spawns always resolve to ground height.</summary>
+    /// (<c>minX &lt;= p.X &lt;= maxX &amp;&amp; minZ &lt;= p.Z &lt;= maxZ</c>). On an analytic or resolver (1, 1)
+    /// document a null-Y placement resolves to the field's sampled ground height
+    /// (<see cref="PlacementEntry.ExplicitY"/> flags which), and NPC and player spawns always resolve to ground height.
+    /// A resolver-2 native document reads authored support instead, through <see cref="NativePlacementsInRect"/>.</summary>
     public PlacementsInRectResult PlacementsInRect(float minX, float minZ, float maxX, float maxZ)
     {
         return session.WithDocument((doc, _) =>
         {
+            if (UsesAuthoredSupport(doc)) return NativePlacementsInRect(minX, minZ, maxX, maxZ);
             TerrainField field = session.Field();
 
             PlacementEntry[] placements = doc.Placements

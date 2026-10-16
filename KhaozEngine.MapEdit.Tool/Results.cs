@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 using KhaozEngine.MapDoc;
+using KhaozEngine.MapDoc.Support;
 
 namespace KhaozEngine.MapEdit;
 
@@ -58,7 +59,10 @@ public sealed record ValidateResult(bool StructuralValid, IReadOnlyList<string> 
 /// <summary>A flat snapshot of the open document: identity, bounds, terrain seed and water level, the feature
 /// types in fold order, layer and companion names, section counts, the player spawn ids, region names, and the
 /// dirty flag. Kept flat so it serializes cleanly to the MCP client. <see cref="Native"/> is null for an analytic
-/// document and otherwise comes from a fresh complete native validation.</summary>
+/// document and otherwise comes from a fresh complete native validation. <see cref="Markers"/> comes from that same
+/// validation for a resolver-2 native document and is otherwise null and omitted. <see cref="SpawnCount"/>,
+/// <see cref="PlayerSpawnCount"/> and <see cref="PlayerSpawnIds"/> always count the legacy spawn lists only, which
+/// a native document keeps only until it adopts them as markers.</summary>
 public sealed record MapSummary(string Id, string DisplayName, int FormatVersion,
     float MinX, float MinZ, float MaxX, float MaxZ,
     int Seed, float WaterLevel,
@@ -70,7 +74,16 @@ public sealed record MapSummary(string Id, string DisplayName, int FormatVersion
     bool Dirty)
 {
     public NativeDocumentSummary? Native { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public MapMarkerSummary? Markers { get; init; }
 }
+
+/// <summary>Effective marker counts of a whole native document and its player starts for the caller's role, in
+/// ordinal ID order. <see cref="PlayerStartIds"/> includes disabled starts, <see cref="EnabledPlayerStartIds"/> does
+/// not. With no configured role, <see cref="PlayerStartRole"/> is null and both lists are empty.</summary>
+public sealed record MapMarkerSummary(int Total, int Enabled, string? PlayerStartRole, IReadOnlyList<string> PlayerStartIds,
+    IReadOnlyList<string> EnabledPlayerStartIds);
 
 /// <summary>Identity and counts of a freshly verified native document. The int64 high-water mark travels as an
 /// exact decimal string so JSON clients that parse numbers as doubles cannot round it. Int32 counts stay JSON
@@ -85,25 +98,36 @@ public sealed record GroundInfo(float X, float Z, float Height, float SlopeDegre
 /// gate, since submerged ground is never walkable regardless of slope.</summary>
 public sealed record WalkableInfo(float X, float Z, bool Walkable, float SlopeDegrees, float MaxSlopeDegrees, bool BelowWater);
 
-/// <summary>One authored placement resolved for a query. <see cref="Y"/> is the placement's explicit value when
-/// set, otherwise the field's sampled ground height at (<see cref="X"/>, <see cref="Z"/>). <see cref="ExplicitY"/>
-/// flags which one it is.</summary>
+/// <summary>One authored placement resolved for a query. On an analytic document <see cref="Y"/> is the placement's
+/// explicit value when set, otherwise the field's sampled ground height at (<see cref="X"/>, <see cref="Z"/>). On a
+/// resolver-2 native document every field is the effective resolved transform, prefab placements included, and a
+/// support-bound placement reports its seated height. <see cref="ExplicitY"/> flags an explicit height.</summary>
 public sealed record PlacementEntry(string Id, string Kind, float X, float Y, float Z, float Yaw, float Scale,
     bool ExplicitY, IReadOnlyList<string> Tags);
 
-/// <summary>One authored spawn resolved for a query. <see cref="GroundY"/> is always the field's sampled ground
-/// height, since spawns have no explicit Y.</summary>
+/// <summary>One authored spawn resolved for a query. On an analytic document <see cref="GroundY"/> is the field's
+/// sampled ground height, since spawns have no explicit Y, and <see cref="Support"/> is null and omitted. On a
+/// resolver-2 native document <see cref="Support"/> is the typed sample of the caller's legacy spawn Surface owner and
+/// <see cref="GroundY"/> is its height, meaningful only when the status is Supported.</summary>
 public sealed record SpawnEntry(string Id, string ArchetypeId, float X, float GroundY, float Z, bool Enabled,
-    IReadOnlyList<string> Tags);
+    IReadOnlyList<string> Tags)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public MapSupportResult? Support { get; init; }
+}
 
-/// <summary>One authored player spawn resolved for a query. <see cref="GroundY"/> is always the field's sampled
-/// ground height, since player spawns have no explicit Y, the same convention <see cref="SpawnEntry"/> uses.
-/// <see cref="Yaw"/> is the facing at spawn, in radians, the field NPC spawns do not carry.</summary>
+/// <summary>One authored player spawn resolved for a query, with the same height convention as
+/// <see cref="SpawnEntry"/>. <see cref="Yaw"/> is the facing at spawn, in radians, the field NPC spawns do not
+/// carry.</summary>
 public sealed record PlayerSpawnEntry(string Id, float X, float GroundY, float Z, float Yaw, bool Enabled,
-    IReadOnlyList<string> Tags);
+    IReadOnlyList<string> Tags)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public MapSupportResult? Support { get; init; }
+}
 
 /// <summary>Placements, NPC spawns, and player spawns whose position falls inside a query rect (inclusive
-/// bounds).</summary>
+/// bounds, unlike the half-open marker rectangle).</summary>
 public sealed record PlacementsInRectResult(IReadOnlyList<PlacementEntry> Placements, IReadOnlyList<SpawnEntry> Spawns,
     IReadOnlyList<PlayerSpawnEntry> PlayerSpawns);
 

@@ -670,6 +670,20 @@ invalid. `MapMarkerProjection.PlayerStarts`, `Spawns` and `Landmarks` wrap each 
 keep its exact XYZ, yaw, ordered tags, enabled state, name, ID and height provenance. A spawn carries a payload-2
 archetype, or null for a tag-driven spawn. A landmark is a point and adds no region, disc or geometry.
 
+### Marker window anchors and native readouts
+
+`MapMarkerAnchors.Read(manifest, assets)` reads each marker's world XZ, enabled state and role from root metadata and
+verified prefab bytes, through the same enumeration and frame kernel that expansion uses. It reads no support, terrain
+or tile body, resolves nothing and certifies no whole-world identity. A missing prefab refuses.
+`MapMarkerAnchors.Select(anchors, role, centre)` is pure. It keeps enabled anchors whose role equals the caller's
+ordinally, orders them by squared distance to the centre over binary64 differences, then by ordinal ID, and returns
+null when none match. The engine never guesses a role. `MapMarkerConsumerOptions(Roles, LegacySpawnSurfaceId)` carries
+the caller's `MapMarkerConsumerRoles` and the one Surface owner for unadopted legacy spawns. Nothing is defaulted.
+
+`MapNativePointReadout.SurfaceAt(resources, point, surfaceId)` samples the named Surface owner at an exact XZ through
+the shared seat query, with no reference height and the default scoped budgets. Every status stays typed, and only
+Supported carries a height. It never falls back to another floor, a zero height or the analytic field.
+
 `MapPrefabExpansionLimits` supplies finite collection and payload ceilings before codec materialization. Effective
 geometry composition, aggregate expansion charges, remapping and editor lifecycle commands are separate stages.
 This payload layer adds no rendering, physics or editor dependency.
@@ -771,7 +785,7 @@ verified bytes and separately loaded documents. They supply headless acceptance 
 
 | Later owner | Remaining proof |
 | --- | --- |
-| R6 | Consumer readouts and window anchors. Unique names, the registry, rectangle lookup, role findings, typed views, marker commands, legacy spawn adoption and the native legacy-list fence are in place |
+| R6 | GUI marker readouts. Unique names, the registry, rectangle lookup, role findings, typed views, marker commands, legacy spawn adoption, the native legacy-list fence, metadata window anchors and named-support tool readouts are in place |
 | R7 | Distribution and foliage exclusions over effective canonical paint owners |
 | R8 | Partial-face drawing, roof colour and shadows, camera boom, sky picking, local-light pixels, bounded streaming, eviction, HLOD and on-demand navigation |
 | R9 and #1349 | GUI closure/bounds binding, prefab mode, inspectors and real pointer/key input |

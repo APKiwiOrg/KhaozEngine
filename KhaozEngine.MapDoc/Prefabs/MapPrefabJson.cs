@@ -146,6 +146,25 @@ internal static class MapPrefabJson
                 foreach (var item in element.EnumerateArray()) RequireNonNull(item);
         }
     }
+    /// <summary>Closed caller marker options: an optional <c>roles</c> object with all three role names, and an optional
+    /// <c>legacySpawnSurfaceId</c>, the only support member. Explicit nulls, unknown and repeated members refuse.</summary>
+    internal static MapMarkerConsumerOptions ReadMarkerOptions(string json)
+    {
+        JsonElement value = ReadText<JsonElement>(json);
+        if (value.ValueKind != JsonValueKind.Object) throw new MapDocumentException("Marker options must be a JSON object.");
+        foreach (JsonProperty member in value.EnumerateObject())
+        {
+            if (member.Value.ValueKind == JsonValueKind.Null) throw new MapDocumentException("Marker option '" + member.Name + "' must not be null.");
+            if (member.Value.ValueKind == JsonValueKind.Object)
+                foreach (JsonProperty role in member.Value.EnumerateObject())
+                    if (role.Value.ValueKind == JsonValueKind.Null) throw new MapDocumentException("Marker role '" + role.Name + "' must not be null.");
+        }
+        var row = Read<MarkerOptionsRow>(value);
+        var options = new MapMarkerConsumerOptions(row.Roles, row.LegacySpawnSurfaceId);
+        options.Require();
+        return options;
+    }
+    sealed record MarkerOptionsRow(MapMarkerConsumerRoles? Roles = null, string? LegacySpawnSurfaceId = null);
     sealed record MarkerAdoptionRow(MapLegacySpawnKind Kind, string Id, string MarkerId, string Name, string Role,
         MarkerAdoptionHeight Height, float? YawRadians = null);
     sealed record MarkerAdoptionHeight(float? ExplicitY = null,

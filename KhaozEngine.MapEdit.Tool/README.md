@@ -217,6 +217,30 @@ that changes either list refuses with marker and adoption guidance. Only the acc
 exact undo restoration can change those lists. Resolver (1, 1) requires resolver adoption first. The eleven analytic
 `spawn_*` and `player_spawn_*` verbs keep their released behavior.
 
+### Marker consumers
+
+`map_open(path, manifestPaths?, markerOptionsJson?)` takes the caller's closed marker configuration,
+`{"roles":{"playerStartRole":"start-role","spawnRole":"spawn-role","landmarkRole":"landmark-role"},"legacySpawnSurfaceId":"floor"}`, read by
+`MapPrefabJson.ReadMarkerOptions`. Both members are optional, all three role names are required when `roles` is
+given, and unknown members, repeated members and explicit nulls refuse. The tool defines no role and no Surface owner.
+`MapEditSession.Open(path, manifestPaths, markerOptions)` stages these options together with the document, so a refused
+open keeps the prior document, options and history. The released C# `Open(path, manifestPaths)` and
+`DocumentTools.MapOpen` remain and stage no options.
+
+With a player start role, a windowed native manifest centres its window on the nearest enabled marker of that role,
+read from root metadata and verified prefab bytes. The released complete native validation still runs, so a windowed
+native open keeps its released refusal and windowed native editing stays out of scope. On a whole resolver-2 native
+document, `map_summary.markers` reports the effective marker total and enabled count from the same complete
+validation as `native`, plus the configured role and its player start IDs, all and enabled. Analytic documents omit
+it. `spawnCount`, `playerSpawnCount` and `playerSpawnIds` stay legacy list counts.
+
+`placements_in_rect` keeps its signature and inclusive rectangle, unlike the half-open `marker_list` rectangle. On a
+resolver-2 native document, placements come from the actual native resolution, prefab placements included, and a
+support-bound placement reports its seated height. Unadopted legacy spawns sample `legacySpawnSurfaceId` at their XZ and
+carry the typed `support` answer, with `groundY` meaningful only when it is Supported. Without that owner, a rectangle
+holding a legacy spawn refuses with `spawns_adopt` and `marker_set` guidance. Analytic and resolver (1, 1) documents
+keep their released field readouts and omit `support`.
+
 ## Native colliders
 
 `NativeCollisionService(session)` measures and edits the colliders of the open native document. It is a service
@@ -286,7 +310,8 @@ or under `MapEditSession.WholeWorldTileLimit` occupied tiles (default 512) loads
 `map_open` windows instead: the manifest plus the tiles inside a square around a nearby enabled player spawn,
 radius `EditorWindowRadius` tiles (default 2, `MapDocumentWindowing.DefaultEditorWindowRadius`). The shared
 `MapDocumentWindowing` policy searches at most 32 occupied tiles nearest the bounds center, with deterministic
-coordinate ordering, and falls back to the bounds center if that search finds no enabled spawn.
+coordinate ordering, and falls back to the bounds center if that search finds no enabled spawn. A native
+document opened with a player start role anchors on its nearest enabled start marker first (see Marker consumers).
 `map_save` always writes back in the form and directory the document came from
 (`MapDocumentFile.SaveAuto`), never converting implicitly. `window_status` reports the loaded window's
 tile and world rect plus the occupied/loaded tile counts, `Tiled` false for a monolithic or in-memory

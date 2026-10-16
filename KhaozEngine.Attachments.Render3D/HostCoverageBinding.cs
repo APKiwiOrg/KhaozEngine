@@ -58,7 +58,8 @@ public sealed class HostCoverageBinding : IDisposable
         {
             ref readonly var instance = ref equipment[i];
             if (instance.InstanceId == 0 || instance.Set is null || instance.Coverage is null
-                || !instance.Coverage.Matches(instance.Set, _resourceOwner!) || !ReferenceEquals(instance.Set.Skeleton, _skeleton))
+                || !instance.Coverage.Matches(instance.Set, _resourceOwner!) || !ReferenceEquals(instance.Set.Skeleton, _skeleton)
+                || !instance.Set.MatchesHostSkin(_conformer!))
                 return Refuse(CoverageFailureCode.IdentityMismatch, instance.InstanceId, 0, out failure);
             for (int j = 0; j < i; j++)
                 if (instance.InstanceId == equipment[j].InstanceId)

@@ -194,6 +194,13 @@ float TransitionWeight = 1)`. Instance IDs are positive and unique. Transition w
 The exact set/cache, skeleton instance, scene resource owner, host map semantic hash and named regions
 must match. No identity is inferred from labels or matching geometry.
 
+A mixed or skinned set captures one private host inverse-bind snapshot at `Bind` time, shared by all
+garment validation in that binding. Covered replacement requires that snapshot to exactly match the
+actual uploaded host skin through `SkinnedHostConformer.MatchesHostSkin`. This exact host identity check
+is separate from the existing garment-to-host `1e-4` tolerance. Later caller changes to the supplied host
+arrays cannot change the evidence or silently rebind the garments. Rigid-only `Bind(map)` remains valid
+without a host-skin snapshot.
+
 Equipment replacement is transactional. Every replacement is validated and its scratch acquired before
 the active list changes. A refusal retains the previous equipment. An empty replacement unequips all.
 Command IDs are distinct across combined equipment, stable while a command remains equipped, and never

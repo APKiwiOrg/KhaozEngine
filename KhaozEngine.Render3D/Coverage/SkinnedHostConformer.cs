@@ -26,6 +26,16 @@ public sealed class SkinnedHostConformer : IDisposable
     }
     public CoverageRefinement Topology { get; }
 
+    /// <summary>Compare a captured host skin with the exact uploaded inverse binds owned by this conformer.</summary>
+    /// <remarks>Checks matrix count and values. Exact Skeleton identity is checked separately by attachment binding.
+    /// Does not retain the supplied span or expose owned matrices. Valid calls allocate no managed memory.</remarks>
+    public bool MatchesHostSkin(ReadOnlySpan<Matrix4x4> inverseBind)
+    {
+        RequireThread();
+        ObjectDisposedException.ThrowIf(Disposed, this);
+        return inverseBind.SequenceEqual(InverseBind);
+    }
+
     /// <summary>Stages frozen current-pose geometry. True means accepted for late resolution in this frame.</summary>
     public bool TryPrepare(ReadOnlySpan<Matrix4x4> palette, in Matrix4x4 model,
         ReadOnlySpan<CoverageCommandPose> commands, MotionKey actorKey, CoverageFallback fallback,

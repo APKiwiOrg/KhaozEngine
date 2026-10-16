@@ -54,6 +54,7 @@ public sealed class BoundAttachmentSet
     internal AttachmentSetCache Owner => _owner;
     internal AttachmentSetDefinition Definition => _definition;
     internal IReadOnlyList<AttachmentPartResources> Resources => _resources;
+    internal bool MatchesHostSkin(SkinnedHostConformer conformer) => _binding.MatchesHostSkin(conformer);
 
     /// <summary>One draw per material group of every canonical part.</summary>
     public int DrawCount

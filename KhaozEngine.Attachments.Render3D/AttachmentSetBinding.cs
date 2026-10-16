@@ -14,6 +14,7 @@ public sealed class AttachmentSetBinding
     readonly ResolvedPart[] _parts;
     readonly Dictionary<uint, int> _partIndices = [];
     readonly Matrix4x4[] _worlds;
+    readonly Matrix4x4[]? _hostInverseBind;
 
     public AttachmentSetBinding(AttachmentSetDefinition definition, ContractJointMap map)
         : this(definition, map, null, null, null) { }
@@ -49,9 +50,10 @@ public sealed class AttachmentSetBinding
             _partIndices.Add(definitionPart.Id, i);
             if (definitionPart is SkinnedAttachmentPartDefinition skinned)
             {
+                _hostInverseBind ??= (Matrix4x4[])hostMesh!.InverseBind.Clone();
                 SkinnedAttachmentBinding skin = resources is null
-                    ? SkinnedAttachmentBinding.FromMesh(skinned, map, hostMesh!, skinnedMeshes!)
-                    : SkinnedAttachmentBinding.FromResources(skinned, map, hostMesh!, resources[i]);
+                    ? SkinnedAttachmentBinding.FromMesh(skinned, map, _hostInverseBind, skinnedMeshes!)
+                    : SkinnedAttachmentBinding.FromResources(skinned, map, _hostInverseBind, resources[i]);
                 _parts[i] = new ResolvedPart(skinned.Id, string.Empty, -1, Matrix4x4.Identity, skin);
                 continue;
             }
@@ -73,6 +75,9 @@ public sealed class AttachmentSetBinding
 
     public Skeleton Skeleton { get; }
     public int PartCount => _parts.Length;
+
+    internal bool MatchesHostSkin(SkinnedHostConformer conformer) =>
+        _hostInverseBind is null || conformer.MatchesHostSkin(_hostInverseBind);
 
     /// <summary>The garment palette capacity for a named part, or zero for a rigid part.</summary>
     public int SkinnedJointCount(uint partId) => Part(partId).Skin?.JointCount ?? 0;

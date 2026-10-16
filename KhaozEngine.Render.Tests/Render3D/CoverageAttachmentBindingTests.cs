@@ -11,6 +11,90 @@ namespace KhaozEngine.Tests.Render3D;
 
 public sealed class CoverageAttachmentBindingTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Wrong_host_skin_refuses_replacement_even_after_caller_mutation(bool mutateAfterBind)
+    {
+        using var f = new CoverageAttachmentFixture();
+        var previous = f.Load();
+        using var binding = f.Binding();
+        Assert.True(binding.TrySetEquipment([previous], out _));
+        f.Scene.Begin();
+        Assert.True(binding.TryPrepare(f.Skeleton, f.Palette, Matrix4x4.Identity, f.Template,
+            out _, out var failure), failure.ToString());
+        var originalCommand = Assert.Single(f.Adapter.Commands);
+        var originalDraws = binding.PreparedEquipmentDraws.ToArray();
+        var actual = f.HostSkin;
+        var inverseBind = (Matrix4x4[])actual.InverseBind.Clone();
+        inverseBind[1] = Matrix4x4.CreateTranslation(0, 0, .25f);
+        var other = new SkinnedGltfMesh((SkinnedVertex[])actual.Vertices.Clone(), (uint[])actual.Indices32.Clone(),
+            inverseBind, (Matrix4x4[])actual.RestPose.Clone(), f.Skeleton);
+        var replacement = BindMixed(f, other);
+        Assert.Same(previous.Set.Skeleton, replacement.Set.Skeleton);
+        if (mutateAfterBind) other.InverseBind[1] = actual.InverseBind[1];
+
+        Assert.False(binding.TrySetEquipment([replacement], out failure));
+        Assert.Equal(CoverageFailureCode.IdentityMismatch, failure.Code);
+        Assert.Equal(replacement.InstanceId, failure.EquipmentInstanceId);
+        Assert.Equal(originalCommand, Assert.Single(f.Adapter.Commands));
+        Assert.Equal(originalDraws, binding.PreparedEquipmentDraws.ToArray());
+        Assert.Equal(0, f.Adapter.QueuedDrawCount);
+        Assert.Empty(f.Scene.QueuedInstancesForTests);
+        Assert.Empty(f.Scene.QueuedSkinnedInstancesForTests);
+
+        f.Adapter.Commands.Clear();
+        f.Scene.Begin();
+        Assert.True(binding.TryPrepare(f.Skeleton, f.Palette, Matrix4x4.Identity, f.Template,
+            out var frame, out failure), failure.ToString());
+        var retained = Assert.Single(f.Adapter.Commands);
+        Assert.Equal(originalCommand.Command, retained.Command);
+        Assert.Equal(previous.InstanceId, retained.EquipmentInstanceId);
+        Assert.Equal(2, binding.PreparedEquipmentDraws.Length);
+        f.Submit(frame, binding.PreparedEquipmentDraws.ToArray());
+        f.Render();
+        Assert.Equal(CoveragePresentation.Covered, f.Scene.GetCoverageOutcome(frame).Presentation);
+    }
+
+    [Fact]
+    public void Correct_host_skin_snapshot_survives_later_caller_array_mutation()
+    {
+        using var f = new CoverageAttachmentFixture();
+        f.Load();
+        var actual = f.HostSkin;
+        var supplied = new SkinnedGltfMesh((SkinnedVertex[])actual.Vertices.Clone(), (uint[])actual.Indices32.Clone(),
+            (Matrix4x4[])actual.InverseBind.Clone(), (Matrix4x4[])actual.RestPose.Clone(), f.Skeleton);
+        var equipment = BindMixed(f, supplied);
+        supplied.InverseBind[1] = Matrix4x4.CreateTranslation(0, 0, .25f);
+        using var binding = f.Binding();
+        Assert.True(binding.TrySetEquipment([equipment], out var failure), failure.ToString());
+        f.Scene.Begin();
+        Assert.True(binding.TryPrepare(f.Skeleton, f.Palette, Matrix4x4.Identity, f.Template,
+            out var frame, out failure), failure.ToString());
+        var prepared = binding.PreparedEquipmentDraws.ToArray();
+        Assert.Single(prepared, draw => draw.IsSkinned);
+        f.Submit(frame, prepared);
+        f.Render();
+        Assert.Equal(CoveragePresentation.Covered, f.Scene.GetCoverageOutcome(frame).Presentation);
+    }
+
+    static CoveredAttachmentInstance BindMixed(CoverageAttachmentFixture f, SkinnedGltfMesh host)
+    {
+        var skin = new SkinnedAttachmentGlbFixture(2);
+        skin.Nodes[0]!["name"] = "root";
+        skin.Nodes[1]!["name"] = "hip";
+        skin.SetSkinJoints(0, 1);
+        skin.SetInverseBind(0, host.InverseBind[0]);
+        skin.SetInverseBind(1, host.InverseBind[1]);
+        var mesh = f.Source.Mesh("mixed-skin.glb", skin.Build());
+        string hash = f.Source.Add("mixed.json", AttachmentSetJson.Write(new AttachmentSetDefinition(
+            [.. f.Loaded.Definition.Parts, new SkinnedAttachmentPartDefinition(2, mesh)])));
+        var loaded = f.Cache.Get("mixed.json", hash);
+        string coverageHash = f.Source.Add("mixed-coverage.json", EquipmentCoverageJson.Write(
+            new EquipmentCoverageDefinition(hash, f.MapHash, [f.Command()])));
+        return new(17, loaded.Bind(f.Map(f.Skeleton), host), f.Cache.GetCoverage(loaded, "mixed-coverage.json", coverageHash));
+    }
+
     [Fact]
     public void Incomplete_host_materials_refuse_before_allocating_conformer_resources()
     {

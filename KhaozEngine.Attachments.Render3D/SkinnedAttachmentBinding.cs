@@ -14,7 +14,7 @@ internal sealed class SkinnedAttachmentBinding
     readonly int[] _hostBones;
 
     SkinnedAttachmentBinding(SkinnedAttachmentPartDefinition part, ContractJointMap map,
-        SkinnedGltfMesh hostMesh, IReadOnlyList<string> names, IReadOnlyList<Matrix4x4> inverseBind, int restCount)
+        ReadOnlySpan<Matrix4x4> hostInverseBind, IReadOnlyList<string> names, IReadOnlyList<Matrix4x4> inverseBind, int restCount)
     {
         string context = Context(part);
         CheckCount(names.Count, context);
@@ -31,7 +31,7 @@ internal sealed class SkinnedAttachmentBinding
             {
                 throw new InvalidDataException($"{context}: joint '{name}' cannot bind to the host skin.", error);
             }
-            Matrix4x4 garmentBind = inverseBind[garmentBone], hostBind = hostMesh.InverseBind[hostBone];
+            Matrix4x4 garmentBind = inverseBind[garmentBone], hostBind = hostInverseBind[hostBone];
             if (!MatchingBind(garmentBind, hostBind))
                 throw new InvalidDataException($"{context}: joint '{name}' inverse bind must be finite and match the host within {BindTolerance} per element.");
             _hostBones[garmentBone] = hostBone;
@@ -52,7 +52,7 @@ internal sealed class SkinnedAttachmentBinding
     }
 
     internal static SkinnedAttachmentBinding FromMesh(SkinnedAttachmentPartDefinition part, ContractJointMap map,
-        SkinnedGltfMesh hostMesh, IReadOnlyDictionary<AttachmentMeshRef, SkinnedGltfMesh> meshes)
+        ReadOnlySpan<Matrix4x4> hostInverseBind, IReadOnlyDictionary<AttachmentMeshRef, SkinnedGltfMesh> meshes)
     {
         if (!meshes.TryGetValue(part.Mesh, out SkinnedGltfMesh? mesh) || mesh is null)
             throw new InvalidDataException($"{Context(part)}: garment mesh metadata is missing.");
@@ -67,15 +67,15 @@ internal sealed class SkinnedAttachmentBinding
                 throw new InvalidDataException($"{Context(part)}: garment skin joint {bone} refers to missing node {node}.");
             names[bone] = skeleton.NodeNames[node];
         }
-        return new SkinnedAttachmentBinding(part, map, hostMesh, names, mesh.InverseBind, mesh.RestPose.Length);
+        return new SkinnedAttachmentBinding(part, map, hostInverseBind, names, mesh.InverseBind, mesh.RestPose.Length);
     }
 
     internal static SkinnedAttachmentBinding FromResources(SkinnedAttachmentPartDefinition part, ContractJointMap map,
-        SkinnedGltfMesh hostMesh, AttachmentPartResources resources)
+        ReadOnlySpan<Matrix4x4> hostInverseBind, AttachmentPartResources resources)
     {
         if (!resources.IsSkinned)
             throw new InvalidDataException($"{Context(part)}: garment skin metadata is missing.");
-        return new SkinnedAttachmentBinding(part, map, hostMesh, resources.JointNames, resources.InverseBind, resources.RestPose.Count);
+        return new SkinnedAttachmentBinding(part, map, hostInverseBind, resources.JointNames, resources.InverseBind, resources.RestPose.Count);
     }
 
     internal void ValidatePalette(ReadOnlySpan<Matrix4x4> hostPalette)

@@ -148,6 +148,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   docs/USING-KHAOZENGINE.md.
 - Optional equipment coverage uses `CreateHostConformer` with every uploaded material slice of one
   `HostCoveragePart` source. The actor-owned conformer exposes its exact `Topology` for command binding.
+  Its non-mutating `MatchesHostSkin` compares a captured inverse-bind span with the actual uploaded skin
+  without exposing owned arrays. Attachment binding uses this to reject garments validated against another
+  skin even when the skeleton instance is shared.
   After `Begin`, `TryStageCoverageEquipment` verifies a complete rigid source against uploaded position and
   index fingerprints and returns frozen descriptors without queuing them. Submit those descriptors through
   `Draw` and the descriptor `DrawMeshOutline` overload. Asset-byte verification is still the caller's job.

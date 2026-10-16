@@ -154,7 +154,11 @@ and is skipped by update, draw, `Covers` and `CloseFront`.
 
 **Draw.** Sync open edges as in Update step 1, then draw open windows bottom to top. Before each window the
 stack clears occlusion and re-applies the occluders of the windows above it, so draw-time hover reads, for
-example a close square lighting under the cursor, agree with what Update decided. `ClearOcclusion` at the end.
+example a close square lighting under the cursor, agree with what Update decided. Draw mirrors the mode of
+the last Update: after a capture frame the captor draws with nothing occluded and every other window draws
+with the whole surface occluded, and after a `receivesInput: false` frame every window draws fully occluded.
+`ClearOcclusion` at the end. A window removed from the stack during another window's update is skipped for
+the rest of that frame.
 A frame with ten windows applies at most forty-five occluders, which is not worth optimising.
 
 ### Widgets made occlusion-aware

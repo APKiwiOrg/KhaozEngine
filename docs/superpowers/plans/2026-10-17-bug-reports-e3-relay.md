@@ -99,8 +99,8 @@ public sealed record ReportWorkItem(ReportWorkKind Kind, string ReportId, int Re
 public interface IReportWorkQueue { Task EnqueueAsync(ReportWorkItem item, CancellationToken cancellationToken); }
 public static class ReportWorkItemJson
 {
-    public static string Serialize(ReportWorkItem item);   // {"kind":"createIssue","reportId":"<32 hex>"}
-    public static ReportWorkItem Parse(string json);       // FormatException on unknown kind, bad id or bad JSON
+    public static string Serialize(ReportWorkItem item);   // {"kind":"createIssue","reportId":"<32 hex>","requeues":0}
+    public static ReportWorkItem Parse(string json);       // FormatException on unknown kind, bad id, negative requeues or bad JSON. Missing "requeues" reads as 0
 }
 
 public sealed record QuotaCounter(long Count, string Version);
@@ -191,8 +191,9 @@ The in-memory media store throws `ArgumentException` for a path `ReportPaths.IsV
 `ReportWorkItemJsonTests.cs`:
 
 ```csharp
-[Fact] public void Serialize_IsCamelCase()   // Assert.Equal("{\"kind\":\"appendServerSnapshot\",\"reportId\":\"" + id + "\"}", ...)
+[Fact] public void Serialize_IsCamelCase()   // Assert.Equal("{\"kind\":\"appendServerSnapshot\",\"reportId\":\"" + id + "\",\"requeues\":2}", ...) for Requeues 2
 [Fact] public void Parse_RoundTrips()
+[Fact] public void Parse_MissingRequeues_IsZero()
 [Theory, InlineData("{\"kind\":\"other\",\"reportId\":\"<valid id>\"}"), InlineData("{\"kind\":\"createIssue\",\"reportId\":\"xyz\"}"), InlineData("not json")]
 public void Parse_Rejects(string json)       // Assert.Throws<FormatException>
 ```
@@ -1126,7 +1127,7 @@ git commit -m "feat(bugreports-relay): opt-in Azure Storage backend"
 
 - [ ] **Step 1: Complete the two relay package READMEs**
 
-Relay README: purpose, the three operations, a host sketch for an isolated-worker Functions app (HTTP `bug-reports` to `IntakeAsync`, HTTP `bug-reports/{reportId}/server` to `ServerSnapshotIntakeAsync`, queue trigger to `ProcessWorkAsync` through `ReportWorkItemJson.Parse`), the host's duties under D6 (`maxDequeueCount` 5, poison queue alert, visibility backoff), the status codes, the folder layout, the pending prefixes with the retention rule (`snapshots/` 1 day, `accepted/` the report retention), the quota over-count note and the content type rule: every blob gets an explicit content type, validation guarantees image bytes match their type, and the only HTML served is the engine's viewer page. Azure README: constructor wiring with caller-built clients, the required RBAC roles, `QueueClientOptions.MessageEncoding = Base64` for a Functions trigger, and the `KE_BUGREPORTS_STORAGE` live leg. The new packages are opt-in and are not added to any umbrella package. No `net8.0` target: the first consumer hosts the relay on Flex Consumption with .NET 10 isolated.
+Relay README: purpose, the three operations, a host sketch for an isolated-worker Functions app (HTTP `bug-reports` to `IntakeAsync`, HTTP `bug-reports/{reportId}/server` to `ServerSnapshotIntakeAsync`, queue trigger to `ProcessWorkAsync` through `ReportWorkItemJson.Parse`), the host's duties under D6 (`maxDequeueCount` 5, a daily `PoisonQueueRequeuer` run per D16, visibility backoff), the status codes, the folder layout, the pending prefixes with the retention rule (`snapshots/` 1 day, `accepted/` the report retention), the quota over-count note and the content type rule: every blob gets an explicit content type, validation guarantees image bytes match their type, and the only HTML served is the engine's viewer page. Azure README: constructor wiring with caller-built clients, the required RBAC roles, `QueueClientOptions.MessageEncoding = Base64` for a Functions trigger, and the `KE_BUGREPORTS_STORAGE` live leg. The new packages are opt-in and are not added to any umbrella package. No `net8.0` target: the first consumer hosts the relay on Flex Consumption with .NET 10 isolated.
 
 - [ ] **Step 2: Write the USING section for the whole round**
 

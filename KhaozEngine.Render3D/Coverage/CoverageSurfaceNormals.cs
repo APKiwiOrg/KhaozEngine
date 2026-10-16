@@ -8,9 +8,14 @@ namespace KhaozEngine.Render3D;
 /// separate. Tangent accumulation retains each indexed UV neighborhood and its original handedness.</summary>
 public static class CoverageSurfaceNormals
 {
-    /// <summary>Requires exact topology-sized, disjoint before/after buffers and scratch for this topology.
-    /// Degenerate or uncertifiable gradients refuse without writing after. Undisplaced vertices copy before exactly.
-    /// Tangents use the forward gradient, normals its inverse transpose. Tangent handedness and no-TBN survive.</summary>
+    /// <summary>Requires exact topology-sized, disjoint before/after buffers and scratch built for this topology instance.
+    /// Callers that own larger capacity pass the active prefix. Wrong lengths, overlap or foreign scratch throw
+    /// ArgumentException before any write. Nonfinite input returns UnsupportedTransform. A degenerate or uncertifiable
+    /// gradient on a face with a displaced corner returns FoldedPatch. Every refusal leaves after untouched.
+    /// Faces with no displaced corner are skipped, so untouched degenerate geometry cannot refuse the update. Undisplaced
+    /// vertices copy before exactly. Tangents use the forward gradient, normals its inverse transpose. Tangent
+    /// handedness and no-TBN survive. This assumes the caller wrote identical positions across each PositionGroup and
+    /// does not certify welds, inversion or folds, which remain the conformation certifier's obligation.</summary>
     public static bool Update(CoverageRefinement topology, ReadOnlySpan<ModelVertex> before,
         Span<ModelVertex> after, CoverageScratch scratch, out CoverageFailure failure)
     {
@@ -18,15 +23,13 @@ public static class CoverageSurfaceNormals
         if (before.Length != topology.VertexCount || after.Length != topology.VertexCount || before.Overlaps(after))
             throw new ArgumentException("Normal deformation requires exact topology lengths and disjoint buffers.");
         if (!ReferenceEquals(scratch.Topology, topology))
-        {
-            failure = new(CoverageFailureCode.CapacityExceeded, topology.HostIdentity, 0, 0, topology.VertexCount, scratch.VertexCapacity);
-            return false;
-        }
+            throw new ArgumentException("Normal deformation scratch must be built for this topology instance.", nameof(scratch));
         var normals = scratch.NormalSums.AsSpan(); var tangents = scratch.TangentSums.AsSpan();
         normals.Clear(); tangents.Clear();
         for (int i = 0; i < before.Length; i++)
         {
-            if (!CoverageRefinement.Finite(before[i]) || !CoverageRefinement.Finite(after[i].Position)) return Refuse(topology, out failure);
+            if (!CoverageRefinement.Finite(before[i]) || !CoverageRefinement.Finite(after[i].Position))
+                return Refuse(topology, CoverageFailureCode.UnsupportedTransform, out failure);
             scratch.Staged[i] = before[i];
             if (before[i].Position != after[i].Position) scratch.Staged[i].Position = after[i].Position;
         }
@@ -34,6 +37,8 @@ public static class CoverageSurfaceNormals
         for (int i = 0; i < indices.Length; i += 3)
         {
             int a = (int)indices[i], b = (int)indices[i + 1], c = (int)indices[i + 2];
+            // An untouched face contributes to no changed normal group when positional welds are coherent.
+            if (before[a].Position == after[a].Position && before[b].Position == after[b].Position && before[c].Position == after[c].Position) continue;
             V u = V.From(before[b].Position) - V.From(before[a].Position), v = V.From(before[c].Position) - V.From(before[a].Position);
             V s = V.From(after[b].Position) - V.From(after[a].Position), t = V.From(after[c].Position) - V.From(after[a].Position);
             V normal = V.Cross(u, v), finalNormal = V.Cross(s, t);
@@ -85,9 +90,11 @@ public static class CoverageSurfaceNormals
         failure = default; return true;
     }
 
-    static bool Refuse(CoverageRefinement topology, out CoverageFailure failure)
+    static bool Refuse(CoverageRefinement topology, out CoverageFailure failure) => Refuse(topology, CoverageFailureCode.FoldedPatch, out failure);
+
+    static bool Refuse(CoverageRefinement topology, CoverageFailureCode code, out CoverageFailure failure)
     {
-        failure = new(CoverageFailureCode.FoldedPatch, topology.HostIdentity, 0, 0, 0, 0); return false;
+        failure = new(code, topology.HostIdentity, 0, 0, 0, 0); return false;
     }
 
     readonly record struct V(double X, double Y, double Z)

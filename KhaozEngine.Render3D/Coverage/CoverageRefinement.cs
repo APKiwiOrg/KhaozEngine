@@ -14,7 +14,8 @@ public readonly record struct CoverageEdgeSplit(int SurfaceA, int SurfaceB, int 
 /// <summary>Integer barycentrics over Denominator. Original vertices also retain their exact source index.
 /// PositionGroup joins welded geometry. ShadingGroup joins matching authored normals across material and UV seams.
 /// Tangent neighborhoods remain indexed render vertices, independent of normal groups and tangent handedness.
-/// RegionIndex -1 or Strength zero means protected.</summary>
+/// RegionIndex -1 or Strength zero means protected. A generated vertex on an edge shared within one slice records its
+/// first owner as SourceTriangle, which need not be the source of every incident child triangle.</summary>
 public readonly record struct CoverageRefinedVertex(int SourceTriangle, int SourceVertex, int A, int B, int C,
     int Denominator, int PositionGroup, int ShadingGroup, int RegionIndex, float Strength);
 
@@ -224,43 +225,60 @@ public sealed class CoverageRefinement
     /// <summary>Checked convenience wrapper. Runtime preparation must use TryInterpolate for a structured refusal.</summary>
     public void Interpolate(ReadOnlySpan<ModelVertex> posedSource, Span<ModelVertex> destination)
     {
-        if (!TryInterpolate(posedSource, destination, out _)) throw new InvalidOperationException("The posed coverage surface has invalid values or disagreeing welded aliases.");
+        if (!TryInterpolate(posedSource, destination, out var failure))
+            throw new InvalidOperationException($"The posed coverage surface was refused: {failure.Code}.");
     }
 
-    /// <summary>Requires exactly SourceVertexCount inputs, at least VertexCount outputs, and disjoint buffers.
-    /// Invalid lengths or overlap throw ArgumentException. A nonfinite input or unequal positional alias returns
-    /// FoldedPatch before any destination write. Original source attributes, including protected aliases, copy exactly.</summary>
+    /// <summary>Requires exactly SourceVertexCount inputs, exactly VertexCount outputs and disjoint buffers. Callers that own
+    /// larger capacity pass the active prefix. Invalid lengths or overlap throw ArgumentException.
+    /// Refusals happen before any destination write. A nonfinite input, or generated normal or tangent contributions that
+    /// cancel too far to certify a direction, return UnsupportedTransform. An unequal positional alias returns FoldedPatch.
+    /// Original source attributes, including protected aliases, copy exactly. Generated attributes are finite. Truly
+    /// absent normals and tangents stay zero.</summary>
     public bool TryInterpolate(ReadOnlySpan<ModelVertex> posedSource, Span<ModelVertex> destination, out CoverageFailure failure)
     {
-        if (posedSource.Length != SourceVertexCount || destination.Length < VertexCount || posedSource.Overlaps(destination))
-            throw new ArgumentException("Coverage interpolation requires exact source length, sufficient destination capacity and disjoint buffers.");
+        if (posedSource.Length != SourceVertexCount || destination.Length != VertexCount || posedSource.Overlaps(destination))
+            throw new ArgumentException("Coverage interpolation requires exact source and destination lengths and disjoint buffers.");
         for (int i = 0; i < posedSource.Length; i++)
-            if (!Finite(posedSource[i])) { failure = Refusal(); return false; }
+            if (!Finite(posedSource[i])) { failure = Refusal(CoverageFailureCode.UnsupportedTransform); return false; }
         for (int i = 0; i < SourceAliases.Count; i++)
         {
             var alias = SourceAliases[i];
-            if (posedSource[alias.SourceVertex].Position != posedSource[alias.Representative].Position) { failure = Refusal(); return false; }
+            if (posedSource[alias.SourceVertex].Position != posedSource[alias.Representative].Position)
+            {
+                failure = Refusal(CoverageFailureCode.FoldedPatch); return false;
+            }
         }
+        // Allocation-free certification pass. It repeats the generated direction arithmetic so a refusal writes nothing.
+        for (int i = 0; i < VertexCount; i++)
+            if (Vertices[i].SourceVertex < 0 && !TryFrame(Vertices[i], posedSource, out _, out _))
+            {
+                failure = Refusal(CoverageFailureCode.UnsupportedTransform); return false;
+            }
         for (int i = 0; i < VertexCount; i++)
         {
             var v = Vertices[i];
             if (v.SourceVertex >= 0) { destination[i] = posedSource[v.SourceVertex]; continue; }
             var t = source.Triangles[v.SourceTriangle];
             var a = posedSource[t.A]; var b = posedSource[t.B]; var c = posedSource[t.C];
-            float wa = (float)v.A / v.Denominator, wb = (float)v.B / v.Denominator, wc = (float)v.C / v.Denominator;
-            Vector3 normal = Normalize(a.Normal * wa + b.Normal * wb + c.Normal * wc);
-            Vector4 tangent = a.Tangent * wa + b.Tangent * wb + c.Tangent * wc;
-            Vector3 direction = Normalize(new(tangent.X, tangent.Y, tangent.Z));
-            tangent = direction == Vector3.Zero ? Vector4.Zero : new(direction, tangent.W < 0 ? -1 : 1);
+            _ = TryFrame(v, posedSource, out var normal, out var tangent); // Certified by the pass above.
             int first = positionRepresentatives[v.PositionGroup];
             Vector3 position = first < i ? destination[first].Position : Position(positionRecipes[v.PositionGroup], posedSource);
-            destination[i] = new(position, normal,
-                a.Color * wa + b.Color * wb + c.Color * wc, a.Uv * wa + b.Uv * wb + c.Uv * wc, tangent);
+            destination[i] = new(position, normal, CoverageWeightedAttributes.Value(a.Color, b.Color, c.Color, v),
+                CoverageWeightedAttributes.Value(a.Uv, b.Uv, c.Uv, v), tangent);
         }
         failure = default; return true;
     }
 
-    CoverageFailure Refusal() => new(CoverageFailureCode.FoldedPatch, HostIdentity, 0, 0, 0, 0);
+    bool TryFrame(in CoverageRefinedVertex v, ReadOnlySpan<ModelVertex> posed, out Vector3 normal, out Vector4 tangent)
+    {
+        var t = source.Triangles[v.SourceTriangle];
+        tangent = default;
+        return CoverageWeightedAttributes.TryDirection(posed[t.A].Normal, posed[t.B].Normal, posed[t.C].Normal, v, out normal)
+            && CoverageWeightedAttributes.TryTangent(posed[t.A].Tangent, posed[t.B].Tangent, posed[t.C].Tangent, v, out tangent);
+    }
+
+    CoverageFailure Refusal(CoverageFailureCode code) => new(code, HostIdentity, 0, 0, 0, 0);
     static Vector3 Position(PositionRecipe recipe, ReadOnlySpan<ModelVertex> posed)
     {
         var b = recipe.Weights;
@@ -279,7 +297,6 @@ public sealed class CoverageRefinement
         }
     }
 
-    internal static Vector3 Normalize(Vector3 v) => v == Vector3.Zero ? v : Vector3.Normalize(v);
     internal static bool Finite(ModelVertex v) => Finite(v.Position) && Finite(v.Normal)
         && float.IsFinite(v.Color.X) && float.IsFinite(v.Color.Y) && float.IsFinite(v.Color.Z) && float.IsFinite(v.Color.W)
         && float.IsFinite(v.Uv.X) && float.IsFinite(v.Uv.Y) && float.IsFinite(v.Tangent.X)

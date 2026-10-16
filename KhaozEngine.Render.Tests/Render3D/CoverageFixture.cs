@@ -22,7 +22,7 @@ internal sealed record CoverageFixture(
 
     // Curved plate is thick, with a real static gap near its rim. No UV or texture is required.
     internal static CoverageFixture CurvedPanel(bool seams = true, int level = 2, bool lowerBulge = false,
-        bool crossingSegment = false, bool secondRegion = false, bool challengingCollar = false)
+        bool crossingSegment = false, bool secondRegion = false, bool challengingCollar = false, bool degenerateFace = false)
     {
         var positions = new List<Vector3>();
         var skin = new List<SkinnedVertex>();
@@ -88,6 +88,19 @@ internal sealed record CoverageFixture(
                 topology.Add(new(1, 0, positions.Count - start - 1, 100 + positions.Count - start - 1));
             }
             triangles.Add(new(1, 0, 0, -1, slices, start, start + 1, start + 2));
+        }
+        if (degenerateFace)
+        {
+            // Exactly collinear dyadic points outside every region. Zero weights skin them by identity.
+            int start = positions.Count;
+            foreach (var p in new[] { new Vector3(-1, 2, -.25f), new Vector3(1, 2, -.25f), new Vector3(.5f, 2, -.25f) })
+            {
+                positions.Add(p);
+                skin.Add(new() { Position = p, Normal = Vector3.UnitZ, Color = Vector4.One });
+                vertices.Add(new(3, 0, positions.Count - start - 1, -1, slices + 2, positions.Count - start - 1));
+                topology.Add(new(3, 0, positions.Count - start - 1, 300 + positions.Count - start - 1));
+            }
+            triangles.Add(new(3, 0, 0, -1, slices + 2, start, start + 1, start + 2));
         }
         var region = new HostCoverageRegion("r0", roles, strengths.Select(p => new CoverageSurfaceStrength(p.Key, p.Value)));
         var regions = new List<HostCoverageRegion> { region };

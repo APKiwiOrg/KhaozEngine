@@ -65,6 +65,112 @@ public sealed class CoverageNormalTests
     }
 
     [Fact]
+    public void Untouched_degenerate_face_outside_the_region_keeps_normal_update()
+    {
+        var fixture = CoverageFixture.CurvedPanel(degenerateFace: true); var topology = CoverageRefinement.Build(fixture.Source, fixture.Map);
+        var before = new ModelVertex[topology.VertexCount]; topology.Interpolate(fixture.Posed, before);
+        var after = before.ToArray();
+        for (int i = 0; i < after.Length; i++) after[i].Position.Z -= topology.Vertices[i].Strength * .05f;
+        Assert.True(CoverageSurfaceNormals.Update(topology, before, after, new(topology), out var failure));
+        Assert.True(failure.IsSuccess);
+        for (int i = 0; i < after.Length; i++)
+            if (topology.Vertices[i].Strength == 0)
+                Assert.Equal(MemoryMarshal.AsBytes(before.AsSpan(i, 1)).ToArray(), MemoryMarshal.AsBytes(after.AsSpan(i, 1)).ToArray());
+    }
+
+    [Fact]
+    public void Unchanged_host_with_degenerate_face_is_byte_exact()
+    {
+        var fixture = CoverageFixture.CurvedPanel(degenerateFace: true); var topology = CoverageRefinement.Build(fixture.Source, fixture.Map);
+        var before = new ModelVertex[topology.VertexCount]; topology.Interpolate(fixture.Posed, before);
+        var after = before.ToArray();
+        Assert.True(CoverageSurfaceNormals.Update(topology, before, after, new(topology), out _));
+        Assert.Equal(MemoryMarshal.AsBytes(before.AsSpan()).ToArray(), MemoryMarshal.AsBytes(after.AsSpan()).ToArray());
+    }
+
+    [Fact]
+    public void Displaced_degenerate_face_refuses_without_partial_attributes()
+    {
+        var fixture = CoverageFixture.CurvedPanel(degenerateFace: true); var topology = CoverageRefinement.Build(fixture.Source, fixture.Map);
+        var before = new ModelVertex[topology.VertexCount]; topology.Interpolate(fixture.Posed, before);
+        var after = before.ToArray();
+        for (int i = 0; i < after.Length; i++) after[i].Position.Z -= topology.Vertices[i].Strength * .05f;
+        int moved = Enumerable.Range(0, topology.VertexCount).Single(i => topology.Vertices[i].SourceVertex == fixture.Source.Vertices.Count - 1);
+        after[moved].Position.X = .25f; // Still exactly collinear.
+        var expected = MemoryMarshal.AsBytes(after.AsSpan()).ToArray();
+        Assert.False(CoverageSurfaceNormals.Update(topology, before, after, new(topology), out var failure));
+        Assert.Equal(CoverageFailureCode.FoldedPatch, failure.Code);
+        Assert.Equal(expected, MemoryMarshal.AsBytes(after.AsSpan()).ToArray());
+    }
+
+    [Fact]
+    public void Nonfinite_update_input_is_an_unsupported_transform()
+    {
+        var fixture = CoverageFixture.CurvedPanel(); var topology = CoverageRefinement.Build(fixture.Source, fixture.Map);
+        var before = new ModelVertex[topology.VertexCount]; topology.Interpolate(fixture.Posed, before);
+        var after = before.ToArray(); after[^1].Position.Y = float.PositiveInfinity;
+        var expected = MemoryMarshal.AsBytes(after.AsSpan()).ToArray();
+        Assert.False(CoverageSurfaceNormals.Update(topology, before, after, new(topology), out var failure));
+        Assert.Equal(CoverageFailureCode.UnsupportedTransform, failure.Code);
+        Assert.Equal(expected, MemoryMarshal.AsBytes(after.AsSpan()).ToArray());
+    }
+
+    [Fact]
+    public void Foreign_scratch_and_inexact_spans_are_caller_errors()
+    {
+        var fixture = CoverageFixture.CurvedPanel(); var topology = CoverageRefinement.Build(fixture.Source, fixture.Map);
+        var twin = CoverageRefinement.Build(fixture.Source, fixture.Map);
+        var before = new ModelVertex[topology.VertexCount]; topology.Interpolate(fixture.Posed, before);
+        var after = before.ToArray();
+        foreach (ref var v in after.AsSpan()) v.Position.Z -= .01f;
+        var expected = MemoryMarshal.AsBytes(after.AsSpan()).ToArray();
+        // Equal sized storage compiled for another topology is still the wrong workspace.
+        Assert.Equal(twin.VertexCount, topology.VertexCount);
+        Assert.Throws<ArgumentException>(() => CoverageSurfaceNormals.Update(topology, before, after, new(twin), out _));
+        Assert.Equal(expected, MemoryMarshal.AsBytes(after.AsSpan()).ToArray());
+        // Capacity-owned buffers pass their exact active prefix.
+        var larger = new ModelVertex[topology.VertexCount + 1]; after.CopyTo(larger, 0);
+        Assert.Throws<ArgumentException>(() => CoverageSurfaceNormals.Update(topology, before, larger, new(topology), out _));
+        Assert.True(CoverageSurfaceNormals.Update(topology, before, larger.AsSpan(0, topology.VertexCount), new(topology), out _));
+    }
+
+    [Fact]
+    public void Flat_patch_follows_an_independent_nonuniform_affine_map()
+    {
+        var fixture = CoverageFixture.CurvedPanel(false); var topology = CoverageRefinement.Build(fixture.Source, fixture.Map);
+        // Flat rest data: the authored normal is the face normal and the tangent lies in the plane.
+        var posed = fixture.Source.Positions.ToArray().Select(p => new ModelVertex(new(p.X, p.Y, 0), Vector3.UnitZ, Vector4.One, Vector2.Zero, new(1, 0, 0, -1))).ToArray();
+        var before = new ModelVertex[topology.VertexCount]; topology.Interpolate(posed, before);
+        // Rows of A, with a positive determinant and a translation, so every vertex moves.
+        double[][] a = [[1.3, .2, .1], [-.15, .8, .25], [.05, -.3, 1.1]];
+        double[] offset = [.5, -.25, .75];
+        var after = before.ToArray();
+        foreach (ref var v in after.AsSpan())
+        {
+            double x = v.Position.X, y = v.Position.Y, z = v.Position.Z;
+            v.Position = new((float)(a[0][0] * x + a[0][1] * y + a[0][2] * z + offset[0]),
+                (float)(a[1][0] * x + a[1][1] * y + a[1][2] * z + offset[1]), (float)(a[2][0] * x + a[2][1] * y + a[2][2] * z + offset[2]));
+        }
+        // The mapped in-plane axes span the deformed plane: normal unit(Ax cross Ay) = unit(A^-T n), tangent unit(A t).
+        double[] ax = [a[0][0], a[1][0], a[2][0]], ay = [a[0][1], a[1][1], a[2][1]];
+        var normal = Unit([ax[1] * ay[2] - ax[2] * ay[1], ax[2] * ay[0] - ax[0] * ay[2], ax[0] * ay[1] - ax[1] * ay[0]]);
+        var tangent = Unit(ax);
+        Assert.True(CoverageSurfaceNormals.Update(topology, before, after, new(topology), out _));
+        for (int i = 0; i < after.Length; i++)
+        {
+            Assert.NotEqual(before[i].Position, after[i].Position);
+            Assert.True(Vector3.Distance(normal, after[i].Normal) < 1e-5f, $"normal {i}: {after[i].Normal} vs {normal}");
+            Assert.True(Vector3.Distance(tangent, new(after[i].Tangent.X, after[i].Tangent.Y, after[i].Tangent.Z)) < 1e-5f, $"tangent {i}");
+            Assert.Equal(-1, after[i].Tangent.W);
+        }
+        static Vector3 Unit(double[] v)
+        {
+            double length = Math.Sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+            return new((float)(v[0] / length), (float)(v[1] / length), (float)(v[2] / length));
+        }
+    }
+
+    [Fact]
     public void Undisplaced_attributes_stay_exact_next_to_deformation()
     {
         var fixture = CoverageFixture.CurvedPanel(); var topology = CoverageRefinement.Build(fixture.Source, fixture.Map);

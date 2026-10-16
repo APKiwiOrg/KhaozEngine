@@ -134,9 +134,97 @@ public sealed class CoverageRefinementTests
         fixture.Posed[^1].Normal.X = float.NaN;
         var output = new ModelVertex[topology.VertexCount];
         var sentinel = MemoryMarshal.AsBytes(output.AsSpan()).ToArray();
-        Assert.False(topology.TryInterpolate(fixture.Posed, output, out _));
+        Assert.False(topology.TryInterpolate(fixture.Posed, output, out var failure));
+        Assert.Equal(CoverageFailureCode.UnsupportedTransform, failure.Code);
         Assert.Equal(sentinel, MemoryMarshal.AsBytes(output.AsSpan()).ToArray());
     }
+
+    [Fact]
+    public void Interpolation_destination_is_the_exact_active_span()
+    {
+        var fixture = CoverageFixture.CurvedPanel(); var topology = CoverageRefinement.Build(fixture.Source, fixture.Map);
+        var storage = new ModelVertex[topology.VertexCount + 1];
+        Assert.Throws<ArgumentException>(() => { topology.TryInterpolate(fixture.Posed, storage, out _); });
+        Assert.Throws<ArgumentException>(() => { topology.TryInterpolate(fixture.Posed, storage.AsSpan(0, topology.VertexCount - 1), out _); });
+        Assert.Equal(new ModelVertex[storage.Length], storage);
+        // Capacity-owned callers slice their active prefix.
+        Assert.True(topology.TryInterpolate(fixture.Posed, storage.AsSpan(0, topology.VertexCount), out _));
+    }
+
+    [Fact]
+    public void Tiny_generated_directions_normalize_finitely()
+    {
+        var fixture = CoverageFixture.CurvedPanel(); var topology = CoverageRefinement.Build(fixture.Source, fixture.Map);
+        // Squared lengths underflow float, so only exact-weight arithmetic keeps these nonzero directions.
+        foreach (ref var v in fixture.Posed.AsSpan()) { v.Normal = new(1e-30f, 2e-30f, 0); v.Tangent = new(0, 3e-38f, 4e-38f, 1); }
+        var output = new ModelVertex[topology.VertexCount];
+        Assert.True(topology.TryInterpolate(fixture.Posed, output, out _));
+        var normal = Vector3.Normalize(new(1, 2, 0)); var tangent = new Vector4(0, .6f, .8f, 1);
+        foreach (int i in Generated(topology))
+        {
+            Assert.True(Vector3.Distance(normal, output[i].Normal) < 2e-7f, $"normal {i}: {output[i].Normal}");
+            Assert.True(Vector4.Distance(tangent, output[i].Tangent) < 2e-7f, $"tangent {i}: {output[i].Tangent}");
+        }
+    }
+
+    [Fact]
+    public void Cancelled_generated_normal_or_tangent_refuses_untouched()
+    {
+        var fixture = CoverageFixture.CurvedPanel(); var topology = CoverageRefinement.Build(fixture.Source, fixture.Map);
+        // The two equally weighted corners of one generated edge midpoint.
+        var midpoint = topology.Vertices.First(v => v.SourceVertex < 0 && new[] { v.A, v.B, v.C }.Count(w => w == 6) == 2);
+        var triangle = fixture.Source.Triangles[midpoint.SourceTriangle];
+        int[] ends = new[] { (triangle.A, midpoint.A), (triangle.B, midpoint.B), (triangle.C, midpoint.C) }.Where(p => p.Item2 == 6).Select(p => p.Item1).ToArray();
+        var normals = fixture.Posed.ToArray();
+        normals[ends[0]].Normal = Vector3.UnitY; normals[ends[1]].Normal = -Vector3.UnitY;
+        var tangents = fixture.Posed.ToArray();
+        tangents[ends[0]].Tangent = new(0, 0, 1, -1); tangents[ends[1]].Tangent = new(0, 0, -1, -1);
+        foreach (var posed in new[] { normals, tangents })
+        {
+            var output = Enumerable.Repeat(new ModelVertex(Vector3.One, Vector3.One, Vector4.One), topology.VertexCount).ToArray();
+            var sentinel = MemoryMarshal.AsBytes(output.AsSpan()).ToArray();
+            Assert.False(topology.TryInterpolate(posed, output, out var failure));
+            Assert.Equal(CoverageFailureCode.UnsupportedTransform, failure.Code);
+            Assert.Equal(sentinel, MemoryMarshal.AsBytes(output.AsSpan()).ToArray());
+        }
+    }
+
+    [Fact]
+    public void Absent_generated_normals_and_tangents_stay_zero()
+    {
+        var fixture = CoverageFixture.CurvedPanel(); var topology = CoverageRefinement.Build(fixture.Source, fixture.Map);
+        foreach (ref var v in fixture.Posed.AsSpan()) { v.Normal = Vector3.Zero; v.Tangent = Vector4.Zero; }
+        var output = new ModelVertex[topology.VertexCount];
+        Assert.True(topology.TryInterpolate(fixture.Posed, output, out _));
+        Assert.All(output, v => { Assert.Equal(Vector3.Zero, v.Normal); Assert.Equal(Vector4.Zero, v.Tangent); });
+    }
+
+    [Fact]
+    public void Extreme_finite_attributes_interpolate_finitely()
+    {
+        var fixture = CoverageFixture.CurvedPanel(level: 3); var topology = CoverageRefinement.Build(fixture.Source, fixture.Map);
+        float max = float.MaxValue;
+        foreach (ref var v in fixture.Posed.AsSpan())
+        {
+            // Opposite extremes across one edge, and extreme same-sign attributes at every corner.
+            v.Position.X = v.Position.X < -.1f ? -3e38f : 3e38f;
+            v.Normal = new(max, max, 0); v.Tangent = new(0, max, max, -max);
+            v.Color = new(max, -max, max, max); v.Uv = new(max, -max);
+        }
+        var output = new ModelVertex[topology.VertexCount];
+        Assert.True(topology.TryInterpolate(fixture.Posed, output, out _));
+        Assert.All(output, v => Assert.True(float.IsFinite(v.Position.X) && float.IsFinite(v.Position.Y) && float.IsFinite(v.Position.Z), $"{v.Position}"));
+        var normal = Vector3.Normalize(new(1, 1, 0)); var tangent = new Vector4(Vector3.Normalize(new(0, 1, 1)), -1);
+        foreach (int i in Generated(topology))
+        {
+            Assert.True(Vector3.Distance(normal, output[i].Normal) < 2e-7f, $"normal {i}: {output[i].Normal}");
+            Assert.True(Vector4.Distance(tangent, output[i].Tangent) < 2e-7f, $"tangent {i}: {output[i].Tangent}");
+            Assert.Equal(new Vector4(max, -max, max, max), output[i].Color); Assert.Equal(new Vector2(max, -max), output[i].Uv);
+        }
+    }
+
+    static int[] Generated(CoverageRefinement topology) =>
+        Enumerable.Range(0, topology.VertexCount).Where(i => topology.Vertices[i].SourceVertex < 0).ToArray();
 
     [Fact]
     public void Independent_oracle_checks_full_triangle_clearance_and_intersections()

@@ -35,7 +35,8 @@ public sealed class EquipmentCoverageCommand
         if (!IsSupportedFrame(coverageLocal))
             throw new ArgumentException($"{context}: coverageLocal must be finite, affine, invertible and not mirrored.", nameof(coverageLocal));
 
-        EquipmentSupportRange[] support = inwardSupport.ToArray();
+        EquipmentSupportRange[] support = CoverageCollections.Snapshot(inwardSupport, MaxSupportTriangles, nameof(inwardSupport),
+            $"{context}: more than {MaxSupportTriangles} inward support triangles.");
         if (support.Length == 0)
             throw new ArgumentException($"{context}: at least one inward support range is required.", nameof(inwardSupport));
         foreach (EquipmentSupportRange range in support)
@@ -114,7 +115,8 @@ public sealed class EquipmentCoverageDefinition
             throw new ArgumentException("attachmentSha256 must be a lowercase SHA-256.", nameof(attachmentSha256));
         if (!AttachmentSetDefinition.ValidHash(hostMapSha256))
             throw new ArgumentException("hostMapSha256 must be a lowercase SHA-256.", nameof(hostMapSha256));
-        EquipmentCoverageCommand[] owned = commands.ToArray();
+        EquipmentCoverageCommand[] owned = CoverageCollections.Snapshot(commands, MaxCommands, nameof(commands),
+            $"A coverage companion must contain 1 to {MaxCommands} commands.");
         if (owned.Length is 0 or > MaxCommands)
             throw new ArgumentException($"A coverage companion must contain 1 to {MaxCommands} commands.", nameof(commands));
         if (Array.IndexOf(owned, null) >= 0)

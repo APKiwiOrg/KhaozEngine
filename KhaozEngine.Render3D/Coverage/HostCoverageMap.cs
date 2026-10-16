@@ -44,7 +44,8 @@ public sealed class HostCoverageRegion
             throw new ArgumentException("A region key must be non-blank, well-formed UTF-16.", nameof(key));
         string context = $"Region '{key}'";
 
-        HostCoverageRegionTriangles[] ownedTriangles = triangles.ToArray();
+        HostCoverageRegionTriangles[] ownedTriangles = CoverageCollections.Snapshot(triangles, HostCoverageMap.MaxTriangles, nameof(triangles),
+            $"{context}: more than {HostCoverageMap.MaxTriangles} triangles.");
         if (ownedTriangles.Length == 0)
             throw new ArgumentException($"{context}: at least one triangle range is required.", nameof(triangles));
         foreach (HostCoverageRegionTriangles entry in ownedTriangles)
@@ -59,7 +60,8 @@ public sealed class HostCoverageRegion
         if (TriangleCount > HostCoverageMap.MaxTriangles)
             throw new ArgumentException($"{context}: more than {HostCoverageMap.MaxTriangles} triangles.", nameof(triangles));
 
-        CoverageSurfaceStrength[] ownedStrengths = strengths.ToArray();
+        CoverageSurfaceStrength[] ownedStrengths = CoverageCollections.Snapshot(strengths, HostCoverageMap.MaxSurfaceVertices, nameof(strengths),
+            $"{context}: more than {HostCoverageMap.MaxSurfaceVertices} surface strengths.");
         if (ownedStrengths.Length == 0)
             throw new ArgumentException($"{context}: at least one surface strength is required.", nameof(strengths));
         for (int index = 0; index < ownedStrengths.Length; index++)
@@ -115,7 +117,8 @@ public sealed class HostCoverageMap
         if (!IsWellFormedLabel(authoring.Exporter) || !IsWellFormedLabel(authoring.Revision))
             throw new ArgumentException("Authoring exporter and revision must be non-blank, well-formed UTF-16.", nameof(authoring));
 
-        CoverageTopologyEntry[] ownedTopology = topology.ToArray();
+        CoverageTopologyEntry[] ownedTopology = CoverageCollections.Snapshot(topology, MaxSurfaceVertices, nameof(topology),
+            $"Topology must contain 1 to {MaxSurfaceVertices} vertices.");
         if (ownedTopology.Length is 0 or > MaxSurfaceVertices)
             throw new ArgumentException($"Topology must contain 1 to {MaxSurfaceVertices} vertices.", nameof(topology));
         foreach (CoverageTopologyEntry entry in ownedTopology)
@@ -130,7 +133,8 @@ public sealed class HostCoverageMap
             surfaces.Add(ownedTopology[index].SurfaceId);
         }
 
-        HostCoverageRegion[] ownedRegions = regions.ToArray();
+        HostCoverageRegion[] ownedRegions = CoverageCollections.Snapshot(regions, MaxRegions, nameof(regions),
+            $"A host map must contain 1 to {MaxRegions} regions.");
         if (ownedRegions.Length is 0 or > MaxRegions)
             throw new ArgumentException($"A host map must contain 1 to {MaxRegions} regions.", nameof(regions));
         if (Array.IndexOf(ownedRegions, null) >= 0)
@@ -158,7 +162,8 @@ public sealed class HostCoverageMap
         RefuseOverlap(ownedRegions.SelectMany(region => region.Triangles.Select(entry => entry.Triangles)).Order(RangeComparer.Instance),
             "Regions", nameof(regions));
 
-        HostCoverageRefinement[] ownedRefinement = refinement.ToArray();
+        HostCoverageRefinement[] ownedRefinement = CoverageCollections.Snapshot(refinement, MaxTriangles, nameof(refinement),
+            $"Refinement references more than {MaxTriangles} triangles.");
         foreach (HostCoverageRefinement entry in ownedRefinement)
         {
             ValidateRange(entry.Triangles, "Refinement", nameof(refinement));

@@ -43,6 +43,10 @@ public class EquipmentCoverageJsonTests
         byte[] canonical = Encoding.UTF8.GetBytes(Canonical);
         EquipmentCoverageDefinition definition = EquipmentCoverageJson.Read(canonical, "equipment");
         Assert.Equal(canonical, EquipmentCoverageJson.Write(definition));
+        byte[] escaped = Encoding.UTF8.GetBytes(Canonical.Replace("\"commands\"", "\"\\u0063ommands\"", StringComparison.Ordinal)
+            .Replace("\"coverageLocal\"", "\"\\u0063overageLocal\"", StringComparison.Ordinal));
+        Assert.Equal(canonical, EquipmentCoverageJson.Write(EquipmentCoverageJson.Read(escaped, "equipment-escaped")));
+        Assert.Equal(canonical, EquipmentCoverageJson.Write(EquipmentCoverageJson.Read(Encoding.UTF8.GetBytes(Canonical + " \t\r\n"), "equipment-whitespace")));
 
         EquipmentCoverageDefinition reordered = EquipmentCoverageJson.Read(Encoding.UTF8.GetBytes(Reordered), "equipment-reordered");
         Assert.Equal(Canonical, Encoding.UTF8.GetString(EquipmentCoverageJson.Write(reordered)));
@@ -133,6 +137,96 @@ public class EquipmentCoverageJsonTests
         EquipmentCoverageDefinition definition = EquipmentCoverageJson.Read(Encoding.UTF8.GetBytes(Commands(EquipmentCoverageDefinition.MaxCommands, full)), "equipment");
         Assert.Equal(4, definition.Commands.Count);
         Assert.Equal(1024, definition.Commands[0].InwardSupport.Sum(range => range.Count));
+    }
+
+    [Theory]
+    [InlineData("commands", 5, "'commands' exceeds the limit of 4")]
+    [InlineData("\\u0063ommands", 5, "'commands' exceeds the limit of 4")]
+    [InlineData("inwardSupport", 1025, "'inwardSupport' exceeds the limit of 1024")]
+    [InlineData("coverageLocal", 17, "coverageLocal must contain 16")]
+    public void Capacity_refuses_before_reading_invalid_tail(string property, int count, string reason)
+    {
+        bool commands = property is "commands" or "\\u0063ommands";
+        string prefix = commands ? "{" : "{\"commands\":[{";
+        string entry = property == "coverageLocal" ? "0" : "{}";
+        string json = prefix + "\"" + property + "\":[" + string.Join(',', Enumerable.Repeat(entry, count)) + ",!";
+        InvalidDataException error = Assert.Throws<InvalidDataException>(() => EquipmentCoverageJson.Read(Encoding.UTF8.GetBytes(json), "equipment"));
+
+        Assert.StartsWith("equipment: ", error.Message, StringComparison.Ordinal);
+        Assert.Contains(reason, error.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("{\"extra\":", "root: unknown property 'extra'")]
+    [InlineData("{\"commands\":[{\"extra\":", "commands[0]: unknown property 'extra'")]
+    [InlineData("{\"commands\":[{\"id\":1,\"\\u0069d\":", "duplicate property 'id'")]
+    [InlineData("{\"commands\":{", "'commands' must be an array")]
+    [InlineData("{\"commands\":[{\"inwardSupport\":{", "'inwardSupport' must be an array")]
+    [InlineData("{\"commands\":[{\"coverageLocal\":{", "coverageLocal must contain 16")]
+    [InlineData("{\"commands\":[{\"inwardSupport\":[{\"mesh\":[", "'mesh' must be a number")]
+    [InlineData("{\"commands\":[{\"coverageLocal\":[{", "'coverageLocal[0]' must be a finite float")]
+    [InlineData("{\"attachmentSha256\":[", "'attachmentSha256' must be a string")]
+    public void Schema_refuses_before_reading_invalid_tail(string prefix, string reason)
+    {
+        InvalidDataException error = Assert.Throws<InvalidDataException>(() => EquipmentCoverageJson.Read(Encoding.UTF8.GetBytes(prefix + "!"), "equipment"));
+
+        Assert.StartsWith("equipment: ", error.Message, StringComparison.Ordinal);
+        Assert.Contains(reason, error.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("true")]
+    [InlineData("!")]
+    public void Trailing_value_or_garbage_refuses(string tail)
+    {
+        InvalidDataException error = Assert.Throws<InvalidDataException>(() => EquipmentCoverageJson.Read(Encoding.UTF8.GetBytes(Canonical + tail), "equipment"));
+        Assert.StartsWith("equipment: ", error.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Constructor_rejects_known_over_limit_counts_before_copy(bool support)
+    {
+        if (support)
+            Assert.Throws<ArgumentException>(() => new EquipmentCoverageCommand(1, 1, "chest", Matrix4x4.Identity,
+                new RefusingCollection<EquipmentSupportRange>(1025), 0.05f, -1f, 1f, 0.01f, 0.1f));
+        else
+            Assert.Throws<ArgumentException>(() => new EquipmentCoverageDefinition(AttachmentHash, HostMapHash,
+                new RefusingCollection<EquipmentCoverageCommand>(5)));
+    }
+
+    [Fact]
+    public void Constructor_stops_unknown_command_input_at_refusal_witness()
+    {
+        var command = new EquipmentCoverageCommand(1, 1, "chest", Matrix4x4.Identity, [new(0, 0, 0, 1)], 0.05f, -1f, 1f, 0.01f, 0.1f);
+        int consumed = 0;
+        IEnumerable<EquipmentCoverageCommand> CommandsWithWitness()
+        {
+            for (int index = 0; index < 5; index++)
+            {
+                consumed++;
+                yield return command;
+            }
+            throw new InvalidOperationException("Read beyond the capacity refusal witness.");
+        }
+
+        Assert.Throws<ArgumentException>(() => new EquipmentCoverageDefinition(AttachmentHash, HostMapHash, CommandsWithWitness()));
+        Assert.Equal(5, consumed);
+    }
+
+    sealed class RefusingCollection<T>(int count) : ICollection<T>
+    {
+        public int Count => count;
+        public bool IsReadOnly => true;
+        public IEnumerator<T> GetEnumerator() => throw new InvalidOperationException("Enumerated a known over-limit collection.");
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+        public void CopyTo(T[] array, int arrayIndex) => throw new InvalidOperationException("Copied a known over-limit collection.");
+        public void Add(T item) => throw new NotSupportedException();
+        public void Clear() => throw new NotSupportedException();
+        public bool Contains(T item) => throw new NotSupportedException();
+        public bool Remove(T item) => throw new NotSupportedException();
     }
 
     [Fact]

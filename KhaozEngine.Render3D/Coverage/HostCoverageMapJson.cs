@@ -24,7 +24,9 @@ public static class HostCoverageMapJson
         ArgumentException.ThrowIfNullOrWhiteSpace(identity);
         try
         {
-            using JsonDocument document = JsonDocument.Parse(json.ToArray());
+            HostCoverageJsonPreflight.Validate(json);
+            var reader = new Utf8JsonReader(json);
+            using JsonDocument document = JsonDocument.ParseValue(ref reader);
             JsonElement root = document.RootElement;
             Members(root, "root", "formatVersion", "hostSha256", "topology", "regions", "refinement", "authoring");
             JsonElement version = Required(root, "formatVersion", "root");

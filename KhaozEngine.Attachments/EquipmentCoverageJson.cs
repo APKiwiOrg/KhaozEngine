@@ -1,10 +1,10 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using static KhaozEngine.Attachments.AttachmentJson;
 
 namespace KhaozEngine.Attachments;
 
@@ -26,7 +26,9 @@ public static class EquipmentCoverageJson
         ArgumentException.ThrowIfNullOrWhiteSpace(identity);
         try
         {
-            using JsonDocument document = JsonDocument.Parse(json.ToArray());
+            EquipmentCoverageJsonPreflight.Validate(json);
+            var reader = new Utf8JsonReader(json);
+            using JsonDocument document = JsonDocument.ParseValue(ref reader);
             JsonElement root = document.RootElement;
             Members(root, "root", "formatVersion", "attachmentSha256", "hostMapSha256", "commands");
             JsonElement version = Required(root, "formatVersion", "root");
@@ -147,23 +149,6 @@ public static class EquipmentCoverageJson
             Single(item, "clearance", context), Single(item, "maxWorldRecession", context));
     }
 
-    static void Members(JsonElement value, string context, params string[] allowed)
-    {
-        if (value.ValueKind != JsonValueKind.Object)
-            throw new InvalidDataException($"{context}: expected an object.");
-        var found = new HashSet<string>(StringComparer.Ordinal);
-        foreach (JsonProperty member in value.EnumerateObject())
-        {
-            if (!found.Add(member.Name))
-                throw new InvalidDataException($"{context}: duplicate property '{member.Name}'.");
-            if (Array.IndexOf(allowed, member.Name) < 0)
-                throw new InvalidDataException($"{context}: unknown property '{member.Name}'.");
-        }
-    }
-
-    static JsonElement Required(JsonElement value, string name, string context) => value.TryGetProperty(name, out JsonElement result)
-        ? result : throw new InvalidDataException($"{context}: missing '{name}'.");
-
     /// <summary>Returns a required array after checking its length against the limit, before any allocation for it.</summary>
     static JsonElement BoundedArray(JsonElement value, string name, string context, int limit)
     {
@@ -173,14 +158,6 @@ public static class EquipmentCoverageJson
         if (member.GetArrayLength() > limit)
             throw new InvalidDataException($"{context}: '{name}' exceeds the limit of {limit} entries.");
         return member;
-    }
-
-    static string Text(JsonElement value, string name, string context)
-    {
-        JsonElement member = Required(value, name, context);
-        if (member.ValueKind != JsonValueKind.String)
-            throw new InvalidDataException($"{context}: '{name}' must be a string.");
-        return member.GetString()!;
     }
 
     static uint Identifier(JsonElement value, string name, string context)

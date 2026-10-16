@@ -47,6 +47,9 @@ public class HostCoverageMapTests
         byte[] canonical = Encoding.UTF8.GetBytes(Canonical);
         HostCoverageMap map = HostCoverageMapJson.Read(canonical, "host");
         Assert.Equal(canonical, HostCoverageMapJson.Write(map));
+        byte[] escaped = Encoding.UTF8.GetBytes(Canonical.Replace("\"regions\"", "\"\\u0072egions\"", StringComparison.Ordinal));
+        Assert.Equal(canonical, HostCoverageMapJson.Write(HostCoverageMapJson.Read(escaped, "host-escaped")));
+        Assert.Equal(canonical, HostCoverageMapJson.Write(HostCoverageMapJson.Read(Encoding.UTF8.GetBytes(Canonical + " \t\r\n"), "host-whitespace")));
 
         HostCoverageMap reordered = HostCoverageMapJson.Read(Encoding.UTF8.GetBytes(Reordered), "host-reordered");
         Assert.Equal(Canonical, Encoding.UTF8.GetString(HostCoverageMapJson.Write(reordered)));
@@ -142,6 +145,119 @@ public class HostCoverageMapTests
         HostCoverageMap map = HostCoverageMapJson.Read(Encoding.UTF8.GetBytes(Regions(HostCoverageMap.MaxRegions)), "host");
         Assert.Equal(32, map.Regions.Count);
         Assert.Equal(map.Regions.Select(region => region.Key).Order(StringComparer.Ordinal), map.Regions.Select(region => region.Key));
+    }
+
+    [Theory]
+    [InlineData("regions")]
+    [InlineData("\\u0072egions")]
+    public void Region_capacity_refuses_before_reading_invalid_tail(string property)
+    {
+        string prefix = "{\"" + property + "\":[" + string.Join(',', Enumerable.Repeat("{}", 33));
+        InvalidDataException error = Assert.Throws<InvalidDataException>(() => HostCoverageMapJson.Read(Encoding.UTF8.GetBytes(prefix + ",!"), "host"));
+
+        Assert.StartsWith("host: ", error.Message, StringComparison.Ordinal);
+        Assert.Contains("'regions' exceeds the limit of 32", error.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("{\"extra\":", "root: unknown property 'extra'")]
+    [InlineData("{\"regions\":[],\"\\u0072egions\":", "duplicate property 'regions'")]
+    [InlineData("{\"regions\":[{\"extra\":", "unknown property 'extra'")]
+    [InlineData("{\"topology\":{", "'topology' must be an array")]
+    [InlineData("{\"regions\":{", "'regions' must be an array")]
+    [InlineData("{\"refinement\":{", "'refinement' must be an array")]
+    [InlineData("{\"authoring\":[", "authoring: expected an object")]
+    [InlineData("{\"regions\":[{\"triangles\":{", "'triangles' must be an array")]
+    [InlineData("{\"regions\":[{\"strengths\":{", "'strengths' must be an array")]
+    [InlineData("{\"topology\":[{\"mesh\":[", "'mesh' must be a number")]
+    [InlineData("{\"hostSha256\":[", "'hostSha256' must be a string")]
+    public void Schema_refuses_before_reading_invalid_tail(string prefix, string reason)
+    {
+        InvalidDataException error = Assert.Throws<InvalidDataException>(() => HostCoverageMapJson.Read(Encoding.UTF8.GetBytes(prefix + "!"), "host"));
+
+        Assert.StartsWith("host: ", error.Message, StringComparison.Ordinal);
+        Assert.Contains(reason, error.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("true")]
+    [InlineData("!")]
+    public void Trailing_value_or_garbage_refuses(string tail)
+    {
+        InvalidDataException error = Assert.Throws<InvalidDataException>(() => HostCoverageMapJson.Read(Encoding.UTF8.GetBytes(Canonical + tail), "host"));
+        Assert.StartsWith("host: ", error.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("topology")]
+    [InlineData("regions")]
+    [InlineData("triangles")]
+    [InlineData("strengths")]
+    [InlineData("refinement")]
+    public void Constructor_rejects_known_over_limit_counts_before_copy(string collection)
+    {
+        HostCoverageRegionTriangles[] triangles = [new(new(0, 0, 0, 1), CoverageTriangleRole.Core)];
+        CoverageSurfaceStrength[] strengths = [new(0, 1f)];
+        var region = new HostCoverageRegion("chest", triangles, strengths);
+        CoverageTopologyEntry[] topology = [new(0, 0, 0, 0)];
+        HostCoverageAuthoring authoring = new("synthetic-exporter", "r1");
+
+        Assert.Throws<ArgumentException>(() =>
+        {
+            switch (collection)
+            {
+                case "topology":
+                    _ = new HostCoverageMap(Hash, new RefusingCollection<CoverageTopologyEntry>(65537), [region], [], authoring);
+                    break;
+                case "regions":
+                    _ = new HostCoverageMap(Hash, topology, new RefusingCollection<HostCoverageRegion>(33), [], authoring);
+                    break;
+                case "triangles":
+                    _ = new HostCoverageRegion("chest", new RefusingCollection<HostCoverageRegionTriangles>(65537), strengths);
+                    break;
+                case "strengths":
+                    _ = new HostCoverageRegion("chest", triangles, new RefusingCollection<CoverageSurfaceStrength>(65537));
+                    break;
+                case "refinement":
+                    _ = new HostCoverageMap(Hash, topology, [region], new RefusingCollection<HostCoverageRefinement>(65537), authoring);
+                    break;
+                default:
+                    throw new InvalidOperationException(collection);
+            }
+        });
+    }
+
+    [Fact]
+    public void Constructor_stops_unknown_region_input_at_refusal_witness()
+    {
+        var region = new HostCoverageRegion("chest", [new(new(0, 0, 0, 1), CoverageTriangleRole.Core)], [new(0, 1f)]);
+        int consumed = 0;
+        IEnumerable<HostCoverageRegion> RegionsWithWitness()
+        {
+            for (int index = 0; index < 33; index++)
+            {
+                consumed++;
+                yield return region;
+            }
+            throw new InvalidOperationException("Read beyond the capacity refusal witness.");
+        }
+
+        Assert.Throws<ArgumentException>(() => new HostCoverageMap(Hash, [new(0, 0, 0, 0)], RegionsWithWitness(), [], new("synthetic-exporter", "r1")));
+        Assert.Equal(33, consumed);
+    }
+
+    sealed class RefusingCollection<T>(int count) : ICollection<T>
+    {
+        public int Count => count;
+        public bool IsReadOnly => true;
+        public IEnumerator<T> GetEnumerator() => throw new InvalidOperationException("Enumerated a known over-limit collection.");
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+        public void CopyTo(T[] array, int arrayIndex) => throw new InvalidOperationException("Copied a known over-limit collection.");
+        public void Add(T item) => throw new NotSupportedException();
+        public void Clear() => throw new NotSupportedException();
+        public bool Contains(T item) => throw new NotSupportedException();
+        public bool Remove(T item) => throw new NotSupportedException();
     }
 
     [Fact]

@@ -35,12 +35,15 @@ internal sealed class CoverageCostFakeSession : ICoverageCostSession
     internal bool Coverage { get; init; } = true;
     internal bool Synthetic { get; init; } = true;
     internal bool NativeDevice { get; init; } = true;
-    internal bool ObservesOrdinarySkinning { get; init; } = true;
+    internal bool ObservesSkinnedPreparation { get; init; } = true;
     internal bool AllCovered { get; init; }
     internal bool AllDeclined { get; init; }
     internal bool AllFallback { get; init; }
     internal long PrepareTicks { get; init; } = 12;
     internal long OrdinarySkinningTicks { get; init; } = 2;
+    /// <summary>The whole skinned preparation parent span, containing surface, ordinary skinning and upload.</summary>
+    internal long SkinnedPreparationTicks { get; init; } = 4;
+    internal long MotionCommitTicks { get; init; } = 1;
     internal string Adapter { get; init; } = "fake adapter";
     internal CoverageCostTopology Topology { get; init; } =
         new(2121, 2000, 200, 96, 2900, 2600, 2, 2, "2", 2, "fingerprint");
@@ -52,9 +55,11 @@ internal sealed class CoverageCostFakeSession : ICoverageCostSession
     internal int Frames { get; private set; }
     internal bool Disposed { get; private set; }
     internal Action<CoverageCostFakeSession>? OnFrame { get; init; }
+    internal Action? OnRead { get; init; }
+    internal Action? OnDispose { get; init; }
     bool ICoverageCostSession.Synthetic => Synthetic;
     bool ICoverageCostSession.NativeDevice => NativeDevice;
-    bool ICoverageCostSession.ObservesOrdinarySkinning => ObservesOrdinarySkinning;
+    bool ICoverageCostSession.ObservesSkinnedPreparation => ObservesSkinnedPreparation;
 
     public CoverageCostSessionInfo Info => new("VulkanNative", Adapter, "unclassified", "camera", "light", "layout", "timing", Topology);
 
@@ -76,6 +81,8 @@ internal sealed class CoverageCostFakeSession : ICoverageCostSession
         sample.SurfaceTicks = Coverage ? 1 : 0;
         sample.OrdinarySkinningTicks = Coverage ? 0 : OrdinarySkinningTicks;
         sample.SkinnedUploadTicks = 1;
+        sample.SkinnedPreparationTicks = SkinnedPreparationTicks;
+        sample.MotionCommitTicks = MotionCommitTicks;
         sample.OrdinaryCpuSkinnedVertices = Coverage ? 0 : 1092 * ActorsPerFrame;
         sample.SubmitWaitTicks = 40;
         sample.FrameTicks = measuredIndex == SlowFrame ? 51 : 49;
@@ -96,9 +103,12 @@ internal sealed class CoverageCostFakeSession : ICoverageCostSession
         sample.Stats.AddInstanceUpload(32);
     }
 
-    public IReadOnlyList<CoverageCostMetric> ReadCapacities() => ThrowDiagnostics
-        ? throw new InvalidOperationException("capacity read failed")
-        : [CoverageCostMetric.Measured("actor.scratch.vertices", "elements", 2900, "fake")];
+    public IReadOnlyList<CoverageCostMetric> ReadCapacities()
+    {
+        OnRead?.Invoke();
+        return ThrowDiagnostics ? throw new InvalidOperationException("capacity read failed")
+            : [CoverageCostMetric.Measured("actor.scratch.vertices", "elements", 2900, "fake")];
+    }
 
     public IReadOnlyList<KeyValuePair<string, int>> ReadRefusals() => ThrowDiagnostics
         ? throw new InvalidOperationException("refusal read failed")
@@ -111,6 +121,7 @@ internal sealed class CoverageCostFakeSession : ICoverageCostSession
     public void Dispose()
     {
         Disposed = true;
+        OnDispose?.Invoke();
         if (ThrowDispose) throw new InvalidOperationException("dispose failed");
     }
 }

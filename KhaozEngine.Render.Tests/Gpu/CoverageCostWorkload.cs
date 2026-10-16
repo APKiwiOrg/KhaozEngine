@@ -51,6 +51,7 @@ internal sealed class CoverageCostWorkload : IDisposable
     long roleActorFrames, pointFaceMatrices, outlineGroups, measuredFrames;
     long skinStart, skinTicks, geometryStart, geometryTicks, geometryCertificationStart, geometryCertificationTicks;
     long certificationStart, certificationTicks, ordinaryStart, ordinaryTicks, uploadStart, uploadTicks;
+    long preparationStart, preparationTicks, commitStart, commitTicks;
     long resolutionStart, resolutionTicks, resolutionBytesStart, resolutionBytes, surfaceStart, surfaceTicks, surfaceBytesStart, surfaceBytes;
     int skinned, evaluated, geometryCertified, certified, acceptedCount, declinedCount, lastCovered = -1;
     CoverageCostTopology? observed;
@@ -151,6 +152,7 @@ internal sealed class CoverageCostWorkload : IDisposable
     {
         scene.Begin();
         skinTicks = geometryTicks = geometryCertificationTicks = certificationTicks = ordinaryTicks = uploadTicks = 0;
+        preparationTicks = commitTicks = 0;
         resolutionTicks = resolutionBytes = surfaceTicks = surfaceBytes = 0;
         skinned = evaluated = geometryCertified = certified = acceptedCount = declinedCount = 0;
         lastCovered = -1;
@@ -227,6 +229,8 @@ internal sealed class CoverageCostWorkload : IDisposable
         sample.ResolutionTicks = resolutionTicks;
         sample.OrdinarySkinningTicks = ordinaryTicks;
         sample.SkinnedUploadTicks = uploadTicks;
+        sample.SkinnedPreparationTicks = preparationTicks;
+        sample.MotionCommitTicks = commitTicks;
         sample.OrdinaryCpuSkinnedVertices = scene.OrdinaryCpuSkinnedVerticesForTests;
         sample.GeometryCertified = geometryCertified;
         sample.CertificationTicks = certificationTicks;
@@ -397,6 +401,10 @@ internal sealed class CoverageCostWorkload : IDisposable
             case CoverageStageSpan.OrdinarySkinning: ordinaryTicks += now - ordinaryStart; break;
             case CoverageStageSpan.SkinnedUpload when entering: uploadStart = now; break;
             case CoverageStageSpan.SkinnedUpload: uploadTicks += now - uploadStart; break;
+            case CoverageStageSpan.SkinnedPreparation when entering: preparationStart = now; break;
+            case CoverageStageSpan.SkinnedPreparation: preparationTicks += now - preparationStart; break;
+            case CoverageStageSpan.MotionCommit when entering: commitStart = now; break;
+            case CoverageStageSpan.MotionCommit: commitTicks += now - commitStart; break;
             case CoverageStageSpan.RenderCertification when entering: certificationStart = now; break;
             case CoverageStageSpan.RenderCertification: certificationTicks += now - certificationStart; certified++; break;
         }

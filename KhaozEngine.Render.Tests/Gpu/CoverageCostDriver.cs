@@ -7,59 +7,102 @@ using System.Linq;
 namespace KhaozEngine.Tests.Gpu;
 
 /// <summary>
+/// One cooperative deadline for a whole selected unit, a single case or both conditions of a pair. It starts before the
+/// first factory and is checked at phase boundaries: after session setup, after every frame, after diagnostics, after
+/// cleanup and before the next condition, which also charges the previous condition's publication. A single case's
+/// publication is its last step and is not charged to the report it publishes. Nothing is interrupted, so a slow or
+/// hung call overshoots until it returns or the hosted job timeout ends the process.
+/// </summary>
+internal sealed class CoverageCostDeadline
+{
+    readonly CoverageCostClock clock;
+    readonly long start, limit;
+
+    internal CoverageCostDeadline(CoverageCostClock clock, double maxWallSeconds)
+    {
+        this.clock = clock;
+        Seconds = maxWallSeconds;
+        limit = (long)Math.Ceiling(maxWallSeconds * clock.Frequency);
+        start = clock.Now();
+    }
+
+    internal double Seconds { get; }
+    internal long Elapsed => clock.Now() - start;
+
+    /// <summary>Empty while time remains, otherwise the reason naming the boundary that found it spent.</summary>
+    internal string Check(string boundary) => Check(boundary, Elapsed);
+
+    /// <summary>The same check against an elapsed value already read at this boundary.</summary>
+    internal string Check(string boundary, long elapsed)
+    {
+        return elapsed > limit
+            ? $"The unit elapsed {Number((double)elapsed / clock.Frequency)} s {boundary}, above limits.maxWallSeconds {Number(Seconds)} s."
+            : "";
+    }
+
+    internal static string Number(double value) => value.ToString("0.###", CultureInfo.InvariantCulture);
+}
+
+/// <summary>
 /// Runs warm-up and measured frames of an authorized case through a session, enforcing the manifest's limits, and
 /// materializes the report after the window. Parsing and authorization happen before the session factory runs, so a
 /// refused manifest never opens a device or starts a frame. The first factory or frame failure is the report's
-/// reason. Diagnostic reads and cleanup run defensively afterwards. Their failures are appended, never substituted,
-/// and on an otherwise complete run they fail the report.
+/// reason. Diagnostic reads, cleanup and publication run defensively afterwards. Their failures are appended, never
+/// substituted, and on an otherwise complete run they fail the report. A finished report is published through the
+/// caller's sink before anything else starts.
 /// </summary>
 internal static class CoverageCostDriver
 {
     internal static CoverageCostReport Run(ReadOnlySpan<byte> manifestJson, CoverageCostSessionFactory factory, CoverageCostClock clock,
-        Func<IReadOnlyList<KeyValuePair<string, string>>>? environment = null)
+        Func<IReadOnlyList<KeyValuePair<string, string>>>? environment = null, Action<CoverageCostReport>? publish = null)
     {
         CoverageCostManifest manifest;
         try { manifest = CoverageCostManifest.Parse(manifestJson); }
         catch (InvalidDataException ex)
         {
-            return Empty(CoverageCostRunStatus.Refused, ex.Message, null, Sha(manifestJson), environment);
+            return Publish(Empty(CoverageCostRunStatus.Refused, ex.Message, null, Sha(manifestJson), environment), publish);
         }
-        return Run(manifest, factory, clock, environment);
+        return Run(manifest, factory, clock, environment, publish: publish);
     }
 
+    /// <summary>One condition. A single case starts its own unit deadline here, before the factory. A pair passes its
+    /// shared deadline.</summary>
     internal static CoverageCostReport Run(CoverageCostManifest manifest, CoverageCostSessionFactory factory, CoverageCostClock clock,
-        Func<IReadOnlyList<KeyValuePair<string, string>>>? environment = null, string? unit = null)
+        Func<IReadOnlyList<KeyValuePair<string, string>>>? environment = null, string? unit = null, CoverageCostDeadline? deadline = null,
+        Action<CoverageCostReport>? publish = null)
     {
         ArgumentNullException.ThrowIfNull(manifest);
         if (string.IsNullOrWhiteSpace(manifest.AuthorizationIdentity))
-            return Empty(CoverageCostRunStatus.Refused, "Manifest authorization identity is missing.", manifest, manifest.Sha256, environment, unit);
+            return Publish(Empty(CoverageCostRunStatus.Refused, "Manifest authorization identity is missing.", manifest, manifest.Sha256,
+                environment, unit), publish);
         // Every collector exists before the first frame.
         var samples = new CoverageCostFrameSample[manifest.MeasuredFrames];
         var warm = new CoverageCostFrameSample[manifest.WarmupFrames];
         long frameLimit = (long)Math.Ceiling(manifest.MaxFrameMilliseconds * clock.Frequency / 1000);
-        long wallLimit = (long)Math.Ceiling(manifest.MaxWallSeconds * clock.Frequency);
+        deadline ??= new CoverageCostDeadline(clock, manifest.MaxWallSeconds);
         ICoverageCostSession session;
         try { session = factory(manifest, clock); }
         catch (CoverageCostRefusedException ex)
         {
-            return Empty(CoverageCostRunStatus.Refused, ex.Message, manifest, manifest.Sha256, environment, unit);
+            return Publish(Empty(CoverageCostRunStatus.Refused, ex.Message, manifest, manifest.Sha256, environment, unit), publish);
         }
         catch (Exception ex) when (Recoverable(ex))
         {
-            return Empty(CoverageCostRunStatus.Failed, $"Session factory failed: {Describe(ex)}", manifest, manifest.Sha256, environment, unit);
+            return Publish(Empty(CoverageCostRunStatus.Failed, $"Session factory failed: {Describe(ex)}", manifest, manifest.Sha256,
+                environment, unit), publish);
         }
 
-        string reason = "", phase = "warm-up";
+        string reason = deadline.Check("after session setup"), phase = "warm-up";
         int measured = 0, warmed = 0, errors = 0, index = 0;
-        long start = clock.Now(), elapsed = 0;
+        long elapsed = 0;
         try
         {
             for (index = 0; index < warm.Length && reason.Length == 0; index++)
             {
                 session.Frame(false, ref warm[index]);
                 warmed++;
-                elapsed = clock.Now() - start;
-                reason = Limits(phase, index, warm[index].FrameTicks, frameLimit, elapsed, wallLimit, manifest, clock);
+                elapsed = deadline.Elapsed;
+                reason = Limits(phase, index, warm[index].FrameTicks, frameLimit, deadline, elapsed, manifest, clock);
             }
             if (reason.Length == 0)
             {
@@ -68,8 +111,8 @@ internal static class CoverageCostDriver
                 {
                     session.Frame(true, ref samples[index]);
                     measured++;
-                    elapsed = clock.Now() - start;
-                    reason = Limits(phase, index, samples[index].FrameTicks, frameLimit, elapsed, wallLimit, manifest, clock);
+                    elapsed = deadline.Elapsed;
+                    reason = Limits(phase, index, samples[index].FrameTicks, frameLimit, deadline, elapsed, manifest, clock);
                 }
             }
         }
@@ -81,37 +124,44 @@ internal static class CoverageCostDriver
 
         var secondary = new List<string>();
         var report = Materialize(manifest, session, clock, samples[..measured], warm[..warmed], errors, elapsed, secondary, environment, unit);
+        string spent = deadline.Check("after diagnostics");
+        if (reason.Length == 0) reason = spent;
         try { session.Dispose(); }
         catch (Exception ex) when (Recoverable(ex)) { secondary.Add($"cleanup failed: {Describe(ex)}"); }
-        string extra = string.Join(" ", secondary.Select(s => s.EndsWith('.') ? s : s + "."));
-        string final = reason.Length == 0 ? extra : extra.Length == 0 ? reason : $"{reason} Secondary: {extra}";
-        report = report with
-        {
-            Status = reason.Length == 0 && secondary.Count == 0 ? CoverageCostRunStatus.Completed : CoverageCostRunStatus.Failed,
-            Reason = final,
-        };
-        return report with { Budgets = CoverageCostBudgets.ForReport(report) };
+        spent = deadline.Check("after cleanup");
+        if (reason.Length == 0) reason = spent;
+        report = Finish(report, reason, secondary, deadline, clock);
+        return Publish(report, publish);
     }
 
     internal static CoverageCostPairReport RunPair(ReadOnlySpan<byte> pairJson, CoverageCostSessionFactory factory, CoverageCostClock clock,
-        Func<IReadOnlyList<KeyValuePair<string, string>>>? environment = null)
+        Func<IReadOnlyList<KeyValuePair<string, string>>>? environment = null, Action<CoverageCostReport>? publish = null)
     {
         CoverageCostPairManifest pair;
         try { pair = CoverageCostPairManifest.Parse(pairJson); }
         catch (InvalidDataException ex) { return CoverageCostPairReport.Refused(ex.Message, Sha(pairJson)); }
-        return RunPair(pair, factory, clock, environment);
+        return RunPair(pair, factory, clock, environment, publish);
     }
 
-    /// <summary>Both conditions in their authorized order, sequentially in this process with the same factory, clock
-    /// and matched frame counts. A condition that does not complete leaves the next one unrun.</summary>
+    /// <summary>Both conditions in their authorized order, sequentially in this process with the same factory, clock and
+    /// matched frame counts, under one unit deadline started before the first factory. Each finished condition is
+    /// published before the next starts. A condition that does not complete, a failed publication or a spent deadline
+    /// leaves the next condition unrun.</summary>
     internal static CoverageCostPairReport RunPair(CoverageCostPairManifest pair, CoverageCostSessionFactory factory, CoverageCostClock clock,
-        Func<IReadOnlyList<KeyValuePair<string, string>>>? environment = null)
+        Func<IReadOnlyList<KeyValuePair<string, string>>>? environment = null, Action<CoverageCostReport>? publish = null)
     {
+        var deadline = new CoverageCostDeadline(clock, pair.Conditions[0].MaxWallSeconds);
         var reports = new CoverageCostReport?[pair.Conditions.Length];
         string reason = "";
         for (int i = 0; i < reports.Length && reason.Length == 0; i++)
         {
-            var report = Run(pair.Conditions[i], factory, clock, environment, pair.Unit);
+            string spent = deadline.Check($"before condition {pair.Order[i]}");
+            if (spent.Length > 0)
+            {
+                reason = $"{spent} Condition {pair.Order[i]} was not run.";
+                break;
+            }
+            var report = Run(pair.Conditions[i], factory, clock, environment, pair.Unit, deadline, publish);
             reports[i] = report;
             if (report.Status != CoverageCostRunStatus.Completed)
                 reason = $"Condition {pair.Order[i]} is {report.Status.ToString().ToLowerInvariant()}: {report.Reason}"
@@ -121,18 +171,52 @@ internal static class CoverageCostDriver
             pair.Order, reports, CoverageCostBudgets.ForPair(pair, reports), CoverageCostBudgets.Deltas(pair, reports));
     }
 
+    static CoverageCostReport Finish(CoverageCostReport report, string reason, List<string> secondary, CoverageCostDeadline? deadline,
+        CoverageCostClock clock)
+    {
+        string extra = string.Join(" ", secondary.Select(s => s.EndsWith('.') ? s : s + "."));
+        string final = reason.Length == 0 ? extra : extra.Length == 0 ? reason : $"{reason} Secondary: {extra}";
+        var metrics = report.Metrics.Where(m => m.Name != "unit.elapsedMilliseconds").ToList();
+        if (deadline is not null)
+            metrics.Add(CoverageCostMetric.Measured("unit.elapsedMilliseconds", "ms", deadline.Elapsed * 1000.0 / clock.Frequency,
+                "unit deadline clock from before the first factory to this report"));
+        report = report with
+        {
+            Status = reason.Length == 0 && secondary.Count == 0 ? CoverageCostRunStatus.Completed : CoverageCostRunStatus.Failed,
+            Reason = final,
+            Metrics = metrics,
+        };
+        return report with { Budgets = CoverageCostBudgets.ForReport(report) };
+    }
+
+    // Publishes once. A sink failure fails the report and keeps the first reason, and the caller stops the unit.
+    static CoverageCostReport Publish(CoverageCostReport report, Action<CoverageCostReport>? publish)
+    {
+        if (publish is null) return report;
+        try { publish(report); }
+        catch (Exception ex) when (Recoverable(ex))
+        {
+            string failure = $"publication failed: {Describe(ex)}.";
+            report = report with
+            {
+                Status = report.Status == CoverageCostRunStatus.Refused ? CoverageCostRunStatus.Refused : CoverageCostRunStatus.Failed,
+                Reason = report.Reason.Length == 0 ? failure : $"{report.Reason} Secondary: {failure}",
+            };
+            return report with { Budgets = CoverageCostBudgets.ForReport(report) };
+        }
+        return report;
+    }
+
     static bool Recoverable(Exception ex) => ex is not (OutOfMemoryException or StackOverflowException or AccessViolationException);
     static string Describe(Exception ex) => $"{ex.GetType().Name}: {ex.Message}";
     static string Sha(ReadOnlySpan<byte> bytes) => bytes.IsEmpty ? "" : Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(bytes));
-    static string Number(double value) => value.ToString("0.###", CultureInfo.InvariantCulture);
+    static string Number(double value) => CoverageCostDeadline.Number(value);
 
-    static string Limits(string phase, int index, long frameTicks, long frameLimit, long elapsed, long wallLimit,
+    static string Limits(string phase, int index, long frameTicks, long frameLimit, CoverageCostDeadline deadline, long elapsed,
         CoverageCostManifest manifest, CoverageCostClock clock) =>
         frameTicks > frameLimit
             ? $"{phase} frame {index} took {Number(frameTicks * 1000.0 / clock.Frequency)} ms, above limits.maxFrameMilliseconds {Number(manifest.MaxFrameMilliseconds)} ms."
-        : elapsed > wallLimit
-            ? $"The run elapsed {Number((double)elapsed / clock.Frequency)} s after {phase} frame {index}, above limits.maxWallSeconds {Number(manifest.MaxWallSeconds)} s."
-        : "";
+            : deadline.Check($"after {phase} frame {index}", elapsed);
 
     static CoverageCostReport Empty(CoverageCostRunStatus status, string reason, CoverageCostManifest? manifest, string sha,
         Func<IReadOnlyList<KeyValuePair<string, string>>>? environment, string? unit = null)
@@ -147,7 +231,7 @@ internal static class CoverageCostDriver
         Func<IReadOnlyList<KeyValuePair<string, string>>>? environment, string? unit)
     {
         double ms = 1000.0 / clock.Frequency;
-        bool coverage = manifest.Coverage, ordinary = session.ObservesOrdinarySkinning;
+        bool coverage = manifest.Coverage, ordinary = session.ObservesSkinnedPreparation;
         var spans = new List<CoverageCostSpan>();
         void Add(string name, Func<CoverageCostFrameSample, double> value, string includes, bool applies = true, bool derived = false,
             bool observable = true, CoverageCostFrameSample[]? source = null)
@@ -184,15 +268,22 @@ internal static class CoverageCostDriver
         Add("encode.renderCertification", f => f.CertificationTicks * ms, "CoverageCertification.Validate per complete preparation", coverage);
         Add("encode.resolutionOther", f => (f.ResolutionTicks - f.CertificationTicks) * ms, "resolution less render certification",
             coverage, true);
-        Add("encode.surfaceAppend", f => f.SurfaceTicks * ms, "AppendCoverageSurfaces");
+        Add("encode.skinnedPreparation", f => f.SkinnedPreparationTicks * ms,
+            "the whole PrepareSkinnedDraws: surface append, ordinary skinning, coverage motion recording and skinned upload",
+            observable: ordinary);
+        Add("encode.surfaceAppend", f => f.SurfaceTicks * ms, "AppendCoverageSurfaces, a child of encode.skinnedPreparation, informational");
         Add("encode.ordinarySkinning", f => f.OrdinarySkinningTicks * ms,
-            "the uncovered skinned draw loop: classification and CPU vertex skinning on the CPU route, draw records on the GPU route",
+            "the uncovered skinned draw loop, CPU vertex skinning on the CPU route or draw records on the GPU route, a child of encode.skinnedPreparation, informational",
             observable: ordinary);
-        Add("encode.skinnedUpload", f => f.SkinnedUploadTicks * ms, "PrepareGpuSkinnedFrame and UploadCpuSkinnedFrame, shared by both routes",
+        Add("encode.skinnedUpload", f => f.SkinnedUploadTicks * ms,
+            "PrepareGpuSkinnedFrame and UploadCpuSkinnedFrame, a child of encode.skinnedPreparation, informational", observable: ordinary);
+        Add("encode.skinnedPreparationOther", f => (f.SkinnedPreparationTicks - f.SurfaceTicks - f.OrdinarySkinningTicks - f.SkinnedUploadTicks) * ms,
+            "encode.skinnedPreparation less its three timed children: stream setup and coverage motion recording", derived: true, observable: ordinary);
+        Add("encode.motionCommit", f => f.MotionCommitTicks * ms, "the whole CompleteCoverageEncoding at the end of the render",
             observable: ordinary);
-        Add("encode.other", f => (f.EncodeTicks - f.ResolutionTicks - f.SurfaceTicks - (ordinary ? f.OrdinarySkinningTicks + f.SkinnedUploadTicks : 0)) * ms,
-            ordinary ? "encode.total less resolution, surface append, ordinary skinning and skinned upload"
-                : "encode.total less resolution and surface append, including unobserved ordinary skinning and upload", derived: true);
+        Add("encode.other", f => (f.EncodeTicks - f.ResolutionTicks - (ordinary ? f.SkinnedPreparationTicks + f.MotionCommitTicks : f.SurfaceTicks)) * ms,
+            ordinary ? "encode.total less resolution, the skinned preparation and the motion commit"
+                : "encode.total less resolution and surface append, including the unobserved skinned preparation and commit", derived: true);
         Add("encode.pass.shadowDepth", f => f.PassTimings.ShadowDepthMs, "Scene3DPassTimingsMs CPU encode, not GPU time");
         Add("encode.pass.model", f => f.PassTimings.ModelMs, "Scene3DPassTimingsMs CPU encode, not GPU time");
         Add("encode.pass.transparents", f => f.PassTimings.TransparentsMs, "Scene3DPassTimingsMs CPU encode, not GPU time");
@@ -225,7 +316,7 @@ internal static class CoverageCostDriver
             "KhaozEngine.Gpu has no timestamp-query API, so isolated GPU execution is not observable"));
         metrics.Add(new("limit.maxFrameMilliseconds", "ms", CoverageCostStatus.Derived, manifest.MaxFrameMilliseconds, "configured manifest limit"));
         metrics.Add(new("limit.maxWallSeconds", "s", CoverageCostStatus.Derived, manifest.MaxWallSeconds, "configured manifest limit"));
-        metrics.Add(CoverageCostMetric.Measured("run.elapsedMilliseconds", "ms", elapsed * ms, "driver clock from the first frame to the last completed frame"));
+        metrics.Add(CoverageCostMetric.Measured("run.elapsedMilliseconds", "ms", elapsed * ms, "unit deadline clock at the last completed frame"));
         if (ordinary)
             Count("ordinary.cpuSkinnedVertices", f => f.OrdinaryCpuSkinnedVertices,
                 "uncovered source vertices skinned on the CPU route, zero on the GPU route is a measured absence");

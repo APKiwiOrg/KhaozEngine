@@ -27,14 +27,29 @@ public sealed class CoverageCostTests(ITestOutputHelper output)
     {
         if (Interlocked.Increment(ref started) > 1)
             throw new InvalidOperationException("Select exactly one authorized unit per run with an exact test filter.");
-        var (json, completed, reason) = CoverageCostHarness.MeasureUnit(
-            File.ReadAllBytes(Path.Combine(CoverageCostTheoryAttribute.Folder, name + ".json")), name);
-        output.WriteLine(json);
-        Console.WriteLine(json);
         string folder = Environment.GetEnvironmentVariable("KE_COVERAGE_COST_REPORTS") is { Length: > 0 } configured
             ? configured : Path.Combine(AppContext.BaseDirectory, "coverage-cost-reports");
         Directory.CreateDirectory(folder);
-        File.WriteAllText(Path.Combine(folder, $"{name}-{DateTime.UtcNow:yyyyMMddTHHmmssfffZ}.json"), json);
+        string stamp = $"{DateTime.UtcNow:yyyyMMddTHHmmssfffZ}";
+        int condition = 0;
+        // Every finished condition is written, flushed and printed before the next starts.
+        void Publish(string label, string json)
+        {
+            using (var file = new FileStream(Path.Combine(folder, $"{name}-{stamp}-{label}.json"), FileMode.CreateNew, FileAccess.Write))
+            using (var writer = new StreamWriter(file))
+            {
+                writer.Write(json);
+                writer.Flush();
+                file.Flush(true);
+            }
+            output.WriteLine(json);
+            Console.Out.WriteLine(json);
+            Console.Out.Flush();
+        }
+        var (unit, completed, reason) = CoverageCostHarness.MeasureUnit(
+            File.ReadAllBytes(Path.Combine(CoverageCostTheoryAttribute.Folder, name + ".json")), name,
+            json => Publish($"condition-{++condition}", json));
+        Publish("unit", unit);
         Assert.True(completed, reason);
     }
 }

@@ -46,7 +46,7 @@ internal sealed class CoverageCostNativeSession : ICoverageCostSession
 
     public bool Synthetic => false;
     public bool NativeDevice => true;
-    public bool ObservesOrdinarySkinning => true;
+    public bool ObservesSkinnedPreparation => true;
     public CoverageCostSessionInfo Info { get; private set; }
 
     internal static ICoverageCostSession Open(CoverageCostManifest manifest, CoverageCostClock clock)

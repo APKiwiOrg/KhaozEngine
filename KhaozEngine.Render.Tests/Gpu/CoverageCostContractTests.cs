@@ -199,8 +199,13 @@ public sealed class CoverageCostContractTests
         Assert.Equal(1, report.Span("encode.surfaceAppend").Mean);
         Assert.Equal(0, report.Span("encode.ordinarySkinning").Mean);
         Assert.Equal(1, report.Span("encode.skinnedUpload").Mean);
-        Assert.Equal(19, report.Span("encode.other").P50);
-        Assert.Equal(21, report.Span("encode.other").Max);
+        Assert.Equal(4, report.Span("encode.skinnedPreparation").Mean);
+        Assert.Equal(2, report.Span("encode.skinnedPreparationOther").Mean);
+        Assert.Equal(CoverageCostStatus.Derived, report.Span("encode.skinnedPreparationOther").Status);
+        Assert.Equal(1, report.Span("encode.motionCommit").Mean);
+        // encode.other subtracts the parent and the commit once, never the parent's children as well.
+        Assert.Equal(16, report.Span("encode.other").P50);
+        Assert.Equal(18, report.Span("encode.other").Max);
         Assert.Equal(40, report.Span("submitWait.wall").Mean);
         Assert.Equal(new double?[] { 30, 30, 32 }, new[] { report.Span("encode.total").Min, report.Span("encode.total").P50,
             report.Span("encode.total").Max });
@@ -278,9 +283,12 @@ public sealed class CoverageCostContractTests
         }
         // A session that cannot observe the ordinary route reports it unavailable, never as a measured zero.
         var blind = CoverageCostDriver.Run(Bytes(With("\"coverage\": \"on\"", "\"coverage\": \"off\"")),
-            (_, _) => new CoverageCostFakeSession { Coverage = false, ObservesOrdinarySkinning = false }, FakeClock());
-        Assert.Equal(CoverageCostStatus.Unavailable, blind.Span("encode.ordinarySkinning").Status);
-        Assert.Null(blind.Span("encode.ordinarySkinning").Mean);
+            (_, _) => new CoverageCostFakeSession { Coverage = false, ObservesSkinnedPreparation = false }, FakeClock());
+        foreach (string name in new[] { "encode.ordinarySkinning", "encode.skinnedPreparation", "encode.motionCommit" })
+        {
+            Assert.Equal(CoverageCostStatus.Unavailable, blind.Span(name).Status);
+            Assert.Null(blind.Span(name).Mean);
+        }
         Assert.Equal(12, report.Span("prepare.total").Mean);
         AssertMissingIsNull(report.ToJson());
     }
@@ -320,7 +328,8 @@ public sealed class CoverageCostContractTests
         var report = CoverageCostDriver.Run(Bytes(Valid), (_, _) => new CoverageCostFakeSession(), clock);
         Assert.Equal(CoverageCostRunStatus.Failed, report.Status);
         Assert.Contains("above limits.maxWallSeconds 60 s", report.Reason, StringComparison.Ordinal);
-        Assert.Contains("elapsed 80 s after warm-up frame 3", report.Reason, StringComparison.Ordinal);
+        // The unit deadline starts before the factory, so the setup check spends one clock step before frame 0.
+        Assert.Contains("The unit elapsed 80 s after warm-up frame 2", report.Reason, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -333,6 +342,54 @@ public sealed class CoverageCostContractTests
         Assert.Equal(1, report.MeasuredFrames);
         Assert.Equal(1, report.Metric("outcome.errors").Value);
         Assert.True(session.Disposed);
+    }
+
+    [Theory]
+    [InlineData("setup")]
+    [InlineData("diagnostics")]
+    [InlineData("cleanup")]
+    public void The_unit_deadline_charges_setup_diagnostics_and_cleanup(string phase)
+    {
+        long now = 0;
+        var clock = new CoverageCostClock(() => now, 1000);
+        var session = new CoverageCostFakeSession
+        {
+            AllCovered = true,
+            OnRead = phase == "diagnostics" ? () => now += 70_000 : null,
+            OnDispose = phase == "cleanup" ? () => now += 70_000 : null,
+        };
+        var report = CoverageCostDriver.Run(Bytes(Valid), (_, _) =>
+        {
+            if (phase == "setup") now += 70_000;
+            return session;
+        }, clock);
+        Assert.Equal(CoverageCostRunStatus.Failed, report.Status);
+        Assert.Contains($"The unit elapsed 70 s after {(phase == "setup" ? "session setup" : phase)}, above limits.maxWallSeconds 60 s",
+            report.Reason, StringComparison.Ordinal);
+        Assert.Equal(phase == "setup" ? 0 : 3, report.MeasuredFrames);
+        Assert.True(session.Disposed);
+        Assert.Equal(70_000, report.Metric("unit.elapsedMilliseconds").Value);
+        Assert.All(report.Budgets, b => Assert.Equal(CoverageCostBudgetStatus.Unproved, b.Status));
+    }
+
+    [Fact]
+    public void A_single_case_report_is_published_once_and_a_publication_failure_fails_it()
+    {
+        var published = new List<CoverageCostReport>();
+        var report = CoverageCostDriver.Run(Bytes(Valid), (_, _) => new CoverageCostFakeSession { AllCovered = true },
+            FakeClock(), publish: published.Add);
+        Assert.Equal(CoverageCostRunStatus.Completed, report.Status);
+        Assert.Same(report, Assert.Single(published));
+
+        var failed = CoverageCostDriver.Run(Bytes(Valid), (_, _) => new CoverageCostFakeSession { ThrowAt = 5 }, FakeClock(),
+            publish: _ => throw new IOException("disk full"));
+        Assert.Equal(CoverageCostRunStatus.Failed, failed.Status);
+        Assert.StartsWith("measured frame 1 failed", failed.Reason, StringComparison.Ordinal);
+        Assert.Contains("publication failed: IOException: disk full", failed.Reason, StringComparison.Ordinal);
+        var unpublished = CoverageCostDriver.Run(Bytes(Valid), (_, _) => new CoverageCostFakeSession { AllCovered = true }, FakeClock(),
+            publish: _ => throw new IOException("disk full"));
+        Assert.Equal(CoverageCostRunStatus.Failed, unpublished.Status);
+        Assert.All(unpublished.Budgets, b => Assert.Equal(CoverageCostBudgetStatus.Unproved, b.Status));
     }
 
     [Fact]

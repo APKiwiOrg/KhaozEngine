@@ -142,6 +142,8 @@ public sealed class CoverageCostFixtureTests(ITestOutputHelper output)
         f.Scene.CoverageStageObserverForTests = (span, entering) => events.Add($"{span}:{(entering ? "in" : "out")}");
         f.Scene.CoverageAllocationObserverForTests = entering => events.Add($"Resolution:{(entering ? "in" : "out")}");
         f.Scene.CoverageSurfaceAllocationObserverForTests = entering => events.Add($"Surface:{(entering ? "in" : "out")}");
+        // Temporal on, so coverage motion history records and commits inside the observed spans.
+        f.Scene.ForceTemporalForTests = true;
         f.Scene.Begin();
         events.Add("prepare");
         Assert.True(binding.TryPrepare(f.Skeleton, f.Palette, Matrix4x4.Identity, f.Template, out var frame, out failure), failure.ToString());
@@ -151,8 +153,13 @@ public sealed class CoverageCostFixtureTests(ITestOutputHelper output)
         Assert.Equal(CoveragePresentation.Covered, f.Scene.GetCoverageOutcome(frame).Presentation);
         Assert.Equal(new[] { "prepare", "Skinning:in", "Skinning:out", "GeometryEvaluation:in", "GeometryCertification:in",
             "GeometryCertification:out", "GeometryEvaluation:out", "prepared", "Resolution:in", "RenderCertification:in",
-            "RenderCertification:out", "Resolution:out", "Surface:in", "Surface:out", "OrdinarySkinning:in", "OrdinarySkinning:out",
-            "SkinnedUpload:in", "SkinnedUpload:out" }, events);
+            "RenderCertification:out", "Resolution:out", "SkinnedPreparation:in", "Surface:in", "Surface:out", "OrdinarySkinning:in",
+            "OrdinarySkinning:out", "SkinnedUpload:in", "SkinnedUpload:out", "SkinnedPreparation:out", "MotionCommit:in",
+            "MotionCommit:out" }, events);
+        // Motion was recorded inside the parent span and committed inside the commit span.
+        var prepared = frame.Preparation!;
+        Assert.True(prepared.MotionPresented);
+        Assert.Equal(prepared.MotionRevision, prepared.Owner.MotionRevision);
 
         // Removing the observer restores the silent path.
         f.Scene.CoverageStageObserverForTests = null;

@@ -17,6 +17,8 @@ internal enum CoverageCostPassSet { ColourOnly, Full }
 /// excessive values throw <see cref="InvalidDataException"/> naming the field. Nothing is coerced or defaulted.
 /// The authorization block records who approved the workload and where. It is required, but it is a record of
 /// approval, not a credential the code can verify, so a manifest is committed or supplied only after approval.
+/// limits.maxWallSeconds bounds the whole selected unit, both conditions of a pair included, and is cooperative.
+/// limits.maxFrameMilliseconds bounds each frame and is also checked when the frame returns.
 /// </summary>
 internal sealed partial class CoverageCostManifest
 {
@@ -42,6 +44,9 @@ internal sealed partial class CoverageCostManifest
     internal string? AdapterContains { get; private init; }
     internal int WarmupFrames { get; private init; }
     internal int MeasuredFrames { get; private init; }
+    /// <summary>The cooperative deadline for the whole selected unit, both conditions of a pair included, from before the
+    /// first factory through setup, frames, diagnostics, cleanup and publication. It is checked at phase boundaries,
+    /// so a slow or hung call can overshoot until the hosted job timeout.</summary>
     internal double MaxWallSeconds { get; private init; }
     internal double MaxFrameMilliseconds { get; private init; }
     internal string AuthorizationIdentity { get; private init; } = "";

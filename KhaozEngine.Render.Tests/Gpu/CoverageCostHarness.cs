@@ -25,15 +25,16 @@ internal sealed class CoverageCostRefusedException(string message) : Exception(m
 /// <summary>
 /// One frame's observations. Ticks are clock ticks summed over every actor in the frame. Nested spans keep their own
 /// totals and the driver derives the exclusive remainder, so nothing is counted twice. prepare.total contains skinning
-/// and geometry evaluation, geometry evaluation contains geometry certification, encode.total contains resolution,
-/// surface append, ordinary skinning and skinned upload, and resolution contains render certification. Bytes are
-/// allocated managed bytes on the measuring thread.
+/// and geometry evaluation, geometry evaluation contains geometry certification, encode.total contains resolution, the
+/// skinned preparation and the motion commit, the skinned preparation contains surface append, ordinary skinning,
+/// motion recording and skinned upload, and resolution contains render certification. Bytes are allocated managed
+/// bytes on the measuring thread.
 /// </summary>
 internal struct CoverageCostFrameSample
 {
     internal long PrepareTicks, SkinningTicks, GeometryTicks, GeometryCertificationTicks, SubmissionTicks, ReserveTicks,
-        EncodeTicks, ResolutionTicks, CertificationTicks, SurfaceTicks, OrdinarySkinningTicks, SkinnedUploadTicks,
-        SubmitWaitTicks, FrameTicks;
+        EncodeTicks, ResolutionTicks, CertificationTicks, SkinnedPreparationTicks, SurfaceTicks, OrdinarySkinningTicks,
+        SkinnedUploadTicks, MotionCommitTicks, SubmitWaitTicks, FrameTicks;
     internal long PrepareBytes, ReserveBytes, ResolutionBytes, SurfaceBytes, FrameBytes;
     internal int ActorFrames, Accepted, Declined, Covered, Fallback, Skinned, Evaluated, GeometryCertified, Certified, Passes,
         MainVisible, OutlineGroups, OrdinaryCpuSkinnedVertices;
@@ -48,8 +49,9 @@ internal interface ICoverageCostSession : IDisposable
     bool Synthetic { get; }
     /// <summary>False for the recording device, which has no GPU submission to observe.</summary>
     bool NativeDevice { get; }
-    /// <summary>True when the ordinary skinned preparation route is bracketed, so its cost is a measurement.</summary>
-    bool ObservesOrdinarySkinning { get; }
+    /// <summary>True when the skinned preparation, its children and the motion commit are bracketed, so their cost
+    /// is a measurement.</summary>
+    bool ObservesSkinnedPreparation { get; }
     CoverageCostSessionInfo Info { get; }
     void Frame(bool measured, ref CoverageCostFrameSample sample);
     IReadOnlyList<CoverageCostMetric> ReadCapacities();
@@ -68,16 +70,20 @@ internal static class CoverageCostHarness
 
     /// <summary>One diagnostic case on the manifest's exact native backend, with no fallback, or on the recording
     /// device. A single case never carries an added-cost verdict.</summary>
-    internal static CoverageCostReport Measure(CoverageCostManifest manifest) =>
-        CoverageCostDriver.Run(manifest, Factory(manifest), CoverageCostClock.Stopwatch);
+    internal static CoverageCostReport Measure(CoverageCostManifest manifest, Action<CoverageCostReport>? publish = null) =>
+        CoverageCostDriver.Run(manifest, Factory(manifest), CoverageCostClock.Stopwatch, publish: publish);
 
-    /// <summary>One authorized on and off unit, both conditions in order in this process.</summary>
-    internal static CoverageCostPairReport MeasurePair(CoverageCostPairManifest pair) =>
-        CoverageCostDriver.RunPair(pair, Factory(pair.Conditions[0]), CoverageCostClock.Stopwatch);
+    /// <summary>One authorized on and off unit, both conditions in order in this process under one unit deadline.</summary>
+    internal static CoverageCostPairReport MeasurePair(CoverageCostPairManifest pair, Action<CoverageCostReport>? publish = null) =>
+        CoverageCostDriver.RunPair(pair, Factory(pair.Conditions[0]), CoverageCostClock.Stopwatch, publish: publish);
 
-    /// <summary>Measures one authorized file of either schema and returns its JSON report and completion.</summary>
-    internal static (string Json, bool Completed, string Reason) MeasureUnit(byte[] utf8, string expectedName)
+    /// <summary>Measures one authorized file of either schema. Each finished condition's report JSON goes to
+    /// <paramref name="publish"/> as soon as it exists, so a later hang or job kill cannot lose it. The returned JSON
+    /// is the final unit report.</summary>
+    internal static (string Json, bool Completed, string Reason) MeasureUnit(byte[] utf8, string expectedName, Action<string> publish)
     {
+        ArgumentNullException.ThrowIfNull(publish);
+        void Sink(CoverageCostReport report) => publish(report.ToJson());
         string schema;
         using (var document = JsonDocument.Parse(utf8))
             schema = document.RootElement.ValueKind == JsonValueKind.Object && document.RootElement.TryGetProperty("schema", out var value)
@@ -86,12 +92,12 @@ internal static class CoverageCostHarness
         {
             var pair = CoverageCostPairManifest.Parse(utf8);
             if (pair.Unit != expectedName) throw new InvalidDataException($"Pair unit {pair.Unit} does not match its file {expectedName}.");
-            var report = MeasurePair(pair);
+            var report = MeasurePair(pair, Sink);
             return (report.ToJson(), report.Status == CoverageCostRunStatus.Completed, report.Reason);
         }
         var manifest = CoverageCostManifest.Parse(utf8);
         if (manifest.Case != expectedName) throw new InvalidDataException($"Case {manifest.Case} does not match its file {expectedName}.");
-        var single = Measure(manifest);
+        var single = Measure(manifest, Sink);
         return (single.ToJson(), single.Status == CoverageCostRunStatus.Completed, single.Reason);
     }
 }

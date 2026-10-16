@@ -37,11 +37,12 @@ public sealed class CoverageCostPairTests
         return Pair.Replace(from, to, StringComparison.Ordinal);
     }
 
-    // On is all covered and costs prepare 12 + submission 2 + reserve 1 + resolution 9 + surface 1 + ordinary 0 +
-    // upload 1 = 26 ms. Off costs offPrepare + 2 + 1 + 9 + 0 + ordinary + 1.
-    static CoverageCostPairReport Run(string json = Pair, long offPrepare = 12, long ordinary = 2, bool synthetic = false,
-        Func<CoverageCostManifest, CoverageCostFakeSession>? session = null, List<string>? opened = null,
-        Func<int, IReadOnlyList<KeyValuePair<string, string>>>? environment = null)
+    // On is all covered and costs prepare 12 + submission 2 + reserve 1 + resolution 9 + skinned preparation + motion
+    // commit. Off costs offPrepare + 2 + 1 + 9 + its skinned preparation + its commit. Children never enter the sum.
+    static CoverageCostPairReport Run(string json = Pair, long offPrepare = 12, long onPreparation = 4, long onCommit = 1,
+        bool synthetic = false, Func<CoverageCostManifest, CoverageCostFakeSession>? session = null, List<string>? opened = null,
+        Func<int, IReadOnlyList<KeyValuePair<string, string>>>? environment = null, CoverageCostClock? clock = null,
+        Action<CoverageCostReport>? publish = null)
     {
         int index = 0;
         return CoverageCostDriver.RunPair(Bytes(json), (manifest, _) =>
@@ -53,9 +54,10 @@ public sealed class CoverageCostPairTests
                 Synthetic = synthetic,
                 AllCovered = true,
                 PrepareTicks = manifest.Coverage ? 12 : offPrepare,
-                OrdinarySkinningTicks = ordinary,
+                SkinnedPreparationTicks = manifest.Coverage ? onPreparation : 4,
+                MotionCommitTicks = manifest.Coverage ? onCommit : 1,
             };
-        }, CoverageCostFakes.Clock(), () => environment?.Invoke(index++) ?? CoverageCostFakes.Environment());
+        }, clock ?? CoverageCostFakes.Clock(), () => environment?.Invoke(index++) ?? CoverageCostFakes.Environment(), publish);
     }
 
     [Fact]
@@ -105,21 +107,21 @@ public sealed class CoverageCostPairTests
     [Fact]
     public void Added_cpu_counts_every_disjoint_preparation_span_on_both_conditions()
     {
-        // Off: 11 + 2 + 1 + 9 + 0 + 2 + 1 = 26. On: 26. Added 0.
-        var equal = Run(offPrepare: 11);
+        // Off: 12 + 2 + 1 + 9 + 4 + 1 = 29. On: 29. Added 0.
+        var equal = Run();
         var budget = equal.Budgets.Single(b => b.Name == CoverageCostBudgets.AddedCpuName);
         Assert.Equal((CoverageCostBudgetStatus.Pass, 0d), (budget.Status, budget.Observed!.Value));
-        Assert.Contains("prepare.total + submission + reserve + encode.resolution + encode.surfaceAppend + encode.ordinarySkinning + encode.skinnedUpload",
+        Assert.Contains("prepare.total + submission + reserve + encode.resolution + encode.skinnedPreparation + encode.motionCommit",
             budget.Reason, StringComparison.Ordinal);
-        // The ordinary skinning the off condition does is credited. Off 1 + 2 + 1 + 9 + 0 + 2 + 1 = 16, added 10.
+        // Off 1 + 2 + 1 + 9 + 4 + 1 = 18, added 11.
         var dear = Run(offPrepare: 1).Budgets.Single(b => b.Name == CoverageCostBudgets.AddedCpuName);
-        Assert.Equal((CoverageCostBudgetStatus.Fail, 10d), (dear.Status, dear.Observed!.Value));
-        // Without the ordinary credit the same on run would be 2 ms dearer. A blind session cannot prove anything.
+        Assert.Equal((CoverageCostBudgetStatus.Fail, 11d), (dear.Status, dear.Observed!.Value));
+        // A session that cannot observe the skinned preparation proves nothing.
         var blind = Run(session: m => new CoverageCostFakeSession
-        { Coverage = m.Coverage, Synthetic = false, AllCovered = true, ObservesOrdinarySkinning = false })
+        { Coverage = m.Coverage, Synthetic = false, AllCovered = true, ObservesSkinnedPreparation = false })
             .Budgets.Single(b => b.Name == CoverageCostBudgets.AddedCpuName);
         Assert.Equal(CoverageCostBudgetStatus.Unproved, blind.Status);
-        Assert.Contains("encode.ordinarySkinning", blind.Reason, StringComparison.Ordinal);
+        Assert.Contains("encode.skinnedPreparation", blind.Reason, StringComparison.Ordinal);
 
         var deltas = equal.Deltas;
         Assert.Equal((CoverageCostStatus.Derived, 0d), (deltas.Single(d => d.Name == "delta.encode.total").Status,
@@ -127,6 +129,82 @@ public sealed class CoverageCostPairTests
         Assert.Equal(0, deltas.Single(d => d.Name == "delta.frame.wall").Value);
         Assert.Equal(CoverageCostBudgetStatus.Pass, equal.Budgets.Single(b => b.Name == "alloc.warmCoverage").Status);
         Assert.Equal(CoverageCostBudgetStatus.Unproved, equal.Budgets.Single(b => b.Name == "gpu.completedFrameOverhead.native").Status);
+    }
+
+    [Theory]
+    [InlineData(7, 1)]
+    [InlineData(4, 4)]
+    public void Work_outside_the_child_spans_is_charged_through_the_parent_and_the_commit(long onPreparation, long onCommit)
+    {
+        // The children are identical on both conditions. Only the parent's own motion work or the commit differs, by 3 ms.
+        var report = Run(onPreparation: onPreparation, onCommit: onCommit);
+        var budget = report.Budgets.Single(b => b.Name == CoverageCostBudgets.AddedCpuName);
+        Assert.Equal(CoverageCostBudgetStatus.Fail, budget.Status);
+        Assert.Equal(3, budget.Observed!.Value, 9);
+        Assert.Equal(CoverageCostBudgetStatus.Unproved, report.Budgets.Single(b => b.Name == CoverageCostBudgets.GpuName).Status);
+    }
+
+    [Fact]
+    public void One_unit_deadline_covers_both_conditions_and_their_setup()
+    {
+        // Each factory costs 20 s and each of the seven frames 4 s. Separate clocks would let both conditions finish.
+        long now = 0;
+        var opened = new List<string>();
+        var report = Run(clock: new CoverageCostClock(() => now, 1000), opened: opened, session: m =>
+        {
+            now += 20_000;
+            return new CoverageCostFakeSession { Coverage = m.Coverage, Synthetic = false, AllCovered = true, OnFrame = _ => now += 4_000 };
+        });
+        Assert.Equal(CoverageCostRunStatus.Failed, report.Status);
+        Assert.Equal(CoverageCostRunStatus.Completed, report.Reports[0]!.Status);
+        Assert.Equal(CoverageCostRunStatus.Failed, report.Reports[1]!.Status);
+        Assert.Contains("The unit elapsed 68 s after session setup, above limits.maxWallSeconds 60 s", report.Reports[1]!.Reason,
+            StringComparison.Ordinal);
+        Assert.Equal(0, report.Reports[1]!.MeasuredFrames);
+        Assert.Equal(2, opened.Count);
+        Assert.Equal(CoverageCostBudgetStatus.Unproved, report.Budgets.Single(b => b.Name == CoverageCostBudgets.AddedCpuName).Status);
+    }
+
+    [Fact]
+    public void An_exhausted_deadline_never_starts_the_next_factory()
+    {
+        // The first condition finishes at 58.5 s. Publishing it costs 2 s, so the deadline is spent before the second.
+        long now = 0;
+        var opened = new List<string>();
+        var report = Run(clock: new CoverageCostClock(() => now, 1000), opened: opened, publish: _ => now += 2_000, session: m =>
+        {
+            now += 20_000;
+            return new CoverageCostFakeSession { Coverage = m.Coverage, Synthetic = false, AllCovered = true, OnFrame = _ => now += 5_500 };
+        });
+        Assert.Equal(new[] { "typical-a32-cpuskin-full-off" }, opened);
+        Assert.Equal(CoverageCostRunStatus.Failed, report.Status);
+        Assert.Equal(CoverageCostRunStatus.Completed, report.Reports[0]!.Status);
+        Assert.Null(report.Reports[1]);
+        Assert.Contains("The unit elapsed 60.5 s before condition on, above limits.maxWallSeconds 60 s", report.Reason, StringComparison.Ordinal);
+        Assert.Contains("Condition on was not run.", report.Reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Each_finished_condition_is_published_before_the_next_one_starts()
+    {
+        var events = new List<string>();
+        var report = Run(opened: events, publish: r => events.Add($"published {r.Manifest!.Case}"));
+        Assert.Equal(CoverageCostRunStatus.Completed, report.Status);
+        Assert.Equal(new[] { "typical-a32-cpuskin-full-off", "published typical-a32-cpuskin-full-off",
+            "typical-a32-cpuskin-full-on", "published typical-a32-cpuskin-full-on" }, events);
+    }
+
+    [Fact]
+    public void A_publication_failure_keeps_the_report_and_stops_the_unit()
+    {
+        var opened = new List<string>();
+        var report = Run(opened: opened, publish: _ => throw new IOException("sink closed"));
+        Assert.Equal(new[] { "typical-a32-cpuskin-full-off" }, opened);
+        Assert.Equal(CoverageCostRunStatus.Failed, report.Status);
+        Assert.Contains("publication failed: IOException: sink closed", report.Reason, StringComparison.Ordinal);
+        Assert.NotNull(report.Reports[0]);
+        Assert.Null(report.Reports[1]);
+        Assert.All(report.Budgets, b => Assert.Equal(CoverageCostBudgetStatus.Unproved, b.Status));
     }
 
     public static TheoryData<string> InvalidOutcomes => new() { "declined", "fallback", "mixed", "incomplete", "error", "synthetic" };

@@ -13,6 +13,7 @@ public sealed partial class Scene3D
     void PrepareSkinnedDraws(IGpuCommandList cl, FrustumPlanes camFrustum, bool shadowMapActive,
         int shadowCascadeCount, bool hasPointShadowRequests)
     {
+        CoverageStageObserverForTests?.Invoke(CoverageStageSpan.SkinnedPreparation, true);
         var skinnedItems = _skinnedInstances.Items;
         _cpuSkinnedVerts.Clear();
         _cpuSkinnedInstances.Clear();
@@ -105,5 +106,6 @@ public sealed partial class Scene3D
         if (_gpuSkinnedDraws.Count > 0) PrepareGpuSkinnedFrame(cl, shadowMapActive);
         if (_cpuSkinnedDraws.Count > 0) UploadCpuSkinnedFrame(cl);
         CoverageStageObserverForTests?.Invoke(CoverageStageSpan.SkinnedUpload, false);
+        CoverageStageObserverForTests?.Invoke(CoverageStageSpan.SkinnedPreparation, false);
     }
 }

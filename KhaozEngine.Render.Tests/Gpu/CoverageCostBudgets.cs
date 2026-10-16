@@ -15,11 +15,12 @@ internal static class CoverageCostBudgets
     internal const double AddedCpuMilliseconds = 2, GpuOverheadPercent = 15;
     internal const string AddedCpuName = "cpu.addedPreparationValidation.typical32", GpuName = "gpu.completedFrameOverhead.native",
         AllocationName = "alloc.warmCoverage";
-    /// <summary>Disjoint per-frame CPU spans summed on each condition. Their nesting is resolved by the driver, so nothing
-    /// is counted twice. Coverage-on pays staging, validation and surface work here, coverage-off pays the ordinary
-    /// skinned preparation it displaces.</summary>
+    /// <summary>Disjoint per-frame CPU spans summed on each condition. encode.skinnedPreparation is the whole skinned
+    /// draw preparation, so surface append, ordinary skinning, motion recording and upload are inside it and their own
+    /// spans stay informational. Resolution runs before it and the commit after it. Coverage-on pays staging,
+    /// validation, surface and motion work here, coverage-off pays the ordinary skinned preparation it displaces.</summary>
     internal static readonly string[] AddedCpuSpans = ["prepare.total", "submission", "reserve", "encode.resolution",
-        "encode.surfaceAppend", "encode.ordinarySkinning", "encode.skinnedUpload"];
+        "encode.skinnedPreparation", "encode.motionCommit"];
     internal static string Formula => string.Join(" + ", AddedCpuSpans);
     // Same-run identity. Every key must match. The required ones must also be readable, because two unavailable values
     // match without proving anything.

@@ -11,9 +11,15 @@ internal sealed record CoverageTargetReadback(int Width, int Height, int Channel
 
 /// <summary>CPU stages for optional cost attribution. GeometryEvaluation is the whole evaluator call and contains
 /// GeometryCertification (each CoverageCertification.Certify call). RenderCertification is the late validation only,
-/// nested inside render resolution. OrdinarySkinning is the uncovered skinned draw loop, CPU vertex skinning or GPU
-/// draw records, and SkinnedUpload the shared skinned frame uploads after it. The last two follow surface append.</summary>
-internal enum CoverageStageSpan { Skinning, GeometryEvaluation, GeometryCertification, RenderCertification, OrdinarySkinning, SkinnedUpload }
+/// nested inside render resolution. SkinnedPreparation is the whole skinned draw preparation after resolution: it
+/// contains surface append, OrdinarySkinning (the uncovered draw loop, CPU vertex skinning or GPU draw records),
+/// coverage motion history recording and SkinnedUpload (the shared skinned frame uploads). MotionCommit is the whole
+/// coverage encoding completion at the end of the render.</summary>
+internal enum CoverageStageSpan
+{
+    Skinning, GeometryEvaluation, GeometryCertification, RenderCertification, SkinnedPreparation, OrdinarySkinning, SkinnedUpload,
+    MotionCommit,
+}
 
 public sealed partial class Scene3D
 {

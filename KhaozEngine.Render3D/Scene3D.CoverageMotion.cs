@@ -179,7 +179,15 @@ public sealed partial class Scene3D
     }
 
     // This observes successful scene command encoding. The caller still owns End, Submit and Present.
+    // The whole completion, bracketed for optional cost observation. Its single caller ends RenderInternal.
     void CompleteCoverageEncoding()
+    {
+        CoverageStageObserverForTests?.Invoke(CoverageStageSpan.MotionCommit, true);
+        CommitCoverageMotion();
+        CoverageStageObserverForTests?.Invoke(CoverageStageSpan.MotionCommit, false);
+    }
+
+    void CommitCoverageMotion()
     {
         if (_coverageMotionCommitted || _coverageMotionFrame != CurrentFrameView.FrameIndex) return;
         foreach (var p in _coverageArena.Preparations)

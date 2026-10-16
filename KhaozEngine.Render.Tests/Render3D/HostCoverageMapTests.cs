@@ -195,7 +195,11 @@ public class HostCoverageMapTests
     public void Failure_vocabulary_is_stable_and_success_is_none()
     {
         Assert.True(CoverageFailure.Success.IsSuccess);
+        Assert.True(default(CoverageFailure).IsSuccess);
+        Assert.Equal(CoverageFailure.Success, default(CoverageFailure));
         Assert.Equal(CoverageFailureCode.None, default(CoverageFailure).Code);
+        Assert.Equal(0UL, default(CoverageFailure).EquipmentInstanceId);
+        Assert.Equal(0u, default(CoverageFailure).CommandId);
         Assert.Equal(
             new[]
             {
@@ -208,11 +212,23 @@ public class HostCoverageMapTests
 
         var failure = new CoverageFailure(CoverageFailureCode.CapacityExceeded, "host.glb", 3, 7, 1025, 1024);
         Assert.False(failure.IsSuccess);
-        Assert.Equal(("host.glb", 3u, 7u, 1025, 1024), (failure.HostIdentity, failure.EquipmentInstanceId, failure.CommandId, failure.Count, failure.Limit));
+        Assert.Equal(("host.glb", 3UL, 7u, 1025, 1024), (failure.HostIdentity, failure.EquipmentInstanceId, failure.CommandId, failure.Count, failure.Limit));
         Assert.Equal(failure, new CoverageFailure(CoverageFailureCode.CapacityExceeded, "host.glb", 3, 7, 1025, 1024));
         Assert.Throws<ArgumentOutOfRangeException>(() => new CoverageFailure(CoverageFailureCode.None, "host.glb", 0, 0, 0, 0));
         Assert.Throws<ArgumentOutOfRangeException>(() => new CoverageFailure((CoverageFailureCode)99, "host.glb", 0, 0, 0, 0));
         Assert.Throws<ArgumentOutOfRangeException>(() => new CoverageFailure(CoverageFailureCode.StaleFrame, "host.glb", 0, 0, -1, 0));
+    }
+
+    [Theory]
+    [InlineData(4294967296UL)]
+    [InlineData(ulong.MaxValue)]
+    public void Failure_preserves_64_bit_equipment_instance_identity(ulong equipmentInstanceId)
+    {
+        var failure = new CoverageFailure(CoverageFailureCode.CapacityExceeded, "host.glb", equipmentInstanceId, uint.MaxValue, 1025, 1024);
+
+        Assert.False(failure.IsSuccess);
+        Assert.Equal(equipmentInstanceId, failure.EquipmentInstanceId);
+        Assert.Equal(uint.MaxValue, failure.CommandId);
     }
 
     static string Swap(string from, string to) => Canonical.Replace(from, to, StringComparison.Ordinal);

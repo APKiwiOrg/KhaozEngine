@@ -30,7 +30,7 @@ public readonly record struct CoverageFailure
 {
     public static CoverageFailure Success => default;
 
-    public CoverageFailure(CoverageFailureCode code, string? hostIdentity, uint equipmentInstanceId, uint commandId, int count, int limit)
+    public CoverageFailure(CoverageFailureCode code, string? hostIdentity, ulong equipmentInstanceId, uint commandId, int count, int limit)
     {
         if (code is <= CoverageFailureCode.None or > CoverageFailureCode.UnsupportedAdapter)
             throw new ArgumentOutOfRangeException(nameof(code), code, "A refusal requires a defined failure code. Use Success for no failure.");
@@ -46,7 +46,7 @@ public readonly record struct CoverageFailure
 
     public CoverageFailureCode Code { get; }
     public string? HostIdentity { get; }
-    public uint EquipmentInstanceId { get; }
+    public ulong EquipmentInstanceId { get; }
     public uint CommandId { get; }
     public int Count { get; }
     public int Limit { get; }

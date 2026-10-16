@@ -121,12 +121,16 @@ public sealed class ClearanceSolid
     /// <summary>The cell holding <paramref name="t"/>, in cells from the min edge, clamped onto the grid.</summary>
     static int ClampedCell(double t, int cells) => (int)Math.Clamp(Math.Floor(t + EdgeSlackCells), 0d, cells - 1d);
 
-    /// <summary>Fill the cell under a mesh sample and raise its top. Samples come from the mesh, so one that float
-    /// drift carries just past the grid edge belongs to the edge cell and is clamped there.</summary>
+    /// <summary>The planar cell <see cref="Mark"/> fills for a mesh sample. Samples come from the mesh, so one that
+    /// float drift carries past a grid edge, by any amount, is clamped into the edge cell.</summary>
+    internal (int X, int Z) SampleCell(Vector3 sample) =>
+        (ClampedCell((sample.X - Min.X) / (double)CellSize, _cellsX),
+            ClampedCell((sample.Z - Min.Z) / (double)CellSize, _cellsZ));
+
+    /// <summary>Fill the cell under a mesh sample and raise its top.</summary>
     void Mark(Vector3 sample)
     {
-        int x = ClampedCell((sample.X - Min.X) / (double)CellSize, _cellsX);
-        int z = ClampedCell((sample.Z - Min.Z) / (double)CellSize, _cellsZ);
+        (int x, int z) = SampleCell(sample);
         int cell = z * _cellsX + x;
         if (sample.Y > _top[cell])
             _top[cell] = sample.Y;

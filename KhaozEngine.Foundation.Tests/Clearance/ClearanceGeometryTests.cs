@@ -47,14 +47,27 @@ public class ClearanceGeometryTests
     }
 
     [Fact]
-    public void SamplesDriftingOffTheGridClampIntoTheEdgeCell()
+    public void LongThinBoxBuildsWithItsEndRowFilled()
     {
-        // Float sampling of the +z face lands a hair past z = 18, beyond the edge slack of the 720th cell.
+        // 720 cells along z at a fine cell size. The +z face samples sit at the max edge of the last row.
         var solid = ClearanceSolid.Build(Box(Vector3.Zero, new Vector3(0.55f, 0.55f, 18f)), 0.025f);
 
         Assert.True(solid.DepthAt(new Vector3(0.275f, 0.3f, 17.99f)) > 0f);
         Assert.True(solid.DepthAt(new Vector3(0.0125f, 0.3f, 17.99f)) > 0f);
         Assert.True(solid.DepthAt(new Vector3(0.5375f, 0.3f, 17.99f)) > 0f);
+    }
+
+    [Fact]
+    public void SamplesPastTheGridEdgeClampIntoTheEdgeCell()
+    {
+        // A 10 by 3 cell grid. Float drift can carry a mesh sample past a grid edge by more than the edge slack,
+        // and such a sample belongs to the edge cell rather than off the grid or in a neighbouring row.
+        var solid = ClearanceSolid.Build(Box(new Vector3(0f, 0f, 0f), new Vector3(1f, 4f, 0.3f)), Cell);
+
+        Assert.Equal((9, 2), solid.SampleCell(new Vector3(1.01f, 1f, 0.31f)));
+        Assert.Equal((0, 0), solid.SampleCell(new Vector3(-0.01f, 1f, -0.01f)));
+        Assert.Equal((9, 0), solid.SampleCell(new Vector3(1.01f, 1f, -0.01f)));
+        Assert.Equal((0, 2), solid.SampleCell(new Vector3(-0.01f, 1f, 0.31f)));
     }
 
     [Fact]

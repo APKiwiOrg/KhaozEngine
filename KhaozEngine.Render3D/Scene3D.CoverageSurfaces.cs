@@ -54,6 +54,12 @@ public sealed partial class Scene3D
 
     PointShadowCasterSphere CoverageSphere(CoveragePreparation p)
     {
+        System.Diagnostics.Debug.Assert(p.SphereView == _coverageView, "Coverage spheres are frozen once per render view.");
+        return p.Sphere;
+    }
+
+    PointShadowCasterSphere ComputeCoverageSphere(CoveragePreparation p)
+    {
         Span<double> low = stackalloc double[3] { double.PositiveInfinity, double.PositiveInfinity, double.PositiveInfinity };
         Span<double> high = stackalloc double[3] { double.NegativeInfinity, double.NegativeInfinity, double.NegativeInfinity };
         Span<float> matrix = stackalloc float[16];
@@ -72,7 +78,8 @@ public sealed partial class Scene3D
                 low[c] = Math.Min(low[c], coordinate.Min); high[c] = Math.Max(high[c], coordinate.Max);
             }
         double margin = 0;
-        double attributes = CoverageUploadEvidence.Attributes(p.Candidate);
+        double attributes = p.CandidateAttributes;
+        CoverageSphereEvaluationsForTests++;
         for (int i = 0; i < p.Draws.Length; i++)
         {
             if (p.Draws[i] is { } draw)

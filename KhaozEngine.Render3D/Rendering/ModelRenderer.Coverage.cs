@@ -5,7 +5,10 @@ namespace KhaozEngine.Render3D.Rendering;
 
 internal sealed partial class ModelRenderer
 {
-    internal void ReserveCoveredSkinning(int vertices, int instances)
+    // Previous positions requested before the motion resources exist, applied when they are created.
+    uint _pendingCpuPrevious;
+
+    internal void ReserveCoveredSkinning(int vertices, int instances, int previous)
     {
         IGpuBuffer? nextVertices = null, nextInstances = null;
         uint vc = Math.Max((uint)vertices, _skinnedVertexCapacity), ic = Math.Max((uint)instances, _skinnedInstanceCapacity);
@@ -21,5 +24,8 @@ internal sealed partial class ModelRenderer
         { _retired.Retire(_skinnedVertexBuffer); _skinnedVertexBuffer = nextVertices; _skinnedVertexCapacity = vc; }
         if (nextInstances is not null)
         { _retired.Retire(_skinnedInstanceBuffer); _skinnedInstanceBuffer = nextInstances; _skinnedInstanceCapacity = ic; }
+        if (previous <= 0) return;
+        if (_motion is { } motion) motion.ReserveCpuPrevious((uint)previous);
+        else _pendingCpuPrevious = Math.Max(_pendingCpuPrevious, (uint)previous);
     }
 }

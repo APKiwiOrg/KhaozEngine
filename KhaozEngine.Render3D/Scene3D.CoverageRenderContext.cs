@@ -19,21 +19,33 @@ public sealed partial class Scene3D
     void PrepareCoverageRendering(bool shadows)
     {
         CoverageAllocationObserverForTests?.Invoke(true);
+        CoverageSphereEvaluationsForTests = 0;
         if (_coverageArena.Preparations.Count > 0 && _coverageArena.Closed)
             throw new InvalidOperationException("Coverage must be staged again for a new render view.");
         if (shadows) SetShadowReceiverTail();
-        PreparePointShadowSchedule();
         _coverageView++;
+        // Submissions are complete and the origin is latched, so one conservative sphere serves every consumer.
+        foreach (CoveragePreparation p in _coverageArena.Preparations)
+        {
+            p.Sphere = ComputeCoverageSphere(p);
+            p.SphereView = _coverageView;
+        }
+        PreparePointShadowSchedule();
         CoveredHostPreparationCount = 0;
         foreach (CoveragePreparation p in _coverageArena.Preparations)
         {
-            if (p.Owner.Disposed) continue;
             p.View = _coverageView;
             p.Passes.Clear();
+            if (p.Owner.Disposed || !CoverageHostLive(p))
+            {
+                // Late disposal or unload freezes the explicit fallback. Live slices keep their ordinary route.
+                p.Outcome = new(CoveragePresentation.UncoveredFallback, new(p.Owner.Disposed
+                    ? CoverageFailureCode.StaleFrame : CoverageFailureCode.IdentityMismatch, p.Owner.Topology.HostIdentity, 0, 0, 0, 0));
+                continue;
+            }
             bool complete = true;
             for (int i = 0; i < p.Owner.Meshes.Length; i++)
             {
-                if (!_skinnedSlots.IsValid(p.Owner.Meshes[i].Index, p.Owner.Meshes[i].Generation)) complete = false;
                 if (p.Draws[i] is { } draw) CaptureHostPasses(p, draw, false, shadows);
                 if (p.Outlines[i] is { } outline) CaptureHostPasses(p, outline, true, shadows);
                 if (p.Draws[i] is null && p.Outlines[i] is null) complete = false;
@@ -67,10 +79,10 @@ public sealed partial class Scene3D
 
     void CaptureHostPasses(CoveragePreparation p, in SkinnedInstanceDraw draw, bool outline, bool shadows)
     {
-        MeshBounds bounds = MeshBounds.FromVertices(p.Candidate);
-        double attributes = CoverageUploadEvidence.Attributes(p.Candidate);
+        MeshBounds bounds = p.CandidateBounds;
+        double attributes = p.CandidateAttributes;
         if (outline) AddPass(p, 0, 0, p.Model, bounds,
-            GpuClip.Correct(CurrentFrameView.ViewProjection, _gd.Capabilities), Perturbation(p.Model, bounds, CoverageUploadEvidence.Attributes(p.Candidate, true), 0));
+            GpuClip.Correct(CurrentFrameView.ViewProjection, _gd.Capabilities), Perturbation(p.Model, bounds, p.CandidateOutlineAttributes, 0));
         else
         {
             if (!draw.ShadowOnly) AddPass(p, 0, 0, p.Model, bounds,
@@ -94,6 +106,13 @@ public sealed partial class Scene3D
                 }
             }
         }
+    }
+
+    bool CoverageHostLive(CoveragePreparation p)
+    {
+        foreach (var handle in p.Owner.Meshes)
+            if (!_skinnedSlots.IsValid(handle.Index, handle.Generation)) return false;
+        return true;
     }
 
     void CaptureEquipmentPasses(CoveragePreparation p, CoverageEquipmentStage stage, int slice, bool shadows)
@@ -156,7 +175,10 @@ public sealed partial class Scene3D
         _cpuSkinnedVerts.EnsureCapacity(vertices); _cpuSkinnedInstances.EnsureCapacity(draws); _cpuSkinnedDraws.EnsureCapacity(draws);
         _coveragePointMatrices.EnsureCapacity(checked(_lights.Count * 12));
         _gpuSkinnedDraws.EnsureCapacity(draws);
-        _model.ReserveCoveredSkinning(vertices, draws);
+        // Motion may activate during this render, so the prediction comes from the live request, not last frame.
+        bool motion = TemporalActive;
+        if (motion) _cpuSkinnedPrevious.EnsureCapacity(vertices);
+        _model.ReserveCoveredSkinning(vertices, draws, motion ? vertices : 0);
         _model.EnsureSkinnedMainCapacity((uint)draws);
         _model.EnsureSkinnedBonePaletteCapacity((uint)draws);
         _model.EnsureSkinnedShadowCapacity((uint)draws * ShadowSettings.MaxCascades);

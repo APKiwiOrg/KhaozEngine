@@ -22,6 +22,7 @@ internal sealed class CoverageSceneFixture : IDisposable
     readonly CoverageFixture data;
     internal SkinnedGltfMesh HostMesh { get; private set; } = null!;
     internal GltfMesh RigidMesh { get; private set; } = null!;
+    internal SkinnedGltfMesh UncoveredMesh { get; }
     internal Action<RecordingGpuCommandList.IndexedDraw>? BeforeDraw { get; set; }
     readonly MeshHandle equipment;
     readonly SkinnedMeshHandle uncovered;
@@ -45,25 +46,10 @@ internal sealed class CoverageSceneFixture : IDisposable
         Scene.Post.Starfield = false;
         Scene.Post.Quality.Shadows.Mode = ShadowMode.ShadowMap;
         Scene.Camera.Frame(Vector3.Zero, new Vector3(4, 3, 4));
-        var skeleton = new Skeleton([-1, 0], [JointPose.Identity, JointPose.Identity], [0, 1], [0, 1]);
-        Host = new SkinnedMeshHandle[data.Source.Materials.Count];
-        SkinnedGltfMesh? first = null;
-        for (int slice = 0; slice < Host.Length; slice++)
-        {
-            var vertices = data.Source.Vertices.Select((v, i) => (v, i)).Where(pair => pair.v.MaterialSlice == slice)
-                .OrderBy(pair => pair.v.SliceVertex).Select(pair => data.Source.SkinVertices[pair.i]).ToArray();
-            var indices = data.Source.Triangles.Where(t => t.MaterialSlice == slice).SelectMany(t =>
-                new[] { (uint)data.Source.Vertices[t.A].SliceVertex, (uint)data.Source.Vertices[t.B].SliceVertex,
-                    (uint)data.Source.Vertices[t.C].SliceVertex }).ToArray();
-            var mesh = new SkinnedGltfMesh(vertices, indices,
-                [Matrix4x4.Identity, Matrix4x4.Identity], [Matrix4x4.Identity, Matrix4x4.Identity], skeleton);
-            var covered = new SkinnedGltfMesh(vertices, indices, mesh.InverseBind, mesh.RestPose, skeleton)
-            { Coverage = HostCoveragePart.Create(data.Map, data.Source, slice, mesh) };
-            Host[slice] = Scene.LoadSkinnedMesh(covered);
-            first ??= mesh;
-            if (slice == 0) HostMesh = covered;
-        }
-        uncovered = Scene.LoadSkinnedMesh(first!);
+        Host = LoadHost(2, out var skeleton, out var first, out var covered0);
+        HostMesh = covered0;
+        UncoveredMesh = first;
+        uncovered = Scene.LoadSkinnedMesh(first);
         conformer = Scene.CreateHostConformer(skeleton, Host);
         support = CoverageCommands.Plate(data);
         RigidMesh = new GltfMesh(data.RigidPositions.Select(p =>
@@ -72,6 +58,32 @@ internal sealed class CoverageSceneFixture : IDisposable
         Expected = new ModelVertex[conformer.Topology.VertexCount];
         Assert.True(CoverageEvaluator.TryEvaluateGeometry(conformer.Topology, data.Posed, Matrix4x4.Identity,
             Commands(), new CoverageScratch(conformer.Topology), Expected, out var failure), failure.ToString());
+    }
+
+    internal SkinnedMeshHandle[] LoadHost(int bones, out Skeleton skeleton) => LoadHost(bones, out skeleton, out _, out _);
+
+    SkinnedMeshHandle[] LoadHost(int bones, out Skeleton skeleton, out SkinnedGltfMesh first, out SkinnedGltfMesh covered0)
+    {
+        int[] joints = Enumerable.Range(0, bones).ToArray();
+        skeleton = new Skeleton(joints.Select(j => j - 1).ToArray(), Enumerable.Repeat(JointPose.Identity, bones).ToArray(),
+            joints, joints);
+        var handles = new SkinnedMeshHandle[data.Source.Materials.Count];
+        first = null!; covered0 = null!;
+        for (int slice = 0; slice < handles.Length; slice++)
+        {
+            var vertices = data.Source.Vertices.Select((v, i) => (v, i)).Where(pair => pair.v.MaterialSlice == slice)
+                .OrderBy(pair => pair.v.SliceVertex).Select(pair => data.Source.SkinVertices[pair.i]).ToArray();
+            var indices = data.Source.Triangles.Where(t => t.MaterialSlice == slice).SelectMany(t =>
+                new[] { (uint)data.Source.Vertices[t.A].SliceVertex, (uint)data.Source.Vertices[t.B].SliceVertex,
+                    (uint)data.Source.Vertices[t.C].SliceVertex }).ToArray();
+            var identity = Enumerable.Repeat(Matrix4x4.Identity, bones).ToArray();
+            var mesh = new SkinnedGltfMesh(vertices, indices, identity, (Matrix4x4[])identity.Clone(), skeleton);
+            var covered = new SkinnedGltfMesh(vertices, indices, mesh.InverseBind, mesh.RestPose, skeleton)
+            { Coverage = HostCoveragePart.Create(data.Map, data.Source, slice, mesh) };
+            handles[slice] = Scene.LoadSkinnedMesh(covered);
+            if (slice == 0) { first = mesh; covered0 = covered; }
+        }
+        return handles;
     }
 
     CoverageCommandPose[] Commands() => CoverageCommands.Poses(data, conformer.Topology, support, Matrix4x4.Identity);
@@ -148,6 +160,13 @@ internal sealed class CoverageSceneFixture : IDisposable
             Assert.Equal((uint)HostMesh.Indices32.Length, d.IndexCount);
         });
         Assert.Equal(0, Scene.CoveredHostPreparationCount);
+    }
+    internal void AssertLegacyOutline((IGpuBuffer Vertices, IGpuBuffer Indices) route)
+    {
+        Assert.Contains(Record.IndexedDraws, d => d.Pipeline is FakePipeline { Request: { } request }
+            && request.FragmentGlsl == KhaozEngine.Render3D.Internal.ShaderSources.TargetOutlineFullMaskFrag
+            && ReferenceEquals(d.VertexBuffer, route.Vertices) && ReferenceEquals(d.IndexBuffer, route.Indices));
+        Assert.DoesNotContain(Record.IndexedDraws, d => IsHostIndexBuffer(d.IndexBuffer));
     }
     public void EnablePointShadows()
     {

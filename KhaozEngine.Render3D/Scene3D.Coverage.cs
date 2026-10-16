@@ -11,10 +11,17 @@ public sealed partial class Scene3D
         (CoveredHostPreparationCount, _gpuSkinnedDraws.Count);
     internal ReadOnlySpan<ModelVertex> CoverageVerticesForTests(SkinnedCoverageFrame frame) => RequireCoverage(frame).Final;
 
+    internal int CoverageSphereEvaluationsForTests { get; private set; }
+    internal long CoverageSurfaceScansForTests { get; private set; }
+    internal (int List, uint Gpu) CoverageMotionReserveForTests =>
+        (_cpuSkinnedPrevious.Capacity, _model.Motion?.CpuPreviousCapacity ?? 0);
+    internal CoverageFrameOutcome CoverageOutcomeForTests(SkinnedCoverageFrame frame) =>
+        TryFrozenCoverage(frame, out var p) ? p.Outcome : throw new InvalidOperationException("Coverage token is not owned.");
+
     internal (KhaozEngine.Gpu.IGpuBuffer Vertices, KhaozEngine.Gpu.IGpuBuffer Indices)
         CoverageFallbackSliceForTests(SkinnedCoverageFrame frame, int slice)
     {
-        var p = RequireCoverage(frame);
+        if (!TryFrozenCoverage(frame, out var p)) throw new InvalidOperationException("Coverage token is not owned.");
         var mesh = _skinnedMeshes[p.Owner.Meshes[slice].Index]!;
         return (mesh.Vb, mesh.Ib);
     }
@@ -77,12 +84,17 @@ public sealed partial class Scene3D
         for (int i = 0; i < source.Length; i++) p.Posed[i] = SkinningMath.SkinVertex(source[i], composed[..palette.Length]);
         if (!CoverageEvaluator.TryEvaluateGeometry(conformer.Topology, p.Posed, model, commands, conformer.Scratch, p.Candidate, out failure)
             || !conformer.Topology.TryInterpolate(p.Posed, p.Before, out failure)) return false;
+        // The staged surface is immutable, so its full-surface reductions are taken once here for every pass.
         MeshBounds candidate = MeshBounds.FromVertices(p.Candidate), uncovered = MeshBounds.FromVertices(p.Posed);
+        p.CandidateBounds = candidate;
+        p.CandidateAttributes = CoverageUploadEvidence.Attributes(p.Candidate);
+        p.CandidateOutlineAttributes = CoverageUploadEvidence.Attributes(p.Candidate, true);
+        CoverageSurfaceScansForTests += 4;
         p.UnionBounds = new(Vector3.Min(candidate.Min, uncovered.Min), Vector3.Max(candidate.Max, uncovered.Max));
         p.Model = model; p.Actor = actor; p.CommandCount = commands.Length;
         commands.CopyTo(p.Commands);
         p.Generation = _coverageArena.Generation; p.Id = ++_coverageArena.NextPreparation; p.View = 0;
-        p.Outcome = default; p.Certificate = default; p.Passes.Clear();
+        p.Outcome = default; p.Certificate = default; p.Passes.Clear(); p.Sphere = default; p.SphereView = 0;
         Array.Clear(p.Draws); Array.Clear(p.Outlines);
         conformer.Actor = actor;
         _coverageArena.Preparations.Add(p);
@@ -100,10 +112,17 @@ public sealed partial class Scene3D
             || frame.Generation != _coverageArena.Generation || frame.Generation != p.Generation)
             throw new InvalidOperationException("Coverage token does not belong to this live scene and frame.");
         p.Owner.RequireThread();
-        foreach (var handle in p.Owner.Meshes)
-            if (!_skinnedSlots.IsValid(handle.Index, handle.Generation))
-                throw new InvalidOperationException("Coverage host resource generation changed.");
+        if (!CoverageHostLive(p)) throw new InvalidOperationException("Coverage host resource generation changed.");
         return p;
+    }
+
+    // Reads the frozen decision of a token already validated at submission in this scene and frame. Resource
+    // liveness is not rechecked here: late disposal or unload is resolved to an explicit fallback before recording.
+    bool TryFrozenCoverage(in SkinnedCoverageFrame frame, out CoveragePreparation p)
+    {
+        p = frame.Preparation!;
+        return p is not null && ReferenceEquals(p.Owner.Scene, this) && frame.Generation == _coverageArena.Generation
+            && frame.Generation == p.Generation;
     }
 
     CoveragePreparation? ValidateCoverageDraw(in SkinnedInstanceDraw draw, ReadOnlySpan<Matrix4x4> palette, bool outline)

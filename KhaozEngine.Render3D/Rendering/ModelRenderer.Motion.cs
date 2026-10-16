@@ -29,7 +29,15 @@ internal sealed partial class ModelRenderer
     /// target loses its motion attachment.</summary>
     void EnsureMotionResources(bool temporal)
     {
-        if (temporal) { _motion ??= new ModelMotionResources(_gd, _retired); return; }
+        if (temporal)
+        {
+            if (_motion is not null) return;
+            _motion = new ModelMotionResources(_gd, _retired);
+            if (_pendingCpuPrevious > 0) _motion.ReserveCpuPrevious(_pendingCpuPrevious);
+            _pendingCpuPrevious = 0;
+            return;
+        }
+        _pendingCpuPrevious = 0;
         if (_motion is null) return;
         _retired.Retire(_motion);
         _motion = null;

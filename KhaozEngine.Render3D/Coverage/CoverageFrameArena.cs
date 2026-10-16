@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Gpu;
+using KhaozEngine.Render3D.Internal;
 
 namespace KhaozEngine.Render3D;
 
@@ -49,7 +50,10 @@ internal sealed class CoveragePreparation
     internal MotionKey Actor;
     internal Matrix4x4 Model;
     internal int CommandCount;
-    internal MeshBounds UnionBounds;
+    internal MeshBounds UnionBounds, CandidateBounds;
+    internal double CandidateAttributes, CandidateOutlineAttributes;
+    internal PointShadowCasterSphere Sphere;
+    internal ulong SphereView;
     internal CoverageFrameOutcome Outcome;
     internal CoverageCertificate Certificate;
     internal CoveragePreparation(SkinnedHostConformer owner, int bones, int materials)

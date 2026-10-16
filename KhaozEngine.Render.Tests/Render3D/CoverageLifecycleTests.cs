@@ -59,6 +59,49 @@ public sealed class CoverageLifecycleTests
     }
 
     [Fact]
+    public void Disposal_after_submission_freezes_explicit_fallback()
+    {
+        using var h = new CoverageSceneFixture();
+        h.Begin();
+        var frame = h.Stage();
+        h.Scene.DrawSkinned(h.HostDraw(frame), h.Palette);
+        h.Outline(h.HostDraw(frame));
+        h.SubmitEquipment();
+        h.Conformer.Dispose();
+        h.Render();
+        var outcome = h.Scene.CoverageOutcomeForTests(frame);
+        Assert.Equal(CoveragePresentation.UncoveredFallback, outcome.Presentation);
+        Assert.Equal(CoverageFailureCode.StaleFrame, outcome.Failure.Code);
+        Assert.Throws<InvalidOperationException>(() => h.Scene.GetCoverageOutcome(frame));
+        h.AssertFallbackDraws(frame);
+        h.AssertLegacyOutline(h.Scene.CoverageFallbackSliceForTests(frame, 0));
+    }
+
+    [Fact]
+    public void Unloading_one_slice_after_submission_freezes_explicit_fallback()
+    {
+        using var h = new CoverageSceneFixture(seams: true);
+        h.Begin();
+        var frame = h.Stage();
+        for (int slice = 0; slice < 2; slice++)
+        {
+            h.Scene.DrawSkinned(h.HostDraw(frame, slice: slice), h.Palette);
+            h.Outline(h.HostDraw(frame, slice: slice));
+        }
+        h.SubmitEquipment();
+        var unloaded = h.Scene.CoverageFallbackSliceForTests(frame, 1);
+        h.Scene.UnloadSkinnedMesh(h.Host[1]);
+        h.Render();
+        var outcome = h.Scene.CoverageOutcomeForTests(frame);
+        Assert.Equal(CoveragePresentation.UncoveredFallback, outcome.Presentation);
+        Assert.Equal(CoverageFailureCode.IdentityMismatch, outcome.Failure.Code);
+        h.AssertFallbackDraws(frame);
+        h.AssertLegacyOutline(h.Scene.CoverageFallbackSliceForTests(frame, 0));
+        Assert.DoesNotContain(h.Record.IndexedDraws, d => ReferenceEquals(d.VertexBuffer, unloaded.Vertices)
+            || ReferenceEquals(d.IndexBuffer, unloaded.Indices));
+    }
+
+    [Fact]
     public void Partial_topology_allocation_releases_only_its_new_resources()
     {
         using var h = new CoverageSceneFixture(seams: true);

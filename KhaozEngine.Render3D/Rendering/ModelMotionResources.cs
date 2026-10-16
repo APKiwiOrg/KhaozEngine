@@ -99,6 +99,8 @@ internal sealed class ModelMotionResources : IDisposable
     internal IGpuBuffer CpuPrevious => _cpuPrevious ?? throw new InvalidOperationException(
         "No CPU-skinned previous positions were uploaded this frame.");
 
+    internal uint CpuPreviousCapacity => _cpuPrevious is null ? 0 : _cpuPreviousCapacity;
+
     /// <summary>ModelCpuSkinnedMotionVert with ModelMotionFrag.</summary>
     internal IGpuShaderSet CpuSkinnedShaders => _cpuSkinned ??= _gd.Factory.CreateShadersFromSpirv(
         ShaderSources.ModelCpuSkinnedMotionVert, ShaderSources.ModelMotionFrag);
@@ -167,6 +169,17 @@ internal sealed class ModelMotionResources : IDisposable
         }
         cl.UpdateBuffer(_cpuPrevious, 0, positions);
         return positions.Length * 12L;
+    }
+
+    /// <summary>Grow the CPU-skinned previous positions to an explicit capacity before recording. The new buffer is
+    /// created before the old one retires, so a failed creation leaves the current buffer intact.</summary>
+    internal void ReserveCpuPrevious(uint count)
+    {
+        if (_cpuPrevious is not null && _cpuPreviousCapacity >= count) return;
+        IGpuBuffer next = _gd.Factory.CreateBuffer(new GpuBufferDescription(count * 12, GpuBufferUsage.VertexBuffer));
+        _retired.Retire(_cpuPrevious);
+        _cpuPrevious = next;
+        _cpuPreviousCapacity = count;
     }
 
     public void Dispose()

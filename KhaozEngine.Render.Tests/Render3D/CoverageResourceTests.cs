@@ -128,4 +128,45 @@ public sealed class CoverageResourceTests
         Assert.Equal(omitSecond ? CoveragePresentation.UncoveredFallback : CoveragePresentation.Covered,
             h.Scene.GetCoverageOutcome(frame).Presentation);
     }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Temporal_previous_positions_are_reserved_before_recording(bool activatesThisFrame)
+    {
+        using var h = new CoverageSceneFixture();
+        h.Scene.ForceTemporalForTests = !activatesThisFrame;
+        for (int i = 0; i < 2; i++)
+        {
+            h.Begin();
+            h.Scene.DrawSkinned(h.UncoveredDraw(), h.Palette);
+            h.Render();
+        }
+        h.Scene.ForceTemporalForTests = true;
+        h.Begin();
+        var frame = h.Stage();
+        h.Scene.DrawSkinned(h.HostDraw(frame), h.Palette);
+        h.Scene.DrawSkinned(h.UncoveredDraw(), h.Palette);
+        h.SubmitEquipment();
+        h.Scene.PrepareFrame();
+        int vertices = h.Conformer.Topology.VertexCount;
+        Assert.True(vertices < 4096);
+        var reserved = h.Scene.CoverageMotionReserveForTests;
+        Assert.True(reserved.List >= vertices);
+        Assert.Equal(activatesThisFrame ? 0u : (uint)vertices, reserved.Gpu);
+        h.Render();
+        Assert.Equal(CoveragePresentation.Covered, h.Scene.GetCoverageOutcome(frame).Presentation);
+        Assert.Equal(reserved.List, h.Scene.CoverageMotionReserveForTests.List);
+        Assert.Equal((uint)vertices, h.Scene.CoverageMotionReserveForTests.Gpu);
+    }
+
+    [Fact]
+    public void Host_beyond_bone_capacity_refuses_before_gpu_allocation()
+    {
+        using var h = new CoverageSceneFixture();
+        int buffers = h.Factory.Buffers.Count;
+        var error = Assert.Throws<System.IO.InvalidDataException>(() => h.LoadHost(SkinningMath.MaxBonesPerDraw + 1, out _));
+        Assert.Contains("unsupported skin", error.Message);
+        Assert.Equal(buffers, h.Factory.Buffers.Count);
+    }
 }

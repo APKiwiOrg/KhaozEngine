@@ -156,7 +156,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   outlines. Prepare the frame after all submissions. The scene captures actual pass matrices, certifies once
   before drawing, then shares one covered CPU surface across colour, shadows and outlines alongside ordinary
   GPU-skinned actors. `GetCoverageOutcome` reports covered or current-pose uncovered fallback. Missing actual
-  material submissions select fallback. Tokens expire at the next `Begin`, disposal or host unload. A covered
+  material submissions select fallback. Tokens expire at the next `Begin`, disposal or host unload, and new
+  submissions with an expired token throw. Disposal or unload after submission freezes the current-pose fallback
+  with a recorded failure, and live slices keep their ordinary route. A covered
   frame cannot be recorded again for another view. Previous final coverage motion history is a separate seam.
 - `Scene3D.GetOrLoadMesh` / `GetOrLoadSkinnedMesh` / `GetOrLoadTexture` - keyed, idempotent loads for a scene that
   outlives what it draws ([#250](https://github.com/APKiwiOrg/KhaozEngine/issues/250)). Each takes a key plus a

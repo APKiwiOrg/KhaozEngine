@@ -20,9 +20,8 @@ public sealed partial class Scene3D
 
     bool EnqueueCoverageOutline(in MeshOutlinePart part, SkinnedMeshEntry mesh, int drawIndex)
     {
-        if (part.Coverage.Preparation is null) return false;
-        CoveragePreparation p = RequireCoverage(part.Coverage);
-        if (p.Outcome.Presentation != CoveragePresentation.Covered) return false;
+        if (!TryFrozenCoverage(part.Coverage, out CoveragePreparation p)
+            || p.Outcome.Presentation != CoveragePresentation.Covered) return false;
         int slice = CoverageSlice(p, part.SkinnedMesh);
         var range = p.Owner.Topology.MaterialRanges[slice];
         _targetOutlines.EnqueuePrepared(_model.CpuSkinnedVertexBuffer!, p.Owner.Indices[slice], range.IndexCount,

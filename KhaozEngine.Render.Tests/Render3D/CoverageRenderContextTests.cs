@@ -56,6 +56,38 @@ public sealed class CoverageRenderContextTests
     }
 
     [Fact]
+    public void Surface_scans_and_sphere_are_shared_across_passes()
+    {
+        using var h = new CoverageSceneFixture(seams: true);
+        h.Scene.Post.Quality.Shadows.PointShadows.FaceResolution = 64;
+        h.Scene.Post.Quality.Shadows.PointShadows.MaxShadowedLights = 2;
+        void Lights()
+        {
+            h.AddPoint();
+            h.Scene.AddLight(new(1, 0, 4), KhaozEngine.Primitives.Color.White, 25, 1, LightShadow.Dynamic);
+        }
+        h.Begin();
+        Lights();
+        h.Render();
+        h.Begin();
+        Lights();
+        var frame = h.Stage();
+        long staged = h.Scene.CoverageSurfaceScansForTests;
+        for (int slice = 0; slice < 2; slice++)
+        {
+            h.Scene.DrawSkinned(h.HostDraw(frame, slice: slice), h.Palette);
+            h.Outline(h.HostDraw(frame, slice: slice));
+        }
+        h.SubmitEquipment();
+        h.Render();
+        Assert.Equal(CoveragePresentation.Covered, h.Scene.GetCoverageOutcome(frame).Presentation);
+        Assert.Equal(2, h.Scene.PointShadowedLights);
+        Assert.True(h.Scene.CoveragePassesForTests(frame).Length >= 2 * 2 * 6);
+        Assert.Equal(staged, h.Scene.CoverageSurfaceScansForTests);
+        Assert.Equal(1, h.Scene.CoverageSphereEvaluationsForTests);
+    }
+
+    [Fact]
     public void Origin_or_view_change_rejects_stale_context()
     {
         using var h = new CoverageSceneFixture();

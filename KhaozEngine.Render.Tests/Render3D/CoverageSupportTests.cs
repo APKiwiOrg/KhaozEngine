@@ -30,6 +30,17 @@ public sealed class CoverageSupportTests
             new[] { new CoverageTriangleRange(0, 0, 0, 2) }, Matrix4x4.Identity).Identity);
     }
 
+    [Fact]
+    public void Nonfinite_inverse_translation_refuses_with_asset_identity()
+    {
+        var source = Source(new Vector3[] { new(0, 0, 0), new(1, 0, 0), new(0, 1, 0) }, new[] { (0, 1, 2) });
+        var frame = Matrix4x4.CreateScale(.5f) * Matrix4x4.CreateTranslation(float.MaxValue, 0, 0);
+        var error = Assert.Throws<InvalidDataException>(() => CoverageSupportSurface.Compile(source,
+            new[] { new CoverageTriangleRange(0, 0, 0, 1) }, frame));
+        Assert.Contains("synthetic", error.Message);
+        Assert.Contains("Unsupported coverage transform", error.Message);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

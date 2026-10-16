@@ -9,14 +9,23 @@ internal static class CoverageSupportValidation
 {
     internal static Matrix4x4 InvertFrame(CoverageSourceTopology source, Matrix4x4 frame)
     {
-        float[] values = { frame.M11, frame.M12, frame.M13, frame.M14, frame.M21, frame.M22, frame.M23, frame.M24,
-            frame.M31, frame.M32, frame.M33, frame.M34, frame.M41, frame.M42, frame.M43, frame.M44 };
-        if (values.Any(value => !float.IsFinite(value)) || frame.M14 != 0 || frame.M24 != 0 || frame.M34 != 0 || frame.M44 != 1
-            || frame.GetDeterminant() <= 0 || !Matrix4x4.Invert(frame, out Matrix4x4 inverse))
+        if (!IsFiniteAffine(frame) || frame.GetDeterminant() <= 0
+            || !Matrix4x4.Invert(frame, out Matrix4x4 inverse) || !IsFiniteAffine(inverse))
             throw source.Error("Unsupported coverage transform.");
         double norm = LinearNorm(frame), inverseNorm = LinearNorm(inverse);
         if (!double.IsFinite(norm * inverseNorm) || norm * inverseNorm > 1e6) throw source.Error("Ill-conditioned coverage transform.");
         return inverse;
+    }
+
+    static bool IsFiniteAffine(in Matrix4x4 matrix)
+    {
+        if (matrix.M14 != 0 || matrix.M24 != 0 || matrix.M34 != 0 || matrix.M44 != 1) return false;
+        ReadOnlySpan<float> values = stackalloc float[] { matrix.M11, matrix.M12, matrix.M13, matrix.M14,
+            matrix.M21, matrix.M22, matrix.M23, matrix.M24, matrix.M31, matrix.M32, matrix.M33, matrix.M34,
+            matrix.M41, matrix.M42, matrix.M43, matrix.M44 };
+        foreach (float value in values)
+            if (!float.IsFinite(value)) return false;
+        return true;
     }
 
     static double LinearNorm(Matrix4x4 m) => Math.Sqrt((double)m.M11 * m.M11 + (double)m.M12 * m.M12 + (double)m.M13 * m.M13

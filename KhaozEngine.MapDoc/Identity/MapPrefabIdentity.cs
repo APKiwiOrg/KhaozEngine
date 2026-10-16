@@ -12,7 +12,9 @@ namespace KhaozEngine.MapDoc.Identity;
 /// <summary>Prefab identity checks shared by the loaded and stored identity paths: schema, document roots against the
 /// closure, numeric reservations and high-water mark, pins, complete bindings, overrides and the ownership
 /// registry, without geometric containment. Each entry point runs exactly the checks its whole identity path runs.
-/// Root globals already hash all prefab state once, so nothing here adds identity inputs.</summary>
+/// Both paths reach the closure-bound prefab validation, which refuses duplicate effective marker IDs and names from
+/// root globals and verified prefab payloads before any patch read. Root globals already hash all prefab state once, so
+/// nothing here adds identity inputs.</summary>
 internal static class MapPrefabIdentity
 {
     /// <summary>The complete loaded-document validation the loaded identity path runs.</summary>
@@ -23,7 +25,8 @@ internal static class MapPrefabIdentity
         MapBoundDocumentValidation.Validate(document, assets);
     }
 
-    /// <summary>The ownership registry over a whole loaded document, after its prefab structure and closure checks.</summary>
+    /// <summary>The ownership registry over a whole loaded document, after its prefab structure and closure checks,
+    /// including global marker ID and name uniqueness.</summary>
     internal static void RequireOwnership(MapDocument document, MapAssetClosure assets)
     {
         MapPrefabValidation.RequireDocument(document, assets);
@@ -34,7 +37,8 @@ internal static class MapPrefabIdentity
         registry.Finish();
     }
 
-    /// <summary>The complete pinned-storage validation the stored identity path runs.</summary>
+    /// <summary>The complete pinned-storage validation the stored identity path runs. Its manifest checks validate the
+    /// pinned globals with the same closure-bound prefab and marker rules as the loaded path.</summary>
     internal static void RequireStored(MapStoredSurfaceSource source, MapAssetClosure assets)
     {
         ArgumentNullException.ThrowIfNull(source);

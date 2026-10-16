@@ -636,7 +636,39 @@ radius once in binary64 before rounding to float. Colour, intensity and shadow i
 `LightResourceIds` use the existing scoped and bound implicit Light children. Explicit children coexist under
 distinct keys. Materialized transfers reuse the captured descriptor frame without composing the owner again.
 Markers retain exact XYZ, yaw, name, role, enabled state, ordered tags and optional instance provenance. They do
-not become `MapSpawn`. R6 chooses role registries and spawn projections. R8 renders lights.
+not become `MapSpawn`. R8 renders lights.
+
+### Marker names, lookup and typed views
+
+Effective marker IDs and names are global, ordinal and case-sensitive. A name is nonempty, editable and unique across
+world markers and every prefab-derived marker after current overrides. IDs are immutable. Disabled markers take part
+in both checks and removed children do not. Closure-bound validation of a complete document, on the loaded and the
+stored path, refuses a duplicate effective ID or name from root globals and verified prefab payloads before any patch
+read, support query, callback or static installation. Names are never normalized or suffixed. A repeated
+marker-bearing prefab gives each copy's marker its own name through an explicit replace override.
+
+Compatibility: duplicate marker names were accepted before R6. A document whose repeated prefab instances share a
+marker name now refuses to load and build until each repeated instance carries such an override. Format 8 moves every
+native root identity once, as format 7 did, so identity-keyed caches and navigation captures rebuild after migration.
+
+`MapPlacePrefab.InitialOverrides` lets one placement request carry keyed overrides, such as that marker rename, so a
+second instance is accepted in a single placement with no intermediate duplicate. Duplicate keys refuse before any
+binding is allocated. The overrides persist only as the instance's `Overrides`. The `prefab_place` tool accepts them as
+the optional `overridesJson` array.
+
+`MapMarkerRegistry(markers)` is an immutable lookup over effective markers with `All`, `Enabled`, `FindById`,
+`FindByName`, `ByRole` and `ByTag`, every list in ordinal ID order. `InRect(rect, enabledOnly, membership)` returns the
+markers whose exact XZ lies in the half-open `MapMarkerRect`, minima included and maxima excluded on both axes,
+negative coordinates included. A median-split point hierarchy with outward-rounded node bounds narrows candidates
+before the exact test, and the membership delegate runs once for each returned marker. Each `MapMarkerMapPoint` keeps
+the delegate's status, refusals included, so a rectangle never claims complete space membership. Non-finite or
+reversed bounds refuse and a zero width or depth holds no marker.
+
+Roles are caller vocabulary and the engine defines none. `MapMarkerRoleCatalog(roles).Validate(registry)` reports one
+`unknown-role` finding for every unlisted marker in ID order, disabled ones included, without making a document
+invalid. `MapMarkerProjection.PlayerStarts`, `Spawns` and `Landmarks` wrap each effective marker of one caller role and
+keep its exact XYZ, yaw, ordered tags, enabled state, name, ID and height provenance. A spawn carries a payload-2
+archetype, or null for a tag-driven spawn. A landmark is a point and adds no region, disc or geometry.
 
 `MapPrefabExpansionLimits` supplies finite collection and payload ceilings before codec materialization. Effective
 geometry composition, aggregate expansion charges, remapping and editor lifecycle commands are separate stages.
@@ -705,7 +737,7 @@ verified bytes and separately loaded documents. They supply headless acceptance 
 
 | Later owner | Remaining proof |
 | --- | --- |
-| R6 | Local marker role registry, spawn projection and gameplay consumers |
+| R6 | Marker commands and wire parity, legacy spawn adoption, consumer readouts and window anchors. Unique names, the registry, rectangle lookup, role findings and typed views are in place |
 | R7 | Distribution and foliage exclusions over effective canonical paint owners |
 | R8 | Partial-face drawing, roof colour and shadows, camera boom, sky picking, local-light pixels, bounded streaming, eviction, HLOD and on-demand navigation |
 | R9 and #1349 | GUI closure/bounds binding, prefab mode, inspectors and real pointer/key input |
@@ -718,8 +750,8 @@ verified bytes and separately loaded documents. They supply headless acceptance 
 
 ## Format versioning
 
-`MapDocumentFile.CurrentFormatVersion` is the version this engine build reads and writes, currently 7.
-Format 7 adds rigid prefabs and building intent. Version 6 added bounded water, version 5 added the support recipe
+`MapDocumentFile.CurrentFormatVersion` is the version this engine build reads and writes, currently 8.
+Format 8 adds marker payload 2. Format 7 added rigid prefabs and building intent. Version 6 added bounded water, version 5 added the support recipe
 and surface metadata and version 4 added native metadata. Loading a document with an
 older `formatVersion` runs migrations
 (`MapDocumentLoadOptions.RegisterMigration`, each a pure `JsonObject -> JsonObject` step from N to N+1)
@@ -734,7 +766,9 @@ v5 -> v6 (`MapWaterMigration.Upgrade`) adds no member, so a migrated document ha
 legacy global water. It accepts only format 5 or 6 input.
 v6 -> v7 (`MapPrefabMigration.Upgrade`) clones input and changes only `formatVersion`. It accepts format 6 or 7.
 Format 7 moves every native root digest and resolver-2 authored identity once, including maps without prefabs.
-Rebuild identity-keyed caches and navigation captures after this migration. Absent prefab sections preserve
+v7 -> v8 (`MapMarkerMigration.Upgrade`) clones input and changes only `formatVersion`. It accepts format 7 or 8 and
+reads no source, terrain, closure or role. Format 8 again moves every native root digest and resolver-2 authored
+identity once. Rebuild identity-keyed caches and navigation captures after either migration. Absent prefab sections preserve
 analytic execution and document hashing. Portals remain AuthoredOpen, with live state gated by #1363.
 Headless doorway clearance and roof intent are available. Native controller routes and R8 rendering retain
 the separate gates in the handoff table above.

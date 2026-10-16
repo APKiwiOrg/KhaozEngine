@@ -134,7 +134,8 @@ public sealed class PrefabAuthoringReviewTests
             null, parent, [], [], [], []));
         PrefabFixtures.SealWorldParent(world.Document);
         var candidate = MapPrefabEdits.Prepare(world.Document, world.Assets, new MapPlacePrefab("b", "hut", new(new(8, 0, 0), 0, 1),
-            new("parent-alias", parent.Anchor))).After;
+            new("parent-alias", parent.Anchor))
+        { InitialOverrides = PrefabFixtures.MarkerNames(world.Assets.GetPrefab("hut"), "b") }).After;
         var session = PrefabEditorFixtures.Session(new(candidate, world.Assets));
         var service = new PrefabService(session);
         var existing = service.Open("hut", parent);

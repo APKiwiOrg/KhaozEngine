@@ -142,6 +142,9 @@ public static class MapPrefabValidation
             using var json = JsonDocument.Parse(MapPrefabJson.Bytes(poses));
             MapPrefabJson.Preflight(json.RootElement);
         }
+        // R6-P3. Closure-bound validation of a complete document, loaded or stored, certifies effective marker IDs and
+        // names from metadata alone. A partial window cannot certify the whole world.
+        if (assets is not null && doc.Tiles is not { IsPartial: true }) MapMarkerExpansion.RequireUnique(doc, assets);
     }
 
     internal static void RequireAsset(MapPrefabAsset asset) => RequireAsset(asset, null);
@@ -345,6 +348,7 @@ public static class MapPrefabValidation
         if (intent.Roofs.Count == 0 && intent.RoofLinks.Count == 0 && intent.RoofGroups.Count == 0 && intent.Lights.Count == 0 && intent.Markers.Count == 0) return;
         Unique(intent.Lights, l => l.Id, "effective light");
         Unique(intent.Markers, m => m.Id, "effective marker");
+        Unique(intent.Markers, m => m.Name, "effective marker name");
         Unique(intent.RoofLinks, r => r.Id, "effective roof link");
         Unique(intent.RoofGroups, g => g.Id, "effective roof group");
         var owners = placements.Select(p => p.PlacementId).ToHashSet(StringComparer.Ordinal);

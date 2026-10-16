@@ -95,6 +95,13 @@ internal static class MapPrefabJson
 
     internal static MapPrefabChild ReadChild(string json) => ReadText<MapPrefabChild>(json);
     internal static MapPrefabOverride ReadOverride(string json) => ReadText<MapPrefabOverride>(json);
+    /// <summary>A JSON array of closed keyed overrides, through the same codec as one override.</summary>
+    internal static IReadOnlyList<MapPrefabOverride> ReadOverrides(string json)
+    {
+        MapPrefabOverride[] values = ReadText<MapPrefabOverride[]>(json);
+        if (values.Any(v => v is null)) throw new MapDocumentException("Prefab override lists must not contain null.");
+        return Array.AsReadOnly(values);
+    }
     internal static IReadOnlyList<MapPrefabReference> ReadReferences(string json) => ReadText<MapPrefabReference[]>(json);
     internal static MapRecordRef ReadRecordRef(string json) => ReadText<MapRecordRef>(json);
     internal static MapPrismDomain ReadDomain(string json) => ReadText<MapTopologyRecord>(json) as MapPrismDomain

@@ -209,6 +209,7 @@ internal static partial class PrefabFixtures
             Bindings = new(a.Bindings.Entries.Select(binding => binding with
             { WorldId = "b/" + binding.Child.Key, NumericId = binding.NumericId is null ? null : ++numeric }).ToArray()),
             Overrides = new MapPrefabOverride[] { new MapPrefabReplaceOverride(domain.Key, replacement) }
+                .Concat(MarkerNames(f.Assets.GetPrefab("hut"), "b")).ToArray(),
         };
         f.Document.NumericIdHighWaterMark = numeric;
         f.Document.Prefabs = new(1, 1, new[] { a, b }, []);

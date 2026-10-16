@@ -37,7 +37,8 @@ internal static partial class PrefabFixtures
                 NumericId = binding.Child.Kind == MapPrefabChildKind.Placement ? ++numeric : null,
                 Removed = shelter && binding.Child.Kind == MapPrefabChildKind.RoofLink,
             }).ToArray()),
-            Overrides = shelter ? new MapPrefabOverride[] { new MapPrefabRemoveOverride(link.Key, null) } : [],
+            // Marker names are globally unique, so each copy renames its marker through an explicit replace override.
+            Overrides = (shelter ? new MapPrefabOverride[] { new MapPrefabRemoveOverride(link.Key, null) } : []).Concat(MarkerNames(asset, id)).ToArray(),
         };
         var b = Copy("b", new(8, 0, 0), "roof-b", "room-b", false);
         var c = Copy("c", new(8, 0, -8), "shelter-roof", "room-c", true);

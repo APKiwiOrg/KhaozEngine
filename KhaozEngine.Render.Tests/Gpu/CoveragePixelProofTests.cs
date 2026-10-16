@@ -182,14 +182,14 @@ public sealed class CoveragePixelProofTests
         var after = new CoverageHostFootprint(colour, DepthValues((x, y) => !Body(x, y) ? .02f
             : x is >= 14 and < 17 ? .52f : .5f), Vector2.Zero);
         var full = Mask((x, y) => x is >= 12 and < 19 && y is >= 5 and < 25);
-        var complete = CoverageMaskCompleteness.Assert(before, after, full, W, H, Vector2.Zero, "synthetic-complete");
+        var complete = CoverageMaskCompleteness.Assert(before, after, full, W, H, Vector2.Zero, Artifact("mask-complete"));
         // Columns 13 to 17 over rows 5 to 24 are required, the moved columns 14 to 16 over rows 6 to 23 are surface.
         Assert.Equal(5 * 20, complete.Required);
         Assert.Equal(3 * 18, complete.SurfaceWitnesses);
         Assert.Equal(5 * 20 - 3 * 18, complete.EdgeWitnesses);
         var band = Mask((x, y) => x is >= 12 and < 19 && x != 15 && y is >= 5 and < 25);
         var failure = Assert.Throws<Xunit.Sdk.TrueException>(() =>
-            CoverageMaskCompleteness.Assert(before, after, band, W, H, Vector2.Zero, "synthetic-band"));
+            CoverageMaskCompleteness.Assert(before, after, band, W, H, Vector2.Zero, Artifact("mask-band")));
         Assert.StartsWith("Incomplete coverage mask 20:", failure.Message);
     }
 
@@ -205,7 +205,9 @@ public sealed class CoveragePixelProofTests
 
     static CoverageGhostEnvelope.Result Envelope(CoverageTargetReadback output, CoverageTargetReadback? state,
         CoverageTargetReadback source, CoverageTargetReadback depth) =>
-        CoverageGhostEnvelope.Assert(output, state, source, depth, Vector2.Zero, "synthetic", requireHost: true, requirePlate: true);
+        CoverageGhostEnvelope.Assert(output, state, source, depth, Vector2.Zero, Artifact("envelope"), requireHost: true, requirePlate: true);
+
+    static string Artifact(string label) => $"coverage-pure-{label}-{Guid.NewGuid():N}";
 
     static CoverageTargetReadback Source(Func<int, int, Vector3> colour)
     {

@@ -623,6 +623,7 @@ public sealed class BugReportSubmitter
 [Fact] public void TryAccept_allows_five_per_account_per_rolling_hour()
 // 5 true, 6th false, other subject true, advance 1 h then true
 [Fact] public void Capture_runs_sections_with_the_report_id_and_time()
+[Fact] public void Capture_passes_the_subject_into_the_context()   // a section sees context.Subject == "discord:42"
 [Fact] public void Capture_rejects_invalid_ids()
 [Fact] public void Poster_posts_wire_json_with_service_key()
 // POST "https://relay.example/bug-reports/<id>/server", X-Report-Service-Key "k", body deserializes with subject and section "world"

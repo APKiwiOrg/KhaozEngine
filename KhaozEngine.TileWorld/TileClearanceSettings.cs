@@ -1,15 +1,48 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 
 namespace KhaozEngine.TileWorld;
 
 /// <summary>One authoring rule: objects tagged with any <paramref name="SubjectTags"/> keep their meshes clear of
 /// objects tagged with any <paramref name="ObstacleTags"/>, allowing <paramref name="Tolerance"/> world units of
-/// overlap. Validated by <see cref="TileClearanceSettings"/>, which also takes its own copy of both tag lists.</summary>
+/// overlap. Validated by <see cref="TileClearanceSettings"/>, which also takes its own copy of both tag lists.
+/// <para>Equality is by value: the name and every tag ordinally, tag order included, and the tolerance. The
+/// synthesized record equality would compare the lists by reference, and the settings' copies would then never
+/// equal the rule a caller built or a loaded world produced.</para></summary>
 public sealed record TileClearanceRule(string Name, IReadOnlyList<string> SubjectTags,
-    IReadOnlyList<string> ObstacleTags, float Tolerance = 0f);
+    IReadOnlyList<string> ObstacleTags, float Tolerance = 0f)
+{
+    public bool Equals(TileClearanceRule? other) =>
+        other is not null
+        && string.Equals(Name, other.Name, StringComparison.Ordinal)
+        && SameTags(SubjectTags, other.SubjectTags)
+        && SameTags(ObstacleTags, other.ObstacleTags)
+        && Tolerance.Equals(other.Tolerance);
+
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(Name, StringComparer.Ordinal);
+        AddTags(ref hash, SubjectTags);
+        AddTags(ref hash, ObstacleTags);
+        hash.Add(Tolerance);
+        return hash.ToHashCode();
+    }
+
+    // Null lists only exist on a rule the settings have not validated yet, and compare equal only to null.
+    static bool SameTags(IReadOnlyList<string>? a, IReadOnlyList<string>? b) =>
+        ReferenceEquals(a, b) || (a is not null && b is not null && a.SequenceEqual(b, StringComparer.Ordinal));
+
+    static void AddTags(ref HashCode hash, IReadOnlyList<string>? tags)
+    {
+        hash.Add(tags?.Count ?? -1);
+        if (tags is null) return;
+        foreach (string tag in tags) hash.Add(tag, StringComparer.Ordinal);
+    }
+}
 
 /// <summary>
 /// A world's clearance declaration: where the object meshes live, how finely they are sampled, which tag waives
@@ -21,8 +54,9 @@ public sealed class TileClearanceSettings
 {
     public const float DefaultCellSize = 0.1f, MinCellSize = 0.02f, MaxCellSize = 1f;
 
-    /// <param name="meshRoot">Directory of the object meshes, relative to the world directory. May be empty only
-    /// while there are no rules.</param>
+    /// <param name="meshRoot">Directory of the object meshes, relative to the directory holding
+    /// <c>world.json</c>. Never rooted, because world files are committed and shared across machines. May be
+    /// empty only while there are no rules.</param>
     /// <param name="cellSize">Sampling cell edge in world units, from <see cref="MinCellSize"/> through
     /// <see cref="MaxCellSize"/>.</param>
     /// <param name="waiverTag">Object tag that exempts an object from every rule, or null for none.</param>
@@ -33,6 +67,8 @@ public sealed class TileClearanceSettings
         IReadOnlyList<TileClearanceRule>? rules = null)
     {
         ArgumentNullException.ThrowIfNull(meshRoot);
+        if (Path.IsPathRooted(meshRoot))
+            throw Invalid($"meshRoot '{meshRoot}' is rooted, it must be relative to the world directory");
         if (!(cellSize >= MinCellSize && cellSize <= MaxCellSize))
             throw Invalid($"cellSize {cellSize} is outside {MinCellSize} through {MaxCellSize}");
         if (waiverTag is not null && string.IsNullOrWhiteSpace(waiverTag))

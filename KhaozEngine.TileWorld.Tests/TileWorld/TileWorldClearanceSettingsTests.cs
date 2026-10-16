@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json.Nodes;
@@ -66,6 +67,43 @@ public class TileWorldClearanceSettingsTests
         Assert.Equal(TileClearanceSettings.MaxCellSize, new TileClearanceSettings("m", TileClearanceSettings.MaxCellSize).CellSize);
     }
 
+    // A drive-letter root is rooted only on an OS that reads drive letters, so that row exists only there.
+    public static IEnumerable<object[]> RootedMeshRoots()
+    {
+        yield return ["/abs/models"];
+        if (Path.IsPathRooted(@"C:\models")) yield return [@"C:\models"];
+    }
+
+    [Theory]
+    [MemberData(nameof(RootedMeshRoots))]
+    public void SettingsRefuseARootedMeshRoot(string meshRoot)
+    {
+        Assert.Throws<ArgumentException>(() => new TileClearanceSettings(meshRoot));
+        Assert.Throws<ArgumentException>(() => new TileClearanceSettings(meshRoot, rules: [TreesClearBuildings()]));
+        Assert.Throws<ArgumentException>(() => Settings().With(meshRoot, 0.1f, null));
+    }
+
+    [Fact]
+    public void RulesCompareByValue()
+    {
+        TileClearanceRule rule = TreesClearBuildings();
+        TileClearanceSettings settings = Settings();
+        TileClearanceRule stored = settings.Rules[0];
+
+        Assert.Equal(rule, stored);
+        Assert.True(rule == stored);
+        Assert.Equal(rule.GetHashCode(), stored.GetHashCode());
+        Assert.Contains(rule, settings.WithRule(rule).Rules);
+
+        var forward = new TileClearanceRule("r", ["tree", "bush"], ["structure"]);
+        var reordered = new TileClearanceRule("r", ["bush", "tree"], ["structure"]);
+        Assert.NotEqual(forward, reordered);
+        Assert.NotEqual(rule, TreesClearBuildings(0.06f));
+        Assert.NotEqual(rule, rule with { Name = "Trees-clear-buildings" });
+        Assert.NotEqual(rule, rule with { ObstacleTags = ["structure", "wall"] });
+        Assert.False(rule.Equals(null));
+    }
+
     [Fact]
     public void WithRuleReplacesByNameAndWithoutRuleRemoves()
     {
@@ -113,6 +151,7 @@ public class TileWorldClearanceSettingsTests
         Assert.Equal(["tree"], rule.SubjectTags);
         Assert.Equal(["structure"], rule.ObstacleTags);
         Assert.Equal(0.05f, rule.Tolerance);
+        Assert.Equal(TreesClearBuildings(), rule);
 
         TileWorldFile.Save(back, dir, force: true);
         Assert.Equal(first, File.ReadAllBytes(TileWorldFile.ManifestPath(dir)));
@@ -156,6 +195,25 @@ public class TileWorldClearanceSettingsTests
 
         doc.SetClearance(doc.Clearance!.WithRule(TreesClearBuildings(0.5f)));
         Assert.Equal(before, TileWorldHash.OfWorld(doc));
+    }
+
+    [Fact]
+    public void RootedMeshRootFailsToLoad()
+    {
+        using var tmp = new TempDir();
+        TileWorldDocument doc = TileWorldTestData.FlatWorld();
+        doc.SetClearance(Settings());
+        string dir = tmp.Sub("world");
+        TileWorldFile.Save(doc, dir);
+
+        string path = TileWorldFile.ManifestPath(dir);
+        JsonObject root = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+        root["clearance"]!["meshRoot"] = "/abs/models";
+        File.WriteAllText(path, root.ToJsonString());
+
+        var ex = Assert.Throws<TileWorldException>(() => TileWorldFile.Load(dir));
+        Assert.Contains(path, ex.Message, StringComparison.Ordinal);
+        Assert.Contains("/abs/models", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]

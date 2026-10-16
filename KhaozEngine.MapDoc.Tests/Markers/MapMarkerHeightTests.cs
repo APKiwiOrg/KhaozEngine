@@ -39,7 +39,15 @@ public sealed class MapMarkerHeightTests
                 Assert.Equal(stored.SupportBinding, marker.HeightProvenance.Binding);
                 Assert.Equal(0u, BitConverter.SingleToUInt32Bits(resources.BuildingIntent.Markers.Single(m => m.Id == id).Position.Y));
             }
-            Assert.Equal(new[] { "stacked-space", "stacked-surface" }, resources.MarkerSupports.Select(s => s.MarkerId));
+            Assert.Equal(new[] { "stacked-disabled", "stacked-space", "stacked-surface" }, resources.MarkerSupports.Select(s => s.MarkerId));
+            // A disabled Support marker still resolves its binding and publishes its witness row.
+            MapEffectiveMarker disabled = MapEffectiveAnnotations.Markers(resources).Single(m => m.Id == "stacked-disabled");
+            Assert.False(disabled.Enabled);
+            Assert.Equal(new MapExactPoint(new(3, 2), new(20, 1), new(3, 2)), disabled.Position);
+            Assert.Equal(new MapMarkerHeightProvenance(MapMarkerHeightMode.Support, MarkerFixtures.SpaceHeight().Binding,
+                disabled.HeightProvenance!.Face, "level-2", null, 20f), disabled.HeightProvenance);
+            Assert.Equal("floor-2", disabled.HeightProvenance.Face!.Value.OwnerId);
+            Assert.Equal(MapSupportStatus.Supported, resources.MarkerSupports.Single(s => s.MarkerId == "stacked-disabled").Support.Status);
         }
     }
 
@@ -96,6 +104,26 @@ public sealed class MapMarkerHeightTests
         Assert.NotEqual("", twoResources.AnnotationDigest);
         Assert.Equal(Assert.Single(MapEffectiveAnnotations.Markers(basic)).Position, explicitMarker.Position);
         Assert.Equal(MapMarkerHeightMode.Explicit, explicitMarker.HeightProvenance!.Mode);
+
+        // The scheme name is what switches: the same rows digest to /2 and would differ under /1.
+        Assert.Equal(Scheme("kemap/effective-annotations/1", basic), basic.AnnotationDigest);
+        Assert.Equal(Scheme("kemap/effective-annotations/1", prefab), prefab.AnnotationDigest);
+        Assert.Equal(Scheme("kemap/effective-annotations/2", twoResources), twoResources.AnnotationDigest);
+        Assert.NotEqual(Scheme("kemap/effective-annotations/1", twoResources), twoResources.AnnotationDigest);
+    }
+
+    // The released annotation rows under a named scheme, read back from the published effective views.
+    static string Scheme(string name, MapEffectiveResources resources)
+    {
+        MapBuildingIntent intent = resources.BuildingIntent;
+        return MapPrefabJson.Digest(name, new
+        {
+            Roofs = intent.Roofs,
+            Links = intent.RoofLinks,
+            Groups = intent.RoofGroups,
+            Lights = MapEffectiveAnnotations.Lights(resources),
+            Markers = MapEffectiveAnnotations.Markers(resources),
+        });
     }
 
     [Fact]
@@ -132,6 +160,45 @@ public sealed class MapMarkerHeightTests
         Assert.Equal(supports.Select(s => s.Support.WorldY), exact.Supports.Select(s => s.Support.WorldY));
         var error = Assert.Throws<MapDocumentException>(() => MapMarkerResolution.Resolve(candidates, source, sha, new MapQueryLimits(MaxCandidatePatches: 15)));
         Assert.Contains("support status CapacityExceeded", error.Message, StringComparison.Ordinal);
+
+        // The captured document source visits two index pages for each of the sixteen surfaces in a per-point scope.
+        var pages = MapMarkerResolution.Resolve(candidates, source, sha, new MapQueryLimits(MaxPageReads: 32));
+        Assert.Equal(supports.Select(s => s.Support.WorldY), pages.Supports.Select(s => s.Support.WorldY));
+        error = Assert.Throws<MapDocumentException>(() => MapMarkerResolution.Resolve(candidates, source, sha, new MapQueryLimits(MaxPageReads: 31)));
+        Assert.Contains("support status CapacityExceeded", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AsymmetricSpaceSearch_SeatsPlacementAndMarkerAtOneHeight()
+    {
+        // The floor at 20 is 0.6 below the reference height: a 0.7 search below finds it and a 0.1 search above does not need to.
+        MapSupportBinding binding = MarkerFixtures.SpaceBinding("level-2", 20.6f, 0.7f, 0.1f);
+        MarkerFixture both = Seated(binding, placement: true, marker: true);
+        MapEffectiveResources resources = MarkerFixtures.Effective(both);
+        MapPlacementSupport seat = Assert.Single(resources.PlacementSupports);
+        MapEffectiveMarker marker = MapEffectiveAnnotations.Markers(resources).Single(m => m.Id == "seated");
+        Assert.Equal(MapSupportStatus.Supported, seat.Support.Status);
+        Assert.Equal(20f, seat.Support.WorldY);
+        Assert.Equal(seat.Support.WorldY, resources.Placements.Single(p => p.PlacementId == "seat").Transform.Position.Y);
+        Assert.Equal(MapExactValue.FromSingle(seat.Support.WorldY), marker.Position.Y);
+        Assert.Equal(seat.Support.WorldY, marker.HeightProvenance!.WorldY);
+        Assert.Equal(seat.Support.Face, marker.HeightProvenance.Face);
+
+        // Swapped extents put the floor 0.5 below the 0.1 lower bound, so both seats refuse it the same way.
+        MapSupportBinding swapped = binding with { SearchBelow = 0.1f, SearchAbove = 0.7f };
+        var placementError = Assert.Throws<MapDocumentException>(() => MarkerFixtures.Effective(Seated(swapped, placement: true, marker: false)));
+        var markerError = Assert.Throws<MapDocumentException>(() => MarkerFixtures.Effective(Seated(swapped, placement: false, marker: true)));
+        Assert.Contains("Placement 'seat' support status NoSupport", placementError.Message, StringComparison.Ordinal);
+        Assert.Contains("Marker 'seated' support status NoSupport", markerError.Message, StringComparison.Ordinal);
+    }
+
+    static MarkerFixture Seated(MapSupportBinding binding, bool placement, bool marker)
+    {
+        MarkerFixture fixture = MarkerFixtures.Stacked();
+        fixture.Document.BuildingIntent = new(1, [], [], [], marker ? new[] { MarkerFixtures.Marker("seated", 0.5f, 0.5f, new(null, binding)) } : []);
+        if (placement)
+            fixture.Document.Placements.Add(new MapPlacement { Id = "seat", Kind = "scenery", AssetId = "tree", X = 0.5f, Z = 0.5f, Scale = 1, SupportBinding = binding });
+        return fixture;
     }
 
     [Theory]
@@ -167,6 +234,7 @@ public sealed class MapMarkerHeightTests
         MapLocalMarkerDoc entry = resources.BuildingIntent.Markers.Single(m => m.Id == id);
         // The effective intent keeps the canonical carrier, so no sampled height appears as a second authored height.
         Assert.Equal(0u, BitConverter.SingleToUInt32Bits(entry.Position.Y));
+        Assert.Equal((marker.Position.X.ToSingle(), marker.Position.Z.ToSingle(), marker.YawRadians), (entry.Position.X, entry.Position.Z, entry.YawRadians));
         MapSupportBinding expected = form == "surface"
             ? MarkerFixtures.SurfaceBinding("a/floor")
             : MarkerFixtures.SpaceBinding("a/room", Frozen(-450d + 0.5d * 1.2f), 1.2f, 1.2f);

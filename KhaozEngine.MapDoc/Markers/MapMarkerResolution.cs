@@ -7,7 +7,6 @@ using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Support;
 using KhaozEngine.MapDoc.Surfaces;
-using KhaozEngine.Primitives;
 
 namespace KhaozEngine.MapDoc.Markers;
 
@@ -94,26 +93,12 @@ internal static class MapMarkerResolution
             Array.AsReadOnly(supports.OrderBy(s => s.MarkerId, StringComparer.Ordinal).ToArray()));
     }
 
-    // The per-point acquisition and query a support-bound placement uses, at the marker's exact XZ. A Surface binding
-    // names only its owner. A Space binding searches its whole declared interval around its reference height.
+    // The shared seat query, so a marker's height is exactly the value a support-bound placement seats on.
     static MapSupportResult Sample(string id, MapExactPoint point, MapSupportBinding binding, IMapSurfaceSource surfaces,
         IReadOnlyList<string> assetSha256, MapQueryLimits limits)
     {
         MapSupportResult support;
-        try
-        {
-            var world = point with { Y = MapExactValue.FromSingle(binding.ReferenceY ?? 0) };
-            var frame = WorldFrame.Nearest(world.X.ToSingle(), world.Z.ToSingle());
-            float x = world.X.Subtract(new((long)frame.X * (long)WorldFrame.Grid, 1)).ToSingle();
-            float z = world.Z.Subtract(new((long)frame.Z * (long)WorldFrame.Grid, 1)).ToSingle();
-            var scope = new MapSurfaceScope(frame, new(x - 2, z - 2), new(x + 2, z + 2), null, null, Enum.GetValues<MapSurfaceRole>(), null, limits);
-            var view = MapScopedSurfaces.Acquire(surfaces, scope, assetSha256, 2, 2);
-            var query = new MapSupportQuery(view);
-            support = binding.Kind == MapSupportBindingKind.Surface
-                ? query.SampleSurfaceExact(world, binding.SurfaceId!)
-                : query.SelectExact(new(MapEffectiveGeometry.Presentation(view, world), null, binding.SpaceId, null,
-                    binding.SearchAbove!.Value, binding.SearchBelow!.Value, null), world);
-        }
+        try { support = MapResolverV2.SeatSupport(point, binding, surfaces, assetSha256, limits); }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
         {
             throw new MapDocumentException($"Marker '{id}' support status NotRepresentable: overflow.");

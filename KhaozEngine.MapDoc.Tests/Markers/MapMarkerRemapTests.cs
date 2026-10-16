@@ -4,6 +4,7 @@ using System.Linq;
 using System.Numerics;
 using System.Text.Json.Nodes;
 using KhaozEngine.MapDoc;
+using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Markers;
 using KhaozEngine.MapDoc.Prefabs;
@@ -148,6 +149,35 @@ public sealed class MapMarkerRemapTests
     }
 
     [Fact]
+    public void UnframedSupportMarker_ExtractedAtAFreeOriginKeepsBindingAndHeight()
+    {
+        MarkerFixture fixture = MarkerFixtures.Stacked();
+        MapEffectiveMarker before = Marker(MarkerFixtures.Effective(fixture), "stacked-space");
+        var origin = new MapTransform(new(0.25f, 3, -0.5f), 0.371f, 1.25f);
+        MapPrefabAsset extracted = MapPrefabExtraction.Extract(fixture.Document, fixture.Assets,
+            new[] { PrefabFixtures.World(MapPrefabChildKind.Marker, "stacked-space") }, origin, "lifted");
+
+        // The world owner stays a World slot, and the stored world request and +0 carrier are copied verbatim.
+        MapPrefabMarkerChild child = Assert.Single(extracted.Children.OfType<MapPrefabMarkerChild>());
+        AssertBits(Binding(fixture.Document, "stacked-space"), child.Value.SupportBinding!);
+        Assert.Equal(new[] { Slot("spaceId", MapPrefabReferenceScope.World, MapPrefabChildKind.Record, "level-2") }, child.References);
+        Assert.Equal(0u, BitConverter.SingleToUInt32Bits(child.Value.Position.Y));
+
+        // Replacement: one instance of the extracted prefab at the extraction origin takes the standalone marker's place.
+        MapAssetClosure assets = MarkerFixtures.PrefabClosure(extracted);
+        MapDocument replaced = MapDocumentFile.LoadText(MapDocumentFile.SaveText(fixture.Document));
+        replaced.NativeAssets = assets.Roots.ToList();
+        replaced.BuildingIntent = new(1, [], [], [], replaced.BuildingIntent!.Markers.Where(m => m.Id != "stacked-space").ToArray());
+        replaced.Prefabs = new(1, 1, new[] { new MapPrefabInstance("lifted", "lifted", assets.GetResource("lifted").Reference.Sha256, origin, null,
+            new(new[] { new MapPrefabBinding(child.Key, "stacked-space", null, false) }), []) }, []);
+        MapEffectiveMarker after = Marker(MarkerFixtures.Effective(new(replaced, assets)), "stacked-space");
+        AssertBits(before.HeightProvenance!.Binding!, after.HeightProvenance!.Binding!);
+        Assert.Equal(before.HeightProvenance, after.HeightProvenance);
+        Assert.Equal(before.Position, after.Position);
+        Assert.Equal("lifted", after.InstanceId);
+    }
+
+    [Fact]
     public void MarkerBindingSlots_RemapOnlyTheDeclaredSlotAndRefuseInvalidSlots()
     {
         MapPrefabAsset hut = PrefabFixtures.Create().Assets.GetPrefab("hut");
@@ -191,14 +221,17 @@ public sealed class MapMarkerRemapTests
         var pad = new MapPrefabChildKey(MapPrefabChildKind.Surface, "pad");
         var marker = new MapPrefabChildKey(MapPrefabChildKind.Marker, "pad-marker");
 
-        Assert.Throws<MapDocumentException>(() => MapPrefabEdits.Prepare(fixture.Document, fixture.Assets,
+        const string LostOwner = "Prefab Marker 'pad-marker': undeclared local Surface 'pad' at '/value/supportBinding/surfaceId'.";
+        var refused = Assert.Throws<MapDocumentException>(() => MapPrefabEdits.Prepare(fixture.Document, fixture.Assets,
             new MapSetPrefabOverride("a", new MapPrefabRemoveOverride(pad))));
+        Assert.Contains(LostOwner, refused.Message, StringComparison.Ordinal);
 
         // Without the bound marker the same owner removal succeeds, and restoring both resolves the marker again.
         MapDocument unbound = MapPrefabEdits.Prepare(fixture.Document, fixture.Assets, new MapSetPrefabOverride("a", new MapPrefabRemoveOverride(marker))).After;
         MapDocument removed = MapPrefabEdits.Prepare(unbound, fixture.Assets, new MapSetPrefabOverride("a", new MapPrefabRemoveOverride(pad))).After;
         Assert.DoesNotContain(MapEffectiveAnnotations.Markers(MarkerFixtures.Effective(fixture with { Document = removed })), m => m.Id == "a/pad-marker");
-        Assert.Throws<MapDocumentException>(() => MapPrefabEdits.Prepare(removed, fixture.Assets, new MapRestorePrefabChild("a", marker)));
+        refused = Assert.Throws<MapDocumentException>(() => MapPrefabEdits.Prepare(removed, fixture.Assets, new MapRestorePrefabChild("a", marker)));
+        Assert.Contains(LostOwner, refused.Message, StringComparison.Ordinal);
         MapDocument restoredOwner = MapPrefabEdits.Prepare(removed, fixture.Assets, new MapRestorePrefabChild("a", pad)).After;
         MapDocument restored = MapPrefabEdits.Prepare(restoredOwner, fixture.Assets, new MapRestorePrefabChild("a", marker)).After;
         MapEffectiveMarker after = Marker(MarkerFixtures.Effective(fixture with { Document = restored }), "a/pad-marker");

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.MapDoc;
+using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Markers;
 using KhaozEngine.MapDoc.Prefabs;
@@ -18,6 +19,13 @@ internal static partial class MarkerFixtures
     internal static readonly MapTransform TransferredFrame = new(new(-12.25f, -450, 7.125f), 0.371f, 1.2f);
     internal static readonly MapTransform LocalCaveFrame = new(new(-12.25f, -450, 7.125f), 0, 2);
 
+    /// <summary>A closure holding only the given prefab payloads, through the same in-memory source as Create.</summary>
+    internal static MapAssetClosure PrefabClosure(params MapPrefabAsset[] prefabs)
+    {
+        var (roots, source) = Closure(prefabs);
+        return MapAssetClosure.Load(roots, source);
+    }
+
     internal static MapEffectiveResources Effective(MarkerFixture fixture) => MapPrefabResolver.Expand(fixture.Document, fixture.Assets);
 
     internal static MapSupportBinding SurfaceBinding(string surfaceId) => new(MapSupportBindingKind.Surface, surfaceId, null, null, null, null);
@@ -28,7 +36,8 @@ internal static partial class MarkerFixtures
     internal static MapLocalMarkerDoc Marker(string id, float x, float z, MapMarkerHeight height, IReadOnlyList<string>? tags = null, float yaw = 0) =>
         MapMarkerHeights.Apply(new(1, id, id + "-name", new Vector3(x, 0, z), yaw, "guard-role", true, tags ?? new[] { "first", "second" }), height);
 
-    /// <summary>Released eight stacked caves with one Surface-bound and one Space-bound world marker at (0.5, 0.5).</summary>
+    /// <summary>Released eight stacked caves with one Surface-bound and one Space-bound world marker at (0.5, 0.5), and a
+    /// disabled Space-bound world marker at (1.5, 1.5).</summary>
     internal static MarkerFixture Stacked()
     {
         MapDocument document = SupportFixtures.EightStacked();
@@ -38,6 +47,7 @@ internal static partial class MarkerFixtures
         {
             Marker("stacked-surface", 0.5f, 0.5f, new(null, SurfaceBinding("floor-2"))),
             Marker("stacked-space", 0.5f, 0.5f, SpaceHeight()),
+            Marker("stacked-disabled", 1.5f, 1.5f, SpaceHeight()) with { Enabled = false },
         });
         return new(document, SupportFixtures.Assets());
     }

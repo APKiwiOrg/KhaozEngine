@@ -1,7 +1,10 @@
 using System;
 using System.Linq;
 using System.Numerics;
+using KhaozEngine.Gpu;
 using KhaozEngine.Render3D;
+using KhaozEngine.Render3D.Internal;
+using KhaozEngine.Render3D.Rendering;
 using Xunit;
 
 namespace KhaozEngine.Tests.Render3D;
@@ -32,7 +35,8 @@ public sealed class CoverageRenderErrorTests
         Assert.True(Evaluate(data, context, out var certificate, out var failure), failure.ToString());
         Assert.True(certificate.FullCoreClearance);
         Assert.Equal(Stamp, certificate.RenderStamp);
-        Assert.InRange(certificate.WorldErrorBound, double.Epsilon, .005);
+        Assert.True(double.IsFinite(certificate.WorldErrorBound));
+        Assert.InRange(certificate.WorldErrorBound, double.Epsilon, data.Commands[0].Clearance * CoverageFrames.MarginFraction);
         Assert.True(CoverageCertification.Validate(data.Topology, data.Before, data.Final, data.Actor, data.Commands,
             context, data.Scratch, out var checkedCertificate, out failure), failure.ToString());
         Assert.Equal(certificate, checkedCertificate);
@@ -206,16 +210,18 @@ public sealed class CoverageRenderErrorTests
     static Matrix4x4 NearVp() => Matrix4x4.CreateLookAt(new(0, 0, 4), Vector3.Zero, Vector3.UnitY)
         * Matrix4x4.CreatePerspectiveFieldOfView(1, 1.4f, .1f, 40);
 
-    static Matrix4x4[] ActualVps() =>
-    [
-        NearVp(),
-        Matrix4x4.CreateLookAt(new(5, 7, 8), Vector3.Zero, Vector3.UnitY)
-            * Matrix4x4.CreateOrthographic(8, 8, .1f, 30)
-            * Matrix4x4.CreateScale(.5f, .5f, 1) * Matrix4x4.CreateTranslation(.25f, .25f, 0),
-        Matrix4x4.CreateLookAt(new(0, 0, 4), new(0, 0, 3), Vector3.UnitY)
-            * Matrix4x4.CreatePerspectiveFieldOfView(MathF.PI / 2, 1, .1f, 25)
-            * Matrix4x4.CreateScale(.25f, .5f, 1) * Matrix4x4.CreateTranslation(.5f, -.5f, 0),
-    ];
+    static Matrix4x4[] ActualVps()
+    {
+        // Fixed inverted-Y backend convention. These are CPU matrix inputs, not a native rendering proof.
+        var caps = new GpuCapabilities(clipSpaceYInverted: true, depthRangeZeroToOne: true);
+        var cascade = ShadowMapMath.BuildLightViewProj(new(-.5f, -1, -.4f), Vector3.Zero, radius: 4, resolution: 2048);
+        // Scene3D.SetShadowReceiverTail corrects the cascade before applying its X-only atlas column bake.
+        var cascadeDepth = GpuClip.Correct(cascade, caps) * ShadowMapMath.AtlasColumnTransform(index: 1, count: 4);
+        // PackPointShadowSlotForTarget corrects the finished mirrored face/near-.05/six-column atlas matrix.
+        var pointFace = GpuClip.Correct(
+            PointShadowMath.FaceViewProjection(face: 5, slot: 1, rows: 4, lightPos: new(0, 0, 4), radius: 25), caps);
+        return [GpuClip.Correct(NearVp(), caps), cascadeDepth, pointFace];
+    }
 
     sealed record Data(CoverageFixture Fixture, CoverageRefinement Topology, CoverageCommandPose[] Commands,
         Matrix4x4 Actor, CoverageScratch Scratch, ModelVertex[] Before, ModelVertex[] Final);

@@ -31,6 +31,13 @@ internal sealed record CoverageCapture(byte[] Colour, CoverageTargetReadback Dep
     internal MotionTargetReadback? Motion { get; init; }
     internal Vector2 Jitter { get; init; }
     internal CoverageTargetReadback? ReconstructionColour { get; init; }
+    /// <summary>The temporal resolve's own display-size output and state, before outline composition.</summary>
+    internal CoverageTargetReadback? ResolvedColour { get; init; }
+    internal CoverageTargetReadback? ResolvedState { get; init; }
+    internal Vector2 ResolveJitter { get; init; }
+    internal TemporalResolveUniforms ResolveUniforms { get; init; }
+    internal CoverageMaskReadback? RejectionMask { get; init; }
+    internal int OutlineGroupsRendered { get; init; }
     internal RenderFrameStats FrameStats { get; init; }
     internal TemporalDiagnostics Temporal { get; init; }
 }

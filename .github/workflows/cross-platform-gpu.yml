@@ -1176,6 +1176,9 @@ jobs:
           # still guards the rule for the next backend that shares rather than owns.
           KE_UPDATE_GOLDENS: ${{ (github.event_name == 'workflow_dispatch' && inputs.bake) && '1' || '' }}
           KE_RENDER_TEST_FILTER: ${{ github.event_name == 'workflow_dispatch' && inputs.renderTestFilter || '' }}
+          # Raw coverage evidence is written only when this names a directory, which only a manual coverage
+          # correctness dispatch does. It sits outside goldens-evidence/, so a failure upload never sweeps it up.
+          KE_COVERAGE_EVIDENCE_DIR: ${{ (github.event_name == 'workflow_dispatch' && contains(inputs.renderTestFilter, 'Coverage')) && format('{0}/coverage-evidence', github.workspace) || '' }}
           KE_TEST_FILTER: ${{ (github.event_name == 'workflow_dispatch' && inputs.renderTestFilter) || ((matrix.fullSuite == 'always' || (matrix.fullSuite == 'scheduled' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'))) && 'Category!=LiveSocket' || 'FullyQualifiedName~Golden|FullyQualifiedName~FoliageGpuTests') }}
           # WARP saturates the Windows runner's CPUs. Keep Render.Tests out of the other hosts' pass while
           # retaining parallel execution among those hosts. Golden-only and targeted render runs stay single-pass.
@@ -1510,7 +1513,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage-evidence-${{ matrix.backend }}
-          path: KhaozEngine.Render.Tests/Gpu/goldens-evidence/coverage-*
+          path: coverage-evidence/
           if-no-files-found: error
 
       # Every golden compare appends its worst-cell delta to goldens-evidence/golden-deltas.<backend>.txt, on a

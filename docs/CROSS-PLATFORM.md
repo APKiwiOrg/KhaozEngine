@@ -696,13 +696,20 @@ gives two same-named `golden-deltas.direct3d11.txt` files that are two implement
 of references. The macOS pair is the one where mixing those up costs the most, because `metal` is the fleet's
 cross-backend reference family.
 
-A manual correctness dispatch filtered to `FullyQualifiedName~Coverage` also uploads
-`coverage-evidence-<backend>` on success or failure. Its synthetic captures use unique identities and
-atomic files, with full-resolution colour, the exact temporal reconstruction source, depth, normal,
-outline, cascade and selected point-row targets. JSON records the actual backend, adapter, source row
-and frame. Temporal edge records account for mixed reconstruction footprints. These are invariant
-proofs against current-surface controls. They do not read or write backend reference grids. Inspect the
-opaque packet after correctness passes before starting a separate backend-owned golden bake.
+Coverage tests write raw evidence only when `KE_COVERAGE_EVIDENCE_DIR` names a directory. Ordinary
+runs keep every assertion and readback and write nothing, and `KE_GOLDEN_EVIDENCE_DIR` never enables
+it. A manual correctness dispatch filtered to `FullyQualifiedName~Coverage` sets it to
+`coverage-evidence/` outside `goldens-evidence/` and uploads `coverage-evidence-<backend>` on success or
+failure. Its synthetic captures use unique identities and atomic files, with full-resolution colour,
+the exact temporal reconstruction source, the resolve's own output and state, the R8 rejection mask,
+depth, normal, outline, cascade and selected point-row targets. JSON records the actual backend,
+adapter, source row, frame and jitter, the ghost envelope with every residual coordinate, and mask
+completeness against host-only current-surface controls. Per-pixel history bounds originate in independent
+current-only captures, preserve joint luma through the exact filter footprint, and reset on coverage identity,
+rejection or absence. Captured motion, depth and view uniforms condition this colour proof. They are not an
+independent motion oracle. Every channel, including zero-clamped output, is checked. These are invariant proofs. They do not read
+or write backend reference grids. Inspect the opaque packet after correctness passes before starting a
+separate backend-owned golden bake.
 
 Six artifacts carry no pixels at all and upload on `always()`, because each of them is read off a run that
 PASSED:

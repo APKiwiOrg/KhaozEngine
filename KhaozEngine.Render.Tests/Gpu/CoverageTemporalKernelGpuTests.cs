@@ -1,8 +1,6 @@
 using System;
-using System.IO;
 using System.Linq;
 using System.Numerics;
-using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
@@ -98,12 +96,10 @@ public sealed class CoverageTemporalKernelGpuTests(CoverageGpuScene scene) : ICl
                 device.WaitForIdle();
                 results[control] = TemporalTextureIo.Read(device, history.Color(history.WriteIndex));
                 states[control] = TemporalTextureIo.Read(device, history.Confidence(history.WriteIndex));
-                string directory = CoverageArtifacts.DirectoryPath();
-                Directory.CreateDirectory(directory);
-                string path = Path.Combine(directory, $"coverage-kernel-{Guid.NewGuid():N}-entry{entry}-half{half}-control{control}-{device.Backend}");
-                File.WriteAllBytes(path + ".colour.f32", MemoryMarshal.AsBytes(results[control].AsSpan()).ToArray());
-                File.WriteAllBytes(path + ".confidence.f32", MemoryMarshal.AsBytes(states[control].AsSpan()).ToArray());
-                Console.WriteLine($"coverage kernel={path} backend={device.Backend} device={device.Capabilities.DeviceName} display={dw}x{dh}");
+                string name = $"coverage-kernel-{Guid.NewGuid():N}-entry{entry}-half{half}-control{control}-{device.Backend}";
+                CoverageArtifacts.WriteRaw(name + ".colour.f32", results[control]);
+                CoverageArtifacts.WriteRaw(name + ".confidence.f32", states[control]);
+                Console.WriteLine($"coverage kernel={name} backend={device.Backend} device={device.Capabilities.DeviceName} display={dw}x{dh}");
             }
             int masked = 0, accumulated = 0;
             for (int y = 2; y < dh - 2; y++)

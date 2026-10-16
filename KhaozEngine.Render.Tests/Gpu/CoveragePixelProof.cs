@@ -10,6 +10,7 @@ internal static class CoveragePixelProof
     // A depth value is compared in the actual R32 target. Colour and normals allow one UNorm step.
     internal const float DepthTolerance = .00002f;
     internal const float NormalTolerance = 1f / 255f;
+    internal const float OpaqueColourTolerance = 1f / 255f + 1e-6f;
 
     internal static void AssertSurface(CoverageCapture baseline, CoverageCapture conformed,
         CoverageCapture oracle, bool requireBreakthrough)
@@ -18,8 +19,9 @@ internal static class CoveragePixelProof
         int breakthroughs = Breakthroughs(baseline, oracle);
         if (requireBreakthrough) Assert.True(breakthroughs > 0, $"No baseline breakthrough: {baseline.Artifact}");
         Assert.Equal(0, Breakthroughs(conformed, oracle));
-        int body = Enumerable.Range(0, conformed.Depth.Values.Length).Count(i => Host(conformed.Colour, i));
-        int plate = Enumerable.Range(0, conformed.Depth.Values.Length).Count(i => Equipment(conformed.Colour, i));
+        // Material witnesses never count depth background, whose clear colour sits one byte from the plate ratio.
+        int body = Enumerable.Range(0, conformed.Depth.Values.Length).Count(i => !Background(conformed.Depth.Values[i]) && Host(conformed.Colour, i));
+        int plate = Enumerable.Range(0, conformed.Depth.Values.Length).Count(i => !Background(conformed.Depth.Values[i]) && Equipment(conformed.Colour, i));
         Assert.True(body > 100, $"Accepted body witness {body}: {conformed.Artifact}");
         if (requireBreakthrough) Assert.True(plate > 100, $"Accepted plate witness {plate}: {conformed.Artifact}");
         Console.WriteLine($"coverage pixels={conformed.Artifact} baselineBreakthrough={breakthroughs} body={body} plate={plate}");
@@ -36,85 +38,6 @@ internal static class CoveragePixelProof
         AssertTargetsEqual(conformed, oracle);
     }
 
-    internal static void AssertNoGhostColour(CoverageCapture actual, CoverageCapture current)
-    {
-        int mismatches = 0, witnesses = 0, plateWitnesses = 0, protectedWitnesses = 0, quantizedClassChanges = 0;
-        var excluded = new System.Collections.Generic.List<object>();
-        for (int y = 1; y < CoverageGpuScene.Height - 1; y++)
-            for (int x = 1; x < CoverageGpuScene.Width - 1; x++)
-            {
-                int i = y * CoverageGpuScene.Width + x;
-                int kind = Kind(current.Colour, i);
-                bool interior = true;
-                for (int dy = -1; dy <= 1; dy++)
-                    for (int dx = -1; dx <= 1; dx++)
-                        interior &= Kind(current.Colour, i + dy * CoverageGpuScene.Width + dx) == kind;
-                int ix = Math.Clamp((int)((x + .5f) * current.Depth.Width / CoverageGpuScene.Width + current.Jitter.X), 0, current.Depth.Width - 1);
-                int iy = Math.Clamp((int)((y + .5f) * current.Depth.Height / CoverageGpuScene.Height + current.Jitter.Y), 0, current.Depth.Height - 1);
-                bool background = Background(current.Depth.Values[iy * current.Depth.Width + ix]);
-                var source = current.ReconstructionColour!;
-                int sourceKind = SourceKind(source, ix, iy);
-                interior &= sourceKind == kind;
-                for (int dy = -1; dy <= 1; dy++)
-                    for (int dx = -1; dx <= 1; dx++)
-                    {
-                        int sampleX = Math.Clamp(ix + dx, 0, current.Depth.Width - 1);
-                        int sampleY = Math.Clamp(iy + dy, 0, current.Depth.Height - 1);
-                        interior &= Background(current.Depth.Values[sampleY * current.Depth.Width + sampleX]) == background;
-                        interior &= SourceKind(source, sampleX, sampleY) == sourceKind;
-                    }
-                if (!interior)
-                {
-                    if (Kind(actual.Colour, i) != kind)
-                        excluded.Add(new { x, y, ix, iy, expected = kind, actual = Kind(actual.Colour, i) });
-                    continue;
-                }
-                witnesses++;
-                if (kind == 2) plateWitnesses++;
-                if (kind == 1) protectedWitnesses++;
-                if (SignificantClassMismatch(actual.Colour, current.Colour, i)) mismatches++;
-                else if (Kind(actual.Colour, i) != kind) quantizedClassChanges++;
-            }
-        System.IO.File.WriteAllText(System.IO.Path.Combine(CoverageArtifacts.DirectoryPath(),
-            $"coverage-edge-witnesses-{Guid.NewGuid():N}.json"), System.Text.Json.JsonSerializer.Serialize(new
-            { actual.Artifact, Current = current.Artifact, witnesses, plateWitnesses, protectedWitnesses, quantizedClassChanges, Excluded = excluded }));
-        Assert.True(witnesses > 100);
-        if (!current.Artifact.Contains("-gone")) Assert.True(protectedWitnesses > 100, $"No protected colour interior: {current.Artifact}");
-        if (current.Artifact.Contains("-equip") || current.Artifact.Contains("-steady")
-            || current.Artifact.Contains("-blended-motion") || current.Artifact.Contains("-replacement")
-            || current.Artifact.Contains("-return") || current.Artifact.Contains("-reequip") || current.Artifact.Contains("-reset"))
-            Assert.True(plateWitnesses > 100, $"No interior plate colour proof: {current.Artifact}");
-        Assert.True(mismatches == 0, $"Ghost colour witnesses {mismatches}: {actual.Artifact}");
-    }
-
-    internal static bool SignificantClassMismatch(byte[] actual, byte[] current, int pixel)
-    {
-        if (Kind(actual, pixel) == Kind(current, pixel)) return false;
-        for (int c = 0; c < 3; c++)
-            if (Math.Abs(actual[pixel * 4 + c] - current[pixel * 4 + c]) > 1) return true;
-        return false;
-    }
-
-    internal static void AssertMixedReconstructionFootprint(CoverageCapture capture, int x, int y)
-    {
-        var source = capture.ReconstructionColour!;
-        int ix = Math.Clamp((int)((x + .5f) * source.Width / CoverageGpuScene.Width + capture.Jitter.X), 0, source.Width - 1);
-        int iy = Math.Clamp((int)((y + .5f) * source.Height / CoverageGpuScene.Height + capture.Jitter.Y), 0, source.Height - 1);
-        int centre = SourceKind(source, ix, iy), different = 0;
-        for (int dy = -1; dy <= 1; dy++)
-            for (int dx = -1; dx <= 1; dx++)
-                if (SourceKind(source, Math.Clamp(ix + dx, 0, source.Width - 1), Math.Clamp(iy + dy, 0, source.Height - 1)) != centre) different++;
-        Assert.True(different > 0, $"Previously failing coordinate is not a mixed source footprint: {x},{y}");
-    }
-
-    static int SourceKind(CoverageTargetReadback source, int x, int y)
-    {
-        int i = (y * source.Width + x) * source.Channels;
-        return source.Values[i] > source.Values[i + 2] * 1.4f ? 1
-            : source.Values[i + 2] > source.Values[i] * 2f ? 2 : 0;
-    }
-
-    static int Kind(byte[] colour, int i) => Host(colour, i) ? 1 : Equipment(colour, i) ? 2 : 0;
     static bool Host(byte[] colour, int i) => colour[i * 4] > colour[i * 4 + 2] * 1.4f;
     static bool Equipment(byte[] colour, int i) => colour[i * 4 + 2] > colour[i * 4] * 2f;
     internal static int Breakthroughs(CoverageCapture actual, CoverageCapture oracle) =>

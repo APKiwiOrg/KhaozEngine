@@ -11,6 +11,9 @@ internal sealed record CoverageTargetReadback(int Width, int Height, int Channel
 
 public sealed partial class Scene3D
 {
+    // Groups whose target outlines this frame actually rendered and composed, distinct from retained mask storage.
+    int _targetOutlineGroupsRendered;
+    internal int TargetOutlineGroupsRenderedForTests => _targetOutlineGroupsRendered;
     internal ReadOnlySpan<System.Numerics.Matrix4x4> CoveragePointMatricesForTests =>
         CollectionsMarshal.AsSpan(_coveragePointMatrices);
     internal bool CoverageMainVisibleForTests(SkinnedCoverageFrame frame)

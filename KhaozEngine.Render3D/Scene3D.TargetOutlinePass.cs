@@ -102,6 +102,7 @@ public sealed partial class Scene3D
         _meshOutlineGroups.Clear();
         _outlineBoneMatrices.Clear();
         _meshOutlinePartCount = 0;
+        _targetOutlineGroupsRendered = 0;
     }
 
     sealed class MeshOutlineDrawGroup
@@ -199,6 +200,7 @@ public sealed partial class Scene3D
             bool occluded = group.Occlusion == MeshOutlineOcclusion.SceneDepth;
             _targetOutlines.Render(cl, _res, target, group.Color, group.WidthPixels, Post.BackgroundColor.R,
                 Post.Pixelated, groupIndex, occluded);
+            _targetOutlineGroupsRendered++;
             _frameStats.DrawCalls += groupDraws * (occluded ? 2 : 1) + 1;
         }
     }

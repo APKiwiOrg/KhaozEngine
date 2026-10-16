@@ -45,7 +45,10 @@ public sealed class CoverageSurfaceGpuTests(CoverageGpuScene scene) : IClassFixt
         var row = new CoverageCase(0);
         var original = scene.Capture(row, false, true);
         var current = scene.Capture(row, true, true);
-        Assert.Throws<Xunit.Sdk.TrueException>(() => CoveragePixelProof.AssertNoGhostColour(original, current));
+        // The original skin is a full substitution. Both positive witness gates pass, so only the envelope can fail.
+        var failure = Assert.Throws<Xunit.Sdk.TrueException>(() => CoverageGhostEnvelope.Assert(original.ReconstructionColour!,
+            null, current.ReconstructionColour!, current.Depth, current.Jitter, original.Artifact, requireHost: true, requirePlate: true));
+        Assert.StartsWith("Ghost colour witnesses", failure.Message);
     }
 
     [GpuFact]

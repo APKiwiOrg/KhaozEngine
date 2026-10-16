@@ -77,6 +77,7 @@ public sealed class TileWorldSource
         doc.CatalogPaths.AddRange(m.CatalogPaths);
         foreach (TileFoliageLayerDto layer in m.FoliageLayers ?? new List<TileFoliageLayerDto>())
             doc.SetFoliageLayer(TileWorldFile.FoliageFromDto(layer));
+        if (m.Clearance is not null) doc.SetClearance(TileWorldFile.ClearanceFromDto(m.Clearance));
         var known = new Dictionary<RegionCoord, string>();
         foreach (TileWorldManifestRegion r in m.Regions)
         {

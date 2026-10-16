@@ -79,12 +79,17 @@ public sealed partial class Scene3D
             p.Equipment[c] = found;
         }
         palette.CopyTo(p.Palette);
+        CoverageStageObserverForTests?.Invoke(CoverageStageSpan.Skinning, true);
         Span<Matrix4x4> composed = stackalloc Matrix4x4[SkinningMath.MaxBonesPerDraw];
         for (int i = 0; i < palette.Length; i++) composed[i] = SkinningMath.Compose(palette[i], conformer.InverseBind[i]);
         ReadOnlySpan<SkinnedVertex> source = conformer.Topology.Source.SkinVertices;
         for (int i = 0; i < source.Length; i++) p.Posed[i] = SkinningMath.SkinVertex(source[i], composed[..palette.Length]);
-        if (!CoverageEvaluator.TryEvaluateGeometry(conformer.Topology, p.Posed, model, commands, conformer.Scratch, p.Candidate, out failure)
-            || !conformer.Topology.TryInterpolate(p.Posed, p.Before, out failure)) return false;
+        CoverageStageObserverForTests?.Invoke(CoverageStageSpan.Skinning, false);
+        CoverageStageObserverForTests?.Invoke(CoverageStageSpan.GeometryEvaluation, true);
+        bool evaluated = CoverageEvaluator.TryEvaluateGeometry(conformer.Topology, p.Posed, model, commands, conformer.Scratch,
+            p.Candidate, out failure);
+        CoverageStageObserverForTests?.Invoke(CoverageStageSpan.GeometryEvaluation, false);
+        if (!evaluated || !conformer.Topology.TryInterpolate(p.Posed, p.Before, out failure)) return false;
         // The staged surface is immutable, so its full-surface reductions are taken once here for every pass.
         MeshBounds candidate = MeshBounds.FromVertices(p.Candidate), uncovered = MeshBounds.FromVertices(p.Posed);
         p.CandidateBounds = candidate;

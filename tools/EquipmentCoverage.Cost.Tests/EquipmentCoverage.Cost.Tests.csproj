@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Opt-in equipment coverage cost measurements. Deliberately outside KhaozEngine.slnx and every CI test
+       selection, so ordinary builds and tests never start a workload. Run it only through the hosted stress
+       workflow with an owner-authorized manifest committed under authorized/ and an exact case filter. -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <OutputType>Library</OutputType>
+    <RootNamespace>KhaozEngine.Tests.CoverageCost</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="authorized/*.json" CopyToOutputDirectory="PreserveNewest" LinkBase="authorized" />
+  </ItemGroup>
+</Project>

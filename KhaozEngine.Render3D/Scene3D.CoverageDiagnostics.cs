@@ -9,11 +9,20 @@ internal sealed record CoverageTargetReadback(int Width, int Height, int Channel
     internal int SourceRow { get; init; } = -1;
 }
 
+/// <summary>Disjoint CPU stages inside coverage staging and render resolution, for optional cost attribution.
+/// GeometryEvaluation is the whole evaluator call: construction, interpolation, geometry certification and normals.
+/// RenderCertification is the late per-preparation validation only, nested inside the render resolution.</summary>
+internal enum CoverageStageSpan { Skinning, GeometryEvaluation, RenderCertification }
+
 public sealed partial class Scene3D
 {
     // Groups whose target outlines this frame actually rendered and composed, distinct from retained mask storage.
     int _targetOutlineGroupsRendered;
     internal int TargetOutlineGroupsRenderedForTests => _targetOutlineGroupsRendered;
+    /// <summary>Null in ordinary use, so the coverage path pays one null check per bracket and calls nothing.</summary>
+    internal Action<CoverageStageSpan, bool>? CoverageStageObserverForTests { get; set; }
+    internal (int Preparations, int EquipmentStages) CoverageArenaCapacityForTests =>
+        (_coverageArena.Preparations.Capacity, _coverageArena.Equipment.Capacity);
     internal ReadOnlySpan<System.Numerics.Matrix4x4> CoveragePointMatricesForTests =>
         CollectionsMarshal.AsSpan(_coveragePointMatrices);
     internal bool CoverageMainVisibleForTests(SkinnedCoverageFrame frame)

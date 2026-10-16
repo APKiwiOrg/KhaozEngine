@@ -65,8 +65,15 @@ public sealed partial class Scene3D
             var stamp = new CoverageRenderStamp(_coverageIdentity, p.Generation, p.View, p.Actor, p.Id);
             var context = new CoverageRenderContext(p.Owner.Topology, stamp, CurrentFrameView.RenderOrigin,
                 CollectionsMarshal.AsSpan(p.Passes));
-            if (complete && CoverageCertification.Validate(p.Owner.Topology, p.Before, p.Candidate, p.Model,
-                p.Commands.AsSpan(0, p.CommandCount), context, p.Owner.Scratch, out p.Certificate, out failure))
+            bool certified = false;
+            if (complete)
+            {
+                CoverageStageObserverForTests?.Invoke(CoverageStageSpan.RenderCertification, true);
+                certified = CoverageCertification.Validate(p.Owner.Topology, p.Before, p.Candidate, p.Model,
+                    p.Commands.AsSpan(0, p.CommandCount), context, p.Owner.Scratch, out p.Certificate, out failure);
+                CoverageStageObserverForTests?.Invoke(CoverageStageSpan.RenderCertification, false);
+            }
+            if (certified)
             {
                 p.Outcome = new(CoveragePresentation.Covered, default);
                 CoveredHostPreparationCount++;

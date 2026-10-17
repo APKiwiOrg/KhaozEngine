@@ -21,10 +21,10 @@ namespace KhaozEngine.BugReports.Client;
 /// sections (<c>build</c>, <c>platform</c>, <c>graphics</c>, <c>session</c>, <c>input</c>, <c>performance</c> and
 /// <c>log</c>) are registered ahead of any <see cref="AddSection"/>, and <see cref="RecentLog"/> is attached to
 /// <see cref="Log.Manager"/> when one is configured.</para>
-/// <para>The platform facts that never change are read once here. The previous crash scan runs once on the thread pool
-/// over the directory of <see cref="BugReportServiceOptions.SessionLogPath"/>, and is skipped when no session log is
-/// set. Until it finishes the <c>session</c> section reports no previous crash, so the trigger frame never touches the
-/// disk.</para>
+/// <para>The platform facts that never change, the admitted <c>KE_</c> variables among them, are read once here. The
+/// previous crash scan runs once on the thread pool over the directory of
+/// <see cref="BugReportServiceOptions.SessionLogPath"/>, and is skipped when no session log is set. Until it finishes
+/// the <c>session</c> section reports no previous crash, so the trigger frame never touches the disk.</para>
 /// <para>Construct, call and dispose it on the frame thread. <see cref="RetryQueuedAsync"/> completes off it, and
 /// <see cref="ReportCaptured"/> and <see cref="ReportSubmitted"/> are raised on it.</para>
 /// </summary>
@@ -98,7 +98,7 @@ public sealed class BugReportService : IDisposable
         _removeOverlay = removeOverlay;
         _overlay = new ServiceOverlay(this);
         _logLink = new DetachableLogSink(RecentLog);
-        _invariants = ClientFacts.CaptureInvariants();
+        _invariants = ClientFacts.CaptureInvariants(_redactor);
         _processStart = ProcessStart(time);
         _build = ClientFacts.Build(null, options.GameId, options.GameDisplayName);
 
@@ -257,7 +257,7 @@ public sealed class BugReportService : IDisposable
     void AddBuiltInSections(AppWindow? window)
     {
         _sections.Add(new BuildSection(() => _build));
-        _sections.Add(new PlatformSection(() => ClientFacts.Platform(_invariants, TriggerFrame(), _redactor)));
+        _sections.Add(new PlatformSection(() => ClientFacts.Platform(_invariants, TriggerFrame())));
         if (window is not null) _sections.Add(new GraphicsSection(() => ClientFacts.Graphics(window, TriggerFrame())));
         _sections.Add(new SessionSection(SessionFacts));
         _sections.Add(new InputSection(() => new InputFacts(ClientFacts.Devices(TriggerFrame()),

@@ -173,32 +173,34 @@ internal static class ClientFacts
     /// <summary>
     /// The platform facts that cannot change while the process runs. The host calls this once at startup and keeps
     /// the result for <see cref="Platform"/>: <see cref="RuntimeInformation.OSDescription"/> lazily reads
-    /// <c>/etc/os-release</c> on Linux, so it must never be read in the trigger frame.
+    /// <c>/etc/os-release</c> on Linux, and selecting the <c>KE_</c> variables reads the process environment and runs
+    /// the redactor's patterns, so neither may run in the trigger frame. The environment holds only what
+    /// <paramref name="redactor"/> admits, already masked.
     /// </summary>
-    internal static PlatformInvariants CaptureInvariants() => new(
+    internal static PlatformInvariants CaptureInvariants(ReportRedactor redactor) => new(
         RuntimeInformation.OSDescription,
         RuntimeInformation.OSArchitecture.ToString(),
         RuntimeInformation.ProcessArchitecture.ToString(),
         RuntimeInformation.FrameworkDescription,
         Environment.ProcessorCount,
         GC.GetGCMemoryInfo().TotalAvailableMemoryBytes,
-        CultureInfo.CurrentCulture.Name);
+        CultureInfo.CurrentCulture.Name,
+        redactor.SelectEnvironment(ReadEnvironment()));
 
     /// <summary>
-    /// The platform facts for the trigger frame. The runtime facts are the <paramref name="invariants"/> that
-    /// <see cref="CaptureInvariants"/> read at startup, never read here. Sizes come from <paramref name="frame"/>, so
-    /// no window getter runs: its <see cref="InputState.Width"/> and <see cref="InputState.Height"/> are the
-    /// framebuffer in pixels, the window size is those divided by <see cref="InputState.FramebufferScale"/> and
-    /// rounded, and the content scale is the scale's X component. The environment holds only what
-    /// <paramref name="redactor"/> admits.
+    /// The platform facts for the trigger frame. The runtime facts and the environment are the
+    /// <paramref name="invariants"/> that <see cref="CaptureInvariants"/> read at startup, never read here. Sizes come
+    /// from <paramref name="frame"/>, so no window getter runs: its <see cref="InputState.Width"/> and
+    /// <see cref="InputState.Height"/> are the framebuffer in pixels, the window size is those divided by
+    /// <see cref="InputState.FramebufferScale"/> and rounded, and the content scale is the scale's X component.
     /// </summary>
-    internal static PlatformFacts Platform(PlatformInvariants invariants, InputState frame, ReportRedactor redactor)
+    internal static PlatformFacts Platform(PlatformInvariants invariants, InputState frame)
     {
         Vector2 scale = frame.FramebufferScale;
         return new PlatformFacts(invariants.Os, invariants.OsArchitecture, invariants.ProcessArchitecture,
             invariants.Runtime, invariants.CpuCount, invariants.TotalMemoryBytes, invariants.Locale,
             ToWindow(frame.Width, scale.X), ToWindow(frame.Height, scale.Y), frame.Width, frame.Height, scale.X,
-            redactor.SelectEnvironment(ReadEnvironment()));
+            invariants.Environment);
     }
 
     /// <summary>

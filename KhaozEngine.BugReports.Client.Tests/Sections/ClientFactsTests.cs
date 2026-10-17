@@ -152,7 +152,8 @@ public sealed class ClientFactsTests
     [Fact]
     public void Captured_invariants_are_this_process_facts()
     {
-        PlatformInvariants invariants = ClientFacts.CaptureInvariants();
+        var redactor = new ReportRedactor();
+        PlatformInvariants invariants = ClientFacts.CaptureInvariants(redactor);
 
         Assert.Equal(RuntimeInformation.OSDescription, invariants.Os);
         Assert.Equal(RuntimeInformation.OSArchitecture.ToString(), invariants.OsArchitecture);
@@ -161,6 +162,10 @@ public sealed class ClientFactsTests
         Assert.Equal(Environment.ProcessorCount, invariants.CpuCount);
         Assert.True(invariants.TotalMemoryBytes > 0);
         Assert.Equal(CultureInfo.CurrentCulture.Name, invariants.Locale);
+        var variables = new List<KeyValuePair<string, string?>>();
+        foreach (System.Collections.DictionaryEntry entry in Environment.GetEnvironmentVariables())
+            variables.Add(new KeyValuePair<string, string?>((string)entry.Key, entry.Value as string));
+        Assert.Equal(redactor.SelectEnvironment(variables), invariants.Environment);
     }
 
     [Theory]
@@ -171,12 +176,13 @@ public sealed class ClientFactsTests
     public void Platform_sizes_come_from_the_trigger_frame(int framebufferWidth, int framebufferHeight, float scale,
         int windowWidth, int windowHeight)
     {
-        var invariants = new PlatformInvariants("Linux 6.8", "X64", "X64", ".NET 10.0.0", 8, 1024L, "en-NZ");
+        TelemetryHeaderValue[] environment = [new("KE_GRAPHICS_BACKEND", "metal")];
+        var invariants = new PlatformInvariants("Linux 6.8", "X64", "X64", ".NET 10.0.0", 8, 1024L, "en-NZ", environment);
         var frame = new InputState(Vector2.Zero, new Vector2(scale, scale), new HashSet<Key>(), new HashSet<Key>(),
             new HashSet<Key>(), new HashSet<MouseButton>(), new HashSet<MouseButton>(), Vector2.Zero, Vector2.Zero, 0f,
             framebufferWidth, framebufferHeight);
 
-        PlatformFacts facts = ClientFacts.Platform(invariants, frame, new ReportRedactor());
+        PlatformFacts facts = ClientFacts.Platform(invariants, frame);
 
         Assert.Equal(("Linux 6.8", "X64", "X64", ".NET 10.0.0", 8, 1024L, "en-NZ"),
             (facts.Os, facts.OsArchitecture, facts.ProcessArchitecture, facts.Runtime, facts.CpuCount, facts.TotalMemoryBytes,
@@ -184,7 +190,8 @@ public sealed class ClientFactsTests
         Assert.Equal((windowWidth, windowHeight), (facts.WindowWidth, facts.WindowHeight));
         Assert.Equal((framebufferWidth, framebufferHeight), (facts.FramebufferWidth, facts.FramebufferHeight));
         Assert.Equal(scale, facts.ContentScale);
-        Assert.All(facts.Environment, variable => Assert.StartsWith("KE_", variable.Key, StringComparison.Ordinal));
+        // The trigger frame reuses the environment selected at startup and never reads the process environment.
+        Assert.Same(environment, facts.Environment);
     }
 
     static void Touch(string directory, string name, DateTimeOffset writtenAt)

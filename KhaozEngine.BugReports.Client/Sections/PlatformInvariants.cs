@@ -1,3 +1,6 @@
+using System.Collections.Generic;
+using KhaozEngine.Diagnostics;
+
 namespace KhaozEngine.BugReports.Client;
 
 /// <summary>
@@ -11,5 +14,6 @@ namespace KhaozEngine.BugReports.Client;
 /// <param name="CpuCount">Logical processors available to the process.</param>
 /// <param name="TotalMemoryBytes">Physical memory the runtime may use.</param>
 /// <param name="Locale">The current culture name.</param>
+/// <param name="Environment">The <c>KE_</c> variables, selected and masked by <see cref="ReportRedactor.SelectEnvironment"/>.</param>
 internal sealed record PlatformInvariants(string Os, string OsArchitecture, string ProcessArchitecture, string Runtime,
-    int CpuCount, long TotalMemoryBytes, string Locale);
+    int CpuCount, long TotalMemoryBytes, string Locale, IReadOnlyList<TelemetryHeaderValue> Environment);

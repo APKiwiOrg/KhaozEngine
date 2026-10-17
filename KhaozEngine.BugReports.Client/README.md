@@ -70,7 +70,8 @@ Every member is frame thread only. `RetryQueuedAsync` completes off it.
 | `performance` | FPS, frame time average, minimum and maximum, managed bytes, per-pass timings and the last 300 frame times. |
 | `log` | The newest lines of `RecentLog` that fit 256 KiB. |
 
-The platform facts that never change are read once when the service is built. The window and graphics facts come
+The platform facts that never change, the admitted and masked `KE_` variables among them, are read once when the
+service is built. The window and graphics facts come
 from the trigger frame's `InputState` and from fields the window latched, so a section never calls a live window
 getter. The previous crash scan runs once on the thread pool over the directory of
 `BugReportServiceOptions.SessionLogPath`. With no session log path it is skipped and `session` reports no previous

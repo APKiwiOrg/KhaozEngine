@@ -419,7 +419,7 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
         foreach (var (query, status, height) in cases)
         {
             SupportSample candidate = FootSupport.Find(null, null, scene.World, lease, query);
-            FootprintOracleSupport oracle = SupportGateCostScenes.Expected(scene, row, query);
+            FootprintOracleSupport oracle = SupportGateCostScenes.Expected(scene, row, query, guarded: true);
             Assert.Equal(status, candidate.Status);
             Assert.Equal(status, oracle.Status);
             if (status == SupportStatus.Refused) continue;
@@ -445,7 +445,8 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
         var query = new FootSupportQuery(Vector2.Zero, 0, 0.2f, 0.4f, 0.4f, MathF.Cos(MathF.PI / 4));
         using IPhysicsQueryLease lease = scene.World.AcquireQueryReadLease();
         SupportSample candidate = FootSupport.Find(null, null, scene.World, lease, query);
-        FootprintOracleSupport oracle = SupportGateCostScenes.Expected(scene, new SupportCostRow("mesh plate"), query);
+        FootprintOracleSupport oracle = SupportGateCostScenes.Expected(scene, new SupportCostRow("mesh plate"), query,
+            guarded: true);
         SupportStatus expected = front ? SupportStatus.Refused : SupportStatus.Walkable;
         Assert.Equal(expected, candidate.Status);
         Assert.Equal(expected, oracle.Status);
@@ -467,7 +468,7 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
         using IPhysicsQueryLease lease = scene.World.AcquireQueryReadLease();
         Assert.Equal(SupportStatus.Refused, FootSupport.Find(null, null, scene.World, lease, query).Status);
         var error = Assert.Throws<NotSupportedException>(() =>
-            SupportGateCostScenes.Expected(scene, new SupportCostRow("steep plate"), query));
+            SupportGateCostScenes.Expected(scene, new SupportCostRow("steep plate"), query, guarded: true));
         Assert.Contains("third guard refusal", error.Message, StringComparison.Ordinal);
     }
 

@@ -208,7 +208,7 @@ internal static class SupportGateCostScenes
     /// <summary>The support under <paramref name="q"/>. A guarded expectation judges a FootSupport read, so it applies
     /// the proposal refusals SG-6 keeps. An unguarded one is the geometric reference for a legacy pass or a placement.</summary>
     internal static FootprintOracleSupport Expected(SupportFootprintScene scene, SupportCostRow row, FootSupportQuery q,
-        bool guarded = true)
+        bool guarded)
     {
         SupportFootprintRequest request = SupportFootprintTests.Request(q.Axis.X, q.Axis.Y, q.FootRadius,
             q.CosMaxSlope, (double)q.FeetY - q.ReachDown, (double)q.FeetY + q.ReachUp);

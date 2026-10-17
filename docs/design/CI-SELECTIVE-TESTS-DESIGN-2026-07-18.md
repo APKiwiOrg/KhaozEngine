@@ -17,7 +17,8 @@ Goals:
 2. Test layout aligned to the package dependency layering, so "affected" is meaningful and stays
    meaningful as the engine grows (the split is the durable asset, the CI wiring rides on it).
 3. Full validation unchanged where it gates publishing: tag runs and the weekly hosted sweep still run
-   everything.
+   everything. Since Decision 7 a tag run proves that by citing the successful `workflow_dispatch` run of
+   `ci` at its exact commit, and repeats everything itself only when no such run exists.
 
 Non-goals: changing `cross-platform-gpu.yml` legs or tiers (only its paths update), tiering the
 self-hosted Metal leg (watch item in #207), any consumer smoke leg (declined in #207), per-area
@@ -123,7 +124,7 @@ divergence.
 ## Decision 5: ci.yml event split
 
 Tag pushes and `workflow_dispatch` keep the current full path unchanged: restore, build, full test,
-determinism double-pass, pack, publish. Push (main) and `pull_request` take a selective path,
+determinism double-pass, pack, publish (Decision 7 later let a tag reuse a prior dispatch's tests). Push (main) and `pull_request` take a selective path,
 encapsulated in `scripts/ci-selective-test.sh` so it is runnable and testable locally:
 
 1. Diff base: `github.event.before` for pushes, merge-base against the base branch for PRs. A zero or
@@ -161,6 +162,50 @@ Vulkan one-device-at-a-time serialization is now per-assembly only, so Render.Te
 MapEditor.Tests device work can overlap on the full path. The first full dispatch over the split
 (run 29636574022) passed all three legs, so the overlap is tolerated so far, tracked as lead #218.
 
+## Decision 7: a tag run reuses the hosted pre-tag gate
+
+Added 2026-10-17. The release ritual dispatches `ci` on `main` at the release commit as the hosted
+pre-tag gate, then tags that commit. The tag run used to repeat the whole gate (restore, build, full
+test, determinism double-pass, the three SQL Server jobs) before pack and publish, at the same commit,
+minutes later, with nothing new to learn.
+
+A `prior-gate` job now runs first on tags and dispatches. It calls `scripts/ci-prior-gate.sh
+<github.sha>`, which asks the Actions API for `workflow_dispatch` runs of `.github/workflows/ci.yml` at
+that exact commit. A run qualifies only when its `head_sha` equals the tag's commit, its event is
+`workflow_dispatch`, its status is `completed` with conclusion `success` for the whole run, its `path` is
+`.github/workflows/ci.yml` and both `repository` and `head_repository` are this repository. The newest
+qualifying run wins. Two green dispatches at one commit ran the same workflow file over the same tree.
+
+On reuse the tag's `build-test-pack` restores, builds, packs and publishes, and skips the full test and
+the determinism pass. The three SQL Server jobs skip too. The reused dispatch always runs them, and a
+whole-run `success` means each one executed every selected fact, since each fails when any fact
+skips. They never gated publish, so on a tag they were evidence only, and that evidence already sits on
+the reused run. The only thing a repeat could add is drift in the `2022-latest` service image between
+the dispatch and the tag, which tests the environment, not the engine. The `prior-gate` job logs the
+reused run's URL, adds a notice annotation and a step summary line, and each skipping job logs the same
+URL, so the release report cites it.
+
+The lookup fails closed. A gh or API error, a response that is not a run list, a `total_count` above the
+runs returned (a pagination gap), or any returned run outside the query filters means no reuse, and the
+tag runs the full sequence as before. The downstream jobs run under `!cancelled()`, so a failed or
+skipped `prior-gate` also leaves them on the full path. Several successful dispatches at one commit are
+not treated as ambiguous, because they are equivalent proofs. The job holds `contents: read` for its
+checkout and `actions: read` for the query, and nothing else, so the read grant is never next to the
+publish token.
+
+Reuse cannot chain. Only `workflow_dispatch` runs qualify, and a dispatch never reuses: on a dispatch the
+lookup runs with `--report-only`, which always outputs `reuse=false`. That keeps the real query exercised
+on every gate run without changing what the gate runs. A wiring bug that makes the script exit 2 fails
+`prior-gate` on the dispatch, which blocks the release before any tag exists.
+
+The reuse rule rests on one invariant inside this file: a `workflow_dispatch` of `ci` runs the full
+sequence. Matching on `head_sha` means the reused run executed this same `ci.yml`, so the invariant is
+checked by reading the file at the tag's commit. An edit that makes dispatches skip work must revisit
+this decision. The cost is one short serial job before `build-test-pack` on tags and dispatches. Push and
+pull request runs skip `prior-gate` and do not wait on it. Covered by `scripts/tests/ci-prior-gate.test.sh`
+with a stubbed `gh` (match, no match, failed, cancelled and in-progress runs, other event, commit,
+workflow or repository, API error, pagination gap, malformed responses, report-only and usage errors).
+
 ## Execution order
 
 One commit per stage, full `dotnet build` + root `dotnet test` green after each:
@@ -187,7 +232,8 @@ One commit per stage, full `dotnet build` + root `dotnet test` green after each:
 ## Verification
 
 Each stage gates on a local full suite. After merge and release: the main push run must take the
-selective path (expected FULL, the bump is in the diff), the tag run must run full and publish, and
+selective path (expected FULL, the bump is in the diff), the tag run must run full and publish (under
+Decision 7 a tag run with a green dispatch at its commit reuses it instead), and
 the next natural docs-only push demonstrates the fast path. All three watched to green before the
 issue closes.
 

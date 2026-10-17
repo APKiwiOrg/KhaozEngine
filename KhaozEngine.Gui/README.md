@@ -831,7 +831,8 @@ chat.Draw(batch, white);
     too), and a window that forgets the call gets world clicks through it with nothing to catch that.
     `WindowDrag` is the title-bar drag. It stores an OFFSET from wherever the window's own layout put it, so a
     window keeps its placement rule across a resize. `Update(pointer, grip)` latches the grab once on the press
-    frame (`Pointer.IsPressOriginFresh`) and holds it until the button goes up, wherever the cursor wanders,
+    frame (`Pointer.IsPressOriginFresh` and `Pointer.IsDragStartIn(grip)`, so an occluded press origin never
+    latches) and holds it until the button goes up, wherever the cursor wanders,
     because re-reading the press origin every frame drops the grab as soon as the grip travels further than the
     title row is tall. A held drag calls `Pointer.ConsumeGesture`, so a release over the world is not a world
     click. `Place(natural, viewport)` clamps the window inside the viewport and writes the clamp BACK, so
@@ -857,9 +858,30 @@ chat.Draw(batch, white);
     PanelFrame.DrawFrame(batch, white, bounds);
     PanelFrame.DrawTitle(batch, font, white, bounds, stripHeight: 0f, title: BankStrings.Title,
         readout: LocalizedText.Of(BankStrings.Used, used, capacity), showClose: true,
-        closeHovered: close.Contains(pointer.Position));
+        closeHovered: pointer.IsPointerIn(close));
     DrawRows(batch, PanelFrame.ContentRect(bounds, stripHeight: 0f));
     ```
+  - `WindowStack` (since 21.3.0) - the z-order of overlapping non-modal windows. It raises a window on open and
+    on press, updates open windows top to bottom with every window above occluded on the `Pointer`, and draws
+    them bottom to top. Update it before any layer beneath reads the pointer, and draw tooltips and menus after
+    its `Draw`. See
+    [Overlapping windows](../docs/USING-KHAOZENGINE.md#overlapping-windows-windowstack-2130).
+    - `Add(window, band)`, `Remove`, `BringToFront` and `Order` manage registration and order.
+    - `Update(pointer, input, dt, receivesInput)` updates the windows and leaves their areas occluded and
+      reserved with `BlockRegion` for the layers beneath.
+    - `Draw(batch, pointer)` occludes the open windows above each window, mirrors the last update's capture
+      and no-input modes, and clears occlusion at the end.
+    - `Covers(point)` reports whether an open window lies under a point.
+    - `CloseFront()` closes the top-most open window that closes on Escape.
+    - `IsCapturing` is true when the last `Update` ran in capture mode. Gate a global Escape on it, because a
+      capturing window's own popup handles Escape that frame.
+    - `WindowBand` is `Docked`, `Floating` or `Topmost`, bottom to top. No window rises above a higher band.
+    - `IStackWindow` is the window contract: `IsOpen`, `Bounds`, `CapturesPointer`, `ClosesOnEscape`,
+      `Contains`, `Occlude`, `Close`, `Update` and `Draw`.
+    - `WindowUpdate` carries `Pointer`, `Input`, `Dt`, `ReceivesInput` and `IsFront` to one window's update.
+    - `SlotGrid`, `GuiDragContext.OfferTargetIn`, `TreeView`, `ScrollablePanel` drag edge scroll,
+      `PropertyGrid`, `GuiSurface.HoverCaptured` and `PointerCaptured`, `ScreenStack.PressBeganOverUi`,
+      `PannableCanvas.TryGetTap` and `DraggableBottomSheet` honour occlusion.
   - `PopupPanel` - modal dialog: scrim + title + `PopupRow` content + dismiss/primary footer. `Update` reserves
     the whole `ScrimRect` (the full viewport the scrim dims) through `Pointer.BlockRegion`, not just the panel,
     so a click on the dimmed area cannot reach the UI underneath. That only matters when the popup is driven

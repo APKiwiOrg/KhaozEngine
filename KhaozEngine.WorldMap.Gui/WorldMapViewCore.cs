@@ -152,7 +152,7 @@ internal sealed class WorldMapViewCore<TTexture> : IDisposable where TTexture : 
         UploadVisibleChunks();
         RebuildDrawList();
         _textures.Evict(MaxTextures);
-        RebuildOverlays(pointer.Position);
+        RebuildOverlays(pointer.IsOccluded(pointer.Position) ? new Vector2(float.NaN) : pointer.Position);
     }
 
     bool UsableViewport => Viewport.Width >= 1f && Viewport.Height >= 1f;

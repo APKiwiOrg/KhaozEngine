@@ -52,7 +52,7 @@ Coverage-on geometry evaluation averaged 61.445761 ms, comprising 39.443802 ms o
 nested diagnostic spans, already included in the table's preparation and resolution rows, not extra costs
 to add again. They identify the next source investigation.
 
-Coverage-on whole-frame median was 93.342288 ms and maximum was 142.250453 ms. Its first warm-up
+Coverage-on whole-frame median was 93.342288 ms and maximum was 142.250453 ms. Its warm-up
 maximum was 851.711715 ms. Eight measured frames are sizing evidence, not a stable performance estimate.
 The final condition's elapsed unit clock, before its report publication, was 3459.706788 ms.
 

@@ -57,9 +57,8 @@ public static class CoverageEvaluator
         if (!CoverageFrames.TryPrepare(topology, actorModel, commands, scratch, magnitude, out failure)
             || !topology.TryInterpolate(posedSource, scratch.Before, out failure)
             || !Construct(topology, actorModel, commands, scratch, out failure)
-            || !Certify(topology, commands, scratch, out certificate, out failure)
-            || render && (!CoverageRenderError.TryBound(topology, scratch.After, actorModel, commands, scratch, context, out renderError, out failure)
-                || scratch.ActiveCommands > 1 && !Certify(topology, commands, scratch, out certificate, out failure))
+            || !CoverageCertification.CertifyCandidate(topology, scratch.Before, scratch.After, actorModel, commands, context, render,
+                scratch, scratch.StageObserver, out certificate, out renderError, out failure)
             || !CoverageSurfaceNormals.Update(topology, scratch.Before, scratch.After, scratch, out failure))
         {
             certificate = default;
@@ -67,16 +66,6 @@ public static class CoverageEvaluator
         }
         scratch.After.CopyTo(finalVertices);
         return true;
-    }
-
-    // The certification itself, bracketed for optional cost observation. Arguments and order are the caller's.
-    static bool Certify(CoverageRefinement topology, ReadOnlySpan<CoverageCommandPose> commands, CoverageScratch scratch,
-        out CoverageGeometryCertificate certificate, out CoverageFailure failure)
-    {
-        scratch.StageObserver?.Invoke(CoverageStageSpan.GeometryCertification, true);
-        bool certified = CoverageCertification.Certify(topology, scratch.Before, scratch.After, commands, scratch, out certificate, out failure);
-        scratch.StageObserver?.Invoke(CoverageStageSpan.GeometryCertification, false);
-        return certified;
     }
 
     static bool Construct(CoverageRefinement topology, in Matrix4x4 actorModel, ReadOnlySpan<CoverageCommandPose> commands,

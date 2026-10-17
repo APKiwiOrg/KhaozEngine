@@ -56,15 +56,37 @@ public static class CoverageCertification
         double magnitude = Magnitude(before, after);
         if (!double.IsFinite(magnitude))
             return CoverageFrames.Refuse(topology, CoverageFailureCode.UnsupportedTransform, 0, 0, 0, 0, out failure);
-        if (!CoverageFrames.TryPrepare(topology, actorModel, commands, scratch, magnitude, out failure)
-            || !Certify(topology, before, after, commands, scratch, out certificate, out failure)
-            || render && (!CoverageRenderError.TryBound(topology, after, actorModel, commands, scratch, context, out renderError, out failure)
-                || scratch.ActiveCommands > 1 && !Certify(topology, before, after, commands, scratch, out certificate, out failure)))
+        // Late validation is bracketed whole by its caller, so it observes no inner pass.
+        return CoverageFrames.TryPrepare(topology, actorModel, commands, scratch, magnitude, out failure)
+            && CertifyCandidate(topology, before, after, actorModel, commands, context, render, scratch, null, out certificate,
+                out renderError, out failure);
+    }
+
+    /// <summary>One full Certify of the exact final surface after TryPrepare. Render-aware, the captured render bound
+    /// follows, then only the separation that bound can change. The observer brackets each certification pass as
+    /// GeometryCertification. Any refusal clears the certificate.</summary>
+    internal static bool CertifyCandidate(CoverageRefinement topology, ReadOnlySpan<ModelVertex> before, ReadOnlySpan<ModelVertex> after,
+        in Matrix4x4 actorModel, ReadOnlySpan<CoverageCommandPose> commands, in CoverageRenderContext context, bool render,
+        CoverageScratch scratch, Action<CoverageStageSpan, bool>? observer, out CoverageGeometryCertificate certificate,
+        out double renderError, out CoverageFailure failure)
+    {
+        renderError = 0;
+        observer?.Invoke(CoverageStageSpan.GeometryCertification, true);
+        bool certified = Certify(topology, before, after, commands, scratch, out certificate, out failure);
+        observer?.Invoke(CoverageStageSpan.GeometryCertification, false);
+        if (!certified || !render) return certified;
+        if (!CoverageRenderError.TryBound(topology, after, actorModel, commands, scratch, context, out renderError, out failure))
         {
             certificate = default;
             return false;
         }
-        return true;
+        // One command has no other commanded region, so the raised threshold has nothing to recheck.
+        if (scratch.ActiveCommands <= 1) return true;
+        observer?.Invoke(CoverageStageSpan.GeometryCertification, true);
+        bool separated = RenderSeparation(topology, after, commands, scratch, out failure);
+        observer?.Invoke(CoverageStageSpan.GeometryCertification, false);
+        if (!separated) certificate = default;
+        return separated;
     }
 
     internal static double Magnitude(ReadOnlySpan<ModelVertex> first, ReadOnlySpan<ModelVertex> second)
@@ -79,6 +101,7 @@ public static class CoverageCertification
         ReadOnlySpan<CoverageCommandPose> commands, CoverageScratch scratch, out CoverageGeometryCertificate certificate, out CoverageFailure failure)
     {
         certificate = default;
+        scratch.CertificationWitnessForTests?.Invoke(CoverageCertificationWork.Full, -1);
         var tally = new CoverageTally();
         Span<int> stack = stackalloc int[64];
         Vertices(topology, before, after, commands, scratch, ref tally, out int displaced);
@@ -97,7 +120,7 @@ public static class CoverageCertification
                 ref readonly CoverageCommandFrame frame = ref scratch.Frames[slot];
                 errorBound = Math.Max(errorBound, frame.ConstructionErrorBound);
                 if (!frame.Full) { full = false; continue; }
-                Equipment(topology, after, commands, scratch, slot, stack, ref minimumCore, ref tally);
+                Equipment(topology, after, commands, scratch, slot, false, stack, ref minimumCore, ref tally);
                 if (!tally.Failed) Containment(topology, after, commands, scratch, slot, ref tally);
                 if (!tally.Failed) CoreSide(topology, after, commands, scratch, slot, ref tally);
                 if (tally.Failed) break;
@@ -281,10 +304,34 @@ public static class CoverageCertification
             CoverageVector.From(surface[(int)indices[u * 3]].Position), CoverageVector.From(surface[(int)indices[u * 3 + 1]].Position),
             CoverageVector.From(surface[(int)indices[u * 3 + 2]].Position));
 
+    // Valid only directly after Certify accepted this exact surface and TryBound accepted its captured passes. TryBound's
+    // one frame write is RenderErrorBound, read only by Equipment's threshold for other commanded regions. Every other
+    // check, every own-region threshold, the triangle flags and the certificate are therefore unchanged. A slot whose
+    // bound does not exceed its construction bound keeps the threshold Certify already passed. Slots and triangles keep
+    // Certify's order and tally, and own faces already passed, so the first failing slot and its count equal those of a
+    // second full Certify.
+    static bool RenderSeparation(CoverageRefinement topology, ReadOnlySpan<ModelVertex> after, ReadOnlySpan<CoverageCommandPose> commands,
+        CoverageScratch scratch, out CoverageFailure failure)
+    {
+        var tally = new CoverageTally();
+        Span<int> stack = stackalloc int[64];
+        double unusedCore = double.PositiveInfinity;
+        for (int slot = 0; slot < scratch.ActiveCommands; slot++)
+        {
+            ref readonly CoverageCommandFrame frame = ref scratch.Frames[slot];
+            if (!frame.Full || frame.RenderErrorBound <= frame.ConstructionErrorBound) continue;
+            scratch.CertificationWitnessForTests?.Invoke(CoverageCertificationWork.RenderSeparation, slot);
+            Equipment(topology, after, commands, scratch, slot, true, stack, ref unusedCore, ref tally);
+            if (tally.Failed) break;
+        }
+        return tally.Succeeded(topology, commands, scratch, out failure);
+    }
+
     // Every commanded face against one full-weight command's actual displayed solid in actor-relative world space. Its
     // own region keeps the authored clearance. Other commanded regions must at least stay certifiably apart from it.
+    // otherRegionsOnly skips own faces, whose threshold no render bound changes.
     static void Equipment(CoverageRefinement topology, ReadOnlySpan<ModelVertex> after, ReadOnlySpan<CoverageCommandPose> commands,
-        CoverageScratch scratch, int slot, Span<int> stack, ref double minimumCore, ref CoverageTally tally)
+        CoverageScratch scratch, int slot, bool otherRegionsOnly, Span<int> stack, ref double minimumCore, ref CoverageTally tally)
     {
         ref readonly CoverageCommandFrame frame = ref scratch.Frames[slot];
         CoverageSupportSurface support = commands[frame.Command].Support;
@@ -295,6 +342,7 @@ public static class CoverageCertification
             byte flags = scratch.TriangleFlags[t];
             if ((flags & Commanded) == 0) continue;
             bool own = flags >> 2 == slot;
+            if (own && otherRegionsOnly) continue;
             double threshold = own ? frame.Clearance : Math.Max(frame.ConstructionErrorBound, frame.RenderErrorBound);
             var box = CoverageBox.Empty;
             for (int corner = 0; corner < 3; corner++) box.Add(frame.HostToCoverage.Apply(after[(int)indices[t * 3 + corner]].Position));
@@ -393,4 +441,11 @@ public static class CoverageCertification
 
     static bool SameBytes(in ModelVertex a, in ModelVertex b) =>
         MemoryMarshal.AsBytes(new ReadOnlySpan<ModelVertex>(in a)).SequenceEqual(MemoryMarshal.AsBytes(new ReadOnlySpan<ModelVertex>(in b)));
+}
+
+/// <summary>Certification work a test witness observes. Full is one complete Certify of a surface. RenderSeparation is
+/// one full-weight command slot whose other-region threshold the captured render bound raised.</summary>
+internal enum CoverageCertificationWork
+{
+    Full, RenderSeparation,
 }

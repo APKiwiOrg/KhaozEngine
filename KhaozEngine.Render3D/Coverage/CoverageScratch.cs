@@ -65,6 +65,8 @@ public sealed class CoverageScratch
     internal int ActiveCommands { get; set; }
     /// <summary>Optional cost observation of geometry certification, null in ordinary use.</summary>
     internal Action<CoverageStageSpan, bool>? StageObserver { get; set; }
+    /// <summary>Deterministic witness of each certification pass and its command slot, null in ordinary use.</summary>
+    internal Action<CoverageCertificationWork, int>? CertificationWitnessForTests { get; set; }
     internal CoverageRefitBvh Tree { get; }
 
     int stamp;

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.BugReports.Client</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>The client side of KhaozEngine in-game bug reports (opt-in, NOT in any umbrella). Records a rolling in-memory clip of the last few seconds as downscaled JPEG frames off the window's frame taps, and captures the trigger frame as a screenshot, both returned as KhaozEngine.BugReports media records.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.BugReports/KhaozEngine.BugReports.csproj" />
+    <ProjectReference Include="../KhaozEngine.Gpu/KhaozEngine.Gpu.csproj" />
+    <ProjectReference Include="../KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />
+    <ProjectReference Include="../KhaozEngine.Imaging/KhaozEngine.Imaging.csproj" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.BugReports.Client.Tests" />
+  </ItemGroup>
+</Project>

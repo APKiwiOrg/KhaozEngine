@@ -3399,8 +3399,8 @@ var reports = new BugReportService(app,
   settings toggle.
 - **Strings.** Every line resolves through `bugreport.*` `StringId` keys with an English fallback. Add a key to
   the game's catalog to override it.
-- **Shutdown.** `reports.Dispose()` removes the overlay, cancels sends and flushes, disposes the recorder and
-  detaches the log ring. Dispose it before the app.
+- **Shutdown.** `reports.Dispose()` removes the overlay, waits up to 3 s for sends to reach the offline queue,
+  cancels sends and flushes, disposes the recorder and detaches the log ring. Dispose it before the app.
 
 A game server registers its own sections on `BugReportServerCapture`, checks `ReportIds.IsValid` and `TryAccept`
 with the subject it authenticated before it calls `Capture` on the simulation thread, and posts with

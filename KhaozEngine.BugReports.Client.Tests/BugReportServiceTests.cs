@@ -136,6 +136,41 @@ public sealed class BugReportServiceTests : BugReportFlowHarness
     }
 
     [Fact]
+    public async Task Dispose_during_the_build_keeps_the_report()
+    {
+        var sink = new BlockingSink();
+        var queue = new BugReportOfflineQueue(Path.Combine(_root, "pending"), _time);
+        BugReportService service = await SignedInService(sink, queue);
+        using var finish = new ManualResetEventSlim();
+        var finishing = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        service.Flow.FinishStarting = () =>
+        {
+            finishing.TrySetResult();
+            finish.Wait(TimeSpan.FromSeconds(30));
+        };
+        Run(service, Frame(pressed: [Key.F10]));
+        Run(service, Frame(held: [Key.F10]));
+        Run(service, Frame(text: "Fell through"));
+        Run(service, Frame(pressed: [Key.Enter], held: [Key.LeftControl]));
+        Task send = service.Flow.PendingWork!;
+        await finishing.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        Assert.Equal(0, queue.Count);
+
+        Task release = Task.Run(async () =>
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(300));
+            finish.Set();
+        });
+        service.Dispose();
+
+        // Dispose returned only once the build had written the report to the queue.
+        Assert.Equal(1, queue.Count);
+        await release;
+        await send.WaitAsync(TimeSpan.FromSeconds(30));
+        Assert.Equal(1, queue.Count);
+    }
+
+    [Fact]
     public void Dispose_twice_removes_the_overlay_once()
     {
         BugReportService service = NewService();

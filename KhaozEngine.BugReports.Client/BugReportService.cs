@@ -35,6 +35,9 @@ public sealed class BugReportService : IDisposable
 
     const float FontPixelHeight = 18f;
 
+    /// <summary>The longest <see cref="Dispose"/> waits for sends still building their bundle.</summary>
+    internal static readonly TimeSpan ShutdownBuildWait = TimeSpan.FromSeconds(3);
+
     readonly BugReportServiceOptions _options;
     readonly TimeProvider _time;
     readonly CancellationTokenSource _shutdown = new();
@@ -177,8 +180,10 @@ public sealed class BugReportService : IDisposable
     public Task<int> RetryQueuedAsync(CancellationToken cancellationToken) => _flow.RetryQueuedAsync(cancellationToken);
 
     /// <summary>
-    /// Removes the overlay, cancels every send and flush, disposes the recorder and detaches <see cref="RecentLog"/>.
-    /// A send cut off here stays in the offline queue. Call from the frame thread.
+    /// Removes the overlay, waits up to 3 s for every send still building its bundle to write it to the offline queue,
+    /// then cancels every send and flush, disposes the recorder and detaches <see cref="RecentLog"/>. A send cut off
+    /// here stays in the offline queue. A report is lost only when its build is still running after the 3 s wait and
+    /// the process ends first, or when the process is killed. Call from the frame thread.
     /// </summary>
     public void Dispose()
     {
@@ -186,6 +191,8 @@ public sealed class BugReportService : IDisposable
         _disposed = true;
         // The overlay goes first, so no later frame can thaw the disposed recorder.
         _removeOverlay(_overlay);
+        if (!_flow.Builds.WaitAll(ShutdownBuildWait))
+            Log.Warn("A bug report was still being built at shutdown. It reaches the offline queue only if the process runs on.");
         // The source stays undisposed, because a send still finishing registers on its token.
         _shutdown.Cancel();
         Recorder.Dispose();

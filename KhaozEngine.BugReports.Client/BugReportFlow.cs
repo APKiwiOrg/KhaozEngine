@@ -104,6 +104,9 @@ internal sealed class BugReportFlow
     /// <summary>The latest send, flush or thumbnail task, for tests to await before one more <see cref="Update"/>.</summary>
     internal Task? PendingWork { get; private set; }
 
+    /// <summary>The sends still building their bundle, which shutdown waits on so each reaches the offline queue.</summary>
+    internal ReportBuildTracker Builds { get; } = new();
+
     /// <summary>The input of the frame being updated, stored before any capture so sections can read it.</summary>
     internal InputState? LastFrameInput { get; private set; }
 
@@ -300,7 +303,18 @@ internal sealed class BugReportFlow
         if (result == BugReportScreenResult.Send)
         {
             string? subject = _subject;
-            PendingWork = Task.Run(() => SendAsync(report, choices, subject));
+            TaskCompletionSource queued = Builds.Start();
+            PendingWork = Task.Run(async () =>
+            {
+                try
+                {
+                    await SendAsync(report, choices, subject, queued).ConfigureAwait(false);
+                }
+                finally
+                {
+                    queued.TrySetResult();
+                }
+            });
         }
         try
         {
@@ -391,7 +405,8 @@ internal sealed class BugReportFlow
         }
     }
 
-    async Task SendAsync(ActiveReport report, ReportChoices choices, string? subject)
+    /// <summary>Builds and submits one report. <paramref name="queued"/> completes once the bundle is in the queue.</summary>
+    async Task SendAsync(ActiveReport report, ReportChoices choices, string? subject, TaskCompletionSource queued)
     {
         byte[] bundle;
         try
@@ -415,7 +430,7 @@ internal sealed class BugReportFlow
         BugReportSubmitResult result;
         try
         {
-            result = await SubmitQueuedFirstAsync(new BugReportSubmission(report.Id, subject, bundle)).ConfigureAwait(false);
+            result = await SubmitQueuedFirstAsync(new BugReportSubmission(report.Id, subject, bundle), queued).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (_shutdown.IsCancellationRequested)
         {
@@ -439,12 +454,21 @@ internal sealed class BugReportFlow
 
     /// <summary>
     /// Submits with a token the shutdown token cancels only after the call returns. The submitter writes the bundle to
-    /// the queue before its first await, so a send that shutdown cancels, even before it started, stays queued.
+    /// the queue before its first await, so a send that shutdown cancels, even before it started, stays queued, and
+    /// <paramref name="queued"/> completes as soon as the call returns.
     /// </summary>
-    async Task<BugReportSubmitResult> SubmitQueuedFirstAsync(BugReportSubmission submission)
+    async Task<BugReportSubmitResult> SubmitQueuedFirstAsync(BugReportSubmission submission, TaskCompletionSource queued)
     {
         using var send = new CancellationTokenSource();
-        Task<BugReportSubmitResult> submit = _submitter.SubmitAsync(submission, send.Token);
+        Task<BugReportSubmitResult> submit;
+        try
+        {
+            submit = _submitter.SubmitAsync(submission, send.Token);
+        }
+        finally
+        {
+            queued.TrySetResult();
+        }
         using CancellationTokenRegistration stop = _shutdown.Register(send.Cancel);
         return await submit.ConfigureAwait(false);
     }

@@ -70,14 +70,12 @@ public partial class SupportFootprintTests
         using IPhysicsQueryLease lease = scene.World.AcquireQueryReadLease();
         var members = new SupportFootprintMember[256];
         var joins = new ulong[1024];
-        using var region = SupportAllocationRegion.Start();
         SupportFootprintResult result = Capability(scene.World).QuerySupportFootprint(lease, request, members, joins);
         var coldMembers = (SupportFootprintMember[])members.Clone();
         var coldJoins = (ulong[])joins.Clone();
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        SupportFootprintResult warm = Capability(scene.World).QuerySupportFootprint(lease, request, members, joins);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-        region.Dispose();
+        SupportFootprintResult warm = default;
+        long allocated = AllocationMeasurement.Measure($"{nameof(CurvedFootprintMatchesAllProvedPoseStrata)} {stratum}", () =>
+            warm = Capability(scene.World).QuerySupportFootprint(lease, request, members, joins));
         Assert.Equal(CapsuleFeatureStatus.Complete, result.Status);
         SupportFootprintMember[] actual = coldMembers.Take(result.Members).Where(m => m.Static == owner).ToArray();
         Assert.Equal(expected.Length, actual.Length);
@@ -137,7 +135,6 @@ public partial class SupportFootprintTests
         SupportFootprintMember[] members = MemberSentinels(256), before = (SupportFootprintMember[])members.Clone();
         ulong[] joins = Enumerable.Repeat(0xDEADBEEFUL, 1024).ToArray(), beforeJoins = (ulong[])joins.Clone();
         var request = Request();
-        using var region = SupportAllocationRegion.Start();
         SupportFootprintResult result = Capability(scene.World).QuerySupportFootprint(lease, request, members, joins);
         if (count == 256)
         {
@@ -153,17 +150,15 @@ public partial class SupportFootprintTests
             });
             Assert.Equal(256, members.Select(m => m.Static).Distinct().Count());
             Assert.All(joins, word => Assert.Equal(0UL, word));
-            long bytesBefore = GC.GetAllocatedBytesForCurrentThread();
-            var warm = Capability(scene.World).QuerySupportFootprint(lease, request, members, joins);
-            long bytes = GC.GetAllocatedBytesForCurrentThread() - bytesBefore;
-            region.Dispose();
+            SupportFootprintResult warm = default;
+            long bytes = AllocationMeasurement.Measure(nameof(CurvedRawCapacityUsesTwoSlots), () =>
+                warm = Capability(scene.World).QuerySupportFootprint(lease, request, members, joins));
             Assert.Equal(CapsuleFeatureStatus.Complete, warm.Status);
             Assert.Equal(512, warm.Witnesses);
             Assert.Equal(0, bytes);
         }
         else
         {
-            region.Dispose();
             Assert.Equal(CapsuleFeatureStatus.CapacityExceeded, result.Status);
             Assert.Equal(257, result.RequiredElements);
             Assert.Equal(0, result.Members);

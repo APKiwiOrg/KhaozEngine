@@ -252,7 +252,6 @@ public partial class SupportFootprintTests
             FeatureNumber.Exact(1), FeatureNumber.Exact(0)));
         var regions = new SupportCurvedRootRegions();
         Number[] polynomial = [arithmetic.Negate(arithmetic.X), arithmetic.Zero, arithmetic.One];
-        using var region = SupportAllocationRegion.Start();
         Assert.True(regions.Solve(arithmetic, polynomial, -1, 1));
         Assert.Equal(2, regions.Count);
         GeometryInterval negative = regions.Get(0), positive = regions.Get(1);
@@ -261,10 +260,9 @@ public partial class SupportFootprintTests
         Assert.InRange(regions.LiveHighWater, 1, SupportCurvedRootRegions.MaximumLiveCells);
         Assert.InRange(regions.TerminalCells, 2, SupportCurvedRootRegions.MaximumTerminalCells);
         _output.WriteLine($"roots=2 live={regions.LiveHighWater} terminal={regions.TerminalCells} cells={regions.EvaluatedCells}");
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        bool complete = regions.Solve(arithmetic, polynomial, -1, 1);
-        long bytes = GC.GetAllocatedBytesForCurrentThread() - before;
-        region.Dispose();
+        bool complete = false;
+        long bytes = AllocationMeasurement.Measure(nameof(CurvedRootRegionsCoverEverySourceWithoutScalarExhaustion), () =>
+            complete = regions.Solve(arithmetic, polynomial, -1, 1));
         Assert.True(complete);
         Assert.Equal(0, bytes);
     }

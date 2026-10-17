@@ -560,3 +560,24 @@ fence per slot.
 
 `GpuReadbackRingTests` drives the slot rules on a fake device. `GpuReadbackRingGpuTests` reads a copy back
 exactly and cycles three slots through six frames with no device drain.
+
+## IGpuSwapchainCapture
+
+An optional device capability, tested with a type check on the device. The three native devices implement it.
+Fakes and headless devices need not. The frame capture path uses it to copy the image a frame rendered before it
+is presented.
+
+- **Request.** `SwapchainCopySourceRequested` asks for copy-source usage on the swapchain colour images. It is
+  applied at the next present boundary, so the first frame after a change may still be uncopyable. The window sets
+  it only while a capture tap is registered.
+- **Copyable.** `SwapchainCopyable` is true when the image the current frame renders into can be copied out.
+- **Copy.** `CopySwapchainColor(commands, destination)` records, into an open recording, a whole copy of the
+  current swapchain colour image into `destination`. The destination must have the size of `SwapchainFramebuffer`,
+  the swapchain's colour format, one mip and one sample, or it is refused with an `ArgumentException` naming both
+  shapes. An uncopyable swapchain is refused with an `InvalidOperationException`. Nothing is recorded on either
+  refusal.
+- **Direct3D 11.** The request is stored and changes nothing, because a `RenderTargetOutput` back buffer is
+  already a `CopyResource` source. The image is copyable whenever the swapchain's attachments are live.
+
+`SwapchainCopyCheck` holds the destination rule for all three backends. `SwapchainCopyCheckTests` drives it, and
+`D3D11SwapchainCaptureTests` drives the Direct3D 11 half over a fake swapchain surface.

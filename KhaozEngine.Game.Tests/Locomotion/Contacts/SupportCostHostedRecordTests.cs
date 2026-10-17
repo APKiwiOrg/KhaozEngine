@@ -144,7 +144,8 @@ public sealed class SupportCostHostedRecordTests
 
     static string ComparisonBasis(Row row) => row.Operation is "DryTick" or "ExplicitTick"
         ? string.Join(",", new[] { (SupportCostVerdict.OutsideComparableEnvelope(row.Samples[0]), "E"),
-            (!row.Legacy[0]!.GeometryPassed, "L") }.Where(reason => reason.Item1).Select(reason => reason.Item2)) : "";
+            (!SupportCostVerdict.OutsideComparableEnvelope(row.Samples[0]) && SupportCostVerdict.LegacyHasNoSupport(row.Legacy[0]!), "L") }
+            .Where(reason => reason.Item1).Select(reason => reason.Item2)) : "";
 
     /// <summary>Median of each candidate and legacy time divided by its own iteration's k, judged at k = 1.</summary>
     static Verdict MedianVerdict(Row row)

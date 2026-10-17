@@ -198,7 +198,7 @@ internal static class SupportCostVerdict
     }
 
     /// <summary>The verdict for one recorded row, or null for an operation without a cost gate. A row without
-    /// its legacy pair is rejected. An unsuccessful legacy geometry result instead uses the absolute ceiling
+    /// its legacy pair is rejected. A saved legacy outcome without support instead uses the absolute ceiling
     /// (SC-18). <paramref name="hosted"/> adds the hosted precondition of <see cref="Check"/>.</summary>
     internal static SupportCostRowVerdict? JudgeRow(SupportCostSample sample, IReadOnlyList<SupportCostSample> samples,
         double hostScale, long explicitLifetimeBytes, bool hosted)
@@ -258,6 +258,10 @@ internal static class SupportCostVerdict
         (candidate.AchievedMotion.X == 0 && candidate.AchievedMotion.Z == 0 || candidate.Substeps > 3 ||
             candidate.Counts.ModeSegments > 1 || !candidate.Comparable);
 
+    /// <summary>SC-18 uses the saved <see cref="SupportCostSample.Outcome"/>, never geometry/oracle agreement
+    /// or a reconstruction from EndState. Grounded legacy ticks retain their relative cost comparison.</summary>
+    internal static bool LegacyHasNoSupport(in SupportCostSample legacy) => legacy.Outcome is "None" or "Airborne";
+
     /// <summary>The SG-12 limits for a gated row and every rule it breaks. A hosted row also needs successful
     /// first-use geometry and oracle agreement, which counts as a geometry failure.</summary>
     internal static SupportCostCheck Check(in SupportCostSample candidate, in SupportCostSample legacy, bool dense,
@@ -278,7 +282,7 @@ internal static class SupportCostVerdict
             {
                 bool legacyTimed = double.IsFinite(legacy.WarmMicroseconds) && legacy.WarmMicroseconds >= 0;
                 legacyFailed = !legacyTimed;
-                if (legacyTimed && legacy.GeometryPassed && !outsideEnvelope) timeLimit = Math.Min(timeLimit,
+                if (legacyTimed && !LegacyHasNoSupport(legacy) && !outsideEnvelope) timeLimit = Math.Min(timeLimit,
                     legacy.WarmMicroseconds + Math.Max(hostScale * 100, 0.25 * legacy.WarmMicroseconds));
             }
         }
@@ -294,7 +298,7 @@ internal readonly record struct SupportCostRowVerdict(SupportCostSample? Legacy,
 
 /// <summary>A gated row's limits and failures: <c>T</c> time, <c>G</c> geometry, oracle or refusal, <c>E</c> an
 /// exceeded deterministic bound (ordinary) or incomparable envelope (dense), <c>L</c> invalid legacy timing,
-/// <c>A</c> allocation. Unsuccessful legacy geometry alone is not a failure under SC-18.</summary>
+/// <c>A</c> allocation. Legacy geometry/oracle disagreement is informational under SC-18.</summary>
 internal readonly record struct SupportCostCheck(double TimeLimit, long ByteLimit, bool Time, bool Geometry,
     bool Bound, bool Legacy, bool Allocation)
 {

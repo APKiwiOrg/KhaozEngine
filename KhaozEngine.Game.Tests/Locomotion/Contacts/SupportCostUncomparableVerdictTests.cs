@@ -14,16 +14,38 @@ namespace KhaozEngine.Tests.Locomotion.Contacts;
 public sealed class SupportCostUncomparableVerdictTests
 {
     [Theory]
-    [InlineData(0.5)]
-    [InlineData(1)]
-    [InlineData(2)]
-    public void FailedLegacyGeometryUsesOnlyTheScaledAbsoluteCeiling(double scale)
+    [InlineData(0.5, "Airborne")]
+    [InlineData(1, "Airborne")]
+    [InlineData(2, "Airborne")]
+    [InlineData(0.5, "None")]
+    [InlineData(1, "None")]
+    [InlineData(2, "None")]
+    public void NoLegacySupportUsesOnlyTheScaledAbsoluteCeiling(double scale, string outcome)
     {
         SupportCostSample tick = Tick("DryTick", 1000 * scale);
-        SupportCostSample legacy = tick with { Operation = "LegacyTick", GeometryPassed = false, WarmMicroseconds = scale };
+        SupportCostSample legacy = tick with
+        { Operation = "LegacyTick", Outcome = outcome, GeometryPassed = false, WarmMicroseconds = scale };
         Assert.Equal(SupportCostGate.Pass, Judge(tick, legacy, scale));
         Assert.Equal(SupportCostGate.Reject, Judge(tick with { WarmMicroseconds = Math.BitIncrement(tick.WarmMicroseconds) }, legacy, scale));
         Assert.Equal("T", SupportCostVerdict.Check(tick with { WarmMicroseconds = 1001 * scale }, legacy, false, scale, 624, true).Codes);
+    }
+
+    [Theory]
+    [InlineData(0.5)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void SupportedLegacyWithIncorrectPlacementKeepsTheRelativeLimitWithoutRejectingForDisagreement(double scale)
+    {
+        SupportCostSample tick = Tick("DryTick", 120 * scale) with { Scene = "stairs box" };
+        SupportCostSample legacy = tick with
+        { Operation = "LegacyTick", GeometryPassed = false, GeometryMatchesOracle = false, WarmMicroseconds = 20 * scale };
+        SupportCostCheck boundary = SupportCostVerdict.Check(tick, legacy, false, scale, 624, true);
+        Assert.Equal(120 * scale, boundary.TimeLimit);
+        Assert.Equal("", boundary.Codes);
+        Assert.Equal(SupportCostGate.Pass, Judge(tick, legacy, scale));
+        SupportCostSample over = tick with { WarmMicroseconds = 121 * scale };
+        Assert.Equal("T", SupportCostVerdict.Check(over, legacy, false, scale, 624, true).Codes);
+        Assert.Equal(SupportCostGate.Reject, Judge(over, legacy, scale));
     }
 
     [Theory]
@@ -117,8 +139,8 @@ public sealed class SupportCostUncomparableVerdictTests
     }
 
     [Theory]
-    [InlineData("376971dda", "2026-10-14-support-cost-hosted-1334.md", 108, 31)]
-    [InlineData("5c373abe9", "2026-10-17-support-cost-hosted-1334-option-c.md", 125, 14)]
+    [InlineData("376971dda", "2026-10-14-support-cost-hosted-1334.md", 105, 34)]
+    [InlineData("5c373abe9", "2026-10-17-support-cost-hosted-1334-option-c.md", 122, 17)]
     public void CorrectedHostedRecordsChangeOnlyPreviouslyEOrLRows(string commit, string record, int passes, int rejects)
     {
         string? root = Directory.GetCurrentDirectory();

@@ -8317,7 +8317,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.1.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.2.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -8646,7 +8646,7 @@ the clamp bounds and the classifier policy. Normalise text to LF before digestin
 Prefer authored inputs to `TileWorldColliders.Hash` for walk surfaces yawed off a quarter turn, since that hash is
 not promised equal across x64 and ARM64. Rebake when any input, option, probed tuning field or the engine pin
 changes, and keep a game test that loads the shipped bake and expects `Loaded`. Load also compares the normalized
-`KhaozEngine.Movement` assembly version. An upgrade from an older engine version to 21.1.0 therefore requires
+`KhaozEngine.Movement` assembly version. Any engine version upgrade therefore requires
 regeneration and returns `EngineChanged`, even when the format and payload algorithm are unchanged. A backend fix
 within the same engine version does not add another invalidation when the bake identity and payload remain unchanged.
 
@@ -8718,7 +8718,7 @@ option does not enter bake identity or change canonical bytes. See the
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.1.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.2.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -9483,7 +9483,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.1.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.2.0" />
 ```
 
 ```csharp
@@ -11276,6 +11276,23 @@ tagged `door` within `DoorClearance`. Its height and normal use the selected `Ti
 the same interpolated lattice values as the rendered ground. Non-solid decorative objects remain eligible.
 Validation resolves the foliage archetype and material ids against the same catalogs as the rest of the world.
 
+**Clearance is an authoring check, never a runtime rule.** An optional `clearance` manifest block
+(`TileWorldDocument.Clearance`, a `TileClearanceSettings`) declares rules such as "objects whose archetype is
+tagged `tree` keep their meshes clear of objects tagged `structure`", with a mesh root, a sampling cell size and
+an object waiver tag. `TileWorldClearance.Check(doc, catalogs, meshes)` places every loaded object's mesh as the
+prop renderer draws it and returns `clearance.overlap`, `clearance.mesh` and `clearance.rule` issues, reading
+meshes through `ITileMeshGeometry` (the glb implementation is `GltfTileMeshGeometry` in
+`KhaozEngine.TileWorld.Render3D`). `TileWorldValidator.Validate` never runs it, the block is outside
+`TileWorldHash.OfWorld`, and the geometry core is `ClearanceMesh`, `ClearanceSolid`, `ClearanceSamples` and
+`ClearanceProbe` in `KhaozEngine.Primitives`. An obstacle is solid from its lowest point to its top surface, so a
+hollow piece such as a bridge deck must not carry an obstacle tag. Field contracts, rule matching and the issue
+order are in the `KhaozEngine.TileWorld` package README under Clearance.
+
+```csharp
+var meshes = new GltfTileMeshGeometry(TileWorldClearance.ResolveMeshRoot(worldDir, doc.Clearance!));
+IReadOnlyList<TileWorldIssue> clearance = TileWorldClearance.Check(doc, catalogs, meshes);
+```
+
 **Two conventions run through every type.** Coordinates are WORLD tile coordinates everywhere, including
 `TileObject.X/Z` and `TileMarker.X/Z`, and the owning region is always `RegionCoord.Of(X, Z)`, which floors, so
 a negative coordinate lands in a negative region with a local coordinate in 0..63. Rotation is quarter turns
@@ -12078,14 +12095,15 @@ working directory, because an MCP server is started by a client whose working di
 The two verbs that OPEN a world (`world_open`, `world_create`) are the exception, since there is no world to be
 relative to yet: pass them an absolute path.
 
-**Verb families (50 tools).** World lifecycle, catalogs, regions and history (`world_open`, `world_create`,
+**Verb families (55 tools).** World lifecycle, catalogs, regions and history (`world_open`, `world_create`,
 `world_save`, `world_summary`, `world_validate`, `catalog_list`, `region_create`, `region_delete`,
 `region_list`, `undo`, `redo`), tiles (`tile_get`, `tile_set`, `tiles_fill`, `tiles_get_rect`), heights
 (`height_set`, `height_raise`, `height_flatten`, `height_smooth`, `height_get_rect`, `height_import`), objects
 (`object_place`, `object_move`, `object_rotate`, `object_remove`, `object_set_tags`, `object_get`,
 `objects_in_rect`, `object_find`, `objects_line`, `objects_scatter`), markers (`marker_set`, `marker_remove`,
 `marker_list`), foliage (`foliage_layer_set`, `foliage_get`, `foliage_density_set`, `foliage_paint`,
-`foliage_remove`), prefabs (`prefab_save`, `prefab_place`, `prefab_list`), derived collision (`collision_at`,
+`foliage_remove`), clearance (`clearance_get`, `clearance_set`, `clearance_rule_set`, `clearance_rule_remove`,
+`clearance_check`), prefabs (`prefab_save`, `prefab_place`, `prefab_list`), derived collision (`collision_at`,
 `is_walkable`, `path`, `walkable_rect`), archetype collision heights (`archetype_measure_heights`,
 `archetype_set_collision_heights`) and renders (`render_topdown`, `render_view`). The per-verb reference,
 with every argument and the ASCII map legends, is the
@@ -12102,6 +12120,15 @@ while `foliage_density_set` takes explicit numeric rows and dimensions. `foliage
 centre and radius. Every configure, density, paint and remove call is one undo step.
 `render_view` is the one verb in WORLD metres, where y is up and world z is MINUS tile z: to look at tile
 (10, 20) from the south-east, target world (10.5, 0, -20.5) with the eye at (18, 8, -12).
+
+**Clearance refuses the save.** When the world declares clearance rules, `world_save` runs
+`TileWorldClearance.Check` after the validator against the glb meshes under the block's mesh root, and any
+`clearance.overlap`, `clearance.mesh` or `clearance.rule` issue refuses the save with every issue listed and
+nothing written. `world_validate` appends the same issues and `clearance_check` reports them alone, neither
+writing. `clearance_set` replaces the mesh root, cell size and waiver tag on every call, so an omitted value
+resets to its default. The session reads meshes through one `GltfTileMeshGeometry` per open world, so a glb
+written or re-exported while the world is open is seen after `world_open`. The block and the check are under
+[Tile world](#tile-world-khaozenginetileworld).
 
 **Renders return the image inline.** `render_topdown` and `render_view` are the only two verbs that need a GPU
 (a headless Metal, D3D11 or Vulkan device, through `TileWorldSnapshot`, the same path the render goldens take),
@@ -17236,7 +17263,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.1.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.2.0" />
 ```
 
 ```csharp
@@ -17272,7 +17299,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.1.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.2.0" />
 ```
 
 ```csharp
@@ -17516,7 +17543,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.1.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.2.0" />
 ```
 
 ```csharp
@@ -21876,7 +21903,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="21.1.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="21.2.0" />
 </ItemGroup>
 ```
 

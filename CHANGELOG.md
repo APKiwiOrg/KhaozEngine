@@ -5,6 +5,34 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.2.0
+
+- Add an optional `clearance` block to the tile world manifest, held as `TileWorldDocument.Clearance`
+  (`TileClearanceSettings`): a mesh root relative to the world directory, a sampling cell size, an object
+  waiver tag and `TileClearanceRule` tag pairs that keep subject meshes out of obstacle meshes within a
+  tolerance. A rooted mesh root is refused, rules compare by value and an absent block keeps an older world's
+  bytes.
+- The block is authoring metadata outside `TileWorldHash.OfWorld`, so editing it changes no world digest and
+  forces no navigation rebake. The TileWorld format version is unchanged.
+- Add `TileWorldClearance.Check`, which places every loaded object's mesh with
+  `TileObjectPlacement.LocalToWorld` and reports `clearance.overlap` per penetrating pair at its deepest
+  point, `clearance.mesh` per archetype whose mesh cannot be read and `clearance.rule` for a rule whose tags
+  match no archetype. `TileWorldValidator.Validate` never runs it. Meshes arrive through the new
+  `ITileMeshGeometry` seam.
+- Add the format-free clearance core to `KhaozEngine.Primitives`: `ClearanceMesh`, `ClearanceSolid`,
+  `ClearanceSamples`, `ClearanceProbe`, `ClearancePenetration` and `ClearanceTooLargeException`. An obstacle is
+  solid from its lowest point to its top surface, depth is the nearest way out, and triangles are sampled in rows
+  along their longest edge plus every edge and vertex, so the count scales with area plus perimeter.
+- `TileWorldClearance.ResolveMeshRoot` resolves the block's mesh root against the world directory.
+- Add `GltfTileMeshGeometry` to `KhaozEngine.TileWorld.Render3D`, the GPU-free glb `ITileMeshGeometry` that
+  maps a `meshRef` as `GltfMeshResolver.PathFor` does and caches each answer per reference.
+- Add `SetClearanceCommand` to `KhaozEngine.TileWorld.Editing`, one undo step per clearance edit.
+- `ke-tileedit` gains `clearance_get`, `clearance_set`, `clearance_rule_set`, `clearance_rule_remove` and
+  `clearance_check`, for 55 verbs. `world_save` now refuses a world with any clearance issue and writes
+  nothing, and `world_validate` lists the clearance issues after the validator's. `clearance_set` sets the mesh
+  root, cell size and waiver tag on every call. Meshes are read once per open world, so a glb written or
+  re-exported mid-session is seen after `world_open`.
+
 ## 21.1.0
 
 - Keep rigid attachment body alignments exactly affine when general inversion rounds their homogeneous

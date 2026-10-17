@@ -107,7 +107,7 @@ goes through.
 the rect, each row running west to east, which is the way round a top-down render reads. `height_get_rect`
 hands its rows straight to `height_set` without flipping the terrain.
 
-## Verb surface (50 tools)
+## Verb surface (55 tools)
 
 ### World, catalogs, regions, history
 
@@ -115,9 +115,9 @@ hands its rows straight to `height_set` without flipping the terrain.
 |---|---|
 | `world_open(path)` | Opens the world in a directory (its `world.json` plus the regions it names), replacing any open world. Returns the path, identity and a full summary. |
 | `world_create(path, id, displayName, catalogPaths, planeCount = 4, tileSize = 1)` | Creates an empty world with one region at (0, 0), validates and saves it, and keeps it open. Refuses a directory that already holds a world. |
-| `world_save()` | Validates, then writes the world back to its own directory and clears the dirty flag. An invalid world throws and nothing is written. Returns the directory and the world hash of what landed. |
+| `world_save()` | Validates, checks the clearance rules against the meshes on disk, then writes the world back to its own directory and clears the dirty flag. An invalid world, or one with any clearance issue, throws listing the issues and nothing is written. Returns the directory and the world hash of what landed. |
 | `world_summary()` | Id, display name, directory, plane count, tile size, region/object/marker counts, world hash, dirty flag, undo and redo depths with their labels, and the manifest's catalog paths. |
-| `world_validate()` | Every issue as `[code] message` rather than a failed call. Returns a valid flag and the list. |
+| `world_validate()` | Every validator issue, then every clearance issue, as `[code] message` rather than a failed call. Returns a valid flag and the list. |
 | `catalog_list(kind)` | The loaded catalogs' `materials` or `archetypes`, so a client knows the legal ids before it paints or places. |
 | `region_create(rx, rz)` | Materialises an empty 64x64 region, void ground until something paints it. |
 | `region_delete(rx, rz)` | Deletes a whole region, tile layers, objects and markers included. The undo puts all of it back. |
@@ -166,6 +166,33 @@ layer plane.
 
 The collision map's `v` matters: the collision map answers blocked for a region the world does not hold, and an
 author reading a map needs to tell "there is a wall here" from "there is no world here".
+
+### Clearance
+
+| Verb | What it does |
+|---|---|
+| `clearance_get()` | The world's clearance block: mesh root relative to the world directory, cell size in metres, waiver tag and the rules in authoring order. Null when the world declares no block. |
+| `clearance_set(meshRoot, cellSize = 0.1, waiverTag?)` | Creates the block, or replaces its header keeping its rules. Every call sets all three fields, so an omitted `cellSize` or `waiverTag` resets to its default rather than keeping the current value. Pass the current values from `clearance_get` to keep them. A rooted `meshRoot` is refused. |
+| `clearance_rule_set(name, subjectTags, obstacleTags, tolerance = 0)` | Adds a rule, or replaces the rule of the same name in place. Refuses when the world has no block, so run `clearance_set` first. |
+| `clearance_rule_remove(name)` | Removes one rule by name. Refuses an unknown name. |
+| `clearance_check()` | Runs the check against the meshes on disk and reports a clear flag and every issue as `[code] message`, writing nothing. |
+
+Each mutation is one undo step through `SetClearanceCommand` and changes no tile, object or collision. A rule
+makes every object whose archetype carries any subject tag keep its mesh clear of every object whose archetype
+carries any obstacle tag, allowing `tolerance` metres of depth. The waiver tag is an OBJECT tag, set with
+`object_set_tags`, and exempts that object from every rule. The codes are `clearance.overlap` (a subject inside an
+obstacle, at its deepest point), `clearance.mesh` (a matched archetype with no `meshRef`, a mesh that cannot be
+read, or a mesh root that is not a directory) and `clearance.rule` (a rule whose tags match no archetype). The
+block, the solid model and its limit are in the [`KhaozEngine.TileWorld` README](../KhaozEngine.TileWorld/README.md#clearance).
+
+**`world_save` refuses a world with any clearance issue** whenever the world declares rules, after the validator
+passes, and lists every issue one per line. Nothing is written. Fix the placement, or tag a deliberate overlap
+with the waiver tag, which is a decision for the world's owner. `world_validate` reports the same issues without
+failing.
+
+Meshes are read through one `GltfTileMeshGeometry` per open world, resolved as `meshRef` under the mesh root and
+reused across saves and checks. It is replaced on `world_open`, `world_create` or a `clearance_set` that changes
+the resolved root, so a glb written or re-exported while the world is open is seen after `world_open`.
 
 ### Heights (corner rects, rows north first)
 
@@ -327,6 +354,7 @@ objects_scatter("tree_oak", 40, 0, 24, 24, 0, spacing: 3, jitter: 1, seed: 7)
 marker_set("spawn", 10, 10, 0)
 walkable_rect(0, 0, 32, 32, 0)                 # cheap ASCII check before rendering
 render_topdown(0, 0, 64, 64, 0, pxPerTile: 6, overlays: "grid,collision,objects")
+clearance_check()                              # meshes kept clear of each other, when the world declares rules
 world_validate()                               # what world_save would refuse, without failing
 world_save()
 ```

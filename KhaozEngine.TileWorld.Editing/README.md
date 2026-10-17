@@ -129,6 +129,7 @@ The open world plus its editing state, and the one mutation path a frontend uses
 | `RemoveMarkerCommand` | `(name)` | none |
 | `SetFoliageLayerCommand` | `(doc, layer)` | the union of old and new raster extents, split by plane when needed |
 | `RemoveFoliageLayerCommand` | `(doc, id)` | the removed raster extent |
+| `SetClearanceCommand` | `(doc, settings?)` | none |
 | `CreateRegionCommand` | `(coord)` | the region's full tile rect on EVERY plane |
 | `DeleteRegionCommand` | `(coord)` | the region's full tile rect on EVERY plane |
 | `CompositeCommand` | `(label, commands)` | every child's rects, read live |
@@ -171,6 +172,11 @@ undo stack.
 layer before applying and report its world-metre raster extent as tile dirty rects, including both planes when
 a replacement moves between them. Collision rebaking receives those rects through the ordinary command path,
 but foliage itself contributes no flags, so collision remains byte identical across apply, undo and redo.
+
+**`SetClearanceCommand`** replaces the whole `TileClearanceSettings` declaration, or removes it when the
+settings are null, and puts the previous one back on revert. The settings are immutable, so every clearance edit
+builds the next value and lands through this one command. It reports no dirty rects, because clearance is
+authoring metadata that nothing draws or collides with.
 
 **Region commands** report the region's full tile rect on every plane, because the collision map keeps its
 storage per region and the rebake over those rects is what gives a new region storage and takes it away again.

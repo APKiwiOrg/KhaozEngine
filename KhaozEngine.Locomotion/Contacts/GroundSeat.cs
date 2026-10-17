@@ -47,8 +47,8 @@ internal static class GroundSeat
         {
             case SupportStatus.Walkable:
                 return new(SeatOutcome.Seated, support.Height, support,
-                    StepPart(support, start, startAxis, startFeetY, axis), Vector3.Zero,
-                    DiscreteStep(start, startAxis, support, axis));
+                    StepPart(support, start, startAxis, startFeetY, axis, cosMaxSlope), Vector3.Zero,
+                    DiscreteStep(start, startAxis, support, axis, cosMaxSlope));
             case SupportStatus.Steep:
                 // A footed body never climbs ground it cannot stand on, so a face that may rise above the start
                 // feet is a wall.
@@ -71,13 +71,14 @@ internal static class GroundSeat
         return new(axis, startFeetY, footRadius, tuning.StepHeight, reachDown, cosMaxSlope);
     }
 
-    // The seated height less the start support's height field extrapolated to the new axis. A seat on the start's
-    // own member is wholly explained by it. Across members an overhung edge stays level. Without a start plane the
-    // reference is level at the start feet. A steep start, which only a slide moves from, explains no walkable
-    // rise, so the part is the rise above the start feet and a drop charges nothing. The part is charged against
-    // the climb budget, so it rounds up and a paid climb never exceeds the budget.
+    // The seated height less the start support's height field extrapolated to the new axis. On the start's own
+    // member that field explains a rise up to a walkable grade over the move, and the part is the excess. Across
+    // members an overhung edge stays level. Without a start plane the reference is level at the start feet. A steep
+    // start, which only a slide moves from, explains no walkable rise, so the part is the rise above the start feet
+    // and a drop charges nothing. The part is charged against the climb budget, so it rounds up and a paid climb
+    // never exceeds the budget.
     static float StepPart(in SupportSample support, in SupportSample start, Vector2 startAxis, float startFeetY,
-        Vector2 axis)
+        Vector2 axis, float cosMaxSlope)
     {
         float height = support.Height;
         if (start.Status == SupportStatus.Steep)
@@ -85,20 +86,28 @@ internal static class GroundSeat
         Vector3 n = start.Normal;
         bool hasPlane = start.Status == SupportStatus.Walkable && n.Y > 0;
         if (!hasPlane) return GroundPlacement.NotBelow((double)height - startFeetY);
-        if (SameMember(start, support)) return 0;
+        if (SameMember(start, support))
+        {
+            double excess = MemberExcess(start, startAxis, support, axis, cosMaxSlope);
+            return excess > 0 ? GroundPlacement.NotBelow(excess) : 0;
+        }
         double plane = start.Height - PlaneRise(start, startAxis,
             (double)axis.X - startAxis.X, (double)axis.Y - startAxis.Y);
         return GroundPlacement.NotBelow(height - plane);
     }
 
-    // A height jump belongs to a step only between different members, when both support planes agree on its
-    // direction and clear the contact skin plus both certified height errors. Opposite signs identify continuous
-    // ground.
+    // Between members a height jump belongs to a step only when both support planes agree on its direction and
+    // clear the contact skin plus both certified height errors. Opposite signs identify continuous ground. On one
+    // member only a rise beyond a walkable grade over the move is a step, once it clears the contact skin.
     internal static float DiscreteStep(in SupportSample start, Vector2 startAxis, in SupportSample next,
-        Vector2 axis)
+        Vector2 axis, float cosMaxSlope)
     {
-        if (start.Status != SupportStatus.Walkable || next.Status != SupportStatus.Walkable ||
-            SameMember(start, next)) return 0;
+        if (start.Status != SupportStatus.Walkable || next.Status != SupportStatus.Walkable) return 0;
+        if (SameMember(start, next))
+        {
+            double excess = MemberExcess(start, startAxis, next, axis, cosMaxSlope);
+            return excess > ShellMotion.ContactSkin ? (float)excess : 0;
+        }
         double dx = (double)axis.X - startAxis.X, dz = (double)axis.Y - startAxis.Y;
         double forward = next.Height - (start.Height - PlaneRise(start, startAxis, dx, dz));
         double backward = next.Height + PlaneRise(next, axis, dx, dz) - start.Height;
@@ -109,10 +118,21 @@ internal static class GroundSeat
     }
 
     // One raw member is one convex polygon or curved part of one static: a polyhedron face, a mesh triangle or a
-    // curved leaf part, named by its element id. Its certified height is continuous in the axis, so a rise over it
-    // is never a step. Analytic terrain has no static and is never one member.
+    // curved leaf part, named by its element id. Analytic terrain has no static and is never one member.
     static bool SameMember(in SupportSample start, in SupportSample next) =>
         start.Static is StaticHandle owner && next.Static == owner && start.FeatureId == next.FeatureId;
+
+    // A member's certified height is continuous in the axis but not bounded by its walkable slopes: a disc reaching
+    // up a curved part, or along a sloped edge it overhangs, can rise faster. The rise a walkable grade over the
+    // horizontal move explains, plus both certified errors, is no step. The excess is. A descent is never one.
+    static double MemberExcess(in SupportSample start, Vector2 startAxis, in SupportSample next, Vector2 axis,
+        float cosMaxSlope)
+    {
+        double dx = (double)axis.X - startAxis.X, dz = (double)axis.Y - startAxis.Y;
+        double distance = Math.Sqrt(dx * dx + dz * dz), cosine = cosMaxSlope;
+        double grade = distance > 0 ? Math.Sqrt(1 - cosine * cosine) / cosine * distance : 0;
+        return (double)next.Height - start.Height - grade - start.HeightError - next.HeightError;
+    }
 
     // The rise of a support's plane over (dx, dz). A certified height is the least of the support's own plane at the
     // axis, its witness height and its joined polygons' planes. A height below its own plane at its axis by more than

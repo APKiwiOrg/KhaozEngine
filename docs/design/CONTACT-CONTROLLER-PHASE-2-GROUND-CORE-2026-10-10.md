@@ -83,15 +83,18 @@ internal static class GroundCore
    part of the displacement, so the reported feet are certified at their own axis and not at a summed axis a
    rounding step away.
    - **Walkable:** seat on it. The step part of the rise is the rise the start support's height field does not
-     explain: the seated height less that field extrapolated to the new axis. A seat on the start support's own
-     raw member, the same static and element id, is wholly explained by that member's continuous height field,
-     so its step part is zero, including along a sloped edge the footprint overhangs. Analytic terrain has no
-     member. Across members the start field is its plane, or level when the start height lies below that plane
-     at its axis by more than the contact skin plus the start support's own certified error, because the
+     explain: the seated height less that field extrapolated to the new axis. On the start support's own raw
+     member, the same static and element id, that field explains a rise up to the walkable grade over the
+     horizontal move, `tan` of the tick's traction gate times the axis displacement, plus both certified height
+     errors. The step part is the excess, and a descent charges nothing. A walkable slope, a planar face and a
+     walkable sloped edge the footprint overhangs are therefore never charged, while a disc reaching up a curved
+     prop's flank, or closing on a sloped edge so fast its chord outruns a walkable grade, is. Analytic terrain
+     has no member. Across members the start field is its plane, or level when the start height lies below that
+     plane at its axis by more than the contact skin plus the start support's own certified error, because the
      footprint then overhangs an edge or vertex. When `MaxStepClimbSpeed` is positive, the tick's owed climb and
      step part together are capped at `MaxStepClimbSpeed * dt`, so a run up stairs paces its climb as the knob
-     always meant, while a continuous slope over one member, or a plane continuing across members under the
-     axis, is followed exactly and never throttled. A sloped overhung edge split between members charges its
+     always meant, while a continuous walkable slope over one member, or a plane continuing across members under
+     the axis, is followed exactly and never throttled. A sloped overhung edge split between members charges its
      rise on the substep that crosses members. A paced body stays `Walkable` with its feet below the tread for a
      tick or two. That is legs-band overlap, which the body model allows. Paced feet round down to the largest
      float not above the paced height, for the owed climb and the step part alike, so a paid climb never exceeds

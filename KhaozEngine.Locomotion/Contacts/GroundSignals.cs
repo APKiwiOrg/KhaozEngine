@@ -58,7 +58,7 @@ internal static class GroundSignals
             catch (ContactQueryFailure) { continue; }
             if (support.Status != SupportStatus.Walkable) continue;
             float step = GroundSeat.DiscreteStep(supports[count - 1], axis + samples[count - 1].X * direction,
-                support, sampleAxis);
+                support, sampleAxis, cosMaxSlope);
             windowRise |= step > 0f;
             windowDrop |= step < 0f;
             samples[count] = new Vector2(distance, support.Height);

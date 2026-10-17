@@ -59,9 +59,12 @@ cubic in the substep length (about 15 micrometres on the suite's hill). A step o
 height less the curvature disagreement, which is the part a viewer reads as a step.
 
 A start or new support that is not walkable (steep, none, refused) gives `d = 0`. Steep supports belong to slides,
-which never emit steps. A new support on the start support's own raw member, the same static and element id, gives
-`d = 0`. One member is one convex polygon or curved part, so its certified height is continuous in the axis and no
-rise across it is a step. Analytic terrain has no member and never takes this rule.
+which never emit steps. A new support on the start support's own raw member, the same static and element id, is
+continuous ground up to the walkable grade: `e = h1 - h0 - tan(gate) * |a1 - a0|` less both certified height errors,
+where the gate is the tick's traction gate. Then `d = e` when `e` is above the contact skin, else `d = 0`, so a
+descent on one member is never a step. One member is one convex polygon or curved part, so its certified height is
+continuous in the axis, but a disc reaching up a curved flank can still rise faster than any walkable slope.
+Analytic terrain has no member and never takes this rule.
 
 Each plane is the support's own plane only where its height field follows it. A certified height is the least of
 the support's plane at the axis, its witness height and its joined polygons' planes. When the height lies below the
@@ -70,14 +73,17 @@ plus the support's certified error, the height came from the witness: an edge or
 such as the top edge of a ramp. The height field there is level, so the classifier extends that support as a level
 plane through its height. Analytic terrain witnesses lie on the axis and never take this rule.
 
-**Ruling 4a-9.** A rise within one raw member is never a step, and across members an overhung edge is level ground
-for the classifier. The final review showed that past a sloped face's top edge the support keeps the face's tilted
-normal over a level edge height, so both residuals picked up the face's slope with the same sign and reported a step
-against the feet's motion (-0.025 m at 14 degrees, -0.058 m at 30). The level model alone is exact only for a
-horizontal edge or a vertex. Along a sloped overhung edge the disc maximum climbs with the edge, and the level plane
-reported that climb as a step on every substep (0.07 m per 0.1 m substep along a 0.7 grade edge). The same member
-rule removes both, because the edge height is the member's own continuous height field. Cost if wrong: a sloped
-overhung edge split between members reports one step where the support crosses members.
+**Ruling 4a-9.** Within one raw member a rise is a step only beyond the walkable grade over the move, and across
+members an overhung edge is level ground for the classifier. The final review showed that past a sloped face's top
+edge the support keeps the face's tilted normal over a level edge height, so both residuals picked up the face's slope
+with the same sign and reported a step against the feet's motion (-0.025 m at 14 degrees, -0.058 m at 30). The level
+model alone is exact only for a horizontal edge or a vertex. Along a sloped overhung edge the disc maximum climbs
+with the edge, and the level plane reported that climb as a step on every substep (0.07 m per 0.1 m substep along a
+0.7 grade edge). A member's own height field removes both. It is continuous but not bounded by walkable slopes: a
+footprint reaching up a 0.15 m radius curved prop rises 0.217 m over a 0.1 m move, so only the rise a walkable grade
+explains, plus the certified errors, is free and the excess is a step. Cost if wrong: a member whose walkable-grade
+rise is still a felt step, which is the definition of walkable, and a sloped overhung edge split between members
+reports one step where the support crosses members.
 
 **Ruling 4a-1.** Steps are classified by plane agreement above the contact skin, not by the legacy
 `GroundedEpsilon` dead zone or by `StepPart` alone. `StepPart` alone reports millimetre events on every tick over

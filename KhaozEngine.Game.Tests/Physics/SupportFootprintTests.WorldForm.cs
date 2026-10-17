@@ -36,6 +36,12 @@ public partial class SupportFootprintTests
             scene.Checked($"{row.Name} interleaved", out builds);
             Assert.Equal(0, builds);
             scene.CheckedFootprint($"{row.Name} raw members");
+            if (row.Name == "stairs box")
+            {
+                SupportQueryDiagnostics.Reset();
+                scene.Find();
+                Assert.True(SupportQueryDiagnostics.Snapshot().StairStratum > 0);
+            }
             if (row.Name.StartsWith("flat ", StringComparison.Ordinal) ||
                 row.Name.StartsWith("stairs ", StringComparison.Ordinal))
                 scene.CheckedSubstep($"{row.Name} substep");

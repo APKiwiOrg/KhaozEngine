@@ -5,7 +5,7 @@ namespace KhaozEngine.Physics.Bepu;
 
 /// <summary>Complete convex polygon/disc extrema. Admission uses the connected height interval over the expanded
 /// disc, then support measures the original disc on the whole polygon. No clipping or sweep witness is used.</summary>
-internal static class SupportFootprintPolygon
+internal static partial class SupportFootprintPolygon
 {
     static readonly FeatureNumber Zero = FeatureNumber.Exact(0), One = FeatureNumber.Exact(1);
 
@@ -122,6 +122,8 @@ internal static class SupportFootprintPolygon
         out Range range)
     {
         range = default;
+        if (!SupportReferenceEvaluation.Active && TryStairExtrema(polygon, request, radius, ref range,
+            out GeometrySign stair)) return stair;
         FeaturePoint axis = new(FeatureNumber.Exact(request.Axis.X), Zero, FeatureNumber.Exact(request.Axis.Y));
         GeometrySign orientation = Orientation(polygon);
         if (orientation == GeometrySign.Unresolved) return orientation;

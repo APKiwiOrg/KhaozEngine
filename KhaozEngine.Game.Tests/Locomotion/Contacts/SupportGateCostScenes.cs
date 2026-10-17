@@ -202,15 +202,18 @@ internal static class SupportGateCostScenes
         scene.Install(shape, pose);
     }
 
-    internal static FootprintOracleSupport Expected(SupportFootprintScene scene, SupportCostRow row) =>
-        Expected(scene, row, row.Query);
+    internal static FootprintOracleSupport Expected(SupportFootprintScene scene, SupportCostRow row, bool guarded) =>
+        Expected(scene, row, row.Query, guarded);
 
-    internal static FootprintOracleSupport Expected(SupportFootprintScene scene, SupportCostRow row, FootSupportQuery q)
+    /// <summary>The support under <paramref name="q"/>. A guarded expectation judges a FootSupport read, so it applies
+    /// the proposal refusals SG-6 keeps. An unguarded one is the geometric reference for a legacy pass or a placement.</summary>
+    internal static FootprintOracleSupport Expected(SupportFootprintScene scene, SupportCostRow row, FootSupportQuery q,
+        bool guarded = true)
     {
         SupportFootprintRequest request = SupportFootprintTests.Request(q.Axis.X, q.Axis.Y, q.FootRadius,
             q.CosMaxSlope, (double)q.FeetY - q.ReachDown, (double)q.FeetY + q.ReachUp);
         // SG-6 refusals sit above the band top, so they outrank any support in the band, terrain included.
-        if (FootSupportGuardOracle.Refuses(scene, request))
+        if (guarded && FootSupportGuardOracle.Refuses(scene, request))
             return new(SupportStatus.Refused, double.NaN, double.NaN, double.NaN, default, default, null, -1);
         var members = SupportFootprintTests.Members(scene, request);
         FootprintOracleSupport expected = SupportFootprintOracle.Select(members, request);
@@ -218,8 +221,9 @@ internal static class SupportGateCostScenes
         Vector3 normal = row.NormalAt(q.Axis.X);
         if (row.Analytic && height >= request.BandLower && height <= request.BandUpper &&
             (expected.Status == SupportStatus.None || height >= expected.Height))
-            return new(normal.Y >= q.CosMaxSlope ? SupportStatus.Walkable : SupportStatus.Steep,
+            expected = new(normal.Y >= q.CosMaxSlope ? SupportStatus.Walkable : SupportStatus.Steep,
                 height, height, height, OracleVector.From(normal), new(q.Axis.X, height, q.Axis.Y), null, -1);
+        if (guarded && expected.Status != SupportStatus.Refused) FootSupportGuardOracle.RequireModelled(scene, request, members, expected);
         return expected;
     }
 }

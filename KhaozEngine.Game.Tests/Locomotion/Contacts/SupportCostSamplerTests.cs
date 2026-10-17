@@ -74,6 +74,68 @@ public sealed class SupportCostSamplerTests
     }
 
     [Fact]
+    public void SubstepGeometryIgnoresAFailingParentTick()
+    {
+        SupportCostRow row = SupportGateCostScenes.Rows().Select(r => (SupportCostRow)r[0]).Single(r => r.Name == "flat box");
+        SupportQueryDiagnostics.Enable(true);
+        try
+        {
+            var samples = new SupportCostSampler(false)
+            {
+                IsolateAllocations = true,
+                CheckedOperation = output => output with { GeometryPassed = false, GeometryMatchesOracle = false },
+            }.Measure(row, "DryTick");
+            Assert.False(samples[0].GeometryPassed);
+            Assert.False(samples[0].ColdGeometryPassed);
+            Assert.True(samples.Count > 1);
+            foreach (SupportCostSample substep in samples.Skip(1))
+            {
+                Assert.NotEmpty(substep.SupportReads);
+                Assert.True(substep.GeometryMatchesOracle, substep.Operation);
+                Assert.True(substep.GeometryPassed, substep.Operation);
+                Assert.True(substep.ColdGeometryPassed, substep.Operation);
+                Assert.False(SupportCostVerdict.Check(substep, substep, false, 1, 0, hosted: true).Geometry, substep.Operation);
+            }
+        }
+        finally
+        {
+            SupportQueryDiagnostics.SetGroundSubstepObserver(null, null);
+            SupportQueryDiagnostics.SetFindObserver(null);
+            SupportQueryDiagnostics.Enable(false);
+            SupportQueryDiagnostics.Reset();
+        }
+    }
+
+    [Fact]
+    public void SubstepWithAMismatchedReadOrNoSupportFails()
+    {
+        SupportCostRow row = SupportGateCostScenes.Rows().Select(r => (SupportCostRow)r[0]).Single(r => r.Name == "flat box");
+        SupportQueryDiagnostics.Enable(true);
+        try
+        {
+            SupportCostSample substep = new SupportCostSampler(false) { IsolateAllocations = true }.Measure(row, "DryTick")[1];
+            SupportFindObservation[] warm = substep.SupportReads, cold = substep.ColdSupportReads;
+            Assert.NotEmpty(warm);
+            Assert.NotEmpty(cold);
+            SupportFindObservation[] wrongWarm = [warm[0] with { Height = warm[0].Height + 0.01f }, .. warm[1..]];
+            SupportFindObservation[] wrongCold = [cold[0] with { Height = cold[0].Height + 0.01f }, .. cold[1..]];
+            using var execution = new SupportCostExecution(row, "DryTick");
+            Assert.Equal(new SupportCostSampler.SubstepVerdict(true, true, true), SupportCostSampler.JudgeSubstep(execution, warm, true, cold, true));
+            Assert.Equal(new SupportCostSampler.SubstepVerdict(false, false, true), SupportCostSampler.JudgeSubstep(execution, wrongWarm, true, cold, true));
+            Assert.Equal(new SupportCostSampler.SubstepVerdict(true, true, false), SupportCostSampler.JudgeSubstep(execution, warm, true, wrongCold, true));
+            Assert.Equal(new SupportCostSampler.SubstepVerdict(true, false, true), SupportCostSampler.JudgeSubstep(execution, warm, false, cold, true));
+            Assert.Equal(new SupportCostSampler.SubstepVerdict(true, true, false), SupportCostSampler.JudgeSubstep(execution, warm, true, cold, false));
+        }
+        finally
+        {
+            SupportQueryDiagnostics.SetGroundSubstepObserver(null, null);
+            SupportQueryDiagnostics.SetFindObserver(null);
+            SupportQueryDiagnostics.Enable(false);
+            SupportQueryDiagnostics.Reset();
+        }
+    }
+
+    [Fact]
     public void SubstepGeometryJudgesItsOwnReads()
     {
         SupportCostRow row = SupportGateCostScenes.Rows().Select(r => (SupportCostRow)r[0]).Single(r => r.Name == "hidden crate");

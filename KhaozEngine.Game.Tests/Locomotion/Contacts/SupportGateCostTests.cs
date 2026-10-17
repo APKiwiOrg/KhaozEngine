@@ -386,10 +386,13 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
         var onSlab = recorded with { FeetY = 0.019f };
         Assert.Equal(MathF.BitDecrement(2.02f), recorded.FeetY + recorded.ReachUp + FootSupport.BandMargin);
         Assert.Equal(2.02f, onSlab.FeetY + onSlab.ReachUp + FootSupport.BandMargin);
+        Assert.True(0.0195f + 2f + FootSupport.BandMargin > 2.02f && (double)0.0195f + 2 < 2.02f);
         (FootSupportQuery Query, SupportStatus Status, float Height)[] cases =
         [
             (recorded, SupportStatus.Refused, float.NaN),
             (onSlab, SupportStatus.Refused, float.NaN),
+            // The probes start clear above the slab and stop on its top above the band.
+            (recorded with { FeetY = 0.0195f }, SupportStatus.Refused, float.NaN),
             // The raised start lies inside the slab.
             (new(new(1, 0), 1.499f, 0.2f, 0.4f, 0.4f, cosine), SupportStatus.Refused, float.NaN),
             // The probes start below the slab and stop on the seat.
@@ -408,6 +411,49 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
             Assert.Equal(height, candidate.Height, 0.0005f);
             Assert.Equal(height, oracle.Height, 0.0005f);
         }
+    }
+
+    [Theory]
+    [InlineData(0.5f, true)]
+    [InlineData(0.5f, false)]
+    [InlineData(0.4005f, true)]
+    [InlineData(0.4005f, false)]
+    public void GuardOracleCountsAMeshPlateOnlyWhileItsFrontFacesUp(float height, bool front)
+    {
+        using var scene = new SupportFootprintScene();
+        scene.Install(new BoxShape(new(4, 1, 4)), Pose.At(new(0, -1, 0)));
+        StaticHandle plate = scene.Install(new TriangleMeshShape(
+            [new(-1, height, -1), new(1, height, -1), new(-1, height, 1), new(1, height, 1)],
+            front ? [0, 1, 2, 1, 3, 2] : [0, 2, 1, 1, 2, 3]), Pose.Identity);
+        Assert.All(scene.Faces.Where(face => face.Static == plate), face => Assert.Equal(front, face.Normal.Y > 0));
+        // The probes start at 0.401, inside the plate at 0.5 and clear above the plate at 0.4005.
+        var query = new FootSupportQuery(Vector2.Zero, 0, 0.2f, 0.4f, 0.4f, MathF.Cos(MathF.PI / 4));
+        using IPhysicsQueryLease lease = scene.World.AcquireQueryReadLease();
+        SupportSample candidate = FootSupport.Find(null, null, scene.World, lease, query);
+        FootprintOracleSupport oracle = SupportGateCostScenes.Expected(scene, new SupportCostRow("mesh plate"), query);
+        SupportStatus expected = front ? SupportStatus.Refused : SupportStatus.Walkable;
+        Assert.Equal(expected, candidate.Status);
+        Assert.Equal(expected, oracle.Status);
+        if (!front) Assert.Equal(0, oracle.Height);
+    }
+
+    [Fact]
+    public void GuardOracleRefusesToJudgeTheThirdGuardRefusal()
+    {
+        // A steep plate falls toward +X from its 0.415 top edge. The foot probe stops on that edge at 0.388, inside
+        // the band, but the plate supports nothing at or below the 0.4 band top, so the third guard rule refuses.
+        float drop = 0.2f * MathF.Tan(MathF.PI / 3);
+        using var scene = new SupportFootprintScene();
+        StaticHandle plate = scene.Install(new TriangleMeshShape(
+            [new(0.1f, 0.415f, -1), new(0.3f, 0.415f - drop, -1), new(0.1f, 0.415f, 1), new(0.3f, 0.415f - drop, 1)],
+            [0, 1, 2, 1, 3, 2]), Pose.Identity);
+        Assert.All(scene.Faces.Where(face => face.Static == plate), face => Assert.InRange(face.Normal.Y, 0.49, 0.51));
+        var query = new FootSupportQuery(Vector2.Zero, 0, 0.2f, 0.4f, 0.4f, MathF.Cos(MathF.PI / 4));
+        using IPhysicsQueryLease lease = scene.World.AcquireQueryReadLease();
+        Assert.Equal(SupportStatus.Refused, FootSupport.Find(null, null, scene.World, lease, query).Status);
+        var error = Assert.Throws<NotSupportedException>(() =>
+            SupportGateCostScenes.Expected(scene, new SupportCostRow("steep plate"), query));
+        Assert.Contains("third guard refusal", error.Message, StringComparison.Ordinal);
     }
 
     static string GitSha() => GitOutput("rev-parse HEAD");

@@ -59,6 +59,9 @@ internal sealed class SupportCostSampler
     }
 
     internal Action? BeforeWarm { get; init; }
+    /// <summary>Test seam applied to the first-use and warm whole-operation outputs after their geometry check, so a
+    /// test can force a parent tick's verdict.</summary>
+    internal Func<SupportCostOutput, SupportCostOutput>? CheckedOperation { get; init; }
     internal bool IsolateAllocations { get; init; } = true;
 
     internal IReadOnlyList<SupportCostSample> Measure(SupportCostRow row, string operation)
@@ -129,6 +132,7 @@ internal sealed class SupportCostSampler
         bool warmMatches = CheckReads(execution, warmFinds.AsSpan(0, findCount));
         cold = execution.CheckGeometry(cold, coldMatches);
         warm = execution.CheckGeometry(warm, warmMatches);
+        if (CheckedOperation is { } force) (cold, warm) = (force(cold), force(warm));
         long scratch = Math.Max(coldScratch, execution.ScratchPayloadBytes);
         var samples = new List<SupportCostSample>
         {
@@ -160,10 +164,9 @@ internal sealed class SupportCostSampler
             for (int i = 0; i < warmStepCount; i++)
             {
                 Window c = i < coldStepCount ? coldSteps[i] : default, w = warmSteps[i];
-                // A substep is judged on its own support reads and support, not on its parent tick's end placement.
-                bool warmReads = CheckReads(execution, warmFinds.AsSpan(w.FindStart, w.FindEnd - w.FindStart));
-                bool coldReads = CheckReads(execution, coldFinds.AsSpan(c.FindStart, c.FindEnd - c.FindStart));
-                samples.Add(new($"GroundSubstep/{operation}/{i}", row.Name, warmReads && w.Ground.Supported,
+                SubstepVerdict verdict = JudgeSubstep(execution, warmFinds.AsSpan(w.FindStart, w.FindEnd - w.FindStart),
+                    w.Ground.Supported, coldFinds.AsSpan(c.FindStart, c.FindEnd - c.FindStart), c.Ground.Supported);
+                samples.Add(new($"GroundSubstep/{operation}/{i}", row.Name, verdict.Passed,
                     w.Ground.Supported ? "SupportedSubstep" : "UnsupportedSubstep", w.Ground.Height, w.Ground.HeightError,
                     w.Motion, 1, w.Counts with { GroundSubsteps = 1 }, c.Bytes, w.Bytes,
                     c.Microseconds, w.Microseconds, scratch, GroundScenarioTests.SupportFindStackBytes())
@@ -172,14 +175,14 @@ internal sealed class SupportCostSampler
                     Dense = row.Dense,
                     Refusal = warm.Refused,
                     Comparable = false,
-                    GeometryMatchesOracle = warmReads,
+                    GeometryMatchesOracle = verdict.Matches,
                     Queries = w.Queries,
                     ColdQueries = c.Queries,
                     ColdCounts = c.Counts,
                     SupportReads = warmFinds.AsSpan(w.FindStart, w.FindEnd - w.FindStart).ToArray(),
                     ColdSupportReads = coldFinds.AsSpan(c.FindStart, c.FindEnd - c.FindStart).ToArray(),
                     Notes = w.Bytes > 0 ? ["Whole actual shell/seat/placement substep allocation. Unexpected warm bytes require phase attribution beyond support."] : [],
-                    ColdGeometryPassed = coldReads && c.Ground.Supported,
+                    ColdGeometryPassed = verdict.ColdPassed,
                     ColdOutcome = c.Ground.Supported ? "SupportedSubstep" : "UnsupportedSubstep",
                     ColdHeight = c.Ground.Height,
                     ColdHeightError = c.Ground.HeightError,
@@ -187,6 +190,16 @@ internal sealed class SupportCostSampler
                 });
             }
         return samples;
+    }
+
+    internal readonly record struct SubstepVerdict(bool Matches, bool Passed, bool ColdPassed);
+
+    /// <summary>A substep is judged on its own support reads and support, never on its parent tick's placement.</summary>
+    internal static SubstepVerdict JudgeSubstep(SupportCostExecution execution, ReadOnlySpan<SupportFindObservation> warmReads,
+        bool warmSupported, ReadOnlySpan<SupportFindObservation> coldReads, bool coldSupported)
+    {
+        bool matches = CheckReads(execution, warmReads);
+        return new(matches, matches && warmSupported, coldSupported && CheckReads(execution, coldReads));
     }
 
     readonly struct ObserverScope : IDisposable

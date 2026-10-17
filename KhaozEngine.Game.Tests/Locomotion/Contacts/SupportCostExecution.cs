@@ -51,8 +51,8 @@ internal sealed class SupportCostExecution : IDisposable
         this.operation = operation;
         scene = SupportGateCostScenes.Build(row);
         expected = operation == "LegacyTreadDownPass"
-            ? SupportGateCostScenes.Expected(scene, row, row.Query with { Axis = new(0.175f, 0), FeetY = 0 })
-            : SupportGateCostScenes.Expected(scene, row);
+            ? SupportGateCostScenes.Expected(scene, row, row.Query with { Axis = new(0.175f, 0), FeetY = 0 }, guarded: false)
+            : SupportGateCostScenes.Expected(scene, row, guarded: !operation.StartsWith("Legacy", StringComparison.Ordinal));
         inner = scene.World.CreateQueryViewExcludingStatics([]);
         View = new(inner);
         capsule = CharacterMovement.CapsuleFor(SupportGateCostScenes.Tuning);
@@ -177,7 +177,7 @@ internal sealed class SupportCostExecution : IDisposable
     {
         var q = new FootSupportQuery(observation.Axis, observation.FeetY, observation.Radius,
             observation.ReachUp, observation.ReachDown, observation.CosMaxSlope);
-        FootprintOracleSupport oracle = SupportGateCostScenes.Expected(scene, row, q);
+        FootprintOracleSupport oracle = SupportGateCostScenes.Expected(scene, row, q, guarded: true);
         SupportStatus status = (SupportStatus)observation.Status;
         matches = status == oracle.Status && (status is SupportStatus.None or SupportStatus.Refused ||
             Math.Abs(observation.Height - oracle.Height) <= observation.HeightError &&
@@ -200,7 +200,8 @@ internal sealed class SupportCostExecution : IDisposable
             if (supported)
             {
                 var q = row.Query with { Axis = new(output.EndFeet.X, output.EndFeet.Z), FeetY = output.EndFeet.Y };
-                FootprintOracleSupport final = SupportGateCostScenes.Expected(scene, row, q);
+                // Placement asks where the body ended, a geometric question rather than a FootSupport read.
+                FootprintOracleSupport final = SupportGateCostScenes.Expected(scene, row, q, guarded: false);
                 bool paced = row.StairSignal || row.Name is "pushed seat" or "explicit rounding handoff";
                 double allowedLag = paced ? SupportGateCostScenes.Tuning.StepHeight : 0.001;
                 placed = final.Status is SupportStatus.Walkable or SupportStatus.Steep &&

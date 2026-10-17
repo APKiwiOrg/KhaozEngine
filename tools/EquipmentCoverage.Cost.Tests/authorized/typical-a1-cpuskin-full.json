@@ -1,0 +1,26 @@
+{
+  "schema": "khaozengine.coverage-cost-pair/1",
+  "unit": "typical-a1-cpuskin-full",
+  "order": ["off", "on"],
+  "actors": 1,
+  "gpuSkinning": false,
+  "fixture": "typical",
+  "passes": "full",
+  "device": {
+    "backend": "recording-cpu",
+    "rejectSoftwareAdapter": false,
+    "adapterContains": null
+  },
+  "warmupFrames": 4,
+  "measuredFrames": 8,
+  "limits": {
+    "maxWallSeconds": 300,
+    "maxFrameMilliseconds": 10000
+  },
+  "gpuExecutionMetric": "unavailable",
+  "authorization": {
+    "identity": "coverage-pilot-20261017-a1-once",
+    "approvedBy": "repository owner",
+    "reference": "Owner approval 2026-10-17 for one hosted CPU pilot, one iteration, no added load. KhaozEngine issue 1418."
+  }
+}

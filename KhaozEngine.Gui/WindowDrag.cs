@@ -42,9 +42,10 @@ namespace KhaozEngine.Gui
         /// Call once per frame, before the layers underneath hit-test.</summary>
         /// <param name="pointer">The pointer, in the space the window is placed and drawn in.</param>
         /// <param name="grip">The rect a drag may START in, normally the title row less its close button.</param>
-        /// <remarks>It does not read <see cref="Pointer.IsBlocked"/>. Two overlapping windows that both update
-        /// will both grab a press that lands in both grips, so which window is on top is the caller's to settle:
-        /// update the top one first and skip the rest once the gesture is consumed.</remarks>
+        /// <remarks>The grab is tested with <see cref="Pointer.IsDragStartIn"/>, so a press whose origin is
+        /// occluded never grabs. A window registered on a <see cref="WindowStack"/> gets arbitration from that
+        /// occlusion: only the front-most window under the press can latch it. A caller without a stack still
+        /// updates the top window first and skips the rest once the gesture is consumed.</remarks>
         public void Update(Pointer pointer, in Rect grip)
         {
             if (pointer is null || !pointer.IsDown) { Dragging = false; return; }
@@ -52,7 +53,7 @@ namespace KhaozEngine.Gui
             // latched, so a grip that later slides under a press it did not start in cannot pick the window up.
             if (!Dragging)
             {
-                if (!pointer.IsPressOriginFresh || !grip.Contains(pointer.PressOrigin)) return;
+                if (!pointer.IsPressOriginFresh || !pointer.IsDragStartIn(grip)) return;
                 Dragging = true;
             }
             _offset += pointer.Delta;

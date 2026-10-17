@@ -35,6 +35,9 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
     private readonly Action<string, string> writeText;
     private readonly Action? beforeSupersessionCompletion;
     private readonly Action<bool>? observeDrainDecision;
+    // Test seam. Null runs each drain pass on the thread pool. A scheduler must start the pass on
+    // another thread and return, because the tail handoff calls it while holding sync.
+    private readonly Action<Action>? scheduleDrain;
     // Producer-owned completions remain outstanding after their payload leaves pending.
     private int supersessionsCompleting;
     private bool workerScheduled;
@@ -51,12 +54,13 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
     }
 
     internal PersistenceQueue(Action<string, string> writeText, ILogger? logger = null, int maxAttempts = 3, TimeSpan? retryDelay = null, int backupGenerations = 2,
-        Action? beforeSupersessionCompletion = null, Action<bool>? observeDrainDecision = null)
+        Action? beforeSupersessionCompletion = null, Action<bool>? observeDrainDecision = null, Action<Action>? scheduleDrain = null)
     {
         ArgumentNullException.ThrowIfNull(writeText);
         this.writeText = writeText;
         this.beforeSupersessionCompletion = beforeSupersessionCompletion;
         this.observeDrainDecision = observeDrainDecision;
+        this.scheduleDrain = scheduleDrain;
         if (maxAttempts < 1)
         {
             throw new ArgumentOutOfRangeException(nameof(maxAttempts), "At least one attempt is required.");
@@ -129,7 +133,19 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
         }
         if (schedule)
         {
+            ScheduleDrain();
+        }
+    }
+
+    private void ScheduleDrain()
+    {
+        if (scheduleDrain is null)
+        {
             ThreadPool.UnsafeQueueUserWorkItem(static state => ((PersistenceQueue)state!).DrainPending(), this);
+        }
+        else
+        {
+            scheduleDrain(DrainPending);
         }
     }
 
@@ -254,7 +270,7 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
                     // The tail worker inherits the queued failures so the single notifier delivers
                     // them serially and in order. Raising them on this thread instead would run
                     // handlers concurrently with the tail drain.
-                    ThreadPool.UnsafeQueueUserWorkItem(static state => ((PersistenceQueue)state!).DrainPending(), this);
+                    ScheduleDrain();
                 }
                 else
                 {

@@ -59,11 +59,12 @@ public partial class SupportFootprintTests
         scene.CheckedSubstep($"{name} substep");
     }
 
+    // The exact warm count pins where the certificate fires on each row.
     [Theory]
-    [InlineData("sphere")]
-    [InlineData("capsule")]
-    [InlineData("cylinder")]
-    public void CurvedSignOnlyStopsEarly(string name)
+    [InlineData("sphere", 6)]
+    [InlineData("capsule", 6)]
+    [InlineData("cylinder", 6)]
+    public void CurvedSignOnlyStopsEarly(string name, int warmSamples)
     {
         using var counters = new WorldFormCounters();
         using var scene = new WorldFormScene(CostRows().Single(r => r.Name == name));
@@ -83,7 +84,7 @@ public partial class SupportFootprintTests
         Assert.Equal(reference.ToString(), warm.ToString());
         Assert.Equal(cold.ToString(), warm.ToString());
         Assert.Equal(coldCounts with { WorldFormBuilds = 0 }, warmCounts);
-        Assert.True(warmCounts.TangentSamples > 0, $"{name}: the contact kernel sampled nothing.");
+        Assert.Equal(warmSamples, warmCounts.TangentSamples);
         Assert.True(warmCounts.TangentSamples < referenceCounts.TangentSamples,
             $"{name}: {warmCounts.TangentSamples} tangent samples against the reference's {referenceCounts.TangentSamples}.");
     }

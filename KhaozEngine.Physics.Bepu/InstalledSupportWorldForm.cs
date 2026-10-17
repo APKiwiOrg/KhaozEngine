@@ -134,7 +134,8 @@ internal sealed class InstalledSupportWorldLeaf
     }
 
     // Every local edge two faces share with opposite windings, oriented as its first face winds it. An edge that
-    // capture validation refuses, such as one two faces wind the same way, yields no entry.
+    // capture validation refuses, such as one two faces wind the same way, yields no entry. This re-derives the
+    // pairing CapsuleFeaturePolyhedron.Validate builds, so a change to that rule changes both.
     static List<CapsuleFeaturePolyhedronEdge> CapturedEdges(int[][] faces)
     {
         var open = new Dictionary<(int, int), int>();

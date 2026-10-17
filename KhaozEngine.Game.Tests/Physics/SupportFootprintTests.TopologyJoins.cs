@@ -104,6 +104,61 @@ public partial class SupportFootprintTests
     }
 
     [Fact]
+    public void DifferentLeavesOfOneCompoundStillJoinGeometrically()
+    {
+        using var counters = new WorldFormCounters();
+        using var scene = new SupportFootprintScene();
+        // One compound whose two box children have top faces meeting along the edge x = 0 and coincident facing
+        // sides. The children are separate leaves of one world form, so no captured edge links them.
+        StaticHandle owner = scene.Install(new CompoundShape([
+            new(new BoxShape(new(0.5f, 0.5f, 0.5f)), Pose.At(new(-0.5f, -0.5f, 0))),
+            new(new BoxShape(new(0.5f, 0.5f, 0.5f)), Pose.At(new(0.5f, -0.5f, 0)))]), Pose.Identity);
+        IPhysicsSupportFootprint footprint = Capability(scene.World);
+        SupportFootprintRequest request = Request();
+        using IPhysicsQueryLease lease = scene.World.AcquireQueryReadLease();
+        var members = new SupportFootprintMember[SupportFootprintResult.MaximumElements];
+        var joins = new ulong[1024];
+
+        SupportQueryDiagnostics.Reset();
+        footprint.QuerySupportFootprint(lease, request, members, joins);
+        SupportQueryCounts cold = SupportQueryDiagnostics.Snapshot();
+        SupportQueryDiagnostics.Reset();
+        SupportFootprintResult result = footprint.QuerySupportFootprint(lease, request, members, joins);
+        SupportQueryCounts warm = SupportQueryDiagnostics.Snapshot();
+        Assert.Equal(CapsuleFeatureStatus.Complete, result.Status);
+        int stride = result.JoinWordsPerRow, sameLeaf = 0, crossLeaf = 0;
+        bool topsJoined = false;
+        for (int first = 0; first < result.Members; first++)
+            for (int second = first + 1; second < result.Members; second++)
+            {
+                if ((joins[first * stride + second / 64] & (1UL << (second % 64))) == 0) continue;
+                Assert.Equal(owner, members[first].Static);
+                Assert.Equal(owner, members[second].Static);
+                int firstLeaf = members[first].ElementId / SupportNeighborhoodPolyhedra.FaceStride;
+                int secondLeaf = members[second].ElementId / SupportNeighborhoodPolyhedra.FaceStride;
+                if (firstLeaf == secondLeaf) sameLeaf++;
+                else
+                {
+                    crossLeaf++;
+                    topsJoined |= IsTop(scene, members[first]) && IsTop(scene, members[second]);
+                }
+            }
+        Assert.True(topsJoined, "The two top faces meeting along x = 0 are not joined.");
+        Assert.True(crossLeaf > 0 && sameLeaf > 0, $"{sameLeaf} same-leaf and {crossLeaf} cross-leaf joins.");
+        // Every same-leaf join comes from the leaf's captured topology, and no join across the two leaves does.
+        Assert.Equal(sameLeaf, warm.TopologyJoins);
+        Assert.Equal(crossLeaf, warm.JoinsProved);
+        Assert.Equal(cold with { WorldFormBuilds = 0 }, warm);
+
+        SupportQueryDiagnostics.Reset();
+        using (SupportReferenceEvaluation.Begin()) footprint.QuerySupportFootprint(lease, request, members, joins);
+        SupportQueryCounts reference = SupportQueryDiagnostics.Snapshot();
+        Assert.Equal(0, reference.TopologyJoins);
+        Assert.Equal(sameLeaf + crossLeaf, reference.JoinsProved);
+        SupportFootprintEquivalence.AssertMatchesReference(footprint, lease, request, "two touching compound boxes");
+    }
+
+    [Fact]
     public void MutualBelowStillCertifiedForTopologyJoins()
     {
         // Each row shares the edge from (0, 0, -1) to (0, 0, 1) with the first face, as two faces of one leaf do. A

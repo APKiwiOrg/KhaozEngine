@@ -273,8 +273,10 @@ internal sealed class SupportTangentKernel
         return negative || positive;
     }
 
-    // A bound far below overflow for every intermediate of Evaluate. Squares stay near 2^44, and a quotient by a
-    // positive length lower bound, at least about 2^-538, stays finite.
+    // A bound far below overflow for every intermediate of Evaluate. With every input inside it, including the axis and
+    // across rows, offsets stay below 2^21, dot products below 2^43, squares and their sums below 2^89, and a quotient by
+    // a positive length lower bound, at least about 2^-538, scaled by a radius stays below 2^601. Unit axes keep the
+    // squares far lower. The Positive certificate bounds the published normal and witness on their own.
     const double Domain = 1 << 20;
 
     bool Bounded(in SupportCurvedLeaf leaf) => Within(_x) && Within(_z) &&

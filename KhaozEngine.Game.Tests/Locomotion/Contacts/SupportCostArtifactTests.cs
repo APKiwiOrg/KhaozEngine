@@ -307,6 +307,42 @@ public sealed class SupportCostArtifactTests
     }
 
     [Theory]
+    [InlineData("none")]
+    [InlineData("lifetime text")]
+    [InlineData("time text")]
+    [InlineData("sample number")]
+    [InlineData("sample null")]
+    [InlineData("operation missing")]
+    [InlineData("reads null")]
+    public void OfflineVerdictRefusesAMalformedHostedSection(string fault)
+    {
+        JsonObject reference = SupportGateCostTests.HostedSection(400, true), hosted = SupportGateCostTests.HostedSection(200);
+        hosted["LifetimeInventory"] = new JsonObject { ["AcquiredExplicitTickBytes"] = 624L };
+        JsonArray samples = hosted["Samples"]!.AsArray();
+        JsonNode find = samples[0]!.DeepClone();
+        find["Operation"] = "Find";
+        samples.Add(find);
+        switch (fault)
+        {
+            case "lifetime text": hosted["LifetimeInventory"]!["AcquiredExplicitTickBytes"] = "624"; break;
+            case "time text": find["WarmMicroseconds"] = "fast"; break;
+            case "sample number": samples.Add(5); break;
+            case "sample null": samples.Add(null); break;
+            case "operation missing": find.AsObject().Remove("Operation"); break;
+            case "reads null": find["SupportReads"] = null; break;
+        }
+        Assert.True(SupportCostVerdict.TryHostedScale(reference, hosted, out _));
+        bool judged = SupportCostVerdict.TryJudgeHosted(reference, hosted, out HostedScale scale, out var rows);
+        Assert.Equal(fault == "none", judged);
+        if (judged) Assert.Equal("Find", Assert.Single(rows).Sample.Operation);
+        else
+        {
+            Assert.Equal(default, scale);
+            Assert.Empty(rows);
+        }
+    }
+
+    [Theory]
     [InlineData("missing")]
     [InlineData("malformed")]
     [InlineData("pending")]

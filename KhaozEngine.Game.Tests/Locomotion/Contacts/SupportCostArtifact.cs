@@ -203,19 +203,39 @@ internal static class SupportCostVerdict
             : Evaluate(sample, legacy, sample.Dense, hostScale, explicitLifetimeBytes, hosted));
     }
 
-    /// <summary>Calibrates a finalized hosted section against its reference and judges every gated row offline.</summary>
+    /// <summary>Calibrates a finalized hosted section against its reference and judges every gated row offline.
+    /// A malformed section is refused like an uncalibrated one.</summary>
     internal static bool TryJudgeHosted(JsonObject? reference, JsonObject hosted, out HostedScale scale,
         out (SupportCostSample Sample, SupportCostRowVerdict Verdict)[] rows)
     {
         rows = [];
-        if (!TryHostedScale(reference, hosted, out scale) ||
-            hosted["LifetimeInventory"]?["AcquiredExplicitTickBytes"]?.GetValue<long>() is not long lifetime) return false;
-        var options = new JsonSerializerOptions { IncludeFields = true, NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals };
-        SupportCostSample[] samples = hosted["Samples"]!.Deserialize<SupportCostSample[]>(options)!;
-        double k = scale.K;
-        rows = samples.Select(sample => (Sample: sample, Verdict: JudgeRow(sample, samples, k, lifetime, hosted: true)))
-            .Where(row => row.Verdict is not null).Select(row => (row.Sample, row.Verdict!.Value)).ToArray();
-        return true;
+        if (!TryHostedScale(reference, hosted, out scale)) return false;
+        try
+        {
+            if (hosted["LifetimeInventory"]?["AcquiredExplicitTickBytes"]?.GetValue<long>() is not long lifetime ||
+                hosted["Samples"] is not JsonArray recorded) return Refuse(out scale, out rows);
+            var options = new JsonSerializerOptions { IncludeFields = true, NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals };
+            SupportCostSample[]? samples = recorded.Deserialize<SupportCostSample[]>(options);
+            if (samples is null || !samples.All(Judgeable)) return Refuse(out scale, out rows);
+            double k = scale.K;
+            rows = samples.Select(sample => (Sample: sample, Verdict: JudgeRow(sample, samples, k, lifetime, hosted: true)))
+                .Where(row => row.Verdict is not null).Select(row => (row.Sample, row.Verdict!.Value)).ToArray();
+            return true;
+        }
+        catch (Exception error) when (error is JsonException or InvalidOperationException or ArgumentException or OverflowException)
+        {
+            return Refuse(out scale, out rows);
+        }
+    }
+
+    // Deserialization leaves a missing reference member null. The verdict reads these.
+    static bool Judgeable(SupportCostSample? sample) => sample is { Operation: not null, Scene: not null, SupportReads: not null };
+
+    static bool Refuse(out HostedScale scale, out (SupportCostSample Sample, SupportCostRowVerdict Verdict)[] rows)
+    {
+        scale = default;
+        rows = [];
+        return false;
     }
 
     internal static SupportCostGate Evaluate(in SupportCostSample candidate, in SupportCostSample legacy, bool dense,
@@ -238,10 +258,10 @@ internal static class SupportCostVerdict
         bool tick = candidate.Operation is "DryTick" or "ExplicitTick";
         double timeLimit = (candidate.Operation == "Find" ? dense ? 500 : 50 : tick ? dense ? 4000 : 1000 : dense ? 1000 : 200) * hostScale;
         long byteLimit = candidate.Operation switch { "DryTick" => 208, "ExplicitTick" => explicitLifetimeBytes, _ => 0 };
-        bool envelope = false, legacyFailed = false;
+        bool outsideEnvelope = false, legacyFailed = false;
         if (tick)
         {
-            envelope = candidate.AchievedMotion.X == 0 && candidate.AchievedMotion.Z == 0 || candidate.Substeps > 3 ||
+            outsideEnvelope = candidate.AchievedMotion.X == 0 && candidate.AchievedMotion.Z == 0 || candidate.Substeps > 3 ||
                 candidate.Counts.ModeSegments > 1 || !candidate.Comparable;
             if (!dense)
             {
@@ -254,7 +274,7 @@ internal static class SupportCostVerdict
         bool time = !(double.IsFinite(candidate.WarmMicroseconds) && candidate.WarmMicroseconds >= 0 &&
             candidate.WarmMicroseconds <= timeLimit);
         bool allocation = candidate.WarmBytes < 0 || tick && byteLimit <= 0 || candidate.WarmBytes > byteLimit;
-        return new(timeLimit, byteLimit, time, geometry, envelope, legacyFailed, allocation);
+        return new(timeLimit, byteLimit, time, geometry, outsideEnvelope, legacyFailed, allocation);
     }
 }
 
@@ -264,11 +284,11 @@ internal readonly record struct SupportCostRowVerdict(SupportCostSample? Legacy,
 /// <summary>A gated row's limits and failures: <c>T</c> time, <c>G</c> geometry, oracle or refusal, <c>E</c> outside
 /// the comparable moving single-mode envelope, <c>L</c> unsuccessful ordinary legacy, <c>A</c> allocation.</summary>
 internal readonly record struct SupportCostCheck(double TimeLimit, long ByteLimit, bool Time, bool Geometry,
-    bool Envelope, bool Legacy, bool Allocation)
+    bool OutsideEnvelope, bool Legacy, bool Allocation)
 {
-    public bool Passed => !(Time || Geometry || Envelope || Legacy || Allocation);
+    public bool Passed => !(Time || Geometry || OutsideEnvelope || Legacy || Allocation);
 
-    public string Codes => string.Join(",", new[] { (Time, "T"), (Geometry, "G"), (Envelope, "E"), (Legacy, "L"), (Allocation, "A") }
+    public string Codes => string.Join(",", new[] { (Time, "T"), (Geometry, "G"), (OutsideEnvelope, "E"), (Legacy, "L"), (Allocation, "A") }
         .Where(code => code.Item1).Select(code => code.Item2));
 }
 

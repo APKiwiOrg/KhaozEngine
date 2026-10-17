@@ -33,8 +33,10 @@ internal static class SupportNeighborhoodJoins
     }
 
     /// <summary>Whether <paramref name="first"/> carries a certified meeting with <paramref name="second"/>: both
-    /// are faces of one world form leaf, <paramref name="first"/> precedes <paramref name="second"/> in member
-    /// order, and they share a captured edge whose meeting <see cref="CertifiesTopologyMeeting"/> proved.</summary>
+    /// are faces of one world form leaf, <paramref name="first"/> has the lower face index within that leaf, and
+    /// they share a captured edge whose meeting <see cref="CertifiesTopologyMeeting"/> proved. The form stores
+    /// each meeting on the lower face only, so the reversed pair reads false. Element ids within a leaf follow
+    /// face index, so member order passes the faces this way round.</summary>
     internal static bool TopologyMeets(SupportPolygon first, SupportPolygon second) =>
         first.Static == second.Static && first.TopologyMeetings.Contains(second.ElementId);
 

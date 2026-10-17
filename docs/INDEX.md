@@ -203,9 +203,11 @@ backlog here: a follow-up recorded only in a design doc is invisible to the ledg
 - [../AGENTS.md](../AGENTS.md) - concurrent-dev rule (worktree per change), the release ritual, build/test commands.
 - Release ritual, short form: bump `Directory.Build.props` `<KhaozEngineVersion>` -> add the `CHANGELOG.md` entry
   (its newest `## X.Y.Z` heading must be the new version) -> update every `<PackageReference>` example in `README.md`
-  and `USING-KHAOZENGINE.md` -> commit -> push `main` -> `scripts/pack-local-feed.sh` -> `scripts/tag-release.sh`
-  (annotated `vX.Y.Z`) -> push the tag. (Don't hand-type `git tag vX.Y.Z`: a lightweight tag is rejected by
-  the `pre-push` hook.)
+  and `USING-KHAOZENGINE.md` -> commit -> push `main` -> `scripts/release-lock.sh acquire vX.Y.Z` -> dispatch the
+  hosted `ci` and `cross-platform-gpu` gate on `main` -> `scripts/pack-local-feed.sh` -> `scripts/tag-release.sh`
+  (annotated `vX.Y.Z`) -> push the tag -> `scripts/release-lock.sh release`. (Don't hand-type `git tag vX.Y.Z`:
+  a lightweight tag is rejected by the `pre-push` hook.) The lock, the hosted gate and the tracked-flake rule are
+  in [CONTRIBUTOR-RULES.md](CONTRIBUTOR-RULES.md#version-package-and-release-rules).
 - The pack step is a script because it is guarded. `scripts/pack-local-feed.sh` refuses to pack a version that is
   already tagged unless HEAD is that tag with a clean tree, so a finish landing after a release cannot overwrite
   the released bytes in the feed with a bigger build of the same number ([#492](https://github.com/APKiwiOrg/KhaozEngine/issues/492)).

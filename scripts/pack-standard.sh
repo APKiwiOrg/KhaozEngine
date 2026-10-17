@@ -154,16 +154,19 @@ pack_shared_feed_dirty_refusal_lines() {
   echo "Commit and merge the change, or set KHAOZENGINE_FEED to an explicit private feed."
 }
 
-# pack_file_mtime <path> -> modification time in unix seconds (empty when it cannot be read).
+# pack_newest_mtime <path>... -> the newest modification time across the paths in unix seconds, 0 when
+# none can be read. One stat process serves the whole list, so a version of many packages costs one.
 # GNU and BSD stat disagree on the flag, and picking wrong is not a clean failure: GNU's -f is
 # --file-system and its %m is the MOUNT POINT, so `stat -f %m file` succeeds on Linux and returns
 # nonsense. Probe for GNU coreutils by its --version, which BSD stat does not have.
-pack_file_mtime() {
-  if stat --version >/dev/null 2>&1; then
-    stat -c %Y "$1" 2>/dev/null
-  else
-    stat -f %m "$1" 2>/dev/null
-  fi
+pack_newest_mtime() {
+  {
+    if stat --version >/dev/null 2>&1; then
+      stat -c %Y "$@"
+    else
+      stat -f %m "$@"
+    fi
+  } 2>/dev/null | awk 'BEGIN { n = 0 } /^[0-9]+$/ { if ($1 + 0 > n) n = $1 + 0 } END { printf "%.0f", n }'
 }
 
 # pack_tag_time <tag> -> when the tag was CREATED, in unix seconds (empty when the tag does not exist).

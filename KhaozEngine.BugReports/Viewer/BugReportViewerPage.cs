@@ -34,6 +34,10 @@ public static class BugReportViewerPage
     // matters there.
     static readonly JsonWriterOptions WriterOptions = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
+    // Display text indents at most this many levels, and is indented only while it stays within this many times the
+    // input's byte length. Past that bound the text is compact, so a deep and wide section cannot multiply its size.
+    const int MaxIndentLevels = 16;
+    const int MaxIndentGrowth = 4;
 
     static readonly string Template = LoadTemplate();
     static readonly string ScriptHash = ElementHash("script");
@@ -111,17 +115,18 @@ public static class BugReportViewerPage
         return false;
     }
 
-    // Sections and the server snapshot are shown as indented text built here, so numbers keep their exact text. The
-    // page never parses them, which would round 64-bit integers. A document that cannot be read is replaced whole.
+    // Sections and the server snapshot are shown as text built here, so numbers keep their exact text. The page
+    // never parses them, which would round 64-bit integers. A document that cannot be read is replaced whole.
     static string DisplayText(ReadOnlySpan<byte> json, int maxDepth)
     {
         try
         {
-            return Indent(json, maxDepth);
+            long bound = Math.Min((long)MaxIndentGrowth * json.Length, int.MaxValue);
+            return Print(json, maxDepth, indented: true, (int)bound) ?? Print(json, maxDepth, indented: false, int.MaxValue)!;
         }
         catch (Exception e) when (e is JsonException or InvalidOperationException)
         {
-            return Indent("{\"error\":\"unreadable section\"}"u8, maxDepth);
+            return Print("{\"error\":\"unreadable section\"}"u8, maxDepth, indented: true, int.MaxValue)!;
         }
     }
 
@@ -151,10 +156,10 @@ public static class BugReportViewerPage
         while (reader.Read());
     }
 
-    // The same token copy as indented text, two spaces per level. Utf8JsonWriter cannot indent a raw number inside
-    // an array, so the layout is written here. Throws JsonException for malformed JSON and
-    // InvalidOperationException for a string that does not decode.
-    static string Indent(ReadOnlySpan<byte> json, int maxDepth)
+    // The same token copy as text, either compact or indented by two spaces per level up to MaxIndentLevels.
+    // Returns null as soon as the text passes maxChars, so an oversized string is never finished. Throws
+    // JsonException for malformed JSON and InvalidOperationException for a string that does not decode.
+    static string? Print(ReadOnlySpan<byte> json, int maxDepth, bool indented, int maxChars)
     {
         Utf8JsonReader reader = ObjectReader(json, maxDepth);
         var text = new StringBuilder();
@@ -165,30 +170,36 @@ public static class BugReportViewerPage
             JsonTokenType token = reader.TokenType;
             if (token is JsonTokenType.EndObject or JsonTokenType.EndArray)
             {
-                if (!empty) NewLine(text, reader.CurrentDepth);
+                if (!empty && indented) NewLine(text, reader.CurrentDepth);
                 text.Append(token == JsonTokenType.EndObject ? '}' : ']');
                 empty = false;
-                continue;
             }
-            if (afterName) afterName = false;
-            else if (reader.CurrentDepth > 0)
+            else
             {
-                if (!empty) text.Append(',');
-                NewLine(text, reader.CurrentDepth);
+                if (afterName) afterName = false;
+                else if (reader.CurrentDepth > 0)
+                {
+                    if (!empty) text.Append(',');
+                    if (indented) NewLine(text, reader.CurrentDepth);
+                }
+                empty = false;
+                switch (token)
+                {
+                    case JsonTokenType.StartObject: text.Append('{'); empty = true; break;
+                    case JsonTokenType.StartArray: text.Append('['); empty = true; break;
+                    case JsonTokenType.PropertyName:
+                        AppendString(text, reader.GetString()!).Append(indented ? ": " : ":");
+                        afterName = true;
+                        break;
+                    case JsonTokenType.String: AppendString(text, reader.GetString()!); break;
+                    case JsonTokenType.Number: text.Append(Encoding.UTF8.GetString(reader.ValueSpan)); break;
+                    case JsonTokenType.True: text.Append("true"); break;
+                    case JsonTokenType.False: text.Append("false"); break;
+                    case JsonTokenType.Null: text.Append("null"); break;
+                    default: throw new JsonException("Unexpected JSON token " + reader.TokenType + ".");
+                }
             }
-            empty = false;
-            switch (token)
-            {
-                case JsonTokenType.StartObject: text.Append('{'); empty = true; break;
-                case JsonTokenType.StartArray: text.Append('['); empty = true; break;
-                case JsonTokenType.PropertyName: AppendString(text, reader.GetString()!).Append(": "); afterName = true; break;
-                case JsonTokenType.String: AppendString(text, reader.GetString()!); break;
-                case JsonTokenType.Number: text.Append(Encoding.UTF8.GetString(reader.ValueSpan)); break;
-                case JsonTokenType.True: text.Append("true"); break;
-                case JsonTokenType.False: text.Append("false"); break;
-                case JsonTokenType.Null: text.Append("null"); break;
-                default: throw new JsonException("Unexpected JSON token " + reader.TokenType + ".");
-            }
+            if (text.Length > maxChars) return null;
         }
         while (reader.Read());
         return text.ToString();
@@ -205,7 +216,7 @@ public static class BugReportViewerPage
     static StringBuilder AppendString(StringBuilder text, string value)
         => text.Append('"').Append(JsonEncodedText.Encode(value, JavaScriptEncoder.UnsafeRelaxedJsonEscaping).ToString()).Append('"');
 
-    static void NewLine(StringBuilder text, int depth) => text.Append('\n').Append(' ', 2 * depth);
+    static void NewLine(StringBuilder text, int depth) => text.Append('\n').Append(' ', 2 * Math.Min(depth, MaxIndentLevels));
 
     // Line endings are normalised because the HTML parser turns CRLF into LF before the browser hashes a script.
     static string LoadTemplate()

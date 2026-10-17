@@ -189,6 +189,47 @@ public sealed class BugReportViewerPageTests
     }
 
     [Fact]
+    public void Display_text_escapes_quotes_backslashes_and_control_characters()
+    {
+        string page = BugReportViewerPage.Render(Model(sections: [Section("build", "{\"s\":\"q\\\"b\\\\c\\u0001\"}")]));
+
+        using JsonDocument data = Data(page);
+        Assert.Equal("{\n  \"s\": \"q\\\"b\\\\c\\u0001\"\n}", SectionText(data, "build"));
+    }
+
+    [Fact]
+    public void Display_indent_stops_at_sixteen_levels()
+    {
+        string nested = string.Concat(Enumerable.Repeat("{\"a\":", 19)) + "1" + new string('}', 19);
+        // The padding keeps the indented text inside the growth bound, so the text stays indented.
+        string section = "{\"x\":" + nested + ",\"pad\":\"" + new string('p', 2000) + "\"}";
+        string page = BugReportViewerPage.Render(Model(sections: [Section("build", section)]));
+
+        using JsonDocument data = Data(page);
+        string[] lines = SectionText(data, "build").Split('\n');
+        Assert.Contains(new string(' ', 32) + "\"a\": 1", lines);
+        Assert.All(lines, line => Assert.False(line.StartsWith(new string(' ', 33), StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public void Deep_wide_sections_fall_back_to_compact_text()
+    {
+        // 63 nested arrays inside the section object, then many one-byte numbers: indented, every number would
+        // carry a newline and 32 spaces.
+        string section = "{\"a\":" + new string('[', 63) + string.Concat(Enumerable.Repeat("0,", 5000)) + "9007199254740993"
+            + new string(']', 63) + "}";
+        string page = BugReportViewerPage.Render(Model(sections: [Section("build", section)],
+            server: "{\"sections\":{\"x\":" + section + "}}"));
+
+        using JsonDocument data = Data(page);
+        string text = SectionText(data, "build");
+        Assert.True(text.Length <= 4 * section.Length + 64, "display text is " + text.Length + " characters");
+        Assert.Equal(section, text);
+        using JsonDocument parsed = JsonDocument.Parse(text);
+        Assert.Equal("{\"sections\":{\"x\":" + section + "}}", data.RootElement.GetProperty("server").GetString());
+    }
+
+    [Fact]
     public void Data_carries_every_part_of_the_report()
     {
         var clip = new ClipIndex([new ClipIndexFrame(0, 10, 4, 4, "clip/000.jpg"), new ClipIndexFrame(100, 30, 4, 4, "clip/001.jpg"),

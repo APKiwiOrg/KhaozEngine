@@ -71,7 +71,7 @@ public sealed class LocalFolderSink : IBugReportSink
             manifest = validation.Manifest;
             viewerPath = Save(bundle, manifest);
         }
-        catch (Exception e) when (!cancellationToken.IsCancellationRequested)
+        catch (Exception e) when (e is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             Log.Warn("Could not save bug report " + submission.ReportId + " to its local folder.", e);
             return new BugReportSubmitResult(BugReportSubmitStatus.Queued, null, WriteFailedError, null);

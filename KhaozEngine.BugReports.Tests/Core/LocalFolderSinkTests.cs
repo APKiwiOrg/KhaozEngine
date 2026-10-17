@@ -131,6 +131,35 @@ public sealed class LocalFolderSinkTests : IDisposable
     }
 
     [Fact]
+    public async Task Failure_racing_the_callers_cancel_is_queued()
+    {
+        using var cancel = new CancellationTokenSource();
+        var sink = new LocalFolderSink(root, openViewer: false, render: _ =>
+        {
+            cancel.Cancel();
+            throw new IOException("disk");
+        });
+
+        BugReportSubmitResult result = await sink.SubmitAsync(Submission(TestBundles.Default()), cancel.Token);
+
+        Assert.Equal(new BugReportSubmitResult(BugReportSubmitStatus.Queued, null, LocalFolderSink.WriteFailedError, null), result);
+    }
+
+    [Fact]
+    public async Task Cancellation_seen_during_the_save_throws()
+    {
+        using var cancel = new CancellationTokenSource();
+        var sink = new LocalFolderSink(root, openViewer: false, render: _ =>
+        {
+            cancel.Cancel();
+            cancel.Token.ThrowIfCancellationRequested();
+            return "";
+        });
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => sink.SubmitAsync(Submission(TestBundles.Default()), cancel.Token));
+    }
+
+    [Fact]
     public async Task Caller_cancellation_throws_and_writes_nothing()
     {
         using var cancel = new CancellationTokenSource();

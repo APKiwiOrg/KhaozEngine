@@ -273,6 +273,8 @@ public sealed class BugReportJsonTests
         Assert.Equal(64, BugReportLimits.MaxSectionDepth);
         Assert.Equal(64, BugReportLimits.MaxCategoryChars);
         Assert.Equal(32, BugReportLimits.MaxGameIdChars);
+        Assert.Equal(600000, BugReportLimits.MaxClipOffsetMilliseconds);
+        Assert.Equal(60000, BugReportLimits.MaxRenderMilliseconds);
         JsonDocumentOptions options = BugReportJson.SectionDocumentOptions;
         Assert.Equal(BugReportLimits.MaxSectionDepth, options.MaxDepth);
         Assert.False(options.AllowDuplicateProperties);

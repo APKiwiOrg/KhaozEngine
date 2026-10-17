@@ -46,6 +46,18 @@ internal sealed class FakeSink : IBugReportSink
         return this;
     }
 
+    // Cancels the caller's token, then fails, as a sink racing a cancel might.
+    public FakeSink CancelThenThrow(CancellationTokenSource caller, Exception exception)
+    {
+        lock (sync)
+            outcomes.Enqueue(_ =>
+            {
+                caller.Cancel();
+                return Task.FromException<BugReportSubmitResult>(exception);
+            });
+        return this;
+    }
+
     // Waits until the caller's token is canceled.
     public FakeSink Hang(CancellationToken cancellationToken)
     {

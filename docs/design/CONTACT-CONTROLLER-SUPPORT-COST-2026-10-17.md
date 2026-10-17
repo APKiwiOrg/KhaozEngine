@@ -263,9 +263,12 @@ lossless work cannot reach, and they wait for an owner ruling.
 
 **Ruling SC-18. Rows SG-12 cannot compare with legacy are judged on absolute limits and a deterministic bound.**
 Owner decision 2026-10-18, option B. Two kinds of ordinary row reject today on fixed codes while within their time:
-- `L`: legacy has no successful geometry on the scene (the sphere and capsule dry ticks), so the legacy-relative
-  term `legacy + max(100 us, 0.25 legacy)` cannot be computed. These rows are judged on the absolute SG-12 ceiling
-  alone (scaled by `k` on hosted runs), with every other precondition unchanged.
+- `L`: the paired legacy tick finds no support at all on the scene (the sphere and capsule dry ticks), so there is
+  no legacy result to compare against and the legacy-relative term `legacy + max(100 us, 0.25 legacy)` cannot be
+  computed. These rows are judged on the absolute SG-12 ceiling alone (scaled by `k` on hosted runs), with every
+  other precondition unchanged. Owner scope ruling 2026-10-18: a legacy tick that finds support but lands where the
+  oracle disagrees (the stairs, hidden crate and pushed seat dry ticks) keeps the relative term. Legacy is the
+  controller Grimhollow runs today, so the term still measures the server cost of switching.
 - `E`: the tick is outside the comparable moving single-mode envelope (stationary, descending landing and final
   clamp dry ticks, and the explicit ticks). SG-12 says such ticks "report the full measured envelope and
   deterministic bound" and "cannot be hidden in the ordinary row". They are judged on the absolute SG-12 tick

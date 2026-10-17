@@ -164,21 +164,6 @@ public sealed class MapScatterOverrideDoc
     public List<string>? Layers { get; set; }
 }
 
-/// <summary>An authored prop/building placement. Null Y = ground-snap to the terrain field at load.</summary>
-public sealed partial class MapPlacement
-{
-    /// <summary>Stable editor identity, unique within the document.</summary>
-    public string Id { get; set; } = "";
-    /// <summary>The asset-manifest kit id to instance.</summary>
-    public string Kind { get; set; } = "";
-    public float X { get; set; }
-    public float Z { get; set; }
-    public float? Y { get; set; }
-    public float Yaw { get; set; }
-    public float Scale { get; set; } = 1f;
-    public List<string> Tags { get; set; } = new();
-}
-
 /// <summary>An NPC spawn marker. The game interprets ArchetypeId.</summary>
 public sealed class MapSpawn
 {

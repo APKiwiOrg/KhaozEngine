@@ -732,6 +732,13 @@ before the kit-keyed filter replaced an id lookup. But a hidden element stays ex
 document and visibility never touches the document. Selecting it from the outline still opens its
 inspector, Visible row included, so hiding something never blocks un-hiding it.
 
+`ViewportPick_StaysLinearAcrossALargeAuthoredDocument` checks 200 and 20,000 placements without a clock.
+It compares document reads and the maximum `MapPlacement.LookupReads` delta on any one placement during
+one pick. Lookup-key reads (`Id`, `X`, `Z`) expose repeated scans even through a captured document or a
+different collection holding the same placements. The fixture seeds the viewport's CPU pick state with
+a real synchronous streamer, so the drawn-here filter runs past its built-state guard. GPU construction
+and drawing are outside this headless test.
+
 ## Selection sync
 
 Picking an object in the viewport (or anywhere else the selection changes: an outline tap, a

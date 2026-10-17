@@ -127,7 +127,8 @@ recorder, synthetic guard and private inventory runs.
 `ShippedBuildingInputs.Read` and `ShippedBuildingComparison.Compare` are test-only. The shipped building
 entry runs through the existing private entry boundary. It has no discovery-time reads. Implementers select
 only `ShippedBuildingInputGuardTests` and `PrivateOracleGuardTests`, never the shipped building fact.
-The architecture guard pins exactly five direct engine references. The harness remains outside the
+The architecture guard pins exactly six direct engine references, MapDoc, MapDoc.Physics, Physics.Bepu,
+TileWorld, TileWorld.Netcode and TileWorld.Physics. The harness remains outside the
 solution and public CI and is not packable.
 
 The controller freezes the source and creates a fresh extraction and its provenance outside git. Nothing here searches a game
@@ -172,7 +173,10 @@ in provenance `paths` with its SHA-256, include those entries in the existing ag
 the resulting generator digest with the private acceptance evidence. Private script contents never enter
 this public repository. Regenerate and re-attest output after any source, manifest or generator change.
 
-`nativeDocumentPath` names an attested monolithic format-7 MapDoc document. The generator uses the released
+`nativeDocumentPath` names an attested monolithic MapDoc document. Accepted format-7 R5 building scaffolds
+still load through the pure version-only migration to the current format 8. The reader checks the loaded
+current format. Do not regenerate accepted R5 inputs merely to change the format number. New marker
+scaffolds declare format 8. The generator uses the released
 `MapDocumentFile`, payload-1 prefab files and native manifest format. It must declare resolver 2,
 `AuthoredBindingsV2`, its native asset roots, valid bounds and complete surfaces and topology. Its active
 packed prefab instances must exactly match `buildings`. Preserve instance poses, complete bindings and
@@ -374,3 +378,139 @@ The existing four-variable contract and secure report lifecycle are unchanged. A
 0700 parent outside git and an absent path, created exclusively at 0600. The entry sanitizes exceptions and
 final failure text. Only synthetic guard fixtures may expose their invented detail while diagnosing a
 failed public guard. Actual source IDs, geometry, inventory, digests and report contents remain private.
+
+## Marker extraction contract
+
+`ShippedMarkerComparisonTests` uses `PrivateOracleEntry.Run`. Discovery and static initialization read no
+process input. Implementers run only `ShippedMarkerInputGuardTests`, `PrivateOracleGuardTests` and
+`ShippedBuildingInputGuardTests`, with explicit filters. Never run this project unfiltered.
+
+The four input variables and their order stay unchanged. They are `KHAOZ_R2_SHIPPED_SOURCE`,
+`KHAOZ_R2_ORACLE_PROVENANCE`, `KHAOZ_R2_ORACLE_PROVENANCE_SHA256` and `KHAOZ_R2_ORACLE_REPORT`.
+Use every provenance field and the aggregate rule defined above. Freeze current source, including its
+full commit and engine pin. Historical inventories are not expectations for this comparison.
+
+The extraction attests exactly one `world.json`, all listed regions and catalogs, the source prefab
+definitions needed for ownership, the retained generator and all imported helpers, both manifests below,
+the monolithic format-8 native scaffold, and every native root manifest and transitive resource. Retain
+the generator in private source git before generating. Do not hand-edit scaffold output. Regenerate and
+re-attest after changing any source, policy, script or dependency. Source-support-only scaffolds need no
+invented physical shell. Every resource advertised by a declared native root must still be present.
+
+All paths below are attested extraction-relative paths. Containment, symlink refusal, verified byte
+capture and post-loader rechecks apply. There is no checkout search or fallback. Native reloads use
+captured bytes even if original files change later. Temporary tiled reloads stay under the secure report
+parent and are removed after comparison. The report parent must exist at 0700 outside git, with an absent
+report path. The boundary creates that report exclusively at 0600 and sanitizes every public failure.
+
+### Marker comparison schema 1
+
+Every listed property is required, including nullable properties. Objects are closed, property names
+are case-sensitive, and duplicate or case-variant members refuse. Unknown rules, missing or extra
+correspondences and duplicate source names or destination IDs refuse. Arrays use authored order where
+order matters. These are field shapes, with invented examples only.
+
+The provenance `comparison` object has exactly these fields:
+
+```json
+{
+  "schemaVersion": 1,
+  "nativeDocumentPath": "native.json",
+  "roleManifestPath": "roles.json",
+  "markerManifestPath": "markers.json",
+  "expectations": {
+    "total": 6, "playerStart": 1, "spawn": 2, "landmark": 1, "label": 2,
+    "negativeX": 1, "supportBound": 6, "enabled": 5
+  }
+}
+```
+
+Expectations are nonnegative integer counts. `total` is checked against the independent source region
+inventory, not the number of generated native rows. Other counts come from exhaustive source-to-role
+correspondences and standing points. Disabled markers remain in the inventory.
+
+The role manifest has exactly `schemaVersion`, `generator`, `sourcePrefabs`, `buildingManifestPath`,
+`supports` and `markers`. `schemaVersion` is 1. `generator` has exactly `path` and `helpers`. Its path is
+`generator/build-scaffold.py`, and `helpers` lists unique attested helper paths. `sourcePrefabs` lists
+unique attested `TilePrefabFile` definition paths. `buildingManifestPath` is null when no R5 semantic
+correspondence is retained. Otherwise it names an attested, complete R5 building comparison object with
+the building contract above, which the released building reader validates against the same extraction.
+
+Each `supports` row has exactly these fields:
+
+```json
+{
+  "name": "ground-owner",
+  "binding": { "kind": "Surface", "surfaceId": "plane-0" },
+  "source": { "kind": "terrain", "plane": 0, "objectId": null }
+}
+```
+
+Support names are unique and every declared support is used. A Surface binding has exactly `kind` and
+`surfaceId`. A Space binding has exactly `kind`, `spaceId`, `referenceY`, `searchBelow` and `searchAbove`.
+The kind is `Surface` or `Space`, IDs are nonempty strings, reference Y is finite, and the search extents
+are finite, nonnegative and at most 1000000 metres. Null or foreign binding members refuse. These are
+world-owner bindings in the Task 1 shape, including when authored markers expand from local bindings.
+`source.kind` is `terrain` or `object`. Terrain uses null `objectId`. Object uses the positive original
+source object ID, whose catalog archetype must declare standing surfaces on the named plane.
+
+Each role `markers` row has exactly these fields:
+
+```json
+{
+  "sourceName": "arrival", "id": "arrival-id", "role": "entry-role",
+  "projection": "player-start", "offsetX": 0.5, "offsetZ": 0.5,
+  "supportName": "ground-owner", "heightMode": "Support", "heightRule": "terrain",
+  "yaw": 0.371, "enabled": true, "archetype": null
+}
+```
+
+`role` is caller vocabulary. `projection` is exactly `player-start`, `spawn`, `landmark` or `label` for
+category counts. Offsets are finite tile-unit offsets from the recorded source tile, including footprint
+and role policy. Yaw is finite radians. Enabled is a Boolean. Archetype is null for tag-driven identity,
+otherwise a nonempty authored string. `heightRule` is exactly `terrain` or `standing`, selecting the
+terrain-only or catalog-aware released `TileDocumentGroundHeight` constructor. There are no inferred
+roles, offsets, yaws, enabled flags, archetypes, bindings or height rules.
+
+`heightMode` is `Support` for every actual private import. The shipped entry calls `RequireBoundImports`
+before comparison and refuses any other mode. `Explicit` exists only to exercise comparator diagnostics
+with invented synthetic inputs. It never relaxes the private import policy.
+
+The marker manifest has exactly `schemaVersion` (1) and `markers`. Each row has exactly these fields:
+
+```json
+{
+  "sourceName": "arrival", "x": -2, "z": 1, "plane": 0,
+  "regionX": -1, "regionZ": 0, "supportName": "ground-owner",
+  "spaceId": null, "parents": []
+}
+```
+
+Source coordinates, signed region ownership and plane must equal the source record. The reader verifies
+the world's marker index against every region marker, including exact ordered tags. Each source name
+occurs once in both manifests. `supportName` must agree with the role manifest and name a support on
+that plane. `spaceId` is null for Outside or the exact occupied world-space ID. `parents` is its ordered
+parent chain without duplicates. Authored room, exterior, parent, topology and support dependencies must
+be present in the scaffold. A binding must never reassign a home to an owner excluded by game policy.
+
+### Marker comparison evidence
+
+The comparator checks exhaustive identity, name, tag sequence, role, enabled state, archetype, standing
+XZ, height, yaw, binding, value provenance, witness-bearing support, occupied owner and parent chain.
+It also checks role, tag, typed projection and half-open rectangle queries, including disabled rows and
+negative X. Object support is queried separately with only the named original owner, through the
+released source sampler. This prevents another object's higher floor from concealing a wrong owner.
+
+All XYZ and height components use 0.00001 metre tolerance. Wrapped yaw uses
+`Math.IEEERemainder(native - source, 2 * Math.PI)` with 0.000001 radian tolerance. Identity, names,
+roles, archetypes, enabled flags, bindings and tag order compare exactly. Tolerances are fixed.
+
+Four fresh heads, two monolithic and two tiled, have matching native TileSize, equal identities and
+annotation results, and independent mutable state. Every head is checked against source expectations.
+Label standing-point offsets are recorded as deferred R11 acceptance. They are not a claim that the
+old corner convention was preserved exactly. Generator output is a comparison scaffold, not the R11
+importer or game acceptance.
+
+Private reports retain category counts and detailed failures. Public output contains sanitized pass or
+fail, fixed failure categories and the secure report reference only. No private source inventory,
+coordinates, tags, geometry or digest belongs in engine git, public CI or logs.

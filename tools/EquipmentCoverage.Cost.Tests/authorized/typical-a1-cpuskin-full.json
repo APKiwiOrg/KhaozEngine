@@ -19,8 +19,8 @@
   },
   "gpuExecutionMetric": "unavailable",
   "authorization": {
-    "identity": "coverage-pilot-20261017-a1-once",
+    "identity": "coverage-pilot-20261017-a1-after-unit2-once",
     "approvedBy": "repository owner",
-    "reference": "Owner approval 2026-10-17 for one hosted CPU pilot, one iteration, no added load. KhaozEngine issue 1418."
+    "reference": "Owner approval 2026-10-17 for one repeat hosted CPU pilot after cost units 1 and 2, one iteration, no added load. KhaozEngine issue 1418."
   }
 }

@@ -83,9 +83,10 @@ public sealed class BugReportScreen : Screen
         _screenshot = new Toggle(Layout.ScreenshotToggle, model.IncludeScreenshot) { Enabled = model.ScreenshotAvailable };
         _clip = new Toggle(Layout.ClipToggle, model.IncludeClip) { Enabled = model.ClipAvailable };
 
-        // Button only reads its font in Draw, which assigns the real one first and is skipped without one.
-        _send = new Button(Layout.Send, default, null!, () => Close(BugReportScreenResult.Send));
-        _cancel = new Button(Layout.Cancel, default, null!, () => Close(BugReportScreenResult.Cancel));
+        // Button only reads its font in Draw, which is skipped without one, so the headless case passes none.
+        SpriteFont font = resources.Font ?? null!;
+        _send = new Button(Layout.Send, default, font, () => Close(BugReportScreenResult.Send));
+        _cancel = new Button(Layout.Cancel, default, font, () => Close(BugReportScreenResult.Cancel));
         _send.Enabled = model.CanSend;
         RefreshText();
     }
@@ -140,11 +141,12 @@ public sealed class BugReportScreen : Screen
 
     public override bool Update(float dt, bool receivesInput)
     {
+        // Neither reads input, so the layout and the text stay current while another modal covers the screen.
+        ApplyLayout();
+        RefreshText();
         if (!receivesInput) return false;
         if (Result != BugReportScreenResult.Open) return true;
 
-        ApplyLayout();
-        RefreshText();
         InputState input = Manager.Input;
 
         if (input.WasPressed(Key.Escape))
@@ -176,6 +178,10 @@ public sealed class BugReportScreen : Screen
         _send.Enabled = Model.CanSend;
         _cancel.Update(Manager.Pointer);
         _send.Update(Manager.Pointer);
+
+        // Nothing else on the closed-list path takes the keyboard, so a release outside the box (a toggle, the
+        // category list, empty panel space, a button held since the trigger) must not strand typed text.
+        if (!_description.IsFocused) _description.Focus();
 
         if (Result == BugReportScreenResult.Open && Model.CanSend && input.IsCommandDown && input.WasPressed(Key.Enter))
             Close(BugReportScreenResult.Send);
@@ -234,7 +240,6 @@ public sealed class BugReportScreen : Screen
         GuiDraw.Border(batch, white, layout.Panel, 1f, theme.Border);
         DrawThumbnails(batch, white, font, layout, theme);
 
-        _description.Font = font;
         _description.Draw(batch, white);
         _screenshot.Draw(batch, white);
         _clip.Draw(batch, white);
@@ -242,8 +247,6 @@ public sealed class BugReportScreen : Screen
 
         DrawLabels(batch, font, layout, theme);
         _category.Draw(batch, white, font);
-        _send.Font = font;
-        _cancel.Font = font;
         _cancel.Draw(batch, white);
         _send.Draw(batch, white);
         _category.DrawOverlay(batch, white, font, Manager.Pointer);

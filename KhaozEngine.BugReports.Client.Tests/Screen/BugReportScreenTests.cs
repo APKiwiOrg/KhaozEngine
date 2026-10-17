@@ -121,8 +121,6 @@ public sealed class BugReportScreenTests
         Assert.Equal(BugReportScreenResult.Open, screen.Result);
         Assert.Empty(_closed);
 
-        // The tap on Send released outside the description and unfocused it.
-        Tap(screen.Layout.Description);
         Type("Fell through");
         Step(Frame());
         Assert.True(screen.SendButton.Enabled);
@@ -131,18 +129,90 @@ public sealed class BugReportScreenTests
         Assert.Equal([BugReportScreenResult.Send], _closed);
     }
 
-    [Fact]
-    public void Ctrl_enter_sends_when_text_is_present()
+    [Theory]
+    [InlineData(Key.LeftControl)]
+    [InlineData(Key.LeftSuper)]
+    public void Ctrl_enter_sends_when_text_is_present(Key command)
     {
         BugReportScreen screen = Open();
         Type("Fell through");
 
-        Step(Frame(held: [Key.LeftControl], pressed: [Key.Enter]));
-        Step(Frame(held: [Key.LeftSuper], pressed: [Key.Enter]));
+        Step(Frame(held: [command], pressed: [Key.Enter]));
+        Step(Frame(held: [command], pressed: [Key.Enter]));
 
         Assert.Equal(BugReportScreenResult.Send, screen.Result);
         Assert.Equal([BugReportScreenResult.Send], _closed);
         Assert.Equal("Fell through", screen.Model.Description);
+    }
+
+    [Fact]
+    public void Typing_after_other_widgets_still_reaches_the_description()
+    {
+        BugReportScreen screen = Open();
+
+        Tap(screen.Layout.ScreenshotToggle);
+        Type("x");
+        Assert.Equal("x", screen.Model.Description);
+
+        Tap(screen.Layout.Category);
+        Tap(screen.CategoryDropdown.OptionBounds(0));
+        Type("y");
+        Assert.Equal("Gameplay", screen.Model.Category);
+        Assert.Equal("xy", screen.Model.Description);
+
+        Rect panel = screen.Layout.Panel;
+        Tap(new Rect(panel.Right - 30, panel.Y + 4, 20, 20));
+        Type("z");
+        Assert.Equal("xyz", screen.Model.Description);
+        Assert.True(screen.DescriptionArea.IsFocused);
+    }
+
+    [Fact]
+    public void Mouse_held_at_open_and_released_outside_keeps_the_description_focused()
+    {
+        var emptyPanelSpace = new Vector2(940, 90);
+        Step(Frame(emptyPanelSpace, leftDown: true));
+        BugReportScreen screen = Open();
+
+        Step(Frame(emptyPanelSpace));
+        Type("x");
+
+        Assert.True(screen.DescriptionArea.IsFocused);
+        Assert.Equal("x", screen.Model.Description);
+    }
+
+    [Fact]
+    public void Screenshot_fault_after_open_disables_its_toggle()
+    {
+        BugReportScreen screen = Open();
+        Step(Frame());
+        Assert.True(screen.ScreenshotToggle.Enabled);
+        Assert.True(screen.ScreenshotToggle.IsOn);
+
+        screen.Model.ScreenshotAvailable = false;
+        Step(Frame());
+
+        Assert.False(screen.ScreenshotToggle.Enabled);
+        Assert.False(screen.ScreenshotToggle.IsOn);
+        Assert.False(screen.Model.IncludeScreenshot);
+    }
+
+    [Fact]
+    public void Layout_and_text_refresh_while_another_modal_covers_the_screen()
+    {
+        // An 800 by 600 design is too short for the full panel, and a taller window letterboxes it.
+        var viewport = new DesignViewport(800, 600);
+        var model = new BugReportScreenModel(BugReportDraft.DefaultCategories, true, true, true);
+        var screen = new BugReportScreen(model, new BugReportScreenResources(new FixedMeasurer(), null, null, viewport));
+
+        BugReportScreenLayout before = screen.Layout;
+        viewport.Update(800, 1200);
+        using (LocalizationContext.Use(new BugReportStringsTests.Catalog().Add("bugreport.screen.send", "Envoyer")))
+            Assert.False(screen.Update(Dt, receivesInput: false));
+
+        Assert.Equal("Envoyer", screen.SendButton.Resolved);
+        Assert.NotEqual(before, screen.Layout);
+        Assert.Equal(BugReportScreenLayout.Compute(viewport.WindowBounds), screen.Layout);
     }
 
     [Fact]

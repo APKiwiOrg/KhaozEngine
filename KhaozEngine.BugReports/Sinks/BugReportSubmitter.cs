@@ -11,7 +11,8 @@ namespace KhaozEngine.BugReports;
 /// Delivers reports write-ahead: each bundle is queued on disk before its first send and deleted only when the sink
 /// returns Sent or Rejected, so a crash or an unreachable relay keeps it for a later <see cref="FlushAsync"/>.
 /// A signed-out submission is queued without a send. When the queue cannot be written the bundle is sent directly
-/// and any result other than Sent carries the <c>queue_failed</c> error.
+/// and any result other than Sent carries the <c>queue_failed</c> error. A sink that throws instead of returning a
+/// result reads as Queued, so its bundle stays queued.
 /// </summary>
 public sealed class BugReportSubmitter
 {
@@ -20,6 +21,12 @@ public sealed class BugReportSubmitter
 
     /// <summary>The error on an unsent submission that could not be kept on disk.</summary>
     public const string QueueFailedError = "queue_failed";
+
+    /// <summary>The error on a queued submission whose sink failed instead of returning a result.</summary>
+    public const string SinkFailedError = "sink_failed";
+
+    /// <summary>The error on a submission whose report id is already being sent.</summary>
+    public const string InFlightError = "in_flight";
 
     readonly IBugReportSink sink;
     readonly BugReportOfflineQueue queue;
@@ -48,20 +55,25 @@ public sealed class BugReportSubmitter
         cancellationToken.ThrowIfCancellationRequested();
 
         bool signedIn = !string.IsNullOrWhiteSpace(submission.Subject);
-        bool kept = TryEnqueue(submission, inFlight: signedIn);
+        QueueWrite write = TryEnqueue(submission, inFlight: signedIn);
         if (!signedIn)
-            return new BugReportSubmitResult(BugReportSubmitStatus.Queued, null, kept ? SignedOutError : QueueFailedError, null);
+            return Queued(write == QueueWrite.Kept ? SignedOutError : QueueFailedError);
+        if (write == QueueWrite.InFlight)
+            return Queued(InFlightError);
 
-        if (!kept)
+        if (write == QueueWrite.Failed)
         {
-            BugReportSubmitResult direct = await sink.SubmitAsync(submission, cancellationToken).ConfigureAwait(false);
-            return direct.Status == BugReportSubmitStatus.Sent ? direct : direct with { Error = QueueFailedError };
+            BugReportSubmitResult? direct = await SinkCall.TrySubmitAsync(sink, submission, cancellationToken).ConfigureAwait(false);
+            if (direct is { Status: BugReportSubmitStatus.Sent })
+                return direct;
+            return direct is null ? Queued(QueueFailedError) : direct with { Error = QueueFailedError };
         }
 
         BugReportSubmitResult? result = null;
         try
         {
-            result = await sink.SubmitAsync(submission, cancellationToken).ConfigureAwait(false);
+            result = await SinkCall.TrySubmitAsync(sink, submission, cancellationToken).ConfigureAwait(false)
+                ?? Queued(SinkFailedError);
             return result;
         }
         finally
@@ -70,25 +82,32 @@ public sealed class BugReportSubmitter
         }
     }
 
-    /// <summary>Sends the queued reports of <paramref name="subject"/> and every unbound report, binding them to it.</summary>
+    /// <summary>
+    /// Sends the queued reports of <paramref name="subject"/> and every unbound report, binding them to it. A null or
+    /// blank subject sends nothing.
+    /// </summary>
     /// <returns>The number of reports the sink accepted.</returns>
     public Task<int> FlushAsync(string subject, CancellationToken cancellationToken) =>
         queue.FlushAsync(subject, sink, cancellationToken);
 
-    bool TryEnqueue(BugReportSubmission submission, bool inFlight)
+    static BugReportSubmitResult Queued(string error) => new(BugReportSubmitStatus.Queued, null, error, null);
+
+    QueueWrite TryEnqueue(BugReportSubmission submission, bool inFlight)
     {
         try
         {
-            if (inFlight)
-                queue.EnqueueInFlight(submission);
-            else
+            if (!inFlight)
                 queue.Enqueue(submission);
-            return true;
+            else if (!queue.EnqueueInFlight(submission))
+                return QueueWrite.InFlight;
+            return QueueWrite.Kept;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             Log.Warn("Bug report " + submission.ReportId + " could not be queued on disk.", ex);
-            return false;
+            return QueueWrite.Failed;
         }
     }
+
+    enum QueueWrite { Kept, InFlight, Failed }
 }

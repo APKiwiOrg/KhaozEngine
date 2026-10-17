@@ -140,15 +140,82 @@ public sealed class BugReportSubmitterTests : IDisposable
     public async Task Caller_cancellation_keeps_the_report_and_releases_it()
     {
         var queue = new BugReportOfflineQueue(Dir, time);
-        var gate = new TaskCompletionSource<BugReportSubmitResult>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var sink = new FakeSink().Block(gate).Respond(BugReportSubmitStatus.Sent);
+        using var caller = new CancellationTokenSource();
+        var sink = new FakeSink().Hang(caller.Token).Respond(BugReportSubmitStatus.Sent);
         var submitter = new BugReportSubmitter(sink, queue);
 
-        Task<BugReportSubmitResult> submit = submitter.SubmitAsync(Submission(1, "a"), CancellationToken.None);
-        gate.SetCanceled();
+        Task<BugReportSubmitResult> submit = submitter.SubmitAsync(Submission(1, "a"), caller.Token);
+        await caller.CancelAsync();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => submit);
 
         Assert.Equal(1, queue.Count);
         Assert.Equal(1, await submitter.FlushAsync("a", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Throwing_sink_returns_a_result_and_keeps_the_report()
+    {
+        var queue = new BugReportOfflineQueue(Dir, time);
+        var sink = new FakeSink().Throw(new InvalidOperationException("boom")).Throw(new OperationCanceledException())
+            .Respond(BugReportSubmitStatus.Sent).Respond(BugReportSubmitStatus.Sent);
+        var submitter = new BugReportSubmitter(sink, queue);
+
+        BugReportSubmitResult faulted = await submitter.SubmitAsync(Submission(1, "a"), CancellationToken.None);
+        time.Advance(TimeSpan.FromSeconds(1));
+        BugReportSubmitResult canceled = await submitter.SubmitAsync(Submission(2, "a"), CancellationToken.None);
+
+        var expected = new BugReportSubmitResult(BugReportSubmitStatus.Queued, null, BugReportSubmitter.SinkFailedError, null);
+        Assert.Equal(expected, faulted);
+        Assert.Equal(expected, canceled);
+        Assert.Equal("sink_failed", BugReportSubmitter.SinkFailedError);
+        Assert.Equal(2, queue.Count);
+        Assert.Equal(2, await submitter.FlushAsync("a", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Throwing_sink_without_a_queue_is_queue_failed()
+    {
+        Directory.CreateDirectory(root);
+        File.WriteAllText(Dir, "a file where the queue directory should be");
+        var sink = new FakeSink().Throw(new InvalidOperationException("boom"));
+        var submitter = new BugReportSubmitter(sink, new BugReportOfflineQueue(Dir, time));
+
+        BugReportSubmitResult result = await submitter.SubmitAsync(Submission(1, "a"), CancellationToken.None);
+
+        Assert.Equal(new BugReportSubmitResult(BugReportSubmitStatus.Queued, null, BugReportSubmitter.QueueFailedError, null), result);
+    }
+
+    [Fact]
+    public async Task Signed_out_submit_with_an_unwritable_queue_is_queue_failed()
+    {
+        Directory.CreateDirectory(root);
+        File.WriteAllText(Dir, "a file where the queue directory should be");
+        var sink = new FakeSink();
+        var submitter = new BugReportSubmitter(sink, new BugReportOfflineQueue(Dir, time));
+
+        BugReportSubmitResult result = await submitter.SubmitAsync(Submission(1, null), CancellationToken.None);
+
+        Assert.Equal(new BugReportSubmitResult(BugReportSubmitStatus.Queued, null, "queue_failed", null), result);
+        Assert.Empty(sink.Submissions);
+    }
+
+    [Fact]
+    public async Task Duplicate_submit_while_in_flight_keeps_the_first_claim()
+    {
+        var queue = new BugReportOfflineQueue(Dir, time);
+        var gate = new TaskCompletionSource<BugReportSubmitResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var sink = new FakeSink().Block(gate);
+        var submitter = new BugReportSubmitter(sink, queue);
+
+        Task<BugReportSubmitResult> first = submitter.SubmitAsync(Submission(1, "a"), CancellationToken.None);
+        BugReportSubmitResult second = await submitter.SubmitAsync(Submission(1, "a"), CancellationToken.None);
+
+        Assert.Equal(new BugReportSubmitResult(BugReportSubmitStatus.Queued, null, BugReportSubmitter.InFlightError, null), second);
+        // The first claim still holds, so a flush does not send the report again.
+        Assert.Equal(0, await submitter.FlushAsync("a", CancellationToken.None));
+        gate.SetResult(FakeSink.Result(Submission(1, "a"), BugReportSubmitStatus.Sent));
+        Assert.Equal(BugReportSubmitStatus.Sent, (await first).Status);
+        Assert.Single(sink.Submissions);
+        Assert.Equal(0, queue.Count);
     }
 }

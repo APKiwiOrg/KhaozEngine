@@ -38,6 +38,26 @@ internal sealed class FakeSink : IBugReportSink
         return this;
     }
 
+    // Breaks the sink contract by throwing, as a faulty sink might.
+    public FakeSink Throw(Exception exception)
+    {
+        lock (sync)
+            outcomes.Enqueue(_ => Task.FromException<BugReportSubmitResult>(exception));
+        return this;
+    }
+
+    // Waits until the caller's token is canceled.
+    public FakeSink Hang(CancellationToken cancellationToken)
+    {
+        lock (sync)
+            outcomes.Enqueue(async _ =>
+            {
+                await Task.Delay(Timeout.Infinite, cancellationToken);
+                throw new InvalidOperationException("Task.Delay(Infinite) returned without cancellation.");
+            });
+        return this;
+    }
+
     public Task<BugReportSubmitResult> SubmitAsync(BugReportSubmission submission, CancellationToken cancellationToken)
     {
         Func<BugReportSubmission, Task<BugReportSubmitResult>> next;

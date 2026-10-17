@@ -2,6 +2,7 @@ using System;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Runtime.ExceptionServices;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -191,6 +192,10 @@ public sealed class BugReportOfflineQueueTests : IDisposable
         File.WriteAllBytes(Path.Combine(Dir, Id(3) + ".zip"), [1, 2, 3]);
         File.WriteAllText(Path.Combine(Dir, Id(3) + ".json"), "{");
         File.WriteAllBytes(Path.Combine(Dir, Id(4) + ".zip.tmp"), [1, 2, 3]);
+        // A bundle truncated after its metadata was written, as a power loss can leave it.
+        File.WriteAllBytes(Path.Combine(Dir, Id(6) + ".zip"), [1]);
+        File.WriteAllText(Path.Combine(Dir, Id(6) + ".json"),
+            "{\"reportId\":\"" + Id(6) + "\",\"subject\":\"a\",\"queuedAt\":\"2026-10-17T12:00:00+00:00\",\"bytes\":3}");
         File.WriteAllText(Path.Combine(Dir, "notes.txt"), "keep");
         File.WriteAllBytes(Path.Combine(Dir, "readme.zip"), [1]);
 
@@ -211,20 +216,29 @@ public sealed class BugReportOfflineQueueTests : IDisposable
     public void Scan_never_deletes_a_report_being_enqueued()
     {
         BugReportOfflineQueue queue = Queue();
-        // Both threads run a fixed count, so an unfair lock cannot stretch the run.
-        const int Iterations = 100;
+        // Both threads run a fixed count, so an unfair lock cannot stretch the run. The scanner outlasts the writer.
+        const int Writes = 30;
+        const int Scans = 120;
+        Exception? scannerFault = null;
         using var start = new Barrier(2);
         var scanner = new Thread(() =>
         {
-            start.SignalAndWait();
-            for (int i = 0; i < Iterations; i++)
-                _ = queue.Count;
+            try
+            {
+                start.SignalAndWait();
+                for (int i = 0; i < Scans; i++)
+                    _ = queue.Count;
+            }
+            catch (Exception ex)
+            {
+                scannerFault = ex;
+            }
         });
         scanner.Start();
         try
         {
             start.SignalAndWait();
-            for (int i = 0; i < Iterations; i++)
+            for (int i = 0; i < Writes; i++)
             {
                 string id = Id(i);
                 queue.Enqueue(Submission(id, "a"));
@@ -237,7 +251,44 @@ public sealed class BugReportOfflineQueueTests : IDisposable
         {
             scanner.Join();
         }
+        if (scannerFault is not null)
+            ExceptionDispatchInfo.Throw(scannerFault);
         Assert.Equal(BugReportOfflineQueue.MaxReports, queue.Count);
+    }
+
+    [Fact]
+    public async Task Blank_subject_flush_sends_nothing()
+    {
+        BugReportOfflineQueue queue = Queue();
+        queue.Enqueue(Submission(Id(1), null));
+        var sink = new FakeSink();
+
+        Assert.Equal(0, await queue.FlushAsync(null!, sink, CancellationToken.None));
+        Assert.Equal(0, await queue.FlushAsync("", sink, CancellationToken.None));
+        Assert.Equal(0, await queue.FlushAsync("  ", sink, CancellationToken.None));
+
+        Assert.Empty(sink.Submissions);
+        Assert.Equal(1, queue.Count);
+    }
+
+    [Fact]
+    public async Task Throwing_sink_stops_the_flush_and_keeps_the_report()
+    {
+        BugReportOfflineQueue queue = Queue();
+        queue.Enqueue(Submission(Id(1), "a"));
+        time.Advance(TimeSpan.FromSeconds(1));
+        queue.Enqueue(Submission(Id(2), "a"));
+        // A cancellation the caller did not ask for is a sink fault too.
+        var sink = new FakeSink().Throw(new OperationCanceledException())
+            .Respond(BugReportSubmitStatus.Sent).Respond(BugReportSubmitStatus.Sent);
+
+        Assert.Equal(0, await queue.FlushAsync("a", sink, CancellationToken.None));
+        Assert.Single(sink.Submissions);
+        Assert.Equal(2, queue.Count);
+
+        // The failed send released its claim, so the next flush delivers both.
+        Assert.Equal(2, await queue.FlushAsync("a", sink, CancellationToken.None));
+        Assert.Equal(0, queue.Count);
     }
 
     [Fact]

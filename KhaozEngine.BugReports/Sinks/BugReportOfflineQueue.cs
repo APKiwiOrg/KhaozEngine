@@ -28,6 +28,9 @@ public sealed class BugReportOfflineQueue
     /// <summary>Entries queued longer ago than this expire.</summary>
     public static readonly TimeSpan MaxAge = TimeSpan.FromDays(7);
 
+    static readonly BugReportSubmitResult SinkFailed =
+        new(BugReportSubmitStatus.Queued, null, BugReportSubmitter.SinkFailedError, null);
+
     const string ZipSuffix = ".zip";
     const string JsonSuffix = ".json";
     const string TmpSuffix = ".tmp";
@@ -70,9 +73,9 @@ public sealed class BugReportOfflineQueue
     /// <exception cref="UnauthorizedAccessException">The directory is not writable.</exception>
     public void Enqueue(BugReportSubmission submission) => Write(submission, claim: false);
 
-    // Enqueues and marks the id in flight before its metadata becomes visible, so no flush sends it meanwhile.
-    // The caller ends the claim with Complete.
-    internal void EnqueueInFlight(BugReportSubmission submission) => Write(submission, claim: true);
+    // Claims the id, then enqueues, so no flush sends the entry once its metadata is visible. False, with nothing
+    // written, when the id is already in flight. On true the caller ends the claim with Complete.
+    internal bool EnqueueInFlight(BugReportSubmission submission) => Write(submission, claim: true);
 
     // Applies a send's result and ends the claim. Sent and Rejected delete the entry. Queued or no result keeps it.
     internal void Complete(string reportId, BugReportSubmitResult? result)
@@ -87,14 +90,15 @@ public sealed class BugReportOfflineQueue
 
     /// <summary>
     /// Prunes, then sends <paramref name="subject"/>'s entries and every unbound entry oldest first, binding each
-    /// unbound entry to <paramref name="subject"/> before its send. Stops at the first Queued result. Entries already
-    /// in flight are skipped.
+    /// unbound entry to <paramref name="subject"/> before its send. Stops at the first Queued result or sink failure,
+    /// keeping that entry. Entries already in flight are skipped. A null or blank subject sends nothing.
     /// </summary>
     /// <returns>The number of entries the sink accepted.</returns>
     public async Task<int> FlushAsync(string subject, IBugReportSink sink, CancellationToken cancellationToken)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(subject);
         ArgumentNullException.ThrowIfNull(sink);
+        if (string.IsNullOrWhiteSpace(subject))
+            return 0;
         await flushGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -124,7 +128,7 @@ public sealed class BugReportOfflineQueue
     }
 
     // Claims, binds and sends one entry, then applies the result. Null when nothing was sent: the id is already in
-    // flight, the entry is gone or unreadable, or it belongs to another account.
+    // flight, the entry is gone or unreadable, or it belongs to another account. A sink failure reads as Queued.
     internal async Task<BugReportSubmitResult?> SendOneAsync(string reportId, string subject, IBugReportSink sink, CancellationToken cancellationToken)
     {
         if (!ReportIds.IsValid(reportId))
@@ -144,7 +148,8 @@ public sealed class BugReportOfflineQueue
             byte[]? bundle = TryReadBundle(reportId);
             if (bundle is null)
                 return null;
-            result = await sink.SubmitAsync(new BugReportSubmission(reportId, subject, bundle), cancellationToken).ConfigureAwait(false);
+            result = await SinkCall.TrySubmitAsync(sink, new BugReportSubmission(reportId, subject, bundle), cancellationToken).ConfigureAwait(false)
+                ?? SinkFailed;
             return result;
         }
         finally
@@ -153,7 +158,7 @@ public sealed class BugReportOfflineQueue
         }
     }
 
-    void Write(BugReportSubmission submission, bool claim)
+    bool Write(BugReportSubmission submission, bool claim)
     {
         ArgumentNullException.ThrowIfNull(submission);
         string id = submission.ReportId;
@@ -166,14 +171,14 @@ public sealed class BugReportOfflineQueue
 
         lock (sync)
         {
-            bool claimed = false;
+            // Another caller's claim is never touched, so its Complete stays the only release.
+            if (claim && !inFlight.Add(id))
+                return false;
             try
             {
                 Directory.CreateDirectory(directory);
                 WriteFile(zip + TmpSuffix, submission.Bundle.Span);
                 WriteFile(json + TmpSuffix, Serialize(metadata));
-                if (claim)
-                    claimed = inFlight.Add(id);
                 File.Move(zip + TmpSuffix, zip, overwrite: true);
                 File.Move(json + TmpSuffix, json, overwrite: true);
             }
@@ -181,11 +186,12 @@ public sealed class BugReportOfflineQueue
             {
                 TryDelete(zip + TmpSuffix);
                 TryDelete(json + TmpSuffix);
-                if (claimed)
+                if (claim)
                     inFlight.Remove(id);
                 throw;
             }
             ScanAndPrune();
+            return true;
         }
     }
 
@@ -310,7 +316,7 @@ public sealed class BugReportOfflineQueue
             switch (ReadMetadata(id, out QueuedReportMetadata? metadata))
             {
                 case MetadataRead.Ok:
-                    entries.Add(metadata!);
+                    AddIfBundleMatches(entries, metadata!);
                     break;
                 case MetadataRead.Corrupt:
                     Log.Warn("Deleted queued bug report " + id + " with unreadable metadata.");
@@ -330,6 +336,33 @@ public sealed class BugReportOfflineQueue
             return byTime != 0 ? byTime : string.CompareOrdinal(a.ReportId, b.ReportId);
         });
         return entries;
+    }
+
+    // A bundle whose length differs from its metadata was cut short, for example by a power loss.
+    void AddIfBundleMatches(List<QueuedReportMetadata> entries, QueuedReportMetadata metadata)
+    {
+        long length;
+        try
+        {
+            length = new FileInfo(ZipPath(metadata.ReportId)).Length;
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
+            TryDelete(JsonPath(metadata.ReportId));
+            return;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return;
+        }
+
+        if (length == metadata.Bytes)
+        {
+            entries.Add(metadata);
+            return;
+        }
+        Log.Warn("Deleted queued bug report " + metadata.ReportId + " whose bundle length does not match its metadata.");
+        DeleteEntry(metadata.ReportId);
     }
 
     MetadataRead ReadMetadata(string reportId, out QueuedReportMetadata? metadata)
@@ -389,6 +422,8 @@ public sealed class BugReportOfflineQueue
     {
         using var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None);
         stream.Write(bytes);
+        // On disk before the rename, so a power loss cannot leave a complete entry over unwritten data.
+        stream.Flush(flushToDisk: true);
     }
 
     static byte[] Serialize(QueuedReportMetadata metadata) =>

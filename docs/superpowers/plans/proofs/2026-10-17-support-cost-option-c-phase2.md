@@ -184,8 +184,6 @@ dry and explicit ticks. `Dry` and `Explicit` are whole ticks. Limits are the loc
 
 | Scene | Operation | Hosted | Hosted verdict | Before | After | Limit | After / limit | Verdict |
 | --- | --- | ---: | --- | ---: | ---: | ---: | ---: | --- |
-before 47ded3e11 2026-10-17T05:20:05.959753+00:00 0
-after 15e3d0bfc 2026-10-17T17:44:07.993884+00:00 0
 | flat box | Find | 23.0 | PASS | 2729.0 | 13.5 | 50.0 | 0.27 | PASS |
 | flat box | B0 | 14.5 | PASS | 32.3 | 14.1 | 200.0 | 0.07 | PASS |
 | flat box | B1 | 14.3 | PASS | 31.7 | 13.9 | 200.0 | 0.07 | PASS |

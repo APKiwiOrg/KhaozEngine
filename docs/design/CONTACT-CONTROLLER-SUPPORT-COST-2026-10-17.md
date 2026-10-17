@@ -230,6 +230,11 @@ not observed. Tests that inject a fault target a read that is not a repeat.
   geometry, a stopped proposal above the reach band). The pushed seat probe starts exactly on the ceiling slab top.
 - The cost harness takes one discarded leading row before the first measured row (an SG-20 amendment), since the
   first measured row reads high in every run on both machines (#1434).
+- A paced row's end placement must reach min(final support height, start feet + MaxStepClimbSpeed times dt, roof
+  limit) less the existing 1 mm allowance. The roof limit is the lowest overhead surface over the footprint disc
+  less the capsule's cap height at that point, the body height and the contact skin, computed by a harness oracle
+  from installed geometry. It models the controller's real roof constraint and passes no lag the budget or a binding
+  roof does not explain.
 
 **Ruling SC-17. The hidden crate descent is investigated before the crate counts as paced.** While a paced climb
 is owed, a substep lowers the feet 0.0577 m below the crate top the body stood on (#1437). A targeted geometry test
@@ -237,10 +242,17 @@ decides whether that is a controller defect. A defect gets its proper fix, keepi
 footprint protections and raw layer identity. Once the descent is refuted, or fixed and pinned by regression tests,
 the harness derives `paced` from the climb budget (owed rise above MaxStepClimbSpeed times dt) instead of a scene
 name list. The investigation confirmed a defect: `GroundSeat.StepPart` extrapolated a sloping face plane from a
-height capped by an overhung edge and charged a false 0.0577 m rise. A rise over one support member is now
-explained by that member's own height field, so neither a level nor a sloped overhung edge charges a step. Across
-members the extrapolation uses the edge-aware `PlaneRise`. The crate's remaining 0.22 m lag is the designed paced
-climb.
+height capped by an overhung edge and charged a false 0.0577 m rise. The shipped rule, matching ruling 4a-9:
+- On one support member (the same Static and member element), the start member's height field explains a rise only
+  up to the walkable grade over the horizontal move, tan of the tick's traction gate times the move plus both
+  certified height errors. The excess is a step part charged to the climb budget and a discrete step past the
+  contact skin. So neither a level nor a sloped overhung edge charges a step, while curvature steeper than walkable
+  (a log or sphere flank) still does.
+- A same-member drop beyond the walkable grade is a negative discrete step for the smoother and descent signals,
+  and charges nothing to the climb budget.
+- Across members the extrapolation uses the edge-aware `PlaneRise`. A sloped overhung edge split across two
+  members still charges once at the crossing substep (#1454).
+The crate's remaining 0.22 m lag is the designed paced climb.
 
 Measured after SC-10 to SC-17, one local sample per row at `15e3d0bfc`
 ([phase 2 cost record](../superpowers/plans/proofs/2026-10-17-support-cost-option-c-phase2.md)): every substep row

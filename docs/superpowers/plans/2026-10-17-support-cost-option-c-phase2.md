@@ -10,6 +10,8 @@
 
 **Spec:** `docs/design/CONTACT-CONTROLLER-SUPPORT-COST-2026-10-17.md`, phase 2 rulings SC-10 to SC-17, on top of SC-1 to SC-9 and `docs/design/CONTACT-CONTROLLER-SUPPORT-GATES-2026-10-11.md`.
 
+> Execution note: the work rode the staged 21.3.1, not 21.2.0, after v21.2.0 and v21.3.0 were tagged during execution (ledger ruling for Task 9).
+
 ## Global Constraints
 
 - No SG-12 limit, ceiling, tolerance or assertion epsilon changes anywhere. SC-16 and SC-17 correct evidence, they do not widen it.

@@ -206,8 +206,12 @@ internal sealed class SupportCostExecution : IDisposable
                 FootprintOracleSupport final = SupportGateCostScenes.Expected(scene, row, q, guarded: false);
                 paced = Paced(row, final.Height);
                 double allowedLag = paced ? SupportGateCostScenes.Tuning.StepHeight : 0.001;
+                double reached = Math.Min(final.Height, row.Feet.Y + Budget(row));
+                if (paced && RoofLimit(new(output.EndFeet.X, output.EndFeet.Z), final.Height) is double roof)
+                    reached = Math.Min(reached, roof);
                 placed = final.Status is SupportStatus.Walkable or SupportStatus.Steep &&
-                    output.EndFeet.Y <= final.Height + 0.001 && final.Height - output.EndFeet.Y <= allowedLag;
+                    output.EndFeet.Y <= final.Height + 0.001 && final.Height - output.EndFeet.Y <= allowedLag &&
+                    (!paced || output.EndFeet.Y >= reached - 0.001);
             }
             return output with
             {
@@ -220,9 +224,22 @@ internal sealed class SupportCostExecution : IDisposable
     }
 
     /// <summary>A rise from the row's feet to the support where the body ended that one tick's climb budget cannot
-    /// pay is a paced climb, so its feet may trail that support by up to the legs band.</summary>
-    internal static bool Paced(SupportCostRow row, double supportHeight) =>
-        supportHeight - row.Feet.Y > (double)SupportGateCostScenes.Tuning.MaxStepClimbSpeed * row.Dt;
+    /// pay is a paced climb. Its feet may trail that support by up to the legs band, but must reach the lowest of the
+    /// support, the budgeted height and the roof limit.</summary>
+    internal static bool Paced(SupportCostRow row, double supportHeight) => supportHeight - row.Feet.Y > Budget(row);
+
+    static double Budget(SupportCostRow row) => (double)SupportGateCostScenes.Tuning.MaxStepClimbSpeed * row.Dt;
+
+    /// <summary>The highest feet a body of the cost tuning's height reaches under the scene's roof over the footprint
+    /// disc at <paramref name="axis"/>, or null when nothing is overhead. A clearance push keeps the contact skin
+    /// between the body and the roof.</summary>
+    internal double? RoofLimit(Vector2 axis, double supportHeight) =>
+        SupportCostRoofOracle.Lowest(scene, axis, row.Query.FootRadius, supportHeight) is double roof
+            ? roof - 2 * (double)SupportGateCostScenes.Tuning.CapsuleHalfHeight - ShellMotion.ContactSkin
+            : null;
+
+    /// <summary>The installed scene, for a test that adds geometry the oracles then read.</summary>
+    internal SupportFootprintScene Scene => scene;
 
     EnvironmentAcquisitionFixture Environment()
     {

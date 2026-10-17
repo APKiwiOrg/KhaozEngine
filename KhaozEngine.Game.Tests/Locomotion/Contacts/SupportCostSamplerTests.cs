@@ -1,6 +1,9 @@
+using System;
 using System.Linq;
+using System.Numerics;
 using System.Runtime;
 using KhaozEngine.Physics;
+using KhaozEngine.Tests.Physics;
 using Xunit;
 
 namespace KhaozEngine.Tests.Locomotion.Contacts;
@@ -196,5 +199,66 @@ public sealed class SupportCostSamplerTests
             Assert.True(output.GeometryPassed, $"{name} ended at {output.EndFeet}");
         }
         finally { SupportQueryDiagnostics.Exchange(prior); }
+    }
+
+    // A paced end must reach the lowest of the support, the budgeted height and the roof limit. The crate's 0.22 m
+    // paced lag does. The #1437 descent, feet 0.0589 under the 0.3366 edge, does not.
+    [Fact]
+    public void PacedPlacementHoldsTheBudgetedHeight()
+    {
+        using var execution = Paced("hidden crate", out SupportCostOutput output);
+        Assert.Null(execution.RoofLimit(new(output.EndFeet.X, output.EndFeet.Z), 0.3366));
+        SupportCostOutput paced = execution.CheckGeometry(output, readsMatch: true);
+        Assert.True(paced.Paced);
+        Assert.True(paced.GeometryPassed, $"Paced end {output.EndFeet}");
+        SupportCostOutput descended = execution.CheckGeometry(
+            output with { EndFeet = output.EndFeet with { Y = 0.058931626f } }, readsMatch: true);
+        Assert.True(descended.Paced);
+        Assert.False(descended.GeometryPassed);
+    }
+
+    // The pushed seat's ceiling underside is at 1.82, the body is 1.8 tall and a push keeps the 0.001 contact skin
+    // below the roof, so its roof limit is 0.019 and binds below the 0.117 budget and the 0.25 support.
+    [Fact]
+    public void PacedPlacementStopsAtTheRoofLimit()
+    {
+        using var execution = Paced("pushed seat", out SupportCostOutput output);
+        var axis = new Vector2(output.EndFeet.X, output.EndFeet.Z);
+        Assert.InRange(Math.Abs(execution.RoofLimit(axis, 0.25)!.Value - 0.019), 0, 1e-6);
+        SupportCostOutput paced = execution.CheckGeometry(output, readsMatch: true);
+        Assert.True(paced.Paced);
+        Assert.True(paced.GeometryPassed, $"Paced end {output.EndFeet}");
+    }
+
+    // A ceiling 2.3 above the crate scene gives a roof limit of 0.499, above the 0.117 budgeted height that binds, so
+    // the #1437 descent still fails beneath it.
+    [Fact]
+    public void ARoofLimitThatDoesNotBindExcusesNoLag()
+    {
+        using var execution = Paced("hidden crate", out SupportCostOutput output);
+        execution.Scene.Install(new BoxShape(new(2, 0.05f, 2)), Pose.At(new(0, 2.35f, 0)));
+        var axis = new Vector2(output.EndFeet.X, output.EndFeet.Z);
+        Assert.InRange(Math.Abs(execution.RoofLimit(axis, 0.3366)!.Value - 0.499), 0, 1e-6);
+        Assert.True(execution.CheckGeometry(output, readsMatch: true).GeometryPassed, $"Paced end {output.EndFeet}");
+        SupportCostOutput descended = execution.CheckGeometry(
+            output with { EndFeet = output.EndFeet with { Y = 0.058931626f } }, readsMatch: true);
+        Assert.True(descended.Paced);
+        Assert.False(descended.GeometryPassed);
+    }
+
+    static SupportCostExecution Paced(string name, out SupportCostOutput output)
+    {
+        SupportCostRow row = SupportGateCostScenes.Rows().Select(r => (SupportCostRow)r[0]).Single(r => r.Name == name);
+        var execution = new SupportCostExecution(row, "DryTick");
+        SupportQueryDiagnostics.ThreadState prior = SupportQueryDiagnostics.Exchange(
+            SupportQueryDiagnostics.ThreadState.Fresh(true));
+        try { output = execution.Invoke(); }
+        catch
+        {
+            execution.Dispose();
+            throw;
+        }
+        finally { SupportQueryDiagnostics.Exchange(prior); }
+        return execution;
     }
 }

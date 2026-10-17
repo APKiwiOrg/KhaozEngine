@@ -79,9 +79,10 @@ internal static class SupportVerticalAdmission
     internal static GeometrySign Admit(SupportPolygon polygon, in SupportFootprintRequest request, FeatureNumber radius,
         double bottom, double top)
     {
+        // The reference evaluator does no certificate work, so it never derives or caches the domain.
+        if (SupportReferenceEvaluation.Active || !radius.IsExact) return GeometrySign.Unresolved;
         SupportVerticalDomain domain = polygon.VerticalDomain;
-        if (SupportReferenceEvaluation.Active || domain == SupportVerticalDomain.None || !radius.IsExact)
-            return GeometrySign.Unresolved;
+        if (domain == SupportVerticalDomain.None) return GeometrySign.Unresolved;
         ReadOnlySpan<FeaturePoint> vertices = polygon.Vertices, edges = polygon.Edges;
         int count = vertices.Length;
         GeometryInterval axisX = GeometryInterval.Exact(request.Axis.X), axisZ = GeometryInterval.Exact(request.Axis.Y);

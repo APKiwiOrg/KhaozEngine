@@ -25,22 +25,23 @@ report per shard and fails the backend when a shard is missing, a shard's suite 
 assembly ran on two shards or twice on one, Render.Tests ran outside its slices, or a test project in the
 solution ran nowhere.
 
-THE BALANCE comes from the per-test durations in the TRX files of dispatch run 39030778010. Every job also
-spends about 4 minutes on setup and build before its tests start (3 to 4.5 in run 39031351066, with the
-NuGet cache on Windows and the package-list lavapipe lookup on Linux), so a slice of about 15 minutes is a
-job of about 19. The shapes differ by backend:
-  * vulkan-native runs serialised, so a slice costs the sum of its tests. Render.Tests summed 116 minutes in
-    run 39030778010, and its test steps 130 in run 39031351066, so lavapipe varies by about a tenth.
-    TemporalFollowPhaseGpuTests' orthographic sweep took 22 minutes as one method, so it is split by preset
-    like the perspective sweep beside it. Its Native and Quality half, about 12.5 minutes, is the heaviest
-    method and has a slice to itself. The other eight slices are packed to 13 to 13.5 minutes each. Eight
-    slices in all would be about 14.5 minutes each, and past 20 minutes a job on the slower runs.
+THE BALANCE comes from the per-test durations in the TRX files of dispatch runs 39030778010 and
+39036919036. The same tests ran 0.6 to 1.6 times as long from one hosted runner to the next, uniformly
+across a job, so each job's runner speed is factored out and a test's cost is its geometric mean over the
+runs. Every job also spends about 4 minutes on setup and build before its tests start (2.5 to 5.5 in
+39036919036, with the NuGet cache on Windows and the package-list lavapipe lookup on Linux), so a slice of
+about 15 minutes is a job of about 19 on a runner of average speed. The shapes differ by backend:
+  * vulkan-native runs serialised, so a slice costs the sum of its tests, about 111 minutes for
+    Render.Tests. TemporalFollowPhaseGpuTests' orthographic sweep took 22 minutes as one method, so it is
+    split by preset like the perspective sweep beside it. Its Native and Quality half, about 11 minutes, is
+    the heaviest method and leads a slice of its own. The nine slices cost 11.7 to 13.2 minutes each. Eight
+    would cost about 14 minutes each and pass 20 minutes a job on a slow runner.
   * direct3d11-native runs classes in parallel on WARP but the methods of one class in series, so a slice
     costs its slowest class or about a third of its summed time, whichever is more. The one method of
-    ShadowCascadeCullPerfGpuTests took 15 minutes there against 1 on Metal, has a slice to itself and sets
-    that backend's floor with the `rest` shard. TemporalFollowPhaseGpuTests' methods are spread over two
-    slices so that class is no longer a 16-minute serial chain. The other three slices sum 29 to 35 minutes
-    each.
+    ShadowCascadeCullPerfGpuTests took 9 to 15 minutes there against 1 on Metal, has a slice to itself
+    and sets that backend's floor with the `rest` shard. TemporalFollowPhaseGpuTests' methods are spread
+    over two slices so that class is no longer a 16-minute serial chain. The other three slices sum 29 to
+    41 minutes each.
   * metal-native has the same parallel shape on a real (paravirtual) GPU at about a third of the cost.
     Render.Tests is about 37 summed minutes in two slices of 8 to 9 minutes of wall time each.
 Every run uploads each shard's TRX files as `shard-trx-<backend>-<shard>`, which carry the per-test durations
@@ -88,16 +89,15 @@ RENDER_SLICES = {
         ("render-4", []),
     ],
     "vulkan-native": [
-        ("render-1", [("=", ORTHO_NQ)]),
+        ("render-1", [("=", ORTHO_NQ)] + gpu("M")),
         ("render-2", gpu("ShadowCascadeCullPerfGpuTests.") + [("=", STOP)]),
         ("render-3", [("=", PERSPECTIVE_PU)] + gpu("TemporalFollowLinesGpuTests.")),
-        ("render-4", [("=", ORTHO_PU)] + gpu("TemporalFollowCameraGpuTests.")),
-        ("render-5", gpu("TemporalLongHoldFollowGpuTests.", "F")),
-        ("render-6", [("=", PERSPECTIVE_NQ)] + gpu("TemporalFollowStopGpuTests.", "TemporalA", "TemporalC",
-                                                   "TemporalD")),
+        ("render-4", [("=", ORTHO_PU)] + gpu("TemporalFollowStopGpuTests.")),
+        ("render-5", gpu("TemporalLongHoldFollowGpuTests.", "TemporalA", "TemporalC", "TemporalD", "TemporalE")),
+        ("render-6", [("=", PERSPECTIVE_NQ)] + gpu("TemporalFollowCameraGpuTests.")),
         ("render-7", [("=", LINES)] + gpu("TemporalF", "TemporalH", "TemporalM", "TemporalN", "TemporalO",
                                           "TemporalP", "TemporalR")),
-        ("render-8", gpu("Temporal", "S", "T", "U", "V", "W")),
+        ("render-8", gpu("Temporal", "S")),
         ("render-9", []),
     ],
 }

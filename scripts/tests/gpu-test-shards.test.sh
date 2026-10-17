@@ -81,7 +81,7 @@ for backend in metal-native direct3d11-native vulkan-native; do
 done
 run check-render vulkan-native "$TMPROOT/list.txt" > /dev/null
 check "vulkan render-1 holds the Native and Quality orthographic sweep alone" 1 "$(grep -c '^vulkan-native render-1: 1 listed test methods$' "$OUTFILE")"
-check "vulkan render-9 takes the unnamed classes" 1 "$(grep -c '^vulkan-native render-9: 3 listed test methods$' "$OUTFILE")"
+check "vulkan render-9 takes the unnamed classes" 1 "$(grep -c '^vulkan-native render-9: 4 listed test methods$' "$OUTFILE")"
 run check-render direct3d11-native "$TMPROOT/list.txt" > /dev/null
 check "d3d11 render-1 holds the cascade cull alone" 1 "$(grep -c '^direct3d11-native render-1: 1 listed test methods$' "$OUTFILE")"
 check "d3d11 render-4 takes every class outside Temporal" 1 "$(grep -c '^direct3d11-native render-4: 5 listed test methods$' "$OUTFILE")"

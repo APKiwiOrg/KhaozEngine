@@ -89,11 +89,12 @@ namespace KhaozEngine.Tests.Gpu
         public PixelRect Footprint(Scene3D s, Vector3 centre, Vector3 size) =>
             TemporalAcceptance.Footprint(s.Camera, centre - size * 0.5f, centre + size * 0.5f, W, H);
 
-        // Both windings, so culling cannot hide the panel. Row 0 of the texture is at the top.
-        GltfMesh PanelMesh()
+        // Both windings, so culling cannot hide the panel. Row 0 of the texture is at the top. A texel spans
+        // texelPixels display pixels.
+        internal GltfMesh PanelMesh(float texelPixels = TexelPixels)
         {
             float x = OrthoSize * 3f, y = OrthoSize * 1.5f, z = -1.95f;
-            float period = TexelPixels * PixelWorld * TextureSize;
+            float period = texelPixels * PixelWorld * TextureSize;
             var n = Vector3.UnitZ;
             var c = Vector4.One;
             ModelVertex V(float px, float py) =>

@@ -405,4 +405,6 @@ Public names E1 added beyond its block above, and the rules E2 and E3 can rely o
   screenshot fault faults the pending task and every later one. Encode faults are recorded on the encode thread
   and handled on the frame thread. A tap fault never reaches the game's frame.
 - **`MaxBytes` floor.** `FrameHistoryOptions.MaxBytes` below 64 KiB is refused. The floor is a lower bound for sane
-  configurations and does not guarantee that one frame fits. The default of 8 MB holds a full clip.
+  configurations and does not guarantee that one frame fits. The default of 8 MB is the hard byte budget and does
+  not guarantee a full clip. Holding all 60 default frames needs an average under about 136 KiB, and a detailed
+  scene can shorten the clip, which then keeps the newest frames.

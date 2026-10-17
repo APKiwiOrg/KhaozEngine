@@ -89,7 +89,9 @@ A refused option throws `ArgumentOutOfRangeException` naming it at construction.
 120 frames, so `Duration` must be above zero and `Duration` times `FramesPerSecond` may not exceed 120. `FramesPerSecond` runs 1 to 60,
 `LongEdge` 16 to 2560, `JpegQuality` 1 to 100, and `MaxBytes` starts at 64 KiB.
 That floor is a lower bound for sane configurations. It does not guarantee that one textured 960 px frame
-fits, and a frame larger than the cap is dropped. The default of 8 MB is what holds a full clip.
+fits, and a frame larger than the cap is dropped. The default of 8 MB is a hard byte budget and does not
+guarantee a full clip either. Holding all 60 default frames needs an average under about 136 KiB a frame, so a
+detailed scene can shorten the clip, which then keeps the newest frames.
 
 The clip never stalls a frame. A capture tick that finds every readback slot still in flight is dropped, and
 the encode queue holds two frames and drops the oldest when it falls behind.

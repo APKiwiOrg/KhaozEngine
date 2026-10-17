@@ -31,7 +31,9 @@ public sealed class FrameHistoryRecorder : IDisposable
 
     /// <summary>
     /// The smallest byte cap, a lower bound for sane configurations. It does not guarantee that one textured
-    /// 960 px frame fits, and a frame larger than the cap is dropped. The default of 8 MB is what holds a full clip.
+    /// 960 px frame fits, and a frame larger than the cap is dropped. The default of 8 MB is a hard byte budget,
+    /// not a guarantee of a full clip: all 60 default frames fit only while they average under about 136 KiB, and
+    /// a detailed scene shortens the clip, which then keeps the newest frames.
     /// </summary>
     internal const int MinMaxBytes = 64 * 1024;
 

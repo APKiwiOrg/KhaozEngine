@@ -45,13 +45,15 @@ Every member is frame thread only. Encoding runs on the recorder's own backgroun
 `IGpuSwapchainCapture` and `IGpuFencedReadback`. The three native devices do. Without them the clip never
 records, because its readback would have to wait on the GPU.
 
-A screenshot needs only `IGpuSwapchainCapture`, so it still works on a device without completion fences. On a
-device that cannot copy its swapchain, `CaptureScreenshotAsync()` returns a task faulted with
-`NotSupportedException` and no tap is registered.
+A screenshot needs only `IGpuSwapchainCapture`, so it still works on a device without completion fences. A
+device that cannot copy its swapchain gets no standby screenshot tap, because it has no copy-source usage to
+keep on. The clip is unavailable there too, so the recorder registers no tap at all, and
+`CaptureScreenshotAsync()` returns a task faulted with `NotSupportedException`.
 
 A fault inside a tap, such as a lost device, or a fault on the encode thread, is warned once and turns that
-capture off for the recorder's lifetime. The game's frame continues. A clip fault stops recording, and a
-screenshot fault faults the pending task and every later one.
+capture off for the recorder's lifetime. The game's frame continues. A clip fault removes the clip tap, drops
+the frames held and leaves `IsRecording` false, and a later `Start()` does nothing. Build a new recorder to
+record again. A screenshot fault faults the pending task and every later one.
 
 ## The standby screenshot tap
 

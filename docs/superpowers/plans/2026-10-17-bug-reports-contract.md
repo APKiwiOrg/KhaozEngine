@@ -280,6 +280,10 @@ public sealed class BugReportOfflineQueue
     public void Enqueue(BugReportSubmission submission);      // Subject null binds to the first account that flushes
     public Task<BugReportFlushResult> FlushAsync(string subject, IBugReportSink sink, CancellationToken cancellationToken);
 }
+public static class BugReportLogTail
+{
+    public static IReadOnlyList<string> FromLogSection(ReadOnlyMemory<byte> json, int maxLines = 50);
+}
 public sealed record BugReportViewerModel(BugReportManifest Manifest, ClipIndex? Clip, IReadOnlyList<CapturedSection> Sections,
     ReporterIdentity? Reporter, ReadOnlyMemory<byte>? ServerSnapshotJson, IReadOnlyList<string> LogTail);
 public static class BugReportViewerPage

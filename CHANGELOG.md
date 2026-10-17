@@ -5,6 +5,14 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.1.1
+
+- Contact controller support reads and `IPhysicsSupportFootprint.QuerySupportFootprint` cost less on ordinary
+  scenes. Installed box and hull statics reuse a cached pose-applied world form, a certified separation skips
+  the contact kernel, faces of one convex leaf join through their shared captured edge, and curved contact
+  members stop bisecting once their verdict is certified. Results stay bit-identical to the reference
+  evaluator, and the first warm query in a process no longer allocates.
+
 ## 21.1.0
 
 - Keep rigid attachment body alignments exactly affine when general inversion rounds their homogeneous

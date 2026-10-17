@@ -42,8 +42,9 @@ namespace KhaozEngine.Gui
         public bool AdvanceTransitionsBehindModal { get; set; }
 
         /// <summary>
-        /// Whether the CURRENT pointer gesture began over a region the screens had reserved, latched at the press
-        /// and held until the next fresh press. This is the press-origin invariant carried across the UI boundary.
+        /// Whether the CURRENT pointer gesture began over a region the screens had reserved or occluded, latched at
+        /// the press and held until the next fresh press. This is the press-origin invariant carried across the UI
+        /// boundary.
         /// <para>The stack drives its own composed <see cref="Pointer"/>, so a <see cref="Pointer.BlockRegion"/> a
         /// screen makes here is invisible to the game's world-picking pointer, and there is no rect a game can hand
         /// <see cref="Pointer.IsTapIn"/> that means "the whole screen stack" (its rect is the window, and the window
@@ -155,7 +156,8 @@ namespace KhaozEngine.Gui
             // a fresh press origin: on any other frame the answer is already latched, and recomputing it would read
             // the CURRENT layout for a press made when the layout was something else.
             Pointer pointer = _input.Pointer;
-            if (pointer.IsPressOriginFresh) PressBeganOverUi = pointer.IsBlocked(pointer.PressOrigin);
+            if (pointer.IsPressOriginFresh)
+                PressBeganOverUi = pointer.IsBlocked(pointer.PressOrigin) || pointer.IsOccluded(pointer.PressOrigin);
         }
 
         /// <summary>Draws all non-hidden screens bottom-to-top.</summary>

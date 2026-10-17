@@ -311,7 +311,7 @@ public sealed class DraggableBottomSheet
 
     void ResetNative() => _nativeSequence = _nativeAdmitted = _nativeEnded = _nativeHandle = false;
     bool Admits(Pointer pointer, Vector2 position) => Finite(position) && Bounds.Width > 0 && Bounds.Height > 0
-        && Bounds.Contains(position) && !pointer.IsBlocked(position);
+        && Bounds.Contains(position) && !pointer.IsBlocked(position) && !pointer.IsOccluded(position);
     void OwnLeftContact(Pointer pointer, bool consume)
     {
         _ownsLeftUntilRelease |= pointer.IsDown || pointer.IsPressOriginFresh;

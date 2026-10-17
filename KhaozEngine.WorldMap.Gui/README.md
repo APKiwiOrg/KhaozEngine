@@ -122,4 +122,5 @@ whether the identity was present. The view never disposes marker or icon texture
 After the chunk list, `Draw` emits label shadows and text, then icons, then live markers in the same
 caller-open batch. `Hovered` is refreshed by `Update`, returning the last-drawn accepted icon under
 the pointer, otherwise the last label, otherwise null. Its key is the icon key or authored marker name,
-and its map position is the original anchor. An unusable viewport clears overlays and hover.
+and its map position is the original anchor. An unusable viewport clears overlays and hover. Since 21.3.0
+an occluded pointer position (`Pointer.IsOccluded`) reports no hover while overlays still place.

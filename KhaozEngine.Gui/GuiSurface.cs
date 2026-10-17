@@ -335,7 +335,7 @@ namespace KhaozEngine.Gui
         public bool HoverEntered => _hoveredRect.HasValue && _hoveredRect != _prevHoveredRect;
 
         /// <summary>
-        /// True when the stored pointer's press-origin lies inside any widget reserved this frame (the
+        /// True when the stored pointer's press-origin is occluded or lies inside any widget reserved this frame (the
         /// click-through gate). Use to suppress world/board input when the user pressed on the UI. Always false
         /// while the window is unfocused (a background window captures nothing).
         /// </summary>
@@ -349,13 +349,14 @@ namespace KhaozEngine.Gui
                 // never-pressed pointer must not capture a widget that merely sits at the origin.
                 if (!_pointer.IsDown && !_pointer.IsJustReleased) return false;
                 Vector2 origin = _pointer.PressOrigin;
+                if (_pointer.IsOccluded(origin)) return true;
                 foreach (var r in _blocked)
                     if (r.Contains(origin)) return true;
                 return false;
             }
         }
 
-        /// <summary>True when the pointer's CURRENT position is inside any widget rect reserved this frame
+        /// <summary>True when the pointer's CURRENT position is occluded or inside any widget rect reserved this frame
         /// (the same per-frame <c>_blocked</c> set <see cref="PointerCaptured"/> tests, but against the live
         /// position rather than the press origin, and with no press-in-progress guard). Use to suppress world
         /// HOVER affordances (tooltips, hover highlights) while the cursor is over UI. Because <c>_blocked</c>
@@ -368,6 +369,7 @@ namespace KhaozEngine.Gui
             {
                 if (!_pointer.WindowFocused) return false;
                 Vector2 pos = _pointer.Position;
+                if (_pointer.IsOccluded(pos)) return true;
                 foreach (var r in _blocked)
                     if (r.Contains(pos)) return true;
                 return false;

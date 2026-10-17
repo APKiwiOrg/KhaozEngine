@@ -17,6 +17,7 @@ public sealed class EditorDocument
     /// branch was discarded by a later edit). Undo depth is always non-negative, so this never matches.</summary>
     const int Unreachable = -1;
 
+    readonly MapDocument _doc;
     int _savedMarker;
     long _savedHighWater;
 
@@ -34,7 +35,7 @@ public sealed class EditorDocument
     /// <see cref="MapDocRegistry.CreateDefault"/> when none is supplied.</summary>
     public EditorDocument(MapDocument doc, MapDocRegistry? registry = null)
     {
-        Doc = doc ?? throw new ArgumentNullException(nameof(doc));
+        _doc = doc ?? throw new ArgumentNullException(nameof(doc));
         Registry = registry ?? MapDocRegistry.CreateDefault();
         _savedHighWater = doc.NumericIdHighWaterMark;
         History.Registry = Registry;
@@ -51,7 +52,19 @@ public sealed class EditorDocument
         History.BindNativeAssets(Doc, assets, placementBounds);
 
     /// <summary>The document being edited.</summary>
-    public MapDocument Doc { get; }
+    public MapDocument Doc
+    {
+        get
+        {
+            DocReads++;
+            return _doc;
+        }
+    }
+
+    /// <summary>How many times <see cref="Doc"/> has been read. The scene and the tool controller read the document
+    /// through <see cref="Doc"/>, so a per-element pick filter that searches it shows up here once per element, which
+    /// is how the pick linearity test sees a quadratic pick without a clock.</summary>
+    internal long DocReads { get; private set; }
 
     /// <summary>The feature registry used to interpret and serialize the document.</summary>
     public MapDocRegistry Registry { get; }

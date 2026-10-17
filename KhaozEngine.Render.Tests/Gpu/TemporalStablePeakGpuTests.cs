@@ -21,7 +21,8 @@ namespace KhaozEngine.Tests.Gpu
     /// renders <see cref="FirstMeasured"/> frames and measures <see cref="Measured"/> more over the 3x3 display pixels
     /// around each peak: the mean frame-to-frame luma change, and the mean absolute luma error against the
     /// supersampled reference of the same frames. Both stay within <see cref="Tolerance"/> of the resolve's figures
-    /// before the shading release (<see cref="Baseline"/>). A release on the history past the box alone raised the
+    /// before the shading release on the same device class (<see cref="Baseline"/>), which the hosted Metal, WARP and
+    /// lavapipe legs measured within 1 percent of each other. A release on the history past the box alone raised the
     /// change by 100 and 39 percent at Quality, flat and textured, and by 52 percent at Native flat.
     /// </para>
     /// </summary>
@@ -36,14 +37,33 @@ namespace KhaozEngine.Tests.Gpu
 
         readonly record struct Case(string Name, TemporalUpscale Preset, bool Textured);
 
-        // Metal's frame-to-frame change and error at the peaks before the shading release.
-        static readonly Dictionary<Case, (double Change, double Error)> Baseline = new()
+        // The frame-to-frame change and error at the peaks before the shading release, on each device class.
+        static readonly Dictionary<Case, (double Change, double Error)> Hardware = new()
         {
             [new("Quality flat", TemporalUpscale.Quality, false)] = (0.00203, 0.01504),
             [new("Quality textured", TemporalUpscale.Quality, true)] = (0.00237, 0.01541),
             [new("Native flat", TemporalUpscale.Native, false)] = (0.00134, 0.01149),
             [new("Native textured", TemporalUpscale.Native, true)] = (0.00148, 0.01284),
         };
+
+        static readonly Dictionary<Case, (double Change, double Error)> Warp = new()
+        {
+            [new("Quality flat", TemporalUpscale.Quality, false)] = (0.00204, 0.01502),
+            [new("Quality textured", TemporalUpscale.Quality, true)] = (0.00237, 0.01540),
+            [new("Native flat", TemporalUpscale.Native, false)] = (0.00134, 0.01149),
+            [new("Native textured", TemporalUpscale.Native, true)] = (0.00148, 0.01282),
+        };
+
+        static readonly Dictionary<Case, (double Change, double Error)> Lavapipe = new()
+        {
+            [new("Quality flat", TemporalUpscale.Quality, false)] = (0.00204, 0.01503),
+            [new("Quality textured", TemporalUpscale.Quality, true)] = (0.00237, 0.01543),
+            [new("Native flat", TemporalUpscale.Native, false)] = (0.00133, 0.01146),
+            [new("Native textured", TemporalUpscale.Native, true)] = (0.00149, 0.01292),
+        };
+
+        static Dictionary<Case, (double Change, double Error)> Baseline =>
+            TemporalDeviceClass.Warp ? Warp : TemporalDeviceClass.Lavapipe ? Lavapipe : Hardware;
 
         [GpuFact]
         public void Isolated_stable_peaks_keep_their_history_under_a_still_camera_and_light()
@@ -85,8 +105,6 @@ namespace KhaozEngine.Tests.Gpu
                 if (error > baseError * (1 + Tolerance))
                     failures.Add($"{c.Name}: error {error:0.00000} above {baseError:0.00000} plus a tenth");
             }
-            output.WriteLine(string.Join(Environment.NewLine, failures));
-            TemporalMeasuringRun.Report();
             Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
         }
 

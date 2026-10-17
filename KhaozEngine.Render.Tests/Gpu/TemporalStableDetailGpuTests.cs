@@ -16,7 +16,9 @@ namespace KhaozEngine.Tests.Gpu
     /// reference of the same frames: the mean absolute luma error, and the temporal error, how far each pixel's change
     /// from frame to frame lies from the reference's (<see cref="TemporalAcceptance.TemporalError"/>). Both stay
     /// within <see cref="Tolerance"/> of the resolve's figures before the release on the same device class, measured on
-    /// each and listed per class, since the software rasterisers round differently from hardware.
+    /// each and listed per class, since the software rasterisers round differently from hardware. With either of the
+    /// release's two change tests alone deciding at Quality, the still wall of one display pixel texels measured 15
+    /// and 44 percent above its figures, so both must read a change where the frame upscales.
     /// </summary>
     public sealed class TemporalStableDetailGpuTests(ITestOutputHelper output)
     {
@@ -45,17 +47,37 @@ namespace KhaozEngine.Tests.Gpu
             new("Quality still, 0.5 px texels", 0.5f),
         };
 
-        // The resolve's figures before the release, per device class, keyed by case name.
+        // The resolve's figures before the release, per device class, keyed by case name, from the hosted legs. Metal
+        // on the dev machine measured the hardware figures too. With the release, hardware measures every pan within
+        // 0.1 percent of these, and the still wall error 0.00548 and 0.00724 and temporal error 0.00112 and 0.00098.
         static readonly Dictionary<string, Figures> Hardware = new()
         {
+            ["Quality pan 0.3 px"] = new(0.01448, 0.00612),
+            ["Quality pan 0.8 px"] = new(0.01346, 0.01417),
+            ["Native pan 0.3 px"] = new(0.01154, 0.00529),
+            ["Native pan 0.8 px"] = new(0.01058, 0.01190),
+            ["Quality still, 1 px texels"] = new(0.00535, 0.00105),
+            ["Quality still, 0.5 px texels"] = new(0.00721, 0.00096),
         };
 
         static readonly Dictionary<string, Figures> Warp = new()
         {
+            ["Quality pan 0.3 px"] = new(0.01448, 0.00609),
+            ["Quality pan 0.8 px"] = new(0.01345, 0.01413),
+            ["Native pan 0.3 px"] = new(0.01158, 0.00526),
+            ["Native pan 0.8 px"] = new(0.01059, 0.01187),
+            ["Quality still, 1 px texels"] = new(0.00534, 0.00105),
+            ["Quality still, 0.5 px texels"] = new(0.00720, 0.00094),
         };
 
         static readonly Dictionary<string, Figures> Lavapipe = new()
         {
+            ["Quality pan 0.3 px"] = new(0.01439, 0.00611),
+            ["Quality pan 0.8 px"] = new(0.01351, 0.01420),
+            ["Native pan 0.3 px"] = new(0.01154, 0.00529),
+            ["Native pan 0.8 px"] = new(0.01064, 0.01192),
+            ["Quality still, 1 px texels"] = new(0.00543, 0.00105),
+            ["Quality still, 0.5 px texels"] = new(0.00714, 0.00098),
         };
 
         static Dictionary<string, Figures> Baseline =>

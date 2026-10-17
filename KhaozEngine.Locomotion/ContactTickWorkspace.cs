@@ -22,6 +22,9 @@ internal sealed class ContactTickWorkspace
     internal ContactCapsuleShapes Shapes { get; } = new();
     internal LeasedContactQueryContext Queries { get; } = new();
     internal ExplicitContactModes Modes { get; } = new();
+    /// <summary>The current tick's exact repeat support reads (SC-15). It holds geometric certification only. The
+    /// producer's analytic sample and binding run for every read, hit or miss.</summary>
+    internal SupportRequestMemo SupportMemo { get; } = new();
 
     internal void Enter(MovementQueryLease lease)
     {
@@ -29,11 +32,13 @@ internal sealed class ContactTickWorkspace
         _lease = lease;
     }
 
-    internal void BeginTick(MovementQueryLease lease)
+    internal void BeginTick(MovementQueryLease lease, IPhysicsQueryLease physics)
     {
         if (!ReferenceEquals(_lease, lease) || _tick)
             throw new InvalidOperationException("The contact workspace requires its interval's serial tick.");
         ClearAnalytic();
+        // Exact repeat reads are memoized for this tick only, so none crosses the interval's serial ticks.
+        SupportMemo.Open(physics);
         _tick = true;
     }
 
@@ -42,6 +47,7 @@ internal sealed class ContactTickWorkspace
         Queries.Reset();
         Modes.Reset();
         ClearAnalytic();
+        SupportMemo.Close();
         _tick = false;
     }
 

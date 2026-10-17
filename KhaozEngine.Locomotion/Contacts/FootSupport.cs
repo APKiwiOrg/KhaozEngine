@@ -41,7 +41,12 @@ internal static class FootSupport
     /// <summary>Samples analytic terrain once at the exact axis and forwards the value fact.</summary>
     internal static SupportSample Find(Func<float, float, float>? groundHeight,
         Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease,
-        in FootSupportQuery query)
+        in FootSupportQuery query) => Find(groundHeight, groundNormal, world, lease, query, null);
+
+    /// <summary>As the delegate overload, offering the read to <paramref name="memo"/>.</summary>
+    internal static SupportSample Find(Func<float, float, float>? groundHeight,
+        Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease,
+        in FootSupportQuery query, SupportRequestMemo? memo)
     {
         Validate(query);
         FootAnalyticGround? analytic = null;
@@ -51,7 +56,7 @@ internal static class FootSupport
             analytic = new(groundHeight(query.Axis.X, query.Axis.Y),
                 groundNormal?.Invoke(query.Axis.X, query.Axis.Y) ?? Vector3.UnitY);
         }
-        return Find(analytic, world, lease, query);
+        return Find(analytic, world, lease, query, null, memo);
     }
 
     /// <summary>Describes both original proposal paths without reading physics or acquiring an interval.</summary>
@@ -86,17 +91,39 @@ internal static class FootSupport
     /// refusing with <see cref="NotSupportedException"/> when a term that can decide a published contribution
     /// in the band lies outside <paramref name="scope"/>.</summary>
     internal static SupportSample Find(FootAnalyticGround? analytic, IPhysicsWorld? world, IPhysicsQueryLease? lease,
-        in FootSupportQuery query, SupportFootprintBounds? scope)
+        in FootSupportQuery query, SupportFootprintBounds? scope) => Find(analytic, world, lease, query, scope, null);
+
+    /// <summary>As <see cref="Find(FootAnalyticGround?, IPhysicsWorld?, IPhysicsQueryLease?, in FootSupportQuery,
+    /// SupportFootprintBounds?)"/>. A <paramref name="memo"/> open for <paramref name="lease"/> serves an exact repeat
+    /// of a read it remembers and remembers each read it certifies (SC-15). Analytic sampling stays with the
+    /// caller, so the fact a repeat is keyed on is sampled afresh.</summary>
+    internal static SupportSample Find(FootAnalyticGround? analytic, IPhysicsWorld? world, IPhysicsQueryLease? lease,
+        in FootSupportQuery query, SupportFootprintBounds? scope, SupportRequestMemo? memo)
     {
         SupportQueryDiagnostics.Record(SupportQueryCounter.Find);
         SupportFootprintRequest request = DescribeFootprint(query);
         var selection = new Selection(query);
         bool refused = false;
+        SupportRequestMemo? serving = null;
+        SupportSample sample;
         if (world is not null)
         {
             ArgumentNullException.ThrowIfNull(lease);
             IPhysicsSupportFootprint features = world as IPhysicsSupportFootprint ?? throw new NotSupportedException(
                 "Foot support needs a physics world that offers complete footprint queries.");
+            if (memo is not null && memo.Serves(lease))
+            {
+                // The lease is authenticated before the memo is read, as the backend authenticates it before a
+                // sweep, so a stale or foreign-thread read still fails.
+                lease.AssertCurrent();
+                if (memo.TryGet(world, analytic, query, scope, out sample))
+                {
+                    SupportQueryDiagnostics.Record(SupportQueryCounter.FindMemoHits);
+                    Observe(query, sample);
+                    return sample;
+                }
+                serving = memo;
+            }
             ProbeScratch scratch = t_scratch!;
             if (scratch.InUse) scratch = new ProbeScratch();
             scratch.InUse = true;
@@ -109,11 +136,15 @@ internal static class FootSupport
             finally { scratch.InUse = false; }
         }
         if (analytic is { } fact) selection.Terrain(fact);
-        SupportSample sample = refused ? RefusedSupport : selection.Result();
-        SupportQueryDiagnostics.ObserveFind(new(query.Axis, query.FeetY, query.FootRadius,
-            query.ReachUp, query.ReachDown, query.CosMaxSlope, (byte)sample.Status, sample.Height, sample.HeightError));
+        sample = refused ? RefusedSupport : selection.Result();
+        serving?.Remember(world!, analytic, query, scope, sample);
+        Observe(query, sample);
         return sample;
     }
+
+    static void Observe(in FootSupportQuery query, in SupportSample sample) =>
+        SupportQueryDiagnostics.ObserveFind(new(query.Axis, query.FeetY, query.FootRadius,
+            query.ReachUp, query.ReachDown, query.CosMaxSlope, (byte)sample.Status, sample.Height, sample.HeightError));
 
     // Runs the one complete query, applies both proposal guards and offers every certified contribution. A
     // refused query or certificate refuses the whole Find.

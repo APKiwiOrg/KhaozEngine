@@ -46,6 +46,8 @@ internal enum SupportQueryCounter
     JoinsSkipped,
     /// <summary>Mesh triangles materialized, including uncached reference captures.</summary>
     MeshTriangleCaptures,
+    /// <summary>Finds an exact repeat request served from its interval's memo. <see cref="Find"/> counts them too.</summary>
+    FindMemoHits,
 }
 
 internal readonly record struct SupportQueryCounts(
@@ -79,7 +81,8 @@ internal readonly record struct SupportQueryCounts(
     int TopologyJoins,
     int TangentSamples,
     int JoinsSkipped,
-    int MeshTriangleCaptures)
+    int MeshTriangleCaptures,
+    int FindMemoHits)
 {
     public static SupportQueryCounts operator -(SupportQueryCounts a, SupportQueryCounts b) => new(
         a.Find - b.Find,
@@ -112,7 +115,8 @@ internal readonly record struct SupportQueryCounts(
         a.TopologyJoins - b.TopologyJoins,
         a.TangentSamples - b.TangentSamples,
         a.JoinsSkipped - b.JoinsSkipped,
-        a.MeshTriangleCaptures - b.MeshTriangleCaptures);
+        a.MeshTriangleCaptures - b.MeshTriangleCaptures,
+        a.FindMemoHits - b.FindMemoHits);
 }
 
 /// <summary>Opt-in counters owned by the executing thread. Installation is outside measured intervals.</summary>
@@ -183,7 +187,7 @@ internal static class SupportQueryDiagnostics
         t_enabled = enabled;
     }
 
-    const int CounterCount = 31;
+    const int CounterCount = 32;
 
     /// <summary>Every thread-local counter, observation and callback of one thread.</summary>
     internal readonly record struct ThreadState(bool Enabled, int[]? Counts, Action? Begin, Action? End,
@@ -245,6 +249,7 @@ internal static class SupportQueryDiagnostics
         c[(int)SupportQueryCounter.TangentSamples] += counts.TangentSamples;
         c[(int)SupportQueryCounter.JoinsSkipped] += counts.JoinsSkipped;
         c[(int)SupportQueryCounter.MeshTriangleCaptures] += counts.MeshTriangleCaptures;
+        c[(int)SupportQueryCounter.FindMemoHits] += counts.FindMemoHits;
         t_routes = new(t_routes.WallRetries + routes.WallRetries, t_routes.PushedPlacements + routes.PushedPlacements,
             t_routes.MediumResolves + routes.MediumResolves, Math.Max(t_routes.MaximumMediumRetries, routes.MaximumMediumRetries),
             t_routes.GroundSegments + routes.GroundSegments, t_routes.SlideSegments + routes.SlideSegments,
@@ -297,7 +302,8 @@ internal static class SupportQueryDiagnostics
             c[27],
             c[28],
             c[29],
-            c[30]);
+            c[30],
+            c[31]);
     }
 
     internal static void SetGroundSubstepObserver(Action? begin, Action? end)

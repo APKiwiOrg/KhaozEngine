@@ -37,8 +37,10 @@ public sealed partial class MovementQueryLease
         {
             AssertCurrent();
             FootAnalyticGround? analytic = ground is { } field ? new(field.Height, field.Normal) : null;
+            // Only geometric certification is memoized. The producer's sample above and binding below run for
+            // every read, so a repeat records the same analytic fact, owner and binding a fresh read would.
             SupportSample found = FootSupport.Find(analytic, _view, _physics, query,
-                new SupportFootprintBounds(Witness.Scope.EnvelopeMin, Witness.Scope.EnvelopeMax));
+                new SupportFootprintBounds(Witness.Scope.EnvelopeMin, Witness.Scope.EnvelopeMax), Workspace.SupportMemo);
             AssertCurrent();
             if (found.Status is SupportStatus.Walkable or SupportStatus.Steep)
             {

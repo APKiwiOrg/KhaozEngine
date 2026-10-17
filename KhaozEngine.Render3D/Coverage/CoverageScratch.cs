@@ -67,6 +67,8 @@ public sealed class CoverageScratch
     internal Action<CoverageStageSpan, bool>? StageObserver { get; set; }
     /// <summary>Deterministic witness of each certification pass and its command slot, null in ordinary use.</summary>
     internal Action<CoverageCertificationWork, int>? CertificationWitnessForTests { get; set; }
+    /// <summary>Deterministic witness of each core face overlay and its exact Edge work, null in ordinary use.</summary>
+    internal Action<CoverageCoreOverlayWork>? CoreOverlayWitnessForTests { get; set; }
     internal CoverageRefitBvh Tree { get; }
 
     int stamp;

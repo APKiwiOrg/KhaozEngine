@@ -69,13 +69,10 @@ internal static class CoverageCoreCorrection
             if (!support.TryGetHeightBounds(host[corner], out _)) { failure = CoverageFailureCode.CoreEscaped; return false; }
             discrepancy = Math.Max(discrepancy, GapLoss(actual - CoverageBoundedVector.From(q), support.MaxSlope));
         }
-        for (int index = 0; index < support.InwardTriangles.Count; index++)
-        {
-            CoverageSourceTriangle s = support.InwardTriangles[index];
-            sheet[0] = support.ProjectedPositions[s.A]; sheet[1] = support.ProjectedPositions[s.B]; sheet[2] = support.ProjectedPositions[s.C];
-            if (!CoverageFaceOverlay.TryMaximum(host, sheet, out double upper)) return false;
-            deficit = Math.Max(deficit, upper);
-        }
+        int edgeEvaluations = 0;
+        bool overlaid = CoverageFaceOverlay.TrySupportMaximum(host, support, sheet, ref edgeEvaluations, out deficit);
+        scratch.CoreOverlayWitnessForTests?.Invoke(new(triangle, host[0], host[1], host[2], overlaid, deficit, edgeEvaluations));
+        if (!overlaid) return false;
         if (!double.IsFinite(deficit) || !double.IsFinite(discrepancy)) return false;
         deficit = Add(Add(new(deficit, deficit), new(clearance, clearance)), new(discrepancy, discrepancy)).Max;
         return double.IsFinite(deficit);
@@ -161,3 +158,8 @@ internal static class CoverageCoreCorrection
         }
     }
 }
+
+/// <summary>One core face's overlay maximum over every support inward triangle, before clearance and discrepancy are
+/// added, with the exact Edge evaluations it executed. A refusal carries the maximum of the pairs before it.</summary>
+internal readonly record struct CoverageCoreOverlayWork(int Triangle, CoverageAffinePoint Host0, CoverageAffinePoint Host1,
+    CoverageAffinePoint Host2, bool Succeeded, double Maximum, int EdgeEvaluations);

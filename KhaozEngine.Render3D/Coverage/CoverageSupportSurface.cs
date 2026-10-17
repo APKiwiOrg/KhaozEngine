@@ -72,6 +72,8 @@ public sealed class CoverageSupportSurface
     public ReadOnlySpan<int> BoundarySourceVertices => boundarySourceVertices;
     public ReadOnlySpan<int> InwardSourceIndices => selected;
     public IReadOnlyList<CoverageSourceTriangle> InwardTriangles { get; }
+    /// <summary>The exact Edge of inward triangle index's projected corners A, B, C, computed once at construction.</summary>
+    internal CoverageScalar InwardArea(int index) => areas[index];
     public IReadOnlyList<CoverageBoundaryEdge> Boundary { get; }
     public CoverageBvh SolidBvh { get; }
     public CoverageBvh ProjectedBvh { get; }

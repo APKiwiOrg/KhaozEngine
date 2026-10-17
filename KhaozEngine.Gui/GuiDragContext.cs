@@ -104,6 +104,7 @@ namespace KhaozEngine.Gui
         DragPayload _payload;
         Rect _sourceBounds;
         Vector2 _pointer;
+        Pointer? _framePointer;
         bool _dragging;
         bool _released;   // the pointer was released THIS frame (captured in BeginFrame)
 
@@ -197,6 +198,7 @@ namespace KhaozEngine.Gui
         public void BeginFrame(Pointer pointer, float dt)
         {
             ArgumentNullException.ThrowIfNull(pointer);
+            _framePointer = pointer;
             _pointer = pointer.Position;
             _released = pointer.IsJustReleased;
 
@@ -277,9 +279,11 @@ namespace KhaozEngine.Gui
         /// <summary>
         /// <see cref="OfferTarget"/> with the hit-test done for you against <paramref name="bounds"/>: the one-line
         /// way to make a bare rect (a trash zone, a "drop here to discard" panel) a drop target without a widget.
+        /// Refuses positions occluded on the pointer supplied to <see cref="BeginFrame"/>.
         /// </summary>
         public bool OfferTargetIn(Rect bounds, object? targetId, bool accepted, int targetIndex = -1) =>
-            _dragging && bounds.Contains(_pointer) && OfferTarget(targetId, targetIndex, accepted);
+            _dragging && (_framePointer is null || !_framePointer.IsOccluded(_framePointer.Position))
+            && bounds.Contains(_pointer) && OfferTarget(targetId, targetIndex, accepted);
 
         /// <summary>
         /// Abandon the live drag with no drop (the Escape-key path, or a host tearing the UI down mid-gesture).

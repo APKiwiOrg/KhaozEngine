@@ -35,6 +35,15 @@ public partial class ArchitectureTests
             + string.Join(", ", hits));
     }
 
+    /// <summary>The report core references only the headless packages it declares.</summary>
+    [Fact]
+    public void BugReports_ReferencesItsDeclaredSet()
+    {
+        Project core = LoadGraph()[BugReportsCore];
+        Assert.Equal(new[] { "BugReports.Contracts", "Diagnostics", "Http", "Platform" },
+            core.ProjectRefs.Select(Short).OrderBy(name => name, StringComparer.Ordinal).ToArray());
+    }
+
     /// <summary>The report core declares no third-party package.</summary>
     [Fact]
     public void BugReports_HasNoThirdPartyPackage()

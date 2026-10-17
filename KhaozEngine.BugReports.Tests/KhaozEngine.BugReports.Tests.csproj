@@ -10,6 +10,9 @@
     <PackageReference Include="xunit.runner.visualstudio" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.BugReports/KhaozEngine.BugReports.csproj" />
     <ProjectReference Include="../KhaozEngine.BugReports.Contracts/KhaozEngine.BugReports.Contracts.csproj" />
+    <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
+    <ProjectReference Include="../KhaozEngine.Http/KhaozEngine.Http.csproj" />
   </ItemGroup>
 </Project>

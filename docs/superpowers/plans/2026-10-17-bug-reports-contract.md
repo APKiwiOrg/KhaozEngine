@@ -183,12 +183,18 @@ public interface IBugReportSection
     int MaxBytes { get; }
     void Write(Utf8JsonWriter writer, BugReportContext context);
 }
-public sealed record BugReportContext(string ReportId, DateTimeOffset CapturedAt, ReportRedactor Redactor, string? Subject = null);
-public sealed record CapturedSection(string Key, ReadOnlyMemory<byte> Json);
+public sealed record BugReportContext(string ReportId, DateTimeOffset CapturedAt, string? Subject = null);
+public sealed record RawSection(string Key, int MaxBytes, ReadOnlyMemory<byte> Json, bool IsError);   // unredacted capture output
+public sealed record CapturedSection(string Key, ReadOnlyMemory<byte> Json);   // finished: redacted, truncated, inside 1 MiB
 public sealed class BugReportSectionSet
 {
+    public const int MinSectionBytes = 64;
+    public static readonly TimeSpan DefaultFinishBudget = TimeSpan.FromSeconds(2);
+    public IReadOnlyList<string> Keys { get; }
     public void Add(IBugReportSection section);
-    public IReadOnlyList<CapturedSection> CaptureAll(BugReportContext context);   // isolation, truncation, 1 MiB total
+    public IReadOnlyList<RawSection> CaptureAll(BugReportContext context);   // isolation only, frame thread
+    // Off the frame thread: redaction, error message cut, truncation, 1 MiB total. Masks every remaining string once budget is spent.
+    public static IReadOnlyList<CapturedSection> Finish(IReadOnlyList<RawSection> raw, ReportRedactor redactor, TimeSpan budget);
 }
 public sealed class BugReportDraft
 {
@@ -240,7 +246,7 @@ public static class BugReportViewerPage
 {
     public static string Render(BugReportViewerModel model);  // self-contained, media by relative path
 }
-public sealed record ServerSnapshot(string ReportId, string Subject, DateTimeOffset CapturedAt, IReadOnlyList<CapturedSection> Sections);
+public sealed record ServerSnapshot(string ReportId, string Subject, DateTimeOffset CapturedAt, IReadOnlyList<RawSection> Sections);
 public sealed class BugReportServerCapture
 {
     public BugReportServerCapture(TimeProvider time, int perAccountPerHour = 5);
@@ -250,7 +256,7 @@ public sealed class BugReportServerCapture
 }
 public sealed class ServerSnapshotPoster
 {
-    public ServerSnapshotPoster(HttpClient http, Uri relayBase, string serviceKey);
+    public ServerSnapshotPoster(HttpClient http, Uri relayBase, string serviceKey, ReportRedactor? redactor = null);
     public Task<bool> PostAsync(ServerSnapshot snapshot, CancellationToken cancellationToken);   // false and a warning on failure
 }
 ```

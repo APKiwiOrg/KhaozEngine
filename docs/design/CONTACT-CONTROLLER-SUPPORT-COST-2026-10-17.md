@@ -216,7 +216,10 @@ The kernel's `Unresolved` outcomes stay reachable. Equivalence rows as SC-6.
 **Ruling SC-15. An exact repeat inside one interval is memoized.** SG-15 allows memoizing an exact repeat request
 within one interval when the key holds every request bit and the view identity. The pushed seat dry tick issues the
 same query twice. The memo lives for one lease interval only, holds no refusal across intervals, and never crosses
-ticks, bodies or axes.
+ticks, bodies or axes. A memo hit skips only the geometric certification inside the Find. Producer samples,
+bindings and the workspace's consistency records still run on every read. A consistent backend answers an identical
+request the same way inside one interval, so a fault that a backend would raise only on the repeat of a request is
+not observed. Tests that inject a fault target a read that is not a repeat.
 
 **Ruling SC-16. Evidence corrections.** None changes a limit or a tolerance.
 - A substep row's geometry precondition judges the substep's own reads and support, not its parent tick's end

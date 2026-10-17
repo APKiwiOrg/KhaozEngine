@@ -13,8 +13,9 @@ characters. Server snapshot intake checks the service key before reading the bod
 and queues a late append for that first write. A resend that loses the pending write also repairs a missed
 enqueue when the accepted report has an issue number and its snapshot state is `None`. Comment claims make
 duplicate appends harmless. Snapshots are matched to the report's authenticated subject.
-The worker validates section keys and serializes the snapshot again before writing `server.json`. The public
-viewer renders with no reporter identity. Issue composition uses the private report record.
+The worker validates section keys, then writes a public snapshot document holding only `reportId`, `capturedAt`
+and `sections` to `server.json` and the viewer. The authenticated subject never reaches a public blob, and the
+public viewer renders with no reporter identity. Issue composition uses the private report record.
 
 Issue and comment writes take separate create-only claims in the Pending area at
 `claims/<kind>-<reportId>-<epoch>.json`. A claim holds `claimedAt` and has a ten-minute lease. Completed work

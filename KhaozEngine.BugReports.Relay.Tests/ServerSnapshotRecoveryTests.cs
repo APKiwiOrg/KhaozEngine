@@ -35,9 +35,8 @@ public sealed class ServerSnapshotRecoveryTests
         Assert.Single(harness.GitHub.Issues);
         Assert.Single(harness.GitHub.Comments);
         Assert.Equal(ServerSnapshotState.Commented, (await WorkerFixtures.RecordAsync(harness)).ServerSnapshot);
-        ServerSnapshotWire saved = BugReportJson.DeserializeServerSnapshot(
-            System.Text.Encoding.UTF8.GetBytes(await WorkerFixtures.PublicTextAsync(harness, "server.json")));
-        Assert.Equal(42, saved.Sections["server"].GetProperty("tick").GetInt32());
+        using var saved = System.Text.Json.JsonDocument.Parse(await WorkerFixtures.PublicTextAsync(harness, "server.json"));
+        Assert.Equal(42, saved.RootElement.GetProperty("sections").GetProperty("server").GetProperty("tick").GetInt32());
     }
 
     [Theory]

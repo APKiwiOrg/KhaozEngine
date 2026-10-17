@@ -41,10 +41,10 @@ internal sealed class ReportWorker(BugReportRelayOptions options, IReportMediaSt
             // A delivery can have held its first record read across another holder's completed lease.
             record = await LoadAsync(reportId, ct).ConfigureAwait(false);
             if (record is null || record.IssueNumber is not null) return;
-            ReadOnlyMemory<byte>? snapshot = await LoadSnapshotAsync(record, warnIfMissing: false, ct).ConfigureAwait(false);
+            ServerSnapshotWire? snapshot = await LoadSnapshotAsync(record, warnIfMissing: false, ct).ConfigureAwait(false);
             if (snapshot is not null)
             {
-                await WriteSnapshotAsync(record, snapshot.Value, ct).ConfigureAwait(false);
+                await WriteSnapshotAsync(record, snapshot, ct).ConfigureAwait(false);
                 record = record with { ServerSnapshot = ServerSnapshotState.InBody };
                 await records.SaveReportAsync(record, ct).ConfigureAwait(false);
             }
@@ -77,9 +77,9 @@ internal sealed class ReportWorker(BugReportRelayOptions options, IReportMediaSt
             record = await LoadAsync(reportId, ct).ConfigureAwait(false);
             if (record is null || record.ServerSnapshot is ServerSnapshotState.InBody or ServerSnapshotState.Commented) return;
             if (record.IssueNumber is null) throw new ReportNotReadyException(reportId);
-            ReadOnlyMemory<byte>? snapshot = await LoadSnapshotAsync(record, warnIfMissing: true, ct).ConfigureAwait(false);
+            ServerSnapshotWire? snapshot = await LoadSnapshotAsync(record, warnIfMissing: true, ct).ConfigureAwait(false);
             if (snapshot is null) return;
-            await WriteSnapshotAsync(record, snapshot.Value, ct).ConfigureAwait(false);
+            await WriteSnapshotAsync(record, snapshot, ct).ConfigureAwait(false);
             IssueInput input = await loader.LoadAsync(record, snapshot, ct).ConfigureAwait(false);
             await github.AddCommentAsync(record.IssueNumber.Value, composer.ComposeSnapshotComment(input), ct).ConfigureAwait(false);
             await records.SaveReportAsync(record with { ServerSnapshot = ServerSnapshotState.Commented }, ct).ConfigureAwait(false);
@@ -104,7 +104,7 @@ internal sealed class ReportWorker(BugReportRelayOptions options, IReportMediaSt
         return record;
     }
 
-    async Task<ReadOnlyMemory<byte>?> LoadSnapshotAsync(ReportRecord record, bool warnIfMissing, CancellationToken ct)
+    async Task<ServerSnapshotWire?> LoadSnapshotAsync(ReportRecord record, bool warnIfMissing, CancellationToken ct)
     {
         ReadOnlyMemory<byte>? raw = await records.LoadPendingSnapshotAsync(record.ReportId, ct).ConfigureAwait(false);
         if (raw is null)
@@ -124,13 +124,15 @@ internal sealed class ReportWorker(BugReportRelayOptions options, IReportMediaSt
             logger.Warn("Invalid server snapshot section key for report " + record.ReportId + ".");
             return null;
         }
-        return BugReportJson.SerializeServerSnapshot(snapshot);
+        return snapshot;
     }
 
-    async Task WriteSnapshotAsync(ReportRecord record, ReadOnlyMemory<byte> snapshot, CancellationToken ct)
+    // Both public outputs get the subject-free document. The authenticated wire never leaves the Pending area.
+    async Task WriteSnapshotAsync(ReportRecord record, ServerSnapshotWire snapshot, CancellationToken ct)
     {
+        byte[] json = PublicServerSnapshot.Serialize(snapshot);
         string path = ReportLayout.Entry(record.Folder, ReportLayout.ServerSnapshotFile);
-        await media.PutAsync(ReportArea.Public, path, snapshot, ReportLayout.HeadersFor(path), overwrite: true, ct).ConfigureAwait(false);
-        await viewer.WriteAsync(record, snapshot, ct).ConfigureAwait(false);
+        await media.PutAsync(ReportArea.Public, path, json, ReportLayout.HeadersFor(path), overwrite: true, ct).ConfigureAwait(false);
+        await viewer.WriteAsync(record, json, ct).ConfigureAwait(false);
     }
 }

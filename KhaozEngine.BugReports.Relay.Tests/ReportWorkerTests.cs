@@ -103,7 +103,7 @@ public sealed class ReportWorkerTests
         string raw = "  " + Encoding.UTF8.GetString(BugReportJson.SerializeServerSnapshot(WorkerFixtures.Snapshot())) + " \n";
         await harness.Records.PutPendingSnapshotAsync(Id, Encoding.UTF8.GetBytes(raw), Ct);
         await WorkerFixtures.ProcessAsync(harness, kind);
-        Assert.Equal(Encoding.UTF8.GetString(BugReportJson.SerializeServerSnapshot(WorkerFixtures.Snapshot())),
+        Assert.Equal(Encoding.UTF8.GetString(PublicServerSnapshot.Serialize(WorkerFixtures.Snapshot())),
             await WorkerFixtures.PublicTextAsync(harness, "server.json"));
     }
 

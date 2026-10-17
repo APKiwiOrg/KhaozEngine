@@ -196,13 +196,18 @@ explicit per-static and global capacity with eviction that never changes a resul
 the probe meets outside its interior is certified by an exact 2D disc-to-polygon distance, otherwise the kernel
 runs. Cost if wrong: unbounded memory on large terrain meshes, which the capacity test pins.
 
-**Ruling SC-13. A dry tick skips look-ahead once ascent is decided.** `GroundSignals.Resolve` takes three
+**Ruling SC-13. A tick skips look-ahead once ascent is decided.** `GroundSignals.Resolve` takes three
 look-ahead Finds per dry tick, 46 to 49 percent of the stairs and seat ticks, but its outcome is already forced
 when the input ascends with a rise seen, a lift over the lag or an owed climb. In that case the three Finds are
 skipped. MoveState stays bit-identical. Skipped Finds raise no new failure, since their `ContactQueryFailure` was
 already swallowed. The SG-16 look-ahead row moves to a scene where the samples decide the outcome, and a direct test
-compares the short-circuit with the sampled path. Cost if wrong: an edit to the ascent logic that breaks the
-equivalence, which that direct test catches.
+compares the short-circuit with the sampled path. The skip applies to dry and explicit ticks alike. On the
+explicit path the skipped samples are also producer reads, so one deliberate exception follows: the workspace's
+runtime check that a producer answers consistently within a tick or interval sees fewer reads, and an inconsistent
+producer's later conflicting read can now succeed where a look-ahead would have recorded the conflict first. That
+check guards against a faulty producer, it is not a contract that requires the reads, and a consistent producer
+sees no difference. Cost if wrong: an edit to the ascent logic that breaks the equivalence, which that direct test
+catches.
 
 **Ruling SC-14. Non-supporting faces get a cheaper admission certificate.** A vertical face's projected segment is
 tested against the expanded disc before the extrema kernel, which runs whenever the certificate does not decide.

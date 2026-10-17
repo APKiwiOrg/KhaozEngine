@@ -31,6 +31,13 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   `RemoveOverlay` for overlays that draw above any screen and can hold the game's input, and
   `InputState.WithoutInteraction`. A button, trigger or stick still held when a hold ends stays hidden from the
   game until it is released.
+- Temporal anti-aliasing no longer leaves a speckled band or a fading tail behind a shadow edge that travels several
+  pixels a frame, or that crosses a moving object, at Native and Quality. The shading release from 21.2.0 now also
+  covers moving pixels through the history ring test, and a carried lock with no ridge this frame releases only when
+  both diagonal pairs of its ring read the change, so missed thin and diagonal detail keeps its hold. Balanced and
+  lower presets are unchanged ([#1431](https://github.com/APKiwiOrg/KhaozEngine/issues/1431)). See amendment 34 of
+  the [temporal resolve design](docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md)
+  ([#1448](https://github.com/APKiwiOrg/KhaozEngine/issues/1448)).
 - `Browser` on macOS and Linux now passes a URL as one process argument, so a file path containing spaces opens.
 - `PersistenceQueue` in `KhaozEngine.Persistence` gains an internal drain scheduling seam for tests. Public
   behaviour is unchanged. The tracked persistence tests now hold every controlled pause on test-owned threads,

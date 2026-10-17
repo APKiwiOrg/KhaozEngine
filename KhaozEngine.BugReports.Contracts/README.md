@@ -188,8 +188,8 @@ same read-only source-generated settings, including the reporter identity shape.
 caller needs different settings.
 
 JSON is compact with camelCase property names and camelCase enum strings. Integer enum values are
-rejected. Serialization normalizes
-`DateTimeOffset` values to UTC. The encoder is `JavaScriptEncoder.Create(UnicodeRanges.All)`, so
+rejected. Serialization and deserialization both normalize `DateTimeOffset` values to UTC, so a time read
+with another offset comes back as the same instant with offset zero. The encoder is `JavaScriptEncoder.Create(UnicodeRanges.All)`, so
 non-ASCII text such as `Café` stays literal while HTML-sensitive characters are escaped.
 
 The manifest golden is one line of UTF-8 with no trailing newline:

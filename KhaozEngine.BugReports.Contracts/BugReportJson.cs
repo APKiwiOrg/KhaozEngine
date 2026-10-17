@@ -96,10 +96,11 @@ public static class BugReportJson
         return new BugReportJsonContext(options);
     }
 
+    // Every time is written and read in UTC, so a document from another offset compares equal to the same instant.
     sealed class UtcDateTimeOffsetConverter : JsonConverter<DateTimeOffset>
     {
         public override DateTimeOffset Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-            => reader.GetDateTimeOffset();
+            => reader.GetDateTimeOffset().ToUniversalTime();
 
         public override void Write(Utf8JsonWriter writer, DateTimeOffset value, JsonSerializerOptions options)
             => writer.WriteStringValue(value.ToUniversalTime());

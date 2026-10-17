@@ -57,6 +57,17 @@ public sealed class BugReportJsonTests
     }
 
     [Fact]
+    public void Manifest_capturedAt_with_an_offset_reads_back_in_utc()
+    {
+        string json = ManifestGolden.Replace("2026-10-17T03:04:05.678+00:00", "2026-10-17T08:04:05.678+05:00", StringComparison.Ordinal);
+
+        BugReportManifest manifest = BugReportJson.DeserializeManifest(Encoding.UTF8.GetBytes(json));
+
+        Assert.Equal(TimeSpan.Zero, manifest.CapturedAt.Offset);
+        Assert.Equal(new DateTimeOffset(2026, 10, 17, 3, 4, 5, 678, TimeSpan.Zero), manifest.CapturedAt);
+    }
+
+    [Fact]
     public void ClipIndex_matches_the_golden_bytes()
     {
         var index = new ClipIndex(new[]

@@ -49,8 +49,8 @@ public sealed class PacedCrateDescentTests(ITestOutputHelper output)
         foreach (var (before, after) in steps)
         {
             Assert.True(after.Supported);
-            Assert.InRange(Math.Abs(after.Feet.X - 0.085f), 0, 0.2f);
-            Assert.InRange(Math.Abs(after.Feet.Z), 0, 0.1f);
+            double dx = after.Feet.X - 0.085, dz = after.Feet.Z;
+            Assert.InRange(Math.Sqrt(dx * dx + dz * dz), 0, 0.2);
             Assert.True(after.Feet.Y >= 0.1f - after.HeightError,
                 $"Feet {after.Feet.Y:R} descended below the crate top 0.1 inside the footprint.");
             Assert.True(after.Feet.Y >= before.Feet.Y,

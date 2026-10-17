@@ -83,14 +83,19 @@ internal static class GroundCore
    part of the displacement, so the reported feet are certified at their own axis and not at a summed axis a
    rounding step away.
    - **Walkable:** seat on it. The step part of the rise is the rise the start support's height field does not
-     explain: the seated height less that field extrapolated to the new axis. A support capped below its own
-     plane by an overhung edge or vertex has a level height field, using the same contact skin and certified
-     errors as discrete step classification. When `MaxStepClimbSpeed` is positive, the tick's owed climb and
-     step part together are capped at `MaxStepClimbSpeed * dt`, so a run up
-     stairs paces its climb as the knob always meant, while a continuous slope is followed exactly and never
-     throttled. A paced body stays `Walkable` with its feet below the tread for a tick or two. That is legs-band
-     overlap, which the body model allows. Paced feet round down to the largest float not above the paced
-     height, for the owed climb and the step part alike, so a paid climb never exceeds the budget.
+     explain: the seated height less that field extrapolated to the new axis. A seat on the start support's own
+     raw member, the same static and element id, is wholly explained by that member's continuous height field,
+     so its step part is zero, including along a sloped edge the footprint overhangs. Analytic terrain has no
+     member. Across members the start field is its plane, or level when the start height lies below that plane
+     at its axis by more than the contact skin plus the start support's own certified error, because the
+     footprint then overhangs an edge or vertex. When `MaxStepClimbSpeed` is positive, the tick's owed climb and
+     step part together are capped at `MaxStepClimbSpeed * dt`, so a run up stairs paces its climb as the knob
+     always meant, while a continuous slope over one member, or a plane continuing across members under the
+     axis, is followed exactly and never throttled. A sloped overhung edge split between members charges its
+     rise on the substep that crosses members. A paced body stays `Walkable` with its feet below the tread for a
+     tick or two. That is legs-band overlap, which the body model allows. Paced feet round down to the largest
+     float not above the paced height, for the owed climb and the step part alike, so a paid climb never exceeds
+     the budget.
    - **Steep above the start feet:** a footed tick never climbs ground it cannot stand on (#486). The steep
      face acts as a wall: undo the substep and slide along its horizontal tangent.
    - **Steep at or below the start feet:** seat on it with `Steep` footing. Phase 3 slides from there.

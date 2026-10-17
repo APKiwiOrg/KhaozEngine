@@ -53,3 +53,45 @@
 - [ ] **Step 6: Commit** the stratum and tests, and record both artifacts and the gate result under `docs/superpowers/plans/proofs/2026-10-18-support-cost-phase3.md`.
 
 **After Task 1.** If the gate passes, the orchestrator amends this plan with the measured numbers: Task 2 extends the stratum to the other rows research 3 named (stairs hull and mesh Find, stairs box and hull DryTick, crate substeps B1 and D1) together with L1 and L2. The owner is then asked separately about a fourth hosted run. If the gate fails, the prototype is kept on a `probe/*` branch, and every row still missing goes to phase 6 under SC-19.
+
+## Amendment after Task 1 (2026-10-18)
+
+Task 1 passed SC-20 at 043c5bf59 and 2024259c3: stairs box Find 62.792 to 54.750 us (saves 8.042), stairs hull Find saves 9.458, stairs box DryTick saves 17.208, all single local warm samples. The mesh Find sample rose 146.5 us with zero stratum hits, ruled single-sample noise (ledger P3-R2). The task review approved with four minor findings, which Task 2 Step 1 carries. Research 3 attributes the remaining stair Find cost mostly to contacts (about 18 us hosted for box and hull), so Task 2 takes the contact half of lever L3 and Task 3 takes lever L1. The stairs mesh triangle stratum waits for the Task 4 measurement.
+
+### Task 2: Exact contact certificates for axis-aligned rectangles, plus the Task 1 review items
+
+**Files:**
+- Create: `KhaozEngine.Physics.Bepu/SupportRectangleContact.cs` (exact contact-sign certificate for a vertical axis-aligned rectangle against a proposal segment, and the exact lowest height for a horizontal one)
+- Modify: `KhaozEngine.Physics.Bepu/SupportFootprintCollector.cs` (`ContactMember` calls the sign certificate after `SupportPlanarNeighbour.Contact` and before `MeasureFootprintContact`, `ContactHeight` calls the lowest-height stratum before `SupportFootprintProposalGeometry.Lowest`), `KhaozEngine.Physics/SupportQueryDiagnostics.cs` (one `RectangleContact` counter), `KhaozEngine.Physics.Bepu/SupportFootprintPolygon.StairStratum.cs` and `SupportFootprintPolygon.cs` (review items only)
+- Test: `KhaozEngine.Game.Tests/Locomotion/Contacts/SupportRectangleContactTests.cs`, `SupportFootprintStairStratumTests.cs`
+
+**Interfaces:**
+- Consumes: `SupportPolygon`, the collector's `_contactStarts`, `_contactDirections`, `proposal.Probe.Radius`, `_request.ContactBand`, the Task 1 domain helpers in `SupportFootprintPolygon.StairStratum.cs` where they fit.
+- Produces: `internal static GeometrySign SupportRectangleContact.Sign(SupportPolygon polygon, FeaturePoint start, FeaturePoint direction, double radius, double band)` (the same parameter types as `SupportContactPrefilter.Separated`) returning Unresolved whenever it cannot prove the kernel's own resolved verdict, and `internal static bool SupportRectangleContact.TryLowest(SupportPolygon polygon, in SupportFootprintProposal proposal, out GeometrySign sign, out GeometryInterval bounds)` returning false outside its certified domain.
+
+- [ ] **Step 1: Close the Task 1 review items.** In `StairStratumMatchesReferenceOnEveryCostScene`, capture the `Extrema` counter for the reference and optimized runs of every cost scene and assert they are equal. Keep one reference-mode guard (the dispatch in `Extrema`) and move the `stackalloc` after it. Name `StairMinimum` and `StairMaximum` as 2^-100 and 2^100 (`Math.ScaleB` or a comment). Add an exact-translation rotated pose to the installed cases so rotation alone is exercised.
+- [ ] **Step 2: Write the failing tests.** `RectangleContactSignMatchesKernel` (vertical rectangles as box nosings and hull faces, the segment touching, grazing within the band, exactly at the band, just beyond it, behind the face and parallel to it, plus a 1 ulp non-vertical face that must fall through), `RectangleLowestMatchesExhaustive` (horizontal rectangles with the proposal disc inside, straddling, tangent and missing), `ReferenceEvaluationBypassesRectangleContact`, and `RectangleContactMatchesReferenceOnEveryCostScene` asserting `AssertMatchesReference`, equal kernel-visible results and at least one `RectangleContact` hit on the stairs box Find. Confirm they fail for the missing type.
+- [ ] **Step 3: Implement both entry points.** Certify the domain from represented doubles exactly as Task 1 does. The sign certificate may decide only a verdict the kernel would resolve identically (`distance.Front`, the separation against the band), and returns Unresolved otherwise so the kernel runs. `TryLowest` must return the exact sign and the bit-identical `bounds` that `SupportFootprintProposalGeometry.Lowest` returns. Do not modify `SupportSegmentPolygon` or `SupportContactPrefilter`.
+- [ ] **Step 4: Run the focused tests, then the `SupportFootprint`, `SupportGateCost` and `SupportCost` families (`--heavy`).** All pass and warm Find allocation stays 0.
+- [ ] **Step 5: Commit.**
+
+### Task 3: Shared query-independent member facts (lever L1)
+
+**Files:**
+- Modify: `KhaozEngine.Physics.Bepu/InstalledSupportWorldForm.cs` (store per-face immutable facts under its existing installation, version and exact-pose checks), `KhaozEngine.Physics.Bepu/SupportFootprintEdgeOperands.cs` (read the stored projected edge length squared instead of recomputing it in `Evaluate`), `KhaozEngine.Physics.Bepu/SupportFootprintPolygon.cs` (read the stored published normal and plane in `Measure` when the slope-cosine adjustment does not apply), `KhaozEngine.Physics.Bepu/SupportFootprintProposalGeometry.cs` (read the stored normal length in the exhaustive path)
+- Test: `KhaozEngine.Game.Tests/Physics/SupportFootprintTests.WorldForm.cs`
+
+**Interfaces:**
+- Consumes: the world form's existing bind path and its uncached fallback.
+- Produces: no new public surface. The facts are exactly the values the current code computes from the face alone.
+
+- [ ] **Step 1: Write the failing tests.** `SharedMemberFactsMatchRecomputation` (every stored fact is bit-identical to the current computation for box, hull, rotated and mesh faces), `SharedMemberFactsNeverCrossAPoseOrVersion` (a moved or reinstalled static recomputes), `SlopeAdjustedNormalIsNeverShared` (a face at the slope-cosine boundary still takes the per-query adjustment) and the existing cost-scene equivalence with a new `SharedMemberFacts` counter hit.
+- [ ] **Step 2: Implement.** Store only facts that depend on the face alone. Never store a distance, dot product, admission, contact, extremum or winner, and never update a stored value by adding a delta (SC-9 forbids reassociation). Keep storage bounded by the world form's existing capacity, with the uncached fallback when it is exhausted.
+- [ ] **Step 3: Run the focused tests and the three support families (`--heavy`).** All pass and warm Find allocation stays 0.
+- [ ] **Step 4: Commit.**
+
+### Task 4: Phase 3 local measurement and record
+
+- [ ] **Step 1:** Two one-shot cost artifacts back to back through `build-slot --heavy`, base 976c487d7 in a temporary detached worktree then the Task 3 head, as in Task 1 Step 5.
+- [ ] **Step 2:** Record every row research 3 named (stairs box, hull and mesh Find and DryTick, hidden crate Find, B1, D1 and DryTick, pushed seat DryTick, flat mesh DryTick) with base, head, saving and the counter totals in the proof record.
+- [ ] **Step 3:** Run the Release solution build and the full `KhaozEngine.Game.Tests` suite once through `build-slot --heavy`, then commit. The orchestrator then asks the owner about a fourth hosted run. The stairs mesh triangle stratum is planned only if this record shows the mesh Find within reach.

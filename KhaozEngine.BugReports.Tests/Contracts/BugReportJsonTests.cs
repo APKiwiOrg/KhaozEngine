@@ -47,6 +47,13 @@ public sealed class BugReportJsonTests
             JsonSerializer.SerializeToUtf8Bytes(Manifest(), BugReportJson.Options));
 
     [Fact]
+    public void Options_are_read_only()
+    {
+        Assert.True(BugReportJson.Options.IsReadOnly);
+        Assert.Throws<InvalidOperationException>(() => BugReportJson.Options.WriteIndented = true);
+    }
+
+    [Fact]
     public void Manifest_capturedAt_is_normalised_to_utc()
     {
         BugReportManifest manifest = Manifest();

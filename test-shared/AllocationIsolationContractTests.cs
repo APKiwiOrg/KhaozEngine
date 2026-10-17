@@ -50,11 +50,35 @@ public sealed class AllocationIsolationContractTests
 public sealed class AllocationIsolationParallelContractTests
 {
     [Fact]
-    public void A_measurement_beside_parallel_collections_is_refused_before_it_starts()
+    public void A_default_collection_runs_alone_only_when_the_whole_assembly_runs_serially() =>
+        Assert.Equal(CollectionIsolation.AssemblySerial, CollectionIsolation.RunsAlone);
+
+    [Fact]
+    public void A_measurement_outside_an_isolated_collection_is_refused_before_it_starts()
     {
-        var error = Assert.Throws<XunitException>(() => AllocationRegion.Start("parallel contract probe"));
-        Assert.Contains("DisableParallelization = true", error.Message);
-        Assert.NotEqual(GCLatencyMode.NoGCRegion, GCSettings.LatencyMode);
+        // A serial runner isolates this collection too, so take the flag down on this test's own flow to prove the
+        // refusal under either runner mode.
+        bool runnerDecision = CollectionIsolation.RunsAlone;
+        CollectionIsolation.RunsAlone = false;
+        AllocationRegion? started = null;
+        try
+        {
+            Exception? error = Record.Exception(() => started = AllocationRegion.Start("parallel contract probe"));
+            Assert.Null(started);
+            Assert.Contains("DisableParallelization = true", Assert.IsType<XunitException>(error).Message);
+            Assert.NotEqual(GCLatencyMode.NoGCRegion, GCSettings.LatencyMode);
+        }
+        finally
+        {
+            // A region that should never have started must not outlive this test and refuse every later one.
+            if (started is not null)
+            {
+                try { started.Dispose(); }
+                catch (XunitException) { }
+            }
+
+            CollectionIsolation.RunsAlone = runnerDecision;
+        }
     }
 
     [Fact]

@@ -34,11 +34,11 @@ can absorb another contributor's staged files. Never use the shared stash for wo
   `DisableParallelization = true`. The collection name alone only serializes members of that named
   collection against one another. Existing patterns include `gui-theme-global`, `ClipboardSerial`,
   `LoggingSerial`, `AmbientLocalization`, `AllocSensitive` and `NativeDeviceLifecycle`.
-- An allocation assertion measures through `AllocationRegion` or `AllocationMeasurement` from
+- A new allocation assertion measures through `AllocationRegion` or `AllocationMeasurement` from
   `test-shared`. Its project imports `test-shared/AllocationMeasurement.props`, which also runs the
   assembly under `SerializedReportingTestFramework`, and the test joins a collection whose definition
-  sets `DisableParallelization = true`. The region refuses to start anywhere else. See
-  [`test-shared/README.md`](../test-shared/README.md).
+  sets `DisableParallelization = true`. The region refuses to start in a collection that runs beside
+  others. See [`test-shared/README.md`](../test-shared/README.md).
 - A GPU test class that captures more than a few images shares one lazily created `Scene3D` through a
   class fixture. It also carries a parity test that ages the shared scene through several
   configurations and compares it with a fresh snapshot scene. `OceanFocusScene` is the reference.

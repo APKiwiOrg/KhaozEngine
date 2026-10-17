@@ -49,7 +49,9 @@ public sealed class SerializedReportingTestFramework : XunitTestFramework
         protected override async Task<RunSummary> RunTestCollectionAsync(IMessageBus messageBus, ITestCollection testCollection,
             IEnumerable<IXunitTestCase> testCases, CancellationTokenSource cancellationTokenSource)
         {
-            CollectionIsolation.RunsAlone = AssemblyRunsSerially() || DisablesParallelization(testCollection);
+            bool serial = AssemblyRunsSerially();
+            CollectionIsolation.AssemblySerial = serial;
+            CollectionIsolation.RunsAlone = serial || DisablesParallelization(testCollection);
             return await base.RunTestCollectionAsync(messageBus, testCollection, testCases, cancellationTokenSource);
         }
 
@@ -127,5 +129,15 @@ internal static class CollectionIsolation
     {
         get => runsAlone.Value;
         set => runsAlone.Value = value;
+    }
+
+    const string SerialKey = "KhaozEngine.Tests.CollectionIsolation.AssemblySerial";
+
+    /// <summary>Whether the runner runs this assembly's collections one at a time, which isolates every collection.
+    /// The Vulkan full suite does, through xUnit.ParallelizeTestCollections=false.</summary>
+    internal static bool AssemblySerial
+    {
+        get => AppContext.GetData(SerialKey) is true;
+        set => AppContext.SetData(SerialKey, value);
     }
 }

@@ -178,13 +178,11 @@ namespace KhaozEngine.Tests.Gpu
 
     /// <summary>
     /// How far a temporal resolve lags a shadow edge where the pixel under it moves, or the edge travels several
-    /// display pixels a frame, at Quality and Native, over a textured and a flat receiver. The release of a still
-    /// pixel whose shading changed (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 33) reads a pixel as still below
-    /// <c>LockMotionStartPixels</c>, and <c>TemporalShadowEdgeLagGpuTests</c> measures it at 0.25 and 1 display
-    /// pixel a frame of edge travel. This measures the rest, on <see cref="MovingShadeStage"/>:
+    /// display pixels a frame, at Quality and Native, over a textured and a flat receiver, on
+    /// <see cref="MovingShadeStage"/>:
     /// <list type="bullet">
-    /// <item><b>S</b>: still camera, the edge travelling 2, 4 and 8 display pixels a frame, advancing and
-    /// retreating.</item>
+    /// <item><b>S</b>: still camera, the edge travelling 1, 2, 4 and 8 display pixels a frame, advancing and
+    /// retreating. <c>TemporalShadowEdgeLagGpuTests</c> measures 0.25 and 1.</item>
     /// <item><b>C</b>: the camera panning 1, 2, 4 and 8 display pixels a frame across the shadow a still light casts,
     /// which reprojection should explain. It is the control.</item>
     /// <item><b>M</b>: keyed strips moving 0.5, 1, 2, 4 and 8 display pixels a frame into a still shadow under a still
@@ -196,13 +194,28 @@ namespace KhaozEngine.Tests.Gpu
     /// supersampled reference of the same frames (<see cref="TemporalAcceptance.ReferenceSequence"/>), rendered with
     /// the light hold off. The regions, band, tail and control, textured and flat, are
     /// <see cref="ShadowEdgeMeasure"/>'s, with the travel taken over the receiver: for C the edge advances on screen,
-    /// and for M and MS it advances over the strips. It asserts only that each scene shows its shadow edge and fills
-    /// every region. A fix states its bounds against the printed figures.
+    /// and for M and MS it advances over the strips.
+    /// <para>
+    /// It asserts the shading release on moving pixels and on carried locks (TEMPORAL-RESOLVE-UPSCALING-DESIGN
+    /// amendment 34), checked after every case has printed. The S textured tail at 2, 4 and 8 is at most
+    /// <see cref="FastTailRatio"/> times the S tail at 1 of the same run, each way and at each preset. The M and MS
+    /// textured tail at 1 to 8 stands at most <see cref="MovingTailExcess"/> above the same run's textured control,
+    /// whose error is the moving texture's own and grows with its speed as the pan's does. In every case the
+    /// textured band's output grain is at most <see cref="BandGrainRatio"/> times the reference's. And C's textured
+    /// band and tail stay within <see cref="ControlTolerance"/> of the resolve's figures before amendment 34 on the
+    /// same device class (<see cref="TemporalDeviceClass"/>).
+    /// </para>
     /// </summary>
     public sealed class TemporalMovingShadeLagGpuTests(ITestOutputHelper output)
     {
         const int W = 320, H = 180;
         const int FirstMeasured = 80, Measured = 8;
+
+        // Before amendment 34, Metal measured the S textured tail at 4 and 8 at 2.6 to 7.6 times the tail at 1, the M
+        // and MS tails at 2 to 8 0.0072 to 0.067 above their control, and the textured band's grain up to 3.5 times the
+        // reference's. With it, the S tails measure at most 1.52 times the tail at 1, the M and MS tails at most 0.0037
+        // above their control, and the grain at most 1.41 times.
+        const double FastTailRatio = 1.75, MovingTailExcess = 0.0055, BandGrainRatio = 1.5, ControlTolerance = 0.1;
 
         readonly record struct Case(string Name, TemporalUpscale Preset, MovingShadeKind Kind, float Shadow,
             float Motion)
@@ -213,12 +226,41 @@ namespace KhaozEngine.Tests.Gpu
             public float Sign => Shadow < 0f ? -1f : 1f;
         }
 
+        // C's textured band and tail mean errors before amendment 34 on each device class. The amendment leaves every
+        // one of them as it was on Metal.
+        static readonly Dictionary<string, (double Band, double Tail)> HardwareControl = new()
+        {
+            ["Quality C pan 1.0 px"] = (0.0105, 0.0076), ["Quality C pan 2.0 px"] = (0.0055, 0.0039),
+            ["Quality C pan 4.0 px"] = (0.0152, 0.0120), ["Quality C pan 8.0 px"] = (0.0138, 0.0105),
+            ["Native C pan 1.0 px"] = (0.0046, 0.0037), ["Native C pan 2.0 px"] = (0.0046, 0.0035),
+            ["Native C pan 4.0 px"] = (0.0061, 0.0044), ["Native C pan 8.0 px"] = (0.0055, 0.0038),
+        };
+
+        static readonly Dictionary<string, (double Band, double Tail)> WarpControl = new()
+        {
+            ["Quality C pan 1.0 px"] = (0.0105, 0.0076), ["Quality C pan 2.0 px"] = (0.0055, 0.0039),
+            ["Quality C pan 4.0 px"] = (0.0152, 0.0120), ["Quality C pan 8.0 px"] = (0.0138, 0.0105),
+            ["Native C pan 1.0 px"] = (0.0046, 0.0037), ["Native C pan 2.0 px"] = (0.0046, 0.0035),
+            ["Native C pan 4.0 px"] = (0.0061, 0.0044), ["Native C pan 8.0 px"] = (0.0055, 0.0038),
+        };
+
+        static readonly Dictionary<string, (double Band, double Tail)> LavapipeControl = new()
+        {
+            ["Quality C pan 1.0 px"] = (0.0105, 0.0076), ["Quality C pan 2.0 px"] = (0.0055, 0.0039),
+            ["Quality C pan 4.0 px"] = (0.0152, 0.0120), ["Quality C pan 8.0 px"] = (0.0138, 0.0105),
+            ["Native C pan 1.0 px"] = (0.0046, 0.0037), ["Native C pan 2.0 px"] = (0.0046, 0.0035),
+            ["Native C pan 4.0 px"] = (0.0061, 0.0044), ["Native C pan 8.0 px"] = (0.0055, 0.0038),
+        };
+
+        static Dictionary<string, (double Band, double Tail)> Control => TemporalDeviceClass.Warp ? WarpControl
+            : TemporalDeviceClass.Lavapipe ? LavapipeControl : HardwareControl;
+
         static IEnumerable<Case> Cases()
         {
             foreach (TemporalUpscale preset in new[] { TemporalUpscale.Quality, TemporalUpscale.Native })
             {
                 string p = preset == TemporalUpscale.Quality ? "Quality" : "Native";
-                foreach (float v in new[] { 2f, 4f, 8f })
+                foreach (float v in new[] { 1f, 2f, 4f, 8f })
                 {
                     yield return new($"{p} S {v:0.0} px advancing", preset, MovingShadeKind.Shadow, v, 0f);
                     yield return new($"{p} S {v:0.0} px retreating", preset, MovingShadeKind.Shadow, -v, 0f);
@@ -233,13 +275,14 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [GpuFact]
-        public void Shadow_edge_lag_metrics_on_moving_pixels_and_fast_shadows()
+        public void Shadow_edge_lag_on_moving_pixels_and_fast_shadows_stays_within_its_bounds()
         {
             output.WriteLine($"{W}x{H}, device class {TemporalDeviceClass.Name}. Band {ShadowEdgeMeasure.BandPixels} px, "
                 + $"tail to {ShadowEdgeMeasure.TailPixels} px behind, control {ShadowEdgeMeasure.FarPixels} px ahead and "
                 + $"beyond, frames {FirstMeasured} to {FirstMeasured + Measured - 1}.");
             var references = new Dictionary<(MovingShadeKind, float, float), byte[][]>();
             var summary = new List<string>();
+            var measured = new Dictionary<Case, Dictionary<string, ShadowEdgeRegion>>();
             foreach (Case c in Cases())
             {
                 var stage = new MovingShadeStage(W, H, c.Kind, c.Shadow, c.Motion, FirstMeasured);
@@ -271,6 +314,7 @@ namespace KhaozEngine.Tests.Gpu
                     Assert.True(region.Count > 0, $"{c.Name}: the {name} region holds no pixels");
                     r[name] = region;
                 }
+                measured[c] = r;
                 int span = ShadowEdgeMeasure.ProfileBins * ShadowEdgeMeasure.ProfileBin;
                 string bins = $"{ShadowEdgeMeasure.ProfileBin} px bins of travel from "
                     + $"{ShadowEdgeMeasure.ProfileAhead - span} (behind) to {ShadowEdgeMeasure.ProfileAhead} (ahead)";
@@ -293,6 +337,49 @@ namespace KhaozEngine.Tests.Gpu
             output.WriteLine($"{"case",-38} bandT  tailT  farT    bandF  tailF  farF    grOutT grRefT grErrT  grErrF  "
                 + "chgT   chRefT chErrT  chgF   chRefF chErrF");
             foreach (string line in summary) output.WriteLine(line);
+            output.WriteLine($"device class {TemporalDeviceClass.Name}");
+            AssertBounds(measured);
+        }
+
+        static void AssertBounds(Dictionary<Case, Dictionary<string, ShadowEdgeRegion>> measured)
+        {
+            var failures = new List<string>();
+            foreach ((Case c, Dictionary<string, ShadowEdgeRegion> r) in measured)
+            {
+                ShadowEdgeRegion band = r["band textured"];
+                Check(band.GrainOut <= BandGrainRatio * band.GrainRef,
+                    $"{c.Name}: textured band grain {band.GrainOut:0.0000} above {BandGrainRatio} times the "
+                    + $"reference's {band.GrainRef:0.0000}");
+                double tail = r["tail textured"].Mean;
+                if (c.Kind == MovingShadeKind.Shadow && MathF.Abs(c.Shadow) > 1f)
+                {
+                    Case slow = c with { Name = c.Name.Replace($"{MathF.Abs(c.Shadow):0.0} px", "1.0 px"),
+                        Shadow = c.Sign };
+                    double slowTail = measured[slow]["tail textured"].Mean;
+                    Check(tail <= FastTailRatio * slowTail,
+                        $"{c.Name}: textured tail {tail:0.0000} above {FastTailRatio} times the 1 px tail {slowTail:0.0000}");
+                }
+                else if (c.Kind == MovingShadeKind.Object && c.Motion >= 1f)
+                {
+                    double far = r["far textured"].Mean;
+                    Check(tail <= far + MovingTailExcess,
+                        $"{c.Name}: textured tail {tail:0.0000} more than {MovingTailExcess} above its control {far:0.0000}");
+                }
+                else if (c.Kind == MovingShadeKind.Pan)
+                {
+                    (double before, double beforeTail) = Control[c.Name];
+                    Check(band.Mean <= (1 + ControlTolerance) * before,
+                        $"{c.Name}: textured band {band.Mean:0.0000} above {before:0.0000} plus a tenth");
+                    Check(tail <= (1 + ControlTolerance) * beforeTail,
+                        $"{c.Name}: textured tail {tail:0.0000} above {beforeTail:0.0000} plus a tenth");
+                }
+            }
+            Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
+
+            void Check(bool ok, string failure)
+            {
+                if (!ok) failures.Add(failure);
+            }
         }
     }
 }

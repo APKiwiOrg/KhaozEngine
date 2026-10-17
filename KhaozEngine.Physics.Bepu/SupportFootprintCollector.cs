@@ -110,7 +110,7 @@ internal sealed partial class SupportFootprintCollector
         {
             if (SupportNeighborhoodMesh.IsMesh(description.Shape))
                 captured = SupportNeighborhoodMesh.Polygons(simulation, description.Shape, description.Pose, owner,
-                    _bounds, _triangles, _pool, _polygons);
+                    _bounds, _triangles, _pool, _polygons, installed.MeshWorldForms, staticGeometryVersion);
             else
             {
                 captured = installed.GetOrCapture(simulation, owner, description.Shape, staticGeometryVersion, out var geometry);
@@ -213,6 +213,9 @@ internal sealed partial class SupportFootprintCollector
             using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportPlanarContact);
             return GeometrySign.Positive;
         }
+        GeometrySign neighbour = SupportPlanarNeighbour.Contact(polygon, _contactStarts[index], _contactDirections[index],
+            proposal.Probe.Radius, _request.ContactBand);
+        if (neighbour != GeometrySign.Unresolved) return neighbour;
         SupportDistance distance = _kernel.MeasureFootprintContact(_contactStarts[index], _contactDirections[index],
             polygon, _request.ContactBand);
         if (!distance.IsResolved) return GeometrySign.Unresolved;

@@ -97,7 +97,7 @@ internal enum GeometrySign : byte { Unresolved, Negative, Zero, Positive }
 /// inside the <see cref="ExactExpansion"/> domain take its allocation-free path, which returns the exact sign the
 /// dyadic path returns there. Every other operand takes the dyadic path and its 4096 bit refusal.</summary>
 [SkipLocalsInit]
-internal static class BoundedGeometryArithmetic
+internal static partial class BoundedGeometryArithmetic
 {
     internal const int MaximumPredicateBits = 4096;
 

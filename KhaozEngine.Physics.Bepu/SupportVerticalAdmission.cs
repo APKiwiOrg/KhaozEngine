@@ -28,20 +28,22 @@ internal enum SupportVerticalDomain : byte
 /// length crosses the circle, and refuses only when one of its signs does not resolve. Every operation it makes is an
 /// exact result or one outward interval step, which moves an endpoint at most 3 2^-53 of its magnitude, and the
 /// component bounds keep subnormal terms far below the margins here. Let D bound every horizontal component of a
-/// vertex less the axis, and R, and let a be an edge's squared projected length, so its projection is at most 2D. Then
+/// vertex less the axis, and R, and let a be an edge's squared projected length. Each projected edge component is then
+/// at most 2D, so sqrt(a) is at most 2 sqrt(2) D, and |V - A| is at most sqrt(2) D for a vertex V and the axis A. Then
 /// the kernel's enclosure of a squared vertex distance less R^2 is narrower than 2^-40 D^2, of a discriminant
 /// (a R^2 less the squared cross product, or its factored axis-aligned form) narrower than 2^-45 a D^2, of its root
 /// narrower than 2^-22.4 sqrt(a) D, since the root of an interval is no wider than the root of its width, and of each
 /// root numerator (-dot plus or minus the root, a + dot less or plus it) narrower than 2^-22 sqrt(a) D.
 ///
-/// A root numerator equals sqrt(a) times the distance from an edge end V to the root's circle point P, and
-/// |P - V| is at least |g| / (|V - A| + R) for g = |V - A|^2 - R^2, which is above g / (3D). The certificate requires
-/// |g| of at least 2^-14 D^2 at every vertex and a discriminant of magnitude at least 2^-14 a D^2 at every edge. Each
-/// root numerator is then at least 2^-16 sqrt(a) D from zero, 64 times its enclosure width, and each discriminant
-/// and vertex distance lies more than 2^25 times its enclosure width from zero. No vertex lies on the circle, so the endpoint root
-/// factoring never runs. Every kernel sign therefore resolves without a fallback and is the true sign, as is every
-/// sign the certificate takes from its own outward intervals. Both find the same met features, and in the complete
-/// domain the same exact heights, so both reach the same admission and column verdict.</summary>
+/// A root numerator equals sqrt(a) times the distance from an edge end V to the root's circle point P, and |P - V| is
+/// at least |g| / (|V - A| + R) for g = |V - A|^2 - R^2, which is above |g| / (3D) as sqrt(2) D + D is below 3D. The
+/// certificate requires |g| of at least 2^-14 D^2 at every vertex and a discriminant of magnitude at least 2^-14 a D^2
+/// at every edge. Each root numerator is then at least 2^-16 sqrt(a) D from zero, 64 times its enclosure width, and
+/// each discriminant and vertex distance lies more than 2^25 times its enclosure width from zero. No vertex lies on the
+/// circle, so the endpoint root factoring never runs. Every kernel sign therefore resolves without a fallback and is
+/// the true sign, as is every sign the certificate takes from its own outward intervals. Both find the same met
+/// features, and in the complete domain the same exact heights, so both reach the same admission and column
+/// verdict.</summary>
 internal static class SupportVerticalAdmission
 {
     const int MaximumVertices = 64;

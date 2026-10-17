@@ -32,6 +32,29 @@ public class RecentLogSinkTests
     }
 
     [Fact]
+    public void Emit_survives_an_exception_whose_ToString_throws()
+    {
+        var sink = new RecentLogSink();
+
+        sink.Emit(new LogEntry(DateTimeOffset.UnixEpoch, LogLevel.Error, "Test", "bad", new UnprintableException()));
+        sink.Emit(Entry("after"));
+
+        Assert.EndsWith("after", Assert.Single(sink.Snapshot()));
+    }
+
+    [Fact]
+    public void Emit_keeps_entries_with_a_null_message()
+    {
+        var sink = new RecentLogSink();
+
+        sink.Emit(default);
+        sink.Emit(new LogEntry(DateTimeOffset.UnixEpoch, LogLevel.Info, null!, null!));
+
+        Assert.Equal(2, sink.Snapshot().Count);
+        Assert.All(sink.Snapshot(), line => Assert.EndsWith("] ", line));
+    }
+
+    [Fact]
     public void Lines_use_the_log_formatter()
     {
         var sink = new RecentLogSink();
@@ -109,5 +132,10 @@ public class RecentLogSinkTests
     public void Zero_capacity_throws()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => new RecentLogSink(0));
+    }
+
+    private sealed class UnprintableException : Exception
+    {
+        public override string ToString() => throw new InvalidOperationException("ToString failed");
     }
 }

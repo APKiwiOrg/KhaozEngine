@@ -18,7 +18,8 @@ namespace KhaozEngine.BugReports;
 /// and the report id as the idempotency key. Every outcome maps to a result:
 /// a 2xx is Sent with the relay's reference, or <see cref="ReportIds.ReferenceCode"/> when the body is unreadable.
 /// No token, a 401, a 429, a 408 or 5xx after retries and a transport fault after retries are Queued, so the
-/// bundle stays for a later flush. Any other 4xx is Rejected with the relay's error text.
+/// bundle stays for a later flush. A 429, 408 or 5xx carries the response's <c>Retry-After</c> hint. Any other 4xx
+/// is Rejected with the relay's error text.
 /// </summary>
 public sealed class HttpRelaySink : IBugReportSink
 {
@@ -30,15 +31,15 @@ public sealed class HttpRelaySink : IBugReportSink
 
     /// <summary>Creates a sink for one relay.</summary>
     /// <param name="http">The client to send with. Not disposed by the sink.</param>
-    /// <param name="relayBase">The relay's absolute base address. A missing trailing slash is added.</param>
+    /// <param name="relayBase">The relay's absolute http or https base address. A missing trailing slash is added.</param>
     /// <param name="bearerToken">Reads the current session token on each submit. Null or blank queues without a request.</param>
     public HttpRelaySink(HttpClient http, Uri relayBase, Func<string?> bearerToken)
     {
         ArgumentNullException.ThrowIfNull(http);
         ArgumentNullException.ThrowIfNull(relayBase);
         ArgumentNullException.ThrowIfNull(bearerToken);
-        if (!relayBase.IsAbsoluteUri)
-            throw new ArgumentException("The relay base must be an absolute address.", nameof(relayBase));
+        if (!relayBase.IsAbsoluteUri || (relayBase.Scheme != Uri.UriSchemeHttp && relayBase.Scheme != Uri.UriSchemeHttps))
+            throw new ArgumentException("The relay base must be an absolute http or https address.", nameof(relayBase));
 
         var builder = new UriBuilder(relayBase);
         if (!builder.Path.EndsWith('/'))
@@ -114,11 +115,12 @@ public sealed class HttpRelaySink : IBugReportSink
                 string.IsNullOrWhiteSpace(reference) ? ReportIds.ReferenceCode(reportId) : reference, null, null);
         }
 
-        if (status == 429)
+        // A 429, 408 or 5xx may say when to come back, so the hint travels with the queued result.
+        if (status is 429 or 408 or (>= 500 and <= 599))
             return new BugReportSubmitResult(BugReportSubmitStatus.Queued, null, statusError, RetryAfter(response.Headers.RetryAfter));
 
         // 401 means the token is missing or expired, so the next sign-in can still deliver it.
-        if (status is >= 400 and <= 499 && status is not (401 or 408))
+        if (status is >= 400 and <= 499 && status != 401)
         {
             byte[]? body = await ReadBodyAsync(response, cancellationToken).ConfigureAwait(false);
             string? error = body is null ? null : TryParse(body, static json => BugReportJson.DeserializeRelayError(json).Error);

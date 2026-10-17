@@ -125,6 +125,67 @@ public sealed class HttpRelaySinkTests
     }
 
     [Fact]
+    public async Task Attempt_timeouts_queue_as_network()
+    {
+        FakeHttpHandler handler = new FakeHttpHandler()
+            .Throw(new TaskCanceledException("attempt timed out"))
+            .Throw(new TaskCanceledException("attempt timed out"))
+            .Throw(new TaskCanceledException("attempt timed out"));
+
+        BugReportSubmitResult result = await Sink(handler).SubmitAsync(Submission(), CancellationToken.None);
+
+        Assert.Equal(new BugReportSubmitResult(BugReportSubmitStatus.Queued, null, "network", null), result);
+        Assert.Equal(3, handler.Requests.Count);
+    }
+
+    [Fact]
+    public async Task Request_timeout_retries_then_queues()
+    {
+        FakeHttpHandler handler = new FakeHttpHandler()
+            .Respond(HttpStatusCode.RequestTimeout)
+            .Respond(HttpStatusCode.RequestTimeout)
+            .Respond(HttpStatusCode.RequestTimeout);
+
+        BugReportSubmitResult result = await Sink(handler).SubmitAsync(Submission(), CancellationToken.None);
+
+        Assert.Equal(new BugReportSubmitResult(BugReportSubmitStatus.Queued, null, "http_408", null), result);
+        Assert.Equal(3, handler.Requests.Count);
+    }
+
+    [Fact]
+    public async Task Server_error_keeps_the_last_retry_after()
+    {
+        FakeHttpHandler handler = new FakeHttpHandler()
+            .Respond(HttpStatusCode.ServiceUnavailable)
+            .Respond(HttpStatusCode.ServiceUnavailable)
+            .Respond(HttpStatusCode.ServiceUnavailable, configure: response =>
+                response.Headers.RetryAfter = new RetryConditionHeaderValue(TimeSpan.FromSeconds(30)));
+
+        BugReportSubmitResult result = await Sink(handler).SubmitAsync(Submission(), CancellationToken.None);
+
+        Assert.Equal(new BugReportSubmitResult(BugReportSubmitStatus.Queued, null, "http_503", TimeSpan.FromSeconds(30)), result);
+        Assert.Equal(3, handler.Requests.Count);
+    }
+
+    [Fact]
+    public async Task Retry_after_date_in_the_past_is_zero()
+    {
+        FakeHttpHandler handler = new FakeHttpHandler().Respond((HttpStatusCode)429, configure: response =>
+            response.Headers.RetryAfter = new RetryConditionHeaderValue(new DateTimeOffset(2000, 1, 1, 0, 0, 0, TimeSpan.Zero)));
+
+        BugReportSubmitResult result = await Sink(handler).SubmitAsync(Submission(), CancellationToken.None);
+
+        Assert.Equal(new BugReportSubmitResult(BugReportSubmitStatus.Queued, null, "http_429", TimeSpan.Zero), result);
+    }
+
+    [Fact]
+    public void Non_http_relay_base_is_refused()
+    {
+        foreach (string address in new[] { "ftp://relay.example/", "file:///tmp/" })
+            Assert.Throws<ArgumentException>(() => new HttpRelaySink(new HttpClient(), new Uri(address), () => "tok"));
+    }
+
+    [Fact]
     public async Task Unauthorized_queues_for_the_next_sign_in()
     {
         FakeHttpHandler handler = new FakeHttpHandler().Respond(HttpStatusCode.Unauthorized, "{\"error\":\"bad_token\"}");

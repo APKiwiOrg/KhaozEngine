@@ -8,9 +8,10 @@ namespace KhaozEngine.Diagnostics;
 /// The backstop every bug report string passes through before it leaves the machine. Masks private key
 /// blocks, JWTs, well-known provider tokens, Bearer and Basic credentials, secret URL query values and secret
 /// key and value pairs with <see cref="Mask"/>, then replaces the user's home directory with <c>~</c>. Rules
-/// run in that fixed order. Every pattern has a 250 ms match timeout and a timeout fails closed, so a string
-/// the rules cannot finish with comes back as <see cref="Mask"/> whole. Thread-safe, and a string with
-/// nothing to mask is returned as the same instance without allocating.
+/// run in that fixed order and each runs in linear time. Every pattern also has a 250 ms match timeout as a
+/// backstop, and a timeout fails closed, so a string the rules cannot finish with comes back as
+/// <see cref="Mask"/> whole. Thread-safe, and a string with nothing to mask is returned as the same instance
+/// without allocating.
 /// </summary>
 public sealed class ReportRedactor
 {
@@ -22,24 +23,14 @@ public sealed class ReportRedactor
 
     const RegexOptions Options = RegexOptions.CultureInvariant;
 
-    static readonly TimeSpan MatchTimeout = TimeSpan.FromMilliseconds(250);
+    static readonly TimeSpan DefaultMatchTimeout = TimeSpan.FromMilliseconds(250);
 
-    static readonly Rule[] Rules =
-    [
-        // PEM private key block.
-        new(@"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[A-Za-z0-9+/=\s]*-----END [A-Z0-9 ]*PRIVATE KEY-----", Mask),
-        // JWT.
-        new(@"\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}", Mask),
-        // GitHub, Slack, AWS access key id and OpenAI style tokens.
-        new(@"\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|sk-[A-Za-z0-9_-]{20,})\b", Mask),
-        // Bearer and Basic credentials keep the scheme and its spacing.
-        new(@"(?i)\b(bearer|basic)(\s+)[A-Za-z0-9._~+/=-]{8,}", "$1$2" + Mask),
-        // Secret URL query values keep the parameter name.
-        new(@"(?i)([?&](?:sig|signature|code|token|access_token|id_token|refresh_token|key|apikey|api_key|client_secret|password)=)[^&#\s""']+", "$1" + Mask),
-        // Secret key and value pairs keep the key, its quotes and its separator.
-        new(@"(?i)((?:password|passwd|pwd|secret|token|api[_-]?key|apikey|access[_-]?key|private[_-]?key|client[_-]?secret|connection[_-]?string|accountkey|sharedaccesskey)[""']?\s*[:=]\s*[""']?)[^\s""',;&]+", "$1" + Mask),
-    ];
+    /// <summary>Variable name fragments whose whole value is masked whatever it holds.</summary>
+    static readonly string[] SecretNameParts = ["TOKEN", "SECRET", "PASSWORD", "PASSWD", "KEY"];
 
+    static readonly Rule[] DefaultRules = BuildRules(DefaultMatchTimeout);
+
+    readonly Rule[] rules;
     readonly Regex? home;
 
     /// <summary>
@@ -48,10 +39,22 @@ public sealed class ReportRedactor
     /// (empty, <c>/</c>, a bare drive) turns the home rule off.
     /// </summary>
     public ReportRedactor(string? homeDirectory = null)
+        : this(homeDirectory, DefaultRules, DefaultMatchTimeout)
     {
+    }
+
+    /// <summary>A redactor whose rules use <paramref name="matchTimeout"/>, so a test can force a timeout.</summary>
+    internal ReportRedactor(string? homeDirectory, TimeSpan matchTimeout)
+        : this(homeDirectory, BuildRules(matchTimeout), matchTimeout)
+    {
+    }
+
+    ReportRedactor(string? homeDirectory, Rule[] rules, TimeSpan matchTimeout)
+    {
+        this.rules = rules;
         string path = (homeDirectory ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile))
             .TrimEnd('/', '\\');
-        if (path.Length >= MinimumHomeLength) home = BuildHomePattern(path);
+        if (path.Length >= MinimumHomeLength) home = BuildHomePattern(path, matchTimeout);
     }
 
     /// <summary>
@@ -67,7 +70,7 @@ public sealed class ReportRedactor
         try
         {
             string result = text;
-            foreach (Rule rule in Rules)
+            foreach (Rule rule in rules)
                 result = rule.Pattern.Replace(result, rule.Replacement);
             if (home is not null)
                 result = home.Replace(result, "~");
@@ -82,7 +85,8 @@ public sealed class ReportRedactor
     /// <summary>
     /// The <c>KE_</c> entries of <paramref name="variables"/>, chosen and sorted exactly as
     /// <see cref="TelemetrySessionHeader.SelectEngineVariables"/> does, with every value passed through
-    /// <see cref="Redact"/>. Nothing without the prefix reaches a report.
+    /// <see cref="Redact"/>. A name containing <c>TOKEN</c>, <c>SECRET</c>, <c>PASSWORD</c>, <c>PASSWD</c> or
+    /// <c>KEY</c> in any case has its whole value masked. Nothing without the prefix reaches a report.
     /// </summary>
     /// <exception cref="ArgumentNullException"><paramref name="variables"/> is null.</exception>
     public IReadOnlyList<TelemetryHeaderValue> SelectEnvironment(IEnumerable<KeyValuePair<string, string?>> variables)
@@ -90,20 +94,50 @@ public sealed class ReportRedactor
         IReadOnlyList<TelemetryHeaderValue> selected = TelemetrySessionHeader.SelectEngineVariables(variables);
         var redacted = new TelemetryHeaderValue[selected.Count];
         for (int i = 0; i < redacted.Length; i++)
-            redacted[i] = new TelemetryHeaderValue(selected[i].Key, Redact(selected[i].Value));
+        {
+            string name = selected[i].Key;
+            string value = IsSecretName(name) ? Mask : Redact(selected[i].Value);
+            redacted[i] = new TelemetryHeaderValue(name, value);
+        }
         return Array.AsReadOnly(redacted);
     }
+
+    static bool IsSecretName(string name)
+    {
+        foreach (string part in SecretNameParts)
+        {
+            if (name.Contains(part, StringComparison.OrdinalIgnoreCase)) return true;
+        }
+        return false;
+    }
+
+    static Rule[] BuildRules(TimeSpan timeout) =>
+    [
+        // PEM private key block.
+        new(@"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[A-Za-z0-9+/=\s]*-----END [A-Z0-9 ]*PRIVATE KEY-----", Mask, timeout),
+        // JWT. The look-behind lets only the first character of a token run start a match. With a word
+        // boundary instead, every "eyJ" after a dash restarts a scan of the whole run, which is quadratic.
+        new(@"(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}", Mask, timeout),
+        // GitHub, Slack, AWS access key id and OpenAI style tokens.
+        new(@"\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|sk-[A-Za-z0-9_-]{20,})\b", Mask, timeout),
+        // Bearer and Basic credentials keep the scheme and its spacing.
+        new(@"(?i)\b(bearer|basic)(\s+)[A-Za-z0-9._~+/=-]{8,}", "$1$2" + Mask, timeout),
+        // Secret URL query values keep the parameter name.
+        new(@"(?i)([?&](?:sig|signature|code|token|access_token|id_token|refresh_token|key|apikey|api_key|client_secret|password)=)[^&#\s""']+", "$1" + Mask, timeout),
+        // Secret key and value pairs keep the key, its quotes and its separator.
+        new(@"(?i)((?:password|passwd|pwd|secret|token|api[_-]?key|apikey|access[_-]?key|private[_-]?key|client[_-]?secret|connection[_-]?string|accountkey|sharedaccesskey)[""']?\s*[:=]\s*[""']?)[^\s""',;&]+", "$1" + Mask, timeout),
+    ];
 
     /// <summary>
     /// The home path as written and with its separators swapped, case-insensitive, and only where the path
     /// ends there, so a sibling such as <c>/Users/anna</c> is left alone for a home of <c>/Users/ann</c>.
     /// </summary>
-    static Regex BuildHomePattern(string path)
+    static Regex BuildHomePattern(string path, TimeSpan timeout)
     {
         string native = Regex.Escape(path);
         string alternate = Regex.Escape(SwapSeparators(path));
         string body = native == alternate ? native : "(?:" + native + "|" + alternate + ")";
-        return new Regex(body + @"(?=[/\\]|$|[^A-Za-z0-9._-])", Options | RegexOptions.IgnoreCase, MatchTimeout);
+        return new Regex(body + @"(?=[/\\]|$|[^A-Za-z0-9._-])", Options | RegexOptions.IgnoreCase, timeout);
     }
 
     static string SwapSeparators(string path)
@@ -117,9 +151,9 @@ public sealed class ReportRedactor
         return new string(chars);
     }
 
-    readonly struct Rule(string pattern, string replacement)
+    readonly struct Rule(string pattern, string replacement, TimeSpan timeout)
     {
-        public Regex Pattern { get; } = new(pattern, Options, MatchTimeout);
+        public Regex Pattern { get; } = new(pattern, Options, timeout);
 
         public string Replacement { get; } = replacement;
     }

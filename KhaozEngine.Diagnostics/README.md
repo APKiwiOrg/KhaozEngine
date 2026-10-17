@@ -178,10 +178,14 @@ IReadOnlyList<TelemetryHeaderValue> env = redactor.SelectEnvironment(pairs);
 - The home directory becomes `~`, matched case-insensitively with either separator and only where the path ends,
   so `/Users/anna` survives a home of `/Users/ann`. Trailing separators on the home are ignored, and a home
   shorter than three characters turns the rule off.
-- Every pattern has a 250 ms match timeout. A timeout fails closed: the whole string comes back as `[redacted]`.
+- Every rule runs in linear time on the backtracking engine. A JWT may start only at the first character of a
+  token run, which is what keeps a run of repeated `eyJ` starts from rescanning itself.
+- Every pattern also has a 250 ms match timeout as a backstop. A timeout fails closed: the whole string comes
+  back as `[redacted]`.
 - Thread-safe. Clean text is returned as the same instance without allocating.
 - `SelectEnvironment` keeps only `KE_` variables, chosen and sorted exactly as
-  `TelemetrySessionHeader.SelectEngineVariables` does, and passes each value through `Redact`.
+  `TelemetrySessionHeader.SelectEngineVariables` does. A name containing `TOKEN`, `SECRET`, `PASSWORD`,
+  `PASSWD` or `KEY` in any case has its whole value masked. Every other value passes through `Redact`.
 
 ## Categories
 

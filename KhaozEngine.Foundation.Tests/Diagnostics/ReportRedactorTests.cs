@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
+using System.Linq;
 using KhaozEngine.Diagnostics;
 using Xunit;
 
@@ -162,14 +162,40 @@ public sealed class ReportRedactorTests
             new("HOME", "/x"),
             new("ke_trace", "1"),
             new("KE_TOKEN", "password=abc"),
+            new("KE_CONN", "password=abc"),
         };
 
         IReadOnlyList<TelemetryHeaderValue> selected = NoHome.SelectEnvironment(input);
 
         Assert.Collection(selected,
+            v => Assert.Equal(new TelemetryHeaderValue("KE_CONN", "password=[redacted]"), v),
             v => Assert.Equal(new TelemetryHeaderValue("KE_GPU", "metal"), v),
-            v => Assert.Equal(new TelemetryHeaderValue("KE_TOKEN", "password=[redacted]"), v),
+            v => Assert.Equal(new TelemetryHeaderValue("KE_TOKEN", Mask), v),
             v => Assert.Equal(new TelemetryHeaderValue("ke_trace", "1"), v));
+    }
+
+    [Fact]
+    public void Secret_named_engine_variables_are_masked()
+    {
+        var input = new List<KeyValuePair<string, string?>>
+        {
+            new("KE_API_KEY", "abc123"),
+            new("KE_GPU", "metal"),
+            new("ke_client_secret", "s"),
+            new("KE_DB_Password", "p"),
+            new("KE_PASSWD_FILE", "/etc/x"),
+            new("KE_UPLOAD_TOKEN", ""),
+        };
+
+        IReadOnlyList<TelemetryHeaderValue> selected = NoHome.SelectEnvironment(input);
+
+        Assert.Collection(selected,
+            v => Assert.Equal(new TelemetryHeaderValue("KE_API_KEY", Mask), v),
+            v => Assert.Equal(new TelemetryHeaderValue("KE_DB_Password", Mask), v),
+            v => Assert.Equal(new TelemetryHeaderValue("KE_GPU", "metal"), v),
+            v => Assert.Equal(new TelemetryHeaderValue("KE_PASSWD_FILE", Mask), v),
+            v => Assert.Equal(new TelemetryHeaderValue("KE_UPLOAD_TOKEN", Mask), v),
+            v => Assert.Equal(new TelemetryHeaderValue("ke_client_secret", Mask), v));
     }
 
     [Fact]
@@ -182,46 +208,82 @@ public sealed class ReportRedactorTests
     }
 
     [Fact]
-    public void Catastrophic_input_fails_closed_within_the_timeout()
+    public void Adjacent_homes_are_all_replaced()
     {
         var redactor = new ReportRedactor("/Users/ann");
 
-        // Keys with no terminator are linear for the key and value rule: the first value takes the rest. The
-        // timeout is wall clock, so a loaded machine may still fail closed, and both outcomes are safe.
-        Assert.Contains(
-            TimedRedact(redactor, Repeat("password=", 50_000)),
-            new[] { "password=" + Mask, Mask });
-
-        // Every "eyJ" after a dash starts a JWT attempt that scans to the end for a dot, which is quadratic.
-        // It must hit the match timeout and come back masked whole rather than hang or leak.
-        Assert.Equal(Mask, TimedRedact(redactor, Repeat("eyJ-", 200_000)));
-
-        // The other rules on their worst shapes stay inside the budget, masked or not.
-        string[] adversarial =
-        [
-            Repeat("password ", 50_000),
-            "password" + new string(' ', 50_000),
-            "-----BEGIN PRIVATE KEY-----" + new string('A', 50_000),
-            Repeat("-----BEGIN PRIVATE KEY-----", 50_000),
-            Repeat("sk-", 50_000),
-            Repeat("bearer ", 50_000),
-            Repeat("?token=&", 50_000),
-            Repeat("/Users/ann", 50_000),
-        ];
-        foreach (string text in adversarial)
-            TimedRedact(redactor, text);
+        Assert.Equal("~~ ~", redactor.Redact("/Users/ann/Users/ann /Users/ann"));
+        Assert.Equal("~/x:~/y", redactor.Redact("/Users/ann/x:/Users/ann/y"));
+        Assert.Equal("~\n", redactor.Redact("/Users/ann\n"));
+        Assert.Equal(@"~\~", new ReportRedactor(@"C:\Users\Ann").Redact(@"C:\Users\Ann\C:\Users\Ann"));
     }
 
-    static string TimedRedact(ReportRedactor redactor, string text)
+    [Fact]
+    public void Catastrophic_input_is_redacted_in_linear_time()
     {
-        var clock = Stopwatch.StartNew();
-        string result = redactor.Redact(text);
-        clock.Stop();
+        // A 2 s backstop instead of 250 ms keeps the exact results independent of machine load. Every shape
+        // here is linear and takes milliseconds, while the old quadratic JWT start on the 200,000 character
+        // input took seconds, so a regression still times out and fails on the mask.
+        var redactor = new ReportRedactor("/Users/ann", TimeSpan.FromSeconds(2));
 
-        Assert.True(
-            clock.Elapsed < TimeSpan.FromSeconds(5),
-            $"Redact took {clock.Elapsed} on a {text.Length} character '{text[..12]}' input");
-        return result;
+        // Keys with no terminator: the first value takes the rest.
+        Assert.Equal("password=" + Mask, redactor.Redact(Repeat("password=", 50_000)));
+
+        // Every "eyJ" after a dash used to start a JWT attempt that scanned the run for a dot, which was
+        // quadratic and timed out. Only the start of the run may start one now. Nothing here is a JWT.
+        string jwtBomb = Repeat("eyJ-", 200_000);
+        Assert.Equal(jwtBomb, redactor.Redact(jwtBomb));
+
+        // A private key block with a 50,000 character body, closed and left open.
+        string body = Repeat("MIIBOgIBAAJBAKj34Gkx", 50_000);
+        Assert.Equal(Mask, redactor.Redact("-----BEGIN PRIVATE KEY-----\n" + body + "\n-----END PRIVATE KEY-----"));
+        string open = "-----BEGIN PRIVATE KEY-----" + new string('A', 50_000);
+        Assert.Equal(open, redactor.Redact(open));
+
+        // The other rules on their worst shapes.
+        foreach (string clean in new[]
+        {
+            Repeat("password ", 50_000),
+            "password" + new string(' ', 50_000),
+            Repeat("-----BEGIN PRIVATE KEY-----", 50_000),
+            Repeat("bearer ", 50_000),
+            Repeat("?token=&", 50_000),
+            Repeat(" eyJaaaaa.bbbbb", 50_000),
+            Repeat(" ghp_aaaa", 50_000),
+            Repeat("basic ", 50_000),
+            Repeat("&sig", 50_000),
+            Repeat("token ", 50_000),
+            Repeat("-----BEGIN PRIVATE KEY-----A-----END ", 50_000),
+        })
+        {
+            Assert.Equal(clean, redactor.Redact(clean));
+        }
+        // 5,556 dot-joined "eyJaaaaa" units are 1,852 back to back JWTs of three segments each.
+        Assert.Equal(string.Concat(Enumerable.Repeat("." + Mask, 1_852)), redactor.Redact(Repeat(".eyJaaaaa", 50_000)));
+        Assert.Equal(string.Concat(Enumerable.Repeat(Mask + ".", 1_852)), redactor.Redact(Repeat("eyJaaaaa.", 50_000)));
+        Assert.Equal(Mask + "-", redactor.Redact(Repeat("sk-", 50_000)));
+        Assert.Equal("-" + Mask, redactor.Redact(Repeat("-sk", 50_000)));
+        Assert.Equal(new string('~', 5_000), redactor.Redact(Repeat("/Users/ann", 50_000)));
+    }
+
+    [Fact]
+    public void Jwt_starts_only_at_the_start_of_a_token_run()
+    {
+        const string jwt = "eyJhbGciOi.eyJzdWIiOi.c2lnbmF0dXJl";
+
+        Assert.Equal(Mask, NoHome.Redact(jwt));
+        Assert.Equal("\"" + Mask + "\"", NoHome.Redact("\"" + jwt + "\""));
+        Assert.Equal("id " + Mask, NoHome.Redact("id " + jwt));
+        Assert.Equal("x_" + jwt, NoHome.Redact("x_" + jwt));
+    }
+
+    [Fact]
+    public void Timeout_fails_closed_to_the_whole_string_mask()
+    {
+        var redactor = new ReportRedactor("/Users/ann", TimeSpan.FromTicks(1));
+        string text = Repeat("password ", 2_000_000) + "password=hunter22";
+
+        Assert.Equal(Mask, redactor.Redact(text));
     }
 
     static string Repeat(string unit, int totalChars)

@@ -15,4 +15,5 @@
     <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
     <ProjectReference Include="../KhaozEngine.Http/KhaozEngine.Http.csproj" />
   </ItemGroup>
+  <Import Project="../test-shared/AllocationMeasurement.props" />
 </Project>

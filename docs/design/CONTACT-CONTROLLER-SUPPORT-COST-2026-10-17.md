@@ -225,8 +225,10 @@ decides whether that is a controller defect. A defect gets its proper fix, keepi
 footprint protections and raw layer identity. Once the descent is refuted, or fixed and pinned by regression tests,
 the harness derives `paced` from the climb budget (owed rise above MaxStepClimbSpeed times dt) instead of a scene
 name list. The investigation confirmed a defect: `GroundSeat.StepPart` extrapolated a sloping face plane from a
-height capped by an overhung edge and charged a false 0.0577 m rise. It now uses the edge-aware `PlaneRise`, and
-the crate's remaining 0.22 m lag is the designed paced climb.
+height capped by an overhung edge and charged a false 0.0577 m rise. A rise over one support member is now
+explained by that member's own height field, so neither a level nor a sloped overhung edge charges a step. Across
+members the extrapolation uses the edge-aware `PlaneRise`. The crate's remaining 0.22 m lag is the designed paced
+climb.
 
 ## Out of scope
 

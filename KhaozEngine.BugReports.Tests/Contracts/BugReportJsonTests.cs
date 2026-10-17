@@ -117,6 +117,8 @@ public sealed class BugReportJsonTests
     [InlineData("null")]
     [InlineData("{")]
     [InlineData("[]")]
+    [InlineData("{}")]
+    [InlineData("{\"entries\":null}")]
     public void Deserializers_throw_JsonException_on_bad_input(string input)
     {
         byte[] json = Encoding.UTF8.GetBytes(input);
@@ -125,5 +127,83 @@ public sealed class BugReportJsonTests
         Assert.Throws<JsonException>(() => BugReportJson.DeserializeIntakeAccepted(json));
         Assert.Throws<JsonException>(() => BugReportJson.DeserializeRelayError(json));
         Assert.Throws<JsonException>(() => BugReportJson.DeserializeServerSnapshot(json));
+    }
+
+    [Theory]
+    [InlineData(",\"entries\":[{\"name\":\"sections/build.json\",\"size\":42,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}]", "")]
+    [InlineData("[{\"name\":\"sections/build.json\",\"size\":42,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}]", "null")]
+    [InlineData(",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"", "")]
+    [InlineData("\"gameId\":\"grimhollow\",", "")]
+    [InlineData("\"gameId\":\"grimhollow\"", "\"gameId\":null")]
+    public void Manifest_rejects_missing_or_null_fields(string field, string replacement)
+    {
+        byte[] json = Encoding.UTF8.GetBytes(Replace(ManifestGolden, field, replacement));
+        Assert.Throws<JsonException>(() => BugReportJson.DeserializeManifest(json));
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<BugReportManifest>(json, BugReportJson.Options));
+    }
+
+    [Theory]
+    [InlineData("\"kind\":\"bug\"", "\"kind\":1")]
+    [InlineData("\"kind\":\"bug\"", "\"kind\":0")]
+    [InlineData("\"kind\":\"bug\"", "\"kind\":\"1\"")]
+    public void Manifest_rejects_integer_kinds(string field, string replacement)
+    {
+        byte[] json = Encoding.UTF8.GetBytes(Replace(ManifestGolden, field, replacement));
+        Assert.Throws<JsonException>(() => BugReportJson.DeserializeManifest(json));
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<BugReportManifest>(json, BugReportJson.Options));
+    }
+
+    [Theory]
+    [InlineData(",\"entry\":\"clip/001.jpg\"", "")]
+    [InlineData("\"entry\":\"clip/001.jpg\"", "\"entry\":null")]
+    [InlineData("\"width\":960,", "")]
+    public void ClipIndex_rejects_missing_or_null_frame_fields(string field, string replacement)
+    {
+        byte[] json = Encoding.UTF8.GetBytes(Replace(ClipGolden, field, replacement));
+        Assert.Throws<JsonException>(() => BugReportJson.DeserializeClipIndex(json));
+    }
+
+    [Fact]
+    public void ClipIndex_rejects_null_frames()
+        => Assert.Throws<JsonException>(() => BugReportJson.DeserializeClipIndex("{\"frames\":null}"u8));
+
+    [Theory]
+    [InlineData("{\"reportId\":\"0192f1c2a3b47c4d8e9f0a1b2c3d4e5f\"}")]
+    [InlineData("{\"reportId\":\"0192f1c2a3b47c4d8e9f0a1b2c3d4e5f\",\"reference\":null}")]
+    public void IntakeAccepted_rejects_missing_or_null_fields(string input)
+        => Assert.Throws<JsonException>(() => BugReportJson.DeserializeIntakeAccepted(Encoding.UTF8.GetBytes(input)));
+
+    [Fact]
+    public void RelayError_rejects_a_null_error()
+        => Assert.Throws<JsonException>(() => BugReportJson.DeserializeRelayError("{\"error\":null}"u8));
+
+    [Theory]
+    [InlineData(",\"sections\":{\"build\":{\"version\":\"1.0.0\"}}", "")]
+    [InlineData("{\"build\":{\"version\":\"1.0.0\"}}", "null")]
+    [InlineData("\"subject\":\"player-1\",", "")]
+    [InlineData("\"formatVersion\":1,", "")]
+    public void ServerSnapshot_rejects_missing_or_null_fields(string field, string replacement)
+    {
+        byte[] json = Encoding.UTF8.GetBytes(Replace(SnapshotJson, field, replacement));
+        Assert.Throws<JsonException>(() => BugReportJson.DeserializeServerSnapshot(json));
+    }
+
+    [Theory]
+    [InlineData("{\"subject\":\"player-1\",\"handle\":null}")]
+    [InlineData("{\"subject\":\"player-1\",\"displayName\":null,\"handle\":null}")]
+    public void ReporterIdentity_rejects_missing_or_null_fields(string input)
+        => Assert.Throws<JsonException>(() =>
+            JsonSerializer.Deserialize<ReporterIdentity>(Encoding.UTF8.GetBytes(input), BugReportJson.Options));
+
+    const string SnapshotJson = "{\"formatVersion\":1,\"reportId\":\"0192f1c2a3b47c4d8e9f0a1b2c3d4e5f\",\"subject\":\"player-1\",\"capturedAt\":\"2026-10-17T03:04:05.678+00:00\",\"sections\":{\"build\":{\"version\":\"1.0.0\"}}}";
+
+    [Fact]
+    public void Snapshot_fixture_is_a_valid_document()
+        => Assert.Equal("player-1", BugReportJson.DeserializeServerSnapshot(Encoding.UTF8.GetBytes(SnapshotJson)).Subject);
+
+    static string Replace(string golden, string field, string replacement)
+    {
+        Assert.Contains(field, golden, StringComparison.Ordinal);
+        return golden.Replace(field, replacement, StringComparison.Ordinal);
     }
 }

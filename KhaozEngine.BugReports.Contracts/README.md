@@ -64,10 +64,13 @@ JSON section objects. `ReporterIdentity` carries the subject, display name and n
 
 `BugReportJson` exposes typed UTF-8 serialize and deserialize helpers for the manifest, clip index,
 intake acceptance, relay error and server snapshot. Deserializers throw `JsonException` for malformed
-JSON or a null root. `Options` exposes the same read-only source-generated settings, including the
-reporter identity shape. Copy the options if a caller needs different settings.
+JSON, a null root, a missing property or a null value in a non-nullable property. Every constructor
+property is required, including the nullable `handle`, which is written as `null`. `Options` exposes the
+same read-only source-generated settings, including the reporter identity shape. Copy the options if a
+caller needs different settings.
 
-JSON is compact with camelCase property names and camelCase enum strings. Serialization normalizes
+JSON is compact with camelCase property names and camelCase enum strings. Integer enum values are
+rejected. Serialization normalizes
 `DateTimeOffset` values to UTC. The encoder is `JavaScriptEncoder.Create(UnicodeRanges.All)`, so
 non-ASCII text such as `Café` stays literal while HTML-sensitive characters are escaped.
 

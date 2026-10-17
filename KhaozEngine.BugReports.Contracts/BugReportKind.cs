@@ -12,5 +12,5 @@ public enum BugReportKind
 
 public sealed class BugReportKindJsonConverter : JsonStringEnumConverter<BugReportKind>
 {
-    public BugReportKindJsonConverter() : base(JsonNamingPolicy.CamelCase) { }
+    public BugReportKindJsonConverter() : base(JsonNamingPolicy.CamelCase, allowIntegerValues: false) { }
 }

@@ -85,9 +85,9 @@ public sealed partial class Scene3D
         ReadOnlySpan<SkinnedVertex> source = conformer.Topology.Source.SkinVertices;
         for (int i = 0; i < source.Length; i++) p.Posed[i] = SkinningMath.SkinVertex(source[i], composed[..palette.Length]);
         CoverageStageObserverForTests?.Invoke(CoverageStageSpan.Skinning, false);
-        conformer.Scratch.StageObserver = CoverageStageObserverForTests;
+        // Staging constructs the candidate and its normals only. The full late validation is its one certification.
         CoverageStageObserverForTests?.Invoke(CoverageStageSpan.GeometryEvaluation, true);
-        bool evaluated = CoverageEvaluator.TryEvaluateGeometry(conformer.Topology, p.Posed, model, commands, conformer.Scratch,
+        bool evaluated = CoverageEvaluator.TryConstructCandidate(conformer.Topology, p.Posed, model, commands, conformer.Scratch,
             p.Candidate, out failure);
         CoverageStageObserverForTests?.Invoke(CoverageStageSpan.GeometryEvaluation, false);
         if (!evaluated || !conformer.Topology.TryInterpolate(p.Posed, p.Before, out failure)) return false;

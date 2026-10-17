@@ -160,12 +160,13 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   one-command overload remains supported. `AttachmentSetCache.GetCoverage` and `HostCoverageBinding` in
   `KhaozEngine.Attachments.Render3D` provide verified asset ownership and transactional equipment binding.
   `TryPrepare` requires an explicit `CoverageFallback.UncoveredCurrentPose` and returns a pending
-  `SkinnedCoverageFrame`. Assign it to every host `SkinnedInstanceDraw.Coverage`, including descriptor-based
-  outlines. Prepare the frame after all submissions. The scene captures actual pass matrices, certifies once
-  before drawing, then shares one covered CPU surface across colour, shadows and outlines alongside ordinary
-  GPU-skinned actors. `GetCoverageOutcome` reports covered or current-pose uncovered fallback. Missing actual
-  material submissions select fallback. Tokens expire at the next `Begin`, disposal or host unload, and new
-  submissions with an expired token throw. Disposal or unload after submission freezes the current-pose fallback
+  `SkinnedCoverageFrame`. Staging constructs the candidate and its normals but certifies nothing, so a geometry
+  refusal resolves later as the fallback. Assign it to every host `SkinnedInstanceDraw.Coverage`, including
+  descriptor-based outlines. Prepare the frame after all submissions. The scene captures actual pass matrices,
+  certifies once before drawing, then shares one covered CPU surface across colour, shadows and outlines
+  alongside ordinary GPU-skinned actors. `GetCoverageOutcome` reports covered or current-pose uncovered
+  fallback. Missing actual material submissions select fallback. Tokens expire at the next `Begin`, disposal
+  or host unload, and new submissions with an expired token throw. Disposal or unload after submission freezes the current-pose fallback
   with a recorded failure, and live slices keep their ordinary route. A covered
   frame cannot be recorded again for another view. Begin and stage again for each view.
   Coverage motion retains the previous final vertices and absolute model, rebased against the current origin.

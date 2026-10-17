@@ -25,18 +25,18 @@ internal sealed class CoverageCostRefusedException(string message) : Exception(m
 /// <summary>
 /// One frame's observations. Ticks are clock ticks summed over every actor in the frame. Nested spans keep their own
 /// totals and the driver derives the exclusive remainder, so nothing is counted twice. prepare.total contains skinning
-/// and geometry evaluation, geometry evaluation contains geometry certification, encode.total contains resolution, the
+/// and geometry evaluation, which certifies nothing, encode.total contains resolution, the
 /// skinned preparation and the motion commit, the skinned preparation contains surface append, ordinary skinning,
 /// motion recording and skinned upload, and resolution contains render certification. Bytes are allocated managed
 /// bytes on the measuring thread.
 /// </summary>
 internal struct CoverageCostFrameSample
 {
-    internal long PrepareTicks, SkinningTicks, GeometryTicks, GeometryCertificationTicks, SubmissionTicks, ReserveTicks,
+    internal long PrepareTicks, SkinningTicks, GeometryTicks, SubmissionTicks, ReserveTicks,
         EncodeTicks, ResolutionTicks, CertificationTicks, SkinnedPreparationTicks, SurfaceTicks, OrdinarySkinningTicks,
         SkinnedUploadTicks, MotionCommitTicks, SubmitWaitTicks, FrameTicks;
     internal long PrepareBytes, ReserveBytes, ResolutionBytes, SurfaceBytes, FrameBytes;
-    internal int ActorFrames, Accepted, Declined, Covered, Fallback, Skinned, Evaluated, GeometryCertified, Certified, Passes,
+    internal int ActorFrames, Accepted, Declined, Covered, Fallback, Skinned, Evaluated, Certified, Passes,
         MainVisible, OutlineGroups, OrdinaryCpuSkinnedVertices;
     internal RenderFrameStats Stats;
     internal Scene3DPassTimingsMs PassTimings;

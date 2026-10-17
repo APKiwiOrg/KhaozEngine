@@ -262,10 +262,8 @@ internal static class CoverageCostDriver
             : "uncovered equipment draw writing per actor, the off-route counterpart of public preparation");
         Add("prepare.skinning", f => f.SkinningTicks * ms, "covered source vertex skinning inside staging", coverage);
         Add("prepare.geometryEvaluation", f => f.GeometryTicks * ms,
-            "CoverageEvaluator.TryEvaluateGeometry, containing prepare.geometryCertification", coverage);
-        Add("prepare.geometryCertification", f => f.GeometryCertificationTicks * ms, "CoverageCertification.Certify inside the evaluator", coverage);
-        Add("prepare.geometryConstruction", f => (f.GeometryTicks - f.GeometryCertificationTicks) * ms,
-            "geometry evaluation less geometry certification: frames, interpolation, construction, core correction and normals", coverage, true);
+            "staged candidate construction: frames, interpolation, construction, core correction and normals, with no "
+            + "certification, which runs once in encode.renderCertification", coverage);
         Add("prepare.other", f => (f.PrepareTicks - f.SkinningTicks - f.GeometryTicks) * ms,
             "prepare.total less skinning and geometry evaluation", coverage, true);
         Add("submission", f => f.SubmissionTicks * ms, "queueing host, equipment and outline draws, with coverage draw validation");
@@ -339,7 +337,6 @@ internal static class CoverageCostDriver
         metrics.Add(CoverageCostMetric.Measured("outcome.errors", "count", errors, "exceptions that ended the run"));
         Count("stages.skinned", f => f.Skinned, "stage observer skinning brackets");
         Count("stages.evaluated", f => f.Evaluated, "stage observer geometry evaluation brackets");
-        Count("stages.geometryCertified", f => f.GeometryCertified, "stage observer geometry certification brackets");
         Count("stages.certified", f => f.Certified, "stage observer render certification brackets");
         Count("evidence.passes", f => f.Passes, "captured coverage certification contexts over all actors");
         Count("evidence.mainVisible", f => f.MainVisible, "covered preparations visible in the main view");

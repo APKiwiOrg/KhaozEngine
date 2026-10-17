@@ -151,8 +151,9 @@ public sealed class CoverageCostFixtureTests(ITestOutputHelper output)
         f.Submit(frame, binding.PreparedEquipmentDraws.ToArray());
         f.Render();
         Assert.Equal(CoveragePresentation.Covered, f.Scene.GetCoverageOutcome(frame).Presentation);
-        Assert.Equal(new[] { "prepare", "Skinning:in", "Skinning:out", "GeometryEvaluation:in", "GeometryCertification:in",
-            "GeometryCertification:out", "GeometryEvaluation:out", "prepared", "Resolution:in", "RenderCertification:in",
+        // Staging constructs the candidate and its normals only. The one full certification is the late validation.
+        Assert.Equal(new[] { "prepare", "Skinning:in", "Skinning:out", "GeometryEvaluation:in", "GeometryEvaluation:out",
+            "prepared", "Resolution:in", "RenderCertification:in",
             "RenderCertification:out", "Resolution:out", "SkinnedPreparation:in", "Surface:in", "Surface:out", "OrdinarySkinning:in",
             "OrdinarySkinning:out", "SkinnedUpload:in", "SkinnedUpload:out", "SkinnedPreparation:out", "MotionCommit:in",
             "MotionCommit:out" }, events);
@@ -283,7 +284,8 @@ public sealed class CoverageCostFixtureTests(ITestOutputHelper output)
         Assert.Equal(0, report.Metric("outcome.declined").Value);
         Assert.Equal(CoverageCostStatus.Unavailable, report.Span("submitWait.wall").Status);
         Assert.Equal(CoverageCostStatus.Measured, report.Span("encode.ordinarySkinning").Status);
-        Assert.Equal(CoverageCostStatus.Measured, report.Span("prepare.geometryCertification").Status);
+        Assert.Equal(CoverageCostStatus.Measured, report.Span("prepare.geometryEvaluation").Status);
+        Assert.DoesNotContain(report.Spans, s => s.Name == "prepare.geometryCertification");
         Assert.Contains(report.Capacities, c => c.Name == "shared.cpuSkinnedVertexBuffer.bytes" && c.Status == CoverageCostStatus.Measured);
         Assert.All(report.Budgets, b => Assert.Equal(CoverageCostBudgetStatus.Unproved, b.Status));
     }

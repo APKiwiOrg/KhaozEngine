@@ -72,7 +72,6 @@ internal sealed class CoverageCostFakeSession : ICoverageCostSession
         sample.PrepareTicks = PrepareTicks;
         sample.SkinningTicks = Coverage ? 3 : 0;
         sample.GeometryTicks = Coverage ? 4 : 0;
-        sample.GeometryCertificationTicks = Coverage ? 1 : 0;
         sample.SubmissionTicks = 2;
         sample.ReserveTicks = 1;
         sample.EncodeTicks = measuredIndex == 2 ? 32 : 30;
@@ -93,7 +92,7 @@ internal sealed class CoverageCostFakeSession : ICoverageCostSession
             sample.Declined = ActorsPerFrame - sample.Accepted;
             sample.Covered = AllDeclined || AllFallback ? 0 : AllCovered ? ActorsPerFrame : ActorsPerFrame - 2;
             sample.Fallback = sample.Accepted - sample.Covered;
-            sample.Skinned = sample.Evaluated = sample.GeometryCertified = sample.Accepted;
+            sample.Skinned = sample.Evaluated = sample.Accepted;
             sample.Certified = sample.Accepted;
         }
         sample.Passes = 10;

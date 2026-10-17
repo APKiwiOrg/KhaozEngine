@@ -222,9 +222,11 @@ state change or disposal. Do not compose another pose through `BoundAttachmentSe
 An empty equipped list succeeds with an empty token and ordinary current-pose host submission.
 
 On refusal, the token is empty and no prepared equipment descriptors are exposed. Present the current
-uncovered pose explicitly. Staging success is pending late render certification. Missing actual material
-participation or late certification failure selects the captured current-pose uncovered fallback across
-passes. Finish all submissions before `PrepareFrame(displayWidth, displayHeight)`, outside the frame recording.
+uncovered pose explicitly. Preparation refuses identity, transform, construction and normal failures.
+Staging success is pending late certification, which runs the full geometry and render certificate once.
+Missing actual material participation or a late geometry or render refusal selects the captured
+current-pose uncovered fallback across passes. Finish all submissions before
+`PrepareFrame(displayWidth, displayHeight)`, outside the frame recording.
 A new `Begin` requires fresh preparation. Previous final host positions follow compatible weight changes.
 Changing the equipment identity rejects only the affected projected bounds. Failed replacement keeps the active
 identity and its history. Independent equipment fading must change `TransitionWeight` or disable its coverage.

@@ -49,11 +49,11 @@ internal sealed class CoverageCostWorkload : IDisposable
     readonly long[] roleTotals = new long[2 * CoveragePreparation.EquipmentRoleOffset];
     readonly int[] roleMin = new int[2 * CoveragePreparation.EquipmentRoleOffset], roleMax = new int[2 * CoveragePreparation.EquipmentRoleOffset];
     long roleActorFrames, pointFaceMatrices, outlineGroups, measuredFrames;
-    long skinStart, skinTicks, geometryStart, geometryTicks, geometryCertificationStart, geometryCertificationTicks;
+    long skinStart, skinTicks, geometryStart, geometryTicks;
     long certificationStart, certificationTicks, ordinaryStart, ordinaryTicks, uploadStart, uploadTicks;
     long preparationStart, preparationTicks, commitStart, commitTicks;
     long resolutionStart, resolutionTicks, resolutionBytesStart, resolutionBytes, surfaceStart, surfaceTicks, surfaceBytesStart, surfaceBytes;
-    int skinned, evaluated, geometryCertified, certified, acceptedCount, declinedCount, lastCovered = -1;
+    int skinned, evaluated, certified, acceptedCount, declinedCount, lastCovered = -1;
     CoverageCostTopology? observed;
     // The last accepted preparation. A later refusal resets the actor's token, but this actor-owned object remains.
     CoveragePreparation? retained;
@@ -151,10 +151,10 @@ internal sealed class CoverageCostWorkload : IDisposable
     internal void Submit(int frame, ref CoverageCostFrameSample sample)
     {
         scene.Begin();
-        skinTicks = geometryTicks = geometryCertificationTicks = certificationTicks = ordinaryTicks = uploadTicks = 0;
+        skinTicks = geometryTicks = certificationTicks = ordinaryTicks = uploadTicks = 0;
         preparationTicks = commitTicks = 0;
         resolutionTicks = resolutionBytes = surfaceTicks = surfaceBytes = 0;
-        skinned = evaluated = geometryCertified = certified = acceptedCount = declinedCount = 0;
+        skinned = evaluated = certified = acceptedCount = declinedCount = 0;
         lastCovered = -1;
         long bytes = GC.GetAllocatedBytesForCurrentThread();
         if (PoseOverride is { } pose) pose.CopyTo(palette, 0);
@@ -210,7 +210,6 @@ internal sealed class CoverageCostWorkload : IDisposable
         sample.SubmissionTicks = submission;
         sample.SkinningTicks = skinTicks;
         sample.GeometryTicks = geometryTicks;
-        sample.GeometryCertificationTicks = geometryCertificationTicks;
     }
 
     internal void Reserve(int width, int height, ref CoverageCostFrameSample sample)
@@ -232,7 +231,6 @@ internal sealed class CoverageCostWorkload : IDisposable
         sample.SkinnedPreparationTicks = preparationTicks;
         sample.MotionCommitTicks = commitTicks;
         sample.OrdinaryCpuSkinnedVertices = scene.OrdinaryCpuSkinnedVerticesForTests;
-        sample.GeometryCertified = geometryCertified;
         sample.CertificationTicks = certificationTicks;
         sample.SurfaceTicks = surfaceTicks;
         sample.ResolutionBytes = resolutionBytes;
@@ -394,9 +392,6 @@ internal sealed class CoverageCostWorkload : IDisposable
             case CoverageStageSpan.Skinning: skinTicks += now - skinStart; skinned++; break;
             case CoverageStageSpan.GeometryEvaluation when entering: geometryStart = now; break;
             case CoverageStageSpan.GeometryEvaluation: geometryTicks += now - geometryStart; evaluated++; break;
-            case CoverageStageSpan.GeometryCertification when entering: geometryCertificationStart = now; break;
-            case CoverageStageSpan.GeometryCertification:
-                geometryCertificationTicks += now - geometryCertificationStart; geometryCertified++; break;
             case CoverageStageSpan.OrdinarySkinning when entering: ordinaryStart = now; break;
             case CoverageStageSpan.OrdinarySkinning: ordinaryTicks += now - ordinaryStart; break;
             case CoverageStageSpan.SkinnedUpload when entering: uploadStart = now; break;

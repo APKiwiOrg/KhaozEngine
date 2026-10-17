@@ -9,9 +9,10 @@ internal sealed record CoverageTargetReadback(int Width, int Height, int Channel
     internal int SourceRow { get; init; } = -1;
 }
 
-/// <summary>CPU stages for optional cost attribution. GeometryEvaluation is the whole evaluator call and contains
-/// GeometryCertification (each full certification pass, and in the render-aware evaluator the following disjoint
-/// render-margin separation recheck). RenderCertification is the late validation only,
+/// <summary>CPU stages for optional cost attribution. GeometryEvaluation is the whole evaluator call. Scene staging
+/// constructs the candidate and its normals there and certifies nothing. A public evaluator given an observed scratch
+/// brackets GeometryCertification inside it (each full certification pass, and in the render-aware evaluator the
+/// following disjoint render-margin separation recheck). RenderCertification is the late validation only,
 /// nested inside render resolution. SkinnedPreparation is the whole skinned draw preparation after resolution: it
 /// contains surface append, OrdinarySkinning (the uncovered draw loop, CPU vertex skinning or GPU draw records),
 /// coverage motion history recording and SkinnedUpload (the shared skinned frame uploads). MotionCommit is the whole

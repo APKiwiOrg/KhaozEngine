@@ -13,7 +13,7 @@ namespace KhaozEngine.Tests.Render3D;
 [Collection("AllocSensitive")]
 public sealed class CoverageRenderSeparationTests
 {
-    const float Near = 1f / 1024, Far = 1f / 64;
+    internal const float Near = 1f / 1024, Far = 1f / 64;
     static CoverageRenderStamp Stamp => new(1, 2, 3, MotionKey.From(4), 5);
 
     [Theory]
@@ -221,7 +221,7 @@ public sealed class CoverageRenderSeparationTests
         return true;
     }
 
-    static void Same(in CoverageCertificate expected, in CoverageCertificate actual)
+    internal static void Same(in CoverageCertificate expected, in CoverageCertificate actual)
     {
         Assert.Equal(expected, actual);
         Assert.Equal(BitConverter.DoubleToInt64Bits(expected.MinimumCoreClearance), BitConverter.DoubleToInt64Bits(actual.MinimumCoreClearance));
@@ -247,7 +247,7 @@ public sealed class CoverageRenderSeparationTests
     /// in the gap between them, `gap` from the other command's box and three quarters of a unit from its own. Zero
     /// strengths keep every vertex in place, so certification alone decides. Region r0 has two cells beside box two,
     /// region r1 four cells, two columns, beside box one, and their triangles follow in that order.</summary>
-    static Scene Gap(float gap, float recession1 = .8f, float recession2 = .8f, float transition = 1)
+    internal static Scene Gap(float gap, float recession1 = .8f, float recession2 = .8f, float transition = 1)
     {
         var positions = new List<Vector3>();
         var triangles = new List<CoverageSourceTriangle>();
@@ -297,7 +297,7 @@ public sealed class CoverageRenderSeparationTests
         }
     }
 
-    sealed record Scene(CoverageRefinement Topology, ModelVertex[] Posed, CoverageCommandPose[] Commands, Vector3[] Box)
+    internal sealed record Scene(CoverageRefinement Topology, ModelVertex[] Posed, CoverageCommandPose[] Commands, Vector3[] Box)
     {
         // Identity view projection keeps the captured error at the supplied perturbation plus float rounding.
         internal CoverageRenderContext Context(double host, double first = 0, double second = 0)

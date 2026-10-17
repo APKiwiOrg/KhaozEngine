@@ -19,7 +19,7 @@ public static class CoverageEvaluator
         ReadOnlySpan<CoverageCommandPose> commands, in CoverageRenderContext context, CoverageScratch scratch,
         Span<ModelVertex> finalVertices, out CoverageCertificate certificate, out CoverageFailure failure)
     {
-        bool accepted = Evaluate(topology, posedSource, actorModel, commands, context, true, scratch, finalVertices,
+        bool accepted = Evaluate(topology, posedSource, actorModel, commands, context, Certification.Render, scratch, finalVertices,
             out var geometry, out double renderError, out failure);
         certificate = accepted ? new(geometry.FullCoreClearance, geometry.MinimumCoreClearance,
             renderError, geometry.DisplacedVertices, context.Stamp) : default;
@@ -38,10 +38,20 @@ public static class CoverageEvaluator
     public static bool TryEvaluateGeometry(CoverageRefinement topology, ReadOnlySpan<ModelVertex> posedSource, in Matrix4x4 actorModel,
         ReadOnlySpan<CoverageCommandPose> commands, CoverageScratch scratch, Span<ModelVertex> finalVertices,
         out CoverageGeometryCertificate certificate, out CoverageFailure failure) =>
-        Evaluate(topology, posedSource, actorModel, commands, default, false, scratch, finalVertices, out certificate, out _, out failure);
+        Evaluate(topology, posedSource, actorModel, commands, default, Certification.Geometry, scratch, finalVertices, out certificate,
+            out _, out failure);
+
+    /// <summary>The scene's staged candidate. The same arguments, frames, interpolation, construction, normals and atomic
+    /// copy as TryEvaluateGeometry, with no certification and no certificate. True means only a finite constructed
+    /// candidate awaiting the full late validation, never permission to draw.</summary>
+    internal static bool TryConstructCandidate(CoverageRefinement topology, ReadOnlySpan<ModelVertex> posedSource, in Matrix4x4 actorModel,
+        ReadOnlySpan<CoverageCommandPose> commands, CoverageScratch scratch, Span<ModelVertex> finalVertices, out CoverageFailure failure) =>
+        Evaluate(topology, posedSource, actorModel, commands, default, Certification.None, scratch, finalVertices, out _, out _, out failure);
+
+    enum Certification { None, Geometry, Render }
 
     static bool Evaluate(CoverageRefinement topology, ReadOnlySpan<ModelVertex> posedSource, in Matrix4x4 actorModel,
-        ReadOnlySpan<CoverageCommandPose> commands, in CoverageRenderContext context, bool render, CoverageScratch scratch,
+        ReadOnlySpan<CoverageCommandPose> commands, in CoverageRenderContext context, Certification certification, CoverageScratch scratch,
         Span<ModelVertex> finalVertices, out CoverageGeometryCertificate certificate, out double renderError, out CoverageFailure failure)
     {
         renderError = 0;
@@ -57,8 +67,9 @@ public static class CoverageEvaluator
         if (!CoverageFrames.TryPrepare(topology, actorModel, commands, scratch, magnitude, out failure)
             || !topology.TryInterpolate(posedSource, scratch.Before, out failure)
             || !Construct(topology, actorModel, commands, scratch, out failure)
-            || !CoverageCertification.CertifyCandidate(topology, scratch.Before, scratch.After, actorModel, commands, context, render,
-                scratch, scratch.StageObserver, out certificate, out renderError, out failure)
+            || certification != Certification.None && !CoverageCertification.CertifyCandidate(topology, scratch.Before, scratch.After,
+                actorModel, commands, context, certification == Certification.Render, scratch, scratch.StageObserver, out certificate,
+                out renderError, out failure)
             || !CoverageSurfaceNormals.Update(topology, scratch.Before, scratch.After, scratch, out failure))
         {
             certificate = default;

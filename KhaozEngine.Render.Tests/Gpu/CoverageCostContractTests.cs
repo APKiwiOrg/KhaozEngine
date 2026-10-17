@@ -189,9 +189,9 @@ public sealed class CoverageCostContractTests
         Assert.Equal(12, report.Span("prepare.total").Mean);
         Assert.Equal(3, report.Span("prepare.skinning").Mean);
         Assert.Equal(4, report.Span("prepare.geometryEvaluation").Mean);
-        Assert.Equal(1, report.Span("prepare.geometryCertification").Mean);
-        Assert.Equal(3, report.Span("prepare.geometryConstruction").Mean);
-        Assert.Equal(CoverageCostStatus.Derived, report.Span("prepare.geometryConstruction").Status);
+        // Staging certifies nothing, so no certification sample or derived construction remainder is reported.
+        Assert.DoesNotContain(report.Spans, s => s.Name is "prepare.geometryCertification" or "prepare.geometryConstruction");
+        Assert.DoesNotContain(report.Metrics, m => m.Name == "stages.geometryCertified");
         Assert.Equal(5, report.Span("prepare.other").Mean);
         Assert.Equal(CoverageCostStatus.Derived, report.Span("prepare.other").Status);
         Assert.Equal(9, report.Span("encode.resolution").Mean);
@@ -276,8 +276,7 @@ public sealed class CoverageCostContractTests
         Assert.Equal(2, report.Span("encode.ordinarySkinning").Mean);
         Assert.Equal(CoverageCostStatus.Measured, report.Span("encode.ordinarySkinning").Status);
         Assert.Equal(3 * 1092 * 32, report.Metric("ordinary.cpuSkinnedVertices").Value);
-        foreach (string name in new[] { "prepare.skinning", "prepare.geometryEvaluation", "prepare.geometryCertification",
-            "encode.renderCertification" })
+        foreach (string name in new[] { "prepare.skinning", "prepare.geometryEvaluation", "encode.renderCertification" })
         {
             Assert.Equal(CoverageCostStatus.NotApplicable, report.Span(name).Status);
             Assert.Null(report.Span(name).Mean);

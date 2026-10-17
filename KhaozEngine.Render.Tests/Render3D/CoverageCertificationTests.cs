@@ -155,7 +155,7 @@ public sealed class CoverageCertificationTests
         }
     }
 
-    static (CoverageRefinement, ModelVertex[], Matrix4x4, CoverageCommandPose[], CoverageScratch) Scenario(string kind)
+    internal static (CoverageRefinement, ModelVertex[], Matrix4x4, CoverageCommandPose[], CoverageScratch) Scenario(string kind)
     {
         if (kind == "inside-solid") return InsideSolid();
         var fixture = kind switch

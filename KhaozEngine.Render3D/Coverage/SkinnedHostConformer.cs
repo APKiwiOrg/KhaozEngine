@@ -39,7 +39,9 @@ public sealed class SkinnedHostConformer : IDisposable
         return inverseBind.SequenceEqual(InverseBind);
     }
 
-    /// <summary>Stages frozen current-pose geometry. True means accepted for late resolution in this frame.</summary>
+    /// <summary>Stages frozen current-pose geometry and the constructed candidate with its normals. True means accepted
+    /// for late resolution in this frame. Argument, identity, construction and normal refusals return false here.
+    /// Geometry and render certification run once at resolution, where a refusal selects the current-pose fallback.</summary>
     public bool TryPrepare(ReadOnlySpan<Matrix4x4> palette, in Matrix4x4 model,
         ReadOnlySpan<CoverageCommandPose> commands, MotionKey actorKey, CoverageFallback fallback,
         out SkinnedCoverageFrame frame, out CoverageFailure failure)

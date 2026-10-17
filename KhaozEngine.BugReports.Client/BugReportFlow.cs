@@ -50,6 +50,8 @@ internal sealed class BugReportFlow
     readonly CancellationToken _shutdown;
     readonly IReadOnlyList<string> _categories;
     readonly ConcurrentQueue<Action> _posted = new();
+    readonly GameDelegateFaults _subjectFaults = new("currentSubject");
+    readonly GameDelegateFaults _saveFaults = new("SaveTriggerBindings");
     string? _subject;
     bool _beginPending;
     bool _holdNextFrame;
@@ -85,7 +87,9 @@ internal sealed class BugReportFlow
 
         var map = new ActionMap();
         map.AddAction(InputAction.Button(TriggerActionId), InputSource.FromKey(options.DefaultKey));
-        TriggerControls = new ActionMapController(map, persistedJson: null, options.SaveTriggerBindings);
+        // A save that throws leaves the rebinding in memory. The player keeps it for this session.
+        TriggerControls = new ActionMapController(map, persistedJson: null,
+            options.SaveTriggerBindings is { } save ? json => SaveBindings(save, json) : null);
         if (!string.IsNullOrWhiteSpace(options.TriggerBindingsJson)
             && ActionMapSerializer.Load(map, options.TriggerBindingsJson).AppliedCount == 0)
         {
@@ -134,9 +138,10 @@ internal sealed class BugReportFlow
     /// <summary>
     /// Runs one frame. Returns true from the trigger frame until the frame after the screen closes, inclusive, so
     /// the caller holds the game's input for those frames.
-    /// <para>The game's delegates run inside it: <c>currentSubject</c>, <c>SaveTriggerBindings</c> and the screen's own
-    /// update. An exception that escapes thaws the clip, closes the open report and returns to idle before it is
-    /// rethrown, so the overlay host that removes a throwing overlay never leaves the clip frozen.</para>
+    /// <para>A throwing <c>currentSubject</c> or <c>SaveTriggerBindings</c> is caught, logged once per distinct
+    /// failure and never stops reports. Any other exception that escapes, a fault in the flow itself, thaws the clip,
+    /// closes the open report and returns to idle before it is rethrown, so the overlay host that removes a throwing
+    /// overlay never leaves the clip frozen.</para>
     /// </summary>
     internal bool Update(InputState input, float realDt, IDesignViewport? viewport)
     {
@@ -196,7 +201,8 @@ internal sealed class BugReportFlow
     /// </summary>
     internal Task<int> RetryQueuedAsync(CancellationToken cancellationToken)
     {
-        string? subject = _currentSubject();
+        // A subject that cannot be read keeps the last one the frame thread knew.
+        string? subject = TryReadSubject(out string? read) ? read : Volatile.Read(ref _subject);
         if (string.IsNullOrWhiteSpace(subject)) return Task.FromResult(0);
         return Task.Run(async () =>
         {
@@ -253,11 +259,12 @@ internal sealed class BugReportFlow
 
     void Post(Action work) => _posted.Enqueue(work);
 
+    /// <summary>A throwing <c>currentSubject</c> reads as no change: the last known subject stays and no flush starts.</summary>
     void PollSubject()
     {
-        string? subject = _currentSubject();
+        if (!TryReadSubject(out string? subject)) return;
         if (string.Equals(subject, _subject, StringComparison.Ordinal)) return;
-        _subject = subject;
+        Volatile.Write(ref _subject, subject);
         StartFlush();
     }
 
@@ -267,6 +274,37 @@ internal sealed class BugReportFlow
         string? subject = _subject;
         if (string.IsNullOrWhiteSpace(subject)) return;
         PendingWork = Task.Run(() => FlushAsync(subject, _shutdown));
+    }
+
+    /// <summary>Calls the game's <c>currentSubject</c>. False, with the failure logged once, when it throws.</summary>
+    bool TryReadSubject(out string? subject)
+    {
+        try
+        {
+            subject = _currentSubject();
+        }
+        catch (Exception exception)
+        {
+            _subjectFaults.Report(exception);
+            subject = null;
+            return false;
+        }
+        _subjectFaults.Clear();
+        return true;
+    }
+
+    void SaveBindings(Action<string> save, string json)
+    {
+        try
+        {
+            save(json);
+        }
+        catch (Exception exception)
+        {
+            _saveFaults.Report(exception);
+            return;
+        }
+        _saveFaults.Clear();
     }
 
     void Capture()
@@ -331,8 +369,9 @@ internal sealed class BugReportFlow
             _report = null;
             State = BugReportFlowState.Idle;
             _holdNextFrame = true;
-            ShowToast(BugReportStrings.Resolve(BugReportStrings.ToastFailed), ToastKind.Danger);
+            // The clip thaws before the toast, so a failing string lookup cannot leave it frozen.
             _capture.Thaw();
+            ShowToast(BugReportStrings.Resolve(BugReportStrings.ToastFailed), ToastKind.Danger);
             return;
         }
         report.Screen = screen;

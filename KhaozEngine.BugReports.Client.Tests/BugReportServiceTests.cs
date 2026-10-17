@@ -297,6 +297,24 @@ public sealed class BugReportServiceTests : BugReportFlowHarness
     }
 
     [Fact]
+    public async Task Throwing_subject_leaves_the_overlay_registered()
+    {
+        using BugReportService service = await SignedInService();
+        _subjectFailure = new InvalidOperationException("session lookup");
+
+        for (int i = 0; i < 5; i++) Assert.False(Run(service));
+        Run(service, Frame(pressed: [Key.F10]));
+        Run(service, Frame(held: [Key.F10]));
+        Assert.True(service.IsOpen);
+        Run(service, Frame(text: "Fell through"));
+        Run(service, Frame(pressed: [Key.Enter], held: [Key.LeftControl]));
+        await Settle(service);
+
+        Assert.Empty(_removed);
+        Assert.Equal("discord:42", Assert.Single(_sink.Submissions).Subject);
+    }
+
+    [Fact]
     public void Dispose_twice_removes_the_overlay_once()
     {
         BugReportService service = NewService();
@@ -313,7 +331,7 @@ public sealed class BugReportServiceTests : BugReportFlowHarness
         queue ??= new BugReportOfflineQueue(Path.Combine(_root, "pending"), _time);
         var recorder = new FrameHistoryRecorder(_host, options.Recording, _time);
         var service = new BugReportService(options, recorder, _capture, new BugReportSubmitter(sink ?? _sink, queue),
-            () => _subject, HeadlessScreen, overlay =>
+            () => _subjectFailure is { } failure ? throw failure : _subject, HeadlessScreen, overlay =>
             {
                 _onRemove?.Invoke();
                 _removed.Add(overlay);

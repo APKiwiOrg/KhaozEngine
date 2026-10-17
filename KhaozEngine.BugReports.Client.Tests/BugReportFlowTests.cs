@@ -9,6 +9,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using KhaozEngine.App;
 using KhaozEngine.BugReports;
 using KhaozEngine.BugReports.Client;
 using KhaozEngine.BugReports.Client.Internal;
@@ -400,35 +401,100 @@ public sealed class BugReportFlowTests : BugReportFlowHarness
     }
 
     [Fact]
-    public void Throwing_subject_while_open_leaves_the_recorder_thawed()
+    public void Unexpected_fault_while_open_thaws_closes_and_rethrows()
     {
         BugReportFlow flow = NewFlow();
         Open(flow);
-        _subjectFailure = new InvalidOperationException("session lookup");
 
-        Assert.Throws<InvalidOperationException>(() => Step(flow));
+        using (LocalizationContext.Use(new ThrowingCatalog()))
+            Assert.Throws<InvalidOperationException>(() => Step(flow));
 
         Assert.Equal(1, _capture.ThawCount);
         Assert.Equal(BugReportFlowState.Idle, flow.State);
         Assert.Empty(flow.Screens.Screens);
-        _subjectFailure = null;
         Step(flow);
         Open(flow);
         Assert.Equal(2, _captured.Count);
     }
 
     [Fact]
-    public void Throwing_subject_after_the_trigger_frame_leaves_the_recorder_thawed()
+    public void Unexpected_fault_after_the_trigger_frame_leaves_the_recorder_thawed()
     {
         BugReportFlow flow = NewFlow();
         Assert.True(Step(flow, Frame(pressed: [Key.F10])));
-        _subjectFailure = new InvalidOperationException("session lookup");
 
-        Assert.Throws<InvalidOperationException>(() => Step(flow));
+        using (LocalizationContext.Use(new ThrowingCatalog()))
+            Assert.Throws<InvalidOperationException>(() => Step(flow));
 
         Assert.Equal(1, _capture.ThawCount);
         Assert.Equal(BugReportFlowState.Idle, flow.State);
         Assert.Empty(flow.Screens.Screens);
+    }
+
+    [Fact]
+    public async Task Throwing_subject_keeps_reports_working_with_the_last_known_subject()
+    {
+        BugReportFlow flow = await SignedIn();
+        using IDisposable logs = CaptureLogs();
+        _subjectFailure = new InvalidOperationException("session lookup");
+
+        for (int i = 0; i < 5; i++) Assert.False(Step(flow));
+        Open(flow);
+        Send(flow);
+        await Settle(flow);
+
+        BugReportSubmission submission = Assert.Single(_sink.Submissions);
+        Assert.Equal("discord:42", submission.Subject);
+        Assert.Single(Warnings, entry => entry.Message.Contains("currentSubject", StringComparison.Ordinal));
+        Assert.Equal(BugReportSubmitStatus.Sent, Assert.Single(_submitted).Status);
+    }
+
+    [Fact]
+    public async Task Subject_that_never_answers_reports_signed_out()
+    {
+        _subjectFailure = new InvalidOperationException("session lookup");
+        BugReportFlow flow = NewFlow();
+        using IDisposable logs = CaptureLogs();
+
+        BugReportScreen screen = Open(flow);
+        Assert.False(screen.Model.SignedIn);
+        Send(flow);
+        await Settle(flow);
+
+        Assert.Empty(_sink.Submissions);
+        Assert.Equal(BugReportSubmitter.SignedOutError, Assert.Single(_submitted).Error);
+        Assert.Equal(0, await flow.RetryQueuedAsync(default));
+    }
+
+    [Fact]
+    public void Throwing_save_keeps_the_rebinding_and_the_flow_working()
+    {
+        BugReportFlow flow = NewFlow(new BugReportServiceOptions
+        {
+            GameId = "grimhollow",
+            GameDisplayName = "Grimhollow",
+            SaveTriggerBindings = _ => throw new IOException("disk full"),
+        });
+        using IDisposable logs = CaptureLogs();
+        flow.TriggerControls.BeginRebind(BugReportFlow.TriggerActionId, 0);
+
+        Assert.False(Step(flow, Frame(pressed: [Key.F9])));
+
+        Assert.False(flow.TriggerControls.IsRebinding);
+        Assert.Single(Warnings);
+        Assert.False(Step(flow, Frame(pressed: [Key.F10])));
+        Assert.True(Step(flow, Frame(pressed: [Key.F9])));
+        Assert.Single(_captured);
+    }
+
+    /// <summary>A wired catalog whose every lookup throws, a fault the flow does not expect.</summary>
+    sealed class ThrowingCatalog : IStringCatalog
+    {
+        public string Get(string key) => throw new InvalidOperationException("catalog");
+
+        public string Format(string key, params object?[] args) => throw new InvalidOperationException("catalog");
+
+        public bool TryGet(string key, out string value) => throw new InvalidOperationException("catalog");
     }
 
     [Fact]

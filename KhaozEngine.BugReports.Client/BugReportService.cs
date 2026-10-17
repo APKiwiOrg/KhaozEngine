@@ -67,7 +67,8 @@ public sealed class BugReportService : IDisposable
     /// <param name="queue">Keeps every report on disk until the sink accepts or rejects it.</param>
     /// <param name="currentSubject">
     /// Returns the signed-in account, or null while signed out. Polled on the frame thread every frame, and also called on
-    /// the thread that calls <see cref="RetryQueuedAsync"/>, so it must be safe to call from both.
+    /// the thread that calls <see cref="RetryQueuedAsync"/>, so it must be safe to call from both. A call that throws
+    /// is logged once per distinct failure and keeps the last known account.
     /// </param>
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
     /// <exception cref="ArgumentException">An option is invalid.</exception>

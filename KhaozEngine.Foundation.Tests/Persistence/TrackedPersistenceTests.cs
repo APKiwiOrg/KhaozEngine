@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -8,6 +9,9 @@ using Xunit;
 
 namespace KhaozEngine.Tests;
 
+// Controlled scenarios hold the queue's drain with a DedicatedDrainScheduler and observe in-flight
+// state from inside the write callback, so no pause waits on the test body or a thread-pool thread.
+// Timeouts here bound awaits on test-owned threads. They are never a hold's release path.
 public sealed class TrackedPersistenceTests
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
@@ -16,18 +20,23 @@ public sealed class TrackedPersistenceTests
     public async Task Tracked_write_reports_saved_after_atomic_write()
     {
         using var files = new TestFiles();
-        using var gate = new WriteGate("payload");
-        using var queue = NewQueue(gate);
-        Task<PersistenceWriteResult> task = queue.EnqueueTracked(files.Path, "payload");
-        try
+        var drains = new DedicatedDrainScheduler();
+        Task<PersistenceWriteResult>? task = null;
+        bool completedAtWriteStart = true, existedAtWriteStart = true, completedAtWriteEnd = true;
+        using var queue = NewQueue(drains, (path, json) =>
         {
-            await gate.Entered.Task.WaitAsync(Timeout);
-            Assert.False(task.IsCompleted);
-            Assert.False(File.Exists(files.Path));
-        }
-        finally { gate.Release.Set(); }
+            completedAtWriteStart = task!.IsCompleted;
+            existedAtWriteStart = File.Exists(path);
+            AtomicJsonWriter.WriteText(path, json);
+            completedAtWriteEnd = task.IsCompleted;
+        });
+        task = queue.EnqueueTracked(files.Path, "payload");
+        drains.Start();
 
         PersistenceWriteResult result = await task.WaitAsync(Timeout);
+        Assert.False(completedAtWriteStart);
+        Assert.False(existedAtWriteStart);
+        Assert.False(completedAtWriteEnd);
         Assert.Equal(PersistenceWriteOutcome.Saved, result.Outcome);
         Assert.Equal(files.Path, result.Path);
         Assert.Null(result.Error);
@@ -39,12 +48,10 @@ public sealed class TrackedPersistenceTests
     public async Task Superseded_payload_is_not_reported_saved()
     {
         using var files = new TestFiles();
-        using var gate = new WriteGate("hold");
-        using var queue = NewQueue(gate);
-        queue.Enqueue(files.OtherPath, "hold");
+        var drains = new DedicatedDrainScheduler();
+        using var queue = NewQueue(drains);
         try
         {
-            await gate.Entered.Task.WaitAsync(Timeout);
             Task<PersistenceWriteResult> firstTask = queue.EnqueueTracked(files.Path, "first");
             const string latestPayload = "latest";
             Task<PersistenceWriteResult> latestTask = queue.EnqueueTracked(files.Path, latestPayload);
@@ -54,33 +61,31 @@ public sealed class TrackedPersistenceTests
             Assert.Null(firstResult.Error);
             Assert.False(latestTask.IsCompleted);
             Assert.False(File.Exists(files.Path));
-            gate.Release.Set();
+            drains.Start();
 
             PersistenceWriteResult latestResult = await latestTask.WaitAsync(Timeout);
             Assert.Equal(PersistenceWriteOutcome.Saved, latestResult.Outcome);
             Assert.Equal(latestPayload, File.ReadAllText(files.Path));
             Assert.False(File.Exists(files.Path + ".bak1"));
         }
-        finally { gate.Release.Set(); }
+        finally { drains.Start(); }
     }
 
     [Fact]
     public async Task Void_enqueue_supersedes_a_pending_tracked_payload()
     {
         using var files = new TestFiles();
-        using var gate = new WriteGate("hold");
-        using var queue = NewQueue(gate);
-        queue.Enqueue(files.OtherPath, "hold");
+        var drains = new DedicatedDrainScheduler();
+        using var queue = NewQueue(drains);
         try
         {
-            await gate.Entered.Task.WaitAsync(Timeout);
             Task<PersistenceWriteResult> task = queue.EnqueueTracked(files.Path, "tracked");
             queue.Enqueue(files.Path, "untracked");
             Assert.Equal(PersistenceWriteOutcome.Superseded, (await task.WaitAsync(Timeout)).Outcome);
         }
-        finally { gate.Release.Set(); }
+        finally { drains.Start(); }
 
-        queue.Flush();
+        await DedicatedThread.Run(queue.Flush).WaitAsync(Timeout);
         Assert.Equal("untracked", File.ReadAllText(files.Path));
     }
 
@@ -88,30 +93,41 @@ public sealed class TrackedPersistenceTests
     public async Task Older_completion_does_not_complete_newer_request()
     {
         using var files = new TestFiles();
-        using var older = new WriteGate("older");
-        using var latest = new WriteGate("latest");
-        using var queue = NewQueue(older, latest);
-        Task<PersistenceWriteResult> olderTask = queue.EnqueueTracked(files.Path, "older");
-        try
+        var drains = new DedicatedDrainScheduler();
+        PersistenceQueue? self = null;
+        Task<PersistenceWriteResult>? olderTask = null;
+        Task<PersistenceWriteResult>? latestTask = null;
+        bool olderCompletedAtLatestWrite = false;
+        bool latestCompletedAtItsWrite = true;
+        string? onDiskAtLatestWrite = null;
+        using var queue = NewQueue(drains, (path, json) =>
         {
-            await older.Entered.Task.WaitAsync(Timeout);
-            Task<PersistenceWriteResult> latestTask = queue.EnqueueTracked(files.Path, "latest");
-            older.Release.Set();
-            await latest.Entered.Task.WaitAsync(Timeout);
-            Assert.Equal(PersistenceWriteOutcome.Saved, (await olderTask.WaitAsync(Timeout)).Outcome);
-            Assert.False(latestTask.IsCompleted);
-            Assert.Equal("older", File.ReadAllText(files.Path));
-            latest.Release.Set();
+            if (json == "older")
+            {
+                // The newer request lands while the older payload is in flight.
+                latestTask = self!.EnqueueTracked(path, "latest");
+            }
+            else if (json == "latest")
+            {
+                olderCompletedAtLatestWrite = olderTask!.IsCompletedSuccessfully;
+                latestCompletedAtItsWrite = latestTask!.IsCompleted;
+                onDiskAtLatestWrite = File.ReadAllText(path);
+            }
 
-            Assert.Equal(PersistenceWriteOutcome.Saved, (await latestTask.WaitAsync(Timeout)).Outcome);
-            Assert.Equal("latest", File.ReadAllText(files.Path));
-            Assert.Equal("older", File.ReadAllText(files.Path + ".bak1"));
-        }
-        finally
-        {
-            older.Release.Set();
-            latest.Release.Set();
-        }
+            AtomicJsonWriter.WriteText(path, json);
+        });
+        self = queue;
+        olderTask = queue.EnqueueTracked(files.Path, "older");
+        drains.Start();
+
+        Assert.Equal(PersistenceWriteOutcome.Saved, (await olderTask.WaitAsync(Timeout)).Outcome);
+        Assert.NotNull(latestTask);
+        Assert.Equal(PersistenceWriteOutcome.Saved, (await latestTask.WaitAsync(Timeout)).Outcome);
+        Assert.True(olderCompletedAtLatestWrite);
+        Assert.False(latestCompletedAtItsWrite);
+        Assert.Equal("older", onDiskAtLatestWrite);
+        Assert.Equal("latest", File.ReadAllText(files.Path));
+        Assert.Equal("older", File.ReadAllText(files.Path + ".bak1"));
     }
 
     [Fact]
@@ -141,17 +157,21 @@ public sealed class TrackedPersistenceTests
     public async Task Flush_and_disposal_drain_tracked_tasks(bool dispose)
     {
         using var files = new TestFiles();
-        using var gate = new WriteGate("payload");
-        using var queue = NewQueue(gate);
+        var drains = new DedicatedDrainScheduler();
+        bool? firstDecisionWaited = null;
+        // The drain starts only once Flush has decided to wait, so Flush is the call that drains it.
+        using var queue = new PersistenceQueue(AtomicJsonWriter.WriteText, maxAttempts: 1, retryDelay: TimeSpan.Zero,
+            observeDrainDecision: waiting =>
+            {
+                firstDecisionWaited ??= waiting;
+                drains.Start();
+            },
+            scheduleDrain: drains.Schedule);
         Task<PersistenceWriteResult> task = queue.EnqueueTracked(files.Path, "payload");
-        try
-        {
-            await gate.Entered.Task.WaitAsync(Timeout);
-            Assert.False(task.IsCompleted);
-        }
-        finally { gate.Release.Set(); }
+        Assert.False(task.IsCompleted);
 
-        await Task.Run(() => { if (dispose) queue.Dispose(); else queue.Flush(); }).WaitAsync(Timeout);
+        await DedicatedThread.Run(() => { if (dispose) queue.Dispose(); else queue.Flush(); }).WaitAsync(Timeout);
+        Assert.True(firstDecisionWaited);
         Assert.True(task.IsCompletedSuccessfully);
         Assert.Equal(PersistenceWriteOutcome.Saved, (await task).Outcome);
         Assert.Equal("payload", File.ReadAllText(files.Path));
@@ -165,29 +185,31 @@ public sealed class TrackedPersistenceTests
     public async Task Completion_handler_can_enqueue_flush_and_dispose()
     {
         using var files = new TestFiles();
-        using var gate = new WriteGate("payload");
-        var queue = NewQueue(gate);
+        var drains = new DedicatedDrainScheduler();
+        var queue = NewQueue(drains);
         try
         {
             Task<PersistenceWriteResult> task = queue.EnqueueTracked(files.Path, "payload");
-            await gate.Entered.Task.WaitAsync(Timeout);
+            // Attached while the drain is held, so it runs as the completion's continuation.
             Task continuation = task.ContinueWith(_ =>
             {
                 queue.Enqueue(files.OtherPath, "followup");
                 queue.Flush();
                 queue.Dispose();
             }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
-            gate.Release.Set();
+            Assert.False(task.IsCompleted);
+            drains.Start();
 
             await continuation.WaitAsync(Timeout);
+            Assert.Equal(PersistenceWriteOutcome.Saved, (await task).Outcome);
             Assert.Equal("payload", File.ReadAllText(files.Path));
             Assert.Equal("followup", File.ReadAllText(files.OtherPath));
             Assert.Throws<ObjectDisposedException>(() => { _ = queue.EnqueueTracked(files.Path, "later"); });
         }
         finally
         {
-            gate.Release.Set();
-            await Task.Run(queue.Dispose).WaitAsync(Timeout);
+            drains.Start();
+            await DedicatedThread.Run(queue.Dispose).WaitAsync(Timeout);
         }
     }
 
@@ -198,82 +220,116 @@ public sealed class TrackedPersistenceTests
     [InlineData(true, true)]
     public async Task Drain_resolves_supersession_even_when_the_replacing_producer_is_paused(bool dispose, bool trackedReplacement)
     {
+        // Every handoff runs synchronously on the thread that reaches it. The paused producer starts
+        // the held drain. The deliberate WriteFailed starts the drainer. The drainer's predicate
+        // observation releases the producer and waits for it before Flush rechecks under the lock,
+        // proving a completion pulse cannot be lost. A return decision leaves the producer paused,
+        // so the drainer's terminal-task assertion catches it.
         using var files = new TestFiles();
-        using var writer = new WriteGate("hold");
-        using var supersession = new WriteGate("supersession");
-        using var continueDrain = new ManualResetEventSlim(false);
-        var writesDrained = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var drainDecision = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var queue = new PersistenceQueue((path, json) =>
-        {
-            writer.BeforeWrite(json);
-            AtomicJsonWriter.WriteText(path, json);
-        }, maxAttempts: 1, retryDelay: TimeSpan.Zero,
-            beforeSupersessionCompletion: () => supersession.BeforeWrite("supersession"),
+        var drains = new DedicatedDrainScheduler();
+        using var supersession = new ControlledHold("The supersession was not released.", Timeout);
+        using var producerReturned = new ManualResetEventSlim(false);
+        string blocker = files.OtherPath;
+        File.WriteAllText(blocker, "blocker");
+        string invalidChildPath = System.IO.Path.Combine(blocker, "fail.json");
+        var drainerStarted = new TaskCompletionSource<Task>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var unexpectedFailures = new ConcurrentQueue<string>();
+        Task<PersistenceWriteResult>? firstTask = null;
+        Task<PersistenceWriteResult>? latestTask = null;
+        string? onDiskWhenWritesDrained = null;
+        bool? firstCompletedWhenWritesDrained = null;
+        bool? firstDecisionWaited = null;
+        bool? firstCompletedAfterProducer = null;
+        int decisions = 0;
+        PersistenceQueue? self = null;
+        var queue = new PersistenceQueue(AtomicJsonWriter.WriteText, maxAttempts: 1, retryDelay: TimeSpan.Zero,
+            beforeSupersessionCompletion: () =>
+            {
+                drains.Start();
+                supersession.Hold();
+            },
             observeDrainDecision: waiting =>
             {
-                drainDecision.TrySetResult(waiting);
-                if (!continueDrain.Wait(Timeout)) throw new TimeoutException("The drain decision was not released.");
-            });
+                if (Interlocked.Increment(ref decisions) != 1) return;
+                firstDecisionWaited = waiting;
+                if (!waiting) return;
+                supersession.Release();
+                if (!producerReturned.Wait(Timeout)) throw new TimeoutException("The released producer did not return.");
+                firstCompletedAfterProducer = firstTask!.IsCompletedSuccessfully;
+            },
+            scheduleDrain: drains.Schedule);
+        self = queue;
+        // The real failed write delivers WriteFailed only after the drain latch is clear. Only the
+        // deliberately invalid child path counts as that signal.
+        queue.WriteFailed += (_, args) =>
+        {
+            if (args.Path != invalidChildPath)
+            {
+                unexpectedFailures.Enqueue($"{args.Path}: {args.Exception.Message}");
+                return;
+            }
+
+            PersistenceQueue drained = self!;
+            Task<PersistenceWriteResult> first = firstTask!;
+            onDiskWhenWritesDrained = File.ReadAllText(files.Path);
+            firstCompletedWhenWritesDrained = first.IsCompleted;
+            drainerStarted.TrySetResult(DedicatedThread.Run(() =>
+            {
+                if (dispose) drained.Dispose();
+                else drained.Flush();
+                Assert.True(first.IsCompletedSuccessfully, "Drain returned with an unresolved superseded request.");
+            }));
+        };
         Task? producer = null;
-        Task? drain = null;
-        Task<PersistenceWriteResult>? latestTask = null;
         try
         {
-            queue.Enqueue(files.OtherPath, "hold");
-            await writer.Entered.Task.WaitAsync(Timeout);
-            Task<PersistenceWriteResult> firstTask = queue.EnqueueTracked(files.Path, "first");
-            // The real failed write delivers WriteFailed only after the drain latch is clear.
-            queue.WriteFailed += (_, _) => writesDrained.TrySetResult(true);
-            queue.Enqueue(System.IO.Path.Combine(files.OtherPath, "fail.json"), "failure");
-            producer = Task.Run(() =>
+            firstTask = queue.EnqueueTracked(files.Path, "first");
+            queue.Enqueue(invalidChildPath, "failure");
+            producer = DedicatedThread.Run(() =>
             {
-                if (trackedReplacement) latestTask = queue.EnqueueTracked(files.Path, "latest");
-                else queue.Enqueue(files.Path, "latest");
+                try
+                {
+                    if (trackedReplacement) latestTask = queue.EnqueueTracked(files.Path, "latest");
+                    else queue.Enqueue(files.Path, "latest");
+                }
+                finally { producerReturned.Set(); }
             });
-            await supersession.Entered.Task.WaitAsync(Timeout);
-            writer.Release.Set();
-            await writesDrained.Task.WaitAsync(Timeout);
-            Assert.Equal("latest", File.ReadAllText(files.Path));
-            Assert.False(firstTask.IsCompleted);
 
-            drain = Task.Run(() =>
-            {
-                if (dispose) queue.Dispose();
-                else queue.Flush();
-                Assert.True(firstTask.IsCompletedSuccessfully, "Drain returned with an unresolved superseded request.");
-            });
-            // Observe the actual drain predicate outside the lock. A wait decision releases the
-            // producer before Flush rechecks, proving a completion pulse cannot be lost. A return
-            // decision keeps the producer paused so the real terminal-task assertion catches it.
-            if (await drainDecision.Task.WaitAsync(Timeout))
-            {
-                supersession.Release.Set();
-                await producer.WaitAsync(Timeout);
-                Assert.True(firstTask.IsCompletedSuccessfully);
-            }
-            continueDrain.Set();
-            await drain.WaitAsync(Timeout);
+            Task drainer = await drainerStarted.Task.WaitAsync(Timeout);
+            await drainer.WaitAsync(Timeout);
             await producer.WaitAsync(Timeout);
 
+            Assert.Empty(unexpectedFailures);
+            Assert.Equal("latest", onDiskWhenWritesDrained);
+            Assert.False(firstCompletedWhenWritesDrained);
+            Assert.True(firstDecisionWaited);
+            Assert.True(firstCompletedAfterProducer);
             Assert.Equal(PersistenceWriteOutcome.Superseded, (await firstTask).Outcome);
-            if (latestTask is not null)
+            if (trackedReplacement)
             {
+                Assert.NotNull(latestTask);
                 Assert.Equal(PersistenceWriteOutcome.Saved, (await latestTask).Outcome);
             }
         }
         finally
         {
-            writer.Release.Set();
-            supersession.Release.Set();
-            continueDrain.Set();
+            drains.Start();
+            supersession.Release();
             try
             {
                 if (producer is not null) await producer.WaitAsync(Timeout);
-                if (drain is not null) await drain.WaitAsync(Timeout);
             }
-            finally { await Task.Run(queue.Dispose).WaitAsync(Timeout); }
+            finally { await DedicatedThread.Run(queue.Dispose).WaitAsync(Timeout); }
         }
+    }
+
+    [Fact]
+    public async Task Controlled_hold_refuses_a_thread_pool_thread()
+    {
+        using var hold = new ControlledHold("unused", Timeout);
+        hold.Release();
+        await Task.Run(() => Assert.Throws<InvalidOperationException>(hold.Hold)).WaitAsync(Timeout);
+        await DedicatedThread.Run(hold.Hold).WaitAsync(Timeout);
     }
 
     [Theory]
@@ -315,28 +371,8 @@ public sealed class TrackedPersistenceTests
         Assert.Throws<InvalidOperationException>(() => { _ = storage.SaveTracked("save.json", 42, new SaveWriteOptions { Encode = true }); });
     }
 
-    private static PersistenceQueue NewQueue(WriteGate first, WriteGate? second = null)
-        => new((path, json) =>
-        {
-            first.BeforeWrite(json);
-            second?.BeforeWrite(json);
-            AtomicJsonWriter.WriteText(path, json);
-        }, maxAttempts: 1, retryDelay: TimeSpan.Zero);
-
-    private sealed class WriteGate(string payload) : IDisposable
-    {
-        public TaskCompletionSource<bool> Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public ManualResetEventSlim Release { get; } = new(false);
-
-        public void BeforeWrite(string json)
-        {
-            if (json != payload) return;
-            Entered.TrySetResult(true);
-            if (!Release.Wait(Timeout)) throw new TimeoutException("The controlled writer was not released.");
-        }
-
-        public void Dispose() => Release.Dispose();
-    }
+    private static PersistenceQueue NewQueue(DedicatedDrainScheduler drains, Action<string, string>? writeText = null)
+        => new(writeText ?? AtomicJsonWriter.WriteText, maxAttempts: 1, retryDelay: TimeSpan.Zero, scheduleDrain: drains.Schedule);
 
     private sealed class TestFiles : IDisposable
     {

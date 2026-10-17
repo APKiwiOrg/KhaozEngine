@@ -205,6 +205,12 @@ internal sealed class BugReportFlow
         }, cancellationToken);
     }
 
+    /// <summary>
+    /// Closes a captured or open report at shutdown without sending it: thaws the clip, removes the screen and
+    /// disposes the thumbnails. Never throws. Frame thread only.
+    /// </summary>
+    internal void CloseActiveReport() => Abandon();
+
     /// <summary>Thaws the clip and closes the report a failed frame left captured or open. Never throws.</summary>
     void Abandon()
     {

@@ -171,6 +171,22 @@ public sealed class BugReportServiceTests : BugReportFlowHarness
     }
 
     [Fact]
+    public async Task Dispose_closes_an_open_report()
+    {
+        BugReportService service = await SignedInService();
+        Run(service, Frame(pressed: [Key.F10]));
+        Run(service, Frame(held: [Key.F10]));
+        Assert.True(service.IsOpen);
+        Assert.Single(service.Flow.Screens.Screens);
+
+        service.Dispose();
+
+        Assert.False(service.IsOpen);
+        Assert.Empty(service.Flow.Screens.Screens);
+        Assert.Equal(1, _capture.ThawCount);
+    }
+
+    [Fact]
     public void Dispose_twice_removes_the_overlay_once()
     {
         BugReportService service = NewService();

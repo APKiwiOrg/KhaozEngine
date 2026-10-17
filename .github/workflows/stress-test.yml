@@ -9,6 +9,15 @@ name: stress-test
 #
 #   gh workflow run stress-test.yml --ref <branch> \
 #     -f project=KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj -f filter="FullyQualifiedName~<Name>" -f iterations=50 -f load=4
+#
+# A coverage cost run builds only its project and keeps each run's reports, logs and TRX as stress-artifacts.
+# It still needs an owner-approved manifest and the owner's permission for the run:
+#
+#   gh workflow run stress-test.yml --ref <branch> \
+#     -f project=tools/EquipmentCoverage.Cost.Tests/EquipmentCoverage.Cost.Tests.csproj \
+#     -f build-target=tools/EquipmentCoverage.Cost.Tests/EquipmentCoverage.Cost.Tests.csproj \
+#     -f filter='FullyQualifiedName=KhaozEngine.Tests.CoverageCost.CoverageCostTests.Measure_authorized_case&DisplayName~"<unit>"' \
+#     -f iterations=1 -f load=0 -f configuration=Release -f artifact-env=KE_COVERAGE_COST_REPORTS
 on:
   workflow_dispatch:
     inputs:
@@ -43,13 +52,23 @@ on:
         required: false
         default: false
         type: boolean
+      build-target:
+        description: Solution or project to build before the runs, empty builds KhaozEngine.slnx
+        required: false
+        default: ''
+        type: string
+      artifact-env:
+        description: Environment variable naming each run's retained directory, empty for none
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
 
 jobs:
   stress:
-    uses: APKiwiOrg/ci-workflows/.github/workflows/stress-test.yml@14dba4a61d87676a87e089d001e223671e4894a1 # support cost artifacts
+    uses: APKiwiOrg/ci-workflows/.github/workflows/stress-test.yml@1a176109d8598a9991de98101d6d29b51d4331c9 # per-run artifact directories
     with:
       project: ${{ inputs.project }}
       filter: ${{ inputs.filter }}
@@ -57,5 +76,7 @@ jobs:
       load: ${{ inputs.load }}
       configuration: ${{ inputs.configuration }}
       support-cost: ${{ inputs.support-cost }}
+      build-target: ${{ inputs.build-target }}
+      artifact-env: ${{ inputs.artifact-env }}
     secrets:
       packages-token: ${{ secrets.GITHUB_TOKEN }}

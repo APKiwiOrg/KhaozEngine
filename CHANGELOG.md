@@ -5,6 +5,12 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.3.1
+
+- `PersistenceQueue` in `KhaozEngine.Persistence` gains an internal drain scheduling seam for tests. Public
+  behaviour is unchanged. The tracked persistence tests now hold every controlled pause on test-owned threads,
+  which ends their intermittent watchdog failures on loaded hosted runners (#1317).
+
 ## 21.3.0
 
 - Add `WindowStack` to `KhaozEngine.Gui` for overlapping non-modal windows. Windows implement `IStackWindow`

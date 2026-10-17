@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.BugReports.Contracts</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <Description>BCL-only format, records and JSON contracts shared by in-game bug report clients and relays.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

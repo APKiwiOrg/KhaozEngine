@@ -9,6 +9,17 @@ public partial class ArchitectureTests
 {
     const string BugReportsCore = "KhaozEngine.BugReports";
     const string BugReportsClient = "KhaozEngine.BugReports.Client";
+    const string BugReportsContracts = "KhaozEngine.BugReports.Contracts";
+
+    /// <summary>The wire contracts are a packable BCL-only leaf.</summary>
+    [Fact]
+    public void BugReportsContracts_HasNoReferences()
+    {
+        Project contracts = LoadGraph()[BugReportsContracts];
+        Assert.True(contracts.IsPackableLibrary);
+        Assert.Empty(contracts.ProjectRefs);
+        Assert.DoesNotContain(contracts.PackageRefs, package => !IgnoredInfraPackages.Contains(package));
+    }
 
     /// <summary>The report core stays server-safe: no GPU, window, renderer, GUI or game package in its closure.</summary>
     [Fact]
@@ -32,17 +43,19 @@ public partial class ArchitectureTests
         Assert.DoesNotContain(core.PackageRefs, package => !IgnoredInfraPackages.Contains(package));
     }
 
-    /// <summary>Bug reports are a consumer choice, so no umbrella carries either package.</summary>
+    /// <summary>Bug reports are a consumer choice, so no umbrella carries any report package.</summary>
     [Fact]
     public void BugReportsPackages_AreExplicitReferencesOutsideEveryUmbrella()
     {
         IReadOnlyDictionary<string, Project> graph = LoadGraph();
         Assert.True(graph[BugReportsClient].IsPackableLibrary);
+        Assert.True(graph[BugReportsContracts].IsPackableLibrary);
         foreach (string umbrella in Umbrellas)
         {
             HashSet<string> closure = TransitiveClosure(umbrella, graph);
             Assert.DoesNotContain(BugReportsCore, closure);
             Assert.DoesNotContain(BugReportsClient, closure);
+            Assert.DoesNotContain(BugReportsContracts, closure);
         }
     }
 

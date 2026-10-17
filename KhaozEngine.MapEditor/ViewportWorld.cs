@@ -42,10 +42,9 @@ public sealed partial class ViewportWorld : IDisposable
     /// the placement group gate.</summary>
     internal const string AuthoredLayerIdentity = "\u0001authored-placements";
 
-    /// <summary>Spawn-marker billboard half-size (the disc spans twice this) and its lift above the ground so it
-    /// reads as a floating pin rather than z-fighting the terrain.</summary>
+    /// <summary>Spawn-marker billboard half-size (the disc spans twice this). The lift above the ground is
+    /// <see cref="SpawnBillboards.Lift"/>.</summary>
     const float SpawnMarkerSize = 0.6f;
-    const float SpawnMarkerLift = 1.0f;
 
     static readonly Color EnabledSpawnColor = new(0.25f, 0.7f, 1f, 0.85f);
     static readonly Color DisabledSpawnColor = new(0.45f, 0.45f, 0.5f, 0.5f);
@@ -136,6 +135,9 @@ public sealed partial class ViewportWorld : IDisposable
         get => _propKindVisible;
         set => _propKindVisible = value ?? throw new ArgumentNullException(nameof(value));
     }
+
+    /// <summary>The native marker readouts spawn markers stand on, or null for none (the default).</summary>
+    internal Func<NativeMarkerReadouts?> SpawnReadouts { get; set; } = static () => null;
 
     /// <summary>Optional consumer classification callback. Explicit manifest metadata is used when null.</summary>
     public Func<string, EditorPropCategory>? PropCategoryResolver
@@ -299,7 +301,7 @@ public sealed partial class ViewportWorld : IDisposable
     /// <paramref name="selectedPlacementId"/> is kept out of the layer and draws once with
     /// <paramref name="highlightTint"/> when it is still visible, so a drag moves it without touching the layer.
     /// <paramref name="viewPos"/> is the editor camera and drives the sink's draw-radius cull, as it drives streaming
-    /// residency in <see cref="Update"/>. NPC spawn markers draw as ground-height billboards under the
+    /// residency in <see cref="Update"/>. NPC spawn markers draw as billboards from <see cref="SpawnFrame"/> under the
     /// <see cref="VisibilityGroup.Spawns"/> group and per-element hide. Player start markers draw the same way (green
     /// when enabled) under the <see cref="VisibilityGroup.PlayerSpawns"/> group and per-element hide. The water plane
     /// draws only when the <see cref="VisibilityGroup.Water"/> group is on. Throws
@@ -329,8 +331,7 @@ public sealed partial class ViewportWorld : IDisposable
         if (_authoredGroupVisible && _authored.Selected is EditorPlacement selected
             && _propKindVisible(selected.Prop.Id))
             DrawHighlighted(selected, highlightTint);
-        DrawSpawnMarkers(visibility);
-        DrawPlayerSpawnMarkers(visibility);
+        SubmitSpawnBillboards(SpawnFrame(visibility), (p, s, c) => _scene.DrawBillboard(p, s, c));
     }
 
     /// <summary>Keeps only the placements <paramref name="visibility"/> shows: the
@@ -577,32 +578,26 @@ public sealed partial class ViewportWorld : IDisposable
         foreach (MeshHandle mesh in parts) _scene.Draw(mesh, world, tint);
     }
 
-    void DrawSpawnMarkers(EditorVisibility visibility)
+    /// <summary>The spawn markers this frame draws, from the one shared height source. Native documents read
+    /// <see cref="SpawnReadouts"/> and never the terrain field.</summary>
+    internal SpawnBillboardFrame SpawnFrame(EditorVisibility visibility) =>
+        SpawnBillboards.Build(_doc!, visibility, _field!.SampleHeight, SpawnReadouts());
+
+    /// <summary>Submits each row at the released size. NPC spawns read blue and player starts green when enabled, and
+    /// every disabled marker shares one grey.</summary>
+    internal static void SubmitSpawnBillboards(SpawnBillboardFrame frame, Action<Vector3, float, Color> submit)
     {
-        if (!visibility.GetGroup(VisibilityGroup.Spawns)) return;   // whole group hidden: no markers
-        foreach (MapSpawn spawn in _doc!.Spawns)
-        {
-            if (visibility.IsElementHidden(SelectionKind.Spawn, spawn.Id)) continue;   // this one individually hidden
-            float groundY = _field!.SampleHeight(spawn.X, spawn.Z);
-            Color color = spawn.Enabled ? EnabledSpawnColor : DisabledSpawnColor;
-            _scene.DrawBillboard(new Vector3(spawn.X, groundY + SpawnMarkerLift, spawn.Z), SpawnMarkerSize, color);
-        }
+        foreach (SpawnBillboard row in frame.Billboards)
+            submit(row.Position, SpawnMarkerSize, !row.Enabled ? DisabledSpawnColor
+                : row.Kind == SelectionKind.PlayerSpawn ? EnabledPlayerSpawnColor : EnabledSpawnColor);
     }
 
-    // Player start markers, drawn exactly like the NPC spawn markers (ground-height billboards, same size and lift)
-    // but GREEN when enabled and the shared grey when disabled. Gated by the PlayerSpawns group first (mirroring
-    // DrawSpawnMarkers) then the per-element hide, matching EditorVisibility.IsElementVisible (which maps
-    // SelectionKind.PlayerSpawn to VisibilityGroup.PlayerSpawns), so draw and pick stay in lockstep.
-    void DrawPlayerSpawnMarkers(EditorVisibility visibility)
+    /// <summary>Headless seam: the document and field <see cref="SpawnFrame"/> reads, set with no device work. A built
+    /// viewport refuses, since its build owns both.</summary>
+    internal void BindHeadless(MapDocument doc, TerrainField field)
     {
-        if (!visibility.GetGroup(VisibilityGroup.PlayerSpawns)) return;   // whole group hidden: no markers
-        foreach (MapPlayerSpawn spawn in _doc!.PlayerSpawns)
-        {
-            if (visibility.IsElementHidden(SelectionKind.PlayerSpawn, spawn.Id)) continue;   // this one individually hidden
-            float groundY = _field!.SampleHeight(spawn.X, spawn.Z);
-            Color color = spawn.Enabled ? EnabledPlayerSpawnColor : DisabledSpawnColor;
-            _scene.DrawBillboard(new Vector3(spawn.X, groundY + SpawnMarkerLift, spawn.Z), SpawnMarkerSize, color);
-        }
+        if (_built) throw new InvalidOperationException("A built viewport owns its document and field.");
+        (_doc, _field) = (doc, field);
     }
 
     // ---- headless surface -------------------------------------------------------------------------------

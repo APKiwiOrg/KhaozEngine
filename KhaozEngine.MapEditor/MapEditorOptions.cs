@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using KhaozEngine.Dungeon;
 using KhaozEngine.Game;
 using KhaozEngine.MapDoc;
+using KhaozEngine.MapDoc.Assets;
+using KhaozEngine.MapDoc.Markers;
 using KhaozEngine.Render3D;
 using KhaozEngine.Terrain;
 
@@ -115,6 +117,17 @@ public sealed class MapEditorOptions
     /// Default 32. Zero skips the search and anchors at the document bounds center. The final window's tile
     /// reads are separate from this search budget.</summary>
     public int PlayerSpawnSearchTileLimit = MapDocumentWindowing.DefaultPlayerSpawnSearchTileLimit;
+
+    /// <summary>Caller-owned marker consumer configuration for native documents, or null for none. Its player start role
+    /// anchors a windowed native open and starts the camera of a whole-loaded one, and its
+    /// <see cref="MapMarkerConsumerOptions.LegacySpawnSurfaceId"/> is the one Surface unadopted legacy spawns stand on.
+    /// The engine defines no role and no Surface owner.</summary>
+    public MapMarkerConsumerOptions? MarkerOptions;
+
+    /// <summary>Returns the verified asset closure of a native document (or of its manifest, for a windowed open). Native
+    /// marker and legacy spawn readouts need it together with <see cref="MarkerOptions"/>. Without both they are
+    /// unavailable with a developer diagnostic and never fall back to the analytic terrain. Null supplies none.</summary>
+    public Func<MapDocument, MapAssetClosure>? MarkerAssets;
 
     /// <summary>When true (the default) the editor OWNS the host <c>Scene3D</c>'s look: it applies its own sky,
     /// lighting, and water settings to that scene's post-process block from the settings menu (preset plus slider

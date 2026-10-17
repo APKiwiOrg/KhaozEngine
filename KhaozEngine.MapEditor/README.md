@@ -60,6 +60,11 @@ sceneManager.Push(new MapEditorScene().Init(scene, whiteTexture, dpiFont, option
   starts near the bounds center. The camera aims at that anchor, and whole-document camera startup keeps
   its existing pose. Candidate selection scans manifest metadata with storage bounded by the search budget,
   then sorts only those retained candidates before reading tile content.
+- `MarkerOptions` and `MarkerAssets` are the caller's native marker configuration: its roles and legacy spawn
+  Surface owner (`MapMarkerConsumerOptions`), and a function returning the verified asset closure of a native
+  document or manifest. With both, a windowed native open centres on the enabled start of the caller's player
+  start role (`MapMarkerAnchors`) and starts the camera over that start's XZ, and a whole-loaded native document
+  starts the camera at that start's effective XYZ. See Native marker readouts below.
 - `ManifestPaths` are the same `AssetManifest` files the game's own prop-kit loading reads, so the
   editor's palette and picking heights match what the game actually renders.
 - `Registry` defaults to `MapDocRegistry.CreateDefault()`. Pass your own to add custom terrain feature
@@ -448,7 +453,7 @@ places a player start rather than an NPC spawn (see Player spawns below).
 
 A player spawn (`MapPlayerSpawn`) is a stable-id, position-plus-yaw start marker with no archetype: unlike an
 NPC spawn, which game code interprets by `ArchetypeId`, which start a game actually uses at runtime is game
-code's own concern, so the editor only authors the marker. `ViewportWorld.DrawPlayerSpawnMarkers` draws each
+code's own concern, so the editor only authors the marker. `ViewportWorld.SubmitSpawnBillboards` draws each
 one as a green marker disc (enabled) or the same grey a disabled NPC spawn uses (disabled), the one color
 distinguishing it from an NPC spawn's blue at a glance. It picks and drags exactly like an NPC spawn: the same
 fixed 1.5-tall, 1.0-wide pick box (`EditorPicking`), the same `GizmoAffordance.Marker` translate-XZ gizmo
@@ -966,6 +971,17 @@ staging and again as the first publication step, including undo and redo. Only t
 permit for its exact captured transition. Generic snapshots and a `LegacySpawns` write-set flag cannot obtain one.
 The tool session checks before hooks and checkpoints, and refuses callback list changes after staging, including
 in-place edits to shared records and edits to an unshared callback list.
+
+In the GUI, spawn billboards, spawn pick boxes and spawn focus share one height source, `SpawnBillboards`. An analytic
+document, and a resolver (1, 1) native one, stand each marker on the terrain field with the released billboard lift
+1.0 and focus lift 0.75. A resolver-2 native document reads its unadopted legacy spawns on the caller's
+`LegacySpawnSurfaceId` through `NativeMarkerReadouts`, which samples the shared seat query over one effective
+snapshot of the accepted whole document. The snapshot is built on first use and dropped after every edit, undo,
+redo and reload, never per billboard. A legacy spawn whose sample is not Supported is not drawn, cannot be picked
+and does not take focus. The frame carries a developer diagnostic naming the spawn and `spawns_adopt`, and F says
+the same in the status strip. Without `MarkerOptions` and `MarkerAssets`, or on a windowed native document, the
+readouts are unavailable with a diagnostic and nothing falls back to the terrain field. Windowed native editing
+and the complete native GUI host remain R9 work.
 
 Native publication has two internal modes. Focused commands project their named write sets before
 validation, so unlisted edits cannot leak or satisfy dependencies. Complete snapshot commands clone and

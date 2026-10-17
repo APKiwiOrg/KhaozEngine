@@ -34,10 +34,7 @@ public partial class MapEditorScene
         MapTileRect? replacementWindow;
         try
         {
-            MapDocument replacementMap = MapDocumentWindowing.Load(_options.DocumentPath,
-                new MapDocumentLoadOptions { Registry = _document.Registry },
-                _options.WholeWorldTileLimit, EffectiveWindowRadius, _options.PlayerSpawnSearchTileLimit,
-                out _, out replacementWindow);
+            MapDocument replacementMap = LoadEditorDocument(_document.Registry, out replacementWindow, out _);
             replacementDocument = new EditorDocument(replacementMap, _document.Registry);
             replacementViewport = BuildReloadViewport(replacementDocument);
         }
@@ -71,15 +68,7 @@ public partial class MapEditorScene
         }
     }
 
-    internal ViewportWorld CreateReloadViewport() =>
-        new ViewportWorld(_scene, _options.ManifestPaths)
-        {
-            ScatterLayerVisible = _visibility.GetLayer,
-            RenderDistance = _viewport.RenderDistance,
-            TexturedPropsEnabled = () => _options.TexturedProps,
-            PropCategoryResolver = _options.ResolvePropCategory,
-            PropKindVisible = PropKindVisible,
-        };
+    internal ViewportWorld CreateReloadViewport() => CreateViewport(_viewport.RenderDistance);
 
     void CommitReload(EditorDocument replacement, ViewportWorld? replacementViewport, MapTileRect? replacementWindow)
     {
@@ -92,6 +81,7 @@ public partial class MapEditorScene
             IsVisible = _visibility.IsElementVisible,
             PlacementKindVisible = PropKindVisible,
             PlacementDrawnAt = PlacementDrawnAt,
+            SpawnFrame = SpawnFrame,
             PlaceKind = previousController.PlaceKind,
             SpawnArchetype = previousController.SpawnArchetype,
             PlacingPlayerSpawn = previousController.PlacingPlayerSpawn,
@@ -129,6 +119,7 @@ public partial class MapEditorScene
     {
         document.PlacementsChanged += OnPlacementsChanged;
         document.DocumentChanged += OnDocumentChanged;
+        document.DocumentChanged += OnMarkerSourceChanged;
         document.CommandApplied += OnCommandVisibilityForward;
         document.CommandRedone += OnCommandVisibilityForward;
         document.CommandUndone += OnCommandVisibilityInverse;
@@ -139,6 +130,7 @@ public partial class MapEditorScene
     {
         document.PlacementsChanged -= OnPlacementsChanged;
         document.DocumentChanged -= OnDocumentChanged;
+        document.DocumentChanged -= OnMarkerSourceChanged;
         document.CommandApplied -= OnCommandVisibilityForward;
         document.CommandRedone -= OnCommandVisibilityForward;
         document.CommandUndone -= OnCommandVisibilityInverse;

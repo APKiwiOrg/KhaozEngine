@@ -9,13 +9,18 @@ each frame:
   --- pre-record phase: the frame's command list is NOT open yet ---
   Clock.Update(dt)               // the frame's one tick: Clock.FrameCount is one id for update and draw
   Viewport.Update(window size)   -> OnResize on change
-  Pointer.Update(input, Viewport)
+  Ui.Update(frame)
+  input = overlays.Update(raw input)   // WithoutInteraction() when any overlay holds this frame
+  Pointer.Update(input, Viewport); UiPointer.Update(input, Ui)
   OnResume(wallGap)              // only when the wall-clock gap exceeds the threshold (OS sleep/suspend/hang)
   OnUpdate(Dt)
   OnPrepareWorld(frame)          // empty by default. A subclass fills a world's queues here (e.g. a 3D scene)
   --- record phase: the frame's command list is open and cleared ---
   OnRenderWorld(frame)           // empty by default. A subclass records the world pass here
   Surface2D.NewFrame(frame); Batch.Begin(Viewport); OnDraw2D(Batch); Batch.End()
+  Batch.Begin(Ui); OnDrawUi(Batch); Batch.End()
+  Batch.Begin(Ui); overlays.DrawUi(Batch); Batch.End()   // only while an overlay is added
+  diagnostics HUD
 ```
 
 The two-phase split is the windowed loop's (`AppWindow.Run(onFrame, onPrepare)`), and the order a game sees is
@@ -169,6 +174,17 @@ the protected `Diagnostics` property (e.g. `Diagnostics?.SetNetStatsSource(...)`
 `Diagnostics?.SetBuildIdentity(name, version)` for the game's own display version) and can
 override `CollectFrameStats` / `SupportsPassTimings` (`GameApp3D` already adds the scene's `LastFrameStats` and
 the pass-timing section). See `docs/USING-KHAOZENGINE.md` "Seeing where the frame goes".
+
+**Engine overlays**: `AddOverlay(IGameOverlay)` and `RemoveOverlay` put an engine screen above whatever the game
+shows, title, login, loading or gameplay alike, because `GameApp` is the one object those screens share. `Attach`
+runs once inside `AddOverlay` with a `GameOverlayContext` (window, `Ui` viewport, 2D surface). Each frame every
+overlay's `Update(input, realDt)` reads the raw input in add order after `Ui.Update` and before the pointers. When
+any returns true the game, both pointers and the HUD see `InputState.WithoutInteraction()` for that frame: no key
+or button sets, deltas, scroll, gestures, touches, gamepads or text, with size, focus and the cursor position kept.
+`DrawUi(batch)` runs in add order in its own `Begin(Ui)` pass after `OnDrawUi` and before the HUD. A
+render-suppressed frame skips both. An overlay that throws from either is logged once with `Log.Error` and removed,
+and does not hold on that frame. Adding or removing from inside a pass is safe and takes effect next frame, except
+that a removed overlay that has not run yet is skipped for the rest of the pass. An idle frame allocates nothing.
 
 **Turn-key client-side job scheduler** (default ON): `GameApp.JobScheduler` lazily builds a shared
 `KhaozEngine.Simulation.ThreadPoolJobScheduler` sized to `GameAppOptions.JobSchedulerDegreeOfParallelism` (or

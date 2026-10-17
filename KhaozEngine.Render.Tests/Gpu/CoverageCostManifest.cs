@@ -45,8 +45,10 @@ internal sealed partial class CoverageCostManifest
     internal int WarmupFrames { get; private init; }
     internal int MeasuredFrames { get; private init; }
     /// <summary>The cooperative deadline for the whole selected unit, both conditions of a pair included, from before the
-    /// first factory through setup, frames, diagnostics, cleanup and publication. It is checked at phase boundaries,
-    /// so a slow or hung call can overshoot until the hosted job timeout.</summary>
+    /// first factory through setup, frames, diagnostics, cleanup and each condition report's publication. The clock ends
+    /// once the last condition report has been serialized and flushed by its sink. Building the unit verdict,
+    /// serializing it and writing the -unit JSON are outside it. It is checked at phase boundaries, so a slow or hung
+    /// call can overshoot until the hosted job timeout.</summary>
     internal double MaxWallSeconds { get; private init; }
     internal double MaxFrameMilliseconds { get; private init; }
     internal string AuthorizationIdentity { get; private init; } = "";

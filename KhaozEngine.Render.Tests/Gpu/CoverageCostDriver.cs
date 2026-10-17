@@ -9,9 +9,9 @@ namespace KhaozEngine.Tests.Gpu;
 /// <summary>
 /// One cooperative deadline for a whole selected unit, a single case or both conditions of a pair. It starts before the
 /// first factory and is checked at phase boundaries: after session setup, after every frame, after diagnostics, after
-/// cleanup and before the next condition, which also charges the previous condition's publication. A single case's
-/// publication is its last step and is not charged to the report it publishes. Nothing is interrupted, so a slow or
-/// hung call overshoots until it returns or the hosted job timeout ends the process.
+/// cleanup and after each condition's publication. The clock ends once the last condition report has been serialized and flushed by its sink.
+/// Building the final unit verdict, serializing it and writing the -unit JSON are outside the deadline. Nothing is
+/// interrupted, so a slow or hung call overshoots until it returns or the hosted job timeout ends the process.
 /// </summary>
 internal sealed class CoverageCostDeadline
 {
@@ -79,6 +79,7 @@ internal static class CoverageCostDriver
         var samples = new CoverageCostFrameSample[manifest.MeasuredFrames];
         var warm = new CoverageCostFrameSample[manifest.WarmupFrames];
         long frameLimit = (long)Math.Ceiling(manifest.MaxFrameMilliseconds * clock.Frequency / 1000);
+        bool ownsDeadline = deadline is null;
         deadline ??= new CoverageCostDeadline(clock, manifest.MaxWallSeconds);
         ICoverageCostSession session;
         try { session = factory(manifest, clock); }
@@ -131,7 +132,13 @@ internal static class CoverageCostDriver
         spent = deadline.Check("after cleanup");
         if (reason.Length == 0) reason = spent;
         report = Finish(report, reason, secondary, deadline, clock);
-        return Publish(report, publish);
+        report = Publish(report, publish);
+        // A single case ends its unit here. The published copy stays as the sink saw it and the returned verdict carries
+        // the overrun. A pair charges this publication in RunPair, after its last condition.
+        if (ownsDeadline && publish is not null && report.Status == CoverageCostRunStatus.Completed
+            && deadline.Check("after publication") is { Length: > 0 } late)
+            report = Finish(report, late, [], deadline, clock);
+        return report;
     }
 
     internal static CoverageCostPairReport RunPair(ReadOnlySpan<byte> pairJson, CoverageCostSessionFactory factory, CoverageCostClock clock,
@@ -146,7 +153,8 @@ internal static class CoverageCostDriver
     /// <summary>Both conditions in their authorized order, sequentially in this process with the same factory, clock and
     /// matched frame counts, under one unit deadline started before the first factory. Each finished condition is
     /// published before the next starts. A condition that does not complete, a failed publication or a spent deadline
-    /// leaves the next condition unrun.</summary>
+    /// leaves the next condition unrun. The last condition's publication is charged too. The condition reports stay the
+    /// exact snapshots the sink saw and the pair verdict carries any overrun.</summary>
     internal static CoverageCostPairReport RunPair(CoverageCostPairManifest pair, CoverageCostSessionFactory factory, CoverageCostClock clock,
         Func<IReadOnlyList<KeyValuePair<string, string>>>? environment = null, Action<CoverageCostReport>? publish = null)
     {
@@ -167,8 +175,9 @@ internal static class CoverageCostDriver
                 reason = $"Condition {pair.Order[i]} is {report.Status.ToString().ToLowerInvariant()}: {report.Reason}"
                     + (i + 1 < reports.Length ? $" Condition {pair.Order[i + 1]} was not run." : "");
         }
+        if (reason.Length == 0) reason = deadline.Check($"after condition {pair.Order[^1]} publication");
         return new(reason.Length == 0 ? CoverageCostRunStatus.Completed : CoverageCostRunStatus.Failed, reason, pair.Unit, pair.Sha256,
-            pair.Order, reports, CoverageCostBudgets.ForPair(pair, reports), CoverageCostBudgets.Deltas(pair, reports));
+            pair.Order, reports, CoverageCostBudgets.ForPair(pair, reports, reason), CoverageCostBudgets.Deltas(pair, reports));
     }
 
     static CoverageCostReport Finish(CoverageCostReport report, string reason, List<string> secondary, CoverageCostDeadline? deadline,

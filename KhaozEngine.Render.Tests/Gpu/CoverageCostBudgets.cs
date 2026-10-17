@@ -39,8 +39,14 @@ internal static class CoverageCostBudgets
         WarmAllocation(report),
     ];
 
-    internal static IReadOnlyList<CoverageCostBudget> ForPair(CoverageCostPairManifest pair, IReadOnlyList<CoverageCostReport?> reports)
+    /// <summary>Pair gates. A unit failure, such as a spent deadline after a completed publication, leaves every gate
+    /// Unproved, whatever the condition reports say.</summary>
+    internal static IReadOnlyList<CoverageCostBudget> ForPair(CoverageCostPairManifest pair, IReadOnlyList<CoverageCostReport?> reports,
+        string unitFailureReason = "")
     {
+        if (unitFailureReason.Length > 0)
+            return [Unproved(AddedCpuName, unitFailureReason), Unproved(GpuName, unitFailureReason, GpuOverheadPercent, "percent"),
+                Unproved(AllocationName, unitFailureReason)];
         var (on, off) = Conditions(pair, reports);
         return
         [

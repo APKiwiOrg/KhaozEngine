@@ -9,7 +9,8 @@ namespace KhaozEngine.Tests.Gpu;
 /// One authorized comparison unit: the same case with coverage off and on, run sequentially in the listed order in one
 /// process on one runner. Every shared field is validated once for both conditions before either session opens. The
 /// conditions differ only in coverage, so warm-up and measured counts are matched by construction. One cooperative
-/// limits.maxWallSeconds deadline covers the whole unit, from before the first factory through both conditions.
+/// limits.maxWallSeconds deadline covers the whole unit, from before the first factory through both conditions and the publication of the last condition report. Building the
+/// final unit verdict, serializing it and writing the -unit JSON are outside the deadline.
 /// Shared process state is a disclosed tradeoff, controlled by the explicit order and the matched warm-ups.
 /// </summary>
 internal sealed class CoverageCostPairManifest

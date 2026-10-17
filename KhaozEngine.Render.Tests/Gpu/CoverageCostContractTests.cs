@@ -392,6 +392,53 @@ public sealed class CoverageCostContractTests
         Assert.All(unpublished.Budgets, b => Assert.Equal(CoverageCostBudgetStatus.Unproved, b.Status));
     }
 
+    // The factory costs 55 s, the seven frames nothing and the publication the given time.
+    static (CoverageCostReport Report, List<CoverageCostReport> Published) RunSlowPublication(long publicationMilliseconds, int throwAt = -1)
+    {
+        long now = 0;
+        var published = new List<CoverageCostReport>();
+        var report = CoverageCostDriver.Run(Bytes(Valid), (_, _) =>
+        {
+            now += 55_000;
+            return new CoverageCostFakeSession { Synthetic = false, AllCovered = true, ThrowAt = throwAt };
+        }, new CoverageCostClock(() => now, 1000), publish: r =>
+        {
+            published.Add(r);
+            now += publicationMilliseconds;
+        });
+        return (report, published);
+    }
+
+    [Fact]
+    public void A_single_case_charges_its_own_publication_to_the_unit()
+    {
+        var (report, published) = RunSlowPublication(6_000);
+        Assert.Equal(CoverageCostRunStatus.Failed, report.Status);
+        Assert.Contains("The unit elapsed 61 s after publication, above limits.maxWallSeconds 60 s", report.Reason, StringComparison.Ordinal);
+        Assert.Equal(61_000, report.Metric("unit.elapsedMilliseconds").Value);
+        Assert.Equal(3, report.MeasuredFrames);
+        Assert.All(report.Budgets, b => Assert.Equal(CoverageCostBudgetStatus.Unproved, b.Status));
+        Assert.Equal(CoverageCostRunStatus.Completed, Assert.Single(published).Status);
+        Assert.Equal(55_000, published[0].Metric("unit.elapsedMilliseconds").Value);
+
+        var (within, _) = RunSlowPublication(4_000);
+        Assert.Equal(CoverageCostRunStatus.Completed, within.Status);
+        Assert.Equal("", within.Reason);
+        Assert.NotEqual(CoverageCostBudgetStatus.Unproved, within.Budgets.Single(b => b.Name == CoverageCostBudgets.AllocationName).Status);
+    }
+
+    [Fact]
+    public void A_slow_publication_after_a_frame_failure_keeps_the_primary_reason_and_partial_samples()
+    {
+        var (report, published) = RunSlowPublication(6_000, throwAt: 5);
+        Assert.Equal(CoverageCostRunStatus.Failed, report.Status);
+        Assert.StartsWith("measured frame 1 failed: InvalidOperationException", report.Reason, StringComparison.Ordinal);
+        Assert.Equal(1, report.MeasuredFrames);
+        Assert.Equal(1, report.Metric("outcome.errors").Value);
+        Assert.All(report.Budgets, b => Assert.Equal(CoverageCostBudgetStatus.Unproved, b.Status));
+        Assert.Same(report.Reason, Assert.Single(published).Reason);
+    }
+
     [Fact]
     public void Factory_failure_is_a_failed_report_with_its_cause()
     {

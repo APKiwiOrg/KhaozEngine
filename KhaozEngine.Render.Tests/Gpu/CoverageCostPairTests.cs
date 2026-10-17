@@ -136,7 +136,8 @@ public sealed class CoverageCostPairTests
     [InlineData(4, 4)]
     public void Work_outside_the_child_spans_is_charged_through_the_parent_and_the_commit(long onPreparation, long onCommit)
     {
-        // The children are identical on both conditions. Only the parent's own motion work or the commit differs, by 3 ms.
+        // Child timings stay fixed between the theory rows. They differ by condition (surface 1 vs 0, ordinary skinning 0 vs 2) but never
+        // enter the sum, so only the parent's own motion work or the commit moves the 3 ms difference.
         var report = Run(onPreparation: onPreparation, onCommit: onCommit);
         var budget = report.Budgets.Single(b => b.Name == CoverageCostBudgets.AddedCpuName);
         Assert.Equal(CoverageCostBudgetStatus.Fail, budget.Status);
@@ -182,6 +183,60 @@ public sealed class CoverageCostPairTests
         Assert.Null(report.Reports[1]);
         Assert.Contains("The unit elapsed 60.5 s before condition on, above limits.maxWallSeconds 60 s", report.Reason, StringComparison.Ordinal);
         Assert.Contains("Condition on was not run.", report.Reason, StringComparison.Ordinal);
+    }
+
+    // Seven frames per condition at 4.2 s with free factories. Off ends at 29.4 s and on at 58.8 s, so every check on the last
+    // condition passes and only its publication can spend the 60 s deadline.
+    static CoverageCostPairReport RunLastPublication(long publicationMilliseconds, List<CoverageCostReport> published)
+    {
+        long now = 0;
+        return Run(clock: new CoverageCostClock(() => now, 1000), publish: r =>
+        {
+            published.Add(r);
+            if (r.Manifest!.Coverage) now += publicationMilliseconds;
+        }, session: m => new CoverageCostFakeSession
+        {
+            Coverage = m.Coverage, Synthetic = false, AllCovered = true, OnFrame = _ => now += 4_200,
+        });
+    }
+
+    [Fact]
+    public void The_last_condition_publication_is_charged_to_the_unit()
+    {
+        var published = new List<CoverageCostReport>();
+        var report = RunLastPublication(2_000, published);
+        Assert.Equal(CoverageCostRunStatus.Failed, report.Status);
+        Assert.Contains("The unit elapsed 60.8 s after condition on publication, above limits.maxWallSeconds 60 s", report.Reason,
+            StringComparison.Ordinal);
+        Assert.Equal(2, published.Count);
+        Assert.Same(published[0], report.Reports[0]);
+        Assert.Same(published[1], report.Reports[1]);
+        Assert.All(report.Reports, r => Assert.Equal(CoverageCostRunStatus.Completed, r!.Status));
+        Assert.Equal(3, report.Budgets.Count);
+        Assert.All(report.Budgets, b =>
+        {
+            Assert.Equal(CoverageCostBudgetStatus.Unproved, b.Status);
+            Assert.Null(b.Observed);
+            Assert.Contains("after condition on publication", b.Reason, StringComparison.Ordinal);
+        });
+        var cpu = report.Budgets.Single(b => b.Name == CoverageCostBudgets.AddedCpuName);
+        Assert.Equal((CoverageCostBudgets.AddedCpuMilliseconds, "ms/frame"), (cpu.Threshold, cpu.Unit));
+        var gpu = report.Budgets.Single(b => b.Name == CoverageCostBudgets.GpuName);
+        Assert.Equal((CoverageCostBudgets.GpuOverheadPercent, "percent"), (gpu.Threshold, gpu.Unit));
+        Assert.Equal((0d, "bytes/frame"), (report.Budgets.Single(b => b.Name == CoverageCostBudgets.AllocationName).Threshold,
+            report.Budgets.Single(b => b.Name == CoverageCostBudgets.AllocationName).Unit));
+        Assert.Equal(2, report.Deltas.Count);
+    }
+
+    [Fact]
+    public void A_last_publication_within_the_limit_leaves_the_unit_complete()
+    {
+        var published = new List<CoverageCostReport>();
+        var report = RunLastPublication(1_000, published);
+        Assert.Equal(CoverageCostRunStatus.Completed, report.Status);
+        Assert.Equal("", report.Reason);
+        Assert.NotEqual(CoverageCostBudgetStatus.Unproved, report.Budgets.Single(b => b.Name == CoverageCostBudgets.AddedCpuName).Status);
+        Assert.NotEqual(CoverageCostBudgetStatus.Unproved, report.Budgets.Single(b => b.Name == CoverageCostBudgets.AllocationName).Status);
     }
 
     [Fact]

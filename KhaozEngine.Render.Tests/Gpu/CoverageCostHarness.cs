@@ -79,7 +79,8 @@ internal static class CoverageCostHarness
 
     /// <summary>Measures one authorized file of either schema. Each finished condition's report JSON goes to
     /// <paramref name="publish"/> as soon as it exists, so a later hang or job kill cannot lose it. The returned JSON
-    /// is the final unit report.</summary>
+    /// is the final unit report. The unit deadline ends once the last condition report has been published. Building and
+    /// serializing the final unit report, and writing its -unit JSON, are outside the deadline.</summary>
     internal static (string Json, bool Completed, string Reason) MeasureUnit(byte[] utf8, string expectedName, Action<string> publish)
     {
         ArgumentNullException.ThrowIfNull(publish);

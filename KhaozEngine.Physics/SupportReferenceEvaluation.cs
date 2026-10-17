@@ -1,6 +1,6 @@
 using System;
 
-namespace KhaozEngine.Physics.Bepu;
+namespace KhaozEngine.Physics;
 
 /// <summary>A thread-scoped switch to the uncached support evaluator. While it is active on a thread, every
 /// support cost optimization is bypassed on that thread, so equivalence tests can compare an optimized result

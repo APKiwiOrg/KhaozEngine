@@ -120,6 +120,47 @@ public sealed class ExactRepeatMemoTests(ITestOutputHelper output)
         finally { SupportQueryDiagnostics.Exchange(prior); }
     }
 
+    // The reference evaluator bypasses every support cost optimization, the memo included. Under it a repeat is read
+    // again and nothing is remembered, through a direct read and through a dry tick's own memo.
+    [Fact]
+    public void ReferenceEvaluationIsNeverServedFromTheMemo()
+    {
+        SupportCostRow seat = Row("pushed seat");
+        using (var execution = new SupportCostExecution(seat, "DryTick"))
+        {
+            TickResult bypassed = Tick(execution, seat, bypass: true);
+            TickResult reference;
+            using (SupportReferenceEvaluation.Begin()) reference = Tick(execution, seat, bypass: false);
+            Assert.Equal(0, reference.Counts.FindMemoHits);
+            Assert.Equal(bypassed.Reads, reference.Reads);
+            AssertSameBits(bypassed.Result, reference.Result, seat.Name);
+            Assert.Equal(1, Tick(execution, seat, bypass: false).Counts.FindMemoHits);
+        }
+
+        using SupportFootprintScene scene = SupportGateCostScenes.Build(seat);
+        var memo = new SupportRequestMemo();
+        var query = new FootSupportQuery(new(0.10000001f, 0), 0, 0.2f, 0.4f, 0.4f, CosMaxSlope);
+        var analytic = new FootAnalyticGround(-10, Vector3.UnitY);
+        var scope = new SupportFootprintBounds(new(-30, -30, -30), new(30, 30, 30));
+        var prior = SupportQueryDiagnostics.Exchange(SupportQueryDiagnostics.ThreadState.Fresh(true));
+        try
+        {
+            using IPhysicsQueryLease lease = scene.World.AcquireQueryReadLease();
+            memo.Open(lease);
+            SupportSample first;
+            using (SupportReferenceEvaluation.Begin())
+            {
+                first = Read(analytic, scene.World, lease, query, scope, memo, hit: false);
+                Assert.Equal(first, Read(analytic, scene.World, lease, query, scope, memo, hit: false));
+                Assert.Equal(0, memo.Count);
+            }
+            Assert.Equal(first, Read(analytic, scene.World, lease, query, scope, memo, hit: false));
+            Assert.Equal(first, Read(analytic, scene.World, lease, query, scope, memo, hit: true));
+            memo.Close();
+        }
+        finally { SupportQueryDiagnostics.Exchange(prior); }
+    }
+
     // Consecutive dry ticks each own a lease, and consecutive explicit ticks on one borrowed interval each end their
     // memo with the tick. Each tick serves only its own repeats.
     [Fact]

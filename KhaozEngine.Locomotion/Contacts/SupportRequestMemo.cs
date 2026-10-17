@@ -68,8 +68,10 @@ internal sealed class SupportRequestMemo
         Lease = null;
     }
 
-    /// <summary>True when this memo is open for <paramref name="lease"/> and not bypassed.</summary>
-    internal bool Serves(IPhysicsQueryLease lease) => !t_bypass && ReferenceEquals(Lease, lease);
+    /// <summary>True when this memo is open for <paramref name="lease"/>, not bypassed and the thread is not under
+    /// <see cref="SupportReferenceEvaluation"/>, which serves and remembers nothing.</summary>
+    internal bool Serves(IPhysicsQueryLease lease) =>
+        !t_bypass && !SupportReferenceEvaluation.Active && ReferenceEquals(Lease, lease);
 
     internal bool TryGet(IPhysicsWorld world, in FootAnalyticGround? analytic, in FootSupportQuery query,
         in SupportFootprintBounds? scope, out SupportSample sample)

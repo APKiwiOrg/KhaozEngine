@@ -173,7 +173,10 @@ namespace KhaozEngine.Render3D.Internal
         /// eight texels hold the same ground and agree. A pixel whose neighbours were released first agrees too, so
         /// on Metal the ring alone left the Native textured tail at 1 display pixel a frame retreating at 1.75 times the
         /// tail at 0.25, and the least of the four taps in place of their mean at 3.98. At 0.125 the stable peaks'
-        /// change at Quality over the textured wall rose 9 percent.</summary>
+        /// change at Quality over the textured wall rose 9 percent. Where the frame upscales, this and
+        /// <see cref="ShadingChangeExtents"/> must both read a change: with either alone, a still wall of one display
+        /// pixel texels at Quality (<c>TemporalStableDetailGpuTests</c>) measured 15 percent more error against its
+        /// reference and 44 percent more temporal error than before the release, and with both 2 and 7.</summary>
         public const float ShadingRingExtents = 0.25f;
         /// <summary>Steps 6 and 8. The internal texel, in display pixels, below which the release runs: Native and
         /// Quality, not Balanced and below. It lies midway between Quality's 1.5 and Balanced's 1.7. A custom

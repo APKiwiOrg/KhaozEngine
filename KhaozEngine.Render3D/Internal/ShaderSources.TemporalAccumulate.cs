@@ -471,10 +471,13 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     // under ShadingMaxUpscale display pixels. Nothing missed explains its history: a ridge refreshed its lock this
     // frame, or it holds no lock and its box's half-width exceeds ridgeStep, since a lock carried with no ridge now is
     // a thin feature the jitter missed and a flat 3x3 is one that missed a feature beside it. Its history luma lies
-    // past the box by more than ShadingResetExtents of the half-width. And either that luma lies from this frame's
+    // past the box by more than ShadingResetExtents of the half-width. And that luma lies from this frame's
     // reconstruction by more than ShadingChangeExtents half-widths for each display pixel an internal texel spans, or
     // last frame's ring around it lies more than ShadingRingExtents half-widths from this frame's eight texels around
-    // the centre, on the history's side (temporalHistoryRingShift). A stable peak one texel across lies past its own
+    // the centre, on the history's side (temporalHistoryRingShift): either at Native, and both where the frame
+    // upscales. There the jitter aliases texture finer than an internal texel, so a display pixel's accumulated
+    // detail lies past this frame's box and apart from its reconstruction with nothing changed, and either test
+    // alone released it. A stable peak one texel across lies past its own
     // box, one bright texel of nine moving the mean little, but its reconstruction shows it and its ring agrees, so it
     // keeps what it held. The half-width here is at least ridgeStep, the ridge threshold (LockRidgeAbsolute,
     // LockRidgeRelative) taken at the 3x3's mean luma rather than at the centre texel's luma as temporalRidge takes it,
@@ -486,15 +489,18 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     float ridgeStep = max(LockRidgeAbsolute, LockRidgeRelative * mean.x);
     float releaseExtent = max(boxExtent.x, ridgeStep);
     bool released = false;
+    bool upscaled = Jitter.z > 1.0;
     if (useHistory && motionPixels < LockMotionStartPixels && Jitter.z < ShadingMaxUpscale
         && (ridge || (!(lockValue > 0.0) && boxExtent.x > ridgeStep))
-        && abs(fromCentre.x) > (1.0 + ShadingResetExtents) * releaseExtent
-        && (abs(historyYcc.x - current.x) > ShadingChangeExtents * Jitter.z * releaseExtent
-            || temporalHistoryRingShift(previousUv, displaySize, (n.momentSum.x - n.centreLuma) / 8.0, fromCentre.x)
-                > ShadingRingExtents * releaseExtent)) {
+        && abs(fromCentre.x) > (1.0 + ShadingResetExtents) * releaseExtent) {
+        bool ownChanged = abs(historyYcc.x - current.x) > ShadingChangeExtents * Jitter.z * releaseExtent;
+        released = (ownChanged && !upscaled) || ((ownChanged || !upscaled)
+            && temporalHistoryRingShift(previousUv, displaySize, (n.momentSum.x - n.centreLuma) / 8.0, fromCentre.x)
+                > ShadingRingExtents * releaseExtent);
+    }
+    if (released) {
         hold = 0.0;
         accumulated = 0.0;
-        released = true;
     }
     excess.x *= 1.0 - hold;
     float clipScale = max(excess.x, max(excess.y, excess.z));

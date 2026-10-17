@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
@@ -164,6 +165,41 @@ public class McpToolCallOrderingTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await second);
         Assert.NotEqual(true, (await third).IsError);
         Assert.Equal(new[] { "start-1", "finish-1", "start-3", "finish-3" }, probe.Events);
+    }
+
+    /// <summary>A cancellation the server cannot map to a queued call must be ignored in the transport read path.
+    /// Anything thrown there would end the session, so a later ordinary call proves the session still serves.</summary>
+    [Fact]
+    public async Task MalformedOrUnknownCancellations_LeaveTheSessionServingCalls()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var probe = new OrderingProbe();
+        await using McpHarness harness = await StartAsync(probe, gate: null, cts.Token);
+
+        JsonNode?[] cancellationParams =
+        {
+            new JsonObject(),
+            JsonNode.Parse("""{"requestId":1.5}"""),
+            JsonNode.Parse("""{"requestId":{"nested":1}}"""),
+            JsonNode.Parse("""{"requestId":"never-sent"}"""),
+            JsonNode.Parse("""{"requestId":987654}"""),
+            null,
+        };
+        foreach (JsonNode? parameters in cancellationParams)
+        {
+            await harness.Client.SendMessageAsync(new JsonRpcNotification
+            {
+                Method = NotificationMethods.CancelledNotification,
+                Params = parameters,
+            }, cts.Token);
+        }
+
+        ValueTask<CallToolResult> first = harness.CallAsync("ordering_probe", cts.Token, ("position", 1));
+        await probe.FirstEntered.Task.WaitAsync(cts.Token);
+        probe.ReleaseFirst.TrySetResult();
+
+        Assert.NotEqual(true, (await first).IsError);
+        Assert.Equal(new[] { "start-1", "finish-1" }, probe.Events);
     }
 
     static Task<McpHarness> StartAsync(OrderingProbe probe, CancellationNotificationGate? gate,

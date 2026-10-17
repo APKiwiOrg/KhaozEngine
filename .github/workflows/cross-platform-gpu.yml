@@ -40,10 +40,11 @@
 # that job was Metal's unsharded full suite (a 26-minute test step in run 39022823501), so Metal is sharded
 # too. A leg is sharded when it runs its full suite on the schedule or a workflow_dispatch and the run neither
 # bakes nor sets renderTestFilter. metal-native also runs its full suite on push and pull_request, as one job
-# there (#1460, CONCURRENCY below). Each sharded leg runs as `rest` (every test project except Render.Tests) plus `render-1` to `render-N` (Render.Tests in slices):
+# there (#1460, CONCURRENCY below). Each sharded leg runs as `rest` plus `render-1` to `render-N`
+# (Render.Tests in slices). Vulkan also moves three named non-Render projects to `projects-1` (#1458):
 #   metal-native        rest + 2 render slices = 3 jobs
 #   direct3d11-native   rest + 4 render slices = 5 jobs
-#   vulkan-native       rest + 9 render slices = 10 jobs
+#   vulkan-native       rest + projects-1 + 12 render slices = 14 jobs
 # Each backend has its own slice table, balanced from that backend's measured per-test times. The split lives
 # in scripts/gpu-test-shards.py, which is also the coverage guard: every render shard checks that its
 # backend's slices partition the listed Render.Tests methods exactly once before it runs, and the per-backend
@@ -54,8 +55,8 @@
 # per leg.
 #
 # CONCURRENCY. The org is on the Team plan: 60 concurrent GitHub-hosted standard jobs and 5 concurrent macOS
-# jobs (https://docs.github.com/en/actions/reference/limits). A default-input dispatch peaks at 19 jobs here
-# (3 Metal, 5 Windows, 10 Linux, the sync job), 23 with the `ci` dispatch the pre-tag gate runs beside it.
+# jobs (https://docs.github.com/en/actions/reference/limits). A default-input dispatch peaks at 23 jobs here
+# (3 Metal, 5 Windows, 14 Linux, the sync job), 27 with the `ci` dispatch the pre-tag gate runs beside it.
 # Metal takes no more than 3 because its slowest shard is already well under the Vulkan floor, so a fourth
 # macOS job would only spend the shared macOS allowance. That allowance is the one that binds in practice:
 # every push and pull_request runs Metal's full suite too, so overlapping runs share 5 macOS slots. While
@@ -1107,8 +1108,8 @@ jobs:
         id: suite
         env:
           # Which shard of a sharded full suite this entry runs (#1438), empty on every unsharded run. `rest`
-          # is the solution without Render.Tests, `render-N` is one Render.Tests slice from
-          # scripts/gpu-test-shards.py. See the run script below.
+          # is the solution without Render.Tests or the named projects on `projects-1`. That shard runs only
+          # its named projects, and `render-N` is one Render.Tests slice from scripts/gpu-test-shards.py.
           KE_TEST_SHARD: ${{ matrix.shard }}
           KE_GPU_TESTS: '1'
           KE_GRAPHICS_BACKEND: ${{ matrix.backend }}
@@ -1333,8 +1334,9 @@ jobs:
         # `shell: bash` here, and a gating command whose exit code depends on an implicit shell option is one
         # runner-image change away from a suite that fails green.
         #
-        # SHARDS (#1438). `rest` runs the generated solution without Render.Tests, the same one the Windows
-        # isolation pass has always used, so a new test project lands in it with no edit. `render-N` first
+        # SHARDS (#1438, #1458). `rest` runs the generated solution without Render.Tests or the named projects
+        # on `projects-1`, so a new test project lands in rest with no edit. The unsharded Windows isolation
+        # pass keeps every non-Render project. `render-N` first
         # lists every Render.Tests method on this build and runs the coverage guard over this backend's whole
         # slice table (each listed method in exactly one slice, or the shard fails before running anything),
         # then runs Render.Tests under this trigger's filter ANDed with its own slice's filter.
@@ -1351,25 +1353,11 @@ jobs:
           }
           write_non_render_solution() {
             # The root keeps exactly one solution. Rebase project paths into the generated solution's directory.
-            python3 - <<'PY'
-          import xml.etree.ElementTree as ET
-          solution = ET.parse("KhaozEngine.slnx")
-          excluded = 0
-          for parent in solution.iter():
-              for project in list(parent):
-                  if project.tag != "Project":
-                      continue
-                  if project.attrib["Path"] == "KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj":
-                      parent.remove(project)
-                      excluded += 1
-                  else:
-                      project.set("Path", "../" + project.attrib["Path"])
-          assert excluded == 1, "Expected exactly one Render.Tests project"
-          solution.write("TestResults/KhaozEngine.NonRender.slnx", encoding="unicode")
-          PY
+            python3 scripts/gpu-test-shards.py solution "$KE_GRAPHICS_BACKEND" "$KE_TEST_SHARD" \
+              KhaozEngine.slnx TestResults/KhaozEngine.NonRender.slnx
           }
           status=0
-          if [ "$KE_TEST_SHARD" = "rest" ]; then
+          if [ "$KE_TEST_SHARD" = "rest" ] || [ "$KE_TEST_SHARD" = "projects-1" ]; then
             write_non_render_solution
             run_suite TestResults/KhaozEngine.NonRender.slnx || status=$?
             rm TestResults/KhaozEngine.NonRender.slnx
@@ -1745,7 +1733,7 @@ jobs:
           if-no-files-found: ignore
 
   # ONE CHECK PER SHARDED BACKEND (#1438), named `<os> / <backend> / full suite`. A sharded full suite is three to
-  # ten jobs per leg, and this is the one that answers for all of them: it is red when any shard is red, missing
+  # fourteen jobs per leg, and this is the one that answers for all of them: it is red when any shard is red, missing
   # or cancelled, and when the shards' own reports show a test assembly that ran on no shard, on two shards,
   # or Render.Tests outside its slices. Its job summary carries the per-assembly totals summed across the
   # shards, which is the reading to compare against an unsharded run. It runs on always() because a red shard

@@ -1,0 +1,27 @@
+[
+  {
+    "file": "run-1.log",
+    "sha256": "30da1597cab1f1172b0b033894152cdef752e031e452e40bf243fd7489b30031",
+    "bytes": 541
+  },
+  {
+    "file": "run-1.trx",
+    "sha256": "68d331407924ab5a7a3d83af20280595c148a3b1f7ae6df3f8c56f6f133b3015",
+    "bytes": 249869
+  },
+  {
+    "file": "typical-a1-cpuskin-full-20261017T205532611Z-condition-1.json",
+    "sha256": "e839aedf1d16ebf41c64eaea23d8e74afc9f8f7dd23b8f1eb08bd0fd85b99f88",
+    "bytes": 26488
+  },
+  {
+    "file": "typical-a1-cpuskin-full-20261017T205532611Z-condition-2.json",
+    "sha256": "f751ff8c89d0d01c02d39dd1af38b40225a6cac40b28b317dbab0200a4bdde0b",
+    "bytes": 30672
+  },
+  {
+    "file": "typical-a1-cpuskin-full-20261017T205532611Z-unit.json",
+    "sha256": "ea9ece1e42e53bd1ac265dbf4fcc7b4f42fa8519f90ff8a58c3f86c5cd548489",
+    "bytes": 66223
+  }
+]

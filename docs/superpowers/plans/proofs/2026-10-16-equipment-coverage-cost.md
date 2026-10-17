@@ -2,13 +2,13 @@
 
 ## Status
 
-Two separately authorized one-actor CPU pilots completed. Their measured coverage frames were valid and
-allocated zero managed bytes. The repeat after cost units 1 and 2 measured 79.542417 ms added preparation
-per frame. CPU performance acceptance remains open. The native GPU gate remains unproved.
+Four separately authorized one-actor CPU pilots completed. Their measured coverage frames were valid and
+allocated zero managed bytes. The latest, after cost unit 4 with a 64-frame warm-up, measured 26.292074 ms
+added preparation per frame. CPU performance acceptance remains open. The native GPU gate remains unproved.
 
-This pilot does not satisfy the 2 ms added-preparation gate for 32 typical actors. It instead reveals
-substantial cost in construction and certification that needs investigation before a larger measurement.
-Do not extrapolate this hosted one-actor result linearly to 32 actors or to a native game renderer.
+No pilot satisfies the 2 ms added-preparation gate for 32 typical actors, which allows 62.5 microseconds
+per actor. The approved plan returns a budget miss to design review. Do not extrapolate these hosted
+one-actor results linearly to 32 actors or to a native game renderer.
 
 ## Authorized pilot on 2026-10-17
 
@@ -171,3 +171,52 @@ Unmodified reports, log and TRX, the failed pre-measurement attempt, and their h
 Root verified the exact run head, workflow pin, manifest hash, frame and outcome counts, allocation
 windows, limits, condition identity and equality of standalone reports with the embedded copies.
 The successful hosted job completed in 1 minute 59 seconds.
+
+## Conditioned repeat after cost unit 4
+
+The owner approved one further pilot after unit 4, which removed the staged geometry certification and
+kept the full late certification as the only Covered gate. Unit 4 native correctness was accepted from
+[the coverage platform run](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39024781801), with 684 tests
+passed and zero skipped on each backend, 18 exact golden comparisons, Vulkan sync validation and native
+coverage outputs byte-identical to unit 3. The workload is unchanged except for a longer conditioning
+period of 64 warm-up and 32 measured frames per condition.
+
+The [pilot](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39068647619) ran once on
+`967722cdbcc067e74c13a5847ea1790b4b299780`, with manifest SHA-256
+`ada76f2687d3da6e379363342563c0a9a1974c53a5751859abcc235e24898a60`. One test executed and passed with zero
+skips. Both conditions completed every requested frame. All 32 measured coverage-on actor frames were
+accepted, certified and Covered, with zero declines, fallbacks and errors. Every measured allocation
+window, including the whole frame, remained zero. Environment, process identity and session matched
+between conditions. Neither cooperative limit was exceeded.
+
+| Mean CPU span, ms per frame | Coverage off | Coverage on |
+| --- | ---: | ---: |
+| Preparation | 0.004803 | 12.555147 |
+| Submission | 0.013789 | 0.005358 |
+| Reservation | 0.000579 | 0.001964 |
+| Render resolution and certification | 0.010756 | 13.789137 |
+| Complete skinned preparation | 0.536797 | 0.506841 |
+| Motion history commit | 0.000245 | 0.000597 |
+| Sum of disjoint preparation spans | 0.566969 | 26.859044 |
+| Whole frame wall time | 1.296298 | 26.927783 |
+
+Added preparation was **26.292074 ms per frame**. Whole frame wall time increased by 25.631485 ms.
+Coverage-on geometry evaluation, now construction only, averaged 12.461836 ms and render certification
+13.776059 ms. These nested spans are already included in the table. Coverage-on whole-frame median was
+22.786805 ms, 95th percentile 39.889852 ms and maximum 39.965026 ms. Poses alternate each frame, which
+explains the spread. Warm-up maximum was 331.255372 ms with a median of 28.122219 ms. The final
+condition's elapsed unit clock before publication was 4753.842311 ms.
+
+This host reported AMD EPYC 9V74, four processors, Ubuntu 26.04.1 and .NET 10.0.13, with default tiered
+compilation and PGO. The code path of render certification is unchanged by unit 4, yet its mean fell from
+37.297676 ms in the previous pilot to 13.776059 ms here. That points to conditioning and host class as a
+large part of the earlier figures, but the two runs differ in host, warm-up and unit 4, so this is an
+inference rather than a controlled comparison. The added cost is still about 420 times the 62.5 microsecond
+per-actor share of the 2 ms budget. The allocation gate passes. The 32-actor CPU and native GPU gates
+remain unproved, and this pilot's approval is consumed.
+
+Unmodified reports, log, TRX and their hashes are retained under
+[`equipment-coverage-cost/2026-10-18-a1-after-unit4`](equipment-coverage-cost/2026-10-18-a1-after-unit4).
+Root verified the exact run head, workflow pin, iterations, load and filter, manifest hash, frame and
+outcome counts, allocation windows, limits, condition identity and equality of standalone reports with
+the embedded copies. The hosted job completed in 1 minute 47 seconds.

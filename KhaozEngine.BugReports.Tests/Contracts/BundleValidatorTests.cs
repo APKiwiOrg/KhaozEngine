@@ -277,6 +277,32 @@ public sealed class BundleValidatorTests
             ErrorOf(TestBundles.Default().WithEntry(Build, Encoding.UTF8.GetBytes("{\"a\":{\"b\":1,\"b\":2}}"))));
     }
 
+    [Theory]
+    [InlineData("{\"a\":\"\\uD800\"}")]
+    [InlineData("{\"a\":[\"ok\",\"\\uDC00x\"]}")]
+    [InlineData("{\"\\uD800\":1}")]
+    [InlineData("{\"a\":{\"b\\uDBFF\":true}}")]
+    public void Section_with_an_undecodable_string_is_rejected(string section)
+        => Assert.Equal("section_invalid: " + Build, ErrorOf(TestBundles.Default().WithEntry(Build, Encoding.UTF8.GetBytes(section))));
+
+    [Fact]
+    public void Undecodable_names_in_the_manifest_or_clip_index_are_invalid_not_thrown()
+    {
+        Assert.Equal("manifest_invalid", ErrorOf(TestBundles.Default().WithManifestJson(j => "{\"\\uD800\":1," + j[1..])));
+        byte[] index = Encoding.UTF8.GetBytes("{\"\\uD800\":1," + Encoding.UTF8.GetString(TestBundles.ClipIndexJson(
+            new ClipIndexFrame(0, 16.5, 4, 4, "clip/000.jpg"), new ClipIndexFrame(83.25, 41, 4, 4, "clip/001.jpg")))[1..]);
+        Assert.Equal("clip_index_invalid", ErrorOf(TestBundles.Default().WithEntry(BundleEntryNames.ClipIndex, index)));
+    }
+
+    [Fact]
+    public void Section_with_invalid_utf8_is_rejected()
+        => Assert.Equal("section_invalid: " + Build,
+            ErrorOf(TestBundles.Default().WithEntry(Build, [.. "{\"a\":\""u8, 0xFF, .. "\"}"u8])));
+
+    [Fact]
+    public void Section_with_an_escaped_surrogate_pair_passes()
+        => Assert.Null(ErrorOf(TestBundles.Default().WithEntry(Build, Encoding.UTF8.GetBytes("{\"\\uD83D\\uDE00\":\"\\uD83D\\uDE00\"}"))));
+
     [Fact]
     public void Duplicate_manifest_keys_are_manifest_invalid()
     {

@@ -7,6 +7,7 @@
   </PropertyGroup>
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />
+    <EmbeddedResource Include="Viewer/viewer.html" LogicalName="KhaozEngine.BugReports.Viewer.html" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.BugReports.Contracts/KhaozEngine.BugReports.Contracts.csproj" />

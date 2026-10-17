@@ -201,7 +201,11 @@ public static class BundleValidator
             if (total > BugReportLimits.MaxSectionBytesTotal) return BundleErrors.SectionsTooLarge;
             try
             {
-                using JsonDocument document = JsonDocument.Parse(reader.ReadAll(entry), options);
+                // Strings are checked first, because the duplicate name check decodes property names and
+                // throws InvalidOperationException for one that does not decode.
+                byte[] json = reader.ReadAll(entry);
+                if (!JsonStrings.AllDecode(json, options.MaxDepth)) return Coded(BundleErrors.SectionInvalid, entry.FullName);
+                using JsonDocument document = JsonDocument.Parse(json, options);
                 if (document.RootElement.ValueKind != JsonValueKind.Object)
                     return Coded(BundleErrors.SectionInvalid, entry.FullName);
             }

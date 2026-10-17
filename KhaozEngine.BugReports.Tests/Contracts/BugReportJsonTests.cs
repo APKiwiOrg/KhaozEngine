@@ -189,6 +189,17 @@ public sealed class BugReportJsonTests
     }
 
     [Theory]
+    [InlineData("{\"version\":\"1.0.0\"}", "{\"version\":\"\\uD800\"}")]
+    [InlineData("{\"version\":\"1.0.0\"}", "{\"\\uDC00\":\"1.0.0\"}")]
+    [InlineData("{\"build\":", "{\"b\\uD800\":")]
+    [InlineData("\"player-1\"", "\"\\uD800\"")]
+    public void ServerSnapshot_rejects_undecodable_strings(string field, string replacement)
+    {
+        byte[] json = Encoding.UTF8.GetBytes(Replace(SnapshotJson, field, replacement));
+        Assert.Throws<JsonException>(() => BugReportJson.DeserializeServerSnapshot(json));
+    }
+
+    [Theory]
     [InlineData("{\"subject\":\"player-1\",\"handle\":null}")]
     [InlineData("{\"subject\":\"player-1\",\"displayName\":null,\"handle\":null}")]
     public void ReporterIdentity_rejects_missing_or_null_fields(string input)

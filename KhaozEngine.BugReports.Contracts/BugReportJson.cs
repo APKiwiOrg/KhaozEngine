@@ -43,8 +43,16 @@ public static class BugReportJson
     public static byte[] SerializeServerSnapshot(ServerSnapshotWire value)
         => JsonSerializer.SerializeToUtf8Bytes(value, Context.ServerSnapshotWire);
 
+    // Section values stay undecoded JsonElement values, so their strings are checked separately, at the same
+    // depth limit the serializer just applied.
     public static ServerSnapshotWire DeserializeServerSnapshot(ReadOnlySpan<byte> json)
-        => JsonSerializer.Deserialize(json, Context.ServerSnapshotWire) ?? throw new JsonException("Expected a server snapshot.");
+    {
+        ServerSnapshotWire snapshot = JsonSerializer.Deserialize(json, Context.ServerSnapshotWire)
+            ?? throw new JsonException("Expected a server snapshot.");
+        if (!JsonStrings.AllDecode(json, Context.Options.MaxDepth))
+            throw new JsonException("The server snapshot holds a string that does not decode.");
+        return snapshot;
+    }
 
     static BugReportJsonContext CreateContext()
     {

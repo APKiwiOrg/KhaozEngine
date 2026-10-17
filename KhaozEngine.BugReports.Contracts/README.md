@@ -75,6 +75,8 @@ Besides the `BugReportLimits` values above, the validator enforces these bounds:
 - At most 120 clip index frames.
 - 1 to 2560 pixels for both edges of every image, and for the index width and height of an MP4 clip.
 - Unique property names in every section object.
+- Every string value and property name in a section decodes. Valid JSON can still hold invalid UTF-8 or an
+  escaped lone surrogate such as `"\uD800"`, which would otherwise fail only when a later reader decodes it.
 
 Checks run in this order and the first failure wins:
 
@@ -121,7 +123,7 @@ constant:
 | `hash_mismatch` | The entry's SHA-256 differs from its manifest hash. |
 | `image_invalid` | A PNG or JPEG header does not parse or an edge is outside 1 to 2560 pixels. |
 | `media_invalid` | `clip.mp4` does not carry `ftyp` at bytes 4 to 8. |
-| `section_invalid` | A section is not a JSON object within depth 64, or repeats a property name in any object. |
+| `section_invalid` | A section is not a JSON object within depth 64, repeats a property name in any object, or holds a string or property name that does not decode. |
 | `sections_too_large` | Section entries total more than 1 MiB. |
 | `clip_index_invalid` | The clip index is missing while frames or `clip.mp4` exist, is over 64 KiB, does not parse, repeats a property name, holds a null frame, has more than 120 frames, has negative, decreasing or non-finite timing, names entries wrongly, or gives an MP4 frame an edge outside 1 to 2560. |
 
@@ -168,7 +170,9 @@ JSON section objects. `ReporterIdentity` carries the subject, display name and n
 `BugReportJson` exposes typed UTF-8 serialize and deserialize helpers for the manifest, clip index,
 intake acceptance, relay error and server snapshot. Deserializers throw `JsonException` for malformed
 JSON, a null root, a missing property, a null value in a non-nullable property or a property name
-repeated in any object, including section dictionaries and their JSON values. `Options` applies the
+repeated in any object, including section dictionaries and their JSON values. The server snapshot
+deserializer also throws `JsonException` when any string or property name in it, section values included,
+does not decode. `Options` applies the
 same duplicate rule. Every constructor
 property is required, including the nullable `handle`, which is written as `null`. `Options` exposes the
 same read-only source-generated settings, including the reporter identity shape. Copy the options if a

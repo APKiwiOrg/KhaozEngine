@@ -20,7 +20,7 @@ Local attribution on the M2 Max (one-shot, SG-20) found five causes and one evid
 | C1 Installed polyhedra are re-materialized in world space on every Find | `InstalledSupportGeometry.Materialize`, `SupportNeighborhoodPolyhedra.Polygons` | 39 to 69 us per box or hull static, 55 to 66 percent of the flat floor |
 | C2 Every non-planar member runs the full contact kernel, with no certified negative reject | `SupportFootprintCollector.ContactMember`, `ContactHeight` | stairs 140 to 177 us, hidden crate 1412 us |
 | C3 Faces of one convex leaf are joined geometrically although topology already proves the shared edge | `SupportFootprintCollector.Publish`, `SupportNeighborhoodJoins.Joined` | stairs 49 + 16 us, crate 554 + 81 us |
-| C4 Curved kernels run source-tracking arithmetic first and sit outside any phase bracket | `SupportFootprintCollector.CollectCurves`, `SupportFootprintCurved.Measure` | sphere 35, capsule 64, cylinder 58 us |
+| C4 The curved tangent contact kernel bisects to full resolution although the collector keeps only its sign, and curved collection sits outside any phase bracket | `SupportFootprintCollector.CurvedContactMember`, `SupportNeighborhoodCurved.Measure` | 28 to 53 us, 85 to 90 percent of a curved Find. `SupportFootprintCurved.Measure` is about 2 us |
 | C5 Query-independent polygon facts are computed before the cheap bounds reject | `SupportFootprintPolygon.Measure` | 9 to 13 us flat, 32 to 41 us stairs |
 | E1 The hosted scale `k` comes from one single-shot M2 row that is an outlier | `SupportCostVerdict.TryHostedScale` | see SC-2 |
 
@@ -100,12 +100,19 @@ mutual-below certification still runs. Faces of different leaves or different st
 geometric join. Cost if wrong: a degenerate leaf whose captured edge is not a geometric edge, which
 capture validation already refuses.
 
-**Ruling SC-8. Curved kernels evaluate interval-first.** `SupportFootprintCurved.Measure` evaluates
-its admission and maxima in interval arithmetic first and falls back to the existing source-tracking
-arithmetic only on an unresolved sign. Its pose-only constants come from the SC-4 world form. Curved
-collection gets its own allocation phase bracket so attribution sees it. SG-19 witnesses keep passing
-unchanged. Cost if wrong: an interval result that resolves a sign the source arithmetic would resolve
-differently, which the SG-19 witnesses and the equivalence rows catch.
+**Ruling SC-8. The curved contact member stops once its verdict is certified.** The collector uses only
+the three-valued sign of the curved tangent contact kernel (`SupportNeighborhoodCurved.Measure`) and discards
+its element, yet the kernel bisects twice per Find through 16 levels to its full resolution, about 100
+interval evaluations. Measured locally, that is 85 to 90 percent of a curved Find, while the source-tracking
+`SupportFootprintCurved.Measure` the attribution first blamed takes about 2 us and stays unchanged. Give the
+kernel a sign-only mode for the collector: it stops bisecting as soon as the verdict is certified to equal the
+verdict the full-resolution run would return, and otherwise runs to full resolution. Negative and Positive
+need separate arguments, since a final Positive also depends on the narrowed hull publishing resolved, and
+every refusal the full run can reach must still be reachable or provably absent. Leaf pose-only constants may
+come from the SC-4 world form. Curved collection and the contact kernel each get an allocation phase bracket
+so attribution sees the split. SG-19 witnesses keep passing unchanged. Cost if wrong: an early verdict that
+the full run would have refused or reversed, which the equivalence rows and an adversarial sweep at the
+boundary catch.
 
 **Ruling SC-9. Proof shape.** Every optimization keeps the uncached evaluator reachable from tests as
 the oracle and proves bit-identical results against it: status, height and error, raw feature

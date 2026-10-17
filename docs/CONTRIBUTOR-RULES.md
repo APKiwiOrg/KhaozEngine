@@ -92,8 +92,8 @@ suppression or disable `TreatWarningsAsErrors`. The standing XML documentation s
 narrow exception.
 
 Ordinary pushes and pull requests run `scripts/ci-selective-test.sh`. Tag pushes and manual runs use
-the full restore, Release build, test, determinism, pack and publish path. Convention, instruction
-budget and doc-version checks run before both paths. See
+the full restore, Release build, test, determinism and pack path, and only tag pushes publish.
+Convention, instruction budget and doc-version checks run before both paths. See
 [`design/CI-SELECTIVE-TESTS-DESIGN-2026-07-18.md`](design/CI-SELECTIVE-TESTS-DESIGN-2026-07-18.md).
 
 Never repeat tests in a loop or add CPU load on the dev Mac, which also hosts the org's self-hosted runners.
@@ -155,6 +155,30 @@ dependency is already blocked, so the engine release completes without another p
 
 `local-feed` is a gitignored development convenience. GitHub Packages is the durable release store.
 Prune the local feed only above the lowest version still pinned by a consumer.
+
+A release holds the release lock from the moment it fixes its anchor until the tag is pushed or the
+release stops. Run `scripts/release-lock.sh acquire vX.Y.Z` with `KE_RELEASE_LOCK_OWNER` set, and
+`scripts/release-lock.sh release` at the end. Every other session checks
+`scripts/release-lock.sh status` before merging into or pushing `main`, and waits while a lock is held.
+The engine hooks refuse moving or pushing `main` for anyone but the holder. A lock older than six hours
+is stale. The lock lives in the git common directory, so one lock covers every worktree on the machine.
+The hooks resolve per worktree because `core.hooksPath` is the relative `.githooks`. A worktree
+branched before the lock landed lacks the guard until it merges `main`, which is why the rule binds
+every session in writing as well.
+
+The pre-tag gate is hosted. Dispatch `ci` and `cross-platform-gpu` on `main` at the release commit and
+wait for both. The `ci` dispatch runs the full restore, build, test, determinism pass and pack without
+publishing. The `cross-platform-gpu` dispatch with default inputs runs the full suite on every backend.
+Locally run only the whole-tree guards and `scripts/pack-local-feed.sh`. Do not repeat the full suite
+on the dev Mac. A push to `main` cancels an in-flight `ci` dispatch because both share the `ci`
+concurrency group for `main`, and the release lock prevents that push. The `cross-platform-gpu`
+concurrency group includes the event name, so only another dispatch on `main` cancels its dispatch.
+
+A tracked flake does not block a release when all of these hold. Every failing test is named on an
+open issue that tracks it as intermittent. Those tests and the code they exercise are unchanged since
+the previous release tag. Every other test and leg of the gate passes. The release report records the
+issue, the failing run and that comparison. Any other failure blocks the release, and a waiver never
+covers a test that is new or whose code changed in the release.
 
 ## Documentation governance
 

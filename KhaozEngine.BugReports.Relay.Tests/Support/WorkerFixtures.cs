@@ -44,6 +44,13 @@ internal static class WorkerFixtures
     public static async Task<ReportRecord> RecordAsync(RelayHarness harness)
         => Assert.IsType<ReportRecord>(await harness.Records.LoadReportAsync(RelayHarness.Id, CancellationToken.None));
 
+    public static Task<bool> SeedClaimAsync(RelayHarness harness, string kind, int epoch, DateTimeOffset claimedAt)
+    {
+        string path = "claims/" + kind + "-" + RelayHarness.Id + "-" + epoch + ".json";
+        return harness.Media.PutAsync(ReportArea.Pending, path, JsonSerializer.SerializeToUtf8Bytes(new { claimedAt }),
+            ReportLayout.HeadersFor(path), false, CancellationToken.None);
+    }
+
     public static async Task DrainAsync(RelayHarness harness)
     {
         while (harness.Work.TryDequeue(out ReportWorkItem? item))

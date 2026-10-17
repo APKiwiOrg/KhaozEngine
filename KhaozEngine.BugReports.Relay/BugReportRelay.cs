@@ -50,8 +50,9 @@ public sealed class BugReportRelay
 
     /// <summary>Processes durable issue work using create-only, ten-minute claims.</summary>
     /// <remarks>
-    /// Duplicate deliveries during a claim lease do nothing. After expiry a new delivery may take over. A holder
-    /// that creates an issue or comment and dies before saving its result can leave a duplicate on takeover.
+    /// Completed work returns normally. Unfinished work with a busy claim throws for host redelivery.
+    /// Failed holders release their claim, while a crash without release requires lease expiry for takeover.
+    /// A GitHub write whose result cannot be saved can be duplicated on takeover.
     /// </remarks>
     public Task ProcessWorkAsync(ReportWorkItem item, CancellationToken cancellationToken)
         => worker.ProcessAsync(item, cancellationToken);

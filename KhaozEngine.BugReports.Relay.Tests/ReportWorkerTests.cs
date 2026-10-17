@@ -252,11 +252,9 @@ public sealed class ReportWorkerTests
     {
         var harness = new RelayHarness();
         await WorkerFixtures.AcceptAsync(harness);
-        harness.GitHub.OnCreate = () => throw new IOException("GitHub unavailable");
-        await Assert.ThrowsAsync<IOException>(() => WorkerFixtures.ProcessAsync(harness));
-        harness.GitHub.OnCreate = null;
+        await WorkerFixtures.SeedClaimAsync(harness, "issue", 0, harness.Clock.GetUtcNow());
         harness.Clock.Advance(TimeSpan.FromMinutes(10) - TimeSpan.FromTicks(1));
-        await WorkerFixtures.ProcessAsync(harness);
+        await Assert.ThrowsAsync<ReportClaimBusyException>(() => WorkerFixtures.ProcessAsync(harness));
         Assert.Empty(harness.GitHub.Issues);
         harness.Clock.Advance(TimeSpan.FromTicks(2));
         await WorkerFixtures.ProcessAsync(harness);
@@ -276,7 +274,7 @@ public sealed class ReportWorkerTests
         harness.GitHub.OnCreate = async () =>
         {
             Assert.Equal(202, (await harness.IntakeAsync()).StatusCode);
-            await WorkerFixtures.DrainAsync(harness);
+            await Assert.ThrowsAsync<ReportClaimBusyException>(() => WorkerFixtures.DrainAsync(harness));
         };
         // Index recovery queues one item, while the owner of that claim has not saved its issue number yet.
         Assert.Equal(202, (await harness.IntakeAsync()).StatusCode);
@@ -320,10 +318,8 @@ public sealed class ReportWorkerTests
     public async Task AppendSnapshot_StaleClaim_IsTakenOver()
     {
         var harness = await ReadyForAppendAsync();
-        harness.GitHub.OnComment = () => throw new IOException("GitHub unavailable");
-        await Assert.ThrowsAsync<IOException>(() => WorkerFixtures.ProcessAsync(harness, ReportWorkKind.AppendServerSnapshot));
+        await WorkerFixtures.SeedClaimAsync(harness, "comment", 0, harness.Clock.GetUtcNow());
         Assert.Equal(ServerSnapshotState.None, (await WorkerFixtures.RecordAsync(harness)).ServerSnapshot);
-        harness.GitHub.OnComment = null;
         harness.Clock.Advance(TimeSpan.FromMinutes(11));
         await WorkerFixtures.ProcessAsync(harness, ReportWorkKind.AppendServerSnapshot);
         Assert.Single(harness.GitHub.Comments);
@@ -334,7 +330,7 @@ public sealed class ReportWorkerTests
     [Theory]
     [InlineData(ReportWorkKind.CreateIssue, "issue")]
     [InlineData(ReportWorkKind.AppendServerSnapshot, "comment")]
-    public async Task Worker_SixteenStaleClaims_FailsClosed(ReportWorkKind kind, string claimKind)
+    public async Task Worker_SixteenStaleClaims_AllowsTakeover(ReportWorkKind kind, string claimKind)
     {
         var harness = new RelayHarness();
         ReportRecord record = await WorkerFixtures.AcceptAsync(harness);
@@ -350,9 +346,9 @@ public sealed class ReportWorkerTests
             await harness.Media.PutAsync(ReportArea.Pending, path, json, ReportLayout.HeadersFor(path), false, Ct);
         }
         await WorkerFixtures.ProcessAsync(harness, kind);
-        Assert.Empty(harness.GitHub.Issues);
-        Assert.Empty(harness.GitHub.Comments);
-        Assert.False(await harness.Media.ExistsAsync(ReportArea.Pending, "claims/" + claimKind + "-" + Id + "-16.json", Ct));
+        if (kind == ReportWorkKind.CreateIssue) Assert.Single(harness.GitHub.Issues);
+        else Assert.Single(harness.GitHub.Comments);
+        Assert.True(await harness.Media.ExistsAsync(ReportArea.Pending, "claims/" + claimKind + "-" + Id + "-16.json", Ct));
     }
 
     [Fact]
@@ -400,11 +396,17 @@ public sealed class ReportWorkerTests
         };
         var secondWorker = new BugReportRelay(harness.Options, harness.Authenticator, store, harness.Work,
             harness.Quotas, harness.GitHub, harness.Clock);
-        await Task.WhenAll(WorkerFixtures.ProcessAsync(harness, kind),
-            secondWorker.ProcessWorkAsync(new ReportWorkItem(kind, Id), Ct));
+        Exception?[] results = await Task.WhenAll(
+            Record.ExceptionAsync(() => WorkerFixtures.ProcessAsync(harness, kind)),
+            Record.ExceptionAsync(() => secondWorker.ProcessWorkAsync(new ReportWorkItem(kind, Id), Ct)));
+        foreach (Exception? error in results)
+            if (error is not null) Assert.IsType<ReportClaimBusyException>(error);
         if (kind == ReportWorkKind.CreateIssue) Assert.Single(harness.GitHub.Issues);
         else Assert.Single(harness.GitHub.Comments);
         Assert.Equal(7, (await WorkerFixtures.RecordAsync(harness)).IssueNumber);
+        await WorkerFixtures.ProcessAsync(harness, kind);
+        if (kind == ReportWorkKind.CreateIssue) Assert.Single(harness.GitHub.Issues);
+        else Assert.Single(harness.GitHub.Comments);
     }
 
     static async Task<RelayHarness> ReadyForAppendAsync()

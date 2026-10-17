@@ -40,11 +40,18 @@ internal sealed class ServerSnapshotIntake(BugReportRelayOptions options, Report
             logger.Warn("Server snapshot subject mismatch for report " + reportId + ".");
             return RelayResponses.Accepted(reportId);
         }
-        if (!await records.PutPendingSnapshotAsync(reportId, json, ct).ConfigureAwait(false))
-            return RelayResponses.Accepted(reportId);
+        bool wrote = await records.PutPendingSnapshotAsync(reportId, json, ct).ConfigureAwait(false);
         accepted ??= await records.LoadAcceptedAsync(reportId, ct).ConfigureAwait(false);
         if (accepted is not null)
+        {
+            if (!wrote)
+            {
+                ReportRecord? record = await records.LoadReportAsync(reportId, ct).ConfigureAwait(false);
+                if (record?.IssueNumber is null || record.ServerSnapshot != ServerSnapshotState.None)
+                    return RelayResponses.Accepted(reportId);
+            }
             await work.EnqueueAsync(new ReportWorkItem(ReportWorkKind.AppendServerSnapshot, reportId), ct).ConfigureAwait(false);
+        }
         return RelayResponses.Accepted(reportId);
     }
 }

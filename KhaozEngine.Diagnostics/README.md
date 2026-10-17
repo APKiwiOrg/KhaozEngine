@@ -160,6 +160,29 @@ IReadOnlyList<string> lines = recent.Snapshot();   // oldest first, a copy
 - Thread-safe, never throws from `Emit`, and `Flush` and `Dispose` do nothing.
 - `InMemorySink` stays the test capture. It keeps every entry unbounded and is not meant for a shipped head.
 
+## Report redaction (`ReportRedactor`)
+
+`ReportRedactor` is the backstop every bug report string passes through before it leaves the machine. Sections
+should still avoid writing secrets. This catches what slips through.
+
+```csharp
+var redactor = new ReportRedactor();               // home read from the user profile folder
+string safe = redactor.Redact(line);               // same instance back when nothing matched
+IReadOnlyList<TelemetryHeaderValue> env = redactor.SelectEnvironment(pairs);
+```
+
+- Rules run in a fixed order, each writing `[redacted]` (`ReportRedactor.Mask`): PEM private key blocks, JWTs,
+  provider tokens (GitHub, Slack, AWS access key ids, `sk-` keys), Bearer and Basic credentials (the scheme is
+  kept), secret URL query values (the parameter name is kept), and secret key and value pairs such as
+  `password=`, `"apiKey": "..."` or `AccountKey=` (the key and separator are kept).
+- The home directory becomes `~`, matched case-insensitively with either separator and only where the path ends,
+  so `/Users/anna` survives a home of `/Users/ann`. Trailing separators on the home are ignored, and a home
+  shorter than three characters turns the rule off.
+- Every pattern has a 250 ms match timeout. A timeout fails closed: the whole string comes back as `[redacted]`.
+- Thread-safe. Clean text is returned as the same instance without allocating.
+- `SelectEnvironment` keeps only `KE_` variables, chosen and sorted exactly as
+  `TelemetrySessionHeader.SelectEngineVariables` does, and passes each value through `Redact`.
+
 ## Categories
 
 Every entry carries a **category**, rendered by the formatter as `[Category] message`. Choose it once and never repeat it in the message text:

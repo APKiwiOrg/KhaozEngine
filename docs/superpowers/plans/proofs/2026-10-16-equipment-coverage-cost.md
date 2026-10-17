@@ -2,8 +2,9 @@
 
 ## Status
 
-The first authorized one-actor CPU pilot completed. Its measured coverage frames were valid and allocated
-zero managed bytes. CPU performance acceptance remains open. The native GPU gate remains unproved.
+Two separately authorized one-actor CPU pilots completed. Their measured coverage frames were valid and
+allocated zero managed bytes. The repeat after cost units 1 and 2 measured 79.542417 ms added preparation
+per frame. CPU performance acceptance remains open. The native GPU gate remains unproved.
 
 This pilot does not satisfy the 2 ms added-preparation gate for 32 typical actors. It instead reveals
 substantial cost in construction and certification that needs investigation before a larger measurement.
@@ -76,3 +77,48 @@ session. Recorded pass contexts are certification evidence, not executed GPU wor
 Instrumentation overhead remains included. Same-process ordering shares JIT, GC and cache state. The
 point light radius is 3 around actor zero. [The wider point-light refusal limit](https://github.com/APKiwiOrg/KhaozEngine/issues/1425)
 remains open. No larger actor-count measurement or native GPU proof follows from this pilot's approval.
+
+## Repeat after cost units 1 and 2
+
+The owner separately approved one repeat with the same workload and limits. The
+[repeat run](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39002519327) completed on
+`1cf91b18d16f73bebf538a3b5ab793f4bf3b316b`, containing the reviewed render-separation optimization
+`3912d4f80` and exact-overlay arithmetic reuse `4d5bd0df9`. Only the authorization metadata changed in the
+manifest, whose new SHA-256 is `1b411e0ce3d90420039b58f678fbfe7fcef4b0eb52e784066f4f45fb85a64fd4`.
+
+One iteration executed and passed, with zero skipped tests. Both conditions completed four warm-up and
+eight measured frames. All eight measured coverage-on actor frames were accepted and Covered, with zero
+declines, fallbacks and errors. Every allocation window, including the whole frame, remained zero. The
+unit deadline and frame limits were not exceeded. The same-process environment and topology matched
+between conditions, and the topology also matched the first pilot.
+
+| Mean CPU span, ms per frame | First pilot, coverage on | Repeat, coverage on |
+| --- | ---: | ---: |
+| Preparation | 63.021824 | 56.523196 |
+| Geometry construction, nested in preparation | 39.443802 | 29.623813 |
+| Geometry certification, nested in preparation | 22.001959 | 25.942948 |
+| Render certification, nested in resolution | 38.958721 | 22.203852 |
+| Complete skinned preparation | 2.155921 | 2.495231 |
+| Sum of disjoint preparation spans | 104.308989 | 81.359519 |
+| Whole frame wall time | 104.678628 | 81.752620 |
+
+Repeat off-condition preparation sum was 1.817101 ms, giving **79.542417 ms added preparation per frame**.
+Whole frame wall time was 2.758988 ms off and 81.752620 ms on, a paired difference of 78.993631 ms.
+Coverage-on frame median was 57.955524 ms and maximum was 193.213461 ms. Warm-up maximum was
+312.692930 ms. The final condition's unit elapsed clock before publication was 2855.446605 ms.
+
+This is not a controlled before/after speedup comparison. The first runner reported AMD EPYC 7763,
+while the repeat reported AMD EPYC 9V74. Both reported four processors, Ubuntu 26.04.1, .NET 10.0.13,
+and default tiered compilation and PGO, but they were different machines and processes. Each run contains
+only eight measured samples per condition with the same off-first ordering. The data identifies remaining
+cost and validates the workload, but cannot isolate a precise percentage improvement from the code changes.
+
+The repeat's allocation gate passes. The CPU gate remains unproved because it requires 32 actors, and the
+native GPU gate remains unproved. Further source optimization and suitable benchmark conditioning are
+needed before the larger gate. No additional measurement is authorized by this completed repeat.
+
+Unmodified reports, log and TRX with their hashes are retained under
+[`equipment-coverage-cost/2026-10-17-a1-after-unit2`](equipment-coverage-cost/2026-10-17-a1-after-unit2).
+Root verified the run head and workflow SHA, manifest hash, exact frame and outcome counts, zero
+allocations, limits, environment and topology identity, and equality of the standalone condition reports
+with the unit report's embedded copies. The hosted job completed in 1 minute 58 seconds.

@@ -206,9 +206,11 @@ affected.
 1. **Exact reference first.** Before the exact constructor is deleted, its outputs on the typical and
    limit fixtures, seams, transition weights 0, 0.5 and 1, and refinement levels 2 to 4 are captured and
    committed.
-2. **Reference fidelity.** Each reference position stays within `Clearance x MarginFraction` of the
+2. **Reference fidelity.** Run at the capture's own effective clearance, so the comparison measures float
+   construction differences only, each reference position stays within `Clearance x MarginFraction` of the
    exact capture. A core-corrected group that exceeds it is investigated, never accepted by widening the
-   bound. Refusal codes match on the existing construction negatives.
+   bound. The NC1 reserve's deliberate extra recession is checked separately against its mapped size.
+   Refusal codes match on the existing construction negatives.
 3. **Oracle.** Every fixture's reference output passes the oracle. An over-tight clearance, a support
    escape and a recession-budget excess each fail with the correct stage and code.
 4. **Part A capabilities.** A backend test per capability on all three CI devices. Vulkan synchronisation

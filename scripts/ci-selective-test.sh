@@ -3,8 +3,9 @@
 # Selective CI test runner: build and test only the slice a push or PR actually affects.
 #
 # Called by .github/workflows/ci.yml for the push (main) and pull_request events. Tag pushes and
-# workflow_dispatch keep the full restore/build/test/pack/publish sequence inline in the workflow and
-# do NOT call this script. Spec: docs/design/CI-SELECTIVE-TESTS-DESIGN-2026-07-18.md (Decisions 4, 5).
+# workflow_dispatch keep the full restore/build/test/pack sequence inline in the workflow (a tag that
+# reuses the hosted gate skips its test steps, and only tags publish) and do NOT call this script.
+# Spec: docs/design/CI-SELECTIVE-TESTS-DESIGN-2026-07-18.md (Decisions 4, 5 and 7).
 #
 # Usage: scripts/ci-selective-test.sh <BASE_SHA> <HEAD_SHA>
 #   BASE_SHA  commit to diff from (github.event.before on pushes, the PR base sha on PRs)
@@ -13,7 +14,7 @@
 # Two outcomes:
 #   FULL       restore + build + full test + determinism double-pass over the whole solution. Fired
 #              when the base sha is missing or unusable, or when the diff touches an infra file class
-#              that can change what "affected" means. No pack here (tag runs still pack and publish).
+#              that can change what "affected" means. No pack here (dispatch and tag runs pack, tags publish).
 #   SELECTIVE  dotnet-affected walks the project graph, the affected set is intersected with the test
 #              projects in KhaozEngine.slnx, and only those are restored, built, and tested. An empty
 #              intersection (the common docs-only push) skips build and test entirely.
@@ -37,7 +38,7 @@ fail() {
   exit 1
 }
 
-# The full path: everything a tag run does, minus pack and publish.
+# The full path: everything a workflow_dispatch run does in build-test-pack, minus pack.
 run_full() {
   echo "ci-selective-test: FULL ($1)"
   dotnet restore || fail "restore failed"

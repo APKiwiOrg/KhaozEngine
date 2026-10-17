@@ -189,8 +189,9 @@
 #   trigger leaves the variables blank, which is the default location and the shipped behaviour.
 #
 # Software rasterizers (the Windows and Linux runners have no real GPU):
-#   * Linux uses Mesa lavapipe (software Vulkan). The workflow discovers the lavapipe ICD manifest at runtime
-#     (its name and path drift across Ubuntu images) and points VK_ICD_FILENAMES/VK_DRIVER_FILES at it. The
+#   * Linux uses Mesa lavapipe (software Vulkan). The workflow looks the lavapipe ICD manifest up in the
+#     mesa-vulkan-drivers file list at runtime (its name and path drift across Ubuntu images) and points
+#     VK_ICD_FILENAMES/VK_DRIVER_FILES at it. The
 #     leg additionally pins KE_VULKAN_DEVICE=llvmpipe (decision V-G2), for the reason the Windows leg pins
 #     its adapter: the loader-level ICD pin has needed repairing before when a runner image moved the
 #     manifest, and an unpinned physical-device selection could then land on something else entirely without
@@ -200,6 +201,11 @@
 #     does not ride that accident: it pins KE_D3D11_ADAPTER=warp (decision G2), so a runner image that
 #     grows a paravirtual adapter cannot silently change the rasterizer under the golden gate. The variable
 #     is read only by the native backend's adapter selection.
+#
+# Job setup: every matrix job and the sync job restore the NuGet global packages folder from the Actions
+# cache before `dotnet restore`, and each leg's primary entry saves it. KhaozEngine packages are excluded
+# from the cache because a same-version re-pack would otherwise restore stale engine bytes (the restore step
+# in the matrix job carries the reasoning). Build outputs are never cached.
 #
 # The headless golden tests use Render2D/3D Snapshot -> CreateHeadless (offscreen, NO window), so SDL2 is
 # NOT required here (only the Vulkan/D3D11/Metal runtime plus a (software) rasterizer where there is no real
@@ -807,8 +813,48 @@ jobs:
       - run: mkdir -p local-feed
         shell: bash
 
+      # ON WINDOWS THE NUGET GLOBAL PACKAGES FOLDER IS CACHED, AND KHAOZENGINE PACKAGES NEVER ARE. Restore was
+      # 55 to 92 s on every Windows job and 14 to 21 s on Linux and macOS (run 39022823501), repeated on every
+      # shard. Measured warm (run 39031351066), the cache cut Windows to 27 s of cache restore plus 15 s of
+      # restore, but cost Linux 8 + 14 s and macOS 17 + 13 s, slower than restoring from nuget.org there. So
+      # only Windows jobs use it. Every Windows job restores the cache, and only the leg's `primary` entry saves
+      # it, right after `dotnet restore`, so seven shards never race to write the same key and a red suite still
+      # leaves a warm cache. The key is the OS plus every file that can change the restore graph: the csproj
+      # files, the props and targets files that carry central versions and PackageReference items, and
+      # nuget.config. A key miss falls back to the newest cache for the OS and restore tops it up.
+      #
+      # `khaozengine.*` is excluded from both the cached and the restored paths, and the exclusion is the
+      # same-version re-pack rule rather than tidiness. A KhaozEngine version can be packed again with new
+      # bytes under the same number (scripts/pack-local-feed.sh refreshes the current version in place), and
+      # NuGet trusts any extracted folder whose id and version match, so a cached copy would be restored in
+      # place of the re-pack and the run would test stale engine bytes while reporting the right version.
+      # Nothing in this workflow restores a KhaozEngine package today: every engine edge in KhaozEngine.slnx is
+      # a ProjectReference, local-feed is created empty, the GitHub Packages source is mapped to KhaozEngine.*
+      # alone and no job runs `dotnet tool restore`. The exclusion keeps that true if one ever appears.
+      - name: Restore the NuGet package cache
+        id: nuget-cache
+        if: runner.os == 'Windows'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.nuget/packages
+            !~/.nuget/packages/khaozengine.*
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/*.props', '**/*.targets', 'nuget.config', 'global.json') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
       - run: dotnet restore
 
+      - name: Save the NuGet package cache
+        if: runner.os == 'Windows' && matrix.primary == '1' && steps.nuget-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.nuget/packages
+            !~/.nuget/packages/khaozengine.*
+          key: ${{ steps.nuget-cache.outputs.cache-primary-key }}
+
+      # Build outputs are not cached: obj and bin are what this job exists to produce from the commit under test.
       - run: dotnet build -c Release --no-restore
 
       # TRIPWIRE for the Linux native load path. Silk.NET resolves its natives through its OWN path resolver,
@@ -831,6 +877,10 @@ jobs:
       # drifts across Ubuntu runner images, so DISCOVER it rather than hardcoding (the old hardcoded
       # /usr/share/vulkan/icd.d/lvp_icd.x86_64.json went missing and gave "Found no drivers!"). Dump what the
       # package shipped so a future drift is diagnosable from the log.
+      #
+      # The install is not cached. Measured in run 39022823501 it is about 10 s: apt-get update 5 s, a 0.6 s
+      # download of 17.8 MB and 3.5 s to unpack and set up. Caching the .deb archives would save the 0.6 s and
+      # add a cache step of its own, and the unpack and the index refresh would still run.
       - name: Install software Vulkan (lavapipe)
         if: matrix.os == 'ubuntu-latest'
         run: |
@@ -842,14 +892,17 @@ jobs:
           echo "--- ICD manifests on disk ---"
           ls -la /usr/share/vulkan/icd.d/ /etc/vulkan/icd.d/ 2>/dev/null || true
 
+      # The manifest is looked up in the package's own file list. A `find /usr /etc` walk of the hosted image
+      # found the same file and took 50 to 116 s per job (run 39022823501). The name still is not hardcoded,
+      # and a package that ships no lvp manifest still fails the job with the manifests it did ship.
       - name: Point Vulkan loader at lavapipe
         if: matrix.os == 'ubuntu-latest'
         run: |
           set -x
-          icd=$(find /usr /etc -name 'lvp_icd*.json' 2>/dev/null | head -1)
-          if [ -z "$icd" ]; then
-            echo "::error::lavapipe ICD manifest not found after installing mesa-vulkan-drivers"
-            find /usr /etc -name '*_icd*.json' 2>/dev/null || true
+          icd=$(dpkg -L mesa-vulkan-drivers | grep -E '/lvp_icd[^/]*\.json$' | head -1)
+          if [ -z "$icd" ] || [ ! -f "$icd" ]; then
+            echo "::error::lavapipe ICD manifest not found in the mesa-vulkan-drivers file list"
+            dpkg -L mesa-vulkan-drivers | grep -E '_icd[^/]*\.json$' || true
             exit 1
           fi
           echo "lavapipe ICD: $icd"; cat "$icd" || true
@@ -1736,11 +1789,12 @@ jobs:
       - run: mkdir -p local-feed
         shell: bash
 
+      # No NuGet cache on Linux: restoring it measured slower than restoring from nuget.org (see the matrix job).
       - run: dotnet restore
 
       - run: dotnet build -c Release --no-restore
 
-      # The same lavapipe install and the same runtime ICD discovery as the matrix job, for the same reasons.
+      # The same lavapipe install and the same ICD lookup as the matrix job, for the same reasons.
       - name: Install software Vulkan (lavapipe)
         run: |
           set -x
@@ -1752,10 +1806,10 @@ jobs:
       - name: Point Vulkan loader at lavapipe
         run: |
           set -x
-          icd=$(find /usr /etc -name 'lvp_icd*.json' 2>/dev/null | head -1)
-          if [ -z "$icd" ]; then
-            echo "::error::lavapipe ICD manifest not found after installing mesa-vulkan-drivers"
-            find /usr /etc -name '*_icd*.json' 2>/dev/null || true
+          icd=$(dpkg -L mesa-vulkan-drivers | grep -E '/lvp_icd[^/]*\.json$' | head -1)
+          if [ -z "$icd" ] || [ ! -f "$icd" ]; then
+            echo "::error::lavapipe ICD manifest not found in the mesa-vulkan-drivers file list"
+            dpkg -L mesa-vulkan-drivers | grep -E '_icd[^/]*\.json$' || true
             exit 1
           fi
           echo "lavapipe ICD: $icd"

@@ -34,6 +34,11 @@ can absorb another contributor's staged files. Never use the shared stash for wo
   `DisableParallelization = true`. The collection name alone only serializes members of that named
   collection against one another. Existing patterns include `gui-theme-global`, `ClipboardSerial`,
   `LoggingSerial`, `AmbientLocalization`, `AllocSensitive` and `NativeDeviceLifecycle`.
+- A new allocation assertion measures through `AllocationRegion` or `AllocationMeasurement` from
+  `test-shared`. Its project imports `test-shared/AllocationMeasurement.props`, which also runs the
+  assembly under `SerializedReportingTestFramework`, and the test joins a collection whose definition
+  sets `DisableParallelization = true`. The region refuses to start in a collection that runs beside
+  others. See [`test-shared/README.md`](../test-shared/README.md).
 - A GPU test class that captures more than a few images shares one lazily created `Scene3D` through a
   class fixture. It also carries a parity test that ages the shared scene through several
   configurations and compares it with a fresh snapshot scene. `OceanFocusScene` is the reference.
@@ -91,8 +96,12 @@ Warnings are errors in every configuration. Fix warnings at the source. Do not a
 suppression or disable `TreatWarningsAsErrors`. The standing XML documentation suppression is the
 narrow exception.
 
-Ordinary pushes and pull requests run `scripts/ci-selective-test.sh`. Tag pushes and manual runs use
-the full restore, Release build, test, determinism and pack path, and only tag pushes publish.
+Ordinary pushes and pull requests run `scripts/ci-selective-test.sh`. Manual runs use the full
+restore, Release build, test, determinism and pack path plus the three SQL Server jobs, and never
+publish. A tag push reuses the hosted pre-tag gate when `scripts/ci-prior-gate.sh` finds a successful
+manual run of `ci` at the tag's exact commit. It then restores, builds, packs and publishes, skips the
+full test, the determinism pass and the SQL Server jobs, and cites the reused run's URL. Without such a
+run, or on any lookup doubt, the tag runs the whole manual path and publishes. Only tag pushes publish.
 Convention, instruction budget and doc-version checks run before both paths. See
 [`design/CI-SELECTIVE-TESTS-DESIGN-2026-07-18.md`](design/CI-SELECTIVE-TESTS-DESIGN-2026-07-18.md).
 
@@ -167,8 +176,13 @@ branched before the lock landed lacks the guard until it merges `main`, which is
 every session in writing as well.
 
 The pre-tag gate is hosted. Dispatch `ci` and `cross-platform-gpu` on `main` at the release commit and
-wait for both. The `ci` dispatch runs the full restore, build, test, determinism pass and pack without
-publishing. The `cross-platform-gpu` dispatch with default inputs runs the full suite on every backend.
+wait for both. The `ci` dispatch runs the full restore, build, test, determinism pass, pack and SQL
+Server jobs without publishing. The `cross-platform-gpu` dispatch with default inputs runs the full
+suite on every backend. Tag that same commit. The tag run finds the successful `ci` dispatch through
+`scripts/ci-prior-gate.sh`, skips the tests it already passed, then packs and publishes. The tag run's
+`prior-gate` job logs the reused run's URL, which the release report cites as the test evidence beside
+the tag run itself. A tag run that logs no reuse ran the full suite again, which is correct but means
+the gate dispatch was missing, red or at another commit.
 Locally run only the whole-tree guards and `scripts/pack-local-feed.sh`. Do not repeat the full suite
 on the dev Mac. A push to `main` cancels an in-flight `ci` dispatch because both share the `ci`
 concurrency group for `main`, and the release lock prevents that push. The `cross-platform-gpu`

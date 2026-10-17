@@ -5,6 +5,48 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.3.1
+
+- `PersistenceQueue` in `KhaozEngine.Persistence` gains an internal drain scheduling seam for tests. Public
+  behaviour is unchanged. The tracked persistence tests now hold every controlled pause on test-owned threads,
+  which ends their intermittent watchdog failures on loaded hosted runners (#1317).
+- `EditorDocument` in `KhaozEngine.MapEditor` counts reads of `Doc` internally, so the viewport pick linearity
+  test asserts a constant read count per pick instead of a wall-clock bound (#1444). Public behaviour is
+  unchanged.
+- The `ke-tileedit` MCP adapter now drops a queued tool call as soon as it reads that call's cancellation from
+  the transport, under the same lock that releases the next call. A call cancelled while queued never starts
+  and gets no response, whatever order the thread pool runs the SDK's handlers in (#1443). A malformed or
+  unknown cancellation is ignored and leaves the session serving calls.
+
+## 21.3.0
+
+- Add `WindowStack` to `KhaozEngine.Gui` for overlapping non-modal windows. Windows implement `IStackWindow`
+  and live in `WindowBand.Docked`, `Floating` or `Topmost`. The stack raises a window when it opens or is
+  pressed, updates open windows top to bottom with every window above occluded, and draws them bottom to top.
+  `WindowUpdate` hands each window its pointer, input, `ReceivesInput` and `IsFront`. `CloseFront` closes the
+  top-most window that closes on Escape and `Covers` reports whether an open window lies under a point.
+  `IsCapturing` reports whether the last update ran in capture mode, so a consumer can leave Escape to the
+  captor's popup.
+- A window that opens while the left button is held rises only after the release frame, so that release's
+  taps and drops resolve against the order the player saw.
+- A window that closes during its own update still occludes for that frame and is not drawn. No press raises
+  a window while another window captures the pointer, while the other button is held or on a frame that
+  receives no input. `Draw` mirrors the last update's capture and no-input occlusion, skips windows removed
+  mid-frame and clears occlusion when it finishes, so tooltips and menus drawn afterwards stay live.
+- Add opt-in `Pointer` occlusion with `Occlude`, `OccludeAll`, `IsOccluded` and `ClearOcclusion`. Every hit
+  query misses when its test point is occluded, and `IsReleasedOutside` counts an occluded release as
+  outside. Occlusion clears on every `Pointer.Update`. With nothing occluded every query behaves as in 21.1.0.
+- Add `Pointer.IsRightPressOriginFresh`, the right-button twin of `IsPressOriginFresh`, a same-frame right tap
+  included.
+- `WindowDrag` now latches its grab through `Pointer.IsDragStartIn`, so an occluded press origin never grabs
+  and on a `WindowStack` only the front window under a press can move. Windows without a stack still need
+  their caller to order them. A single window behaves as before.
+- `SlotGrid` drops, `GuiDragContext.OfferTargetIn`, `TreeView` drop positions, `ScrollablePanel` drag edge
+  scroll, `PropertyGrid` hover, `WorldMapView` hover, `GuiSurface.HoverCaptured` and `PointerCaptured`,
+  `ScreenStack.PressBeganOverUi`, `PannableCanvas.TryGetTap`, `PanZoomController` admission and taps, and
+  `DraggableBottomSheet` presses now honour occlusion. Their behaviour with nothing occluded is unchanged. See the
+  [design record](docs/design/WINDOW-STACK-DESIGN-2026-10-16.md).
+
 ## 21.2.0
 
 - Add an optional `clearance` block to the tile world manifest, held as `TileWorldDocument.Clearance`

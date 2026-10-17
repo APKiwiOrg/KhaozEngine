@@ -1,9 +1,10 @@
 # Hosted support cost verdict for #1334, SG-12 phase 2
 
-**Verdict: FAIL.** Ordinary median rows pass **133 of 139** and reject **6**. Five oracle-correct envelope rows
+**Verdict: FAIL.** Ordinary median rows pass **128 of 139** and reject **11**. Five oracle-correct envelope rows
 count as neither. The 90 dense rows carry no time verdict under SC-1 and pass allocation in every iteration.
-All 18 ordinary E/L rows pass under SC-18. Four Finds and two hidden-crate substeps exceed their unchanged
-SG-12 time limits. The #1334 ordinary gate does not pass and #1334 stays open.
+All 11 ordinary E rows pass under SC-18. Four Finds, two hidden-crate substeps and five dry ticks exceed their
+unchanged SG-12 time limits. The owner's scope ruling changed the L classification. Saved supported legacy
+outcomes retain the relative term, and legacy geometry disagreement is informational. #1334 stays open.
 
 ## Run identity
 
@@ -15,8 +16,8 @@ SG-12 time limits. The #1334 ordinary gate does not pass and #1334 stays open.
   `5db229087`, the phase 2 implementation. A diff of `KhaozEngine.Locomotion`, `KhaozEngine.Physics.Bepu`
   and `KhaozEngine.Game.Tests/Locomotion/Contacts` between those commits is empty. The intervening work is bug reports.
 - Recorded source baseline `06b734c5722bc2cc95cea459255d6ec93e9236c7`.
-- Evaluation code `b547cf342` on `fix/support-cost-hosted3`, including the committed reference `5627c3c7e`
-  and the SC-18 verdict implementation.
+- Evaluation code `7873d7f7d` on `fix/support-cost-hosted3`, correcting `b547cf342` under the owner's
+  SC-18 scope ruling after the spec amendment `d28d2d569`. The committed reference remains `5627c3c7e`.
 - GitHub-hosted AMD EPYC 9V74 80-Core Processor, X64, Ubuntu 26.04.1 LTS, .NET 10.0.13.
   The previous run used an AMD EPYC 7763. Cross-run time differences include both code and hardware effects,
   with the approved SC-2 normalization applied independently to each iteration.
@@ -56,11 +57,25 @@ SG-12 time limits. The #1334 ordinary gate does not pass and #1334 stays open.
 
 ## SC-18 deterministic bound
 
-An L row has unsuccessful legacy geometry and uses only the absolute tick ceiling. An E row is outside the
-comparable moving single-mode envelope and uses the absolute tick ceiling plus the deterministic count bound.
-Both remain ordinary rows in the 139-row gate. The separate five SC-3 envelope rows count as neither.
-Missing pairs, malformed legacy timing, candidate geometry, first-use geometry, oracle agreement, refusal
-and warm allocation preconditions retain their existing behavior. Comparable rows retain the relative term.
+The owner's scope ruling on 2026-10-18 changed the L classification. Only a paired legacy sample whose saved
+`Outcome` is `None` or `Airborne` loses the relative term on an otherwise comparable tick. `GeometryPassed`
+and `GeometryMatchesOracle` do not determine that classification. The evaluator never reconstructs support
+from `EndState`. A supported legacy tick retains the relative term even when its geometry disagrees with
+the oracle. The old L code for that disagreement is informational and cannot reject the candidate by itself.
+The failure code L still rejects malformed legacy timing.
+
+All 16 comparable whole ticks here have saved legacy `Outcome="Grounded"`, including sphere and capsule.
+For all seven previously L-only dry ticks, every artifact also saves `EndState.Grounded=true`,
+`EndState.SupportGranted=true` and empty `SupportReads`, with no saved final support status. These fields
+are provenance, not a support reconstruction. None of these rows is a no-support row, so no row receives
+the no-support L basis. Sphere and capsule pass against their relative limits. The three stairs, hidden crate
+and pushed seat dry ticks fail those limits on time.
+
+An E row is outside the comparable moving single-mode envelope and retains the absolute tick ceiling plus
+the deterministic count bound. All 11 E rows remain ordinary rows in the 139-row gate. Their eligibility,
+limits and bounds are unchanged. The separate five SC-3 envelope rows count as neither. Missing pairs,
+malformed legacy timing, candidate geometry, first-use geometry, oracle agreement, refusal and warm
+allocation preconditions retain their existing behavior.
 
 `SupportCostTickBound.For` derives the bounds from controller constants, never from observed maxima. The
 constants keep their values and are exposed internally for this derivation.
@@ -95,7 +110,7 @@ Both add `(1+2*(R+1))*Q` for explicit segment resolution.
 | Explicit | 16384 | 1196071 | 66904178 | 71172462 |
 
 The Substeps field counts ground and slide substeps. Air/water work is separately included in the query caps.
-All four gated counts must be nonnegative and at most their cap. L-only rows have no new count precondition.
+All four gated counts must be nonnegative and at most their cap. No-support rows have no new count precondition.
 Tests exercise each cap and one above it, negative counts, absolute time at and above its scaled ceiling,
 retained preconditions, and the unchanged comparable legacy-relative ceiling.
 
@@ -103,31 +118,31 @@ retained preconditions, and the unchanged comparable legacy-relative ceiling.
 
 k ranges **1.216746 to 1.241518**, median **1.225143**.
 Lower quartiles range 1.127964 to 1.150942, upper quartiles 1.350494 to 1.401895.
-All iterations reject the same six median-failing rows. Iterations 4, 5 and 16 also reject the flat-mesh dry
+All iterations reject the same 11 median-failing rows. Iterations 4, 5 and 16 also reject the flat-mesh dry
 tick, which passes in the other 17 iterations. Its median is within 10 percent of its limit.
 
 | Iteration | k | Rows | Lower quartile | Upper quartile | Ordinary pass | Ordinary reject | Envelope |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1 | 1.225076 | 55 | 1.143420 | 1.373228 | 133 | 6 | 5 |
-| 2 | 1.221934 | 55 | 1.143030 | 1.358211 | 133 | 6 | 5 |
-| 3 | 1.223828 | 55 | 1.139549 | 1.383139 | 133 | 6 | 5 |
-| 4 | 1.225200 | 55 | 1.144571 | 1.375655 | 132 | 7 | 5 |
-| 5 | 1.238323 | 55 | 1.142799 | 1.361116 | 132 | 7 | 5 |
-| 6 | 1.224213 | 55 | 1.135338 | 1.368396 | 133 | 6 | 5 |
-| 7 | 1.228480 | 55 | 1.136232 | 1.368907 | 133 | 6 | 5 |
-| 8 | 1.241518 | 55 | 1.137856 | 1.379564 | 133 | 6 | 5 |
-| 9 | 1.237261 | 55 | 1.148259 | 1.381069 | 133 | 6 | 5 |
-| 10 | 1.227153 | 55 | 1.131996 | 1.350494 | 133 | 6 | 5 |
-| 11 | 1.223147 | 55 | 1.133801 | 1.359187 | 133 | 6 | 5 |
-| 12 | 1.225143 | 55 | 1.138857 | 1.367604 | 133 | 6 | 5 |
-| 13 | 1.240413 | 55 | 1.142977 | 1.387966 | 133 | 6 | 5 |
-| 14 | 1.226237 | 55 | 1.133318 | 1.366812 | 133 | 6 | 5 |
-| 15 | 1.225143 | 55 | 1.150942 | 1.363776 | 133 | 6 | 5 |
-| 16 | 1.216746 | 55 | 1.142150 | 1.356845 | 132 | 7 | 5 |
-| 17 | 1.225032 | 55 | 1.144873 | 1.401895 | 133 | 6 | 5 |
-| 18 | 1.224917 | 55 | 1.127964 | 1.385079 | 133 | 6 | 5 |
-| 19 | 1.219568 | 55 | 1.131241 | 1.368428 | 133 | 6 | 5 |
-| 20 | 1.236571 | 55 | 1.133542 | 1.364322 | 133 | 6 | 5 |
+| 1 | 1.225076 | 55 | 1.143420 | 1.373228 | 128 | 11 | 5 |
+| 2 | 1.221934 | 55 | 1.143030 | 1.358211 | 128 | 11 | 5 |
+| 3 | 1.223828 | 55 | 1.139549 | 1.383139 | 128 | 11 | 5 |
+| 4 | 1.225200 | 55 | 1.144571 | 1.375655 | 127 | 12 | 5 |
+| 5 | 1.238323 | 55 | 1.142799 | 1.361116 | 127 | 12 | 5 |
+| 6 | 1.224213 | 55 | 1.135338 | 1.368396 | 128 | 11 | 5 |
+| 7 | 1.228480 | 55 | 1.136232 | 1.368907 | 128 | 11 | 5 |
+| 8 | 1.241518 | 55 | 1.137856 | 1.379564 | 128 | 11 | 5 |
+| 9 | 1.237261 | 55 | 1.148259 | 1.381069 | 128 | 11 | 5 |
+| 10 | 1.227153 | 55 | 1.131996 | 1.350494 | 128 | 11 | 5 |
+| 11 | 1.223147 | 55 | 1.133801 | 1.359187 | 128 | 11 | 5 |
+| 12 | 1.225143 | 55 | 1.138857 | 1.367604 | 128 | 11 | 5 |
+| 13 | 1.240413 | 55 | 1.142977 | 1.387966 | 128 | 11 | 5 |
+| 14 | 1.226237 | 55 | 1.133318 | 1.366812 | 128 | 11 | 5 |
+| 15 | 1.225143 | 55 | 1.150942 | 1.363776 | 128 | 11 | 5 |
+| 16 | 1.216746 | 55 | 1.142150 | 1.356845 | 127 | 12 | 5 |
+| 17 | 1.225032 | 55 | 1.144873 | 1.401895 | 128 | 11 | 5 |
+| 18 | 1.224917 | 55 | 1.127964 | 1.385079 | 128 | 11 | 5 |
+| 19 | 1.219568 | 55 | 1.131241 | 1.368428 | 128 | 11 | 5 |
+| 20 | 1.236571 | 55 | 1.133542 | 1.364322 | 128 | 11 | 5 |
 
 ### Input identities
 
@@ -156,19 +171,20 @@ tick, which passes in the other 17 iterations. Its median is within 10 percent o
 
 ## Ordinary per-row verdicts
 
-Median rows: **133 pass, 6 reject, 5 envelope**. There are 121 comparable ordinary rows and 18 E/L ordinary rows.
+Median rows: **128 pass, 11 reject, 5 envelope**. There are 128 comparable ordinary rows and 11 E ordinary rows.
 
 | Family | Rows | Pass | Reject | Median C / limit |
 | --- | ---: | ---: | ---: | ---: |
 | Find | 25 | 21 | 4 | 0.288 |
 | Substep | 87 | 85 | 2 | 0.072 |
-| Whole tick | 27 | 27 | 0 | 0.111 |
+| Whole tick | 27 | 22 | 5 | 0.395 |
 
 `B0` and `B1` are `GroundSubstep/GroundTickBorrowed/0` and `/1`. `D0` and `D1` are
 `GroundSubstep/DryTick/0` and `/1`. `E0` and `E1` are `GroundSubstep/ExplicitTick/0` and `/1`.
 `Dry` and `Explicit` are acquired whole ticks. `T` exceeds time, `G` fails geometry/oracle/refusal,
 `E` exceeds the deterministic bound for an ordinary incomparable tick, `L` has malformed legacy timing,
-and `A` fails allocation. The E/L Basis column below identifies SC-18 classification, not failure codes.
+and `A` fails allocation. Historical L for legacy geometry disagreement is informational only. The E/L Basis
+column below identifies the absolute-only SC-18 classification, not failure codes.
 `Pass/20` counts the iterations whose own row passed.
 
 ### Find
@@ -295,44 +311,45 @@ and `A` fails allocation. The E/L Basis column below identifies SC-18 classifica
 
 ### Comparable whole ticks
 
-| Scene | Operation | Median C | Median L | Limit | C / limit | Verdict | Pass/20 |
-| --- | --- | ---: | ---: | ---: | ---: | --- | ---: |
-| flat box | Dry | 45.269 | 6.590 | 106.590 | 0.425 | PASS | 20 |
-| flat hull | Dry | 55.054 | 11.951 | 111.951 | 0.492 | PASS | 20 |
-| flat mesh | Dry | 108.496 | 14.151 | 114.151 | 0.950 | PASS | 17 |
-| analytic only | Dry | 11.192 | 1.057 | 101.057 | 0.111 | PASS | 20 |
-| analytic plus props | Dry | 44.540 | 4.711 | 104.711 | 0.425 | PASS | 20 |
-| cylinder | Dry | 55.590 | 7.166 | 107.166 | 0.519 | PASS | 20 |
-| stacked irrelevant layers | Dry | 44.426 | 9.375 | 109.375 | 0.406 | PASS | 20 |
-| initial | Dry | 44.235 | 6.175 | 106.175 | 0.417 | PASS | 20 |
-| wall retry | Dry | 17.761 | 1.008 | 101.008 | 0.176 | PASS | 20 |
+| Scene | Operation | Median C | Median L | Limit | C / limit | Verdict | Pass/20 | Saved legacy outcome | Legacy geometry |
+| --- | --- | ---: | ---: | ---: | ---: | --- | ---: | --- | --- |
+| flat box | Dry | 45.269 | 6.590 | 106.590 | 0.425 | PASS | 20 | Grounded | pass |
+| stairs box | Dry | 138.418 | 11.315 | 111.315 | 1.243 | FAIL T | 0 | Grounded | L (informational) |
+| flat hull | Dry | 55.054 | 11.951 | 111.951 | 0.492 | PASS | 20 | Grounded | pass |
+| stairs hull | Dry | 149.304 | 18.614 | 118.614 | 1.259 | FAIL T | 0 | Grounded | L (informational) |
+| flat mesh | Dry | 108.496 | 14.151 | 114.151 | 0.950 | PASS | 17 | Grounded | pass |
+| stairs mesh | Dry | 179.567 | 22.123 | 122.123 | 1.470 | FAIL T | 0 | Grounded | L (informational) |
+| analytic only | Dry | 11.192 | 1.057 | 101.057 | 0.111 | PASS | 20 | Grounded | pass |
+| analytic plus props | Dry | 44.540 | 4.711 | 104.711 | 0.425 | PASS | 20 | Grounded | pass |
+| hidden crate | Dry | 517.722 | 11.741 | 111.741 | 4.633 | FAIL T | 0 | Grounded | L (informational) |
+| sphere | Dry | 41.170 | 4.135 | 104.135 | 0.395 | PASS | 20 | Grounded | L (informational) |
+| capsule | Dry | 49.884 | 4.416 | 104.416 | 0.478 | PASS | 20 | Grounded | L (informational) |
+| cylinder | Dry | 55.590 | 7.166 | 107.166 | 0.519 | PASS | 20 | Grounded | pass |
+| stacked irrelevant layers | Dry | 44.426 | 9.375 | 109.375 | 0.406 | PASS | 20 | Grounded | pass |
+| initial | Dry | 44.235 | 6.175 | 106.175 | 0.417 | PASS | 20 | Grounded | pass |
+| wall retry | Dry | 17.761 | 1.008 | 101.008 | 0.176 | PASS | 20 | Grounded | pass |
+| pushed seat | Dry | 211.430 | 24.626 | 124.626 | 1.697 | FAIL T | 0 | Grounded | L (informational) |
 
 ## E and L rows
 
-All 18 pass in all 20 iterations. Every absolute tick limit is 1000 M2-equivalent us, or `1000*k` hosted us.
-`n/a` means SC-18 applies only the absolute limit to an L-only row. E rows additionally enforce the shown caps.
-The count cells show the full observed minimum and maximum over the 20 runs.
+All 11 E rows pass in all 20 iterations. No row receives the no-support L basis. Every absolute tick limit
+is 1000 M2-equivalent us, or `1000*k` hosted us. E rows additionally enforce the shown caps.
+The count cells show the full observed minimum and maximum over the 20 runs. Historical L notes remain
+informational in the last column. The seven supported dry ticks are in the comparable whole-tick table.
 
-| E/L scene | Operation | Basis | Median C | Absolute limit | Substeps / cap | Find / cap | Sweeps / cap | Penetrations / cap | Bound | Verdict | Pass/20 |
-| --- | --- | --- | ---: | ---: | --- | --- | --- | --- | --- | --- | ---: |
-| stairs box | Dry | L | 138.418 | 1000.000 | 2 to 2 / n/a | 3 to 3 / n/a | 3 to 3 / n/a | 3 to 3 / n/a | not required | PASS | 20 |
-| stairs hull | Dry | L | 149.304 | 1000.000 | 2 to 2 / n/a | 3 to 3 / n/a | 3 to 3 / n/a | 3 to 3 / n/a | not required | PASS | 20 |
-| stairs mesh | Dry | L | 179.567 | 1000.000 | 2 to 2 / n/a | 3 to 3 / n/a | 3 to 3 / n/a | 3 to 3 / n/a | not required | PASS | 20 |
-| hidden crate | Dry | L | 517.722 | 1000.000 | 2 to 2 / n/a | 6 to 6 / n/a | 3 to 3 / n/a | 3 to 3 / n/a | not required | PASS | 20 |
-| sphere | Dry | L | 41.170 | 1000.000 | 2 to 2 / n/a | 3 to 3 / n/a | 3 to 3 / n/a | 3 to 3 / n/a | not required | PASS | 20 |
-| capsule | Dry | L | 49.884 | 1000.000 | 2 to 2 / n/a | 3 to 3 / n/a | 3 to 3 / n/a | 3 to 3 / n/a | not required | PASS | 20 |
-| stationary | Dry | E | 15.010 | 1000.000 | 0 to 0 / 16384 | 1 to 1 / 147495 | 0 to 0 / 745568 | 1 to 1 / 598138 | PASS | PASS | 20 |
-| pushed seat | Dry | L | 211.430 | 1000.000 | 2 to 2 / n/a | 7 to 7 / n/a | 3 to 3 / n/a | 4 to 4 / n/a | not required | PASS | 20 |
-| descending landing | Dry | E | 64.426 | 1000.000 | 1 to 1 / 16384 | 5 to 5 / 147495 | 4 to 4 / 745568 | 4 to 4 / 598138 | PASS | PASS | 20 |
-| explicit entry | Explicit | E,L | 45.598 | 1000.000 | 2 to 2 / 16384 | 4 to 4 / 1196071 | 6 to 6 / 66904178 | 6 to 6 / 71172462 | PASS | PASS | 20 |
-| explicit rounding handoff | Explicit | E | 64.178 | 1000.000 | 1 to 1 / 16384 | 6 to 6 / 1196071 | 8 to 8 / 66904178 | 8 to 8 / 71172462 | PASS | PASS | 20 |
-| explicit changed-axis rounding | Explicit | E,L | 67.958 | 1000.000 | 0 to 0 / 16384 | 7 to 7 / 1196071 | 8 to 8 / 66904178 | 6 to 6 / 71172462 | PASS | PASS | 20 |
-| explicit wade | Explicit | E,L | 32.313 | 1000.000 | 1 to 1 / 16384 | 3 to 3 / 1196071 | 4 to 4 / 66904178 | 4 to 4 / 71172462 | PASS | PASS | 20 |
-| explicit swim | Explicit | E | 27.870 | 1000.000 | 0 to 0 / 16384 | 3 to 3 / 1196071 | 2 to 2 / 66904178 | 2 to 2 / 71172462 | PASS | PASS | 20 |
-| explicit medium descent retry | Explicit | E,L | 64.978 | 1000.000 | 2 to 2 / 16384 | 6 to 6 / 1196071 | 10 to 10 / 66904178 | 6 to 6 / 71172462 | PASS | PASS | 20 |
-| explicit dry swim handoff | Explicit | E,L | 40.032 | 1000.000 | 1 to 1 / 16384 | 3 to 3 / 1196071 | 6 to 6 / 66904178 | 6 to 6 / 71172462 | PASS | PASS | 20 |
-| explicit dry wade handoff | Explicit | E,L | 45.088 | 1000.000 | 2 to 2 / 16384 | 4 to 4 / 1196071 | 6 to 6 / 66904178 | 6 to 6 / 71172462 | PASS | PASS | 20 |
-| final clamp | Dry | E | 30.182 | 1000.000 | 1 to 1 / 16384 | 2 to 2 / 147495 | 2 to 2 / 745568 | 2 to 2 / 598138 | PASS | PASS | 20 |
+| E/L scene | Operation | Basis | Median C | Absolute limit | Substeps / cap | Find / cap | Sweeps / cap | Penetrations / cap | Bound | Verdict | Pass/20 | Saved legacy outcome | Legacy geometry |
+| --- | --- | --- | ---: | ---: | --- | --- | --- | --- | --- | --- | ---: | --- | --- |
+| stationary | Dry | E | 15.010 | 1000.000 | 0 to 0 / 16384 | 1 to 1 / 147495 | 0 to 0 / 745568 | 1 to 1 / 598138 | PASS | PASS | 20 | Grounded | pass |
+| descending landing | Dry | E | 64.426 | 1000.000 | 1 to 1 / 16384 | 5 to 5 / 147495 | 4 to 4 / 745568 | 4 to 4 / 598138 | PASS | PASS | 20 | Grounded | pass |
+| explicit entry | Explicit | E | 45.598 | 1000.000 | 2 to 2 / 16384 | 4 to 4 / 1196071 | 6 to 6 / 66904178 | 6 to 6 / 71172462 | PASS | PASS | 20 | Grounded | L (informational) |
+| explicit rounding handoff | Explicit | E | 64.178 | 1000.000 | 1 to 1 / 16384 | 6 to 6 / 1196071 | 8 to 8 / 66904178 | 8 to 8 / 71172462 | PASS | PASS | 20 | Grounded | pass |
+| explicit changed-axis rounding | Explicit | E | 67.958 | 1000.000 | 0 to 0 / 16384 | 7 to 7 / 1196071 | 8 to 8 / 66904178 | 6 to 6 / 71172462 | PASS | PASS | 20 | Grounded | L (informational) |
+| explicit wade | Explicit | E | 32.313 | 1000.000 | 1 to 1 / 16384 | 3 to 3 / 1196071 | 4 to 4 / 66904178 | 4 to 4 / 71172462 | PASS | PASS | 20 | Grounded | L (informational) |
+| explicit swim | Explicit | E | 27.870 | 1000.000 | 0 to 0 / 16384 | 3 to 3 / 1196071 | 2 to 2 / 66904178 | 2 to 2 / 71172462 | PASS | PASS | 20 | Airborne | pass |
+| explicit medium descent retry | Explicit | E | 64.978 | 1000.000 | 2 to 2 / 16384 | 6 to 6 / 1196071 | 10 to 10 / 66904178 | 6 to 6 / 71172462 | PASS | PASS | 20 | Grounded | L (informational) |
+| explicit dry swim handoff | Explicit | E | 40.032 | 1000.000 | 1 to 1 / 16384 | 3 to 3 / 1196071 | 6 to 6 / 66904178 | 6 to 6 / 71172462 | PASS | PASS | 20 | Grounded | L (informational) |
+| explicit dry wade handoff | Explicit | E | 45.088 | 1000.000 | 2 to 2 / 16384 | 4 to 4 / 1196071 | 6 to 6 / 66904178 | 6 to 6 / 71172462 | PASS | PASS | 20 | Grounded | L (informational) |
+| final clamp | Dry | E | 30.182 | 1000.000 | 1 to 1 / 16384 | 2 to 2 / 147495 | 2 to 2 / 745568 | 2 to 2 / 598138 | PASS | PASS | 20 | Grounded | pass |
 
 ### Full E/L timing and route envelope
 
@@ -341,14 +358,7 @@ All rows retain full states, support reads, cold allocation, scratch high-water 
 
 | Scene | Operation | Hosted warm us, min to max | Hosted first-use us, min to max | Warm bytes | Mode segments | Medium retries | G/S/A/W segments | Features | Raycasts |
 | --- | --- | --- | --- | ---: | --- | --- | --- | --- | --- |
-| stairs box | Dry | 166.402 to 186.833 | 1737.810 to 1937.003 | 64 | 1 | 0 | 1/0/0/0 | 3 | 0 |
-| stairs hull | Dry | 180.673 to 254.991 | 1554.774 to 1680.334 | 64 | 1 | 0 | 1/0/0/0 | 3 | 0 |
-| stairs mesh | Dry | 213.443 to 251.471 | 501.920 to 596.684 | 64 | 1 | 0 | 1/0/0/0 | 3 | 0 |
-| hidden crate | Dry | 626.679 to 657.105 | 2195.333 to 2359.602 | 64 | 1 | 0 | 1/0/0/0 | 6 | 0 |
-| sphere | Dry | 49.265 to 79.491 | 206.182 to 242.378 | 64 | 1 | 0 | 1/0/0/0 | 3 | 0 |
-| capsule | Dry | 59.480 to 76.285 | 215.346 to 246.985 | 64 | 1 | 0 | 1/0/0/0 | 3 | 0 |
 | stationary | Dry | 18.107 to 24.587 | 406.015 to 767.632 | 64 | 1 | 0 | 1/0/0/0 | 1 | 0 |
-| pushed seat | Dry | 251.971 to 290.230 | 2156.556 to 2325.410 | 64 | 1 | 0 | 1/0/0/0 | 6 | 0 |
 | descending landing | Dry | 78.279 to 100.402 | 10922.454 to 11506.359 | 64 | 2 | 0 | 1/0/1/0 | 5 | 0 |
 | explicit entry | Explicit | 54.933 to 80.673 | 86216.303 to 89034.182 | 312 | 1 | 0 | 1/0/0/0 | 3 | 0 |
 | explicit rounding handoff | Explicit | 77.237 to 94.703 | 5522.032 to 5730.656 | 312 | 2 | 0 | 1/0/0/1 | 6 | 0 |
@@ -359,6 +369,20 @@ All rows retain full states, support reads, cold allocation, scratch high-water 
 | explicit dry swim handoff | Explicit | 48.143 to 50.356 | 159.491 to 185.581 | 312 | 2 | 0 | 1/0/0/1 | 2 | 0 |
 | explicit dry wade handoff | Explicit | 54.102 to 70.647 | 161.715 to 229.607 | 312 | 1 | 0 | 1/0/0/0 | 3 | 0 |
 | final clamp | Dry | 36.285 to 50.537 | 2484.161 to 2733.438 | 64 | 1 | 0 | 1/0/0/0 | 2 | 0 |
+
+### Supported legacy dry-tick timing and route envelope
+
+These seven rows retain their full measured envelope here and use the relative limits above.
+
+| Scene | Operation | Hosted warm us, min to max | Hosted first-use us, min to max | Warm bytes | Mode segments | Medium retries | G/S/A/W segments | Features | Raycasts |
+| --- | --- | --- | --- | ---: | --- | --- | --- | --- | --- |
+| stairs box | Dry | 166.402 to 186.833 | 1737.810 to 1937.003 | 64 | 1 | 0 | 1/0/0/0 | 3 | 0 |
+| stairs hull | Dry | 180.673 to 254.991 | 1554.774 to 1680.334 | 64 | 1 | 0 | 1/0/0/0 | 3 | 0 |
+| stairs mesh | Dry | 213.443 to 251.471 | 501.920 to 596.684 | 64 | 1 | 0 | 1/0/0/0 | 3 | 0 |
+| hidden crate | Dry | 626.679 to 657.105 | 2195.333 to 2359.602 | 64 | 1 | 0 | 1/0/0/0 | 6 | 0 |
+| sphere | Dry | 49.265 to 79.491 | 206.182 to 242.378 | 64 | 1 | 0 | 1/0/0/0 | 3 | 0 |
+| capsule | Dry | 59.480 to 76.285 | 215.346 to 246.985 | 64 | 1 | 0 | 1/0/0/0 | 3 | 0 |
+| pushed seat | Dry | 251.971 to 290.230 | 2156.556 to 2325.410 | 64 | 1 | 0 | 1/0/0/0 | 6 | 0 |
 
 ## SC-3 envelope rows
 
@@ -472,7 +496,9 @@ under SC-1. SG-21 aggregate actor CPU remains a separate phase 6 gate.
 
 ## Borderline rows
 
-These median rows are within 10 percent of their binding time limit. The two rejected rows remain failures.
+These median rows are within 10 percent of their binding time limit after re-evaluation under the corrected
+saved-outcome classification. None of the five restored dry-tick rejects is within 10 percent. The two
+rejected substep rows below remain failures.
 The flat-mesh dry tick passes its median limit by 5.655 us and fails in 3 of 20 iterations. SG-24 requires
 a second approved proof before borderline acceptance. No such additional proof is part of this record.
 
@@ -485,15 +511,19 @@ a second approved proof before borderline acceptance. No such additional proof i
 ## Per-row comparison with 5c373abe9
 
 The original [5c373abe9 record](2026-10-17-support-cost-hosted-1334-option-c.md) is unchanged at 109 pass and
-30 reject. Re-evaluating its original 20 artifacts under SC-18 gives 125 pass and 14 reject. Only the 18
-previously E/L row codes change. Re-evaluating the corrected 376971dda artifacts likewise changes only those
-18 row codes, from 94 pass and 45 reject to 108 pass and 31 reject. Both data-only evaluator invocations passed.
-The committed regression tests independently check the corrected historical tables against their recorded
-geometry and verify that every non-E/L row retains its verdict code.
+30 reject. Re-evaluating its original 20 artifacts under the corrected SC-18 scope gives 122 pass and 17 reject.
+Only previously E/L row codes change. Re-evaluating the corrected 376971dda artifacts likewise changes only
+those row codes, from 94 pass and 45 reject to 105 pass and 34 reject. Both data-only evaluator invocations passed.
+The committed regression tests independently check the corrected historical tables against their saved samples
+and verify that every non-E/L row retains its verdict code.
 
-This run gains 24 passes against the original 5c373abe9 verdict, or 8 against its SC-18 re-evaluation,
-with no pass-to-reject change. Hidden-crate B1 and D1 still fail time after their geometry failures are removed.
-The table shows every ordinary row, with the original verdict and the SC-18 re-evaluation kept distinct.
+This run gains 19 passes against the original 5c373abe9 verdict, or 6 against its corrected SC-18 re-evaluation,
+with no pass-to-reject change. Hidden-crate B1 and D1 still fail time after their candidate geometry failures
+are removed. The three stairs, hidden crate and pushed seat dry ticks still fail time against the relative term.
+The original broader SC-18 interpretation gave 125 pass and 14 reject for 5c373abe9 and 133 pass and 6 reject
+for this run. The owner's scope ruling restores three stairs time rejects in the former and five dry-tick time
+rejects in the latter. Historical legacy-disagreement L codes are now informational in both re-evaluations.
+The table shows every ordinary row, with the original verdict and corrected SC-18 re-evaluation kept distinct.
 Both runs have the same five SC-3 envelope rows and 90 dense rows passing allocation.
 
 | Scene | Operation | 5c373abe9 C | Phase 2 C | Delta C | Original 5c373abe9 | 5c373abe9 with SC-18 | Phase 2 verdict |
@@ -619,14 +649,14 @@ Both runs have the same five SC-3 envelope rows and 90 dense rows passing alloca
 | explicit dry wade handoff | E1 | 13.415 | 12.820 | -0.595 | PASS | PASS | PASS |
 | final clamp | Find | 14.565 | 14.322 | -0.243 | PASS | PASS | PASS |
 | final clamp | D0 | 14.563 | 14.375 | -0.188 | PASS | PASS | PASS |
-| stairs box | Dry | 463.207 | 138.418 | -324.789 | FAIL T,L | PASS | PASS |
-| stairs hull | Dry | 487.902 | 149.304 | -338.598 | FAIL T,L | PASS | PASS |
-| stairs mesh | Dry | 514.786 | 179.567 | -335.219 | FAIL T,L | PASS | PASS |
-| hidden crate | Dry | 672.986 | 517.722 | -155.264 | FAIL T,G,L | FAIL G | PASS |
+| stairs box | Dry | 463.207 | 138.418 | -324.789 | FAIL T,L | FAIL T | FAIL T |
+| stairs hull | Dry | 487.902 | 149.304 | -338.598 | FAIL T,L | FAIL T | FAIL T |
+| stairs mesh | Dry | 514.786 | 179.567 | -335.219 | FAIL T,L | FAIL T | FAIL T |
+| hidden crate | Dry | 672.986 | 517.722 | -155.264 | FAIL T,G,L | FAIL T,G | FAIL T |
 | sphere | Dry | 42.671 | 41.170 | -1.501 | FAIL L | PASS | PASS |
 | capsule | Dry | 49.381 | 49.884 | 0.503 | FAIL L | PASS | PASS |
 | stationary | Dry | 15.669 | 15.010 | -0.659 | FAIL E | PASS | PASS |
-| pushed seat | Dry | 291.940 | 211.430 | -80.510 | FAIL T,G,L | FAIL G | PASS |
+| pushed seat | Dry | 291.940 | 211.430 | -80.510 | FAIL T,G,L | FAIL T,G | FAIL T |
 | descending landing | Dry | 66.026 | 64.426 | -1.600 | FAIL E | PASS | PASS |
 | explicit entry | Explicit | 52.962 | 45.598 | -7.364 | FAIL E,L | PASS | PASS |
 | explicit rounding handoff | Explicit | 72.092 | 64.178 | -7.914 | FAIL E | PASS | PASS |
@@ -640,21 +670,28 @@ Both runs have the same five SC-3 envelope rows and 90 dense rows passing alloca
 
 ## Disposition
 
-**The #1334 ordinary gate FAILS.** These six ordinary median rows exceed their time limit, and all six fail
+**The #1334 ordinary gate FAILS.** These 11 ordinary median rows exceed their time limit, and all 11 fail
 in every iteration. `Margin = Limit - C` is negative for each miss.
 
 | Scene | Full operation | Median C | Limit | Margin | Over limit |
 | --- | --- | ---: | ---: | ---: | ---: |
 | stairs box | `Find` | 60.042 | 50.000 | -10.042 | 20.084% |
+| stairs box | `DryTick` | 138.418 | 111.315 | -27.103 | 24.348% |
 | stairs hull | `Find` | 60.798 | 50.000 | -10.798 | 21.596% |
+| stairs hull | `DryTick` | 149.304 | 118.614 | -30.690 | 25.874% |
 | stairs mesh | `Find` | 65.754 | 50.000 | -15.754 | 31.508% |
+| stairs mesh | `DryTick` | 179.567 | 122.123 | -57.444 | 47.038% |
 | hidden crate | `Find` | 85.003 | 50.000 | -35.003 | 70.006% |
 | hidden crate | `GroundSubstep/GroundTickBorrowed/1` | 210.778 | 200.000 | -10.778 | 5.389% |
+| hidden crate | `DryTick` | 517.722 | 111.741 | -405.981 | 363.323% |
 | hidden crate | `GroundSubstep/DryTick/1` | 206.096 | 200.000 | -6.096 | 3.048% |
+| pushed seat | `DryTick` | 211.430 | 124.626 | -86.804 | 69.652% |
 
-SC-18 resolves the incomparable-row precondition failures without changing any time limit. It does not resolve
-these six time failures. #1334 remains open. The flat-mesh dry tick also retains its SG-24 borderline acceptance
-requirement. Dense time, SG-21 aggregate actor CPU and consumer adoption remain separate.
+The owner's SC-18 scope ruling keeps supported legacy comparisons, removes legacy geometry disagreement as
+an independent rejection and leaves E bounds unchanged. It does not resolve these 11 time failures. Sphere and
+capsule pass their relative limits, and no row uses the no-support L basis. #1334 remains open.
+The flat-mesh dry tick also retains its SG-24 borderline acceptance requirement. Dense time, SG-21 aggregate
+actor CPU and consumer adoption remain separate.
 
 ## Verification
 
@@ -662,15 +699,19 @@ requirement. Dense time, SG-21 aggregate actor CPU and consumer adoption remain 
   replacement reference passed one test, exit 0, in 56 s test duration and 58.671 s build-slot elapsed.
   `scripts/record-support-cost-exit.py` finalized its actual zero exit. The first reference is retained with
   its real `071f8440e` SHA, and the owner explicitly approved the replacement before it ran.
-- SC-18 RED proof failed 21 of 31 new cases against the old verdict, as expected. A historical expected-total
-  typo was traced to the 718.666 us old stairs-mesh dry tick and corrected from source data.
+- The original SC-18 RED proof and explicit certification-factor boundary proof remain in the first-round
+  evidence. Fix round 1 added a supported-legacy regression at host scales 0.5, 1 and 2. All three cases
+  failed against the old absolute-only classification, which gave limits of 500, 1000 and 2000 us instead
+  of 60, 120 and 240 us. No stash was used. The corrected tests pass at the relative boundary, reject only
+  time above it and retain absolute-only coverage for saved no-support outcomes `None` and `Airborne`.
 - The focused `SupportCostArtifactTests`, `SupportCostSamplerTests`, `SupportGateCostTests` and
-  `SupportCostUncomparableVerdictTests` passed all 221 tests. The explicit certification factor audit then
-  demonstrated two failing boundary assertions before correcting the derived sweep and penetration caps.
-- The final Release `KhaozEngine.Game.Tests` suite passed 5269 tests, zero failures, one existing skip,
-  through `build-slot --heavy`, 90.211 s elapsed. The existing skipped test is
+  `SupportCostUncomparableVerdictTests` passed all 227 tests through `build-slot`, split into 111 and 116
+  tests. The 37 SC-18 cases include unchanged E bounds and preconditions, six no-support absolute limits,
+  three supported-legacy disagreement cases and both corrected historical totals.
+- The final Release `KhaozEngine.Game.Tests` suite passed 5275 tests, zero failures, one existing skip,
+  through `build-slot --heavy`, 86.873 s elapsed in fix round 1. The existing skipped test is
   `WallContactOwnColumnTests.The_perturbation_control_for_every_sensitivity_claim_in_this_chain`.
 - All three data-only hosted evaluator invocations passed one test each through `build-slot`. They did not
-  record another local timing artifact. Run 3 evaluation took 3.041 s build-slot elapsed.
+  record another local timing artifact. Corrected run 3 evaluation took 18.031 s build-slot elapsed.
 - Whole-tree dash, prose, file-size, agent-instruction and doc-version checks passed. Staged dash, prose,
   file-size and diff checks passed before each commit.

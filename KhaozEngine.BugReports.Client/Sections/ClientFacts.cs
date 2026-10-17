@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Numerics;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using KhaozEngine.Diagnostics;
@@ -36,7 +37,7 @@ public sealed record BuildFacts(string GameId, string GameName, string Version, 
 /// <param name="WindowHeight">Window height in window coordinates.</param>
 /// <param name="FramebufferWidth">Framebuffer width in pixels.</param>
 /// <param name="FramebufferHeight">Framebuffer height in pixels.</param>
-/// <param name="ContentScale">Framebuffer pixels per logical point.</param>
+/// <param name="ContentScale">Framebuffer pixels per window coordinate.</param>
 /// <param name="Environment">The <c>KE_</c> variables, already passed through <see cref="ReportRedactor.SelectEnvironment"/>.</param>
 public sealed record PlatformFacts(string Os, string OsArchitecture, string ProcessArchitecture, string Runtime, int CpuCount,
     long TotalMemoryBytes, string Locale, int WindowWidth, int WindowHeight, int FramebufferWidth, int FramebufferHeight,
@@ -69,8 +70,9 @@ public sealed record SessionFacts(TimeSpan Uptime, string? SessionLogName, strin
 public sealed record InputFacts(IReadOnlyList<string> Devices, IReadOnlyList<string> TriggerBindings);
 
 /// <summary>
-/// Gathers the facts records the built-in sections write. Everything here except <see cref="FindPreviousCrash"/> reads
-/// memory, the runtime or the window and does no file, directory or network I/O, so it may run in the trigger frame.
+/// Gathers the facts records the built-in sections write. <see cref="FindPreviousCrash"/> and
+/// <see cref="CaptureInvariants"/> run once at startup. Everything else reads memory, the trigger frame or fields the
+/// window latched, with no I/O and no native call, so it may run in the trigger frame.
 /// </summary>
 internal static class ClientFacts
 {
@@ -169,31 +171,47 @@ internal static class ClientFacts
     }
 
     /// <summary>
-    /// The platform facts of this process and <paramref name="window"/>. Read on the window thread, since the window
-    /// sizes query GLFW. The environment holds only what <paramref name="redactor"/> admits.
+    /// The platform facts that cannot change while the process runs. The host calls this once at startup and keeps
+    /// the result for <see cref="Platform"/>: <see cref="RuntimeInformation.OSDescription"/> lazily reads
+    /// <c>/etc/os-release</c> on Linux, so it must never be read in the trigger frame.
     /// </summary>
-    internal static PlatformFacts Platform(AppWindow window, ReportRedactor redactor) => new(
+    internal static PlatformInvariants CaptureInvariants() => new(
         RuntimeInformation.OSDescription,
         RuntimeInformation.OSArchitecture.ToString(),
         RuntimeInformation.ProcessArchitecture.ToString(),
         RuntimeInformation.FrameworkDescription,
         Environment.ProcessorCount,
         GC.GetGCMemoryInfo().TotalAvailableMemoryBytes,
-        CultureInfo.CurrentCulture.Name,
-        window.WindowWidth,
-        window.WindowHeight,
-        window.FramebufferWidth,
-        window.FramebufferHeight,
-        ContentScale(window.FramebufferWidth, window.LogicalWidth),
-        redactor.SelectEnvironment(ReadEnvironment()));
+        CultureInfo.CurrentCulture.Name);
 
-    /// <summary>The live graphics facts of <paramref name="window"/>. Device diagnostics are read through, not cached.</summary>
-    internal static GraphicsFacts Graphics(AppWindow window)
+    /// <summary>
+    /// The platform facts for the trigger frame. The runtime facts are the <paramref name="invariants"/> that
+    /// <see cref="CaptureInvariants"/> read at startup, never read here. Sizes come from <paramref name="frame"/>, so
+    /// no window getter runs: its <see cref="InputState.Width"/> and <see cref="InputState.Height"/> are the
+    /// framebuffer in pixels, the window size is those divided by <see cref="InputState.FramebufferScale"/> and
+    /// rounded, and the content scale is the scale's X component. The environment holds only what
+    /// <paramref name="redactor"/> admits.
+    /// </summary>
+    internal static PlatformFacts Platform(PlatformInvariants invariants, InputState frame, ReportRedactor redactor)
+    {
+        Vector2 scale = frame.FramebufferScale;
+        return new PlatformFacts(invariants.Os, invariants.OsArchitecture, invariants.ProcessArchitecture,
+            invariants.Runtime, invariants.CpuCount, invariants.TotalMemoryBytes, invariants.Locale,
+            ToWindow(frame.Width, scale.X), ToWindow(frame.Height, scale.Y), frame.Width, frame.Height, scale.X,
+            redactor.SelectEnvironment(ReadEnvironment()));
+    }
+
+    /// <summary>
+    /// The graphics facts for the trigger frame. The swapchain size is <paramref name="frame"/>'s framebuffer size,
+    /// which the swapchain tracks, so no window getter runs. Every other read is a field latched at device creation
+    /// or by the device loss latch, and none makes a native call.
+    /// </summary>
+    internal static GraphicsFacts Graphics(AppWindow window, InputState frame)
     {
         GpuDeviceDiagnostics diagnostics = window.Diagnostics;
-        return new GraphicsFacts(window.Backend.ToString(), window.AdapterDescription, window.FramebufferWidth,
-            window.FramebufferHeight, window.PresentMode.ToString(), diagnostics.SoftwareAdapter,
-            diagnostics.DeviceLossReason, window.InjectedModules, DescribeCapabilities(window.Capabilities));
+        return new GraphicsFacts(window.Backend.ToString(), window.AdapterDescription, frame.Width, frame.Height,
+            window.PresentMode.ToString(), diagnostics.SoftwareAdapter, diagnostics.DeviceLossReason,
+            window.InjectedModules, DescribeCapabilities(window.Capabilities));
     }
 
     /// <summary><c>keyboard</c>, <c>mouse</c>, then <c>gamepad &lt;index&gt;</c> for each connected pad.</summary>
@@ -230,9 +248,8 @@ internal static class ClientFacts
         return described;
     }
 
-    /// <summary>Framebuffer pixels per logical point, 1 when the logical width is unknown.</summary>
-    internal static float ContentScale(int framebufferWidth, int logicalWidth)
-        => logicalWidth > 0 ? (float)framebufferWidth / logicalWidth : 1f;
+    /// <summary>Framebuffer <paramref name="pixels"/> in window coordinates. The scale is always positive and finite.</summary>
+    static int ToWindow(int pixels, float scale) => (int)MathF.Round(pixels / scale, MidpointRounding.AwayFromZero);
 
     static string? ReadBuildName(Assembly? assembly)
     {

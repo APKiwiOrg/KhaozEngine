@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Numerics;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using KhaozEngine.BugReports.Client;
 using KhaozEngine.Diagnostics;
 using KhaozEngine.Gpu;
@@ -17,6 +19,7 @@ namespace KhaozEngine.Tests.BugReports.Client.Sections;
 public sealed class ClientFactsTests
 {
     static readonly Assembly TestAssembly = typeof(ClientFactsTests).Assembly;
+    static readonly DateTimeOffset FixedStart = new(2026, 10, 17, 12, 0, 0, TimeSpan.Zero);
 
     [Fact]
     public void Build_facts_read_product_version_and_commit()
@@ -77,7 +80,7 @@ public sealed class ClientFactsTests
     {
         string missing = Path.Combine(Path.GetTempPath(), "ke-crash-missing-" + Guid.NewGuid().ToString("N"));
 
-        Assert.Equal((null, null), ClientFacts.FindPreviousCrash(missing, DateTimeOffset.UtcNow));
+        Assert.Equal((null, null), ClientFacts.FindPreviousCrash(missing, FixedStart));
     }
 
     [Fact]
@@ -146,12 +149,43 @@ public sealed class ClientFactsTests
         Assert.Equal("4", described["MaxMsaaSampleCount"]);
     }
 
+    [Fact]
+    public void Captured_invariants_are_this_process_facts()
+    {
+        PlatformInvariants invariants = ClientFacts.CaptureInvariants();
+
+        Assert.Equal(RuntimeInformation.OSDescription, invariants.Os);
+        Assert.Equal(RuntimeInformation.OSArchitecture.ToString(), invariants.OsArchitecture);
+        Assert.Equal(RuntimeInformation.ProcessArchitecture.ToString(), invariants.ProcessArchitecture);
+        Assert.Equal(RuntimeInformation.FrameworkDescription, invariants.Runtime);
+        Assert.Equal(Environment.ProcessorCount, invariants.CpuCount);
+        Assert.True(invariants.TotalMemoryBytes > 0);
+        Assert.Equal(CultureInfo.CurrentCulture.Name, invariants.Locale);
+    }
+
     [Theory]
-    [InlineData(2560, 1280, 2f)]
-    [InlineData(1920, 1920, 1f)]
-    [InlineData(100, 0, 1f)]
-    public void Content_scale_is_the_framebuffer_over_the_logical_width(int framebuffer, int logical, float expected)
-        => Assert.Equal(expected, ClientFacts.ContentScale(framebuffer, logical));
+    [InlineData(2560, 1440, 2f, 1280, 720)]
+    [InlineData(1920, 1080, 1f, 1920, 1080)]
+    [InlineData(1001, 501, 2f, 501, 251)]
+    [InlineData(2880, 1620, 1.5f, 1920, 1080)]
+    public void Platform_sizes_come_from_the_trigger_frame(int framebufferWidth, int framebufferHeight, float scale,
+        int windowWidth, int windowHeight)
+    {
+        var invariants = new PlatformInvariants("Linux 6.8", "X64", "X64", ".NET 10.0.0", 8, 1024L, "en-NZ");
+        var frame = new InputState(Vector2.Zero, new Vector2(scale, scale), new HashSet<Key>(), new HashSet<Key>(),
+            new HashSet<Key>(), new HashSet<MouseButton>(), new HashSet<MouseButton>(), Vector2.Zero, Vector2.Zero, 0f,
+            framebufferWidth, framebufferHeight);
+
+        PlatformFacts facts = ClientFacts.Platform(invariants, frame, new ReportRedactor());
+
+        Assert.Equal(("Linux 6.8", "X64", "X64", ".NET 10.0.0", 8, 1024L, "en-NZ"),
+            (facts.Os, facts.OsArchitecture, facts.ProcessArchitecture, facts.Runtime, facts.CpuCount, facts.TotalMemoryBytes,
+                facts.Locale));
+        Assert.Equal((windowWidth, windowHeight), (facts.WindowWidth, facts.WindowHeight));
+        Assert.Equal((framebufferWidth, framebufferHeight), (facts.FramebufferWidth, facts.FramebufferHeight));
+        Assert.Equal(scale, facts.ContentScale);
+        Assert.All(facts.Environment, variable => Assert.StartsWith("KE_", variable.Key, StringComparison.Ordinal));
+    }
 
     static void Touch(string directory, string name, DateTimeOffset writtenAt)
     {

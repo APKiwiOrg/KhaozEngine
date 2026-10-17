@@ -68,6 +68,19 @@ public partial class ArchitectureTests
         }
     }
 
+    /// <summary>The client package references exactly the engine projects its capture, media and sections build on.</summary>
+    [Fact]
+    public void BugReportsClient_ReferencesItsDeclaredSet()
+    {
+        Project client = LoadGraph()[BugReportsClient];
+        Assert.Equal(
+            new[]
+            {
+                "App", "BugReports", "BugReports.Contracts", "Diagnostics", "Game", "Gpu", "Gui", "Imaging", "Windowing",
+            },
+            client.ProjectRefs.Select(Short).OrderBy(name => name, StringComparer.Ordinal).ToArray());
+    }
+
     /// <summary>The client tests reference exactly the engine projects their section and fact tests build on.</summary>
     [Fact]
     public void BugReportsClientTests_ReferenceTheirDeclaredSet()

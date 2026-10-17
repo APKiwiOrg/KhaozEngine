@@ -1,6 +1,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text.Json;
 using KhaozEngine.BugReports;
@@ -83,7 +84,7 @@ public sealed class ClientSectionsTests
     [Fact]
     public void Performance_section_writes_each_pass_in_first_sampled_order()
     {
-        var passes = new PassTimings();
+        var passes = new PassTimings(clock: new FixedClock());
         passes.Sample("shadow", 2f);
         passes.Sample("model", 5f);
 
@@ -214,6 +215,64 @@ public sealed class ClientSectionsTests
     }
 
     [Fact]
+    public void Graphics_section_bounds_an_oversized_adapter_and_loss_reason()
+    {
+        var facts = new GraphicsFacts("MetalNative", new string('a', 5000), 1, 1, "Vsync", null, new string('r', 1025), null,
+            new Dictionary<string, string>());
+
+        JsonElement json = SectionJsonReader.Write(new GraphicsSection(() => facts));
+
+        Assert.Equal(new string('a', 1021) + "...", json.GetProperty("adapter").GetString());
+        Assert.Equal(new string('r', 1021) + "...", json.GetProperty("deviceLossReason").GetString());
+    }
+
+    [Fact]
+    public void Graphics_section_caps_its_lists_and_bounds_each_entry()
+    {
+        var capabilities = new SortedDictionary<string, string>(StringComparer.Ordinal);
+        for (int i = 0; i < 200; i++) capabilities["Cap" + i.ToString("D3", CultureInfo.InvariantCulture)] = "v";
+        capabilities["Cap000"] = new string('v', 3000);
+        capabilities["Cap000" + new string('k', 3000)] = "x";
+        var modules = Enumerable.Range(0, 100).Select(i => "m" + i.ToString(CultureInfo.InvariantCulture)).ToList();
+        modules[0] = new string('m', 2000);
+        var facts = new GraphicsFacts("MetalNative", "GPU", 1, 1, "Vsync", null, null, modules, capabilities);
+
+        JsonElement json = SectionJsonReader.Write(new GraphicsSection(() => facts));
+
+        JsonProperty[] written = json.GetProperty("capabilities").EnumerateObject().ToArray();
+        Assert.Equal(128, written.Length);
+        Assert.Equal(new string('v', 1021) + "...", written[0].Value.GetString());
+        Assert.Equal("Cap000" + new string('k', 1015) + "...", written[1].Name);
+        Assert.All(written, property => Assert.InRange(property.Name.Length, 1, 1024));
+        string[] writtenModules = json.GetProperty("injectedModules").EnumerateArray().Select(module => module.GetString()!).ToArray();
+        Assert.Equal(64, writtenModules.Length);
+        Assert.Equal(new string('m', 1021) + "...", writtenModules[0]);
+        Assert.Equal("m63", writtenModules[^1]);
+    }
+
+    [Fact]
+    public void Platform_section_bounds_its_strings_and_caps_its_environment()
+    {
+        var environment = new List<TelemetryHeaderValue>
+        {
+            new("KE_LONG_VALUE", new string('x', 4000)),
+            new("KE_" + new string('N', 2000), "named"),
+        };
+        for (int i = 0; i < 100; i++) environment.Add(new("KE_VAR_" + i.ToString(CultureInfo.InvariantCulture), "v"));
+        PlatformFacts facts = Platform(environment) with { Os = new string('o', 1500), Runtime = new string('t', 1500) };
+
+        JsonElement json = SectionJsonReader.Write(new PlatformSection(() => facts));
+
+        Assert.Equal(new string('o', 1021) + "...", json.GetProperty("os").GetString());
+        Assert.Equal(new string('t', 1021) + "...", json.GetProperty("runtime").GetString());
+        JsonProperty[] env = json.GetProperty("env").EnumerateObject().ToArray();
+        Assert.Equal(64, env.Length);
+        Assert.Equal(new string('x', 1021) + "...", env[0].Value.GetString());
+        Assert.Equal("KE_" + new string('N', 1018) + "...", env[1].Name);
+        Assert.Equal("KE_VAR_61", env[^1].Name);
+    }
+
+    [Fact]
     public void Input_section_writes_devices_and_trigger_bindings()
     {
         var facts = new InputFacts(["keyboard", "mouse", "gamepad 0"], ["Key:F10", "GamepadButton:Back"]);
@@ -223,5 +282,10 @@ public sealed class ClientSectionsTests
         Assert.Equal(facts.Devices, json.GetProperty("devices").EnumerateArray().Select(device => device.GetString()!).ToArray());
         Assert.Equal(facts.TriggerBindings,
             json.GetProperty("trigger").EnumerateArray().Select(binding => binding.GetString()!).ToArray());
+    }
+
+    sealed class FixedClock : IClock
+    {
+        public DateTimeOffset Now => DateTimeOffset.UnixEpoch;
     }
 }

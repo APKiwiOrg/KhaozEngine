@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Text.Json;
 using KhaozEngine.Diagnostics;
 
@@ -7,7 +8,8 @@ namespace KhaozEngine.BugReports.Client;
 /// <summary>
 /// The <c>platform</c> section: <c>{os, osArchitecture, processArchitecture, runtime, cpuCount, totalMemoryBytes, locale,
 /// window:{width,height}, framebuffer:{width,height}, contentScale, env:{NAME:value}}</c>. <c>env</c> holds exactly the
-/// variables the facts carry, so admission and masking stay with <see cref="ReportRedactor.SelectEnvironment"/>.
+/// variables the facts carry, up to <see cref="ReportText.MaxEnvironment"/>, so admission and masking stay with
+/// <see cref="ReportRedactor.SelectEnvironment"/>. Every string and variable name is cut by <see cref="ReportText.Bound"/>.
 /// </summary>
 /// <param name="facts">Returns the platform facts. Called in the trigger frame, so it must do no I/O.</param>
 public sealed class PlatformSection(Func<PlatformFacts> facts) : IBugReportSection
@@ -23,20 +25,20 @@ public sealed class PlatformSection(Func<PlatformFacts> facts) : IBugReportSecti
     {
         PlatformFacts platform = facts();
         writer.WriteStartObject();
-        writer.WriteString("os", platform.Os);
-        writer.WriteString("osArchitecture", platform.OsArchitecture);
-        writer.WriteString("processArchitecture", platform.ProcessArchitecture);
-        writer.WriteString("runtime", platform.Runtime);
+        writer.WriteString("os", ReportText.Bound(platform.Os));
+        writer.WriteString("osArchitecture", ReportText.Bound(platform.OsArchitecture));
+        writer.WriteString("processArchitecture", ReportText.Bound(platform.ProcessArchitecture));
+        writer.WriteString("runtime", ReportText.Bound(platform.Runtime));
         writer.WriteNumber("cpuCount", platform.CpuCount);
         writer.WriteNumber("totalMemoryBytes", platform.TotalMemoryBytes);
-        writer.WriteString("locale", platform.Locale);
+        writer.WriteString("locale", ReportText.Bound(platform.Locale));
         WriteSize(writer, "window", platform.WindowWidth, platform.WindowHeight);
         WriteSize(writer, "framebuffer", platform.FramebufferWidth, platform.FramebufferHeight);
         if (float.IsFinite(platform.ContentScale)) writer.WriteNumber("contentScale", platform.ContentScale);
         else writer.WriteNull("contentScale");
         writer.WriteStartObject("env");
-        foreach (TelemetryHeaderValue variable in platform.Environment)
-            writer.WriteString(variable.Key, variable.Value);
+        foreach (TelemetryHeaderValue variable in platform.Environment.Take(ReportText.MaxEnvironment))
+            writer.WriteString(ReportText.Bound(variable.Key), ReportText.Bound(variable.Value));
         writer.WriteEndObject();
         writer.WriteEndObject();
     }

@@ -451,18 +451,21 @@ internal sealed class BugReportFlow
 
     async Task<int> FlushAsync(string subject, CancellationToken cancellationToken)
     {
-        int sent;
+        BugReportFlushResult flushed;
         try
         {
-            sent = await _submitter.FlushAsync(subject, cancellationToken).ConfigureAwait(false);
+            flushed = await _submitter.FlushAsync(subject, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
         {
             Log.Warn("Saved bug reports could not be sent.", exception);
             return 0;
         }
-        if (sent > 0) Post(() => ShowToast(BugReportStrings.Format(BugReportStrings.ToastFlushed, sent), ToastKind.Standard));
-        return sent;
+        if (flushed.Sent > 0)
+            Post(() => ShowToast(BugReportStrings.Format(BugReportStrings.ToastFlushed, flushed.Sent), ToastKind.Standard));
+        if (flushed.Rejected > 0)
+            Post(() => ShowToast(BugReportStrings.Format(BugReportStrings.ToastFlushRejected, flushed.Rejected), ToastKind.Danger));
+        return flushed.Sent;
     }
 
     void ShowResult(BugReportSubmitResult result)

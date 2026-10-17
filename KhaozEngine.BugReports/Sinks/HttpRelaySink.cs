@@ -15,14 +15,23 @@ namespace KhaozEngine.BugReports;
 
 /// <summary>
 /// Posts a bundle to the bug report relay's intake route as <c>application/zip</c>, with the player's bearer token
-/// and the report id as the idempotency key. Every outcome maps to a result:
-/// a 2xx is Sent with the relay's reference, or <see cref="ReportIds.ReferenceCode"/> when the body is unreadable.
-/// No token, a 401, a 429, a 408 or 5xx after retries and a transport fault after retries are Queued, so the
-/// bundle stays for a later flush. A 429, 408 or 5xx carries the response's <c>Retry-After</c> hint. Any other 4xx
-/// is Rejected with the relay's error text.
+/// and the report id as the idempotency key. Only a confirmed delivery or a refusal the relay explains deletes the
+/// report, so every outcome maps to a result:
+/// <list type="bullet">
+/// <item>A 2xx whose body is an <see cref="IntakeAccepted"/> for this report id is Sent with the relay's reference, or
+/// <see cref="ReportIds.ReferenceCode"/> when the reference is blank. Any other 2xx, such as a captive portal page, is
+/// Queued with <see cref="UnconfirmedError"/>.</item>
+/// <item>A 400, 403, 413 or 422 whose body is a <see cref="RelayError"/> is Rejected with the relay's error text.</item>
+/// <item>No token is Queued with <c>no_token</c>, and a transport fault after retries with <c>network</c>.</item>
+/// <item>Every other status is Queued with <c>http_&lt;status&gt;</c>, so the bundle stays for a later flush. A 429,
+/// 408 or 5xx carries the response's <c>Retry-After</c> hint.</item>
+/// </list>
 /// </summary>
 public sealed class HttpRelaySink : IBugReportSink
 {
+    /// <summary>The error of a Queued result for a 2xx that did not confirm this report.</summary>
+    public const string UnconfirmedError = "unconfirmed";
+
     const string ZipMediaType = "application/zip";
 
     readonly HttpClient http;
@@ -109,23 +118,26 @@ public sealed class HttpRelaySink : IBugReportSink
 
         if (response.IsSuccessStatusCode)
         {
+            // A proxy, a captive portal or a misrouted base can answer 2xx without the relay ever seeing the bundle.
             byte[]? body = await ReadBodyAsync(response, cancellationToken).ConfigureAwait(false);
-            string? reference = body is null ? null : TryParse(body, static json => BugReportJson.DeserializeIntakeAccepted(json).Reference);
+            IntakeAccepted? accepted = body is null ? null : TryParse(body, static json => BugReportJson.DeserializeIntakeAccepted(json));
+            if (accepted is null || !string.Equals(accepted.ReportId, reportId, StringComparison.Ordinal))
+                return Queued(UnconfirmedError);
             return new BugReportSubmitResult(BugReportSubmitStatus.Sent,
-                string.IsNullOrWhiteSpace(reference) ? ReportIds.ReferenceCode(reportId) : reference, null, null);
+                string.IsNullOrWhiteSpace(accepted.Reference) ? ReportIds.ReferenceCode(reportId) : accepted.Reference, null, null);
         }
 
         // A 429, 408 or 5xx may say when to come back, so the hint travels with the queued result.
         if (status is 429 or 408 or (>= 500 and <= 599))
             return new BugReportSubmitResult(BugReportSubmitStatus.Queued, null, statusError, RetryAfter(response.Headers.RetryAfter));
 
-        // 401 means the token is missing or expired, so the next sign-in can still deliver it.
-        if (status is >= 400 and <= 499 && status != 401)
+        // Only the relay's own refusal of this bundle is final. Anything else may come from a proxy or a wrong route.
+        if (status is 400 or 403 or 413 or 422)
         {
             byte[]? body = await ReadBodyAsync(response, cancellationToken).ConfigureAwait(false);
             string? error = body is null ? null : TryParse(body, static json => BugReportJson.DeserializeRelayError(json).Error);
-            return new BugReportSubmitResult(BugReportSubmitStatus.Rejected, null,
-                string.IsNullOrWhiteSpace(error) ? statusError : error, null);
+            if (!string.IsNullOrWhiteSpace(error))
+                return new BugReportSubmitResult(BugReportSubmitStatus.Rejected, null, error, null);
         }
 
         return Queued(statusError);
@@ -157,7 +169,8 @@ public sealed class HttpRelaySink : IBugReportSink
         }
     }
 
-    static string? TryParse(byte[] body, Func<byte[], string> read)
+    static T? TryParse<T>(byte[] body, Func<byte[], T> read)
+        where T : class
     {
         try
         {

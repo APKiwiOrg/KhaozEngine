@@ -75,6 +75,9 @@ public static class BugReportStrings
     /// <summary>The toast after saved reports were delivered. {0} is how many.</summary>
     public static readonly StringId ToastFlushed = new("bugreport.toast.flushed");
 
+    /// <summary>The toast after saved reports were refused for good. {0} is how many.</summary>
+    public static readonly StringId ToastFlushRejected = new("bugreport.toast.flush-rejected");
+
     const string CategoryPrefix = "bugreport.category.";
 
     /// <summary>
@@ -134,6 +137,7 @@ public static class BugReportStrings
             ["bugreport.toast.rejected"] = "Bug report not accepted ({0}).",
             ["bugreport.toast.failed"] = "The bug report could not be prepared.",
             ["bugreport.toast.flushed"] = "{0} saved bug reports sent.",
+            ["bugreport.toast.flush-rejected"] = "{0} saved bug reports were not accepted.",
             ["bugreport.category.gameplay"] = "Gameplay",
             ["bugreport.category.visual"] = "Visual",
             ["bugreport.category.audio"] = "Audio",

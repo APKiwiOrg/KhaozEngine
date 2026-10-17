@@ -93,12 +93,12 @@ public sealed class BugReportOfflineQueue
     /// unbound entry to <paramref name="subject"/> before its send. Stops at the first Queued result or sink failure,
     /// keeping that entry. Entries already in flight are skipped. A null or blank subject sends nothing.
     /// </summary>
-    /// <returns>The number of entries the sink accepted.</returns>
-    public async Task<int> FlushAsync(string subject, IBugReportSink sink, CancellationToken cancellationToken)
+    /// <returns>How many entries the sink accepted and how many it refused for good.</returns>
+    public async Task<BugReportFlushResult> FlushAsync(string subject, IBugReportSink sink, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(sink);
         if (string.IsNullOrWhiteSpace(subject))
-            return 0;
+            return default;
         await flushGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -106,7 +106,7 @@ public sealed class BugReportOfflineQueue
             lock (sync)
                 entries = ScanAndPrune();
 
-            int sent = 0;
+            int sent = 0, rejected = 0;
             foreach (QueuedReportMetadata entry in entries)
             {
                 if (entry.Subject is not null && !string.Equals(entry.Subject, subject, StringComparison.Ordinal))
@@ -116,10 +116,12 @@ public sealed class BugReportOfflineQueue
                     continue;
                 if (result.Status == BugReportSubmitStatus.Sent)
                     sent++;
-                else if (result.Status == BugReportSubmitStatus.Queued)
+                else if (result.Status == BugReportSubmitStatus.Rejected)
+                    rejected++;
+                else
                     break;
             }
-            return sent;
+            return new BugReportFlushResult(sent, rejected);
         }
         finally
         {

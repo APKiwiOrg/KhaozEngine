@@ -122,6 +122,29 @@ public sealed class BugReportFlowSendTests : BugReportFlowHarness
     }
 
     [Fact]
+    public async Task Flush_with_a_rejected_report_toasts_the_rejection()
+    {
+        BugReportFlow flow = NewFlow();
+        for (int i = 0; i < 2; i++)
+        {
+            Open(flow);
+            Send(flow);
+            await Settle(flow);
+            Step(flow);
+        }
+        _sink.Respond(BugReportSubmitStatus.Rejected, "blocked").Respond(BugReportSubmitStatus.Sent);
+
+        _subject = "acct-1";
+        Step(flow);
+        await Settle(flow);
+
+        Assert.Equal(2, _sink.Submissions.Count);
+        string[] toasts = flow.Toasts.Active.Select(toast => toast.Message.Resolve()).ToArray();
+        Assert.Contains("1 saved bug reports sent.", toasts);
+        Assert.Contains("1 saved bug reports were not accepted.", toasts);
+    }
+
+    [Fact]
     public async Task Retry_flushes_for_the_current_subject()
     {
         BugReportFlow flow = NewFlow();

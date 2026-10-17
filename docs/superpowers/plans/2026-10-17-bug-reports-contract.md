@@ -246,8 +246,13 @@ public interface IBugReportSink
 }
 public sealed class HttpRelaySink : IBugReportSink
 {
+    public const string UnconfirmedError = "unconfirmed";
     public HttpRelaySink(HttpClient http, Uri relayBase, Func<string?> bearerToken);
 }
+// HttpRelaySink results: Sent only for a 2xx IntakeAccepted whose ReportId equals the submission's. Any other 2xx is
+// Queued "unconfirmed". Rejected only for 400, 403, 413 or 422 with a RelayError body. Everything else is Queued
+// "http_<status>", or "no_token" and "network".
+public readonly record struct BugReportFlushResult(int Sent, int Rejected);
 public sealed class LocalFolderSink : IBugReportSink
 {
     public LocalFolderSink(string root, bool openViewer);
@@ -259,7 +264,7 @@ public sealed class BugReportOfflineQueue
     public static readonly TimeSpan MaxAge = TimeSpan.FromDays(7);
     public BugReportOfflineQueue(string directory, TimeProvider time);
     public void Enqueue(BugReportSubmission submission);      // Subject null binds to the first account that flushes
-    public Task<int> FlushAsync(string subject, IBugReportSink sink, CancellationToken cancellationToken);
+    public Task<BugReportFlushResult> FlushAsync(string subject, IBugReportSink sink, CancellationToken cancellationToken);
 }
 public sealed record BugReportViewerModel(BugReportManifest Manifest, ClipIndex? Clip, IReadOnlyList<CapturedSection> Sections,
     ReporterIdentity? Reporter, ReadOnlyMemory<byte>? ServerSnapshotJson, IReadOnlyList<string> LogTail);

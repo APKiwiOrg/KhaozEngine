@@ -86,8 +86,8 @@ public sealed class BugReportSubmitter
     /// Sends the queued reports of <paramref name="subject"/> and every unbound report, binding them to it. A null or
     /// blank subject sends nothing.
     /// </summary>
-    /// <returns>The number of reports the sink accepted.</returns>
-    public Task<int> FlushAsync(string subject, CancellationToken cancellationToken) =>
+    /// <returns>How many reports the sink accepted and how many it refused for good.</returns>
+    public Task<BugReportFlushResult> FlushAsync(string subject, CancellationToken cancellationToken) =>
         queue.FlushAsync(subject, sink, cancellationToken);
 
     static BugReportSubmitResult Queued(string error) => new(BugReportSubmitStatus.Queued, null, error, null);

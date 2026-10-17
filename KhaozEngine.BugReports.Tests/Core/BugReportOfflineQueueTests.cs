@@ -102,7 +102,7 @@ public sealed class BugReportOfflineQueueTests : IDisposable
         time.Advance(BugReportOfflineQueue.MaxAge);
 
         var sink = new FakeSink();
-        int sent = await queue.FlushAsync("a", sink, CancellationToken.None);
+        int sent = (await queue.FlushAsync("a", sink, CancellationToken.None)).Sent;
 
         // Id(1) is 7 days and 1 s old. Id(2) is exactly 7 days old and stays.
         Assert.Equal(0, sent);
@@ -122,8 +122,8 @@ public sealed class BugReportOfflineQueueTests : IDisposable
         queue.Enqueue(Submission(Id(1), null));
         var sink = new FakeSink().Respond(BugReportSubmitStatus.Queued);
 
-        Assert.Equal(0, await queue.FlushAsync("a", sink, CancellationToken.None));
-        Assert.Equal(0, await queue.FlushAsync("b", sink, CancellationToken.None));
+        Assert.Equal(0, (await queue.FlushAsync("a", sink, CancellationToken.None)).Sent);
+        Assert.Equal(0, (await queue.FlushAsync("b", sink, CancellationToken.None)).Sent);
 
         BugReportSubmission only = Assert.Single(sink.Submissions);
         Assert.Equal(Id(1), only.ReportId);
@@ -140,7 +140,7 @@ public sealed class BugReportOfflineQueueTests : IDisposable
         queue.Enqueue(Submission(Id(1), "a"));
         var sink = new FakeSink();
 
-        Assert.Equal(0, await queue.FlushAsync("b", sink, CancellationToken.None));
+        Assert.Equal(0, (await queue.FlushAsync("b", sink, CancellationToken.None)).Sent);
 
         Assert.Empty(sink.Submissions);
         Assert.Equal(1, queue.Count);
@@ -157,7 +157,7 @@ public sealed class BugReportOfflineQueueTests : IDisposable
         }
         var sink = new FakeSink().Respond(BugReportSubmitStatus.Sent).Respond(BugReportSubmitStatus.Queued);
 
-        int sent = await queue.FlushAsync("a", sink, CancellationToken.None);
+        int sent = (await queue.FlushAsync("a", sink, CancellationToken.None)).Sent;
 
         Assert.Equal(1, sent);
         Assert.Equal([Id(10), Id(9)], sink.Submissions.Select(s => s.ReportId));
@@ -173,9 +173,9 @@ public sealed class BugReportOfflineQueueTests : IDisposable
         queue.Enqueue(Submission(Id(2), "a"));
         var sink = new FakeSink().Respond(BugReportSubmitStatus.Rejected, "bundle_invalid").Respond(BugReportSubmitStatus.Sent);
 
-        int sent = await queue.FlushAsync("a", sink, CancellationToken.None);
+        BugReportFlushResult flushed = await queue.FlushAsync("a", sink, CancellationToken.None);
 
-        Assert.Equal(1, sent);
+        Assert.Equal(new BugReportFlushResult(1, 1), flushed);
         Assert.Equal(2, sink.Submissions.Count);
         Assert.Equal(0, queue.Count);
         Assert.Empty(Directory.GetFiles(Dir));
@@ -263,9 +263,9 @@ public sealed class BugReportOfflineQueueTests : IDisposable
         queue.Enqueue(Submission(Id(1), null));
         var sink = new FakeSink();
 
-        Assert.Equal(0, await queue.FlushAsync(null!, sink, CancellationToken.None));
-        Assert.Equal(0, await queue.FlushAsync("", sink, CancellationToken.None));
-        Assert.Equal(0, await queue.FlushAsync("  ", sink, CancellationToken.None));
+        Assert.Equal(0, (await queue.FlushAsync(null!, sink, CancellationToken.None)).Sent);
+        Assert.Equal(0, (await queue.FlushAsync("", sink, CancellationToken.None)).Sent);
+        Assert.Equal(0, (await queue.FlushAsync("  ", sink, CancellationToken.None)).Sent);
 
         Assert.Empty(sink.Submissions);
         Assert.Equal(1, queue.Count);
@@ -282,12 +282,12 @@ public sealed class BugReportOfflineQueueTests : IDisposable
         var sink = new FakeSink().Throw(new OperationCanceledException())
             .Respond(BugReportSubmitStatus.Sent).Respond(BugReportSubmitStatus.Sent);
 
-        Assert.Equal(0, await queue.FlushAsync("a", sink, CancellationToken.None));
+        Assert.Equal(0, (await queue.FlushAsync("a", sink, CancellationToken.None)).Sent);
         Assert.Single(sink.Submissions);
         Assert.Equal(2, queue.Count);
 
         // The failed send released its claim, so the next flush delivers both.
-        Assert.Equal(2, await queue.FlushAsync("a", sink, CancellationToken.None));
+        Assert.Equal(2, (await queue.FlushAsync("a", sink, CancellationToken.None)).Sent);
         Assert.Equal(0, queue.Count);
     }
 

@@ -3392,7 +3392,8 @@ var reports = new BugReportService(app,
   `log`) plus any `AddSection`. Sections run in the trigger frame and must be cheap. Redaction and truncation run
   off the frame thread before anything leaves the machine.
 - **Delivery.** Send builds the bundle on the thread pool. `BugReportSubmitter` writes it to the offline queue
-  before the first send, so a crash, a shutdown or an unreachable relay keeps it for the next sign-in. Use
+  before the first send, so a crash, a shutdown or an unreachable relay keeps it for the next sign-in. Only a relay
+  acceptance that echoes the report id, or a refusal with the relay's error, deletes it. Use
   `LocalFolderSink` in development to open each report in the frame viewer without a relay.
 - **Clip.** `reports.Recorder.Suspend()` and `Resume()` around a pause menu, and `SetRecordingEnabled` for a
   settings toggle.

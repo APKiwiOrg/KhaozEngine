@@ -50,7 +50,7 @@ then once with the sections only.
 | `ReportSubmitted` | Each send's `BugReportSubmitResult`, raised on the frame thread. |
 | `SetRecordingEnabled(bool)` | Starts or stops the clip from a settings toggle. |
 | `SetPassTimingsSource(source)` | Gives the `performance` section a `PassTimings` meter. |
-| `RetryQueuedAsync(token)` | Sends the queued reports for the signed-in account now. |
+| `RetryQueuedAsync(token)` | Sends the queued reports for the signed-in account now and returns how many were sent. A toast counts the sent and the rejected ones. |
 | `TriggerControls` | The trigger's `ActionMapController`, for a controls screen. |
 | `RecentLog` | The log ring the `log` section writes. |
 | `Recorder` | The `FrameHistoryRecorder` behind the clip and the screenshot. |

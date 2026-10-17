@@ -33,6 +33,7 @@ public sealed class BugReportStringsTests
         ["bugreport.toast.rejected"] = "Bug report not accepted ({0}).",
         ["bugreport.toast.failed"] = "The bug report could not be prepared.",
         ["bugreport.toast.flushed"] = "{0} saved bug reports sent.",
+        ["bugreport.toast.flush-rejected"] = "{0} saved bug reports were not accepted.",
     };
 
     static readonly (string Id, string English)[] Categories =
@@ -89,6 +90,7 @@ public sealed class BugReportStringsTests
             ["bugreport.toast.sent"] = 1,
             ["bugreport.toast.rejected"] = 1,
             ["bugreport.toast.flushed"] = 1,
+            ["bugreport.toast.flush-rejected"] = 1,
         };
         foreach (StringId id in DeclaredIds())
         {
@@ -102,6 +104,7 @@ public sealed class BugReportStringsTests
         Assert.Equal("Bug report sent. Reference R-7", BugReportStrings.Format(BugReportStrings.ToastSent, "R-7"));
         Assert.Equal("Bug report not accepted (too_large).", BugReportStrings.Format(BugReportStrings.ToastRejected, "too_large"));
         Assert.Equal("3 saved bug reports sent.", BugReportStrings.Format(BugReportStrings.ToastFlushed, 3));
+        Assert.Equal("2 saved bug reports were not accepted.", BugReportStrings.Format(BugReportStrings.ToastFlushRejected, 2));
     }
 
     [Fact]

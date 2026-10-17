@@ -1,8 +1,12 @@
 using System;
 using System.IO;
+using System.Linq;
+using System.Net;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.BugReports;
+using KhaozEngine.Diagnostics;
 using Xunit;
 
 namespace KhaozEngine.Tests.BugReports.Core;
@@ -23,6 +27,17 @@ public sealed class BugReportSubmitterTests : IDisposable
     static string Id(int n) => BugReportOfflineQueueTests.Id(n);
 
     static BugReportSubmission Submission(int n, string? subject) => new(Id(n), subject, new byte[] { 0x50, 0x4B, 3, 4 });
+
+    readonly InMemorySink logs = new();
+
+    IDisposable CaptureLogs()
+    {
+        var options = new LoggerOptions { Synchronous = true };
+        options.Sinks.Add(logs);
+        return Log.Use(new LogManager(options));
+    }
+
+    LogEntry SingleWarning() => Assert.Single(logs.Entries, entry => entry.Level == LogLevel.Warn);
 
     [Fact]
     public async Task Report_is_written_ahead_before_sending()
@@ -56,7 +71,7 @@ public sealed class BugReportSubmitterTests : IDisposable
         Assert.Equal(1, queue.Count);
 
         // The submit released its claim, so a later flush delivers the report.
-        Assert.Equal(1, await submitter.FlushAsync("a", CancellationToken.None));
+        Assert.Equal(new BugReportFlushResult(1, 0), await submitter.FlushAsync("a", CancellationToken.None));
         Assert.Equal(0, queue.Count);
     }
 
@@ -92,7 +107,7 @@ public sealed class BugReportSubmitterTests : IDisposable
         Assert.Null(sent.Error);
         Assert.Equal(2, sink.Submissions.Count);
         Assert.Equal(0, queue.Count);
-        Assert.Equal(0, await submitter.FlushAsync("a", CancellationToken.None));
+        Assert.Equal(new BugReportFlushResult(0, 0), await submitter.FlushAsync("a", CancellationToken.None));
     }
 
     [Fact]
@@ -104,11 +119,11 @@ public sealed class BugReportSubmitterTests : IDisposable
         var submitter = new BugReportSubmitter(sink, queue);
 
         Task<BugReportSubmitResult> submit = submitter.SubmitAsync(Submission(1, "a"), CancellationToken.None);
-        int flushed = await submitter.FlushAsync("a", CancellationToken.None);
+        BugReportFlushResult flushed = await submitter.FlushAsync("a", CancellationToken.None);
         gate.SetResult(FakeSink.Result(Submission(1, "a"), BugReportSubmitStatus.Sent));
         await submit;
 
-        Assert.Equal(0, flushed);
+        Assert.Equal(default, flushed);
         Assert.Single(sink.Submissions);
         Assert.Equal(0, queue.Count);
     }
@@ -149,7 +164,7 @@ public sealed class BugReportSubmitterTests : IDisposable
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => submit);
 
         Assert.Equal(1, queue.Count);
-        Assert.Equal(1, await submitter.FlushAsync("a", CancellationToken.None));
+        Assert.Equal(new BugReportFlushResult(1, 0), await submitter.FlushAsync("a", CancellationToken.None));
     }
 
     [Fact]
@@ -169,7 +184,7 @@ public sealed class BugReportSubmitterTests : IDisposable
         Assert.Equal(expected, canceled);
         Assert.Equal("sink_failed", BugReportSubmitter.SinkFailedError);
         Assert.Equal(2, queue.Count);
-        Assert.Equal(2, await submitter.FlushAsync("a", CancellationToken.None));
+        Assert.Equal(new BugReportFlushResult(2, 0), await submitter.FlushAsync("a", CancellationToken.None));
     }
 
     [Fact]
@@ -212,10 +227,77 @@ public sealed class BugReportSubmitterTests : IDisposable
 
         Assert.Equal(new BugReportSubmitResult(BugReportSubmitStatus.Queued, null, BugReportSubmitter.InFlightError, null), second);
         // The first claim still holds, so a flush does not send the report again.
-        Assert.Equal(0, await submitter.FlushAsync("a", CancellationToken.None));
+        Assert.Equal(new BugReportFlushResult(0, 0), await submitter.FlushAsync("a", CancellationToken.None));
         gate.SetResult(FakeSink.Result(Submission(1, "a"), BugReportSubmitStatus.Sent));
         Assert.Equal(BugReportSubmitStatus.Sent, (await first).Status);
         Assert.Single(sink.Submissions);
         Assert.Equal(0, queue.Count);
+    }
+
+    [Fact]
+    public async Task Rejected_send_is_logged_once_with_its_id_and_error()
+    {
+        var queue = new BugReportOfflineQueue(Dir, time);
+        var sink = new FakeSink().Respond(BugReportSubmitStatus.Rejected, "blocked");
+        var submitter = new BugReportSubmitter(sink, queue);
+
+        BugReportSubmitResult result;
+        using (CaptureLogs())
+            result = await submitter.SubmitAsync(Submission(1, "a"), CancellationToken.None);
+
+        Assert.Equal(BugReportSubmitStatus.Rejected, result.Status);
+        Assert.Equal(0, queue.Count);
+        LogEntry warning = SingleWarning();
+        Assert.Contains(Id(1), warning.Message, StringComparison.Ordinal);
+        Assert.Contains("blocked", warning.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Relay_validation_reject_is_logged()
+    {
+        var handler = new FakeHttpHandler().Respond(HttpStatusCode.UnprocessableEntity, "{\"error\":\"hash_mismatch\"}");
+        var sink = new HttpRelaySink(new HttpClient(handler), new Uri("https://relay.example/"), () => "tok");
+        var submitter = new BugReportSubmitter(sink, new BugReportOfflineQueue(Dir, time));
+
+        BugReportSubmitResult result;
+        using (CaptureLogs())
+            result = await submitter.SubmitAsync(Submission(1, "a"), CancellationToken.None);
+
+        Assert.Equal(new BugReportSubmitResult(BugReportSubmitStatus.Rejected, null, "hash_mismatch", null), result);
+        Assert.Contains("hash_mismatch", SingleWarning().Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Rejected_direct_send_is_logged()
+    {
+        Directory.CreateDirectory(root);
+        File.WriteAllText(Dir, "a file where the queue directory should be");
+        var sink = new FakeSink().Respond(BugReportSubmitStatus.Rejected, "blocked");
+        var submitter = new BugReportSubmitter(sink, new BugReportOfflineQueue(Dir, time));
+
+        using (CaptureLogs())
+            await submitter.SubmitAsync(Submission(1, "a"), CancellationToken.None);
+
+        Assert.Single(logs.Entries, entry => entry.Level == LogLevel.Warn && entry.Message.Contains("blocked", StringComparison.Ordinal)
+            && entry.Message.Contains(Id(1), StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Flush_counts_and_logs_rejections()
+    {
+        var queue = new BugReportOfflineQueue(Dir, time);
+        queue.Enqueue(Submission(1, "a"));
+        time.Advance(TimeSpan.FromSeconds(1));
+        queue.Enqueue(Submission(2, null));
+        var sink = new FakeSink().Respond(BugReportSubmitStatus.Rejected, "blocked").Respond(BugReportSubmitStatus.Sent);
+        var submitter = new BugReportSubmitter(sink, queue);
+
+        BugReportFlushResult flushed;
+        using (CaptureLogs())
+            flushed = await submitter.FlushAsync("a", CancellationToken.None);
+
+        Assert.Equal(new BugReportFlushResult(1, 1), flushed);
+        Assert.Equal(0, queue.Count);
+        Assert.Contains(Id(1), SingleWarning().Message, StringComparison.Ordinal);
     }
 }

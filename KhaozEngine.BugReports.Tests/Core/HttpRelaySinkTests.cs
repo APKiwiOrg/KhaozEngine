@@ -27,8 +27,10 @@ public sealed class HttpRelaySinkTests
             RetryPolicy = HttpRelaySink.DefaultPolicy with { Backoff = _ => TimeSpan.Zero },
         };
 
-    static string AcceptedJson(string reference) =>
-        "{\"reportId\":\"" + ReportId + "\",\"reference\":\"" + reference + "\"}";
+    static string AcceptedJson(string reference, string reportId = ReportId) =>
+        "{\"reportId\":\"" + reportId + "\",\"reference\":\"" + reference + "\"}";
+
+    static BugReportSubmitResult Queued(string error) => new(BugReportSubmitStatus.Queued, null, error, null);
 
     [Fact]
     public async Task Posts_zip_with_bearer_and_idempotency_key()
@@ -57,14 +59,74 @@ public sealed class HttpRelaySinkTests
     }
 
     [Fact]
-    public async Task Accepted_without_a_readable_body_uses_the_local_reference()
+    public async Task Accepted_with_a_blank_reference_uses_the_local_reference()
+    {
+        FakeHttpHandler handler = new FakeHttpHandler().Respond(HttpStatusCode.Accepted, AcceptedJson(" "));
+
+        BugReportSubmitResult result = await Sink(handler).SubmitAsync(Submission(), CancellationToken.None);
+
+        Assert.Equal(new BugReportSubmitResult(BugReportSubmitStatus.Sent, ReportIds.ReferenceCode(ReportId), null, null), result);
+    }
+
+    [Fact]
+    public async Task Accepted_without_a_readable_body_is_queued_unconfirmed()
     {
         FakeHttpHandler handler = new FakeHttpHandler().Respond(HttpStatusCode.Accepted, "not json");
 
         BugReportSubmitResult result = await Sink(handler).SubmitAsync(Submission(), CancellationToken.None);
 
-        Assert.Equal(new BugReportSubmitResult(BugReportSubmitStatus.Sent, ReportIds.ReferenceCode(ReportId), null, null), result);
+        Assert.Equal(Queued("unconfirmed"), result);
         Assert.Single(handler.Requests);
+    }
+
+    [Fact]
+    public async Task Ok_with_an_html_body_is_queued_unconfirmed()
+    {
+        FakeHttpHandler handler = new FakeHttpHandler().Respond(HttpStatusCode.OK, configure: response =>
+            response.Content = new StringContent("<html>captive portal</html>", System.Text.Encoding.UTF8, "text/html"));
+
+        BugReportSubmitResult result = await Sink(handler).SubmitAsync(Submission(), CancellationToken.None);
+
+        Assert.Equal(Queued("unconfirmed"), result);
+    }
+
+    [Fact]
+    public async Task Accepted_for_another_report_is_queued_unconfirmed()
+    {
+        FakeHttpHandler handler = new FakeHttpHandler()
+            .Respond(HttpStatusCode.Accepted, AcceptedJson("R-ABCDEF", "0192f1c2a3b47c4d8e9f0a1b2c3d0001"));
+
+        BugReportSubmitResult result = await Sink(handler).SubmitAsync(Submission(), CancellationToken.None);
+
+        Assert.Equal(Queued("unconfirmed"), result);
+    }
+
+    [Theory]
+    [InlineData(404)]
+    [InlineData(405)]
+    [InlineData(407)]
+    [InlineData(409)]
+    public async Task Other_client_errors_are_queued_with_the_status(int status)
+    {
+        FakeHttpHandler handler = new FakeHttpHandler().Respond((HttpStatusCode)status, "{\"error\":\"nope\"}");
+
+        BugReportSubmitResult result = await Sink(handler).SubmitAsync(Submission(), CancellationToken.None);
+
+        Assert.Equal(Queued("http_" + status), result);
+    }
+
+    [Theory]
+    [InlineData(400)]
+    [InlineData(403)]
+    [InlineData(413)]
+    [InlineData(422)]
+    public async Task Rejections_carry_the_relay_error(int status)
+    {
+        FakeHttpHandler handler = new FakeHttpHandler().Respond((HttpStatusCode)status, "{\"error\":\"blocked\"}");
+
+        BugReportSubmitResult result = await Sink(handler).SubmitAsync(Submission(), CancellationToken.None);
+
+        Assert.Equal(new BugReportSubmitResult(BugReportSubmitStatus.Rejected, null, "blocked", null), result);
     }
 
     [Fact]
@@ -209,13 +271,13 @@ public sealed class HttpRelaySinkTests
     }
 
     [Fact]
-    public async Task Reject_without_a_relay_error_uses_the_status()
+    public async Task Reject_without_a_relay_error_is_queued_with_the_status()
     {
         FakeHttpHandler handler = new FakeHttpHandler().Respond(HttpStatusCode.RequestEntityTooLarge, "<html>too large</html>");
 
         BugReportSubmitResult result = await Sink(handler).SubmitAsync(Submission(), CancellationToken.None);
 
-        Assert.Equal(new BugReportSubmitResult(BugReportSubmitStatus.Rejected, null, "http_413", null), result);
+        Assert.Equal(Queued("http_413"), result);
     }
 
     [Fact]

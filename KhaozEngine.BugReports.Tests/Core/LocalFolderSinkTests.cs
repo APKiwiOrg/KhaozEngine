@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.BugReports;
 using KhaozEngine.BugReports.Contracts;
+using KhaozEngine.Diagnostics;
 using Xunit;
 
 namespace KhaozEngine.Tests.BugReports.Core;
@@ -70,6 +71,26 @@ public sealed class LocalFolderSinkTests : IDisposable
         Assert.Null(result.Reference);
         Assert.Equal("section_invalid: sections/build.json", result.Error);
         Assert.False(Directory.Exists(ReportDir));
+    }
+
+    [Fact]
+    public async Task Rejection_through_the_submitter_is_logged_once()
+    {
+        var logs = new InMemorySink();
+        var options = new LoggerOptions { Synchronous = true };
+        options.Sinks.Add(logs);
+        var submitter = new BugReportSubmitter(new LocalFolderSink(root, openViewer: false),
+            new BugReportOfflineQueue(Path.Combine(root, "pending"), TimeProvider.System));
+
+        BugReportSubmitResult result;
+        using (Log.Use(new LogManager(options)))
+            result = await submitter.SubmitAsync(Submission(TestBundles.Default().WithEntry("sections/build.json",
+                Encoding.UTF8.GetBytes("[1]"))), CancellationToken.None);
+
+        Assert.Equal(BugReportSubmitStatus.Rejected, result.Status);
+        LogEntry warning = Assert.Single(logs.Entries, entry => entry.Level == LogLevel.Warn);
+        Assert.Contains(TestBundles.ReportId, warning.Message, StringComparison.Ordinal);
+        Assert.Contains("section_invalid: sections/build.json", warning.Message, StringComparison.Ordinal);
     }
 
     [Fact]

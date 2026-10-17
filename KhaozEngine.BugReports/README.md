@@ -47,18 +47,20 @@ treated as a failed send, and its bundle stays queued.
 
 | Sink | Does |
 | --- | --- |
-| `HttpRelaySink(http, relayBase, bearerToken)` | Posts to `{relay}/bug-reports` with the bearer token and `Idempotency-Key`, retrying through `HttpRetry`. No token, a 401, a 408, a 429 or a 5xx is Queued, with any `Retry-After` hint. Any other 4xx is Rejected with the relay's error. |
-| `LocalFolderSink(root, openViewer)` | Validates the bundle and writes it, its entries and `viewer.html` to `<root>/<reportId>/`, then opens the page when asked. For development and offline play. |
+| `HttpRelaySink(http, relayBase, bearerToken)` | Posts to `{relay}/bug-reports` with the bearer token and `Idempotency-Key`, retrying through `HttpRetry`. Sent only for a 2xx whose body is an `IntakeAccepted` echoing the report id. Any other 2xx is Queued with `unconfirmed`. Rejected only for a 400, 403, 413 or 422 whose body is a `RelayError`. No token, a transport fault and every other status, 401, 404 and 5xx included, are Queued, a 408, 429 or 5xx with any `Retry-After` hint. |
+| `LocalFolderSink(root, openViewer)` | Validates the bundle and writes it, its entries and `viewer.html` to `<root>/<reportId>/`, then opens the page when asked. An invalid bundle is Rejected with the validator's error. For development and offline play. |
 
-`BugReportSubmitter` puts a sink and the queue together and is what the client uses.
+`BugReportSubmitter` puts a sink and the queue together and is what the client uses. Every Rejected result, from a
+direct send or a flush, logs one warning with the report id and the error, because the report is deleted.
 
 ## Offline queue
 
 `BugReportOfflineQueue(directory, time)` keeps bundles on disk. `BugReportSubmitter` writes each bundle there before
 its first send and deletes it only when the sink returns Sent or Rejected, so a crash, a shutdown or an unreachable
 relay keeps it. A report made while signed out is stored with no subject and binds to the first account that
-flushes. `FlushAsync(subject, sink, token)` sends that account's reports and every unbound one, oldest first. The
-queue holds at most 3 reports or 30 MB, dropping the oldest, and expires reports after 7 days.
+flushes. `FlushAsync(subject, sink, token)` sends that account's reports and every unbound one, oldest first, and
+returns a `BugReportFlushResult` with how many were sent and how many were rejected. The queue holds at most 3
+reports or 30 MB, dropping the oldest, and expires reports after 7 days.
 
 ## Viewer
 

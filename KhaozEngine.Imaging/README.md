@@ -37,6 +37,16 @@ macOS, machine model `Mac14,6`, measured on a shared machine under heavy load, s
 Reproduce with `dotnet run --project KhaozEngine.Benchmarks -c Release -- --jpeg`. Windows and Linux
 figures are not yet measured.
 
+## JpegThumbnailDecoder
+
+`JpegThumbnailDecoder.DecodeEighthScale(jpeg)` returns a `JpegThumbnail` with a row-major RGBA8 buffer
+at `ceil(width / 8)` by `ceil(height / 8)`, with alpha 255. It reads sequential Huffman JPEG (SOF0 or
+8-bit SOF1), one grayscale or three YCbCr components, sampling factors of one or two, and restart
+markers. Only DC coefficients are dequantized, AC coefficients are consumed without an inverse DCT.
+Chroma maps to the output block grid by sampling ratio and uses the JFIF conversion matrix. Malformed
+or truncated input and edges outside 1 to 16384 throw `InvalidDataException`. Progressive, arithmetic,
+12-bit and other unsupported coding processes throw `NotSupportedException`.
+
 ## PngReader
 
 `PngReader.Decode(png)` decodes every PNG colour type and bit depth, either noninterlaced or Adam7-interlaced:

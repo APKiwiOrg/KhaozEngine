@@ -161,7 +161,71 @@ extrema and joins dominate them. Stairs dry substeps cost about 300 us more than
 identical support counters, so part of that cost lies outside Find (#1435). Each gets a fresh attribution
 and a further ruling under SC-9. The flat box dry tick passes at 104.8 against 106.7 us.
 
+## Phase 2, after the second hosted run
+
+The owner-approved second hosted run at 5c373abe9 ([record](../verification/2026-10-17-support-cost-hosted-1334-option-c.md))
+passes 109 of 139 ordinary rows and breaks none. Thirteen rows miss time and seventeen reject on a fixed
+precondition. A second attribution (#1334 ledger, research 2) found the remaining cost and refuted lead #1435:
+dry and borrowed substeps cost the same on hosted runs, and local one-shot samples swing because build-slot runs
+commands at utility QoS. Rulings SC-10 to SC-17 cover the lossless work and the evidence corrections. Rows that
+lossless work cannot reach (the stairs and hidden crate Finds, and the stairs, crate and pushed seat dry ticks)
+wait for an owner ruling and are not changed here.
+
+**Ruling SC-10. The support path builds only the joins certification reads.** Certification reads a join only
+between members whose upward lower bound is above zero (`SupportCertification.Footprint`). On the FootSupport
+path, `Publish` builds incidence and evaluates `Separated`, `TopologyMeets` and `Joined` only for those pairs. The
+public raw `IPhysicsSupportFootprint.QuerySupportFootprint` keeps its full join matrix, so no public output changes.
+Published support stays bit-identical. Join counters on the support path change. Cost if wrong: a later
+certification change that reads another pair would see a missing join, which equivalence rows over every cost
+scene catch.
+
+**Ruling SC-11. Planar fast paths certify on exact coordinates.** Bepu installs a hull with its centre about
+3e-8 m off the authored origin, so the flat hull's top face fails the binary32 orientation check in
+`SupportPlanarProposal.Inside` and never takes a planar fast path. The fast paths and the join incidence
+certificate use exact-expansion orientation on the double coordinates instead. The fast path stays a sufficient
+certificate, so the kernel still decides every case it does not certify. Installed hull geometry is not moved.
+Equivalence rows as SC-6. Cost if wrong: a certificate that accepts a face the kernel would refuse, which the rows
+catch.
+
+**Ruling SC-12. Mesh statics get a bounded world form and a coplanar-neighbour certificate.** SC-4 deferred mesh
+caching for a bounded-storage design. Mesh triangles a query touches are captured into a per-static world form,
+built by the existing arithmetic, published first-wins, checked against exact pose bits as SC-4, and bounded by an
+explicit per-static and global capacity with eviction that never changes a result. A horizontal polygon whose plane
+the probe meets outside its interior is certified by an exact 2D disc-to-polygon distance, otherwise the kernel
+runs. Cost if wrong: unbounded memory on large terrain meshes, which the capacity test pins.
+
+**Ruling SC-13. A dry tick skips look-ahead once ascent is decided.** `GroundSignals.Resolve` takes three
+look-ahead Finds per dry tick, 46 to 49 percent of the stairs and seat ticks, but its outcome is already forced
+when the input ascends with a rise seen, a lift over the lag or an owed climb. In that case the three Finds are
+skipped. MoveState stays bit-identical. Skipped Finds raise no new failure, since their `ContactQueryFailure` was
+already swallowed. The SG-16 look-ahead row moves to a scene where the samples decide the outcome, and a direct test
+compares the short-circuit with the sampled path. Cost if wrong: an edit to the ascent logic that breaks the
+equivalence, which that direct test catches.
+
+**Ruling SC-14. Non-supporting faces get a cheaper admission certificate.** A vertical face's projected segment is
+tested against the expanded disc before the extrema kernel, which runs whenever the certificate does not decide.
+The kernel's `Unresolved` outcomes stay reachable. Equivalence rows as SC-6.
+
+**Ruling SC-15. An exact repeat inside one interval is memoized.** SG-15 allows memoizing an exact repeat request
+within one interval when the key holds every request bit and the view identity. The pushed seat dry tick issues the
+same query twice. The memo lives for one lease interval only, holds no refusal across intervals, and never crosses
+ticks, bodies or axes.
+
+**Ruling SC-16. Evidence corrections.** None changes a limit or a tolerance.
+- A substep row's geometry precondition judges the substep's own reads and support, not its parent tick's end
+  placement (`SupportCostSampler`). All four `G` substep rows read their own evidence correctly today.
+- The look-ahead read check uses a guard-aware oracle that models the refusals SG-6 requires (a raised start inside
+  geometry, a stopped proposal above the reach band). The pushed seat probe starts exactly on the ceiling slab top.
+- The cost harness takes one discarded leading row before the first measured row (an SG-20 amendment), since the
+  first measured row reads high in every run on both machines (#1434).
+
+**Ruling SC-17. The hidden crate descent is investigated before the crate counts as paced.** While a paced climb
+is owed, a substep lowers the feet 0.0577 m below the crate top the body stood on (#1437). A targeted geometry test
+decides whether that is a controller defect. A defect gets its proper fix, keeping the 1 mm arrival rule, roof and
+footprint protections and raw layer identity. Only if it is refuted does the harness derive `paced` from the climb
+budget (owed rise above MaxStepClimbSpeed times dt) instead of a scene name list.
+
 ## Out of scope
 
-Dense-row time (SC-1), mesh world-form caching (SC-4), cross-tick or cross-body result caching (SG-15
+Dense-row time (SC-1), cross-tick or cross-body result caching (SG-15
 forbids it), any limit change, and the SG-21 aggregate budget (phase 6).

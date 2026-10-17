@@ -23,8 +23,11 @@ public sealed class BugReportSectionSetTests
 
     static readonly JsonDocumentOptions Strict = new() { AllowDuplicateProperties = false };
 
+    /// <summary>A budget that never expires, so a slow runner cannot mask strings in a test that is not about the budget.</summary>
+    static readonly TimeSpan Unclocked = TimeSpan.MaxValue;
+
     static IReadOnlyList<CapturedSection> Finish(BugReportSectionSet set, TimeSpan? budget = null) =>
-        BugReportSectionSet.Finish(set.CaptureAll(Context), Redactor, budget ?? BugReportSectionSet.DefaultFinishBudget);
+        BugReportSectionSet.Finish(set.CaptureAll(Context), Redactor, budget ?? Unclocked);
 
     static JsonDocument Parse(ReadOnlyMemory<byte> json) => JsonDocument.Parse(json, Strict);
 
@@ -80,7 +83,7 @@ public sealed class BugReportSectionSetTests
         set.Add(new TestSection("next", 1024, WriteObject("ok", "yes")));
 
         IReadOnlyList<RawSection> raw = set.CaptureAll(Context);
-        IReadOnlyList<CapturedSection> finished = BugReportSectionSet.Finish(raw, Redactor, BugReportSectionSet.DefaultFinishBudget);
+        IReadOnlyList<CapturedSection> finished = BugReportSectionSet.Finish(raw, Redactor, Unclocked);
 
         Assert.True(raw[0].IsError);
         Assert.False(raw[1].IsError);
@@ -97,7 +100,7 @@ public sealed class BugReportSectionSetTests
         set.Add(new TestSection("empty", 1024, _ => { }));
 
         IReadOnlyList<RawSection> raw = set.CaptureAll(Context);
-        IReadOnlyList<CapturedSection> finished = BugReportSectionSet.Finish(raw, Redactor, BugReportSectionSet.DefaultFinishBudget);
+        IReadOnlyList<CapturedSection> finished = BugReportSectionSet.Finish(raw, Redactor, Unclocked);
 
         Assert.All(raw, section => Assert.True(section.IsError));
         Assert.All(finished, section => Assert.StartsWith(ErrorPrefix, ErrorText(section.Json), StringComparison.Ordinal));
@@ -182,7 +185,7 @@ public sealed class BugReportSectionSetTests
         set.Add(new TestSection("late", 1024, WriteObject("ok", "yes")));
 
         IReadOnlyList<RawSection> raw = set.CaptureAll(Context);
-        IReadOnlyList<CapturedSection> finished = BugReportSectionSet.Finish(raw, Redactor, BugReportSectionSet.DefaultFinishBudget);
+        IReadOnlyList<CapturedSection> finished = BugReportSectionSet.Finish(raw, Redactor, Unclocked);
 
         Assert.Equal(Fill, raw[0].Json.Length);
         CapturedSection only = Assert.Single(finished);
@@ -306,7 +309,7 @@ public sealed class BugReportSectionSetTests
         set.Add(new TestSection("broken", 1024, _ => throw new InvalidOperationException(message)));
 
         IReadOnlyList<RawSection> raw = set.CaptureAll(Context);
-        CapturedSection section = Assert.Single(BugReportSectionSet.Finish(raw, Redactor, BugReportSectionSet.DefaultFinishBudget));
+        CapturedSection section = Assert.Single(BugReportSectionSet.Finish(raw, Redactor, Unclocked));
 
         Assert.Equal(ErrorPrefix + message[..8192], ErrorText(raw[0].Json));
         Assert.Equal(ErrorPrefix + new string('x', 511), ErrorText(section.Json));
@@ -329,6 +332,36 @@ public sealed class BugReportSectionSetTests
         Assert.Equal("truncated#2", properties[1].Name);
         Assert.Equal("x", properties[1].Value.GetString());
         Assert.Equal(properties.Length, properties.Select(property => property.Name).Distinct(StringComparer.Ordinal).Count());
+    }
+
+    [Fact]
+    public void Escaped_lone_surrogate_becomes_an_error_and_the_rest_continue()
+    {
+        var set = new BugReportSectionSet();
+        set.Add(new TestSection("lone", 1024, writer => writer.WriteRawValue("{\"a\":\"\\uD800\"}")));
+        set.Add(new TestSection("next", 1024, WriteObject("ok", "yes")));
+
+        IReadOnlyList<RawSection> raw = set.CaptureAll(Context);
+        IReadOnlyList<CapturedSection> finished = BugReportSectionSet.Finish(raw, Redactor, Unclocked);
+
+        Assert.False(raw[0].IsError);
+        Assert.Equal(ErrorPrefix + "Section output must be one JSON object.", ErrorText(finished[0].Json));
+        Assert.Equal("{\"ok\":\"yes\"}", Text(finished[1].Json));
+    }
+
+    [Fact]
+    public void Invalid_utf8_in_a_raw_section_becomes_an_error_and_the_rest_continue()
+    {
+        RawSection[] raw =
+        [
+            new("bad", 1024, new byte[] { (byte)'{', (byte)'"', (byte)'a', (byte)'"', (byte)':', (byte)'"', 0xC3, (byte)'"', (byte)'}' }, IsError: false),
+            new("next", 1024, Encoding.UTF8.GetBytes("{\"ok\":\"yes\"}"), IsError: false),
+        ];
+
+        IReadOnlyList<CapturedSection> finished = BugReportSectionSet.Finish(raw, Redactor, Unclocked);
+
+        Assert.Equal(ErrorPrefix + "Section output must be one JSON object.", ErrorText(finished[0].Json));
+        Assert.Equal("{\"ok\":\"yes\"}", Text(finished[1].Json));
     }
 
     static int LinesOf(ReadOnlyMemory<byte> json, out bool truncated)

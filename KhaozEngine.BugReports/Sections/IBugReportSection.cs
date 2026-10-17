@@ -15,6 +15,11 @@ public interface IBugReportSection
     /// <summary>The most bytes the finished section may take. A larger section is cut structurally to fit.</summary>
     int MaxBytes { get; }
 
-    /// <summary>Writes exactly one JSON object. Runs on the thread that captures the report, so keep it cheap.</summary>
+    /// <summary>
+    /// Writes exactly one JSON object. Runs on the thread that captures the report, so keep it cheap. Write many
+    /// short strings and keep any single string far below 4 MiB: <see cref="Utf8JsonWriter"/> can allocate escape
+    /// scratch for a huge string before the capture cap applies, and the redactor masks whole any string it cannot
+    /// finish within its match timeout.
+    /// </summary>
     void Write(Utf8JsonWriter writer, BugReportContext context);
 }

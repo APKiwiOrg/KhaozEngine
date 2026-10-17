@@ -57,7 +57,8 @@ static class SectionJson
     /// <summary>
     /// Re-tokenises one JSON object, passing every property name and string value through <paramref name="redact"/>.
     /// A name that collides with an earlier name in its object after redaction gets the smallest free <c>#n</c>
-    /// suffix from 2 upward. Returns null when <paramref name="json"/> is not exactly one JSON object.
+    /// suffix from 2 upward. Returns null when <paramref name="json"/> is not exactly one JSON object or holds a
+    /// string that cannot be read as UTF-16.
     /// </summary>
     internal static byte[]? Redact(ReadOnlySpan<byte> json, Func<string, string> redact)
     {
@@ -101,8 +102,9 @@ static class SectionJson
             }
             while (reader.Read());
         }
-        catch (JsonException)
+        catch (Exception exception) when (exception is JsonException or InvalidOperationException)
         {
+            // GetString throws InvalidOperationException for an escaped lone surrogate or invalid UTF-8.
             return null;
         }
         return output.WrittenSpan.ToArray();

@@ -28,8 +28,9 @@ internal sealed class WorkClaim(IReportMediaStore media, TimeProvider time)
         int epoch = 0;
         while (epoch < MaxEpochs && await media.ExistsAsync(ReportArea.Pending, Path(prefix, epoch), ct).ConfigureAwait(false))
             epoch++;
-        if (epoch == MaxEpochs) throw new ReportClaimExhaustedException(reportId, kind);
         DateTimeOffset now = time.GetUtcNow();
+        // An active lease on the latest epoch is busy at every epoch, the last one included, because its holder is
+        // still working. Exhaustion means a new epoch is needed and the cap leaves none to create.
         if (epoch > 0 && !await media.ExistsAsync(ReportArea.Pending, Path(prefix, epoch - 1, ".released"), ct).ConfigureAwait(false))
         {
             ReadOnlyMemory<byte> json = await media.GetAsync(ReportArea.Pending, Path(prefix, epoch - 1), MaxClaimBytes, ct)
@@ -38,6 +39,7 @@ internal sealed class WorkClaim(IReportMediaStore media, TimeProvider time)
                 ?? throw new JsonException("The work claim is null.");
             if (now - latest.ClaimedAt < TimeSpan.FromMinutes(LeaseMinutes)) return null;
         }
+        if (epoch == MaxEpochs) throw new ReportClaimExhaustedException(reportId, kind);
         string path = Path(prefix, epoch);
         bool acquired = await media.PutAsync(ReportArea.Pending, path, JsonSerializer.SerializeToUtf8Bytes(new Claim(now), RelayJson.Options),
             ReportLayout.HeadersFor(path), overwrite: false, ct).ConfigureAwait(false);

@@ -222,6 +222,46 @@ public sealed class ReportClaimRecoveryTests
     }
 
     [Theory]
+    [InlineData(ReportWorkKind.CreateIssue, "issue", "active")]
+    [InlineData(ReportWorkKind.CreateIssue, "issue", "released")]
+    [InlineData(ReportWorkKind.CreateIssue, "issue", "expired")]
+    [InlineData(ReportWorkKind.AppendServerSnapshot, "comment", "active")]
+    [InlineData(ReportWorkKind.AppendServerSnapshot, "comment", "released")]
+    [InlineData(ReportWorkKind.AppendServerSnapshot, "comment", "expired")]
+    public async Task Claims_FinalEpoch_ActiveLeaseIsBusy_OtherwiseExhausted(ReportWorkKind kind, string claimKind, string final)
+    {
+        var harness = new RelayHarness();
+        await PrepareAsync(harness, kind);
+        DateTimeOffset now = harness.Clock.GetUtcNow();
+        for (int epoch = 0; epoch < 63; epoch++)
+            await WorkerFixtures.SeedClaimAsync(harness, claimKind, epoch, now.AddMinutes(-11));
+        await WorkerFixtures.SeedClaimAsync(harness, claimKind, 63, final == "expired" ? now.AddMinutes(-11) : now);
+        if (final == "released")
+        {
+            string released = "claims/" + claimKind + "-" + Id + "-63.released";
+            await harness.Media.PutAsync(ReportArea.Pending, released, ReadOnlyMemory<byte>.Empty,
+                new ReportBlobHeaders("application/octet-stream", "no-store"), false, Ct);
+        }
+
+        if (final == "active")
+        {
+            var busy = await Assert.ThrowsAsync<ReportClaimBusyException>(() => WorkerFixtures.ProcessAsync(harness, kind));
+            Assert.Equal(Id, busy.ReportId);
+        }
+        else
+        {
+            var exhausted = await Assert.ThrowsAsync<ReportClaimExhaustedException>(() => WorkerFixtures.ProcessAsync(harness, kind));
+            Assert.Equal(Id, exhausted.ReportId);
+            Assert.Equal(kind, exhausted.Kind);
+            Assert.Contains(Id, exhausted.Message, StringComparison.Ordinal);
+            Assert.Contains(kind.ToString(), exhausted.Message, StringComparison.Ordinal);
+        }
+        Assert.Empty(harness.GitHub.Issues);
+        Assert.Empty(harness.GitHub.Comments);
+        Assert.False(await harness.Media.ExistsAsync(ReportArea.Pending, "claims/" + claimKind + "-" + Id + "-64.json", Ct));
+    }
+
+    [Theory]
     [InlineData(ReportWorkKind.CreateIssue, "issue", 63)]
     [InlineData(ReportWorkKind.CreateIssue, "issue", 64)]
     [InlineData(ReportWorkKind.AppendServerSnapshot, "comment", 63)]

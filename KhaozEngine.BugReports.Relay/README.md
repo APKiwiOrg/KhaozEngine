@@ -31,9 +31,10 @@ claims per operation. Keep claims, release markers and result markers with the r
 snapshot lifecycle rule must target `snapshots/` only.
 
 GitHub failures and storage faults propagate to the host. If writing the release marker also fails, recovery
-falls back to lease expiry. Exhausting 64 epochs throws an internal `ReportClaimExhaustedException`, distinct
-from busy, that names the report id and work kind. That work needs operator recovery. The remaining duplicate
-windows are a crash or a failed result marker write after a successful GitHub write, where a takeover after
-lease expiry can repeat that write, and a transport timeout that hides a successful POST, which releases the
-claim like any other GitHub failure. A holder must finish within its lease, since this storage seam cannot
-fence a GitHub call from an expired holder.
+falls back to lease expiry. An active lease on the latest epoch is busy, even at the 64th epoch. When the
+latest lease has expired or been released and all 64 epochs exist, the worker throws an internal
+`ReportClaimExhaustedException`, distinct from busy, that names the report id and work kind. That work needs
+operator recovery. The remaining duplicate windows are a crash or a failed result marker write after a
+successful GitHub write, where a takeover after lease expiry can repeat that write, and a transport timeout
+that hides a successful POST, which releases the claim like any other GitHub failure. A holder must finish
+within its lease, since this storage seam cannot fence a GitHub call from an expired holder.

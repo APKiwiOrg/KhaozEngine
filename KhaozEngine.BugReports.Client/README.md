@@ -51,7 +51,8 @@ keep on. The clip is unavailable there too, so the recorder registers no tap at 
 `CaptureScreenshotAsync()` returns a task faulted with `NotSupportedException`.
 
 A fault inside a tap, such as a lost device, or a fault on the encode thread, is warned once and turns that
-capture off for the recorder's lifetime. The game's frame continues. A clip fault removes the clip tap, drops
+capture off for the recorder's lifetime. An encode fault is only recorded on the encode thread and is handled on
+the frame thread at the clip tap's next frame. The game's frame continues. A clip fault removes the clip tap, drops
 the frames held and leaves `IsRecording` false, and a later `Start()` does nothing. Build a new recorder to
 record again. A screenshot fault faults the pending task and every later one.
 
@@ -82,7 +83,9 @@ recording leaves frames of two sizes in one clip.
 
 A refused option throws `ArgumentOutOfRangeException` naming it at construction. A report clip names at most
 120 frames, so `Duration` must be above zero and `Duration` times `FramesPerSecond` may not exceed 120. `FramesPerSecond` runs 1 to 60,
-`LongEdge` 16 to 2560, `JpegQuality` 1 to 100, and `MaxBytes` starts at 64 KiB, about one 960 px frame.
+`LongEdge` 16 to 2560, `JpegQuality` 1 to 100, and `MaxBytes` starts at 64 KiB.
+That floor is a lower bound for sane configurations. It does not guarantee that one textured 960 px frame
+fits, and a frame larger than the cap is dropped. The default of 8 MB is what holds a full clip.
 
 The clip never stalls a frame. A capture tick that finds every readback slot still in flight is dropped, and
 the encode queue holds two frames and drops the oldest when it falls behind.

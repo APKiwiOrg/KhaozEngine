@@ -1018,7 +1018,9 @@ already a `CopyResource` source, so `SwapchainCopySourceRequested` is stored and
 `CopySwapchainColor` records an ordinary `CopyTexture` whose source is `D3D11BackBufferCopySource`, a stand-in that
 names the current render target view and holds no native reference. At replay the native emitter takes the back
 buffer from that view with `GetResource`, issues `CopyResource` and releases the reference at once, so no reference
-survives to make the next `ResizeBuffers` fail. The engine half is device-free tested. The native half runs only
+survives to make the next `ResizeBuffers` fail. A list that never bound the swapchain framebuffer in its current
+recording is refused with `InvalidOperationException` at the call, in the same words the other backends use, and
+records nothing. The engine half is device-free tested. The native half runs only
 on a Windows device.
 
 ## Capabilities, adapter selection, the debug layer and device loss

@@ -29,7 +29,10 @@ public sealed class FrameHistoryRecorder : IDisposable
 
     internal const int MinLongEdge = 16;
 
-    /// <summary>The smallest byte cap, about one 960 px frame, so the newest frame always fits.</summary>
+    /// <summary>
+    /// The smallest byte cap, a lower bound for sane configurations. It does not guarantee that one textured
+    /// 960 px frame fits, and a frame larger than the cap is dropped. The default of 8 MB is what holds a full clip.
+    /// </summary>
     internal const int MinMaxBytes = 64 * 1024;
 
     static readonly TimeSpan FreezeWait = TimeSpan.FromMilliseconds(250);
@@ -282,7 +285,7 @@ public sealed class FrameHistoryRecorder : IDisposable
         if (options.MaxBytes < MinMaxBytes)
         {
             throw Refuse(nameof(FrameHistoryOptions.MaxBytes), options.MaxBytes, string.Create(
-                CultureInfo.InvariantCulture, $"MaxBytes must be at least {MinMaxBytes}, about one clip frame."));
+                CultureInfo.InvariantCulture, $"MaxBytes must be at least {MinMaxBytes}."));
         }
     }
 

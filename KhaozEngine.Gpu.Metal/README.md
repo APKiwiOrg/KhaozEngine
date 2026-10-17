@@ -949,6 +949,13 @@ backend there is no per-level blit, no per-level barrier and no filter to choose
 one mip level and must not be a staging texture, which on this backend is an `MTLBuffer` with a software
 subresource layout and has no texture to generate from.
 
+**A texture copy applies a pending clear before its blit.** A clear recorded with no draw after it is still a load
+action waiting for a pass, so a blit opened over it would read the attachment as it was before the clear, or be
+overwritten by the clear at `End`. `CopyTexture`, `CopyTextureSubresource` and the swapchain copy end that pass
+first, which is the same empty clear pass `End` and a framebuffer change use, and does nothing when no clear is
+pending. Direct3D 11 and Vulkan clear at the call, so the three backends agree. `GenerateMipmaps` does not
+flush a pending clear yet ([#1432](https://github.com/APKiwiOrg/KhaozEngine/issues/1432)).
+
 `CopyTextureSubresource` rejects an out-of-range mip as `mipLevel` and an out-of-range array layer as
 `arrayLayer`, so callers can identify which index needs correcting from `ArgumentOutOfRangeException.ParamName`.
 
@@ -1025,8 +1032,9 @@ takes the next drawable, with no drain because the write releases nothing. The l
 drawable made under the old value, so each acquire reads the texture's own `isFramebufferOnly`. The drawable held
 when the request arrives stays uncopyable, a recycled one stays uncopyable until the layer makes a fresh one, and
 the orphan target never is. `SwapchainCopyable` reports exactly that, and `CopySwapchainColor`
-throws `InvalidOperationException` when it is false. The copy is a blit from the drawable's texture on the same
-encoder `CopyTexture` uses. Clearing the request writes `framebufferOnly = true` again at the next boundary.
+throws `InvalidOperationException` when it is false. It throws the same exception for a list that never bound the
+swapchain framebuffer in its current recording, because only the frame's own list holds what the frame drew. The
+copy is a blit from the drawable's texture on the same encoder `CopyTexture` uses, so a pending clear lands first. Clearing the request writes `framebufferOnly = true` again at the next boundary.
 
 ## Three decisions worth knowing before reading the code
 

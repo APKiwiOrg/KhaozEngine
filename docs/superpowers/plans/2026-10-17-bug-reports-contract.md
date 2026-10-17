@@ -362,3 +362,40 @@ public sealed class PoisonQueueRequeuer
 
 Every public name above, plus the spec's host settings: queue `bug-report-work`, poison queue
 `bug-report-work-poison`, containers `reports` (public) and `pending` (private), table `quotas`.
+
+## E1 as built
+
+Public names E1 added beyond its block above, and the rules E2 and E3 can rely on. The READMEs of
+`KhaozEngine.Gpu`, `KhaozEngine.Windowing` and `KhaozEngine.BugReports.Client` carry the full detail.
+
+- **`IGpuFencedReadback`** (`KhaozEngine.Gpu`). An optional device capability with one member,
+  `MappedData MapForRead(IGpuTexture staging, IGpuFence fence)`. It maps a staging texture once its fence has
+  signaled, never drains, and throws `InvalidOperationException` before the fence signals. The three native devices
+  implement it. Unmap with `IGpuDevice.Unmap`.
+- **`GpuReadbackRing` members.** `Width`, `Height`, `SlotCount`, `PendingCount`, `HasFreeSlot`,
+  `TryRecordCopy(commands, source, tag, out fence)` and `TryReadCompleted(destination, out tag)`. The constructor
+  refuses a device without completion fences or without `IGpuFencedReadback` with `NotSupportedException`.
+- **`IGpuSwapchainCapture`** (`KhaozEngine.Gpu`). An optional device capability with `SwapchainCopySourceRequested`,
+  `SwapchainCopyable` and `CopySwapchainColor(commands, destination)`. The three native devices implement it.
+- **The bound-this-recording precondition.** `CopySwapchainColor` refuses with `InvalidOperationException` a list
+  that has not bound `SwapchainFramebuffer` in its current recording, on all three backends. Only the frame's own
+  list is ordered after the image's acquire, so a swapchain copy goes into `FrameCaptureContext.Commands`.
+- **`GpuScaledCopy`** (`KhaozEngine.Gpu`). `new GpuScaledCopy(device)`, `Record(commands, source, destination)` and
+  `Dispose()`. One fullscreen linear downscale from any `Sampled` texture into a single `R8G8B8A8UNorm` attachment,
+  output in RGBA order, top row first, alpha one.
+- **`IFrameCaptureTap` members** (`KhaozEngine.Windowing`). `Record(FrameCaptureContext)`,
+  `AfterSubmit(FrameCaptureContext)` and `Detach(Action<IDisposable> retire)`.
+- **`FrameCaptureContext` members** (`KhaozEngine.Windowing`). `Frame`, `Device`, `Commands` (the frame's own list,
+  open during `Record` only), `FrameMilliseconds` (the unclamped loop delta, D14), `AcquireSwapchainImage()` (one
+  shared `Sampled` copy per frame, null when uncopyable), `SignalOnSubmit(fence)` (one fence per frame across every
+  tap) and `Retire(resource)`.
+- **Recorder availability.** `IsAvailable` is true only when the device has completion fences and implements both
+  `IGpuSwapchainCapture` and `IGpuFencedReadback`. A screenshot needs only `IGpuSwapchainCapture`. A device without
+  it gets no standby screenshot tap, and `CaptureScreenshotAsync()` returns a task faulted with
+  `NotSupportedException`.
+- **Recorder faults.** A fault in a tap or on the encode thread is warned once and turns that capture off for the
+  recorder's lifetime. A clip fault leaves `IsRecording` false and makes later `Start()` calls do nothing. A
+  screenshot fault faults the pending task and every later one. Encode faults are recorded on the encode thread
+  and handled on the frame thread. A tap fault never reaches the game's frame.
+- **`MaxBytes` floor.** `FrameHistoryOptions.MaxBytes` below 64 KiB is refused. The floor is a lower bound for sane
+  configurations and does not guarantee that one frame fits. The default of 8 MB holds a full clip.

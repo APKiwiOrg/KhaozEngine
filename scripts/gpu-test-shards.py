@@ -255,11 +255,20 @@ def assembly_totals(log_text):
             failed, passed, skipped, total = (int(match.group(i)) for i in range(1, 5))
             add(match.group(5), failed, passed, skipped, total)
         return totals
+    # Detailed output names the assembly only on its "Test run for" line, so totals can be attributed only
+    # when each assembly's block closes before the next one opens. That holds on the serialised Vulkan
+    # shards. Interleaved output (test hosts in parallel) is refused rather than misattributed.
     current, block = None, None
     for line in lines:
         run = RUN_FOR.search(line)
         if run:
+            if current is not None:
+                raise ValueError(f"detailed output interleaves {current} and {run.group(1)}, so per-assembly "
+                                 "totals cannot be attributed. Run the shard serialised or at minimal verbosity.")
             current, block = run.group(1), None
+            continue
+        if "No test matches the given testcase filter" in line:
+            current, block = None, None
             continue
         detail = DETAIL.match(line)
         if detail and current:
@@ -278,7 +287,12 @@ def assembly_totals(log_text):
 def cmd_report(args):
     backend, shard, outcome, log_path, out_path = args
     log = Path(log_path)
-    totals = assembly_totals(log.read_text(encoding="utf-8", errors="replace")) if log.exists() else {}
+    try:
+        totals = assembly_totals(log.read_text(encoding="utf-8", errors="replace")) if log.exists() else {}
+    except ValueError as error:
+        # Recorded as the outcome, so the summary job fails the backend instead of trusting the totals.
+        print(f"::error title=GPU full-suite shards::{error}")
+        totals, outcome = {}, f"unattributable totals ({outcome})"
     report = {"backend": backend, "shard": shard, "outcome": outcome, "assemblies": totals}
     Path(out_path).write_text(json.dumps(report, indent=1, sort_keys=True))
     print(json.dumps(report, indent=1, sort_keys=True))

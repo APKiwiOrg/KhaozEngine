@@ -168,7 +168,9 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
         Assert.Equal(row.Explicit ? 1 : 0, c.MovementLeases);
         Assert.Equal(row.Explicit ? 1 : 0, c.ProducerPins);
         int n = Math.Max(1, sample.Substeps);
-        int signals = row.StairSignal ? 3 : 0;
+        // A tick that samples its look-ahead takes all three Finds, and one whose ascent is decided takes none.
+        int signals = LookAheadReads(sample);
+        Assert.True(signals is 0 or GroundSignals.Samples, $"{row.Name}: {signals} look-ahead reads");
         int findBound = 1 + 8 * n + signals;
         if (row.Explicit) findBound += 4 + 8 * c.MediumRetries;
         if (!row.Grounded || row.Normal.Y < 0.70710677f)
@@ -188,17 +190,26 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
         }
     }
 
+    // Look-ahead reads reach StepHeight + 2 k CapsuleRadius for k = 1, 2, 3.
+    static int LookAheadReads(SupportCostSample sample)
+    {
+        MoveTuning tuning = SupportGateCostScenes.Tuning;
+        return sample.SupportReads.Count(q => Enumerable.Range(1, GroundSignals.Samples)
+            .Any(k => q.ReachUp == tuning.StepHeight + 2 * (k * tuning.CapsuleRadius)));
+    }
+
     static void AssertNamedRoute(SupportCostRow row, SupportCostSample sample)
     {
         Assert.Equal(sample.Counts.Find, sample.SupportReads.Length);
         Assert.InRange(sample.Routes.MaximumMediumRetries, 0, 8);
         Assert.InRange(sample.Counts.MediumRetries, 0, 8 * sample.Routes.MediumResolves);
-        // The pushed seat and the hidden crate carry no run in, so their three look-ahead samples decide the run. The
-        // stairs carry an ascent their owed climb already continues, which skips the samples (SC-13).
+        // The pushed seat carries no run in, so its three look-ahead samples decide the ascent it reports. The hidden
+        // crate carries none either, so it takes all three, though they find no run. The stairs carry an ascent their
+        // owed climb already continues, which skips the samples (SC-13).
         if (row.Name is "pushed seat" or "hidden crate")
-            Assert.Equal(3, sample.SupportReads.Count(q => q.ReachUp > 1));
+            Assert.Equal(GroundSignals.Samples, LookAheadReads(sample));
         if (row.StairSignal)
-            Assert.Equal(0, sample.SupportReads.Count(q => q.ReachUp > 1));
+            Assert.Equal(0, LookAheadReads(sample));
         if (row.Name == "wall retry") Assert.True(sample.Routes.WallRetries > 0, $"{sample.Routes}");
         if (row.Name == "pushed seat") Assert.True(sample.Routes.PushedPlacements > 0, $"{sample.Routes}");
         if (row.Name == "descending landing")

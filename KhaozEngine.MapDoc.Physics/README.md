@@ -202,7 +202,8 @@ interaction geometry unchanged. These are R8 presentation inputs, rather than a 
 
 `MapResidencyOwnership.BuildAnnotations(world, grids)` supplies separate `light:{id}` and `marker:{id}` entries.
 Light extents use the effective position and scaled metre radius with outward rounding. Markers occupy their exact
-world point. Both contribute to world bounds and residency invalidation. They never register physics shapes.
+world point. Both drive residency invalidation and neither registers a physics shape. Light extents join the world
+bounds. Markers do not, so a marker-only edit never changes the world extent, a static or a navigation capture identity.
 `Build` remains the static-only ownership list and `BuildWater` remains the compiled-water list.
 
 Format-7 builds consume `kemap/effective-resources/1` with query policy 2 from the captured MapDoc snapshot.
@@ -239,9 +240,9 @@ are authored data. The moved marker leaves its old storage tile and enters the n
 annotation list and its old membership stays in the affected set. This proves marker residency only. It does not
 solve whole-cell residency (#341).
 
-Marker bounds join world bounds. A marker placed above or below every static widens the world's vertical extent,
-which every navigation tile's bounds and capture identity include, so such an edit moves capture identities even
-though its effects report Residency only. The village keeps every marker inside the geometry's vertical extent.
+Markers never join the world bounds that set navigation tile heights. The village's `actor` stands above every
+static, and removing it leaves the world extent and every capture identity unchanged. `MapMarkerBoundsTests` sets a
+marker above and one below every static and proves the same, with the marker's residency entry still installed.
 
 ## Pick, reach and stances
 

@@ -465,11 +465,9 @@ public class GroundScenarioTests(ITestOutputHelper output)
         using FootSupportScene scene = built;
         SupportSample warm = FootSupport.Find(null, null, scene.World, scene.Lease, query);
 
-        using var allocationRegion = AllocationRegion.Start($"{nameof(SupportFindAllocation)} {name}");
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        SupportSample support = FootSupport.Find(null, null, scene.World, scene.Lease, query);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-        allocationRegion.Dispose();
+        SupportSample support = default;
+        long allocated = AllocationMeasurement.Measure($"{nameof(SupportFindAllocation)} {name}", () =>
+            support = FootSupport.Find(null, null, scene.World, scene.Lease, query));
 
         output.WriteLine($"ALLOC {name}: {allocated} bytes, status {support.Status} (warm {warm.Status}), " +
             $"stack at most {SupportFindStackBytes()} bytes");

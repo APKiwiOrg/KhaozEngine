@@ -37,7 +37,8 @@ public sealed class FrameHistoryRecorder : IDisposable
     /// </summary>
     internal const int MinMaxBytes = 64 * 1024;
 
-    static readonly TimeSpan FreezeWait = TimeSpan.FromMilliseconds(250);
+    /// <summary>How long <see cref="Freeze"/> waits for frames still encoding unless <see cref="FreezeWait"/> is set.</summary>
+    internal static readonly TimeSpan DefaultFreezeWait = TimeSpan.FromMilliseconds(250);
 
     readonly IFrameCaptureHost _host;
     readonly TimeProvider _time;
@@ -115,6 +116,9 @@ public sealed class FrameHistoryRecorder : IDisposable
 
     /// <summary>The pool clip frame buffers are rented from and the encode queue returns them to.</summary>
     internal ArrayPool<byte> Pool { get; }
+
+    /// <summary>The longest <see cref="Freeze"/> waits for frames still encoding. Tests shorten or lengthen it.</summary>
+    internal TimeSpan FreezeWait { get; init; } = DefaultFreezeWait;
 
     /// <summary>Time since construction on the recorder's clock.</summary>
     internal TimeSpan Now => _time.GetElapsedTime(_epoch);

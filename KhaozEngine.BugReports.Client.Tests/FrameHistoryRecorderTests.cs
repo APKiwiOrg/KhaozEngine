@@ -15,8 +15,11 @@ public sealed class FrameHistoryRecorderTests
     static readonly TimeSpan Long = TimeSpan.FromSeconds(10);
 
     static FrameHistoryRecorder Create(FakeCaptureHost host, ManualTimeProvider? time = null,
-        Func<RawClipFrame, byte[]>? encode = null)
-        => new(host, new FrameHistoryOptions(), time ?? new ManualTimeProvider(), encode);
+        Func<RawClipFrame, byte[]>? encode = null, TimeSpan? freezeWait = null)
+        => new(host, new FrameHistoryOptions(), time ?? new ManualTimeProvider(), encode)
+        {
+            FreezeWait = freezeWait ?? FrameHistoryRecorder.DefaultFreezeWait,
+        };
 
     static ClipFrameRecord Encoded(FrameHistoryRecorder recorder, TimeSpan at)
         => new(at, 16.7, 960, 540, new byte[] { 0xFF, 0xD8, 0xFF, 0xD9 }, recorder.History.Generation);
@@ -159,14 +162,20 @@ public sealed class FrameHistoryRecorderTests
             return new byte[] { 0xFF, 0xD8, 0xFF, 0xD9 };
         }
 
-        using var recorder = Create(new FakeCaptureHost(), encode: Encode);
+        // A wait far longer than the release delay, so a slow machine still sees the encode finish inside it.
+        using var recorder = Create(new FakeCaptureHost(), encode: Encode, freezeWait: TimeSpan.FromSeconds(5));
         recorder.Start();
+        Task? releaser = null;
         try
         {
             recorder.Encoder.Enqueue(Raw(recorder, recorder.Now));
             Assert.True(entered.Wait(Long));
 
-            using var releaser = new Timer(_ => release.Set(), null, 25, Timeout.Infinite);
+            releaser = Task.Run(() =>
+            {
+                Thread.Sleep(25);
+                release.Set();
+            });
             ReportClip clip = recorder.Freeze();
 
             Assert.Single(clip.Frames);
@@ -174,7 +183,40 @@ public sealed class FrameHistoryRecorderTests
         finally
         {
             release.Set();
+            releaser?.Wait(Long);
         }
+    }
+
+    [Fact]
+    public void Freeze_returns_without_the_frame_when_the_encoder_outlives_the_wait()
+    {
+        using var entered = new ManualResetEventSlim(false);
+        using var release = new ManualResetEventSlim(false);
+        byte[] Encode(RawClipFrame frame)
+        {
+            entered.Set();
+            release.Wait(Long);
+            return new byte[] { 0xFF, 0xD8, 0xFF, 0xD9 };
+        }
+
+        using var recorder = Create(new FakeCaptureHost(), encode: Encode, freezeWait: TimeSpan.FromMilliseconds(20));
+        recorder.Start();
+        try
+        {
+            recorder.Encoder.Enqueue(Raw(recorder, recorder.Now));
+            Assert.True(entered.Wait(Long));
+
+            // The gate stays shut until Freeze has returned, so the frame is still encoding when the wait gives up.
+            ReportClip clip = recorder.Freeze();
+
+            Assert.Empty(clip.Frames);
+            Assert.False(release.IsSet);
+        }
+        finally
+        {
+            release.Set();
+        }
+        Assert.True(recorder.Encoder.WaitIdle(Long));
     }
 
     [Fact]

@@ -226,7 +226,7 @@ public sealed class ReportClaimRecoveryTests
     [InlineData(ReportWorkKind.CreateIssue, "issue", 64)]
     [InlineData(ReportWorkKind.AppendServerSnapshot, "comment", 63)]
     [InlineData(ReportWorkKind.AppendServerSnapshot, "comment", 64)]
-    public async Task Claims_CapIs64(ReportWorkKind kind, string claimKind, int existingClaims)
+    public async Task Claims_CapIs64_ExhaustionIsDistinctFromBusy(ReportWorkKind kind, string claimKind, int existingClaims)
     {
         var harness = new RelayHarness();
         await PrepareAsync(harness, kind);
@@ -235,7 +235,11 @@ public sealed class ReportClaimRecoveryTests
 
         if (existingClaims == 64)
         {
-            await Assert.ThrowsAsync<ReportClaimBusyException>(() => WorkerFixtures.ProcessAsync(harness, kind));
+            var error = await Assert.ThrowsAsync<ReportClaimExhaustedException>(() => WorkerFixtures.ProcessAsync(harness, kind));
+            Assert.Equal(Id, error.ReportId);
+            Assert.Equal(kind, error.Kind);
+            Assert.Contains(Id, error.Message, StringComparison.Ordinal);
+            Assert.Contains(kind.ToString(), error.Message, StringComparison.Ordinal);
             Assert.Empty(harness.GitHub.Issues);
             Assert.Empty(harness.GitHub.Comments);
         }

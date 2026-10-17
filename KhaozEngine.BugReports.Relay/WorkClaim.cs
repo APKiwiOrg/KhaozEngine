@@ -28,7 +28,7 @@ internal sealed class WorkClaim(IReportMediaStore media, TimeProvider time)
         int epoch = 0;
         while (epoch < MaxEpochs && await media.ExistsAsync(ReportArea.Pending, Path(prefix, epoch), ct).ConfigureAwait(false))
             epoch++;
-        if (epoch == MaxEpochs) return null;
+        if (epoch == MaxEpochs) throw new ReportClaimExhaustedException(reportId, kind);
         DateTimeOffset now = time.GetUtcNow();
         if (epoch > 0 && !await media.ExistsAsync(ReportArea.Pending, Path(prefix, epoch - 1, ".released"), ct).ConfigureAwait(false))
         {

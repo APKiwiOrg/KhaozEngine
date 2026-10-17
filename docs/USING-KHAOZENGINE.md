@@ -4265,10 +4265,10 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   final image with each pixel's screen motion since the last frame: hue for direction (rightward cyan, leftward red,
   downward violet, upward yellow-green), brightness for length (full at 16 internal pixels), and black where nothing
   opaque drew or nothing moved. The screen overlays drawn after the post chain (target outlines, fills, lines,
-  billboards and the screen transition) still draw over it. `History` (black just after a reset, white at the full
-  history, green where thin feature retention holds a pixel), `Disocclusion` (red where history was rejected) and
-  `Reactive` (yellow where transparent content lowered the history weight) show the resolve's own decisions and take
-  effect only under `AntiAliasing.Temporal`.
+  billboards and the screen transition) still draw over it. `History` (black just after a reset and where a still
+  pixel's shading changed, white at the full history, green where thin feature retention holds a pixel's lock),
+  `Disocclusion` (red where history was rejected) and `Reactive` (yellow where transparent content lowered the
+  history weight) show the resolve's own decisions and take effect only under `AntiAliasing.Temporal`.
 - **Diagnostics.** `scene.LastTemporalDiagnostics` reports the frame index, the jitter phase and offset, the keyed
   rigid and skinned draws and key collisions, whether history was valid and why it was last reset, the internal and
   display sizes, the preset and the effective `UpscaleRatio`. `LastReset` is a `TemporalResetReason`: `None`,
@@ -8646,7 +8646,7 @@ the clamp bounds and the classifier policy. Normalise text to LF before digestin
 Prefer authored inputs to `TileWorldColliders.Hash` for walk surfaces yawed off a quarter turn, since that hash is
 not promised equal across x64 and ARM64. Rebake when any input, option, probed tuning field or the engine pin
 changes, and keep a game test that loads the shipped bake and expects `Loaded`. Load also compares the normalized
-`KhaozEngine.Movement` assembly version. Any engine version upgrade therefore requires
+`KhaozEngine.Movement` assembly version. Any engine version change, a patch included, therefore requires
 regeneration and returns `EngineChanged`, even when the format and payload algorithm are unchanged. A backend fix
 within the same engine version does not add another invalidation when the bake identity and payload remain unchanged.
 

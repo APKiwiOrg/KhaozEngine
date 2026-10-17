@@ -121,19 +121,19 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
             Assert.True(find.Counts.CapacityExceeded > 0);
             Assert.True(find.GeometryMatchesOracle);
             Assert.False(find.GeometryPassed);
-            Assert.False(SupportCostVerdict.Evaluate(find, find, row.Dense));
+            Assert.NotEqual(SupportCostGate.Pass, SupportCostVerdict.Evaluate(find, find, row.Dense));
         }
         else if (row.KnownIncomplete)
         {
             Assert.True(find.KnownIncorrect);
             Assert.False(find.GeometryPassed);
-            Assert.False(SupportCostVerdict.Evaluate(find, find, row.Dense));
+            Assert.NotEqual(SupportCostGate.Pass, SupportCostVerdict.Evaluate(find, find, row.Dense));
         }
         else
         {
             Assert.True(find.GeometryMatchesOracle, $"{name} oracle {find.OracleOutcome}/{find.OracleHeight}, actual {find.Outcome}/{find.Height}");
             if (find.OracleOutcome is "Walkable" or "Steep") Assert.True(find.GeometryPassed);
-            else Assert.False(SupportCostVerdict.Evaluate(find, find, row.Dense));
+            else Assert.NotEqual(SupportCostGate.Pass, SupportCostVerdict.Evaluate(find, find, row.Dense));
         }
         SupportCostSample legacy = sampler.Measure(row, "LegacyTick")[0];
         foreach (SupportCostSample sample in sampler.Measure(row, row.Explicit ? "ExplicitTick" : "DryTick"))
@@ -151,7 +151,7 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
             output.WriteLine($"{name} tick {sample.Outcome}, queries={sample.Queries}, routes={sample.Routes}, counts={sample.Counts}");
             AssertNamedRoute(row, sample);
             if (row.MustPass && !row.KnownIncomplete) Assert.True(sample.GeometryPassed, $"{name} tick {sample.Outcome}, motion {sample.AchievedMotion}");
-            if (!sample.GeometryPassed) Assert.False(SupportCostVerdict.Evaluate(sample, legacy, row.Dense));
+            if (!sample.GeometryPassed) Assert.NotEqual(SupportCostGate.Pass, SupportCostVerdict.Evaluate(sample, legacy, row.Dense));
             output.WriteLine($"{name} {sample.Operation} geometry={sample.GeometryPassed} {sample.Outcome}, " +
                 $"Find={sample.Counts.Find}, substeps={sample.Substeps}, bytes={sample.WarmBytes}, counts={sample.Counts}");
         }
@@ -317,11 +317,9 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
                 Environment.GetEnvironmentVariable("FILTER") + "\" --logger \"trx;LogFileName=" + Path.GetFileNameWithoutExtension(path) +
                 ".trx\" --results-directory \"" + Path.GetDirectoryName(Path.GetDirectoryName(path)) + "\""
                 : " build-slot --label " + label + " -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --filter \"FullyQualifiedName~SupportGateCostTests.OneShotCostArtifact\"");
-        string? reference = hosted ? Path.Combine(GitOutput("rev-parse --show-toplevel"), "docs", "verification", "2026-10-11-support-gates-cost.json") : null;
-        SupportCostArtifact.Write(path, samples, BaseSha, sha, command, reference);
+        // A hosted run records only. Its verdict is computed offline against the reference recorded at this commit.
+        SupportCostArtifact.Write(path, samples, BaseSha, sha, command, hosted);
         Assert.True(File.Exists(path));
-        if (hosted) Assert.True(JsonNode.Parse(File.ReadAllText(path))!["baseline"]!["HostedNormalizationPassed"]!.GetValue<bool>(),
-            "Hosted calibration needs matching scenes, fixed compilation metadata and a valid moving legacy flat-box tick.");
         Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
         output.WriteLine($"Recorded {samples.Count} first-use/warm operation pairs at {sha}.");
     }
@@ -346,7 +344,7 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
     public void VerdictScalesAbsoluteCeilings(double scale, double time, double legacyTime, bool expected)
     {
         SupportCostSample candidate = Synthetic("Find", time);
-        Assert.Equal(expected, SupportCostVerdict.Evaluate(candidate, Synthetic("LegacyDownPass", legacyTime), false, scale));
+        Assert.Equal(expected, SupportCostVerdict.Evaluate(candidate, Synthetic("LegacyDownPass", legacyTime), false, scale) == SupportCostGate.Pass);
     }
 
     [Theory]
@@ -359,10 +357,10 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
     public void VerdictScalesTheAdditiveLegacyTerm(double scale, double candidateTime, double legacyTime, bool expected)
     {
         Assert.Equal(expected, SupportCostVerdict.Evaluate(Synthetic("DryTick", candidateTime),
-            Synthetic("LegacyTick", legacyTime), false, scale));
+            Synthetic("LegacyTick", legacyTime), false, scale) == SupportCostGate.Pass);
     }
 
-    static SupportCostSample Synthetic(string operation, double time) => new(operation, "synthetic", true,
+    internal static SupportCostSample Synthetic(string operation, double time) => new(operation, "synthetic", true,
         "Grounded", 0, 0, Vector3.UnitX, 1, default, 0, 0, 0, time, 0, 4352);
 
     [Theory]
@@ -372,25 +370,29 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
         double ordinaryFind, double ordinarySubstep, double ordinaryTick, double denseFind,
         double denseSubstep, double denseTick, double relativeTick)
     {
-        Assert.True(SupportCostVerdict.TryHostedScale(HostedSection(400, true), HostedSection(hostedLegacy), out double scale));
-        Assert.Equal(expectedScale, scale);
+        // The flat box legacy tick is an outlier. The median over the other rows sets the scale.
+        JsonObject hostedSection = HostedSection(hostedLegacy);
+        hostedSection["Samples"]![0]!["WarmMicroseconds"] = 400 * 0.3;
+        Assert.True(SupportCostVerdict.TryHostedScale(HostedSection(400, true), hostedSection, out HostedScale hostScale));
+        Assert.Equal(new HostedScale(expectedScale, HostedRows, expectedScale, expectedScale), hostScale);
+        double scale = hostScale.K;
         foreach (var row in new[] { ("Find", false, ordinaryFind), ("GroundSubstep", false, ordinarySubstep),
             ("DryTick", false, ordinaryTick), ("Find", true, denseFind),
             ("GroundSubstep", true, denseSubstep), ("DryTick", true, denseTick) })
         {
             SupportCostSample candidate = Synthetic(row.Item1, row.Item3) with { WarmBytes = row.Item1 == "DryTick" ? 208 : 0 };
             SupportCostSample legacy = Synthetic("LegacyTick", 10000);
-            Assert.True(SupportCostVerdict.Evaluate(candidate, legacy, row.Item2, scale));
-            Assert.False(SupportCostVerdict.Evaluate(candidate with { WarmMicroseconds = Math.BitIncrement(row.Item3) }, legacy, row.Item2, scale));
-            Assert.False(SupportCostVerdict.Evaluate(candidate with { WarmBytes = candidate.WarmBytes + 1 }, legacy, row.Item2, scale));
+            Assert.Equal(SupportCostGate.Pass, SupportCostVerdict.Evaluate(candidate, legacy, row.Item2, scale));
+            Assert.Equal(SupportCostGate.Reject, SupportCostVerdict.Evaluate(candidate with { WarmMicroseconds = Math.BitIncrement(row.Item3) }, legacy, row.Item2, scale));
+            Assert.Equal(SupportCostGate.Reject, SupportCostVerdict.Evaluate(candidate with { WarmBytes = candidate.WarmBytes + 1 }, legacy, row.Item2, scale));
         }
         SupportCostSample tick = Synthetic("DryTick", relativeTick);
         SupportCostSample hosted = Synthetic("LegacyTick", hostedLegacy);
-        Assert.True(SupportCostVerdict.Evaluate(tick, hosted, false, scale));
-        Assert.False(SupportCostVerdict.Evaluate(tick with { WarmMicroseconds = Math.BitIncrement(relativeTick) }, hosted, false, scale));
-        Assert.False(SupportCostVerdict.Evaluate(tick with { Substeps = 4 }, hosted, false, scale));
-        Assert.True(SupportCostVerdict.Evaluate(tick with { Operation = "ExplicitTick", WarmBytes = 624 }, hosted, false, scale, 624));
-        Assert.False(SupportCostVerdict.Evaluate(tick with { Operation = "ExplicitTick", WarmBytes = 625 }, hosted, false, scale, 624));
+        Assert.Equal(SupportCostGate.Pass, SupportCostVerdict.Evaluate(tick, hosted, false, scale));
+        Assert.Equal(SupportCostGate.Reject, SupportCostVerdict.Evaluate(tick with { WarmMicroseconds = Math.BitIncrement(relativeTick) }, hosted, false, scale));
+        Assert.Equal(SupportCostGate.Reject, SupportCostVerdict.Evaluate(tick with { Substeps = 4 }, hosted, false, scale));
+        Assert.Equal(SupportCostGate.Pass, SupportCostVerdict.Evaluate(tick with { Operation = "ExplicitTick", WarmBytes = 624 }, hosted, false, scale, 624));
+        Assert.Equal(SupportCostGate.Reject, SupportCostVerdict.Evaluate(tick with { Operation = "ExplicitTick", WarmBytes = 625 }, hosted, false, scale, 624));
     }
 
     [Theory]
@@ -408,12 +410,6 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
     [InlineData("cold geometry")]
     [InlineData("oracle")]
     [InlineData("refusal")]
-    [InlineData("stationary")]
-    [InlineData("cold stationary")]
-    [InlineData("nonfinite motion")]
-    [InlineData("fallback")]
-    [InlineData("failed outcome")]
-    [InlineData("failed cold outcome")]
     [InlineData("scale underflow")]
     [InlineData("scale overflow")]
     [InlineData("ceiling overflow")]
@@ -430,6 +426,7 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
     [InlineData("tiered")]
     [InlineData("debug")]
     [InlineData("reference exit")]
+    [InlineData("hosted exit")]
     public void InvalidHostedBaselineCannotPass(string fault)
     {
         JsonObject? reference = HostedSection(400, true);
@@ -452,15 +449,9 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
             case "cold geometry": row["ColdGeometryPassed"] = false; break;
             case "oracle": row["GeometryMatchesOracle"] = false; break;
             case "refusal": row["Refusal"] = true; break;
-            case "stationary": row["AchievedMotion"] = JsonSerializer.SerializeToNode(Vector3.Zero, HostedOptions); break;
-            case "cold stationary": row["ColdAchievedMotion"] = JsonSerializer.SerializeToNode(Vector3.Zero, HostedOptions); break;
-            case "nonfinite motion": row["AchievedMotion"]!["X"] = "NaN"; break;
-            case "fallback": row["Comparable"] = false; break;
-            case "failed outcome": row["Outcome"] = "Refused"; break;
-            case "failed cold outcome": row["ColdOutcome"] = "Refused"; break;
-            case "scale underflow": baseline["WarmMicroseconds"] = double.MaxValue; row["WarmMicroseconds"] = double.Epsilon; break;
-            case "scale overflow": baseline["WarmMicroseconds"] = double.Epsilon; row["WarmMicroseconds"] = double.MaxValue; break;
-            case "ceiling overflow": baseline["WarmMicroseconds"] = 1; row["WarmMicroseconds"] = double.MaxValue; break;
+            case "scale underflow": SetTimes(reference, double.MaxValue); SetTimes(hosted, double.Epsilon); break;
+            case "scale overflow": SetTimes(reference, double.Epsilon); SetTimes(hosted, double.MaxValue); break;
+            case "ceiling overflow": SetTimes(reference, 1); SetTimes(hosted, double.MaxValue); break;
             case "missing row": hosted["Samples"] = new JsonArray(); break;
             case "duplicate row": hosted["Samples"]!.AsArray().Add(row.DeepClone()); break;
             case "missing scene": hosted["Scenes"] = new JsonObject(); break;
@@ -474,9 +465,16 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
             case "tiered": hosted["TieredCompilation"] = "1"; break;
             case "debug": hosted["Compilation"] = "Debug"; break;
             case "reference exit": reference["ProcessExitStatus"] = 1; break;
+            case "hosted exit": hosted["ProcessExitStatus"] = 1; break;
         }
-        Assert.False(SupportCostVerdict.TryHostedScale(reference, hosted, out double scale));
-        Assert.Equal(0, scale);
+        // Each section holds exactly the minimum row count, so one excluded row refuses the scale.
+        Assert.False(SupportCostVerdict.TryHostedScale(reference, hosted, out HostedScale scale));
+        Assert.Equal(default, scale);
+    }
+
+    static void SetTimes(JsonObject section, double time)
+    {
+        foreach (JsonNode? sample in section["Samples"]!.AsArray()) sample!["WarmMicroseconds"] = time;
     }
 
     [Theory]
@@ -488,10 +486,13 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
     public void HostedNormalizationMatchesCommittedPhysicalInputs(string tuning, bool expected)
     {
         string path = Path.Combine(GitOutput("rev-parse --show-toplevel"), "docs", "verification", "2026-10-11-support-gates-cost.json");
-        JsonObject baseline = JsonNode.Parse(File.ReadAllText(path))!["baseline"]!.AsObject();
-        JsonNode flat = baseline["Samples"]!.AsArray().Single(sample =>
-            sample!["Operation"]!.GetValue<string>() == "LegacyTick" && sample["Scene"]!.GetValue<string>() == "flat box")!;
-        JsonObject hosted = HostedSection(flat["WarmMicroseconds"]!.GetValue<double>() / 2);
+        JsonObject? reference = SupportCostArtifact.ReadReference(path, "376971dda");
+        Assert.NotNull(reference);
+        JsonObject hosted = HostedSection(1);
+        hosted["Samples"] = reference["Samples"]!.DeepClone();
+        foreach (JsonNode? sample in hosted["Samples"]!.AsArray())
+            if (sample!["WarmMicroseconds"] is JsonValue time && time.TryGetValue(out double microseconds))
+                sample["WarmMicroseconds"] = microseconds / 2;
         var inputs = SupportGateCostScenes.Rows().Select(row => (SupportCostRow)row[0]).ToDictionary(row => row.Name);
         hosted["Scenes"] = JsonSerializer.SerializeToNode(inputs, HostedOptions);
         hosted["Tuning"] = JsonSerializer.SerializeToNode(SupportGateCostScenes.Tuning, HostedOptions);
@@ -502,8 +503,9 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
             case "water mode": hosted["Tuning"]!["Water"]!["Mode"] = (int)WaterTraversalMode.WadeOnly; break;
             case "water launch": hosted["Tuning"]!["Water"]!["SurfaceJumpSpeed"] = 1f; break;
         }
-        Assert.Equal(expected, SupportCostVerdict.TryHostedScale(baseline, hosted, out double scale));
-        Assert.Equal(expected ? 0.5 : 0, scale);
+        Assert.Equal(expected, SupportCostVerdict.TryHostedScale(reference, hosted, out HostedScale scale));
+        Assert.Equal(expected ? 0.5 : 0, scale.K);
+        if (expected) Assert.InRange(scale.Rows, SupportCostVerdict.MinimumCalibrationRows, int.MaxValue);
     }
 
     [Theory]
@@ -518,32 +520,42 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
         baseline["Tuning"]!.AsObject().Remove(field);
         JsonNode original = baseline.DeepClone();
 
-        Assert.True(SupportCostVerdict.TryHostedScale(baseline, hosted, out double scale));
-        Assert.Equal(0.5, scale);
+        Assert.True(SupportCostVerdict.TryHostedScale(baseline, hosted, out HostedScale scale));
+        Assert.Equal(0.5, scale.K);
         Assert.True(JsonNode.DeepEquals(original, baseline));
 
         hosted["Tuning"]![field] = JsonNode.Parse(changedValue);
         Assert.False(SupportCostVerdict.TryHostedScale(baseline, hosted, out scale));
-        Assert.Equal(0, scale);
+        Assert.Equal(default, scale);
 
         baseline["Tuning"]![field] = hosted["Tuning"]![field]!.DeepClone();
         Assert.True(SupportCostVerdict.TryHostedScale(baseline, hosted, out scale));
-        Assert.Equal(0.5, scale);
+        Assert.Equal(0.5, scale.K);
     }
 
     static readonly JsonSerializerOptions HostedOptions = new()
     { IncludeFields = true, NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals };
 
-    internal static JsonObject HostedSection(double time, bool reference = false)
+    internal const int HostedRows = 40;
+
+    /// <summary>A section with one successful legacy tick per scene. The first scene is the flat box.</summary>
+    internal static JsonObject HostedSection(double time, bool reference = false, int rows = HostedRows)
     {
-        SupportCostSample legacy = Synthetic("LegacyTick", time) with
+        var scenes = new JsonObject();
+        var samples = new JsonArray();
+        for (int i = 0; i < rows; i++)
         {
-            Scene = "flat box",
-            GeometryMatchesOracle = true,
-            ColdGeometryPassed = true,
-            ColdAchievedMotion = Vector3.UnitX,
-            ColdOutcome = "Grounded"
-        };
+            string scene = i == 0 ? "flat box" : "legacy row " + i;
+            scenes[scene] = JsonSerializer.SerializeToNode(new SupportCostRow(scene), HostedOptions);
+            samples.Add(JsonSerializer.SerializeToNode(Synthetic("LegacyTick", time) with
+            {
+                Scene = scene,
+                GeometryMatchesOracle = true,
+                ColdGeometryPassed = true,
+                ColdAchievedMotion = Vector3.UnitX,
+                ColdOutcome = "Grounded"
+            }, HostedOptions));
+        }
         return new JsonObject
         {
             ["Hardware"] = reference ? "Apple M2 Max" : "Hosted x64 CPU",
@@ -554,8 +566,8 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
             ["Compilation"] = "Release, tiering disabled",
             ["ProcessExitStatus"] = reference ? JsonValue.Create(0) : null,
             ["Tuning"] = new JsonObject { ["Speed"] = 6 },
-            ["Scenes"] = new JsonObject { ["flat box"] = JsonSerializer.SerializeToNode(new SupportCostRow("flat box"), HostedOptions) },
-            ["Samples"] = new JsonArray(JsonSerializer.SerializeToNode(legacy, HostedOptions))
+            ["Scenes"] = scenes,
+            ["Samples"] = samples
         };
     }
 

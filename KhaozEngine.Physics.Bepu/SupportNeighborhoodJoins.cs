@@ -1,9 +1,12 @@
+using System;
+
 namespace KhaozEngine.Physics.Bepu;
 
 /// <summary>The convex join test. Two polygons are joined when they may meet within the band and every vertex of
-/// each certainly lies at most the band above the other's plane. It is geometric for every pair, inside one static
-/// and across statics, so a scene's partition into statics cannot change it. Polygons that cross each other's
-/// planes, such as a ramp sunk into a floor, are not joined.</summary>
+/// each certainly lies at most the band above the other's plane. Its verdict is geometric for every pair, inside one
+/// static and across statics, so a scene's partition into statics cannot change it. Two faces of one installed leaf
+/// that share a captured edge may take the meeting from their world form, which certified that same meeting once.
+/// Polygons that cross each other's planes, such as a ramp sunk into a floor, are not joined.</summary>
 internal static class SupportNeighborhoodJoins
 {
     static readonly double Apart = System.Math.ScaleB(1, -400);
@@ -11,8 +14,11 @@ internal static class SupportNeighborhoodJoins
     internal static GeometrySign Joined(SupportPolygon first, SupportPolygon second, double band,
         SupportSegmentPolygon kernel) => Joined(first, second, band, kernel, null, 0, 0);
 
+    /// <summary>With <paramref name="topologyMeeting"/>, from <see cref="TopologyMeets"/>, the pair's meeting comes
+    /// from its world form's certified shared edge. The bounds and mutual-below certification still run.</summary>
     internal static GeometrySign Joined(SupportPolygon first, SupportPolygon second, double band,
-        SupportSegmentPolygon kernel, SupportSourceIncidence? incidence, int firstIndex, int secondIndex)
+        SupportSegmentPolygon kernel, SupportSourceIncidence? incidence, int firstIndex, int secondIndex,
+        bool topologyMeeting = false)
     {
         if (!BoundsOverlap(first, second) && SupportGeometry.BoxGap(first.Low, first.High, second.Low, second.High) > band)
             return GeometrySign.Negative;
@@ -20,8 +26,30 @@ internal static class SupportNeighborhoodJoins
         if (below != GeometrySign.Positive) return below;
         below = Below(second, first, band);
         if (below != GeometrySign.Positive) return below;
+        if (topologyMeeting && band == SupportJoinIncidence.ContactBand) return GeometrySign.Positive;
         if (band == SupportJoinIncidence.ContactBand && incidence is not null &&
             incidence.ProvesMeeting(firstIndex, secondIndex)) return GeometrySign.Positive;
+        return Meeting(first, second, band, kernel);
+    }
+
+    /// <summary>Whether <paramref name="first"/> carries a certified meeting with <paramref name="second"/>: both
+    /// are faces of one world form leaf, <paramref name="first"/> has the lower face index within that leaf, and
+    /// they share a captured edge whose meeting <see cref="CertifiesTopologyMeeting"/> proved. The form stores
+    /// each meeting on the lower face only, so the reversed pair reads false. Element ids within a leaf follow
+    /// face index, so member order passes the faces this way round.</summary>
+    internal static bool TopologyMeets(SupportPolygon first, SupportPolygon second) =>
+        first.Static == second.Static && first.TopologyMeetings.Contains(second.ElementId);
+
+    /// <summary>Whether the meeting step of the join test at the contact band is certainly positive for two
+    /// faces of one leaf that share a captured edge, with <paramref name="first"/> the lower element id. The source
+    /// incidence step, when it applies, also returns positive, so this is the meeting the query would prove. A
+    /// refused or negative meeting leaves the pair to the geometric join.</summary>
+    internal static bool CertifiesTopologyMeeting(SupportPolygon first, SupportPolygon second,
+        SupportSegmentPolygon kernel) =>
+        Meeting(first, second, SupportJoinIncidence.ContactBand, kernel) == GeometrySign.Positive;
+
+    static GeometrySign Meeting(SupportPolygon first, SupportPolygon second, double band, SupportSegmentPolygon kernel)
+    {
         if (band == SupportJoinIncidence.ContactBand && SupportJoinIncidence.CommonVertex(first, second))
             return GeometrySign.Positive;
         // The distance between two convex polygons is attained with a point on an edge of one of them.

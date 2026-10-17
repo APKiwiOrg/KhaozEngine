@@ -168,7 +168,31 @@ internal sealed class SupportTangentKernel
 
     /// <summary>Positive with the published element when it is a member, Negative when it is not, and Unresolved
     /// when the bounded arithmetic failed.</summary>
-    internal GeometrySign Measure(StaticHandle owner, in SupportCurvedLeaf leaf, int part, out SupportElement element)
+    internal GeometrySign Measure(StaticHandle owner, in SupportCurvedLeaf leaf, int part, out SupportElement element) =>
+        Measure(owner, leaf, part, false, out element);
+
+    /// <summary>The verdict <see cref="Measure(StaticHandle, in SupportCurvedLeaf, int, out SupportElement)"/>
+    /// returns, without its element. Bisection stops as soon as the kept spans certify that verdict, and otherwise
+    /// runs to full resolution. Under <see cref="SupportReferenceEvaluation"/> the full kernel runs unchanged.
+    /// <para>The certificate rests on one property. Inside <see cref="Domain"/>, every operation of
+    /// <see cref="Evaluate"/> is inclusion isotone in its height operand and refuses only a divisor interval that holds
+    /// zero, so a narrower height span's distance, height, normal and witness are resolved wherever its ancestor's are,
+    /// and lie inside them. Every later span descends from a kept span. Distances are always resolved there, so no later
+    /// span or axis point refuses and the separation stays resolved. Pruning keeps every span while the root's bound is
+    /// the reached bound, and otherwise keeps the span holding the axis point whose bound it is, so the kept set never
+    /// empties. The only exits left to the full run are Negative and Positive, and a refused publication on the way to
+    /// Positive.</para>
+    /// <para>Negative: every kept height lies certainly below the band's lower edge, so every later height does too, the
+    /// front check fails, and every remaining exit of the full run is Negative.</para>
+    /// <para>Positive: the reached bound is within the band, and every later lowest distance lies at or below it, so no
+    /// band check fires. Every kept height is at or above the band's lower edge, so every final span is in front. Every kept
+    /// normal and witness is resolved inside the domain, so the final hulls are resolved inside it too and publish
+    /// resolved.</para></summary>
+    internal GeometrySign MeasureSign(StaticHandle owner, in SupportCurvedLeaf leaf, int part) =>
+        Measure(owner, leaf, part, !SupportReferenceEvaluation.Active && Bounded(leaf), out _);
+
+    GeometrySign Measure(StaticHandle owner, in SupportCurvedLeaf leaf, int part, bool certify,
+        out SupportElement element)
     {
         SupportQueryDiagnostics.Record(SupportQueryCounter.Extrema);
         element = default;
@@ -187,6 +211,7 @@ internal sealed class SupportTangentKernel
             Prune(upper);
             if (_spans.Count == 0) return GeometrySign.Unresolved;
             if (GeometryInterval.Exact(Lowest()).Subtract(_radius).Lower > _band) return GeometrySign.Negative;
+            if (certify && Certified(upper, out GeometrySign verdict)) return verdict;
             if (depth == MaximumDepth || _spans.Count * 2 > MaximumSpans || Narrow()) break;
             _next.Clear();
             foreach (Span span in _spans)
@@ -231,6 +256,38 @@ internal sealed class SupportTangentKernel
         return GeometrySign.Positive;
     }
 
+    // The verdict the full run reaches from the kept spans and the reached bound, when they certify it.
+    bool Certified(double upper, out GeometrySign verdict)
+    {
+        bool negative = true;
+        GeometryInterval reached = GeometryInterval.Exact(upper).Subtract(_radius);
+        bool positive = reached.IsResolved && reached.Lower <= _band;
+        foreach (Span span in _spans)
+        {
+            Sample sample = span.Sample;
+            negative &= sample.Height.IsResolved && sample.Height.Upper < -_band;
+            positive &= sample.Height.IsResolved && sample.Height.Lower >= -_band && Within(sample.Normal) &&
+                Within(sample.Witness);
+        }
+        verdict = negative ? GeometrySign.Negative : positive ? GeometrySign.Positive : GeometrySign.Unresolved;
+        return negative || positive;
+    }
+
+    // A bound far below overflow for every intermediate of Evaluate. With every input inside it, including the axis and
+    // across rows, offsets stay below 2^21, dot products below 2^43, squares and their sums below 2^89, and a quotient by
+    // a positive length lower bound, at least about 2^-538, scaled by a radius stays below 2^601. Unit axes keep the
+    // squares far lower. The Positive certificate bounds the published normal and witness on their own.
+    const double Domain = 1 << 20;
+
+    bool Bounded(in SupportCurvedLeaf leaf) => Within(_x) && Within(_z) &&
+        Within(GeometryInterval.Enclose(_low, _high)) && Within(_radius) && Within(leaf.Centre) &&
+        Within(leaf.Axis) && Within(leaf.AcrossX) && Within(leaf.AcrossY) && Within(leaf.AcrossZ) &&
+        Within(GeometryInterval.Exact(leaf.Radius)) && Within(GeometryInterval.Exact(leaf.HalfLength));
+
+    static bool Within(GeometryVector value) => Within(value.X) && Within(value.Y) && Within(value.Z);
+
+    static bool Within(GeometryInterval value) => value.IsResolved && value.Lower >= -Domain && value.Upper <= Domain;
+
     // A height certainly on the axis: its distance bound is reached.
     bool Reach(in SupportCurvedLeaf leaf, int part, double height, ref double upper)
     {
@@ -266,6 +323,7 @@ internal sealed class SupportTangentKernel
     /// distance, the axis point's signed height above the tangent plane there, the closest point and its normal.</summary>
     Sample Evaluate(in SupportCurvedLeaf leaf, int part, GeometryInterval height)
     {
+        SupportQueryDiagnostics.Record(SupportQueryCounter.TangentSamples);
         var point = new GeometryVector(_x, height, _z);
         GeometryVector offset = Subtract(point, leaf.Centre);
         if (leaf.Shape == SupportCurvedShape.Sphere) return Round(leaf.Centre, offset, leaf.Radius);

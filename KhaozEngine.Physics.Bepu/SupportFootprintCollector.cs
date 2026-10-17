@@ -110,7 +110,7 @@ internal sealed partial class SupportFootprintCollector
         {
             if (SupportNeighborhoodMesh.IsMesh(description.Shape))
                 captured = SupportNeighborhoodMesh.Polygons(simulation, description.Shape, description.Pose, owner,
-                    _bounds, _triangles, _pool, _polygons);
+                    _bounds, _triangles, _pool, _polygons, installed.MeshWorldForms, staticGeometryVersion);
             else
             {
                 captured = installed.GetOrCapture(simulation, owner, description.Shape, staticGeometryVersion, out var geometry);
@@ -213,6 +213,9 @@ internal sealed partial class SupportFootprintCollector
             using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportPlanarContact);
             return GeometrySign.Positive;
         }
+        GeometrySign neighbour = SupportPlanarNeighbour.Contact(polygon, _contactStarts[index], _contactDirections[index],
+            proposal.Probe.Radius, _request.ContactBand);
+        if (neighbour != GeometrySign.Unresolved) return neighbour;
         SupportDistance distance = _kernel.MeasureFootprintContact(_contactStarts[index], _contactDirections[index],
             polygon, _request.ContactBand);
         if (!distance.IsResolved) return GeometrySign.Unresolved;
@@ -261,8 +264,11 @@ internal sealed partial class SupportFootprintCollector
     internal SupportFootprintResult Refused(CapsuleFeatureStatus status) =>
         SupportFootprintResult.Refused(status, status == CapsuleFeatureStatus.CapacityExceeded ? _count : 0);
 
+    /// <summary>Publishes the collected members and their joins. With <paramref name="certificationJoins"/> it builds
+    /// incidence and joins only between two polygon members whose upward lower bound is above zero, the only joins
+    /// support certification reads, and leaves every other bit clear. The reference builds every join.</summary>
     internal SupportFootprintResult Publish(IPhysicsWorld receiver, IPhysicsQueryLease lease,
-        Span<SupportFootprintMember> members, Span<ulong> joins)
+        Span<SupportFootprintMember> members, Span<ulong> joins, bool certificationJoins)
     {
         using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportJoins);
         int stride = SupportFootprintResult.JoinWordsFor(_count);
@@ -291,13 +297,20 @@ internal sealed partial class SupportFootprintCollector
             ? a.Value.Static.Value.CompareTo(b.Value.Static.Value) : a.Value.ElementId.CompareTo(b.Value.ElementId));
         Span<ulong> matrix = _matrix.AsSpan(0, _count * stride);
         matrix.Clear();
-        for (int i = 0; i < _count; i++) _sourceMembers[i] = _members[i].Polygon;
+        bool readPairsOnly = certificationJoins && !SupportReferenceEvaluation.Active;
+        for (int i = 0; i < _count; i++)
+            _sourceMembers[i] = !readPairsOnly || _members[i].Value.UpwardLower > 0 ? _members[i].Polygon : null;
         _incidence.Build(_sourceMembers.AsSpan(0, _count));
         for (int first = 0; first < _count; first++)
             for (int second = first + 1; second < _count; second++)
             {
+                if (readPairsOnly && (_sourceMembers[first] is null || _sourceMembers[second] is null))
+                {
+                    SupportQueryDiagnostics.Record(SupportQueryCounter.JoinsSkipped);
+                    continue;
+                }
                 SupportQueryDiagnostics.Record(SupportQueryCounter.JoinPairs);
-                if (_members[first].Polygon is not { } a || _members[second].Polygon is not { } b) continue;
+                if (_sourceMembers[first] is not { } a || _sourceMembers[second] is not { } b) continue;
                 if (SupportNeighborhoodJoins.Separated(a, b, _request.ContactBand))
                 {
                     SupportQueryDiagnostics.Record(SupportQueryCounter.JoinsPruned);

@@ -39,9 +39,15 @@ internal static partial class ContactController
         IPhysicsQueryLeaseSource? leases = world as IPhysicsQueryLeaseSource;
 
         using IPhysicsQueryLease? lease = leases?.AcquireQueryReadLease();
-        var queries = new DryContactQueryContext(groundHeight, groundNormal, world, lease, tuning, medium);
-        return StepWithQueries(state, moveDir, speedFraction, run, jump, dt, tuning, queries, clampXz,
-            faceYaw, foot);
+        // The tick's lease is its interval, so its exact repeat reads share one memo that closes with the tick.
+        SupportRequestMemo? memo = SupportRequestMemo.OpenDry(lease);
+        try
+        {
+            var queries = new DryContactQueryContext(groundHeight, groundNormal, world, lease, tuning, medium, memo);
+            return StepWithQueries(state, moveDir, speedFraction, run, jump, dt, tuning, queries, clampXz,
+                faceYaw, foot);
+        }
+        finally { memo?.Close(); }
     }
 
     internal static MoveState StepWithQueries(in MoveState state, Vector2 moveDir, float speedFraction, bool run,

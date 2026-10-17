@@ -19,8 +19,9 @@ internal sealed class SupportPolygon
     int _count;
     GeometrySign _normalArea, _orientation;
     SupportContactDomain _contactDomain;
+    SupportVerticalDomain _verticalDomain;
     InstalledSupportWorldFace? _face;
-    bool _hasNormalArea, _hasOrientation, _hasContactDomain;
+    bool _hasNormalArea, _hasOrientation, _hasContactDomain, _hasVerticalDomain;
 
     internal StaticHandle Static { get; private set; }
     internal int ElementId { get; private set; }
@@ -71,6 +72,17 @@ internal sealed class SupportPolygon
         {
             if (!_hasContactDomain) (_contactDomain, _hasContactDomain) = (SupportContactPrefilter.Certify(this), true);
             return _contactDomain;
+        }
+    }
+
+    /// <summary>Whether the vertical admission certificate may stand in for the admission extrema kernel on this
+    /// polygon. Derived once per finished polygon, or copied from the world form face it was bound from.</summary>
+    internal SupportVerticalDomain VerticalDomain
+    {
+        get
+        {
+            if (!_hasVerticalDomain) (_verticalDomain, _hasVerticalDomain) = (SupportVerticalAdmission.Certify(this), true);
+            return _verticalDomain;
         }
     }
 
@@ -160,8 +172,9 @@ internal sealed class SupportPolygon
         face.High.CopyTo(High);
         IsResolved = face.IsResolved;
         HasJoinIncidenceCertificate = face.HasJoinIncidenceCertificate;
-        (_normalArea, _orientation, _contactDomain) = (face.NormalArea, face.Orientation, face.ContactDomain);
-        _hasNormalArea = _hasOrientation = _hasContactDomain = true;
+        (_normalArea, _orientation, _contactDomain, _verticalDomain) =
+            (face.NormalArea, face.Orientation, face.ContactDomain, face.VerticalDomain);
+        _hasNormalArea = _hasOrientation = _hasContactDomain = _hasVerticalDomain = true;
         _face = face;
     }
 
@@ -173,7 +186,7 @@ internal sealed class SupportPolygon
     void ClearDerived()
     {
         _footprintEdges.Clear();
-        _hasNormalArea = _hasOrientation = _hasContactDomain = false;
+        _hasNormalArea = _hasOrientation = _hasContactDomain = _hasVerticalDomain = false;
         _face = null;
     }
 

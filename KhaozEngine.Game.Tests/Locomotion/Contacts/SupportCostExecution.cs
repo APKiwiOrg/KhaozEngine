@@ -18,6 +18,8 @@ internal readonly record struct SupportCostOutput(bool GeometryPassed, string Ou
     public MovementStepOutcome? StepOutcome { get; init; }
     public Vector3 EndFeet { get; init; }
     public bool GeometryMatchesOracle { get; init; }
+    /// <summary>The end placement was judged as a paced climb.</summary>
+    public bool Paced { get; init; }
 }
 
 /// <summary>One operation's scene, selected view and identical immutable input for cold and warm calls.</summary>
@@ -51,8 +53,8 @@ internal sealed class SupportCostExecution : IDisposable
         this.operation = operation;
         scene = SupportGateCostScenes.Build(row);
         expected = operation == "LegacyTreadDownPass"
-            ? SupportGateCostScenes.Expected(scene, row, row.Query with { Axis = new(0.175f, 0), FeetY = 0 })
-            : SupportGateCostScenes.Expected(scene, row);
+            ? SupportGateCostScenes.Expected(scene, row, row.Query with { Axis = new(0.175f, 0), FeetY = 0 }, guarded: false)
+            : SupportGateCostScenes.Expected(scene, row, guarded: !operation.StartsWith("Legacy", StringComparison.Ordinal));
         inner = scene.World.CreateQueryViewExcludingStatics([]);
         View = new(inner);
         capsule = CharacterMovement.CapsuleFor(SupportGateCostScenes.Tuning);
@@ -177,7 +179,7 @@ internal sealed class SupportCostExecution : IDisposable
     {
         var q = new FootSupportQuery(observation.Axis, observation.FeetY, observation.Radius,
             observation.ReachUp, observation.ReachDown, observation.CosMaxSlope);
-        FootprintOracleSupport oracle = SupportGateCostScenes.Expected(scene, row, q);
+        FootprintOracleSupport oracle = SupportGateCostScenes.Expected(scene, row, q, guarded: true);
         SupportStatus status = (SupportStatus)observation.Status;
         matches = status == oracle.Status && (status is SupportStatus.None or SupportStatus.Refused ||
             Math.Abs(observation.Height - oracle.Height) <= observation.HeightError &&
@@ -195,21 +197,50 @@ internal sealed class SupportCostExecution : IDisposable
             };
         if (operation is "DryTick" or "ExplicitTick" or "GroundTickBorrowed" or "LegacyTick")
         {
-            bool placed = true;
+            bool placed = true, paced = false;
             bool supported = output.State is { } state ? state.Grounded || state.SupportGranted : output.GeometryPassed;
             if (supported)
             {
                 var q = row.Query with { Axis = new(output.EndFeet.X, output.EndFeet.Z), FeetY = output.EndFeet.Y };
-                FootprintOracleSupport final = SupportGateCostScenes.Expected(scene, row, q);
-                bool paced = row.StairSignal || row.Name is "pushed seat" or "explicit rounding handoff";
+                // Placement asks where the body ended, a geometric question rather than a FootSupport read.
+                FootprintOracleSupport final = SupportGateCostScenes.Expected(scene, row, q, guarded: false);
+                paced = Paced(row, final.Height);
                 double allowedLag = paced ? SupportGateCostScenes.Tuning.StepHeight : 0.001;
                 placed = final.Status is SupportStatus.Walkable or SupportStatus.Steep &&
-                    output.EndFeet.Y <= final.Height + 0.001 && final.Height - output.EndFeet.Y <= allowedLag;
+                    output.EndFeet.Y <= final.Height + 0.001 && final.Height - output.EndFeet.Y <= allowedLag &&
+                    (!paced || PacedEndReaches(output.EndFeet.Y, final.Height, row.Feet.Y, Budget(row),
+                        RoofLimit(new(output.EndFeet.X, output.EndFeet.Z), final.Height)));
             }
-            return output with { GeometryMatchesOracle = readsMatch && placed, GeometryPassed = readsMatch && placed && output.GeometryPassed };
+            return output with
+            {
+                GeometryMatchesOracle = readsMatch && placed,
+                GeometryPassed = readsMatch && placed && output.GeometryPassed,
+                Paced = paced,
+            };
         }
         return output with { GeometryMatchesOracle = output.GeometryPassed };
     }
+
+    /// <summary>A rise from the row's feet to the support where the body ended that one tick's climb budget cannot
+    /// pay is a paced climb. Its feet may trail that support by up to the legs band, but must reach the lowest of the
+    /// support, the budgeted height and the roof limit.</summary>
+    internal static bool Paced(SupportCostRow row, double supportHeight) => supportHeight - row.Feet.Y > Budget(row);
+
+    static double Budget(SupportCostRow row) => (double)SupportGateCostScenes.Tuning.MaxStepClimbSpeed * row.Dt;
+
+    /// <summary>A paced end reaches the lowest of its support, the budgeted height and the roof limit, less the
+    /// 0.001 placement allowance.</summary>
+    internal static bool PacedEndReaches(double endFeet, double support, double startFeet, double budget,
+        double? roofLimit) =>
+        endFeet >= Math.Min(Math.Min(support, startFeet + budget), roofLimit ?? double.PositiveInfinity) - 0.001;
+
+    /// <summary>The highest feet the cost tuning's capsule reaches under the scene's roof over the footprint disc at
+    /// <paramref name="axis"/>, or null when nothing is overhead.</summary>
+    internal double? RoofLimit(Vector2 axis, double supportHeight) =>
+        SupportCostRoofOracle.Limit(scene, axis, row.Query.FootRadius, supportHeight, SupportGateCostScenes.Tuning);
+
+    /// <summary>The installed scene, for a test that adds geometry the oracles then read.</summary>
+    internal SupportFootprintScene Scene => scene;
 
     EnvironmentAcquisitionFixture Environment()
     {

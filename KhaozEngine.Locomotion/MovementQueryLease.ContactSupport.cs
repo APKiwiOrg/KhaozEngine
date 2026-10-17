@@ -11,7 +11,7 @@ public sealed partial class MovementQueryLease
     {
         AssertUsable();
         AssertCurrent();
-        Workspace.BeginTick(this);
+        Workspace.BeginTick(this, _physics);
     }
 
     internal void EndContactTick()

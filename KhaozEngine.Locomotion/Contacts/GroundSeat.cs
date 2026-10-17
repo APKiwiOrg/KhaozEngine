@@ -8,7 +8,8 @@ namespace KhaozEngine.Locomotion.Contacts;
 internal enum SeatOutcome : byte { Seated, SteepSeated, Airborne, Wall, Refused }
 
 /// <summary>The down pass result. <see cref="FeetY"/> is the seated height, or the start feet when the body is
-/// not seated. <see cref="StepPart"/> is the part of a walkable rise the start support's plane does not explain.
+/// not seated. <see cref="StepPart"/> is the part of a walkable rise the start support's height field does not
+/// explain.
 /// <see cref="WallNormal"/> is a horizontal unit vector for <see cref="SeatOutcome.Wall"/>, else zero.</summary>
 internal readonly record struct GroundSeatResult(SeatOutcome Outcome, float FeetY, SupportSample Support,
     float StepPart, Vector3 WallNormal, float DiscreteStep = 0);
@@ -46,8 +47,8 @@ internal static class GroundSeat
         {
             case SupportStatus.Walkable:
                 return new(SeatOutcome.Seated, support.Height, support,
-                    StepPart(support.Height, start, startAxis, startFeetY, axis), Vector3.Zero,
-                    DiscreteStep(start, startAxis, support, axis));
+                    StepPart(support, start, startAxis, startFeetY, axis, cosMaxSlope), Vector3.Zero,
+                    DiscreteStep(start, startAxis, support, axis, cosMaxSlope));
             case SupportStatus.Steep:
                 // A footed body never climbs ground it cannot stand on, so a face that may rise above the start
                 // feet is a wall.
@@ -70,28 +71,44 @@ internal static class GroundSeat
         return new(axis, startFeetY, footRadius, tuning.StepHeight, reachDown, cosMaxSlope);
     }
 
-    // The seated height less the start support's plane extrapolated to the new axis. Without a start plane the
-    // reference is level at the start feet. A steep start, which only a slide moves from, explains no walkable rise,
-    // so the part is the rise above the start feet and a drop charges nothing. The part is charged against the
-    // climb budget, so it rounds up and a paid climb never exceeds the budget.
-    static float StepPart(float height, in SupportSample start, Vector2 startAxis, float startFeetY, Vector2 axis)
+    // The seated height less the start support's height field extrapolated to the new axis. On the start's own
+    // member that field explains a rise up to a walkable grade over the move, and the part is the excess. Across
+    // members an overhung edge stays level. Without a start plane the reference is level at the start feet. A steep
+    // start, which only a slide moves from, explains no walkable rise, so the part is the rise above the start feet
+    // and a drop charges nothing. The part is charged against the climb budget, so it rounds up and a paid climb
+    // never exceeds the budget.
+    static float StepPart(in SupportSample support, in SupportSample start, Vector2 startAxis, float startFeetY,
+        Vector2 axis, float cosMaxSlope)
     {
+        float height = support.Height;
         if (start.Status == SupportStatus.Steep)
             return MathF.Max(0f, GroundPlacement.NotBelow((double)height - startFeetY));
         Vector3 n = start.Normal;
         bool hasPlane = start.Status == SupportStatus.Walkable && n.Y > 0;
         if (!hasPlane) return GroundPlacement.NotBelow((double)height - startFeetY);
-        double plane = start.Height + ((double)n.X * ((double)startAxis.X - axis.X) +
-            (double)n.Z * ((double)startAxis.Y - axis.Y)) / n.Y;
+        if (SameMember(start, support))
+        {
+            double excess = MemberExcess(start, startAxis, support, axis, cosMaxSlope);
+            // A drop on one member pays nothing.
+            return excess > 0 ? GroundPlacement.NotBelow(excess) : 0;
+        }
+        double plane = start.Height - PlaneRise(start, startAxis,
+            (double)axis.X - startAxis.X, (double)axis.Y - startAxis.Y);
         return GroundPlacement.NotBelow(height - plane);
     }
 
-    // A height jump belongs to a step only when both support planes agree on its direction and clear the
-    // contact skin plus certified height errors. Opposite signs identify continuous ground.
+    // Between members a height jump belongs to a step only when both support planes agree on its direction and
+    // clear the contact skin plus both certified height errors. Opposite signs identify continuous ground. On one
+    // member only a rise or drop beyond a walkable grade over the move is a step, once it clears the contact skin.
     internal static float DiscreteStep(in SupportSample start, Vector2 startAxis, in SupportSample next,
-        Vector2 axis)
+        Vector2 axis, float cosMaxSlope)
     {
         if (start.Status != SupportStatus.Walkable || next.Status != SupportStatus.Walkable) return 0;
+        if (SameMember(start, next))
+        {
+            double excess = MemberExcess(start, startAxis, next, axis, cosMaxSlope);
+            return Math.Abs(excess) > ShellMotion.ContactSkin ? (float)excess : 0;
+        }
         double dx = (double)axis.X - startAxis.X, dz = (double)axis.Y - startAxis.Y;
         double forward = next.Height - (start.Height - PlaneRise(start, startAxis, dx, dz));
         double backward = next.Height + PlaneRise(next, axis, dx, dz) - start.Height;
@@ -99,6 +116,25 @@ internal static class GroundSeat
         if (Math.Abs(forward) <= error || Math.Abs(backward) <= error ||
             Math.Sign(forward) != Math.Sign(backward)) return 0;
         return (float)(Math.Sign(forward) * Math.Min(Math.Abs(forward), Math.Abs(backward)));
+    }
+
+    // One raw member is one convex polygon or curved part of one static: a polyhedron face, a mesh triangle or a
+    // curved leaf part, named by its element id. Analytic terrain has no static and is never one member.
+    static bool SameMember(in SupportSample start, in SupportSample next) =>
+        start.Static is StaticHandle owner && next.Static == owner && start.FeatureId == next.FeatureId;
+
+    // A member's certified height is continuous in the axis but not bounded by its walkable slopes: a disc reaching
+    // up a curved part, or along a sloped edge it overhangs, can rise or fall faster. The change a walkable grade over
+    // the horizontal move explains, plus both certified errors, is no step. The signed excess beyond it is.
+    static double MemberExcess(in SupportSample start, Vector2 startAxis, in SupportSample next, Vector2 axis,
+        float cosMaxSlope)
+    {
+        double dx = (double)axis.X - startAxis.X, dz = (double)axis.Y - startAxis.Y;
+        double distance = Math.Sqrt(dx * dx + dz * dz), cosine = cosMaxSlope;
+        double grade = distance > 0 ? Math.Sqrt(1 - cosine * cosine) / cosine * distance : 0;
+        double rise = (double)next.Height - start.Height;
+        double beyond = Math.Abs(rise) - grade - start.HeightError - next.HeightError;
+        return beyond > 0 ? Math.CopySign(beyond, rise) : 0;
     }
 
     // The rise of a support's plane over (dx, dz). A certified height is the least of the support's own plane at the

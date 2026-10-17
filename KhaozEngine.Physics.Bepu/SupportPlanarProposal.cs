@@ -71,13 +71,15 @@ internal static class SupportPlanarProposal
     static bool Exact(GeometryInterval value, double expected) =>
         value.IsResolved && value.Lower == expected && value.Upper == expected;
 
+    // Exact signs on the represented coordinates. A rounded cast could move a vertex of a hull installed at an
+    // offset centre across the axis. The certificate and the axis lattice keep every operand inside the exact
+    // expansion domain.
     static bool Inside(SupportPolygon polygon, double x, double z)
     {
         for (int i = 0; i < polygon.Vertices.Length; i++)
         {
             FeaturePoint a = polygon.Vertices[i], b = polygon.Vertices[(i + 1) % polygon.Vertices.Length];
-            GeometrySign side = BoundedGeometryArithmetic.Orient2D((float)a.X.Value, (float)a.Z.Value,
-                (float)b.X.Value, (float)b.Z.Value, (float)x, (float)z);
+            GeometrySign side = BoundedGeometryArithmetic.Orient2D(a.X.Value, a.Z.Value, b.X.Value, b.Z.Value, x, z);
             if (side is GeometrySign.Positive or GeometrySign.Unresolved) return false;
         }
         return true;

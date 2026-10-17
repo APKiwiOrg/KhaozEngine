@@ -17,6 +17,16 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   the transport, under the same lock that releases the next call. A call cancelled while queued never starts
   and gets no response, whatever order the thread pool runs the SDK's handlers in (#1443). A malformed or
   unknown cancellation is ignored and leaves the session serving calls.
+- Contact controller movement changes on some support, and support reads cost less again. A paced climb past an
+  overhung sloped edge no longer lowers the feet below the support they stand on (#1437). On one support member a
+  rise up to the walkable grade is continuous, and only the excess counts as a step. A drop on one member steeper
+  than walkable now raises the step down signal and still costs no climb budget. A tick skips its three look-ahead
+  support reads once its climb is decided, so movement and signals are unchanged but an explicit producer sees
+  fewer reads. Support reads build joins only where certification reads them, certify planar contacts on exact
+  coordinates, cache mesh triangles in a bounded world form, admit vertical faces with a certified segment test and
+  serve an exact repeat inside one lease interval from a memo, with results bit-identical to the reference
+  evaluator. The [phase 2 cost record](docs/superpowers/plans/proofs/2026-10-17-support-cost-option-c-phase2.md)
+  lists the stairs, crate and pushed seat rows that still miss SG-12.
 
 ## 21.3.0
 

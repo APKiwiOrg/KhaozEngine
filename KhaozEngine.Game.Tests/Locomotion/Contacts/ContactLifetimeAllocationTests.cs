@@ -82,7 +82,10 @@ public sealed partial class ContactLifetimeAllocationTests(ITestOutputHelper out
         }
         Assert.True(samples.Max(s => s.Counts.Find) > samples.Min(s => s.Counts.Find));
         Assert.True(samples.Single(s => s.Scene == "pushed seat").Routes.PushedPlacements > 0);
-        Assert.Equal(3, samples.Single(s => s.Scene == "stairs box").SupportReads.Count(q => q.ReachUp > 1));
+        // The pushed seat carries no run in, so its three look-ahead samples decide its ascent. The stairs carry an
+        // ascent the move already continues, which skips them.
+        Assert.Equal(3, samples.Single(s => s.Scene == "pushed seat").SupportReads.Count(q => q.ReachUp > 1));
+        Assert.Equal(0, samples.Single(s => s.Scene == "stairs box").SupportReads.Count(q => q.ReachUp > 1));
         Assert.True(samples.Single(s => s.Scene == "explicit rounding handoff").Counts.ModeSegments > 1);
         Assert.All(samples, sample => Assert.True(total == sample.WarmBytes, $"{sample.Scene}. Expected {total} B, actual {sample.WarmBytes} B."));
     }

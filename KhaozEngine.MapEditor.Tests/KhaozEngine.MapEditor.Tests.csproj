@@ -44,8 +44,5 @@
     <Compile Include="../KhaozEngine.MapDoc.Physics.Tests/NativeWorldFixtures.Nested.cs" Link="MapDocFixtures/NativeWorldFixtures.Nested.cs" />
     <None Include="../KhaozEngine.MapDoc.Tests/Fixtures/**" Link="Fixtures/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
-  <ItemGroup>
-    <Compile Include="../test-shared/AllocationRegion.cs" Link="Shared/AllocationRegion.cs" />
-    <Compile Include="../test-shared/AllocationMeasurement.cs" Link="Shared/AllocationMeasurement.cs" />
-  </ItemGroup>
+  <Import Project="../test-shared/AllocationMeasurement.props" />
 </Project>

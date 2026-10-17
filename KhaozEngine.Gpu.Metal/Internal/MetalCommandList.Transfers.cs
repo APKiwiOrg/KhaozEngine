@@ -105,7 +105,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             (MetalTexture source, MetalTexture destination) = BeginTextureCopy(src, dst, "Copying a texture");
             RequireMatchingShape(source, destination);
 
-            IntPtr encoder = _encoders.EnsureBlitEncoder();
+            IntPtr encoder = EnsureCopyEncoder();
             if (encoder == IntPtr.Zero) return;
 
             for (uint layer = 0; layer < source.ArrayLayers; layer++)
@@ -145,7 +145,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             RequireSubresource(source, srcMipLevel, srcArrayLayer, "source");
             RequireSubresource(destination, dstMipLevel, dstArrayLayer, "destination");
 
-            IntPtr encoder = _encoders.EnsureBlitEncoder();
+            IntPtr encoder = EnsureCopyEncoder();
             if (encoder == IntPtr.Zero) return;
 
             Region(encoder, source, srcMipLevel, srcArrayLayer, destination, dstMipLevel, dstArrayLayer, width,
@@ -275,6 +275,22 @@ namespace KhaozEngine.Gpu.Metal.Internal
         }
 
         // ---- The shared halves -------------------------------------------------------------------------------
+
+        /// <summary>
+        /// THE BLIT ENCODER FOR A TEXTURE COPY, WITH ANY PENDING CLEAR APPLIED FIRST. A clear recorded with no draw
+        /// after it is still a load action waiting for a render pass, and <see cref="MetalEncoderScope"/> opening
+        /// a blit would leave it owed until <c>End</c>, after the copy. The copy would then read the attachment
+        /// as it was before the clear, or be overwritten by the clear afterwards. Direct3D 11 and Vulkan clear at
+        /// the call, so a copy there always sees it. <see cref="MetalRenderPassSchedule.EndPass"/> is the same
+        /// flush <c>End</c> and a framebuffer change use, an empty pass with the clear load action, and it does
+        /// nothing when no clear is pending.
+        /// </summary>
+        /// <returns>The blit encoder, or <see cref="IntPtr.Zero"/> when the buffer would not make one.</returns>
+        internal IntPtr EnsureCopyEncoder()
+        {
+            _passes.EndPass();
+            return _encoders.EnsureBlitEncoder();
+        }
 
         // ONE REGION, IN WHICHEVER OF THE FOUR SHAPES THIS PAIR IS. The staging side supplies the buffer terms out
         // of its own software layout and the texture side supplies the subresource, which is the split that is

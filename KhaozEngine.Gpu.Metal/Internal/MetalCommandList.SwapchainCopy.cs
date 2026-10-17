@@ -5,7 +5,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
 {
     /// <summary>
     /// THE SWAPCHAIN COPY: a whole copy of the held drawable's texture into an engine texture, recorded on the
-    /// same blit encoder <see cref="CopyTexture"/> uses. The drawable's texture is not a <see cref="MetalTexture"/>,
+    /// same blit encoder <see cref="CopyTexture"/> uses, with a pending clear applied first
+    /// (<see cref="EnsureCopyEncoder"/>). The drawable's texture is not a <see cref="MetalTexture"/>,
     /// so it arrives as a raw <c>MTLTexture</c> handle. The command buffer retains it until the copy completes, so
     /// the present boundary releasing the drawable after the submit is safe.
     /// </summary>
@@ -29,7 +30,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             MetalTexture destination = MetalResourceOwnership.Require<MetalTexture>(dst, _liveness, nameof(dst));
             RequireRecording("Copying the swapchain image");
 
-            IntPtr encoder = _encoders.EnsureBlitEncoder();
+            IntPtr encoder = EnsureCopyEncoder();
             if (encoder == IntPtr.Zero || drawableTexture == IntPtr.Zero) return;
 
             if (destination.IsStaging)

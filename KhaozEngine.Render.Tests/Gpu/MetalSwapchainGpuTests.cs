@@ -92,8 +92,8 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// THE SWAPCHAIN CAPTURE ON A REAL DRAWABLE. A copy-source request is applied at a present, the next
         /// drawable's texture must report <c>framebufferOnly</c> false, and a blit out of it must carry the colour
-        /// the frame cleared it to. The present after the copy exercises the drawable's lifetime across a copy
-        /// still in flight. Releasing the request must make the swapchain uncopyable again.
+        /// the frame cleared it to, recorded in the same clear-only recording as the clear. The present after the
+        /// copy exercises the drawable's lifetime across a copy still in flight. Releasing the request must make the swapchain uncopyable again.
         /// </summary>
         [GpuFact]
         public void A_requested_capture_copies_a_real_drawable()
@@ -316,23 +316,16 @@ namespace KhaozEngine.Tests.Gpu
                     "the drawable taken after framebufferOnly was written false still reports framebufferOnly, so "
                     + "the layer reused a pooled drawable and SwapchainCopyable is wrong.");
 
-                // THE CLEAR IS ITS OWN SUBMISSION. A clear-only pass is flushed at End, so a copy recorded in the
-                // same list after it would run before the clear.
+                using IGpuTexture staging = device.Factory.CreateTexture(
+                    GpuTextureDescription.Texture2D(Size, Size, format, GpuTextureUsage.Staging));
+
+                // ONE RECORDING, CLEAR-ONLY: no draw opens the pass, so the copy itself must apply the pending
+                // clear before its blit, or it reads the drawable as it was before the clear.
                 using (IGpuCommandList cl = device.Factory.CreateCommandList())
                 {
                     cl.Begin();
                     cl.SetFramebuffer(swapchain);
                     cl.ClearColorTarget(0, clear);
-                    cl.End();
-                    device.Submit(cl);
-                }
-
-                using IGpuTexture staging = device.Factory.CreateTexture(
-                    GpuTextureDescription.Texture2D(Size, Size, format, GpuTextureUsage.Staging));
-
-                using (IGpuCommandList cl = device.Factory.CreateCommandList())
-                {
-                    cl.Begin();
                     device.CopySwapchainColor(cl, staging);
                     cl.End();
                     device.Submit(cl);

@@ -59,7 +59,7 @@ internal readonly record struct GroundStepResult(Vector3 Feet, GroundFooting Foo
 internal static partial class GroundCore
 {
     // A bound on one tick's substeps, so a huge displacement throws rather than running unbounded.
-    const int MaxSubsteps = 1024;
+    internal const int MaxSubsteps = 1024;
 
     /// <summary>Moves a grounded body whose feet are at <paramref name="feet"/>, in the world's local frame, by
     /// the horizontal <paramref name="displacement"/>. Free motion on walkable support is exact. A start that is

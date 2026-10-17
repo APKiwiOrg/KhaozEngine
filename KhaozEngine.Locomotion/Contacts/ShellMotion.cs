@@ -21,8 +21,8 @@ internal static class ShellMotion
     /// <summary>The gap a sweep leaves when it hits something. Free motion is never shortened by it.</summary>
     internal const float ContactSkin = 0.001f;
 
-    const int MaxRecoveryPasses = 4;
-    const int MaxSlides = 4;
+    internal const int MaxRecoveryPasses = 4;
+    internal const int MaxSlides = 4;
 
     /// <summary>Pushes the shell out of any static it overlaps along the true MTV plus the skin, at most
     /// <see cref="MaxRecoveryPasses"/> passes. <paramref name="cleared"/> is false when the shell still overlaps

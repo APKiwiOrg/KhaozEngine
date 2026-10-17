@@ -59,9 +59,17 @@ namespace KhaozEngine.Tests.Gpu
             const int ScreenshotFrame = 18;
             Color first = Color.FromBytes(200, 40, 60, 255);
             Color second = Color.FromBytes(30, 160, 90, 255);
+            // The screenshot frame and the frame after it each get a colour of their own, so a screenshot taken a
+            // frame early or a frame late reads a different colour from the one the trigger frame rendered.
+            Color trigger = Color.FromBytes(70, 90, 210, 255);
+            Color after = Color.FromBytes(230, 200, 40, 255);
             TimeSpan tick = TimeSpan.FromTicks(TimeSpan.TicksPerSecond / 12);
             // A one-pixel outline drawn in the screenshot frame. The screenshot is 1:1, so it must come back sharp.
             var outline = new Rect(100, 50, 1080, 620);
+            Color ClearColour(int frame) => frame < SwitchFrame ? first
+                : frame < ScreenshotFrame ? second
+                : frame == ScreenshotFrame ? trigger
+                : after;
 
             // Ownership of the layer transfers into the device, as in MetalSwapchainGpuTests.
             GpuProviderDevice created = MetalGpuDevice.CreateForHost(
@@ -101,7 +109,7 @@ namespace KhaozEngine.Tests.Gpu
 
                     int index = i;
                     FramePhases.Run(NewFrame(commands), render: true, device, commands,
-                        i < SwitchFrame ? first : second, onPrepare: null,
+                        ClearColour(i), onPrepare: null,
                         onFrame: _ =>
                         {
                             if (index != ScreenshotFrame) return;
@@ -143,12 +151,19 @@ namespace KhaozEngine.Tests.Gpu
                 }
 
                 AssertCentre(clip.Frames[0].Jpeg, clipWidth, clipHeight, first, 8, "the first clip frame");
-                AssertCentre(clip.Frames[^1].Jpeg, clipWidth, clipHeight, second, 8, "the last clip frame");
+                // The newest frame read back before the freeze may come from any frame after the switch.
+                Assert.True(CentreMatches(clip.Frames[^1].Jpeg, clipWidth, clipHeight, second, 8)
+                    || CentreMatches(clip.Frames[^1].Jpeg, clipWidth, clipHeight, trigger, 8)
+                    || CentreMatches(clip.Frames[^1].Jpeg, clipWidth, clipHeight, after, 8),
+                    "the last clip frame is not one rendered after the switch");
 
                 Assert.Equal("image/png", image.MediaType);
                 Assert.Equal((int)Width, image.Width);
                 Assert.Equal((int)Height, image.Height);
-                AssertOutline(image.Bytes, (int)Width, (int)Height, second, outline);
+                AssertCentre(image.Bytes, (int)Width, (int)Height, trigger, 0, "the screenshot");
+                Assert.False(CentreMatches(image.Bytes, (int)Width, (int)Height, after, 8),
+                    "the screenshot holds the frame after the trigger");
+                AssertOutline(image.Bytes, (int)Width, (int)Height, trigger, outline);
             }
             finally
             {
@@ -166,15 +181,26 @@ namespace KhaozEngine.Tests.Gpu
         static void AssertCentre(ReadOnlyMemory<byte> encoded, int width, int height, Color expected, int tolerance,
             string what)
         {
+            (int r, int g, int b) = Centre(encoded, width, height);
+            (int er, int eg, int eb) = (Byte(expected.R), Byte(expected.G), Byte(expected.B));
+            Assert.True(CentreMatches(encoded, width, height, expected, tolerance),
+                $"{what} centre is ({r}, {g}, {b}), expected ({er}, {eg}, {eb}) within {tolerance}");
+        }
+
+        static bool CentreMatches(ReadOnlyMemory<byte> encoded, int width, int height, Color expected, int tolerance)
+        {
+            (int r, int g, int b) = Centre(encoded, width, height);
+            return Math.Abs(r - Byte(expected.R)) <= tolerance && Math.Abs(g - Byte(expected.G)) <= tolerance
+                && Math.Abs(b - Byte(expected.B)) <= tolerance;
+        }
+
+        static (int R, int G, int B) Centre(ReadOnlyMemory<byte> encoded, int width, int height)
+        {
             ImageResult decoded = ImageResult.FromMemory(encoded.ToArray(), ColorComponents.RedGreenBlue);
             Assert.Equal(width, decoded.Width);
             Assert.Equal(height, decoded.Height);
             int at = ((height / 2) * width + width / 2) * 3;
-            (int r, int g, int b) = (decoded.Data[at], decoded.Data[at + 1], decoded.Data[at + 2]);
-            (int er, int eg, int eb) = ((int)Math.Round(expected.R * 255f), (int)Math.Round(expected.G * 255f),
-                (int)Math.Round(expected.B * 255f));
-            Assert.True(Math.Abs(r - er) <= tolerance && Math.Abs(g - eg) <= tolerance && Math.Abs(b - eb) <= tolerance,
-                $"{what} centre is ({r}, {g}, {b}), expected ({er}, {eg}, {eb}) within {tolerance}");
+            return (decoded.Data[at], decoded.Data[at + 1], decoded.Data[at + 2]);
         }
 
         // The whole decoded screenshot, byte for byte: the background everywhere except the one-pixel outline.

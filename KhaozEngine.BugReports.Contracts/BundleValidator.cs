@@ -16,9 +16,6 @@ namespace KhaozEngine.BugReports.Contracts;
 // run in a fixed order and the first failure wins.
 public static class BundleValidator
 {
-    const int MaxGameIdLength = 32;
-    const int MaxCategoryLength = 64;
-    const int MaxSectionDepth = 64;
     const int MaxManifestBytes = 64 * 1024;
     const int MaxClipIndexBytes = 64 * 1024;
 
@@ -147,10 +144,10 @@ public static class BundleValidator
             if (entry?.Name is null || entry.Sha256 is null) return BundleErrors.ManifestInvalid;
         if (manifest.FormatVersion != BugReportFormat.Version) return BundleErrors.FormatVersion;
         if (!ReportIds.IsValid(manifest.ReportId)) return BundleErrors.ReportIdInvalid;
-        if (!IsValidGameId(manifest.GameId)) return BundleErrors.GameIdInvalid;
+        if (!BundleEntryNames.IsValidGameId(manifest.GameId)) return BundleErrors.GameIdInvalid;
         if (string.IsNullOrWhiteSpace(manifest.Description) || manifest.Description.Length > BugReportLimits.MaxDescriptionChars)
             return BundleErrors.DescriptionInvalid;
-        if (manifest.Category is null || manifest.Category.Length is < 1 or > MaxCategoryLength)
+        if (manifest.Category is null || manifest.Category.Length is < 1 or > BugReportLimits.MaxCategoryChars)
             return BundleErrors.CategoryInvalid;
         if (!Enum.IsDefined(manifest.Kind)) return BundleErrors.ManifestInvalid;
         return null;
@@ -171,15 +168,6 @@ public static class BundleValidator
         return null;
     }
 
-    static bool IsValidGameId(string gameId)
-    {
-        if (gameId is null || gameId.Length is < 1 or > MaxGameIdLength) return false;
-        if (gameId[0] is not (>= 'a' and <= 'z' or >= '0' and <= '9')) return false;
-        foreach (char c in gameId)
-            if (c is not (>= 'a' and <= 'z' or >= '0' and <= '9' or '-')) return false;
-        return true;
-    }
-
     // Null for entries that are not images, otherwise whether the header parses with both edges in
     // 1 to 2560. Clip frame sizes are recorded for the index check.
     static bool? CheckImage(ZipArchiveEntry entry, EntryReader reader, Dictionary<string, (int, int)> frameSizes)
@@ -190,9 +178,9 @@ public static class BundleValidator
         if (!png && !frame && name != BundleEntryNames.ScreenshotJpeg) return null;
 
         byte[] data = reader.ReadAll(entry);
-        int width, height;
-        bool parsed = png ? ImageHeaders.TryReadPng(data, out width, out height) : ImageHeaders.TryReadJpeg(data, out width, out height);
-        if (!parsed || !IsValidEdge(width) || !IsValidEdge(height)) return false;
+        string mediaType = png ? ImageHeaders.PngMediaType : ImageHeaders.JpegMediaType;
+        if (!ImageHeaders.TryReadSize(mediaType, data, out int width, out int height) || !IsValidEdge(width) || !IsValidEdge(height))
+            return false;
         if (frame) frameSizes[name] = (width, height);
         return true;
     }
@@ -204,7 +192,7 @@ public static class BundleValidator
     // The running total is checked before each section is read, so oversized state is never parsed.
     static string? CheckSections(List<ZipArchiveEntry> entries, EntryReader reader)
     {
-        var options = new JsonDocumentOptions { MaxDepth = MaxSectionDepth, AllowDuplicateProperties = false };
+        JsonDocumentOptions options = BugReportJson.SectionDocumentOptions;
         long total = 0;
         foreach (ZipArchiveEntry entry in entries)
         {

@@ -231,10 +231,16 @@ public sealed class BugReportBundleWriterTests
     [InlineData("")]
     [InlineData("   \n\t")]
     [InlineData(null)]
-    public void Blank_or_overlong_description_throws(string? description)
+    public void Blank_description_throws(string? description)
     {
         Assert.Throws<ArgumentException>(() => BugReportBundleWriter.Write(Draft(description: description!)));
-        Assert.Throws<ArgumentException>(() => BugReportBundleWriter.Write(Draft(description: new string('x', 4001))));
+    }
+
+    [Fact]
+    public void Overlong_description_throws()
+    {
+        Assert.Throws<ArgumentException>(
+            () => BugReportBundleWriter.Write(Draft(description: new string('x', BugReportLimits.MaxDescriptionChars + 1))));
     }
 
     [Fact]
@@ -252,6 +258,15 @@ public sealed class BugReportBundleWriterTests
     public void Description_is_trimmed_at_the_end_only()
     {
         Assert.Equal("  a", Manifest(BugReportBundleWriter.Write(Draft(description: "  a\n\n"))).Description);
+    }
+
+    [Fact]
+    public void Description_keeps_inner_crlf_and_drops_a_trailing_one()
+    {
+        byte[] bundle = BugReportBundleWriter.Write(Draft(description: "one\r\ntwo\r\n"));
+
+        AssertValid(bundle);
+        Assert.Equal("one\r\ntwo", Manifest(bundle).Description);
     }
 
     [Fact]
@@ -282,9 +297,54 @@ public sealed class BugReportBundleWriterTests
     [InlineData(2561, 6)]
     public void Screenshot_size_outside_the_edge_limit_throws(int width, int height)
     {
-        var image = new ReportImage("image/png", width, height, TestBundles.Png(8, 6));
+        var image = new ReportImage("image/png", width, height, TestBundles.Png(width, height));
 
         Assert.Throws<ArgumentException>(() => BugReportBundleWriter.Write(Draft(screenshot: image)));
+    }
+
+    [Fact]
+    public void Edges_of_exactly_2560_are_written()
+    {
+        int edge = BugReportLimits.MaxScreenshotLongEdge;
+        var clip = new ReportClip([Frame(0, 16.5, edge, 1440), Frame(16.5, 16.5, 1440, edge)]);
+
+        byte[] bundle = BugReportBundleWriter.Write(Draft(screenshot: Png(edge, 1440), clip: clip));
+
+        AssertValid(bundle);
+        AssertValid(BugReportBundleWriter.Write(Draft(screenshot: Jpeg(1440, edge))));
+    }
+
+    [Fact]
+    public void Png_screenshot_with_empty_bytes_throws()
+    {
+        var empty = new ReportImage("image/png", 8, 6, ReadOnlyMemory<byte>.Empty);
+
+        AssertRejected(Draft(screenshot: empty), BundleEntryNames.ScreenshotPng);
+    }
+
+    [Fact]
+    public void Screenshot_header_that_disagrees_with_its_record_throws()
+    {
+        var image = new ReportImage("image/png", 2560, 1440, TestBundles.Png(2561, 1440));
+
+        AssertRejected(Draft(screenshot: image), BundleEntryNames.ScreenshotPng);
+    }
+
+    [Fact]
+    public void Jpeg_screenshot_that_is_not_a_jpeg_throws()
+    {
+        var image = new ReportImage("image/jpeg", 8, 6, TestBundles.Png(8, 6));
+
+        AssertRejected(Draft(screenshot: image), BundleEntryNames.ScreenshotJpeg);
+    }
+
+    [Fact]
+    public void Clip_frame_header_that_disagrees_with_its_record_throws()
+    {
+        var mismatched = new ReportClipFrame(TimeSpan.FromMilliseconds(16.5), 16.5, 4, 4, TestBundles.Jpeg(6, 3));
+        var clip = new ReportClip([Frame(0, 16.5), mismatched]);
+
+        AssertRejected(Draft(clip: clip), "clip/001.jpg");
     }
 
     [Theory]
@@ -317,12 +377,16 @@ public sealed class BugReportBundleWriterTests
     [InlineData("../x")]
     [InlineData("")]
     [InlineData("Bad Key")]
-    public void Invalid_or_duplicate_section_keys_throw(string key)
+    public void Invalid_section_keys_throw(string key)
     {
         ArgumentException invalid = Assert.Throws<ArgumentException>(
             () => BugReportBundleWriter.Write(Draft(sections: [Section(key, "{}")])));
         Assert.Contains("\"" + key + "\"", invalid.Message, StringComparison.Ordinal);
+    }
 
+    [Fact]
+    public void Duplicate_section_keys_throw()
+    {
         ArgumentException duplicate = Assert.Throws<ArgumentException>(
             () => BugReportBundleWriter.Write(Draft(sections: [Section("build", "{}"), Section("build", "{\"a\":1}")])));
         Assert.Contains("\"build\"", duplicate.Message, StringComparison.Ordinal);
@@ -355,6 +419,7 @@ public sealed class BugReportBundleWriterTests
     [InlineData("game-id")]
     [InlineData("kind")]
     [InlineData("captured-at")]
+    [InlineData("captured-after-2107")]
     [InlineData("null-sections")]
     [InlineData("null-section")]
     [InlineData("null-frames")]
@@ -368,6 +433,8 @@ public sealed class BugReportBundleWriterTests
             "kind" => new BugReportDraft(ReportId, "grimhollow", (BugReportKind)7, CapturedAt, TwoSections, null, null),
             "captured-at" => new BugReportDraft(ReportId, "grimhollow", BugReportKind.Bug,
                 new DateTimeOffset(1979, 12, 31, 0, 0, 0, TimeSpan.Zero), TwoSections, null, null),
+            "captured-after-2107" => new BugReportDraft(ReportId, "grimhollow", BugReportKind.Bug,
+                new DateTimeOffset(2107, 12, 31, 23, 0, 0, TimeSpan.FromHours(-5)), TwoSections, null, null),
             "null-sections" => new BugReportDraft(ReportId, "grimhollow", BugReportKind.Bug, CapturedAt, null!, null, null),
             "null-section" => new BugReportDraft(ReportId, "grimhollow", BugReportKind.Bug, CapturedAt, [null!], null, null),
             "null-frames" => Draft(clip: new ReportClip(null!)),
@@ -414,6 +481,26 @@ public sealed class BugReportBundleWriterTests
 
         Assert.Throws<InvalidOperationException>(
             () => BugReportBundleWriter.Write(Draft(clip: Clip(BundleEntryNames.MaxClipFrames, padding))));
+    }
+
+    [Fact]
+    public void Archive_over_16_MiB_throws_when_the_payloads_alone_fit()
+    {
+        // The payloads total 10 bytes under the limit, so only the zip headers push the archive over it.
+        CapturedSection[] sections = [Section("build", "{}")];
+        int pngBytes = (int)BugReportLimits.MaxBundleBytes - 2 - 10;
+        byte[] png = [.. TestBundles.Png(8, 6), .. new byte[pngBytes - TestBundles.Png(8, 6).Length]];
+
+        Assert.Throws<InvalidOperationException>(
+            () => BugReportBundleWriter.Write(Draft(sections: sections, screenshot: new ReportImage("image/png", 8, 6, png))));
+    }
+
+    static void AssertRejected(BugReportDraft draft, string entry)
+    {
+        byte[]? written = null;
+        ArgumentException thrown = Assert.Throws<ArgumentException>(() => written = BugReportBundleWriter.Write(draft));
+        Assert.Null(written);
+        Assert.Contains(entry, thrown.Message, StringComparison.Ordinal);
     }
 
     sealed class TestSection(string key, Action<Utf8JsonWriter> body) : IBugReportSection

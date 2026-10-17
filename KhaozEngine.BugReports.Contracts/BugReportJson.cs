@@ -12,6 +12,10 @@ public static class BugReportJson
 
     public static JsonSerializerOptions Options => Context.Options;
 
+    // The parse rules for one section entry: depth at most 64 and no repeated property name in any object.
+    public static JsonDocumentOptions SectionDocumentOptions { get; } =
+        new() { MaxDepth = BugReportLimits.MaxSectionDepth, AllowDuplicateProperties = false };
+
     public static byte[] SerializeManifest(BugReportManifest manifest)
         => JsonSerializer.SerializeToUtf8Bytes(manifest, Context.BugReportManifest);
 

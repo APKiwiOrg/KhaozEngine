@@ -20,6 +20,14 @@ public static class BundleEntryNames
         return true;
     }
 
+    public static bool IsValidGameId(string gameId)
+    {
+        if (gameId is null || gameId.Length is < 1 or > BugReportLimits.MaxGameIdChars || !IsLetterOrDigit(gameId[0])) return false;
+        foreach (char c in gameId)
+            if (!IsLetterOrDigit(c) && c != '-') return false;
+        return true;
+    }
+
     public static string Section(string key)
     {
         if (!IsValidSectionKey(key))

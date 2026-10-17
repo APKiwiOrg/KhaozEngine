@@ -234,6 +234,19 @@ public sealed class BugReportJsonTests
         }
     }
 
+    [Fact]
+    public void Section_document_options_use_the_shared_bounds()
+    {
+        Assert.Equal(64, BugReportLimits.MaxSectionDepth);
+        Assert.Equal(64, BugReportLimits.MaxCategoryChars);
+        Assert.Equal(32, BugReportLimits.MaxGameIdChars);
+        JsonDocumentOptions options = BugReportJson.SectionDocumentOptions;
+        Assert.Equal(BugReportLimits.MaxSectionDepth, options.MaxDepth);
+        Assert.False(options.AllowDuplicateProperties);
+        Assert.False(options.AllowTrailingCommas);
+        Assert.Equal(JsonCommentHandling.Disallow, options.CommentHandling);
+    }
+
     static string Replace(string golden, string field, string replacement)
     {
         Assert.Contains(field, golden, StringComparison.Ordinal);

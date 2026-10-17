@@ -18,7 +18,10 @@ public sealed class BugReportDraft
     /// <param name="reportId">A version 7 report id from <see cref="ReportIds.NewId"/>.</param>
     /// <param name="gameId">The game id, matching <c>[a-z0-9][a-z0-9-]{0,31}</c>.</param>
     /// <param name="kind">Whether the player filed this or a crash produced it.</param>
-    /// <param name="capturedAt">When the report was triggered. Also stamps every zip entry.</param>
+    /// <param name="capturedAt">
+    /// When the report was triggered. The manifest keeps it exactly, in UTC. It also stamps every zip entry, as the
+    /// UTC time with the zip format's 2 second precision, so it must fall in 1980 to 2107 UTC.
+    /// </param>
     /// <param name="sections">Finished sections from <see cref="BugReportSectionSet.Finish"/>, in registration order.</param>
     /// <param name="screenshot">The trigger frame's screenshot, or null when none was taken.</param>
     /// <param name="clip">The frozen clip, or null when recording was off.</param>

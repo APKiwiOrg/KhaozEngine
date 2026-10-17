@@ -10,4 +10,7 @@ public static class BugReportLimits
     public const int MaxScreenshotLongEdge = 2560;
     public const int MaxServerSnapshotBytes = 1024 * 1024;
     public const int MaxPngScreenshotBytes = 4 * 1024 * 1024;
+    public const int MaxCategoryChars = 64;
+    public const int MaxGameIdChars = 32;
+    public const int MaxSectionDepth = 64;
 }

@@ -73,4 +73,18 @@ public sealed class BundleEntryNamesTests
     [InlineData("notes.txt", false)]
     public void IsAllowed_is_an_exact_whitelist(string name, bool allowed)
         => Assert.Equal(allowed, BundleEntryNames.IsAllowed(name));
+
+    [Theory]
+    [InlineData("grimhollow", true)]
+    [InlineData("0-game", true)]
+    [InlineData("abcdefghijklmnopqrstuvwxyz012345", true)]
+    [InlineData("abcdefghijklmnopqrstuvwxyz0123456", false)]
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    [InlineData("-game", false)]
+    [InlineData("Grimhollow", false)]
+    [InlineData("grim_hollow", false)]
+    [InlineData("grim.hollow", false)]
+    public void IsValidGameId_matches_the_game_id_rule(string? gameId, bool valid)
+        => Assert.Equal(valid, BundleEntryNames.IsValidGameId(gameId!));
 }

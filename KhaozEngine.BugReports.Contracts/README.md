@@ -23,7 +23,8 @@ zip order: sections in registration order, screenshot, clip index, then frames.
 - `clip.mp4`
 
 Use `Section(key)` and `ClipFrame(index)` to build validated entry names. `IsValidSectionKey` and
-`IsAllowed` check incoming names without accepting paths outside this whitelist. `MaxClipFrames` is
+`IsAllowed` check incoming names without accepting paths outside this whitelist. `IsValidGameId` checks
+a game id against `[a-z0-9][a-z0-9-]{0,31}`. `MaxClipFrames` is
 120. `ClipIndexFrame` carries offset and render time in milliseconds, width, height and entry name.
 An MP4 clip uses `clip.mp4` for every frame's entry, with timing in the index.
 
@@ -41,10 +42,14 @@ An MP4 clip uses `clip.mp4` for every frame's entry, with timing in the index.
 | Screenshot long edge | 2560 pixels |
 | PNG screenshot bytes | 4 MiB |
 | Server snapshot bytes | 1 MiB |
+| Category | 64 characters |
+| Game id | 32 characters |
+| Section JSON depth | 64 |
 
 These constants describe the wire contract. The records and JSON helpers do not validate bundle
 contents or enforce the bounds. `BundleValidator` enforces the bundle bytes, entries, total section
-bytes, description and screenshot long edge limits, as the next section describes. It does not check
+bytes, description, screenshot long edge, category, game id and section depth limits, as the next
+section describes. It does not check
 the other three:
 
 - `MaxPngScreenshotBytes` is a client capture limit that decides between PNG and JPEG.
@@ -69,8 +74,7 @@ Besides the `BugReportLimits` values above, the validator enforces these bounds:
 - 64 KiB each for `manifest.json` and `clip/index.json`, checked by declared length before reading.
 - At most 120 clip index frames.
 - 1 to 2560 pixels for both edges of every image, and for the index width and height of an MP4 clip.
-- Depth 64 and unique property names in every section object.
-- Category 1 to 64 characters and game id 1 to 32 characters.
+- Unique property names in every section object.
 
 Checks run in this order and the first failure wins:
 
@@ -130,6 +134,19 @@ format, line separator and paragraph separator categories become `?`. That cover
 the C1 range, bidirectional overrides such as U+202E, zero width characters, and U+2028 and U+2029.
 An unpaired surrogate becomes `?` too. A name longer than 64 characters is cut to its first 61
 characters followed by `...`, and a surrogate pair split by the cut becomes `?`.
+
+## Shared rules for writers
+
+A bundle writer checks its input through the same helpers the validator uses, so a written bundle
+passes validation:
+
+- `ImageHeaders.TryReadSize(mediaType, bytes, out width, out height)` reads the pixel size from a PNG
+  IHDR chunk or a JPEG start-of-frame segment. It returns false, with both sizes zero, for a media type
+  other than `ImageHeaders.PngMediaType` (`image/png`) or `ImageHeaders.JpegMediaType` (`image/jpeg`),
+  or for a header that does not parse. It does not range check the size.
+- `BugReportJson.SectionDocumentOptions` is the `JsonDocumentOptions` a section must parse with: depth
+  `BugReportLimits.MaxSectionDepth` and no repeated property names.
+- `BundleEntryNames.IsValidGameId` and `IsValidSectionKey`, and the `BugReportLimits` constants.
 
 ## Ids and relay wire
 

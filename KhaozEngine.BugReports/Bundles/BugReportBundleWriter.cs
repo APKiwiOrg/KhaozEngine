@@ -11,21 +11,21 @@ namespace KhaozEngine.BugReports;
 
 /// <summary>
 /// Writes a draft as a version 1 report bundle: a stored zip with <c>manifest.json</c> first, then sections in
-/// draft order, the screenshot, <c>clip/index.json</c> and the clip frames. Every field is checked against the
-/// limits <see cref="BundleValidator"/> enforces before anything is serialized, so a bundle that is written
-/// passes the relay's validation. Works in memory only.
+/// draft order, the screenshot, <c>clip/index.json</c> and the clip frames. Before anything is serialized, every
+/// field is checked against the rules <see cref="BundleValidator"/> applies, through the same Contracts helpers:
+/// <see cref="BundleEntryNames"/>, <see cref="BugReportLimits"/>, <see cref="BugReportJson.SectionDocumentOptions"/>
+/// and <see cref="ImageHeaders"/>, which also checks each image header against its record. A bundle that is
+/// written therefore passes the relay's validation. Works in memory only.
 /// </summary>
 public static class BugReportBundleWriter
 {
-    // The validator's own bounds for fields BugReportLimits does not name.
-    const int MaxCategoryLength = 64;
-    const int MaxGameIdLength = 32;
-    const int MaxSectionDepth = 64;
     const int MinZipYear = 1980;
     const int MaxZipYear = 2107;
 
-    const string PngMediaType = "image/png";
-    const string JpegMediaType = "image/jpeg";
+    // Stored zip framing: a local header and a central record per entry, each carrying the name, then the end record.
+    const int LocalHeaderBytes = 30;
+    const int CentralRecordBytes = 46;
+    const int EndRecordBytes = 22;
 
     /// <summary>Writes the bundle and returns its bytes.</summary>
     /// <exception cref="ArgumentException">A draft field is null or outside its limit.</exception>
@@ -50,29 +50,40 @@ public static class BugReportBundleWriter
             draft.GameId, draft.Kind, draft.Category, description, draft.CapturedAt, listed));
 
         DateTimeOffset stamp = draft.CapturedAt.ToUniversalTime();
-        var output = new MemoryStream();
+        var output = new MemoryStream(ArchiveCapacity(manifest.Length, payloads));
         using (var archive = new ZipArchive(output, ZipArchiveMode.Create, leaveOpen: true))
         {
             AddEntry(archive, BundleEntryNames.Manifest, manifest, stamp);
             foreach ((string name, ReadOnlyMemory<byte> data) in payloads) AddEntry(archive, name, data, stamp);
         }
         if (output.Length > BugReportLimits.MaxBundleBytes) throw TooLarge(output.Length);
-        return output.ToArray();
+        return output.Length == output.Capacity ? output.GetBuffer() : output.ToArray();
     }
+
+    // The exact stored archive length when the zip writer adds no extra fields, so the buffer never regrows and is
+    // returned without a copy. A larger archive still works, at the cost of one regrowth and a copy.
+    static int ArchiveCapacity(int manifestBytes, List<(string Name, ReadOnlyMemory<byte> Data)> payloads)
+    {
+        long total = EndRecordBytes + Framing(BundleEntryNames.Manifest) + manifestBytes;
+        foreach ((string name, ReadOnlyMemory<byte> data) in payloads) total += Framing(name) + data.Length;
+        return (int)Math.Min(total, Array.MaxLength);
+    }
+
+    static int Framing(string name) => LocalHeaderBytes + CentralRecordBytes + 2 * name.Length;
 
     // Returns the description as written, with trailing whitespace dropped.
     static string CheckFields(BugReportDraft draft)
     {
         if (!ReportIds.IsValid(draft.ReportId))
             throw Invalid("The report id must be a canonical version 7 id from ReportIds.NewId.");
-        if (!IsValidGameId(draft.GameId))
+        if (!BundleEntryNames.IsValidGameId(draft.GameId))
             throw Invalid("The game id must match [a-z0-9][a-z0-9-]{0,31}.");
         if (!Enum.IsDefined(draft.Kind))
             throw Invalid("The report kind is not a defined BugReportKind.");
         int year = draft.CapturedAt.UtcDateTime.Year;
         if (year is < MinZipYear or > MaxZipYear)
             throw Invalid("The capture time must fall in the zip date range, 1980 to 2107 UTC.");
-        if (draft.Category is null || draft.Category.Length is < 1 or > MaxCategoryLength || !IsWellFormed(draft.Category))
+        if (draft.Category is null || draft.Category.Length is < 1 or > BugReportLimits.MaxCategoryChars || !IsWellFormed(draft.Category))
             throw Invalid("The category must be 1 to 64 characters of well-formed text.");
 
         string description = draft.Description?.TrimEnd() ?? "";
@@ -92,7 +103,6 @@ public static class BugReportBundleWriter
     {
         if (sections is null) throw Invalid("The section list must not be null.");
         var keys = new HashSet<string>(StringComparer.Ordinal);
-        var options = new JsonDocumentOptions { MaxDepth = MaxSectionDepth, AllowDuplicateProperties = false };
         long total = 0;
         foreach (CapturedSection? section in sections)
         {
@@ -104,16 +114,16 @@ public static class BugReportBundleWriter
             total += section.Json.Length;
             if (total > BugReportLimits.MaxSectionBytesTotal)
                 throw Invalid("The sections total more than " + BugReportLimits.MaxSectionBytesTotal + " bytes.");
-            if (!IsJsonObject(section.Json, options))
+            if (!IsJsonObject(section.Json))
                 throw Invalid("Section \"" + key + "\" is not one JSON object with unique property names.");
         }
     }
 
-    static bool IsJsonObject(ReadOnlyMemory<byte> json, JsonDocumentOptions options)
+    static bool IsJsonObject(ReadOnlyMemory<byte> json)
     {
         try
         {
-            using JsonDocument document = JsonDocument.Parse(json, options);
+            using JsonDocument document = JsonDocument.Parse(json, BugReportJson.SectionDocumentOptions);
             return document.RootElement.ValueKind == JsonValueKind.Object;
         }
         catch (JsonException)
@@ -133,12 +143,13 @@ public static class BugReportBundleWriter
         {
             string name = screenshot.MediaType switch
             {
-                PngMediaType => BundleEntryNames.ScreenshotPng,
-                JpegMediaType => BundleEntryNames.ScreenshotJpeg,
+                ImageHeaders.PngMediaType => BundleEntryNames.ScreenshotPng,
+                ImageHeaders.JpegMediaType => BundleEntryNames.ScreenshotJpeg,
                 _ => throw Invalid("Screenshot media type \"" + screenshot.MediaType + "\" must be image/png or image/jpeg."),
             };
             if (!IsValidEdge(screenshot.Width) || !IsValidEdge(screenshot.Height))
                 throw Invalid("Screenshot edges must be 1 to " + BugReportLimits.MaxScreenshotLongEdge + " pixels.");
+            CheckHeader(name, screenshot.MediaType, screenshot.Bytes, screenshot.Width, screenshot.Height);
             payloads.Add((name, screenshot.Bytes));
         }
 
@@ -168,8 +179,10 @@ public static class BugReportBundleWriter
                 throw Invalid("Clip frame " + i + " needs a finite render time of zero or more.");
             if (!IsValidEdge(frame.Width) || !IsValidEdge(frame.Height))
                 throw Invalid("Clip frame " + i + " edges must be 1 to " + BugReportLimits.MaxScreenshotLongEdge + " pixels.");
+            string entry = BundleEntryNames.ClipFrame(i);
+            CheckHeader(entry, ImageHeaders.JpegMediaType, frame.Jpeg, frame.Width, frame.Height);
             previousOffset = offset;
-            rows[i] = new ClipIndexFrame(offset, frame.RenderMilliseconds, frame.Width, frame.Height, BundleEntryNames.ClipFrame(i));
+            rows[i] = new ClipIndexFrame(offset, frame.RenderMilliseconds, frame.Width, frame.Height, entry);
         }
 
         payloads.Add((BundleEntryNames.ClipIndex, BugReportJson.SerializeClipIndex(new ClipIndex(rows))));
@@ -184,13 +197,14 @@ public static class BugReportBundleWriter
         stream.Write(data.Span);
     }
 
-    static bool IsValidGameId(string gameId)
+    // The validator reads the size from the encoded header, so the record must agree with it.
+    static void CheckHeader(string entry, string mediaType, ReadOnlyMemory<byte> bytes, int width, int height)
     {
-        if (gameId is null || gameId.Length is < 1 or > MaxGameIdLength) return false;
-        if (gameId[0] is not (>= 'a' and <= 'z' or >= '0' and <= '9')) return false;
-        foreach (char c in gameId)
-            if (c is not (>= 'a' and <= 'z' or >= '0' and <= '9' or '-')) return false;
-        return true;
+        if (!ImageHeaders.TryReadSize(mediaType, bytes.Span, out int headerWidth, out int headerHeight))
+            throw Invalid(entry + " does not start with a readable " + mediaType + " header.");
+        if (headerWidth != width || headerHeight != height)
+            throw Invalid(string.Create(CultureInfo.InvariantCulture,
+                $"{entry} has a {headerWidth}x{headerHeight} header but its record says {width}x{height}."));
     }
 
     static bool IsValidEdge(int edge) => edge is >= 1 and <= BugReportLimits.MaxScreenshotLongEdge;

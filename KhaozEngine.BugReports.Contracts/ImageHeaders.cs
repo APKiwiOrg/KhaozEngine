@@ -3,13 +3,37 @@ using System.Buffers.Binary;
 
 namespace KhaozEngine.BugReports.Contracts;
 
-// Reads image dimensions from PNG and JPEG headers without decoding pixels.
-internal static class ImageHeaders
+/// <summary>
+/// Reads image dimensions from PNG and JPEG headers without decoding pixels. <see cref="BundleValidator"/> and the
+/// bundle writer both read sizes through <see cref="TryReadSize"/>, so they agree on what a valid header is.
+/// </summary>
+public static class ImageHeaders
 {
+    public const string PngMediaType = "image/png";
+    public const string JpegMediaType = "image/jpeg";
+
     static ReadOnlySpan<byte> PngSignature => [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
     static ReadOnlySpan<byte> Ihdr => "IHDR"u8;
 
-    public static bool TryReadPng(ReadOnlySpan<byte> data, out int width, out int height)
+    /// <summary>
+    /// Reads the pixel size from the header of a <c>image/png</c> or <c>image/jpeg</c> file. Returns false, with
+    /// both sizes zero, for any other media type or a header that does not parse. Sizes are not range checked.
+    /// </summary>
+    public static bool TryReadSize(string mediaType, ReadOnlySpan<byte> bytes, out int width, out int height)
+    {
+        switch (mediaType)
+        {
+            case PngMediaType:
+                return TryReadPng(bytes, out width, out height);
+            case JpegMediaType:
+                return TryReadJpeg(bytes, out width, out height);
+            default:
+                width = height = 0;
+                return false;
+        }
+    }
+
+    static bool TryReadPng(ReadOnlySpan<byte> data, out int width, out int height)
     {
         width = height = 0;
         if (data.Length < 24 || !data[..8].SequenceEqual(PngSignature)) return false;
@@ -24,7 +48,7 @@ internal static class ImageHeaders
 
     // Walks marker segments from SOI to the first start-of-frame marker (C0 to CF other than the
     // DHT, JPG and DAC markers C4, C8 and CC). Scan data or EOI before a frame header fails.
-    public static bool TryReadJpeg(ReadOnlySpan<byte> data, out int width, out int height)
+    static bool TryReadJpeg(ReadOnlySpan<byte> data, out int width, out int height)
     {
         width = height = 0;
         if (data.Length < 4 || data[0] != 0xFF || data[1] != 0xD8) return false;

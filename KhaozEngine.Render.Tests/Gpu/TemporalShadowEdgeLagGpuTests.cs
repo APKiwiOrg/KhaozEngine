@@ -79,10 +79,14 @@ namespace KhaozEngine.Tests.Gpu
             s.Draw(Stage.Panel, Matrix4x4.CreateTranslation(-half, 0f, 0f));
             s.Draw(Stage.Box, Matrix4x4.CreateScale(half * 2f, OrthoSize * 3f, 0.1f)
                 * Matrix4x4.CreateTranslation(half, 0f, WallZ - 0.05f), FlatGrey);
+            DrawCaster(s);
+        }
+
+        /// <summary>The slab that casts the shadow, with the light as <see cref="Draw"/> last set it.</summary>
+        public void DrawCaster(Scene3D s) =>
             s.Draw(Stage.Box, Matrix4x4.CreateScale(40f, 4f, 2f) * Matrix4x4.CreateTranslation(0f, 2f, -1f)
                 * Matrix4x4.CreateRotationZ(Tilt)
                 * Matrix4x4.CreateTranslation(0f, CasterReach * AnchorTan, WallZ + CasterReach), CasterColour);
-        }
 
         /// <summary>The display column of the seam between the textured and the flat halves.</summary>
         public float SeamX => Stage.W * 0.5f;
@@ -91,15 +95,25 @@ namespace KhaozEngine.Tests.Gpu
         /// <paramref name="y"/>) to the shadow edge on frame <paramref name="n"/>, positive on the shadow side.</summary>
         public float EdgeDistance(int n, int x, int y)
         {
+            (Vector2 p0, Vector2 normal) = EdgeLine(n, Vector3.Zero, WallZ);
+            return Vector2.Dot(new Vector2(x + 0.5f, y + 0.5f) - p0, normal);
+        }
+
+        /// <summary>The shadow edge on frame <paramref name="n"/> where it falls on the plane at
+        /// <paramref name="planeZ"/> facing the camera, on screen under the stage's camera looking at
+        /// <paramref name="cameraTarget"/>: a point on it and its unit normal, up the screen towards the caster.</summary>
+        public (Vector2 Point, Vector2 Normal) EdgeLine(int n, Vector3 cameraTarget, float planeZ)
+        {
             IsoCamera3D camera = Stage.Camera();
-            float lineY = CasterReach * (AnchorTan - TanAt(n));
+            camera.Target = cameraTarget;
+            float lineY = CasterReach * (AnchorTan - TanAt(n)) + (planeZ - WallZ) * TanAt(n);
             var u = new Vector3(MathF.Cos(Tilt), MathF.Sin(Tilt), 0f);
-            camera.WorldToScreen(new Vector3(0f, lineY, WallZ), Stage.W, Stage.H, out Vector2 p0);
-            camera.WorldToScreen(new Vector3(0f, lineY, WallZ) + u, Stage.W, Stage.H, out Vector2 p1);
+            camera.WorldToScreen(new Vector3(0f, lineY, planeZ), Stage.W, Stage.H, out Vector2 p0);
+            camera.WorldToScreen(new Vector3(0f, lineY, planeZ) + u, Stage.W, Stage.H, out Vector2 p1);
             Vector2 along = Vector2.Normalize(p1 - p0);
             var normal = new Vector2(along.Y, -along.X);
             if (normal.Y > 0f) normal = -normal;   // up the screen, towards the caster
-            return Vector2.Dot(new Vector2(x + 0.5f, y + 0.5f) - p0, normal);
+            return (p0, normal);
         }
 
         /// <summary>The stage's camera as the scene builds it, for the cascade fit computed without a scene.</summary>
@@ -140,8 +154,11 @@ namespace KhaozEngine.Tests.Gpu
     {
         const int W = 320, H = 180;
         const int FirstMeasured = 80, Measured = 8;
-        const float BandPixels = 12f, TailPixels = 48f, FarPixels = 32f, SeamMargin = 4f;
-        const int Border = 2, ProfileBins = 16, ProfileBin = 4, ProfileAhead = 16;
+        const float SeamMargin = 4f;
+        const float BandPixels = ShadowEdgeMeasure.BandPixels, TailPixels = ShadowEdgeMeasure.TailPixels,
+            FarPixels = ShadowEdgeMeasure.FarPixels;
+        const int ProfileBins = ShadowEdgeMeasure.ProfileBins, ProfileBin = ShadowEdgeMeasure.ProfileBin,
+            ProfileAhead = ShadowEdgeMeasure.ProfileAhead;
 
         // Before the release, Metal, WARP and lavapipe each measured the Quality textured tail at 1 display pixel a
         // frame 10 and 8 times the tail at 0.25, and the band at 1 at 0.111 and 0.106, advancing and retreating. Native's
@@ -202,7 +219,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             PrintGeometry();
             var references = new Dictionary<float, byte[][]>();
-            var measured = new Dictionary<Case, Dictionary<string, RegionStats>>();
+            var measured = new Dictionary<Case, Dictionary<string, ShadowEdgeRegion>>();
             foreach (Case c in Cases())
             {
                 var stage = new ShadowEdgeStage(W, H, c.PixelsPerFrame, FirstMeasured);
@@ -227,14 +244,15 @@ namespace KhaozEngine.Tests.Gpu
                     }
                 }
 
-                var m = new EdgeMeasure(stage, frames, reference, FirstMeasured);
+                var m = new ShadowEdgeMeasure(W, H, Receiver(stage), stage.PixelsPerFrame < 0f ? -1f : 1f, frames,
+                    reference, FirstMeasured);
 
                 output.WriteLine($"{c.Name}: shadow re-records in the {Measured} measured frames {refits}, reference "
                     + $"edge contrast {m.ReferenceContrast:0.000} (flat lit minus shadow luma), drawn edge "
                     + $"{m.EdgeOffset:0.00} px off the analytic line");
                 output.WriteLine("  region          pixels   mean     p95      bias     grain out  grain ref  "
                     + "err grain");
-                foreach ((string name, RegionStats r) in m.Regions)
+                foreach ((string name, ShadowEdgeRegion r) in m.Regions)
                 {
                     output.WriteLine($"  {name,-15} {r.Count,6}   {r.Mean:0.0000}   {r.P95:0.0000}   {r.Bias,7:0.0000}  "
                         + $"{r.GrainOut:0.0000}     {r.GrainRef:0.0000}     {r.ErrorGrain:0.0000}");
@@ -246,18 +264,18 @@ namespace KhaozEngine.Tests.Gpu
                 output.WriteLine($"  flat signed error x1000, {bins}: {m.Profile(flat: true)}");
                 Assert.True(m.ReferenceContrast > 0.05,
                     $"{c.Name}: the reference shows no shadow edge, contrast {m.ReferenceContrast:0.000}");
-                measured[c] = new Dictionary<string, RegionStats>();
-                foreach ((string name, RegionStats r) in m.Regions) measured[c][name] = r;
+                measured[c] = new Dictionary<string, ShadowEdgeRegion>();
+                foreach ((string name, ShadowEdgeRegion r) in m.Regions) measured[c][name] = r;
             }
             output.WriteLine($"device class {TemporalDeviceClass.Name}");
             AssertReleased(measured);
         }
 
         // The acceptance bounds, checked after every case has printed, so a failure still shows the whole table.
-        static void AssertReleased(Dictionary<Case, Dictionary<string, RegionStats>> measured)
+        static void AssertReleased(Dictionary<Case, Dictionary<string, ShadowEdgeRegion>> measured)
         {
             var failures = new List<string>();
-            foreach ((Case c, Dictionary<string, RegionStats> r) in measured)
+            foreach ((Case c, Dictionary<string, ShadowEdgeRegion> r) in measured)
             {
                 if (c.Hold != 1f) continue;
                 if (c.PixelsPerFrame == 0f)
@@ -288,6 +306,17 @@ namespace KhaozEngine.Tests.Gpu
                 if (!ok) failures.Add(failure);
             }
         }
+
+        // The whole wall less the columns within SeamMargin of the seam between its textured and its flat halves.
+        static ShadowEdgeSample Receiver(ShadowEdgeStage stage) =>
+            (int n, int x, int y, out bool flat, out float edgeDistance) =>
+            {
+                float fromSeam = x + 0.5f - stage.SeamX;
+                flat = fromSeam > 0f;
+                bool inside = MathF.Abs(fromSeam) > SeamMargin;
+                edgeDistance = inside ? stage.EdgeDistance(n, x, y) : 0f;
+                return inside;
+            };
 
         // The cascade the wall samples, its texel in display pixels and the hold's step as display pixels of edge travel.
         void PrintGeometry()
@@ -333,187 +362,6 @@ namespace KhaozEngine.Tests.Gpu
                 + $"{texel / pixel:0.00} display px. Hold step {holdTravel:0.00} display px of edge travel. Band "
                 + $"{BandPixels} px, tail to {TailPixels} px behind, control {FarPixels} px ahead and beyond, frames {FirstMeasured} to "
                 + $"{FirstMeasured + Measured - 1}.");
-        }
-
-        /// <summary>One region's pooled values over every measured frame.</summary>
-        sealed class RegionStats
-        {
-            readonly List<float> _abs = new();
-            double _signed, _grainOut, _grainRef, _errorGrain;
-
-            public void Add(float error, float grainOut, float grainRef, float errorGrain)
-            {
-                _abs.Add(MathF.Abs(error));
-                _signed += error;
-                _grainOut += grainOut;
-                _grainRef += grainRef;
-                _errorGrain += errorGrain;
-            }
-
-            public int Count => _abs.Count;
-            double Per(double sum) => Count == 0 ? 0 : sum / Count;
-            public double Mean { get { double s = 0; foreach (float a in _abs) s += a; return Per(s); } }
-            public double Bias => Per(_signed);
-            public double GrainOut => Per(_grainOut);
-            public double GrainRef => Per(_grainRef);
-            public double ErrorGrain => Per(_errorGrain);
-
-            public double P95
-            {
-                get
-                {
-                    if (Count == 0) return 0;
-                    var sorted = _abs.ToArray();
-                    Array.Sort(sorted);
-                    return sorted[Math.Min(sorted.Length - 1, (int)(0.95 * sorted.Length))];
-                }
-            }
-        }
-
-        /// <summary>
-        /// The band, tail and control metrics of a run's measured frames against their references. The edge is where
-        /// the reference's flat half crosses midway between its lit and its shadow luma, found from the analytic line
-        /// first, since normal offset and filtering move the drawn edge off it. Distances are then taken along the
-        /// travel, <c>t</c>, positive on the side the edge moves towards, which it has not crossed, and negative on
-        /// the side it came from. The band is <c>|t|</c> up to <see cref="BandPixels"/>, the tail <c>t</c> from
-        /// <see cref="TailPixels"/> to minus <see cref="BandPixels"/>, and the control <c>t</c> from
-        /// <see cref="FarPixels"/> on, which no edge has crossed. A still light counts as advancing.
-        /// </summary>
-        sealed class EdgeMeasure
-        {
-            readonly RegionStats _bandTextured = new(), _bandFlat = new(), _tailTextured = new(), _tailFlat = new(),
-                _farTextured = new(), _farFlat = new();
-            readonly double[] _profileSum = new double[2 * ProfileBins];
-            readonly int[] _profileCount = new int[2 * ProfileBins];
-            readonly ShadowEdgeStage _stage;
-            readonly float _sign;
-
-            public EdgeMeasure(ShadowEdgeStage stage, IReadOnlyList<byte[]> frames, IReadOnlyList<byte[]> references,
-                int firstFrame)
-            {
-                _stage = stage;
-                _sign = stage.PixelsPerFrame < 0f ? -1f : 1f;
-                FindEdge(references, firstFrame);
-                var window = new float[9];
-                for (int i = 0; i < frames.Count; i++) Add(firstFrame + i, frames[i], references[i], window);
-            }
-
-            /// <summary>The drawn edge's offset from the analytic line in display pixels, towards the shadow.</summary>
-            public float EdgeOffset { get; private set; }
-
-            /// <summary>The reference's flat lit luma 14 to 30 pixels from the edge less its shadow luma there.</summary>
-            public double ReferenceContrast { get; private set; }
-
-            public IEnumerable<(string, RegionStats)> Regions => new[]
-            {
-                ("band textured", _bandTextured), ("band flat", _bandFlat), ("tail textured", _tailTextured),
-                ("tail flat", _tailFlat), ("far textured", _farTextured), ("far flat", _farFlat),
-            };
-
-            public string Profile(bool flat)
-            {
-                var parts = new string[ProfileBins];
-                for (int i = 0; i < ProfileBins; i++)
-                {
-                    int k = (flat ? ProfileBins : 0) + i;
-                    parts[i] = _profileCount[k] == 0 ? "-" : $"{1000 * _profileSum[k] / _profileCount[k]:0}";
-                }
-                return string.Join(" ", parts);
-            }
-
-            static float[] LumaOf(byte[] rgba)
-            {
-                var l = new float[W * H];
-                for (int y = 0; y < H; y++)
-                    for (int x = 0; x < W; x++) l[y * W + x] = TemporalAcceptance.Luma(rgba, W, x, y);
-                return l;
-            }
-
-            bool Flat(int x, out bool inside)
-            {
-                float fromSeam = x + 0.5f - _stage.SeamX;
-                inside = MathF.Abs(fromSeam) > SeamMargin;
-                return fromSeam > 0f;
-            }
-
-            void FindEdge(IReadOnlyList<byte[]> references, int firstFrame)
-            {
-                const float Reach = 8f, Step = 0.25f;
-                int bins = (int)(2 * Reach / Step);
-                var sum = new double[bins];
-                var count = new int[bins];
-                double lit = 0, shadow = 0;
-                int litCount = 0, shadowCount = 0;
-                for (int i = 0; i < references.Count; i++)
-                {
-                    float[] lr = LumaOf(references[i]);
-                    for (int y = Border; y < H - Border; y++)
-                        for (int x = Border; x < W - Border; x++)
-                        {
-                            if (!Flat(x, out bool inside) || !inside) continue;
-                            float d = _stage.EdgeDistance(firstFrame + i, x, y);
-                            float ad = MathF.Abs(d);
-                            if (ad >= 14f && ad <= 30f)
-                            {
-                                if (d < 0f) { lit += lr[y * W + x]; litCount++; }
-                                else { shadow += lr[y * W + x]; shadowCount++; }
-                            }
-                            if (d >= -Reach && d < Reach)
-                            {
-                                int b = (int)((d + Reach) / Step);
-                                sum[b] += lr[y * W + x];
-                                count[b]++;
-                            }
-                        }
-                }
-                double litMean = litCount == 0 ? 0 : lit / litCount;
-                double shadowMean = shadowCount == 0 ? 0 : shadow / shadowCount;
-                ReferenceContrast = litMean - shadowMean;
-                double mid = 0.5 * (litMean + shadowMean);
-                EdgeOffset = 0f;
-                for (int b = 0; b < bins; b++)
-                    if (count[b] > 0 && sum[b] / count[b] < mid)
-                    {
-                        EdgeOffset = -Reach + (b + 0.5f) * Step;
-                        break;
-                    }
-            }
-
-            void Add(int n, byte[] frame, byte[] reference, float[] window)
-            {
-                float[] lo = LumaOf(frame), lr = LumaOf(reference);
-                var e = new float[W * H];
-                for (int p = 0; p < e.Length; p++) e[p] = lo[p] - lr[p];
-                for (int y = Border; y < H - Border; y++)
-                    for (int x = Border; x < W - Border; x++)
-                    {
-                        bool flat = Flat(x, out bool inside);
-                        if (!inside) continue;
-                        float t = -_sign * (_stage.EdgeDistance(n, x, y) - EdgeOffset);
-                        int p = y * W + x;
-                        if (t >= -ProfileBins * ProfileBin + ProfileAhead && t < ProfileAhead)
-                        {
-                            int bin = (int)MathF.Floor((t + ProfileBins * ProfileBin - ProfileAhead) / ProfileBin);
-                            _profileSum[(flat ? ProfileBins : 0) + bin] += e[p];
-                            _profileCount[(flat ? ProfileBins : 0) + bin]++;
-                        }
-                        RegionStats? region = MathF.Abs(t) <= BandPixels ? (flat ? _bandFlat : _bandTextured)
-                            : t < 0f && t >= -TailPixels ? (flat ? _tailFlat : _tailTextured)
-                            : t >= FarPixels ? (flat ? _farFlat : _farTextured) : null;
-                        if (region == null) continue;
-                        region.Add(e[p], MathF.Abs(lo[p] - Median(lo, x, y, window)),
-                            MathF.Abs(lr[p] - Median(lr, x, y, window)), MathF.Abs(e[p] - Median(e, x, y, window)));
-                    }
-            }
-
-            static float Median(float[] image, int x, int y, float[] window)
-            {
-                int k = 0;
-                for (int dy = -1; dy <= 1; dy++)
-                    for (int dx = -1; dx <= 1; dx++) window[k++] = image[(y + dy) * W + x + dx];
-                Array.Sort(window);
-                return window[4];
-            }
         }
     }
 }

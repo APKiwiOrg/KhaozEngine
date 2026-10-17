@@ -538,7 +538,7 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
         SupportCostSample hosted = Synthetic("LegacyTick", hostedLegacy);
         Assert.Equal(SupportCostGate.Pass, SupportCostVerdict.Evaluate(tick, hosted, false, scale));
         Assert.Equal(SupportCostGate.Reject, SupportCostVerdict.Evaluate(tick with { WarmMicroseconds = Math.BitIncrement(relativeTick) }, hosted, false, scale));
-        Assert.Equal(SupportCostGate.Reject, SupportCostVerdict.Evaluate(tick with { Substeps = 4 }, hosted, false, scale));
+        Assert.Equal(SupportCostGate.Pass, SupportCostVerdict.Evaluate(tick with { Substeps = 4 }, hosted, false, scale));
         Assert.Equal(SupportCostGate.Pass, SupportCostVerdict.Evaluate(tick with { Operation = "ExplicitTick", WarmBytes = 624 }, hosted, false, scale, 624));
         Assert.Equal(SupportCostGate.Reject, SupportCostVerdict.Evaluate(tick with { Operation = "ExplicitTick", WarmBytes = 625 }, hosted, false, scale, 624));
     }

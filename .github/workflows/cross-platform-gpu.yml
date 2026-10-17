@@ -837,7 +837,7 @@ jobs:
       # shard. Measured warm (run 39031351066), the cache cut Windows to 27 s of cache restore plus 15 s of
       # restore, but cost Linux 8 + 14 s and macOS 17 + 13 s, slower than restoring from nuget.org there. So
       # only Windows jobs use it. Every Windows job restores the cache, and only the leg's `primary` entry saves
-      # it, right after `dotnet restore`, so seven shards never race to write the same key and a red suite still
+      # it, right after `dotnet restore`, so the leg's shards never race to write the same key and a red suite still
       # leaves a warm cache. The key is the OS plus every file that can change the restore graph: the csproj
       # files, the props and targets files that carry central versions and PackageReference items, and
       # nuget.config. A key miss falls back to the newest cache for the OS and restore tops it up.

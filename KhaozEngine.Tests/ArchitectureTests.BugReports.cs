@@ -68,7 +68,10 @@ public partial class ArchitectureTests
         }
     }
 
-    /// <summary>The client package references exactly the engine projects its capture, media and sections build on.</summary>
+    /// <summary>
+    /// The client package references exactly the engine projects its capture, media, sections, screen and service
+    /// build on, and no third-party package.
+    /// </summary>
     [Fact]
     public void BugReportsClient_ReferencesItsDeclaredSet()
     {
@@ -79,6 +82,7 @@ public partial class ArchitectureTests
                 "App", "BugReports", "BugReports.Contracts", "Diagnostics", "Game", "Gpu", "Gui", "Imaging", "Windowing",
             },
             client.ProjectRefs.Select(Short).OrderBy(name => name, StringComparer.Ordinal).ToArray());
+        Assert.DoesNotContain(client.PackageRefs, package => !IgnoredInfraPackages.Contains(package));
     }
 
     /// <summary>The client tests reference exactly the engine projects their section and fact tests build on.</summary>

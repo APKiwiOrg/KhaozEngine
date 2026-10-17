@@ -18,6 +18,19 @@ public sealed class BugReportJsonTests
         "Fell through\nthe floor", new DateTimeOffset(2026, 10, 17, 3, 4, 5, 678, TimeSpan.Zero),
         new[] { new BundleEntry("sections/build.json", 42, new string('a', 64)) });
 
+    // Lone surrogates stay out of InlineData, which the runner serializes as text.
+    [Fact]
+    public void IsWellFormedText_rejects_lone_surrogates()
+    {
+        Assert.True(BugReportJson.IsWellFormedText(""));
+        Assert.True(BugReportJson.IsWellFormedText("Fell through"));
+        Assert.True(BugReportJson.IsWellFormedText("\U0001F600 pair"));
+        Assert.False(BugReportJson.IsWellFormedText("\uD83D"));
+        Assert.False(BugReportJson.IsWellFormedText("\uDE00"));
+        Assert.False(BugReportJson.IsWellFormedText("a\uDE00\uD83D"));
+        Assert.False(BugReportJson.IsWellFormedText("ends \uD83D"));
+    }
+
     [Fact]
     public void Manifest_matches_the_golden_bytes()
     {

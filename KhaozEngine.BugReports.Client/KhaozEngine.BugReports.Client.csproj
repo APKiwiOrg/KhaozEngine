@@ -3,7 +3,7 @@
     <PackageId>KhaozEngine.BugReports.Client</PackageId>
     <Version>$(KhaozEngineVersion)</Version>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <Description>The client side of KhaozEngine in-game bug reports (opt-in, NOT in any umbrella). Records a rolling in-memory clip of the last few seconds as downscaled JPEG frames off the window's frame taps, and captures the trigger frame as a screenshot, both returned as KhaozEngine.BugReports media records.</Description>
+    <Description>The client side of KhaozEngine in-game bug reports (opt-in, NOT in any umbrella). BugReportService adds a rebindable report trigger, a rolling in-memory clip, a trigger frame screenshot, the built-in sections, the confirmation screen and the result toasts to a GameApp as one overlay.</Description>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.BugReports/KhaozEngine.BugReports.csproj" />

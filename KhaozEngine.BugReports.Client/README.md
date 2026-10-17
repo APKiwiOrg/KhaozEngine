@@ -1,18 +1,136 @@
 # KhaozEngine.BugReports.Client
 
-The client side of in-game bug reports. `FrameHistoryRecorder` keeps a rolling in-memory clip of the last few
-seconds and captures the trigger frame as a screenshot, and returns both as `KhaozEngine.BugReports` media
-records. It is opt-in and sits in no umbrella. Add it explicitly.
+The client side of in-game bug reports. `BugReportService` adds a report trigger, a rolling clip, the built-in
+sections, a confirmation screen and the result toasts to a `GameApp`, as one overlay that sits above the title,
+login, loading and game screens. `FrameHistoryRecorder` underneath it keeps the clip and captures the trigger frame
+as a screenshot. It is opt-in and sits in no umbrella. Add it explicitly.
 
-Depends on `KhaozEngine.BugReports`, `KhaozEngine.Gpu`, `KhaozEngine.Windowing` and `KhaozEngine.Imaging`.
+Depends on `KhaozEngine.App`, `KhaozEngine.BugReports`, `KhaozEngine.BugReports.Contracts`,
+`KhaozEngine.Diagnostics`, `KhaozEngine.Game`, `KhaozEngine.Gpu`, `KhaozEngine.Gui`, `KhaozEngine.Imaging` and
+`KhaozEngine.Windowing`. No third-party package.
 
 ## Quick start
+
+Create the service once, on the frame thread, after the `GameApp` is constructed, and dispose it before the app.
 
 ```csharp
 using KhaozEngine.BugReports;
 using KhaozEngine.BugReports.Client;
 
-// Once, after the window is up. Construction registers the standby screenshot tap.
+var options = new BugReportServiceOptions { GameId = "grimhollow", GameDisplayName = "Grimhollow", SessionLogPath = logPath };
+var sink = new HttpRelaySink(http, relay, () => token);
+var queue = new BugReportOfflineQueue(Path.Combine(stateDir, "bug-reports", "pending"), TimeProvider.System);
+var reports = new BugReportService(app, options, sink, queue, () => subject);
+// Shutdown: reports.Dispose();
+```
+
+`() => token` returns the bearer token for the relay, and `() => subject` returns the signed-in account, or null
+while signed out. The service polls the subject every frame. A report made while signed out is queued and goes
+with the first account that signs in. Use `new LocalFolderSink(folder, openViewer: true)` in development builds to
+see every report in the browser without a relay.
+
+F10 opens a report by default. In the trigger frame the service freezes the clip, arms the screenshot and captures
+every section, then raises `ReportCaptured`. The next frame opens `BugReportScreen`. While it is open the game sees
+`InputState.WithoutInteraction`, so typing never reaches the game. Send builds the bundle on the thread pool and
+hands it to the sink. The result shows as a toast and raises `ReportSubmitted` on the frame thread.
+
+## What the service adds
+
+| Member | Use |
+| --- | --- |
+| `TriggerActionId` | `"ReportBug"`, the trigger action in `TriggerControls`. |
+| `Begin()` | Opens a report on the next frame from a menu entry. False while a report is already open. |
+| `IsOpen` | True from the trigger frame until the screen closes. |
+| `AddSection(section)` | Adds a game section after the seven built-in ones. |
+| `ReportCaptured` | The new report id, raised in the trigger frame. |
+| `ReportSubmitted` | Each send's `BugReportSubmitResult`, raised on the frame thread. |
+| `SetRecordingEnabled(bool)` | Starts or stops the clip from a settings toggle. |
+| `SetPassTimingsSource(source)` | Gives the `performance` section a `PassTimings` meter. |
+| `RetryQueuedAsync(token)` | Sends the queued reports for the signed-in account now. |
+| `TriggerControls` | The trigger's `ActionMapController`, for a controls screen. |
+| `RecentLog` | The log ring the `log` section writes. |
+| `Recorder` | The `FrameHistoryRecorder` behind the clip and the screenshot. |
+| `Dispose()` | Removes the overlay, cancels sends and flushes, disposes the recorder and detaches `RecentLog`. |
+
+Every member is frame thread only. `RetryQueuedAsync` completes off it.
+
+## Built-in sections
+
+| Key | Holds |
+| --- | --- |
+| `build` | Game id and name, version, build name, engine version, configuration and commit. |
+| `platform` | OS, architectures, runtime, CPU count, memory, locale, window and framebuffer size, content scale and the admitted `KE_` variables. |
+| `graphics` | Backend, adapter, swapchain size, present mode, software adapter, device loss reason, injected overlay modules and capabilities. |
+| `session` | Uptime, the session log name and the newest crash file from an earlier run. |
+| `input` | Connected devices and the trigger's bindings. |
+| `performance` | FPS, frame time average, minimum and maximum, managed bytes, per-pass timings and the last 300 frame times. |
+| `log` | The newest lines of `RecentLog` that fit 256 KiB. |
+
+The platform facts that never change are read once when the service is built. The window and graphics facts come
+from the trigger frame's `InputState` and from fields the window latched, so a section never calls a live window
+getter. The previous crash scan runs once on the thread pool over the directory of
+`BugReportServiceOptions.SessionLogPath`. With no session log path it is skipped and `session` reports no previous
+crash. The `log` section fills only when `Log.Manager` is configured before the service is built.
+
+## Game sections
+
+A section writes one JSON object in the trigger frame. Keep it cheap and write many short strings. Redaction and
+truncation run later, off the frame thread.
+
+```csharp
+sealed class ZoneSection(Func<string> zone) : IBugReportSection
+{
+    public string Key => "zone";
+    public int MaxBytes => 4 * 1024;
+    public void Write(Utf8JsonWriter writer, BugReportContext context)
+    {
+        writer.WriteStartObject();
+        writer.WriteString("zone", zone());
+        writer.WriteEndObject();
+    }
+}
+
+reports.AddSection(new ZoneSection(() => world.ZoneName));
+```
+
+## Server snapshot hook
+
+A server-backed game asks its server for a snapshot with the same report id, through its own protocol message:
+
+```csharp
+reports.ReportCaptured += reportId => connection.Send(new RequestBugSnapshot(reportId));
+```
+
+The server side is described in the `KhaozEngine.BugReports` README.
+
+## Rebinding, pause menus and settings
+
+- Rebind with `reports.TriggerControls.BeginRebind(BugReportService.TriggerActionId, 0)`. Rebinds save through
+  `BugReportServiceOptions.SaveTriggerBindings`. Pass the saved JSON back as `TriggerBindingsJson` next launch. Text
+  that applies no binding is logged once and leaves `DefaultKey` bound.
+- A pause menu calls `reports.Recorder.Suspend()` when it opens and `reports.Recorder.Resume()` when it closes, so
+  the clip keeps the moments before the pause.
+- A settings toggle calls `reports.SetRecordingEnabled(enabled)`. `RecordingEnabled` in the options sets the
+  starting state.
+
+## Strings
+
+Every player-facing line resolves through `BugReportStrings`, a set of `bugreport.*` `StringId` keys with an English
+fallback. A game overrides any line by adding the key to its own localization catalog, for example
+`bugreport.screen.title` or `bugreport.toast.sent`. Category labels resolve `bugreport.category.<id lowercased>` and
+fall back to the id, so a game's own `Categories` list localizes the same way.
+
+## Shutdown
+
+`Dispose()` removes the overlay first, so no later frame touches the recorder. It then cancels every send and
+flush the service started, disposes the recorder and detaches `RecentLog` from the log manager. A send cut off by
+shutdown stays in the offline queue, because the submitter writes each bundle there before its first send.
+
+## The recorder on its own
+
+`BugReportService` drives the recorder for you. A host without a `GameApp` can use it directly:
+
+```csharp
 using var recorder = new FrameHistoryRecorder(window, new FrameHistoryOptions());
 if (recorder.IsAvailable)
     recorder.Start();
@@ -26,7 +144,7 @@ recorder.Thaw();
 
 Every member is frame thread only. Encoding runs on the recorder's own background thread.
 
-## Lifecycle
+## Recorder lifecycle
 
 | Call | Effect |
 | --- | --- |

@@ -84,7 +84,7 @@ public static class BugReportBundleWriter
         if (year is < MinZipYear or > MaxZipYear)
             throw Invalid(string.Create(CultureInfo.InvariantCulture,
                 $"The capture time must fall in the zip date range, {MinZipYear} to {MaxZipYear} UTC."));
-        if (draft.Category is null || draft.Category.Length is < 1 or > BugReportLimits.MaxCategoryChars || !IsWellFormed(draft.Category))
+        if (draft.Category is null || draft.Category.Length is < 1 or > BugReportLimits.MaxCategoryChars || !BugReportJson.IsWellFormedText(draft.Category))
             throw Invalid(string.Create(CultureInfo.InvariantCulture,
                 $"The category must be 1 to {BugReportLimits.MaxCategoryChars} characters of well-formed text."));
 
@@ -94,7 +94,7 @@ public static class BugReportBundleWriter
         if (description.Length > BugReportLimits.MaxDescriptionChars)
             throw Invalid(string.Create(CultureInfo.InvariantCulture,
                 $"The description holds {description.Length} characters and the limit is {BugReportLimits.MaxDescriptionChars}."));
-        if (!IsWellFormed(description))
+        if (!BugReportJson.IsWellFormedText(description))
             throw Invalid("The description contains an unpaired surrogate.");
 
         CheckSections(draft.Sections);
@@ -200,18 +200,6 @@ public static class BugReportBundleWriter
     }
 
     static bool IsValidEdge(int edge) => edge is >= 1 and <= BugReportLimits.MaxScreenshotLongEdge;
-
-    // An unpaired surrogate cannot round-trip through the manifest's JSON, so it is refused here.
-    static bool IsWellFormed(string text)
-    {
-        for (int i = 0; i < text.Length; i++)
-        {
-            if (!char.IsSurrogate(text[i])) continue;
-            if (!char.IsHighSurrogate(text[i]) || i + 1 == text.Length || !char.IsLowSurrogate(text[i + 1])) return false;
-            i++;
-        }
-        return true;
-    }
 
     static ArgumentException Invalid(string message) => new(message, "draft");
 

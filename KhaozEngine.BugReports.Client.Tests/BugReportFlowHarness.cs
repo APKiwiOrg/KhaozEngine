@@ -82,15 +82,13 @@ public abstract class BugReportFlowHarness : IAsyncLifetime
         var queue = new BugReportOfflineQueue(queueDirectory ?? Path.Combine(_root, "pending"), _time);
         var flow = new BugReportFlow(options, _capture, _sections, new BugReportSubmitter(_sink, queue), new ReportRedactor(),
             () => _subject,
-            model => _screenFailure is { } failure
-                ? throw failure
-                : new BugReportScreen(model, new BugReportScreenResources(new FixedMeasurer(), null, null, _viewport)),
+            model => _screenFailure is { } failure ? throw failure : HeadlessScreen(model),
             image =>
             {
                 _textures.Add((image.Width, image.Height, OnFrameThread()));
                 return null;
             },
-            _time);
+            _time, CancellationToken.None);
         flow.ReportCaptured += _captured.Add;
         flow.ReportSubmitted += result =>
         {
@@ -99,6 +97,10 @@ public abstract class BugReportFlowHarness : IAsyncLifetime
         };
         return flow;
     }
+
+    /// <summary>A confirmation screen with no font or texture, laid out in <see cref="_viewport"/>.</summary>
+    private protected BugReportScreen HeadlessScreen(BugReportScreenModel model) =>
+        new(model, new BugReportScreenResources(new FixedMeasurer(), null, null, _viewport));
 
     private protected static InputState Frame(Key[]? pressed = null, Key[]? held = null, string? text = null)
     {

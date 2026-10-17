@@ -76,24 +76,12 @@ public sealed record BugReportServiceOptions
         }
         foreach (string id in categories)
         {
-            if (string.IsNullOrWhiteSpace(id) || id.Length > BugReportLimits.MaxCategoryChars || !IsWellFormed(id))
+            if (string.IsNullOrWhiteSpace(id) || id.Length > BugReportLimits.MaxCategoryChars || !BugReportJson.IsWellFormedText(id))
             {
                 throw new ArgumentException(string.Create(CultureInfo.InvariantCulture,
                     $"Every category id must be 1 to {BugReportLimits.MaxCategoryChars} characters of well-formed text and not blank."),
                     nameof(Categories));
             }
         }
-    }
-
-    // The bundle writer's own rule: an unpaired surrogate cannot round-trip through the manifest's JSON.
-    static bool IsWellFormed(string text)
-    {
-        for (int i = 0; i < text.Length; i++)
-        {
-            if (!char.IsSurrogate(text[i])) continue;
-            if (!char.IsHighSurrogate(text[i]) || i + 1 == text.Length || !char.IsLowSurrogate(text[i + 1])) return false;
-            i++;
-        }
-        return true;
     }
 }

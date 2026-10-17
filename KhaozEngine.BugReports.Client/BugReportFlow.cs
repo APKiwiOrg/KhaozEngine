@@ -22,6 +22,8 @@ namespace KhaozEngine.BugReports.Client;
 /// <para>Every member is frame thread only, except that <see cref="RetryQueuedAsync"/> completes off it. Background
 /// work only posts closures, which <see cref="Update"/> runs at the start of the next frame, so the screen, the
 /// toasts, textures, <see cref="ReportSubmitted"/> and every toast stay on the frame thread.</para>
+/// <para>Every send and flush receives the shutdown token. A send canceled by it keeps its bundle in the offline
+/// queue for the next session.</para>
 /// </summary>
 internal sealed class BugReportFlow
 {
@@ -42,6 +44,7 @@ internal sealed class BugReportFlow
     readonly Func<BugReportScreenModel, BugReportScreen> _screenFactory;
     readonly Func<ImageRgba, Texture2D?> _textureFactory;
     readonly TimeProvider _time;
+    readonly CancellationToken _shutdown;
     readonly IReadOnlyList<string> _categories;
     readonly ConcurrentQueue<Action> _posted = new();
     string? _subject;
@@ -54,7 +57,7 @@ internal sealed class BugReportFlow
     internal BugReportFlow(BugReportServiceOptions options, IBugReportCapture capture, BugReportSectionSet sections,
         BugReportSubmitter submitter, ReportRedactor redactor, Func<string?> currentSubject,
         Func<BugReportScreenModel, BugReportScreen> screenFactory, Func<ImageRgba, Texture2D?> textureFactory,
-        TimeProvider time)
+        TimeProvider time, CancellationToken shutdown)
     {
         BugReportServiceOptions.Validate(options);
         ArgumentNullException.ThrowIfNull(capture);
@@ -74,6 +77,7 @@ internal sealed class BugReportFlow
         _screenFactory = screenFactory;
         _textureFactory = textureFactory;
         _time = time;
+        _shutdown = shutdown;
         _categories = options.Categories is { } categories ? [.. categories] : BugReportDraft.DefaultCategories;
 
         var map = new ActionMap();
@@ -162,13 +166,18 @@ internal sealed class BugReportFlow
 
     /// <summary>
     /// Sends the queued reports for the signed-in account on the thread pool, because the queue scans and reads the
-    /// disk before its first await. Returns how many the sink accepted.
+    /// disk before its first await. Returns how many the sink accepted. Either <paramref name="cancellationToken"/>
+    /// or the shutdown token cancels it.
     /// </summary>
     internal Task<int> RetryQueuedAsync(CancellationToken cancellationToken)
     {
         string? subject = _currentSubject();
         if (string.IsNullOrWhiteSpace(subject)) return Task.FromResult(0);
-        return Task.Run(() => FlushAsync(subject, cancellationToken), cancellationToken);
+        return Task.Run(async () =>
+        {
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _shutdown);
+            return await FlushAsync(subject, linked.Token).ConfigureAwait(false);
+        }, cancellationToken);
     }
 
     void RunPosted()
@@ -201,7 +210,7 @@ internal sealed class BugReportFlow
     {
         string? subject = _subject;
         if (string.IsNullOrWhiteSpace(subject)) return;
-        PendingWork = Task.Run(() => FlushAsync(subject, CancellationToken.None));
+        PendingWork = Task.Run(() => FlushAsync(subject, _shutdown));
     }
 
     void Capture()
@@ -413,8 +422,12 @@ internal sealed class BugReportFlow
         BugReportSubmitResult result;
         try
         {
-            result = await _submitter.SubmitAsync(new BugReportSubmission(report.Id, subject, bundle), CancellationToken.None)
-                .ConfigureAwait(false);
+            result = await SubmitQueuedFirstAsync(new BugReportSubmission(report.Id, subject, bundle)).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (_shutdown.IsCancellationRequested)
+        {
+            Log.Info("Bug report " + report.Id + " was canceled by shutdown. The offline queue keeps it for the next session.");
+            return;
         }
         catch (Exception exception)
         {
@@ -429,6 +442,18 @@ internal sealed class BugReportFlow
             if (result is { Status: BugReportSubmitStatus.Queued, Error: BugReportSubmitter.SignedOutError }) StartFlush();
             ReportSubmitted?.Invoke(result);
         });
+    }
+
+    /// <summary>
+    /// Submits with a token the shutdown token cancels only after the call returns. The submitter writes the bundle to
+    /// the queue before its first await, so a send that shutdown cancels, even before it started, stays queued.
+    /// </summary>
+    async Task<BugReportSubmitResult> SubmitQueuedFirstAsync(BugReportSubmission submission)
+    {
+        using var send = new CancellationTokenSource();
+        Task<BugReportSubmitResult> submit = _submitter.SubmitAsync(submission, send.Token);
+        using CancellationTokenRegistration stop = _shutdown.Register(send.Cancel);
+        return await submit.ConfigureAwait(false);
     }
 
     async Task<int> FlushAsync(string subject, CancellationToken cancellationToken)

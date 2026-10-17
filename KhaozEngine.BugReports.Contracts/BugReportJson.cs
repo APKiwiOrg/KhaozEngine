@@ -33,6 +33,20 @@ public static class BugReportJson
         }
     }
 
+    // True when every surrogate in text is half of a high and low pair. A lone surrogate cannot round-trip through
+    // UTF-8 JSON, so every text a bundle carries, and every option that becomes one, is checked with this rule.
+    public static bool IsWellFormedText(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        for (int i = 0; i < text.Length; i++)
+        {
+            if (!char.IsSurrogate(text[i])) continue;
+            if (!char.IsHighSurrogate(text[i]) || i + 1 == text.Length || !char.IsLowSurrogate(text[i + 1])) return false;
+            i++;
+        }
+        return true;
+    }
+
     public static byte[] SerializeManifest(BugReportManifest manifest)
         => JsonSerializer.SerializeToUtf8Bytes(manifest, Context.BugReportManifest);
 

@@ -100,7 +100,13 @@ public sealed class FrameHistoryRecorder : IDisposable
 ```csharp
 namespace KhaozEngine.BugReports.Contracts;
 public static class BugReportFormat { public const int Version = 1; }
-public static class BugReportJson { public static JsonSerializerOptions Options { get; } }   // D9
+public static class BugReportJson
+{
+    public static JsonSerializerOptions Options { get; }                       // D9
+    public static JsonDocumentOptions SectionDocumentOptions { get; }          // depth MaxSectionDepth, no duplicate names
+    public static bool IsValidSection(ReadOnlyMemory<byte> json);              // one object, every string decodes
+    public static bool IsWellFormedText(string text);                          // false on any lone surrogate
+}
 public static class BundleErrors { /* stable error codes, E2's choice */ }
 public static class BugReportLimits
 {
@@ -113,6 +119,17 @@ public static class BugReportLimits
     public const int MaxServerSnapshotBytes = 1024 * 1024;
     public const int ServerSnapshotEnvelopeReserveBytes = 16 * 1024;
     public const int MaxPngScreenshotBytes = 4 * 1024 * 1024;
+    public const int MaxCategoryChars = 64;
+    public const int MaxGameIdChars = 32;
+    public const int MaxSectionDepth = 64;
+    public const int MaxClipOffsetMilliseconds = 600000;
+    public const int MaxRenderMilliseconds = 60000;
+}
+public static class ImageHeaders
+{
+    public const string PngMediaType = "image/png";
+    public const string JpegMediaType = "image/jpeg";
+    public static bool TryReadSize(string mediaType, ReadOnlySpan<byte> bytes, out int width, out int height);
 }
 public enum BugReportKind { Bug, Crash }
 public sealed record BundleEntry(string Name, long Size, string Sha256);
@@ -128,6 +145,9 @@ public static class BundleEntryNames
     public const string ScreenshotJpeg = "screenshot.jpg";
     public const string ClipIndex = "clip/index.json";
     public const string ClipMp4 = "clip.mp4";
+    public const int MaxClipFrames = 120;
+    public static bool IsValidSectionKey(string key);   // D10
+    public static bool IsValidGameId(string gameId);    // [a-z0-9][a-z0-9-]{0,31}
     public static string Section(string key);      // "sections/<key>.json", key is [a-z0-9._-]{1,48}
     public static string ClipFrame(int index);     // "clip/000.jpg" to "clip/119.jpg"
     public static bool IsAllowed(string name);
@@ -287,10 +307,19 @@ public sealed class BugReportService : IDisposable
     public event Action<string>? ReportCaptured;     // report id, raised in the trigger frame
     public void SetRecordingEnabled(bool enabled);
     public Task<int> RetryQueuedAsync(CancellationToken cancellationToken);   // flushes for currentSubject()
+    // E2 additions
+    public ActionMapController TriggerControls { get; }
+    public RecentLogSink RecentLog { get; }
+    public event Action<BugReportSubmitResult>? ReportSubmitted;   // frame thread
+    public void SetPassTimingsSource(Func<PassTimings?> source);
 }
 ```
 
 E2 also adds these public names, members its own choice: `TextArea` (Gui), `JpegThumbnailDecoder` (Imaging), `IGameOverlay`, `GameOverlayContext`, `GameApp.AddOverlay` and `GameApp.RemoveOverlay` (Game), `InputState.WithoutInteraction` (Windowing), `BugReportSubmitter` (core).
+
+`BugReportStrings` (Client) holds the `bugreport.*` `StringId` keys with an English fallback. Its category field
+label is `BugReportStrings.CategoryFieldLabel`, because `BugReportStrings.CategoryLabel(string categoryId)` resolves a
+category id and a field of the same name would clash.
 
 ## E3 produces
 

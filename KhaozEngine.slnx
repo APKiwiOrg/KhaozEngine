@@ -13,6 +13,8 @@
   <Project Path="KhaozEngine.BugReports.Client.Tests/KhaozEngine.BugReports.Client.Tests.csproj" />
   <Project Path="KhaozEngine.BugReports.Contracts/KhaozEngine.BugReports.Contracts.csproj" />
   <Project Path="KhaozEngine.BugReports.Relay/KhaozEngine.BugReports.Relay.csproj" />
+  <Project Path="KhaozEngine.BugReports.Relay.Azure/KhaozEngine.BugReports.Relay.Azure.csproj" />
+  <Project Path="KhaozEngine.BugReports.Relay.Azure.Tests/KhaozEngine.BugReports.Relay.Azure.Tests.csproj" />
   <Project Path="KhaozEngine.BugReports.Relay.Tests/KhaozEngine.BugReports.Relay.Tests.csproj" />
   <Project Path="KhaozEngine.BugReports.Tests/KhaozEngine.BugReports.Tests.csproj" />
   <Project Path="KhaozEngine.Catalog/KhaozEngine.Catalog.csproj" />

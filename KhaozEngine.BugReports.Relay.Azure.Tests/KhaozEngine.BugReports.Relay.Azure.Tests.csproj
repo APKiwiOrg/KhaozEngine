@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <OutputType>Library</OutputType>
+    <RootNamespace>KhaozEngine.Tests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="Azure.Storage.Blobs" />
+    <PackageReference Include="Azure.Storage.Queues" />
+    <PackageReference Include="Azure.Data.Tables" />
+    <!-- Only the gated live leg builds a credential. The shipped backend takes ready clients. -->
+    <PackageReference Include="Azure.Identity" />
+    <ProjectReference Include="../KhaozEngine.BugReports.Relay/KhaozEngine.BugReports.Relay.csproj" />
+    <ProjectReference Include="../KhaozEngine.BugReports.Relay.Azure/KhaozEngine.BugReports.Relay.Azure.csproj" />
+    <Compile Include="../KhaozEngine.BugReports.Relay.Tests/Conformance/*.cs" Link="Conformance/%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

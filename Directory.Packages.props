@@ -92,6 +92,9 @@
          has an identity stack does not get a second one. The TEST project pins Azure.Identity below,
          because the gated live leg builds a client of its own. -->
     <PackageVersion Include="Azure.Storage.Blobs" Version="12.29.2" />
+    <!-- Relay storage SDKs, newest stable 12.x releases. Hosts supply ready clients and own identity. -->
+    <PackageVersion Include="Azure.Storage.Queues" Version="12.28.1" />
+    <PackageVersion Include="Azure.Data.Tables" Version="12.13.0" />
     <PackageVersion Include="Azure.Identity" Version="1.21.0" />
 
     <!-- Identity (opt-in OIDC provider) -->

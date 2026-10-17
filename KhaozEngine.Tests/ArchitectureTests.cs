@@ -96,11 +96,11 @@ public partial class ArchitectureTests
         ["SQLitePCLRaw.lib.e_sqlite3"] = new[] { "Sqlite", "WorldStore.Sqlite", "Commerce.Sqlite", "Catalog.Sqlite", "Accounts.Sqlite" },
         ["Microsoft.Data.SqlClient"] = new[] { "WorldStore.SqlServer", "Commerce.SqlServer", "Catalog.SqlServer", "Accounts.SqlServer" },
         ["System.Security.Cryptography.Pkcs"] = new[] { "WorldStore.SqlServer", "Commerce.SqlServer", "Catalog.SqlServer", "Accounts.SqlServer" }, // patched override, #1407
-        // The blob SDK, contained in the catalog's public-origin pack store and nowhere else. Azure.Identity
-        // has NO row here, and the absence is the assertion: the store takes a ready BlobContainerClient so
-        // the host owns the credential, and the only project in the tree that references Azure.Identity is
-        // that package's test project, which this scan does not reach because it is non-packable.
-        ["Azure.Storage.Blobs"] = new[] { "Catalog.AzureBlob" },
+        // Storage SDKs stay in their opt-in backends. Azure.Identity still has NO row here: hosts supply
+        // ready clients and own credentials. Only non-packable live test projects build a credential.
+        ["Azure.Storage.Blobs"] = new[] { "Catalog.AzureBlob", "BugReports.Relay.Azure" },
+        ["Azure.Storage.Queues"] = new[] { "BugReports.Relay.Azure" },
+        ["Azure.Data.Tables"] = new[] { "BugReports.Relay.Azure" },
         // glTF load contained in Render3D's GltfLoader.
         ["SharpGLTF.Core"] = new[] { "Render3D" },
         // Image + font decode contained in Render2D (ImageRgba / SpriteFont).

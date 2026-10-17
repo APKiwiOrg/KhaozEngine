@@ -11,16 +11,16 @@
     "rejectSoftwareAdapter": false,
     "adapterContains": null
   },
-  "warmupFrames": 4,
-  "measuredFrames": 8,
+  "warmupFrames": 64,
+  "measuredFrames": 32,
   "limits": {
     "maxWallSeconds": 300,
     "maxFrameMilliseconds": 10000
   },
   "gpuExecutionMetric": "unavailable",
   "authorization": {
-    "identity": "coverage-pilot-20261017-a1-after-unit3-once",
+    "identity": "coverage-pilot-20261018-a1-after-unit4-once",
     "approvedBy": "repository owner",
-    "reference": "Owner approval 2026-10-17 for one repeat hosted CPU pilot after cost unit 3, one iteration, no added load. KhaozEngine issue 1418."
+    "reference": "Owner approval 2026-10-18 for one hosted CPU pilot after cost unit 4, 64 warm-up and 32 measured frames, no added load. KhaozEngine issue 1418."
   }
 }

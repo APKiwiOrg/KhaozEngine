@@ -16,7 +16,7 @@ name: stress-test
 #   gh workflow run stress-test.yml --ref <branch> \
 #     -f project=tools/EquipmentCoverage.Cost.Tests/EquipmentCoverage.Cost.Tests.csproj \
 #     -f build-target=tools/EquipmentCoverage.Cost.Tests/EquipmentCoverage.Cost.Tests.csproj \
-#     -f filter='FullyQualifiedName=KhaozEngine.Tests.CoverageCost.CoverageCostTests.Measure_authorized_case&DisplayName~"<unit>"' \
+#     -f filter='FullyQualifiedName=KhaozEngine.Tests.CoverageCost.CoverageCostTests.Measure_authorized_case&DisplayName~<unit>' \
 #     -f iterations=1 -f load=0 -f configuration=Release -f artifact-env=KE_COVERAGE_COST_REPORTS
 on:
   workflow_dispatch:

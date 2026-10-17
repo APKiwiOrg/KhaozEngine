@@ -9,13 +9,14 @@ namespace KhaozEngine.BugReports.Relay;
 /// </summary>
 internal static class RelayJson
 {
-    /// <summary>Web defaults with enums written as camelCase strings. Read only.</summary>
+    /// <summary>Web defaults with strict numbers and enums written as camelCase strings. Read only.</summary>
     public static JsonSerializerOptions Options { get; } = Create();
 
     static JsonSerializerOptions Create()
     {
         var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
         {
+            NumberHandling = JsonNumberHandling.Strict,
             Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase, allowIntegerValues: false) },
         };
         options.MakeReadOnly(populateMissingResolver: true);

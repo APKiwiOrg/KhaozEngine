@@ -34,6 +34,14 @@ public sealed class ReportWorkItemJsonTests
         Assert.Equal(new ReportWorkItem(ReportWorkKind.CreateIssue, Id, 0), item);
     }
 
+    [Fact]
+    public void Parse_QuotedRequeues_Rejects()
+    {
+        string json = "{\"kind\":\"createIssue\",\"reportId\":\"" + Id + "\",\"requeues\":\"2\"}";
+
+        Assert.Throws<FormatException>(() => ReportWorkItemJson.Parse(json));
+    }
+
     [Theory]
     [InlineData("{\"kind\":\"other\",\"reportId\":\"" + Id + "\"}")]
     [InlineData("{\"kind\":\"createIssue\",\"reportId\":\"xyz\"}")]

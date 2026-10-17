@@ -133,7 +133,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             }
 
             spec = VulkanSwapchainPolicy.Decide(
-                report, _requested, _syncToVerticalBlank, srgb: false, out string? warning);
+                report, _requested, _syncToVerticalBlank, srgb: false, _copySourceRequested, out string? warning);
 
             if (warning != null) _log.Warn(warning);
 

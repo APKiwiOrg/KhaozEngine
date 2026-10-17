@@ -23,7 +23,7 @@ namespace KhaozEngine.Tests.Gpu
         internal const ulong Handle = 0x50FACE;
 
         /// <summary>A plausible desktop surface: a window that dictates its own size, offering the BGRA pair the
-        /// shipped path asks for plus all three optional present modes.</summary>
+        /// shipped path asks for plus all three optional present modes, and the usage bits a capture needs.</summary>
         internal static VulkanSurfaceReport Desktop(uint width = 1280, uint height = 720) => new(
             MinImageCount: 2,
             MaxImageCount: 8,
@@ -40,7 +40,8 @@ namespace KhaozEngine.Tests.Gpu
             {
                 PresentModeKHR.FifoKhr, PresentModeKHR.FifoRelaxedKhr, PresentModeKHR.MailboxKhr,
                 PresentModeKHR.ImmediateKhr,
-            });
+            },
+            SupportedUsage: VulkanSwapchainSpec.ColourAndTransferDst | ImageUsageFlags.TransferSrcBit);
 
         /// <summary>A MINIMISED window: every extent zero, which is what a surface reports while its window is
         /// iconified and which is the shape https://github.com/APKiwiOrg/KhaozEngine/issues/81 is about.</summary>
@@ -198,6 +199,7 @@ namespace KhaozEngine.Tests.Gpu
             failure = null;
             ulong handle = _nextSwapchain++;
             LiveSwapchains.Add(handle);
+            Created.Add(spec);
             Events.Add($"CreateSwapchain({spec.Extent.Width}x{spec.Extent.Height},{spec.PresentMode}) -> {handle:x}");
             return handle;
         }
@@ -205,6 +207,10 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>The spec the last creation was asked for, so a test can assert the whole create-info at
         /// once.</summary>
         internal VulkanSwapchainSpec LastSpec { get; private set; }
+
+        /// <summary>The spec of every creation that succeeded, in order, so a test can read what each generation
+        /// was made with.</summary>
+        internal List<VulkanSwapchainSpec> Created { get; } = new();
 
         /// <summary>The <c>oldSwapchain</c> the last creation was handed, which must be the generation being
         /// replaced rather than 0 on every recreate after the first.</summary>

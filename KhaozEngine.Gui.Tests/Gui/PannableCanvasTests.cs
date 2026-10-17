@@ -108,6 +108,27 @@ namespace KhaozEngine.Tests.Gui
             Assert.True(Vector2.Distance(pressWorld, releaseWorld) > 1f); // caller can reject the drag
         }
 
+        [Theory]
+        [InlineData(false, false, true)]
+        [InlineData(true, false, false)]
+        [InlineData(false, true, false)]
+        public void TryGetTap_misses_when_press_origin_or_release_is_occluded(
+            bool occludeOrigin, bool occludeRelease, bool expected)
+        {
+            var c = Canvas();
+            var p = new Pointer();
+            var origin = new Vector2(300, 250);
+            var release = new Vector2(450, 350);
+
+            p.Update(Frame(origin, false));
+            p.Update(Frame(origin, true));
+            p.Update(Frame(release, false));
+            if (occludeOrigin) p.Occlude(new Rect(280, 230, 40, 40));
+            if (occludeRelease) p.Occlude(new Rect(430, 330, 40, 40));
+
+            Assert.Equal(expected, c.TryGetTap(p, out _, out _));
+        }
+
         [Fact]
         public void Update_pans_on_a_simulated_drag()
         {

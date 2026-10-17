@@ -1,11 +1,14 @@
 # Contact controller support cost, SG-12 option C
 
 Status: approved direction (owner, 2026-10-16, option C), rulings SC-1 to SC-9 open to owner review.
+The rulings are implemented and staged for 21.1.1, apart from the phase 6 aggregate budget of SC-1. The local
+[cost record](../superpowers/plans/proofs/2026-10-17-support-cost-option-c.md) shows SG-12 not met: ordinary
+rows pass 95, reject 44 and 5 are envelope rows, against 80 and 59 before. #1334 stays open.
 Issue: [#1334](https://github.com/APKiwiOrg/KhaozEngine/issues/1334). Parent program: #438.
 Builds on [CONTACT-CONTROLLER-SUPPORT-GATES-2026-10-11.md](CONTACT-CONTROLLER-SUPPORT-GATES-2026-10-11.md)
 (SG-10, SG-12, SG-15, SG-20, SG-21, SG-24). Evidence: the hosted record
 [2026-10-14-support-cost-hosted-1334.md](../verification/2026-10-14-support-cost-hosted-1334.md) and the
-local attribution in this change's cost record.
+local attribution in the [cost record](../superpowers/plans/proofs/2026-10-17-support-cost-option-c.md).
 
 ## Problem
 
@@ -131,6 +134,28 @@ flat box and analytic plus props 12 to 20 us, sphere 20 to 30, flat hull 25 to 3
 stairs 80 to 150, hidden crate 300 to 600. Flat and curved rows plausibly pass. Stairs and the hidden
 crate likely stay over 50 us with lossless work alone. They will be re-attributed after the
 measurement, and any further algorithm work gets its own ruling.
+
+Measured after SC-4 to SC-8, one local sample per row at `47ded3e11`, warm Find in us, with the attributed
+phase sum where the total disagrees with its counters:
+
+| Row | Projected | Measured | Attributed | Limit met |
+| --- | --- | ---: | ---: | --- |
+| flat box | 12 to 20 | 2729.0 | 78.5 | no, an outlier: identical flat rows measure 13.9 to 14.4 |
+| analytic plus props | 12 to 20 | 88.5 | 16.8 | no, an outlier on the same evidence |
+| sphere | 20 to 30 | 21.9 | 15.0 | yes |
+| flat hull | 25 to 35 | 46.6 | 46.1 | yes, 8 exact contact fallbacks remain |
+| capsule | 35 to 45 | 14.5 | 12.6 | yes |
+| cylinder | not projected | 33.8 | 15.4 | yes |
+| flat mesh | not projected | 111.7 | 48.2 | no, mesh capture is outside SC-4 |
+| stairs mesh | 80 to 120 | 115.0 | 121.5 | no |
+| stairs box | 80 to 150 | 125.2 | 117.2 | no |
+| stairs hull | 80 to 150 | 652.3 | 126.5 | no |
+| hidden crate | 300 to 600 | 179.7 | 167.6 | no |
+
+On counters and attribution the curved and flat polyhedral Finds meet 50 us, yet the flat box and analytic
+plus props rows miss it in this sample. The stairs, mesh and crate Finds miss it on every reading, and so do
+their dry substeps and ticks. Contacts, extrema and joins dominate them. Each gets a fresh attribution and a
+further ruling under SC-9. The flat box dry tick passes at 104.8 against 106.7 us.
 
 ## Out of scope
 

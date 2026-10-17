@@ -7,12 +7,24 @@ using KhaozEngine.BugReports.Contracts;
 
 namespace KhaozEngine.Tests.BugReports;
 
-// A scripted IBugReportSink. Each submit records the submission, then dequeues the next outcome.
+// A scripted IBugReportSink. Each submit records the submission, then dequeues the next outcome. A submit with no
+// outcome left throws, which SinkCall swallows as a sink failure, so it also sets RanOut for the test teardown.
 internal sealed class FakeSink : IBugReportSink
 {
     readonly object sync = new();
     readonly Queue<Func<BugReportSubmission, Task<BugReportSubmitResult>>> outcomes = new();
     readonly List<BugReportSubmission> submissions = [];
+    bool ranOut;
+
+    // True once a submit found no scripted outcome. A test's teardown asserts it stays false.
+    public bool RanOut
+    {
+        get
+        {
+            lock (sync)
+                return ranOut;
+        }
+    }
 
     public IReadOnlyList<BugReportSubmission> Submissions
     {
@@ -77,7 +89,10 @@ internal sealed class FakeSink : IBugReportSink
         {
             submissions.Add(submission);
             if (outcomes.Count == 0)
+            {
+                ranOut = true;
                 throw new InvalidOperationException("FakeSink ran out of scripted outcomes.");
+            }
             next = outcomes.Dequeue();
         }
         return next(submission);

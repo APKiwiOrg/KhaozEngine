@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -18,10 +19,21 @@ public sealed class BugReportSubmitterTests : IDisposable
 
     string Dir => Path.Combine(root, "pending");
 
+    readonly List<FakeSink> sinks = [];
+
+    // Every FakeSink a test scripts, so the teardown can assert none ran out of outcomes.
+    FakeSink Sink()
+    {
+        var sink = new FakeSink();
+        sinks.Add(sink);
+        return sink;
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(root))
             Directory.Delete(root, recursive: true);
+        Assert.DoesNotContain(sinks, sink => sink.RanOut);
     }
 
     static string Id(int n) => BugReportOfflineQueueTests.Id(n);
@@ -44,7 +56,7 @@ public sealed class BugReportSubmitterTests : IDisposable
     {
         var queue = new BugReportOfflineQueue(Dir, time);
         var gate = new TaskCompletionSource<BugReportSubmitResult>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var sink = new FakeSink().Block(gate);
+        var sink = Sink().Block(gate);
         var submitter = new BugReportSubmitter(sink, queue);
 
         Task<BugReportSubmitResult> submit = submitter.SubmitAsync(Submission(1, "a"), CancellationToken.None);
@@ -61,7 +73,7 @@ public sealed class BugReportSubmitterTests : IDisposable
     public async Task Queued_result_stays_on_disk()
     {
         var queue = new BugReportOfflineQueue(Dir, time);
-        var sink = new FakeSink().Respond(BugReportSubmitStatus.Queued, "network").Respond(BugReportSubmitStatus.Sent);
+        var sink = Sink().Respond(BugReportSubmitStatus.Queued, "network").Respond(BugReportSubmitStatus.Sent);
         var submitter = new BugReportSubmitter(sink, queue);
 
         BugReportSubmitResult result = await submitter.SubmitAsync(Submission(1, "a"), CancellationToken.None);
@@ -79,7 +91,7 @@ public sealed class BugReportSubmitterTests : IDisposable
     public async Task Signed_out_submission_never_calls_the_sink()
     {
         var queue = new BugReportOfflineQueue(Dir, time);
-        var sink = new FakeSink();
+        var sink = Sink();
         var submitter = new BugReportSubmitter(sink, queue);
 
         BugReportSubmitResult result = await submitter.SubmitAsync(Submission(1, null), CancellationToken.None);
@@ -95,7 +107,7 @@ public sealed class BugReportSubmitterTests : IDisposable
         Directory.CreateDirectory(root);
         File.WriteAllText(Dir, "a file where the queue directory should be");
         var queue = new BugReportOfflineQueue(Dir, time);
-        var sink = new FakeSink().Respond(BugReportSubmitStatus.Queued, "network").Respond(BugReportSubmitStatus.Sent);
+        var sink = Sink().Respond(BugReportSubmitStatus.Queued, "network").Respond(BugReportSubmitStatus.Sent);
         var submitter = new BugReportSubmitter(sink, queue);
 
         BugReportSubmitResult queued = await submitter.SubmitAsync(Submission(1, "a"), CancellationToken.None);
@@ -115,7 +127,7 @@ public sealed class BugReportSubmitterTests : IDisposable
     {
         var queue = new BugReportOfflineQueue(Dir, time);
         var gate = new TaskCompletionSource<BugReportSubmitResult>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var sink = new FakeSink().Block(gate);
+        var sink = Sink().Block(gate);
         var submitter = new BugReportSubmitter(sink, queue);
 
         Task<BugReportSubmitResult> submit = submitter.SubmitAsync(Submission(1, "a"), CancellationToken.None);
@@ -133,7 +145,7 @@ public sealed class BugReportSubmitterTests : IDisposable
     {
         var queue = new BugReportOfflineQueue(Dir, time);
         var gate = new TaskCompletionSource<BugReportSubmitResult>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var sink = new FakeSink().Block(gate);
+        var sink = Sink().Block(gate);
         var submitter = new BugReportSubmitter(sink, queue);
 
         Task<BugReportSubmitResult> submit = submitter.SubmitAsync(Submission(1, "a"), CancellationToken.None);
@@ -156,7 +168,7 @@ public sealed class BugReportSubmitterTests : IDisposable
     {
         var queue = new BugReportOfflineQueue(Dir, time);
         using var caller = new CancellationTokenSource();
-        var sink = new FakeSink().Hang(caller.Token).Respond(BugReportSubmitStatus.Sent);
+        var sink = Sink().Hang(caller.Token).Respond(BugReportSubmitStatus.Sent);
         var submitter = new BugReportSubmitter(sink, queue);
 
         Task<BugReportSubmitResult> submit = submitter.SubmitAsync(Submission(1, "a"), caller.Token);
@@ -171,7 +183,7 @@ public sealed class BugReportSubmitterTests : IDisposable
     public async Task Throwing_sink_returns_a_result_and_keeps_the_report()
     {
         var queue = new BugReportOfflineQueue(Dir, time);
-        var sink = new FakeSink().Throw(new InvalidOperationException("boom")).Throw(new OperationCanceledException())
+        var sink = Sink().Throw(new InvalidOperationException("boom")).Throw(new OperationCanceledException())
             .Respond(BugReportSubmitStatus.Sent).Respond(BugReportSubmitStatus.Sent);
         var submitter = new BugReportSubmitter(sink, queue);
 
@@ -192,7 +204,7 @@ public sealed class BugReportSubmitterTests : IDisposable
     {
         Directory.CreateDirectory(root);
         File.WriteAllText(Dir, "a file where the queue directory should be");
-        var sink = new FakeSink().Throw(new InvalidOperationException("boom"));
+        var sink = Sink().Throw(new InvalidOperationException("boom"));
         var submitter = new BugReportSubmitter(sink, new BugReportOfflineQueue(Dir, time));
 
         BugReportSubmitResult result = await submitter.SubmitAsync(Submission(1, "a"), CancellationToken.None);
@@ -205,7 +217,7 @@ public sealed class BugReportSubmitterTests : IDisposable
     {
         Directory.CreateDirectory(root);
         File.WriteAllText(Dir, "a file where the queue directory should be");
-        var sink = new FakeSink();
+        var sink = Sink();
         var submitter = new BugReportSubmitter(sink, new BugReportOfflineQueue(Dir, time));
 
         BugReportSubmitResult result = await submitter.SubmitAsync(Submission(1, null), CancellationToken.None);
@@ -219,7 +231,7 @@ public sealed class BugReportSubmitterTests : IDisposable
     {
         var queue = new BugReportOfflineQueue(Dir, time);
         var gate = new TaskCompletionSource<BugReportSubmitResult>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var sink = new FakeSink().Block(gate);
+        var sink = Sink().Block(gate);
         var submitter = new BugReportSubmitter(sink, queue);
 
         Task<BugReportSubmitResult> first = submitter.SubmitAsync(Submission(1, "a"), CancellationToken.None);
@@ -238,7 +250,7 @@ public sealed class BugReportSubmitterTests : IDisposable
     public async Task Rejected_send_is_logged_once_with_its_id_and_error()
     {
         var queue = new BugReportOfflineQueue(Dir, time);
-        var sink = new FakeSink().Respond(BugReportSubmitStatus.Rejected, "blocked");
+        var sink = Sink().Respond(BugReportSubmitStatus.Rejected, "blocked");
         var submitter = new BugReportSubmitter(sink, queue);
 
         BugReportSubmitResult result;
@@ -272,7 +284,7 @@ public sealed class BugReportSubmitterTests : IDisposable
     {
         Directory.CreateDirectory(root);
         File.WriteAllText(Dir, "a file where the queue directory should be");
-        var sink = new FakeSink().Respond(BugReportSubmitStatus.Rejected, "blocked");
+        var sink = Sink().Respond(BugReportSubmitStatus.Rejected, "blocked");
         var submitter = new BugReportSubmitter(sink, new BugReportOfflineQueue(Dir, time));
 
         BugReportSubmitResult result = await submitter.SubmitAsync(Submission(1, "a"), CancellationToken.None);
@@ -285,7 +297,7 @@ public sealed class BugReportSubmitterTests : IDisposable
     {
         Directory.CreateDirectory(root);
         File.WriteAllText(Dir, "a file where the queue directory should be");
-        var sink = new FakeSink().Respond(BugReportSubmitStatus.Rejected, "blocked");
+        var sink = Sink().Respond(BugReportSubmitStatus.Rejected, "blocked");
         var submitter = new BugReportSubmitter(sink, new BugReportOfflineQueue(Dir, time));
 
         using (CaptureLogs())
@@ -302,7 +314,7 @@ public sealed class BugReportSubmitterTests : IDisposable
         queue.Enqueue(Submission(1, "a"));
         time.Advance(TimeSpan.FromSeconds(1));
         queue.Enqueue(Submission(2, null));
-        var sink = new FakeSink().Respond(BugReportSubmitStatus.Rejected, "blocked").Respond(BugReportSubmitStatus.Sent);
+        var sink = Sink().Respond(BugReportSubmitStatus.Rejected, "blocked").Respond(BugReportSubmitStatus.Sent);
         var submitter = new BugReportSubmitter(sink, queue);
 
         BugReportFlushResult flushed;

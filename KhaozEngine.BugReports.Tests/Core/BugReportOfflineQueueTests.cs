@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -21,10 +22,21 @@ public sealed class BugReportOfflineQueueTests : IDisposable
 
     string Dir => Path.Combine(root, "pending");
 
+    readonly List<FakeSink> sinks = [];
+
+    // Every FakeSink a test scripts, so the teardown can assert none ran out of outcomes.
+    FakeSink Sink()
+    {
+        var sink = new FakeSink();
+        sinks.Add(sink);
+        return sink;
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(root))
             Directory.Delete(root, recursive: true);
+        Assert.DoesNotContain(sinks, sink => sink.RanOut);
     }
 
     // A canonical version 7 id whose ordinal order follows n.
@@ -101,7 +113,7 @@ public sealed class BugReportOfflineQueueTests : IDisposable
         queue.Enqueue(Submission(Id(2), "b"));
         time.Advance(BugReportOfflineQueue.MaxAge);
 
-        var sink = new FakeSink();
+        var sink = Sink();
         int sent = (await queue.FlushAsync("a", sink, CancellationToken.None)).Sent;
 
         // Id(1) is 7 days and 1 s old. Id(2) is exactly 7 days old and stays.
@@ -120,7 +132,7 @@ public sealed class BugReportOfflineQueueTests : IDisposable
     {
         BugReportOfflineQueue queue = Queue();
         queue.Enqueue(Submission(Id(1), null));
-        var sink = new FakeSink().Respond(BugReportSubmitStatus.Queued);
+        var sink = Sink().Respond(BugReportSubmitStatus.Queued);
 
         Assert.Equal(0, (await queue.FlushAsync("a", sink, CancellationToken.None)).Sent);
         Assert.Equal(0, (await queue.FlushAsync("b", sink, CancellationToken.None)).Sent);
@@ -138,7 +150,7 @@ public sealed class BugReportOfflineQueueTests : IDisposable
     {
         BugReportOfflineQueue queue = Queue();
         queue.Enqueue(Submission(Id(1), "a"));
-        var sink = new FakeSink();
+        var sink = Sink();
 
         Assert.Equal(0, (await queue.FlushAsync("b", sink, CancellationToken.None)).Sent);
 
@@ -155,7 +167,7 @@ public sealed class BugReportOfflineQueueTests : IDisposable
             queue.Enqueue(Submission(Id(10 - t), "a"));
             time.Advance(TimeSpan.FromSeconds(1));
         }
-        var sink = new FakeSink().Respond(BugReportSubmitStatus.Sent).Respond(BugReportSubmitStatus.Queued);
+        var sink = Sink().Respond(BugReportSubmitStatus.Sent).Respond(BugReportSubmitStatus.Queued);
 
         int sent = (await queue.FlushAsync("a", sink, CancellationToken.None)).Sent;
 
@@ -171,7 +183,7 @@ public sealed class BugReportOfflineQueueTests : IDisposable
         queue.Enqueue(Submission(Id(1), "a"));
         time.Advance(TimeSpan.FromSeconds(1));
         queue.Enqueue(Submission(Id(2), "a"));
-        var sink = new FakeSink().Respond(BugReportSubmitStatus.Rejected, "bundle_invalid").Respond(BugReportSubmitStatus.Sent);
+        var sink = Sink().Respond(BugReportSubmitStatus.Rejected, "bundle_invalid").Respond(BugReportSubmitStatus.Sent);
 
         BugReportFlushResult flushed = await queue.FlushAsync("a", sink, CancellationToken.None);
 
@@ -261,7 +273,7 @@ public sealed class BugReportOfflineQueueTests : IDisposable
     {
         BugReportOfflineQueue queue = Queue();
         queue.Enqueue(Submission(Id(1), null));
-        var sink = new FakeSink();
+        var sink = Sink();
 
         Assert.Equal(0, (await queue.FlushAsync(null!, sink, CancellationToken.None)).Sent);
         Assert.Equal(0, (await queue.FlushAsync("", sink, CancellationToken.None)).Sent);
@@ -279,7 +291,7 @@ public sealed class BugReportOfflineQueueTests : IDisposable
         time.Advance(TimeSpan.FromSeconds(1));
         queue.Enqueue(Submission(Id(2), "a"));
         // A cancellation the caller did not ask for is a sink fault too.
-        var sink = new FakeSink().Throw(new OperationCanceledException())
+        var sink = Sink().Throw(new OperationCanceledException())
             .Respond(BugReportSubmitStatus.Sent).Respond(BugReportSubmitStatus.Sent);
 
         Assert.Equal(0, (await queue.FlushAsync("a", sink, CancellationToken.None)).Sent);
@@ -297,7 +309,7 @@ public sealed class BugReportOfflineQueueTests : IDisposable
         BugReportOfflineQueue queue = Queue();
         queue.Enqueue(Submission(Id(1), "a"));
         File.Delete(Path.Combine(Dir, Id(1) + ".zip"));
-        var sink = new FakeSink();
+        var sink = Sink();
 
         BugReportSubmitResult? result = await queue.SendOneAsync(Id(1), "a", sink, CancellationToken.None);
 

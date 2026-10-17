@@ -222,8 +222,11 @@ ticks, bodies or axes.
 **Ruling SC-17. The hidden crate descent is investigated before the crate counts as paced.** While a paced climb
 is owed, a substep lowers the feet 0.0577 m below the crate top the body stood on (#1437). A targeted geometry test
 decides whether that is a controller defect. A defect gets its proper fix, keeping the 1 mm arrival rule, roof and
-footprint protections and raw layer identity. Only if it is refuted does the harness derive `paced` from the climb
-budget (owed rise above MaxStepClimbSpeed times dt) instead of a scene name list.
+footprint protections and raw layer identity. Once the descent is refuted, or fixed and pinned by regression tests,
+the harness derives `paced` from the climb budget (owed rise above MaxStepClimbSpeed times dt) instead of a scene
+name list. The investigation confirmed a defect: `GroundSeat.StepPart` extrapolated a sloping face plane from a
+height capped by an overhung edge and charged a false 0.0577 m rise. It now uses the edge-aware `PlaneRise`, and
+the crate's remaining 0.22 m lag is the designed paced climb.
 
 ## Out of scope
 

@@ -8646,7 +8646,7 @@ the clamp bounds and the classifier policy. Normalise text to LF before digestin
 Prefer authored inputs to `TileWorldColliders.Hash` for walk surfaces yawed off a quarter turn, since that hash is
 not promised equal across x64 and ARM64. Rebake when any input, option, probed tuning field or the engine pin
 changes, and keep a game test that loads the shipped bake and expects `Loaded`. Load also compares the normalized
-`KhaozEngine.Movement` assembly version. An upgrade from an older engine version to 21.1.0 therefore requires
+`KhaozEngine.Movement` assembly version. Any engine version change, 21.1.0 to 21.1.1 included, therefore requires
 regeneration and returns `EngineChanged`, even when the format and payload algorithm are unchanged. A backend fix
 within the same engine version does not add another invalidation when the bake identity and payload remain unchanged.
 

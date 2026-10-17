@@ -115,7 +115,9 @@ internal sealed class InstalledSupportGeometryCache
     sealed record Outcome(CapsuleFeatureStatus Status, InstalledSupportGeometry? Geometry);
 
     // A hit compares keys, and a miss only hashes them. Without an explicit comparer the first hit in the process
-    // creates the default key and field comparers, which allocates inside a warm query.
+    // creates the default key and field comparers, which allocates inside a warm query. Only an isolated run of
+    // CurvedFootprintMatchesAllProvedPoseStrata("cylinder-ring") catches a regression, since earlier tests in a
+    // full run make the first hit.
     sealed class KeyComparer : IEqualityComparer<Key>
     {
         internal static readonly KeyComparer Instance = new();

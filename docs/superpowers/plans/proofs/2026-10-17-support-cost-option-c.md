@@ -18,7 +18,9 @@ It is not the hosted SG-12 verdict. SC-9 makes a second approved hosted run the 
   the lesser of 1000 us and legacy plus max(100 us, a quarter of legacy). Failure codes are those of the
   #1334 record: `T` time, `G` geometry, oracle or refusal, `E` outside the comparable moving single-mode
   envelope, `L` unsuccessful ordinary legacy, `A` allocation. Envelope rows follow SC-3.
-- Raw JSON and logs stay in the task's ignored SDD workspace. Only this record is committed.
+- Raw JSON and logs stay in the task's ignored SDD workspace, the before artifacts under `before-e0dbb6da4/`.
+  The before cost artifact was never finalized and still carries `pendingFinalization`. Only this record is
+  committed.
 
 Commands, one at a time:
 

@@ -140,22 +140,26 @@ phase sum where the total disagrees with its counters:
 
 | Row | Projected | Measured | Attributed | Limit met |
 | --- | --- | ---: | ---: | --- |
-| flat box | 12 to 20 | 2729.0 | 78.5 | no, an outlier: identical flat rows measure 13.9 to 14.4 |
-| analytic plus props | 12 to 20 | 88.5 | 16.8 | no, an outlier on the same evidence |
+| flat box | 12 to 20 | 2729.0 | 78.5 | no, the first measured row reads high in every run (#1434), identical flat rows measure 13.9 to 14.4 |
+| analytic plus props | 12 to 20 | 88.5 | 16.8 | no in this sample, its counters match the flat rows |
 | sphere | 20 to 30 | 21.9 | 15.0 | yes |
 | flat hull | 25 to 35 | 46.6 | 46.1 | yes, 8 exact contact fallbacks remain |
 | capsule | 35 to 45 | 14.5 | 12.6 | yes |
 | cylinder | not projected | 33.8 | 15.4 | yes |
 | flat mesh | not projected | 111.7 | 48.2 | no, mesh capture is outside SC-4 |
-| stairs mesh | 80 to 120 | 115.0 | 121.5 | no |
+| stairs mesh | 80 to 150 | 115.0 | 121.5 | no |
 | stairs box | 80 to 150 | 125.2 | 117.2 | no |
 | stairs hull | 80 to 150 | 652.3 | 126.5 | no |
 | hidden crate | 300 to 600 | 179.7 | 167.6 | no |
 
-On counters and attribution the curved and flat polyhedral Finds meet 50 us, yet the flat box and analytic
-plus props rows miss it in this sample. The stairs, mesh and crate Finds miss it on every reading, and so do
-their dry substeps and ticks. Contacts, extrema and joins dominate them. Each gets a fresh attribution and a
-further ruling under SC-9. The flat box dry tick passes at 104.8 against 106.7 us.
+On counters and sibling rows the curved and flat polyhedral Finds meet 50 us, yet the flat box and analytic
+plus props rows miss it in this sample. The flat box is the first measured row in every run and reads high
+there before and after this work, a repeatable first-row effect with no known cause (#1434). The stairs, mesh
+and crate Finds miss on every reading, and so do their dry substeps and ticks. The flat hull and pushed seat
+dry ticks also miss on their attributed phases, 133.3 against 122.7 us and 305.8 against 124.1 us. Contacts,
+extrema and joins dominate them. Stairs dry substeps cost about 300 us more than borrowed substeps with
+identical support counters, so part of that cost lies outside Find (#1435). Each gets a fresh attribution
+and a further ruling under SC-9. The flat box dry tick passes at 104.8 against 106.7 us.
 
 ## Out of scope
 

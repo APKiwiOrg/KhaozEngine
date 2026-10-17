@@ -12,8 +12,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   the contact kernel, faces of one convex leaf join through their shared captured edge, and curved contact
   members stop bisecting once their verdict is certified. Results stay bit-identical to the reference
   evaluator, and the first warm query in a process no longer allocates. The
-  [cost record](docs/superpowers/plans/proofs/2026-10-17-support-cost-option-c.md) lists the stairs, mesh
-  and crate scenes that still miss their SG-12 limits.
+  [cost record](docs/superpowers/plans/proofs/2026-10-17-support-cost-option-c.md) lists every ordinary
+  scene that still misses its SG-12 limits.
 
 ## 21.1.0
 

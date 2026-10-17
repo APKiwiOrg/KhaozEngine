@@ -175,8 +175,10 @@ namespace KhaozEngine.Render3D.Internal
         /// tail at 0.25, and the least of the four taps in place of their mean at 3.98. At 0.125 the stable peaks'
         /// change at Quality over the textured wall rose 9 percent.</summary>
         public const float ShadingRingExtents = 0.25f;
-        /// <summary>Steps 6 and 8. The largest internal texel, in display pixels, at which the release runs: Native
-        /// and Quality, not Balanced and below. Beyond it the jitter aliases detail between the internal and the
+        /// <summary>Steps 6 and 8. The internal texel, in display pixels, below which the release runs: Native and
+        /// Quality, not Balanced and below. It lies midway between Quality's 1.5 and Balanced's 1.7. A custom
+        /// <c>UpscaleRatio</c> near 0.625 falls either side by how its whole-pixel internal size rounds, so the release
+        /// is not promised there. At and above it the jitter aliases detail between the internal and the
         /// display Nyquist as far from its accumulated history as a shading change moves it, and the release cost a
         /// checkerboard at Performance (<c>TemporalMipBiasGoldenTests</c>) up to 0.022 of its golden, so a shadow edge
         /// there still converges at the current weight's floor.</summary>

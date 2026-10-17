@@ -467,20 +467,25 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     // of the current weight, about one in sixteen, would move it, and the lag behind the edge would grow with the
     // edge's travel a frame. A clip alone leaves up to the box's half-width behind the edge to fade at that floor. So
     // such a pixel lets go of its hold and its accumulated weight for the frame and shows this frame's reconstruction.
-    // Four things must hold. The pixel is still, below LockMotionStartPixels, at a preset whose internal texel is at
-    // most ShadingMaxUpscale display pixels. Nothing missed explains its history: a ridge refreshed its lock this
-    // frame, or it holds no lock and its 3x3 varies by more than a ridge's step, since a lock carried with no ridge now
-    // is a thin feature the jitter missed and a flat 3x3 is one that missed a feature beside it. Its history luma lies
+    // Four things must hold. The pixel is still, below LockMotionStartPixels, at a preset whose internal texel is
+    // under ShadingMaxUpscale display pixels. Nothing missed explains its history: a ridge refreshed its lock this
+    // frame, or it holds no lock and its box's half-width exceeds ridgeStep, since a lock carried with no ridge now is
+    // a thin feature the jitter missed and a flat 3x3 is one that missed a feature beside it. Its history luma lies
     // past the box by more than ShadingResetExtents of the half-width. And either that luma lies from this frame's
     // reconstruction by more than ShadingChangeExtents half-widths for each display pixel an internal texel spans, or
     // last frame's ring around it lies more than ShadingRingExtents half-widths from this frame's eight texels around
-    // the centre, on the history's side (temporalHistoryRingShift). A stable peak one texel across lies past its own box, one bright
-    // texel of nine moving the mean little, but its reconstruction shows it and its ring agrees, so it keeps what it
-    // held. The half-width here is at least a ridge's step (LockRidgeAbsolute, LockRidgeRelative). The stored lock is
-    // left as it is: the next frame's ridge decides it, and a store that differed here moved other pixels' locks by a
+    // the centre, on the history's side (temporalHistoryRingShift). A stable peak one texel across lies past its own
+    // box, one bright texel of nine moving the mean little, but its reconstruction shows it and its ring agrees, so it
+    // keeps what it held. The half-width here is at least ridgeStep, the ridge threshold (LockRidgeAbsolute,
+    // LockRidgeRelative) taken at the 3x3's mean luma rather than at the centre texel's luma as temporalRidge takes it,
+    // since the box it stands in for is the neighbourhood's. A released pixel
+    // shows this frame's internal reconstruction as a fresh pixel does, with no share of the display-sized one
+    // (temporalDisplayShare), which a converged pixel takes in at the current weight's floor. The stored lock is left
+    // as it is: the next frame's ridge decides it, and a store that differed here moved other pixels' locks by a
     // rounding step between the two entry points.
     float ridgeStep = max(LockRidgeAbsolute, LockRidgeRelative * mean.x);
     float releaseExtent = max(boxExtent.x, ridgeStep);
+    bool released = false;
     if (useHistory && motionPixels < LockMotionStartPixels && Jitter.z < ShadingMaxUpscale
         && (ridge || (!(lockValue > 0.0) && boxExtent.x > ridgeStep))
         && abs(fromCentre.x) > (1.0 + ShadingResetExtents) * releaseExtent
@@ -489,6 +494,7 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
                 > ShadingRingExtents * releaseExtent)) {
         hold = 0.0;
         accumulated = 0.0;
+        released = true;
     }
     excess.x *= 1.0 - hold;
     float clipScale = max(excess.x, max(excess.y, excess.z));
@@ -536,10 +542,11 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
         }
     }
 
-    // Step 4 for a converged pixel: the display-sized reconstruction by its share (temporalDisplayCurrent). A program
-    // compiled for the display's own size (TemporalAtDisplaySize), where the share is always none, leaves it out.
+    // Step 4 for a converged pixel: the display-sized reconstruction by its share (temporalDisplayCurrent), none where
+    // the shading release dropped the pixel's accumulated weight this frame. A program compiled for the display's own
+    // size (TemporalAtDisplaySize), where the share is always none, leaves it out.
 #ifndef TemporalAtDisplaySize
-    float displayShare = temporalDisplayShare(useHistory, historyState.x, motionPixels, reactive);
+    float displayShare = temporalDisplayShare(useHistory && !released, historyState.x, motionPixels, reactive);
     if (displayShare > 0.0)
         current.xyz = temporalDisplayCurrent(current.xyz, n.display, displayShare, neighbourMin, neighbourMax);
 #endif

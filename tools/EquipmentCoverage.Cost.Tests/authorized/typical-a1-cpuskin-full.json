@@ -21,6 +21,6 @@
   "authorization": {
     "identity": "coverage-pilot-20261017-a1-after-unit3-once",
     "approvedBy": "repository owner",
-    "reference": "Owner approval 2026-10-17 for one repeat hosted CPU pilot after cost unit 3, one actor, off then on, 4 warm-up and 8 measured frames per condition, one iteration, no added load, 300-second cooperative unit limit. KhaozEngine issue 1418."
+    "reference": "Owner approval 2026-10-17 for one repeat hosted CPU pilot after cost unit 3, one iteration, no added load. KhaozEngine issue 1418."
   }
 }

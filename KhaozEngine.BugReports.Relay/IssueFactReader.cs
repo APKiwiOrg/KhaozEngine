@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text.Json;
 using KhaozEngine.BugReports.Contracts;
 
@@ -31,9 +30,6 @@ internal static class IssueFactReader
             JsonValueKind.Object or JsonValueKind.Array => JsonSerializer.Serialize(value),
             _ => null,
         };
-        if (text is null) return null;
-        int[] elements = StringInfo.ParseCombiningCharacters(text);
-        return elements.Length > IssueLimits.MaxFactChars
-            ? text[..elements[IssueLimits.MaxFactChars - 3]] + "..." : text;
+        return text is null ? null : IssueFactText.Limit(text);
     }
 }

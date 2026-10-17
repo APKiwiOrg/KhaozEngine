@@ -7,27 +7,47 @@ public sealed class IssueMarkdownTests
 {
     [Fact]
     public void Neutralise_At_GetsZeroWidthSpace() =>
-        Assert.Equal("@\u200boctocat", IssueMarkdown.Neutralise("@octocat"));
+        Assert.Equal("\\@\u200boctocat", IssueMarkdown.Neutralise("@octocat"));
 
     [Fact]
     public void Neutralise_HashDigit_Only() =>
-        Assert.Equal("#\u200b123 #abc owner/repo#\u200b12 #١", IssueMarkdown.Neutralise("#123 #abc owner/repo#12 #١"));
+        Assert.Equal("\\#\u200b123 \\#abc owner\\/repo\\#\u200b12 \\#١", IssueMarkdown.Neutralise("#123 #abc owner/repo#12 #١"));
 
     [Fact]
     public void Neutralise_GhReference_KeepsCase() =>
-        Assert.Equal("GH\u200b-7 gh\u200b-8 Gh\u200b-9 gh-x gh-١", IssueMarkdown.Neutralise("GH-7 gh-8 Gh-9 gh-x gh-١"));
+        Assert.Equal("GH\u200b\\-7 gh\u200b\\-8 Gh\u200b\\-9 gh\\-x gh\\-١", IssueMarkdown.Neutralise("GH-7 gh-8 Gh-9 gh-x gh-١"));
 
     [Fact]
     public void Neutralise_GithubDotCom() =>
-        Assert.Equal("https://GitHub\u200b.com/a/b/issues/1", IssueMarkdown.Neutralise("https://GitHub.com/a/b/issues/1"));
+        Assert.Equal("https\u200b\\:\\/\\/GitHub\u200b\\.com\\/a\\/b\\/issues\\/1", IssueMarkdown.Neutralise("https://GitHub.com/a/b/issues/1"));
 
     [Fact]
-    public void Neutralise_HtmlBecomesEntities() =>
-        Assert.Equal("&lt;img src=x&gt; &amp; &gt;", IssueMarkdown.Neutralise("<img src=x> & >"));
+    public void Neutralise_HtmlSyntaxIsEscaped() =>
+        Assert.Equal("\\<img src\\=x\\> \\& \\>", IssueMarkdown.Neutralise("<img src=x> & >"));
 
     [Fact]
     public void Neutralise_ControlCharactersRemoved() =>
         Assert.Equal("ab\n\tc", IssueMarkdown.Neutralise("a\u0007b\r\n\t\u007fc"));
+
+    [Theory]
+    [InlineData("#\u000712", "\\#\u200b12")]
+    [InlineData("GH\u0007-7", "GH\u200b\\-7")]
+    [InlineData("git\u0007hub.com", "github\u200b\\.com")]
+    public void Neutralise_RemovesControlsBeforeMatchingReferences(string input, string expected) =>
+        Assert.Equal(expected, IssueMarkdown.Neutralise(input));
+
+    [Theory]
+    [InlineData("http://attacker.example", "http\u200b\\:\\/\\/attacker\\.example")]
+    [InlineData("HTTPS://attacker.example", "HTTPS\u200b\\:\\/\\/attacker\\.example")]
+    [InlineData("WWW.attacker.example", "WWW\u200b\\.attacker\\.example")]
+    [InlineData("user@attacker.example", "user\\@\u200battacker\\.example")]
+    public void Neutralise_BreaksAutolinkTriggers(string input, string expected) =>
+        Assert.Equal(expected, IssueMarkdown.Neutralise(input));
+
+    [Fact]
+    public void Neutralise_EscapesEveryAsciiPunctuationCharacter() =>
+        Assert.Equal("\\!\\\"\\#\\$\\%\\&\\'\\(\\)\\*\\+\\,\\-\\.\\/\\:\\;\\<\\=\\>\\?\\@\u200b\\[\\\\\\]\\^\\_\\`\\{\\|\\}\\~",
+            IssueMarkdown.Neutralise("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"));
 
     [Fact]
     public void Quote_EveryLineQuoted_BlankLinesStayInside() =>
@@ -35,7 +55,7 @@ public sealed class IssueMarkdownTests
 
     [Fact]
     public void Quote_NeutralisesHostileLines() =>
-        Assert.Equal("> &lt;/details&gt;\n> @\u200bhere", IssueMarkdown.Quote("</details>\n@here"));
+        Assert.Equal("> \\<\\/details\\>\n> \\@\u200bhere", IssueMarkdown.Quote("</details>\n@here"));
 
     [Fact]
     public void TableCell_PipeAndNewlines() =>
@@ -43,7 +63,7 @@ public sealed class IssueMarkdownTests
 
     [Fact]
     public void TableCell_NeutralisesMentionsAndHtml() =>
-        Assert.Equal("&lt;@\u200b42&gt; #\u200b1", IssueMarkdown.TableCell("<@42> #1"));
+        Assert.Equal("\\<\\@\u200b42\\> \\#\u200b1", IssueMarkdown.TableCell("<@42> #1"));
 
     [Fact]
     public void Handle_and_subject_render_as_inline_code() =>

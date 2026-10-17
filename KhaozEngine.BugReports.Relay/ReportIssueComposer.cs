@@ -26,6 +26,7 @@ internal sealed class ReportIssueComposer
         }
         if (body.Length > IssueLimits.MaxBodyChars && log.Length > 0)
             body = start + files + "\nLog tail omitted for size. Open the viewer.\n";
+        body = IssueBodyBudget.Finish(body, input.Report, Url(input, ReportLayout.ViewerFile));
         string? version = IssueFactReader.Read(input, new IssueFact("Game version", "build", "version"));
         return new GitHubIssueDraft(IssueTitle.Compose(_options.GameDisplayName, version, input.Report.Manifest.Description),
             body, _options.Labels);
@@ -37,11 +38,11 @@ internal sealed class ReportIssueComposer
             .Append(input.Report.Reference).Append(".\n\n");
         var rows = new StringBuilder();
         IssueInput snapshotInput = input with { Sections = Array.Empty<CapturedSection>() };
-        foreach (IssueFact fact in _options.IssueFacts)
+        foreach (IssueFact fact in _options.IssueFacts.Take(IssueLimits.MaxFacts))
         {
             if (input.Snapshot is null || !input.Snapshot.Sections.ContainsKey(fact.Section)) continue;
             string? value = IssueFactReader.Read(snapshotInput, fact);
-            if (value is not null) AppendRow(rows, fact.Label, IssueMarkdown.TableCell(value));
+            if (value is not null) AppendRow(rows, IssueFactText.Limit(fact.Label), IssueMarkdown.TableCell(value));
         }
         if (rows.Length > 0) result.Append("| Field | Value |\n| --- | --- |\n").Append(rows).Append('\n');
         AppendFile(result, input, "Server snapshot", ReportLayout.ServerSnapshotFile);
@@ -61,10 +62,10 @@ internal sealed class ReportIssueComposer
         AppendRow(result, "Reference", report.Reference);
         AppendRow(result, "Category", IssueMarkdown.TableCell(manifest.Category));
         AppendRow(result, "Captured", manifest.CapturedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) + " UTC");
-        foreach (IssueFact fact in _options.IssueFacts)
+        foreach (IssueFact fact in _options.IssueFacts.Take(IssueLimits.MaxFacts))
         {
             string? value = IssueFactReader.Read(input, fact);
-            if (value is not null) AppendRow(result, fact.Label, IssueMarkdown.TableCell(value));
+            if (value is not null) AppendRow(result, IssueFactText.Limit(fact.Label), IssueMarkdown.TableCell(value));
         }
         string? screenshot = manifest.Entries.FirstOrDefault(e => e.Name is BundleEntryNames.ScreenshotPng or BundleEntryNames.ScreenshotJpeg)?.Name;
         if (screenshot is not null)

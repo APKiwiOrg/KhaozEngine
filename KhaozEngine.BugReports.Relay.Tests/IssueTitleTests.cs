@@ -61,6 +61,13 @@ public sealed class IssueTitleTests
         Assert.Equal("[Grimhollow 0.29.3] #\u200b12 GH\u200b-7 GitHub\u200b.com",
             IssueTitle.Compose("Grimhollow", "0.29.3", "#\u202e12 GH\u2066-7 Git\u061cHub.com"));
 
+    [Theory]
+    [InlineData("#\u000712", "#\u200b12")]
+    [InlineData("GH\u0007-7", "GH\u200b-7")]
+    [InlineData("git\u0007hub.com", "github\u200b.com")]
+    public void Title_RemovesControlsBeforeMatchingReferences(string input, string expected) =>
+        Assert.Equal("[Grimhollow 0.29.3] " + expected, IssueTitle.Compose("Grimhollow", "0.29.3", input));
+
     [Fact]
     public void Title_ReferenceAndControlNeutralisation() =>
         Assert.Equal("[Grimhollow 0.29.3] GH\u200b-7 GitHub\u200b.com ab",

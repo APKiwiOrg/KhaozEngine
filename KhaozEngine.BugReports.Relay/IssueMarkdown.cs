@@ -7,10 +7,18 @@ namespace KhaozEngine.BugReports.Relay;
 
 internal static class IssueMarkdown
 {
-    public static string Neutralise(string text) => NeutralisePlainText(text
-        .Replace("&", "&amp;", StringComparison.Ordinal)
-        .Replace("<", "&lt;", StringComparison.Ordinal)
-        .Replace(">", "&gt;", StringComparison.Ordinal));
+    public static string Neutralise(string text)
+    {
+        string value = NeutralisePlainText(text);
+        var result = new StringBuilder(value.Length);
+        foreach (char c in value)
+        {
+            if (c is >= '!' and <= '/' or >= ':' and <= '@' or >= '[' and <= '`' or >= '{' and <= '~')
+                result.Append('\\');
+            result.Append(c);
+        }
+        return result.ToString();
+    }
 
     public static string Quote(string text)
     {
@@ -25,8 +33,7 @@ internal static class IssueMarkdown
         return result.ToString();
     }
 
-    public static string TableCell(string text) => FlattenLines(Neutralise(NormaliseNewlines(text)))
-        .Replace("|", "\\|", StringComparison.Ordinal);
+    public static string TableCell(string text) => FlattenLines(Neutralise(NormaliseNewlines(text)));
 
     public static string InlineCode(string text)
     {
@@ -51,11 +58,14 @@ internal static class IssueMarkdown
 
     internal static string NeutralisePlainText(string text)
     {
+        var clean = new StringBuilder(text.Length);
+        foreach (char c in text)
+            if (!char.IsControl(c) || c is '\n' or '\t') clean.Append(c);
+        text = clean.ToString();
         var result = new StringBuilder(text.Length);
         for (int i = 0; i < text.Length; i++)
         {
             char c = text[i];
-            if (char.IsControl(c) && c is not ('\n' or '\t')) continue;
             if (c == '@' || (c == '#' && i + 1 < text.Length && char.IsAsciiDigit(text[i + 1])))
                 result.Append(c).Append('\u200b');
             else if (i + 3 < text.Length && text.AsSpan(i, 3).Equals("gh-", StringComparison.OrdinalIgnoreCase)
@@ -68,6 +78,18 @@ internal static class IssueMarkdown
             {
                 result.Append(text.AsSpan(i, 6)).Append("\u200b.com");
                 i += 9;
+            }
+            else if (text.AsSpan(i).StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+                || text.AsSpan(i).StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+            {
+                int schemeLength = text[i + 4] is 's' or 'S' ? 5 : 4;
+                result.Append(text.AsSpan(i, schemeLength)).Append('\u200b');
+                i += schemeLength - 1;
+            }
+            else if (text.AsSpan(i).StartsWith("www.", StringComparison.OrdinalIgnoreCase))
+            {
+                result.Append(text.AsSpan(i, 3)).Append('\u200b');
+                i += 2;
             }
             else result.Append(c);
         }

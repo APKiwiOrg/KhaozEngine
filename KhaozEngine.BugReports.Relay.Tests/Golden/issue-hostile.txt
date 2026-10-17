@@ -1,11 +1,11 @@
 ### What happened
 
-> &lt;/details&gt;
-> | a | b |
-> ```
-> &lt;img src=x&gt;
-> &gt; quoted
-> @​here #​1
+> \<\/details\>
+> \| a \| b \|
+> \`\`\`
+> \<img src\=x\>
+> \> quoted
+> \@​here \#​1
 
 ### Report
 
@@ -16,9 +16,9 @@
 | Reference | {reference} |
 | Category | Gameplay |
 | Captured | 2026-10-17 01:02:03 UTC |
-| Platform | macOS 26.0 |
-| Game version | 0.29.3 |
-| Engine version | 21.2.0 |
+| Platform | macOS 26\.0 |
+| Game version | 0\.29\.3 |
+| Engine version | 21\.2\.0 |
 
 ### Files
 

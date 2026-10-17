@@ -1,9 +1,10 @@
-# Equipment coverage amendment R: float runtime conformation with an offline exact oracle
+# Equipment coverage amendment R: GPU compute conformation with an offline exact oracle
 
-Status: model R and its four design sections are owner approved in conversation. This written
-amendment awaits owner review. Implementation, measurements and any release remain unauthorized
-until their own approvals.
-It amends sections 7, 10, 11 and 12 of the [approved design](EQUIPMENT-COVERAGE-DESIGN-2026-10-16.md)
+Status: the model, the GPU approach and the four design sections below are owner approved in
+conversation on 2026-10-18. This written amendment awaits owner review. It replaces the CPU-approach
+text first committed as `7b786f6cd`. Implementation follows only after the plans are approved.
+Measurements and any release remain unauthorized until their own approvals.
+It amends sections 7, 8, 10, 11 and 12 of the [approved design](EQUIPMENT-COVERAGE-DESIGN-2026-10-16.md)
 and replaces the actual render-frame error contract of the
 [construction and render-error amendment](EQUIPMENT-COVERAGE-AMENDMENT-2026-10-16.md).
 The engine work is tracked by [#1418](https://github.com/APKiwiOrg/KhaozEngine/issues/1418) and the
@@ -14,200 +15,231 @@ consumer work by [Grimhollow #547](https://github.com/APKiwiOrg/Grimhollow/issue
 The outcome is unchanged. A rigid close-fitting chestplate sits on the skinned body in full motion,
 with no host surface breaking through it, using the approved bounded collar conformation.
 
-The approved model proved every submitted pose at runtime. It cannot meet its own CPU budget. The
-budget allows 2 ms added preparation for 32 typical actors, or 62.5 microseconds per actor. The
-[conditioned pilot after cost unit 4](../superpowers/plans/proofs/2026-10-16-equipment-coverage-cost.md)
+The approved model proved every submitted pose at runtime on the CPU. It cannot meet its own budget.
+The budget allows 2 ms added CPU preparation for 32 typical actors, or 62.5 microseconds per actor.
+The [conditioned pilot after cost unit 4](../superpowers/plans/proofs/2026-10-16-equipment-coverage-cost.md)
 measured 26.292074 ms added per actor-frame on a hosted CPU: 12.461836 ms exact construction and
-13.776059 ms full late validation. One actor costs more than a 60 Hz frame. Construction alone is
-about 199 times the per-actor share. Cost units 1 to 4 removed duplicate and avoidable work, and no
-further constant-factor unit can close a gap of this size. The approved plan returns a budget miss to
-design review.
+13.776059 ms full late validation. One actor costs more than a 60 Hz frame. No constant-factor unit can
+close a gap of this size, and the approved plan returns a budget miss to design review.
 
 The review considered compiled pose-cell proofs, certificate reuse, pose envelopes, actor scheduling,
-conservative proxies, GPU certification and exact memoization. The scoring and the owner's choice
-are recorded in the ledger research and root assessment for this program.
+conservative proxies, GPU certification, exact memoization and a CPU float runtime. The scoring and the
+owner's choices are recorded in the ledger research and root assessment for this program.
 
 ## Owner rulings
 
-- **R1, model.** Runtime runs a float version of the approved conformation with a cheap guard. The
-  exact certifier becomes an offline oracle. This reverses the approved rule that every submitted
-  pose is proved at runtime (design section 7).
-- **R2, oracle domain.** For each armour asset, the oracle certifies every authored frame of every
-  clip worn with it and a declared blend grid of the game's real layering. Any failure fails the
-  game's CI and blocks that content.
-- **R3, approach.** The float constructor replaces the exact constructor in place on the CPU. There
-  is one runtime implementation. No exact runtime switch and no GPU vertex-stage conformation.
-- **R4, design sections.** The runtime path, oracle, correctness evidence, and gates and delivery
-  order below were each approved as presented.
+- **R1, model.** Runtime runs a float version of the approved conformation with a guard. The exact
+  certifier becomes an offline oracle. This reverses the approved rule that every submitted pose is
+  proved at runtime (design section 7).
+- **R2, oracle domain.** For each armour asset, the oracle certifies every authored frame of every clip
+  worn with it and a declared blend grid of the game's real layering. Any failure fails the game's CI and
+  blocks that content.
+- **R3, GPU compute.** Conformation runs in GPU compute on Metal, Direct3D11 and Vulkan, batched across
+  actors, with a GPU-side final surface and history. This replaces the CPU float runtime that was briefly
+  approved. Uncovered actors keep today's vertex-shader skinning.
+- **R4, GPU timers in scope.** GPU timestamp queries are added to the engine GPU layer in this program,
+  so the 15 percent GPU gate can be measured.
+- **R5, design sections.** The architecture, GPU layer, reference and oracle, and evidence and delivery
+  sections below were each approved as presented, including parallel parts A and B.
 
-## What Covered means after this amendment
+## What a covered actor means after this amendment
 
-Covered means the float constructor produced a finite candidate without any guard refusal, and
-every host and equipment slice of the actor was recorded completely in this frame. It no longer
-means the submitted surface carries a runtime proof.
+A covered actor is one whose CPU-side admission passed (identity, command frames, origin magnitude and
+completeness) and whose GPU conformation produced a finite surface without any guard refusal. If the GPU
+guard refuses, the same buffer receives the actor's uncovered current pose, so every pass draws the
+explicit fallback without a CPU wait. No submitted surface carries a runtime proof.
 
-The no-breakthrough guarantee now comes from the oracle. It is proved exactly for every sampled
-pose in R2. It is not proved between samples, for blends outside the declared grid, or for poses
-produced by layers the game did not declare. Those poses still use the same construction and guard,
-so a gross failure still falls back, but a subtle breakthrough there is possible and unproved.
+The no-breakthrough guarantee comes from the oracle. It is proved exactly, with the device tolerance in
+the reference and oracle section, for every sampled pose in R2. It is not proved between samples, for
+blends outside the declared grid, or for poses from layers the game did not declare. Those poses still run
+the same construction and guard, so a gross failure still falls back, but a subtle breakthrough there is
+possible and unproved.
 
-## Runtime contract
+## Part A: engine GPU layer
 
-### Staging
+New `KhaozEngine.Gpu` capabilities on Metal, Direct3D11 and Vulkan. Each is general, documented in the
+engine guide, and tested on all three CI devices.
 
-`Scene3D.StageCoverage` keeps its entry checks, identity checks and CPU skinning. It then calls one
-internal skin-and-construct function, shared with the oracle, that runs in order:
+1. **Ordering within a command list.** The existing ordering contract, which covers storage-texture
+   handoff, extends to buffers. A dispatch that writes a read-write buffer is ordered before every later
+   dispatch or draw in the same command list that reads it. Backends insert the barrier themselves:
+   explicit pipeline barriers on Vulkan, hazard tracking on Metal and Direct3D11. The public seam keeps
+   no barrier call. Dependent dispatches no longer need `Submit` and `WaitForIdle` between them.
+2. **Storage reads in vertex shaders.** Resource sets may bind a read-only storage buffer to the vertex
+   stage, so draws read positions and normals by vertex index. This avoids binding a structured buffer as
+   a vertex buffer, which Direct3D11 forbids.
+3. **Integer atomics.** `atomicOr` and `atomicMax` on `uint` storage buffers, cross-compiled to the
+   HLSL interlocked and MSL atomic forms, verified through FXC and the Metal compiler. Float values are
+   never accumulated atomically.
+4. **Async readback.** A copy into a readback buffer is recorded in the frame. A non-blocking `TryRead`
+   returns false until the GPU finished. A fixed ring of slots means it never stalls.
+5. **GPU timestamps.** Fixed-size timestamp pools, `WriteTimestamp` at pass boundaries, a non-blocking
+   resolve and the tick period. `SupportsTimestamps` is probed per device. Where it is false the GPU gate is
+   reported as unmeasurable, never estimated.
 
-1. Magnitude and command frame preparation.
-2. Interpolation of the posed source to the refined surface.
-3. Float conformation of each eligible position group toward the actual inward support sheet, with
-   the collar smoothstep, through new float height and boundary lookups on `CoverageSupportSurface`.
-   The exact bounded lookups remain for the oracle.
-4. The one local core-face correction, in float.
+## Part B: CPU float reference and the exact oracle
+
+1. **Reference constructor.** A C# implementation of exactly the algorithm the kernels run, with the
+   same formulas, operation order and refusal codes. It is test and oracle infrastructure only, never a
+   runtime path.
+2. **`CoverageOracle`.** Public and headless, with no `Scene3D` and no GPU. It is built for one
+   `CoverageRefinement` and its inverse binds and owns its scratch. `TryCheck(palette, model, commands,
+   out certificate, out failure)` skins and constructs with the reference, then runs the exact
+   `CoverageCertification.ValidateGeometry` with clearance tightened by the device tolerance ε. A failure
+   states its stage: construction with its guard code, or certification with its predicate code, command
+   and count. Warm checks allocate no managed memory.
+3. **Device tolerance ε.** Coverage kernels compile in precise mode without fast maths: GLSL `precise` on
+   position arithmetic, Metal fast maths off for these kernels, FXC IEEE strictness. ε is a fixed bound
+   in units of float precision at the coordinate magnitude, derived from the kernel operation count. The
+   part B plan fixes the number. Native equivalence tests on all three CI backends assert that the
+   largest GPU to reference difference is at most ε on every fixture. A breach fails, and ε is never
+   widened to pass.
+4. **Real-hardware verification.** CI GPUs are software or virtual. A dev-only verification mode, off by
+   default, reads the local player's GPU surface back asynchronously every N frames, compares it with the
+   reference and logs any ε breach. Playtests on real GPUs therefore check driver behaviour.
+5. **Consumer contract.** Each game owns its sampler and grid. Grimhollow adds a headless blocking CI test
+   over every armour asset and its host: every authored frame of every clip at the clip's own sample
+   rate, and a blend grid over travel weight, travel-clip pairs, and turn and jump crossfades at weights
+   0, 0.25, 0.5, 0.75 and 1, with clip pairs sampled together at each authored frame of normalised phase.
+   Poses come from the game's actual locomotion sampler. A failure fails CI and reports asset, clip,
+   frame, weights, stage, code and command.
+
+## Part C: GPU coverage path in Render3D
+
+### Static data, once per host and equipment
+
+At conformer creation and equip, upload immutable data with preallocated capacity:
+
+- Host topology: refined-vertex records (region, strength, position group, core flag), the refinement
+  recipe, triangles, and adjacency in compact sparse-row form (position group to incident core faces,
+  vertex to incident faces). Kernels gather and never scatter floats.
+- Each command's actual inward support sheet in coverage space, with a uniform grid over its triangles
+  for height and boundary lookups.
+- Per actor: source-posed scratch, group scratch and a double-buffered final surface of positions and
+  normals.
+
+Topology and support data are shared by every actor that uses them.
+
+### Per frame on the CPU
+
+Staging keeps its entry and identity checks and composes each command frame (host-to-coverage
+transform, recess direction, clearance, caps and collar width) into a small per-actor uniform. The bone
+palette uploads as today. The CPU refusals are identity, capacity, command frame admission and the
+origin-magnitude guard.
+
+**Origin magnitude.** Staging bounds the actor's coordinate magnitude relative to the latched frame render
+origin from its model translation and host bounds. If a conservative float32 rounding bound for that
+magnitude exceeds `Clearance x MarginFraction` for any command, the actor is uncovered for the frame.
+`Scene3D.Begin` latches the origin before it opens the coverage arena that staging requires.
+
+### Per frame on the GPU
+
+One batched kernel chain over all covered actors:
+
+1. Skin source vertices with the uploaded palette.
+2. Refine to the refined surface.
+3. Conform one thread per position group toward the actual inward sheet with the collar smoothstep.
+   Where the exact code took an interval maximum, add a fixed relative rounding allowance in the
+   receding direction, so results never systematically under-recede.
+4. Core-face correction gathered per group.
 5. Transition weighting.
-6. Normals and the atomic copy into the candidate.
+6. Normals gathered per vertex. A folded patch is a refusal.
+7. Select. Any refusal sets the actor's flag with one integer atomic OR. A refused actor's final buffer
+   receives its uncovered current pose, a covered actor's buffer receives the conformed surface.
 
-Interval spreads, slack terms and uncertainty refusals that existed only to feed the per-frame proof
-are removed from construction. Where the exact code took an interval maximum to recede
-conservatively, the float code adds a fixed relative rounding allowance in the receding direction,
-so float outputs never systematically under-recede. Welded position groups still share one computed
-position, so seams receive identical bits.
+The guard is the approved refusal set evaluated in the kernels: cap contact, core escape, unsupported
+support, recession budget, non-finite output, folded patch and the core-correction refusals, with their
+existing failure codes.
 
-### Guard
+### Consumption and history
 
-The guard is the constructor's own refusal set: cap contact, core escape, unsupported support,
-recession budget, non-finite output, folded patch and the core-correction refusals, with their
-existing failure codes. It adds one check that replaces the render-frame error contract.
+Main, motion, outline, cascade and point-face passes read the actor's current final buffer through
+vertex pulling. The motion pass also reads the previous buffer. Previous actually presented FINAL
+vertices, current-origin rebasing, per-view history identity and local transition rejection move to the
+double-buffered GPU surface. When history is invalid, the select kernel seeds the previous buffer from the
+current surface, matching the existing current-position seeding rule. Equipment draws are unchanged.
 
-**Origin magnitude.** Staging computes the largest coordinate magnitude of the candidate relative
-to the latched frame render origin. If a conservative float32 rounding bound for that magnitude
-exceeds `Clearance x MarginFraction` for any command, staging refuses with `UnsupportedTransform`.
-With the default camera-relative origin this never triggers for nearby actors. With a zero origin or
-a camera that does not honour the render origin, a distant actor falls back instead of risking
-precision breakthrough. `Scene3D.Begin` latches the render origin before it opens the coverage arena
-that staging requires, so the latched origin is always available. The plan fixes the exact bound.
+**CPU-side bounds.** The CPU never reads the GPU surface back for drawing decisions. Culling, shadow
+caster classification, the coverage sphere and temporal rejection bounds use the existing skinned-actor
+bounds expanded by each command's `MaxWorldRecession`. Conformation only recedes the host surface
+within that budget, so these bounds are conservative for both the conformed and the fallback surface.
 
-Any guard refusal returns false from staging. The actor draws the explicit uncovered current pose in
-every participating pass, as today.
+**No compute.** If `SupportsCompute` is false or the coverage kernels fail to build, every actor is
+uncovered and draws through today's vertex-shader skinning. This is reported once as a coverage
+capability failure, never retried per frame.
 
-### Resolution
+### Outcomes
 
-`PrepareCoverageRendering` keeps the liveness and completeness checks: every host slice recorded,
-every equipment slice live, and every equipment slice submitted or outlined. If they pass, the
-outcome is Covered. Otherwise it is the uncovered fallback with the existing failure codes. Late
-disposal and unload keep their existing fallback.
+At resolution, an actor that passed CPU admission and completeness is reported as dispatched in the same
+frame. Its GPU result (covered, or refused with code and command) arrives through the async readback ring
+a few frames later, keyed by frame and actor. Diagnostics and tests read it. Nothing in drawing waits on it.
 
-### Kept unchanged
+### Kept and removed
 
-- One shared CPU-prepared final stream for colour, motion, outline, cascade and point-face passes.
-- Frozen per-frame decisions, and re-staging for a new render view.
-- Previous actually presented FINAL vertices, current-origin rebasing, per-view history identity and
-  local transition rejection, including the existing perturbation bounds used for history.
-- Zero warm managed allocation, preallocated capacities and the explicit uncovered fallback.
-- Region metadata, the actual inner sheet, collar weights, recession budget, fixed topology and
-  protected uncommanded bytes.
+Kept: the approved conformation algorithm and look, region metadata, actual inner sheet, collar weights,
+recession budget, fixed topology, protected uncommanded vertices, one surface for all passes, frozen
+per-frame decisions, re-staging for a new view, the explicit uncovered fallback and zero warm managed
+allocation.
 
-### Removed
+Removed: the CPU exact construction and `TryConstructCandidate`, render pass capture for coverage, the
+pass list, `CoverageCertification.Validate` at resolution, the render stamp and drawable certificate, and
+the render-arithmetic certifier (`CoverageRenderError`, `CoverageRenderArithmetic`,
+`CoverageRenderContext`). Nothing in this feature is released, so no published API compatibility is
+affected.
 
-- The exact construction path and its scene-only bypass `TryConstructCandidate`.
-- Render pass capture for coverage, the pass list, `CoverageCertification.Validate` at resolution,
-  the render stamp and the drawable `CoverageCertificate`.
-- The render-arithmetic certifier: `CoverageRenderError`, `CoverageRenderArithmetic` and
-  `CoverageRenderContext`. No runtime or oracle consumer remains.
-- Public evaluators that required a render context. Nothing in this feature is released, so no
-  published API compatibility is affected.
+## Evidence
 
-## Oracle contract
-
-### Engine
-
-A public headless `CoverageOracle` needs no `Scene3D` and no GPU. It is built for one
-`CoverageRefinement` and its inverse binds, and owns its scratch and buffers.
-
-`TryCheck(palette, model, commands, out certificate, out failure)` skins the pose and runs the
-shared skin-and-construct function, then the exact `CoverageCertification.ValidateGeometry` on that
-output. For identical inputs its candidate equals the staged runtime candidate byte for byte.
-
-A failure states its stage. A construction refusal carries its guard code. A certification refusal
-carries its predicate code, command and count. Warm checks allocate no managed memory, so a consumer
-can run thousands of samples in one test.
-
-The origin-magnitude guard has no meaning offline, so the oracle checks actor-local geometry. The
-runtime guard covers render precision separately.
-
-### Consumer
-
-Each game owns its sampler and grid, because layering is game-specific. Grimhollow adds a headless,
-blocking CI test that enumerates every armour asset with the host it is worn on:
-
-- Every authored frame of every clip, at the clip's own sample rate.
-- A blend grid over the game's real layering: travel weight, travel-clip pairs, and turn and jump
-  crossfades, at weights 0, 0.25, 0.5, 0.75 and 1. Clip pairs are sampled together at each authored
-  frame of normalised phase.
-
-Poses come from the game's actual locomotion sampler, so the test uses the same palette code as the
-client. Any failure fails CI and reports asset, clip, frame, weights, stage, code and command.
-
-## Correctness evidence
-
-1. **Reference first.** Before the exact constructor is deleted, a test captures its outputs on the
-   typical and limit fixtures, seams, transition weights 0, 0.5 and 1, and refinement levels 2 to 4.
-   They are committed as reference data.
-2. **Float fidelity.** Each float position stays within `Clearance x MarginFraction` of the exact
-   reference, the spread the exact construction already refuses to exceed for a conformed point.
-   A core-corrected group that exceeds it is investigated, never accepted by widening the bound.
-   Refusal codes match on the existing construction negatives.
-3. **Oracle on float outputs.** Every fixture's float output passes exact geometry certification.
-4. **Same bits.** The oracle candidate equals the staged runtime candidate for identical inputs.
-5. **Scene behaviour.** Tests that asserted render-certification refusals are rewritten or removed.
-   Each fallback route keeps a test through a construction refusal, in every pass, through CPU and
-   GPU routes, outlines, shadows and temporal history. Incomplete submissions still fall back. The
-   origin-magnitude guard has a positive and a negative case.
-6. **Oracle negatives.** An over-tight clearance, a support escape and a recession-budget excess
-   each fail with the correct stage and code.
-7. **Allocation.** Warm staging, resolution and oracle checks allocate zero managed bytes.
-8. **Native.** The hosted Coverage selection runs on Metal, Direct3D11 and Vulkan, with Vulkan
-   synchronisation validation and the ledger artifact audit. Ghost envelopes, masks and negative
-   controls still apply. Any of the 18 goldens that is no longer worst 0 receives a side-by-side
-   inspection, and its reference is refreshed only after root review with the delta recorded. No
-   tolerance is loosened.
+1. **Exact reference first.** Before the exact constructor is deleted, its outputs on the typical and
+   limit fixtures, seams, transition weights 0, 0.5 and 1, and refinement levels 2 to 4 are captured and
+   committed.
+2. **Reference fidelity.** Each reference position stays within `Clearance x MarginFraction` of the
+   exact capture. A core-corrected group that exceeds it is investigated, never accepted by widening the
+   bound. Refusal codes match on the existing construction negatives.
+3. **Oracle.** Every fixture's reference output passes the oracle. An over-tight clearance, a support
+   escape and a recession-budget excess each fail with the correct stage and code.
+4. **Part A capabilities.** A backend test per capability on all three CI devices. Vulkan synchronisation
+   validation stays clean.
+5. **Device equivalence.** GPU output is within ε of the reference on every fixture on all three backends.
+6. **Scene behaviour.** Every pass reads the same surface, using the existing ghost envelopes, masks and
+   negative controls adapted to the GPU surface. A forced GPU refusal draws the uncovered pose in every
+   pass with no CPU wait. Double-buffered history transitions and rebasing hold. A batched 32-actor
+   correctness case passes. CPU refusals, including the origin guard, have positive and negative cases.
+   Tests that asserted render-certification refusals are rewritten or removed.
+7. **Allocation.** Warm staging, dispatch, resolution and oracle checks allocate zero managed bytes.
+8. **Goldens.** Any of the 18 goldens no longer at worst 0 receives a side-by-side inspection, and its
+   reference is refreshed only after root review with the delta recorded. No tolerance is loosened.
 
 ## Gates and delivery order
 
-The 2 ms for 32 typical actors CPU gate, the 15 percent native GPU gate and the zero-allocation gate
-are unchanged.
+The 2 ms for 32 typical actors CPU gate, the 15 percent native GPU gate and the zero-allocation gate are
+unchanged. The CPU gate now measures command frames, uploads and encoding. The GPU gate is measured with
+the part A timestamps on real GPU hardware. Every measurement needs fresh owner approval. Hosted CI GPUs
+are software or virtual, so the place GPU timing runs is decided with the owner at that approval.
 
-After implementation, one hosted one-actor pilot with the existing unit and 64 plus 32 frame
-conditioning needs fresh owner approval. If its per-actor cost makes the gate plausible, the first
-32-actor pilot needs separate approval and decides the CPU gate. The GPU gate stays open until a
-native GPU timing route exists. Nothing claims it.
-
-Delivery order:
-
-1. Owner approval of this amendment and its plan amendment.
-2. Exact reference capture.
-3. Float support-sheet lookups.
-4. Float constructor in place of the exact constructor.
-5. Scene runtime with Covered from completeness, and removal of pass capture and the render certifier.
-6. `CoverageOracle` with the shared skin-and-construct function.
-7. Test migration and native hosted verification.
-8. The approved pilot.
-9. Task 10: merge current main, full verification, documentation and API sweep, whole-branch review.
-   The deferred Task 5 minors are settled there. Q2 and Q5 become moot once late refusal and pass
-   capture are removed. Q4 and Q6 are reviewed.
-10. Exact engine release with owner tag approval through the engine-rooted release handoff.
-11. Grimhollow adoption: the blocking oracle CI test over real armour and clips, armour fit and
-    catalog change, owner full-motion look and the final playtest.
+1. Owner approval of this amendment, then a plan per part.
+2. Parts A and B in parallel, in separate worktrees branched from `feature/equipment-coverage`, one
+   writer each with fresh review per task. They touch disjoint code.
+3. Part C after both, including the removals.
+4. Native hosted verification, then the approved pilots.
+5. Task 10: merge current main, full verification, documentation and API sweep, whole-branch review.
+   The deferred Task 5 minors are settled there. Q2 and Q5 become moot once late refusal and pass capture
+   are removed. Q4 and Q6 are reviewed.
+6. Exact engine release with owner tag approval through the engine-rooted release handoff.
+7. Part D, Grimhollow adoption: the blocking oracle CI test, armour fit and catalog change, owner
+   full-motion look, a playtest with the dev verification mode on, then the final playtest.
 
 ## Superseded text
 
-- Design section 7: runtime checks no longer apply to every submitted pose. The finite offline pose
-  suite becomes the R2 oracle domain, and it certifies exactly rather than only finding failures.
-- Design section 10 and the construction and render-error amendment: the required render-error
-  context, pass capture before the first covered draw and the derived `WorldErrorBound` are replaced
-  by the origin-magnitude guard.
-- Design section 11: the budgets are unchanged. Their measured workload is the float runtime path.
+- Design section 7: runtime checks no longer apply to every submitted pose. The offline suite becomes the
+  R2 oracle domain and certifies exactly, with ε.
+- Design section 8: the public surface adds `CoverageOracle` and the asynchronous GPU result, and loses
+  the render-context evaluators.
+- Design section 10 and the construction and render-error amendment: the CPU-prepared final stream
+  becomes the GPU double-buffered surface. The render-error context, pass capture before the first covered
+  draw and the derived `WorldErrorBound` are replaced by the origin-magnitude guard.
+- Design section 11: the budgets are unchanged. Their measured workload is the GPU path, with GPU time
+  from the new timestamps.
 - Design section 12: the synthetic oracle becomes a public engine API used by consumers.
-- Plan amendment Task 5 and cost unit 4 text: staging true now awaits only the resolution
-  completeness checks, not late certification. The Task 5 late-render-refusal, all-pass-matrix,
-  stale-context and prepared-bounds tests are rewritten or removed under evidence item 5.
+- Plan amendment Task 5 and cost unit 4 text: staging no longer awaits late certification. The Task 5
+  late-render-refusal, all-pass-matrix, stale-context and prepared-bounds tests are rewritten or removed
+  under evidence item 6.

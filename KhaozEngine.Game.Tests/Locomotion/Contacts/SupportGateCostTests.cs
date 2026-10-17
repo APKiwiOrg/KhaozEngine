@@ -193,8 +193,12 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
         Assert.Equal(sample.Counts.Find, sample.SupportReads.Length);
         Assert.InRange(sample.Routes.MaximumMediumRetries, 0, 8);
         Assert.InRange(sample.Counts.MediumRetries, 0, 8 * sample.Routes.MediumResolves);
-        if (row.StairSignal)
+        // The pushed seat and the hidden crate carry no run in, so their three look-ahead samples decide the run. The
+        // stairs carry an ascent their owed climb already continues, which skips the samples (SC-13).
+        if (row.Name is "pushed seat" or "hidden crate")
             Assert.Equal(3, sample.SupportReads.Count(q => q.ReachUp > 1));
+        if (row.StairSignal)
+            Assert.Equal(0, sample.SupportReads.Count(q => q.ReachUp > 1));
         if (row.Name == "wall retry") Assert.True(sample.Routes.WallRetries > 0, $"{sample.Routes}");
         if (row.Name == "pushed seat") Assert.True(sample.Routes.PushedPlacements > 0, $"{sample.Routes}");
         if (row.Name == "descending landing")

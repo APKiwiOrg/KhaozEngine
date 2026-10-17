@@ -148,7 +148,8 @@ public partial class ContactLeasedQueryTests
         ContactQueryFailure failure = Assert.Throws<ContactQueryFailure>(() => queries.FindSupport(
             Query(Vector3.Zero) with { Axis = new(0.25f, 0), ReachUp = 0.8f, ReachDown = 0.8f }));
         Assert.Equal(MovementAvailability.Unresolved, failure.Availability);
-        var signals = GroundSignals.Resolve(new MoveState { ClimbRate = 1 }, 0, 0, true,
+        // A seated rise without a carried run triggers the look-ahead and leaves the samples to decide.
+        var signals = GroundSignals.Resolve(new MoveState(), 0, 0, true,
             false, 0, Vector2.UnitX, Vector3.Zero, new(SupportStatus.Walkable, 0, 0, Vector3.UnitY,
                 null, -1, Vector3.Zero), true, 1f / 30, Tuning, 0.125f,
             MathF.Cos(Tuning.MaxSlopeRadians), queries);

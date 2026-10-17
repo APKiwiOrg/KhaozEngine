@@ -135,6 +135,10 @@ travel has an empty window: it cannot start a run, but its applied steps still c
 continues on them. A paced climb pays its lag in ticks whose horizontal travel is zero, so these ticks keep their
 signals.
 
+A triggered tick takes no samples when its ascent is already decided: the input state's `ClimbRate` shows an ascent
+and a substep seated across a discrete rise, the tick lifted the feet over carried lag, or the feet still owe climb.
+That ascent continues whatever the window holds and reads no sample (ruling SC-13 of the support cost spec).
+
 **Samples.** Sample 0 is the tick's final certified support at the axis, passed in, so it costs no query. Along
 the unit direction of the tick's achieved horizontal travel, at distances `k * CapsuleRadius` for k = 1, 2, 3, the
 controller calls `FootSupport.Find` with the tick's foot radius, the final feet height as the reference,

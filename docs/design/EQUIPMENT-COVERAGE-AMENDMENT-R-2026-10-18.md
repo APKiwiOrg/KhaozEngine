@@ -1,8 +1,8 @@
 # Equipment coverage amendment R: GPU compute conformation with an offline exact oracle
 
-Status: the model, the GPU approach and the four design sections below are owner approved in
-conversation on 2026-10-18. This written amendment awaits owner review. It replaces the CPU-approach
-text first committed as `7b786f6cd`. Implementation follows only after the plans are approved.
+Status: owner approved on 2026-10-18, including the model, the GPU approach, the four design sections
+and this written amendment. It replaces the CPU-approach text first committed as `7b786f6cd`.
+Implementation follows only after the plans are approved.
 Measurements and any release remain unauthorized until their own approvals.
 It amends sections 7, 8, 10, 11 and 12 of the [approved design](EQUIPMENT-COVERAGE-DESIGN-2026-10-16.md)
 and replaces the actual render-frame error contract of the
@@ -41,6 +41,9 @@ owner's choices are recorded in the ledger research and root assessment for this
   so the 15 percent GPU gate can be measured.
 - **R5, design sections.** The architecture, GPU layer, reference and oracle, and evidence and delivery
   sections below were each approved as presented, including parallel parts A and B.
+- **NC1, numerical tolerance.** Device tolerance is a per-sample interval enclosure, not a fixed bound,
+  and construction reserves `MarginFraction x Clearance` for it. Chosen over a conditioned asset domain
+  and bit-exact GPU arithmetic after the part B planner showed a fixed bound cannot be derived.
 
 ## What a covered actor means after this amendment
 
@@ -88,15 +91,26 @@ engine guide, and tested on all three CI devices.
    `CoverageCertification.ValidateGeometry` with clearance tightened by the device tolerance ε. A failure
    states its stage: construction with its guard code, or certification with its predicate code, command
    and count. Warm checks allocate no managed memory.
-3. **Device tolerance ε.** Coverage kernels compile in precise mode without fast maths: GLSL `precise` on
-   position arithmetic, Metal fast maths off for these kernels, FXC IEEE strictness. ε is a fixed bound
-   in units of float precision at the coordinate magnitude, derived from the kernel operation count. The
-   part B plan fixes the number. Native equivalence tests on all three CI backends assert that the
-   largest GPU to reference difference is at most ε on every fixture. A breach fails, and ε is never
-   widened to pass.
+3. **Device tolerance ε, per sample (owner ruling NC1).** A fixed ε from operation count cannot be an
+   honest bound, because ill-conditioned support queries and correction divisors amplify rounding. A
+   projected support triangle that current validation admits can amplify one float step by about 2^23.
+   Instead, for each oracle sample the reference formulas are also evaluated in interval arithmetic.
+   Every scalar operation is widened by the largest per-operation error the Vulkan, Metal and Direct3D11
+   precision rules permit, counting a correctly rounded operation as one unit in the last place so that
+   contraction is also enclosed, plus an absolute term for flushed subnormals. The result encloses the
+   output of every conforming device for that pose, with conditioning included automatically. ε for the
+   sample is the largest enclosure radius over host vertices plus the device bound for the equipment's
+   rigid transform. Coverage kernels still compile in precise mode without fast maths (GLSL `precise`,
+   Metal fast maths off for these kernels, FXC IEEE strictness) so the formulas and operation order are
+   the ones enclosed. Construction reserves the approved numerical budget `MarginFraction x Clearance` in
+   the receding direction. The oracle certifies with `Clearance + ε` and fails the sample with a
+   device-tolerance code when ε exceeds that budget. Native equivalence tests on all three CI backends
+   assert that every GPU output lies inside its enclosure on every fixture. A breach fails, and no bound
+   is widened to pass.
 4. **Real-hardware verification.** CI GPUs are software or virtual. A dev-only verification mode, off by
-   default, reads the local player's GPU surface back asynchronously every N frames, compares it with the
-   reference and logs any ε breach. Playtests on real GPUs therefore check driver behaviour.
+   default, reads the local player's GPU surface back asynchronously every N frames, evaluates the
+   reference enclosure for that pose and logs any vertex outside it. Playtests on real GPUs therefore
+   check driver behaviour.
 5. **Consumer contract.** Each game owns its sampler and grid. Grimhollow adds a headless blocking CI test
    over every armour asset and its host: every authored frame of every clip at the clip's own sample
    rate, and a blend grid over travel weight, travel-clip pairs, and turn and jump crossfades at weights
@@ -138,9 +152,9 @@ One batched kernel chain over all covered actors:
 
 1. Skin source vertices with the uploaded palette.
 2. Refine to the refined surface.
-3. Conform one thread per position group toward the actual inward sheet with the collar smoothstep.
-   Where the exact code took an interval maximum, add a fixed relative rounding allowance in the
-   receding direction, so results never systematically under-recede.
+3. Conform one thread per position group toward the actual inward sheet with the collar smoothstep,
+   reserving `MarginFraction x Clearance` beyond the clearance in the receding direction. That reserve
+   holds the per-sample device tolerance the oracle certifies, so results never under-recede against it.
 4. Core-face correction gathered per group.
 5. Transition weighting.
 6. Normals gathered per vertex. A folded patch is a refusal.
@@ -199,7 +213,8 @@ affected.
    escape and a recession-budget excess each fail with the correct stage and code.
 4. **Part A capabilities.** A backend test per capability on all three CI devices. Vulkan synchronisation
    validation stays clean.
-5. **Device equivalence.** GPU output is within ε of the reference on every fixture on all three backends.
+5. **Device equivalence.** Every GPU output vertex lies inside its per-sample reference enclosure on every
+   fixture on all three backends.
 6. **Scene behaviour.** Every pass reads the same surface, using the existing ghost envelopes, masks and
    negative controls adapted to the GPU surface. A forced GPU refusal draws the uncovered pose in every
    pass with no CPU wait. Double-buffered history transitions and rebasing hold. A batched 32-actor

@@ -5,6 +5,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using KhaozEngine.Gpu;
 using Xunit;
 
@@ -140,12 +141,12 @@ public sealed class CoverageCostContractTests
         AssertMissingIsNull(report.ToJson());
     }
 
-    [Fact]
-    public void Missing_authorization_and_non_object_roots_are_rejected()
+    [Theory]
+    [InlineData("\n")]
+    [InlineData("\r\n")]
+    public void Missing_authorization_and_non_object_roots_are_rejected(string newline)
     {
-        int start = Valid.IndexOf(",\n  \"authorization\"", StringComparison.Ordinal);
-        Assert.True(start > 0);
-        string unauthorized = Valid[..start] + "\n}";
+        string unauthorized = ManifestWithoutAuthorization(Valid, newline);
         Assert.Throws<InvalidDataException>(() => CoverageCostManifest.Parse(Bytes(unauthorized)));
         Assert.Throws<InvalidDataException>(() => CoverageCostManifest.Parse(Bytes("[]")));
         Assert.Throws<InvalidDataException>(() => CoverageCostManifest.Parse([]));
@@ -491,11 +492,48 @@ public sealed class CoverageCostContractTests
         string selective = File.ReadAllText(Path.Combine(root, "scripts", "ci-selective-test.sh"));
         Assert.Contains("SLNX=\"KhaozEngine.slnx\"", selective);
         Assert.Contains("grep -oE 'Path=\"[^\"]+\"' \"$SLNX\"", selective);
-        foreach (string file in Directory.EnumerateFiles(Path.Combine(root, ".github", "workflows")).Append(Path.Combine(root, "scripts", "ci-selective-test.sh")))
-            Assert.DoesNotContain(Cost, File.ReadAllText(file), StringComparison.Ordinal);
+        foreach (string file in Directory.EnumerateFiles(Path.Combine(root, ".github", "workflows"))
+            .Append(Path.Combine(root, "scripts", "ci-selective-test.sh")))
+            Assert.DoesNotContain(Cost, ActiveSelectionText(File.ReadAllText(file)), StringComparison.Ordinal);
         // No other project references it. Projects sit one to three directories below the root.
         foreach (string project in Projects(root, 3).Where(p => !p.EndsWith(Cost + ".csproj", StringComparison.Ordinal)))
             Assert.DoesNotContain(Cost, File.ReadAllText(project), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("\n")]
+    [InlineData("\r\n")]
+    public void Cost_project_selection_scan_ignores_only_whole_line_comments(string newline)
+    {
+        const string cost = "EquipmentCoverage.Cost.Tests";
+        string commentsOnly = string.Join(newline, [
+            "  # manual example: dotnet test tools/EquipmentCoverage.Cost.Tests/...",
+            "  # -f project=tools/EquipmentCoverage.Cost.Tests...",
+        ]);
+        Assert.DoesNotContain(cost, ActiveSelectionText(commentsOnly), StringComparison.Ordinal);
+
+        string activeLines = string.Join(newline, [
+            "run: dotnet test tools/EquipmentCoverage.Cost.Tests/...",
+            "run: echo \"quoted # EquipmentCoverage.Cost.Tests\"",
+            "<ProjectReference Include=\"tools/EquipmentCoverage.Cost.Tests/EquipmentCoverage.Cost.Tests.csproj\" />",
+        ]);
+        Assert.Contains(cost, ActiveSelectionText(activeLines), StringComparison.Ordinal);
+    }
+
+    static string ManifestWithoutAuthorization(string json, string newline)
+    {
+        JsonObject root = Assert.IsType<JsonObject>(JsonNode.Parse(json.ReplaceLineEndings(newline)));
+        Assert.True(root.Remove("authorization"));
+        return root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }).ReplaceLineEndings(newline);
+    }
+
+    static string ActiveSelectionText(string text)
+    {
+        using var reader = new StringReader(text);
+        var activeLines = new List<string>();
+        while (reader.ReadLine() is { } line)
+            if (!line.TrimStart().StartsWith("#", StringComparison.Ordinal)) activeLines.Add(line);
+        return string.Join("\n", activeLines);
     }
 
     static IEnumerable<string> Projects(string directory, int depth)

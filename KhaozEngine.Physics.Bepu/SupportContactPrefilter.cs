@@ -46,6 +46,19 @@ internal static class SupportContactPrefilter
     internal static bool Separated(SupportPolygon polygon, FeaturePoint start, FeaturePoint direction,
         double radius, double band)
     {
+        if (!TryBound(polygon, start, direction, out double gap, out double margin)) return false;
+        GeometryInterval reach = GeometryInterval.Exact(radius).Add(GeometryInterval.Exact(band))
+            .Add(GeometryInterval.Exact(margin));
+        return reach.IsResolved && gap > reach.Upper;
+    }
+
+    /// <summary>The certified box gap between the contact segment and <paramref name="polygon"/>, and the outward
+    /// margin M, when both lie in the prefilter's domain. The derivation above proves the kernel's distance lower
+    /// bound is at least the gap less M/2 there.</summary>
+    internal static bool TryBound(SupportPolygon polygon, FeaturePoint start, FeaturePoint direction,
+        out double gap, out double margin)
+    {
+        gap = margin = 0;
         if (!start.IsExact || !direction.IsExact || direction.X.Value != 0 || direction.Z.Value != 0 ||
             !Coordinate(start)) return false;
         double length = Math.Abs(direction.Y.Value);
@@ -57,7 +70,6 @@ internal static class SupportContactPrefilter
         if (!end.IsResolved) return false;
         Span<double> low = [start.X.Value, Math.Min(start.Y.Value, end.Lower), start.Z.Value];
         Span<double> high = [start.X.Value, Math.Max(start.Y.Value, end.Upper), start.Z.Value];
-        double gap = SupportGeometry.BoxGap(low, high, polygon.Low, polygon.High);
         GeometryInterval extent = GeometryInterval.Exact(0);
         double magnitude = 0;
         for (int axis = 0; axis < 3; axis++)
@@ -66,11 +78,13 @@ internal static class SupportContactPrefilter
             extent = extent.Add(GeometryInterval.Exact(upper).Subtract(GeometryInterval.Exact(lower)));
             magnitude = Math.Max(magnitude, Math.Max(Math.Abs(lower), Math.Abs(upper)));
         }
-        GeometryInterval margin = extent.Multiply(GeometryInterval.Exact(ExtentMargin))
+        GeometryInterval bound = extent.Multiply(GeometryInterval.Exact(ExtentMargin))
             .Add(GeometryInterval.Exact(magnitude).Multiply(GeometryInterval.Exact(MagnitudeMargin)))
             .Add(GeometryInterval.Exact(domain.OffPlane).Multiply(GeometryInterval.Exact(32)));
-        GeometryInterval reach = GeometryInterval.Exact(radius).Add(GeometryInterval.Exact(band)).Add(margin);
-        return reach.IsResolved && gap > reach.Upper;
+        if (!bound.IsResolved) return false;
+        gap = SupportGeometry.BoxGap(low, high, polygon.Low, polygon.High);
+        margin = bound.Upper;
+        return true;
     }
 
     /// <summary>The prefilter's query-independent domain certificate for one finished polygon. Interval arithmetic

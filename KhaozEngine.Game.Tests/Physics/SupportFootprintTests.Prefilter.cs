@@ -160,10 +160,11 @@ public partial class SupportFootprintTests
     [Fact]
     public void PrefilterOnlyFiresWhereTheKernelIsNegative()
     {
-        // Triangles and rectangles in many orientations are swept from the contact segments outward, across both
-        // proposals' band boundaries and the prefilter's own margin.
+        // Triangles and rectangles in many orientations are swept from the contact segments outward in 6.25 mm
+        // steps, across both proposals' band boundaries. The steps are coarser than the prefilter's margin, so every
+        // admitted sample also checks the margin's central inequality against the kernel directly.
         SupportFootprintRequest request = Request();
-        int fired = 0;
+        int fired = 0, admitted = 0;
         for (int i = 0; i < 48; i++)
         {
             float Next(int k) => (float)((i * 0.6180339887498949 + k * 0.7548776662466927) % 1.0);
@@ -181,6 +182,8 @@ public partial class SupportFootprintTests
                     out _);
                 for (int proposal = 0; proposal < 2; proposal++)
                 {
+                    if (KernelClearsHalfMargin(request, polygon, proposal, $"Case {i} step {step} proposal {proposal}"))
+                        admitted++;
                     GeometrySign reference = Member(request, polygon, reference: true, out _, proposal);
                     GeometrySign optimized = Member(request, polygon, reference: false, out int rejects, proposal);
                     Assert.True(reference == optimized, $"Case {i} step {step} proposal {proposal}: {optimized} " +
@@ -192,6 +195,53 @@ public partial class SupportFootprintTests
             }
         }
         Assert.True(fired > 0);
+        Assert.True(admitted > fired, $"{admitted} admitted samples, {fired} prefiltered.");
+    }
+
+    [Fact]
+    public void PrefilterThresholdOnATiltedPolygonKeepsTheKernelVerdict()
+    {
+        // A tilted rectangle moved across x toward the axis proposal's segment. Its normal is widened one step each
+        // way into an enclosure, as an installed operator's inexact cross product is.
+        SupportFootprintRequest request = Request();
+        Quaternion tilt = Quaternion.CreateFromAxisAngle(Vector3.Normalize(new(1, 0, 2)), 0.6f);
+        Vector3[] local = [new(-0.05f, 0, -0.08f), new(0.05f, 0, -0.08f), new(0.05f, 0, 0.08f), new(-0.05f, 0, 0.08f)];
+        static FeatureNumber Widened(FeatureNumber value) => FeatureNumber.Enclosed(GeometryInterval.Enclose(
+            Math.BitDecrement(value.Bounds.Lower), Math.BitIncrement(value.Bounds.Upper)));
+        SupportPolygon At(float x)
+        {
+            SupportPolygon polygon = Polygon([.. local.Select(v => Vector3.Transform(v, tilt) + new Vector3(x, 0.015f, 0))],
+                out _);
+            FeaturePoint normal = polygon.Normal;
+            polygon.Finish(new(Widened(normal.X), Widened(normal.Y), Widened(normal.Z)));
+            return polygon;
+        }
+        SupportPolygon far = At(0.5f);
+        Assert.False(far.Normal.IsExact);
+        Assert.True(far.ContactDomain.Admitted);
+        Member(request, far, reference: false, out int rejects);
+        Assert.Equal(1, rejects);
+        Member(request, At(0), reference: false, out rejects);
+        Assert.Equal(0, rejects);
+
+        // Bisect to adjacent represented offsets, one the prefilter leaves to the kernel and one it certifies.
+        int low = BitConverter.SingleToInt32Bits(0f), high = BitConverter.SingleToInt32Bits(0.5f);
+        while (low + 1 < high)
+        {
+            int middle = low + (high - low) / 2;
+            Member(request, At(BitConverter.Int32BitsToSingle(middle)), reference: false, out rejects);
+            if (rejects == 0) low = middle;
+            else high = middle;
+        }
+        foreach ((int bits, int expected) in new[] { (low, 0), (high, 1) })
+        {
+            SupportPolygon polygon = At(BitConverter.Int32BitsToSingle(bits));
+            Assert.False(polygon.Normal.IsExact);
+            Assert.Equal(GeometrySign.Negative, Member(request, polygon, reference: true, out _));
+            Assert.Equal(GeometrySign.Negative, Member(request, polygon, reference: false, out rejects));
+            Assert.Equal(expected, rejects);
+            Assert.True(KernelClearsHalfMargin(request, polygon, 0, $"offset {BitConverter.Int32BitsToSingle(bits):R}"));
+        }
     }
 
     // A wall facing the axis proposal's contact segment across x, at the given represented offset.
@@ -201,16 +251,38 @@ public partial class SupportFootprintTests
 
     [ThreadStatic] static SupportFootprintCollector? t_memberCollector;
 
-    // One proposal's member verdict for one polygon, its contact capsule resting on y = 0. Begin resets the reused
-    // collector.
-    static GeometrySign Member(in SupportFootprintRequest request, SupportPolygon polygon, bool reference,
-        out int rejects, int index = 0)
+    static SupportFootprintCollector Resting(in SupportFootprintRequest request, int index)
     {
         SupportFootprintCollector collector = t_memberCollector ??= new();
         Assert.True(collector.Begin(request));
         SupportFootprintProposal proposal = index == 0 ? request.AxisProposal : request.FootProposal;
         float distance = proposal.Start.Position.Y - proposal.Probe.Radius - proposal.Probe.Length / 2;
         collector.Proposal(index, true, new SweepHit(distance, Vector3.Zero, Vector3.UnitY, new StaticHandle(1)));
+        return collector;
+    }
+
+    // The prefilter derivation's central inequality for one admitted polygon: the kernel resolves, and its distance
+    // lower bound is at least the certified box gap less half the margin. Returns whether the polygon is admitted.
+    static bool KernelClearsHalfMargin(in SupportFootprintRequest request, SupportPolygon polygon, int index,
+        string context)
+    {
+        (FeaturePoint start, FeaturePoint direction) = Resting(request, index).ContactSegment(index);
+        if (!SupportContactPrefilter.TryBound(polygon, start, direction, out double gap, out double margin))
+            return false;
+        SupportDistance distance = new SupportSegmentPolygon().MeasureFootprintContact(start, direction, polygon,
+            request.ContactBand);
+        Assert.True(distance.IsResolved, $"{context}: the kernel refused an admitted polygon.");
+        Assert.True(distance.Lower >= gap - margin / 2, $"{context}: kernel lower bound {distance.Lower:R} is " +
+            $"below box gap {gap:R} less half margin {margin:R}.");
+        return true;
+    }
+
+    // One proposal's member verdict for one polygon, its contact capsule resting on y = 0. Begin resets the reused
+    // collector.
+    static GeometrySign Member(in SupportFootprintRequest request, SupportPolygon polygon, bool reference,
+        out int rejects, int index = 0)
+    {
+        SupportFootprintCollector collector = Resting(request, index);
         bool enabled = SupportQueryDiagnostics.Enabled;
         SupportQueryDiagnostics.Enable(true);
         SupportQueryDiagnostics.Reset();

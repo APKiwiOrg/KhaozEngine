@@ -184,6 +184,10 @@ internal sealed partial class SupportFootprintCollector
             SupportNeighborhoodPolyhedra.Polygons(owner, leaf, _pool, _polygons, footprint: true);
     }
 
+    /// <summary>The retained contact segment of proposal <paramref name="index"/>, as the kernel receives it.</summary>
+    internal (FeaturePoint Start, FeaturePoint Direction) ContactSegment(int index) =>
+        (_contactStarts[index], _contactDirections[index]);
+
     // A certified separation decides Negative before the kernel only where the kernel's verdict is a resolved
     // Negative. The reference evaluator always runs the kernel.
     internal GeometrySign ContactMember(SupportPolygon polygon, int index)

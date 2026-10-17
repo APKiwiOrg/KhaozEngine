@@ -228,7 +228,9 @@ internal readonly record struct SupportDistance(bool IsResolved, double Lower, d
 /// <summary>Complete enumeration of the closest pair strata of a segment and a closed convex polygon: vertex
 /// against segment, edge against segment endpoint, edge against segment interior, segment endpoint against
 /// face interior, and the segment crossing the face. An undecided stratum condition keeps every pair it may
-/// produce, so ties and boundary positions widen the bounds and never refuse.</summary>
+/// produce, so ties and boundary positions widen the bounds and never refuse. The margin derivation of
+/// <see cref="SupportContactPrefilter"/> depends on these strata, their refusals and their enclosure widths, so a
+/// change here must re-check it.</summary>
 internal sealed partial class SupportSegmentPolygon
 {
     static readonly FeatureNumber One = FeatureNumber.Exact(1);

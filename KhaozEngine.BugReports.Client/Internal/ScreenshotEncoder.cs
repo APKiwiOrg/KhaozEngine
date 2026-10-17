@@ -4,15 +4,13 @@ using KhaozEngine.Imaging;
 
 namespace KhaozEngine.BugReports.Client.Internal;
 
-/// <summary>Encodes the trigger frame's screenshot as PNG when it fits under the limit, JPEG otherwise.</summary>
+/// <summary>
+/// Encodes the trigger frame's screenshot as PNG when it is under <see cref="BugReportLimits.MaxPngScreenshotBytes"/>,
+/// JPEG otherwise. The capture path delivers at most <see cref="BugReportLimits.MaxScreenshotLongEdge"/>, so the
+/// encoder never resizes.
+/// </summary>
 internal static class ScreenshotEncoder
 {
-    /// <summary>The longest screenshot edge. The capture path delivers at most this, so the encoder never resizes.</summary>
-    internal const int MaxLongEdge = 2560;
-
-    /// <summary>A PNG this size or larger is replaced by a JPEG.</summary>
-    internal const int PngLimitBytes = 4 * 1024 * 1024;
-
     internal const int JpegQuality = 92;
 
     /// <summary>
@@ -27,7 +25,7 @@ internal static class ScreenshotEncoder
         ReadOnlySpan<byte> pixels = rgba.AsSpan(0, checked(width * height * 4));
 
         byte[] png = PngWriter.Encode(pixels, width, height);
-        if (png.Length < PngLimitBytes) return new ReportImage(ImageHeaders.PngMediaType, width, height, png);
+        if (png.Length < BugReportLimits.MaxPngScreenshotBytes) return new ReportImage(ImageHeaders.PngMediaType, width, height, png);
 
         return new ReportImage(ImageHeaders.JpegMediaType, width, height, JpegWriter.Encode(pixels, width, height, JpegQuality));
     }

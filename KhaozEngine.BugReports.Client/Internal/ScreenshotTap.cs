@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using KhaozEngine.BugReports.Contracts;
 using KhaozEngine.Diagnostics;
 using KhaozEngine.Gpu;
 using KhaozEngine.Windowing;
@@ -10,7 +11,7 @@ namespace KhaozEngine.BugReports.Client.Internal;
 /// The standby screenshot tap. The recorder registers it at construction and keeps it until dispose, so the
 /// swapchain stays copyable whether or not the clip records. It does nothing per frame until <see cref="Arm"/>.
 /// The armed frame's <see cref="Record"/> downscales the swapchain copy to at most
-/// <see cref="ScreenshotEncoder.MaxLongEdge"/>, and its <see cref="AfterSubmit"/> reads it back once with the
+/// <see cref="BugReportLimits.MaxScreenshotLongEdge"/>, and its <see cref="AfterSubmit"/> reads it back once with the
 /// blocking <see cref="GpuReadback.ToRgba"/> and encodes it off the frame thread. A frame whose image is not
 /// copyable leaves the arm pending for the next one. Frame thread only.
 /// </summary>
@@ -82,7 +83,7 @@ internal sealed class ScreenshotTap : IFrameCaptureTap
         IGpuTexture? image = context.AcquireSwapchainImage();
         if (image is null) return;
 
-        (int width, int height) = CaptureSize.Fit((int)image.Width, (int)image.Height, ScreenshotEncoder.MaxLongEdge);
+        (int width, int height) = CaptureSize.Fit((int)image.Width, (int)image.Height, BugReportLimits.MaxScreenshotLongEdge);
         IGpuResourceFactory factory = context.Device.Factory;
         _scaledCopy ??= new GpuScaledCopy(context.Device);
         _target = factory.CreateTexture(GpuTextureDescription.Texture2D((uint)width, (uint)height,

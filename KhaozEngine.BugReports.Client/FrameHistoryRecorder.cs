@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.BugReports.Client.Internal;
+using KhaozEngine.BugReports.Contracts;
 using KhaozEngine.Imaging;
 using KhaozEngine.Windowing;
 
@@ -261,7 +262,8 @@ public sealed class FrameHistoryRecorder : IDisposable
         }
     }
 
-    static void Validate(FrameHistoryOptions options)
+    /// <summary>Throws for an option the report bundle cannot carry, naming the option as the parameter.</summary>
+    internal static void Validate(FrameHistoryOptions options)
     {
         if (options.Duration <= TimeSpan.Zero)
             throw Refuse(nameof(FrameHistoryOptions.Duration), options.Duration, "Duration must be longer than zero.");
@@ -280,10 +282,10 @@ public sealed class FrameHistoryRecorder : IDisposable
                 $"Duration at {options.FramesPerSecond} frames per second holds {frames} frames and a report clip holds at most {MaxClipFrames}."));
         }
 
-        if (options.LongEdge is < MinLongEdge or > ScreenshotEncoder.MaxLongEdge)
+        if (options.LongEdge is < MinLongEdge or > BugReportLimits.MaxScreenshotLongEdge)
         {
             throw Refuse(nameof(FrameHistoryOptions.LongEdge), options.LongEdge, string.Create(
-                CultureInfo.InvariantCulture, $"LongEdge must be {MinLongEdge} to {ScreenshotEncoder.MaxLongEdge} pixels."));
+                CultureInfo.InvariantCulture, $"LongEdge must be {MinLongEdge} to {BugReportLimits.MaxScreenshotLongEdge} pixels."));
         }
 
         if (options.JpegQuality is < 1 or > 100)

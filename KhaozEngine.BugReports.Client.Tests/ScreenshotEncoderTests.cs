@@ -1,6 +1,7 @@
 using System;
 using KhaozEngine.BugReports;
 using KhaozEngine.BugReports.Client.Internal;
+using KhaozEngine.BugReports.Contracts;
 using Xunit;
 
 namespace KhaozEngine.Tests.BugReports.Client;
@@ -50,7 +51,7 @@ public sealed class ScreenshotEncoderTests
         Assert.Equal(64, image.Width);
         Assert.Equal(32, image.Height);
         Assert.True(image.Bytes.Span.StartsWith(PngSignature));
-        Assert.True(image.Bytes.Length < ScreenshotEncoder.PngLimitBytes);
+        Assert.True(image.Bytes.Length < BugReportLimits.MaxPngScreenshotBytes);
     }
 
     [Fact]

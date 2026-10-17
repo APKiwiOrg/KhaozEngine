@@ -77,7 +77,7 @@ namespace KhaozEngine.Tests.Gpu
                 (double change, double referenceChange, double error, double contrast) =
                     Measure(stage, peaks, frames, reference);
                 (double baseChange, double baseError) = Baseline[c];
-                output.WriteLine($"{c.Name}: {peaks.Count} peaks, frame-to-frame change {change:0.00000} (reference "
+                output.WriteLine($"{TemporalDeviceClass.Name} {c.Name}: {peaks.Count} peaks, frame-to-frame change {change:0.00000} (reference "
                     + $"{referenceChange:0.00000}), error {error:0.00000}, reference peak contrast {contrast:0.000}");
                 Assert.True(contrast > 0.1, $"{c.Name}: the reference shows no peaks, contrast {contrast:0.000}");
                 if (change > baseChange * (1 + Tolerance))
@@ -85,6 +85,8 @@ namespace KhaozEngine.Tests.Gpu
                 if (error > baseError * (1 + Tolerance))
                     failures.Add($"{c.Name}: error {error:0.00000} above {baseError:0.00000} plus a tenth");
             }
+            output.WriteLine(string.Join(Environment.NewLine, failures));
+            TemporalMeasuringRun.Report();
             Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
         }
 

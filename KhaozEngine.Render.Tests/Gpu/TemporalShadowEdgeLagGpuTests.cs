@@ -235,6 +235,8 @@ namespace KhaozEngine.Tests.Gpu
                 measured[c] = new Dictionary<string, RegionStats>();
                 foreach ((string name, RegionStats r) in m.Regions) measured[c][name] = r;
             }
+            output.WriteLine($"device class {TemporalDeviceClass.Name}");
+            TemporalMeasuringRun.Report();
             AssertReleased(measured);
         }
 

@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 
 namespace KhaozEngine.Render3D;
 
@@ -16,6 +17,10 @@ internal static class CoverageGeometry
 {
     // Leave 53 bits of gradual-underflow headroom for an error-free product residual.
     const double MinExactProduct = 2.2250738585072014e-308 * 9007199254740992d;
+
+    // SkipLocalsInit marks exactly the four methods that own stackalloc buffers. Each reads only a tracked prefix written
+    // earlier in the same call, so the skipped zeroing is never observed. CoverageGeometryExactTests pins the result bits
+    // and CoverageGeometryStackInitTests pins the placement.
 
     internal static Vector3 ToVector3(CoveragePoint3 point) => new((float)point.X, (float)point.Y, (float)point.Z);
 
@@ -41,6 +46,7 @@ internal static class CoverageGeometry
     internal static CoverageScalar Dot(CoverageAffinePoint a, CoverageAffinePoint b, CoverageAffinePoint c, CoverageAffinePoint d) =>
         Bilinear(a, b, c, d, determinant: false);
 
+    [SkipLocalsInit]
     static CoverageScalar Bilinear(CoverageAffinePoint a, CoverageAffinePoint b, CoverageAffinePoint c, CoverageAffinePoint d, bool determinant)
     {
         Span<double> x = stackalloc double[8], y = stackalloc double[8], qx = stackalloc double[8], qy = stackalloc double[8];
@@ -55,6 +61,7 @@ internal static class CoverageGeometry
     }
 
     // Exact cross(b-a,c-a) dot axis. Affine coordinates retain their four terms and differences up to eight.
+    [SkipLocalsInit]
     internal static CoverageScalar ProjectedArea(CoverageAffinePoint a, CoverageAffinePoint b, CoverageAffinePoint c, Vector3 axis)
     {
         var pa = CoverageBoundedVector.From(a);
@@ -88,6 +95,7 @@ internal static class CoverageGeometry
 
     /// <summary>Compares exact squared distance with the squared float budget. Affine-sum and difference tails remain
     /// in the expansion, so certifiable equality is accepted without widening the budget. Unsupported products refuse.</summary>
+    [SkipLocalsInit]
     internal static bool SquaredDistanceWithinBudget(CoverageAffinePoint a, CoverageAffinePoint b, float budget)
     {
         if (!float.IsFinite(budget) || budget < 0) return false;
@@ -106,6 +114,7 @@ internal static class CoverageGeometry
         return result.IsFinite && result.Sign <= 0;
     }
 
+    [SkipLocalsInit]
     internal static CoverageScalar Difference(CoverageCoordinate a, CoverageCoordinate b)
     {
         Span<double> values = stackalloc double[8];

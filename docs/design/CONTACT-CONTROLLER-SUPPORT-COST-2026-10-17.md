@@ -175,7 +175,9 @@ wait for an owner ruling and are not changed here.
 between members whose upward lower bound is above zero (`SupportCertification.Footprint`). On the FootSupport
 path, `Publish` builds incidence and evaluates `Separated`, `TopologyMeets` and `Joined` only for those pairs. The
 public raw `IPhysicsSupportFootprint.QuerySupportFootprint` keeps its full join matrix, so no public output changes.
-Published support stays bit-identical. Join counters on the support path change. Cost if wrong: a later
+Published support stays bit-identical, with one deliberate exception: the full matrix refuses a whole query when any
+pair's join is unresolved, and the support path no longer refuses for a pair certification never reads, since the
+published support cannot depend on it. A pinned test covers that case. Join counters on the support path change. Cost if wrong: a later
 certification change that reads another pair would see a missing join, which equivalence rows over every cost
 scene catch.
 

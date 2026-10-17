@@ -180,11 +180,17 @@ shows, title, login, loading or gameplay alike, because `GameApp` is the one obj
 runs once inside `AddOverlay` with a `GameOverlayContext` (window, `Ui` viewport, 2D surface). Each frame every
 overlay's `Update(input, realDt)` reads the raw input in add order after `Ui.Update` and before the pointers. When
 any returns true the game, both pointers and the HUD see `InputState.WithoutInteraction()` for that frame: no key
-or button sets, deltas, scroll, gestures, touches, gamepads or text, with size, focus and the cursor position kept.
+or button sets, deltas, scroll, gestures, touches, gamepads or text. Seven fields are kept: width, height, window
+focus, mouse position, framebuffer scale, pointer capture and text-input availability. So a hold does not release a
+captured pointer. When the hold ends, every mouse button still down stays out of the game's input until it is
+physically released, and every gamepad with a button down or a stick past `InputManager.StickThreshold` reads as
+neutral until it is idle. Their release edges stay hidden too, so the game never sees a press or stick step that
+began before or during the hold. Keys need no rule, because their press edge comes from the window.
 `DrawUi(batch)` runs in add order in its own `Begin(Ui)` pass after `OnDrawUi` and before the HUD. A
 render-suppressed frame skips both. An overlay that throws from either is logged once with `Log.Error` and removed,
 and does not hold on that frame. Adding or removing from inside a pass is safe and takes effect next frame, except
-that a removed overlay that has not run yet is skipped for the rest of the pass. An idle frame allocates nothing.
+that a removed overlay that has not run yet is skipped for the rest of the pass. Overlays are identified by
+reference, and every call happens on the frame thread. An idle frame allocates nothing.
 
 **Turn-key client-side job scheduler** (default ON): `GameApp.JobScheduler` lazily builds a shared
 `KhaozEngine.Simulation.ThreadPoolJobScheduler` sized to `GameAppOptions.JobSchedulerDegreeOfParallelism` (or

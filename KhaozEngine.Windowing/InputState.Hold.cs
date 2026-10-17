@@ -10,7 +10,10 @@ public sealed partial class InputState
     /// deltas, scroll, pointer samples, touches, gamepads and committed text are cleared. Window size, focus,
     /// <see cref="MousePosition"/>, <see cref="FramebufferScale"/>, <see cref="PointerCaptured"/> and
     /// <see cref="TextInputAvailable"/> are kept, so layout and hover-free reads stay correct. A key held across
-    /// the hold reappears in <see cref="KeysDown"/> afterwards without a press edge.
+    /// the hold reappears in <see cref="KeysDown"/> afterwards without a press edge, because key edges come from
+    /// the window. Mouse presses and stick steps are derived from down transitions by <see cref="Pointer"/> and
+    /// <see cref="InputManager"/>, so a button or stick still down when the hold ends reads as fresh unless the
+    /// holder hides it until its release, as the GameApp overlay host does.
     /// </summary>
     public InputState WithoutInteraction() =>
         new(Gestures.IsAvailable ? PointerGestureFrame.Empty : PointerGestureFrame.Unavailable, 0f, Vector2.Zero,

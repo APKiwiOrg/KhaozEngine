@@ -11,14 +11,18 @@ namespace KhaozEngine.Game
     /// snapshot rebuilt at the start of <see cref="Update"/> only after the set changed, so an idle frame allocates
     /// nothing and an overlay may add or remove overlays, itself included, from inside either pass. A change takes
     /// effect from the next frame, except that a removed overlay that has not run yet in the current pass is
-    /// skipped. Used from the frame thread only.
+    /// skipped. Membership is by reference, so two overlays that compare equal are still two overlays. When a hold
+    /// ends, <see cref="HeldInputRelease"/> hides whatever is still down until its release. Used from the frame
+    /// thread only.
     /// </summary>
     internal sealed class GameOverlayHost
     {
         readonly List<IGameOverlay> _overlays = new();
         readonly Action<string, Exception> _error;
+        readonly HeldInputRelease _release = new();
         IGameOverlay[] _snapshot = Array.Empty<IGameOverlay>();
         bool _changed;
+        bool _held;
 
         /// <param name="error">Receives the one line logged for a faulting overlay. Defaults to <see cref="Log.Error"/>.</param>
         internal GameOverlayHost(Action<string, Exception>? error = null) => _error = error ?? Log.Error;
@@ -30,7 +34,7 @@ namespace KhaozEngine.Game
         {
             ArgumentNullException.ThrowIfNull(overlay);
             ArgumentNullException.ThrowIfNull(context);
-            if (_overlays.Contains(overlay))
+            if (IndexOf(overlay) >= 0)
                 throw new InvalidOperationException($"Overlay {overlay.GetType().Name} is already added.");
 
             overlay.Attach(context);
@@ -41,14 +45,17 @@ namespace KhaozEngine.Game
         /// <summary>Remove <paramref name="overlay"/>. False when it was not present.</summary>
         internal bool Remove(IGameOverlay overlay)
         {
-            if (!_overlays.Remove(overlay)) return false;
+            int index = IndexOf(overlay);
+            if (index < 0) return false;
+            _overlays.RemoveAt(index);
             _changed = true;
             return true;
         }
 
         /// <summary>
         /// Update every overlay with the raw <paramref name="input"/>. Returns <paramref name="input"/> itself when
-        /// none holds, else <see cref="InputState.WithoutInteraction"/>. A faulting overlay does not hold.
+        /// none holds and nothing is hidden after a hold, else <see cref="InputState.WithoutInteraction"/> or the
+        /// frame <see cref="HeldInputRelease"/> filtered. A faulting overlay does not hold.
         /// </summary>
         internal InputState Update(InputState input, float realDt)
         {
@@ -71,7 +78,9 @@ namespace KhaozEngine.Game
                     Fault(overlay, nameof(IGameOverlay.Update), ex);
                 }
             }
-            return held ? input.WithoutInteraction() : input;
+            bool holdEnded = _held && !held;
+            _held = held;
+            return held ? input.WithoutInteraction() : _release.Apply(input, holdEnded);
         }
 
         /// <summary>Draw every overlay of this frame's snapshot into the begun UI <paramref name="batch"/>.</summary>
@@ -92,7 +101,14 @@ namespace KhaozEngine.Game
         }
 
         // The membership lookup runs only on a frame whose set changed after the snapshot was taken.
-        bool Skipped(IGameOverlay overlay) => _changed && !_overlays.Contains(overlay);
+        bool Skipped(IGameOverlay overlay) => _changed && IndexOf(overlay) < 0;
+
+        int IndexOf(IGameOverlay overlay)
+        {
+            for (int i = 0; i < _overlays.Count; i++)
+                if (ReferenceEquals(_overlays[i], overlay)) return i;
+            return -1;
+        }
 
         void Fault(IGameOverlay overlay, string pass, Exception ex)
         {

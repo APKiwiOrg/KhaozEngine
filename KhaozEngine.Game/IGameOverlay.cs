@@ -16,7 +16,9 @@ namespace KhaozEngine.Game
     /// <see cref="InputState.WithoutInteraction"/>. It draws in its own point-space UI pass after
     /// <see cref="GameApp"/>'s <c>OnDrawUi</c> and before the HUD. Overlays update and draw in add order on the
     /// frame thread, and a render-suppressed frame skips both. An overlay that throws from <see cref="Update"/> or
-    /// <see cref="DrawUi"/> is logged once and removed, and the game keeps running.
+    /// <see cref="DrawUi"/> is logged once and removed, and the game keeps running. When a hold ends, a mouse button
+    /// or gamepad still down stays hidden from the game until its release, so the game never sees a press that began
+    /// before or during the hold. An overlay is identified by reference. Call from the frame thread.
     /// </summary>
     public interface IGameOverlay
     {

@@ -498,10 +498,11 @@ namespace KhaozEngine.Game
         protected void Quit() => _window.Close();
 
         /// <summary>Add an engine overlay above every screen. See <see cref="IGameOverlay"/>. Throws
-        /// <see cref="InvalidOperationException"/> when it is already added.</summary>
+        /// <see cref="InvalidOperationException"/> when it is already added. Call from the frame thread.</summary>
         public void AddOverlay(IGameOverlay overlay) => _overlays.Add(overlay, new GameOverlayContext(_window, _ui, _surface2D));
 
-        /// <summary>Remove an overlay. False when it was not added. Safe from inside an overlay's own pass.</summary>
+        /// <summary>Remove an overlay. False when it was not added. Safe from inside an overlay's own pass. Call from the
+        /// frame thread.</summary>
         public bool RemoveOverlay(IGameOverlay overlay) => _overlays.Remove(overlay);
 
         /// <summary>

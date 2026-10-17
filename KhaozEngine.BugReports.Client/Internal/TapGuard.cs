@@ -6,7 +6,8 @@ namespace KhaozEngine.BugReports.Client.Internal;
 /// <summary>
 /// Turns a capture fault into one warning and a stopped capture. The first body that throws trips the guard: the
 /// fault is warned once, the trip action runs once, and every later <see cref="Run"/> returns false without
-/// running its body. Used from the frame thread only.
+/// running its body. A throw from the warning or the trip action is swallowed, so <see cref="Run"/> never throws
+/// for its body. Used from the frame thread only.
 /// </summary>
 internal sealed class TapGuard
 {
@@ -40,8 +41,24 @@ internal sealed class TapGuard
         catch (Exception ex)
         {
             Tripped = true;
-            _warn($"{_owner} faulted and stopped capturing: {ex.Message}", ex);
-            _onTrip?.Invoke();
+            // Neither callback may take the frame down with it. The guard is already tripped.
+            try
+            {
+                _warn($"{_owner} faulted and stopped capturing: {ex.Message}", ex);
+            }
+            catch (Exception)
+            {
+                // The warning is lost. Stopping the capture still matters.
+            }
+
+            try
+            {
+                _onTrip?.Invoke();
+            }
+            catch (Exception)
+            {
+                // The trip action failed part way. The guard still refuses every later body.
+            }
             return false;
         }
     }

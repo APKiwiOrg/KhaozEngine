@@ -45,4 +45,26 @@ public sealed class TapGuardTests
         Assert.Single(warnings);
         Assert.Equal(1, trips);
     }
+
+    [Fact]
+    public void A_throwing_onTrip_does_not_escape_Run()
+    {
+        int trips = 0;
+        var guard = new TapGuard("clip tap",
+            () =>
+            {
+                trips++;
+                throw new InvalidOperationException("trip broke");
+            },
+            (_, _) => throw new InvalidOperationException("warn broke"));
+
+        Assert.False(guard.Run(() => throw new InvalidOperationException("device lost")));
+        Assert.True(guard.Tripped);
+        Assert.Equal(1, trips);
+
+        bool ran = false;
+        Assert.False(guard.Run(() => ran = true));
+        Assert.False(ran);
+        Assert.Equal(1, trips);
+    }
 }

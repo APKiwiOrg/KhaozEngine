@@ -12,16 +12,57 @@ Depends on `KhaozEngine.BugReports`, `KhaozEngine.Gpu`, `KhaozEngine.Windowing` 
 using KhaozEngine.BugReports;
 using KhaozEngine.BugReports.Client;
 
+// Once, after the window is up. Construction registers the standby screenshot tap.
 using var recorder = new FrameHistoryRecorder(window, new FrameHistoryOptions());
 if (recorder.IsAvailable)
     recorder.Start();
 
-// When the player reports a bug, in the trigger frame:
+// When the player reports a bug, in the trigger frame's frame callback:
 Task<ReportImage> screenshot = recorder.CaptureScreenshotAsync();
 ReportClip clip = recorder.Freeze();
 // Build and send the report, then:
 recorder.Thaw();
 ```
+
+Every member is frame thread only. Encoding runs on the recorder's own background thread.
+
+## Lifecycle
+
+| Call | Effect |
+| --- | --- |
+| Constructor | Validates the options and registers the standby screenshot tap. The clip does not record yet. |
+| `Start()` | Registers the clip tap. Does nothing while recording, when `IsAvailable` is false, or after a capture fault. |
+| `Stop()` | Removes the clip tap and drops every frame held. Use it for a settings toggle. |
+| `Suspend()` / `Resume()` | Pause and resume capture ticks and keep the frames held. Use them for a pause menu. |
+| `Freeze()` | Waits up to 250 ms for frames still encoding, returns the clip and stops the ring until `Thaw()`. |
+| `Thaw()` | Lets the ring run again. Frames from before the freeze stay until they age out. |
+| `CaptureScreenshotAsync()` | Arms the screenshot tap for the current frame. A second call while one is pending returns the same task. |
+| `Dispose()` | Removes both taps, faults a pending screenshot with `ObjectDisposedException` and stops the encode thread. |
+
+## Availability
+
+`IsAvailable` is true when the window's GPU device has completion fences and implements both
+`IGpuSwapchainCapture` and `IGpuFencedReadback`. The three native devices do. Without them the clip never
+records, because its readback would have to wait on the GPU.
+
+A screenshot needs only `IGpuSwapchainCapture`, so it still works on a device without completion fences. On a
+device that cannot copy its swapchain, `CaptureScreenshotAsync()` returns a task faulted with
+`NotSupportedException` and no tap is registered.
+
+A fault inside a tap, such as a lost device, or a fault on the encode thread, is warned once and turns that
+capture off for the recorder's lifetime. The game's frame continues. A clip fault stops recording, and a
+screenshot fault faults the pending task and every later one.
+
+## The standby screenshot tap
+
+The screenshot tap stays registered from construction to `Dispose`, whether or not the clip records. Its
+registration keeps the swapchain's copy-source usage on, so the trigger frame can be copied on every backend.
+It does nothing per frame until armed. The armed frame downscales its swapchain copy to a long edge of at most
+2560 px, reads it back once after the submit and encodes it off the frame thread: PNG when it encodes under
+4 MB, JPEG quality 92 otherwise.
+
+A frame whose image cannot be copied leaves the request pending for the next frame that can. That is the first
+frame after construction on Metal and Vulkan, and every frame of a minimised window.
 
 ## Clip defaults
 
@@ -36,3 +77,10 @@ recorder.Thaw();
 Frames live in memory only. The capture tick holds the configured rate on average at any display rate, and
 a display slower than the rate captures every frame. Each frame keeps its own size, so a resize during
 recording leaves frames of two sizes in one clip.
+
+A refused option throws `ArgumentOutOfRangeException` naming it at construction. A report clip names at most
+120 frames, so `Duration` must be above zero and `Duration` times `FramesPerSecond` may not exceed 120. `FramesPerSecond` runs 1 to 60,
+`LongEdge` 16 to 2560, `JpegQuality` 1 to 100, and `MaxBytes` starts at 64 KiB, about one 960 px frame.
+
+The clip never stalls a frame. A capture tick that finds every readback slot still in flight is dropped, and
+the encode queue holds two frames and drops the oldest when it falls behind.

@@ -237,6 +237,7 @@ internal sealed partial class SupportFootprintCollector
     GeometrySign CurvedContactMember(StaticHandle owner, in SupportCurvedLeaf leaf, int part, int index)
     {
         SupportFootprintProposal proposal = index == 0 ? _request.AxisProposal : _request.FootProposal;
+        using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportCurvedContact);
         _contactKernel.Reset(_contactStarts[index], _contactEnds[index],
             GeometryInterval.Exact(proposal.Probe.Radius), _request.ContactBand);
         return _contactKernel.Measure(owner, leaf, part, out _);

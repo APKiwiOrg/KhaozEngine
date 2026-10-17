@@ -1,3 +1,4 @@
+using System;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Gpu.Metal.Internal;
@@ -113,6 +114,39 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(boundary.IsOrphanBound);
             Assert.False(boundary.HasDrawable);
             Assert.False(boundary.CurrentDrawableCopyable);
+        }
+
+        /// <summary>
+        /// A LIST THAT NEVER BOUND THE SWAPCHAIN IS REFUSED before anything is encoded, with the message every
+        /// backend gives. Binding an ordinary framebuffer does not count. Binding the swapchain framebuffer does,
+        /// which shows here as the copy reaching the destination check instead, because a device-free list has no
+        /// <see cref="MetalTexture"/> to copy into. The next <c>Begin</c> clears it.
+        /// </summary>
+        [Fact]
+        public void A_swapchain_copy_from_a_list_that_never_bound_the_swapchain_is_refused()
+        {
+            using var harness = new MetalRingHarness();
+            var calls = new FakeMetalEncoderCalls();
+            using MetalCommandList list = harness.NewList(new object(), calls: calls);
+            var swapchain = new MetalSwapchainFramebuffer(GpuPixelFormat.B8G8R8A8UNorm,
+                new MetalAttachment(new IntPtr(0x5C1), GpuPixelFormat.B8G8R8A8UNorm), new MetalDrawableSize(64, 64));
+            var destination = new FakeTexture(64, 64, 1, 1, GpuPixelFormat.B8G8R8A8UNorm);
+
+            list.Begin();
+            list.SetFramebuffer(new RecordedFramebuffer());
+
+            InvalidOperationException refused = Assert.Throws<InvalidOperationException>(
+                () => list.CopyFromDrawable(new IntPtr(0x5C1), destination));
+            Assert.Equal(SwapchainCopyCheck.NotBoundMessage, refused.Message);
+            Assert.Empty(calls.Log);
+
+            list.SetFramebuffer(swapchain);
+            Assert.Throws<ArgumentException>(() => list.CopyFromDrawable(new IntPtr(0x5C1), destination));
+            list.End();
+
+            list.Begin();
+            Assert.Throws<InvalidOperationException>(() => list.CopyFromDrawable(new IntPtr(0x5C1), destination));
+            list.End();
         }
 
         static (FakeMetalSwapchainApi Api, MetalPresentBoundary Boundary) Build(int scriptDrawables)

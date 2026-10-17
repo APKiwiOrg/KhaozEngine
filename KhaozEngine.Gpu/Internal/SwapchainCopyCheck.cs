@@ -44,6 +44,23 @@ namespace KhaozEngine.Gpu.Internal
                 nameof(destination));
         }
 
+        /// <summary>The refusal every backend gives a swapchain copy recorded in a list that never bound the
+        /// swapchain framebuffer.</summary>
+        internal const string NotBoundMessage =
+            "CopySwapchainColor needs a command list that bound the swapchain framebuffer in this recording. Record "
+            + "the copy in the frame's own list, after it binds SwapchainFramebuffer.";
+
+        /// <summary>
+        /// Refuse a swapchain copy unless the list bound the swapchain framebuffer in its current recording. Only
+        /// that list is ordered after the image's acquire and holds its rendered contents. Each backend supplies
+        /// the fact from its own command list.
+        /// </summary>
+        /// <exception cref="InvalidOperationException"><paramref name="boundThisRecording"/> is false.</exception>
+        internal static void RequireSwapchainBound(bool boundThisRecording)
+        {
+            if (!boundThisRecording) throw new InvalidOperationException(NotBoundMessage);
+        }
+
         static string Shape(uint width, uint height, GpuPixelFormat format, uint mipLevels, uint sampleCount)
             => string.Create(CultureInfo.InvariantCulture,
                 $"{width}x{height} {format}, {mipLevels} mip(s), {sampleCount} sample(s)");

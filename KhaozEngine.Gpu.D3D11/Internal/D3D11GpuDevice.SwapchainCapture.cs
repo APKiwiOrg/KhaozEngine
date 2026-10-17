@@ -4,7 +4,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// THE SWAPCHAIN CAPTURE (<see cref="IGpuSwapchainCapture"/>). A blit-model back buffer is created
     /// <c>RenderTargetOutput</c>, which is already a <c>CopyResource</c> source, so the request changes nothing
     /// and the image is copyable whenever the swapchain's attachments are live. The copy is recorded by
-    /// <see cref="D3D11BackBufferCopySource.RecordCopy"/>.
+    /// <see cref="D3D11BackBufferCopySource.RecordCopy(D3D11Swapchain, IGpuCommandList, IGpuTexture)"/>, which also
+    /// refuses a list that never bound the swapchain framebuffer in its recording.
     /// </summary>
     internal sealed partial class D3D11GpuDevice : IGpuSwapchainCapture
     {

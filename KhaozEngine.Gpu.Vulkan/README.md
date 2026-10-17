@@ -1399,9 +1399,10 @@ request never costs the window its swapchain. `SwapchainCopyable` reads the usag
 created with, so the frame that made the request, a surface without the bit and the orphan target all read false,
 and `CopySwapchainColor` throws `InvalidOperationException` then. The copy ends the pass first, which applies a
 pending clear, moves the image from `COLOR_ATTACHMENT_OPTIMAL` to `TRANSFER_SRC_OPTIMAL` through the layout
-tracker, and `End` restores it to `PRESENT_SRC_KHR`. Record it in the list that rendered the frame: a list that
-never bound the swapchain finds the image at rest in `PRESENT_SRC_KHR`, and a transition out of that discards.
-Clearing the request recreates the swapchain without the bit.
+tracker, and `End` restores it to `PRESENT_SRC_KHR`. A list that never bound the swapchain framebuffer in its
+recording is refused with `InvalidOperationException`: it would find the image at rest in `PRESENT_SRC_KHR`,
+where a transition out discards, and its submit would not wait on the acquire. Clearing the request recreates the
+swapchain without the bit.
 
 **Two departures, both bugs rather than behaviours.** `preTransform` reads the surface's own `currentTransform`
 rather than being hardcoded to `IDENTITY`, which is wrong on any device reporting a rotation. And the

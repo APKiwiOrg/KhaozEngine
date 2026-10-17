@@ -47,6 +47,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             IMetalBoundFramebufferSource source = MetalFramebuffer.Require(fb, nameof(SetFramebuffer));
             RequireRecording("Binding a framebuffer");
+            _boundSwapchain |= source.IsSwapchain;
 
             MetalBoundFramebuffer bound = source.AsBound;
             _passes.SetFramebuffer(in bound);

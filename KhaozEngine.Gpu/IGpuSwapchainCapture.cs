@@ -22,13 +22,15 @@ namespace KhaozEngine.Gpu
         /// Record, into an open recording of <paramref name="commands"/>, a whole copy of the current swapchain
         /// colour image into <paramref name="destination"/>.
         /// </summary>
-        /// <param name="commands">A recording of this device's commands, between <c>Begin</c> and
-        /// <c>End</c>.</param>
+        /// <param name="commands">A recording of this device's commands, between <c>Begin</c> and <c>End</c>,
+        /// that has bound <see cref="IGpuDevice.SwapchainFramebuffer"/> in this recording: the frame's own
+        /// list.</param>
         /// <param name="destination">A texture of this device with the same width and height as
         /// <see cref="IGpuDevice.SwapchainFramebuffer"/>, the swapchain's colour format, one mip and one
         /// sample.</param>
-        /// <exception cref="System.InvalidOperationException"><see cref="SwapchainCopyable"/> is false. Nothing
-        /// is recorded.</exception>
+        /// <exception cref="System.InvalidOperationException"><see cref="SwapchainCopyable"/> is false, or
+        /// <paramref name="commands"/> has not bound the swapchain framebuffer in this recording. Nothing is
+        /// recorded.</exception>
         /// <exception cref="System.ArgumentException"><paramref name="destination"/> does not match the swapchain
         /// image's shape. Nothing is recorded.</exception>
         void CopySwapchainColor(IGpuCommandList commands, IGpuTexture destination);

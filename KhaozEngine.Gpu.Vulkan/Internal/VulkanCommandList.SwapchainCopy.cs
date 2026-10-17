@@ -1,3 +1,5 @@
+using System;
+using KhaozEngine.Gpu.Internal;
 using Silk.NET.Vulkan;
 
 namespace KhaozEngine.Gpu.Vulkan.Internal
@@ -16,9 +18,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <b>THE TRACKER MOVES THE IMAGE AND <c>End</c> PUTS IT BACK.</b> The attachment is tracked over the range a
     /// pass tracks it over, so after a draw or a clear-only pass it leaves <c>COLOR_ATTACHMENT_OPTIMAL</c> for
     /// <c>TRANSFER_SRC_OPTIMAL</c> with its contents kept, and <c>End</c> restores it to its
-    /// <c>PRESENT_SRC_KHR</c> resting layout inside the submit the present waits on. A list that never bound the
-    /// swapchain finds it at rest in <c>PRESENT_SRC_KHR</c>, and a transition out of that discards (V-F8), so a
-    /// copy is only meaningful in the list that rendered the frame.
+    /// <c>PRESENT_SRC_KHR</c> resting layout inside the submit the present waits on.
+    /// </para>
+    /// <para>
+    /// <b>A LIST THAT NEVER BOUND THE SWAPCHAIN IS REFUSED.</b> It would find the image at rest in
+    /// <c>PRESENT_SRC_KHR</c>, and a transition out of that discards (V-F8). Its submit would also not carry the
+    /// frame's acquire semaphore, because <see cref="BoundSwapchainFramebuffer"/> routes the pair, so the copy
+    /// would not be ordered after the acquire. The same flag decides both.
     /// </para>
     /// </summary>
     internal sealed partial class VulkanCommandList
@@ -29,8 +35,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// Record a whole copy of <paramref name="source"/>, the swapchain framebuffer's current attachment, into
         /// <paramref name="dst"/>. The caller has already checked that the shapes match.
         /// </summary>
+        /// <exception cref="InvalidOperationException">This recording never bound the swapchain framebuffer.
+        /// Nothing is recorded.</exception>
         internal void CopyFromSwapchain(in VulkanAttachment source, IGpuTexture dst)
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            SwapchainCopyCheck.RequireSwapchainBound(_boundSwapchain);
+
             VulkanTexture destination = VulkanTexture.Require(dst, "a native Vulkan swapchain copy");
             IVulkanTransferSink sink = RequireTransfers(SwapchainCopy);
 

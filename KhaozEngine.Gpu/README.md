@@ -574,10 +574,12 @@ is presented.
 - **Copy.** `CopySwapchainColor(commands, destination)` records, into an open recording, a whole copy of the
   current swapchain colour image into `destination`. The destination must have the size of `SwapchainFramebuffer`,
   the swapchain's colour format, one mip and one sample, or it is refused with an `ArgumentException` naming both
-  shapes. An uncopyable swapchain is refused with an `InvalidOperationException`. Nothing is recorded on either
-  refusal.
+  shapes. `commands` must have bound `SwapchainFramebuffer` in its current recording, which makes it the frame's
+  own list. Only that list is ordered after the image's acquire and holds what the frame drew. A list that never
+  bound it, and an uncopyable swapchain, are both refused with an `InvalidOperationException`, with one message
+  for the first on every backend. Nothing is recorded on any refusal.
 - **Direct3D 11.** The request is stored and changes nothing, because a `RenderTargetOutput` back buffer is
   already a `CopyResource` source. The image is copyable whenever the swapchain's attachments are live.
 
-`SwapchainCopyCheck` holds the destination rule for all three backends. `SwapchainCopyCheckTests` drives it, and
+`SwapchainCopyCheck` holds the destination rule and the bound-this-recording refusal for all three backends. `SwapchainCopyCheckTests` drives it, and
 `D3D11SwapchainCaptureTests` drives the Direct3D 11 half over a fake swapchain surface.

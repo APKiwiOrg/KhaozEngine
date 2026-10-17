@@ -205,6 +205,58 @@ namespace KhaozEngine.Tests.Gpu
         // ---- the copy ----
 
         /// <summary>
+        /// A LIST THAT NEVER BOUND THE SWAPCHAIN IS REFUSED, and nothing is recorded. It would find the image at
+        /// rest in <c>PRESENT_SRC_KHR</c>, where a transition out discards, and its submit would not wait on the
+        /// acquire. Binding an ordinary framebuffer does not count. Binding the swapchain does, until the next
+        /// <c>Begin</c>.
+        /// </summary>
+        [Fact]
+        public void A_swapchain_copy_from_a_list_that_never_bound_the_swapchain_is_refused()
+        {
+            var fixture = new VulkanResourceFixture();
+            var attachment = new VulkanAttachment(0x5C0, 0x5C1, GpuPixelFormat.B8G8R8A8UNorm, DepthStencil: false,
+                VulkanRestingLayout.PresentSrcKhr);
+            var swapchain = new VulkanSwapchainFramebuffer(
+                GpuPixelFormat.B8G8R8A8UNorm, attachment, new VulkanExtent(8, 4));
+            IGpuTexture target = fixture.Factory.CreateTexture(
+                VulkanResourceFixture.Texture(8, 4, GpuTextureUsage.RenderTarget));
+            IGpuFramebuffer offscreen = fixture.Factory.CreateFramebuffer(null, target);
+            var destination = (VulkanTexture)fixture.Factory.CreateTexture(VulkanResourceFixture.Texture(
+                8, 4, GpuTextureUsage.Sampled, GpuPixelFormat.B8G8R8A8UNorm));
+
+            try
+            {
+                using VulkanCommandList list = fixture.CreateList();
+                list.Begin();
+                list.SetFramebuffer(offscreen);
+                fixture.Trace.Clear();
+
+                InvalidOperationException refused = Assert.Throws<InvalidOperationException>(
+                    () => list.CopyFromSwapchain(swapchain.Attachment, destination));
+
+                Assert.Equal(SwapchainCopyCheck.NotBoundMessage, refused.Message);
+                Assert.Empty(fixture.Trace);
+                Assert.Empty(fixture.TransferSink.ImageCopies);
+
+                list.SetFramebuffer(swapchain);
+                list.CopyFromSwapchain(swapchain.Attachment, destination);
+                Assert.Single(fixture.TransferSink.ImageCopies);
+                list.End();
+
+                list.Begin();
+                Assert.Throws<InvalidOperationException>(
+                    () => list.CopyFromSwapchain(swapchain.Attachment, destination));
+                list.End();
+            }
+            finally
+            {
+                destination.Dispose();
+                offscreen.Dispose();
+                target.Dispose();
+            }
+        }
+
+        /// <summary>
         /// A CLEAR WITH NO DRAW, THEN THE COPY, IN ONE RECORDING. The clear is a pending load action until the
         /// pass ends, and the copy ends the pass through the same helper every transfer uses, which runs the
         /// clear-only begin and end first. The swapchain image then leaves <c>COLOR_ATTACHMENT_OPTIMAL</c> for

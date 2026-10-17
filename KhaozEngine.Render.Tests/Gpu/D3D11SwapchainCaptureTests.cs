@@ -1,6 +1,7 @@
 using System;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.D3D11.Internal;
+using KhaozEngine.Gpu.Internal;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
@@ -63,7 +64,7 @@ namespace KhaozEngine.Tests.Gpu
             var destination = new FakeTexture(1600, 900, 1, 1, GpuPixelFormat.B8G8R8A8UNorm);
             var commands = new RecordingGpuCommandList(new NullGpuCommandList());
 
-            D3D11BackBufferCopySource.RecordCopy(swapchain, commands, destination);
+            D3D11BackBufferCopySource.RecordCopy(swapchain, commands, boundThisRecording: true, destination);
 
             RecordingGpuCommandList.TextureCopy copy = Assert.Single(commands.TextureCopies);
             Assert.True(copy.WholeResource);
@@ -89,6 +90,50 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Throws<InvalidOperationException>(
                 () => D3D11BackBufferCopySource.RecordCopy(null, commands, destination));
             Assert.Empty(commands.TextureCopies);
+        }
+
+        /// <summary>
+        /// A LIST THAT NEVER BOUND THE SWAPCHAIN IS REFUSED, with the message every backend gives, over a real
+        /// recorder and the native trace emitter. Binding an ordinary framebuffer does not count, a foreign list
+        /// never counts, and binding the swapchain framebuffer does until the next <c>Begin</c>.
+        /// </summary>
+        [Fact]
+        public void A_swapchain_copy_from_a_list_that_never_bound_the_swapchain_is_refused()
+        {
+            var surface = new FakeD3D11SwapchainSurface(1280, 720);
+            using var swapchain = new D3D11Swapchain(surface, new object(), 1280, 720, syncToVerticalBlank: true);
+            var destination = new FakeTexture(1280, 720, 1, 1, GpuPixelFormat.B8G8R8A8UNorm);
+            var offscreen = new FakeFramebuffer(new GpuOutputDescription(null, GpuPixelFormat.B8G8R8A8UNorm), 64, 64);
+            var log = new D3D11NativeCallLog();
+            using var recorder = new D3D11CommandRecorder<D3D11NativeTraceEmitter>(
+                new D3D11NativeTraceEmitter(new D3D11DeviceState(), log));
+
+            recorder.Begin();
+            recorder.SetFramebuffer(offscreen);
+            log.Reset();
+
+            InvalidOperationException refused = Assert.Throws<InvalidOperationException>(
+                () => D3D11BackBufferCopySource.RecordCopy(swapchain, recorder, destination));
+            Assert.Equal(SwapchainCopyCheck.NotBoundMessage, refused.Message);
+            Assert.Empty(log.Trace);
+
+            var foreign = new RecordingGpuCommandList(new NullGpuCommandList());
+            Assert.Throws<InvalidOperationException>(
+                () => D3D11BackBufferCopySource.RecordCopy(swapchain, foreign, destination));
+            Assert.Empty(foreign.TextureCopies);
+
+            recorder.SetFramebuffer(swapchain.Framebuffer);
+            Assert.True(recorder.BoundSwapchainFramebuffer);
+            log.Reset();
+            D3D11BackBufferCopySource.RecordCopy(swapchain, recorder, destination);
+            Assert.Single(log.Trace);
+            recorder.End();
+
+            recorder.Begin();
+            Assert.False(recorder.BoundSwapchainFramebuffer);
+            Assert.Throws<InvalidOperationException>(
+                () => D3D11BackBufferCopySource.RecordCopy(swapchain, recorder, destination));
+            recorder.End();
         }
 
         /// <summary>Forwards to the fake and runs a callback inside <c>ResizeBuffers</c>, which is the one moment

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using BepuPhysics;
@@ -12,9 +13,9 @@ namespace KhaozEngine.Physics.Bepu;
 /// normal with no certifiable area, never a query refusal. Query bounds and operands are not retained.</summary>
 internal sealed record InstalledSupportMeshWorldForm(InstalledSupportWorldFace? Face);
 
-/// <summary>A bounded world-owned store of immutable mesh triangle forms. All dictionary access and publication
-/// use one gate. Unobserved construction holds it, while observed construction runs outside it, so foreign
-/// observer code can wait for readers or reenter. The first completed publication for a triangle wins.</summary>
+/// <summary>A bounded world-owned store of immutable mesh triangle forms. Concurrent map lookups take no lock.
+/// Builds run outside every gate, so observers can wait for readers or reenter. Publication and FIFO eviction
+/// share a short budget gate, and the first completed publication for a retained triangle wins.</summary>
 internal sealed class InstalledSupportMeshWorldCache
 {
     // Two maximum-size (256-member) footprints fit per static, including neighbours selected by the tree.
@@ -26,35 +27,38 @@ internal sealed class InstalledSupportMeshWorldCache
     internal const int GlobalTriangleCapacity = 8192;
 
     readonly Lock _gate = new();
-    readonly Dictionary<int, Slot> _statics = [];
+    readonly ConcurrentDictionary<int, Slot> _statics = new();
     readonly Queue<int> _owners = new(StaticCapacity);
+    long _lockAcquisitions;
+    int _triangleCount;
 
-    internal int TriangleCount
-    {
-        get
-        {
-            lock (_gate)
-            {
-                return CountTriangles();
-            }
-        }
-    }
+    internal long LockAcquisitions => Volatile.Read(ref _lockAcquisitions);
+    internal int TriangleCount => Volatile.Read(ref _triangleCount);
 
-    internal int TriangleCountFor(StaticHandle owner)
+    internal int TriangleCountFor(StaticHandle owner) =>
+        _statics.TryGetValue(owner.Value, out Slot? slot) ? Volatile.Read(ref slot.Count) : 0;
+
+    Lock.Scope EnterGate()
     {
-        lock (_gate) return _statics.TryGetValue(owner.Value, out Slot? slot) ? slot.Triangles.Count : 0;
+        Interlocked.Increment(ref _lockAcquisitions);
+        return _gate.EnterScope();
     }
 
     internal bool Matches(StaticHandle owner, TypedIndex shape, long version, in RigidPose pose)
     {
-        lock (_gate) return GetSlot(owner, shape, version, pose).Matches(pose);
+        Slot? slot = FindSlot(owner, shape, version);
+        if (slot is null)
+        {
+            using (EnterGate()) slot = GetSlot(owner, shape, version, pose);
+        }
+        return slot.Matches(pose);
     }
 
     internal void Remove(StaticHandle owner)
     {
-        lock (_gate)
+        using (EnterGate())
         {
-            _statics.Remove(owner.Value);
+            RemoveSlot(owner.Value);
             // Keep the FIFO free of tombstones, including repeated removal and handle reuse.
             int count = _owners.Count;
             for (int i = 0; i < count; i++)
@@ -67,42 +71,31 @@ internal sealed class InstalledSupportMeshWorldCache
 
     internal void Clear()
     {
-        lock (_gate) { _statics.Clear(); _owners.Clear(); }
+        using (EnterGate())
+        {
+            _statics.Clear();
+            _owners.Clear();
+            Volatile.Write(ref _triangleCount, 0);
+        }
     }
 
     internal CapsuleFeatureStatus Resolve(Simulation simulation, TypedIndex shape, in RigidPose pose,
         StaticHandle owner, long version, int triangle, in InstalledPoseOperator transform,
         SupportPolygonPool pool, out InstalledSupportMeshWorldForm? form)
     {
-        bool observed = ContactAllocationDiagnostics.Observed;
-        lock (_gate)
-        {
-            Slot slot = GetSlot(owner, shape, version, pose);
-            if (slot.Matches(pose) && slot.Triangles.TryGetValue(triangle, out form))
-                return CapsuleFeatureStatus.Complete;
-            if (!observed)
-            {
-                CapsuleFeatureStatus status = Build(simulation, shape, pose, owner, triangle, transform, pool, out form);
-                if (status == CapsuleFeatureStatus.Complete && slot.Matches(pose))
-                    form = Publish(owner, slot, triangle, form!);
-                return status;
-            }
-        }
+        Slot? slot = FindSlot(owner, shape, version);
+        if (slot is not null && slot.Matches(pose) && slot.Triangles.TryGetValue(triangle, out form))
+            return CapsuleFeatureStatus.Complete;
+        // No capture, including an unobserved one, holds the budget gate. Concurrent cold misses may duplicate
+        // arithmetic, just as observed installed-geometry misses do. A throwing capture publishes nothing.
         CapsuleFeatureStatus captured = Build(simulation, shape, pose, owner, triangle, transform, pool, out form);
         if (captured != CapsuleFeatureStatus.Complete) return captured;
-        lock (_gate)
+        using (EnterGate())
         {
-            Slot slot = GetSlot(owner, shape, version, pose);
+            slot = GetSlot(owner, shape, version, pose);
             if (slot.Matches(pose)) form = Publish(owner, slot, triangle, form!);
         }
         return captured;
-    }
-
-    int CountTriangles()
-    {
-        int count = 0;
-        foreach (Slot slot in _statics.Values) count += slot.Triangles.Count;
-        return count;
     }
 
     InstalledSupportMeshWorldForm Publish(StaticHandle owner, Slot slot, int id, InstalledSupportMeshWorldForm form)
@@ -110,28 +103,44 @@ internal sealed class InstalledSupportMeshWorldCache
         if (slot.Triangles.TryGetValue(id, out InstalledSupportMeshWorldForm? first)) return first;
         // Replacing a triangle in a full local slot needs no global space. Otherwise retire the oldest other
         // static until the new triangle fits. A current reader keeps its immutable face even after eviction.
-        if (slot.Triangles.Count < PerStaticTriangleCapacity)
-            while (CountTriangles() == GlobalTriangleCapacity)
+        bool grows = slot.Count < PerStaticTriangleCapacity;
+        if (grows)
+            while (_triangleCount == GlobalTriangleCapacity)
             {
                 int oldest = _owners.Dequeue();
                 if (oldest == owner.Value) _owners.Enqueue(oldest);
-                else _statics.Remove(oldest);
+                else RemoveSlot(oldest);
             }
-        return slot.Publish(id, form);
+        slot.Publish(id, form);
+        if (grows) Volatile.Write(ref _triangleCount, _triangleCount + 1);
+        return form;
     }
 
+    Slot? FindSlot(StaticHandle owner, TypedIndex shape, long version) =>
+        _statics.TryGetValue(owner.Value, out Slot? slot) &&
+        slot.Shape.Packed == shape.Packed && slot.Version == version ? slot : null;
+
+    // Only publication and eviction call these helpers, under the budget gate. Readers may retain an old slot
+    // across replacement. Its identity and pose never change, and no evicted form or face is cleared or reused.
     Slot GetSlot(StaticHandle owner, TypedIndex shape, long version, in RigidPose pose)
     {
         if (_statics.TryGetValue(owner.Value, out Slot? slot))
         {
             if (slot.Shape.Packed == shape.Packed && slot.Version == version) return slot;
+            Volatile.Write(ref _triangleCount, _triangleCount - slot.Count);
             return _statics[owner.Value] = new(shape, version, pose);
         }
-        if (_statics.Count == StaticCapacity) _statics.Remove(_owners.Dequeue());
+        if (_owners.Count == StaticCapacity) RemoveSlot(_owners.Dequeue());
         _owners.Enqueue(owner.Value);
         slot = new(shape, version, pose);
-        _statics.Add(owner.Value, slot);
+        _statics.TryAdd(owner.Value, slot);
         return slot;
+    }
+
+    void RemoveSlot(int owner)
+    {
+        if (_statics.TryRemove(owner, out Slot? slot))
+            Volatile.Write(ref _triangleCount, _triangleCount - slot.Count);
     }
 
     static CapsuleFeatureStatus Build(Simulation simulation, TypedIndex shape, in RigidPose pose,
@@ -160,7 +169,10 @@ internal sealed class InstalledSupportMeshWorldCache
     {
         internal TypedIndex Shape { get; } = shape;
         internal long Version { get; } = version;
-        internal Dictionary<int, InstalledSupportMeshWorldForm> Triangles { get; } = [];
+        // TryGetValue acquires the concurrent map's published node. The form and every array it owns are
+        // immutable before insertion. FIFO mutation and Count updates belong exclusively to the budget gate.
+        internal ConcurrentDictionary<int, InstalledSupportMeshWorldForm> Triangles { get; } = new();
+        internal int Count;
         readonly Queue<int> _triangles = new(PerStaticTriangleCapacity);
 
         internal bool Matches(in RigidPose other) =>
@@ -171,13 +183,13 @@ internal sealed class InstalledSupportMeshWorldCache
 
         static bool Same(float a, float b) => BitConverter.SingleToInt32Bits(a) == BitConverter.SingleToInt32Bits(b);
 
-        internal InstalledSupportMeshWorldForm Publish(int id, InstalledSupportMeshWorldForm form)
+        internal void Publish(int id, InstalledSupportMeshWorldForm form)
         {
-            if (Triangles.TryGetValue(id, out InstalledSupportMeshWorldForm? first)) return first;
-            if (Triangles.Count == PerStaticTriangleCapacity) Triangles.Remove(_triangles.Dequeue());
+            bool grows = Count < PerStaticTriangleCapacity;
+            if (!grows) Triangles.TryRemove(_triangles.Dequeue(), out _);
             _triangles.Enqueue(id);
-            Triangles.Add(id, form);
-            return form;
+            Triangles.TryAdd(id, form);
+            if (grows) Volatile.Write(ref Count, Count + 1);
         }
     }
 }

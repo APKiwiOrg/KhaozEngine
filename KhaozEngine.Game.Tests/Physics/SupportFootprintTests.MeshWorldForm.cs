@@ -284,7 +284,7 @@ public partial class SupportFootprintTests
     }
 
     [Fact]
-    public void ConcurrentMeshReadersShareColdFormsAndExactCounters()
+    public void ConcurrentMeshMissesPublishFirstWinsAndExactCounters()
     {
         const int readers = 3;
         using var scene = new WorldFormScene(CostRows().Single(row => row.Name == "flat mesh"));
@@ -297,9 +297,9 @@ public partial class SupportFootprintTests
             using IPhysicsQueryLease lease = scene.AcquireLease();
             ContactAllocationDiagnostics.SetObserver((phase, entering) =>
             {
-                if (!entering || phase != ContactAllocationPhase.SupportCapture) return;
-                ContactAllocationDiagnostics.SetObserver(null);
-                BoundedThread.Arrive(barrier);
+                // All readers finish building each cold triangle before any can publish it. Duplicate builds
+                // are intentional when construction holds no shared lock, and only the first publication stays.
+                if (phase == ContactAllocationPhase.SupportMaterialization) BoundedThread.Arrive(barrier);
             });
             try
             {
@@ -309,9 +309,10 @@ public partial class SupportFootprintTests
             }
             finally { ContactAllocationDiagnostics.SetObserver(null); }
         }))];
-        foreach (BoundedThread thread in threads) thread.Join();
-        Assert.Equal(2, counts.Sum(c => c.WorldFormBuilds));
-        Assert.Equal(2, counts.Sum(c => c.MeshTriangleCaptures));
+        JoinMeshReaders(threads);
+        Assert.All(counts, count => Assert.Equal(2, count.WorldFormBuilds));
+        Assert.All(counts, count => Assert.Equal(2, count.MeshTriangleCaptures));
+        Assert.Equal(2, MeshForms(scene.World).TriangleCount);
         SupportSample reference;
         using (SupportReferenceEvaluation.Begin()) reference = scene.Find();
         Assert.All(results, result => Assert.Equal(reference, result));

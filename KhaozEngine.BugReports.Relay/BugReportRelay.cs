@@ -59,9 +59,10 @@ public sealed class BugReportRelay
         if (options.ServiceKey is null || options.ServiceKey.Length < 32)
             throw new ArgumentException("The service key must hold at least 32 characters.", nameof(options));
         Uri? mediaBase = options.PublicMediaBase;
-        if (mediaBase is null || !mediaBase.IsAbsoluteUri || !mediaBase.AbsoluteUri.EndsWith("/", StringComparison.Ordinal)
+        if (mediaBase is null || !mediaBase.IsAbsoluteUri || mediaBase.AbsoluteUri.Length > 512
+            || !mediaBase.AbsoluteUri.EndsWith("/", StringComparison.Ordinal)
             || (mediaBase.Scheme != Uri.UriSchemeHttps && !mediaBase.IsLoopback))
-            throw new ArgumentException("The public media base must be absolute, end in '/', and use HTTPS off loopback.", nameof(options));
+            throw new ArgumentException("The public media base must be absolute, at most 512 characters, end in '/', and use HTTPS off loopback.", nameof(options));
         if (options.PerAccountPerHour <= 0 || options.PerAccountPerDay <= 0 || options.GlobalPerDay <= 0
             || options.MaxBundleBytes <= 0 || options.MaxBundleBytes > BugReportLimits.MaxBundleBytes)
             throw new ArgumentException("Every limit must be positive and the bundle cap must not exceed the format limit.", nameof(options));

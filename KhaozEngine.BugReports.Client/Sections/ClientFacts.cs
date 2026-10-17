@@ -22,7 +22,7 @@ namespace KhaozEngine.BugReports.Client;
 /// <param name="EngineVersion">The engine version, from <see cref="TelemetrySessionHeader.EngineVersion"/>.</param>
 /// <param name="Configuration">The build configuration, such as <c>Release</c>.</param>
 /// <param name="Commit">The source commit after the version's <c>+</c>, when there is one.</param>
-public sealed record BuildFacts(string GameId, string GameName, string Version, string? BuildName, string EngineVersion,
+internal sealed record BuildFacts(string GameId, string GameName, string Version, string? BuildName, string EngineVersion,
     string? Configuration, string? Commit);
 
 /// <summary>What the <c>platform</c> section reports: the machine, the runtime, the window and the <c>KE_</c> levers.</summary>
@@ -39,7 +39,7 @@ public sealed record BuildFacts(string GameId, string GameName, string Version, 
 /// <param name="FramebufferHeight">Framebuffer height in pixels.</param>
 /// <param name="ContentScale">The OS content scale the UI used: device pixels per UI point.</param>
 /// <param name="Environment">The <c>KE_</c> variables, already passed through <see cref="ReportRedactor.SelectEnvironment"/>.</param>
-public sealed record PlatformFacts(string Os, string OsArchitecture, string ProcessArchitecture, string Runtime, int CpuCount,
+internal sealed record PlatformFacts(string Os, string OsArchitecture, string ProcessArchitecture, string Runtime, int CpuCount,
     long TotalMemoryBytes, string Locale, int WindowWidth, int WindowHeight, int FramebufferWidth, int FramebufferHeight,
     float ContentScale, IReadOnlyList<TelemetryHeaderValue> Environment);
 
@@ -53,7 +53,7 @@ public sealed record PlatformFacts(string Os, string OsArchitecture, string Proc
 /// <param name="DeviceLossReason">Why the device was lost, null while it is healthy or when the backend does not say.</param>
 /// <param name="InjectedModules">Overlay software hooked into the process, null when nothing was scanned.</param>
 /// <param name="Capabilities">The device capabilities by property name, see <see cref="ClientFacts.DescribeCapabilities"/>.</param>
-public sealed record GraphicsFacts(string Backend, string Adapter, int SwapchainWidth, int SwapchainHeight, string PresentMode,
+internal sealed record GraphicsFacts(string Backend, string Adapter, int SwapchainWidth, int SwapchainHeight, string PresentMode,
     bool? SoftwareAdapter, string? DeviceLossReason, IReadOnlyList<string>? InjectedModules,
     IReadOnlyDictionary<string, string> Capabilities);
 
@@ -62,12 +62,12 @@ public sealed record GraphicsFacts(string Backend, string Adapter, int Swapchain
 /// <param name="SessionLogName">The session log path or name. The section writes only its file name.</param>
 /// <param name="PreviousCrashFile">The newest crash file from an earlier run. The section writes only its file name.</param>
 /// <param name="PreviousCrashAt">When that crash file was last written.</param>
-public sealed record SessionFacts(TimeSpan Uptime, string? SessionLogName, string? PreviousCrashFile, DateTimeOffset? PreviousCrashAt);
+internal sealed record SessionFacts(TimeSpan Uptime, string? SessionLogName, string? PreviousCrashFile, DateTimeOffset? PreviousCrashAt);
 
 /// <summary>What the <c>input</c> section reports: the connected devices and what triggers a report.</summary>
 /// <param name="Devices">One entry per device, see <see cref="ClientFacts.Devices"/>.</param>
 /// <param name="TriggerBindings">The trigger's bindings, see <see cref="ClientFacts.DescribeBindings"/>.</param>
-public sealed record InputFacts(IReadOnlyList<string> Devices, IReadOnlyList<string> TriggerBindings);
+internal sealed record InputFacts(IReadOnlyList<string> Devices, IReadOnlyList<string> TriggerBindings);
 
 /// <summary>
 /// Gathers the facts records the built-in sections write. <see cref="FindPreviousCrash"/> and

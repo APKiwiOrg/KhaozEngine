@@ -15,10 +15,10 @@ namespace KhaozEngine.BugReports.Client;
 /// <param name="Font">The UI font, or null to update headlessly. Text is not drawn without it.</param>
 /// <param name="White">A 1x1 white texture, or null to update headlessly. Nothing is drawn without it.</param>
 /// <param name="Viewport">The design viewport the screen lays out in and draws through.</param>
-public sealed record BugReportScreenResources(ITextMeasurer Measurer, SpriteFont? Font, Texture2D? White, IDesignViewport Viewport);
+internal sealed record BugReportScreenResources(ITextMeasurer Measurer, SpriteFont? Font, Texture2D? White, IDesignViewport Viewport);
 
 /// <summary>Where <see cref="BugReportScreen"/> stands: still open, or closed by Send or Cancel.</summary>
-public enum BugReportScreenResult
+internal enum BugReportScreenResult
 {
     Open,
     Send,
@@ -36,7 +36,7 @@ public enum BugReportScreenResult
 /// Its owner pops it. Every player-facing line resolves through <see cref="BugReportStrings"/> each frame. Frame
 /// thread only.</para>
 /// </summary>
-public sealed class BugReportScreen : Screen
+internal sealed class BugReportScreen : Screen
 {
     const int ScreenDrawOrder = 20000;
     const float TextMargin = 20f;

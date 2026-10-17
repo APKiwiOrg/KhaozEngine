@@ -12,7 +12,7 @@ namespace KhaozEngine.BugReports.Client;
 /// <param name="stats">The rolling frame meter.</param>
 /// <param name="frames">The recent frame times.</param>
 /// <param name="passes">Returns the pass meter, or null when the game keeps none.</param>
-public sealed class PerformanceSection(FrameStats stats, FrameTimeRing frames, Func<PassTimings?> passes) : IBugReportSection
+internal sealed class PerformanceSection(FrameStats stats, FrameTimeRing frames, Func<PassTimings?> passes) : IBugReportSection
 {
     /// <inheritdoc />
     public string Key => "performance";

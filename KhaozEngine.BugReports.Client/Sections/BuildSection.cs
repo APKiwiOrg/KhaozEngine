@@ -5,7 +5,7 @@ namespace KhaozEngine.BugReports.Client;
 
 /// <summary>The <c>build</c> section: <c>{gameId, gameName, version, buildName, engineVersion, configuration, commit}</c>.</summary>
 /// <param name="facts">Returns the build facts. Called in the trigger frame, so it must do no I/O.</param>
-public sealed class BuildSection(Func<BuildFacts> facts) : IBugReportSection
+internal sealed class BuildSection(Func<BuildFacts> facts) : IBugReportSection
 {
     /// <inheritdoc />
     public string Key => "build";

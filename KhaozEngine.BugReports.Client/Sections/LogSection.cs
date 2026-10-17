@@ -11,7 +11,7 @@ namespace KhaozEngine.BugReports.Client;
 /// the margin leaves room for redaction to lengthen a line without the cut dropping the newest ones.
 /// </summary>
 /// <param name="log">The ring of recent formatted log lines.</param>
-public sealed class LogSection(RecentLogSink log) : IBugReportSection
+internal sealed class LogSection(RecentLogSink log) : IBugReportSection
 {
     /// <summary><c>{"lines":[</c> and <c>]}</c>.</summary>
     const int EnvelopeBytes = 12;

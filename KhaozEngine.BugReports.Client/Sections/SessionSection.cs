@@ -12,7 +12,7 @@ namespace KhaozEngine.BugReports.Client;
 /// </para>
 /// </summary>
 /// <param name="facts">Returns the session facts, from cached values only.</param>
-public sealed class SessionSection(Func<SessionFacts> facts) : IBugReportSection
+internal sealed class SessionSection(Func<SessionFacts> facts) : IBugReportSection
 {
     /// <inheritdoc />
     public string Key => "session";

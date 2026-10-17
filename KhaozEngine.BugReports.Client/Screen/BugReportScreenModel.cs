@@ -9,7 +9,7 @@ namespace KhaozEngine.BugReports.Client;
 /// whether the report can be sent. The screen owns the widgets and copies their state in here every frame. Frame
 /// thread only.
 /// </summary>
-public sealed class BugReportScreenModel
+internal sealed class BugReportScreenModel
 {
     const string DefaultCategory = "Other";
 

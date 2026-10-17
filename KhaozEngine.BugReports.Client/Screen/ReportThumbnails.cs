@@ -9,7 +9,7 @@ namespace KhaozEngine.BugReports.Client;
 /// Decodes the report screen's thumbnails from the encoded media E1 captures. Every member is pure and keeps no
 /// shared state, so a caller may run them on the thread pool. Texture creation stays with the caller.
 /// </summary>
-public static class ReportThumbnails
+internal static class ReportThumbnails
 {
     /// <summary>The longest edge of a screenshot thumbnail, in pixels.</summary>
     public const int ScreenshotLongEdge = 320;

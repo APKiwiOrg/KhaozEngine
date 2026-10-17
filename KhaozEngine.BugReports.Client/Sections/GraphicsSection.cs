@@ -13,7 +13,7 @@ namespace KhaozEngine.BugReports.Client;
 /// <see cref="ReportText.MaxInjectedModules"/> and <see cref="ReportText.MaxCapabilities"/>.
 /// </summary>
 /// <param name="facts">Returns the graphics facts. Called in the trigger frame, so it must do no I/O.</param>
-public sealed class GraphicsSection(Func<GraphicsFacts> facts) : IBugReportSection
+internal sealed class GraphicsSection(Func<GraphicsFacts> facts) : IBugReportSection
 {
     /// <inheritdoc />
     public string Key => "graphics";

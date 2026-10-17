@@ -7,7 +7,7 @@ namespace KhaozEngine.BugReports.Client;
 /// sample per frame and snapshot it from the same thread. A sample that is not a positive finite number is ignored,
 /// as <see cref="KhaozEngine.Diagnostics.FrameStats"/> does, so the section never has to write a value JSON cannot hold.
 /// </summary>
-public sealed class FrameTimeRing
+internal sealed class FrameTimeRing
 {
     /// <summary>How many frame times a ring keeps by default.</summary>
     public const int DefaultCapacity = 300;

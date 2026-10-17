@@ -27,7 +27,9 @@ An `IBugReportSection` names one block of report state with a `Key` (`[a-z0-9][a
    smaller of its own budget and what is left of the 1 MiB total. A section left with under 64 bytes is dropped
    with a warning. Once the redaction budget (2 s by default) is spent, every remaining string is masked whole.
 
-A `RawSection` must pass through `Finish` before anything leaves the machine. Keep `Write` cheap and write many
+A `RawSection` must pass through `Finish` before anything leaves the machine. Only `Finish` redacts.
+`CapturedSection` is public so a viewer can hold sections read back from a bundle, and the bundle writer trusts a
+hand-built one to be finished output. Keep `Write` cheap and write many
 short strings. One huge string costs escape scratch before the capture cap applies, and the redactor masks whole
 any string it cannot finish within its match timeout.
 

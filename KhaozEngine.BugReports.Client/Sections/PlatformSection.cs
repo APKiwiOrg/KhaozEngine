@@ -12,7 +12,7 @@ namespace KhaozEngine.BugReports.Client;
 /// <see cref="ReportRedactor.SelectEnvironment"/>. Every string and variable name is cut by <see cref="ReportText.Bound"/>.
 /// </summary>
 /// <param name="facts">Returns the platform facts. Called in the trigger frame, so it must do no I/O.</param>
-public sealed class PlatformSection(Func<PlatformFacts> facts) : IBugReportSection
+internal sealed class PlatformSection(Func<PlatformFacts> facts) : IBugReportSection
 {
     /// <inheritdoc />
     public string Key => "platform";

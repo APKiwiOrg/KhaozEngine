@@ -207,6 +207,7 @@ public interface IBugReportSection
 public sealed record BugReportContext(string ReportId, DateTimeOffset CapturedAt, string? Subject = null);
 public sealed record RawSection(string Key, int MaxBytes, ReadOnlyMemory<byte> Json, bool IsError);   // unredacted capture output
 public sealed record CapturedSection(string Key, ReadOnlyMemory<byte> Json);   // finished: redacted, truncated, inside the selected total
+// Only Finish produces redacted sections. The bundle writer trusts a hand-built CapturedSection to be finished output.
 public sealed class BugReportSectionSet
 {
     public const int MinSectionBytes = 64;
@@ -322,6 +323,11 @@ public sealed class BugReportService : IDisposable
 ```
 
 E2 also adds these public names, members its own choice: `TextArea` (Gui), `JpegThumbnailDecoder` (Imaging), `IGameOverlay`, `GameOverlayContext`, `GameApp.AddOverlay` and `GameApp.RemoveOverlay` (Game), `InputState.WithoutInteraction` (Windowing), `BugReportSubmitter` (core).
+
+The Client package keeps its implementation internal: the seven built-in section classes, their five `*Facts`
+records, `FrameTimeRing`, `BugReportScreen`, `BugReportScreenModel`, `BugReportScreenResources`,
+`BugReportScreenResult`, `BugReportScreenLayout` and `ReportThumbnails`. Its public surface is `BugReportService`,
+`BugReportServiceOptions`, `FrameHistoryRecorder`, `FrameHistoryOptions` and `BugReportStrings`.
 
 `BugReportStrings` (Client) holds the `bugreport.*` `StringId` keys with an English fallback. Its category field
 label is `BugReportStrings.CategoryFieldLabel`, because `BugReportStrings.CategoryLabel(string categoryId)` resolves a

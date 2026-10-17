@@ -15,6 +15,8 @@ namespace KhaozEngine.BugReports;
 /// <see cref="BundleEntryNames"/>, <see cref="BugReportLimits"/>, <see cref="BugReportJson.IsValidSection"/>
 /// and <see cref="ImageHeaders"/>, which also checks each image header against its record. A bundle that is
 /// written therefore passes the relay's validation. Works in memory only.
+/// <para>The writer trusts every <see cref="CapturedSection"/> to be finished output and does not redact. Only
+/// <see cref="BugReportSectionSet.Finish"/> produces redacted sections, so a hand-built section goes out as written.</para>
 /// </summary>
 public static class BugReportBundleWriter
 {

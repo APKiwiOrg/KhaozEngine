@@ -5,7 +5,7 @@ namespace KhaozEngine.BugReports.Client;
 
 /// <summary>The <c>input</c> section: <c>{devices:[...], trigger:[...]}</c>, one string per device and per trigger binding.</summary>
 /// <param name="facts">Returns the input facts. Called in the trigger frame, so it must do no I/O.</param>
-public sealed class InputSection(Func<InputFacts> facts) : IBugReportSection
+internal sealed class InputSection(Func<InputFacts> facts) : IBugReportSection
 {
     /// <inheritdoc />
     public string Key => "input";

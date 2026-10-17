@@ -82,9 +82,11 @@ internal static class GroundCore
    axis is the axis the tick reports. While the motion follows its plan that is the start axis plus the planned
    part of the displacement, so the reported feet are certified at their own axis and not at a summed axis a
    rounding step away.
-   - **Walkable:** seat on it. The step part of the rise is the rise the start support's own plane does not
-     explain: the seated height less that plane extrapolated to the new axis. When `MaxStepClimbSpeed` is
-     positive, the tick's owed climb and step part together are capped at `MaxStepClimbSpeed * dt`, so a run up
+   - **Walkable:** seat on it. The step part of the rise is the rise the start support's height field does not
+     explain: the seated height less that field extrapolated to the new axis. A support capped below its own
+     plane by an overhung edge or vertex has a level height field, using the same contact skin and certified
+     errors as discrete step classification. When `MaxStepClimbSpeed` is positive, the tick's owed climb and
+     step part together are capped at `MaxStepClimbSpeed * dt`, so a run up
      stairs paces its climb as the knob always meant, while a continuous slope is followed exactly and never
      throttled. A paced body stays `Walkable` with its feet below the tread for a tick or two. That is legs-band
      overlap, which the body model allows. Paced feet round down to the largest float not above the paced

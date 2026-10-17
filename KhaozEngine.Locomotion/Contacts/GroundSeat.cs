@@ -8,7 +8,7 @@ namespace KhaozEngine.Locomotion.Contacts;
 internal enum SeatOutcome : byte { Seated, SteepSeated, Airborne, Wall, Refused }
 
 /// <summary>The down pass result. <see cref="FeetY"/> is the seated height, or the start feet when the body is
-/// not seated. <see cref="StepPart"/> is the part of a walkable rise the start support's plane does not explain.
+/// not seated. <see cref="StepPart"/> is the part of a walkable rise the start support's height field does not explain.
 /// <see cref="WallNormal"/> is a horizontal unit vector for <see cref="SeatOutcome.Wall"/>, else zero.</summary>
 internal readonly record struct GroundSeatResult(SeatOutcome Outcome, float FeetY, SupportSample Support,
     float StepPart, Vector3 WallNormal, float DiscreteStep = 0);
@@ -70,8 +70,8 @@ internal static class GroundSeat
         return new(axis, startFeetY, footRadius, tuning.StepHeight, reachDown, cosMaxSlope);
     }
 
-    // The seated height less the start support's plane extrapolated to the new axis. Without a start plane the
-    // reference is level at the start feet. A steep start, which only a slide moves from, explains no walkable rise,
+    // The seated height less the start support's height field extrapolated to the new axis. An overhung edge
+    // stays level. Without a start plane the reference is level at the start feet. A steep start explains no walkable rise,
     // so the part is the rise above the start feet and a drop charges nothing. The part is charged against the
     // climb budget, so it rounds up and a paid climb never exceeds the budget.
     static float StepPart(float height, in SupportSample start, Vector2 startAxis, float startFeetY, Vector2 axis)
@@ -81,8 +81,8 @@ internal static class GroundSeat
         Vector3 n = start.Normal;
         bool hasPlane = start.Status == SupportStatus.Walkable && n.Y > 0;
         if (!hasPlane) return GroundPlacement.NotBelow((double)height - startFeetY);
-        double plane = start.Height + ((double)n.X * ((double)startAxis.X - axis.X) +
-            (double)n.Z * ((double)startAxis.Y - axis.Y)) / n.Y;
+        double plane = start.Height - PlaneRise(start, startAxis,
+            (double)axis.X - startAxis.X, (double)axis.Y - startAxis.Y);
         return GroundPlacement.NotBelow(height - plane);
     }
 

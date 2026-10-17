@@ -10,9 +10,9 @@ namespace KhaozEngine.BugReports;
 /// <summary>
 /// Delivers reports write-ahead: each bundle is queued on disk before its first send and deleted only when the sink
 /// returns Sent or Rejected, so a crash or an unreachable relay keeps it for a later <see cref="FlushAsync"/>.
-/// A signed-out submission is queued without a send. When the queue cannot be written the bundle is sent directly
-/// and any result other than Sent carries the <c>queue_failed</c> error. A sink that throws instead of returning a
-/// result reads as Queued, so its bundle stays queued.
+/// A signed-out submission is queued without a send. When the queue cannot be written the bundle is sent directly:
+/// Sent and Rejected keep the sink's result, and anything else is Queued with the <c>queue_failed</c> error. A sink
+/// that throws instead of returning a result reads as Queued, so its bundle stays queued.
 /// </summary>
 public sealed class BugReportSubmitter
 {
@@ -64,7 +64,8 @@ public sealed class BugReportSubmitter
         if (write == QueueWrite.Failed)
         {
             BugReportSubmitResult? direct = await SinkCall.TrySubmitAsync(sink, submission, cancellationToken).ConfigureAwait(false);
-            if (direct is { Status: BugReportSubmitStatus.Sent })
+            // A refusal is final whether or not the queue could keep the bundle, so its reason is what the player sees.
+            if (direct is { Status: BugReportSubmitStatus.Sent or BugReportSubmitStatus.Rejected })
                 return direct;
             return direct is null ? Queued(QueueFailedError) : direct with { Error = QueueFailedError };
         }

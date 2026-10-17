@@ -268,6 +268,19 @@ public sealed class BugReportSubmitterTests : IDisposable
     }
 
     [Fact]
+    public async Task Rejected_direct_send_keeps_the_sink_error()
+    {
+        Directory.CreateDirectory(root);
+        File.WriteAllText(Dir, "a file where the queue directory should be");
+        var sink = new FakeSink().Respond(BugReportSubmitStatus.Rejected, "blocked");
+        var submitter = new BugReportSubmitter(sink, new BugReportOfflineQueue(Dir, time));
+
+        BugReportSubmitResult result = await submitter.SubmitAsync(Submission(1, "a"), CancellationToken.None);
+
+        Assert.Equal(new BugReportSubmitResult(BugReportSubmitStatus.Rejected, null, "blocked", null), result);
+    }
+
+    [Fact]
     public async Task Rejected_direct_send_is_logged()
     {
         Directory.CreateDirectory(root);

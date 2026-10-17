@@ -11,8 +11,9 @@ Depends on `KhaozEngine.BugReports`, `KhaozEngine.BugReports.Contracts`, `KhaozE
 `PublicMediaBase` must be an absolute URL ending in `/`, use HTTPS off loopback, and contain at most 512
 characters. Server snapshot intake checks the service key before reading the body, stores the first snapshot,
 and queues a late append for that first write. A resend that loses the pending write also repairs a missed
-enqueue when the accepted report has an issue number and its snapshot state is `None`. Comment claims make
-duplicate appends harmless. Snapshots are matched to the report's authenticated subject.
+enqueue when the accepted report has a record whose snapshot state is `None`, even before its issue number
+exists. The append worker redelivers until the issue exists, and comment claims make duplicate appends
+harmless. Snapshots are matched to the report's authenticated subject.
 The worker validates section keys, then writes a public snapshot document holding only `reportId`, `capturedAt`
 and `sections` to `server.json` and the viewer. The authenticated subject never reaches a public blob, and the
 public viewer renders with no reporter identity. Issue composition uses the private report record.
@@ -32,6 +33,6 @@ snapshot lifecycle rule must target `snapshots/` only.
 GitHub failures and storage faults propagate to the host. If writing the release marker also fails, recovery
 falls back to lease expiry. Exhausting 64 epochs still throws for unfinished work and needs operator recovery.
 The remaining duplicate windows are a crash or a failed result marker write after a successful GitHub write,
-and a transport timeout that hides a successful POST. Both leave the claim unreleased, and a takeover after
-lease expiry can repeat that write. A holder must finish within its lease, since this storage seam cannot
+where a takeover after lease expiry can repeat that write, and a transport timeout that hides a successful
+POST, which releases the claim like any other GitHub failure. A holder must finish within its lease, since this storage seam cannot
 fence a GitHub call from an expired holder.

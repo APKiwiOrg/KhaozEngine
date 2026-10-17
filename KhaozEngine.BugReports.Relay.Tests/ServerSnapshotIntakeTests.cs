@@ -171,7 +171,10 @@ public sealed class ServerSnapshotIntakeTests
         await WorkerFixtures.AcceptAsync(harness);
         await WorkerFixtures.SendAsync(harness);
         Assert.Equal(202, (await WorkerFixtures.SendAsync(harness, WorkerFixtures.Snapshot(tick: 99))).StatusCode);
-        Assert.Equal(1, harness.Work.Count);
+        // The losing resend still repairs a possibly lost append, and the append worker dedupes the pair.
+        Assert.Equal(2, harness.Work.Count);
+        while (harness.Work.TryDequeue(out ReportWorkItem? item))
+            Assert.Equal(new ReportWorkItem(ReportWorkKind.AppendServerSnapshot, Id), item);
         ServerSnapshotWire pending = BugReportJson.DeserializeServerSnapshot(
             (await harness.Records.LoadPendingSnapshotAsync(Id, Ct))!.Value.Span);
         Assert.Equal(42, pending.Sections["server"].GetProperty("tick").GetInt32());

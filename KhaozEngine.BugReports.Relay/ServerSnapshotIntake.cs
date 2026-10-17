@@ -46,8 +46,10 @@ internal sealed class ServerSnapshotIntake(BugReportRelayOptions options, Report
         {
             if (!wrote)
             {
+                // A resend repairs a lost append enqueue even while CreateIssue is in flight. The append worker
+                // waits for the issue number, and comment claims make a repeated append harmless.
                 ReportRecord? record = await records.LoadReportAsync(reportId, ct).ConfigureAwait(false);
-                if (record?.IssueNumber is null || record.ServerSnapshot != ServerSnapshotState.None)
+                if (record is null || record.ServerSnapshot != ServerSnapshotState.None)
                     return RelayResponses.Accepted(reportId);
             }
             await work.EnqueueAsync(new ReportWorkItem(ReportWorkKind.AppendServerSnapshot, reportId), ct).ConfigureAwait(false);

@@ -953,7 +953,8 @@ subresource layout and has no texture to generate from.
 action waiting for a pass, so a blit opened over it would read the attachment as it was before the clear, or be
 overwritten by the clear at `End`. `CopyTexture`, `CopyTextureSubresource` and the swapchain copy end that pass
 first, which is the same empty clear pass `End` and a framebuffer change use, and does nothing when no clear is
-pending. Direct3D 11 and Vulkan clear at the call, so the three backends agree. `GenerateMipmaps` does not
+pending. Direct3D 11 records its clear at the call, and Vulkan defers a clear until its pass opens and flushes it
+before a copy, so the three backends agree. `GenerateMipmaps` does not
 flush a pending clear yet ([#1432](https://github.com/APKiwiOrg/KhaozEngine/issues/1432)).
 
 `CopyTextureSubresource` rejects an out-of-range mip as `mipLevel` and an out-of-range array layer as

@@ -47,7 +47,7 @@ treated as a failed send, and its bundle stays queued.
 
 | Sink | Does |
 | --- | --- |
-| `HttpRelaySink(http, relayBase, bearerToken)` | Posts to `{relay}/bug-reports` with the bearer token and `Idempotency-Key`, retrying through `HttpRetry`. Sent only for a 2xx whose body is an `IntakeAccepted` echoing the report id. Any other 2xx is Queued with `unconfirmed`. Rejected only for a 400, 403, 413 or 422 whose body is a `RelayError`. No token, a transport fault and every other status, 401, 404 and 5xx included, are Queued, a 408, 429 or 5xx with any `Retry-After` hint. |
+| `HttpRelaySink(http, relayBase, bearerToken)` | Posts to `{relay}/bug-reports` with the bearer token and `Idempotency-Key`, retrying through `HttpRetry`. Sent only for a 2xx whose body is an `IntakeAccepted` echoing the report id. Any other 2xx is Queued with `unconfirmed`. Rejected only for a 400, 403, 413 or 422 whose body is a `RelayError`. No token, a transport fault and every other status, 401, 404 and 5xx included, are Queued, a 408, 429 or 5xx with any `Retry-After` hint. The token delegate runs on the submitting thread, a thread pool thread under `BugReportService`, so it must be thread-safe. |
 | `LocalFolderSink(root, openViewer)` | Validates the bundle and writes it, its entries and `viewer.html` to `<root>/<reportId>/`, then opens the page when asked. An invalid bundle is Rejected with the validator's error. For development and offline play. |
 
 `BugReportSubmitter` puts a sink and the queue together and is what the client uses. Every Rejected result, from a

@@ -65,7 +65,10 @@ public sealed class BugReportService : IDisposable
     /// <param name="options">Who the game is, the trigger key, the categories and the clip.</param>
     /// <param name="sink">Where finished reports go, such as <see cref="HttpRelaySink"/> or <see cref="LocalFolderSink"/>.</param>
     /// <param name="queue">Keeps every report on disk until the sink accepts or rejects it.</param>
-    /// <param name="currentSubject">Returns the signed-in account, or null while signed out. Polled every frame.</param>
+    /// <param name="currentSubject">
+    /// Returns the signed-in account, or null while signed out. Polled on the frame thread every frame, and also called on
+    /// the thread that calls <see cref="RetryQueuedAsync"/>, so it must be safe to call from both.
+    /// </param>
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
     /// <exception cref="ArgumentException">An option is invalid.</exception>
     /// <exception cref="ArgumentOutOfRangeException">An option is out of range.</exception>
@@ -176,7 +179,10 @@ public sealed class BugReportService : IDisposable
         _passes = source;
     }
 
-    /// <summary>Sends the queued reports for the signed-in account. Returns how many the sink accepted.</summary>
+    /// <summary>
+    /// Sends the queued reports for the signed-in account. Returns how many the sink accepted. It reads the account
+    /// through the <c>currentSubject</c> delegate on the calling thread, then sends on the thread pool.
+    /// </summary>
     public Task<int> RetryQueuedAsync(CancellationToken cancellationToken) => _flow.RetryQueuedAsync(cancellationToken);
 
     /// <summary>

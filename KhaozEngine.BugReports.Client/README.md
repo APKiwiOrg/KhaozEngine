@@ -25,7 +25,9 @@ var reports = new BugReportService(app, options, sink, queue, () => subject);
 ```
 
 `() => token` returns the bearer token for the relay, and `() => subject` returns the signed-in account, or null
-while signed out. The service polls the subject every frame. A report made while signed out is queued and goes
+while signed out. The service polls the subject every frame. Both run off the frame thread too: the token on the
+thread pool for every send and flush, and the subject on whichever thread calls `RetryQueuedAsync`. Keep them
+thread-safe. A report made while signed out is queued and goes
 with the first account that signs in. Use `new LocalFolderSink(folder, openViewer: true)` in development builds to
 see every report in the browser without a relay.
 

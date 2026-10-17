@@ -26,6 +26,8 @@ namespace KhaozEngine.BugReports;
 /// <item>Every other status is Queued with <c>http_&lt;status&gt;</c>, so the bundle stays for a later flush. A 429,
 /// 408 or 5xx carries the response's <c>Retry-After</c> hint.</item>
 /// </list>
+/// <para>The token delegate is called once per submit on the thread that submits. Under
+/// <c>BugReportService</c> that is always a thread pool thread, never the frame thread, so it must be thread-safe.</para>
 /// </summary>
 public sealed class HttpRelaySink : IBugReportSink
 {
@@ -41,7 +43,10 @@ public sealed class HttpRelaySink : IBugReportSink
     /// <summary>Creates a sink for one relay.</summary>
     /// <param name="http">The client to send with. Not disposed by the sink.</param>
     /// <param name="relayBase">The relay's absolute http or https base address. A missing trailing slash is added.</param>
-    /// <param name="bearerToken">Reads the current session token on each submit. Null or blank queues without a request.</param>
+    /// <param name="bearerToken">
+    /// Reads the current session token on each submit, on the submitting thread, which is a thread pool thread under
+    /// <c>BugReportService</c>. Null or blank queues without a request.
+    /// </param>
     public HttpRelaySink(HttpClient http, Uri relayBase, Func<string?> bearerToken)
     {
         ArgumentNullException.ThrowIfNull(http);

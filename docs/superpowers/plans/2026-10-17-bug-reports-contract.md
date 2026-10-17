@@ -247,7 +247,7 @@ public interface IBugReportSink
 public sealed class HttpRelaySink : IBugReportSink
 {
     public const string UnconfirmedError = "unconfirmed";
-    public HttpRelaySink(HttpClient http, Uri relayBase, Func<string?> bearerToken);
+    public HttpRelaySink(HttpClient http, Uri relayBase, Func<string?> bearerToken);   // token read on a pool thread
 }
 // HttpRelaySink results: Sent only for a 2xx IntakeAccepted whose ReportId equals the submission's. Any other 2xx is
 // Queued "unconfirmed". Rejected only for 400, 403, 413 or 422 with a RelayError body. Everything else is Queued
@@ -311,7 +311,8 @@ public sealed class BugReportService : IDisposable
     public bool Begin();                             // the menu path, false when a report is already open
     public event Action<string>? ReportCaptured;     // report id, raised in the trigger frame
     public void SetRecordingEnabled(bool enabled);
-    public Task<int> RetryQueuedAsync(CancellationToken cancellationToken);   // flushes for currentSubject()
+    public Task<int> RetryQueuedAsync(CancellationToken cancellationToken);   // flushes for currentSubject(), returns sent
+    // currentSubject is called on the frame thread every frame and on the thread that calls RetryQueuedAsync.
     // E2 additions
     public ActionMapController TriggerControls { get; }
     public RecentLogSink RecentLog { get; }

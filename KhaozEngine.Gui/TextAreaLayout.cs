@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using KhaozEngine.Render2D;
 
 namespace KhaozEngine.Gui
@@ -39,6 +40,9 @@ namespace KhaozEngine.Gui
         {
             if (lines.Count == 0) return (0, 0f);
             caret = Math.Clamp(caret, 0, text.Length);
+            Debug.Assert(caret == 0 || caret == text.Length
+                || !(char.IsHighSurrogate(text[caret - 1]) && char.IsLowSurrogate(text[caret])),
+                "The caret must sit on a scalar boundary, never inside a surrogate pair.");
             int line = LineOf(lines, caret);
             TextAreaLine l = lines[line];
             int end = Math.Min(caret, l.Start + l.Length);

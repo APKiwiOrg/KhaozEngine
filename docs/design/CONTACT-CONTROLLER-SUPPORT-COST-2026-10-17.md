@@ -261,6 +261,21 @@ research 2 projected. The stairs box, hull and mesh Finds (60 us), the hidden cr
 stairs, crate and pushed seat dry ticks (133.6 to 477.5 us against 111 to 124 us) still miss. These are the rows
 lossless work cannot reach, and they wait for an owner ruling.
 
+**Ruling SC-18. Rows SG-12 cannot compare with legacy are judged on absolute limits and a deterministic bound.**
+Owner decision 2026-10-18, option B. Two kinds of ordinary row reject today on fixed codes while within their time:
+- `L`: legacy has no successful geometry on the scene (the sphere and capsule dry ticks), so the legacy-relative
+  term `legacy + max(100 us, 0.25 legacy)` cannot be computed. These rows are judged on the absolute SG-12 ceiling
+  alone (scaled by `k` on hosted runs), with every other precondition unchanged.
+- `E`: the tick is outside the comparable moving single-mode envelope (stationary, descending landing and final
+  clamp dry ticks, and the explicit ticks). SG-12 says such ticks "report the full measured envelope and
+  deterministic bound" and "cannot be hidden in the ordinary row". They are judged on the absolute SG-12 tick
+  ceiling plus a deterministic bound: the tick's substep count and its Find, sweep and penetration query counts
+  stay within the controller's own caps, taken from the controller constants, never from the measured output. The
+  record reports their full envelope in its own table, apart from the ordinary comparable rows.
+No limit is raised and the legacy-relative term still binds every row where it can be computed. Cost if wrong: a
+complex tick that is slow but under 1 ms passes without a legacy comparison, which the SG-21 aggregate budget at
+phase 6 still judges.
+
 ## Out of scope
 
 Dense-row time (SC-1), cross-tick or cross-body result caching (SG-15

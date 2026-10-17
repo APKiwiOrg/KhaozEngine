@@ -122,3 +122,52 @@ Unmodified reports, log and TRX with their hashes are retained under
 Root verified the run head and workflow SHA, manifest hash, exact frame and outcome counts, zero
 allocations, limits, environment and topology identity, and equality of the standalone condition reports
 with the unit report's embedded copies. The hosted job completed in 1 minute 58 seconds.
+
+## Repeat after cost unit 3
+
+The owner approved one further pilot with the same workload and limits after the four audited kernel
+initialization annotations. Unit 3 passed source review and 361 affected headless tests. Its native
+correctness evidence was completed by [the targeted platform confirmation](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39009739262),
+with 65 tests passed and zero skipped on each backend, 18 exact golden comparisons and Vulkan sync validation.
+
+The [first workflow attempt](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39010677007) stopped at manifest
+parsing because the authorization reference exceeded the existing 200-character limit. No session opened
+and no frames ran. Only that reference was shortened before continuing the still-unexecuted approved pilot.
+The [completed pilot](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39010898723) ran on
+`284ebd091ace2759d7c771270adcccff4d63c3f9`, with manifest SHA-256
+`b55ea5fea66aa24b6ab69a68685d28a6f0bc1e0628db95f44bada5697774322e`.
+There were two workflow attempts and exactly one executed measurement pair.
+
+One test executed and passed with zero skips. Both conditions completed four warm-up and eight measured
+frames. All eight measured coverage-on actor frames were accepted and Covered, with zero declines,
+fallbacks and errors. Every measured allocation window, including the whole frame, remained zero.
+Environment, process identity and topology matched between conditions. Neither cooperative limit was exceeded.
+
+| Mean CPU span, ms per frame | Coverage off | Coverage on |
+| --- | ---: | ---: |
+| Preparation | 0.029912 | 66.000616 |
+| Submission | 0.080944 | 0.082732 |
+| Reservation | 0.001210 | 0.023259 |
+| Render resolution and certification | 0.018863 | 37.387357 |
+| Complete skinned preparation | 4.319321 | 2.341869 |
+| Motion history commit | 0.000567 | 0.004901 |
+| Sum of disjoint preparation spans | 4.450816 | 105.840735 |
+| Whole frame wall time | 10.486653 | 106.333601 |
+
+Added preparation was **101.389919 ms per frame**. Whole frame wall time increased by 95.846948 ms.
+Coverage-on geometry construction averaged 31.247392 ms, geometry certification 33.506386 ms and render
+certification 37.297676 ms. These nested diagnostic spans are already included in the table.
+Coverage-on whole-frame median was 88.992395 ms and maximum was 180.063770 ms. Warm-up maximum was
+413.375140 ms. The final condition's elapsed unit clock before publication was 3066.332292 ms.
+
+This host reported Intel Xeon Platinum 8573C, four processors, Ubuntu 26.04.1 and .NET 10.0.13, with
+default tiered compilation and PGO. Earlier pilots ran on different AMD hosts. This short sizing run cannot
+establish a percentage speedup or regression from unit 3. It does show that added cost remains high.
+The allocation gate passes. The 32-actor CPU and native GPU gates remain unproved. Further source work
+is needed before a larger measurement, and this pilot's approval is consumed.
+
+Unmodified reports, log and TRX, the failed pre-measurement attempt, and their hashes are retained under
+[`equipment-coverage-cost/2026-10-17-a1-after-unit3`](equipment-coverage-cost/2026-10-17-a1-after-unit3).
+Root verified the exact run head, workflow pin, manifest hash, frame and outcome counts, allocation
+windows, limits, condition identity and equality of standalone reports with the embedded copies.
+The successful hosted job completed in 1 minute 59 seconds.

@@ -1,0 +1,63 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="1f58e0da-8382-4767-8960-65c0b5d64280" name="@runnervmdkmh8 2026-10-17 06:40:47" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-10-17T06:40:47.5399325+00:00" queuing="2026-10-17T06:40:47.5399326+00:00" start="2026-10-17T06:40:46.8371159+00:00" finish="2026-10-17T06:40:47.5464519+00:00" />
+  <TestSettings name="default" id="dfc5d2bc-5f5a-49e6-87b2-888d07d966ae">
+    <Deployment runDeploymentRoot="_runnervmdkmh8_2026-10-17_06_40_47" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="7978355d-a785-494e-a834-0ec5d17dd990" testId="9ff9b8a9-95c7-bd6d-29a6-b34584dfd708" testName="KhaozEngine.Tests.CoverageCost.CoverageCostTests.Measure_authorized_case(name: &quot;typical-a1-cpuskin-full&quot;)" computerName="runnervmdkmh8" duration="00:00:00.0217461" startTime="2026-10-17T06:40:47.4379831+00:00" endTime="2026-10-17T06:40:47.4380042+00:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="7978355d-a785-494e-a834-0ec5d17dd990">
+      <Output>
+        <ErrorInfo>
+          <Message>System.IO.InvalidDataException : Coverage cost manifest authorization.reference must be 1 to 200 characters without surrounding whitespace.</Message>
+          <StackTrace>   at KhaozEngine.Tests.Gpu.CoverageCostManifest.Label(Dictionary`2 owner, String path) in /home/runner/work/KhaozEngine/KhaozEngine/KhaozEngine.Render.Tests/Gpu/CoverageCostManifest.cs:line 205
+   at KhaozEngine.Tests.Gpu.CoverageCostManifest.Build(Dictionary`2 root, String name, Boolean coverage, String sha) in /home/runner/work/KhaozEngine/KhaozEngine/KhaozEngine.Render.Tests/Gpu/CoverageCostManifest.cs:line 122
+   at KhaozEngine.Tests.Gpu.CoverageCostManifest.ParsePair(ReadOnlySpan`1 utf8) in /home/runner/work/KhaozEngine/KhaozEngine/KhaozEngine.Render.Tests/Gpu/CoverageCostManifest.cs:line 90
+   at KhaozEngine.Tests.Gpu.CoverageCostPairManifest.Parse(ReadOnlySpan`1 utf8) in /home/runner/work/KhaozEngine/KhaozEngine/KhaozEngine.Render.Tests/Gpu/CoverageCostPair.cs:line 35
+   at KhaozEngine.Tests.Gpu.CoverageCostHarness.MeasureUnit(Byte[] utf8, String expectedName, Action`1 publish) in /home/runner/work/KhaozEngine/KhaozEngine/KhaozEngine.Render.Tests/Gpu/CoverageCostHarness.cs:line 94
+   at KhaozEngine.Tests.CoverageCost.CoverageCostTests.Measure_authorized_case(String name) in /home/runner/work/KhaozEngine/KhaozEngine/tools/EquipmentCoverage.Cost.Tests/CoverageCostTests.cs:line 49
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+   at System.Reflection.MethodBaseInvoker.InvokeDirectByRefWithFewArgs(Object obj, Span`1 copyOfArgs, BindingFlags invokeAttr)</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="KhaozEngine.Tests.CoverageCost.CoverageCostTests.Measure_authorized_case(name: &quot;typical-a1-cpuskin-full&quot;)" storage="/home/runner/work/khaozengine/khaozengine/tools/equipmentcoverage.cost.tests/bin/release/net10.0/equipmentcoverage.cost.tests.dll" id="9ff9b8a9-95c7-bd6d-29a6-b34584dfd708">
+      <Execution id="7978355d-a785-494e-a834-0ec5d17dd990" />
+      <TestMethod codeBase="/home/runner/work/KhaozEngine/KhaozEngine/tools/EquipmentCoverage.Cost.Tests/bin/Release/net10.0/EquipmentCoverage.Cost.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="KhaozEngine.Tests.CoverageCost.CoverageCostTests" name="Measure_authorized_case" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="9ff9b8a9-95c7-bd6d-29a6-b34584dfd708" executionId="7978355d-a785-494e-a834-0ec5d17dd990" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Results Not in a List" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="All Loaded Results" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Failed">
+    <Counters total="1" executed="1" passed="0" failed="1" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v2.8.2+699d445a1a (64-bit .NET 10.0.13)
+[xUnit.net 00:00:00.07]   Discovering: EquipmentCoverage.Cost.Tests
+[xUnit.net 00:00:00.12]   Discovered:  EquipmentCoverage.Cost.Tests
+[xUnit.net 00:00:00.12]   Starting:    EquipmentCoverage.Cost.Tests
+[xUnit.net 00:00:00.19]       System.IO.InvalidDataException : Coverage cost manifest authorization.reference must be 1 to 200 characters without surrounding whitespace.
+[xUnit.net 00:00:00.19]       Stack Trace:
+[xUnit.net 00:00:00.19]         /home/runner/work/KhaozEngine/KhaozEngine/KhaozEngine.Render.Tests/Gpu/CoverageCostManifest.cs(205,0): at KhaozEngine.Tests.Gpu.CoverageCostManifest.Label(Dictionary`2 owner, String path)
+[xUnit.net 00:00:00.19]         /home/runner/work/KhaozEngine/KhaozEngine/KhaozEngine.Render.Tests/Gpu/CoverageCostManifest.cs(122,0): at KhaozEngine.Tests.Gpu.CoverageCostManifest.Build(Dictionary`2 root, String name, Boolean coverage, String sha)
+[xUnit.net 00:00:00.19]         /home/runner/work/KhaozEngine/KhaozEngine/KhaozEngine.Render.Tests/Gpu/CoverageCostManifest.cs(90,0): at KhaozEngine.Tests.Gpu.CoverageCostManifest.ParsePair(ReadOnlySpan`1 utf8)
+[xUnit.net 00:00:00.20]         /home/runner/work/KhaozEngine/KhaozEngine/KhaozEngine.Render.Tests/Gpu/CoverageCostPair.cs(35,0): at KhaozEngine.Tests.Gpu.CoverageCostPairManifest.Parse(ReadOnlySpan`1 utf8)
+[xUnit.net 00:00:00.20]         /home/runner/work/KhaozEngine/KhaozEngine/KhaozEngine.Render.Tests/Gpu/CoverageCostHarness.cs(94,0): at KhaozEngine.Tests.Gpu.CoverageCostHarness.MeasureUnit(Byte[] utf8, String expectedName, Action`1 publish)
+[xUnit.net 00:00:00.20]         /home/runner/work/KhaozEngine/KhaozEngine/tools/EquipmentCoverage.Cost.Tests/CoverageCostTests.cs(49,0): at KhaozEngine.Tests.CoverageCost.CoverageCostTests.Measure_authorized_case(String name)
+[xUnit.net 00:00:00.20]            at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+[xUnit.net 00:00:00.20]            at System.Reflection.MethodBaseInvoker.InvokeDirectByRefWithFewArgs(Object obj, Span`1 copyOfArgs, BindingFlags invokeAttr)
+[xUnit.net 00:00:00.20]   Finished:    EquipmentCoverage.Cost.Tests
+</StdOut>
+    </Output>
+    <RunInfos>
+      <RunInfo computerName="runnervmdkmh8" outcome="Error" timestamp="2026-10-17T06:40:47.4344606+00:00">
+        <Text>[xUnit.net 00:00:00.19]     KhaozEngine.Tests.CoverageCost.CoverageCostTests.Measure_authorized_case(name: "typical-a1-cpuskin-full") [FAIL]</Text>
+      </RunInfo>
+    </RunInfos>
+  </ResultSummary>
+</TestRun>

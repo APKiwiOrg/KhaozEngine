@@ -1,0 +1,37 @@
+[
+  {
+    "file": "pre-measurement-failure/run-1.log",
+    "sha256": "efefbafa6e8892a86c2ec9cc3e41315bd16aa315ff124f7cfcc1f7a97a72561f",
+    "bytes": 2409
+  },
+  {
+    "file": "pre-measurement-failure/run-1.trx",
+    "sha256": "8a717bb90ccd5ecd55ce195bd32f3c8dcd951fc8c9b80bc045d5a8d0e9a1828d",
+    "bytes": 6908
+  },
+  {
+    "file": "run-1.log",
+    "sha256": "4d660951113e5d784b1c5f7120389896f798df1fdfeb3c0d24c1f3cfb44a717b",
+    "bytes": 541
+  },
+  {
+    "file": "run-1.trx",
+    "sha256": "303acc4d96fd3f734af5c9aae3064b07ee55492ec168585c5a57d0e713993fee",
+    "bytes": 255395
+  },
+  {
+    "file": "typical-a1-cpuskin-full-20261017T064418159Z-condition-1.json",
+    "sha256": "c66871d7826269092cb7c79b62679244a159bd52a61ca9e293eb4f4a17996e0c",
+    "bytes": 27086
+  },
+  {
+    "file": "typical-a1-cpuskin-full-20261017T064418159Z-condition-2.json",
+    "sha256": "b959edd772e584503f9c77d6e2dfa0322475b9550a7d744980bad2e391e00623",
+    "bytes": 31336
+  },
+  {
+    "file": "typical-a1-cpuskin-full-20261017T064418159Z-unit.json",
+    "sha256": "693a0bd7da50fa7a9ff865a9b522235c81fd13d810dba86f630253dee64adf2e",
+    "bytes": 67724
+  }
+]

@@ -1,0 +1,7 @@
+stress-test: run 1 KE_COVERAGE_COST_REPORTS=/home/runner/work/_temp/stress/artifacts/run-1
+Test run for /home/runner/work/KhaozEngine/KhaozEngine/tools/EquipmentCoverage.Cost.Tests/bin/Release/net10.0/EquipmentCoverage.Cost.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: /home/runner/work/_temp/stress/run-1.trx
+
+Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 3 s - EquipmentCoverage.Cost.Tests.dll (net10.0)
+stress-test: run 1 dotnet test exit 0

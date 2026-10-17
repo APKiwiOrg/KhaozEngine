@@ -1,0 +1,997 @@
+{
+  "schema": "khaozengine.coverage-cost-report/1",
+  "unit": "typical-a1-cpuskin-full",
+  "status": "completed",
+  "reason": "",
+  "synthetic": false,
+  "manifest": {
+    "sha256": "b55ea5fea66aa24b6ab69a68685d28a6f0bc1e0628db95f44bada5697774322e",
+    "case": "typical-a1-cpuskin-full-on",
+    "actors": 1,
+    "coverage": "on",
+    "gpuSkinning": false,
+    "fixture": "typical",
+    "passes": "full",
+    "backend": "recording-cpu",
+    "warmupFrames": 4,
+    "measuredFrames": 8,
+    "authorizationIdentity": "coverage-pilot-20261017-a1-after-unit3-once",
+    "authorizedBy": "repository owner",
+    "authorizationReference": "Owner approval 2026-10-17 for one repeat hosted CPU pilot after cost unit 3, one iteration, no added load. KhaozEngine issue 1418."
+  },
+  "environment": [
+    {
+      "name": "runId",
+      "value": "c0f77fc066e644e3a0803b4ba8a24c92"
+    },
+    {
+      "name": "processId",
+      "value": "3229"
+    },
+    {
+      "name": "commit",
+      "value": "284ebd091ace2759d7c771270adcccff4d63c3f9"
+    },
+    {
+      "name": "runtime",
+      "value": ".NET 10.0.13"
+    },
+    {
+      "name": "os",
+      "value": "Ubuntu 26.04.1 LTS"
+    },
+    {
+      "name": "architecture",
+      "value": "X64"
+    },
+    {
+      "name": "cpu",
+      "value": "INTEL(R) XEON(R) PLATINUM 8573C"
+    },
+    {
+      "name": "processorCount",
+      "value": "4"
+    },
+    {
+      "name": "runner",
+      "value": "GitHub Actions 1000011417 Linux ubuntu26 20261012.163.1"
+    },
+    {
+      "name": "gc",
+      "value": "server=False latency=Interactive"
+    },
+    {
+      "name": "tieredCompilation",
+      "value": "default"
+    },
+    {
+      "name": "tieredPgo",
+      "value": "default"
+    },
+    {
+      "name": "stopwatchFrequency",
+      "value": "1000000000"
+    },
+    {
+      "name": "stopwatchHighResolution",
+      "value": "True"
+    }
+  ],
+  "session": {
+    "backend": "recording-cpu",
+    "adapter": "none",
+    "adapterClass": "recording",
+    "camera": "IsoCamera3D.Frame(center \u003C0, 0, 0\u003E, size \u003C2.5, 1, 1\u003E), near 0.1, frustum culling on",
+    "light": "directional \u003C0.3, -0.4, -1\u003E with cascaded shadow maps, one dynamic shadowed point light radius 3 at \u003C0, 0, 2\u003E near actor 0, target outlines on every actor, temporal resolve forced",
+    "layout": "1 actors on a 1-column grid at 3 x 1.5 world units, each a 50 x 20 cell host at spacing 0.05, poses alternate lifted and bent each frame, 1280 x 720 display target",
+    "timing": "Stopwatch ticks, Scene3D.EnableTiming on, coverage stage, resolution and surface observers installed, no GPU",
+    "topology": {
+      "sourceVertices": 1092,
+      "sourceTriangles": 2000,
+      "eligibleTriangles": 200,
+      "refinedSourceTriangles": 96,
+      "finalVertices": 1258,
+      "finalTriangles": 2332,
+      "commands": 2,
+      "materials": 2,
+      "refinementLevels": "2",
+      "regions": 2,
+      "fingerprint": "1503853b3534a414f7fdf74b8f03fd74d13c83a96eca6a99c32448001d2bf928"
+    }
+  },
+  "warmupFrames": 4,
+  "measuredFrames": 8,
+  "spans": [
+    {
+      "name": "warmup.frame.wall",
+      "unit": "ms/frame",
+      "status": "measured",
+      "samples": 4,
+      "mean": 269.2962505,
+      "min": 150.75259499999999,
+      "p50": 220.0177,
+      "p95": 413.37514,
+      "max": 413.37514,
+      "includes": "completed warm-up frame wall times, kept as sizing evidence"
+    },
+    {
+      "name": "prepare.total",
+      "unit": "ms/frame",
+      "status": "measured",
+      "samples": 8,
+      "mean": 66.00061625000001,
+      "min": 48.299461,
+      "p50": 56.558848,
+      "p95": 108.75682499999999,
+      "max": 108.75682499999999,
+      "includes": "public HostCoverageBinding.TryPrepare per actor: equipment staging, skinning, geometry evaluation, interpolation and reductions"
+    },
+    {
+      "name": "prepare.skinning",
+      "unit": "ms/frame",
+      "status": "measured",
+      "samples": 8,
+      "mean": 0.101088,
+      "min": 0.043837999999999995,
+      "p50": 0.053964,
+      "p95": 0.24845499999999998,
+      "max": 0.24845499999999998,
+      "includes": "covered source vertex skinning inside staging"
+    },
+    {
+      "name": "prepare.geometryEvaluation",
+      "unit": "ms/frame",
+      "status": "measured",
+      "samples": 8,
+      "mean": 64.753777875,
+      "min": 47.975583,
+      "p50": 56.231688999999996,
+      "p95": 101.2941,
+      "max": 101.2941,
+      "includes": "CoverageEvaluator.TryEvaluateGeometry, containing prepare.geometryCertification"
+    },
+    {
+      "name": "prepare.geometryCertification",
+      "unit": "ms/frame",
+      "status": "measured",
+      "samples": 8,
+      "mean": 33.506386125,
+      "min": 25.213603,
+      "p50": 31.624184999999997,
+      "p95": 49.514132,
+      "max": 49.514132,
+      "includes": "CoverageCertification.Certify inside the evaluator"
+    },
+    {
+      "name": "prepare.geometryConstruction",
+      "unit": "ms/frame",
+      "status": "derived",
+      "samples": 8,
+      "mean": 31.24739175,
+      "min": 20.801413999999998,
+      "p50": 22.761979999999998,
+      "p95": 51.779968,
+      "max": 51.779968,
+      "includes": "geometry evaluation less geometry certification: frames, interpolation, construction, core correction and normals"
+    },
+    {
+      "name": "prepare.other",
+      "unit": "ms/frame",
+      "status": "derived",
+      "samples": 8,
+      "mean": 1.145750375,
+      "min": 0.22714199999999998,
+      "p50": 0.272499,
+      "p95": 7.21427,
+      "max": 7.21427,
+      "includes": "prepare.total less skinning and geometry evaluation"
+    },
+    {
+      "name": "submission",
+      "unit": "ms/frame",
+      "status": "measured",
+      "samples": 8,
+      "mean": 0.082732375,
+      "min": 0.056611999999999996,
+      "p50": 0.072792,
+      "p95": 0.121888,
+      "max": 0.121888,
+      "includes": "queueing host, equipment and outline draws, with coverage draw validation"
+    },
+    {
+      "name": "reserve",
+      "unit": "ms/frame",
+      "status": "measured",
+      "samples": 8,
+      "mean": 0.023259375,
+      "min": 0.017384,
+      "p50": 0.021122,
+      "p95": 0.037764,
+      "max": 0.037764,
+      "includes": "Scene3D.PrepareFrame resource reservation"
+    },
+    {
+      "name": "encode.total",
+      "unit": "ms/frame",
+      "status": "measured",
+      "samples": 8,
+      "mean": 40.18809775,
+      "min": 30.578252,
+      "p50": 34.857315,
+      "p95": 71.115788,
+      "max": 71.115788,
+      "includes": "Scene3D.RenderInternal into a null command list on the recording device, not a native backend encode"
+    },
+    {
+      "name": "encode.resolution",
+      "unit": "ms/frame",
+      "status": "measured",
+      "samples": 8,
+      "mean": 37.38735675,
+      "min": 29.400574,
+      "p50": 31.311833,
+      "p95": 68.199187,
+      "max": 68.199187,
+      "includes": "PrepareCoverageRendering: pass capture, spheres and render certification"
+    },
+    {
+      "name": "encode.renderCertification",
+      "unit": "ms/frame",
+      "status": "measured",
+      "samples": 8,
+      "mean": 37.297675749999996,
+      "min": 29.317914,
+      "p50": 31.19745,
+      "p95": 68.109183,
+      "max": 68.109183,
+      "includes": "CoverageCertification.Validate per complete preparation"
+    },
+    {
+      "name": "encode.resolutionOther",
+      "unit": "ms/frame",
+      "status": "derived",
+      "samples": 8,
+      "mean": 0.089681,
+      "min": 0.061184999999999996,
+      "p50": 0.086199,
+      "p95": 0.114383,
+      "max": 0.114383,
+      "includes": "resolution less render certification"
+    },
+    {
+      "name": "encode.skinnedPreparation",
+      "unit": "ms/frame",
+      "status": "measured",
+      "samples": 8,
+      "mean": 2.341869375,
+      "min": 0.677411,
+      "p50": 0.8824219999999999,
+      "p95": 9.364051,
+      "max": 9.364051,
+      "includes": "the whole PrepareSkinnedDraws: surface append, ordinary skinning, coverage motion recording and skinned upload"
+    },
+    {
+      "name": "encode.surfaceAppend",
+      "unit": "ms/frame",
+      "status": "measured",
+      "samples": 8,
+      "mean": 0.7117246249999999,
+      "min": 0.048492,
+      "p50": 0.062775,
+      "p95": 5.2566619999999995,
+      "max": 5.2566619999999995,
+      "includes": "AppendCoverageSurfaces, a child of encode.skinnedPreparation, informational"
+    },
+    {
+      "name": "encode.ordinarySkinning",
+      "unit": "ms/frame",
+      "status": "measured",
+      "samples": 8,
+      "mean": 0.003516,
+      "min": 0.0024129999999999998,
+      "p50": 0.003191,
+      "p95": 0.005181,
+      "max": 0.005181,
+      "includes": "the uncovered skinned draw loop, CPU vertex skinning on the CPU route or draw records on the GPU route, a child of encode.skinnedPreparation, informational"
+    },
+    {
+      "name": "encode.skinnedUpload",
+      "unit": "ms/frame",
+      "status": "measured",
+      "samples": 8,
+      "mean": 0.06091124999999999,
+      "min": 0.041103,
+      "p50": 0.057189,
+      "p95": 0.07643699999999999,
+      "max": 0.07643699999999999,
+      "includes": "PrepareGpuSkinnedFrame and UploadCpuSkinnedFrame, a child of encode.skinnedPreparation, informational"
+    },
+    {
+      "name": "encode.skinnedPreparationOther",
+      "unit": "ms/frame",
+      "status": "derived",
+      "samples": 8,
+      "mean": 1.5657174999999999,
+      "min": 0.560704,
+      "p50": 0.732177,
+      "p95": 4.045618,
+      "max": 4.045618,
+      "includes": "encode.skinnedPreparation less its three timed children: stream setup and coverage motion recording"
+    },
+    {
+      "name": "encode.motionCommit",
+      "unit": "ms/frame",
+      "status": "measured",
+      "samples": 8,
+      "mean": 0.004901124999999999,
+      "min": 0.002911,
+      "p50": 0.0040869999999999995,
+      "p95": 0.007169999999999999,
+      "max": 0.007169999999999999,
+      "includes": "the whole CompleteCoverageEncoding at the end of the render"
+    },
+    {
+      "name": "encode.other",
+      "unit": "ms/frame",
+      "status": "derived",
+      "samples": 8,
+      "mean": 0.4539705,
+      "min": 0.290047,
+      "p50": 0.45076,
+      "p95": 0.7647039999999999,
+      "max": 0.7647039999999999,
+      "includes": "encode.total less resolution, the skinned preparation and the motion commit"
+    },
+    {
+      "name": "encode.pass.shadowDepth",
+      "unit": "ms/frame",
+      "status": "measured",
+      "samples": 8,
+      "mean": 0.07187325041741133,
+      "min": 0.03817800059914589,
+      "p50": 0.06380099803209305,
+      "p95": 0.13056300580501556,
+      "max": 0.13056300580501556,
+      "includes": "Scene3DPassTimingsMs CPU encode, not GPU time"
+    },
+    {
+      "name": "encode.pass.model",
+      "unit": "ms/frame",
+      "status": "measured",
+      "samples": 8,
+      "mean": 0.16187200229614973,
+      "min": 0.09480100125074387,
+      "p50": 0.1003279983997345,
+      "p95": 0.41022801399230957,
+      "max": 0.41022801399230957,
+      "includes": "Scene3DPassTimingsMs CPU encode, not GPU time"
+    },
+    {
+      "name": "encode.pass.transparents",
+      "unit": "ms/frame",
+      "status": "measured",
+      "samples": 8,
+      "mean": 0.00789612508378923,
+      "min": 0.0069170002825558186,
+      "p50": 0.007853999733924866,
+      "p95": 0.008299000561237335,
+      "max": 0.008299000561237335,
+      "includes": "Scene3DPassTimingsMs CPU encode, not GPU time"
+    },
+    {
+      "name": "encode.pass.post",
+      "unit": "ms/frame",
+      "status": "measured",
+      "samples": 8,
+      "mean": 0.04269300028681755,
+      "min": 0.024464000016450882,
+      "p50": 0.031201999634504318,
+      "p95": 0.1240909993648529,
+      "max": 0.1240909993648529,
+      "includes": "Scene3DPassTimingsMs CPU encode, not GPU time"
+    },
+    {
+      "name": "submitWait.wall",
+      "unit": "ms/frame",
+      "status": "unavailable",
+      "samples": 0,
+      "mean": null,
+      "min": null,
+      "p50": null,
+      "p95": null,
+      "max": null,
+      "includes": "completed IGpuDevice.Submit plus WaitForIdle wall time, including submission and CPU wait, not isolated GPU execution"
+    },
+    {
+      "name": "frame.wall",
+      "unit": "ms/frame",
+      "status": "measured",
+      "samples": 8,
+      "mean": 106.333601,
+      "min": 79.360902,
+      "p50": 88.992395,
+      "p95": 180.06377,
+      "max": 180.06377,
+      "includes": "whole session frame wall time, Begin through Present"
+    }
+  ],
+  "metrics": [
+    {
+      "name": "gpu.nativeExecution",
+      "unit": "ms/frame",
+      "status": "unavailable",
+      "value": null,
+      "provenance": "KhaozEngine.Gpu has no timestamp-query API, so isolated GPU execution is not observable"
+    },
+    {
+      "name": "limit.maxFrameMilliseconds",
+      "unit": "ms",
+      "status": "derived",
+      "value": 10000,
+      "provenance": "configured manifest limit"
+    },
+    {
+      "name": "limit.maxWallSeconds",
+      "unit": "s",
+      "status": "derived",
+      "value": 300,
+      "provenance": "configured manifest limit"
+    },
+    {
+      "name": "run.elapsedMilliseconds",
+      "unit": "ms",
+      "status": "measured",
+      "value": 3064.0752509999998,
+      "provenance": "unit deadline clock at the last completed frame"
+    },
+    {
+      "name": "ordinary.cpuSkinnedVertices",
+      "unit": "count",
+      "status": "measured",
+      "value": 0,
+      "provenance": "uncovered source vertices skinned on the CPU route, zero on the GPU route is a measured absence"
+    },
+    {
+      "name": "outcome.actorFrames",
+      "unit": "count",
+      "status": "measured",
+      "value": 8,
+      "provenance": "every submitted actor frame, the denominator for all outcomes"
+    },
+    {
+      "name": "outcome.accepted",
+      "unit": "count",
+      "status": "measured",
+      "value": 8,
+      "provenance": "public preparation accepted"
+    },
+    {
+      "name": "outcome.declined",
+      "unit": "count",
+      "status": "measured",
+      "value": 0,
+      "provenance": "public preparation refused, drawn on the uncovered current pose"
+    },
+    {
+      "name": "outcome.covered",
+      "unit": "count",
+      "status": "measured",
+      "value": 8,
+      "provenance": "render certification presented the covered surface"
+    },
+    {
+      "name": "outcome.fallback",
+      "unit": "count",
+      "status": "measured",
+      "value": 0,
+      "provenance": "render resolution selected the uncovered fallback"
+    },
+    {
+      "name": "outcome.errors",
+      "unit": "count",
+      "status": "measured",
+      "value": 0,
+      "provenance": "exceptions that ended the run"
+    },
+    {
+      "name": "stages.skinned",
+      "unit": "count",
+      "status": "measured",
+      "value": 8,
+      "provenance": "stage observer skinning brackets"
+    },
+    {
+      "name": "stages.evaluated",
+      "unit": "count",
+      "status": "measured",
+      "value": 8,
+      "provenance": "stage observer geometry evaluation brackets"
+    },
+    {
+      "name": "stages.geometryCertified",
+      "unit": "count",
+      "status": "measured",
+      "value": 8,
+      "provenance": "stage observer geometry certification brackets"
+    },
+    {
+      "name": "stages.certified",
+      "unit": "count",
+      "status": "measured",
+      "value": 8,
+      "provenance": "stage observer render certification brackets"
+    },
+    {
+      "name": "evidence.passes",
+      "unit": "count",
+      "status": "measured",
+      "value": 576,
+      "provenance": "captured coverage certification contexts over all actors"
+    },
+    {
+      "name": "evidence.mainVisible",
+      "unit": "count",
+      "status": "measured",
+      "value": 8,
+      "provenance": "covered preparations visible in the main view"
+    },
+    {
+      "name": "evidence.outlineGroups",
+      "unit": "count",
+      "status": "measured",
+      "value": 8,
+      "provenance": "target outline groups rendered"
+    },
+    {
+      "name": "frame.drawCalls",
+      "unit": "count/frame",
+      "status": "measured",
+      "value": 23,
+      "provenance": "RenderFrameStats.DrawCalls recorded into a null command list, not executed on a GPU"
+    },
+    {
+      "name": "frame.trianglesEstimated",
+      "unit": "count/frame",
+      "status": "estimated",
+      "value": 9412,
+      "provenance": "RenderFrameStats.Triangles, an engine estimate"
+    },
+    {
+      "name": "upload.instance.bytesPerFrame",
+      "unit": "bytes/frame",
+      "status": "measured",
+      "value": 536,
+      "provenance": "RenderFrameStats.InstanceUploadBytes"
+    },
+    {
+      "name": "upload.skinned.bytesPerFrame",
+      "unit": "bytes/frame",
+      "status": "measured",
+      "value": 95864,
+      "provenance": "RenderFrameStats.SkinnedUploadBytes"
+    },
+    {
+      "name": "upload.skinnedUniform.bytesPerFrame",
+      "unit": "bytes/frame",
+      "status": "measured",
+      "value": 0,
+      "provenance": "RenderFrameStats.SkinnedUniformUploadBytes"
+    },
+    {
+      "name": "upload.partitioned.bytesPerFrame",
+      "unit": "bytes/frame",
+      "status": "measured",
+      "value": 96400,
+      "provenance": "RenderFrameStats.UploadBytesPartitioned"
+    },
+    {
+      "name": "alloc.prepareSubmit.bytesPerFrame",
+      "unit": "bytes/frame",
+      "status": "measured",
+      "value": 0,
+      "provenance": "GC.GetAllocatedBytesForCurrentThread around preparation and submission"
+    },
+    {
+      "name": "alloc.reserve.bytesPerFrame",
+      "unit": "bytes/frame",
+      "status": "measured",
+      "value": 0,
+      "provenance": "GC.GetAllocatedBytesForCurrentThread around PrepareFrame"
+    },
+    {
+      "name": "alloc.resolution.bytesPerFrame",
+      "unit": "bytes/frame",
+      "status": "measured",
+      "value": 0,
+      "provenance": "GC.GetAllocatedBytesForCurrentThread around coverage resolution"
+    },
+    {
+      "name": "alloc.surface.bytesPerFrame",
+      "unit": "bytes/frame",
+      "status": "measured",
+      "value": 0,
+      "provenance": "GC.GetAllocatedBytesForCurrentThread around surface append"
+    },
+    {
+      "name": "alloc.frame.bytesPerFrame",
+      "unit": "bytes/frame",
+      "status": "measured",
+      "value": 0,
+      "provenance": "GC.GetAllocatedBytesForCurrentThread over the whole frame, including backend submission and harness bookkeeping"
+    },
+    {
+      "name": "unit.elapsedMilliseconds",
+      "unit": "ms",
+      "status": "measured",
+      "value": 3066.332292,
+      "provenance": "unit deadline clock from before the first factory to this report"
+    }
+  ],
+  "capacities": [
+    {
+      "name": "actor.scratch.vertices",
+      "unit": "elements",
+      "status": "measured",
+      "value": 1258,
+      "provenance": "from the last accepted preparation, actor-owned storage that only grows"
+    },
+    {
+      "name": "actor.scratch.triangles",
+      "unit": "elements",
+      "status": "measured",
+      "value": 2332,
+      "provenance": "from the last accepted preparation, actor-owned storage that only grows"
+    },
+    {
+      "name": "actor.preparation.posed",
+      "unit": "elements",
+      "status": "measured",
+      "value": 1092,
+      "provenance": "from the last accepted preparation, actor-owned storage that only grows"
+    },
+    {
+      "name": "actor.preparation.before",
+      "unit": "elements",
+      "status": "measured",
+      "value": 1258,
+      "provenance": "from the last accepted preparation, actor-owned storage that only grows"
+    },
+    {
+      "name": "actor.preparation.candidate",
+      "unit": "elements",
+      "status": "measured",
+      "value": 1258,
+      "provenance": "from the last accepted preparation, actor-owned storage that only grows"
+    },
+    {
+      "name": "actor.preparation.passes",
+      "unit": "elements",
+      "status": "measured",
+      "value": 120,
+      "provenance": "from the last accepted preparation, actor-owned storage that only grows"
+    },
+    {
+      "name": "actor.surfaces.bytesEstimated",
+      "unit": "bytes",
+      "status": "estimated",
+      "value": 472448,
+      "provenance": "six ModelVertex arrays times 64 bytes, excluding object headers and smaller scratch arrays"
+    },
+    {
+      "name": "actors.surfaces.bytesEstimated",
+      "unit": "bytes",
+      "status": "estimated",
+      "value": 472448,
+      "provenance": "actor.surfaces.bytesEstimated times the covered actor count"
+    },
+    {
+      "name": "shared.cpuSkinnedVertexBuffer.bytes",
+      "unit": "bytes",
+      "status": "measured",
+      "value": 80512,
+      "provenance": "read after the last frame, storage only grows"
+    },
+    {
+      "name": "shared.arena.preparations",
+      "unit": "elements",
+      "status": "measured",
+      "value": 4,
+      "provenance": "read after the last frame, storage only grows"
+    },
+    {
+      "name": "shared.arena.equipmentStages",
+      "unit": "elements",
+      "status": "measured",
+      "value": 4,
+      "provenance": "read after the last frame, storage only grows"
+    },
+    {
+      "name": "shared.motion.previousList",
+      "unit": "elements",
+      "status": "measured",
+      "value": 1258,
+      "provenance": "read after the last frame, storage only grows"
+    },
+    {
+      "name": "shared.motion.gpuReserve",
+      "unit": "elements",
+      "status": "measured",
+      "value": 1258,
+      "provenance": "read after the last frame, storage only grows"
+    },
+    {
+      "name": "shared.motion.gpuReserve.bytes",
+      "unit": "bytes",
+      "status": "measured",
+      "value": 15096,
+      "provenance": "read after the last frame, storage only grows"
+    },
+    {
+      "name": "shared.transition.rectangles",
+      "unit": "elements",
+      "status": "measured",
+      "value": 0,
+      "provenance": "read after the last frame, storage only grows"
+    }
+  ],
+  "evidence": [
+    {
+      "name": "certifiedContext.host.main.total",
+      "unit": "count",
+      "status": "measured",
+      "value": 16,
+      "provenance": "render certification contexts tagged by role at capture over measured accepted actor frames, not GPU work"
+    },
+    {
+      "name": "certifiedContext.host.main.minPerActorFrame",
+      "unit": "count",
+      "status": "measured",
+      "value": 2,
+      "provenance": "render certification contexts tagged by role at capture over measured accepted actor frames, not GPU work"
+    },
+    {
+      "name": "certifiedContext.host.main.maxPerActorFrame",
+      "unit": "count",
+      "status": "measured",
+      "value": 2,
+      "provenance": "render certification contexts tagged by role at capture over measured accepted actor frames, not GPU work"
+    },
+    {
+      "name": "certifiedContext.host.motion.total",
+      "unit": "count",
+      "status": "measured",
+      "value": 16,
+      "provenance": "render certification contexts tagged by role at capture over measured accepted actor frames, not GPU work"
+    },
+    {
+      "name": "certifiedContext.host.motion.minPerActorFrame",
+      "unit": "count",
+      "status": "measured",
+      "value": 2,
+      "provenance": "render certification contexts tagged by role at capture over measured accepted actor frames, not GPU work"
+    },
+    {
+      "name": "certifiedContext.host.motion.maxPerActorFrame",
+      "unit": "count",
+      "status": "measured",
+      "value": 2,
+      "provenance": "render certification contexts tagged by role at capture over measured accepted actor frames, not GPU work"
+    },
+    {
+      "name": "certifiedContext.host.outline.total",
+      "unit": "count",
+      "status": "measured",
+      "value": 16,
+      "provenance": "render certification contexts tagged by role at capture over measured accepted actor frames, not GPU work"
+    },
+    {
+      "name": "certifiedContext.host.outline.minPerActorFrame",
+      "unit": "count",
+      "status": "measured",
+      "value": 2,
+      "provenance": "render certification contexts tagged by role at capture over measured accepted actor frames, not GPU work"
+    },
+    {
+      "name": "certifiedContext.host.outline.maxPerActorFrame",
+      "unit": "count",
+      "status": "measured",
+      "value": 2,
+      "provenance": "render certification contexts tagged by role at capture over measured accepted actor frames, not GPU work"
+    },
+    {
+      "name": "certifiedContext.host.cascade.total",
+      "unit": "count",
+      "status": "measured",
+      "value": 48,
+      "provenance": "render certification contexts tagged by role at capture over measured accepted actor frames, not GPU work"
+    },
+    {
+      "name": "certifiedContext.host.cascade.minPerActorFrame",
+      "unit": "count",
+      "status": "measured",
+      "value": 6,
+      "provenance": "render certification contexts tagged by role at capture over measured accepted actor frames, not GPU work"
+    },
+    {
+      "name": "certifiedContext.host.cascade.maxPerActorFrame",
+      "unit": "count",
+      "status": "measured",
+      "value": 6,
+      "provenance": "render certification contexts tagged by role at capture over measured accepted actor frames, not GPU work"
+    },
+    {
+      "name": "certifiedContext.host.pointFace.total",
+      "unit": "count",
+      "status": "measured",
+      "value": 96,
+      "provenance": "render certification contexts tagged by role at capture over measured accepted actor frames, not GPU work"
+    },
+    {
+      "name": "certifiedContext.host.pointFace.minPerActorFrame",
+      "unit": "count",
+      "status": "measured",
+      "value": 12,
+      "provenance": "render certification contexts tagged by role at capture over measured accepted actor frames, not GPU work"
+    },
+    {
+      "name": "certifiedContext.host.pointFace.maxPerActorFrame",
+      "unit": "count",
+      "status": "measured",
+      "value": 12,
+      "provenance": "render certification contexts tagged by role at capture over measured accepted actor frames, not GPU work"
+    },
+    {
+      "name": "certifiedContext.equipment.main.total",
+      "unit": "count",
+      "status": "measured",
+      "value": 32,
+      "provenance": "render certification contexts tagged by role at capture over measured accepted actor frames, not GPU work"
+    },
+    {
+      "name": "certifiedContext.equipment.main.minPerActorFrame",
+      "unit": "count",
+      "status": "measured",
+      "value": 4,
+      "provenance": "render certification contexts tagged by role at capture over measured accepted actor frames, not GPU work"
+    },
+    {
+      "name": "certifiedContext.equipment.main.maxPerActorFrame",
+      "unit": "count",
+      "status": "measured",
+      "value": 4,
+      "provenance": "render certification contexts tagged by role at capture over measured accepted actor frames, not GPU work"
+    },
+    {
+      "name": "certifiedContext.equipment.motion.total",
+      "unit": "count",
+      "status": "measured",
+      "value": 32,
+      "provenance": "render certification contexts tagged by role at capture over measured accepted actor frames, not GPU work"
+    },
+    {
+      "name": "certifiedContext.equipment.motion.minPerActorFrame",
+      "unit": "count",
+      "status": "measured",
+      "value": 4,
+      "provenance": "render certification contexts tagged by role at capture over measured accepted actor frames, not GPU work"
+    },
+    {
+      "name": "certifiedContext.equipment.motion.maxPerActorFrame",
+      "unit": "count",
+      "status": "measured",
+      "value": 4,
+      "provenance": "render certification contexts tagged by role at capture over measured accepted actor frames, not GPU work"
+    },
+    {
+      "name": "certifiedContext.equipment.outline.total",
+      "unit": "count",
+      "status": "measured",
+      "value": 32,
+      "provenance": "render certification contexts tagged by role at capture over measured accepted actor frames, not GPU work"
+    },
+    {
+      "name": "certifiedContext.equipment.outline.minPerActorFrame",
+      "unit": "count",
+      "status": "measured",
+      "value": 4,
+      "provenance": "render certification contexts tagged by role at capture over measured accepted actor frames, not GPU work"
+    },
+    {
+      "name": "certifiedContext.equipment.outline.maxPerActorFrame",
+      "unit": "count",
+      "status": "measured",
+      "value": 4,
+      "provenance": "render certification contexts tagged by role at capture over measured accepted actor frames, not GPU work"
+    },
+    {
+      "name": "certifiedContext.equipment.cascade.total",
+      "unit": "count",
+      "status": "measured",
+      "value": 96,
+      "provenance": "render certification contexts tagged by role at capture over measured accepted actor frames, not GPU work"
+    },
+    {
+      "name": "certifiedContext.equipment.cascade.minPerActorFrame",
+      "unit": "count",
+      "status": "measured",
+      "value": 12,
+      "provenance": "render certification contexts tagged by role at capture over measured accepted actor frames, not GPU work"
+    },
+    {
+      "name": "certifiedContext.equipment.cascade.maxPerActorFrame",
+      "unit": "count",
+      "status": "measured",
+      "value": 12,
+      "provenance": "render certification contexts tagged by role at capture over measured accepted actor frames, not GPU work"
+    },
+    {
+      "name": "certifiedContext.equipment.pointFace.total",
+      "unit": "count",
+      "status": "measured",
+      "value": 192,
+      "provenance": "render certification contexts tagged by role at capture over measured accepted actor frames, not GPU work"
+    },
+    {
+      "name": "certifiedContext.equipment.pointFace.minPerActorFrame",
+      "unit": "count",
+      "status": "measured",
+      "value": 24,
+      "provenance": "render certification contexts tagged by role at capture over measured accepted actor frames, not GPU work"
+    },
+    {
+      "name": "certifiedContext.equipment.pointFace.maxPerActorFrame",
+      "unit": "count",
+      "status": "measured",
+      "value": 24,
+      "provenance": "render certification contexts tagged by role at capture over measured accepted actor frames, not GPU work"
+    },
+    {
+      "name": "evidence.certifiedActorFrames",
+      "unit": "count",
+      "status": "measured",
+      "value": 8,
+      "provenance": "measured accepted actor frames"
+    },
+    {
+      "name": "recorded.pointFaceMatrices",
+      "unit": "count",
+      "status": "measured",
+      "value": 48,
+      "provenance": "point shadow face matrices scheduled over 8 measured frames, recorded into a null command list, not executed on a GPU"
+    },
+    {
+      "name": "recorded.outlineGroups",
+      "unit": "count",
+      "status": "measured",
+      "value": 8,
+      "provenance": "target outline groups rendered over 8 measured frames, recorded into a null command list, not executed on a GPU"
+    }
+  ],
+  "refusals": [],
+  "budgets": [
+    {
+      "name": "cpu.addedPreparationValidation.typical32",
+      "status": "unproved",
+      "observed": null,
+      "threshold": 2,
+      "unit": "ms/frame",
+      "reason": "a single case cannot prove an added cost, it needs a paired unit"
+    },
+    {
+      "name": "gpu.completedFrameOverhead.native",
+      "status": "unproved",
+      "observed": null,
+      "threshold": 15,
+      "unit": "percent",
+      "reason": "no GPU timestamp-query metric exists and no native GPU route is authorized"
+    },
+    {
+      "name": "alloc.warmCoverage",
+      "status": "pass",
+      "observed": 0,
+      "threshold": 0,
+      "unit": "bytes/frame",
+      "reason": "measured preparation, submission, reserve, resolution and surface windows"
+    }
+  ]
+}

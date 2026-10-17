@@ -1,0 +1,20 @@
+stress-test: run 1 KE_COVERAGE_COST_REPORTS=/home/runner/work/_temp/stress/artifacts/run-1
+Test run for /home/runner/work/KhaozEngine/KhaozEngine/tools/EquipmentCoverage.Cost.Tests/bin/Release/net10.0/EquipmentCoverage.Cost.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:00.19]     KhaozEngine.Tests.CoverageCost.CoverageCostTests.Measure_authorized_case(name: "typical-a1-cpuskin-full") [FAIL]
+  Failed KhaozEngine.Tests.CoverageCost.CoverageCostTests.Measure_authorized_case(name: "typical-a1-cpuskin-full") [21 ms]
+  Error Message:
+   System.IO.InvalidDataException : Coverage cost manifest authorization.reference must be 1 to 200 characters without surrounding whitespace.
+  Stack Trace:
+     at KhaozEngine.Tests.Gpu.CoverageCostManifest.Label(Dictionary`2 owner, String path) in /home/runner/work/KhaozEngine/KhaozEngine/KhaozEngine.Render.Tests/Gpu/CoverageCostManifest.cs:line 205
+   at KhaozEngine.Tests.Gpu.CoverageCostManifest.Build(Dictionary`2 root, String name, Boolean coverage, String sha) in /home/runner/work/KhaozEngine/KhaozEngine/KhaozEngine.Render.Tests/Gpu/CoverageCostManifest.cs:line 122
+   at KhaozEngine.Tests.Gpu.CoverageCostManifest.ParsePair(ReadOnlySpan`1 utf8) in /home/runner/work/KhaozEngine/KhaozEngine/KhaozEngine.Render.Tests/Gpu/CoverageCostManifest.cs:line 90
+   at KhaozEngine.Tests.Gpu.CoverageCostPairManifest.Parse(ReadOnlySpan`1 utf8) in /home/runner/work/KhaozEngine/KhaozEngine/KhaozEngine.Render.Tests/Gpu/CoverageCostPair.cs:line 35
+   at KhaozEngine.Tests.Gpu.CoverageCostHarness.MeasureUnit(Byte[] utf8, String expectedName, Action`1 publish) in /home/runner/work/KhaozEngine/KhaozEngine/KhaozEngine.Render.Tests/Gpu/CoverageCostHarness.cs:line 94
+   at KhaozEngine.Tests.CoverageCost.CoverageCostTests.Measure_authorized_case(String name) in /home/runner/work/KhaozEngine/KhaozEngine/tools/EquipmentCoverage.Cost.Tests/CoverageCostTests.cs:line 49
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+   at System.Reflection.MethodBaseInvoker.InvokeDirectByRefWithFewArgs(Object obj, Span`1 copyOfArgs, BindingFlags invokeAttr)
+Results File: /home/runner/work/_temp/stress/run-1.trx
+
+Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 21 ms - EquipmentCoverage.Cost.Tests.dll (net10.0)
+stress-test: run 1 dotnet test exit 1

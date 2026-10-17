@@ -12,11 +12,11 @@ public sealed class ClearanceTools(QueryService query, MutationService mutate)
     public ClearanceInfo? ClearanceGet()
         => ToolGuard.Guard(query.ClearanceGet);
 
-    [McpServerTool(Name = "clearance_set"), Description("Creates the clearance block, or updates its mesh root, cell size and waiver tag while keeping its rules, as one undo step. The mesh root names the directory holding the archetypes' glb meshes, relative to the world directory and never rooted, because the world file is committed and shared.")]
+    [McpServerTool(Name = "clearance_set"), Description("Creates the clearance block, or replaces its header while keeping its rules, as one undo step. Every call sets all three of the mesh root, the cell size and the waiver tag, and an omitted cellSize or waiverTag resets to its default rather than keeping the current value, so pass the current cellSize and waiverTag (read them with clearance_get) to keep them. The mesh root names the directory holding the archetypes' glb meshes, relative to the world directory and never rooted, because the world file is committed and shared.")]
     public MutationResult ClearanceSet(
         [Description("Mesh directory relative to the world directory, for example ../models. Archetype meshRef paths resolve under it.")] string meshRoot,
-        [Description("Sampling cell edge in metres, from 0.02 to 1. Smaller finds thinner overlaps and costs more.")] float cellSize = 0.1f,
-        [Description("Object tag that exempts an object from every rule, set with object_set_tags. Null for no waiver.")] string? waiverTag = null)
+        [Description("Sampling cell edge in metres, from 0.02 to 1. Smaller finds thinner overlaps and costs more. Omitted means 0.1, even when the block already had another value.")] float cellSize = 0.1f,
+        [Description("Object tag that exempts an object from every rule, set with object_set_tags. Omitted or null means no waiver tag, even when the block already had one, so every previously waived object is checked again.")] string? waiverTag = null)
         => ToolGuard.Guard(() => mutate.ClearanceSet(meshRoot, cellSize, waiverTag));
 
     [McpServerTool(Name = "clearance_rule_set"), Description("Adds a clearance rule, or replaces the rule of the same name in place, as one undo step. Objects whose archetype carries any subject tag must keep their meshes clear of objects whose archetype carries any obstacle tag. Refuses when the world has no clearance block, so run clearance_set first.")]

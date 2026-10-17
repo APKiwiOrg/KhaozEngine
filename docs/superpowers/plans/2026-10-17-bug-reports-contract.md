@@ -106,6 +106,18 @@ public static class BugReportJson
     public static JsonDocumentOptions SectionDocumentOptions { get; }          // depth MaxSectionDepth, no duplicate names
     public static bool IsValidSection(ReadOnlyMemory<byte> json);              // one object, every string decodes
     public static bool IsWellFormedText(string text);                          // false on any lone surrogate
+    // One Serialize<T> returning UTF-8 bytes and one Deserialize<T> over a UTF-8 span per wire document, each
+    // Deserialize throwing JsonException on a malformed, incomplete or duplicate-keyed document:
+    public static byte[] SerializeManifest(BugReportManifest manifest);
+    public static BugReportManifest DeserializeManifest(ReadOnlySpan<byte> json);
+    public static byte[] SerializeClipIndex(ClipIndex index);
+    public static ClipIndex DeserializeClipIndex(ReadOnlySpan<byte> json);
+    public static byte[] SerializeIntakeAccepted(IntakeAccepted value);
+    public static IntakeAccepted DeserializeIntakeAccepted(ReadOnlySpan<byte> json);
+    public static byte[] SerializeRelayError(RelayError value);
+    public static RelayError DeserializeRelayError(ReadOnlySpan<byte> json);
+    public static byte[] SerializeServerSnapshot(ServerSnapshotWire value);
+    public static ServerSnapshotWire DeserializeServerSnapshot(ReadOnlySpan<byte> json);   // also rejects undecodable strings
 }
 public static class BundleErrors { /* stable error codes, E2's choice */ }
 public static class BugReportLimits

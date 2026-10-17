@@ -313,7 +313,7 @@ Windowing + input foundation for the custom MonoGame-free stack.
   or a same-frame tap), for a consumer keeping per-GESTURE state of its own: recompute on that frame, never on
   the release, which reads a world that has moved on since the press. `Gui.ScreenStack.PressBeganOverUi` is
   built on it.
-- **Pointer occlusion** (since 21.2.0) - opt-in covered areas that hit queries treat as misses. Cleared at the
+- **Pointer occlusion** (since 21.3.0) - opt-in covered areas that hit queries treat as misses. Cleared at the
   start of every `Pointer.Update`. With nothing occluded every query reads exactly as before.
   `Gui.WindowStack` is the normal producer.
   - `Occlude(Rect)` adds an occluded area for the rest of the frame.

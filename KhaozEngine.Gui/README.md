@@ -861,11 +861,11 @@ chat.Draw(batch, white);
         closeHovered: pointer.IsPointerIn(close));
     DrawRows(batch, PanelFrame.ContentRect(bounds, stripHeight: 0f));
     ```
-  - `WindowStack` (since 21.2.0) - the z-order of overlapping non-modal windows. It raises a window on open and
+  - `WindowStack` (since 21.3.0) - the z-order of overlapping non-modal windows. It raises a window on open and
     on press, updates open windows top to bottom with every window above occluded on the `Pointer`, and draws
     them bottom to top. Update it before any layer beneath reads the pointer, and draw tooltips and menus after
     its `Draw`. See
-    [Overlapping windows](../docs/USING-KHAOZENGINE.md#overlapping-windows-windowstack-2120).
+    [Overlapping windows](../docs/USING-KHAOZENGINE.md#overlapping-windows-windowstack-2130).
     - `Add(window, band)`, `Remove`, `BringToFront` and `Order` manage registration and order.
     - `Update(pointer, input, dt, receivesInput)` updates the windows and leaves their areas occluded and
       reserved with `BlockRegion` for the layers beneath.

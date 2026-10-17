@@ -155,11 +155,11 @@ These are not style preferences. Breaking them re-introduces the exact bugs this
 4. **An overlay above a still-updating layer must reserve its footprint** with `BlockInputRegion(rect)` every
    frame, and the layer beneath must guard its actions with `IsInputBlocked(point)`. This is half of the
    click-through fix. The other half is `IsTapIn`.
-5. **Overlapping windows go on a `WindowStack`** (21.2.0). Register every non-modal window that can overlap
+5. **Overlapping windows go on a `WindowStack`** (21.3.0). Register every non-modal window that can overlap
    another, and update the stack before any layer beneath it reads the same pointer. Decide every pointer
    behaviour through a `Pointer` hit query or `IsOccluded`, and read raw `Position` only after such a gate. A
    covered area then answers nothing, engine widgets included. See
-   [Overlapping windows](#overlapping-windows-windowstack-2120).
+   [Overlapping windows](#overlapping-windows-windowstack-2130).
 6. **Pass the design viewport to `Pointer.Update` / `InputManager.Update`** so hit-testing lines up with what's
    drawn. `GameApp` does this for you. If you build your own loop, do it yourself.
 7. **`System.Numerics` only** - `Vector2/3/4`, `Matrix4x4`. No XNA / MonoGame types anywhere. (An RGBA color
@@ -944,7 +944,7 @@ interactive layout mid-gesture without a scene transition.
 **Region blocking (the other half of click-through):** `BlockInputRegion(Rect)` from the higher overlay each
 frame; `IsInputBlocked(Vector2)` from the layer beneath before acting. Cleared at the start of every `Update`.
 
-**Occlusion (21.2.0):** `Pointer.Occlude(Rect)` and `Pointer.OccludeAll()` mark an area, or the whole surface,
+**Occlusion (21.3.0):** `Pointer.Occlude(Rect)` and `Pointer.OccludeAll()` mark an area, or the whole surface,
 as covered for the rest of the frame. `IsOccluded(Vector2)` reads it and `ClearOcclusion()` drops it early.
 Every `Pointer.Update` clears it, as it clears blocked regions. Unlike `BlockRegion`, which only answers
 `IsBlocked`, occlusion changes what the hit queries report: `IsTapIn`, `IsTapFromTo`, `IsPressingIn`,
@@ -1919,7 +1919,7 @@ nothing catches that, so make it the first line of the window's update.
 window keeps its placement rule (centred, docked, anchored) across a resize instead of being stranded at an
 absolute position. `Update(pointer, grip)` latches the grab ONCE on the press frame, through
 `Pointer.IsPressOriginFresh` and `Pointer.IsDragStartIn(grip)`, and holds it until the button goes up wherever
-the cursor wanders. Since 21.2.0 an occluded press origin never latches, so of two overlapping windows on a
+the cursor wanders. Since 21.3.0 an occluded press origin never latches, so of two overlapping windows on a
 `WindowStack` only the front one under the press can grab it. Re-reading the
 press origin every frame is the defect this exists to avoid: the grip travels with the window while the press
 origin stays where the button went down, so a window dragged further than its title row is tall moves the grip
@@ -1957,7 +1957,7 @@ What stays in the GAME: the palette values it assigns to `GuiTheme`, the metric 
 wrong for it, which taps it swallows through `BlockRegion`, each window's natural-bounds rule, the grip rect,
 and whatever fills the strip, content and footer bands.
 
-### Overlapping windows (`WindowStack`, 21.2.0)
+### Overlapping windows (`WindowStack`, 21.3.0)
 
 `WindowStack` owns the z-order of a consumer's non-modal windows. Register each window once with
 `Add(window, band)`. The stack raises a window when it opens or is pressed, updates open windows top to
@@ -7671,7 +7671,7 @@ if (camController.OrbitTap) Select(camController.OrbitGesture!.TapPosition);
 
 Gate `UiBlocked` on `GuiSurface.HoverCaptured`, which tests the pointer against every UI rect reserved whichever
 button is pressed, and reads the frozen capture point while captured. `GuiSurface.PointerCaptured` tracks only the
-left button's press origin, so it would let a right drag start on an inventory slot. Since 21.2.0
+left button's press origin, so it would let a right drag start on an inventory slot. Since 21.3.0
 `HoverCaptured` is also true while the live position is occluded, so a camera gated after `WindowStack.Update`
 stays still under every window.
 
@@ -8428,7 +8428,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.2.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.3.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -8829,7 +8829,7 @@ option does not enter bake identity or change canonical bytes. See the
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.2.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.3.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -9594,7 +9594,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.2.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.3.0" />
 ```
 
 ```csharp
@@ -17378,7 +17378,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.2.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.3.0" />
 ```
 
 ```csharp
@@ -17414,7 +17414,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.2.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.3.0" />
 ```
 
 ```csharp
@@ -17658,7 +17658,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.2.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.3.0" />
 ```
 
 ```csharp
@@ -22018,7 +22018,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="21.2.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="21.3.0" />
 </ItemGroup>
 ```
 

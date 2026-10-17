@@ -1,6 +1,6 @@
 # Window stack and pointer occlusion
 
-Status: **Implemented in 21.2.0.** The design was approved by the owner in conversation on 2026-10-16. Consumer
+Status: **Implemented in 21.3.0.** The design was approved by the owner in conversation on 2026-10-16. Consumer
 adoption follows the release. Baseline: engine `e0dbb6da4` (v21.1.0). First consumer: Grimhollow at `780670d7`
 on 21.1.0. Tracking: [#1423](https://github.com/APKiwiOrg/KhaozEngine/issues/1423), consumer adoption
 [Grimhollow #557](https://github.com/APKiwiOrg/Grimhollow/issues/557).
@@ -216,7 +216,7 @@ All headless, in `KhaozEngine.Render.Tests/Windowing` for `Pointer` (next to `Po
 - `docs/USING-KHAOZENGINE.md`: the hit-testing rules gain the window stack and the gate rule above, and the
   `Pointer` section gains occlusion.
 - `KhaozEngine.Gui/README.md` and `KhaozEngine.Windowing/README.md`: the new types and members.
-- `CHANGELOG.md`: a 21.2.0 entry, minor because every change is additive. Behaviour with no occluders is
+- `CHANGELOG.md`: a 21.3.0 entry, minor because every change is additive. Behaviour with no occluders is
   unchanged. The `WindowDrag` latch change is behaviour-preserving for a single window.
 - A row for this document in `docs/INDEX.md`.
 
@@ -228,7 +228,7 @@ chrome to `PanelFrame`.
 
 ## First consumer
 
-Grimhollow adopts the stack after 21.2.0 is released. Its adoption spec is
+Grimhollow adopts the stack after 21.3.0 is released. Its adoption spec is
 `docs/superpowers/specs/2026-10-16-window-stack-adoption-design.md` in that repository. It moves the side stone
 (docked), Codex, Stats, skill guide, world map, bank, shop and dialogue (floating) and its debug menu
 (topmost) onto the stack, makes its bank and shop movable, replaces its local `WindowDrag` copy with this one,

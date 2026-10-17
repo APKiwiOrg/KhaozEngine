@@ -254,6 +254,49 @@ public sealed class BugReportServiceTests : BugReportFlowHarness
     }
 
     [Fact]
+    public async Task Dispose_cancels_the_sign_in_flush_and_keeps_the_report()
+    {
+        var sink = new BlockingSink();
+        BugReportOfflineQueue queue = QueueWithOneReport();
+        _subject = "discord:42";
+        BugReportService service = NewService(sink: sink, queue: queue);
+        Run(service);
+        Task flush = service.Flow.PendingWork!;
+        _work.Remove(flush);
+        await sink.Entered.WaitAsync(TimeSpan.FromSeconds(30));
+
+        service.Dispose();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => flush.WaitAsync(TimeSpan.FromSeconds(30)));
+        Assert.True(sink.Token.IsCancellationRequested);
+        Assert.Equal(1, queue.Count);
+    }
+
+    [Fact]
+    public async Task Dispose_cancels_a_retry_and_keeps_the_report()
+    {
+        var sink = new BlockingSink();
+        BugReportOfflineQueue queue = QueueWithOneReport();
+        _subject = "discord:42";
+        BugReportService service = NewService(sink: sink, queue: queue);
+        Task<int> retry = service.RetryQueuedAsync(CancellationToken.None);
+        await sink.Entered.WaitAsync(TimeSpan.FromSeconds(30));
+
+        service.Dispose();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => retry.WaitAsync(TimeSpan.FromSeconds(30)));
+        Assert.True(sink.Token.IsCancellationRequested);
+        Assert.Equal(1, queue.Count);
+    }
+
+    BugReportOfflineQueue QueueWithOneReport()
+    {
+        var queue = new BugReportOfflineQueue(Path.Combine(_root, "pending"), _time);
+        queue.Enqueue(new BugReportSubmission(ReportIds.NewId(), null, new byte[] { 0x50, 0x4B, 3, 4 }));
+        return queue;
+    }
+
+    [Fact]
     public void Dispose_twice_removes_the_overlay_once()
     {
         BugReportService service = NewService();

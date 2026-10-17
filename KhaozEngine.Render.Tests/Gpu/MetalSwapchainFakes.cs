@@ -35,6 +35,10 @@ namespace KhaozEngine.Tests.Gpu
         internal MetalDrawableSize LastDrawableSize { get; private set; }
         internal bool? LastDisplaySync { get; private set; }
 
+        /// <summary>The layer's <c>framebufferOnly</c> as last written, by <see cref="Configure"/> or by
+        /// <see cref="SetFramebufferOnly"/>. False until the layer is configured.</summary>
+        internal bool FramebufferOnly { get; private set; }
+
         /// <summary>Every acquire's answer, in order, so a row can assert the RELATION between what was handed
         /// out and what was presented rather than encoding this fake's handle arithmetic.</summary>
         internal List<MetalAcquiredDrawable> Handed { get; } = new();
@@ -104,6 +108,7 @@ namespace KhaozEngine.Tests.Gpu
             ConfiguredSync = syncToVerticalBlank;
             ConfiguredMaximumDrawableCount = maximumDrawableCount;
             LastDrawableSize = size;
+            FramebufferOnly = true;
             Log.Add("configure");
         }
 
@@ -117,6 +122,12 @@ namespace KhaozEngine.Tests.Gpu
         {
             LastDisplaySync = enabled;
             Log.Add($"displaySync={enabled}");
+        }
+
+        public void SetFramebufferOnly(bool value)
+        {
+            FramebufferOnly = value;
+            Log.Add($"SetFramebufferOnly({value})");
         }
 
         public MetalAcquiredDrawable NextDrawable()

@@ -961,8 +961,8 @@ drawable, and hands back a device whose `SwapchainFramebuffer` is the same objec
 and acquires the drawable the next frame will use.
 
 **The layer configuration is the deleted Veldrid Metal backend's, field for field, with one exception.** `device`,
-`pixelFormat` (`BGRA8Unorm`, or its sRGB sibling if the seam ever grows a way to ask), `framebufferOnly = true`,
-and `drawableSize` from the host view's frame.
+`pixelFormat` (`BGRA8Unorm`, or its sRGB sibling if the seam ever grows a way to ask), `framebufferOnly = true`
+unless a capture is requested, and `drawableSize` from the host view's frame.
 
 **The exception is that `drawableSize` is the view frame in POINTS multiplied by
 `-[NSWindow backingScaleFactor]`, because a drawable size is in PIXELS**
@@ -1018,6 +1018,14 @@ Its `Outputs` are fixed at construction, so every pipeline built against the win
 **A headless device answers `null` for `SwapchainFramebuffer` and does nothing at a `Present()`**, which is
 correct rather than unbuilt. `FramesBegun` and the acquire pair are then genuinely zero rather than absent,
 which is what `GpuDeviceCounters.HasValue` being true is for.
+
+**A swapchain capture request turns `framebufferOnly` off.** The device implements `IGpuSwapchainCapture`. Setting
+`SwapchainCopySourceRequested` queues a `framebufferOnly` write, and the present boundary applies it before it
+takes the next drawable, with no drain because the write releases nothing. Each held drawable keeps the value in
+force when it was vended, so the drawable held when the request arrives stays uncopyable, the next one is
+copyable, and the orphan target never is. `SwapchainCopyable` reports exactly that, and `CopySwapchainColor`
+throws `InvalidOperationException` when it is false. The copy is a blit from the drawable's texture on the same
+encoder `CopyTexture` uses. Clearing the request writes `framebufferOnly = true` again at the next boundary.
 
 ## Three decisions worth knowing before reading the code
 

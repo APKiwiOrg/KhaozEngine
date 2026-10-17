@@ -64,6 +64,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// vsync toggle silently does nothing.</summary>
         void SetDisplaySyncEnabled(bool enabled);
 
+        /// <summary><c>-setFramebufferOnly:</c>. <see cref="Configure"/> writes true, and the boundary writes false
+        /// while a swapchain capture is requested so the drawables vended afterwards can be a blit source. A drawable
+        /// already vended keeps the value it was made with.</summary>
+        void SetFramebufferOnly(bool value);
+
         /// <summary>
         /// <c>-nextDrawable</c>, RETAINED, or <see cref="MetalAcquiredDrawable.HasDrawable"/> false when the layer
         /// had none to give. IT BLOCKS and cannot be asked not to, which is why the caller times it (M-W4).

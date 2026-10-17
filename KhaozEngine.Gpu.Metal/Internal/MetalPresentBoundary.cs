@@ -57,6 +57,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// present buffer is itself an owner of the drawable and therefore of the texture. It is also a gap nothing
     /// can record into: it is inside <see cref="Present"/>, on the submit thread, at the one instant M-W5's own
     /// rule says no recording is in flight.</para>
+    ///
+    /// <para><b>A DRAWABLE IS COPYABLE ONLY IF IT WAS VENDED WITH <c>framebufferOnly</c> FALSE.</b> A swapchain
+    /// capture request queues the write, the boundary applies it before the acquire, and each held drawable
+    /// carries the value in force when it was taken. So the drawable held when the request arrives stays
+    /// uncopyable, the next one is copyable, and the orphan target never is.</para>
     /// </summary>
     internal sealed class MetalPresentBoundary : IDisposable
     {
@@ -81,6 +86,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
         bool _orphanBound;
         bool _syncRequested;
         bool _syncApplied;
+        bool _framebufferOnlyApplied = true;
+        bool _drawableFramebufferOnly = true;
         bool _disposed;
 
         /// <param name="api">Every native call this boundary makes.</param>
@@ -128,7 +135,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // THE WHOLE CONFIGURATION IN ONE CALL, before the first acquire, which is the incumbent's own order:
             // it writes device, pixelFormat, framebufferOnly and drawableSize, then vsync, then takes a drawable,
             // then builds its framebuffer. A drawable acquired before the format was written would be the wrong
-            // format, and the layer answers no error for it.
+            // format, and the layer answers no error for it. It writes framebufferOnly true, which is what
+            // _framebufferOnlyApplied starts at. This is the one Configure, so no capture request can be standing
+            // yet and there is nothing to re-apply after it.
             _api.Configure(_size, colourSrgb, syncToVerticalBlank, maximumDrawableCount);
 
             // THE FIRST ACQUIRE IS A REAL ONE and it is counted like every other. It happens before any frame
@@ -162,6 +171,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <summary>Whether a drawable is held for the next frame. False after a nil acquire, which is the state
         /// the next present skips in.</summary>
         internal bool HasDrawable => _drawable != IntPtr.Zero;
+
+        /// <summary>Whether the held drawable can be a blit source: a real drawable is held and it was vended
+        /// after <c>framebufferOnly</c> was written false. Always false while the orphan target is bound.</summary>
+        internal bool CurrentDrawableCopyable => _drawable != IntPtr.Zero && !_drawableFramebufferOnly;
 
         /// <summary>The size the layer is configured at, after every apply. The framebuffer reports the
         /// same.</summary>
@@ -313,6 +326,15 @@ namespace KhaozEngine.Gpu.Metal.Internal
         // frame and would report as a drain cost the design never intended to spend.
         void ApplyPending()
         {
+            // NO DRAIN FOR THIS ONE. A framebufferOnly write releases and recreates nothing: a drawable already
+            // vended keeps its usage, and only the drawables the layer vends afterwards change. It runs before the
+            // acquire below, so the very next drawable carries a capture request.
+            if (_pending.TakeFramebufferOnly(out bool? framebufferOnly) && framebufferOnly is { } only)
+            {
+                _api.SetFramebufferOnly(only);
+                _framebufferOnlyApplied = only;
+            }
+
             if (!_pending.Take(out MetalDrawableSize? size, out bool? sync)) return;
 
             // THE DRAIN IS THE WHOLE POINT OF DEFERRING TO THE BOUNDARY. The incumbent applied a resize inline on
@@ -362,6 +384,7 @@ namespace KhaozEngine.Gpu.Metal.Internal
             _waits.Record(Stopwatch.GetTimestamp() - start);
 
             _drawable = acquired.Drawable;
+            _drawableFramebufferOnly = _framebufferOnlyApplied;
             _orphanBound = !acquired.HasDrawable;
 
             if (acquired.HasDrawable) return new MetalAttachment(acquired.Texture, _colourFormat);

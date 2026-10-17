@@ -143,6 +143,23 @@ the graphics backend as soon as its window exists), so this is only wired by han
   once a file exists, so a crash that could not be written cannot delete one that was.
 - Never throws and needs nothing configured, because it runs on the runtime's crash path.
 
+## Recent log ring (`RecentLogSink`)
+
+`RecentLogSink` keeps the last N formatted lines in memory so a bug report can attach what the game logged just
+before the player pressed the key. Add it next to the session log's file sink and read it when a report is taken.
+
+```csharp
+var recent = new RecentLogSink();                  // 500 lines by default
+options.Sinks.Add(recent);
+IReadOnlyList<string> lines = recent.Snapshot();   // oldest first, a copy
+```
+
+- A fixed ring. Once full, each new line drops the oldest, so memory stays at `Capacity` lines.
+- Each line is `LogFormatter.Format(entry)`, exception text included. A line longer than `MaxEntryChars` (2000)
+  is cut there and ends with ` [truncated]`. The cut never splits a surrogate pair.
+- Thread-safe, never throws from `Emit`, and `Flush` and `Dispose` do nothing.
+- `InMemorySink` stays the test capture. It keeps every entry unbounded and is not meant for a shipped head.
+
 ## Categories
 
 Every entry carries a **category**, rendered by the formatter as `[Category] message`. Choose it once and never repeat it in the message text:

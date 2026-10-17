@@ -135,6 +135,9 @@ public sealed class SupportCostSamplerTests
         }
     }
 
+    // The hidden crate's paced climb ends 0.22 m below the box edge it seats on, inside the legs band. Its tick and
+    // every substep pass on reads that each match the oracle. The forced failing parent is
+    // SubstepGeometryIgnoresAFailingParentTick.
     [Fact]
     public void SubstepGeometryJudgesItsOwnReads()
     {
@@ -150,9 +153,8 @@ public sealed class SupportCostSamplerTests
                     execution.CheckFind(read, out bool matched);
                     Assert.True(matched, $"Tick read at {read.Axis} feet {read.FeetY}");
                 }
-            // Every read matches, so the tick fails only on its end placement.
-            Assert.False(tick.GeometryPassed);
-            Assert.False(tick.GeometryMatchesOracle);
+            Assert.True(tick.GeometryPassed);
+            Assert.True(tick.GeometryMatchesOracle);
             Assert.True(samples.Count > 1);
             foreach (SupportCostSample substep in samples.Skip(1))
             {
@@ -171,5 +173,28 @@ public sealed class SupportCostSamplerTests
             SupportQueryDiagnostics.Enable(false);
             SupportQueryDiagnostics.Reset();
         }
+    }
+
+    // A tick whose rise from its feet to the support it ends on exceeds MaxStepClimbSpeed * dt is a paced climb.
+    [Theory]
+    [InlineData("stairs box", true)]
+    [InlineData("stairs hull", true)]
+    [InlineData("stairs mesh", true)]
+    [InlineData("pushed seat", true)]
+    [InlineData("hidden crate", true)]
+    [InlineData("flat box", false)]
+    public void PacedPlacementFollowsTheClimbBudget(string name, bool paced)
+    {
+        SupportCostRow row = SupportGateCostScenes.Rows().Select(r => (SupportCostRow)r[0]).Single(r => r.Name == name);
+        SupportQueryDiagnostics.ThreadState prior = SupportQueryDiagnostics.Exchange(
+            SupportQueryDiagnostics.ThreadState.Fresh(true));
+        try
+        {
+            using var execution = new SupportCostExecution(row, "DryTick");
+            SupportCostOutput output = execution.CheckGeometry(execution.Invoke(), readsMatch: true);
+            Assert.Equal(paced, output.Paced);
+            Assert.True(output.GeometryPassed, $"{name} ended at {output.EndFeet}");
+        }
+        finally { SupportQueryDiagnostics.Exchange(prior); }
     }
 }

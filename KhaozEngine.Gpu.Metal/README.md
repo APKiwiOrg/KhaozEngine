@@ -1031,7 +1031,8 @@ which is what `GpuDeviceCounters.HasValue` being true is for.
 takes the next drawable, with no drain because the write releases nothing. The layer may still hand back a pooled
 drawable made under the old value, so each acquire reads the texture's own `isFramebufferOnly`. The drawable held
 when the request arrives stays uncopyable, a recycled one stays uncopyable until the layer makes a fresh one, and
-the orphan target never is. `SwapchainCopyable` reports exactly that, and `CopySwapchainColor`
+the orphan target never is. `SwapchainCopyable` reports exactly that, `SwapchainCopySupported` is always true
+because any drawable can be vended copyable, and `CopySwapchainColor`
 throws `InvalidOperationException` when it is false. It throws the same exception for a list that never bound the
 swapchain framebuffer in its current recording, because only the frame's own list holds what the frame drew. The
 copy is a blit from the drawable's texture on the same encoder `CopyTexture` uses, so a pending clear lands first. Clearing the request writes `framebufferOnly = true` again at the next boundary.

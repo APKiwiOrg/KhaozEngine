@@ -226,10 +226,9 @@ namespace KhaozEngine.Tests.Gpu
                 _taps = taps;
             }
 
-            public bool SupportsClipCapture => _device.Capabilities.SupportsCompletionFences
-                && _device is IGpuSwapchainCapture && _device is IGpuFencedReadback;
+            public bool SupportsClipCapture => AppWindowCaptureHost.ClipCaptureOn(_device);
 
-            public bool SupportsSwapchainCopy => _device is IGpuSwapchainCapture;
+            public bool SupportsSwapchainCopy => AppWindowCaptureHost.SwapchainCopyOn(_device);
 
             public void AddCaptureTap(IFrameCaptureTap tap) => _taps.Add(tap);
 

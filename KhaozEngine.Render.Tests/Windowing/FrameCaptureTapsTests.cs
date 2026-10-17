@@ -352,6 +352,8 @@ namespace KhaozEngine.Tests.Windowing
                 }
             }
 
+            public bool SwapchainCopySupported { get; set; } = true;
+
             public bool SwapchainCopyable { get; set; }
 
             public void CopySwapchainColor(IGpuCommandList commands, IGpuTexture destination)

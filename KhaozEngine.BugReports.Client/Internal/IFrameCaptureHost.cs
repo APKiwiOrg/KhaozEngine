@@ -7,12 +7,16 @@ namespace KhaozEngine.BugReports.Client.Internal;
 internal interface IFrameCaptureHost
 {
     /// <summary>
-    /// True when the device has completion fences and implements both <see cref="IGpuSwapchainCapture"/> and
+    /// True when <see cref="SupportsSwapchainCopy"/> is, and the device also has completion fences and implements
     /// <see cref="IGpuFencedReadback"/>, everything the rolling clip's non-blocking readback ring needs.
     /// </summary>
     bool SupportsClipCapture { get; }
 
-    /// <summary>True when the device implements <see cref="IGpuSwapchainCapture"/>, all a screenshot needs.</summary>
+    /// <summary>
+    /// True when the device implements <see cref="IGpuSwapchainCapture"/> and its
+    /// <see cref="IGpuSwapchainCapture.SwapchainCopySupported"/> is true, all a screenshot needs. False means no
+    /// frame will ever be copyable.
+    /// </summary>
     bool SupportsSwapchainCopy { get; }
 
     void AddCaptureTap(IFrameCaptureTap tap);

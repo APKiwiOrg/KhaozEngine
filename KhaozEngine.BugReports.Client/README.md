@@ -41,14 +41,18 @@ Every member is frame thread only. Encoding runs on the recorder's own backgroun
 
 ## Availability
 
-`IsAvailable` is true when the window's GPU device has completion fences and implements both
-`IGpuSwapchainCapture` and `IGpuFencedReadback`. The three native devices do. Without them the clip never
-records, because its readback would have to wait on the GPU.
+`IsAvailable` is true when the window's GPU device has completion fences, implements both
+`IGpuSwapchainCapture` and `IGpuFencedReadback`, and reports `IGpuSwapchainCapture.SwapchainCopySupported`. The
+three native devices implement both. Without them the clip never records, because its readback would have to wait
+on the GPU.
 
-A screenshot needs only `IGpuSwapchainCapture`, so it still works on a device without completion fences. A
-device that cannot copy its swapchain gets no standby screenshot tap, because it has no copy-source usage to
-keep on. The clip is unavailable there too, so the recorder registers no tap at all, and
-`CaptureScreenshotAsync()` returns a task faulted with `NotSupportedException`.
+A screenshot needs only a swapchain copy: `IGpuSwapchainCapture` with `SwapchainCopySupported` true. It still
+works on a device without completion fences. A device that can never copy its swapchain, such as a Vulkan surface
+whose `supportedUsageFlags` lack `TRANSFER_SRC`, gets no standby screenshot tap, because it has no copy-source
+usage to keep on. The clip is unavailable there too, so the recorder registers no tap at all, `IsAvailable` is
+false, and `CaptureScreenshotAsync()` returns a task faulted with `NotSupportedException`. A supported device
+whose current frame is not copyable, during startup, minimisation or a swapchain recreation, keeps the request
+pending instead.
 
 A fault inside a tap, such as a lost device, or a fault on the encode thread, is warned once and turns that
 capture off for the recorder's lifetime. An encode fault is only recorded on the encode thread and is handled on

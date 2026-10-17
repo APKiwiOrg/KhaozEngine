@@ -9,7 +9,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// queues a swapchain recreation through <see cref="VulkanPresentBoundary"/>, applied at the next present
     /// boundary. The policy adds the bit only when the surface's <c>supportedUsageFlags</c> include it.
     /// Copyability is read off the usage the current generation was created with, so the frame that made the
-    /// request, a surface that cannot honour it and the orphan target are all uncopyable.
+    /// request, a surface that cannot honour it and the orphan target are all uncopyable. Whether the surface can
+    /// honour it at all is <see cref="SwapchainCopySupported"/>, so a caller can tell a permanent refusal from a
+    /// transient uncopyable frame.
     /// <para>
     /// On a HEADLESS device the request is a plain backing value and nothing is ever copyable, because there is no
     /// swapchain.
@@ -29,6 +31,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 if (_present is not null) _present.CopySourceRequested = value;
             }
         }
+
+        /// <inheritdoc/>
+        /// <remarks>The surface's own answer, read again on every recreate. False on a headless device, which
+        /// has no surface.</remarks>
+        public bool SwapchainCopySupported => _present?.SurfaceSupportsCopySource ?? false;
 
         /// <inheritdoc/>
         public bool SwapchainCopyable => _present?.CurrentGenerationCopyable ?? false;

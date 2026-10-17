@@ -1,5 +1,6 @@
 using System;
 using KhaozEngine.Gpu.Internal;
+using Silk.NET.Vulkan;
 
 namespace KhaozEngine.Gpu.Vulkan.Internal
 {
@@ -14,6 +15,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     // either half has somewhere to land.
     internal sealed partial class VulkanPresentBoundary
     {
+        bool _surfaceSupportsCopySource;
+
+        /// <summary>
+        /// Whether the surface's <c>supportedUsageFlags</c> include <c>TRANSFER_SRC</c>, as of the last capability
+        /// query that succeeded. False means no generation on this surface can be a copy source whatever is
+        /// requested. Refreshed with the rest of the surface facts on every recreate.
+        /// </summary>
+        internal bool SurfaceSupportsCopySource => _surfaceSupportsCopySource;
+
         void Recreate(bool firstGeneration)
         {
             if (!TryDecide(firstGeneration, out VulkanSwapchainSpec spec))
@@ -119,6 +129,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 Interpret(queried, "vkGetPhysicalDeviceSurfaceCapabilitiesKHR");
                 return false;
             }
+
+            _surfaceSupportsCopySource = (report.SupportedUsage & ImageUsageFlags.TransferSrcBit) != 0;
 
             if (report.Formats.Count == 0)
             {

@@ -575,7 +575,13 @@ is presented.
 - **Request.** `SwapchainCopySourceRequested` asks for copy-source usage on the swapchain colour images. It is
   applied at the next present boundary, so the first frame after a change may still be uncopyable. The window sets
   it only while a capture tap is registered.
-- **Copyable.** `SwapchainCopyable` is true when the image the current frame renders into can be copied out.
+- **Supported.** `SwapchainCopySupported` is true when this device can ever produce a copyable swapchain image
+  for its surface. Direct3D 11 and Metal always answer true. Vulkan answers true only when the surface's
+  `supportedUsageFlags` include `TRANSFER_SRC`, read again on every swapchain recreation, and false on a headless
+  device. False means `SwapchainCopyable` never becomes true, so a caller must not wait for a copyable frame.
+- **Copyable.** `SwapchainCopyable` is true when the image the current frame renders into can be copied out. It
+  can be false for a transient frame on a supported device, such as the first after a request, a minimised window
+  or a recreation.
 - **Copy.** `CopySwapchainColor(commands, destination)` records, into an open recording, a whole copy of the
   current swapchain colour image into `destination`. The destination must have the size of `SwapchainFramebuffer`,
   the swapchain's colour format, one mip and one sample, or it is refused with an `ArgumentException` naming both

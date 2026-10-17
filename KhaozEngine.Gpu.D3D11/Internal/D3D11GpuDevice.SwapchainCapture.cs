@@ -23,6 +23,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         }
 
         /// <inheritdoc/>
+        /// <remarks>Always true: a <c>RenderTargetOutput</c> back buffer is a copy source.</remarks>
+        public bool SwapchainCopySupported => true;
+
+        /// <inheritdoc/>
         public bool SwapchainCopyable => _swapchain?.CurrentColourView is not null;
 
         /// <inheritdoc/>

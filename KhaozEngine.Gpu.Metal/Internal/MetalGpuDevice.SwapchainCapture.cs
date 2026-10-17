@@ -30,6 +30,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         }
 
         /// <inheritdoc/>
+        /// <remarks>Always true: every drawable can be vended with <c>framebufferOnly</c> false.</remarks>
+        public bool SwapchainCopySupported => true;
+
+        /// <inheritdoc/>
         public bool SwapchainCopyable => _present?.CurrentDrawableCopyable ?? false;
 
         /// <inheritdoc/>

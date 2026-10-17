@@ -15,6 +15,16 @@ namespace KhaozEngine.Gpu
         /// </summary>
         bool SwapchainCopySourceRequested { get; set; }
 
+        /// <summary>
+        /// True when this device can ever produce a copyable swapchain image for its surface. False means
+        /// <see cref="SwapchainCopyable"/> never becomes true whatever is requested, such as on a Vulkan surface
+        /// whose <c>supportedUsageFlags</c> lack <c>TRANSFER_SRC</c>, so a caller should not wait for a copyable
+        /// frame. Direct3D 11 and Metal always answer true. True does not mean the current frame is copyable: that
+        /// is <see cref="SwapchainCopyable"/>, which stays false for transient frames such as the first after a
+        /// request, a minimised window or a recreation.
+        /// </summary>
+        bool SwapchainCopySupported { get; }
+
         /// <summary>True when the image the current frame renders into can be copied out.</summary>
         bool SwapchainCopyable { get; }
 

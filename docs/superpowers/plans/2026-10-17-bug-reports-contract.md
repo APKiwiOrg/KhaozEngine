@@ -376,7 +376,11 @@ Public names E1 added beyond its block above, and the rules E2 and E3 can rely o
   `TryRecordCopy(commands, source, tag, out fence)` and `TryReadCompleted(destination, out tag)`. The constructor
   refuses a device without completion fences or without `IGpuFencedReadback` with `NotSupportedException`.
 - **`IGpuSwapchainCapture`** (`KhaozEngine.Gpu`). An optional device capability with `SwapchainCopySourceRequested`,
-  `SwapchainCopyable` and `CopySwapchainColor(commands, destination)`. The three native devices implement it.
+  `SwapchainCopySupported`, `SwapchainCopyable` and `CopySwapchainColor(commands, destination)`. The three native
+  devices implement it. `SwapchainCopySupported` is the permanent answer: whether this device can ever produce a
+  copyable swapchain image for its surface. Direct3D 11 and Metal answer true. Vulkan answers true only when the
+  surface's `supportedUsageFlags` include `TRANSFER_SRC`, refreshed on every recreation. `SwapchainCopyable` is the
+  current frame's answer and can be false transiently on a supported device.
 - **The bound-this-recording precondition.** `CopySwapchainColor` refuses with `InvalidOperationException` a list
   that has not bound `SwapchainFramebuffer` in its current recording, on all three backends. Only the frame's own
   list is ordered after the image's acquire, so a swapchain copy goes into `FrameCaptureContext.Commands`.
@@ -391,10 +395,11 @@ Public names E1 added beyond its block above, and the rules E2 and E3 can rely o
   open during `Record` only), `FrameMilliseconds` (the unclamped loop delta, D14), `AcquireSwapchainImage()` (one
   shared `Sampled` copy per frame, null when uncopyable), `SignalOnSubmit(fence)` (one fence per frame across every
   tap) and `Retire(resource)`.
-- **Recorder availability.** `IsAvailable` is true only when the device has completion fences and implements both
-  `IGpuSwapchainCapture` and `IGpuFencedReadback`. A screenshot needs only `IGpuSwapchainCapture`. A device without
-  it gets no standby screenshot tap, and `CaptureScreenshotAsync()` returns a task faulted with
-  `NotSupportedException`.
+- **Recorder availability.** `IsAvailable` is true only when the device has completion fences, implements both
+  `IGpuSwapchainCapture` and `IGpuFencedReadback`, and reports `SwapchainCopySupported`. A screenshot needs only
+  `IGpuSwapchainCapture` with `SwapchainCopySupported` true. A device without that gets no standby screenshot tap,
+  `IsAvailable` is false, and `CaptureScreenshotAsync()` returns a task faulted with `NotSupportedException`. A
+  transiently uncopyable frame on a supported device keeps a screenshot request pending.
 - **Recorder faults.** A fault in a tap or on the encode thread is warned once and turns that capture off for the
   recorder's lifetime. A clip fault leaves `IsRecording` false and makes later `Start()` calls do nothing. A
   screenshot fault faults the pending task and every later one. Encode faults are recorded on the encode thread

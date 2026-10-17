@@ -1397,7 +1397,9 @@ change takes. The policy adds `TRANSFER_SRC` only when the request is on and the
 include it. Otherwise it logs that frame capture is unavailable and creates the swapchain with the base bits, so a
 request never costs the window its swapchain. `SwapchainCopyable` reads the usage the current generation was
 created with, so the frame that made the request, a surface without the bit and the orphan target all read false,
-and `CopySwapchainColor` throws `InvalidOperationException` then. The copy ends the pass first, which applies a
+and `CopySwapchainColor` throws `InvalidOperationException` then. `SwapchainCopySupported` tells the permanent
+case apart: it is true only when the surface's `supportedUsageFlags` include `TRANSFER_SRC`, is read again with
+the other surface facts on every recreate, and is false on a headless device. The copy ends the pass first, which applies a
 pending clear, moves the image from `COLOR_ATTACHMENT_OPTIMAL` to `TRANSFER_SRC_OPTIMAL` through the layout
 tracker, and `End` restores it to `PRESENT_SRC_KHR`. A list that never bound the swapchain framebuffer in its
 recording is refused with `InvalidOperationException`: it would find the image at rest in `PRESENT_SRC_KHR`,

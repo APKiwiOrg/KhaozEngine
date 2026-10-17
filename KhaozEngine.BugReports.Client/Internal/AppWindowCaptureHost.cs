@@ -15,18 +15,23 @@ internal sealed class AppWindowCaptureHost : IFrameCaptureHost
         _window = window;
     }
 
-    public bool SupportsClipCapture
-    {
-        get
-        {
-            IGpuDevice device = _window.GpuDevice;
-            return device.Capabilities.SupportsCompletionFences
-                && device is IGpuSwapchainCapture
-                && device is IGpuFencedReadback;
-        }
-    }
+    public bool SupportsClipCapture => ClipCaptureOn(_window.GpuDevice);
 
-    public bool SupportsSwapchainCopy => _window.GpuDevice is IGpuSwapchainCapture;
+    public bool SupportsSwapchainCopy => SwapchainCopyOn(_window.GpuDevice);
+
+    /// <summary>
+    /// The swapchain predicate every host shares: the device implements <see cref="IGpuSwapchainCapture"/> and
+    /// reports <see cref="IGpuSwapchainCapture.SwapchainCopySupported"/>, so a copyable frame can ever come.
+    /// </summary>
+    internal static bool SwapchainCopyOn(IGpuDevice device)
+        => device is IGpuSwapchainCapture { SwapchainCopySupported: true };
+
+    /// <summary>
+    /// The clip predicate every host shares: <see cref="SwapchainCopyOn"/>, completion fences and
+    /// <see cref="IGpuFencedReadback"/>.
+    /// </summary>
+    internal static bool ClipCaptureOn(IGpuDevice device)
+        => SwapchainCopyOn(device) && device.Capabilities.SupportsCompletionFences && device is IGpuFencedReadback;
 
     public void AddCaptureTap(IFrameCaptureTap tap) => _window.AddCaptureTap(tap);
 

@@ -77,7 +77,7 @@ public sealed class FrameHistoryRecorder : IDisposable
             frame.Height, options.JpegQuality);
         Encoder = new ClipEncodeQueue(encode, OnClipEncoded, RecordEncodeFault, Pool);
 
-        // A device that cannot copy its swapchain has no copy-source usage to keep on, so it gets no standby tap.
+        // A device that can never copy its swapchain has no copy-source usage to keep on, so it gets no standby tap.
         if (!host.SupportsSwapchainCopy) return;
         var screenshot = new ScreenshotTap();
         try
@@ -93,10 +93,11 @@ public sealed class FrameHistoryRecorder : IDisposable
     }
 
     /// <summary>
-    /// True when the device can record the rolling clip: it has completion fences and can copy its swapchain.
-    /// Without them <see cref="Start"/> does nothing. A screenshot needs only the swapchain copy.
+    /// True when the device can record the rolling clip: it has completion fences and can ever copy its swapchain.
+    /// Without them <see cref="Start"/> does nothing. A screenshot needs only the swapchain copy. A device that can
+    /// never copy its swapchain, such as a Vulkan surface without <c>TRANSFER_SRC</c>, is unavailable.
     /// </summary>
-    public bool IsAvailable => _host.SupportsClipCapture;
+    public bool IsAvailable => _screenshotTap is not null && _host.SupportsClipCapture;
 
     /// <summary>True between <see cref="Start"/> and <see cref="Stop"/>, unless a capture fault stopped it.</summary>
     public bool IsRecording => _clipTap is not null;
@@ -184,7 +185,7 @@ public sealed class FrameHistoryRecorder : IDisposable
     /// can. A second call while one is pending returns the same task. Long edge at most 2560. PNG when it encodes
     /// under 4 MB, JPEG quality 92 otherwise.
     /// </summary>
-    /// <returns>The screenshot, faulted with <see cref="NotSupportedException"/> on a device that cannot copy its
+    /// <returns>The screenshot, faulted with <see cref="NotSupportedException"/> on a device that can never copy its
     /// swapchain, with <see cref="ObjectDisposedException"/> when the recorder is disposed first, or with
     /// <see cref="InvalidOperationException"/> after a capture fault.</returns>
     public Task<ReportImage> CaptureScreenshotAsync()

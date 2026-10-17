@@ -214,6 +214,25 @@ public sealed class FrameHistoryRecorderTests
     }
 
     [Fact]
+    public void A_device_that_can_never_copy_its_swapchain_is_unavailable_and_faults_screenshots()
+    {
+        // A Vulkan surface without TRANSFER_SRC. The clip flag is left at its default, so the recorder itself must
+        // treat a swapchain it can never copy as no clip either, rather than waiting on a frame that never comes.
+        var host = new FakeCaptureHost { SupportsSwapchainCopy = false };
+        using var recorder = Create(host);
+
+        Assert.Empty(host.Taps);
+        Assert.False(recorder.IsAvailable);
+        recorder.Start();
+        Assert.False(recorder.IsRecording);
+        Assert.Empty(host.Taps);
+
+        Task<ReportImage> screenshot = recorder.CaptureScreenshotAsync();
+        Assert.True(screenshot.IsFaulted);
+        Assert.IsType<NotSupportedException>(screenshot.Exception!.InnerException);
+    }
+
+    [Fact]
     public void A_second_screenshot_request_while_one_is_pending_returns_the_same_task()
     {
         using var recorder = Create(new FakeCaptureHost());

@@ -168,6 +168,34 @@ namespace KhaozEngine.Tests.Gpu
             Assert.False(rig.Boundary.CurrentGenerationCopyable);
         }
 
+        /// <summary>
+        /// A SURFACE WITHOUT <c>TRANSFER_SRC</c> CAN NEVER BE COPIED, so the device says so up front rather than
+        /// leaving a caller to wait on a copyable frame that never comes. The answer is the surface's, read again
+        /// on every recreate, so it holds through a request and follows the surface when its usage mask changes.
+        /// </summary>
+        [Fact]
+        public void A_surface_without_TRANSFER_SRC_reports_copy_unsupported()
+        {
+            using var rig = new Rig(FakeVulkanSurfaceApi.Desktop() with
+            {
+                SupportedUsage = VulkanSwapchainSpec.ColourAndTransferDst,
+            });
+            Assert.False(rig.Boundary.SurfaceSupportsCopySource);
+
+            rig.Boundary.CopySourceRequested = true;
+            rig.Frame();
+            Assert.False(rig.Boundary.SurfaceSupportsCopySource);
+
+            rig.Surfaces.Report = FakeVulkanSurfaceApi.Desktop();
+            rig.Boundary.QueueResize(1280, 720);
+            rig.Frame();
+            Assert.True(rig.Boundary.SurfaceSupportsCopySource);
+            Assert.True(rig.Boundary.CurrentGenerationCopyable);
+
+            using var supported = new Rig();
+            Assert.True(supported.Boundary.SurfaceSupportsCopySource);
+        }
+
         [Fact]
         public void The_orphan_target_is_never_copyable()
         {
@@ -196,6 +224,7 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.True(capture.SwapchainCopySourceRequested);
             Assert.False(capture.SwapchainCopyable);
+            Assert.False(capture.SwapchainCopySupported);
 
             using IGpuTexture destination = fixture.StagingTexture();
             using VulkanCommandList list = fixture.RecordedList();

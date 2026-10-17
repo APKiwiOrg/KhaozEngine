@@ -1013,8 +1013,9 @@ applies at the present boundary. That half is not device-free testable, because 
 inspect, and its evidence is a real window resize on the WARP leg.
 
 **`IGpuSwapchainCapture` needs no usage change here.** The back buffer is created `RenderTargetOutput`, which is
-already a `CopyResource` source, so `SwapchainCopySourceRequested` is stored and does nothing, and
-`SwapchainCopyable` is true whenever the attachments are live (false inside a resize and after disposal).
+already a `CopyResource` source, so `SwapchainCopySourceRequested` is stored and does nothing,
+`SwapchainCopySupported` is always true, and `SwapchainCopyable` is true whenever the attachments are live (false
+inside a resize and after disposal).
 `CopySwapchainColor` records an ordinary `CopyTexture` whose source is `D3D11BackBufferCopySource`, a stand-in that
 names the current render target view and holds no native reference. At replay the native emitter takes the back
 buffer from that view with `GetResource`, issues `CopyResource` and releases the reference at once, so no reference

@@ -1,12 +1,16 @@
 using System;
+using System.Collections;
 using System.Linq;
 using System.Numerics;
+using System.Reflection;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using KhaozEngine.Locomotion.Contacts;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
 using Xunit;
+using RigidPose = BepuPhysics.RigidPose;
+using TypedIndex = BepuPhysics.Collidables.TypedIndex;
 
 namespace KhaozEngine.Tests.Physics;
 
@@ -101,6 +105,77 @@ public partial class SupportFootprintTests
             JoinMeshReaders(threads);
         }
         scene.Checked("mesh after concurrent eviction", out _);
+    }
+
+    // A cold builder pauses after building its first triangle and before taking the budget gate. Meanwhile its
+    // static's slot is evicted, evicted and rebuilt by another reader, or replaced under another geometry version.
+    // The late publication keeps the global triangle count equal to the per-static counts and throws nothing.
+    [Theory]
+    [InlineData("evicted")]
+    [InlineData("rebuilt")]
+    [InlineData("versioned")]
+    public void PausedMeshBuilderPublishesIntoAChangedSlotWithoutCountDrift(string change)
+    {
+        var shape = MeshConcurrencyPatches(1);
+        var world = new BepuPhysicsWorld(Vector3.Zero);
+        StaticHandle owner = world.AddStatic(shape, Pose.Identity);
+        StaticHandle[] statics = [owner, .. Enumerable.Range(1, InstalledSupportMeshWorldCache.StaticCapacity)
+            .Select(i => world.AddStatic(shape, Pose.At(new(0, 0, i * 4))))];
+        using var scene = new WorldFormScene(world, CostRows().Single(row => row.Name == "flat mesh").Query);
+        InstalledSupportMeshWorldCache cache = MeshForms(world);
+        using var built = new ManualResetEventSlim();
+        using var resume = new ManualResetEventSlim();
+        BoundedThread builder = BoundedThread.Start(() =>
+        {
+            using IPhysicsQueryLease lease = scene.AcquireLease();
+            ContactAllocationDiagnostics.SetObserver((phase, entering) =>
+            {
+                // The first triangle is built and not yet published.
+                if (entering || phase != ContactAllocationPhase.SupportMaterialization) return;
+                ContactAllocationDiagnostics.SetObserver(null);
+                built.Set();
+                BoundedThread.Await(resume);
+            });
+            try { SupportFootprintEquivalence.AssertMatchesReference(() => scene.Find(lease)); }
+            finally { ContactAllocationDiagnostics.SetObserver(null); }
+        });
+        try
+        {
+            BoundedThread.Await(built);
+            Assert.Equal(0, cache.TriangleCount);
+            if (change == "versioned") ReplaceMeshSlot(cache, owner);
+            else
+            {
+                using IPhysicsQueryLease lease = scene.AcquireLease();
+                for (int i = 1; i < statics.Length; i++) MeshFind(world, lease, new(0, i * 4));
+                Assert.Equal(0, cache.TriangleCountFor(owner));
+                if (change == "rebuilt") MeshFind(world, lease, Vector2.Zero);
+            }
+            Assert.Equal(statics.Sum(cache.TriangleCountFor), cache.TriangleCount);
+        }
+        finally
+        {
+            resume.Set();
+            JoinMeshReaders([builder]);
+        }
+        Assert.Equal(2, cache.TriangleCountFor(owner));
+        Assert.Equal(statics.Sum(cache.TriangleCountFor), cache.TriangleCount);
+        scene.Checked($"mesh after a paused build into a {change} slot", out _);
+        Assert.Equal(statics.Sum(cache.TriangleCountFor), cache.TriangleCount);
+    }
+
+    // Replaces the owner's slot with one keyed by the next geometry version, as a version change does.
+    static void ReplaceMeshSlot(InstalledSupportMeshWorldCache cache, StaticHandle owner)
+    {
+        var slots = (IDictionary)typeof(InstalledSupportMeshWorldCache)
+            .GetField("_statics", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(cache)!;
+        object slot = slots[owner.Value]!;
+        var shape = (TypedIndex)slot.GetType().GetProperty("Shape", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(slot)!;
+        long version = (long)slot.GetType().GetProperty("Version", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(slot)!;
+        cache.Matches(owner, shape, version + 1, new RigidPose(Vector3.Zero));
+        Assert.NotSame(slot, slots[owner.Value]);
     }
 
     static void JoinMeshReaders(BoundedThread[] threads)

@@ -269,16 +269,25 @@ public sealed class TrackedPersistenceTests
                 return;
             }
 
-            PersistenceQueue drained = self!;
-            Task<PersistenceWriteResult> first = firstTask!;
-            onDiskWhenWritesDrained = File.ReadAllText(files.Path);
-            firstCompletedWhenWritesDrained = first.IsCompleted;
-            drainerStarted.TrySetResult(DedicatedThread.Run(() =>
+            // The queue logs and swallows a handler exception, so hand it to the test body as the first cause
+            // instead of letting the drainer wait run out.
+            try
             {
-                if (dispose) drained.Dispose();
-                else drained.Flush();
-                Assert.True(first.IsCompletedSuccessfully, "Drain returned with an unresolved superseded request.");
-            }));
+                PersistenceQueue drained = self!;
+                Task<PersistenceWriteResult> first = firstTask!;
+                onDiskWhenWritesDrained = File.ReadAllText(files.Path);
+                firstCompletedWhenWritesDrained = first.IsCompleted;
+                drainerStarted.TrySetResult(DedicatedThread.Run(() =>
+                {
+                    if (dispose) drained.Dispose();
+                    else drained.Flush();
+                    Assert.True(first.IsCompletedSuccessfully, "Drain returned with an unresolved superseded request.");
+                }));
+            }
+            catch (Exception ex)
+            {
+                drainerStarted.TrySetException(ex);
+            }
         };
         Task? producer = null;
         try

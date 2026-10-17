@@ -78,7 +78,7 @@ internal sealed class ClipCaptureTap : IFrameCaptureTap
         if (!_ring.HasFreeSlot) return;
 
         _scaledCopy ??= new GpuScaledCopy(context.Device);
-        _scaledCopy.Record(context.Commands, image, _framebuffer);
+        _scaledCopy.Record(context.Commands, image, _framebuffer, context.Retire);
         long tag = _nextTag++;
         if (!_ring.TryRecordCopy(context.Commands, _target, tag, out var fence)) return;
         // Straight away: a claimed slot whose fence misses the submit stays pending for good.

@@ -531,7 +531,10 @@ to capture size before readback.
 - **Sampler.** The instance's own clamp-addressed `GpuSamplerDescription.Linear`, not the device's
   wrap-addressed `LinearSampler`, so a border tap never reads the opposite edge.
 - **Resource set.** One, cached over the last source drawn and replaced when a different source instance is
-  passed.
+  passed. A replaced set is never disposed during `Record`, because a draw in the open recording may still use
+  it. `Record(commands, source, destination, retire)` hands it to `retire`, which must free it only once the GPU
+  has finished every submission that used it. A frame capture tap passes `FrameCaptureContext.Retire`. With no
+  `retire` it stays alive until `Dispose`.
 
 The vertex stage is Render3D's fullscreen triangle copied verbatim, since this package does not reference
 Render3D. Every fullscreen pass over it renders vertically flipped on every backend, and the post chain undoes

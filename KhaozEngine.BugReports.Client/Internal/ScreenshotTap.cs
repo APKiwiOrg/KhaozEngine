@@ -90,7 +90,7 @@ internal sealed class ScreenshotTap : IFrameCaptureTap
         _framebuffer = factory.CreateFramebuffer(null, _target);
         _width = width;
         _height = height;
-        _scaledCopy.Record(context.Commands, image, _framebuffer);
+        _scaledCopy.Record(context.Commands, image, _framebuffer, context.Retire);
     }
 
     void AfterSubmitCore(FrameCaptureContext context)

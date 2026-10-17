@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using KhaozEngine.Gpu;
 using Xunit;
 
@@ -78,9 +79,11 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         // Records every source into one destination, in order, in ONE recording, then reads the destination back.
+        // Every record goes through retire, and a set it replaces is freed only after the submit has completed.
         static byte[] Run(IGpuDevice gd, GpuScaledCopy copy, int width, int height, params IGpuTexture[] sources)
         {
             IGpuResourceFactory f = gd.Factory;
+            var retired = new List<IDisposable>();
             using IGpuTexture target = f.CreateTexture(GpuTextureDescription.Texture2D(
                 (uint)width, (uint)height, GpuPixelFormat.R8G8B8A8UNorm,
                 GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
@@ -88,10 +91,12 @@ namespace KhaozEngine.Tests.Gpu
             using (IGpuCommandList commands = f.CreateCommandList())
             {
                 using (GpuRecording.Open(gd, commands, nameof(GpuScaledCopyGpuTests)))
-                    foreach (IGpuTexture source in sources) copy.Record(commands, source, destination);
+                    foreach (IGpuTexture source in sources) copy.Record(commands, source, destination, retired.Add);
                 gd.Submit(commands);
                 gd.WaitForIdle();
             }
+            Assert.Equal(sources.Length - 1, retired.Count);
+            foreach (IDisposable set in retired) set.Dispose();
             return GpuReadback.ToRgba(gd, target, width, height);
         }
 

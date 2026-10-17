@@ -61,6 +61,7 @@ void main() {
         readonly IGpuResourceLayout _layout;
         readonly IGpuSampler _sampler;
         readonly IGpuPipeline _pipeline;
+        readonly List<IGpuResourceSet> _replaced = new();
         IGpuTexture? _setSource;
         IGpuResourceSet? _set;
         bool _disposed;
@@ -98,11 +99,29 @@ void main() {
         /// <see cref="GpuTextureUsage.Sampled"/> usage. The destination must have exactly one
         /// <see cref="GpuPixelFormat.R8G8B8A8UNorm"/> colour attachment, single-sample, with no depth. Output is in
         /// RGBA order whatever the source's storage order, with alpha forced to one.
+        /// <para>
+        /// A source other than the last one recorded replaces this instance's cached resource set. The replaced
+        /// set is kept alive until <see cref="Dispose"/>. Use the overload that takes a retire callback to free it
+        /// sooner.
+        /// </para>
         /// </summary>
         /// <exception cref="ArgumentException"><paramref name="destination"/> is not one single-sample
         /// <see cref="GpuPixelFormat.R8G8B8A8UNorm"/> attachment with no depth.</exception>
         /// <exception cref="ObjectDisposedException">This instance is disposed.</exception>
         public void Record(IGpuCommandList commands, IGpuTexture source, IGpuFramebuffer destination)
+            => Record(commands, source, destination, retire: null);
+
+        /// <summary>
+        /// Record as <see cref="Record(IGpuCommandList, IGpuTexture, IGpuFramebuffer)"/> does, and hand a resource
+        /// set this record replaces to <paramref name="retire"/>, which must destroy it only once the GPU has
+        /// finished every submission that used it, the open recording's included. A frame capture tap passes its
+        /// context's <c>Retire</c>. Null keeps the replaced set alive until <see cref="Dispose"/>.
+        /// </summary>
+        /// <exception cref="ArgumentException"><paramref name="destination"/> is not one single-sample
+        /// <see cref="GpuPixelFormat.R8G8B8A8UNorm"/> attachment with no depth.</exception>
+        /// <exception cref="ObjectDisposedException">This instance is disposed.</exception>
+        public void Record(IGpuCommandList commands, IGpuTexture source, IGpuFramebuffer destination,
+            Action<IDisposable>? retire)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             ArgumentNullException.ThrowIfNull(commands);
@@ -113,17 +132,24 @@ void main() {
             commands.SetFramebuffer(destination);
             commands.SetFullScissorRects();
             commands.SetPipeline(_pipeline);
-            commands.SetGraphicsResourceSet(0, SetFor(source));
+            commands.SetGraphicsResourceSet(0, SetFor(source, retire));
             commands.Draw(3);
         }
 
-        // One set, over the last source drawn. A different source instance replaces it. Disposing the old one at
-        // once is safe inside a recording: a set owns no native object on Metal or Direct3D 11, and Vulkan frees
-        // its descriptor set behind the timeline.
-        IGpuResourceSet SetFor(IGpuTexture source)
+        // One set, over the last source drawn. A different source instance replaces it, and the replaced set is
+        // NEVER disposed here. A draw already recorded in the open list may use it, and the GPU reads that list
+        // only after its submit. A Vulkan set's deferred free is stamped with the timeline value already
+        // allocated, which covers earlier submissions and not this recording, so freeing it now would let a
+        // later present destroy a descriptor set a running draw still uses (VUID-vkFreeDescriptorSets-00309).
+        // The set goes to the caller's completion-aware retire, or waits in _replaced until Dispose.
+        IGpuResourceSet SetFor(IGpuTexture source, Action<IDisposable>? retire)
         {
             if (_set is not null && ReferenceEquals(_setSource, source)) return _set;
-            _set?.Dispose();
+            if (_set is not null)
+            {
+                if (retire is not null) retire(_set);
+                else _replaced.Add(_set);
+            }
             _set = null;
             _setSource = null;
             _set = _device.Factory.CreateResourceSet(new GpuResourceSetDescription(_layout, source, _sampler));
@@ -149,11 +175,15 @@ void main() {
                 nameof(destination));
         }
 
-        /// <summary>Free the cached resource set, the pipeline, the layout, the shaders and the sampler.</summary>
+        /// <summary>Free the cached resource set, every replaced set no retire callback took, the pipeline, the
+        /// layout, the shaders and the sampler. Call it once the GPU has finished every recording this instance
+        /// drew into, as for any GPU resource.</summary>
         public void Dispose()
         {
             if (_disposed) return;
             _disposed = true;
+            foreach (IGpuResourceSet replaced in _replaced) replaced.Dispose();
+            _replaced.Clear();
             _set?.Dispose();
             _set = null;
             _setSource = null;

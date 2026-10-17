@@ -44,8 +44,8 @@ PY
 }
 
 echo "expand: which triggers shard which legs"
-check "push is 3 Metal shards + 2 legs"     "5 metal-native"  "$(expand push false '')"
-check "pull_request matches push"           "5 metal-native"  "$(expand pull_request false '')"
+check "push keeps Metal's full suite on one job" "3 none"    "$(expand push false '')"
+check "pull_request matches push"           "3 none"          "$(expand pull_request false '')"
 check "dispatch shards all three"           "18 metal-native,direct3d11-native,vulkan-native" "$(expand workflow_dispatch false '')"
 check "schedule matches dispatch"           "18 metal-native,direct3d11-native,vulkan-native" "$(expand schedule false '')"
 check "a bake shards nothing"               "3 none"          "$(expand workflow_dispatch true '')"

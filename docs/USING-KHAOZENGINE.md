@@ -12027,7 +12027,9 @@ after every command, so one verb is one undo step there.
 `SetCornerHeightsCommand` (a rect of CORNERS, skipping corners no region holds and reporting `WrittenCount`
 against `CornerCount`), `PlaceObjectCommand` / `MoveObjectCommand` / `RotateObjectCommand` /
 `RemoveObjectCommand` / `SetObjectTagsCommand`, `SetMarkerCommand` / `RemoveMarkerCommand`,
-`CreateRegionCommand` / `DeleteRegionCommand`, `CompositeCommand` (a list of commands as one undo step, rolled
+`SetFoliageLayerCommand` / `RemoveFoliageLayerCommand` (replace or remove one cosmetic foliage layer, reporting
+its raster extent), `SetClearanceCommand` (one replace or remove of the whole clearance settings, no dirty
+rects), `CreateRegionCommand` / `DeleteRegionCommand`, `CompositeCommand` (a list of commands as one undo step, rolled
 back whole when a child throws) and `SnapshotRectCommand` (an arbitrary mutation made undoable by capturing the
 rect's pre-image first). An object placed and then undone comes back with the id it HAD on redo, so anything
 referring to it by id keeps resolving.

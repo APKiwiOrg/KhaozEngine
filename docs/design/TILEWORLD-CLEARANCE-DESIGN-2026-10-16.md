@@ -96,9 +96,28 @@ never a document type.
 ### The filled-solid limit
 
 An obstacle is solid from its lowest point up to its top surface everywhere it has a surface. A doorway, an arch,
-the space under eaves or a bridge deck over water all read as filled. That bias suits an authoring check: it can
-report a contact a precise test would clear, never hide one. A crown in a roof's attic counts as clipping, which
+the space under eaves or a bridge deck over water all read as filled. That bias suits an authoring check: it
+leans toward reporting a contact a precise test would clear. A crown in a roof's attic counts as clipping, which
 is correct for roofs. A hollow piece such as a bridge deck or a balcony must not carry an obstacle tag.
+
+### The error band
+
+The solid is a raster, so every reading carries an error that scales with the cell size c. The figures in
+brackets are for the default c = 0.1.
+
+- A point outside the surface but inside a boundary cell of a curved or off-grid edge reads up to c / 2 inside
+  (0.05).
+- A cell whose only empty neighbour is diagonal reads about (sqrt 2 - 1/2) c inside (0.091), from the chamfer
+  distance less half a cell.
+- A cell top is the highest sample in the cell, so a point just above a sloped top reads up to about c times the
+  slope's tangent inside, less its height above the surface. A point 1 cm above a 45 degree slope reads about
+  0.09, and about 0.16 at 60 degrees.
+- The check can also under-report. A contact narrower than the subject's sample pitch (c) can fall between
+  samples and be missed, and an obstacle wholly inside a subject is never seen, because only the subject's
+  surface is sampled.
+
+The guidance that follows is a tolerance of at least c / 2 on each rule to absorb the edge band, and a smaller c
+in a world with steep roofs.
 
 ## The TileWorld adapter
 
@@ -133,7 +152,8 @@ mesh `ClearanceMesh` refuses each return false with a reason naming the referenc
 reference with the file's last write time and length, and every ask re-stats the file and reloads when either
 differs. A missing file is probed again on every ask, and only a reference that names no usable path stays cached
 as a failure. Only the named file is stamped, so a `.gltf` whose external buffers change on their own keeps its
-old load.
+old load. The spec keyed the cache per path. The shipped cache is keyed per mesh reference, which is what the
+check asks by, and each entry records the path it resolved to.
 
 ## ke-tileedit
 
@@ -141,7 +161,9 @@ old load.
   refuses the save, nothing is written, and the refusal lists every issue as `[code] message`, one per line.
 - `world_validate` appends the clearance issues to the validator's.
 - A resolved mesh root that is not a directory is one `clearance.mesh` issue, so a typo in the root never reads
-  as a world with nothing to check.
+  as a world with nothing to check. The save refusal for the root covers "not a directory" only, which is
+  narrower than the spec's wording. A root that exists but cannot be read surfaces as one `clearance.mesh` issue
+  per archetype whose mesh cannot be read.
 - Five verbs author and run the block: `clearance_get`, `clearance_set`, `clearance_rule_set`,
   `clearance_rule_remove` and `clearance_check`. Each mutation is one undo step through `SetClearanceCommand`
   in `KhaozEngine.TileWorld.Editing`, which reports no dirty rects because nothing draws or collides with the

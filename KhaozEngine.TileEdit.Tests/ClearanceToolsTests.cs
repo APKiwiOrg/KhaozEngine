@@ -195,7 +195,7 @@ public class ClearanceToolsTests
 
         McpException ex = Assert.Throws<McpException>(() => f.Worlds.WorldSave());
 
-        Assert.StartsWith("world 'clearance' has 1 clearance issues:", ex.Message);
+        Assert.StartsWith("world 'clearance' has 1 clearance issue:", ex.Message);
         Assert.Contains($"[{TileWorldClearance.MeshCode}] ", ex.Message);
         Assert.Contains(Path.GetFullPath(f.Temp.Sub("absent")), ex.Message);
         Assert.Equal(before, File.ReadAllBytes(f.Manifest));

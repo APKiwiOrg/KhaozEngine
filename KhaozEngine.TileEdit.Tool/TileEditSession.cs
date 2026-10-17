@@ -120,7 +120,7 @@ public sealed class TileEditSession
             IReadOnlyList<TileWorldIssue> clearance = ClearanceIssuesLocked(e);
             if (clearance.Count > 0)
                 throw new TileWorldException(
-                    $"world '{e.Document.Id}' has {clearance.Count} clearance issues:\n" +
+                    $"world '{e.Document.Id}' has {clearance.Count} clearance {(clearance.Count == 1 ? "issue" : "issues")}:\n" +
                     string.Join('\n', clearance.Select(i => $"[{i.Code}] {i.Message}")));
             TileWorldFile.Save(e.Document, _path!);
             e.MarkSaved();

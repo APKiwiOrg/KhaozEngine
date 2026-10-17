@@ -22,6 +22,7 @@ public class TileWorldClearanceTests
     static readonly IReadOnlyDictionary<string, ClearanceMesh> Meshes = new Dictionary<string, ClearanceMesh>
     {
         ["box-tree"] = Box(new(-0.3f, 0f, -0.3f), new(0.3f, 1f, 0.3f)),
+        ["east-tree"] = Box(new(0.25f, 0f, -0.1f), new(0.45f, 1f, 0.1f)),
         ["cone-tree"] = Cone(baseY: 2.5f, apexY: 6f, radius: 1f),
         ["wall"] = Box(new(-0.5f, 0f, -0.15f), new(0.5f, 2f, 0.15f)),
         ["roof"] = Box(new(-3f, 0f, -3f), new(3f, 0.5f, 3f)),
@@ -34,6 +35,7 @@ public class TileWorldClearanceTests
         {
           "archetypes": [
             { "id": "tree", "name": "tree", "meshRef": "box-tree", "tags": ["tree"] },
+            { "id": "east_tree", "name": "east tree", "meshRef": "east-tree", "tags": ["tree"] },
             { "id": "pine", "name": "pine", "meshRef": "cone-tree", "tags": ["tree"] },
             { "id": "wall", "name": "wall", "meshRef": "wall", "tags": ["structure"] },
             { "id": "wall_yawed", "name": "wall yawed", "meshRef": "wall", "yawOffsetDegrees": 90, "tags": ["structure"] },
@@ -93,7 +95,7 @@ public class TileWorldClearanceTests
         Assert.Equal("clearance.overlap", issue.Code);
         Assert.Matches(
             "^" + Regex.Escape($"rule '{RuleName}': tree #{tree.Id} at (12, 9) plane 0 is ")
-                + @"\d+\.\d\d"
+                + @"\d+\.\d\d\d"
                 + Regex.Escape($" m inside wall #{wall.Id} at (12, 9) plane 0") + "$",
             issue.Message);
         Assert.InRange(Depth(issue), 0.05f, 0.2f);
@@ -179,6 +181,24 @@ public class TileWorldClearanceTests
         Assert.InRange(Measure("wall_yawed", 0), unrotated - 0.02f, unrotated + 0.02f);
     }
 
+    // The subject sits east of its tile centre, inside the east to west wall slab. A quarter turn swings it north or
+    // south of the slab and a half turn back across it, so a check that ignored rotation would report every row.
+    [Theory]
+    [InlineData(0, true)]
+    [InlineData(1, false)]
+    [InlineData(2, true)]
+    [InlineData(3, false)]
+    public void RotationMovesAnOffCentreSubject(int rotation, bool inside)
+    {
+        TileWorldDocument doc = World(Settings());
+        doc.AddObject("east_tree", 10, 10, 0, rotation);
+        doc.AddObject("wall", 10, 10, 0, 0);
+
+        IReadOnlyList<TileWorldIssue> issues = Check(doc);
+
+        Assert.Equal(inside ? 1 : 0, issues.Count);
+    }
+
     [Fact]
     public void MissingArchetypeIsSkipped()
     {
@@ -204,6 +224,7 @@ public class TileWorldClearanceTests
     [InlineData("missing", "no such mesh")]
     [InlineData("nan", "not finite")]
     [InlineData("", "no meshRef")]
+    [InlineData("null-mesh", "returned no mesh")]
     public void UnreadableMeshIsReported(string meshRef, string reason)
     {
         TileWorldCatalogs catalogs = Catalogs();
@@ -331,6 +352,13 @@ public class TileWorldClearanceTests
             {
                 // A loader that hands the core a bad position, which ClearanceMesh refuses with ArgumentException.
                 mesh = new ClearanceMesh(new[] { new Vector3(float.NaN, 0f, 0f), Vector3.UnitX, Vector3.UnitZ }, new[] { 0, 1, 2 });
+                error = null;
+                return true;
+            }
+            if (meshRef == "null-mesh")
+            {
+                // A loader that breaks its own contract by reporting success with no mesh.
+                mesh = null!;
                 error = null;
                 return true;
             }

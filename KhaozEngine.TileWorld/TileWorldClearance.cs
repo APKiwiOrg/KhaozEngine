@@ -222,7 +222,7 @@ public static class TileWorldClearance
     static TileWorldIssue OverlapIssue(TileClearanceRule rule, TileObject subject, TileObject obstacle, float depth) =>
         new(OverlapCode,
             string.Create(CultureInfo.InvariantCulture,
-                $"rule '{rule.Name}': {subject.ArchetypeId} #{subject.Id} at ({subject.X}, {subject.Z}) plane {subject.Plane} is {depth:0.00} m inside {obstacle.ArchetypeId} #{obstacle.Id} at ({obstacle.X}, {obstacle.Z}) plane {obstacle.Plane}"),
+                $"rule '{rule.Name}': {subject.ArchetypeId} #{subject.Id} at ({subject.X}, {subject.Z}) plane {subject.Plane} is {depth:0.000} m inside {obstacle.ArchetypeId} #{obstacle.Id} at ({obstacle.X}, {obstacle.Z}) plane {obstacle.Plane}"),
             RegionCoord.Of(subject.X, subject.Z), subject.Coord);
 
     sealed class RulePlan
@@ -292,9 +292,12 @@ public static class TileWorldClearance
         {
             try
             {
-                return meshes.TryLoad(meshRef, out ClearanceMesh? mesh, out string? error)
-                    ? new Geometry(mesh, null)
-                    : new Geometry(null, error ?? "the mesh could not be read");
+                if (!meshes.TryLoad(meshRef, out ClearanceMesh? mesh, out string? error))
+                    return new Geometry(null, error ?? "the mesh could not be read");
+                // A source that breaks its own contract is an unreadable mesh, never a crash at placement.
+                return mesh is null
+                    ? new Geometry(null, "the mesh source reported success but returned no mesh")
+                    : new Geometry(mesh, null);
             }
             catch (ArgumentException e)
             {

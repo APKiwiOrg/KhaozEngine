@@ -95,7 +95,7 @@ public class ClearanceGeometryTests
         var solid = ClearanceSolid.Build(Gable(4f, 3f, 2f, 4f), Cell);
 
         Assert.True(solid.DepthAt(new Vector3(2f, 3f, 1.5f)) > 0f);
-        // The slope at x = 0.3 is only 2.3 high, so a point at 3.5 near the eave is in open air.
+        // The slope at x = 0.2 is only 2.2 high, so a point at 3.5 near the eave is in open air.
         Assert.Equal(0f, solid.DepthAt(new Vector3(0.2f, 3.5f, 1.5f)));
     }
 

@@ -19,7 +19,7 @@ internal sealed class TileWorldManifest
     public long NextObjectId { get; set; } = 1;
     public List<TileWorldManifestRegion> Regions { get; set; } = new();
     public List<TileFoliageLayerDto>? FoliageLayers { get; set; }
-    // Authoring metadata, absent when the world declares no clearance rules.
+    // Authoring metadata, absent only when the document's Clearance is null. A block with no rules is still written.
     public TileWorldClearanceDto? Clearance { get; set; }
     // DERIVED from the regions, like the collision map: the regions stay the source of truth and this is the copy
     // a client can read before it has streamed any of them. Absent in a manifest written by an older engine, which

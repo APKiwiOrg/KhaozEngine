@@ -272,7 +272,7 @@ The codes are stable (`TileWorldClearance.OverlapCode`, `MeshCode`, `RuleCode`):
 - `clearance.rule`: a rule's subject or obstacle tags match no archetype in the catalogs, so a typo cannot pass
   everything.
 - `clearance.mesh`: a matched archetype has no `meshRef`, or its mesh cannot be read or built (including a solid
-  above `ClearanceSolid.MaxCells`). Reported once per archetype, and its objects are never silently passed.
+  above `ClearanceSolid.MaxCells` and a mesh source that reports success with no mesh). Reported once per archetype, and its objects are never silently passed.
 - `clearance.overlap`: one per penetrating pair, at its deepest sample, naming the rule, both objects with their
   ids, archetypes, tiles and planes, and the depth in metres. `Region` and `Tile` are the subject's.
 
@@ -284,8 +284,24 @@ obstacle id. An object whose archetype the catalogs lack is skipped, because `Va
 every planar cell that surface covers, and a subject sample's depth is its nearest way out: up to the top, down
 to the base or sideways to an empty cell. A thin piece therefore caps reported depth near half its thickness.
 Planar depth is quantized to the cell size. A doorway, an arch, the space under eaves or a bridge deck over water
-reads as filled, which can only report a contact a precise test would clear, never hide one. A hollow piece
-(a bridge deck, a balcony) must not carry an obstacle tag.
+reads as filled, which leans toward reporting a contact a precise test would clear. A hollow piece (a bridge
+deck, a balcony) must not carry an obstacle tag.
+
+**The error band.** The solid is a raster, so a reading carries an error that scales with `cellSize` (figures
+for the default 0.1 in brackets):
+
+- A point outside the surface but inside a boundary cell of a curved or off-grid edge reads up to `cellSize / 2`
+  inside (0.05).
+- A cell whose only empty neighbour is diagonal reads about `(sqrt 2 - 1/2) x cellSize` inside (0.091).
+- A cell top is the highest sample in the cell, so a point just above a sloped top reads up to about
+  `cellSize x tan(slope)` inside, less its height above the surface. A point 1 cm above a 45 degree roof reads
+  about 0.09, and about 0.16 at 60 degrees.
+- The check can also under-report. A contact narrower than the subject's sample pitch (`cellSize`) can fall
+  between samples and be missed, and an obstacle wholly inside a subject is never seen, because only the
+  subject's surface is sampled.
+
+Give each rule a `tolerance` of at least `cellSize / 2` to absorb the edge band, and use a smaller `cellSize` in
+a world with steep roofs.
 
 **Not part of `Validate`.** `TileWorldValidator.Validate` never runs the check, because it needs mesh files that
 a head or a server opening a world never reads. Tools run it beside the validator, and `ke-tileedit` refuses a

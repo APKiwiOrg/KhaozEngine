@@ -10,13 +10,23 @@ namespace KhaozEngine.Primitives;
 /// <para>
 /// Filled-solid limit: a piece is solid everywhere below its top surface, down to the base. An overhang, an
 /// open doorway, an arch or the space under eaves therefore counts as solid. That is the intended bias for an
-/// authoring check that keeps one prop out of another, because it can only report a penetration that a precise
-/// test would miss, never hide one.
+/// authoring check that keeps one prop out of another: it leans toward reporting a penetration a precise test
+/// would clear. It is not a guarantee that every penetration is found, as the error band below says.
 /// </para>
 /// <para>
 /// Depth is the shortest way out: the distance down to the base, up to the cell top, or sideways to the
 /// nearest empty cell, the last from a two-pass chamfer distance transform with weights 1 and sqrt 2.
 /// Planar depth is quantized to the cell size, and a thin piece caps depth near half its thickness.
+/// </para>
+/// <para>
+/// Error band, in terms of the cell size c (figures for c = 0.1). A point outside the surface but inside a
+/// boundary cell of a curved or off-grid edge reads up to c / 2 inside (0.05). A cell whose only empty neighbour
+/// is diagonal reads about (sqrt 2 - 1/2) c (0.091). A cell top is the highest sample in the cell, so a point
+/// just above a sloped top reads up to about c times the slope's tangent inside, less its height above the
+/// surface (about 0.09 for a point 1 cm above a 45 degree slope, about 0.16 at 60 degrees). In the other
+/// direction, a contact narrower than the subject's sample pitch can fall between samples and be missed, and an
+/// obstacle wholly inside a subject is never seen, because only the subject's surface is sampled. A tolerance of
+/// at least c / 2 absorbs the edge band, and a smaller c suits steep roofs.
 /// </para>
 /// </summary>
 public sealed class ClearanceSolid

@@ -22,7 +22,7 @@ public sealed class ClearanceTools(QueryService query, MutationService mutate)
     [McpServerTool(Name = "clearance_rule_set"), Description("Adds a clearance rule, or replaces the rule of the same name in place, as one undo step. Objects whose archetype carries any subject tag must keep their meshes clear of objects whose archetype carries any obstacle tag. Refuses when the world has no clearance block, so run clearance_set first.")]
     public MutationResult ClearanceRuleSet(
         [Description("Rule name, unique within the block.")] string name,
-        [Description("Archetype tags that mark the objects this rule moves, at least one.")] string[] subjectTags,
+        [Description("Archetype tags that mark the objects this rule checks, at least one.")] string[] subjectTags,
         [Description("Archetype tags that mark the objects they must stay clear of, at least one.")] string[] obstacleTags,
         [Description("Penetration depth in metres the rule allows before it reports, zero or more.")] float tolerance = 0f)
         => ToolGuard.Guard(() => mutate.ClearanceRuleSet(name, subjectTags, obstacleTags, tolerance));

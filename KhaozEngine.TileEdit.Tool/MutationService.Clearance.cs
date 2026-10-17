@@ -10,8 +10,8 @@ namespace KhaozEngine.TileEdit;
 /// leaves the world and its history untouched.</summary>
 public sealed partial class MutationService
 {
-    /// <summary>Creates the clearance block, or updates its mesh root, cell size and waiver tag keeping its
-    /// rules.</summary>
+    /// <summary>Creates the clearance block, or replaces its mesh root, cell size and waiver tag with the given
+    /// values while keeping its rules.</summary>
     public MutationResult ClearanceSet(string meshRoot, float cellSize, string? waiverTag) =>
         session.Execute(e => new SetClearanceCommand(e.Document, e.Document.Clearance is { } current
             ? current.With(meshRoot, cellSize, waiverTag)

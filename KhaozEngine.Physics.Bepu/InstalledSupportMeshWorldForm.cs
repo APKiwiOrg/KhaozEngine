@@ -27,7 +27,9 @@ internal sealed class InstalledSupportMeshWorldCache
     internal const int GlobalTriangleCapacity = 8192;
 
     readonly Lock _gate = new();
-    readonly ConcurrentDictionary<int, Slot> _statics = new();
+    // Writes are serialised by the budget gate, so one write lock suffices, and reads stay lock-free. Sized to the
+    // bound, so publication under the gate never resizes.
+    readonly ConcurrentDictionary<int, Slot> _statics = new(concurrencyLevel: 1, capacity: StaticCapacity);
     readonly Queue<int> _owners = new(StaticCapacity);
     long _lockAcquisitions;
     int _triangleCount;
@@ -171,7 +173,8 @@ internal sealed class InstalledSupportMeshWorldCache
         internal long Version { get; } = version;
         // TryGetValue acquires the concurrent map's published node. The form and every array it owns are
         // immutable before insertion. FIFO mutation and Count updates belong exclusively to the budget gate.
-        internal ConcurrentDictionary<int, InstalledSupportMeshWorldForm> Triangles { get; } = new();
+        internal ConcurrentDictionary<int, InstalledSupportMeshWorldForm> Triangles { get; } =
+            new(concurrencyLevel: 1, capacity: PerStaticTriangleCapacity);
         internal int Count;
         readonly Queue<int> _triangles = new(PerStaticTriangleCapacity);
 

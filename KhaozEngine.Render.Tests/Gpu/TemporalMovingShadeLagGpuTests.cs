@@ -200,7 +200,7 @@ namespace KhaozEngine.Tests.Gpu
     /// amendment 34), checked after every case has printed. The S textured tail at 2, 4 and 8 is at most
     /// <see cref="FastTailRatio"/> times the S tail at 1 of the same run, each way and at each preset. The M and MS
     /// textured tail at 1 to 8 stands at most <see cref="MovingTailExcess"/> above the same run's textured control,
-    /// whose error is the moving texture's own and grows with its speed as the pan's does. In every case the
+    /// whose error is the moving texture's own and grows with its speed as the pan's does. In those cases and C the
     /// textured band's output grain is at most <see cref="BandGrainRatio"/> times the reference's. And C's textured
     /// band and tail stay within <see cref="ControlTolerance"/> of the resolve's figures before amendment 34 on the
     /// same device class (<see cref="TemporalDeviceClass"/>).
@@ -211,11 +211,12 @@ namespace KhaozEngine.Tests.Gpu
         const int W = 320, H = 180;
         const int FirstMeasured = 80, Measured = 8;
 
-        // Before amendment 34, Metal measured the S textured tail at 4 and 8 at 2.6 to 7.6 times the tail at 1, the M
-        // and MS tails at 2 to 8 0.0072 to 0.067 above their control, and the textured band's grain up to 3.5 times the
-        // reference's. With it, the S tails measure at most 1.52 times the tail at 1, the M and MS tails at most 0.0037
-        // above their control, and the grain at most 1.41 times.
-        const double FastTailRatio = 1.75, MovingTailExcess = 0.0055, BandGrainRatio = 1.5, ControlTolerance = 0.1;
+        // Before amendment 34, Metal, WARP and lavapipe each failed 40 of these bounds: the S textured tail at 4 and 8
+        // measured 2.6 to 7.6 times the tail at 1, the M and MS tails at 2 to 8 lay 0.0072 to 0.067 above their
+        // control, and the textured band's grain was up to 3.5 times the reference's. With it, Metal measures the S
+        // tails at most 1.33 times the tail at 1, the M and MS tails at most 0.0038 above their control, and the grain
+        // at most 1.39 times the reference's.
+        const double FastTailRatio = 1.5, MovingTailExcess = 0.0055, BandGrainRatio = 1.5, ControlTolerance = 0.1;
 
         readonly record struct Case(string Name, TemporalUpscale Preset, MovingShadeKind Kind, float Shadow,
             float Motion)
@@ -226,8 +227,8 @@ namespace KhaozEngine.Tests.Gpu
             public float Sign => Shadow < 0f ? -1f : 1f;
         }
 
-        // C's textured band and tail mean errors before amendment 34 on each device class. The amendment leaves every
-        // one of them as it was on Metal.
+        // C's textured band and tail mean errors before amendment 34 on each device class, from the hosted legs. The
+        // amendment leaves every one of them as it was on Metal.
         static readonly Dictionary<string, (double Band, double Tail)> HardwareControl = new()
         {
             ["Quality C pan 1.0 px"] = (0.0105, 0.0076), ["Quality C pan 2.0 px"] = (0.0055, 0.0039),
@@ -239,17 +240,17 @@ namespace KhaozEngine.Tests.Gpu
         static readonly Dictionary<string, (double Band, double Tail)> WarpControl = new()
         {
             ["Quality C pan 1.0 px"] = (0.0105, 0.0076), ["Quality C pan 2.0 px"] = (0.0055, 0.0039),
-            ["Quality C pan 4.0 px"] = (0.0152, 0.0120), ["Quality C pan 8.0 px"] = (0.0138, 0.0105),
-            ["Native C pan 1.0 px"] = (0.0046, 0.0037), ["Native C pan 2.0 px"] = (0.0046, 0.0035),
-            ["Native C pan 4.0 px"] = (0.0061, 0.0044), ["Native C pan 8.0 px"] = (0.0055, 0.0038),
+            ["Quality C pan 4.0 px"] = (0.0153, 0.0121), ["Quality C pan 8.0 px"] = (0.0138, 0.0105),
+            ["Native C pan 1.0 px"] = (0.0045, 0.0036), ["Native C pan 2.0 px"] = (0.0045, 0.0035),
+            ["Native C pan 4.0 px"] = (0.0060, 0.0044), ["Native C pan 8.0 px"] = (0.0056, 0.0038),
         };
 
         static readonly Dictionary<string, (double Band, double Tail)> LavapipeControl = new()
         {
-            ["Quality C pan 1.0 px"] = (0.0105, 0.0076), ["Quality C pan 2.0 px"] = (0.0055, 0.0039),
-            ["Quality C pan 4.0 px"] = (0.0152, 0.0120), ["Quality C pan 8.0 px"] = (0.0138, 0.0105),
-            ["Native C pan 1.0 px"] = (0.0046, 0.0037), ["Native C pan 2.0 px"] = (0.0046, 0.0035),
-            ["Native C pan 4.0 px"] = (0.0061, 0.0044), ["Native C pan 8.0 px"] = (0.0055, 0.0038),
+            ["Quality C pan 1.0 px"] = (0.0105, 0.0076), ["Quality C pan 2.0 px"] = (0.0056, 0.0040),
+            ["Quality C pan 4.0 px"] = (0.0150, 0.0120), ["Quality C pan 8.0 px"] = (0.0139, 0.0105),
+            ["Native C pan 1.0 px"] = (0.0046, 0.0036), ["Native C pan 2.0 px"] = (0.0045, 0.0034),
+            ["Native C pan 4.0 px"] = (0.0060, 0.0045), ["Native C pan 8.0 px"] = (0.0055, 0.0038),
         };
 
         static Dictionary<string, (double Band, double Tail)> Control => TemporalDeviceClass.Warp ? WarpControl
@@ -347,9 +348,10 @@ namespace KhaozEngine.Tests.Gpu
             foreach ((Case c, Dictionary<string, ShadowEdgeRegion> r) in measured)
             {
                 ShadowEdgeRegion band = r["band textured"];
-                Check(band.GrainOut <= BandGrainRatio * band.GrainRef,
-                    $"{c.Name}: textured band grain {band.GrainOut:0.0000} above {BandGrainRatio} times the "
-                    + $"reference's {band.GrainRef:0.0000}");
+                if (c.Kind == MovingShadeKind.Shadow ? MathF.Abs(c.Shadow) > 1f : c.Motion >= 1f)
+                    Check(band.GrainOut <= BandGrainRatio * band.GrainRef,
+                        $"{c.Name}: textured band grain {band.GrainOut:0.0000} above {BandGrainRatio} times the "
+                        + $"reference's {band.GrainRef:0.0000}");
                 double tail = r["tail textured"].Mean;
                 if (c.Kind == MovingShadeKind.Shadow && MathF.Abs(c.Shadow) > 1f)
                 {

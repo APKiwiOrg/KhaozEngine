@@ -87,19 +87,36 @@ public sealed class NativeMarkerSupportEditTests
     }
 
     /// <summary>A callback that edits its candidate after staging a publication shares that edit with the publication.
-    /// The accepted expansion built before the edit is not remembered, so the next edit matches a cold session.</summary>
+    /// The published document, its event's marker bounds and its redo state describe that same final edit under the
+    /// staged command's label. The accepted expansion built before the edit is not remembered, so the next edit matches
+    /// a cold session.</summary>
     [Fact]
     public void RevalidatedCallbackEdit_ForgetsAcceptedExpansion()
     {
         var session = Session(MarkerFixtures.SupportEdits("stacked-bound"));
+        var events = new System.Collections.Generic.List<MapNativeEditEffects>();
+        session.NativeEdited += events.Add;
         session.Mutate((document, registry) =>
         {
             session.ApplyNative(Corner(2010), document, registry);
             // The staged publication shares this patch object, so the later edit is published with it.
-            var floor = document.Surfaces.Patches[Floor2];
-            for (int i = 0; i < floor.Heights.Length; i++) floor.Heights[i] = 2040;
+            RaiseAll(document, 2040);
             return 0;
         }, true);
+        Assert.Equal(20.4f, Bound(session).Position.Y.ToSingle());
+        // A generic callback that makes the same final edit without staging reports what the late edit must report.
+        var generic = Session(MarkerFixtures.SupportEdits("stacked-bound"));
+        generic.Mutate((document, _) => { RaiseAll(document, 2040); return 0; }, true);
+        var first = Assert.Single(events);
+        Assert.Same(first, session.LastNativeEffects);
+        Assert.Equal(generic.LastNativeEffects!.Describe(), first.Describe());
+        Assert.Equal(new[] { "bound" }, first.MarkerIds);
+        Assert.InRange((double)20.4f, first.NewBounds!.Value.MinY, first.NewBounds.Value.MaxY);
+        Assert.Equal((Corner(2010).Label, (string?)null), session.NativeHistoryLabels);
+        string published = MarkerEditorFixtures.Bytes(session);
+        Assert.NotNull(session.UndoNative());
+        Assert.NotNull(session.RedoNative());
+        Assert.Equal(published, MarkerEditorFixtures.Bytes(session));
         Assert.Equal(20.4f, Bound(session).Position.Y.ToSingle());
         var fixture = Fixture(session);
         var cold = PrefabEditorFixtures.Session(new PrefabFixture(fixture.Document, fixture.Assets));
@@ -111,26 +128,43 @@ public sealed class NativeMarkerSupportEditTests
         Assert.InRange((double)20.4f, effects.OldBounds!.Value.MinY, effects.OldBounds.Value.MaxY);
     }
 
-    // The four corners of the cell under the bound marker, so the stroke reseats it whatever the cell's diagonal.
-    /// <summary>A callback edit after staging that leaves the shared candidate invalid is validated again and refuses,
-    /// with document, history, events and dirty state unchanged.</summary>
+    /// <summary>A callback edit after staging that leaves the shared candidate invalid is validated again exactly as a
+    /// generic callback making the same final edit is, and refuses with its refusal before the publication hook, with
+    /// document, history labels, events and dirty state unchanged.</summary>
     [Fact]
     public void RevalidatedCallbackEdit_RefusesInvalidLaterEdit()
     {
         var session = Session(MarkerFixtures.SupportEdits("stacked-bound"));
-        var stateBefore = PrefabEditorFixtures.State(session);
+        var stateBefore = MarkerEditorFixtures.State(session);
+        int hooks = 0;
+        session.BeforeNativePublication = () => hooks++;
         var error = Assert.Throws<MapDocumentException>(() => session.Mutate((document, registry) =>
         {
             session.ApplyNative(Corner(2010), document, registry);
             // The staged publication shares this patch object, so only publication-time validation can see the edit.
-            // Removing the cell under the bound marker leaves it without support.
+            // Removing the cell under the bound marker leaves it and its level's footprint without support.
             document.Surfaces.Patches[Floor2].SetPresent(0, 0, false);
             return 0;
         }, true));
-        Assert.Contains("Marker 'bound'", error.Message, StringComparison.Ordinal);
-        Assert.Equal(stateBefore, PrefabEditorFixtures.State(session));
+        var generic = Session(MarkerFixtures.SupportEdits("stacked-bound"));
+        var genericError = Assert.Throws<MapDocumentException>(() => generic.Mutate((document, _) =>
+        {
+            // The same stroke applied in place, so nothing is staged.
+            Corner(2010).Apply(document);
+            document.Surfaces.Patches[Floor2].SetPresent(0, 0, false);
+            return 0;
+        }, true));
+        Assert.Equal(genericError.Message, error.Message);
+        Assert.Equal(stateBefore, MarkerEditorFixtures.State(session));
+        Assert.Equal(0, hooks);
     }
 
+    static void RaiseAll(MapDocument document, int height)
+    {
+        var floor = document.Surfaces.Patches[Floor2];
+        for (int i = 0; i < floor.Heights.Length; i++) floor.Heights[i] = height;
+    }
+    // The four corners of the cell under the bound marker, so the stroke reseats it whatever the cell's diagonal.
     static TerrainEditCommand Corner(int height) => new(CornerEdit(height));
     static MapSetCornerHeights CornerEdit(int height) => new(Floor2, 0, 0, 2, 2, [height, height, height, height]);
 

@@ -11,12 +11,27 @@ using Xunit;
 namespace KhaozEngine.Tests.Locomotion.Contacts;
 
 /// <summary>Re-evaluates finalized hosted artifacts with the current verdict and writes the Markdown tables
-/// for the hosted record. Runs only when <c>KHAOZ_SUPPORT_COST_HOSTED_RUNS</c> names the artifact directory.
-/// It reads data only and never measures a locomotion operation.</summary>
+/// for the hosted record. The record runs only when <c>KHAOZ_SUPPORT_COST_HOSTED_RUNS</c> names the artifact
+/// directory. It reads data only and never measures a locomotion operation.</summary>
 public sealed class SupportCostHostedRecordTests
 {
     sealed record Row(string Scene, string Operation, bool Dense, long Lifetime, SupportCostSample[] Samples,
         SupportCostSample?[] Legacy, SupportCostGate[] Gates, double[] Scales);
+
+    [Fact]
+    public void MedianVerdictRejectsALaterIterationBeyondTheStructuralCap()
+    {
+        SupportCostSample tick = SupportGateCostTests.Synthetic("DryTick", 1) with
+        { ColdGeometryPassed = true, GeometryMatchesOracle = true, Comparable = false };
+        SupportCostSample legacy = tick with { Operation = "LegacyTick" };
+        SupportCostSample over = tick with { Counts = tick.Counts with { Find = SupportCostTickBound.For(false).Finds + 1 } };
+        Row Make(SupportCostSample last) => new(tick.Scene, tick.Operation, false, 624, [tick, tick, last],
+            [legacy, legacy, legacy], [SupportCostGate.Pass, SupportCostGate.Pass, SupportCostGate.Pass], [1, 1, 1]);
+        Assert.True(MedianVerdict(Make(tick)).Passed);
+        Verdict verdict = MedianVerdict(Make(over));
+        Assert.False(verdict.Passed);
+        Assert.Equal("E", verdict.Codes);
+    }
 
     [Fact]
     public void HostedRecordWithCorrectedCalibration()

@@ -150,6 +150,109 @@ internal sealed class TestBundles
         0xFF, 0xD9,
     ];
 
+    public static byte[] Mp4(string brandBox = "ftyp") =>
+        [0x00, 0x00, 0x00, 0x18, .. Encoding.ASCII.GetBytes(brandBox), (byte)'i', (byte)'s', (byte)'o', (byte)'m'];
+
+    // A stored zip whose central directory names one local section entry twice, as sections/a.json
+    // and sections/b.json. The manifest lists sections/b.json with a wrong hash, so a validator that
+    // hashed before checking for shared bytes would report hash_mismatch instead. The shared payload
+    // is far larger than the zip headers, because the length sum only exceeds the archive once the
+    // repeated bytes outweigh the header overhead.
+    public static MemoryStream SharedStoredEntries()
+    {
+        byte[] section = Encoding.UTF8.GetBytes("{\"a\":\"" + new string('x', 64 * 1024) + "\"}");
+        var listed = new List<BundleEntry>
+        {
+            new("sections/a.json", section.Length, Sha256(section)),
+            new("sections/b.json", section.Length, new string('0', 64)),
+        };
+        byte[] manifest = BugReportJson.SerializeManifest(new BugReportManifest(BugReportFormat.Version, ReportId, "grimhollow",
+            BugReportKind.Bug, "Gameplay", "Shared bytes", new DateTimeOffset(2026, 10, 17, 3, 4, 5, 678, TimeSpan.Zero), listed));
+        return RawStoredZip(
+            [(BundleEntryNames.Manifest, manifest), ("sections/a.json", section)],
+            [(BundleEntryNames.Manifest, 0), ("sections/a.json", 1), ("sections/b.json", 1)]);
+    }
+
+    // Writes local headers for each local entry, then one central record per (name, local index) pair.
+    static MemoryStream RawStoredZip((string Name, byte[] Data)[] locals, (string Name, int Local)[] central)
+    {
+        var output = new MemoryStream();
+        using (var writer = new BinaryWriter(output, Encoding.UTF8, leaveOpen: true))
+        {
+            var offsets = new uint[locals.Length];
+            var crcs = new uint[locals.Length];
+            for (int i = 0; i < locals.Length; i++)
+            {
+                (string name, byte[] data) = locals[i];
+                byte[] nameBytes = Encoding.UTF8.GetBytes(name);
+                offsets[i] = (uint)output.Position;
+                crcs[i] = Crc32(data);
+                writer.Write(0x04034b50u);
+                writer.Write((ushort)20);
+                writer.Write((ushort)0);
+                writer.Write((ushort)0);
+                writer.Write((ushort)0);
+                writer.Write((ushort)0x21);
+                writer.Write(crcs[i]);
+                writer.Write((uint)data.Length);
+                writer.Write((uint)data.Length);
+                writer.Write((ushort)nameBytes.Length);
+                writer.Write((ushort)0);
+                writer.Write(nameBytes);
+                writer.Write(data);
+            }
+
+            long directoryStart = output.Position;
+            foreach ((string name, int local) in central)
+            {
+                byte[] nameBytes = Encoding.UTF8.GetBytes(name);
+                int length = locals[local].Data.Length;
+                writer.Write(0x02014b50u);
+                writer.Write((ushort)20);
+                writer.Write((ushort)20);
+                writer.Write((ushort)0);
+                writer.Write((ushort)0);
+                writer.Write((ushort)0);
+                writer.Write((ushort)0x21);
+                writer.Write(crcs[local]);
+                writer.Write((uint)length);
+                writer.Write((uint)length);
+                writer.Write((ushort)nameBytes.Length);
+                writer.Write((ushort)0);
+                writer.Write((ushort)0);
+                writer.Write((ushort)0);
+                writer.Write((ushort)0);
+                writer.Write(0u);
+                writer.Write(offsets[local]);
+                writer.Write(nameBytes);
+            }
+
+            long directoryEnd = output.Position;
+            writer.Write(0x06054b50u);
+            writer.Write((ushort)0);
+            writer.Write((ushort)0);
+            writer.Write((ushort)central.Length);
+            writer.Write((ushort)central.Length);
+            writer.Write((uint)(directoryEnd - directoryStart));
+            writer.Write((uint)directoryStart);
+            writer.Write((ushort)0);
+        }
+        output.Position = 0;
+        return output;
+    }
+
+    static uint Crc32(byte[] data)
+    {
+        uint crc = 0xFFFFFFFFu;
+        foreach (byte b in data)
+        {
+            crc ^= b;
+            for (int k = 0; k < 8; k++)
+                crc = (crc & 1) != 0 ? (crc >> 1) ^ 0xEDB88320u : crc >> 1;
+        }
+        return ~crc;
+    }
+
     static void WriteBigEndian(byte[] buffer, int offset, int value)
     {
         buffer[offset] = (byte)(value >> 24);

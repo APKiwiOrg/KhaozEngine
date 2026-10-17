@@ -55,7 +55,7 @@ public static class BundleValidator
             var reader = new EntryReader(archiveLength);
             try
             {
-                return ValidateArchive(entries, reader);
+                return ValidateArchive(entries, reader, archiveLength);
             }
             catch (Exception e) when (IsZipFault(e))
             {
@@ -64,7 +64,7 @@ public static class BundleValidator
         }
     }
 
-    static BundleValidationResult ValidateArchive(List<ZipArchiveEntry> entries, EntryReader reader)
+    static BundleValidationResult ValidateArchive(List<ZipArchiveEntry> entries, EntryReader reader, long archiveLength)
     {
         if (entries.Count > BugReportLimits.MaxEntries) return Fail(BundleErrors.TooManyEntries);
 
@@ -74,8 +74,20 @@ public static class BundleValidator
             string name = entry.FullName;
             if (!BundleEntryNames.IsAllowed(name)) return Fail(BundleErrors.EntryNotAllowed, name);
             if (!byName.TryAdd(name, entry)) return Fail(BundleErrors.DuplicateEntry, name);
+            if (name is BundleEntryNames.ScreenshotPng or BundleEntryNames.ScreenshotJpeg
+                && byName.ContainsKey(BundleEntryNames.ScreenshotPng) && byName.ContainsKey(BundleEntryNames.ScreenshotJpeg))
+                return Fail(BundleErrors.DuplicateEntry, BundleEntryNames.ScreenshotJpeg);
             if (entry.IsEncrypted) return Fail(BundleErrors.EncryptedEntry, name);
             if (entry.CompressedLength != entry.Length) return Fail(BundleErrors.CompressedEntry, name);
+        }
+
+        // Stored entries occupy disjoint bytes, so their lengths can never sum past the archive. Records
+        // sharing one local entry would otherwise multiply the hashing work below.
+        long stored = 0;
+        foreach (ZipArchiveEntry entry in entries)
+        {
+            if (entry.Length < 0 || entry.Length > archiveLength - stored) return Fail(BundleErrors.OverlappingEntries);
+            stored += entry.Length;
         }
 
         if (!byName.TryGetValue(BundleEntryNames.Manifest, out ZipArchiveEntry? manifestEntry))
@@ -108,6 +120,9 @@ public static class BundleValidator
         var frameSizes = new Dictionary<string, (int Width, int Height)>(StringComparer.Ordinal);
         foreach (ZipArchiveEntry entry in entries)
             if (CheckImage(entry, reader, frameSizes) is false) return Fail(BundleErrors.ImageInvalid, entry.FullName);
+
+        if (byName.TryGetValue(BundleEntryNames.ClipMp4, out ZipArchiveEntry? mp4) && !IsMp4(reader.ReadPrefix(mp4, 8)))
+            return Fail(BundleErrors.MediaInvalid, BundleEntryNames.ClipMp4);
 
         if (CheckSections(entries, reader) is { } sectionError) return Fail(sectionError);
 
@@ -173,6 +188,8 @@ public static class BundleValidator
         return true;
     }
 
+    static bool IsMp4(byte[] prefix) => prefix.Length == 8 && prefix.AsSpan(4).SequenceEqual("ftyp"u8);
+
     static bool IsValidEdge(int edge) => edge is >= 1 and <= BugReportLimits.MaxScreenshotLongEdge;
 
     // The running total is checked before each section is read, so oversized state is never parsed.
@@ -189,11 +206,11 @@ public static class BundleValidator
             {
                 using JsonDocument document = JsonDocument.Parse(reader.ReadAll(entry), options);
                 if (document.RootElement.ValueKind != JsonValueKind.Object)
-                    return BundleErrors.SectionInvalid + ": " + entry.FullName;
+                    return Coded(BundleErrors.SectionInvalid, entry.FullName);
             }
             catch (JsonException)
             {
-                return BundleErrors.SectionInvalid + ": " + entry.FullName;
+                return Coded(BundleErrors.SectionInvalid, entry.FullName);
             }
         }
         return null;
@@ -216,6 +233,7 @@ public static class BundleValidator
             return false;
         }
         if (index.Frames is null || index.Frames.Count > BundleEntryNames.MaxClipFrames) return false;
+        if (hasMp4 && frameSizes.Count > 0) return false;
 
         int referenced = 0;
         double previousOffset = 0;
@@ -227,7 +245,11 @@ public static class BundleValidator
             if (!double.IsFinite(frame.RenderMilliseconds) || frame.RenderMilliseconds < 0) return false;
             previousOffset = frame.OffsetMilliseconds;
 
-            if (hasMp4 && frame.Entry == BundleEntryNames.ClipMp4) continue;
+            if (hasMp4)
+            {
+                if (frame.Entry != BundleEntryNames.ClipMp4) return false;
+                continue;
+            }
             if (frame.Entry != BundleEntryNames.ClipFrame(i) || !frameSizes.TryGetValue(frame.Entry, out var size)) return false;
             if (size.Width != frame.Width || size.Height != frame.Height) return false;
             referenced++;
@@ -240,7 +262,25 @@ public static class BundleValidator
 
     static BundleValidationResult Fail(string code) => new(false, code, null);
 
-    static BundleValidationResult Fail(string code, string entryName) => new(false, code + ": " + entryName, null);
+    static BundleValidationResult Fail(string code, string entryName) => new(false, Coded(code, entryName), null);
+
+    static string Coded(string code, string entryName) => code + ": " + SafeName(entryName);
+
+    // Entry names come from the upload. Control characters become '?' and names over 64 characters
+    // are cut to 61 plus "...", never splitting a surrogate pair.
+    internal static string SafeName(string name)
+    {
+        const int MaxLength = 64;
+        const int Kept = MaxLength - 3;
+        bool cut = name.Length > MaxLength;
+        int length = cut ? Kept : name.Length;
+        Span<char> buffer = stackalloc char[MaxLength];
+        for (int i = 0; i < length; i++)
+            buffer[i] = char.IsControl(name[i]) ? '?' : name[i];
+        if (cut && char.IsHighSurrogate(buffer[Kept - 1])) buffer[Kept - 1] = '?';
+        if (cut) "...".AsSpan().CopyTo(buffer[Kept..]);
+        return new string(buffer[..(cut ? MaxLength : length)]);
+    }
 
     static long ReadAtMost(Stream source, Stream destination, long limit)
     {
@@ -280,6 +320,16 @@ public static class BundleValidator
             long size = ReadAtMost(stream, hash, Limit(entry));
             Current = null;
             return (size, hash.Finish());
+        }
+
+        public byte[] ReadPrefix(ZipArchiveEntry entry, int count)
+        {
+            Current = entry.FullName;
+            using Stream stream = entry.Open();
+            var buffer = new MemoryStream();
+            ReadAtMost(stream, buffer, count);
+            Current = null;
+            return buffer.ToArray();
         }
 
         long Limit(ZipArchiveEntry entry) => Math.Min(entry.Length, archiveLength) + 1;

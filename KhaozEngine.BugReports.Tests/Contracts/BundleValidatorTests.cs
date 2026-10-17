@@ -156,20 +156,70 @@ public sealed class BundleValidatorTests
         Assert.Equal("clip_index_invalid", ErrorOf(TestBundles.Default().WithEntry(BundleEntryNames.ClipIndex, index)));
     }
 
+    static TestBundles Mp4Bundle(byte[] mp4) => TestBundles.Default()
+        .WithoutEntry("clip/000.jpg")
+        .WithoutEntry("clip/001.jpg")
+        .WithEntry(BundleEntryNames.ClipMp4, mp4)
+        .WithEntry(BundleEntryNames.ClipIndex, TestBundles.ClipIndexJson(
+            new ClipIndexFrame(0, 16.5, 960, 540, BundleEntryNames.ClipMp4),
+            new ClipIndexFrame(83.25, 41, 960, 540, BundleEntryNames.ClipMp4)));
+
     [Fact]
     public void Clip_mp4_with_index_entries_naming_it_is_accepted()
     {
-        byte[] mp4 = [0x00, 0x00, 0x00, 0x18, (byte)'f', (byte)'t', (byte)'y', (byte)'p', (byte)'i', (byte)'s', (byte)'o', (byte)'m'];
-        TestBundles bundle = TestBundles.Default()
-            .WithoutEntry("clip/000.jpg")
-            .WithoutEntry("clip/001.jpg")
-            .WithEntry(BundleEntryNames.ClipMp4, mp4)
-            .WithEntry(BundleEntryNames.ClipIndex, TestBundles.ClipIndexJson(
-                new ClipIndexFrame(0, 16.5, 960, 540, BundleEntryNames.ClipMp4),
-                new ClipIndexFrame(83.25, 41, 960, 540, BundleEntryNames.ClipMp4)));
-        BundleValidationResult result = Validate(bundle);
+        BundleValidationResult result = Validate(Mp4Bundle(TestBundles.Mp4()));
         Assert.Null(result.Error);
         Assert.True(result.IsValid);
+    }
+
+    [Fact]
+    public void Clip_mp4_without_ftyp_is_rejected()
+    {
+        Assert.Equal("media_invalid: clip.mp4", ErrorOf(Mp4Bundle(TestBundles.Mp4("free"))));
+        Assert.Equal("media_invalid: clip.mp4", ErrorOf(Mp4Bundle([0x00, 0x00, 0x00])));
+    }
+
+    [Fact]
+    public void Mixed_mp4_and_jpeg_clip_entries_are_rejected()
+    {
+        Assert.Equal("clip_index_invalid", ErrorOf(TestBundles.Default().WithEntry(BundleEntryNames.ClipMp4, TestBundles.Mp4())));
+        Assert.Equal("clip_index_invalid", ErrorOf(Mp4Bundle(TestBundles.Mp4())
+            .WithEntry("clip/001.jpg", TestBundles.Jpeg(4, 4))
+            .WithEntry(BundleEntryNames.ClipIndex, TestBundles.ClipIndexJson(
+                new ClipIndexFrame(0, 16.5, 960, 540, BundleEntryNames.ClipMp4),
+                new ClipIndexFrame(83.25, 41, 4, 4, "clip/001.jpg")))));
+        Assert.Equal("clip_index_invalid", ErrorOf(Mp4Bundle(TestBundles.Mp4())
+            .WithEntry(BundleEntryNames.ClipIndex, TestBundles.ClipIndexJson(
+                new ClipIndexFrame(0, 16.5, 960, 540, BundleEntryNames.ClipMp4),
+                new ClipIndexFrame(83.25, 41, 960, 540, "clip/001.jpg")))));
+    }
+
+    [Fact]
+    public void Both_screenshot_formats_are_rejected()
+    {
+        Assert.Equal("duplicate_entry: screenshot.jpg",
+            ErrorOf(TestBundles.Default().WithEntry(BundleEntryNames.ScreenshotJpeg, TestBundles.Jpeg(4, 4))));
+        Assert.Equal("duplicate_entry: screenshot.jpg", ErrorOf(TestBundles.Default()
+            .WithoutEntry(BundleEntryNames.ScreenshotPng)
+            .WithEntry(BundleEntryNames.ScreenshotJpeg, TestBundles.Jpeg(4, 4))
+            .WithEntry(BundleEntryNames.ScreenshotPng, TestBundles.Png(4, 4))));
+    }
+
+    [Fact]
+    public void Entries_sharing_stored_bytes_are_rejected_before_hashing()
+        => Assert.Equal("overlapping_entries", BundleValidator.Validate(TestBundles.SharedStoredEntries()).Error);
+
+    [Fact]
+    public void Error_strings_sanitise_entry_names()
+    {
+        Assert.Equal("entry_not_allowed: notes??.txt", ErrorOf(TestBundles.Default().WithEntry("notes\r\n.txt", [1])));
+        Assert.Equal("entry_not_allowed: a?b?c?d", ErrorOf(TestBundles.Default().WithEntry("a\tb\u007Fc\u0085d", [1])));
+        Assert.Equal("entry_not_allowed: " + new string('x', 61) + "...",
+            ErrorOf(TestBundles.Default().WithEntry(new string('x', 200), [1])));
+        Assert.Equal("entry_mismatch: sections/?x.json", ErrorOf(TestBundles.Default().WithManifest(m => m with
+        {
+            Entries = [.. m.Entries, new BundleEntry("sections/\nx.json", 2, new string('a', 64))],
+        })));
     }
 
     [Fact]

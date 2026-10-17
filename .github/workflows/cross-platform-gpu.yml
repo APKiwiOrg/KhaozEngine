@@ -43,7 +43,7 @@
 # as `rest` (every test project except Render.Tests) plus `render-1` to `render-N` (Render.Tests in slices):
 #   metal-native        rest + 2 render slices = 3 jobs
 #   direct3d11-native   rest + 4 render slices = 5 jobs
-#   vulkan-native       rest + 8 render slices = 9 jobs
+#   vulkan-native       rest + 9 render slices = 10 jobs
 # Each backend has its own slice table, balanced from that backend's measured per-test times. The split lives
 # in scripts/gpu-test-shards.py, which is also the coverage guard: every render shard checks that its
 # backend's slices partition the listed Render.Tests methods exactly once before it runs, and the per-backend
@@ -54,11 +54,13 @@
 # per leg, exactly as before.
 #
 # CONCURRENCY. The org is on the Team plan: 60 concurrent GitHub-hosted standard jobs and 5 concurrent macOS
-# jobs (https://docs.github.com/en/actions/reference/limits). A default-input dispatch peaks at 18 jobs here
-# (3 Metal, 5 Windows, 9 Linux, the sync job), 22 with the `ci` dispatch the pre-tag gate runs beside it, and
-# Metal's 3 stay under the macOS cap with room for one other macOS job. Metal takes no more than 3 because its
-# floor is the setup plus a 10-minute render slice, well under the Vulkan floor, so a fourth macOS job would
-# only spend the shared macOS allowance. On the Free plan's 20 and 5 the gate would queue two jobs briefly.
+# jobs (https://docs.github.com/en/actions/reference/limits). A default-input dispatch peaks at 19 jobs here
+# (3 Metal, 5 Windows, 10 Linux, the sync job), 23 with the `ci` dispatch the pre-tag gate runs beside it.
+# Metal takes no more than 3 because its slowest shard is already well under the Vulkan floor, so a fourth
+# macOS job would only spend the shared macOS allowance. That allowance is the one that binds in practice:
+# every push and pull_request runs Metal's full suite too, so overlapping runs share 5 macOS slots, and in
+# run 39030778010 one Metal shard queued 4 minutes behind three other runs' Metal jobs. On the Free plan's 20
+# total the gate would also queue three Linux or Windows jobs until the first shards finish.
 #
 # What this does (suite split by leg + trigger, decided from measured cost + lavapipe stability):
 #   * The Metal NATIVE leg runs the engine's own KhaozEngine.Gpu.Metal backend
@@ -1684,7 +1686,7 @@ jobs:
           if-no-files-found: ignore
 
   # ONE CHECK PER SHARDED BACKEND (#1438), named `<os> / <backend> / full suite`. A sharded full suite is three to
-  # nine jobs per leg, and this is the one that answers for all of them: it is red when any shard is red, missing
+  # ten jobs per leg, and this is the one that answers for all of them: it is red when any shard is red, missing
   # or cancelled, and when the shards' own reports show a test assembly that ran on no shard, on two shards,
   # or Render.Tests outside its slices. Its job summary carries the per-assembly totals summed across the
   # shards, which is the reading to compare against an unsharded run. It runs on always() because a red shard

@@ -46,8 +46,8 @@ PY
 echo "expand: which triggers shard which legs"
 check "push is 3 Metal shards + 2 legs"     "5 metal-native"  "$(expand push false '')"
 check "pull_request matches push"           "5 metal-native"  "$(expand pull_request false '')"
-check "dispatch shards all three"           "17 metal-native,direct3d11-native,vulkan-native" "$(expand workflow_dispatch false '')"
-check "schedule matches dispatch"           "17 metal-native,direct3d11-native,vulkan-native" "$(expand schedule false '')"
+check "dispatch shards all three"           "18 metal-native,direct3d11-native,vulkan-native" "$(expand workflow_dispatch false '')"
+check "schedule matches dispatch"           "18 metal-native,direct3d11-native,vulkan-native" "$(expand schedule false '')"
 check "a bake shards nothing"               "3 none"          "$(expand workflow_dispatch true '')"
 check "a render filter shards nothing"      "3 none"          "$(expand workflow_dispatch false 'FullyQualifiedName~Golden')"
 
@@ -56,7 +56,8 @@ G=KhaozEngine.Tests.Gpu
 cat > "$TMPROOT/list.txt" <<EOF
 Build started.
 The following Tests are available:
-    $G.TemporalFollowPhaseGpuTests.The_orthographic_follow_holds_its_bounds_from_every_start_phase
+    $G.TemporalFollowPhaseGpuTests.The_orthographic_follow_holds_its_bounds_from_every_start_phase_at_Native_and_Quality
+    $G.TemporalFollowPhaseGpuTests.The_orthographic_follow_holds_its_bounds_from_every_start_phase_at_Performance_and_Ultra
     $G.TemporalFollowPhaseGpuTests.The_perspective_follow_holds_its_bounds_from_every_start_phase_at_Native_and_Quality
     $G.TemporalFollowPhaseGpuTests.The_follow_stop_holds_its_bounds_from_every_start_phase
     $G.TemporalFollowPhaseGpuTests.The_follow_lines_hold_their_share_from_every_start_phase
@@ -75,16 +76,17 @@ The following Tests are available:
 EOF
 for backend in metal-native direct3d11-native vulkan-native; do
   check "$backend partitions the listing" 0 "$(run check-render "$backend" "$TMPROOT/list.txt")"
-  check "$backend reports 16 methods, none unassigned or doubled" 1 \
-    "$(grep -c '^16 Render.Tests methods listed, 0 unassigned, 0 assigned twice$' "$OUTFILE")"
+  check "$backend reports 17 methods, none unassigned or doubled" 1 \
+    "$(grep -c '^17 Render.Tests methods listed, 0 unassigned, 0 assigned twice$' "$OUTFILE")"
 done
 run check-render vulkan-native "$TMPROOT/list.txt" > /dev/null
-check "vulkan render-1 holds the orthographic sweep alone" 1 "$(grep -c '^vulkan-native render-1: 1 listed test methods$' "$OUTFILE")"
-check "vulkan render-8 takes the unnamed classes" 1 "$(grep -c '^vulkan-native render-8: 3 listed test methods$' "$OUTFILE")"
+check "vulkan render-1 holds the Native and Quality orthographic sweep alone" 1 "$(grep -c '^vulkan-native render-1: 1 listed test methods$' "$OUTFILE")"
+check "vulkan render-9 takes the unnamed classes" 1 "$(grep -c '^vulkan-native render-9: 3 listed test methods$' "$OUTFILE")"
 run check-render direct3d11-native "$TMPROOT/list.txt" > /dev/null
 check "d3d11 render-1 holds the cascade cull alone" 1 "$(grep -c '^direct3d11-native render-1: 1 listed test methods$' "$OUTFILE")"
+check "d3d11 render-4 takes every class outside Temporal" 1 "$(grep -c '^direct3d11-native render-4: 5 listed test methods$' "$OUTFILE")"
 run check-render metal-native "$TMPROOT/list.txt" > /dev/null
-check "metal render-1 holds the follow sweeps" 1 "$(grep -c '^metal-native render-1: 7 listed test methods$' "$OUTFILE")"
+check "metal render-1 holds the follow sweeps" 1 "$(grep -c '^metal-native render-1: 8 listed test methods$' "$OUTFILE")"
 check "an empty listing is refused" 1 "$(run check-render metal-native /dev/null)"
 check "an unknown backend is refused" 1 "$(run filter opengl render-1)"
 check "an unknown slice is refused" 1 "$(run filter metal-native render-3)"

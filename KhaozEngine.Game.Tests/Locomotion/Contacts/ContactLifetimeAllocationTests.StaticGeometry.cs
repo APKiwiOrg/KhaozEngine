@@ -21,7 +21,6 @@ public sealed partial class ContactLifetimeAllocationTests
         var query = new FootSupportQuery(Vector2.Zero, 0, 0.2f, 0.4f, 0.4f, MathF.Cos(MathF.PI / 4));
         SupportSample cold;
         long generation;
-        using var region = SupportAllocationRegion.Start();
         using (var lease = world.AcquireQueryReadLease())
         {
             generation = lease.GeometryGeneration;
@@ -32,10 +31,9 @@ public sealed partial class ContactLifetimeAllocationTests
         if (changeDynamic) world.SetDynamicVelocity(dynamic, Vector3.UnitX, Vector3.Zero);
         using var next = world.AcquireQueryReadLease();
         Assert.True(next.GeometryGeneration > generation);
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        SupportSample warm = FootSupport.Find(null, null, world, next, query);
-        long bytes = GC.GetAllocatedBytesForCurrentThread() - before;
-        region.Dispose();
+        SupportSample warm = default;
+        long bytes = AllocationMeasurement.Measure(nameof(ProvisionedFindAllocatesNothingAfterPhysicsAdvances), () =>
+            warm = FootSupport.Find(null, null, world, next, query));
         output.WriteLine($"Post-step Find with dynamic change {changeDynamic}. {bytes} B.");
         Assert.Equal(SupportStatus.Walkable, warm.Status);
         Assert.Equal(cold.Height, warm.Height);
@@ -52,14 +50,12 @@ public sealed partial class ContactLifetimeAllocationTests
             with
         { Explicit = operation == "ExplicitTick" };
         using var execution = new SupportCostExecution(row, operation);
-        using var region = SupportAllocationRegion.Start();
         var cold = execution.Invoke();
         execution.Invoke();
         execution.World.Step(1f / 30);
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        var warm = execution.Invoke();
-        long bytes = GC.GetAllocatedBytesForCurrentThread() - before;
-        region.Dispose();
+        SupportCostOutput warm = default;
+        long bytes = AllocationMeasurement.Measure($"{nameof(AcquiredTickAfterPhysicsAdvancesAllocatesOnlyItsLifetimeTokens)} {operation}",
+            () => warm = execution.Invoke());
         output.WriteLine($"Post-step acquired {operation}. {bytes} B.");
         Assert.False(warm.Refused);
         Assert.True(warm.GeometryPassed);

@@ -57,7 +57,6 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
     {
         SupportQueryDiagnostics.Enable(false);
         SupportQueryDiagnostics.Reset();
-        using var region = SupportAllocationRegion.Start();
         SupportQueryDiagnostics.Record(SupportQueryCounter.Find);
         Assert.Equal(0, SupportQueryDiagnostics.Snapshot().Find);
         SupportQueryDiagnostics.Enable(true);
@@ -68,11 +67,12 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
         thread.Start();
         thread.Join();
         Assert.Equal(0, another.Find);
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        SupportQueryDiagnostics.Record(SupportQueryCounter.Find);
-        SupportQueryCounts counts = SupportQueryDiagnostics.Snapshot();
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-        region.Dispose();
+        SupportQueryCounts counts = default;
+        long allocated = AllocationMeasurement.Measure(nameof(DiagnosticsAreAnOptInThreadLocalObserver), () =>
+        {
+            SupportQueryDiagnostics.Record(SupportQueryCounter.Find);
+            counts = SupportQueryDiagnostics.Snapshot();
+        });
         Assert.Equal(0, allocated);
         Assert.Equal(3, counts.Find);
     }

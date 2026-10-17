@@ -222,48 +222,49 @@ public sealed class ReportRedactorTests
     public void Catastrophic_input_is_redacted_in_linear_time()
     {
         // A 2 s backstop instead of 250 ms keeps the exact results independent of machine load. Every shape
-        // here is linear and takes milliseconds, while the old quadratic JWT start on the 200,000 character
-        // input took seconds, so a regression still times out and fails on the mask.
+        // here is 200,000 characters, is linear and takes milliseconds, while a quadratic rule on that length
+        // takes seconds, as the old JWT start did, so a regression still times out and fails on the mask.
+        const int Length = 200_000;
         var redactor = new ReportRedactor("/Users/ann", TimeSpan.FromSeconds(2));
 
         // Keys with no terminator: the first value takes the rest.
-        Assert.Equal("password=" + Mask, redactor.Redact(Repeat("password=", 50_000)));
+        Assert.Equal("password=" + Mask, redactor.Redact(Repeat("password=", Length)));
 
         // Every "eyJ" after a dash used to start a JWT attempt that scanned the run for a dot, which was
         // quadratic and timed out. Only the start of the run may start one now. Nothing here is a JWT.
-        string jwtBomb = Repeat("eyJ-", 200_000);
+        string jwtBomb = Repeat("eyJ-", Length);
         Assert.Equal(jwtBomb, redactor.Redact(jwtBomb));
 
-        // A private key block with a 50,000 character body, closed and left open.
-        string body = Repeat("MIIBOgIBAAJBAKj34Gkx", 50_000);
+        // A private key block with a 200,000 character body, closed and left open.
+        string body = Repeat("MIIBOgIBAAJBAKj34Gkx", Length);
         Assert.Equal(Mask, redactor.Redact("-----BEGIN PRIVATE KEY-----\n" + body + "\n-----END PRIVATE KEY-----"));
-        string open = "-----BEGIN PRIVATE KEY-----" + new string('A', 50_000);
+        string open = "-----BEGIN PRIVATE KEY-----" + new string('A', Length);
         Assert.Equal(open, redactor.Redact(open));
 
         // The other rules on their worst shapes.
         foreach (string clean in new[]
         {
-            Repeat("password ", 50_000),
-            "password" + new string(' ', 50_000),
-            Repeat("-----BEGIN PRIVATE KEY-----", 50_000),
-            Repeat("bearer ", 50_000),
-            Repeat("?token=&", 50_000),
-            Repeat(" eyJaaaaa.bbbbb", 50_000),
-            Repeat(" ghp_aaaa", 50_000),
-            Repeat("basic ", 50_000),
-            Repeat("&sig", 50_000),
-            Repeat("token ", 50_000),
-            Repeat("-----BEGIN PRIVATE KEY-----A-----END ", 50_000),
+            Repeat("password ", Length),
+            "password" + new string(' ', Length),
+            Repeat("-----BEGIN PRIVATE KEY-----", Length),
+            Repeat("bearer ", Length),
+            Repeat("?token=&", Length),
+            Repeat(" eyJaaaaa.bbbbb", Length),
+            Repeat(" ghp_aaaa", Length),
+            Repeat("basic ", Length),
+            Repeat("&sig", Length),
+            Repeat("token ", Length),
+            Repeat("-----BEGIN PRIVATE KEY-----A-----END ", Length),
         })
         {
             Assert.Equal(clean, redactor.Redact(clean));
         }
-        // 5,556 dot-joined "eyJaaaaa" units are 1,852 back to back JWTs of three segments each.
-        Assert.Equal(string.Concat(Enumerable.Repeat("." + Mask, 1_852)), redactor.Redact(Repeat(".eyJaaaaa", 50_000)));
-        Assert.Equal(string.Concat(Enumerable.Repeat(Mask + ".", 1_852)), redactor.Redact(Repeat("eyJaaaaa.", 50_000)));
-        Assert.Equal(Mask + "-", redactor.Redact(Repeat("sk-", 50_000)));
-        Assert.Equal("-" + Mask, redactor.Redact(Repeat("-sk", 50_000)));
-        Assert.Equal(new string('~', 5_000), redactor.Redact(Repeat("/Users/ann", 50_000)));
+        // 22,224 dot-joined "eyJaaaaa" units, 200,016 characters, are 7,408 back to back JWTs of three segments each.
+        Assert.Equal(string.Concat(Enumerable.Repeat("." + Mask, 7_408)), redactor.Redact(Repeat(".eyJaaaaa", 200_016)));
+        Assert.Equal(string.Concat(Enumerable.Repeat(Mask + ".", 7_408)), redactor.Redact(Repeat("eyJaaaaa.", 200_016)));
+        Assert.Equal(Mask + "-", redactor.Redact(Repeat("sk-", Length)));
+        Assert.Equal("-" + Mask, redactor.Redact(Repeat("-sk", Length)));
+        Assert.Equal(new string('~', 20_000), redactor.Redact(Repeat("/Users/ann", Length)));
     }
 
     [Fact]

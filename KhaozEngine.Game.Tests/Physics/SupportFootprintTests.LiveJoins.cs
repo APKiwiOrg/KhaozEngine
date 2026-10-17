@@ -1,4 +1,7 @@
+using System;
 using System.Linq;
+using System.Numerics;
+using System.Reflection;
 using KhaozEngine.Locomotion.Contacts;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
@@ -28,17 +31,7 @@ public partial class SupportFootprintTests
             Footprint reference;
             using (SupportReferenceEvaluation.Begin()) reference = Raw(scene, armed: true);
             Assert.Equal(full.Text, reference.Text);
-            Assert.Equal(full.Shape, live.Shape);
-            if (full.Result.Status != CapsuleFeatureStatus.Complete) continue;
-            for (int first = 0; first < full.Result.Members; first++)
-                for (int second = 0; second < full.Result.Members; second++)
-                {
-                    bool joined = full.Joined(first, second);
-                    bool read = Read(full.Members[first]) && Read(full.Members[second]);
-                    Assert.True((joined && read) == live.Joined(first, second),
-                        $"{row.Name}: join {first} {second} is {live.Joined(first, second)}, full {joined}, read {read}.");
-                    if (joined && !read && first < second) skippedJoins++;
-                }
+            skippedJoins += AssertReadJoins(row.Name, full, live);
         }
         Assert.True(skippedJoins > 0, "No cost scene has a join certification never reads.");
     }
@@ -107,6 +100,102 @@ public partial class SupportFootprintTests
         scene.Checked("hidden crate warm", out _);
     }
 
+    [Fact]
+    public void SupportPathTakesTopologyJoinsBetweenWalkableFaces()
+    {
+        using var counters = new WorldFormCounters();
+        using var installed = new SupportFootprintScene();
+        // A convex ridge: two faces of one hull leaf, each about 26.6 degrees from level, share the edge along x = 0.
+        installed.Install(new ConvexHullShape([new(-1, -0.5f, -1), new(-1, -0.5f, 1), new(1, -0.5f, -1),
+            new(1, -0.5f, 1), new(0, 0, -1), new(0, 0, 1)]), Pose.Identity);
+        using var scene = new WorldFormScene(installed.World,
+            new FootSupportQuery(Vector2.Zero, 0, 0.2f, 0.4f, 0.4f, 0.70710677f));
+        scene.Checked("ridge cold", out _);
+        SupportQueryDiagnostics.Reset();
+        SupportSample warm = scene.Find();
+        SupportQueryCounts warmCounts = SupportQueryDiagnostics.Snapshot();
+        SupportQueryDiagnostics.Reset();
+        SupportSample reference;
+        using (SupportReferenceEvaluation.Begin()) reference = scene.Find();
+        SupportQueryCounts referenceCounts = SupportQueryDiagnostics.Snapshot();
+
+        Assert.Equal(SupportStatus.Walkable, warm.Status);
+        Assert.Equal(reference.ToString(), warm.ToString());
+        Assert.True(warmCounts.TopologyJoins > 0, "ridge: the support path took no join from the captured topology.");
+        Assert.Equal(0, referenceCounts.TopologyJoins);
+        Assert.True(referenceCounts.JoinsProved >= warmCounts.JoinsProved + warmCounts.TopologyJoins);
+        scene.Checked("ridge warm", out _);
+
+        // The armed raw query joins the two walkable faces through the topology, as the reference does geometrically.
+        Footprint full = Raw(scene, armed: false);
+        SupportQueryDiagnostics.Reset();
+        Footprint live = Raw(scene, armed: true);
+        SupportQueryCounts liveCounts = SupportQueryDiagnostics.Snapshot();
+        Footprint armedReference;
+        using (SupportReferenceEvaluation.Begin()) armedReference = Raw(scene, armed: true);
+        Assert.Equal(full.Text, armedReference.Text);
+        AssertReadJoins("ridge", full, live);
+        Assert.True(liveCounts.TopologyJoins > 0, "ridge: the armed query took no join from the captured topology.");
+        int walkableJoins = 0;
+        for (int first = 0; first < live.Result.Members; first++)
+            for (int second = first + 1; second < live.Result.Members; second++)
+                if (live.Joined(first, second) && live.Members[first].UpwardLower >= 0.70710677f &&
+                    live.Members[second].UpwardLower >= 0.70710677f) walkableJoins++;
+        Assert.True(walkableJoins > 0, "ridge: the two walkable faces are not joined.");
+    }
+
+    [Fact]
+    public void UnreadUnresolvedJoinRefusesOnlyTheFullMatrix()
+    {
+        // Installed geometry gives no scene for this ruling. Admission refuses a polygon whose vertices or normalized
+        // normal do not resolve, so every admitted pair's mutual-below heights resolve, and the segment kernel takes
+        // exact fallbacks. The pin drives the collector's publication and certification directly: an admitted
+        // walkable floor, and a refused wall whose join with the floor is unresolved.
+        using var counters = new WorldFormCounters();
+        SupportFootprintRequest request = Request();
+        SupportPolygon floor = JoinFace(1, [new(-1, 0, -1), new(-1, 0, 1), new(1, 0, 1), new(1, 0, -1)]);
+        SupportPolygon wall = JoinFace(2, [new(0.1f, -0.1f, -0.5f), new(0.1f, 0.05f, -0.5f), new(0.1f, 0.05f, 0.5f),
+            new(0.1f, -0.1f, 0.5f)]);
+        Assert.Equal(GeometrySign.Positive, SupportFootprintPolygon.Measure(floor, request, out var floorValue));
+        Assert.Equal(GeometrySign.Positive, SupportFootprintPolygon.Measure(wall, request, out var wallValue));
+        Assert.True(floorValue.UpwardLower > 0 && floorValue.HasDiscMaximum);
+        Assert.False(wallValue.UpwardLower > 0);
+        // The wall's twin has an unresolved height at its plane point, so its join with the floor is unresolved.
+        var unresolved = new SupportPolygon();
+        unresolved.Begin(wall.Static, wall.ElementId, wall.Vertices.Length);
+        for (int i = 0; i < wall.Vertices.Length; i++)
+            unresolved.Set(i, i == 0 ? new(wall.Vertices[i].X, default, wall.Vertices[i].Z) : wall.Vertices[i],
+                wall.Edges[i]);
+        unresolved.Finish(wall.Normal);
+        Assert.Equal(GeometrySign.Unresolved,
+            SupportNeighborhoodJoins.Joined(floor, unresolved, request.ContactBand, new()));
+
+        using var installed = new SupportFootprintScene();
+        IPhysicsSupportFootprint features = Capability(installed.World);
+        using IPhysicsQueryLease lease = installed.World.AcquireQueryReadLease();
+        (SupportPolygon, SupportFootprintMember)[] pair = [(floor, floorValue), (unresolved, wallValue)];
+        Assert.Equal(CapsuleFeatureStatus.Unsupported,
+            Publish(installed.World, lease, request, certificationJoins: false, pair).Result.Status);
+        using (SupportReferenceEvaluation.Begin())
+            Assert.Equal(CapsuleFeatureStatus.Unsupported,
+                Publish(installed.World, lease, request, certificationJoins: true, pair).Result.Status);
+
+        // The support path skips the unread pair, keeps both members and certifies the floor's support exactly as
+        // the reference does with the wall excluded.
+        SupportQueryDiagnostics.Reset();
+        Footprint live = Publish(installed.World, lease, request, certificationJoins: true, pair);
+        Assert.Equal(1, SupportQueryDiagnostics.Snapshot().JoinsSkipped);
+        Assert.Equal(CapsuleFeatureStatus.Complete, live.Result.Status);
+        Assert.Equal([floorValue, wallValue], live.Members.Take(live.Result.Members));
+        Assert.False(live.Joined(0, 1) || live.Joined(1, 0));
+        Footprint excluded;
+        using (SupportReferenceEvaluation.Begin())
+            excluded = Publish(installed.World, lease, request, certificationJoins: false, [(floor, floorValue)]);
+        FootprintContribution[] supported = Certify(features, lease, request, live);
+        Assert.Equal(CertifiedSupportKind.Walkable, Assert.Single(supported).Contribution.Kind);
+        Assert.Equal(Certify(features, lease, request, excluded), supported);
+    }
+
     sealed record Footprint(SupportFootprintResult Result, SupportFootprintMember[] Members, ulong[] Joins)
     {
         // Everything but the join words, as text that exposes signed zeros.
@@ -118,6 +207,25 @@ public partial class SupportFootprintTests
 
         internal bool Joined(int first, int second) =>
             (Joins[first * Result.JoinWordsPerRow + second / 64] & (1UL << (second % 64))) != 0;
+    }
+
+    // Asserts the armed footprint keeps every member and verdict and exactly the full matrix's joins between two read
+    // members. Returns the full matrix's joins the armed one left out.
+    static int AssertReadJoins(string context, Footprint full, Footprint live)
+    {
+        Assert.Equal(full.Shape, live.Shape);
+        if (full.Result.Status != CapsuleFeatureStatus.Complete) return 0;
+        int skipped = 0;
+        for (int first = 0; first < full.Result.Members; first++)
+            for (int second = 0; second < full.Result.Members; second++)
+            {
+                bool joined = full.Joined(first, second);
+                bool read = Read(full.Members[first]) && Read(full.Members[second]);
+                Assert.True((joined && read) == live.Joined(first, second),
+                    $"{context}: join {first} {second} is {live.Joined(first, second)}, full {joined}, read {read}.");
+                if (joined && !read && first < second) skipped++;
+            }
+        return skipped;
     }
 
     static bool Read(in SupportFootprintMember member) =>
@@ -132,6 +240,49 @@ public partial class SupportFootprintTests
                 if (footprint.Joined(first, second) &&
                     !(Read(footprint.Members[first]) && Read(footprint.Members[second]))) unread++;
         return unread;
+    }
+
+    static SupportPolygon JoinFace(int element, Vector3[] vertices)
+    {
+        var polygon = new SupportPolygon();
+        polygon.Begin(new StaticHandle(42), element, vertices.Length);
+        for (int i = 0; i < vertices.Length; i++)
+        {
+            FeaturePoint a = FeaturePoint.Exact(vertices[i]);
+            polygon.Set(i, a, FeaturePoint.Subtract(FeaturePoint.Exact(vertices[(i + 1) % vertices.Length]), a));
+        }
+        polygon.Finish(FeaturePoint.Cross(polygon.Edges[0], FeaturePoint.Subtract(polygon.Vertices[2],
+            polygon.Vertices[0])));
+        return polygon;
+    }
+
+    // Publishes the given admitted members from a fresh collector with neither proposal in contact.
+    static Footprint Publish(IPhysicsWorld receiver, IPhysicsQueryLease lease, in SupportFootprintRequest request,
+        bool certificationJoins, (SupportPolygon Polygon, SupportFootprintMember Value)[] admitted)
+    {
+        var collector = new SupportFootprintCollector();
+        Assert.True(collector.Begin(request));
+        const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
+        Type memberType = typeof(SupportFootprintCollector).GetNestedType("Member", BindingFlags.NonPublic)!;
+        var stored = (Array)typeof(SupportFootprintCollector).GetField("_members", Private)!.GetValue(collector)!;
+        for (int i = 0; i < admitted.Length; i++)
+            stored.SetValue(Activator.CreateInstance(memberType, admitted[i].Polygon, default(SupportCurvedLeaf), 0,
+                admitted[i].Value), i);
+        typeof(SupportFootprintCollector).GetField("_count", Private)!.SetValue(collector, admitted.Length);
+        var members = new SupportFootprintMember[SupportFootprintResult.MaximumElements];
+        var joins = new ulong[SupportFootprintResult.MaximumElements * SupportFootprintResult.JoinWordsFor(
+            SupportFootprintResult.MaximumElements)];
+        return new(collector.Publish(receiver, lease, members, joins, certificationJoins), members, joins);
+    }
+
+    static FootprintContribution[] Certify(IPhysicsSupportFootprint features, IPhysicsQueryLease lease,
+        in SupportFootprintRequest request, Footprint footprint)
+    {
+        var contributions = new FootprintContribution[2 * SupportFootprintResult.MaximumElements];
+        int count = SupportCertification.CertifyFootprint(features, lease, footprint.Result, footprint.Members,
+            footprint.Joins, request.Axis, request.CosMaxSlope, contributions);
+        Assert.True(count >= 0, "Certification refused the footprint.");
+        return contributions[..count];
     }
 
     static Footprint Raw(WorldFormScene scene, bool armed)

@@ -6,7 +6,9 @@ namespace KhaozEngine.Physics;
 /// reads, those between two polygon members whose upward lower bound is above zero. Every other join bit stays
 /// clear, and members, witnesses and verdicts are unchanged. Foot support arms it around its one footprint query and
 /// the backend consumes it as that query begins, so every other footprint query, the public raw query included,
-/// publishes the full join matrix. Forwarding views pass it through because it travels with the thread.</summary>
+/// publishes the full join matrix. Forwarding views pass it through because it travels with the thread. The first
+/// footprint query on the thread inside the scope takes the request, so a forwarding view that issues its own
+/// footprint query before forwarding uses it up, and the forwarded query falls back to the full matrix.</summary>
 internal static class SupportCertificationJoins
 {
     [ThreadStatic] static bool t_armed;

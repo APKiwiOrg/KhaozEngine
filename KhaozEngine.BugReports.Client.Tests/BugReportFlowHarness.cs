@@ -47,6 +47,7 @@ public abstract class BugReportFlowHarness : IAsyncLifetime
     private protected readonly ProbeSection _probe;
     private protected string? _subject;
     private protected Exception? _screenFailure;
+    private protected Exception? _subjectFailure;
     int _frameThread;
     bool _inUpdate;
 
@@ -81,7 +82,7 @@ public abstract class BugReportFlowHarness : IAsyncLifetime
         };
         var queue = new BugReportOfflineQueue(queueDirectory ?? Path.Combine(_root, "pending"), _time);
         var flow = new BugReportFlow(options, _capture, _sections, new BugReportSubmitter(_sink, queue), new ReportRedactor(),
-            () => _subject,
+            () => _subjectFailure is { } subjectFailure ? throw subjectFailure : _subject,
             model => _screenFailure is { } failure ? throw failure : HeadlessScreen(model),
             image =>
             {

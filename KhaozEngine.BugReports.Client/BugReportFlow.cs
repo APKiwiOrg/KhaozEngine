@@ -131,10 +131,26 @@ internal sealed class BugReportFlow
     /// <summary>
     /// Runs one frame. Returns true from the trigger frame until the frame after the screen closes, inclusive, so
     /// the caller holds the game's input for those frames.
+    /// <para>The game's delegates run inside it: <c>currentSubject</c>, <c>SaveTriggerBindings</c> and the screen's own
+    /// update. An exception that escapes thaws the clip, closes the open report and returns to idle before it is
+    /// rethrown, so the overlay host that removes a throwing overlay never leaves the clip frozen.</para>
     /// </summary>
     internal bool Update(InputState input, float realDt, IDesignViewport? viewport)
     {
         ArgumentNullException.ThrowIfNull(input);
+        try
+        {
+            return UpdateFrame(input, realDt, viewport);
+        }
+        catch
+        {
+            Abandon();
+            throw;
+        }
+    }
+
+    bool UpdateFrame(InputState input, float realDt, IDesignViewport? viewport)
+    {
         LastFrameInput = input;
         RunPosted();
         PollSubject();
@@ -181,6 +197,31 @@ internal sealed class BugReportFlow
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _shutdown);
             return await FlushAsync(subject, linked.Token).ConfigureAwait(false);
         }, cancellationToken);
+    }
+
+    /// <summary>Thaws the clip and closes the report a failed frame left captured or open. Never throws.</summary>
+    void Abandon()
+    {
+        ActiveReport? report = _report;
+        bool frozen = State != BugReportFlowState.Idle;
+        _report = null;
+        State = BugReportFlowState.Idle;
+        _beginPending = false;
+        if (frozen) Contain(_capture.Thaw);
+        if (report?.Screen is { } screen) Contain(() => Screens.Remove(screen));
+        if (report is not null) Contain(report.Close);
+    }
+
+    static void Contain(Action step)
+    {
+        try
+        {
+            step();
+        }
+        catch (Exception exception)
+        {
+            Log.Warn("A bug report could not be closed after a failed frame.", exception);
+        }
     }
 
     void RunPosted()

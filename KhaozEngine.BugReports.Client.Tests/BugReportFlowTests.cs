@@ -344,6 +344,38 @@ public sealed class BugReportFlowTests : BugReportFlowHarness
     }
 
     [Fact]
+    public void Throwing_subject_while_open_leaves_the_recorder_thawed()
+    {
+        BugReportFlow flow = NewFlow();
+        Open(flow);
+        _subjectFailure = new InvalidOperationException("session lookup");
+
+        Assert.Throws<InvalidOperationException>(() => Step(flow));
+
+        Assert.Equal(1, _capture.ThawCount);
+        Assert.Equal(BugReportFlowState.Idle, flow.State);
+        Assert.Empty(flow.Screens.Screens);
+        _subjectFailure = null;
+        Step(flow);
+        Open(flow);
+        Assert.Equal(2, _captured.Count);
+    }
+
+    [Fact]
+    public void Throwing_subject_after_the_trigger_frame_leaves_the_recorder_thawed()
+    {
+        BugReportFlow flow = NewFlow();
+        Assert.True(Step(flow, Frame(pressed: [Key.F10])));
+        _subjectFailure = new InvalidOperationException("session lookup");
+
+        Assert.Throws<InvalidOperationException>(() => Step(flow));
+
+        Assert.Equal(1, _capture.ThawCount);
+        Assert.Equal(BugReportFlowState.Idle, flow.State);
+        Assert.Empty(flow.Screens.Screens);
+    }
+
+    [Fact]
     public void Malformed_trigger_bindings_keep_the_default_key()
     {
         using IDisposable logs = CaptureLogs();

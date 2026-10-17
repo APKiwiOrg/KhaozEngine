@@ -1,0 +1,109 @@
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+using KhaozEngine.BugReports.Contracts;
+using KhaozEngine.Diagnostics;
+
+namespace KhaozEngine.BugReports.Relay;
+
+/// <summary>Merges validated snapshots and performs claimed GitHub issue and comment writes.</summary>
+internal sealed class ReportWorker(BugReportRelayOptions options, IReportMediaStore media, ReportRecordStore records,
+    ReportViewerWriter viewer, IGitHubIssueClient github, TimeProvider time, ILogger logger)
+{
+    readonly WorkClaim claims = new(media, time);
+    readonly ReportIssueInputLoader loader = new(media);
+    readonly ReportIssueComposer composer = new(options);
+
+    public Task ProcessAsync(ReportWorkItem item, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        return item.Kind switch
+        {
+            ReportWorkKind.CreateIssue => CreateIssueAsync(item.ReportId, ct),
+            ReportWorkKind.AppendServerSnapshot => AppendSnapshotAsync(item.ReportId, ct),
+            _ => throw new ArgumentOutOfRangeException(nameof(item), item.Kind, "Unknown report work kind."),
+        };
+    }
+
+    async Task CreateIssueAsync(string reportId, CancellationToken ct)
+    {
+        ReportRecord? record = await LoadAsync(reportId, ct).ConfigureAwait(false);
+        if (record is null || record.IssueNumber is not null) return;
+        if (!await claims.TryAcquireAsync("issue", reportId, ct).ConfigureAwait(false)) return;
+        // A delivery can have held its first record read across another holder's completed lease.
+        record = await LoadAsync(reportId, ct).ConfigureAwait(false);
+        if (record is null || record.IssueNumber is not null) return;
+        ReadOnlyMemory<byte>? snapshot = await LoadSnapshotAsync(record, warnIfMissing: false, ct).ConfigureAwait(false);
+        if (snapshot is not null)
+        {
+            await WriteSnapshotAsync(record, snapshot.Value, ct).ConfigureAwait(false);
+            record = record with { ServerSnapshot = ServerSnapshotState.InBody };
+            await records.SaveReportAsync(record, ct).ConfigureAwait(false);
+        }
+        IssueInput input = await loader.LoadAsync(record, snapshot, ct).ConfigureAwait(false);
+        int number = await github.CreateIssueAsync(composer.ComposeIssue(input), ct).ConfigureAwait(false);
+        await records.SaveReportAsync(record with { IssueNumber = number }, ct).ConfigureAwait(false);
+    }
+
+    async Task AppendSnapshotAsync(string reportId, CancellationToken ct)
+    {
+        ReportRecord? record = await LoadAsync(reportId, ct).ConfigureAwait(false);
+        if (record is null) return;
+        if (record.IssueNumber is null) throw new ReportNotReadyException(reportId);
+        if (record.ServerSnapshot is ServerSnapshotState.InBody or ServerSnapshotState.Commented) return;
+        if (!await claims.TryAcquireAsync("comment", reportId, ct).ConfigureAwait(false)) return;
+        record = await LoadAsync(reportId, ct).ConfigureAwait(false);
+        if (record is null) return;
+        if (record.IssueNumber is null) throw new ReportNotReadyException(reportId);
+        if (record.ServerSnapshot is ServerSnapshotState.InBody or ServerSnapshotState.Commented) return;
+        ReadOnlyMemory<byte>? snapshot = await LoadSnapshotAsync(record, warnIfMissing: true, ct).ConfigureAwait(false);
+        if (snapshot is null) return;
+        await WriteSnapshotAsync(record, snapshot.Value, ct).ConfigureAwait(false);
+        IssueInput input = await loader.LoadAsync(record, snapshot, ct).ConfigureAwait(false);
+        await github.AddCommentAsync(record.IssueNumber.Value, composer.ComposeSnapshotComment(input), ct).ConfigureAwait(false);
+        await records.SaveReportAsync(record with { ServerSnapshot = ServerSnapshotState.Commented }, ct).ConfigureAwait(false);
+    }
+
+    async Task<ReportRecord?> LoadAsync(string reportId, CancellationToken ct)
+    {
+        AcceptedReport? accepted = await records.LoadAcceptedAsync(reportId, ct).ConfigureAwait(false);
+        if (accepted is null)
+        {
+            logger.Error("Unknown report " + reportId + ".");
+            return null;
+        }
+        ReportRecord? record = await records.LoadReportAsync(reportId, ct).ConfigureAwait(false);
+        if (record is null) logger.Error("Missing private record for report " + reportId + ".");
+        return record;
+    }
+
+    async Task<ReadOnlyMemory<byte>?> LoadSnapshotAsync(ReportRecord record, bool warnIfMissing, CancellationToken ct)
+    {
+        ReadOnlyMemory<byte>? raw = await records.LoadPendingSnapshotAsync(record.ReportId, ct).ConfigureAwait(false);
+        if (raw is null)
+        {
+            if (warnIfMissing) logger.Warn("Missing server snapshot for report " + record.ReportId + ".");
+            return null;
+        }
+        ServerSnapshotWire snapshot = BugReportJson.DeserializeServerSnapshot(raw.Value.Span);
+        if (!string.Equals(snapshot.Subject, record.Reporter.Subject, StringComparison.Ordinal))
+        {
+            logger.Warn("Server snapshot subject mismatch for report " + record.ReportId + ".");
+            return null;
+        }
+        foreach (string key in snapshot.Sections.Keys)
+        {
+            if (BundleEntryNames.IsValidSectionKey(key)) continue;
+            logger.Warn("Invalid server snapshot section key for report " + record.ReportId + ".");
+            return null;
+        }
+        return BugReportJson.SerializeServerSnapshot(snapshot);
+    }
+
+    async Task WriteSnapshotAsync(ReportRecord record, ReadOnlyMemory<byte> snapshot, CancellationToken ct)
+    {
+        string path = ReportLayout.Entry(record.Folder, ReportLayout.ServerSnapshotFile);
+        await media.PutAsync(ReportArea.Public, path, snapshot, ReportLayout.HeadersFor(path), overwrite: true, ct).ConfigureAwait(false);
+        await viewer.WriteAsync(record, snapshot, ct).ConfigureAwait(false);
+    }
+}

@@ -10,6 +10,8 @@ namespace KhaozEngine.BugReports.Relay;
 public sealed class BugReportRelay
 {
     readonly RelayIntake intake;
+    readonly ServerSnapshotIntake snapshots;
+    readonly ReportWorker worker;
 
     /// <summary>Creates a relay over host-provided authentication, storage, queue and GitHub seams.</summary>
     /// <exception cref="ArgumentException">An option is outside the relay's supported limits.</exception>
@@ -29,24 +31,30 @@ public sealed class BugReportRelay
         var viewer = new ReportViewerWriter(media);
         intake = new RelayIntake(options, authenticator, work, records,
             new ReportQuotaGate(quotas, options, time, logger), new ReportBundleStorer(media, viewer), time);
+        snapshots = new ServerSnapshotIntake(options, records, work, logger);
+        worker = new ReportWorker(options, media, records, viewer, github, time, logger);
     }
 
     /// <summary>Authenticates, quota-checks, validates and stores one client bundle, then queues issue creation.</summary>
     /// <remarks>
     /// Resending an accepted report consumes quota because quota is checked before bundle validation and idempotency.
-    /// A report without an issue is re-enqueued only after 15 minutes. A GitHub outage combined with a lost 202 can
-    /// still produce a duplicate issue if an earlier worker filed it without recording the issue number.
+    /// A report without an issue is re-enqueued only after 15 minutes. See <see cref="ProcessWorkAsync"/> for the
+    /// worker claim and crash-recovery behavior.
     /// </remarks>
     public Task<RelayResponse> IntakeAsync(RelayRequest request, CancellationToken cancellationToken)
         => intake.IntakeAsync(request, cancellationToken);
 
-    /// <summary>Accepts an authoritative server snapshot. Supplied by the worker integration task.</summary>
+    /// <summary>Authenticates and stores the first server snapshot, then queues a late append when accepted.</summary>
     public Task<RelayResponse> ServerSnapshotIntakeAsync(string reportId, RelayRequest request, CancellationToken cancellationToken)
-        => throw new NotImplementedException();
+        => snapshots.RunAsync(reportId, request, cancellationToken);
 
-    /// <summary>Processes durable issue work. Supplied by the worker integration task.</summary>
+    /// <summary>Processes durable issue work using create-only, ten-minute claims.</summary>
+    /// <remarks>
+    /// Duplicate deliveries during a claim lease do nothing. After expiry a new delivery may take over. A holder
+    /// that creates an issue or comment and dies before saving its result can leave a duplicate on takeover.
+    /// </remarks>
     public Task ProcessWorkAsync(ReportWorkItem item, CancellationToken cancellationToken)
-        => throw new NotImplementedException();
+        => worker.ProcessAsync(item, cancellationToken);
 
     static void Validate(BugReportRelayOptions options)
     {

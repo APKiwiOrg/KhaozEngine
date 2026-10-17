@@ -99,10 +99,11 @@ public sealed class ServerSnapshotPoster
             catch (Exception) { detail = ReportRedactor.Mask; }
             text.Append(" -> ").Append(current.GetType().FullName).Append(": ").Append(detail);
         }
-        string message = redactor.Redact(text.Append('.').ToString());
+        // The key is masked before redaction, so a redaction rule that rewrites part of it cannot leave the rest.
+        string message = text.Append('.').ToString();
         if (serviceKey.Length != 0)
             message = message.Replace(serviceKey, ReportRedactor.Mask, StringComparison.Ordinal);
-        Log.Warn(message);
+        Log.Warn(redactor.Redact(message));
         return false;
     }
 }

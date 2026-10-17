@@ -1162,4 +1162,9 @@ and changed these details. Its contract amendment blocks carry the evidence.
     Balanced and below remain outside the release (`ShadingMaxUpscale`, #1431). At Balanced on Metal the S textured
     tails measure 0.109 to 0.259, the M tails 0.026 to 0.111 and MS 0.079 and 0.171, while C's tails measure 0.0035
     to 0.015. The release now evaluates the history ring on moving pixels and carried locks too, four bilinear taps
-    where their history lies past the box, and its cost is measured apart.
+    where their history lies past the box. `TemporalResolveCostPerfGpuTests` on the hosted NVIDIA Tesla T4
+    (`gpu-hosted-bench`, runs 39068635433 before and 39071519186 after, at the final diagonal pair rule) moves the
+    split's resolve and sharpen by -0.15 to +0.27 ms over the eight cases on Direct3D 11, Windows Vulkan and Linux
+    Vulkan, a mean of about zero. The largest rise is the moving field on Direct3D 11, +0.15 ms at 1440p Native and
+    +0.27 ms at 3456x2234 Quality, where the ring now runs on moving pixels. Both Vulkan legs measure the same case
+    flat or lower.

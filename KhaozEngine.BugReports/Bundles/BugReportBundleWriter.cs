@@ -4,7 +4,6 @@ using System.Globalization;
 using System.IO;
 using System.IO.Compression;
 using System.Security.Cryptography;
-using System.Text.Json;
 using KhaozEngine.BugReports.Contracts;
 
 namespace KhaozEngine.BugReports;
@@ -13,7 +12,7 @@ namespace KhaozEngine.BugReports;
 /// Writes a draft as a version 1 report bundle: a stored zip with <c>manifest.json</c> first, then sections in
 /// draft order, the screenshot, <c>clip/index.json</c> and the clip frames. Before anything is serialized, every
 /// field is checked against the rules <see cref="BundleValidator"/> applies, through the same Contracts helpers:
-/// <see cref="BundleEntryNames"/>, <see cref="BugReportLimits"/>, <see cref="BugReportJson.SectionDocumentOptions"/>
+/// <see cref="BundleEntryNames"/>, <see cref="BugReportLimits"/>, <see cref="BugReportJson.IsValidSection"/>
 /// and <see cref="ImageHeaders"/>, which also checks each image header against its record. A bundle that is
 /// written therefore passes the relay's validation. Works in memory only.
 /// </summary>
@@ -117,21 +116,9 @@ public static class BugReportBundleWriter
             total += section.Json.Length;
             if (total > BugReportLimits.MaxSectionBytesTotal)
                 throw Invalid("The sections total more than " + BugReportLimits.MaxSectionBytesTotal + " bytes.");
-            if (!IsJsonObject(section.Json))
-                throw Invalid("Section \"" + key + "\" is not one JSON object with unique property names.");
-        }
-    }
-
-    static bool IsJsonObject(ReadOnlyMemory<byte> json)
-    {
-        try
-        {
-            using JsonDocument document = JsonDocument.Parse(json, BugReportJson.SectionDocumentOptions);
-            return document.RootElement.ValueKind == JsonValueKind.Object;
-        }
-        catch (JsonException)
-        {
-            return false;
+            if (!BugReportJson.IsValidSection(section.Json))
+                throw Invalid("Section \"" + key + "\" is not one JSON object within depth " + BugReportLimits.MaxSectionDepth
+                    + " with unique property names and decodable strings.");
         }
     }
 
@@ -178,8 +165,10 @@ public static class BugReportBundleWriter
             double offset = frame.Offset.TotalMilliseconds;
             if (offset < previousOffset)
                 throw Invalid("Clip frame " + i + " starts before the frame ahead of it or before the clip.");
-            if (!double.IsFinite(frame.RenderMilliseconds) || frame.RenderMilliseconds < 0)
-                throw Invalid("Clip frame " + i + " needs a finite render time of zero or more.");
+            if (offset > BugReportLimits.MaxClipOffsetMilliseconds)
+                throw Invalid("Clip frame " + i + " starts more than " + BugReportLimits.MaxClipOffsetMilliseconds + " ms into the clip.");
+            if (!double.IsFinite(frame.RenderMilliseconds) || frame.RenderMilliseconds is < 0 or > BugReportLimits.MaxRenderMilliseconds)
+                throw Invalid("Clip frame " + i + " needs a render time from 0 to " + BugReportLimits.MaxRenderMilliseconds + " ms.");
             if (!IsValidEdge(frame.Width) || !IsValidEdge(frame.Height))
                 throw Invalid("Clip frame " + i + " edges must be 1 to " + BugReportLimits.MaxScreenshotLongEdge + " pixels.");
             string entry = BundleEntryNames.ClipFrame(i);

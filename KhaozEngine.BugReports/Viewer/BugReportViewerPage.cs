@@ -24,15 +24,16 @@ namespace KhaozEngine.BugReports;
 public static class BugReportViewerPage
 {
     const string ResourceName = "KhaozEngine.BugReports.Viewer.html";
-    const string UnreadableSection = "unreadable section";
 
     // A server snapshot nests each section two levels down, under its sections object and the section key.
     const int SnapshotDepth = BugReportLimits.MaxSectionDepth + 2;
 
-    // The relaxed encoder leaves '<' literal, and Render then replaces every '<' in the data with <. JSON can
-    // only hold '<' inside strings, so the replacement keeps the JSON equal and leaves nothing the HTML parser can
-    // read as a tag, a closing tag or a comment opener inside the data block. No other character matters there.
+    // The relaxed encoder leaves '<' literal, and Render then replaces every '<' in the data with the escape \u003c.
+    // JSON can only hold '<' inside strings, so the replacement keeps the JSON equal and leaves nothing the HTML
+    // parser can read as a tag, a closing tag or a comment opener inside the data block. No other character
+    // matters there.
     static readonly JsonWriterOptions WriterOptions = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+
 
     static readonly string Template = LoadTemplate();
     static readonly string ScriptHash = ElementHash("script");
@@ -40,8 +41,8 @@ public static class BugReportViewerPage
 
     /// <summary>Renders <paramref name="model"/> as a complete HTML document.</summary>
     /// <remarks>
-    /// A section, or the server snapshot, that is not a readable JSON object shows as
-    /// <c>{"error":"unreadable section"}</c> and the rest of the page still renders.
+    /// Sections and the server snapshot are embedded as indented display text. One that is not a readable JSON
+    /// object shows as <c>{"error": "unreadable section"}</c> and the rest of the page still renders.
     /// </remarks>
     /// <exception cref="ArgumentException">The manifest's report id is not a canonical version 7 id.</exception>
     public static string Render(BugReportViewerModel model)
@@ -86,19 +87,14 @@ public static class BugReportViewerPage
 
             writer.WriteStartObject("sections");
             foreach (CapturedSection section in model.Sections)
-            {
-                writer.WritePropertyName(section.Key);
-                CopyOrError(section.Json.Span, BugReportLimits.MaxSectionDepth, writer);
-            }
+                writer.WriteString(section.Key, DisplayText(section.Json.Span, BugReportLimits.MaxSectionDepth));
             writer.WriteEndObject();
 
             writer.WritePropertyName("reporter");
             if (model.Reporter is null) writer.WriteNullValue();
             else Copy(JsonSerializer.SerializeToUtf8Bytes(model.Reporter, BugReportJson.Options), BugReportLimits.MaxSectionDepth, writer);
 
-            writer.WritePropertyName("server");
-            if (model.ServerSnapshotJson is not { } server) writer.WriteNullValue();
-            else CopyOrError(server.Span, SnapshotDepth, writer);
+            writer.WriteString("server", model.ServerSnapshotJson is { } server ? DisplayText(server.Span, SnapshotDepth) : null);
 
             writer.WriteStartArray("logTail");
             foreach (string line in model.LogTail) writer.WriteStringValue(line);
@@ -115,57 +111,101 @@ public static class BugReportViewerPage
         return false;
     }
 
-    // Checks the whole document first, so a failure never leaves half an object in the page data.
-    static void CopyOrError(ReadOnlySpan<byte> json, int maxDepth, Utf8JsonWriter writer)
+    // Sections and the server snapshot are shown as indented text built here, so numbers keep their exact text. The
+    // page never parses them, which would round 64-bit integers. A document that cannot be read is replaced whole.
+    static string DisplayText(ReadOnlySpan<byte> json, int maxDepth)
     {
         try
         {
-            Copy(json, maxDepth, writer: null);
+            return Indent(json, maxDepth);
         }
         catch (Exception e) when (e is JsonException or InvalidOperationException)
         {
-            writer.WriteStartObject();
-            writer.WriteString("error", UnreadableSection);
-            writer.WriteEndObject();
-            return;
+            return Indent("{\"error\":\"unreadable section\"}"u8, maxDepth);
         }
-        Copy(json, maxDepth, writer);
     }
 
-    // Rewrites one JSON object token by token. Strings and property names are decoded and written again, so raw
-    // input bytes never reach the page. Numbers keep the text the reader validated, which keeps 64-bit integers
-    // exact. With no writer it only reads, which throws JsonException for malformed JSON and
-    // InvalidOperationException for a string that does not decode.
-    static void Copy(ReadOnlySpan<byte> json, int maxDepth, Utf8JsonWriter? writer)
+    // Rewrites one JSON object token by token as compact JSON. Strings and property names are decoded and written
+    // again, so raw input bytes never reach the page. Numbers keep the text the reader validated, which keeps
+    // 64-bit integers exact.
+    static void Copy(ReadOnlySpan<byte> json, int maxDepth, Utf8JsonWriter writer)
     {
-        var reader = new Utf8JsonReader(json, new JsonReaderOptions { MaxDepth = maxDepth });
-        if (!reader.Read() || reader.TokenType != JsonTokenType.StartObject)
-            throw new JsonException("Expected a JSON object.");
+        Utf8JsonReader reader = ObjectReader(json, maxDepth);
         do
         {
             switch (reader.TokenType)
             {
-                case JsonTokenType.StartObject: writer?.WriteStartObject(); break;
-                case JsonTokenType.EndObject: writer?.WriteEndObject(); break;
-                case JsonTokenType.StartArray: writer?.WriteStartArray(); break;
-                case JsonTokenType.EndArray: writer?.WriteEndArray(); break;
-                case JsonTokenType.PropertyName:
-                    string name = reader.GetString()!;
-                    writer?.WritePropertyName(name);
-                    break;
-                case JsonTokenType.String:
-                    string value = reader.GetString()!;
-                    writer?.WriteStringValue(value);
-                    break;
-                case JsonTokenType.Number: writer?.WriteRawValue(reader.ValueSpan); break;
-                case JsonTokenType.True: writer?.WriteBooleanValue(true); break;
-                case JsonTokenType.False: writer?.WriteBooleanValue(false); break;
-                case JsonTokenType.Null: writer?.WriteNullValue(); break;
+                case JsonTokenType.StartObject: writer.WriteStartObject(); break;
+                case JsonTokenType.EndObject: writer.WriteEndObject(); break;
+                case JsonTokenType.StartArray: writer.WriteStartArray(); break;
+                case JsonTokenType.EndArray: writer.WriteEndArray(); break;
+                case JsonTokenType.PropertyName: writer.WritePropertyName(reader.GetString()!); break;
+                case JsonTokenType.String: writer.WriteStringValue(reader.GetString()!); break;
+                case JsonTokenType.Number: writer.WriteRawValue(reader.ValueSpan); break;
+                case JsonTokenType.True: writer.WriteBooleanValue(true); break;
+                case JsonTokenType.False: writer.WriteBooleanValue(false); break;
+                case JsonTokenType.Null: writer.WriteNullValue(); break;
                 default: throw new JsonException("Unexpected JSON token " + reader.TokenType + ".");
             }
         }
         while (reader.Read());
     }
+
+    // The same token copy as indented text, two spaces per level. Utf8JsonWriter cannot indent a raw number inside
+    // an array, so the layout is written here. Throws JsonException for malformed JSON and
+    // InvalidOperationException for a string that does not decode.
+    static string Indent(ReadOnlySpan<byte> json, int maxDepth)
+    {
+        Utf8JsonReader reader = ObjectReader(json, maxDepth);
+        var text = new StringBuilder();
+        bool empty = true;
+        bool afterName = false;
+        do
+        {
+            JsonTokenType token = reader.TokenType;
+            if (token is JsonTokenType.EndObject or JsonTokenType.EndArray)
+            {
+                if (!empty) NewLine(text, reader.CurrentDepth);
+                text.Append(token == JsonTokenType.EndObject ? '}' : ']');
+                empty = false;
+                continue;
+            }
+            if (afterName) afterName = false;
+            else if (reader.CurrentDepth > 0)
+            {
+                if (!empty) text.Append(',');
+                NewLine(text, reader.CurrentDepth);
+            }
+            empty = false;
+            switch (token)
+            {
+                case JsonTokenType.StartObject: text.Append('{'); empty = true; break;
+                case JsonTokenType.StartArray: text.Append('['); empty = true; break;
+                case JsonTokenType.PropertyName: AppendString(text, reader.GetString()!).Append(": "); afterName = true; break;
+                case JsonTokenType.String: AppendString(text, reader.GetString()!); break;
+                case JsonTokenType.Number: text.Append(Encoding.UTF8.GetString(reader.ValueSpan)); break;
+                case JsonTokenType.True: text.Append("true"); break;
+                case JsonTokenType.False: text.Append("false"); break;
+                case JsonTokenType.Null: text.Append("null"); break;
+                default: throw new JsonException("Unexpected JSON token " + reader.TokenType + ".");
+            }
+        }
+        while (reader.Read());
+        return text.ToString();
+    }
+
+    static Utf8JsonReader ObjectReader(ReadOnlySpan<byte> json, int maxDepth)
+    {
+        var reader = new Utf8JsonReader(json, new JsonReaderOptions { MaxDepth = maxDepth });
+        if (!reader.Read() || reader.TokenType != JsonTokenType.StartObject)
+            throw new JsonException("Expected a JSON object.");
+        return reader;
+    }
+
+    static StringBuilder AppendString(StringBuilder text, string value)
+        => text.Append('"').Append(JsonEncodedText.Encode(value, JavaScriptEncoder.UnsafeRelaxedJsonEscaping).ToString()).Append('"');
+
+    static void NewLine(StringBuilder text, int depth) => text.Append('\n').Append(' ', 2 * depth);
 
     // Line endings are normalised because the HTML parser turns CRLF into LF before the browser hashes a script.
     static string LoadTemplate()

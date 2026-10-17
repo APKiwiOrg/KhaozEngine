@@ -294,6 +294,19 @@ public sealed class BundleValidatorTests
         Assert.Equal("clip_index_invalid", ErrorOf(TestBundles.Default().WithEntry(BundleEntryNames.ClipIndex, index)));
     }
 
+    [Theory]
+    [InlineData(BugReportLimits.MaxRenderMilliseconds + 1, 83)]
+    [InlineData(41, BugReportLimits.MaxClipOffsetMilliseconds + 1)]
+    public void Clip_timing_over_the_limits_is_rejected(int render, int offset)
+        => Assert.Equal("clip_index_invalid", ErrorOf(TestBundles.Default().WithEntry(BundleEntryNames.ClipIndex,
+            TestBundles.ClipIndexJson(new ClipIndexFrame(0, 16.5, 4, 4, "clip/000.jpg"), new ClipIndexFrame(offset, render, 4, 4, "clip/001.jpg")))));
+
+    [Fact]
+    public void Clip_timing_at_the_limits_passes()
+        => Assert.Null(ErrorOf(TestBundles.Default().WithEntry(BundleEntryNames.ClipIndex, TestBundles.ClipIndexJson(
+            new ClipIndexFrame(0, 16.5, 4, 4, "clip/000.jpg"),
+            new ClipIndexFrame(BugReportLimits.MaxClipOffsetMilliseconds, BugReportLimits.MaxRenderMilliseconds, 4, 4, "clip/001.jpg")))));
+
     [Fact]
     public void Section_with_invalid_utf8_is_rejected()
         => Assert.Equal("section_invalid: " + Build,

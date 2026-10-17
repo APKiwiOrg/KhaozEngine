@@ -45,10 +45,12 @@ An MP4 clip uses `clip.mp4` for every frame's entry, with timing in the index.
 | Category | 64 characters |
 | Game id | 32 characters |
 | Section JSON depth | 64 |
+| Clip frame offset | 600000 milliseconds |
+| Clip frame render time | 60000 milliseconds |
 
 These constants describe the wire contract. The records and JSON helpers do not validate bundle
 contents or enforce the bounds. `BundleValidator` enforces the bundle bytes, entries, total section
-bytes, description, screenshot long edge, category, game id and section depth limits, as the next
+bytes, description, screenshot long edge, category, game id, section depth and clip timing limits, as the next
 section describes. It does not check
 the other three:
 
@@ -125,7 +127,7 @@ constant:
 | `media_invalid` | `clip.mp4` does not carry `ftyp` at bytes 4 to 8. |
 | `section_invalid` | A section is not a JSON object within depth 64, repeats a property name in any object, or holds a string or property name that does not decode. |
 | `sections_too_large` | Section entries total more than 1 MiB. |
-| `clip_index_invalid` | The clip index is missing while frames or `clip.mp4` exist, is over 64 KiB, does not parse, repeats a property name, holds a null frame, has more than 120 frames, has negative, decreasing or non-finite timing, names entries wrongly, or gives an MP4 frame an edge outside 1 to 2560. |
+| `clip_index_invalid` | The clip index is missing while frames or `clip.mp4` exist, is over 64 KiB, does not parse, repeats a property name, holds a null frame, has more than 120 frames, has negative, decreasing or non-finite timing, an offset over 600000 ms or a render time over 60000 ms, names entries wrongly, or gives an MP4 frame an edge outside 1 to 2560. |
 
 Clip index entries follow one of two shapes. With JPEG frames, frame `i` names `clip/<iii>.jpg`, that
 entry exists with the index's width and height, and every JPEG frame has an index row. With
@@ -146,7 +148,10 @@ passes validation:
   IHDR chunk or a JPEG start-of-frame segment. It returns false, with both sizes zero, for a media type
   other than `ImageHeaders.PngMediaType` (`image/png`) or `ImageHeaders.JpegMediaType` (`image/jpeg`),
   or for a header that does not parse. It does not range check the size.
-- `BugReportJson.SectionDocumentOptions` is the `JsonDocumentOptions` a section must parse with: depth
+- `BugReportJson.IsValidSection(json)` is the one section rule the validator and writers share: exactly one
+  JSON object within `BugReportLimits.MaxSectionDepth`, no repeated property name in any object, and every
+  string and property name decodable. It never throws.
+- `BugReportJson.SectionDocumentOptions` is the `JsonDocumentOptions` for reading a section: depth
   `BugReportLimits.MaxSectionDepth` and no repeated property names.
 - `BundleEntryNames.IsValidGameId` and `IsValidSectionKey`, and the `BugReportLimits` constants.
 

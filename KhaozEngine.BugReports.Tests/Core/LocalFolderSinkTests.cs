@@ -55,7 +55,7 @@ public sealed class LocalFolderSinkTests : IDisposable
         JsonElement page = data.RootElement;
         Assert.Equal(TestBundles.ReportId, page.GetProperty("manifest").GetProperty("reportId").GetString());
         Assert.Equal(2, page.GetProperty("clip").GetProperty("frames").GetArrayLength());
-        Assert.Equal(1, page.GetProperty("sections").GetProperty("build").GetProperty("a").GetInt32());
+        Assert.Equal("{\n  \"a\": 1\n}", BugReportViewerPageTests.SectionText(data, "build"));
         Assert.Equal(BundleEntryNames.ScreenshotPng, page.GetProperty("media").GetProperty("screenshot").GetString());
         Assert.Equal(JsonValueKind.Null, page.GetProperty("reporter").ValueKind);
         Assert.Equal(JsonValueKind.Null, page.GetProperty("server").ValueKind);
@@ -116,6 +116,16 @@ public sealed class LocalFolderSinkTests : IDisposable
         File.WriteAllText(root, "a file where the folder should be");
 
         BugReportSubmitResult result = await Submit(TestBundles.Default());
+
+        Assert.Equal(new BugReportSubmitResult(BugReportSubmitStatus.Queued, null, LocalFolderSink.WriteFailedError, null), result);
+    }
+
+    [Fact]
+    public async Task Unexpected_failure_is_queued()
+    {
+        var sink = new LocalFolderSink(root, openViewer: false, render: _ => throw new InvalidOperationException("render failed"));
+
+        BugReportSubmitResult result = await sink.SubmitAsync(Submission(TestBundles.Default()), CancellationToken.None);
 
         Assert.Equal(new BugReportSubmitResult(BugReportSubmitStatus.Queued, null, LocalFolderSink.WriteFailedError, null), result);
     }

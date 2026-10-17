@@ -192,27 +192,13 @@ public static class BundleValidator
     // The running total is checked before each section is read, so oversized state is never parsed.
     static string? CheckSections(List<ZipArchiveEntry> entries, EntryReader reader)
     {
-        JsonDocumentOptions options = BugReportJson.SectionDocumentOptions;
         long total = 0;
         foreach (ZipArchiveEntry entry in entries)
         {
             if (!entry.FullName.StartsWith("sections/", StringComparison.Ordinal)) continue;
             total += entry.Length;
             if (total > BugReportLimits.MaxSectionBytesTotal) return BundleErrors.SectionsTooLarge;
-            try
-            {
-                // Strings are checked first, because the duplicate name check decodes property names and
-                // throws InvalidOperationException for one that does not decode.
-                byte[] json = reader.ReadAll(entry);
-                if (!JsonStrings.AllDecode(json, options.MaxDepth)) return Coded(BundleErrors.SectionInvalid, entry.FullName);
-                using JsonDocument document = JsonDocument.Parse(json, options);
-                if (document.RootElement.ValueKind != JsonValueKind.Object)
-                    return Coded(BundleErrors.SectionInvalid, entry.FullName);
-            }
-            catch (JsonException)
-            {
-                return Coded(BundleErrors.SectionInvalid, entry.FullName);
-            }
+            if (!BugReportJson.IsValidSection(reader.ReadAll(entry))) return Coded(BundleErrors.SectionInvalid, entry.FullName);
         }
         return null;
     }
@@ -243,8 +229,10 @@ public static class BundleValidator
         {
             ClipIndexFrame? frame = index.Frames[i];
             if (frame?.Entry is null) return false;
-            if (!double.IsFinite(frame.OffsetMilliseconds) || frame.OffsetMilliseconds < previousOffset) return false;
-            if (!double.IsFinite(frame.RenderMilliseconds) || frame.RenderMilliseconds < 0) return false;
+            if (!double.IsFinite(frame.OffsetMilliseconds) || frame.OffsetMilliseconds < previousOffset
+                || frame.OffsetMilliseconds > BugReportLimits.MaxClipOffsetMilliseconds) return false;
+            if (!double.IsFinite(frame.RenderMilliseconds) || frame.RenderMilliseconds is < 0 or > BugReportLimits.MaxRenderMilliseconds)
+                return false;
             previousOffset = frame.OffsetMilliseconds;
 
             if (hasMp4)

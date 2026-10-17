@@ -13,4 +13,6 @@ public static class BugReportLimits
     public const int MaxCategoryChars = 64;
     public const int MaxGameIdChars = 32;
     public const int MaxSectionDepth = 64;
+    public const int MaxClipOffsetMilliseconds = 600000;
+    public const int MaxRenderMilliseconds = 60000;
 }

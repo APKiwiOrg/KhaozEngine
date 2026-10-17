@@ -42,6 +42,13 @@ public sealed class BugReportViewerPageTests
 
     internal static JsonDocument Data(string page) => JsonDocument.Parse(DataText(page));
 
+    // How the page shows a section that could not be read.
+    const string ErrorText = "{\n  \"error\": \"unreadable section\"\n}";
+
+    // The display text the page carries for one section.
+    internal static string SectionText(JsonDocument data, string key)
+        => data.RootElement.GetProperty("sections").GetProperty(key).GetString()!;
+
     static string AppScript(string page)
     {
         int start = page.IndexOf("<script>", StringComparison.Ordinal);
@@ -84,7 +91,7 @@ public sealed class BugReportViewerPageTests
         Assert.DoesNotContain("<", DataText(page), StringComparison.Ordinal);
         using JsonDocument data = Data(page);
         Assert.Equal(Hostile, data.RootElement.GetProperty("manifest").GetProperty("description").GetString());
-        Assert.Equal("</script>", data.RootElement.GetProperty("sections").GetProperty("build").GetProperty("a").GetString());
+        Assert.Equal("{\n  \"a\": \"</script>\"\n}", SectionText(data, "build"));
     }
 
     [Fact]
@@ -94,7 +101,7 @@ public sealed class BugReportViewerPageTests
 
         Assert.DoesNotContain("<b>", page, StringComparison.Ordinal);
         using JsonDocument data = Data(page);
-        Assert.Equal("<b>", data.RootElement.GetProperty("sections").GetProperty("build").GetProperty("a").GetString());
+        Assert.Equal("{\n  \"a\": \"<b>\"\n}", SectionText(data, "build"));
     }
 
     [Fact]
@@ -156,11 +163,10 @@ public sealed class BugReportViewerPageTests
             server: "{\"sections\":{\"x\":{\"a\":\"\\uD800\"}}}"));
 
         using JsonDocument data = Data(page);
-        JsonElement sections = data.RootElement.GetProperty("sections");
         foreach (string key in new[] { "bad", "name", "torn" })
-            Assert.Equal("{\"error\":\"unreadable section\"}", sections.GetProperty(key).GetRawText());
-        Assert.Equal("1.0.0", sections.GetProperty("build").GetProperty("version").GetString());
-        Assert.Equal("{\"error\":\"unreadable section\"}", data.RootElement.GetProperty("server").GetRawText());
+            Assert.Equal(ErrorText, SectionText(data, key));
+        Assert.Equal("{\n  \"version\": \"1.0.0\"\n}", SectionText(data, "build"));
+        Assert.Equal(ErrorText, data.RootElement.GetProperty("server").GetString());
     }
 
     [Fact]
@@ -168,8 +174,18 @@ public sealed class BugReportViewerPageTests
     {
         string page = BugReportViewerPage.Render(Model(sections: [Section("build", "{\"n\":9007199254740993,\"f\":1.50e3}")]));
 
-        Assert.Contains("\"n\":9007199254740993", DataText(page), StringComparison.Ordinal);
-        Assert.Contains("\"f\":1.50e3", DataText(page), StringComparison.Ordinal);
+        using JsonDocument data = Data(page);
+        Assert.Equal("{\n  \"n\": 9007199254740993,\n  \"f\": 1.50e3\n}", SectionText(data, "build"));
+    }
+
+    [Fact]
+    public void Display_text_keeps_empty_containers_on_one_line()
+    {
+        string page = BugReportViewerPage.Render(Model(sections: [Section("build", "{\"e\":{},\"l\":[],\"n\":[[],{\"a\":false}]}")]));
+
+        using JsonDocument data = Data(page);
+        Assert.Equal("{\n  \"e\": {},\n  \"l\": [],\n  \"n\": [\n    [],\n    {\n      \"a\": false\n    }\n  ]\n}",
+            SectionText(data, "build"));
     }
 
     [Fact]
@@ -193,8 +209,8 @@ public sealed class BugReportViewerPageTests
         Assert.Equal(BundleEntryNames.ScreenshotJpeg, root.GetProperty("media").GetProperty("screenshot").GetString());
         Assert.Equal("Café <3", root.GetProperty("reporter").GetProperty("displayName").GetString());
         Assert.Equal(JsonValueKind.Null, root.GetProperty("reporter").GetProperty("handle").ValueKind);
-        Assert.Equal("{\"tick\":7,\"ok\":true,\"none\":null,\"list\":[1,\"two\"]}",
-            root.GetProperty("server").GetProperty("sections").GetProperty("world").GetRawText());
+        Assert.Equal("{\n  \"formatVersion\": 1,\n  \"sections\": {\n    \"world\": {\n      \"tick\": 7,\n      \"ok\": true,\n" +
+            "      \"none\": null,\n      \"list\": [\n        1,\n        \"two\"\n      ]\n    }\n  }\n}", root.GetProperty("server").GetString());
         Assert.Equal(["first", "<last>"], root.GetProperty("logTail").EnumerateArray().Select(e => e.GetString()!));
     }
 

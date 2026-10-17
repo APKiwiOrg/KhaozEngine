@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using KhaozEngine.BugReports.Contracts;
@@ -186,6 +187,27 @@ public sealed class BugReportJsonTests
     {
         byte[] json = Encoding.UTF8.GetBytes(Replace(SnapshotJson, field, replacement));
         Assert.Throws<JsonException>(() => BugReportJson.DeserializeServerSnapshot(json));
+    }
+
+    [Theory]
+    [InlineData("{}", true)]
+    [InlineData("{\"a\":[1,{\"b\":\"\\uD83D\\uDE00\"}]}", true)]
+    [InlineData("", false)]
+    [InlineData("[1]", false)]
+    [InlineData("{} {}", false)]
+    [InlineData("{\"a\":1,\"a\":2}", false)]
+    [InlineData("{\"a\":\"\\uD800\"}", false)]
+    [InlineData("{\"\\uDC00\":1}", false)]
+    [InlineData("{\"a\":1} // note", false)]
+    public void IsValidSection_matches_the_section_rules(string json, bool valid)
+        => Assert.Equal(valid, BugReportJson.IsValidSection(Encoding.UTF8.GetBytes(json)));
+
+    [Fact]
+    public void IsValidSection_bounds_depth()
+    {
+        string Nested(int depth) => string.Concat(Enumerable.Repeat("{\"a\":", depth - 1)) + "{}" + new string('}', depth - 1);
+        Assert.True(BugReportJson.IsValidSection(Encoding.UTF8.GetBytes(Nested(BugReportLimits.MaxSectionDepth))));
+        Assert.False(BugReportJson.IsValidSection(Encoding.UTF8.GetBytes(Nested(BugReportLimits.MaxSectionDepth + 1))));
     }
 
     [Theory]

@@ -355,6 +355,8 @@ public sealed class BugReportBundleWriterTests
     [InlineData("zero-width")]
     [InlineData("tall-frame")]
     [InlineData("null-frame")]
+    [InlineData("render-over-limit")]
+    [InlineData("offset-over-limit")]
     public void Invalid_clip_frame_throws(string fault)
     {
         ReportClipFrame?[] frames = [Frame(0, 16.5), Frame(33, 16.5), Frame(49.5, 16.5)];
@@ -364,6 +366,8 @@ public sealed class BugReportBundleWriterTests
             "decreasing-offset" => Frame(16.5, 16.5),
             "nan-render" => Frame(49.5, double.NaN),
             "negative-render" => Frame(49.5, -1),
+            "render-over-limit" => Frame(49.5, BugReportLimits.MaxRenderMilliseconds + 1),
+            "offset-over-limit" => Frame(BugReportLimits.MaxClipOffsetMilliseconds + 1, 16.5),
             "zero-width" => frames[2]! with { Width = 0 },
             "tall-frame" => frames[2]! with { Height = 2561 },
             _ => null,
@@ -371,6 +375,14 @@ public sealed class BugReportBundleWriterTests
         var clip = new ReportClip(frames!);
 
         Assert.Throws<ArgumentException>(() => BugReportBundleWriter.Write(Draft(clip: clip)));
+    }
+
+    [Fact]
+    public void Clip_timing_at_the_limits_is_written_and_valid()
+    {
+        var clip = new ReportClip([Frame(0, BugReportLimits.MaxRenderMilliseconds), Frame(BugReportLimits.MaxClipOffsetMilliseconds, 16.5)]);
+
+        AssertValid(BugReportBundleWriter.Write(Draft(clip: clip)));
     }
 
     [Theory]
@@ -397,6 +409,9 @@ public sealed class BugReportBundleWriterTests
     [InlineData("{\"a\":")]
     [InlineData("{\"a\":1,\"a\":2}")]
     [InlineData("")]
+    [InlineData("{\"a\":\"\\uD800\"}")]
+    [InlineData("{\"\\uD800\":1}")]
+    [InlineData("{} {}")]
     public void Section_that_is_not_one_json_object_throws(string json)
     {
         Assert.Throws<ArgumentException>(() => BugReportBundleWriter.Write(Draft(sections: [Section("build", json)])));

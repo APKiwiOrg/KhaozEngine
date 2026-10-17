@@ -21,8 +21,8 @@ namespace KhaozEngine.BugReports;
 /// </summary>
 /// <remarks>
 /// A valid bundle is Sent with <see cref="ReportIds.ReferenceCode"/> of its id. An invalid one is Rejected with the
-/// validator's error and nothing is written. A file system failure is Queued with <see cref="WriteFailedError"/>,
-/// so the bundle is kept.
+/// validator's error and nothing is written. Any other failure, such as a file system error, is Queued with
+/// <see cref="WriteFailedError"/>, so the bundle is kept. Only the caller's cancellation throws.
 /// </remarks>
 public sealed class LocalFolderSink : IBugReportSink
 {
@@ -34,15 +34,24 @@ public sealed class LocalFolderSink : IBugReportSink
 
     readonly string root;
     readonly bool openViewer;
+    readonly Func<BugReportViewerModel, string> render;
 
     /// <summary>Creates a sink that saves reports under one folder.</summary>
     /// <param name="root">The folder that holds one subfolder per report. It is created when missing.</param>
     /// <param name="openViewer">Whether to open each saved report's viewer page in the system browser.</param>
     public LocalFolderSink(string root, bool openViewer)
+        : this(root, openViewer, BugReportViewerPage.Render)
+    {
+    }
+
+    // Tests replace the page renderer to reach the unexpected failure path.
+    internal LocalFolderSink(string root, bool openViewer, Func<BugReportViewerModel, string> render)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(root);
+        ArgumentNullException.ThrowIfNull(render);
         this.root = Path.GetFullPath(root);
         this.openViewer = openViewer;
+        this.render = render;
     }
 
     /// <inheritdoc />
@@ -51,19 +60,20 @@ public sealed class LocalFolderSink : IBugReportSink
         ArgumentNullException.ThrowIfNull(submission);
         cancellationToken.ThrowIfCancellationRequested();
 
-        byte[] bundle = submission.Bundle.ToArray();
-        BundleValidationResult validation = BundleValidator.Validate(new MemoryStream(bundle, writable: false));
-        if (!validation.IsValid || validation.Manifest is not { } manifest)
-            return new BugReportSubmitResult(BugReportSubmitStatus.Rejected, null, validation.Error, null);
-
+        BugReportManifest manifest;
         string viewerPath;
         try
         {
+            byte[] bundle = submission.Bundle.ToArray();
+            BundleValidationResult validation = BundleValidator.Validate(new MemoryStream(bundle, writable: false));
+            if (!validation.IsValid || validation.Manifest is null)
+                return new BugReportSubmitResult(BugReportSubmitStatus.Rejected, null, validation.Error, null);
+            manifest = validation.Manifest;
             viewerPath = Save(bundle, manifest);
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        catch (Exception e) when (!cancellationToken.IsCancellationRequested)
         {
-            Log.Warn("Could not save bug report " + manifest.ReportId + " to its local folder.", e);
+            Log.Warn("Could not save bug report " + submission.ReportId + " to its local folder.", e);
             return new BugReportSubmitResult(BugReportSubmitStatus.Queued, null, WriteFailedError, null);
         }
 
@@ -104,7 +114,7 @@ public sealed class LocalFolderSink : IBugReportSink
 
         ClipIndex? clip = entries.TryGetValue(BundleEntryNames.ClipIndex, out byte[]? index) ? BugReportJson.DeserializeClipIndex(index) : null;
         IReadOnlyList<string> logTail = entries.TryGetValue(LogSection, out byte[]? log) ? LogTail(log) : [];
-        string page = BugReportViewerPage.Render(new BugReportViewerModel(manifest, clip, sections, null, null, logTail));
+        string page = render(new BugReportViewerModel(manifest, clip, sections, null, null, logTail));
         return WriteFile(folder, "viewer.html", Encoding.UTF8.GetBytes(page));
     }
 

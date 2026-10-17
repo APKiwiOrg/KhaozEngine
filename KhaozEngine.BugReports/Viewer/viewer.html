@@ -52,8 +52,10 @@ summary { cursor: pointer; }
 <input id="scrub" type="range" min="0" max="0" step="1" value="0" aria-label="Frame">
 <span id="position"></span>
 </div>
+<div id="graph-panel">
 <svg id="graph" preserveAspectRatio="none" role="img" aria-label="Frame time graph"></svg>
 <p id="graph-note"></p>
+</div>
 </section>
 <section>
 <h2>Sections</h2>
@@ -90,10 +92,10 @@ summary { cursor: pointer; }
     return node;
   }
 
-  function addJson(parent, label, value) {
+  function addText(parent, label, text) {
     const details = element('details');
     details.open = true;
-    details.append(element('summary', label), element('pre', JSON.stringify(value, null, 2)));
+    details.append(element('summary', label), element('pre', text));
     parent.append(details);
   }
 
@@ -135,6 +137,14 @@ summary { cursor: pointer; }
 
   function setUpClip(frames) {
     const video = data.media.video ? byId('video') : null;
+    if (frames.length === 0) {
+      video.src = data.media.video;
+      video.hidden = false;
+      byId('controls').hidden = true;
+      byId('graph-panel').hidden = true;
+      byId('clip-panel').hidden = false;
+      return;
+    }
     const image = byId('frame');
     const scrub = byId('scrub');
     const play = byId('play');
@@ -174,7 +184,7 @@ summary { cursor: pointer; }
         stop();
         return;
       }
-      const delay = frames[index + 1].offsetMilliseconds - frames[index].offsetMilliseconds;
+      const delay = Math.min(Math.max(frames[index + 1].offsetMilliseconds - frames[index].offsetMilliseconds, 0), 1000);
       timer = setTimeout(() => {
         show(index + 1);
         advance();
@@ -184,7 +194,7 @@ summary { cursor: pointer; }
     function start() {
       play.textContent = 'Pause';
       if (video) {
-        video.play();
+        video.play().catch(() => (play.textContent = 'Play'));
         return;
       }
       if (index >= frames.length - 1) show(0);
@@ -240,19 +250,20 @@ summary { cursor: pointer; }
     byId('screenshot-panel').hidden = false;
   }
 
-  if (data.clip && data.clip.frames.length > 0) setUpClip(data.clip.frames);
+  const frames = data.clip ? data.clip.frames : [];
+  if (frames.length > 0 || data.media.video) setUpClip(frames);
 
   const sections = byId('sections');
   const keys = Object.keys(data.sections);
-  keys.forEach((key) => addJson(sections, key, data.sections[key]));
+  keys.forEach((key) => addText(sections, key, data.sections[key]));
   if (keys.length === 0) sections.textContent = 'No sections.';
 
   if (data.reporter) {
-    addJson(byId('reporter'), data.reporter.displayName, data.reporter);
+    addText(byId('reporter'), data.reporter.displayName, JSON.stringify(data.reporter, null, 2));
     byId('reporter-panel').hidden = false;
   }
   if (data.server) {
-    addJson(byId('server'), 'Snapshot', data.server);
+    addText(byId('server'), 'Snapshot', data.server);
     byId('server-panel').hidden = false;
   }
 

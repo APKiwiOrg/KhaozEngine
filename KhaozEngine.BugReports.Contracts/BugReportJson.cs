@@ -16,6 +16,23 @@ public static class BugReportJson
     public static JsonDocumentOptions SectionDocumentOptions { get; } =
         new() { MaxDepth = BugReportLimits.MaxSectionDepth, AllowDuplicateProperties = false };
 
+    // One section entry is valid when it is exactly one JSON object within MaxSectionDepth, repeats no property name
+    // in any object, and every string and property name in it decodes. Strings are checked first, because the
+    // duplicate name check decodes names and throws InvalidOperationException for one that does not decode.
+    public static bool IsValidSection(ReadOnlyMemory<byte> json)
+    {
+        if (!JsonStrings.AllDecode(json.Span, BugReportLimits.MaxSectionDepth)) return false;
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(json, SectionDocumentOptions);
+            return document.RootElement.ValueKind == JsonValueKind.Object;
+        }
+        catch (Exception e) when (e is JsonException or InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
     public static byte[] SerializeManifest(BugReportManifest manifest)
         => JsonSerializer.SerializeToUtf8Bytes(manifest, Context.BugReportManifest);
 

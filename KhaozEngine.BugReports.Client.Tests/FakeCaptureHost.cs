@@ -18,6 +18,9 @@ internal sealed class FakeCaptureHost : IFrameCaptureHost
 
     internal List<IDisposable> Retired { get; } = new();
 
+    /// <summary>When set, <see cref="RemoveCaptureTap"/> throws it, as a window torn down underneath might.</summary>
+    internal Exception? RemoveFailure { get; set; }
+
     public void AddCaptureTap(IFrameCaptureTap tap)
     {
         ArgumentNullException.ThrowIfNull(tap);
@@ -27,6 +30,7 @@ internal sealed class FakeCaptureHost : IFrameCaptureHost
     public void RemoveCaptureTap(IFrameCaptureTap tap)
     {
         ArgumentNullException.ThrowIfNull(tap);
+        if (RemoveFailure is { } failure) throw failure;
         if (!Taps.Remove(tap)) return;
         Detached.Add(tap);
         tap.Detach(Retired.Add);

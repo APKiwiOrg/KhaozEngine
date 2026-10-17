@@ -188,9 +188,10 @@ public sealed class BugReportService : IDisposable
     /// <summary>
     /// Removes the overlay, waits up to 3 s for every send still building its bundle to write it to the offline queue,
     /// closes a report that is still open and disposes its thumbnails, then cancels every send and flush, disposes the
-    /// recorder and detaches <see cref="RecentLog"/>. A send cut off
-    /// here stays in the offline queue. A report is lost only when its build is still running after the 3 s wait and
-    /// the process ends first, or when the process is killed. Call from the frame thread.
+    /// recorder, detaches <see cref="RecentLog"/> and disposes the font. Each step after the cancel runs even when an
+    /// earlier one throws. A send cut off here stays in the offline queue. A report is lost only when its build is
+    /// still running after the 3 s wait and the process ends first, or when the process is killed. Call from the
+    /// frame thread.
     /// </summary>
     public void Dispose()
     {
@@ -204,10 +205,22 @@ public sealed class BugReportService : IDisposable
         _flow.CloseActiveReport();
         // The source stays undisposed, because a send still finishing registers on its token.
         _shutdown.Cancel();
-        Recorder.Dispose();
-        _logLink.Detach();
-        _font?.Dispose();
-        _white?.Dispose();
+        try
+        {
+            Recorder.Dispose();
+        }
+        finally
+        {
+            _logLink.Detach();
+            try
+            {
+                _font?.Dispose();
+            }
+            finally
+            {
+                _white?.Dispose();
+            }
+        }
     }
 
     static GameApp Required(GameApp app)

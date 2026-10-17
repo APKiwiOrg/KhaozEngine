@@ -187,6 +187,24 @@ public sealed class BugReportServiceTests : BugReportFlowHarness
     }
 
     [Fact]
+    public void Throwing_recorder_dispose_still_detaches_the_log()
+    {
+        BugReportService service;
+        using (CaptureLogs())
+        {
+            service = NewService();
+            Log.Warn("before shutdown");
+            _host.RemoveFailure = new InvalidOperationException("window gone");
+
+            Assert.Throws<InvalidOperationException>(service.Dispose);
+            Log.Warn("after shutdown");
+        }
+
+        Assert.Contains(service.RecentLog.Snapshot(), line => line.Contains("before shutdown", StringComparison.Ordinal));
+        Assert.DoesNotContain(service.RecentLog.Snapshot(), line => line.Contains("after shutdown", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void Dispose_twice_removes_the_overlay_once()
     {
         BugReportService service = NewService();

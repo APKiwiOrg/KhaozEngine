@@ -1634,7 +1634,8 @@ jobs:
       # (an armed line, then one line per episode), and the trx files give every test's start and end from both
       # passes. The directory also carries dumps from explicit diagnostic runs, never the default full tier.
       # A shard's trx files are already its `shard-trx-<backend>-<shard>` artifact below, kept longer, so they
-      # ride here only on an unsharded run (#1461).
+      # ride here only on an unsharded run (#1461). Only a shard that runs Server.Tests or MapEditor.Tests arms a
+      # watchdog, so a shard with no watch directory uploads nothing and says nothing.
       - name: Upload thread pool watch evidence
         if: always() && env.POOL_WATCH_ARMED != ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -1644,7 +1645,7 @@ jobs:
             TestResults/pool-watch/
             ${{ matrix.shard == '' && 'TestResults/*.trx' || '' }}
           retention-days: 3
-          if-no-files-found: warn
+          if-no-files-found: ${{ matrix.shard == '' && 'warn' || 'ignore' }}
 
       # On a host crash: surface the --blame Sequence.xml (names the last-started test on the dead host).
       # Kilobytes, failure-only, no dumps.

@@ -209,6 +209,9 @@ internal static class SupportGateCostScenes
     {
         SupportFootprintRequest request = SupportFootprintTests.Request(q.Axis.X, q.Axis.Y, q.FootRadius,
             q.CosMaxSlope, (double)q.FeetY - q.ReachDown, (double)q.FeetY + q.ReachUp);
+        // SG-6 refusals sit above the band top, so they outrank any support in the band, terrain included.
+        if (FootSupportGuardOracle.Refuses(scene, request))
+            return new(SupportStatus.Refused, double.NaN, double.NaN, double.NaN, default, default, null, -1);
         var members = SupportFootprintTests.Members(scene, request);
         FootprintOracleSupport expected = SupportFootprintOracle.Select(members, request);
         float height = row.HeightAt(q.Axis.X);

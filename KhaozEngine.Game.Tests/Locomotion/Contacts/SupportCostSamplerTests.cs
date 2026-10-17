@@ -72,4 +72,42 @@ public sealed class SupportCostSamplerTests
             SupportQueryDiagnostics.Reset();
         }
     }
+
+    [Fact]
+    public void SubstepGeometryJudgesItsOwnReads()
+    {
+        SupportCostRow row = SupportGateCostScenes.Rows().Select(r => (SupportCostRow)r[0]).Single(r => r.Name == "hidden crate");
+        SupportQueryDiagnostics.Enable(true);
+        try
+        {
+            var samples = new SupportCostSampler(false) { IsolateAllocations = true }.Measure(row, "DryTick");
+            SupportCostSample tick = samples[0];
+            using (var execution = new SupportCostExecution(row, "DryTick"))
+                foreach (SupportFindObservation read in tick.SupportReads.Concat(tick.ColdSupportReads))
+                {
+                    execution.CheckFind(read, out bool matched);
+                    Assert.True(matched, $"Tick read at {read.Axis} feet {read.FeetY}");
+                }
+            // Every read matches, so the tick fails only on its end placement.
+            Assert.False(tick.GeometryPassed);
+            Assert.False(tick.GeometryMatchesOracle);
+            Assert.True(samples.Count > 1);
+            foreach (SupportCostSample substep in samples.Skip(1))
+            {
+                Assert.Equal("SupportedSubstep", substep.Outcome);
+                Assert.Equal("SupportedSubstep", substep.ColdOutcome);
+                Assert.True(substep.GeometryMatchesOracle, substep.Operation);
+                Assert.True(substep.GeometryPassed, substep.Operation);
+                Assert.True(substep.ColdGeometryPassed, substep.Operation);
+                Assert.False(SupportCostVerdict.Check(substep, substep, false, 1, 0, hosted: true).Geometry, substep.Operation);
+            }
+        }
+        finally
+        {
+            SupportQueryDiagnostics.SetGroundSubstepObserver(null, null);
+            SupportQueryDiagnostics.SetFindObserver(null);
+            SupportQueryDiagnostics.Enable(false);
+            SupportQueryDiagnostics.Reset();
+        }
+    }
 }

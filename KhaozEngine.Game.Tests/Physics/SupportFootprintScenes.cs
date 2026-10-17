@@ -26,6 +26,8 @@ internal sealed class SupportFootprintScene : IDisposable
     internal StaticHandle Crate { get; set; }
     internal List<OracleFace> Faces { get; } = [];
     internal List<OracleTangent> Curves { get; } = [];
+    /// <summary>Statics installed as triangle meshes, whose faces are open triangles rather than a convex solid.</summary>
+    internal HashSet<StaticHandle> Meshes { get; } = [];
 
     internal StaticHandle Install(PhysicsShape shape, Pose pose)
     {
@@ -38,6 +40,7 @@ internal sealed class SupportFootprintScene : IDisposable
     {
         Faces.RemoveAll(f => f.Static == owner);
         Curves.RemoveAll(f => f.Static == owner);
+        Meshes.Remove(owner);
         BepuSim sim = (BepuSim)typeof(BepuPhysicsWorld)
             .GetField("_sim", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(World)!;
         var handles = (Dictionary<int, (BepuStaticHandle Handle, TypedIndex Shape)>)typeof(BepuPhysicsWorld)
@@ -47,6 +50,7 @@ internal sealed class SupportFootprintScene : IDisposable
         if (shape.Type == default(Mesh).TypeId)
         {
             Faces.AddRange(SupportNeighborhoodOracle.InstalledMesh(World, owner));
+            Meshes.Add(owner);
             return;
         }
         if (shape.Type == default(BepuCompound).TypeId)

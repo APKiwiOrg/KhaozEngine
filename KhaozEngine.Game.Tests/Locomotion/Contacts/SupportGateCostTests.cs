@@ -288,11 +288,34 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
         string sha = GitSha();
         SupportQueryDiagnostics.Enable(true);
         var sampler = new SupportCostSampler(true) { IsolateAllocations = true };
-        var samples = new List<SupportCostSample>();
         var failures = new List<string>();
-        foreach (object[] data in SupportGateCostScenes.Rows())
+        List<SupportCostSample> samples = MeasureCostRun(sampler,
+            SupportGateCostScenes.Rows().Select(data => (SupportCostRow)data[0]), failures);
+        bool hosted = Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true";
+        string label = File.Exists(path) ? "sg9-cost" : "sg2-baseline";
+        string command = "DOTNET_TieredCompilation=0 KHAOZ_SUPPORT_COST_ARTIFACT=" + path +
+            (hosted ? " dotnet test " + Environment.GetEnvironmentVariable("PROJECT") + " -c Release --no-build --filter \"" +
+                Environment.GetEnvironmentVariable("FILTER") + "\" --logger \"trx;LogFileName=" + Path.GetFileNameWithoutExtension(path) +
+                ".trx\" --results-directory \"" + Path.GetDirectoryName(Path.GetDirectoryName(path)) + "\""
+                : " build-slot --label " + label + " -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --filter \"FullyQualifiedName~SupportGateCostTests.OneShotCostArtifact\"");
+        // A hosted run records only. Its verdict is computed offline against the reference recorded at this commit.
+        SupportCostArtifact.Write(path, samples, BaseSha, sha, command, hosted);
+        Assert.True(File.Exists(path));
+        Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
+        output.WriteLine($"Recorded {samples.Count} first-use/warm operation pairs at {sha}.");
+    }
+
+    internal static List<SupportCostSample> MeasureCostRun(SupportCostSampler sampler, IEnumerable<SupportCostRow> rows,
+        List<string> failures)
+    {
+        // The first measured row reads high on every machine (SC-16). A fixed cheap scene takes that position under
+        // the full protocol and is recorded under an operation no verdict reads.
+        var samples = new List<SupportCostSample>
         {
-            SupportCostRow row = (SupportCostRow)data[0];
+            sampler.Measure(Row("flat box"), "Find")[0] with { Operation = SupportCostVerdict.DiscardedLeadingOperation }
+        };
+        foreach (SupportCostRow row in rows)
+        {
             foreach (string operation in new[] { "Find", "LegacyDownPass", "GroundTickBorrowed", "LegacyTick", "Lease",
                 row.Explicit ? "ExplicitTick" : "DryTick" })
             {
@@ -310,18 +333,81 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
             if (row.Name.StartsWith("stairs ", StringComparison.Ordinal))
                 samples.AddRange(sampler.Measure(row, "LegacyTreadDownPass"));
         }
-        bool hosted = Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true";
-        string label = File.Exists(path) ? "sg9-cost" : "sg2-baseline";
-        string command = "DOTNET_TieredCompilation=0 KHAOZ_SUPPORT_COST_ARTIFACT=" + path +
-            (hosted ? " dotnet test " + Environment.GetEnvironmentVariable("PROJECT") + " -c Release --no-build --filter \"" +
-                Environment.GetEnvironmentVariable("FILTER") + "\" --logger \"trx;LogFileName=" + Path.GetFileNameWithoutExtension(path) +
-                ".trx\" --results-directory \"" + Path.GetDirectoryName(Path.GetDirectoryName(path)) + "\""
-                : " build-slot --label " + label + " -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --filter \"FullyQualifiedName~SupportGateCostTests.OneShotCostArtifact\"");
-        // A hosted run records only. Its verdict is computed offline against the reference recorded at this commit.
-        SupportCostArtifact.Write(path, samples, BaseSha, sha, command, hosted);
-        Assert.True(File.Exists(path));
-        Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
-        output.WriteLine($"Recorded {samples.Count} first-use/warm operation pairs at {sha}.");
+        return samples;
+    }
+
+    [Fact]
+    public void CostRunDiscardsALeadingRow()
+    {
+        SupportQueryDiagnostics.Enable(true);
+        var failures = new List<string>();
+        List<SupportCostSample> samples = MeasureCostRun(new SupportCostSampler(false) { IsolateAllocations = true },
+            [Row("flat box")], failures);
+        Assert.Empty(failures);
+        SupportCostSample leading = samples[0], first = samples[1];
+        Assert.Equal(SupportCostVerdict.DiscardedLeadingOperation, leading.Operation);
+        Assert.Equal("flat box", leading.Scene);
+        Assert.Equal(("flat box", "Find"), (first.Scene, first.Operation));
+        Assert.Single(samples, sample => sample.Operation == SupportCostVerdict.DiscardedLeadingOperation);
+        // A full first-use and warm sample, each one Find.
+        Assert.Equal(1, leading.ColdCounts.Find);
+        Assert.Equal(1, leading.Counts.Find);
+        Assert.False(SupportCostVerdict.IsGated(leading.Operation));
+        Assert.Null(SupportCostVerdict.JudgeRow(leading, samples, 1, 0, hosted: false));
+        Assert.Null(SupportCostVerdict.JudgeRow(leading, samples, 1, 0, hosted: true));
+        Assert.Same(samples.Single(sample => sample.Operation == "LegacyDownPass"), SupportCostVerdict.PairedLegacy(first, samples));
+        string path = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".json");
+        try
+        {
+            SupportCostArtifact.Write(path, samples, "base", "candidate", "command");
+            JsonNode section = JsonNode.Parse(File.ReadAllText(path))!["baseline"]!;
+            Assert.Contains(SupportCostVerdict.DiscardedLeadingOperation, section["LeadingRow"]!.GetValue<string>(), StringComparison.Ordinal);
+            JsonArray recorded = section["Samples"]!.AsArray();
+            Assert.Equal(samples.Count, recorded.Count);
+            Assert.Equal(SupportCostVerdict.DiscardedLeadingOperation, recorded[0]!["Operation"]!.GetValue<string>());
+            Assert.Null(recorded[0]!["GatePassed"]);
+            Assert.Null(recorded[0]!["Envelope"]);
+            Assert.Null(recorded[0]!["CandidateLegacyRatio"]);
+            Assert.Equal("Find", recorded[1]!["Operation"]!.GetValue<string>());
+            Assert.NotNull(recorded[1]!["GatePassed"]);
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public void LookAheadOracleModelsSg6Refusals()
+    {
+        SupportCostRow row = Row("pushed seat");
+        using SupportFootprintScene scene = SupportGateCostScenes.Build(row);
+        float cosine = MathF.Cos(MathF.PI / 4);
+        // The pushed seat dry tick's second look-ahead read starts its probes one binary32 step inside the ceiling
+        // slab, whose top is 2.02. A look-ahead from feet at 0.019 starts them exactly on that top.
+        var recorded = new FootSupportQuery(new(1, 0), 0.018999912f, 0.2f, 2, 2, cosine);
+        var onSlab = recorded with { FeetY = 0.019f };
+        Assert.Equal(MathF.BitDecrement(2.02f), recorded.FeetY + recorded.ReachUp + FootSupport.BandMargin);
+        Assert.Equal(2.02f, onSlab.FeetY + onSlab.ReachUp + FootSupport.BandMargin);
+        (FootSupportQuery Query, SupportStatus Status, float Height)[] cases =
+        [
+            (recorded, SupportStatus.Refused, float.NaN),
+            (onSlab, SupportStatus.Refused, float.NaN),
+            // The raised start lies inside the slab.
+            (new(new(1, 0), 1.499f, 0.2f, 0.4f, 0.4f, cosine), SupportStatus.Refused, float.NaN),
+            // The probes start below the slab and stop on the seat.
+            (new(new(1, 0), 0.25f, 0.2f, 0.4f, 0.4f, cosine), SupportStatus.Walkable, 0.25f),
+            // The probes start above the slab and stop on its top inside the band.
+            (new(new(1, 0), 1.9f, 0.2f, 0.4f, 0.4f, cosine), SupportStatus.Walkable, 2.02f),
+        ];
+        using IPhysicsQueryLease lease = scene.World.AcquireQueryReadLease();
+        foreach (var (query, status, height) in cases)
+        {
+            SupportSample candidate = FootSupport.Find(null, null, scene.World, lease, query);
+            FootprintOracleSupport oracle = SupportGateCostScenes.Expected(scene, row, query);
+            Assert.Equal(status, candidate.Status);
+            Assert.Equal(status, oracle.Status);
+            if (status == SupportStatus.Refused) continue;
+            Assert.Equal(height, candidate.Height, 0.0005f);
+            Assert.Equal(height, oracle.Height, 0.0005f);
+        }
     }
 
     static string GitSha() => GitOutput("rev-parse HEAD");

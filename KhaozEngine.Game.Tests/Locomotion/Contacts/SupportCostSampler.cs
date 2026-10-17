@@ -160,8 +160,10 @@ internal sealed class SupportCostSampler
             for (int i = 0; i < warmStepCount; i++)
             {
                 Window c = i < coldStepCount ? coldSteps[i] : default, w = warmSteps[i];
-                samples.Add(new($"GroundSubstep/{operation}/{i}", row.Name,
-                    cold.GeometryPassed && warm.GeometryPassed && w.Ground.Supported,
+                // A substep is judged on its own support reads and support, not on its parent tick's end placement.
+                bool warmReads = CheckReads(execution, warmFinds.AsSpan(w.FindStart, w.FindEnd - w.FindStart));
+                bool coldReads = CheckReads(execution, coldFinds.AsSpan(c.FindStart, c.FindEnd - c.FindStart));
+                samples.Add(new($"GroundSubstep/{operation}/{i}", row.Name, warmReads && w.Ground.Supported,
                     w.Ground.Supported ? "SupportedSubstep" : "UnsupportedSubstep", w.Ground.Height, w.Ground.HeightError,
                     w.Motion, 1, w.Counts with { GroundSubsteps = 1 }, c.Bytes, w.Bytes,
                     c.Microseconds, w.Microseconds, scratch, GroundScenarioTests.SupportFindStackBytes())
@@ -170,14 +172,14 @@ internal sealed class SupportCostSampler
                     Dense = row.Dense,
                     Refusal = warm.Refused,
                     Comparable = false,
-                    GeometryMatchesOracle = CheckReads(execution, warmFinds.AsSpan(w.FindStart, w.FindEnd - w.FindStart)),
+                    GeometryMatchesOracle = warmReads,
                     Queries = w.Queries,
                     ColdQueries = c.Queries,
                     ColdCounts = c.Counts,
                     SupportReads = warmFinds.AsSpan(w.FindStart, w.FindEnd - w.FindStart).ToArray(),
                     ColdSupportReads = coldFinds.AsSpan(c.FindStart, c.FindEnd - c.FindStart).ToArray(),
                     Notes = w.Bytes > 0 ? ["Whole actual shell/seat/placement substep allocation. Unexpected warm bytes require phase attribution beyond support."] : [],
-                    ColdGeometryPassed = cold.GeometryPassed && c.Ground.Supported,
+                    ColdGeometryPassed = coldReads && c.Ground.Supported,
                     ColdOutcome = c.Ground.Supported ? "SupportedSubstep" : "UnsupportedSubstep",
                     ColdHeight = c.Ground.Height,
                     ColdHeightError = c.Ground.HeightError,

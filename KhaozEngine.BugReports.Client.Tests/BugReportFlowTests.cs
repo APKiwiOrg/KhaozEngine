@@ -450,6 +450,25 @@ public sealed class BugReportFlowTests : BugReportFlowHarness
     }
 
     [Fact]
+    public async Task Subject_failing_with_a_new_message_each_frame_warns_once()
+    {
+        BugReportFlow flow = await SignedIn();
+        using IDisposable logs = CaptureLogs();
+        int calls = 0;
+        _subjectFailures = () => new InvalidOperationException("lookup " + ++calls);
+
+        for (int i = 0; i < 10; i++) Assert.False(Step(flow));
+
+        Assert.True(calls >= 10);
+        Assert.Single(Warnings);
+        _subjectFailures = null;
+        Step(flow);
+        _subjectFailures = () => new InvalidOperationException("again");
+        Step(flow);
+        Assert.Equal(2, Warnings.Count());
+    }
+
+    [Fact]
     public async Task Subject_that_never_answers_reports_signed_out()
     {
         _subjectFailure = new InvalidOperationException("session lookup");

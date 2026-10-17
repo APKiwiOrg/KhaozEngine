@@ -27,11 +27,11 @@ var reports = new BugReportService(app, options, sink, queue, () => subject);
 `() => token` returns the bearer token for the relay, and `() => subject` returns the signed-in account, or null
 while signed out. The service polls the subject every frame. Both run off the frame thread too: the token on the
 thread pool for every send and flush, and the subject on whichever thread calls `RetryQueuedAsync`. Keep them
-thread-safe. A `currentSubject` or `SaveTriggerBindings` that throws is logged once per distinct failure and never
-stops reports: the last known account stays, or signed out when none was ever read, and a rebinding stays in
-memory for the session. A report made while signed out is queued and goes
-with the first account that signs in. Use `new LocalFolderSink(folder, openViewer: true)` in development builds to
-see every report in the browser without a relay.
+thread-safe. A `currentSubject` or `SaveTriggerBindings` that throws is logged once until it succeeds again and
+never stops reports: the last known account stays, or signed out when none was ever read, and a rebinding stays in
+memory for the session. A report made while signed out is queued and goes with the first account that signs in.
+Use `new LocalFolderSink(folder, openViewer: true)` in development builds to see every report in the browser
+without a relay.
 
 F10 opens a report by default. In the trigger frame the service freezes the clip, arms the screenshot and captures
 every section, then raises `ReportCaptured`. The confirmation screen opens once the screenshot is taken, usually the

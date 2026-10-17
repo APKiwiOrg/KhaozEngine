@@ -48,6 +48,8 @@ public abstract class BugReportFlowHarness : IAsyncLifetime
     private protected string? _subject;
     private protected Exception? _screenFailure;
     private protected Exception? _subjectFailure;
+    /// <summary>When set, every subject read throws what it returns, so each call can fail differently.</summary>
+    private protected Func<Exception>? _subjectFailures;
     int _frameThread;
     bool _inUpdate;
 
@@ -82,7 +84,7 @@ public abstract class BugReportFlowHarness : IAsyncLifetime
         };
         var queue = new BugReportOfflineQueue(queueDirectory ?? Path.Combine(_root, "pending"), _time);
         var flow = new BugReportFlow(options, _capture, _sections, new BugReportSubmitter(_sink, queue), new ReportRedactor(),
-            () => _subjectFailure is { } subjectFailure ? throw subjectFailure : _subject,
+            () => _subjectFailures is { } next ? throw next() : _subjectFailure is { } subjectFailure ? throw subjectFailure : _subject,
             model => _screenFailure is { } failure ? throw failure : HeadlessScreen(model),
             image =>
             {

@@ -140,8 +140,8 @@ internal sealed class BugReportFlow
     /// <summary>
     /// Runs one frame. Returns true from the trigger frame until the frame after the screen closes, inclusive, so
     /// the caller holds the game's input for those frames.
-    /// <para>A throwing <c>currentSubject</c> or <c>SaveTriggerBindings</c> is caught, logged once per distinct
-    /// failure and never stops reports. Any other exception that escapes, a fault in the flow itself, thaws the clip,
+    /// <para>A throwing <c>currentSubject</c> or <c>SaveTriggerBindings</c> is caught, logged once until it succeeds
+    /// again and never stops reports. Any other exception that escapes, a fault in the flow itself, thaws the clip,
     /// closes the open report and returns to idle before it is rethrown, so the overlay host that removes a throwing
     /// overlay never leaves the clip frozen.</para>
     /// </summary>

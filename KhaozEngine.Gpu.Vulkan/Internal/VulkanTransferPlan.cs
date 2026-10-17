@@ -62,8 +62,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             dstStageMask: PipelineStageFlags2.AllTransferBit,
             dstAccessMask: AccessFlags2.TransferReadBit | AccessFlags2.TransferWriteBit);
 
-        /// <summary>After the copy: the transfer's write becomes visible to everything that follows, including the
-        /// HOST, which is what a staging readback is waiting for.</summary>
+        /// <summary>After the copy: the transfer's write becomes visible to every later DEVICE command. It does not
+        /// cover the host, because <c>ALL_COMMANDS</c> excludes the host pseudo-stage, so a staging readback also
+        /// records <see cref="ToHost"/> (<see href="https://github.com/APKiwiOrg/KhaozEngine/issues/1430">#1430</see>).
+        /// </summary>
         internal static MemoryBarrier2 FromTransfer => new(
             sType: StructureType.MemoryBarrier2,
             srcStageMask: PipelineStageFlags2.AllTransferBit,

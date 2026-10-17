@@ -104,8 +104,9 @@ internal sealed class ClipEncodeQueue : IDisposable
     }
 
     /// <summary>
-    /// Returns every waiting frame's buffer, lets the frame being encoded finish without delivering it, and joins
-    /// the worker.
+    /// Returns every waiting frame's buffer and joins the worker. The frame being encoded is not delivered when its
+    /// encode finishes after this call marks the queue disposed. A frame that passed that disposed check first is
+    /// still delivered, on the worker, while this call waits in the join.
     /// </summary>
     public void Dispose()
     {

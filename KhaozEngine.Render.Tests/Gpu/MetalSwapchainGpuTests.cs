@@ -94,9 +94,10 @@ namespace KhaozEngine.Tests.Gpu
         /// before the request, so a recycled framebuffer-only drawable is possible after it. Every frame after the
         /// request, <c>SwapchainCopyable</c> must equal the held texture's own <c>!isFramebufferOnly</c>, it must
         /// become true within one pool cycle, and a copy on the first copyable frame must read back the colour the
-        /// same clear-only recording cleared it to. The next present runs before any wait, so the drawable is
-        /// released while the copy may still be in flight. Releasing the request must make the swapchain
-        /// uncopyable again.
+        /// same clear-only recording cleared it to. The copy is submitted with no wait after it, and a later present
+        /// in the loop, when the first copyable frame is not the last, releases the drawable before the wait. The
+        /// row does not force that ordering, so it is no proof of the drawable's lifetime while a copy is in flight.
+        /// Releasing the request must make the swapchain uncopyable again.
         /// </summary>
         [GpuFact]
         public void A_requested_capture_copies_a_real_drawable()
@@ -337,7 +338,7 @@ namespace KhaozEngine.Tests.Gpu
 
                     // ONE RECORDING, CLEAR-ONLY: no draw opens the pass, so the copy itself must apply the pending
                     // clear before its blit, or it reads the drawable as it was before the clear. No wait follows
-                    // the submit, so the next present releases the drawable with the copy possibly in flight.
+                    // the submit. A later loop present may release the drawable first, but only when one is left.
                     using IGpuCommandList cl = device.Factory.CreateCommandList();
                     cl.Begin();
                     cl.SetFramebuffer(swapchain);

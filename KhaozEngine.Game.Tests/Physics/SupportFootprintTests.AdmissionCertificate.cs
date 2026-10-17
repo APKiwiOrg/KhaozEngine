@@ -198,6 +198,91 @@ public partial class SupportFootprintTests
         Assert.True(admitted > certified - separated, $"{admitted} admitted, {certified - separated} by certificate.");
     }
 
+    [Fact]
+    public void AdmissionCertificateThresholdIsItsDocumentedMargin()
+    {
+        // Each sweep bisects the represented values between the undecided crossing or tangency and a decided value
+        // 2^44 steps away, to two adjacent values where the certificate first decides. The decided value clears the
+        // documented margin exactly, 2^-14 D^2 for a vertex gap or 2^-14 a D^2 for a discriminant, and the undecided
+        // one lies within a relative 2^-30 of it, so a looser or tighter margin moves the bracket.
+        SupportFootprintRequest request = Request();
+        double reach = (double)request.Radius + request.ContactBand;
+        const double x = 0.1;
+        double crossing = Math.Sqrt(reach * reach - x * x);
+        // The tilted line through (s, -0.25) along (0.125, 0.5) is tangent where 0.5 s + 0.03125 = R |(0.125, 0.5)|.
+        double tilted = 2 * (reach * Math.Sqrt(0.125 * 0.125 + 0.5 * 0.5) - 0.03125);
+        // Beyond an axis-aligned tangency the bounds reject decides before the certificate, so that sweep runs inward.
+        var sweeps = new (string Name, double Start, Func<double, SupportPolygon> Make, bool Edges, int[] Directions)[]
+        {
+            ("corner", crossing, c => Riser(x, -c, x, c, -0.05, 0.05), false, [-1, 1]),
+            ("tangent", reach, o => Riser(o, -0.25, o, 0.25, -0.05, 0.05), true, [-1]),
+            ("tilted tangent", tilted, t => Riser(t, -0.25, t + 0.125, 0.25, -0.05, 0.05), true, [-1, 1]),
+        };
+        foreach (var (name, start, make, edges, directions) in sweeps)
+            foreach (int direction in directions)
+            {
+                double At(long steps) =>
+                    BitConverter.Int64BitsToDouble(BitConverter.DoubleToInt64Bits(start) + direction * steps);
+                bool Decides(long steps)
+                {
+                    SupportPolygon polygon = make(At(steps));
+                    Assert.Equal(SupportVerticalDomain.Complete, polygon.VerticalDomain);
+                    return AdmitsAsReference(polygon, request, $"{name} {At(steps):R}", out _);
+                }
+                long undecided = 0, decided = 1L << 44;
+                Assert.False(Decides(undecided), $"{name} {direction}: the certificate decided the boundary itself.");
+                Assert.True(Decides(decided), $"{name} {direction}: the certificate decided no far value.");
+                while (decided - undecided > 1)
+                {
+                    long middle = undecided + (decided - undecided) / 2;
+                    if (Decides(middle)) decided = middle;
+                    else undecided = middle;
+                }
+                string context = $"{name} {direction} at {At(decided):R}";
+                (BigInteger gap, BigInteger margin) = Tightest(make(At(decided)), reach, edges);
+                Assert.True(gap >= margin, $"{context}: decided inside the documented margin.");
+                // Outward rounding may leave a value a few ulps past the exact margin undecided, never more.
+                (gap, margin) = Tightest(make(At(undecided)), reach, edges);
+                Assert.True(gap << 30 < margin * ((1 << 30) + 1), $"{context}: left a value well outside the margin.");
+                Assert.True(gap << 30 > margin * ((1 << 30) - 1), $"{context}: undecided far inside the margin.");
+            }
+    }
+
+    // The certificate's tightest exact clearance about the origin, as 2^14 times a vertex gap |V|^2 - R^2 against D^2,
+    // or 2^14 times an edge discriminant a R^2 - c^2 against a D^2, on exact integers.
+    static (BigInteger Gap, BigInteger Margin) Tightest(SupportPolygon polygon, double radius, bool edges)
+    {
+        ReadOnlySpan<FeaturePoint> vertices = polygon.Vertices, sides = polygon.Edges;
+        BigInteger r = Fixed(radius), d = r;
+        foreach (FeaturePoint vertex in vertices)
+            d = BigInteger.Max(d, BigInteger.Max(BigInteger.Abs(Fixed(vertex.X.Value)),
+                BigInteger.Abs(Fixed(vertex.Z.Value))));
+        (BigInteger Gap, BigInteger Margin)? tightest = null;
+        for (int i = 0; i < vertices.Length; i++)
+        {
+            BigInteger vx = Fixed(vertices[i].X.Value), vz = Fixed(vertices[i].Z.Value);
+            BigInteger ex = Fixed(sides[i].X.Value), ez = Fixed(sides[i].Z.Value);
+            (BigInteger Gap, BigInteger Margin) candidate;
+            if (!edges) candidate = (BigInteger.Abs(vx * vx + vz * vz - r * r) << 14, d * d);
+            else if (ex.IsZero && ez.IsZero) continue;
+            else
+            {
+                BigInteger a = ex * ex + ez * ez, cross = vx * ez - vz * ex;
+                candidate = (BigInteger.Abs(a * r * r - cross * cross) << 14, a * d * d);
+            }
+            if (tightest is not { } t || candidate.Gap * t.Margin < t.Gap * candidate.Margin) tightest = candidate;
+        }
+        return tightest!.Value;
+    }
+
+    // An exact double as an integer multiple of 2^-128. Every value here is zero or at least 2^-75 in magnitude.
+    static BigInteger Fixed(double value)
+    {
+        double scaled = Math.ScaleB(value, 128);
+        Assert.Equal(Math.Truncate(scaled), scaled);
+        return new BigInteger(scaled);
+    }
+
     // A vertical rectangle over the XZ segment from (ax, az) to (bx, bz) between two heights, on exact doubles.
     static SupportPolygon Riser(double ax, double az, double bx, double bz, double low, double high)
     {

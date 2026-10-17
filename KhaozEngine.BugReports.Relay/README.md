@@ -20,14 +20,18 @@ public viewer renders with no reporter identity. Issue composition uses the priv
 Issue and comment writes take separate create-only claims in the Pending area at
 `claims/<kind>-<reportId>-<epoch>.json`. A claim holds `claimedAt` and has a ten-minute lease. Completed work
 returns normally. Unfinished work with an active, unreleased claim throws an internal `ReportClaimBusyException`
-so the host redelivers it. A failed holder writes `claims/<kind>-<reportId>-<epoch>.released` with
-create-if-absent before rethrowing, even when the work token is cancelled. The next delivery can claim the
-next epoch immediately. A crash without a release marker requires lease expiry. There are at most 64 claims
-per operation. Keep claims and release markers with the report state. A one-day snapshot lifecycle rule must
-target `snapshots/` only.
+so the host redelivers it. A holder that fails before its GitHub call succeeds writes
+`claims/<kind>-<reportId>-<epoch>.released` with create-if-absent before rethrowing, even when the work token
+is cancelled. The next delivery can claim the next epoch immediately. A holder whose GitHub call succeeds
+writes `claims/<kind>-<reportId>-<epoch>.done` with create-if-absent, holding the issue number or `commented`,
+and only then saves the record. Every delivery reads result markers before claiming and reconciles the record
+from one without calling GitHub. A crash without a release marker requires lease expiry. There are at most 64
+claims per operation. Keep claims, release markers and result markers with the report state. A one-day
+snapshot lifecycle rule must target `snapshots/` only.
 
 GitHub failures and storage faults propagate to the host. If writing the release marker also fails, recovery
 falls back to lease expiry. Exhausting 64 epochs still throws for unfinished work and needs operator recovery.
-The remaining duplicate window is a successful GitHub write followed by a failed record save or a crash before
-the result is saved. A takeover can repeat that write. A holder must finish within its lease, since this
-storage seam cannot fence a GitHub call from an expired holder.
+The remaining duplicate windows are a crash or a failed result marker write after a successful GitHub write,
+and a transport timeout that hides a successful POST. Both leave the claim unreleased, and a takeover after
+lease expiry can repeat that write. A holder must finish within its lease, since this storage seam cannot
+fence a GitHub call from an expired holder.

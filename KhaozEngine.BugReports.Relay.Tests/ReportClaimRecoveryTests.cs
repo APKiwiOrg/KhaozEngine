@@ -115,9 +115,10 @@ public sealed class ReportClaimRecoveryTests
     }
 
     [Theory]
-    [InlineData(ReportWorkKind.CreateIssue, "issue")]
-    [InlineData(ReportWorkKind.AppendServerSnapshot, "comment")]
-    public async Task Worker_RecordSaveFailure_ReleasesClaim(ReportWorkKind kind, string claimKind)
+    [InlineData(ReportWorkKind.CreateIssue, "issue", "7")]
+    [InlineData(ReportWorkKind.AppendServerSnapshot, "comment", "commented")]
+    public async Task Worker_RecordSaveFailureAfterGitHubSuccess_RedeliveryReconcilesWithoutSecondEffect(
+        ReportWorkKind kind, string claimKind, string result)
     {
         WorkerMediaStore store = null!;
         var harness = new RelayHarness(wrapMedia: inner => store = new WorkerMediaStore(inner));
@@ -126,14 +127,72 @@ public sealed class ReportClaimRecoveryTests
         store.BeforeWrite = path => path.StartsWith("records/", StringComparison.Ordinal) ? throw failure : Task.CompletedTask;
 
         Assert.Same(failure, await Assert.ThrowsAsync<IOException>(() => WorkerFixtures.ProcessAsync(harness, kind)));
-        Assert.True(await harness.Media.ExistsAsync(ReportArea.Pending, "claims/" + claimKind + "-" + Id + "-0.released", Ct));
+        Assert.False(await harness.Media.ExistsAsync(ReportArea.Pending, "claims/" + claimKind + "-" + Id + "-0.released", Ct));
+        Assert.Equal(result, await ClaimTextAsync(harness, "claims/" + claimKind + "-" + Id + "-0.done"));
 
         store.BeforeWrite = null;
         await WorkerFixtures.ProcessAsync(harness, kind);
+        await WorkerFixtures.ProcessAsync(harness, kind);
+
         ReportRecord record = await WorkerFixtures.RecordAsync(harness);
-        Assert.NotNull(record.IssueNumber);
-        if (kind == ReportWorkKind.AppendServerSnapshot) Assert.Equal(ServerSnapshotState.Commented, record.ServerSnapshot);
-        Assert.True(await harness.Media.ExistsAsync(ReportArea.Pending, "claims/" + claimKind + "-" + Id + "-1.json", Ct));
+        Assert.Equal(7, record.IssueNumber);
+        if (kind == ReportWorkKind.CreateIssue)
+        {
+            Assert.Single(harness.GitHub.Issues);
+            Assert.Empty(harness.GitHub.Comments);
+        }
+        else
+        {
+            Assert.Single(harness.GitHub.Comments);
+            Assert.Equal(ServerSnapshotState.Commented, record.ServerSnapshot);
+        }
+        Assert.False(await harness.Media.ExistsAsync(ReportArea.Pending, "claims/" + claimKind + "-" + Id + "-1.json", Ct));
+    }
+
+    [Theory]
+    [InlineData(ReportWorkKind.CreateIssue, "issue")]
+    [InlineData(ReportWorkKind.AppendServerSnapshot, "comment")]
+    public async Task Worker_ResultMarkerWriteFailure_RethrowsWithoutReleaseMarker(ReportWorkKind kind, string claimKind)
+    {
+        WorkerMediaStore store = null!;
+        var harness = new RelayHarness(wrapMedia: inner => store = new WorkerMediaStore(inner));
+        await PrepareAsync(harness, kind);
+        var failure = new IOException("Marker unavailable");
+        store.BeforeWrite = path => path.EndsWith(".done", StringComparison.Ordinal) ? throw failure : Task.CompletedTask;
+
+        Assert.Same(failure, await Assert.ThrowsAsync<IOException>(() => WorkerFixtures.ProcessAsync(harness, kind)));
+
+        Assert.False(await harness.Media.ExistsAsync(ReportArea.Pending, "claims/" + claimKind + "-" + Id + "-0.released", Ct));
+        Assert.False(await harness.Media.ExistsAsync(ReportArea.Pending, "claims/" + claimKind + "-" + Id + "-0.done", Ct));
+        Assert.Equal(kind == ReportWorkKind.CreateIssue ? 1 : 0, harness.GitHub.Issues.Count);
+        Assert.Equal(kind == ReportWorkKind.CreateIssue ? 0 : 1, harness.GitHub.Comments.Count);
+        store.BeforeWrite = null;
+        await Assert.ThrowsAsync<ReportClaimBusyException>(() => WorkerFixtures.ProcessAsync(harness, kind));
+        Assert.Equal(kind == ReportWorkKind.CreateIssue ? 1 : 0, harness.GitHub.Issues.Count);
+        Assert.Equal(kind == ReportWorkKind.CreateIssue ? 0 : 1, harness.GitHub.Comments.Count);
+    }
+
+    [Fact]
+    public async Task CreateIssue_FailureBeforeGitHub_ReleasesClaim()
+    {
+        WorkerMediaStore store = null!;
+        var harness = new RelayHarness(wrapMedia: inner => store = new WorkerMediaStore(inner));
+        await WorkerFixtures.SendAsync(harness);
+        await WorkerFixtures.AcceptAsync(harness);
+        var failure = new IOException("Record unavailable");
+        store.BeforeWrite = path => path.StartsWith("records/", StringComparison.Ordinal) ? throw failure : Task.CompletedTask;
+
+        Assert.Same(failure, await Assert.ThrowsAsync<IOException>(() => WorkerFixtures.ProcessAsync(harness)));
+        Assert.Empty(harness.GitHub.Issues);
+        Assert.True(await harness.Media.ExistsAsync(ReportArea.Pending, "claims/issue-" + Id + "-0.released", Ct));
+
+        store.BeforeWrite = null;
+        await WorkerFixtures.ProcessAsync(harness);
+
+        Assert.Single(harness.GitHub.Issues);
+        ReportRecord record = await WorkerFixtures.RecordAsync(harness);
+        Assert.Equal(7, record.IssueNumber);
+        Assert.Equal(ServerSnapshotState.InBody, record.ServerSnapshot);
     }
 
     [Theory]
@@ -188,6 +247,13 @@ public sealed class ReportClaimRecoveryTests
             Assert.True(await harness.Media.ExistsAsync(ReportArea.Pending, "claims/" + claimKind + "-" + Id + "-63.json", Ct));
         }
         Assert.False(await harness.Media.ExistsAsync(ReportArea.Pending, "claims/" + claimKind + "-" + Id + "-64.json", Ct));
+    }
+
+    static async Task<string> ClaimTextAsync(RelayHarness harness, string path)
+    {
+        ReadOnlyMemory<byte>? bytes = await harness.Media.GetAsync(ReportArea.Pending, path, 1024, Ct);
+        Assert.NotNull(bytes);
+        return System.Text.Encoding.UTF8.GetString(bytes.Value.Span);
     }
 
     static async Task PrepareAsync(RelayHarness harness, ReportWorkKind kind)

@@ -386,7 +386,7 @@ public sealed class BugReportSectionSetTests
         IReadOnlyList<CapturedSection> finished = BugReportSectionSet.Finish(raw, Redactor, Unclocked);
 
         Assert.False(raw[0].IsError);
-        Assert.Equal(ErrorPrefix + "Section output must be one JSON object.", ErrorText(finished[0].Json));
+        Assert.Equal(ErrorPrefix + UnreadableString, ErrorText(finished[0].Json));
         Assert.Equal("{\"ok\":\"yes\"}", Text(finished[1].Json));
     }
 
@@ -401,9 +401,40 @@ public sealed class BugReportSectionSetTests
 
         IReadOnlyList<CapturedSection> finished = BugReportSectionSet.Finish(raw, Redactor, Unclocked);
 
-        Assert.Equal(ErrorPrefix + "Section output must be one JSON object.", ErrorText(finished[0].Json));
+        Assert.Equal(ErrorPrefix + UnreadableString, ErrorText(finished[0].Json));
         Assert.Equal("{\"ok\":\"yes\"}", Text(finished[1].Json));
     }
+
+    [Fact]
+    public void Hand_built_section_nested_deeper_than_64_becomes_an_error()
+    {
+        static byte[] Nested(int arrays) =>
+            Encoding.UTF8.GetBytes("{\"a\":" + new string('[', arrays) + new string(']', arrays) + "}");
+        RawSection[] raw =
+        [
+            new("deep", 4096, Nested(64), IsError: false),
+            new("limit", 4096, Nested(63), IsError: false),
+        ];
+
+        IReadOnlyList<CapturedSection> finished = BugReportSectionSet.Finish(raw, Redactor, Unclocked);
+
+        Assert.Equal(ErrorPrefix + "Section output nests deeper than 64 levels.", ErrorText(finished[0].Json));
+        Assert.Equal(Encoding.UTF8.GetString(Nested(63)), Text(finished[1].Json));
+        Assert.True(BugReportJson.IsValidSection(finished[1].Json));
+        Assert.False(BugReportJson.IsValidSection(Nested(64)));
+    }
+
+    [Fact]
+    public void Malformed_section_still_reports_one_object()
+    {
+        RawSection[] raw = [new("bad", 1024, Encoding.UTF8.GetBytes("{\"a\":1"), IsError: false)];
+
+        IReadOnlyList<CapturedSection> finished = BugReportSectionSet.Finish(raw, Redactor, Unclocked);
+
+        Assert.Equal(ErrorPrefix + "Section output must be one JSON object.", ErrorText(finished[0].Json));
+    }
+
+    const string UnreadableString = "Section output holds a string that is not valid UTF-8 or has a lone surrogate.";
 
     static int LinesOf(ReadOnlyMemory<byte> json, out bool truncated)
     {

@@ -33,7 +33,7 @@ public sealed class BugReportSectionSet
     /// <summary>How much of an error message survives <see cref="Finish"/>.</summary>
     const int MaxFinishedErrorMessage = 512;
 
-    const string NotOneObject = "Section output must be one JSON object.";
+    const string NotOneObject = SectionJson.NotOneObject;
 
     readonly List<Entry> entries = [];
     readonly List<string> keys = [];
@@ -113,10 +113,10 @@ public sealed class BugReportSectionSet
             }
 
             bool isError = section.IsError;
-            byte[]? json = SectionJson.Redact(section.Json.Span, Redact);
+            byte[]? json = SectionJson.Redact(section.Json.Span, Redact, out string? failure);
             if (json is null)
             {
-                json = SectionJson.ErrorObject(new InvalidOperationException(NotOneObject), MaxRawErrorMessage);
+                json = SectionJson.ErrorObject(new InvalidOperationException(failure ?? NotOneObject), MaxRawErrorMessage);
                 isError = true;
             }
             if (isError) json = SectionJson.CutErrorMessage(json, MaxFinishedErrorMessage);

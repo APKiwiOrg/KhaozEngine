@@ -22,7 +22,18 @@ static class SectionJson
         Encoder = JavaScriptEncoder.Create(UnicodeRanges.All),
     };
 
-    static readonly JsonReaderOptions ReaderOptions = new() { MaxDepth = BugReportLimits.MaxSectionDepth };
+    /// <summary>Why <see cref="Redact"/> refused a section that is not one JSON object.</summary>
+    internal const string NotOneObject = "Section output must be one JSON object.";
+
+    /// <summary>Why <see cref="Redact"/> refused a section that nests deeper than the limit.</summary>
+    internal static readonly string TooDeep = string.Create(CultureInfo.InvariantCulture,
+        $"Section output nests deeper than {BugReportLimits.MaxSectionDepth} levels.");
+
+    /// <summary>Why <see cref="Redact"/> refused a section holding a string it cannot decode.</summary>
+    internal const string UnreadableString = "Section output holds a string that is not valid UTF-8 or has a lone surrogate.";
+
+    // One level above the limit, so the depth check below sees the first container too deep and names the reason.
+    static readonly JsonReaderOptions ReaderOptions = new() { MaxDepth = BugReportLimits.MaxSectionDepth + 1 };
 
     static readonly byte[] TruncatedMarker = "{\"truncated\":true}"u8.ToArray();
 
@@ -55,12 +66,14 @@ static class SectionJson
     /// <summary>
     /// Re-tokenises one JSON object, passing every property name and string value through <paramref name="redact"/>.
     /// A name that collides with an earlier name in its object after redaction gets the smallest free <c>#n</c>
-    /// suffix from 2 upward. Returns null when <paramref name="json"/> is not exactly one JSON object or holds a
-    /// string that cannot be read as UTF-16.
+    /// suffix from 2 upward. Returns null with the reason in <paramref name="failure"/> when <paramref name="json"/> is
+    /// not exactly one JSON object, nests deeper than <see cref="BugReportLimits.MaxSectionDepth"/> or holds a string
+    /// that cannot be read as UTF-16.
     /// </summary>
-    internal static byte[]? Redact(ReadOnlySpan<byte> json, Func<string, string> redact)
+    internal static byte[]? Redact(ReadOnlySpan<byte> json, Func<string, string> redact, out string? failure)
     {
         var output = new ArrayBufferWriter<byte>(Math.Max(json.Length, 16));
+        failure = NotOneObject;
         try
         {
             var reader = new Utf8JsonReader(json, ReaderOptions);
@@ -71,6 +84,9 @@ static class SectionJson
             {
                 switch (reader.TokenType)
                 {
+                    case JsonTokenType.StartObject or JsonTokenType.StartArray when reader.CurrentDepth >= BugReportLimits.MaxSectionDepth:
+                        failure = TooDeep;
+                        return null;
                     case JsonTokenType.StartObject:
                         writer.WriteStartObject();
                         names.Push(new UniqueNames());
@@ -88,10 +104,20 @@ static class SectionJson
                         names.Pop();
                         break;
                     case JsonTokenType.PropertyName:
-                        writer.WritePropertyName(names.Peek()!.Claim(redact(reader.GetString()!)));
+                        if (!TryGetString(ref reader, out string name))
+                        {
+                            failure = UnreadableString;
+                            return null;
+                        }
+                        writer.WritePropertyName(names.Peek()!.Claim(redact(name)));
                         break;
                     case JsonTokenType.String:
-                        writer.WriteStringValue(redact(reader.GetString()!));
+                        if (!TryGetString(ref reader, out string value))
+                        {
+                            failure = UnreadableString;
+                            return null;
+                        }
+                        writer.WriteStringValue(redact(value));
                         break;
                     default:
                         WriteLiteral(writer, ref reader);
@@ -102,10 +128,25 @@ static class SectionJson
         }
         catch (Exception exception) when (exception is JsonException or InvalidOperationException)
         {
-            // GetString throws InvalidOperationException for an escaped lone surrogate or invalid UTF-8.
             return null;
         }
+        failure = null;
         return output.WrittenSpan.ToArray();
+    }
+
+    // GetString throws InvalidOperationException for an escaped lone surrogate or invalid UTF-8.
+    static bool TryGetString(ref Utf8JsonReader reader, out string value)
+    {
+        try
+        {
+            value = reader.GetString()!;
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            value = "";
+            return false;
+        }
     }
 
     /// <summary>

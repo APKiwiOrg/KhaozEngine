@@ -23,9 +23,10 @@ An `IBugReportSection` names one block of report state with a `Key` (`[a-z0-9][a
    but one object becomes an error object. The result is a list of `RawSection`, unredacted and untruncated, with
    `IsError` set on a failed one.
 2. `BugReportSectionSet.Finish(raw, redactor, budget)` runs off that thread. Every property name and string passes
-   through `ReportRedactor`, an error message is cut to 512 UTF-16 units, and each section is cut structurally to the
-   smaller of its own budget and what is left of the 1 MiB total. A section left with under 64 bytes is dropped
-   with a warning. Once the redaction budget (2 s by default) is spent, every remaining string is masked whole.
+   through `ReportRedactor`. A raw section that is not one object, nests deeper than 64 levels or holds a string
+   that does not decode becomes an error object naming which. An error message is cut to 512 UTF-16 units, and
+   each section is cut structurally to the smaller of its own budget and what is left of the 1 MiB total. A
+   section left with under 64 bytes is dropped with a warning. Once the redaction budget (2 s by default) is spent, every remaining string is masked whole.
 
 A `RawSection` must pass through `Finish` before anything leaves the machine. Only `Finish` redacts.
 `CapturedSection` is public so a viewer can hold sections read back from a bundle, and the bundle writer trusts a

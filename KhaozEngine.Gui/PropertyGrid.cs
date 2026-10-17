@@ -548,7 +548,7 @@ namespace KhaozEngine.Gui
             // the pointer sits outside Bounds entirely (an out-of-view row's band can never overlap a Bounds-local
             // pointer position, so no extra guard is needed for the scrolled-away case).
             Vector2 pointerPos = input.Pointer.Position;
-            bool pointerInGrid = Bounds.Contains(pointerPos);
+            bool pointerInGrid = input.IsPointerIn(Bounds);
             PropertyRow? hovered = null;
 
             _ranThisFrame.Clear();

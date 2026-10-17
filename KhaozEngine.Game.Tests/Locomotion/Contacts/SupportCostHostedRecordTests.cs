@@ -113,7 +113,7 @@ public sealed class SupportCostHostedRecordTests
             text.AppendLine(($"| {row.Scene} | {Short(row.Operation)} | {ComparisonBasis(row)} | {median.Candidate:F3} | {median.Limit:F3} | " +
                 $"{Counts(s => s.Substeps, bound.Substeps)} | {Counts(s => s.Counts.Find, bound.Finds)} | " +
                 $"{Counts(s => s.Queries.Sweeps, bound.Sweeps)} | {Counts(s => s.Queries.Penetrations, bound.Penetrations)} | " +
-                $"{(bounded ? row.Samples.All(s => bound.Contains(s)) ? "PASS" : "FAIL" : "not required")} | " +
+                $"{(bounded ? SupportCostVerdict.EveryIterationBounded(row.Samples) ? "PASS" : "FAIL" : "not required")} | " +
                 $"{(median.Passed ? "PASS" : "FAIL " + median.Codes)} | {row.Gates.Count(g => g == SupportCostGate.Pass)} |"));
         }
         text.AppendLine();
@@ -156,7 +156,8 @@ public sealed class SupportCostHostedRecordTests
         SupportCostGate gate = SupportCostVerdict.JudgeRow(sample, [sample, pair], 1, row.Lifetime, hosted: true)!.Value.Gate;
         SupportCostCheck check = SupportCostVerdict.Check(sample, pair, sample.Dense, 1, row.Lifetime, hosted: true);
         Assert.Equal(check.Passed, gate == SupportCostGate.Pass);
-        return new(candidate, legacy, check.TimeLimit, gate == SupportCostGate.Pass, check.Codes);
+        check = check with { Bound = check.Bound || !SupportCostVerdict.EveryIterationBounded(row.Samples) };
+        return new(candidate, legacy, check.TimeLimit, check.Passed, check.Codes);
     }
 
     static IEnumerable<double> Equivalent(Row row, bool legacy) => Enumerable.Range(0, row.Samples.Length)

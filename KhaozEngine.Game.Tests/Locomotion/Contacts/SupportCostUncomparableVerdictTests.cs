@@ -84,6 +84,19 @@ public sealed class SupportCostUncomparableVerdictTests
     }
 
     [Theory]
+    [InlineData("DryTick", "find", 147495)]
+    [InlineData("ExplicitTick", "sweep", 66904178)]
+    public void ALaterIterationBeyondTheStructuralCapFailsEveryIterationBounded(string operation, string field, int cap)
+    {
+        SupportCostSample first = WithCount(Tick(operation, 1) with { Comparable = false }, field, cap);
+        Assert.True(SupportCostVerdict.EveryIterationBounded([first, first, first]));
+        Assert.False(SupportCostVerdict.EveryIterationBounded([first, first, WithCount(first, field, cap + 1)]));
+        SupportCostSample comparable = WithCount(Tick(operation, 1), field, cap + 1);
+        Assert.False(SupportCostVerdict.OutsideComparableEnvelope(comparable));
+        Assert.True(SupportCostVerdict.EveryIterationBounded([Tick(operation, 1), comparable]));
+    }
+
+    [Theory]
     [InlineData("stationary")]
     [InlineData("substeps")]
     [InlineData("segments")]

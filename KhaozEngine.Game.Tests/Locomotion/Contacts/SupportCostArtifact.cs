@@ -258,6 +258,15 @@ internal static class SupportCostVerdict
         (candidate.AchievedMotion.X == 0 && candidate.AchievedMotion.Z == 0 || candidate.Substeps > 3 ||
             candidate.Counts.ModeSegments > 1 || !candidate.Comparable);
 
+    /// <summary>Whether every iteration of an uncomparable tick stays within the controller's structural caps
+    /// (SC-18). A median verdict reuses the first iteration's counters, so it must also require this.</summary>
+    internal static bool EveryIterationBounded(IReadOnlyList<SupportCostSample> iterations)
+    {
+        if (!OutsideComparableEnvelope(iterations[0])) return true;
+        SupportCostTickBound bound = SupportCostTickBound.For(iterations[0].Operation == "ExplicitTick");
+        return iterations.All(sample => bound.Contains(sample));
+    }
+
     /// <summary>SC-18 uses the saved <see cref="SupportCostSample.Outcome"/>, never geometry/oracle agreement
     /// or a reconstruction from EndState. Grounded legacy ticks retain their relative cost comparison.</summary>
     internal static bool LegacyHasNoSupport(in SupportCostSample legacy) => legacy.Outcome is "None" or "Airborne";

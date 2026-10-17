@@ -17,6 +17,7 @@ public partial class SupportFootprintTests
     // cannot hold. The second offset also lifts the plane off binary32 and moves z.
     static readonly Vector3 HullCentre = new(2.9802326e-8f, -1, 0);
     static readonly Vector3 LiftedCentre = new(-1.3271044e-9f, 9.313226e-10f, 3.7252903e-9f);
+    const int SampleRows = 32;
 
     [Fact]
     public void FlatHullTopTakesThePlanarFastPath()
@@ -36,11 +37,11 @@ public partial class SupportFootprintTests
     {
         var kernel = new SupportSegmentPolygon();
         int inside = 0, boundary = 0, outside = 0;
-        foreach ((Vector3[] source, Vector3 centre) in new[]
+        foreach ((Vector3[] source, Vector3 centre, bool lifted) in new[]
         {
-            (new Vector3[] { new(-4, 1, -2), new(4, 1, -2), new(4, 1, 2), new(-4, 1, 2) }, HullCentre),
+            (new Vector3[] { new(-4, 1, -2), new(4, 1, -2), new(4, 1, 2), new(-4, 1, 2) }, HullCentre, false),
             (new Vector3[] { new(-0.75f, 0.5f, -0.5f), new(0.625f, 0.5f, -0.25f), new(-0.125f, 0.5f, 0.875f) },
-                LiftedCentre),
+                LiftedCentre, true),
         })
         {
             SupportPolygon polygon = Installed(source, centre);
@@ -50,8 +51,19 @@ public partial class SupportFootprintTests
             using (SupportReferenceEvaluation.Begin())
                 Assert.False(Installed(source, centre).HasJoinIncidenceCertificate);
             double height = polygon.Vertices[0].Y.Value;
-            foreach ((float x, float z) in BoundarySamples(polygon))
+            int edges = polygon.Vertices.Length;
+            int[] beyond = new int[edges], within = new int[edges], split = new int[edges];
+            foreach ((int edge, float x, float z) in BoundarySamples(polygon))
             {
+                // Each edge's own side, and whether its binary32-cast edge would put the sample on the other side.
+                FeaturePoint a = polygon.Vertices[edge], b = polygon.Vertices[(edge + 1) % edges];
+                GeometrySign own = LatticeOrient(a.X.Value, a.Z.Value, b.X.Value, b.Z.Value, x, z);
+                GeometrySign cast = LatticeOrient((float)a.X.Value, (float)a.Z.Value, (float)b.X.Value,
+                    (float)b.Z.Value, x, z);
+                beyond[edge] += own == GeometrySign.Positive ? 1 : 0;
+                within[edge] += own == GeometrySign.Negative ? 1 : 0;
+                split[edge] += (own == GeometrySign.Positive) != (cast == GeometrySign.Positive) ? 1 : 0;
+
                 GeometrySign side = OracleInside(polygon, x, z);
                 inside += side == GeometrySign.Positive ? 1 : 0;
                 boundary += side == GeometrySign.Zero ? 1 : 0;
@@ -73,6 +85,14 @@ public partial class SupportFootprintTests
                 Assert.Equal(GeometrySign.Positive, SupportFootprintProposalGeometry.LowestExhaustive(polygon, proposal,
                     out GeometryInterval exhaustive, sourceHeight: true));
                 Assert.Equal(exhaustive, fast);
+            }
+            for (int edge = 0; edge < edges; edge++)
+            {
+                string context = $"{(lifted ? "lifted triangle" : "hull top")} edge {edge}: {within[edge]} within, " +
+                    $"{beyond[edge]} beyond, {split[edge]} between it and its binary32 cast.";
+                Assert.True(within[edge] > 0 && beyond[edge] > 0, context);
+                // Every lifted edge moves under the cast, so samples must fall between the two edges.
+                if (lifted) Assert.True(split[edge] > 0, context);
             }
         }
         Assert.True(inside > 0 && boundary > 0 && outside > 0, $"{inside} inside, {boundary} on, {outside} outside.");
@@ -166,6 +186,35 @@ public partial class SupportFootprintTests
         Assert.Equal(GeometrySign.Unresolved, BoundedGeometryArithmetic.Orient2D(double.NaN, 0, 1, 0, 0, 1));
     }
 
+    [Fact]
+    public void DoubleOrientationDecidesAtTheExpansionDomainEdges()
+    {
+        double low = Math.ScaleB(1, -200), high = Math.ScaleB(1, 200), normal = Math.ScaleB(1, -1022);
+        // At, just inside and just past each end of the expansion domain, and subnormal.
+        foreach (double m in new[] { Math.BitDecrement(low), low, Math.BitIncrement(low), Math.BitDecrement(high),
+            high, Math.BitIncrement(high), double.Epsilon, Math.BitDecrement(normal), normal })
+        {
+            Assert.Equal(GeometrySign.Positive, BothOrientations(0, 0, m, 0, 0, m));
+            Assert.Equal(GeometrySign.Negative, BothOrientations(0, 0, 0, m, m, 0));
+            Assert.Equal(GeometrySign.Zero, BothOrientations(-m, -m, 0, 0, m, m));
+        }
+        // The area is the largest operand times one step of the smallest, so the sign rests on that step.
+        double top = Math.BitDecrement(high);
+        Assert.Equal(GeometrySign.Positive, BothOrientations(0, 0, top, low, top, Math.BitIncrement(low)));
+        Assert.Equal(GeometrySign.Negative, BothOrientations(0, 0, top, low, top, Math.BitDecrement(low)));
+        Assert.Equal(GeometrySign.Positive, BothOrientations(0, 0, high, Math.BitDecrement(low), high, low));
+        // Products 2^-2148 and about 2^2046 lie more than 4096 bits apart, so the dyadic cap refuses.
+        Assert.Equal(GeometrySign.Unresolved, BothOrientations(0, 0, double.Epsilon, 1e308, 1e308, double.Epsilon));
+    }
+
+    // The entry overload and the dyadic path agree, and the agreed sign is returned.
+    static GeometrySign BothOrientations(double ax, double ay, double bx, double by, double cx, double cy)
+    {
+        GeometrySign sign = BoundedGeometryArithmetic.Orient2D(ax, ay, bx, by, cx, cy);
+        Assert.Equal(BoundedGeometryArithmetic.Orient2DDyadic(ax, ay, bx, by, cx, cy), sign);
+        return sign;
+    }
+
     static (int Contacts, int Heights) PlanarPhases(string name, bool reference)
     {
         using var scene = new WorldFormScene(CostRows().Single(row => row.Name == name));
@@ -253,15 +302,17 @@ public partial class SupportFootprintTests
     static FeaturePoint Represented(double x, double y, double z) =>
         new(FeatureNumber.Exact(x), FeatureNumber.Exact(y), FeatureNumber.Exact(z));
 
-    // Represented binary32 axes on each side of every edge, where the edge crosses a represented row or column.
-    static IEnumerable<(float X, float Z)> BoundarySamples(SupportPolygon polygon)
+    // Represented binary32 axes on each side of every edge, where the edge crosses represented rows or columns
+    // spread along it. Different rows put the edge at different offsets within the binary32 spacing.
+    static IEnumerable<(int Edge, float X, float Z)> BoundarySamples(SupportPolygon polygon)
     {
         for (int i = 0; i < polygon.Vertices.Length; i++)
         {
             FeaturePoint a = polygon.Vertices[i], b = polygon.Vertices[(i + 1) % polygon.Vertices.Length];
             double dx = b.X.Value - a.X.Value, dz = b.Z.Value - a.Z.Value;
-            foreach (double fraction in new[] { 0.25, 0.5 })
+            for (int row = 0; row < SampleRows; row++)
             {
+                double fraction = (row + 0.5) / SampleRows;
                 bool column = Math.Abs(dz) >= Math.Abs(dx);
                 float fixedValue = column ? (float)(a.Z.Value + fraction * dz) : (float)(a.X.Value + fraction * dx);
                 double crossing = column ? a.X.Value + (fixedValue - a.Z.Value) * dx / dz
@@ -269,7 +320,7 @@ public partial class SupportFootprintTests
                 float near = (float)crossing;
                 for (int k = 0; k < 2; k++) near = MathF.BitDecrement(near);
                 for (int k = 0; k < 5; k++, near = MathF.BitIncrement(near))
-                    yield return column ? (near, fixedValue) : (fixedValue, near);
+                    yield return column ? (i, near, fixedValue) : (i, fixedValue, near);
             }
         }
     }

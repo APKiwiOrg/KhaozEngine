@@ -194,13 +194,24 @@ namespace KhaozEngine.Render3D.Internal
         /// reconstruction, that its ring (<see cref="ShadingStrictRingExtents"/>) must read on the history's side for
         /// it to release (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 34). A sub-texel feature the jitter missed spills
         /// into the ring by a small share of its contrast, and a shading change that passed moves the ring as far as
-        /// the pixel. With none, a still line beside a still nearer surface at Quality
+        /// the pixel. A missed diagonal blade crosses two opposite ring taps. Taking the whole ring's mean let its
+        /// spill plus texture noise release the lock: the still 45 degree line at about ten texture half-widths on
+        /// Quality (<c>TemporalDiagonalDetailGpuTests</c>) changed 51 percent more than v21.2.0. Both opposite-pair
+        /// means must therefore also read a change (<see cref="ShadingLockPairExtents"/>). With none, a still line
+        /// beside a still nearer surface at Quality
         /// (<c>TemporalResolveLockGpuTests</c>) changed by up to 51 percent of its contrast a frame. On Metal at 0.5
         /// the textured band of a shadow edge travelling 1 and 2 display pixels a frame retreating at Quality
-        /// (<c>TemporalMovingShadeLagGpuTests</c>) measured 1.53 and 1.59 times the reference's grain, against 1.43
-        /// and 1.39 here, and at 0.7 the Quality textured tails at 4 and 8 rose to 1.9 to 2.8 times the tail at
+        /// (<c>TemporalMovingShadeLagGpuTests</c>) measured 1.53 and 1.59 times the reference's grain, against 1.46
+        /// and 1.43 here, and at 0.7 the Quality textured tails at 4 and 8 rose to 1.9 to 2.8 times the tail at
         /// 1.</summary>
         public const float ShadingLockRingShare = 0.35f;
+        /// <summary>Steps 6 and 8. Each opposite-corner pair's mean luma must shift this many half-widths on the
+        /// history's side before a carried lock releases. A missed diagonal line crosses one pair but not the other,
+        /// so its spill cannot decide alone. The full ring still takes <see cref="ShadingStrictRingExtents"/> and
+        /// <see cref="ShadingLockRingShare"/>. At one half-width, the Quality textured band of a shadow retreating at
+        /// two display pixels a frame measured grain of 0.0228 against the reference's 0.0150, past its 1.5 bound.
+        /// Taking the own-shift share on each pair too raised it to 0.0232.</summary>
+        public const float ShadingLockPairExtents = 0.75f;
         /// <summary>Steps 6 and 8. The share of the ridge step below which a carried lock's variance box reads as flat
         /// and the lock keeps its hold whatever its ring reads (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 34). Its 3x3
         /// is then flat ground with the thin feature the jitter missed, and the feature's spill into the ring and a
@@ -210,7 +221,7 @@ namespace KhaozEngine.Render3D.Internal
         /// (<c>TemporalResolveLockGpuTests</c>), and the Quality chart (<c>TemporalUpscalingGoldenTests</c>) moved 0.03
         /// from its golden. At 1, the step the lockless test takes, with no share, a textured wall in shadow reads as
         /// flat too, and on Metal the textured tail of a shadow edge travelling 8 display pixels a frame measured 2.9
-        /// and 1.8 times the tail at 1 at Quality, advancing and retreating, and 2.8 and 2.6 at Native, against 1.3
+        /// and 1.8 times the tail at 1 at Quality, advancing and retreating, and 2.8 and 2.6 at Native, against 1.4
         /// and 0.9, and 1.3 and 1.2 here.</summary>
         public const float ShadingLockFlatShare = 0.25f;
         /// <summary>Steps 6 and 8. The internal texel, in display pixels, below which the release runs: Native and

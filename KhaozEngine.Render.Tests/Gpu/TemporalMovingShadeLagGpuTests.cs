@@ -217,8 +217,8 @@ namespace KhaozEngine.Tests.Gpu
         // Before amendment 34, Metal, WARP and lavapipe each failed 40 of these bounds: the S textured tail at 4 and 8
         // measured 2.6 to 7.6 times the tail at 1, the M and MS tails at 2 to 8 lay 0.0072 to 0.067 above their
         // control, and the textured band's grain was up to 3.5 times the reference's. With it, Metal measures the S
-        // tails at most 1.33 times the tail at 1, the M and MS tails at most 0.0038 above their control, and the grain
-        // at most 1.39 times the reference's.
+        // tails at most 1.4 times the tail at 1, the M and MS tails at most 0.0038 above their control, and the grain
+        // at most 1.46 times the reference's.
         const double FastTailRatio = 1.5, MovingTailExcess = 0.0055, BandGrainRatio = 1.5, ControlTolerance = 0.1;
 
         readonly record struct Case(string Name, TemporalUpscale Preset, MovingShadeKind Kind, float Shadow,

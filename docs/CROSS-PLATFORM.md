@@ -261,6 +261,8 @@ not held to that value. They compare two code paths that legitimately differ by 
 
 For diagnosis, a dispatch may set `renderTestFilter` to a vstest filter. That targets only
 `KhaozEngine.Render.Tests` on the selected native legs while retaining their compiler and validation steps.
+Filtered dispatches retain detailed output from passing tests on every leg in the
+`filtered-render-measurements-<backend>` artifact, so per-device figures remain available on Windows too.
 Leave it empty for release verification and the standard full-suite policy. The filter is passed through
 a quoted environment value, never interpolated into shell source.
 

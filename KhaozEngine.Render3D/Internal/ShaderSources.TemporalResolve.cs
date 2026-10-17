@@ -91,6 +91,7 @@ const float ShadingRingPixels = 1.5;
 const float ShadingRingExtents = 0.25;
 const float ShadingStrictRingExtents = 1.0;
 const float ShadingLockRingShare = 0.35;
+const float ShadingLockPairExtents = 0.75;
 const float ShadingLockFlatShare = 0.25;
 const float ShadingMaxUpscale = 1.6;
 const float ClipFlagMinimumMove = 0.0009765625;

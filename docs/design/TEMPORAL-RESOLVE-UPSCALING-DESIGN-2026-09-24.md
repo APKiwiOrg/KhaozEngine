@@ -1000,8 +1000,8 @@ and changed these details. Its contract amendment blocks carry the evidence.
     zero gave 0.031 and 0.0125 at Quality at 1 but raised the still light's textured band from 0.0058 to 0.0072, so
     the locks keep texture detail where nothing changed and stay.
 
-    The rule. A pixel releases where it is still (below `LockMotionStartPixels`, superseded by amendment 34) at a preset whose internal texel is
-    below `ShadingMaxUpscale` (1.6) display pixels, a ridge refreshed its lock this frame or it holds no lock over a
+    The rule. A pixel releases where it is still (below `LockMotionStartPixels`, superseded by amendment 34) at a
+    preset whose internal texel is below `ShadingMaxUpscale` (1.6) display pixels, a ridge refreshed its lock this frame or it holds no lock over a
     box whose half-width exceeds the ridge step, and its history luma lies past the variance box by more than
     `ShadingResetExtents` (0.25) of the half-width. Then the history luma lies more than `ShadingChangeExtents`
     (0.85) half-widths per display pixel of internal texel from this frame's reconstruction, or the mean of four
@@ -1054,8 +1054,8 @@ and changed these details. Its contract amendment blocks carry the evidence.
     The peak and detail tests hold each figure within a tenth of the figure before the release on the same device
     class, measured on the hosted Metal, WARP and lavapipe legs (`TemporalDeviceClass`), which agree within 2 percent.
     The resolve before the release fails six of the shadow bounds. The release adds one float to the 3x3's statistics
-    and a chain of comparisons per pixel, and four bilinear history taps only where a still pixel's history (still-only scope superseded by amendment 34) lies past
-    its box and, at Native, its reconstruction alone does not decide or, where the frame upscales, its reconstruction
+    and a chain of comparisons per pixel, and four bilinear history taps only where a still pixel's history
+    (still-only scope superseded by amendment 34) lies past its box and, at Native, its reconstruction alone does not decide or, where the frame upscales, its reconstruction
     reads a change. `TemporalResolveCostPerfGpuTests` on the hosted NVIDIA Tesla T4 (`gpu-hosted-bench`, runs
     39000442514 before and 39000447833 after) moves the split's resolve and sharpen by -0.06 to +0.19 ms over all
     eight cases on Direct3D 11, Windows Vulkan and Linux Vulkan, a mean of about 1.5 percent and within the run to run
@@ -1086,24 +1086,27 @@ and changed these details. Its contract amendment blocks carry the evidence.
     3x3 is a thin feature on flat ground that the jitter missed and keeps its hold, as a lockless pixel over a flat
     3x3 does. A carried lock and a pixel moving at `LockMotionStartPixels` or more lie apart from their
     reconstruction with nothing changed, a missed feature by nature and a moving one by its resampled history. For
-    them the reconstruction never decides alone, and the ring's mean must lie `ShadingStrictRingExtents` (1)
-    half-widths from the eight texels on the history's side, and for a carried lock also `ShadingLockRingShare`
-    (0.35) of the history's own distance from its reconstruction. Where the frame upscales the reconstruction must
+    them the reconstruction never decides alone. A moving pixel with no carried lock requires the ring's mean to
+    lie `ShadingStrictRingExtents` (1) half-widths from the eight texels on the history's side. A carried lock requires
+    the full ring's mean to lie that far and also `ShadingLockRingShare` (0.35) of the history's own distance from
+    its reconstruction. Each opposite-corner pair's mean must also shift `ShadingLockPairExtents` (0.75) half-widths
+    on that side. A missed diagonal blade can cross one opposite pair, so its spill and texture noise can move the full ring's mean past the share while the
+    other pair still agrees. A shading change must move both pairs. Where the frame upscales the reconstruction must
     still read the change too. A missed feature's history spills into the ring by a small share of the feature, and a
     shading change that passed moves the ring as far as the pixel. Everything else is amendment 33's rule. A still
     pixel with no carried lock is released as it was, and the stored lock rule that keeps the fused and the split
     entry points bit for bit identical (`TemporalEntryIdentityGpuTests`) is unchanged.
 
     Measured on Metal with the rule. The S textured band at 2, 4 and 8 is 0.021, 0.020 and 0.024 at Quality
-    advancing and 0.025, 0.024 and 0.025 retreating, and 0.014 to 0.018 at Native. The S tails at 2 to 8 are 0.0032
-    to 0.0069, at most 1.33 times the tail at 1, which itself fell from 0.0052 and 0.0079 to 0.0031 and 0.0068 at
-    Quality. The band's grain is 0.018 to 0.021 against the reference's 0.015. The M tail at 1, 2, 4 and 8 is 0.0029,
-    0.0069, 0.011 and 0.013 at Quality and 0.0033, 0.0032, 0.0051 and 0.0066 at Native, at most 0.0038 above its
-    control, and MS at 1 and 2 is 0.0031 and 0.0063 at Quality and 0.0032 and 0.0033 at Native. C's band and tail
+    advancing and 0.026, 0.024 and 0.025 retreating, and 0.014 to 0.019 at Native. The S tails at 2 to 8 are 0.0033
+    to 0.0073, at most 1.4 times the tail at 1, which itself fell from 0.0052 and 0.0079 to 0.0031 and 0.0069 at
+    Quality. The band's grain is 0.018 to 0.022 against the reference's 0.015. The M tail at 1, 2, 4 and 8 is 0.0029,
+    0.0069, 0.011 and 0.013 at Quality and 0.0033, 0.0033, 0.0051 and 0.0066 at Native, at most 0.0038 above its
+    control, and MS at 1 and 2 is 0.0033 and 0.0064 at Quality and 0.0033 and 0.0034 at Native. C's band and tail
     are unchanged to four decimals at both presets and every speed. `TemporalShadowEdgeLagGpuTests` at 1 display
     pixel a frame measures a Quality band of 0.021 and 0.025 against 0.029 and 0.035 before, and its still light is
-    unchanged. `TemporalStablePeakGpuTests` and `TemporalStableDetailGpuTests` are unchanged, the still wall's
-    temporal error 0.00112 and 0.00099 against 0.00112 and 0.00098. Every temporal GPU fact passes on Metal.
+    unchanged. `TemporalStablePeakGpuTests` and `TemporalStableDetailGpuTests` remain within their bounds, the still
+    wall's temporal error 0.00112 and 0.00099 against 0.00112 and 0.00098. Every temporal GPU fact passes on Metal.
 
     The test asserts four bounds. The S textured tail at 2, 4 and 8 is at most 1.5 times the S tail at 1 of the same
     run, each way and at each preset, so the lag no longer grows with travel. The M and MS textured tail at 1 to 8 lies
@@ -1130,6 +1133,31 @@ and changed these details. Its contract amendment blocks carry the evidence.
     S tails at 4 and 8 at 1.9 to 2.8 times the tail at 1. A flat test at the whole ridge step read a textured wall in
     shadow as flat, and the S tails at 8 measured up to 2.9 times the tail at 1. Without a flat test, three sub-texel
     lines side by side and a line on a swaying surface at Native lost their hold.
+
+    Review added `TemporalDiagonalDetailGpuTests`: 45 and 30 degree lines three eighths of an internal texel wide,
+    over the same independent-grey panel as the shadow stage, with contrast about 2, 5 and 10 texture half-widths,
+    at Quality and Native, still and panning 0.3 display pixels a frame. It warms 80 frames and measures 24 against
+    a separate 16 by 16 box-integrated reference on each line's footprint, in weighted luma. It checks that missed
+    centre samples carry unridged locks over non-flat texture. The four-tap mean alone regressed the still 45 degree
+    line near ten half-widths: Quality error rose from 0.009786 to 0.012313 and temporal change from 0.002277 to
+    0.003442, and Native temporal change from 0.001032 to 0.001178. Pair agreement at 0.75 restores those figures
+    to 0.009786, 0.002277 and 0.001032. Every diagonal figure is at or below v21.2.0 at six decimals on local Metal.
+    Requiring the own-shift share from each pair raised the Quality S band's grain at 2 retreating to 0.0232,
+    and requiring each pair one half-width without that share to 0.0228, against reference 0.0150. At 0.75 it is
+    0.0215. The full ring still takes its one half-width and 0.35 share. Each line's error, raw change and temporal
+    error are bounded within a tenth of v21.2.0 on its device class.
+
+    `TemporalMovingShadeRimGpuTests` makes the M and MS strips finite, 72 display pixels tall, and measures the
+    one to six pixels inside their leading and trailing silhouettes separately on the textured and flat halves.
+    The infinite strips in the interior test have no leading or trailing silhouette in view. It warms 80 frames
+    and measures eight against a 4x reference, with all speeds from M and MS at both presets. The largest local
+    Metal increase in error or temporal error is 4.2 percent, on Quality M 1's trailing textured rim. Native M 2's
+    leading textured rim changes more because it follows the reference better: raw change moves from 0.056622 to
+    0.064375 against reference 0.062212, while error falls from 0.013744 to 0.003089 and temporal error from
+    0.018523 to 0.004923. MS 2's temporal error falls from 0.029795 to 0.005506. Rim bounds compare error and
+    temporal error to v21.2.0 within a tenth per device class, and report raw change and reference change separately.
+    [The Metal comparison](evidence/taa-moving-shading-review-metal.csv) records every case before the moving
+    release, at the reviewed rule, and with pair agreement. The shared rim fixture has a fresh-scene parity fact.
 
     Balanced and below remain outside the release (`ShadingMaxUpscale`, #1431). At Balanced on Metal the S textured
     tails measure 0.109 to 0.259, the M tails 0.026 to 0.111 and MS 0.079 and 0.171, while C's tails measure 0.0035

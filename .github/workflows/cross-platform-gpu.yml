@@ -1242,7 +1242,8 @@ jobs:
           #
           # AND A TRX LOGGER WHERE THE POOL WATCHDOG IS ARMED, so a starvation episode's timestamps can be laid
           # against the start and end of every test that was running beside it. The console logger is unchanged.
-          KE_TEST_LOGGER_ARGS: ${{ (env.VULKAN_VALIDATION_ARMED != '' || matrix.backend == 'metal-native') && '--logger console;verbosity=detailed' || (env.POOL_WATCH_ARMED != '' && '--logger trx' || '') }}
+          # Filtered diagnostics need passing tests' measurements on Windows too, where the pool watcher is off.
+          KE_TEST_LOGGER_ARGS: ${{ (env.VULKAN_VALIDATION_ARMED != '' || matrix.backend == 'metal-native' || (github.event_name == 'workflow_dispatch' && inputs.renderTestFilter != '')) && '--logger console;verbosity=detailed' || (env.POOL_WATCH_ARMED != '' && '--logger trx' || '') }}
           # The watchdog itself (see POOL_WATCH_ARMED in the job env). Empty everywhere else, which leaves it off.
           # Absolute, because each test host runs from its own output directory.
           KE_POOL_WATCH: ${{ env.POOL_WATCH_ARMED }}
@@ -1520,6 +1521,14 @@ jobs:
         with:
           name: device-evidence-${{ matrix.backend }}
           path: device-evidence/
+          if-no-files-found: ignore
+
+      - name: Upload filtered render measurements
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.renderTestFilter != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: filtered-render-measurements-${{ matrix.backend }}
+          path: TestResults/suite-output.log
           if-no-files-found: ignore
 
       # TIER ONE'S EVIDENCE, on always(), and only where a tier was actually ARMED. A `strict` run that passes

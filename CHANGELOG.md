@@ -5,6 +5,17 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.1.1
+
+- Temporal anti-aliasing no longer leaves a grainy band trailing a shadow or light edge that slides over a still
+  surface under a still camera at Native and Quality. The trail no longer grows with the edge's travel per frame, so
+  a low frame rate, such as an unfocused window throttled to 15 Hz, no longer widens it. A still pixel whose shading
+  changed drops its lock and accumulated weight for one frame and shows the internal reconstruction. Stable isolated
+  detail, fine texture and slow pans resolve as before. Balanced and lower presets keep the old behaviour
+  ([#1431](https://github.com/APKiwiOrg/KhaozEngine/issues/1431)). See amendment 33 of the
+  [temporal resolve design](docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md)
+  ([#1427](https://github.com/APKiwiOrg/KhaozEngine/issues/1427)).
+
 ## 21.1.0
 
 - Keep rigid attachment body alignments exactly affine when general inversion rounds their homogeneous

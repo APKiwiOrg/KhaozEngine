@@ -10,8 +10,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - Add an optional `clearance` block to the tile world manifest, held as `TileWorldDocument.Clearance`
   (`TileClearanceSettings`): a mesh root relative to the world directory, a sampling cell size, an object
   waiver tag and `TileClearanceRule` tag pairs that keep subject meshes out of obstacle meshes within a
-  tolerance. A rooted mesh root is refused, rules compare by value and an absent block keeps an older world's
-  bytes.
+  tolerance. A rooted mesh root or one with a backslash is refused on every OS, rules compare by value and an
+  absent block keeps an older world's bytes.
 - The block is authoring metadata outside `TileWorldHash.OfWorld`, so editing it changes no world digest and
   forces no navigation rebake. The TileWorld format version is unchanged.
 - Add `TileWorldClearance.Check`, which places every loaded object's mesh with

@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.IO;
 using System.Linq;
 
 namespace KhaozEngine.TileWorld;
@@ -55,8 +54,9 @@ public sealed class TileClearanceSettings
     public const float DefaultCellSize = 0.1f, MinCellSize = 0.02f, MaxCellSize = 1f;
 
     /// <param name="meshRoot">Directory of the object meshes, relative to the directory holding
-    /// <c>world.json</c>. Never rooted, because world files are committed and shared across machines. May be
-    /// empty only while there are no rules.</param>
+    /// <c>world.json</c>, with forward slashes only. Never rooted, because world files are committed and shared
+    /// across machines. The rule is the same on every OS: a leading slash or backslash, a drive prefix (an ASCII
+    /// letter then a colon) and any backslash are refused. May be empty only while there are no rules.</param>
     /// <param name="cellSize">Sampling cell edge in world units, from <see cref="MinCellSize"/> through
     /// <see cref="MaxCellSize"/>.</param>
     /// <param name="waiverTag">Object tag that exempts an object from every rule, or null for none.</param>
@@ -67,8 +67,10 @@ public sealed class TileClearanceSettings
         IReadOnlyList<TileClearanceRule>? rules = null)
     {
         ArgumentNullException.ThrowIfNull(meshRoot);
-        if (Path.IsPathRooted(meshRoot))
+        if (IsRooted(meshRoot))
             throw Invalid($"meshRoot '{meshRoot}' is rooted, it must be relative to the world directory");
+        if (meshRoot.Contains('\\', StringComparison.Ordinal))
+            throw Invalid($"meshRoot '{meshRoot}' contains a backslash, it must use forward slashes");
         if (!(cellSize >= MinCellSize && cellSize <= MaxCellSize))
             throw Invalid($"cellSize {cellSize} is outside {MinCellSize} through {MaxCellSize}");
         if (waiverTag is not null && string.IsNullOrWhiteSpace(waiverTag))
@@ -155,6 +157,12 @@ public sealed class TileClearanceSettings
             if (string.IsNullOrWhiteSpace(tag)) throw Invalid($"rule '{rule}' {field} cannot hold an empty tag");
         return Array.AsReadOnly(copy);
     }
+
+    // Decided by the characters alone rather than Path.IsPathRooted, which reads drive letters and backslashes only
+    // on Windows, so a root that saves on one OS always loads on every other.
+    static bool IsRooted(string meshRoot) =>
+        meshRoot.StartsWith('/') || meshRoot.StartsWith('\\')
+        || (meshRoot.Length >= 2 && meshRoot[1] == ':' && char.IsAsciiLetter(meshRoot[0]));
 
     static ArgumentException Invalid(string detail) => new($"Invalid clearance settings: {detail}.");
 }

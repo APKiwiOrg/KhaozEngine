@@ -51,9 +51,12 @@ Calls approved with the design:
 ```
 
 `TileClearanceSettings` is the immutable, self-validating model and `TileWorldDocument.Clearance` holds it.
-`meshRoot` is relative to the directory holding `world.json`. A rooted path is refused with
-`ArgumentException` by the settings and as a `TileWorldException` at load, because world files are committed and
-shared across machines. It may be empty only while there are no rules. `cellSize` runs from
+`meshRoot` is relative to the directory holding `world.json` and uses forward slashes only. A rooted path is
+refused with `ArgumentException` by the settings and as a `TileWorldException` at load, because world files are
+committed and shared across machines. The rule is decided by the characters alone, the same on every OS: a leading
+`/` or `\`, a drive prefix (an ASCII letter then `:`) and any backslash are refused. `Path.IsPathRooted` was not
+used because it reads drive letters and backslashes only on Windows, so `C:\kit` or `..\models` would save on
+macOS and then fail to load or resolve differently on a Windows head. It may be empty only while there are no rules. `cellSize` runs from
 0.02 to 1 with a default of 0.1. A null `waiverTag` waives nothing. Rule names are unique by ordinal comparison,
 both tag lists must be non-empty and a tolerance must be finite and not negative. A save writes every default out,
 so a stored block reads the same without knowing this engine's defaults. An absent block stays absent, so an

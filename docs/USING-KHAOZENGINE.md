@@ -11278,7 +11278,8 @@ Validation resolves the foliage archetype and material ids against the same cata
 
 **Clearance is an authoring check, never a runtime rule.** An optional `clearance` manifest block
 (`TileWorldDocument.Clearance`, a `TileClearanceSettings`) declares rules such as "objects whose archetype is
-tagged `tree` keep their meshes clear of objects tagged `structure`", with a mesh root, a sampling cell size and
+tagged `tree` keep their meshes clear of objects tagged `structure`", with a mesh root (relative to the world
+directory, forward slashes only, refused when rooted or holding a backslash on every OS), a sampling cell size and
 an object waiver tag. `TileWorldClearance.Check(doc, catalogs, meshes)` places every loaded object's mesh as the
 prop renderer draws it and returns `clearance.overlap`, `clearance.mesh` and `clearance.rule` issues, reading
 meshes through `ITileMeshGeometry` (the glb implementation is `GltfTileMeshGeometry` in

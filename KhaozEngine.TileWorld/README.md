@@ -234,7 +234,7 @@ none, and `SetClearance(settings)` replaces it. The constructor validates every 
 
 | Field | Contract |
 |---|---|
-| `meshRoot` | Directory the archetypes' `meshRef` paths resolve under, relative to the directory holding `world.json`. A rooted path is refused with `ArgumentException`, because world files are committed and shared. Required while rules exist. |
+| `meshRoot` | Directory the archetypes' `meshRef` paths resolve under, relative to the directory holding `world.json`, with forward slashes only (`../models`). A rooted path is refused with `ArgumentException`, because world files are committed and shared. The rule is the same on every OS: a leading `/` or `\`, a drive prefix such as `C:` and any backslash are refused. Required while rules exist. |
 | `cellSize` | Sampling and rasterizing pitch in metres, 0.02 through 1. Default 0.1 (`TileClearanceSettings.DefaultCellSize`). |
 | `waiverTag` | Object tag that exempts an object from every rule. Optional. Null waives nothing. |
 | `rules` | `TileClearanceRule(Name, SubjectTags, ObstacleTags, Tolerance)` in authoring order. Names are unique by ordinal comparison, both tag lists are non-empty with no blank tag, and `tolerance` is metres of allowed depth, finite and at least 0, default 0. |

@@ -172,7 +172,7 @@ author reading a map needs to tell "there is a wall here" from "there is no worl
 | Verb | What it does |
 |---|---|
 | `clearance_get()` | The world's clearance block: mesh root relative to the world directory, cell size in metres, waiver tag and the rules in authoring order. Null when the world declares no block. |
-| `clearance_set(meshRoot, cellSize = 0.1, waiverTag?)` | Creates the block, or replaces its header keeping its rules. Every call sets all three fields, so an omitted `cellSize` or `waiverTag` resets to its default rather than keeping the current value. Pass the current values from `clearance_get` to keep them. A rooted `meshRoot` is refused. |
+| `clearance_set(meshRoot, cellSize = 0.1, waiverTag?)` | Creates the block, or replaces its header keeping its rules. Every call sets all three fields, so an omitted `cellSize` or `waiverTag` resets to its default rather than keeping the current value. Pass the current values from `clearance_get` to keep them. `meshRoot` uses forward slashes, and a rooted one or one with a backslash is refused on every OS. |
 | `clearance_rule_set(name, subjectTags, obstacleTags, tolerance = 0)` | Adds a rule, or replaces the rule of the same name in place. Refuses when the world has no block, so run `clearance_set` first. |
 | `clearance_rule_remove(name)` | Removes one rule by name. Refuses an unknown name. |
 | `clearance_check()` | Runs the check against the meshes on disk and reports a clear flag and every issue as `[code] message`, writing nothing. |

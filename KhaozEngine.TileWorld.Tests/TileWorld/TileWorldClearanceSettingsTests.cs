@@ -67,20 +67,29 @@ public class TileWorldClearanceSettingsTests
         Assert.Equal(TileClearanceSettings.MaxCellSize, new TileClearanceSettings("m", TileClearanceSettings.MaxCellSize).CellSize);
     }
 
-    // A drive-letter root is rooted only on an OS that reads drive letters, so that row exists only there.
-    public static IEnumerable<object[]> RootedMeshRoots()
+    // The same refusals on every OS, so a root accepted on one head never fails to load on another.
+    [Theory]
+    [InlineData(@"C:\kit")]
+    [InlineData("C:/kit")]
+    [InlineData("c:kit")]
+    [InlineData(@"\kit")]
+    [InlineData("/kit")]
+    [InlineData(@"..\models")]
+    public void SettingsRefuseAMeshRootThatIsNotPortable(string meshRoot)
     {
-        yield return ["/abs/models"];
-        if (Path.IsPathRooted(@"C:\models")) yield return [@"C:\models"];
+        ArgumentException ex = Assert.Throws<ArgumentException>(() => new TileClearanceSettings(meshRoot));
+        Assert.Contains($"meshRoot '{meshRoot}'", ex.Message, StringComparison.Ordinal);
+        Assert.Throws<ArgumentException>(() => new TileClearanceSettings(meshRoot, rules: [TreesClearBuildings()]));
+        Assert.Throws<ArgumentException>(() => Settings().With(meshRoot, 0.1f, null));
     }
 
     [Theory]
-    [MemberData(nameof(RootedMeshRoots))]
-    public void SettingsRefuseARootedMeshRoot(string meshRoot)
+    [InlineData("../models")]
+    [InlineData("models/kit")]
+    [InlineData("./models")]
+    public void SettingsAcceptAForwardSlashRelativeMeshRoot(string meshRoot)
     {
-        Assert.Throws<ArgumentException>(() => new TileClearanceSettings(meshRoot));
-        Assert.Throws<ArgumentException>(() => new TileClearanceSettings(meshRoot, rules: [TreesClearBuildings()]));
-        Assert.Throws<ArgumentException>(() => Settings().With(meshRoot, 0.1f, null));
+        Assert.Equal(meshRoot, new TileClearanceSettings(meshRoot, rules: [TreesClearBuildings()]).MeshRoot);
     }
 
     [Fact]

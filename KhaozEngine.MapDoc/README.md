@@ -657,13 +657,19 @@ and the mode alone for Explicit. Payload-1 markers carry none. The witness-beari
 `MapEffectiveResources.MarkerSupports`, one row per Support marker in ID order. A document whose effective markers
 are all payload 1 keeps the annotation digest scheme `kemap/effective-annotations/1`. Any payload-2 marker selects
 `/2`. `MapMarkerSpaces.Query(view, marker)` answers occupied space and parent chain by point membership, Outside when
-no authored space holds the point, and keeps every refusal status.
+no authored space holds the point, and keeps every refusal status. Outside needs acquired coverage. A point beyond the
+view's acquired XZ extent, for example a marker past every patch of `CompleteView()`, has no geometry to certify
+Outside and returns MissingGeometry. Uncovered scope refuses, while covered ground that no authored space owns is
+Outside.
 
 The shared seat query acquires a 2 m scope around each point. A complete acquisition reads every patch that meets
 that scope, so a floor it captures only through records incident to another patch, or through an empty neighbouring
 slot, holds no cell at the point when its own slot was never read, and the query skips it. A recorded unavailable read
 still refuses with MissingGeometry. Support-bound markers and placements on sparse floors therefore seat on their
 named owner, and `MapPrefabResolver.Expand` and native resolution agree. `SeatSupportSlotTests` pins both cases.
+Completeness is relative to the acquisition's own filters. The seat query acquires every role with no space or height
+filter, so a skipped slot holds nothing at the point anywhere in the world. A caller that filters roles, spaces or
+height gets an answer scoped to that filter and must acquire the geometry its support search needs.
 
 ### Marker names, lookup and typed views
 
@@ -827,6 +833,11 @@ monolithic and tiled reloads with independently verified closures, plus explicit
 `MarkerVillageWorkflowTests` in MapEditor.Tests drives the shared commands and the MCP verbs. The stacked,
 underground and local cave proofs stay `StackedCaveMarkerSupport_DoesNotSnapToSurface`,
 `UndergroundMarker_ExplicitHeightAndLayerSurviveReload` and `LocalCaveMarker_TransformsOnceAndKeepsVolumeAssociation`.
+
+Identity and saved text are different guarantees. A monolithic reload keeps authored surface declaration order, while a
+tiled reload orders declarations by ID. Semantic and identity hashes agree across the two forms, but saved canonical
+text matches only when declarations are already in ID order. The village sorts its declarations so its text
+comparison holds, which proves that fixture only, not a general cross-storage byte guarantee.
 
 Markers hand off to later rounds through these seams. They certify no native route, door, renderer pixel or game
 policy.

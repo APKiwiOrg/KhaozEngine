@@ -240,7 +240,7 @@ internal sealed partial class SupportFootprintCollector
         using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportCurvedContact);
         _contactKernel.Reset(_contactStarts[index], _contactEnds[index],
             GeometryInterval.Exact(proposal.Probe.Radius), _request.ContactBand);
-        return _contactKernel.Measure(owner, leaf, part, out _);
+        return _contactKernel.MeasureSign(owner, leaf, part);
     }
 
     bool CurvedContactHeight(in SupportCurvedLeaf leaf, int part, int index)

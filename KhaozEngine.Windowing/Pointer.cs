@@ -14,8 +14,11 @@ namespace KhaozEngine.Windowing
     /// press-origin at the cursor, provided the snapshot's <see cref="InputState.MousePressed"/> carries the
     /// press edge. A producer that leaves that set empty is read exactly as before, so the only thing it loses
     /// is the same-frame tap.</para>
+    /// <para>Hit queries also honour occlusion (<see cref="Occlude"/>, <see cref="OccludeAll"/>): a query whose
+    /// test point lies in an occluded area misses. With nothing occluded every query reads exactly as without
+    /// occlusion.</para>
     /// </summary>
-    public sealed class Pointer
+    public sealed partial class Pointer
     {
         readonly List<Rect> _blocked = new();
         bool _down, _wasDown, _mid, _wasMid, _right, _wasRight;
@@ -24,6 +27,7 @@ namespace KhaozEngine.Windowing
         bool _rightConsumed;   // the same latch for the RIGHT gesture, tracked separately (see ConsumeRightGesture)
         bool _focused = true;   // OS window focus, from InputState.WindowFocused; windows start focused
         bool _pressOriginFresh;   // this frame re-latched _pressOrigin (a real press edge, or a same-frame tap)
+        bool _rightPressOriginFresh;   // the same for _rightPressOrigin
         Vector2 _pos, _prevPos, _pressOrigin, _rightPressOrigin;
 
         /// <summary>Current pointer position (pixels).</summary>
@@ -64,6 +68,11 @@ namespace KhaozEngine.Windowing
         /// </summary>
         public bool IsPressOriginFresh => _pressOriginFresh;
 
+        /// <summary>The right-button twin of <see cref="IsPressOriginFresh"/>: true on the frame
+        /// <see cref="RightPressOrigin"/> was latched, a right press edge or a same-frame right tap, and only that
+        /// frame.</summary>
+        public bool IsRightPressOriginFresh => _rightPressOriginFresh;
+
         /// <summary>
         /// True while the owning window has OS focus (from <see cref="InputState.WindowFocused"/>; <c>true</c> until
         /// the first <see cref="Update(KhaozEngine.Windowing.InputState)"/>). The hover query <see cref="IsHoveringIn"/> is gated on this so a
@@ -89,6 +98,8 @@ namespace KhaozEngine.Windowing
         public void Update(InputState input, IDesignViewport? viewport)
         {
             _blocked.Clear();
+            _occluders.Clear();
+            _occludeAll = false;
             _wasDown = _down; _wasMid = _mid; _wasRight = _right;
             _prevPos = _pos;
             _focused = input.WindowFocused;
@@ -160,7 +171,8 @@ namespace KhaozEngine.Windowing
             // cancel an unrelated left tap in the same frame.
             _pressOriginFresh = IsJustPressed || leftTapped;
             if (_pressOriginFresh) { _pressOrigin = _pos; _consumed = false; }
-            if (IsRightJustPressed || rightTapped) { _rightPressOrigin = _pos; _rightConsumed = false; }
+            _rightPressOriginFresh = IsRightJustPressed || rightTapped;
+            if (_rightPressOriginFresh) { _rightPressOrigin = _pos; _rightConsumed = false; }
         }
 
         /// <summary>Suppress every mouse-button gesture currently in flight and ignore each held button until its
@@ -172,6 +184,7 @@ namespace KhaozEngine.Windowing
             _ignoreRightUntilReleased |= input.IsDown(MouseButton.Right);
             _down = _wasDown = _mid = _wasMid = _right = _wasRight = false;
             _pressOriginFresh = false;
+            _rightPressOriginFresh = false;
         }
 
         /// <summary>Reserve a region for an overlay this frame; the layer beneath checks <see cref="IsBlocked"/>. Cleared each <see cref="Update(KhaozEngine.Windowing.InputState)"/>.</summary>
@@ -208,38 +221,47 @@ namespace KhaozEngine.Windowing
         /// <summary>True while the current RIGHT gesture has been claimed via <see cref="ConsumeRightGesture"/> (until the next fresh right press).</summary>
         public bool IsRightConsumed => _rightConsumed;
 
-        /// <summary>True on release only if the press-origin AND the release are both inside <paramref name="bounds"/> (the click-through invariant) and the gesture has not been consumed via <see cref="ConsumeGesture"/>.</summary>
-        public bool IsTapIn(Rect bounds) => !_consumed && IsJustReleased && bounds.Contains(_pressOrigin) && bounds.Contains(_pos);
+        /// <summary>True on release only if the press-origin AND the release are both inside <paramref name="bounds"/> (the click-through invariant), neither is occluded (<see cref="IsOccluded"/>), and the gesture has not been consumed via <see cref="ConsumeGesture"/>.</summary>
+        public bool IsTapIn(Rect bounds) => !_consumed && IsJustReleased && InOpen(bounds, _pressOrigin) && InOpen(bounds, _pos);
 
-        /// <summary>True on release when the press began in <paramref name="pressOriginBounds"/> and the release is in <paramref name="releaseBounds"/>, and the gesture has not been consumed via <see cref="ConsumeGesture"/>.</summary>
+        /// <summary>True on release when the press began in <paramref name="pressOriginBounds"/> and the release is in <paramref name="releaseBounds"/>, neither point is occluded, and the gesture has not been consumed via <see cref="ConsumeGesture"/>.</summary>
         public bool IsTapFromTo(Rect pressOriginBounds, Rect releaseBounds) =>
-            !_consumed && IsJustReleased && pressOriginBounds.Contains(_pressOrigin) && releaseBounds.Contains(_pos);
+            !_consumed && IsJustReleased && InOpen(pressOriginBounds, _pressOrigin) && InOpen(releaseBounds, _pos);
 
         /// <summary>
         /// The right-button twin of <see cref="IsTapIn"/>, carrying the same press-origin invariant: true on the
         /// right-button release only when the right press-origin AND the release are both inside
-        /// <paramref name="bounds"/>, and the right gesture has not been consumed via
+        /// <paramref name="bounds"/>, neither is occluded, and the right gesture has not been consumed via
         /// <see cref="ConsumeRightGesture"/>. This is what a context menu hangs off: without it a consumer has to
         /// pair <see cref="IsRightJustReleased"/> with a raw position test, which the input contract forbids
         /// (hit-test through the bounds helpers, never raw position + button).
         /// </summary>
         public bool IsRightTapIn(Rect bounds) =>
-            !_rightConsumed && IsRightJustReleased && bounds.Contains(_rightPressOrigin) && bounds.Contains(_pos);
+            !_rightConsumed && IsRightJustReleased && InOpen(bounds, _rightPressOrigin) && InOpen(bounds, _pos);
 
         /// <summary>The right-button twin of <see cref="IsPressingIn"/>: true while the right button is held with
-        /// both its press-origin and the cursor inside <paramref name="bounds"/> (the press-state visual for a
-        /// right-clickable region).</summary>
+        /// both its press-origin and the cursor inside <paramref name="bounds"/> and neither occluded (the
+        /// press-state visual for a right-clickable region).</summary>
         public bool IsRightPressingIn(Rect bounds) =>
-            _right && bounds.Contains(_rightPressOrigin) && bounds.Contains(_pos);
+            _right && InOpen(bounds, _rightPressOrigin) && InOpen(bounds, _pos);
 
-        public bool IsPointerIn(Rect bounds) => bounds.Contains(_pos);
-        /// <summary>True when the pointer hovers <paramref name="bounds"/> (over it, no button down) AND the window
-        /// has focus - a background window reports no hover, so hover affordances (tooltips, UI hover SFX) stay
-        /// silent while unfocused. The press-origin queries below are deliberately NOT focus-gated.</summary>
-        public bool IsHoveringIn(Rect bounds) => _focused && !_down && bounds.Contains(_pos);
-        public bool IsPressingIn(Rect bounds) => _down && bounds.Contains(_pressOrigin) && bounds.Contains(_pos);
-        public bool IsReleasedOutside(Rect bounds) => IsJustReleased && !bounds.Contains(_pos);
-        public bool IsDraggingIn(Rect bounds) => _down && bounds.Contains(_pressOrigin);
+        /// <summary>True when the cursor is inside <paramref name="bounds"/> and not occluded.</summary>
+        public bool IsPointerIn(Rect bounds) => InOpen(bounds, _pos);
+        /// <summary>True when the pointer hovers <paramref name="bounds"/> (over it, not occluded, no button down)
+        /// AND the window has focus - a background window reports no hover, so hover affordances (tooltips, UI
+        /// hover SFX) stay silent while unfocused. The press-origin queries below are deliberately NOT focus-gated.</summary>
+        public bool IsHoveringIn(Rect bounds) => _focused && !_down && InOpen(bounds, _pos);
+        /// <summary>True while the left button is held with both its press-origin and the cursor inside
+        /// <paramref name="bounds"/> and neither occluded.</summary>
+        public bool IsPressingIn(Rect bounds) => _down && InOpen(bounds, _pressOrigin) && InOpen(bounds, _pos);
+        /// <summary>True on the left release when it lands outside <paramref name="bounds"/> or in an occluded
+        /// area, so a release on something drawn in front dismisses focus held by what it covers.</summary>
+        public bool IsReleasedOutside(Rect bounds) => IsJustReleased && (!bounds.Contains(_pos) || IsOccluded(_pos));
+        /// <summary>True while the left button is held after a press that began inside <paramref name="bounds"/>
+        /// at a point that was not occluded this frame.</summary>
+        public bool IsDraggingIn(Rect bounds) => _down && InOpen(bounds, _pressOrigin);
+        /// <summary>This frame's movement while <see cref="IsDraggingIn"/> holds for <paramref name="bounds"/>,
+        /// otherwise zero, occluded press origin included.</summary>
         public Vector2 GetDragDelta(Rect bounds) => IsDraggingIn(bounds) ? Delta : Vector2.Zero;
 
         /// <summary>
@@ -247,8 +269,12 @@ namespace KhaozEngine.Windowing
         /// (button down, press-origin in bounds), even after the cursor strays off. This is the press-origin
         /// invariant applied to a drag start - a press that began elsewhere never grabs - so the retained and
         /// immediate sliders share one rule instead of each rolling their own (<c>IsJustPressed + Contains</c>
-        /// vs <c>IsDraggingIn</c>). Same condition as <see cref="IsDraggingIn"/>, named for the grab site.
+        /// vs <c>IsDraggingIn</c>). Same condition as <see cref="IsDraggingIn"/>, named for the grab site, so an
+        /// occluded press origin never grabs either.
         /// </summary>
-        public bool IsDragStartIn(Rect bounds) => _down && bounds.Contains(_pressOrigin);
+        public bool IsDragStartIn(Rect bounds) => _down && InOpen(bounds, _pressOrigin);
+
+        // The shared hit test: inside the bounds and not occluded. Identical to Contains with nothing occluded.
+        bool InOpen(Rect bounds, Vector2 point) => bounds.Contains(point) && !IsOccluded(point);
     }
 }

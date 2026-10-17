@@ -344,6 +344,62 @@ public sealed class BugReportFlowTests : BugReportFlowHarness
     }
 
     [Fact]
+    public void Screenshot_completing_on_frame_2_opens_the_screen_on_frame_2()
+    {
+        var shot = new TaskCompletionSource<ReportImage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _capture.Screenshot = () => shot.Task;
+        BugReportFlow flow = NewFlow();
+        Assert.True(Step(flow, Frame(pressed: [Key.F10])));
+
+        Assert.True(Step(flow));
+        Assert.Empty(flow.Screens.Screens);
+        Assert.Equal(BugReportFlowState.Captured, flow.State);
+        shot.SetResult(FakeCapture.DefaultScreenshot());
+        Assert.True(Step(flow));
+
+        Assert.Single(flow.Screens.Screens);
+        Assert.True(Assert.IsType<BugReportScreen>(flow.Screens.Screens[0]).Model.ScreenshotAvailable);
+    }
+
+    [Fact]
+    public void Screenshot_completing_on_frame_3_opens_the_screen_on_frame_3()
+    {
+        var shot = new TaskCompletionSource<ReportImage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _capture.Screenshot = () => shot.Task;
+        BugReportFlow flow = NewFlow();
+        Assert.True(Step(flow, Frame(pressed: [Key.F10])));
+
+        for (int frame = 1; frame <= 2; frame++)
+        {
+            Assert.True(Step(flow));
+            Assert.Empty(flow.Screens.Screens);
+        }
+        shot.SetResult(FakeCapture.DefaultScreenshot());
+        Assert.True(Step(flow));
+
+        Assert.Single(flow.Screens.Screens);
+        Assert.Equal(BugReportFlowState.Open, flow.State);
+    }
+
+    [Fact]
+    public void Pending_screenshot_opens_the_screen_on_frame_3()
+    {
+        var shot = new TaskCompletionSource<ReportImage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _capture.Screenshot = () => shot.Task;
+        BugReportFlow flow = NewFlow();
+        Assert.True(Step(flow, Frame(pressed: [Key.F10])));
+
+        Assert.True(Step(flow));
+        Assert.True(Step(flow));
+        Assert.Empty(flow.Screens.Screens);
+        Assert.True(Step(flow));
+
+        Assert.Single(flow.Screens.Screens);
+        Assert.True(Assert.IsType<BugReportScreen>(flow.Screens.Screens[0]).Model.ScreenshotAvailable);
+        shot.SetResult(FakeCapture.DefaultScreenshot());
+    }
+
+    [Fact]
     public void Throwing_subject_while_open_leaves_the_recorder_thawed()
     {
         BugReportFlow flow = NewFlow();

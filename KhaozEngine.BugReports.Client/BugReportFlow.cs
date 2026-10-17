@@ -16,8 +16,8 @@ namespace KhaozEngine.BugReports.Client;
 
 /// <summary>
 /// The headless state machine behind the report trigger. The trigger frame freezes the clip, arms the screenshot,
-/// captures every section raw and raises <see cref="ReportCaptured"/>. The next frame opens
-/// <see cref="BugReportScreen"/>. Send finishes the sections, builds the bundle and submits it on the thread pool,
+/// captures every section raw and raises <see cref="ReportCaptured"/>. <see cref="BugReportScreen"/> opens on the
+/// first later frame that finds the screenshot taken or failed, and on the third at the latest. Send finishes the sections, builds the bundle and submits it on the thread pool,
 /// then shows a toast. A sign in flushes the offline queue.
 /// <para>Every member is frame thread only, except that <see cref="RetryQueuedAsync"/> completes off it. Background
 /// work only posts closures, which <see cref="Update"/> runs at the start of the next frame, so the screen, the
@@ -34,6 +34,9 @@ internal sealed class BugReportFlow
     internal static readonly TimeSpan ScreenshotWait = TimeSpan.FromSeconds(5);
 
     const int StripFrames = 4;
+
+    /// <summary>The frame after the trigger that opens the screen at the latest, while the screenshot is pending.</summary>
+    internal const int ScreenOpenFrames = 3;
 
     readonly BugReportServiceOptions _options;
     readonly IBugReportCapture _capture;
@@ -172,7 +175,10 @@ internal sealed class BugReportFlow
                 }
                 break;
             case BugReportFlowState.Captured:
-                OpenScreen(_report!);
+                // The trigger frame's screenshot is usually taken by the next frame. Waiting for it keeps the
+                // thumbnail ready, and the cap keeps a stalled capture from delaying the screen.
+                ActiveReport captured = _report!;
+                if (captured.Screenshot.IsCompleted || ++captured.FramesWaited >= ScreenOpenFrames) OpenScreen(captured);
                 break;
             case BugReportFlowState.Open:
                 UpdateScreen(_report!, input, realDt, viewport);
@@ -577,6 +583,9 @@ internal sealed class BugReportFlow
         internal Task<ReportImage> Screenshot { get; } = screenshot;
 
         internal BugReportScreen? Screen { get; set; }
+
+        /// <summary>Frames run since the trigger frame while the screen waits for the screenshot.</summary>
+        internal int FramesWaited { get; set; }
 
         internal List<Texture2D> Textures { get; } = new();
 

@@ -176,11 +176,15 @@ public abstract class BugReportFlowHarness : IAsyncLifetime
     /// <summary>True when called from inside <see cref="Step"/> on its thread.</summary>
     private protected bool OnFrameThread() => Volatile.Read(ref _inUpdate) && Environment.CurrentManagedThreadId == _frameThread;
 
-    /// <summary>Presses F10, then runs the frame that pushes the screen, and returns the screen.</summary>
+    /// <summary>
+    /// Presses F10, then runs frames until the screen is pushed, which takes one frame with the screenshot taken and
+    /// at most three while it is pending, and returns the screen.
+    /// </summary>
     private protected BugReportScreen Open(BugReportFlow flow)
     {
         Assert.True(Step(flow, Frame(pressed: [Key.F10])));
-        Assert.True(Step(flow, Frame(held: [Key.F10])));
+        for (int frame = 0; frame < 3 && flow.Screens.Screens.Count == 0; frame++)
+            Assert.True(Step(flow, Frame(held: [Key.F10])));
         return Assert.IsType<BugReportScreen>(Assert.Single(flow.Screens.Screens));
     }
 

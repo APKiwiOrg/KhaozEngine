@@ -30,7 +30,8 @@ with the first account that signs in. Use `new LocalFolderSink(folder, openViewe
 see every report in the browser without a relay.
 
 F10 opens a report by default. In the trigger frame the service freezes the clip, arms the screenshot and captures
-every section, then raises `ReportCaptured`. The next frame opens `BugReportScreen`. While it is open the game sees
+every section, then raises `ReportCaptured`. `BugReportScreen` opens once the screenshot is taken, usually the next
+frame and at most three frames after the trigger. From the trigger until it closes the game sees
 `InputState.WithoutInteraction`, so typing never reaches the game. Send builds the bundle on the thread pool and
 hands it to the sink. The result shows as a toast and raises `ReportSubmitted` on the frame thread.
 

@@ -3386,7 +3386,8 @@ var reports = new BugReportService(app,
   `SaveTriggerBindings` and `TriggerBindingsJson`. `reports.Begin()` serves a menu entry.
 - **Capture.** The trigger frame freezes the clip, arms the screenshot and captures every section, then raises
   `ReportCaptured(reportId)` for a server-backed game to request a server snapshot. The confirmation screen opens
-  the next frame, and the game sees `InputState.WithoutInteraction` while it is open. The game decides whether its
+  once the screenshot is taken, at most three frames later, and the game sees `InputState.WithoutInteraction` from
+  the trigger until it closes. The game decides whether its
   world pauses.
 - **Sections.** Seven built-in sections (`build`, `platform`, `graphics`, `session`, `input`, `performance`,
   `log`) plus any `AddSection`. Sections run in the trigger frame and must be cheap. Redaction and truncation run

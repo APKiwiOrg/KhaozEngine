@@ -1,0 +1,51 @@
+### What happened
+
+> Fell through the floor
+> near the mill
+
+### Report
+
+| Field | Value |
+| --- | --- |
+| Reporter | Ash |
+| Handle | `ash#0001` |
+| Account | `discord:42` |
+| Reference | {reference} |
+| Category | Gameplay |
+| Captured | 2026-10-17 01:02:03 UTC |
+| Platform | macOS 26.0 |
+| Game version | 0.29.3 |
+| Engine version | 21.2.0 |
+| Backend | Metal |
+| GPU | Apple M3 |
+| Server tick | 1234 |
+| Players | 2 |
+
+### Screenshot
+
+![Screenshot](https://media.example.test/reports/grimhollow/2026-10/0192f3a4b5c67d8e9f0a1b2c3d4e5f60-00112233445566778899aabbccddeeff/screenshot.png)
+
+### Clip
+
+<a href="https://media.example.test/reports/grimhollow/2026-10/0192f3a4b5c67d8e9f0a1b2c3d4e5f60-00112233445566778899aabbccddeeff/viewer.html"><img src="https://media.example.test/reports/grimhollow/2026-10/0192f3a4b5c67d8e9f0a1b2c3d4e5f60-00112233445566778899aabbccddeeff/clip/000.jpg" width="240"></a> <a href="https://media.example.test/reports/grimhollow/2026-10/0192f3a4b5c67d8e9f0a1b2c3d4e5f60-00112233445566778899aabbccddeeff/viewer.html"><img src="https://media.example.test/reports/grimhollow/2026-10/0192f3a4b5c67d8e9f0a1b2c3d4e5f60-00112233445566778899aabbccddeeff/clip/020.jpg" width="240"></a> <a href="https://media.example.test/reports/grimhollow/2026-10/0192f3a4b5c67d8e9f0a1b2c3d4e5f60-00112233445566778899aabbccddeeff/viewer.html"><img src="https://media.example.test/reports/grimhollow/2026-10/0192f3a4b5c67d8e9f0a1b2c3d4e5f60-00112233445566778899aabbccddeeff/clip/039.jpg" width="240"></a> <a href="https://media.example.test/reports/grimhollow/2026-10/0192f3a4b5c67d8e9f0a1b2c3d4e5f60-00112233445566778899aabbccddeeff/viewer.html"><img src="https://media.example.test/reports/grimhollow/2026-10/0192f3a4b5c67d8e9f0a1b2c3d4e5f60-00112233445566778899aabbccddeeff/clip/059.jpg" width="240"></a>
+
+[Play the clip](https://media.example.test/reports/grimhollow/2026-10/0192f3a4b5c67d8e9f0a1b2c3d4e5f60-00112233445566778899aabbccddeeff/viewer.html)
+
+### Files
+
+- [Viewer](https://media.example.test/reports/grimhollow/2026-10/0192f3a4b5c67d8e9f0a1b2c3d4e5f60-00112233445566778899aabbccddeeff/viewer.html)
+- [sections/build.json](https://media.example.test/reports/grimhollow/2026-10/0192f3a4b5c67d8e9f0a1b2c3d4e5f60-00112233445566778899aabbccddeeff/sections/build.json)
+- [sections/platform.json](https://media.example.test/reports/grimhollow/2026-10/0192f3a4b5c67d8e9f0a1b2c3d4e5f60-00112233445566778899aabbccddeeff/sections/platform.json)
+- [sections/graphics.json](https://media.example.test/reports/grimhollow/2026-10/0192f3a4b5c67d8e9f0a1b2c3d4e5f60-00112233445566778899aabbccddeeff/sections/graphics.json)
+- [Server snapshot](https://media.example.test/reports/grimhollow/2026-10/0192f3a4b5c67d8e9f0a1b2c3d4e5f60-00112233445566778899aabbccddeeff/server.json)
+
+<details>
+<summary>Last 50 log lines</summary>
+
+```text
+Connected
+Tick 1234
+Disconnected
+```
+
+</details>

@@ -20,4 +20,7 @@
     <ProjectReference Include="../KhaozEngine.Http/KhaozEngine.Http.csproj" />
     <ProjectReference Include="../KhaozEngine.Imaging/KhaozEngine.Imaging.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <None Update="Golden/*.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

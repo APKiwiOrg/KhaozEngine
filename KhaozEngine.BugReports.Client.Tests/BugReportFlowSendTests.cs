@@ -268,11 +268,44 @@ public sealed class BugReportFlowSendTests : BugReportFlowHarness
     }
 
     [Fact]
-    public async Task Build_failure_toasts_the_failed_line()
+    public async Task Clip_frame_with_a_mismatched_header_sends_without_the_clip()
     {
         ReportClipFrame frame = FakeCapture.DefaultClip(1).Frames[0];
         _capture.Clip = new ReportClip([frame with { Width = frame.Width + 1 }]);
         BugReportFlow flow = await SignedIn();
+        Open(flow);
+
+        Send(flow);
+        await Settle(flow);
+
+        BugReportSubmission submission = Assert.Single(_sink.Submissions);
+        Assert.True(BundleValidator.Validate(new MemoryStream(submission.Bundle.ToArray())).IsValid);
+        Assert.DoesNotContain(EntryNames(submission), n => n.StartsWith("clip/", StringComparison.Ordinal));
+        Assert.Contains(BundleEntryNames.ScreenshotPng, EntryNames(submission));
+        Assert.Equal("Bug report sent. Reference " + ReportIds.ReferenceCode(submission.ReportId), Toast(flow));
+    }
+
+    [Fact]
+    public async Task Screenshot_with_a_mismatched_header_sends_without_it()
+    {
+        _capture.Screenshot = () => Task.FromResult(FakeCapture.DefaultScreenshot() with { Width = FakeCapture.ShotWidth + 1 });
+        BugReportFlow flow = await SignedIn();
+        Open(flow);
+
+        Send(flow);
+        await Settle(flow);
+
+        BugReportSubmission submission = Assert.Single(_sink.Submissions);
+        Assert.True(BundleValidator.Validate(new MemoryStream(submission.Bundle.ToArray())).IsValid);
+        Assert.DoesNotContain(EntryNames(submission), n => n.StartsWith("screenshot", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Build_failure_without_media_toasts_the_failed_line()
+    {
+        BugReportFlow flow = await SignedIn();
+        // A capture after 2107 UTC cannot stamp a zip entry, so even the sections alone cannot be written.
+        _time.Advance(TimeSpan.FromDays(366 * 82));
         Open(flow);
 
         Send(flow);

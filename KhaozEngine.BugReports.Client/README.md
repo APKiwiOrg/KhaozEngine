@@ -40,8 +40,8 @@ next frame and at most three frames after the trigger. From the trigger until it
 hands it to the sink. The result shows as a toast and raises `ReportSubmitted` on the frame thread.
 
 Media never costs a report. Send keeps the newest clip frames that fit the bundle's 128 entries and 16 MiB beside the
-sections and the screenshot. When the bundle writer still refuses a size limit, Send retries once without the clip,
-then once with the sections only.
+sections and the screenshot. When the bundle writer still refuses a size limit, or a clip frame or screenshot whose
+image header does not match its record, Send retries once without the clip, then once with the sections only.
 
 ## What the service adds
 

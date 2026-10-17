@@ -6,9 +6,10 @@ using KhaozEngine.Diagnostics;
 namespace KhaozEngine.BugReports.Client;
 
 /// <summary>
-/// Writes a report's bundle so media size never loses the report. The clip is fitted first: the oldest frames go until
+/// Writes a report's bundle so its media never loses the report. The clip is fitted first: the oldest frames go until
 /// the entry count and the estimated payload fit <see cref="BugReportLimits"/>. When the writer still refuses a size
-/// limit, it retries once without the clip, then once with the sections only.
+/// limit, or refuses a clip frame or screenshot whose image header does not match its record, it retries once without
+/// the clip, then once with the sections only. Only a failure of the sections-only bundle reaches the caller.
 /// </summary>
 internal static class ReportBundleBuilder
 {
@@ -20,7 +21,7 @@ internal static class ReportBundleBuilder
         IReadOnlyList<CapturedSection> Sections, string Description, string Category, ReportImage? Screenshot, ReportClip? Clip);
 
     /// <summary>Writes the bundle with as much of the requested media as fits.</summary>
-    /// <exception cref="ArgumentException">A field is invalid. See <see cref="BugReportBundleWriter.Write"/>.</exception>
+    /// <exception cref="ArgumentException">A field other than the media is invalid. See <see cref="BugReportBundleWriter.Write"/>.</exception>
     /// <exception cref="InvalidOperationException">Even the sections alone exceed a bundle limit.</exception>
     internal static byte[] Write(Request request)
     {
@@ -36,9 +37,11 @@ internal static class ReportBundleBuilder
             {
                 return BugReportBundleWriter.Write(Draft(request, screenshot, media));
             }
-            catch (InvalidOperationException exception) when (i + 1 < attempts.Count)
+            // Every attempt but the last carries media, so a refusal there may be the media's: a size limit
+            // (InvalidOperationException) or an image that does not match its record (ArgumentException).
+            catch (Exception exception) when ((exception is InvalidOperationException or ArgumentException) && i + 1 < attempts.Count)
             {
-                Log.Warn("Bug report " + request.ReportId + " exceeded a bundle limit and is retried with less media.", exception);
+                Log.Warn("Bug report " + request.ReportId + " could not be written with its media and is retried with less.", exception);
             }
         }
     }

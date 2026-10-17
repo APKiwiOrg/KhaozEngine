@@ -121,9 +121,11 @@ internal static class FootSupport
         in FootSupportQuery query, SupportFootprintBounds? scope, ProbeScratch scratch, ref Selection selection,
         out bool refused)
     {
-
-        SupportFootprintResult result = features.QuerySupportFootprint(lease, request,
-            scratch.Members, scratch.Joins, QueryFilter.StaticsOnly);
+        // Certification reads only joins between members with a positive upward bound, so the backend skips the rest.
+        SupportFootprintResult result;
+        using (SupportCertificationJoins.Arm())
+            result = features.QuerySupportFootprint(lease, request, scratch.Members, scratch.Joins,
+                QueryFilter.StaticsOnly);
         FootprintScope? certified = scope is { } bounds ? new(bounds, request.BandLower, request.BandUpper) : null;
         int count;
         using (ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportCertification))

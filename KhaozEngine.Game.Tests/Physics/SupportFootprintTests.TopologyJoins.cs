@@ -16,19 +16,21 @@ public partial class SupportFootprintTests
     {
         using var counters = new WorldFormCounters();
         using var scene = new WorldFormScene(CostRows().Single(row => row.Name == "stairs box"));
+        // The raw query builds every join, so its counters show each topology join. A Find builds only the joins
+        // certification reads, and no such pair on the stairs is joined.
         SupportQueryDiagnostics.Reset();
-        SupportSample cold = scene.Find();
+        Footprint cold = Raw(scene, armed: false);
         SupportQueryCounts coldCounts = SupportQueryDiagnostics.Snapshot();
         SupportQueryDiagnostics.Reset();
-        SupportSample warm = scene.Find();
+        Footprint warm = Raw(scene, armed: false);
         SupportQueryCounts warmCounts = SupportQueryDiagnostics.Snapshot();
         SupportQueryDiagnostics.Reset();
-        SupportSample reference;
-        using (SupportReferenceEvaluation.Begin()) reference = scene.Find();
+        Footprint reference;
+        using (SupportReferenceEvaluation.Begin()) reference = Raw(scene, armed: false);
         SupportQueryCounts referenceCounts = SupportQueryDiagnostics.Snapshot();
 
-        Assert.Equal(cold.ToString(), warm.ToString());
-        Assert.Equal(reference.ToString(), warm.ToString());
+        Assert.Equal(cold.Text, warm.Text);
+        Assert.Equal(reference.Text, warm.Text);
         Assert.True(warmCounts.TopologyJoins > 0, "stairs box: no join came from the captured topology.");
         Assert.True(warmCounts.JoinsProved < referenceCounts.JoinsProved,
             $"stairs box: {warmCounts.JoinsProved} geometric joins against the reference's {referenceCounts.JoinsProved}.");
@@ -37,7 +39,7 @@ public partial class SupportFootprintTests
         Assert.Equal(referenceCounts.JoinPairs, warmCounts.JoinPairs);
         Assert.Equal(referenceCounts.JoinsPruned, warmCounts.JoinsPruned);
         Assert.Equal(0, referenceCounts.TopologyJoins);
-        // The building Find takes its joins from the topology it just built, so cold and warm count alike.
+        // The building query takes its joins from the topology it just built, so cold and warm count alike.
         Assert.Equal(coldCounts with { WorldFormBuilds = 0 }, warmCounts);
 
         scene.Checked("stairs box warm", out _);

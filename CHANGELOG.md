@@ -5,6 +5,13 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.4.1
+
+- `MapPlacement` in `KhaozEngine.MapDoc` counts reads of its lookup keys (`Id`, `Kind`, `X`, `Z`) internally,
+  so the viewport pick linearity test in `KhaozEngine.MapEditor` also catches a per-element scan through a
+  captured document or the viewport's own copy, with the viewport's pick state built (#1453). Public behaviour
+  and the serialized document are unchanged.
+
 ## 21.4.0
 
 - New in-game bug reports. A player presses F10 on any screen (title, login or in game). The frame that saw
@@ -43,10 +50,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   behaviour is unchanged. The tracked persistence tests now hold every controlled pause on test-owned threads,
   which ends their intermittent watchdog failures on loaded hosted runners (#1317).
 - `EditorDocument` in `KhaozEngine.MapEditor` counts reads of `Doc` internally, so the viewport pick linearity
-  test asserts a constant read count per pick instead of a wall-clock bound (#1444). `MapPlacement` in
-  `KhaozEngine.MapDoc` also counts reads of its lookup keys (`Id`, `Kind`, `X`, `Z`) internally, so the same
-  test catches a per-element scan through a captured document or the viewport's own copy, with the viewport's
-  pick state built (#1453). Public behaviour is unchanged.
+  test asserts a constant read count per pick instead of a wall-clock bound (#1444). Public behaviour is
+  unchanged.
 - The `ke-tileedit` MCP adapter now drops a queued tool call as soon as it reads that call's cancellation from
   the transport, under the same lock that releases the next call. A call cancelled while queued never starts
   and gets no response, whatever order the thread pool runs the SDK's handlers in (#1443). A malformed or

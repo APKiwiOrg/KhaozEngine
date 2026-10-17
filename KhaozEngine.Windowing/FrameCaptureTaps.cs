@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Runtime.ExceptionServices;
 using KhaozEngine.Gpu;
 
 namespace KhaozEngine.Windowing
@@ -70,8 +72,11 @@ namespace KhaozEngine.Windowing
             Array.Copy(_taps, 0, next, 0, index);
             Array.Copy(_taps, index + 1, next, index, _taps.Length - index - 1);
             _taps = next;
-            tap.Detach(_retireAction);
-            if (_taps.Length == 0) ReleaseSwapchainUse();
+            try { tap.Detach(_retireAction); }
+            finally
+            {
+                if (_taps.Length == 0) ReleaseSwapchainUse();
+            }
         }
 
         /// <summary>Run every tap's <see cref="IFrameCaptureTap.Record"/> inside the frame's open recording and
@@ -130,18 +135,35 @@ namespace KhaozEngine.Windowing
         }
 
         /// <summary>Detach every tap, then free everything retired. Window teardown, with nothing recording.
-        /// </summary>
+        /// A tap whose <see cref="IFrameCaptureTap.Detach"/> throws does not stop the rest: every tap is still
+        /// detached and the retire queue is still freed, then the failure is rethrown. More than one failure
+        /// rethrows as an <see cref="AggregateException"/>.</summary>
         public void Dispose()
         {
             if (_disposed) return;
             _disposed = true;
             IFrameCaptureTap[] taps = _taps;
             _taps = Array.Empty<IFrameCaptureTap>();
-            foreach (IFrameCaptureTap tap in taps) tap.Detach(_retireAction);
-            if (taps.Length > 0) ReleaseSwapchainUse();
-            // Dispose is FlushAll followed by freeing the queue's own fence barrier.
-            _retire?.Dispose();
-            _retire = null;
+            List<Exception>? failures = null;
+            try
+            {
+                foreach (IFrameCaptureTap tap in taps)
+                {
+                    try { tap.Detach(_retireAction); }
+                    catch (Exception e) { (failures ??= new List<Exception>()).Add(e); }
+                }
+            }
+            finally
+            {
+                if (taps.Length > 0) ReleaseSwapchainUse();
+                // Dispose is FlushAll followed by freeing the queue's own fence barrier.
+                _retire?.Dispose();
+                _retire = null;
+            }
+
+            if (failures is null) return;
+            if (failures.Count == 1) ExceptionDispatchInfo.Capture(failures[0]).Throw();
+            throw new AggregateException("More than one capture tap failed to detach.", failures);
         }
 
         void ReleaseSwapchainUse()

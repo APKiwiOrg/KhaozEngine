@@ -414,8 +414,14 @@ A rendered frame with a tap registered runs in this order:
 5. Every tap's `AfterSubmit(context)`, with nothing recording, so a map or a blocking readback is legal.
 6. `Present`.
 
-A render-suppressed (minimised) frame runs no tap. With no tap registered, and nothing a removed tap retired still
-waiting on the GPU, the frame is exactly the frame without taps: one `Submit(commands)` and one `Present()`.
+A render-suppressed (minimised) frame runs no tap. A window that never registered a tap always runs the unchanged
+frame: one `Submit(commands)` and one `Present()`, nothing else. After the last tap leaves, the registry keeps the
+tap path for the few frames its retired resources need to clear the GPU. On a device with completion fences that
+includes one empty fenced submit that seals them. Once nothing is pending, frames return to exactly one
+`Submit(commands)` and one `Present()`.
+
+Window disposal detaches every tap. A tap whose `Detach` throws does not stop the others from being detached, and
+does not stop the registry, the command list, the device or the window from being freed.
 
 `FrameCaptureContext` is shared by every tap in a frame:
 

@@ -262,6 +262,35 @@ namespace KhaozEngine.Tests.Windowing
             Assert.Equal(0, device.TexturesAlive);   // the tap's texture and the swapchain image copy
         }
 
+        [Fact]
+        public void A_throwing_tap_Detach_does_not_stop_the_registry_from_detaching_the_rest()
+        {
+            using var device = new OpenListTrackingGpuDevice(completionFences: true, swapchain: true);
+            using IGpuCommandList list = device.Factory.CreateCommandList();
+            var capture = new FakeSwapchainCapture { SwapchainCopyable = true };
+            var taps = new FrameCaptureTaps(device, capture);
+            IGpuTexture owned = device.Factory.CreateTexture(
+                GpuTextureDescription.Texture2D(4, 4, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled));
+            var throwing = new RecordingTap(device, new List<string>())
+            {
+                OnRecord = c => c.AcquireSwapchainImage(),
+                OnDetach = _ => throw new InvalidOperationException("detach failed"),
+            };
+            var after = new RecordingTap(device, new List<string>()) { OnDetach = retire => retire(owned) };
+            taps.Add(throwing);
+            taps.Add(after);
+            RunFrame(device, list, taps);
+
+            var thrown = Assert.Throws<InvalidOperationException>(taps.Dispose);
+
+            Assert.Equal("detach failed", thrown.Message);
+            Assert.Equal(1, throwing.Detaches);
+            Assert.Equal(1, after.Detaches);
+            Assert.Equal(new[] { true, false }, capture.Requested);
+            Assert.Equal(0, device.TexturesAlive);   // the retire queue was still flushed
+            Assert.False(taps.HasWork);
+        }
+
         /// <summary>Logs each callback and how many lists were open during it, and runs an optional action.</summary>
         sealed class RecordingTap : IFrameCaptureTap
         {

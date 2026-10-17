@@ -173,6 +173,47 @@ public sealed class BugReportSectionSetTests
     }
 
     [Fact]
+    public void Finish_truncates_and_drops_against_a_smaller_total_budget()
+    {
+        RawSection[] raw =
+        [
+            new("one", 1024, Encoding.UTF8.GetBytes("{\"ok\":1}"), IsError: false),
+            new("two", 1024, Encoding.UTF8.GetBytes("{\"keep\":" + new string('1', 94)
+                + ",\"overflow\":" + new string('1', 80) + "}"), IsError: false),
+            new("three", 1024, Encoding.UTF8.GetBytes("{\"late\":true}"), IsError: false),
+        ];
+
+        IReadOnlyList<CapturedSection> finished = BugReportSectionSet.Finish(raw, Redactor, Unclocked, totalBytes: 128);
+
+        Assert.Equal(new[] { "one", "two" }, finished.Select(section => section.Key));
+        Assert.Equal(128, finished.Sum(section => section.Json.Length));
+        Assert.Equal(raw[0].Json.ToArray(), finished[0].Json.ToArray());
+        Assert.Equal("{\"truncated\":true,\"keep\":" + new string('1', 94) + "}", Text(finished[1].Json));
+    }
+
+    [Theory]
+    [InlineData(int.MinValue)]
+    [InlineData(0)]
+    [InlineData(BugReportSectionSet.MinSectionBytes - 1)]
+    public void Finish_rejects_a_total_budget_below_the_section_minimum(int totalBytes)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>("totalBytes", () =>
+            BugReportSectionSet.Finish([], Redactor, Unclocked, totalBytes));
+    }
+
+    [Fact]
+    public void Finish_accepts_the_minimum_total_budget()
+    {
+        var set = new BugReportSectionSet();
+        set.Add(new TestSection("ok", 1024, WriteObject("ok", "yes")));
+
+        CapturedSection finished = Assert.Single(BugReportSectionSet.Finish(
+            set.CaptureAll(Context), Redactor, Unclocked, totalBytes: BugReportSectionSet.MinSectionBytes));
+
+        Assert.Equal("{\"ok\":\"yes\"}", Text(finished.Json));
+    }
+
+    [Fact]
     public void Section_with_budget_under_64_bytes_is_dropped()
     {
         // {"lines":[ ... ]} costs 11 bytes and each string its length plus 3 for quotes and a comma. Strings stay

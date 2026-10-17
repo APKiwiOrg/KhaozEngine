@@ -111,6 +111,7 @@ public static class BugReportLimits
     public const int MaxTitleChars = 70;
     public const int MaxScreenshotLongEdge = 2560;
     public const int MaxServerSnapshotBytes = 1024 * 1024;
+    public const int ServerSnapshotEnvelopeReserveBytes = 16 * 1024;
     public const int MaxPngScreenshotBytes = 4 * 1024 * 1024;
 }
 public enum BugReportKind { Bug, Crash }
@@ -185,7 +186,7 @@ public interface IBugReportSection
 }
 public sealed record BugReportContext(string ReportId, DateTimeOffset CapturedAt, string? Subject = null);
 public sealed record RawSection(string Key, int MaxBytes, ReadOnlyMemory<byte> Json, bool IsError);   // unredacted capture output
-public sealed record CapturedSection(string Key, ReadOnlyMemory<byte> Json);   // finished: redacted, truncated, inside 1 MiB
+public sealed record CapturedSection(string Key, ReadOnlyMemory<byte> Json);   // finished: redacted, truncated, inside the selected total
 public sealed class BugReportSectionSet
 {
     public const int MinSectionBytes = 64;
@@ -193,8 +194,8 @@ public sealed class BugReportSectionSet
     public IReadOnlyList<string> Keys { get; }
     public void Add(IBugReportSection section);
     public IReadOnlyList<RawSection> CaptureAll(BugReportContext context);   // isolation only, frame thread
-    // Off the frame thread: redaction, error message cut, truncation, 1 MiB total. Masks every remaining string once budget is spent.
-    public static IReadOnlyList<CapturedSection> Finish(IReadOnlyList<RawSection> raw, ReportRedactor redactor, TimeSpan budget);
+    // Off the frame thread: redaction, error message cut, truncation, configurable total (1 MiB by default). Masks every remaining string once budget is spent.
+    public static IReadOnlyList<CapturedSection> Finish(IReadOnlyList<RawSection> raw, ReportRedactor redactor, TimeSpan budget, int totalBytes = BugReportLimits.MaxSectionBytesTotal);
 }
 public sealed class BugReportDraft
 {

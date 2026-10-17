@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -53,7 +54,8 @@ public sealed class ServerSnapshotPoster
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 IReadOnlyList<CapturedSection> finished = BugReportSectionSet.Finish(
-                    snapshot.Sections, redactor, BugReportSectionSet.DefaultFinishBudget);
+                    snapshot.Sections, redactor, BugReportSectionSet.DefaultFinishBudget,
+                    BugReportLimits.MaxServerSnapshotBytes - BugReportLimits.ServerSnapshotEnvelopeReserveBytes);
                 var sections = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
                 foreach (CapturedSection section in finished)
                 {
@@ -87,9 +89,20 @@ public sealed class ServerSnapshotPoster
         }
     }
 
-    static bool Fail(string reason, Exception? exception = null)
+    bool Fail(string reason, Exception? exception = null)
     {
-        Log.Warn("Bug report server snapshot was not posted: " + reason + ".", exception);
+        var text = new StringBuilder("Bug report server snapshot was not posted: ").Append(reason);
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+        {
+            string detail;
+            try { detail = current.Message; }
+            catch (Exception) { detail = ReportRedactor.Mask; }
+            text.Append(" -> ").Append(current.GetType().FullName).Append(": ").Append(detail);
+        }
+        string message = redactor.Redact(text.Append('.').ToString());
+        if (serviceKey.Length != 0)
+            message = message.Replace(serviceKey, ReportRedactor.Mask, StringComparison.Ordinal);
+        Log.Warn(message);
         return false;
     }
 }

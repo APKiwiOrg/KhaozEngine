@@ -14,7 +14,7 @@ namespace KhaozEngine.BugReports;
 /// the report and only isolates: each section writes into its own capped buffer, and a section that throws, writes
 /// more than 4 MiB, leaves a container open or writes anything but one object becomes an error object.
 /// <see cref="Finish"/> runs off that thread and does the slow work: redaction, the error message cut, structural
-/// truncation and the 1 MiB section total. Add sections and capture from one thread.
+/// truncation and the section total (1 MiB by default). Add sections and capture from one thread.
 /// </summary>
 public sealed class BugReportSectionSet
 {
@@ -84,14 +84,17 @@ public sealed class BugReportSectionSet
     /// <paramref name="redactor"/>. Once <paramref name="budget"/> has elapsed every remaining string becomes
     /// <see cref="ReportRedactor.Mask"/>, and numbers, booleans and nulls are kept. A name that repeats after that
     /// gets a <c>#n</c> suffix. An error message is cut to 512 UTF-16 units after redaction. Each section is then cut
-    /// to the smaller of its own budget and what is left of the 1 MiB total, and dropped with a warning when that is
-    /// under <see cref="MinSectionBytes"/>.
+    /// to the smaller of its own budget and what is left of <paramref name="totalBytes"/>, and dropped with a warning
+    /// when that is under <see cref="MinSectionBytes"/>.
     /// </summary>
     /// <exception cref="ArgumentNullException"><paramref name="raw"/>, an entry or <paramref name="redactor"/> is null.</exception>
-    public static IReadOnlyList<CapturedSection> Finish(IReadOnlyList<RawSection> raw, ReportRedactor redactor, TimeSpan budget)
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="totalBytes"/> is under <see cref="MinSectionBytes"/>.</exception>
+    public static IReadOnlyList<CapturedSection> Finish(IReadOnlyList<RawSection> raw, ReportRedactor redactor, TimeSpan budget,
+        int totalBytes = BugReportLimits.MaxSectionBytesTotal)
     {
         ArgumentNullException.ThrowIfNull(raw);
         ArgumentNullException.ThrowIfNull(redactor);
+        ArgumentOutOfRangeException.ThrowIfLessThan(totalBytes, MinSectionBytes);
         Stopwatch clock = Stopwatch.StartNew();
         string Redact(string text) => clock.Elapsed >= budget ? ReportRedactor.Mask : redactor.Redact(text);
 
@@ -100,7 +103,7 @@ public sealed class BugReportSectionSet
         foreach (RawSection section in raw)
         {
             ArgumentNullException.ThrowIfNull(section, nameof(raw));
-            int sectionBudget = Math.Min(section.MaxBytes, BugReportLimits.MaxSectionBytesTotal - used);
+            int sectionBudget = Math.Min(section.MaxBytes, totalBytes - used);
             // Checked before redacting so a dropped section spends none of the redaction budget.
             if (sectionBudget < MinSectionBytes)
             {

@@ -42,6 +42,7 @@ An MP4 clip uses `clip.mp4` for every frame's entry, with timing in the index.
 | Screenshot long edge | 2560 pixels |
 | PNG screenshot bytes | 4 MiB |
 | Server snapshot bytes | 1 MiB |
+| Server snapshot envelope reserve | 16 KiB |
 | Category | 64 characters |
 | Game id | 32 characters |
 | Section JSON depth | 64 |
@@ -57,6 +58,9 @@ the other three:
 - `MaxPngScreenshotBytes` is a client capture limit that decides between PNG and JPEG.
 - `MaxTitleChars` applies to the issue title, which is not part of the bundle.
 - `MaxServerSnapshotBytes` applies to `ServerSnapshotWire`, which is not part of the bundle.
+
+`ServerSnapshotPoster` leaves `ServerSnapshotEnvelopeReserveBytes` for metadata and framing when
+finishing server sections. Client sections keep the full `MaxSectionBytesTotal` budget.
 
 ## Bundle validation
 

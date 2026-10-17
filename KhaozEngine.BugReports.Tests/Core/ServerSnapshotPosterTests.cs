@@ -184,15 +184,41 @@ public sealed class ServerSnapshotPosterTests
         using var http = new HttpClient(handler);
         using IDisposable scope = CaptureLogs(out LogManager manager);
         using var ownedManager = manager;
-        // The section fits its total budget exactly, but the wire envelope takes the snapshot over the limit.
-        // Numeric payload bytes cannot be shortened by a redaction timeout on a slow runner.
-        string json = "{\"large\":" + new string('1', BugReportLimits.MaxServerSnapshotBytes - 10) + "}";
-        Assert.Equal(BugReportLimits.MaxServerSnapshotBytes, Encoding.UTF8.GetByteCount(json));
+        var snapshot = Snapshot(Section()) with { Subject = new string('s', BugReportLimits.MaxServerSnapshotBytes) };
 
-        Assert.False(await Poster(http).PostAsync(Snapshot(Section(json: json, maxBytes: BugReportLimits.MaxServerSnapshotBytes)), CancellationToken.None));
+        Assert.False(await Poster(http).PostAsync(snapshot, CancellationToken.None));
 
         Assert.Empty(handler.Requests);
         AssertOneWarning();
+    }
+
+    [Fact]
+    public async Task Snapshot_whose_sections_fill_the_budget_is_posted()
+    {
+        const int SectionBytes = 256 * 1024;
+        const int LastSectionBytes = 240 * 1024;
+        string json = "{\"large\":" + new string('1', SectionBytes - 10) + "}";
+        // The truncated final section costs 27 framing bytes, plus this numeric leaf.
+        string lastJson = "{\"large\":" + new string('1', LastSectionBytes - 27)
+            + ",\"overflow\":" + new string('1', 16 * 1024) + "}";
+        var handler = new FakeHttpHandler().Respond(HttpStatusCode.Accepted);
+        using var http = new HttpClient(handler);
+        using IDisposable scope = CaptureLogs(out LogManager manager);
+        using var ownedManager = manager;
+        var snapshot = Snapshot(Section("one", json, SectionBytes), Section("two", json, SectionBytes),
+            Section("three", json, SectionBytes), Section("four", lastJson, SectionBytes), Section("dropped"));
+
+        Assert.True(await Poster(http).PostAsync(snapshot, CancellationToken.None));
+
+        byte[] body = Assert.Single(handler.Requests).Body;
+        Assert.True(body.Length <= BugReportLimits.MaxServerSnapshotBytes);
+        ServerSnapshotWire wire = BugReportJson.DeserializeServerSnapshot(body);
+        Assert.Equal(4, wire.Sections.Count);
+        Assert.Equal(1008 * 1024, wire.Sections.Values.Sum(section => Encoding.UTF8.GetByteCount(section.GetRawText())));
+        Assert.True(wire.Sections["four"].GetProperty("truncated").GetBoolean());
+        Assert.False(wire.Sections["four"].TryGetProperty("overflow", out _));
+        AssertOneWarning();
+        Assert.Contains("dropped", Assert.Single(logs.Entries).Message, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -270,14 +296,65 @@ public sealed class ServerSnapshotPosterTests
     }
 
     [Fact]
-    public async Task Unexpected_http_fault_returns_false_with_one_warning()
+    public async Task Http_fault_warning_redacts_the_service_key_and_exception_message_chain()
+    {
+        const string ServiceKey = "dummy-service-credential";
+        var exception = new HttpRequestException("transport " + ServiceKey + " " + ServiceKey,
+            new InvalidOperationException("reading /server/private/world with Bearer abcdefgh12",
+                new ArgumentException("last " + ServiceKey)));
+        var handler = new FakeHttpHandler().Throw(exception).Throw(exception).Throw(exception);
+        using var http = new HttpClient(handler);
+        using IDisposable scope = CaptureLogs(out LogManager manager);
+        using var ownedManager = manager;
+        var poster = new ServerSnapshotPoster(http, new Uri("https://relay.example/"), ServiceKey, new ReportRedactor("/server/private"))
+        {
+            RetryPolicy = HttpRelaySink.DefaultPolicy with { Backoff = _ => TimeSpan.Zero },
+        };
+
+        Assert.False(await poster.PostAsync(Snapshot(), CancellationToken.None));
+
+        AssertOneWarning();
+        string formatted = LogFormatter.Format(Assert.Single(logs.Entries));
+        Assert.DoesNotContain(ServiceKey, formatted, StringComparison.Ordinal);
+        Assert.DoesNotContain("abcdefgh12", formatted, StringComparison.Ordinal);
+        Assert.DoesNotContain("/server/private", formatted, StringComparison.Ordinal);
+        Assert.Contains("System.Net.Http.HttpRequestException: transport [redacted] [redacted]", formatted, StringComparison.Ordinal);
+        Assert.Contains("System.InvalidOperationException: reading ~/world with Bearer [redacted]", formatted, StringComparison.Ordinal);
+        Assert.Contains("System.ArgumentException: last [redacted]", formatted, StringComparison.Ordinal);
+        Assert.Null(Assert.Single(logs.Entries).Exception);
+    }
+
+    [Fact]
+    public async Task Http_fault_with_unreadable_inner_message_returns_false_with_one_warning()
+    {
+        var exception = new HttpRequestException("offline", new UnreadableMessageException());
+        var handler = new FakeHttpHandler().Throw(exception).Throw(exception).Throw(exception);
+        using var http = new HttpClient(handler);
+        using IDisposable scope = CaptureLogs(out LogManager manager);
+        using var ownedManager = manager;
+
+        Assert.False(await Poster(http).PostAsync(Snapshot(), CancellationToken.None));
+
+        AssertOneWarning();
+        string formatted = LogFormatter.Format(Assert.Single(logs.Entries));
+        Assert.Contains("System.Net.Http.HttpRequestException: offline", formatted, StringComparison.Ordinal);
+        Assert.Contains(typeof(UnreadableMessageException).FullName + ": " + ReportRedactor.Mask, formatted, StringComparison.Ordinal);
+        Assert.Null(Assert.Single(logs.Entries).Exception);
+    }
+
+    [Theory]
+    [InlineData("k")]
+    [InlineData("")]
+    public async Task Unexpected_http_fault_returns_false_with_one_warning(string serviceKey)
     {
         var handler = new FakeHttpHandler().Throw(new InvalidOperationException("handler failed"));
         using var http = new HttpClient(handler);
         using IDisposable scope = CaptureLogs(out LogManager manager);
         using var ownedManager = manager;
 
-        Assert.False(await Poster(http).PostAsync(Snapshot(), CancellationToken.None));
+        var poster = new ServerSnapshotPoster(http, new Uri("https://relay.example/"), serviceKey);
+
+        Assert.False(await poster.PostAsync(Snapshot(), CancellationToken.None));
 
         Assert.Single(handler.Requests);
         AssertOneWarning();
@@ -342,6 +419,11 @@ public sealed class ServerSnapshotPosterTests
     {
         using var http = new HttpClient();
         Assert.Throws<ArgumentException>(() => new ServerSnapshotPoster(http, new Uri(address, kind), "k"));
+    }
+
+    sealed class UnreadableMessageException : Exception
+    {
+        public override string Message => throw new InvalidOperationException("message getter failed");
     }
 
     sealed class ObservingHandler(HttpMessageHandler inner) : DelegatingHandler(inner)

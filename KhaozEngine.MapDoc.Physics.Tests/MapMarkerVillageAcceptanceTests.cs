@@ -70,11 +70,14 @@ public sealed class MapMarkerVillageAcceptanceTests
         var beforeNavCaptureIdentities = Nav(before, grids);
         var beforeAnnotations = MapResidencyOwnership.BuildAnnotations(before, grids);
 
+        // The actor stands above every static, and markers never widen the world extent.
+        Assert.True(before.Markers.Single(m => m.Id == "actor").Position.Y.ToDouble() > before.Bounds.MaxY);
+
         // A move across a storage tile seam through the shared marker edit. The support-bound height re-resolves on
         // the same flat owner, so world bounds and every static stay put.
         MapLocalMarkerDoc start = village.Document.BuildingIntent!.Markers.Single(m => m.Id == "start");
         MapPrefabEditResult move = MapMarkerEdits.Prepare(village.Document, village.Assets,
-            new MapSetMarker(start with { Position = start.Position with { Z = -17.25f } }));
+            new MapSetMarker(start with { Position = start.Position with { X = -17.5f } }));
         Assert.Equal(MapNativeInvalidation.Residency, move.Effects.Invalidates);
         MapBuiltWorld moved = Build(village with { Document = move.After });
         var afterMarkerOnlyStatics = Statics(moved);
@@ -84,8 +87,8 @@ public sealed class MapMarkerVillageAcceptanceTests
         Assert.Equal(before.Bounds, moved.Bounds);
         Assert.NotEqual(before.AnnotationDigest, moved.AnnotationDigest);
 
-        var oldTile = new MapTileCoord(0, -1);
-        var newTile = new MapTileCoord(0, -2);
+        var oldTile = new MapTileCoord(-1, -1);
+        var newTile = new MapTileCoord(-2, -1);
         var movedAnnotations = MapResidencyOwnership.BuildAnnotations(moved, grids);
         Assert.Equal(new[] { oldTile }, Single(beforeAnnotations, "marker:start").Membership);
         Assert.Equal(new[] { newTile }, Single(movedAnnotations, "marker:start").Membership);
@@ -96,12 +99,13 @@ public sealed class MapMarkerVillageAcceptanceTests
         Assert.Contains(oldTile, movedSet.StorageTiles);
         Assert.Contains(newTile, movedSet.StorageTiles);
 
-        // Removing a marker retires its owner and keeps its old membership in the affected set.
+        // Removing the marker above every static retires its owner and keeps its old membership in the affected set.
         MapPrefabEditResult removal = MapMarkerEdits.Prepare(move.After, village.Assets, new MapRemoveMarker("actor"));
         Assert.Equal(MapNativeInvalidation.Residency, removal.Effects.Invalidates);
         MapBuiltWorld removed = Build(village with { Document = removal.After });
         Assert.Equal(beforeStatics, Statics(removed));
         Assert.Equal(beforeNavCaptureIdentities, Nav(removed, grids));
+        Assert.Equal(before.Bounds, removed.Bounds);
         var removedAnnotations = MapResidencyOwnership.BuildAnnotations(removed, grids);
         Assert.DoesNotContain(removedAnnotations, e => e.OwnerId == "marker:actor");
         Assert.Equal(Others(movedAnnotations, "marker:actor"), Others(removedAnnotations, "marker:actor"));
@@ -114,7 +118,7 @@ public sealed class MapMarkerVillageAcceptanceTests
         var markerEntries = beforeAnnotations.Where(e => e.OwnerId.StartsWith("marker:", StringComparison.Ordinal)).ToArray();
         Assert.Equal(MarkerFixtures.VillageIds.Select(id => "marker:" + id), markerEntries.Select(e => e.OwnerId));
         var window = new MapTileRect(oldTile, oldTile);
-        Assert.Equal(new[] { "marker:a/disabled-local", "marker:a/entry", "marker:actor" },
+        Assert.Equal(new[] { "marker:a/disabled-local", "marker:a/entry", "marker:actor", "marker:cave-bound", "marker:cave-explicit" },
             markerEntries.Where(e => !window.Contains(e.StorageOwner)).Select(e => e.OwnerId));
         string directory = Path.Combine(Path.GetTempPath(), "ke-marker-village-" + Guid.NewGuid().ToString("N"));
         try
@@ -126,30 +130,54 @@ public sealed class MapMarkerVillageAcceptanceTests
         finally { Directory.Delete(directory, true); }
     }
 
+    [Theory]
+    [InlineData("incident", "start", -452.4f, "exterior")]
+    [InlineData("neighbour", "cave-bound", -39.375f, "high-floor")]
+    public void SparseFloorSeats_BuildBothHeadsOnTheNamedOwner(string variant, string markerId, float worldY, string owner)
+    {
+        MarkerFixture fixture = MarkerFixtures.SeatSlots(variant);
+        MapBuiltWorld client = Head(fixture, false), server = Head(fixture, true);
+        foreach (MapBuiltWorld head in new[] { client, server })
+        {
+            MapEffectiveMarker marker = head.Markers.Single(m => m.Id == markerId);
+            Assert.Equal(MapExactValue.FromSingle(worldY), marker.Position.Y);
+            Assert.Equal(owner, marker.HeightProvenance!.Face!.Value.OwnerId);
+            Assert.Equal(worldY, head.Document.Placements.Single(p => p.PlacementId == "seat-probe").Transform.Position.Y);
+        }
+        Assert.Equal(Rows(client), Rows(server));
+        Assert.Equal(client.BuildHash, server.BuildHash);
+        // The effective path agrees with both heads.
+        MapEffectiveResources expanded = MapPrefabResolver.Expand(fixture.Document, fixture.Assets);
+        Assert.Equal(client.Markers.Select(m => (m.Id, m.Position, m.HeightProvenance)),
+            MapEffectiveAnnotations.Markers(expanded).Select(m => (m.Id, m.Position, m.HeightProvenance)));
+    }
+
     static void AssertVillageValues(MapBuiltWorld head)
     {
         var registry = new MapMarkerRegistry(head.Markers);
         MapEffectiveMarker start = registry.FindByName("start")!, actor = registry.FindByName("actor")!;
         MapEffectiveMarker label = registry.FindByName("roof-label")!, disabledLocal = registry.FindByName("disabled-local")!;
         MapEffectiveMarker caveExplicit = registry.FindByName("cave-explicit")!, caveBound = registry.FindByName("cave-bound")!;
-        MapEffectiveMarker negativeMarker = actor;
+        MapEffectiveMarker negativeMarker = start;
 
-        // Exact points, with negative X and an elevated local label, and support heights from their named owners.
+        // Exact points, with negative X, an elevated local label and an actor above every static, and support heights from
+        // their named owners.
         Assert.True(negativeMarker.Position.X.ToDouble() < 0);
-        Assert.Equal(MarkerFixtures.Exact(10.5f, -452.4f, -12.75f), start.Position);
-        Assert.Equal(MarkerFixtures.Exact(-1.5f, -451.25f, -10.25f), actor.Position);
+        Assert.Equal(MarkerFixtures.Exact(-6.5f, -452.4f, -9.25f), start.Position);
+        Assert.Equal(MarkerFixtures.Exact(5.25f, 12.25f, -12.5f), actor.Position);
+        Assert.True(actor.Position.Y.ToDouble() > head.Bounds.MaxY, "the actor lies outside the geometry's vertical extent");
         Assert.Equal(MarkerFixtures.Exact(2, -57.75f, -2), caveExplicit.Position);
-        Assert.Equal(MarkerFixtures.Exact(2.5f, -39.375f, -2.5f), caveBound.Position);
-        Assert.Equal(MarkerFixtures.FramePoint(MarkerFixtures.VillageFrame, 2, 4.5f, -2), label.Position);
+        Assert.Equal(MarkerFixtures.Exact(2.5f, -39.375f, -1.5f), caveBound.Position);
+        Assert.Equal(MarkerFixtures.FramePoint(MarkerFixtures.TransferredFrame, 2, 4.5f, -2), label.Position);
         Assert.True(label.Position.Y.ToDouble() > -446.4, "the label stands above the room's ceiling");
-        Assert.Equal(MarkerFixtures.FramePoint(MarkerFixtures.VillageFrame, 2, 1, -3), disabledLocal.Position);
+        Assert.Equal(MarkerFixtures.FramePoint(MarkerFixtures.TransferredFrame, 3, 0, -1) with { Y = MapExactValue.FromSingle(-450f) },
+            disabledLocal.Position);
         Assert.True(negativeMarker.Position.X.ToDouble() < 0 && label.Position.X.ToDouble() < 0 && disabledLocal.Position.X.ToDouble() < 0);
 
         Assert.Null(label.HeightProvenance);
         Assert.Equal(new MapMarkerHeightProvenance(MapMarkerHeightMode.Explicit, null, null, null, null, null), actor.HeightProvenance);
         Assert.Equal(actor.HeightProvenance, caveExplicit.HeightProvenance);
-        Assert.Equal(actor.HeightProvenance, disabledLocal.HeightProvenance);
-        foreach (var (marker, owner, worldY) in new[] { (start, "exterior", -452.4f), (caveBound, "high-floor", -39.375f) })
+        foreach (var (marker, owner, worldY) in new[] { (start, "exterior", -452.4f), (caveBound, "high-floor", -39.375f), (disabledLocal, "a/floor", -450f) })
         {
             MapMarkerHeightProvenance provenance = marker.HeightProvenance!;
             Assert.Equal(MapMarkerHeightMode.Support, provenance.Mode);
@@ -159,6 +187,7 @@ public sealed class MapMarkerVillageAcceptanceTests
         }
         Assert.Equal(MarkerFixtures.SurfaceBinding("exterior"), start.HeightProvenance!.Binding);
         Assert.Equal(MarkerFixtures.SpaceBinding("high-cave", -39.25f, 0.5f, 0.5f), caveBound.HeightProvenance!.Binding);
+        Assert.Equal(MarkerFixtures.SurfaceBinding("a/floor"), disabledLocal.HeightProvenance!.Binding);
 
         // Yaw modulo a turn, names, caller roles, ordered tags, archetype and instance ownership.
         Assert.True(MarkerFixtures.SameYaw(label.YawRadians, 0.25 + (double)0.371f), label.YawRadians.ToString("R", System.Globalization.CultureInfo.InvariantCulture));
@@ -209,11 +238,11 @@ public sealed class MapMarkerVillageAcceptanceTests
         var rows = new List<string>();
         foreach (var (rect, enabledOnly, expected) in new (MapMarkerRect, bool, string[])[]
         {
-            (new(-1.5, -10.25, -1, -10), false, new[] { "actor" }),
-            (new(10.5, -12.75, 11, -12.5), false, new[] { "start" }),
-            (new(2, -2.5, 2.5, 0), false, new[] { "cave-explicit" }),
-            (new(-8, 0, -4, 4), false, new[] { "a/disabled-local", "a/entry" }),
-            (new(-8, 0, -4, 4), true, new[] { "a/entry" }),
+            (new(-6.5, -9.25, -6, -9), false, new[] { "start" }),
+            (new(5.25, -12.5, 5.5, -12), false, new[] { "actor" }),
+            (new(2, -2, 2.5, 0), false, new[] { "cave-explicit" }),
+            (new(-16, 0, -7, 8), false, new[] { "a/disabled-local", "a/entry" }),
+            (new(-16, 0, -7, 8), true, new[] { "a/entry" }),
         })
         {
             var points = registry.InRect(rect, enabledOnly, m => MapMarkerSpaces.Query(world.Surfaces, m));

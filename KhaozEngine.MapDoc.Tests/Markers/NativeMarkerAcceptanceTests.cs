@@ -49,20 +49,20 @@ public sealed class NativeMarkerAcceptanceTests
             Assert.Equal(new[] { "start" }, registry.ByRole("start-role", true).Select(m => m.Id));
             Assert.Equal(new[] { "actor" }, registry.ByRole("actor-role", true).Select(m => m.Id));
             Assert.Equal(new[] { MarkerFixtures.DisabledLocalId, "actor" }, registry.ByRole("actor-role", false).Select(m => m.Id));
-            Assert.Equal(new[] { "cave-bound", "start" }, resources.MarkerSupports.Select(s => s.MarkerId));
+            Assert.Equal(new[] { MarkerFixtures.DisabledLocalId, "cave-bound", "start" }, resources.MarkerSupports.Select(s => s.MarkerId));
             Assert.All(resources.MarkerSupports, s => Assert.Equal(MapSupportStatus.Supported, s.Support.Status));
             // Minima are included and maxima excluded, negative coordinates included.
-            Assert.Equal(new[] { "actor" }, registry.InRect(new(-1.5, -10.25, -1, -10), false, Space).Select(p => p.Marker.Id));
-            Assert.Equal(new[] { "start" }, registry.InRect(new(10.5, -12.75, 11, -12.5), false, Space).Select(p => p.Marker.Id));
-            Assert.Equal(new[] { "cave-explicit" }, registry.InRect(new(2, -2.5, 2.5, 0), false, Space).Select(p => p.Marker.Id));
+            Assert.Equal(new[] { "start" }, registry.InRect(new(-6.5, -9.25, -6, -9), false, Space).Select(p => p.Marker.Id));
+            Assert.Equal(new[] { "actor" }, registry.InRect(new(5.25, -12.5, 5.5, -12), false, Space).Select(p => p.Marker.Id));
+            Assert.Equal(new[] { "cave-explicit" }, registry.InRect(new(2, -2, 2.5, 0), false, Space).Select(p => p.Marker.Id));
             Assert.Equal(new[] { MarkerFixtures.DisabledLocalId, MarkerFixtures.RoofLabelId },
-                registry.InRect(new(-8, 0, -4, 4), false, Space).Select(p => p.Marker.Id));
-            Assert.Equal(new[] { MarkerFixtures.RoofLabelId }, registry.InRect(new(-8, 0, -4, 4), true, Space).Select(p => p.Marker.Id));
+                registry.InRect(new(-16, 0, -7, 8), false, Space).Select(p => p.Marker.Id));
+            Assert.Equal(new[] { MarkerFixtures.RoofLabelId }, registry.InRect(new(-16, 0, -7, 8), true, Space).Select(p => p.Marker.Id));
             Assert.Equal(new[]
             {
                 (MarkerFixtures.DisabledLocalId, MapMembershipStatus.Resolved, "a/room", "exterior"),
                 (MarkerFixtures.RoofLabelId, MapMembershipStatus.Resolved, "exterior", ""),
-                ("actor", MapMembershipStatus.Resolved, "exterior", ""),
+                ("actor", MapMembershipStatus.Outside, "", ""),
                 ("cave-bound", MapMembershipStatus.Resolved, "high-cave", ""),
                 ("cave-explicit", MapMembershipStatus.Resolved, "deep-room", "deep-cave"),
                 ("start", MapMembershipStatus.Resolved, "exterior", ""),
@@ -88,11 +88,11 @@ public sealed class NativeMarkerAcceptanceTests
         Assert.Equal(6, markers.Enabled.Count);
         MapEffectiveMarker actor = markers.FindById("adopted-actor")!;
         Assert.Equal(("adopted-actor", "actor-role", false, "invented-actor"), (actor.Name, actor.Role, actor.Enabled, actor.ArchetypeId));
-        Assert.Equal(MarkerFixtures.Exact(10.5f, -451.5f, -10.5f), actor.Position);
+        Assert.Equal(MarkerFixtures.Exact(-3.5f, -451.5f, -6.5f), actor.Position);
         Assert.Equal(new[] { "second", "first" }, actor.Tags);
         Assert.Equal(0f, actor.YawRadians);
         MapEffectiveMarker start = markers.FindById("adopted-start")!;
-        Assert.Equal(MarkerFixtures.Exact(11.5f, -452.4f, -8.5f), start.Position);
+        Assert.Equal(MarkerFixtures.Exact(-2.5f, -452.4f, -7.5f), start.Position);
         Assert.Equal("exterior", start.HeightProvenance!.Face!.Value.OwnerId);
         Assert.Equal(BitConverter.SingleToUInt32Bits(0.371f), BitConverter.SingleToUInt32Bits(start.YawRadians));
 

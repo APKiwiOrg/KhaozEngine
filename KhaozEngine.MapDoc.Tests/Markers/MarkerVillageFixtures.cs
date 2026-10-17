@@ -18,26 +18,68 @@ internal static partial class MarkerFixtures
     internal const string DisabledLocalId = "a/disabled-local";
     internal static readonly string[] VillageIds = { "a/disabled-local", "a/entry", "actor", "cave-bound", "cave-explicit", "start" };
 
-    /// <summary>The room prefab's frame, northwest of the caves. Each support-bound point lies in storage slot (0, 0) of
-    /// every world floor and of the prefab's local floor, with its 2 m seat scope inside that slot unless the slot's patch
-    /// covers the point. The released seat query refuses with MissingGeometry when its scope captures a floor whose own
-    /// slot at the point it did not read, and the authored parent therefore spans all four slots around the caves.</summary>
-    internal static readonly MapTransform VillageFrame = new(new(-6, -450, 6), 0.371f, 1.2f);
-
     /// <summary>A complete native village with six uniquely named markers over released geometry only. The released room
-    /// prefab sits at <see cref="VillageFrame"/> inside its authored world parent <c>exterior</c>, and the released
-    /// stacked prefab-cave surfaces lie beside it. Its payload-1 marker child <c>entry</c> becomes the elevated
-    /// <c>roof-label</c> through a replace override, and a payload-2 local child <c>disabled-local</c> is disabled,
-    /// Explicit inside the prefab room and tagged second, first, first. World markers are <c>start</c>, Surface-bound to
-    /// <c>exterior</c>, <c>actor</c>, Explicit with an archetype at negative X, <c>cave-explicit</c> in the deep room and
-    /// <c>cave-bound</c>, Space-bound to the high cave. Every marker lies within the vertical extent of the world geometry.
-    /// Roles are caller vocabulary. Neither legacy spawn list has a record.</summary>
-    internal static MarkerFixture Village()
+    /// prefab sits at <see cref="TransferredFrame"/> inside its authored world parent <c>exterior</c>, and the released
+    /// stacked prefab-cave surfaces lie inside the same columns at their own heights. The prefab's payload-1 marker child
+    /// <c>entry</c> becomes the elevated <c>roof-label</c> through a replace override, and its payload-2 local child
+    /// <c>disabled-local</c> is disabled, Surface-bound to the prefab's local floor and tagged second, first, first. World
+    /// markers are <c>start</c>, Surface-bound to <c>exterior</c> at negative X, <c>actor</c>, Explicit with an archetype
+    /// above every static, <c>cave-explicit</c> in the deep room and <c>cave-bound</c>, Space-bound to the high cave. Roles
+    /// are caller vocabulary. Neither legacy spawn list has a record.</summary>
+    internal static MarkerFixture Village() => VillageDocument(TransferredFrame, VillageWorldMarkers(),
+        new MapPrefabMarkerChild(new(MapPrefabChildKind.Marker, "disabled-local"),
+            MapMarkerHeights.Apply(new(1, "disabled-local", "disabled-local", new Vector3(3, 0, -1), -0.5f, "actor-role", false,
+                new[] { "second", "first", "first" }), new(null, SurfaceBinding("floor"))))
+        { References = [new("/value/supportBinding/surfaceId", new(MapPrefabReferenceScope.Local, MapPrefabChildKind.Surface, "floor"))] });
+
+    /// <summary>The four world markers of <see cref="Village"/> in their authored order.</summary>
+    internal static MapLocalMarkerDoc[] VillageWorldMarkers() =>
+    [
+        MapMarkerHeights.Apply(new(1, "start", "start", new Vector3(-6.5f, 0, -9.25f), 0.371f, "start-role", true, new[] { "first", "second" }),
+            new(null, SurfaceBinding("exterior"))),
+        MapMarkerHeights.Apply(new(1, "actor", "actor", new Vector3(5.25f, 0, -12.5f), 1.25f, "actor-role", true, new[] { "actor" }),
+            new(12.25f, null)) with { ArchetypeId = "invented-actor" },
+        MapMarkerHeights.Apply(new(1, "cave-explicit", "cave-explicit", new Vector3(2, 0, -2), 0.371f, "cave-role", true, new[] { "deep", "room" }),
+            new(-57.75f, null)),
+        CaveBound(2.5f, -1.5f),
+    ];
+
+    static MapLocalMarkerDoc CaveBound(float x, float z) =>
+        MapMarkerHeights.Apply(new(1, "cave-bound", "cave-bound", new Vector3(x, 0, z), -1.5f, "cave-role", true, new[] { "high" }),
+            new(null, SpaceBinding("high-cave", -39.25f, 0.5f, 0.5f)));
+
+    /// <summary>Two sparse-floor seat cases from the village, each with a support-bound world placement <c>seat-probe</c>
+    /// at the marker's point and binding. In <c>incident</c>, <see cref="Village"/>'s <c>start</c> stands where the deep
+    /// cave floor, captured through records incident to the exterior, has no patch in the point's slot. In
+    /// <c>neighbour</c>, the room prefab stands south of the caves and <c>cave-bound</c> at (2.5, -2.5) captures the
+    /// exterior through an empty neighbouring slot, while the exterior's patch in the point's slot holds no cell near it.</summary>
+    internal static MarkerFixture SeatSlots(string variant)
     {
-        var disabledLocal = new MapPrefabMarkerChild(new(MapPrefabChildKind.Marker, "disabled-local"),
-            MapMarkerHeights.Apply(new(1, "disabled-local", "disabled-local", new Vector3(2, 0, -3), -0.5f, "actor-role", false,
-                new[] { "second", "first", "first" }), new(1f, null)));
-        MarkerFixture placed = Placed(VillageFrame, disabledLocal);
+        MarkerFixture fixture = variant switch
+        {
+            "incident" => Village(),
+            "neighbour" => VillageDocument(new(new(4.25f, -450, -24.125f), 0.371f, 1.2f), [CaveBound(2.5f, -2.5f)]),
+            _ => throw new ArgumentException("Unknown seat slot variant " + variant),
+        };
+        MapLocalMarkerDoc marker = fixture.Document.BuildingIntent!.Markers.Single(m => m.Id == (variant == "incident" ? "start" : "cave-bound"));
+        fixture.Document.Placements.Add(new MapPlacement
+        {
+            Id = "seat-probe",
+            Kind = "item",
+            AssetId = "item",
+            X = marker.Position.X,
+            Y = null,
+            Z = marker.Position.Z,
+            Scale = 1,
+            SupportBinding = marker.SupportBinding! with { },
+            NumericId = ++fixture.Document.NumericIdHighWaterMark,
+        });
+        return fixture with { Document = MapDocumentFile.LoadText(MapDocumentFile.SaveText(fixture.Document)) };
+    }
+
+    static MarkerFixture VillageDocument(MapTransform frame, MapLocalMarkerDoc[] worldMarkers, params MapPrefabChild[] localChildren)
+    {
+        MarkerFixture placed = Placed(frame, localChildren);
         MapDocument document = placed.Document;
         document.Id = "public-marker-village";
         document.TileSize = VillageTileSize;
@@ -52,33 +94,20 @@ internal static partial class MarkerFixtures
         MapDocument caves = PrefabFixtures.Cave("stacked").Document;
         document.Surfaces.Refs.AddRange(caves.Surfaces.Refs);
         foreach (var (key, patch) in caves.Surfaces.Patches) document.Surfaces.Patches.Add(key, patch);
-        document.BuildingIntent = new(1, [], [], [], VillageWorldMarkers())
+        document.BuildingIntent = new(1, [], [], [], worldMarkers)
         { Storeys = (document.BuildingIntent?.Storeys ?? []).Concat(caves.BuildingIntent!.Storeys).ToArray() };
         // Surface declarations in ordinal ID order, the order a tiled reload produces, so both storage forms save the same text.
         document.Surfaces.Refs.Sort((x, y) => string.CompareOrdinal(x.Id, y.Id));
         return new(MapDocumentFile.LoadText(MapDocumentFile.SaveText(document)), placed.Assets);
     }
 
-    /// <summary>The four world markers of <see cref="Village"/> in their authored order.</summary>
-    internal static MapLocalMarkerDoc[] VillageWorldMarkers() =>
-    [
-        MapMarkerHeights.Apply(new(1, "start", "start", new Vector3(10.5f, 0, -12.75f), 0.371f, "start-role", true, new[] { "first", "second" }),
-            new(null, SurfaceBinding("exterior"))),
-        MapMarkerHeights.Apply(new(1, "actor", "actor", new Vector3(-1.5f, 0, -10.25f), 1.25f, "actor-role", true, new[] { "actor" }),
-            new(-451.25f, null)) with { ArchetypeId = "invented-actor" },
-        MapMarkerHeights.Apply(new(1, "cave-explicit", "cave-explicit", new Vector3(2, 0, -2), 0.371f, "cave-role", true, new[] { "deep", "room" }),
-            new(-57.75f, null)),
-        MapMarkerHeights.Apply(new(1, "cave-bound", "cave-bound", new Vector3(2.5f, 0, -2.5f), -1.5f, "cave-role", true, new[] { "high" }),
-            new(null, SpaceBinding("high-cave", -39.25f, 0.5f, 0.5f))),
-    ];
-
     /// <summary><see cref="Village"/> with one legacy record in each list, as an old native document may still carry.
     /// Fixture construction writes them directly. No native editing path adds legacy records.</summary>
     internal static MarkerFixture VillageWithLegacyLists()
     {
         MarkerFixture village = Village();
-        village.Document.Spawns.Add(new() { Id = "legacy-actor", ArchetypeId = "invented-actor", X = 10.5f, Z = -10.5f, Enabled = false, Tags = ["second", "first"] });
-        village.Document.PlayerSpawns.Add(new() { Id = "legacy-start", X = 11.5f, Z = -8.5f, Yaw = 0.371f, Tags = ["first"] });
+        village.Document.Spawns.Add(new() { Id = "legacy-actor", ArchetypeId = "invented-actor", X = -3.5f, Z = -6.5f, Enabled = false, Tags = ["second", "first"] });
+        village.Document.PlayerSpawns.Add(new() { Id = "legacy-start", X = -2.5f, Z = -7.5f, Yaw = 0.371f, Tags = ["first"] });
         return village;
     }
 

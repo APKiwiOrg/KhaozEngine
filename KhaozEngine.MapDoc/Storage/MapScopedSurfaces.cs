@@ -165,6 +165,8 @@ public sealed class MapScopedSurfaces
     internal bool TryRecord(MapRecordRef r, out MapTopologyRecord? record, out MapPatchStatus status, bool borrow) =>
         borrow ? _facts.TryRecord(r, out record, out status) : _facts.CopyRecord(r, out record, out status);
     public IEnumerable<MapTopologyRecord> RecordsIn(MapPatchKey key) => _facts.CopyRecords(key);
+    /// <summary>True when the acquisition recorded a read of <paramref name="key"/>, whatever its status.</summary>
+    internal bool HasRead(MapPatchKey key) => _facts.HasRead(key);
     internal bool TryAcquiredPatch(MapPatchKey key, out MapSurfacePatch? patch, out MapPatchStatus status)
     {
         patch = _facts.OwnedPatch(key);

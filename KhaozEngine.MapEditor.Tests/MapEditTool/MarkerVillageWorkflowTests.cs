@@ -10,6 +10,7 @@ using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Markers;
 using KhaozEngine.MapDoc.Prefabs;
+using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapEdit;
 using KhaozEngine.Tests.MapDoc;
 using KhaozEngine.Tests.MapDoc.Markers;
@@ -39,11 +40,11 @@ public sealed class MarkerVillageWorkflowTests
         Assert.Equal(MarkerFixtures.VillageIds, Markers(direct).Select(m => m.Id));
 
         // Creation of a standalone Explicit marker, with Residency only.
-        MapLocalMarkerDoc lookout = MapMarkerHeights.Apply(new(1, "lookout", "lookout", new Vector3(8.25f, 0, -18.5f), 0.371f, "label-role", true,
+        MapLocalMarkerDoc lookout = MapMarkerHeights.Apply(new(1, "lookout", "lookout", new Vector3(-4.75f, 0, -14.5f), 0.371f, "label-role", true,
             new[] { "high", "first" }), new(-447.5f, null));
         var created = await Both(mutation.MarkerApply(new MapSetMarker(lookout)), "marker_set", MarkerArgs(lookout));
         Assert.Equal(MapNativeInvalidation.Residency, created.Effects.Invalidates);
-        Assert.Equal(MarkerFixtures.Exact(8.25f, -447.5f, -18.5f), Marker(direct, "lookout").Position);
+        Assert.Equal(MarkerFixtures.Exact(-4.75f, -447.5f, -14.5f), Marker(direct, "lookout").Position);
 
         // A duplicate name refuses identically and writes nothing on either session.
         MapLocalMarkerDoc clash = lookout with { Id = "lookout-2", Name = "start" };
@@ -67,13 +68,15 @@ public sealed class MarkerVillageWorkflowTests
 
         // Whole-building moves at yaw 0.371 and scales 0.8 and 1.2. Prefab moves have no wire verb, so both sessions use
         // the shared service, as the released prefab workflow does. Local markers follow their frame once.
-        foreach (var frame in new[] { new MapTransform(new(-5.5f, -450, 6.5f), 0.371f, 0.8f), new MapTransform(new(-6.5f, -450, 5.5f), 0.371f, 1.2f) })
+        foreach (var frame in new[] { new MapTransform(new(-11.75f, -450, 6.625f), 0.371f, 0.8f), new MapTransform(new(-12.75f, -450, 7.625f), 0.371f, 1.2f) })
         {
             MapPrefabMutationResult a = mutation.PrefabApply(new MapMovePrefab("a", frame)), b = liveMutation.PrefabApply(new MapMovePrefab("a", frame));
             Assert.True(JsonNode.DeepEquals(JsonSerializer.SerializeToNode(a, MapPrefabJson.ToolOptions), JsonSerializer.SerializeToNode(b, MapPrefabJson.ToolOptions)));
             Same(direct, live);
             Assert.Equal(MarkerFixtures.FramePoint(frame, 2, 5, -2), Marker(direct, MarkerFixtures.RoofLabelId).Position);
-            Assert.Equal(MarkerFixtures.FramePoint(frame, 2, 1, -3), Marker(direct, MarkerFixtures.DisabledLocalId).Position);
+            Assert.Equal(MarkerFixtures.FramePoint(frame, 3, 0, -1) with { Y = MapExactValue.FromSingle(-450f) },
+                Marker(direct, MarkerFixtures.DisabledLocalId).Position);
+            Assert.Equal(-450f, Marker(direct, MarkerFixtures.DisabledLocalId).HeightProvenance!.WorldY);
         }
 
         // Unpack transfers both local markers to framed standalone homes with unchanged effective values.
@@ -97,10 +100,10 @@ public sealed class MarkerVillageWorkflowTests
         Assert.Equal(new MapMarkerNameChange(MarkerFixtures.RoofLabelId, "roof-sign", "roof-board"), Assert.Single(metadata.Effects.MarkerNameChanges));
         Assert.Equal(unpacked.Single(m => m.Id == MarkerFixtures.RoofLabelId).Position, Marker(direct, MarkerFixtures.RoofLabelId).Position);
         MapLocalMarkerDoc start = WorldEntry(direct, "start");
-        MapLocalMarkerDoc movedStart = start with { Position = start.Position with { Z = -17.25f } };
+        MapLocalMarkerDoc movedStart = start with { Position = start.Position with { X = -17.5f } };
         var spatial = await Both(mutation.MarkerApply(new MapSetMarker(movedStart)), "marker_set", MarkerArgs(movedStart));
         Assert.Equal(MapNativeInvalidation.Residency, spatial.Effects.Invalidates);
-        Assert.Equal(MarkerFixtures.Exact(10.5f, -452.4f, -17.25f), Marker(direct, "start").Position);
+        Assert.Equal(MarkerFixtures.Exact(-17.5f, -452.4f, -9.25f), Marker(direct, "start").Position);
 
         // Explicit adoption clears both legacy lists, then undo restores them exactly and redo adopts again.
         string beforeAdoption = MarkerEditorFixtures.Bytes(direct);
@@ -145,13 +148,13 @@ public sealed class MarkerVillageWorkflowTests
             final.Select(m => m.Id));
         Assert.Equal(final.Length, final.Select(m => m.Name).Distinct(StringComparer.Ordinal).Count());
         Assert.Equal(MarkerFixtures.Exact(2, -57.75f, -2), final.Single(m => m.Id == "cave-explicit").Position);
-        Assert.Equal(MarkerFixtures.Exact(2.5f, -39.375f, -2.5f), final.Single(m => m.Id == "cave-bound").Position);
+        Assert.Equal(MarkerFixtures.Exact(2.5f, -39.375f, -1.5f), final.Single(m => m.Id == "cave-bound").Position);
         // Start lies on both minima, adopted-start on the maximum X and adopted-actor on the maximum Z.
-        Assert.Equal((11.5, -8.5), (final.Single(m => m.Id == "adopted-start").Position.X.ToDouble(), final.Single(m => m.Id == "adopted-start").Position.Z.ToDouble()));
-        Assert.Equal((10.5, -10.5), (final.Single(m => m.Id == "adopted-actor").Position.X.ToDouble(), final.Single(m => m.Id == "adopted-actor").Position.Z.ToDouble()));
-        IReadOnlyList<MapEffectiveMarker> rect = new QueryService(reopened).MarkerList(null, null, null, false, new MapMarkerRect(10.5, -17.25, 11.5, -10.5));
+        Assert.Equal((-2.5, -7.5), (final.Single(m => m.Id == "adopted-start").Position.X.ToDouble(), final.Single(m => m.Id == "adopted-start").Position.Z.ToDouble()));
+        Assert.Equal((-3.5, -6.5), (final.Single(m => m.Id == "adopted-actor").Position.X.ToDouble(), final.Single(m => m.Id == "adopted-actor").Position.Z.ToDouble()));
+        IReadOnlyList<MapEffectiveMarker> rect = new QueryService(reopened).MarkerList(null, null, null, false, new MapMarkerRect(-17.5, -9.25, -2.5, -6.5));
         Assert.Equal(new[] { "start" }, rect.Select(m => m.Id));
-        JsonNode wireRect = Node(await Call(harness, "marker_list", new() { ["minX"] = 10.5, ["minZ"] = -17.25, ["maxX"] = 11.5, ["maxZ"] = -10.5 }));
+        JsonNode wireRect = Node(await Call(harness, "marker_list", new() { ["minX"] = -17.5, ["minZ"] = -9.25, ["maxX"] = -2.5, ["maxZ"] = -6.5 }));
         Assert.True(JsonNode.DeepEquals(JsonSerializer.SerializeToNode(rect, MapPrefabJson.ToolOptions), wireRect));
 
         // Runs one shared command result against its wire verb and requires identical results and sessions.

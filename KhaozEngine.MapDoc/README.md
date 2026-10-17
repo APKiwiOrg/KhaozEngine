@@ -659,10 +659,11 @@ are all payload 1 keeps the annotation digest scheme `kemap/effective-annotation
 `/2`. `MapMarkerSpaces.Query(view, marker)` answers occupied space and parent chain by point membership, Outside when
 no authored space holds the point, and keeps every refusal status.
 
-The released seat query acquires a 2 m scope around each point. It refuses with MissingGeometry when that scope
-captures a floor surface whose patch in the point's own storage slot it did not read, for example a sparse floor
-with no patch in a neighbouring slot. Support-bound markers and placements share this limit, so authored worlds keep
-each bound point where every floor it captures is read.
+The shared seat query acquires a 2 m scope around each point. A complete acquisition reads every patch that meets
+that scope, so a floor it captures only through records incident to another patch, or through an empty neighbouring
+slot, holds no cell at the point when its own slot was never read, and the query skips it. A recorded unavailable read
+still refuses with MissingGeometry. Support-bound markers and placements on sparse floors therefore seat on their
+named owner, and `MapPrefabResolver.Expand` and native resolution agree. `SeatSupportSlotTests` pins both cases.
 
 ### Marker names, lookup and typed views
 
@@ -813,11 +814,11 @@ verified bytes and separately loaded documents. They supply headless acceptance 
 ### Public marker village acceptance
 
 `MarkerFixtures.Village()` in `MapDoc.Tests/Markers/MarkerVillageFixtures.cs` is an invented native village over
-the released room prefab and stacked prefab-cave geometry. It holds six uniquely named markers. `start` is
-Surface-bound to the authored exterior. `actor` is Explicit at negative X with an archetype. `cave-explicit` sits in
-the deep room and `cave-bound` is Space-bound to the high cave. The prefab's payload-1 child is renamed and raised
-above its roof as `roof-label` by a replace override, and the payload-2 local child `disabled-local` is disabled with
-ordered duplicate tags. Roles are caller values and neither legacy spawn list has a record.
+the released room prefab, placed at yaw 0.371 and scale 1.2, and stacked prefab-cave geometry. It holds six uniquely
+named markers. `start` is Surface-bound to the authored exterior at negative X. `actor` is Explicit with an archetype,
+above every static. `cave-explicit` sits in the deep room and `cave-bound` is Space-bound to the high cave. The
+prefab's payload-1 child is renamed and raised above its roof as `roof-label` by a replace override, and the payload-2
+local child `disabled-local` is disabled, Surface-bound to the prefab's local floor and carries ordered duplicate tags. Roles are caller values and neither legacy spawn list has a record.
 
 `NativeMarkerAcceptanceTests` checks payload versions, the exhaustive and enabled registry views, roles, tags,
 witness rows, half-open rectangles with markers on their minimum and maximum edges, point membership and identity on

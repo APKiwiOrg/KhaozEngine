@@ -52,7 +52,6 @@ public partial class SupportFootprintTests
         using var lease = scene.World.AcquireQueryReadLease();
         var members = MemberSentinels(256); var before = (SupportFootprintMember[])members.Clone();
         var joins = Enumerable.Repeat(73UL, 1024).ToArray();
-        using var region = SupportAllocationRegion.Start();
         var result = Capability(scene.World).QuerySupportFootprint(lease, request, members, joins);
         _output.WriteLine(TiltedStatistics(scene.World));
         Assert.Equal(CapsuleFeatureStatus.Unsupported, result.Status);
@@ -60,10 +59,9 @@ public partial class SupportFootprintTests
         Assert.All(joins, word => Assert.Equal(73UL, word));
         var (_, roots, admission) = TiltedScratch(scene.World);
         Assert.True((bool)Property(roots, "CapacityRefused") || (bool)Property(admission, "CapacityRefused"));
-        long allocationBefore = GC.GetAllocatedBytesForCurrentThread();
-        var warm = Capability(scene.World).QuerySupportFootprint(lease, request, members, joins);
-        long allocation = GC.GetAllocatedBytesForCurrentThread() - allocationBefore;
-        region.Dispose();
+        SupportFootprintResult warm = default;
+        long allocation = AllocationMeasurement.Measure(nameof(CurvedTiltedUncertifiedSourceFamilyRefusesAtomicallyAtCellBound), () =>
+            warm = Capability(scene.World).QuerySupportFootprint(lease, request, members, joins));
         _output.WriteLine($"refusal retained-array-payload={ArrayPayload(TiltedScratch(scene.World).Tilted)}");
         Assert.Equal(CapsuleFeatureStatus.Unsupported, warm.Status);
         Assert.Equal(0, allocation);
@@ -117,14 +115,12 @@ public partial class SupportFootprintTests
         using var lease = scene.World.AcquireQueryReadLease();
         var members = new SupportFootprintMember[256]; var joins = new ulong[1024];
         var capability = Capability(scene.World);
-        using var region = SupportAllocationRegion.Start();
         var result = capability.QuerySupportFootprint(lease, request, members, joins);
         var actual = members.Take(result.Members).Where(m => m.Static == owner).ToArray();
         string coldStatistics = TiltedStatistics(scene.World);
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        var warm = capability.QuerySupportFootprint(lease, request, members, joins);
-        long bytes = GC.GetAllocatedBytesForCurrentThread() - before;
-        region.Dispose();
+        SupportFootprintResult warm = default;
+        long bytes = AllocationMeasurement.Measure($"{nameof(CurvedTiltedQueryEnclosesEveryIndependentPart)} {stratum}", () =>
+            warm = capability.QuerySupportFootprint(lease, request, members, joins));
         _output.WriteLine($"{stratum} status={result.Status} {coldStatistics}");
         Assert.Equal(CapsuleFeatureStatus.Complete, result.Status);
         Assert.Equal(expected.Length, actual.Length);

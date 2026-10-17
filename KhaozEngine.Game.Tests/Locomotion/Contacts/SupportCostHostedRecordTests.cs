@@ -11,12 +11,27 @@ using Xunit;
 namespace KhaozEngine.Tests.Locomotion.Contacts;
 
 /// <summary>Re-evaluates finalized hosted artifacts with the current verdict and writes the Markdown tables
-/// for the hosted record. Runs only when <c>KHAOZ_SUPPORT_COST_HOSTED_RUNS</c> names the artifact directory.
-/// It reads data only and never measures a locomotion operation.</summary>
+/// for the hosted record. The record runs only when <c>KHAOZ_SUPPORT_COST_HOSTED_RUNS</c> names the artifact
+/// directory. It reads data only and never measures a locomotion operation.</summary>
 public sealed class SupportCostHostedRecordTests
 {
     sealed record Row(string Scene, string Operation, bool Dense, long Lifetime, SupportCostSample[] Samples,
         SupportCostSample?[] Legacy, SupportCostGate[] Gates, double[] Scales);
+
+    [Fact]
+    public void MedianVerdictRejectsALaterIterationBeyondTheStructuralCap()
+    {
+        SupportCostSample tick = SupportGateCostTests.Synthetic("DryTick", 1) with
+        { ColdGeometryPassed = true, GeometryMatchesOracle = true, Comparable = false };
+        SupportCostSample legacy = tick with { Operation = "LegacyTick" };
+        SupportCostSample over = tick with { Counts = tick.Counts with { Find = SupportCostTickBound.For(false).Finds + 1 } };
+        Row Make(SupportCostSample last) => new(tick.Scene, tick.Operation, false, 624, [tick, tick, last],
+            [legacy, legacy, legacy], [SupportCostGate.Pass, SupportCostGate.Pass, SupportCostGate.Pass], [1, 1, 1]);
+        Assert.True(MedianVerdict(Make(tick)).Passed);
+        Verdict verdict = MedianVerdict(Make(over));
+        Assert.False(verdict.Passed);
+        Assert.Equal("E", verdict.Codes);
+    }
 
     [Fact]
     public void HostedRecordWithCorrectedCalibration()
@@ -98,9 +113,24 @@ public sealed class SupportCostHostedRecordTests
         text.AppendLine();
         text.AppendLine("| Scene | Operation | Median C | Median L | Limit | C / limit | Verdict | Pass/" + iterations + " |");
         text.AppendLine("| --- | --- | ---: | ---: | ---: | ---: | --- | ---: |");
-        foreach (var (row, median) in verdicts)
+        foreach (var (row, median) in verdicts.Where(v => ComparisonBasis(v.Row).Length == 0))
             text.AppendLine(($"| {row.Scene} | {Short(row.Operation)} | {median.Candidate:F3} | {median.Legacy:F3} | {median.Limit:F3} | " +
                 $"{median.Candidate / median.Limit:F3} | {(median.Passed ? "PASS" : "FAIL " + median.Codes)} | {row.Gates.Count(g => g == SupportCostGate.Pass)} |"));
+        text.AppendLine();
+        text.AppendLine("| E/L scene | Operation | Basis | Median C | Absolute limit | Substeps / cap | Find / cap | Sweeps / cap | Penetrations / cap | Bound | Verdict | Pass/" + iterations + " |");
+        text.AppendLine("| --- | --- | --- | ---: | ---: | --- | --- | --- | --- | --- | --- | ---: |");
+        foreach (var (row, median) in verdicts.Where(v => ComparisonBasis(v.Row).Length > 0))
+        {
+            bool bounded = SupportCostVerdict.OutsideComparableEnvelope(row.Samples[0]);
+            SupportCostTickBound bound = SupportCostTickBound.For(row.Operation == "ExplicitTick");
+            string Counts(Func<SupportCostSample, int> select, int cap) =>
+                $"{row.Samples.Min(select)} to {row.Samples.Max(select)} / {(bounded ? cap.ToString(CultureInfo.InvariantCulture) : "n/a")}";
+            text.AppendLine(($"| {row.Scene} | {Short(row.Operation)} | {ComparisonBasis(row)} | {median.Candidate:F3} | {median.Limit:F3} | " +
+                $"{Counts(s => s.Substeps, bound.Substeps)} | {Counts(s => s.Counts.Find, bound.Finds)} | " +
+                $"{Counts(s => s.Queries.Sweeps, bound.Sweeps)} | {Counts(s => s.Queries.Penetrations, bound.Penetrations)} | " +
+                $"{(bounded ? SupportCostVerdict.EveryIterationBounded(row.Samples) ? "PASS" : "FAIL" : "not required")} | " +
+                $"{(median.Passed ? "PASS" : "FAIL " + median.Codes)} | {row.Gates.Count(g => g == SupportCostGate.Pass)} |"));
+        }
         text.AppendLine();
         text.AppendLine("| Envelope scene | Operation | Outcome | Oracle | Reads | Median C |");
         text.AppendLine("| --- | --- | --- | --- | --- | ---: |");
@@ -127,6 +157,11 @@ public sealed class SupportCostHostedRecordTests
 
     readonly record struct Verdict(double Candidate, double Legacy, double Limit, bool Passed, string Codes);
 
+    static string ComparisonBasis(Row row) => row.Operation is "DryTick" or "ExplicitTick"
+        ? string.Join(",", new[] { (SupportCostVerdict.OutsideComparableEnvelope(row.Samples[0]), "E"),
+            (!SupportCostVerdict.OutsideComparableEnvelope(row.Samples[0]) && SupportCostVerdict.LegacyHasNoSupport(row.Legacy[0]!), "L") }
+            .Where(reason => reason.Item1).Select(reason => reason.Item2)) : "";
+
     /// <summary>Median of each candidate and legacy time divided by its own iteration's k, judged at k = 1.</summary>
     static Verdict MedianVerdict(Row row)
     {
@@ -136,7 +171,8 @@ public sealed class SupportCostHostedRecordTests
         SupportCostGate gate = SupportCostVerdict.JudgeRow(sample, [sample, pair], 1, row.Lifetime, hosted: true)!.Value.Gate;
         SupportCostCheck check = SupportCostVerdict.Check(sample, pair, sample.Dense, 1, row.Lifetime, hosted: true);
         Assert.Equal(check.Passed, gate == SupportCostGate.Pass);
-        return new(candidate, legacy, check.TimeLimit, gate == SupportCostGate.Pass, check.Codes);
+        check = check with { Bound = check.Bound || !SupportCostVerdict.EveryIterationBounded(row.Samples) };
+        return new(candidate, legacy, check.TimeLimit, check.Passed, check.Codes);
     }
 
     static IEnumerable<double> Equivalent(Row row, bool legacy) => Enumerable.Range(0, row.Samples.Length)

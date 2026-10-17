@@ -57,7 +57,6 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
     {
         SupportQueryDiagnostics.Enable(false);
         SupportQueryDiagnostics.Reset();
-        using var region = SupportAllocationRegion.Start();
         SupportQueryDiagnostics.Record(SupportQueryCounter.Find);
         Assert.Equal(0, SupportQueryDiagnostics.Snapshot().Find);
         SupportQueryDiagnostics.Enable(true);
@@ -68,11 +67,12 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
         thread.Start();
         thread.Join();
         Assert.Equal(0, another.Find);
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        SupportQueryDiagnostics.Record(SupportQueryCounter.Find);
-        SupportQueryCounts counts = SupportQueryDiagnostics.Snapshot();
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-        region.Dispose();
+        SupportQueryCounts counts = default;
+        long allocated = AllocationMeasurement.Measure(nameof(DiagnosticsAreAnOptInThreadLocalObserver), () =>
+        {
+            SupportQueryDiagnostics.Record(SupportQueryCounter.Find);
+            counts = SupportQueryDiagnostics.Snapshot();
+        });
         Assert.Equal(0, allocated);
         Assert.Equal(3, counts.Find);
     }
@@ -538,7 +538,7 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
         SupportCostSample hosted = Synthetic("LegacyTick", hostedLegacy);
         Assert.Equal(SupportCostGate.Pass, SupportCostVerdict.Evaluate(tick, hosted, false, scale));
         Assert.Equal(SupportCostGate.Reject, SupportCostVerdict.Evaluate(tick with { WarmMicroseconds = Math.BitIncrement(relativeTick) }, hosted, false, scale));
-        Assert.Equal(SupportCostGate.Reject, SupportCostVerdict.Evaluate(tick with { Substeps = 4 }, hosted, false, scale));
+        Assert.Equal(SupportCostGate.Pass, SupportCostVerdict.Evaluate(tick with { Substeps = 4 }, hosted, false, scale));
         Assert.Equal(SupportCostGate.Pass, SupportCostVerdict.Evaluate(tick with { Operation = "ExplicitTick", WarmBytes = 624 }, hosted, false, scale, 624));
         Assert.Equal(SupportCostGate.Reject, SupportCostVerdict.Evaluate(tick with { Operation = "ExplicitTick", WarmBytes = 625 }, hosted, false, scale, 624));
     }

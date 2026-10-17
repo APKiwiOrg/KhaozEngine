@@ -13,7 +13,7 @@ internal static partial class ContactController
 {
     // A bound on one tick's mode changes. Every cycle of mode changes passes through the air pass, and each air
     // segment spends at least one of its substeps before it hands on, so the time left shrinks and the cap is a guard.
-    const int MaxSegments = 8;
+    internal const int MaxSegments = 8;
 
     static readonly SupportSample NoSupport =
         new(SupportStatus.None, float.NaN, float.NaN, Vector3.Zero, null, -1, Vector3.Zero);

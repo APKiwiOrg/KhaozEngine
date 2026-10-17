@@ -48,6 +48,9 @@ internal enum SupportQueryCounter
     MeshTriangleCaptures,
     /// <summary>Finds an exact repeat request served from its interval's memo. <see cref="Find"/> counts them too.</summary>
     FindMemoHits,
+    /// <summary>Vertical footprint polygons whose admission and column verdict the certified segment test decided
+    /// without the extrema kernel.</summary>
+    AdmissionCertificates,
 }
 
 internal readonly record struct SupportQueryCounts(
@@ -82,7 +85,8 @@ internal readonly record struct SupportQueryCounts(
     int TangentSamples,
     int JoinsSkipped,
     int MeshTriangleCaptures,
-    int FindMemoHits)
+    int FindMemoHits,
+    int AdmissionCertificates)
 {
     public static SupportQueryCounts operator -(SupportQueryCounts a, SupportQueryCounts b) => new(
         a.Find - b.Find,
@@ -116,7 +120,8 @@ internal readonly record struct SupportQueryCounts(
         a.TangentSamples - b.TangentSamples,
         a.JoinsSkipped - b.JoinsSkipped,
         a.MeshTriangleCaptures - b.MeshTriangleCaptures,
-        a.FindMemoHits - b.FindMemoHits);
+        a.FindMemoHits - b.FindMemoHits,
+        a.AdmissionCertificates - b.AdmissionCertificates);
 }
 
 /// <summary>Opt-in counters owned by the executing thread. Installation is outside measured intervals.</summary>
@@ -187,7 +192,7 @@ internal static class SupportQueryDiagnostics
         t_enabled = enabled;
     }
 
-    const int CounterCount = 32;
+    const int CounterCount = 33;
 
     /// <summary>Every thread-local counter, observation and callback of one thread.</summary>
     internal readonly record struct ThreadState(bool Enabled, int[]? Counts, Action? Begin, Action? End,
@@ -250,6 +255,7 @@ internal static class SupportQueryDiagnostics
         c[(int)SupportQueryCounter.JoinsSkipped] += counts.JoinsSkipped;
         c[(int)SupportQueryCounter.MeshTriangleCaptures] += counts.MeshTriangleCaptures;
         c[(int)SupportQueryCounter.FindMemoHits] += counts.FindMemoHits;
+        c[(int)SupportQueryCounter.AdmissionCertificates] += counts.AdmissionCertificates;
         t_routes = new(t_routes.WallRetries + routes.WallRetries, t_routes.PushedPlacements + routes.PushedPlacements,
             t_routes.MediumResolves + routes.MediumResolves, Math.Max(t_routes.MaximumMediumRetries, routes.MaximumMediumRetries),
             t_routes.GroundSegments + routes.GroundSegments, t_routes.SlideSegments + routes.SlideSegments,
@@ -303,7 +309,8 @@ internal static class SupportQueryDiagnostics
             c[28],
             c[29],
             c[30],
-            c[31]);
+            c[31],
+            c[32]);
     }
 
     internal static void SetGroundSubstepObserver(Action? begin, Action? end)

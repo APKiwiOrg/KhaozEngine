@@ -682,7 +682,8 @@ the caller's `MapMarkerConsumerRoles` and the one Surface owner for unadopted le
 
 `MapNativePointReadout.SurfaceAt(resources, point, surfaceId)` samples the named Surface owner at an exact XZ through
 the shared seat query, with no reference height and the default scoped budgets. Every status stays typed, and only
-Supported carries a height. It never falls back to another floor, a zero height or the analytic field.
+Supported carries a height. An exact overflow returns a typed NotRepresentable result with an incomplete witness. It
+never falls back to another floor, a zero height or the analytic field.
 
 `MapPrefabExpansionLimits` supplies finite collection and payload ceilings before codec materialization. Effective
 geometry composition, aggregate expansion charges, remapping and editor lifecycle commands are separate stages.

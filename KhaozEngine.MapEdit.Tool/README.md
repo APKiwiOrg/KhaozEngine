@@ -237,9 +237,11 @@ it. `spawnCount`, `playerSpawnCount` and `playerSpawnIds` stay legacy list count
 `placements_in_rect` keeps its signature and inclusive rectangle, unlike the half-open `marker_list` rectangle. On a
 resolver-2 native document, placements come from the actual native resolution, prefab placements included, and a
 support-bound placement reports its seated height. Unadopted legacy spawns sample `legacySpawnSurfaceId` at their XZ and
-carry the typed `support` answer, with `groundY` meaningful only when it is Supported. Without that owner, a rectangle
-holding a legacy spawn refuses with `spawns_adopt` and `marker_set` guidance. Analytic and resolver (1, 1) documents
-keep their released field readouts and omit `support`.
+carry the Supported `support` answer, with `groundY` its height. Any other status refuses the query, naming each spawn,
+its status and the Surface owner. Without that owner, a rectangle holding a legacy spawn refuses. Both refusals give
+`spawns_adopt` and `marker_set` guidance. The `support` normal crosses the wire as `x`, `y` and `z` through MapDoc's
+vector converter on the query tool options. Analytic and resolver (1, 1) documents keep their released field readouts
+and omit `support`.
 
 ## Native colliders
 

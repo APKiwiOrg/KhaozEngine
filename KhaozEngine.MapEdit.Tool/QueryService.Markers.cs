@@ -52,16 +52,21 @@ public sealed partial class QueryService
         return list;
     }
 
-    // Resolver (1, 1) documents keep the analytic support recipe their identity names.
-    static bool UsesAuthoredSupport(MapDocument document) => document.ResolverIdentity is { PayloadVersion: 1, ResolverVersion: 2 };
+    // Resolver (1, 1) documents keep the analytic support recipe their identity names. The shared resolver classifier
+    // decides, never a second pattern.
+    static bool UsesAuthoredSupport(MapDocument document) =>
+        NativeDocumentService.IsNative(document) && MapNativeResolution.ResolverVersionOf(document.ResolverIdentity) == 2;
 
     /// <summary>R6-P7. The inclusive rectangle over a resolver-2 native document. Placements are the effective resolved
     /// transforms of the actual native resolution, prefab placements included, and a support-bound placement reports
     /// its seated height. Old native spawns sample the caller's <see cref="MapMarkerConsumerOptions.LegacySpawnSurfaceId"/>
-    /// at their XZ and carry the typed answer. Without that Surface owner, a rectangle holding an old spawn refuses before
-    /// any resolution. Adopted marker starts are read through the marker summary and views, never as old lists.</summary>
+    /// at their XZ. Only Supported succeeds: any other sample refuses the whole query, naming each spawn, its typed status
+    /// and the Surface owner, so no entry ever carries an invented height. Without that Surface owner, a rectangle holding
+    /// an old spawn refuses before any resolution. Adopted marker starts are read through the marker summary and views,
+    /// never as old lists.</summary>
     PlacementsInRectResult NativePlacementsInRect(float minX, float minZ, float maxX, float maxZ) => session.WithNativeAssets(c =>
     {
+        const string Guidance = "Adopt them as markers with spawns_adopt and author heights with marker_set";
         bool Inside(float x, float z) => x >= minX && x <= maxX && z >= minZ && z <= maxZ;
         MapSpawn[] spawns = c.Document.Spawns.Where(s => Inside(s.X, s.Z)).ToArray();
         MapPlayerSpawn[] players = c.Document.PlayerSpawns.Where(s => Inside(s.X, s.Z)).ToArray();
@@ -82,16 +87,23 @@ public sealed partial class QueryService
             .ToArray();
         MapSupportResult Sample(float x, float z) =>
             MapNativePointReadout.SurfaceAt(resources, new MapExactXz(MapExactValue.FromSingle(x), MapExactValue.FromSingle(z)), surfaceId!);
-        SpawnEntry[] npcs = spawns.Select(s =>
-        {
-            MapSupportResult support = Sample(s.X, s.Z);
-            return new SpawnEntry(s.Id, s.ArchetypeId, s.X, support.WorldY, s.Z, s.Enabled, s.Tags.ToArray()) { Support = support };
-        }).ToArray();
-        PlayerSpawnEntry[] starts = players.Select(s =>
-        {
-            MapSupportResult support = Sample(s.X, s.Z);
-            return new PlayerSpawnEntry(s.Id, s.X, support.WorldY, s.Z, s.Yaw, s.Enabled, s.Tags.ToArray()) { Support = support };
-        }).ToArray();
+        var npcSupports = spawns.Select(s => Sample(s.X, s.Z)).ToArray();
+        var startSupports = players.Select(s => Sample(s.X, s.Z)).ToArray();
+        string[] refused = spawns.Select((s, i) => (Kind: "Spawn", s.Id, Support: npcSupports[i]))
+            .Concat(players.Select((s, i) => (Kind: "PlayerSpawn", s.Id, Support: startSupports[i])))
+            .Where(r => r.Support.Status != MapSupportStatus.Supported)
+            .Select(r => $"legacy {r.Kind} '{r.Id}' support status {r.Support.Status} on Surface '{surfaceId}': {r.Support.Detail}")
+            .ToArray();
+        if (refused.Length != 0)
+            throw new MapDocumentException(
+                $"placements_in_rect: legacySpawnSurfaceId '{surfaceId}' does not support every legacy spawn in the rectangle. " +
+                string.Join(" ", refused.Select(r => r + ".")) + " " + Guidance + ", or reopen with a Surface owner that supports them.");
+        SpawnEntry[] npcs = spawns.Select((s, i) => new SpawnEntry(s.Id, s.ArchetypeId, s.X, npcSupports[i].WorldY, s.Z, s.Enabled,
+            s.Tags.ToArray())
+        { Support = npcSupports[i] }).ToArray();
+        PlayerSpawnEntry[] starts = players.Select((s, i) => new PlayerSpawnEntry(s.Id, s.X, startSupports[i].WorldY, s.Z, s.Yaw, s.Enabled,
+            s.Tags.ToArray())
+        { Support = startSupports[i] }).ToArray();
         return new PlacementsInRectResult(placements, npcs, starts);
     });
 

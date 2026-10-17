@@ -2,12 +2,15 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Numerics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Prefabs;
+using KhaozEngine.MapDoc.Support;
 using KhaozEngine.MapEdit;
+using KhaozEngine.MapEdit.Tools;
 using KhaozEngine.Tests.MapDoc;
 using KhaozEngine.Tests.MapEditor;
 using Microsoft.Extensions.DependencyInjection;
@@ -66,6 +69,49 @@ public sealed class MarkerConsumerWireTests
             Assert.Throws<MapDocumentException>(() => MapPrefabJson.ReadMarkerOptions("""{"legacySpawnSurfaceId":null}"""));
             Assert.Throws<MapDocumentException>(() => MapPrefabJson.ReadMarkerOptions("""{"legacySpawnSurfaceId":"a","legacySpawnSurfaceId":"b"}"""));
             Assert.Equal(stateBefore, MarkerEditorFixtures.State(live));
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task NativePlacementsInRect_WireSupportIsLossless()
+    {
+        string root = MarkerConsumerFixtures.TempRoot();
+        try
+        {
+            MarkerConsumerFixtures.WindowedNative(root);
+            var direct = new MapEditSession();
+            direct.Open(root, null, MapPrefabJson.ReadMarkerOptions(OptionsJson));
+            PlacementsInRectResult service = new QueryService(direct).PlacementsInRect(-2, -2, 2, 2);
+            await using var harness = await McpWire.StartAsync();
+            await Call(harness, "map_open", new() { ["path"] = root, ["markerOptionsJson"] = OptionsJson });
+            JsonNode wire = Node(await Call(harness, "placements_in_rect", new() { ["minX"] = -2f, ["minZ"] = -2f, ["maxX"] = 2f, ["maxZ"] = 2f }));
+
+            Assert.True(JsonNode.DeepEquals(JsonSerializer.SerializeToNode(service, McpBootstrap.QueryToolOptions), wire), wire.ToJsonString());
+            foreach (var (expected, node) in new[]
+            {
+                (Assert.Single(service.Spawns).Support!, wire["spawns"]![0]!["support"]!),
+                (Assert.Single(service.PlayerSpawns).Support!, wire["playerSpawns"]![0]!["support"]!),
+            })
+            {
+                // Every member the service exposes crosses the wire with its value, the normal included.
+                Assert.True(JsonNode.DeepEquals(JsonSerializer.SerializeToNode(expected.Status, McpBootstrap.QueryToolOptions), node["status"]));
+                Assert.Equal(MapSupportStatus.Supported, expected.Status);
+                Assert.Equal(expected.WorldY, node["worldY"]!.GetValue<float>());
+                Assert.Equal(expected.Face!.Value.OwnerId, node["face"]!["ownerId"]!.GetValue<string>());
+                Assert.Equal(expected.Face.Value.Primitive, node["face"]!["primitive"]!.GetValue<int>());
+                Vector3 normal = expected.Normal!.Value;
+                Assert.Equal((normal.X, normal.Y, normal.Z),
+                    (node["normal"]!["x"]!.GetValue<float>(), node["normal"]!["y"]!.GetValue<float>(), node["normal"]!["z"]!.GetValue<float>()));
+                Assert.Equal(expected.IsCaptureSupport, node["isCaptureSupport"]!.GetValue<bool>());
+                Assert.Equal(expected.Witness.SnapshotId, node["witness"]!["snapshotId"]!.GetValue<string>());
+                Assert.Equal(expected.Witness.ScopedDigest, node["witness"]!["scopedDigest"]!.GetValue<string>());
+                Assert.Equal(expected.Witness.Complete, node["witness"]!["complete"]!.GetValue<bool>());
+                Assert.Equal(expected.Witness.QueryPolicyVersion, node["witness"]!["queryPolicyVersion"]!.GetValue<int>());
+            }
         }
         finally
         {

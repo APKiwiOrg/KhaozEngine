@@ -107,8 +107,8 @@ public sealed record PlacementEntry(string Id, string Kind, float X, float Y, fl
 
 /// <summary>One authored spawn resolved for a query. On an analytic document <see cref="GroundY"/> is the field's
 /// sampled ground height, since spawns have no explicit Y, and <see cref="Support"/> is null and omitted. On a
-/// resolver-2 native document <see cref="Support"/> is the typed sample of the caller's legacy spawn Surface owner and
-/// <see cref="GroundY"/> is its height, meaningful only when the status is Supported.</summary>
+/// resolver-2 native document <see cref="Support"/> is the Supported sample of the caller's legacy spawn Surface owner
+/// and <see cref="GroundY"/> is its height. A sample with any other status refuses the whole query instead.</summary>
 public sealed record SpawnEntry(string Id, string ArchetypeId, float X, float GroundY, float Z, bool Enabled,
     IReadOnlyList<string> Tags)
 {

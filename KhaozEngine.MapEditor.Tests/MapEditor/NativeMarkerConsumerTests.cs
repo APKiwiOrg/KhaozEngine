@@ -25,7 +25,9 @@ public sealed class NativeMarkerConsumerTests
         WithRoot(root =>
         {
             MarkerConsumerFixtures.WindowedNative(root);
-            Assert.True(MarkerConsumerFixtures.CorruptBodies(root) > 0);
+            Assert.True(MarkerConsumerFixtures.CorruptBodies(root, out int terrainBodies, out int supportPages) > 0);
+            Assert.True(terrainBodies > 0, "no terrain tile body was corrupted");
+            Assert.True(supportPages > 0, "no support page was corrupted");
             var options = new MapDocumentLoadOptions();
             MapDocument manifest;
             using (MapDocumentSource source = MapDocumentSource.OpenTiled(root, options)) manifest = source.Manifest;
@@ -134,6 +136,17 @@ public sealed class NativeMarkerConsumerTests
             PlayerSpawnEntry nativeStart = Assert.Single(rect.PlayerSpawns);
             Assert.Equal((20f, MapSupportStatus.Supported), (nativeStart.GroundY, nativeStart.Support!.Status));
 
+            // An effective prefab placement reads its resolved world transform, and a native rectangle includes its edges.
+            PlacementEntry post = Assert.Single(query.PlacementsInRect(-66, 0, -63.5f, 1).Placements);
+            MapResolvedPlacement postActual = session.WithNativeAssets(c =>
+                MapNativeResolution.Resolve(c.Document, c.Assets, NativeDocumentService.SessionOptionsV2)).Placements.Single(p => p.PlacementId == post.Id);
+            Assert.Equal("prefab/start-frame/Placement/post", post.Id);
+            Assert.Equal((-63.5f, 3f, 0f), (post.X, post.Y, post.Z));
+            Assert.Equal(postActual.Transform, new MapTransform(new Vector3(post.X, post.Y, post.Z), post.Yaw, post.Scale));
+            Assert.True(post.ExplicitY);
+            Assert.Equal(new[] { "edge" }, post.Tags);
+            Assert.Empty(query.PlacementsInRect(-66, 0.0001f, -63.5f, 1).Placements);
+
             // Adopted-style starts read through typed views, on their own bound support.
             var registry = new MapMarkerRegistry(MarkerEditorFixtures.Markers(session));
             MapPlayerStartView start = MapMarkerProjection.PlayerStarts(registry, "start-role", true).Single(v => v.Marker.Id == "start-a");
@@ -159,6 +172,67 @@ public sealed class NativeMarkerConsumerTests
             MapMarkerSummary unnamed = released.Open(root).Summary.Markers!;
             Assert.Equal((3, (string?)null), (unnamed.Total, unnamed.PlayerStartRole));
             Assert.Empty(unnamed.PlayerStartIds);
+        });
+    }
+
+    [Fact]
+    public void NativeSpawnReadout_RefusesUnsupportedSamples()
+    {
+        WithRoot(root =>
+        {
+            MarkerConsumerFixtures.WindowedNative(root, "uncovered-spawn");
+            var session = new MapEditSession();
+            session.Open(root, null, new(MarkerConsumerFixtures.Roles(), MarkerConsumerFixtures.SupportOwner));
+            var query = new QueryService(session);
+
+            // Control: the covered spawns still read their supported height.
+            SpawnEntry covered = Assert.Single(query.PlacementsInRect(-2, -2, 2, 2).Spawns);
+            Assert.Equal((20f, MapSupportStatus.Supported), (covered.GroundY, covered.Support!.Status));
+
+            MapSupportResult sample = session.WithNativeAssets(c => MapNativePointReadout.SurfaceAt(MapPrefabResolver.Expand(c.Document, c.Assets),
+                new(MapExactValue.FromSingle(10.5f), MapExactValue.FromSingle(10.5f)), MarkerConsumerFixtures.SupportOwner));
+            Assert.NotEqual(MapSupportStatus.Supported, sample.Status);
+            string message = Assert.Throws<MapDocumentException>(() => query.PlacementsInRect(10, 10, 11, 11)).Message;
+            Assert.Contains($"legacy Spawn 'uncovered' support status {sample.Status} on Surface 'adoption-floor'", message, StringComparison.Ordinal);
+            Assert.Contains("legacySpawnSurfaceId 'adoption-floor'", message, StringComparison.Ordinal);
+            Assert.Contains("spawns_adopt", message, StringComparison.Ordinal);
+            Assert.Contains("marker_set", message, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
+    public void NativeSurfaceReadout_OverflowStaysTyped()
+    {
+        WithRoot(root =>
+        {
+            MarkerConsumerFixtures.WindowedNative(root);
+            var session = new MapEditSession();
+            session.Open(root, null, new(MarkerConsumerFixtures.Roles(), MarkerConsumerFixtures.SupportOwner));
+            MapSupportResult result = session.WithNativeAssets(c => MapNativePointReadout.SurfaceAt(MapPrefabResolver.Expand(c.Document, c.Assets),
+                new(new MapExactValue(long.MaxValue, 1), MapExactValue.FromSingle(0.5f)), MarkerConsumerFixtures.SupportOwner));
+            Assert.Equal(MapSupportStatus.NotRepresentable, result.Status);
+            Assert.False(result.IsCaptureSupport);
+            Assert.False(result.Witness.Complete);
+        });
+    }
+
+    [Fact]
+    public void NativeWindowing_MatchedRoleWinsOverAnEnabledLegacyStart()
+    {
+        WithRoot(root =>
+        {
+            MarkerConsumerFixtures.WindowedNative(root, "enabled-legacy-start");
+            MapTileRect? Window(string role)
+            {
+                MapDocumentWindowing.Load(root, new MapDocumentLoadOptions(), 1, 0, MapDocumentWindowing.DefaultPlayerSpawnSearchTileLimit,
+                    out _, out MapTileRect? window, role, m => MapMarkerAnchors.Read(m, MarkerConsumerFixtures.Closure(m, root)));
+                return window;
+            }
+            Assert.Equal(new MapTileCoord(-2, 0), Window("start-role")!.Value.Min);
+            // An unmatched role falls back to the released legacy player spawn search, as the released overload does.
+            Assert.Equal(new MapTileCoord(-1, -1), Window("unknown-role")!.Value.Min);
+            MapDocumentWindowing.Load(root, new MapDocumentLoadOptions(), 1, 0, out _, out MapTileRect? released);
+            Assert.Equal(new MapTileCoord(-1, -1), released!.Value.Min);
         });
     }
 

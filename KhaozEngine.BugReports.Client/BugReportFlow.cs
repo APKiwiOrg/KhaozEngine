@@ -50,6 +50,8 @@ internal sealed class BugReportFlow
     readonly CancellationToken _shutdown;
     readonly IReadOnlyList<string> _categories;
     readonly ConcurrentQueue<Action> _posted = new();
+    // Canceled when shutdown begins, before the bounded wait for builds, so a send stops waiting for its screenshot.
+    readonly CancellationTokenSource _stopping = new();
     readonly GameDelegateFaults _subjectFaults = new("currentSubject");
     readonly GameDelegateFaults _saveFaults = new("SaveTriggerBindings");
     string? _subject;
@@ -216,6 +218,12 @@ internal sealed class BugReportFlow
     /// disposes the thumbnails. Never throws. Frame thread only.
     /// </summary>
     internal void CloseActiveReport() => Abandon();
+
+    /// <summary>
+    /// Tells every send still building its bundle that shutdown has begun. A send waiting for the trigger frame's
+    /// screenshot goes on at once without it, so it reaches the offline queue inside the shutdown wait.
+    /// </summary>
+    internal void SignalShutdown() => _stopping.Cancel();
 
     /// <summary>Thaws the clip and closes the report a failed frame left captured or open. Never throws.</summary>
     void Abandon()
@@ -484,11 +492,16 @@ internal sealed class BugReportFlow
         return texture;
     }
 
-    async Task<ReportImage?> WaitForScreenshotAsync(Task<ReportImage> screenshot, bool logFailure)
+    /// <summary>
+    /// The screenshot, or null when it failed, took longer than <see cref="ScreenshotWait"/> or
+    /// <paramref name="stop"/> fired first. A screenshot already taken is returned even after <paramref name="stop"/>.
+    /// </summary>
+    async Task<ReportImage?> WaitForScreenshotAsync(Task<ReportImage> screenshot, bool logFailure,
+        CancellationToken stop = default)
     {
         try
         {
-            return await screenshot.WaitAsync(ScreenshotWait, _time).ConfigureAwait(false);
+            return await screenshot.WaitAsync(ScreenshotWait, _time, stop).ConfigureAwait(false);
         }
         catch (Exception exception)
         {
@@ -504,7 +517,7 @@ internal sealed class BugReportFlow
         try
         {
             ReportImage? screenshot = choices.IncludeScreenshot
-                ? await WaitForScreenshotAsync(report.Screenshot, logFailure: false).ConfigureAwait(false)
+                ? await WaitForScreenshotAsync(report.Screenshot, logFailure: false, _stopping.Token).ConfigureAwait(false)
                 : null;
             FinishStarting?.Invoke();
             IReadOnlyList<CapturedSection> sections =

@@ -190,12 +190,13 @@ public sealed class BugReportService : IDisposable
     public Task<int> RetryQueuedAsync(CancellationToken cancellationToken) => _flow.RetryQueuedAsync(cancellationToken);
 
     /// <summary>
-    /// Removes the overlay, waits up to 3 s for every send still building its bundle to write it to the offline queue,
+    /// Removes the overlay, tells every send still building its bundle to stop waiting for its screenshot, waits up to
+    /// 3 s for each to write its bundle to the offline queue,
     /// closes a report that is still open and disposes its thumbnails, then cancels every send and flush, disposes the
     /// recorder, detaches <see cref="RecentLog"/> and disposes the font. Each step after the cancel runs even when an
-    /// earlier one throws. A send cut off here stays in the offline queue. A report is lost only when its build is
-    /// still running after the 3 s wait and the process ends first, or when the process is killed. Call from the
-    /// frame thread.
+    /// earlier one throws. A send cut off here stays in the offline queue, without its screenshot when that was still
+    /// pending. A report is lost only when its build is still running after the 3 s wait and the process ends first,
+    /// or when the process is killed. Call from the frame thread.
     /// </summary>
     public void Dispose()
     {
@@ -203,6 +204,8 @@ public sealed class BugReportService : IDisposable
         _disposed = true;
         // The overlay goes first, so no later frame can thaw the disposed recorder.
         _removeOverlay(_overlay);
+        // A send still waiting for its screenshot stops waiting, so the bounded wait below covers the build alone.
+        _flow.SignalShutdown();
         if (!_flow.Builds.WaitAll(ShutdownBuildWait))
             Log.Warn("A bug report was still being built at shutdown. It reaches the offline queue only if the process runs on.");
         // A report still open is dropped with its screen and thumbnail textures, before the recorder goes.

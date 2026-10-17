@@ -136,11 +136,12 @@ fall back to the id, so a game's own `Categories` list localizes the same way.
 
 ## Shutdown
 
-`Dispose()` removes the overlay first, so no later frame touches the recorder. It then waits up to 3 s for every
-send still building its bundle to write it to the offline queue, and closes a report that is still open, with its
-thumbnail textures. After that it cancels every send and flush the service started, disposes the recorder and
-detaches `RecentLog` from the log manager. A send cut off by shutdown
-stays in the offline queue, because the submitter writes each bundle there before its first send.
+`Dispose()` removes the overlay first, so no later frame touches the recorder. It then tells every send still
+building its bundle to stop waiting for the screenshot, which such a report goes without, waits up to 3 s for each
+to write its bundle to the offline queue, and closes a report that is still open, with its thumbnail textures.
+After that it cancels every send and flush the service started, disposes the recorder and detaches `RecentLog`
+from the log manager. A send cut off by shutdown stays in the offline queue, because the submitter writes each
+bundle there before its first send.
 
 Two windows remain where a report sent just before shutdown is lost: a build still running after the 3 s wait
 when the process then ends, and a process that is killed outright.

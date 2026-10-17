@@ -59,6 +59,8 @@ public class McpAdapterTests
         "marker_set", "marker_remove", "marker_list",
         // Cosmetic foliage
         "foliage_layer_set", "foliage_get", "foliage_density_set", "foliage_paint", "foliage_remove",
+        // Clearance rules
+        "clearance_get", "clearance_set", "clearance_rule_set", "clearance_rule_remove", "clearance_check",
         // Prefabs
         "prefab_save", "prefab_place", "prefab_list",
         // Derived collision

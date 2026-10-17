@@ -84,6 +84,9 @@ above. An empty layer list is omitted, so old world JSON and old world hashes st
 is part of `TileWorldHash.OfWorld`, including every placement and exclusion setting. `TileWorldSource.Open`
 loads the global layers without materialising a region, and a partial save carries them forward.
 
+The optional `clearance` block is the other manifest-level authoring block. It is outside every world hash and
+is described under [Clearance](#clearance).
+
 `TileWorldSource` is the streaming entry point over the same document: `Open(directory)` reads the manifest
 only, `EnsureLoaded(coord)`/`EnsureLoaded(rect)` materialise regions on demand hash-checked, `IsKnown`,
 `IsLoaded`, `KnownRegions` and `Document` expose the state, and `Unload(coord)` drops a CLEAN region while
@@ -206,7 +209,104 @@ and callers may branch on them: `header.planeCount`, `header.tileSize`, `header.
 `region.planeCount`, `material.missing`, `overlay.shape`, `archetype.missing`, `object.plane`,
 `object.footprint`, `object.duplicateId`, `object.region`, `marker.plane`, `marker.duplicateName`,
 `marker.region`, `foliage.archetype`, `foliage.underlay`, `material.steep`. The last reports a steep companion
-edited unsound in memory after the loader accepted it.
+edited unsound in memory after the loader accepted it. The three `clearance.*` codes below share
+`TileWorldIssue` but never come from `Validate`.
+
+## Clearance
+
+An authoring-time check that keeps tagged object meshes out of each other, for a tree crown drawing through a
+roof or a wall. A world declares it in an optional `clearance` manifest block beside `foliageLayers`:
+
+```json
+"clearance": {
+  "meshRoot": "../../models",
+  "cellSize": 0.1,
+  "waiverTag": "clearance-waived",
+  "rules": [
+    { "name": "trees-clear-buildings", "subjectTags": ["tree"], "obstacleTags": ["structure"], "tolerance": 0.05 }
+  ]
+}
+```
+
+`TileWorldDocument.Clearance` holds it as an immutable `TileClearanceSettings`, null when the world declares
+none, and `SetClearance(settings)` replaces it. The constructor validates every field and `WithRule`,
+`WithoutRule`, `With` and `Rule(name)` build and read the next value.
+
+| Field | Contract |
+|---|---|
+| `meshRoot` | Directory the archetypes' `meshRef` paths resolve under, relative to the directory holding `world.json`, with forward slashes only (`../models`). A rooted path is refused with `ArgumentException`, because world files are committed and shared. The rule is the same on every OS: a leading `/` or `\`, a drive prefix such as `C:` and any backslash are refused. Required while rules exist. |
+| `cellSize` | Sampling and rasterizing pitch in metres, 0.02 through 1. Default 0.1 (`TileClearanceSettings.DefaultCellSize`). |
+| `waiverTag` | Object tag that exempts an object from every rule. Optional. Null waives nothing. |
+| `rules` | `TileClearanceRule(Name, SubjectTags, ObstacleTags, Tolerance)` in authoring order. Names are unique by ordinal comparison, both tag lists are non-empty with no blank tag, and `tolerance` is metres of allowed depth, finite and at least 0, default 0. |
+
+`TileClearanceRule` compares by value: the name and every tag ordinally, tag order included, and the tolerance.
+A save writes every default out. An absent block stays absent, so an older world keeps its bytes. The block is
+outside `TileWorldHash.OfWorld`, so adding or tuning a rule changes no world digest and forces no navigation
+rebake. A malformed block, a rooted `meshRoot` included, fails the load as a `TileWorldException`.
+
+**Rule matching.** An object is a subject of a rule when its archetype's catalog `tags` contain any of the rule's
+`subjectTags`, and an obstacle when they contain any `obstacleTags`. Matching reads archetype tags only, and the
+engine interprets no tag string. The waiver reads the OBJECT's own tags: a waived object pairs with nothing under
+any rule. An object never pairs with itself, and pairs across planes are checked, because a roof stands on the
+plane above the trees beside it.
+
+**Running it.** `TileWorldClearance.Check(doc, catalogs, meshes)` returns `TileWorldIssue`s for the loaded
+regions, empty when the world declares no rules. `meshes` is an `ITileMeshGeometry`, the seam that keeps mesh
+loading out of this package: `TryLoad(meshRef, out mesh, out error)` returns a `ClearanceMesh` in the archetype's
+local metres, centred on its footprint with its base at y 0, or false with a reason.
+`KhaozEngine.TileWorld.Render3D`'s `GltfTileMeshGeometry` is the glb implementation. Each object is placed with
+`TileObjectPlacement.LocalToWorld`, the transform the prop renderer draws with, and each mesh is loaded,
+rasterized and sampled once per call. `TileWorldClearance.ResolveMeshRoot(worldDirectory, settings)` gives the
+absolute mesh directory.
+
+```csharp
+TileWorldDocument doc = TileWorldFile.Load(worldDir);     // every region, the check reads loaded ones only
+TileWorldCatalogs catalogs = TileWorldCatalogs.Load(catalogPaths);
+var meshes = new GltfTileMeshGeometry(TileWorldClearance.ResolveMeshRoot(worldDir, doc.Clearance!));
+foreach (TileWorldIssue issue in TileWorldClearance.Check(doc, catalogs, meshes))
+    Console.WriteLine($"[{issue.Code}] {issue.Message}");
+```
+
+The codes are stable (`TileWorldClearance.OverlapCode`, `MeshCode`, `RuleCode`):
+
+- `clearance.rule`: a rule's subject or obstacle tags match no archetype in the catalogs, so a typo cannot pass
+  everything.
+- `clearance.mesh`: a matched archetype has no `meshRef`, or its mesh cannot be read or built (including a solid
+  above `ClearanceSolid.MaxCells` and a mesh source that reports success with no mesh). Reported once per archetype, and its objects are never silently passed.
+- `clearance.overlap`: one per penetrating pair, at its deepest sample, naming the rule, both objects with their
+  ids, archetypes, tiles and planes, and the depth in metres. `Region` and `Tile` are the subject's.
+
+Issues come back rule issues first, then mesh issues by archetype id, then overlaps by rule order, subject id and
+obstacle id. An object whose archetype the catalogs lack is skipped, because `Validate` reports it as
+`archetype.missing`.
+
+**The solid model and its limit.** An obstacle is solid from its mesh's lowest point up to its top surface in
+every planar cell that surface covers, and a subject sample's depth is its nearest way out: up to the top, down
+to the base or sideways to an empty cell. A thin piece therefore caps reported depth near half its thickness.
+Planar depth is quantized to the cell size. A doorway, an arch, the space under eaves or a bridge deck over water
+reads as filled, which leans toward reporting a contact a precise test would clear. A hollow piece (a bridge
+deck, a balcony) must not carry an obstacle tag.
+
+**The error band.** The solid is a raster, so a reading carries an error that scales with `cellSize` (figures
+for the default 0.1 in brackets):
+
+- A point outside the surface but inside a boundary cell of a curved or off-grid edge reads up to `cellSize / 2`
+  inside (0.05).
+- A cell whose only empty neighbour is diagonal reads about `(sqrt 2 - 1/2) x cellSize` inside (0.091).
+- A cell top is the highest sample in the cell, so a point just above a sloped top reads up to about
+  `cellSize x tan(slope)` inside, less its height above the surface. A point 1 cm above a 45 degree roof reads
+  about 0.09, and about 0.16 at 60 degrees.
+- The check can also under-report. A contact narrower than the subject's sample pitch (`cellSize`) can fall
+  between samples and be missed, and an obstacle wholly inside a subject is never seen, because only the
+  subject's surface is sampled.
+
+Give each rule a `tolerance` of at least `cellSize / 2` to absorb the edge band, and use a smaller `cellSize` in
+a world with steep roofs.
+
+**Not part of `Validate`.** `TileWorldValidator.Validate` never runs the check, because it needs mesh files that
+a head or a server opening a world never reads. Tools run it beside the validator, and `ke-tileedit` refuses a
+save on any clearance issue. Design rationale: `docs/design/TILEWORLD-CLEARANCE-DESIGN-2026-10-16.md` in the
+engine repo.
 
 ## Collision, derived and never authored
 

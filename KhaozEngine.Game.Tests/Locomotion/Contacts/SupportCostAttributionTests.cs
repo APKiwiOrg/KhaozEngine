@@ -54,9 +54,9 @@ public sealed class SupportCostAttributionTests(ITestOutputHelper output) : IDis
         SupportQueryDiagnostics.Enable(true);
         var measurements = new List<object>();
         foreach (string name in new[] { "flat box", "flat mesh", "fan 96", "cluster 32 compound",
-            "cluster 32 split", "cluster 256 mesh" })
-            foreach (string operation in name is "cluster 32 split" or "cluster 256 mesh"
-                ? new[] { "Find" } : new[] { "Find", "DryTick" })
+            "cluster 32 split", "cluster 256 mesh", "sphere", "capsule", "cylinder" })
+            foreach (string operation in name is "cluster 32 split" or "cluster 256 mesh" or "sphere" or "capsule"
+                or "cylinder" ? new[] { "Find" } : new[] { "Find", "DryTick" })
             {
                 var recorder = new PhaseRecorder(true);
                 ContactAllocationDiagnostics.SetObserver(recorder.Observe);

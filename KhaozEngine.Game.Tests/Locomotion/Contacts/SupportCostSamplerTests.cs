@@ -46,7 +46,10 @@ public sealed class SupportCostSamplerTests
             Assert.True(allInvocationsIsolated, "Cold, priming and warm operations must share the checked no-GC region.");
             var whole = samples[0];
             Assert.Equal(whole.ColdEndState, whole.EndState);
-            Assert.Equal(whole.ColdCounts, whole.Counts);
+            // First use builds the floor's world form and every later call binds it. Every other counter repeats.
+            Assert.Equal(whole.ColdCounts.Find > 0 ? 1 : 0, whole.ColdCounts.WorldFormBuilds);
+            Assert.Equal(0, whole.Counts.WorldFormBuilds);
+            Assert.Equal(whole.ColdCounts with { WorldFormBuilds = 0 }, whole.Counts);
             Assert.Equal(whole.ColdQueries, whole.Queries);
             Assert.Equal(whole.Counts.Find, whole.SupportReads.Length);
             Assert.Equal(whole.ColdCounts.Find, whole.ColdSupportReads.Length);

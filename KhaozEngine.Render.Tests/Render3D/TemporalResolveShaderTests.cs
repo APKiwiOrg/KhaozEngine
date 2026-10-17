@@ -43,6 +43,11 @@ namespace KhaozEngine.Tests.Render3D
             { "const float LockEdgeRelease = 1.0;", TemporalResolveTuning.LockEdgeRelease, 1f },
             { "const float LockEdgeMotionFraction = 0.001953125;", TemporalResolveTuning.LockEdgeMotionFraction, 1f / 512f },
             { "const float LockEdgeFloorInternalPixels = 0.001;", TemporalResolveTuning.LockEdgeFloorInternalPixels, 1e-3f },
+            { "const float ShadingResetExtents = 0.25;", TemporalResolveTuning.ShadingResetExtents, 0.25f },
+            { "const float ShadingChangeExtents = 0.85;", TemporalResolveTuning.ShadingChangeExtents, 0.85f },
+            { "const float ShadingRingPixels = 1.5;", TemporalResolveTuning.ShadingRingPixels, 1.5f },
+            { "const float ShadingRingExtents = 0.25;", TemporalResolveTuning.ShadingRingExtents, 0.25f },
+            { "const float ShadingMaxUpscale = 1.6;", TemporalResolveTuning.ShadingMaxUpscale, 1.6f },
             { "const float ClipFlagMinimumMove = 0.0009765625;", TemporalResolveTuning.ClipFlagMinimumMove, 1f / 1024f },
             {
                 "const float DilationReachInternalPixels = 1.25;", TemporalResolveTuning.DilationReachInternalPixels,

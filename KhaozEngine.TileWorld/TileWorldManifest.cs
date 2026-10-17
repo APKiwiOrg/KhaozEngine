@@ -19,6 +19,8 @@ internal sealed class TileWorldManifest
     public long NextObjectId { get; set; } = 1;
     public List<TileWorldManifestRegion> Regions { get; set; } = new();
     public List<TileFoliageLayerDto>? FoliageLayers { get; set; }
+    // Authoring metadata, absent only when the document's Clearance is null. A block with no rules is still written.
+    public TileWorldClearanceDto? Clearance { get; set; }
     // DERIVED from the regions, like the collision map: the regions stay the source of truth and this is the copy
     // a client can read before it has streamed any of them. Absent in a manifest written by an older engine, which
     // deserialises to an empty list and reads as a world with no markers rather than as a load failure.
@@ -52,6 +54,23 @@ internal sealed class TileFoliageArchetypeDto
 {
     public string Id { get; set; } = "";
     public float Weight { get; set; }
+}
+
+/// <summary>On-disk shape of the optional <c>clearance</c> block.</summary>
+internal sealed class TileWorldClearanceDto
+{
+    public string MeshRoot { get; set; } = "";
+    public float? CellSize { get; set; }
+    public string? WaiverTag { get; set; }
+    public List<TileClearanceRuleDto> Rules { get; set; } = new();
+}
+
+internal sealed class TileClearanceRuleDto
+{
+    public string Name { get; set; } = "";
+    public List<string> SubjectTags { get; set; } = new();
+    public List<string> ObstacleTags { get; set; } = new();
+    public float? Tolerance { get; set; }
 }
 
 /// <summary>One marker index row, a copy of what its region carries so a lookup costs no region read.</summary>

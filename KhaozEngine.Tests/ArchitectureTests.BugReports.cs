@@ -68,13 +68,18 @@ public partial class ArchitectureTests
         }
     }
 
-    /// <summary>The client tests reference only the client package.</summary>
+    /// <summary>The client tests reference exactly the engine projects their section and fact tests build on.</summary>
     [Fact]
-    public void BugReportsClientTests_ReferenceOnlyTheClient()
+    public void BugReportsClientTests_ReferenceTheirDeclaredSet()
     {
         Project tests = LoadGraph()["KhaozEngine.BugReports.Client.Tests"];
         Assert.False(tests.IsPackableLibrary);
-        Assert.Equal(new[] { "BugReports.Client" },
+        Assert.Equal(
+            new[]
+            {
+                "App", "BugReports", "BugReports.Client", "BugReports.Contracts", "Diagnostics", "Game", "Gui",
+                "Imaging", "Primitives", "Render2D", "TestSupport.Windowing", "Windowing",
+            },
             tests.ProjectRefs.Select(Short).OrderBy(name => name, StringComparer.Ordinal).ToArray());
     }
 }

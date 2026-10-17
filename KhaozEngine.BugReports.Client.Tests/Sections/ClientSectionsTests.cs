@@ -130,6 +130,26 @@ public sealed class ClientSectionsTests
     }
 
     [Fact]
+    public void Log_section_keeps_the_newest_line_through_redaction_growth()
+    {
+        var log = new RecentLogSink();
+        for (int i = 0; i < 500; i++)
+            log.Emit(new LogEntry(DateTimeOffset.UnixEpoch, LogLevel.Info, "Spam", i + " pwd=a " + new string('x', 1000)));
+        var set = new BugReportSectionSet();
+        set.Add(new LogSection(log));
+
+        IReadOnlyList<RawSection> raw = set.CaptureAll(new BugReportContext("id", DateTimeOffset.UnixEpoch));
+        CapturedSection finished = Assert.Single(BugReportSectionSet.Finish(raw, new ReportRedactor(),
+            BugReportSectionSet.DefaultFinishBudget));
+
+        Assert.True(raw[0].Json.Length <= raw[0].MaxBytes * 9 / 10, raw[0].Json.Length + " raw bytes");
+        using JsonDocument document = JsonDocument.Parse(finished.Json);
+        string newest = document.RootElement.GetProperty("lines").EnumerateArray().Last().GetString()!;
+        Assert.StartsWith("499 pwd=" + ReportRedactor.Mask, newest[newest.IndexOf("499", StringComparison.Ordinal)..],
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Platform_section_env_holds_only_what_it_was_given()
     {
         PlatformFacts facts = Platform([new("KE_GRAPHICS_BACKEND", "metal"), new("KE_TOKEN", ReportRedactor.Mask)]);

@@ -7,7 +7,8 @@ namespace KhaozEngine.BugReports.Client;
 /// <summary>
 /// The <c>log</c> section: <c>{lines:[...]}</c>, one string per kept line, oldest first. A full ring can hold more than
 /// the budget, and a structural cut keeps the oldest lines, so the section writes only the newest lines whose escaped
-/// size fits <see cref="MaxBytes"/>. The lines just before the report are the ones a reader needs.
+/// size fits 90 percent of <see cref="MaxBytes"/>. The lines just before the report are the ones a reader needs, and
+/// the margin leaves room for redaction to lengthen a line without the cut dropping the newest ones.
 /// </summary>
 /// <param name="log">The ring of recent formatted log lines.</param>
 public sealed class LogSection(RecentLogSink log) : IBugReportSection
@@ -17,6 +18,9 @@ public sealed class LogSection(RecentLogSink log) : IBugReportSection
 
     /// <summary>The quotes and the comma around each line.</summary>
     const int LineOverheadBytes = 3;
+
+    /// <summary>The share of <see cref="MaxBytes"/>, in percent, the raw lines may fill before redaction.</summary>
+    const int RawBudgetPercent = 90;
 
     /// <inheritdoc />
     public string Key => "log";
@@ -30,10 +34,11 @@ public sealed class LogSection(RecentLogSink log) : IBugReportSection
         IReadOnlyList<string> lines = log.Snapshot();
         int first = lines.Count;
         long used = EnvelopeBytes;
+        long budget = (long)MaxBytes * RawBudgetPercent / 100;
         while (first > 0)
         {
             long cost = EstimatedBytes(lines[first - 1]);
-            if (used + cost > MaxBytes) break;
+            if (used + cost > budget) break;
             used += cost;
             first--;
         }

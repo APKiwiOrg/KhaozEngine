@@ -69,7 +69,7 @@ Every member is frame thread only. `RetryQueuedAsync` completes off it.
 | `session` | Uptime, the session log name and the newest crash file from an earlier run. |
 | `input` | Connected devices and the trigger's bindings. |
 | `performance` | FPS, frame time average, minimum and maximum, managed bytes, per-pass timings and the last 300 frame times. |
-| `log` | The newest lines of `RecentLog` that fit 256 KiB. |
+| `log` | The newest lines of `RecentLog` that fit 90 percent of 256 KiB, leaving room for redaction. |
 
 The platform facts that never change, the admitted and masked `KE_` variables among them, are read once when the
 service is built. The window and graphics facts come

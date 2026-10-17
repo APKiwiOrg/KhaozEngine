@@ -194,6 +194,61 @@ namespace KhaozEngine.Tests.Gui
         }
 
         [Fact]
+        public void Tap_on_a_scrolled_area_places_the_caret_on_the_line_under_the_pointer()
+        {
+            TextArea area = Focused(Lines(30));
+            Step(area, Frame(Inside));
+            Step(area, Frame(Inside, scroll: 1f));
+            Assert.Equal(440f, area.ScrollY);
+
+            // The pointer sits 45 px into the inner area: line 22 (440 / 20) plus two more, line 24.
+            Tap(area, new Vector2(InnerX + 32f, InnerY + 45f));
+            Assert.Equal(area.Lines[24].Start + 3, area.Caret);
+            Assert.Equal(440f, area.ScrollY);
+        }
+
+        [Fact]
+        public void Tap_on_an_unfocused_area_focuses_and_places_the_caret()
+        {
+            var area = new TextArea(Area, new FixedMeasurer());
+            area.SetText("hello\nworld");
+            Step(area, Frame(Inside));
+            Assert.False(area.IsFocused);
+            Assert.Equal(11, area.Caret);
+
+            Tap(area, new Vector2(InnerX + 12f, InnerY + 5f));
+            Assert.True(area.IsFocused);
+            Assert.Equal(1, area.Caret);
+        }
+
+        [Fact]
+        public void Typing_mid_text_at_the_cap_changes_nothing()
+        {
+            TextArea area = Focused(new string('x', TextArea.DefaultMaxLength));
+            for (int i = 0; i < 5; i++) Press(area, Key.Left);
+            Assert.Equal(TextArea.DefaultMaxLength - 5, area.Caret);
+
+            Type(area, "zz");
+            Assert.Equal(TextArea.DefaultMaxLength, area.Text.Length);
+            Assert.Equal(new string('x', TextArea.DefaultMaxLength), area.Text);
+            Assert.False(area.TextChanged);
+        }
+
+        [Fact]
+        public void Lone_surrogates_become_replacement_characters()
+        {
+            TextArea area = Focused("\uD83Dx\uDE00");
+            Assert.Equal("�x�", area.Text);
+
+            Press(area, Key.Left);
+            Press(area, Key.Left);
+            Press(area, Key.Delete);
+            Assert.Equal("��", area.Text);
+            Assert.Equal(1, area.Caret);
+            Assert.False(char.IsHighSurrogate(area.Text[area.Caret - 1]) && char.IsLowSurrogate(area.Text[area.Caret]));
+        }
+
+        [Fact]
         public void Caret_line_scrolls_into_view_and_wheel_scrolls_three_lines()
         {
             var area = new TextArea(Area, new FixedMeasurer());

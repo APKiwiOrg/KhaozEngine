@@ -17,10 +17,10 @@ namespace KhaozEngine.Gui
     /// the next scalar. Left and Right step one scalar, Up and Down keep a remembered column across visual lines,
     /// and Home and End go to the ends of the visual line. Text greedy word wraps inside the padded area and
     /// scrolls vertically to keep the caret line visible. The wheel scrolls three lines. There is no selection.
-    /// Line endings normalise to <c>'\n'</c> and other control characters are dropped. The caret is a UTF-16
-    /// index that always sits on a scalar boundary. Layout measures with <see cref="Font"/> when set, otherwise
-    /// with the measurer passed to the constructor, and is cached until the text, inner width, scale or font
-    /// changes.
+    /// Line endings normalise to <c>'\n'</c>, other control characters are dropped and lone surrogates become
+    /// U+FFFD. The caret is a UTF-16 index that always sits on a scalar boundary. Layout measures with
+    /// <see cref="Font"/> when set, otherwise with the measurer passed to the constructor, and is cached until the
+    /// text, inner width, scale or font changes.
     /// </summary>
     public sealed class TextArea
     {
@@ -116,7 +116,7 @@ namespace KhaozEngine.Gui
 
         /// <summary>
         /// Replace the text programmatically. Line endings normalise to <c>'\n'</c>, other control characters are
-        /// dropped, the result is clamped to <see cref="MaxLength"/> without splitting a surrogate pair, and the
+        /// dropped, lone surrogates become U+FFFD, the result is clamped to <see cref="MaxLength"/> without splitting a surrogate pair, and the
         /// caret moves to the end. The next <see cref="Update"/> raises <see cref="TextChanged"/> and scrolls the
         /// caret into view.
         /// </summary>
@@ -148,7 +148,8 @@ namespace KhaozEngine.Gui
 
             if (IsFocused)
             {
-                if (HasKeyInput(input)) ApplyKeys(input);
+                bool entry = NeedsTextEntry(input);
+                if (entry || HasEditOrNavigationKey(input)) ApplyKeys(input, entry);
                 _blink += dt;
                 while (_blink >= BlinkRate) { _blink -= BlinkRate; CursorVisible = !CursorVisible; }
             }
@@ -180,6 +181,7 @@ namespace KhaozEngine.Gui
         public void Draw(SpriteBatch batch, Texture2D white)
         {
             if (Font == null) return;
+            if (IsFocused) GuiDraw.HoverGlow(batch, white, Bounds, _style);
             GuiDraw.FillStyled(batch, white, Bounds, _style, Background, IsFocused ? BorderFocused : Border);
             batch.SetScissor(Inner);
             var sink = new SpriteBatchTextAreaSink(batch, Font, white, TextScale);
@@ -223,23 +225,49 @@ namespace KhaozEngine.Gui
             }
         }
 
-        static bool HasKeyInput(InputState input) =>
-            input.KeysPressed.Count > 0 || input.KeysRepeated.Count > 0
-            || (input.TextInputAvailable && input.TextInput.Length > 0);
+        /// <summary>Whether this frame carries anything <see cref="TextEntry"/> acts on: committed text, Backspace,
+        /// Command plus V, or a printable key on the key-map fallback. A held modifier, a function key or the
+        /// Command of Command plus Enter does not, so those frames never slice the text.</summary>
+        static bool NeedsTextEntry(InputState input)
+        {
+            if (input.TextInputAvailable && input.TextInput.Length > 0) return true;
+            if (input.KeysPressed.Count == 0 && input.KeysRepeated.Count == 0) return false;
+            if (input.WasTyped(Key.Backspace)) return true;
+            if (input.IsCommandDown) return input.WasPressed(Key.V);
+            if (input.TextInputAvailable) return false;
+            return AnyTyped(input, Key.A, Key.D9) || input.WasTyped(Key.Space)
+                || AnyTyped(input, Key.Minus, Key.Grave) || AnyTyped(input, Key.Keypad0, Key.KeypadEqual);
+        }
 
-        void ApplyKeys(InputState input)
+        static bool HasEditOrNavigationKey(InputState input) =>
+            (input.KeysPressed.Count > 0 || input.KeysRepeated.Count > 0)
+            && (input.WasTyped(Key.Delete) || (input.WasTyped(Key.Enter) && !input.IsCommandDown)
+                || input.WasTyped(Key.Left) || input.WasTyped(Key.Right) || input.WasTyped(Key.Up)
+                || input.WasTyped(Key.Down) || input.WasTyped(Key.Home) || input.WasTyped(Key.End));
+
+        static bool AnyTyped(InputState input, Key first, Key last)
+        {
+            for (Key k = first; k <= last; k++)
+                if (input.WasTyped(k)) return true;
+            return false;
+        }
+
+        void ApplyKeys(InputState input, bool textEntry)
         {
             string textBefore = Text;
             int caretBefore = Caret;
 
-            string head = Text[..Caret];
-            string tail = Text[Caret..];
-            string edited = TextEntry.Apply(head, input, MaxLength - tail.Length);
-            if (!string.Equals(edited, head, StringComparison.Ordinal))
+            if (textEntry)
             {
-                edited = Normalize(edited);
-                Text = edited + tail;
-                Caret = edited.Length;
+                string head = Text[..Caret];
+                string tail = Text[Caret..];
+                string edited = TextEntry.Apply(head, input, MaxLength - tail.Length);
+                if (!string.Equals(edited, head, StringComparison.Ordinal))
+                {
+                    edited = Normalize(edited);
+                    Text = edited + tail;
+                    Caret = edited.Length;
+                }
             }
             if (input.WasTyped(Key.Enter) && !input.IsCommandDown && Text.Length < MaxLength)
             {
@@ -335,30 +363,53 @@ namespace KhaozEngine.Gui
 
         void ResetBlink() { CursorVisible = true; _blink = 0f; }
 
-        /// <summary>Converts <c>"\r\n"</c> and <c>'\r'</c> to <c>'\n'</c> and drops every other control
-        /// character. Returns <paramref name="text"/> itself when nothing changes.</summary>
+        /// <summary>Converts <c>"\r\n"</c> and <c>'\r'</c> to <c>'\n'</c>, drops every other control character
+        /// and replaces each lone surrogate with U+FFFD, so the caret can never land inside a pair. Returns
+        /// <paramref name="text"/> itself when nothing changes.</summary>
         static string Normalize(string text)
         {
             int i = 0;
-            while (i < text.Length && (text[i] == '\n' || !char.IsControl(text[i]))) i++;
+            while (i < text.Length)
+            {
+                int clean = CleanLength(text, i);
+                if (clean == 0) break;
+                i += clean;
+            }
             if (i == text.Length) return text;
 
             var result = new StringBuilder(text.Length);
             result.Append(text, 0, i);
-            for (; i < text.Length; i++)
+            while (i < text.Length)
             {
                 char c = text[i];
-                if (c == '\r')
+                int clean = CleanLength(text, i);
+                if (clean > 0)
+                {
+                    result.Append(text, i, clean);
+                    i += clean;
+                }
+                else if (c == '\r')
                 {
                     result.Append('\n');
-                    if (i + 1 < text.Length && text[i + 1] == '\n') i++;
+                    i += i + 1 < text.Length && text[i + 1] == '\n' ? 2 : 1;
                 }
-                else if (c == '\n' || !char.IsControl(c))
+                else
                 {
-                    result.Append(c);
+                    if (char.IsSurrogate(c)) result.Append('\uFFFD');
+                    i++;
                 }
             }
             return result.ToString();
+        }
+
+        /// <summary>2 for a well-formed surrogate pair, 1 for <c>'\n'</c> or any other non-control character, and
+        /// 0 for a character <see cref="Normalize"/> rewrites or drops.</summary>
+        static int CleanLength(string text, int i)
+        {
+            char c = text[i];
+            if (char.IsHighSurrogate(c)) return i + 1 < text.Length && char.IsLowSurrogate(text[i + 1]) ? 2 : 0;
+            if (char.IsLowSurrogate(c)) return 0;
+            return c == '\n' || !char.IsControl(c) ? 1 : 0;
         }
 
         /// <summary><paramref name="index"/>, moved back one unit when it would split a surrogate pair.</summary>

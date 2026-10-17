@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.BugReports.Relay;
@@ -42,6 +43,32 @@ public abstract class ReportMediaStoreConformance
         Assert.False(wrote);
         ReadOnlyMemory<byte>? read = await store.GetAsync(ReportArea.Public, Path, 1024, CancellationToken.None);
         Assert.Equal(new byte[] { 1, 2, 3 }, read!.Value.ToArray());
+    }
+
+    [Fact]
+    public async Task Put_WithoutOverwrite_ConcurrentCallers_ExactlyOneWins()
+    {
+        const int callers = 8;
+        IReportMediaStore store = CreateStore();
+        using var start = new Barrier(callers);
+        var writes = new Task<bool>[callers];
+        for (int i = 0; i < callers; i++)
+        {
+            byte[] payload = { (byte)(i + 1), (byte)(i + 1) };
+            // A dedicated thread per caller, released together by the barrier, so the calls overlap even when a store
+            // completes synchronously and the pool has fewer free threads than callers.
+            writes[i] = Task.Factory.StartNew(() =>
+            {
+                start.SignalAndWait();
+                return store.PutAsync(ReportArea.Public, Path, payload, Json, false, CancellationToken.None);
+            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default).Unwrap();
+        }
+
+        bool[] results = await Task.WhenAll(writes);
+
+        int winner = Assert.Single(Enumerable.Range(0, callers), i => results[i]);
+        ReadOnlyMemory<byte>? read = await store.GetAsync(ReportArea.Public, Path, 1024, CancellationToken.None);
+        Assert.Equal(new[] { (byte)(winner + 1), (byte)(winner + 1) }, read!.Value.ToArray());
     }
 
     [Fact]

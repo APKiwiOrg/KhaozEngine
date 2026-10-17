@@ -43,9 +43,11 @@ public abstract class ReportQuotaStoreConformance
     {
         IReportQuotaStore store = CreateStore();
         await store.TryWriteAsync(Key, 1, null, ExpiresAt, CancellationToken.None);
+        QuotaCounter original = (await store.ReadAsync(Key, CancellationToken.None))!;
 
-        Assert.False(await store.TryWriteAsync(Key, 1, null, ExpiresAt, CancellationToken.None));
-        Assert.Equal(1, (await store.ReadAsync(Key, CancellationToken.None))!.Count);
+        Assert.False(await store.TryWriteAsync(Key, 7, null, ExpiresAt, CancellationToken.None));
+
+        Assert.Equal(original, await store.ReadAsync(Key, CancellationToken.None));
     }
 
     [Fact]

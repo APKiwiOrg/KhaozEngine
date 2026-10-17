@@ -43,6 +43,14 @@ public sealed class ReportWorkItemJsonTests
     }
 
     [Theory]
+    [InlineData("{\"kind\":\"other\",\"kind\":\"createIssue\",\"reportId\":\"" + Id + "\"}")]
+    [InlineData("{\"kind\":\"createIssue\",\"reportId\":\"" + Id + "\",\"reportId\":\"" + Id + "\"}")]
+    public void Parse_DuplicateProperty_Rejects(string json)
+    {
+        Assert.Throws<FormatException>(() => ReportWorkItemJson.Parse(json));
+    }
+
+    [Theory]
     [InlineData("{\"kind\":\"other\",\"reportId\":\"" + Id + "\"}")]
     [InlineData("{\"kind\":\"createIssue\",\"reportId\":\"xyz\"}")]
     [InlineData("{\"kind\":\"createIssue\",\"reportId\":\"" + Id + "\",\"requeues\":-1}")]

@@ -964,6 +964,13 @@ Its choices are the exhaustive `MapMarkerAdoption` choices. It captures accepted
 restores the exact legacy records and redo restores the same destination IDs and height modes. Failed preparation or
 publication consumes no command state. Marker effects use the same complete before/after diff as other native commands.
 
+These two commands are the editor's marker seams for consumers. A host injects its own role vocabulary through
+`MapMarkerConsumerOptions`, spawns from `MapMarkerRegistry.Enabled`, validates and keys persistence on `All`, and
+never relies on an engine role. `MarkerVillageWorkflowTests` drives the invented marker village through these commands, the shared tool
+services and the MCP verbs with identical documents, effects and history at every step, including a duplicate-name
+refusal, a local replace override, prefab moves at yaw 0.371 and scales 0.8 and 1.2, unpack, adoption, undo, redo and
+save and reopen. The full GUI host, marker inspectors and windowed native editing remain R9 work.
+
 Legacy native spawn commands refuse with `marker_set`, `marker_remove` and `spawns_adopt` guidance. Resolver (1, 1)
 also names resolver adoption through `MapResolverAdoption.ConvertToAuthoredSupport` as the prerequisite. Analytic
 spawn commands retain their released behavior. Native transactions compare canonical legacy-list bytes during

@@ -217,6 +217,14 @@ that changes either list refuses with marker and adoption guidance. Only the acc
 exact undo restoration can change those lists. Resolver (1, 1) requires resolver adoption first. The eleven analytic
 `spawn_*` and `player_spawn_*` verbs keep their released behavior.
 
+`MarkerVillageWorkflowTests` drives the invented marker village through `MutationService` on one session and the
+real MCP verbs on another, with one 60 s timeout per request. Creation, a duplicate-name refusal, a local replace
+override through `prefab_override`, `prefab_unpack`, world-terms `marker_set` edits of a transferred and a standalone
+marker, `spawns_adopt`, `prefab_undo`, `prefab_redo`, `map_save`, reopen through `map_open` and a half-open
+`marker_list` rectangle give identical documents, effects, refusals and history. Whole-building moves have no wire
+verb, so both sessions use `MutationService.PrefabApply(new MapMovePrefab(...))`, at yaw 0.371 and scales 0.8 and 1.2.
+Whole verb-map parity remains R10 work.
+
 ### Marker consumers
 
 `map_open(path, manifestPaths?, markerOptionsJson?)` takes the caller's closed marker configuration,

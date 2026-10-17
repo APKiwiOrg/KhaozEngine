@@ -225,6 +225,24 @@ visible in Auto. Concealment leaves statics intact. The acceptance covers headle
 ownership. The [MapDoc handoff table](../KhaozEngine.MapDoc/README.md#public-synthetic-village-acceptance)
 names the remaining controller, route, rendering, streaming, marker and importer proofs.
 
+`MapMarkerVillageAcceptanceTests` builds client and server heads of the invented marker village from separately
+loaded monolithic and tiled documents with the same tile size and independently verified resource bytes. Both heads
+and both forms agree on complete marker value rows, height provenance, point membership, half-open rectangle
+queries, annotation digests and build hashes. Support heights equal the named owner's float answer, exact points
+keep negative X, and yaw compares modulo a turn. The server's whole load lists every root-resident marker, and a
+tiled manifest names all six from root metadata without reading a tile body.
+
+A marker-only move or removal through `MapMarkerEdits` reports Residency alone. Static descriptors, world bounds and
+every navigation tile capture identity stay equal, while the annotation digest and build hash move because markers
+are authored data. The moved marker leaves its old storage tile and enters the new one exactly once, and
+`Affected(before, after, grids, effects)` names its owner and both tiles. A removed marker's owner leaves the
+annotation list and its old membership stays in the affected set. This proves marker residency only. It does not
+solve whole-cell residency (#341).
+
+Marker bounds join world bounds. A marker placed above or below every static widens the world's vertical extent,
+which every navigation tile's bounds and capture identity include, so such an edit moves capture identities even
+though its effects report Residency only. The village keeps every marker inside the geometry's vertical extent.
+
 ## Pick, reach and stances
 
 ```csharp

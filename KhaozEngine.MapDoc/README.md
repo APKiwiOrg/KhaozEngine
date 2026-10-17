@@ -638,6 +638,32 @@ distinct keys. Materialized transfers reuse the captured descriptor frame withou
 Markers retain exact XYZ, yaw, name, role, enabled state, ordered tags and optional instance provenance. They do
 not become `MapSpawn`. R8 renders lights.
 
+### Marker payloads and height modes
+
+Format 8 keeps marker payload 1 byte for byte and adds payload 2, used by world markers and prefab Marker children
+alike. Payload 1 keeps its height in `Position.Y`. Payload 2 requires a closed `heightMode`. `Explicit` keeps
+`Position.Y` as the only height authority and never resamples. `Support` carries a `supportBinding` and stores
+`Position.Y` exactly +0, so an authored Support marker carries no height. A Surface binding names only `surfaceId`.
+A Space binding names `spaceId`, a finite `referenceY` and finite nonnegative `searchBelow` and `searchAbove`. Nothing
+is defaulted. `MapMarkerHeights.Apply(marker, height)` writes the one canonical encoding of a `MapMarkerHeight` choice.
+An optional nonempty `archetypeId` is caller vocabulary.
+
+Expansion resolves a Support height through the shared seat query that support-bound placements use, after the
+placement seats are installed. A prefab-local or framed standalone binding is stored frame-local and passes through
+its frame once. The effective Y is the exact value of the query's float `WorldY`, and only Supported resolves. A
+removed or unsupported owner refuses the load, build or edit, disabled markers included. Effective markers carry
+value-only `HeightProvenance`, with the mode, the world request, face, space, via record and float height for Support,
+and the mode alone for Explicit. Payload-1 markers carry none. The witness-bearing answers live separately in
+`MapEffectiveResources.MarkerSupports`, one row per Support marker in ID order. A document whose effective markers
+are all payload 1 keeps the annotation digest scheme `kemap/effective-annotations/1`. Any payload-2 marker selects
+`/2`. `MapMarkerSpaces.Query(view, marker)` answers occupied space and parent chain by point membership, Outside when
+no authored space holds the point, and keeps every refusal status.
+
+The released seat query acquires a 2 m scope around each point. It refuses with MissingGeometry when that scope
+captures a floor surface whose patch in the point's own storage slot it did not read, for example a sparse floor
+with no patch in a neighbouring slot. Support-bound markers and placements share this limit, so authored worlds keep
+each bound point where every floor it captures is read.
+
 ### Marker names, lookup and typed views
 
 Effective marker IDs and names are global, ordinal and case-sensitive. A name is nonempty, editable and unique across
@@ -784,9 +810,38 @@ The independent-head acceptance lives in `MapDoc.Physics.Tests`, and the shared 
 MCP workflow lives in `MapEditor.Tests/MapEditTool/PrefabVillageWorkflowTests.cs`. These tests consume
 verified bytes and separately loaded documents. They supply headless acceptance for these seams.
 
+### Public marker village acceptance
+
+`MarkerFixtures.Village()` in `MapDoc.Tests/Markers/MarkerVillageFixtures.cs` is an invented native village over
+the released room prefab and stacked prefab-cave geometry. It holds six uniquely named markers. `start` is
+Surface-bound to the authored exterior. `actor` is Explicit at negative X with an archetype. `cave-explicit` sits in
+the deep room and `cave-bound` is Space-bound to the high cave. The prefab's payload-1 child is renamed and raised
+above its roof as `roof-label` by a replace override, and the payload-2 local child `disabled-local` is disabled with
+ordered duplicate tags. Roles are caller values and neither legacy spawn list has a record.
+
+`NativeMarkerAcceptanceTests` checks payload versions, the exhaustive and enabled registry views, roles, tags,
+witness rows, half-open rectangles with markers on their minimum and maximum edges, point membership and identity on
+monolithic and tiled reloads with independently verified closures, plus explicit adoption of both legacy lists.
+`MapMarkerVillageAcceptanceTests` in MapDoc.Physics.Tests builds independent client and server heads, and
+`MarkerVillageWorkflowTests` in MapEditor.Tests drives the shared commands and the MCP verbs. The stacked,
+underground and local cave proofs stay `StackedCaveMarkerSupport_DoesNotSnapToSurface`,
+`UndergroundMarker_ExplicitHeightAndLayerSurviveReload` and `LocalCaveMarker_TransformsOnceAndKeepsVolumeAssociation`.
+
+Markers hand off to later rounds through these seams. They certify no native route, door, renderer pixel or game
+policy.
+
+| Consumer | Marker seam |
+| --- | --- |
+| R7 | Generic tagged points through `MapMarkerRegistry.ByTag` and the enabled view |
+| R8 | Resolved annotations, `AnnotationDigest` and the `marker:{id}` residency entries |
+| R9 | The full GUI host, marker inspectors and windowed native editing over `MarkerEditCommand` and `AdoptSpawnsCommand` |
+| R10 | Whole-tool parity for every verb beyond the registered marker, prefab and interior commands |
+| #1370 | Indexed half-open point queries through `MapMarkerRegistry.InRect` |
+| #438 | Queried occupied space through `MapMarkerSpaces.Query` and its refusal statuses |
+| R11 and G2 | Private source refreeze, the importer and final import and point-shift acceptance |
+
 | Later owner | Remaining proof |
 | --- | --- |
-| R6 | GUI marker readouts. Unique names, the registry, rectangle lookup, role findings, typed views, marker commands, legacy spawn adoption, the native legacy-list fence, metadata window anchors and named-support tool readouts are in place |
 | R7 | Distribution and foliage exclusions over effective canonical paint owners |
 | R8 | Partial-face drawing, roof colour and shadows, camera boom, sky picking, local-light pixels, bounded streaming, eviction, HLOD and on-demand navigation |
 | R9 and #1349 | GUI closure/bounds binding, prefab mode, inspectors and real pointer/key input |

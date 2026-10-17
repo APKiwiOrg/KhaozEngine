@@ -992,7 +992,24 @@ two independently loaded headless builds and the actual prefab/interior services
 `NativeManifestAdapterTests` remains the regression for the one-way verified native asset adapter.
 No TileWorld oracle or game source data participates in the village. The
 [MapDoc handoff table](../KhaozEngine.MapDoc/README.md#public-synthetic-village-acceptance) lists every
-remaining R6 to R11 proof, native controller/route gates and live-door/rendering consumers.
+remaining R7 to R11 proof, native controller/route gates and live-door/rendering consumers.
+
+### General marker runtime contract
+
+General markers add no package or umbrella edge. Payload 2 with its Explicit and Support height modes, support
+resolution through the shared seat query, value provenance, the witness rows, unique names, the registry and its
+half-open rectangle index, role findings, typed views, adoption, window anchors and named-support readouts all live
+in `MapDoc`. Its runtime closure stays free of TileWorld, the physics seam, GPU, rendering, MapEditor and game
+projects, and carries no GPU package. `MapDoc.Physics` consumes the effective markers for annotation residency and
+installs no static for them. MapEditor gains no MapDoc.Physics or TileWorld reference, so its marker readouts use
+MapDoc's shared seat query. Roles, start selection, habitat and spawn policy remain game vocabulary passed in by the
+caller.
+
+`ArchitectureTests.Prefabs.cs` checks the MapDoc closure and the MapEditor direct non-edges in
+`MarkerRuntime_HasNoTileWorldPhysicsOrGpuDependency`. The invented marker village proves monolithic and tiled
+reloads, independent client and server heads, marker-only residency without physics or navigation change, and the
+shared commands with real MCP verbs. The [marker handoff](../KhaozEngine.MapDoc/README.md#public-marker-village-acceptance)
+names what R7 to R11, #1370 and #438 consume.
 
 ## Content catalog package edges
 

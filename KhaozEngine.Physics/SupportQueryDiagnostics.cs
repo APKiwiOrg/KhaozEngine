@@ -35,6 +35,9 @@ internal enum SupportQueryCounter
     PolygonOperands,
     /// <summary>Contact members the certified separation prefilter decided negative without the contact kernel.</summary>
     PrefilterRejects,
+    /// <summary>Joins of two faces of one installed convex leaf whose meeting along a captured shared edge came
+    /// from the world form's topology. <see cref="JoinsProved"/> counts the geometric joins only.</summary>
+    TopologyJoins,
 }
 
 internal readonly record struct SupportQueryCounts(
@@ -64,7 +67,8 @@ internal readonly record struct SupportQueryCounts(
     int ModeSegments,
     int WorldFormBuilds,
     int PolygonOperands,
-    int PrefilterRejects)
+    int PrefilterRejects,
+    int TopologyJoins)
 {
     public static SupportQueryCounts operator -(SupportQueryCounts a, SupportQueryCounts b) => new(
         a.Find - b.Find,
@@ -93,7 +97,8 @@ internal readonly record struct SupportQueryCounts(
         a.ModeSegments - b.ModeSegments,
         a.WorldFormBuilds - b.WorldFormBuilds,
         a.PolygonOperands - b.PolygonOperands,
-        a.PrefilterRejects - b.PrefilterRejects);
+        a.PrefilterRejects - b.PrefilterRejects,
+        a.TopologyJoins - b.TopologyJoins);
 }
 
 /// <summary>Opt-in counters owned by the executing thread. Installation is outside measured intervals.</summary>
@@ -164,7 +169,7 @@ internal static class SupportQueryDiagnostics
         t_enabled = enabled;
     }
 
-    const int CounterCount = 27;
+    const int CounterCount = 28;
 
     /// <summary>Every thread-local counter, observation and callback of one thread.</summary>
     internal readonly record struct ThreadState(bool Enabled, int[]? Counts, Action? Begin, Action? End,
@@ -222,6 +227,7 @@ internal static class SupportQueryDiagnostics
         c[(int)SupportQueryCounter.WorldFormBuilds] += counts.WorldFormBuilds;
         c[(int)SupportQueryCounter.PolygonOperands] += counts.PolygonOperands;
         c[(int)SupportQueryCounter.PrefilterRejects] += counts.PrefilterRejects;
+        c[(int)SupportQueryCounter.TopologyJoins] += counts.TopologyJoins;
         t_routes = new(t_routes.WallRetries + routes.WallRetries, t_routes.PushedPlacements + routes.PushedPlacements,
             t_routes.MediumResolves + routes.MediumResolves, Math.Max(t_routes.MaximumMediumRetries, routes.MaximumMediumRetries),
             t_routes.GroundSegments + routes.GroundSegments, t_routes.SlideSegments + routes.SlideSegments,
@@ -270,7 +276,8 @@ internal static class SupportQueryDiagnostics
             c[23],
             c[24],
             c[25],
-            c[26]);
+            c[26],
+            c[27]);
     }
 
     internal static void SetGroundSubstepObserver(Action? begin, Action? end)

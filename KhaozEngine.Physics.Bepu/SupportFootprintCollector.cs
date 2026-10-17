@@ -152,7 +152,9 @@ internal sealed partial class SupportFootprintCollector
         return CapsuleFeatureStatus.Complete;
     }
 
-    // A refused materialization publishes nothing, so a later reader builds again.
+    // A refused materialization publishes nothing, so a later reader builds again. The building query joins with the
+    // topology it just certified, as a binding query would. The certification is form work, counted by
+    // WorldFormBuilds alone, so its arithmetic stays out of the query counters.
     CapsuleFeatureStatus BuildWorldForm(Simulation simulation, StaticHandle owner, in StaticDescription description,
         InstalledSupportGeometry geometry)
     {
@@ -160,7 +162,13 @@ internal sealed partial class SupportFootprintCollector
         if (status != CapsuleFeatureStatus.Complete) return status;
         using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportMaterialization);
         SupportQueryDiagnostics.Record(SupportQueryCounter.WorldFormBuilds);
-        geometry.Publish(new InstalledSupportWorldForm(simulation, description, _leaves, _polygons, _curved));
+        InstalledSupportWorldForm form;
+        SupportQueryDiagnostics.ThreadState counting = SupportQueryDiagnostics.Exchange(
+            SupportQueryDiagnostics.ThreadState.Fresh(false));
+        try { form = new InstalledSupportWorldForm(simulation, description, _leaves, _polygons, _curved, _kernel); }
+        finally { SupportQueryDiagnostics.Exchange(counting); }
+        form.AttachTopology(_polygons);
+        geometry.Publish(form);
         return status;
     }
 
@@ -294,11 +302,14 @@ internal sealed partial class SupportFootprintCollector
                     SupportQueryDiagnostics.Record(SupportQueryCounter.JoinsPruned);
                     continue;
                 }
+                // The reference proves every meeting geometrically.
+                bool topology = !SupportReferenceEvaluation.Active && SupportNeighborhoodJoins.TopologyMeets(a, b);
                 GeometrySign joined = SupportNeighborhoodJoins.Joined(a, b, _request.ContactBand, _kernel,
-                    _incidence, first, second);
+                    _incidence, first, second, topology);
                 if (joined == GeometrySign.Unresolved) return Refused(CapsuleFeatureStatus.Unsupported);
                 if (joined != GeometrySign.Positive) continue;
-                SupportQueryDiagnostics.Record(SupportQueryCounter.JoinsProved);
+                SupportQueryDiagnostics.Record(
+                    topology ? SupportQueryCounter.TopologyJoins : SupportQueryCounter.JoinsProved);
                 matrix[first * stride + second / 64] |= 1UL << (second % 64);
                 matrix[second * stride + first / 64] |= 1UL << (first % 64);
             }

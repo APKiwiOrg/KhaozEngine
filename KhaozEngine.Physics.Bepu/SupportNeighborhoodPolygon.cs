@@ -19,6 +19,7 @@ internal sealed class SupportPolygon
     int _count;
     GeometrySign _normalArea, _orientation;
     SupportContactDomain _contactDomain;
+    InstalledSupportWorldFace? _face;
     bool _hasNormalArea, _hasOrientation, _hasContactDomain;
 
     internal StaticHandle Static { get; private set; }
@@ -72,6 +73,10 @@ internal sealed class SupportPolygon
             return _contactDomain;
         }
     }
+
+    /// <summary>Element ids of the later faces of this face's world form leaf that share a captured edge with it and
+    /// whose meeting the form certified. Empty for a polygon that no world form face describes.</summary>
+    internal ReadOnlySpan<int> TopologyMeetings => _face is null ? [] : _face.TopologyMeetings;
 
     internal SupportPolygon(SupportFootprintSourcePredicates? sourcePredicates = null) => _sourcePredicates = sourcePredicates;
 
@@ -157,13 +162,19 @@ internal sealed class SupportPolygon
         HasJoinIncidenceCertificate = face.HasJoinIncidenceCertificate;
         (_normalArea, _orientation, _contactDomain) = (face.NormalArea, face.Orientation, face.ContactDomain);
         _hasNormalArea = _hasOrientation = _hasContactDomain = true;
+        _face = face;
     }
+
+    /// <summary>Takes the certified topology meetings of <paramref name="face"/>, a world form face snapshotted from
+    /// this finished polygon.</summary>
+    internal void AttachTopology(InstalledSupportWorldFace face) => _face = face;
 
     // Per-query operands and every derived polygon fact describe the geometry they were taken from.
     void ClearDerived()
     {
         _footprintEdges.Clear();
         _hasNormalArea = _hasOrientation = _hasContactDomain = false;
+        _face = null;
     }
 
     /// <summary>The signed height of <paramref name="point"/> above this polygon's plane, in metres.</summary>

@@ -26,9 +26,11 @@ internal sealed class InstalledSupportWorldForm
 
     /// <summary>Snapshots one static's materialized <paramref name="leaves"/>, the footprint
     /// <paramref name="polygons"/> derived from them in order and its <paramref name="curved"/> leaves, keyed by
-    /// the exact live poses of <paramref name="description"/>.</summary>
+    /// the exact live poses of <paramref name="description"/>. Each leaf's shared-edge meetings are certified with
+    /// <paramref name="kernel"/>.</summary>
     internal InstalledSupportWorldForm(Simulation simulation, in StaticDescription description,
-        List<CapsuleFeaturePolyhedron> leaves, List<SupportPolygon> polygons, List<SupportCurvedLeaf> curved)
+        List<CapsuleFeaturePolyhedron> leaves, List<SupportPolygon> polygons, List<SupportCurvedLeaf> curved,
+        SupportSegmentPolygon kernel)
     {
         _pose = description.Pose;
         _childPoses = [];
@@ -43,7 +45,7 @@ internal sealed class InstalledSupportWorldForm
         for (int i = 0; i < _leaves.Length; i++)
         {
             CapsuleFeaturePolyhedron leaf = leaves[i];
-            _leaves[i] = new(leaf, polygons, polygon);
+            _leaves[i] = new(leaf, polygons, polygon, kernel);
             polygon += leaf.Faces.Length;
         }
         if (polygon != polygons.Count)
@@ -62,6 +64,16 @@ internal sealed class InstalledSupportWorldForm
         for (int i = 0; i < _childPoses.Length; i++)
             if (!Same(compound.Children[i].LocalPose, _childPoses[i])) return false;
         return true;
+    }
+
+    /// <summary>Gives the <paramref name="polygons"/> this form was snapshotted from, still in derivation order,
+    /// their faces' certified topology meetings, as <see cref="Bind"/> gives its bound polygons.</summary>
+    internal void AttachTopology(List<SupportPolygon> polygons)
+    {
+        int polygon = 0;
+        foreach (InstalledSupportWorldLeaf leaf in _leaves)
+            foreach (InstalledSupportWorldFace face in leaf.Faces)
+                polygons[polygon++].AttachTopology(face);
     }
 
     /// <summary>Binds one pooled polygon per face, in the order the uncached derivation emits them, and appends
@@ -88,7 +100,7 @@ internal sealed class InstalledSupportWorldForm
 }
 
 /// <summary>One box or hull leaf of a world form: its certified installed operator, the certified world vertices,
-/// the validated face normals and its faces' footprint polygon facts.</summary>
+/// the validated face normals, its faces' footprint polygon facts and their certified shared-edge meetings.</summary>
 internal sealed class InstalledSupportWorldLeaf
 {
     readonly FeaturePoint[] _vertices;
@@ -101,14 +113,40 @@ internal sealed class InstalledSupportWorldLeaf
     internal ReadOnlySpan<FeaturePoint> Normals => _normals;
     internal ReadOnlySpan<InstalledSupportWorldFace> Faces => _faces;
 
-    internal InstalledSupportWorldLeaf(CapsuleFeaturePolyhedron leaf, List<SupportPolygon> polygons, int first)
+    internal InstalledSupportWorldLeaf(CapsuleFeaturePolyhedron leaf, List<SupportPolygon> polygons, int first,
+        SupportSegmentPolygon kernel)
     {
         LeafId = leaf.LeafId;
         Operator = leaf.SourceMap;
         _vertices = [.. leaf.Vertices];
         _normals = [.. leaf.Normals];
+        var meetings = new List<int>?[leaf.Faces.Length];
+        foreach (CapsuleFeaturePolyhedronEdge edge in CapturedEdges(leaf.Faces))
+        {
+            int lower = Math.Min(edge.FirstFace, edge.SecondFace), higher = Math.Max(edge.FirstFace, edge.SecondFace);
+            SupportPolygon a = polygons[first + lower], b = polygons[first + higher];
+            if (SupportNeighborhoodJoins.CertifiesTopologyMeeting(a, b, kernel))
+                (meetings[lower] ??= []).Add(b.ElementId);
+        }
         _faces = new InstalledSupportWorldFace[leaf.Faces.Length];
-        for (int i = 0; i < _faces.Length; i++) _faces[i] = new(polygons[first + i]);
+        for (int i = 0; i < _faces.Length; i++)
+            _faces[i] = new(polygons[first + i], meetings[i] is { } certified ? [.. certified] : []);
+    }
+
+    // Every local edge two faces share with opposite windings, oriented as its first face winds it. An edge that
+    // capture validation refuses, such as one two faces wind the same way, yields no entry.
+    static List<CapsuleFeaturePolyhedronEdge> CapturedEdges(int[][] faces)
+    {
+        var open = new Dictionary<(int, int), int>();
+        var edges = new List<CapsuleFeaturePolyhedronEdge>();
+        for (int face = 0; face < faces.Length; face++)
+            for (int i = 0; i < faces[face].Length; i++)
+            {
+                int a = faces[face][i], b = faces[face][(i + 1) % faces[face].Length];
+                if (open.Remove((b, a), out int other)) edges.Add(new(b, a, other, face));
+                else open[(a, b)] = face;
+            }
+        return edges;
     }
 }
 
@@ -120,6 +158,7 @@ internal sealed class InstalledSupportWorldFace
     readonly Vector3[] _sourceVertices;
     readonly double[] _low;
     readonly double[] _high;
+    readonly int[] _topologyMeetings;
 
     internal int ElementId { get; }
     internal ReadOnlySpan<FeaturePoint> Vertices => _vertices;
@@ -137,8 +176,13 @@ internal sealed class InstalledSupportWorldFace
     internal GeometrySign Orientation { get; }
     internal SupportContactDomain ContactDomain { get; }
 
-    internal InstalledSupportWorldFace(SupportPolygon polygon)
+    /// <summary>Element ids of the later faces of the same leaf that share a captured edge with this face and whose
+    /// meeting with it, this face first, <see cref="SupportNeighborhoodJoins.CertifiesTopologyMeeting"/> proved.</summary>
+    internal ReadOnlySpan<int> TopologyMeetings => _topologyMeetings;
+
+    internal InstalledSupportWorldFace(SupportPolygon polygon, int[] topologyMeetings)
     {
+        _topologyMeetings = topologyMeetings;
         ElementId = polygon.ElementId;
         _vertices = polygon.Vertices.ToArray();
         _edges = polygon.Edges.ToArray();

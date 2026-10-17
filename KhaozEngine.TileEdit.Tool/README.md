@@ -58,7 +58,10 @@ while another call is mid-edit.
 **Tool calls execute in transport arrival order.** A batch of newline-delimited `tools/call` requests may be
 written to stdin without waiting for each response. The server completes each call before starting the next, so
 later edits observe earlier edits and a final `world_save` persists every mutation before it. Other protocol
-messages remain independent, including request cancellation.
+messages remain independent, including request cancellation. A `notifications/cancelled` the server reads while
+its call is still queued settles that call in the same transport order: the call never starts and gets no
+response, and the next call starts once the calls ahead of it finish. A cancellation read after the call
+started reaches the running tool through its cancellation token.
 
 **The world is self-describing.** `world_open(path)` takes a directory and reads its `world.json`, which names
 the catalogs, so opening is one argument. `world_create` stores the catalog paths in the manifest EXACTLY as

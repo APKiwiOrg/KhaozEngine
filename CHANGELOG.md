@@ -10,6 +10,9 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - `PersistenceQueue` in `KhaozEngine.Persistence` gains an internal drain scheduling seam for tests. Public
   behaviour is unchanged. The tracked persistence tests now hold every controlled pause on test-owned threads,
   which ends their intermittent watchdog failures on loaded hosted runners (#1317).
+- `EditorDocument` in `KhaozEngine.MapEditor` counts reads of `Doc` internally, so the viewport pick linearity
+  test asserts a constant read count per pick instead of a wall-clock bound (#1444). Public behaviour is
+  unchanged.
 
 ## 21.3.0
 

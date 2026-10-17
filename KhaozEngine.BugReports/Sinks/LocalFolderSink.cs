@@ -35,6 +35,7 @@ public sealed class LocalFolderSink : IBugReportSink
     readonly string root;
     readonly bool openViewer;
     readonly Func<BugReportViewerModel, string> render;
+    readonly Func<Uri, CancellationToken, Task<bool>> launch;
 
     /// <summary>Creates a sink that saves reports under one folder.</summary>
     /// <param name="root">The folder that holds one subfolder per report. It is created when missing.</param>
@@ -44,14 +45,16 @@ public sealed class LocalFolderSink : IBugReportSink
     {
     }
 
-    // Tests replace the page renderer to reach the unexpected failure path.
-    internal LocalFolderSink(string root, bool openViewer, Func<BugReportViewerModel, string> render)
+    // Tests replace the page renderer to reach the unexpected failure path, and the browser launch to see its address.
+    internal LocalFolderSink(string root, bool openViewer, Func<BugReportViewerModel, string> render,
+        Func<Uri, CancellationToken, Task<bool>>? launch = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(root);
         ArgumentNullException.ThrowIfNull(render);
         this.root = Path.GetFullPath(root);
         this.openViewer = openViewer;
         this.render = render;
+        this.launch = launch ?? Browser.LaunchBrowserAsync;
     }
 
     /// <inheritdoc />
@@ -61,7 +64,7 @@ public sealed class LocalFolderSink : IBugReportSink
         cancellationToken.ThrowIfCancellationRequested();
 
         BugReportManifest manifest;
-        string viewerPath;
+        Uri viewer;
         try
         {
             byte[] bundle = submission.Bundle.ToArray();
@@ -69,7 +72,15 @@ public sealed class LocalFolderSink : IBugReportSink
             if (!validation.IsValid || validation.Manifest is null)
                 return new BugReportSubmitResult(BugReportSubmitStatus.Rejected, null, validation.Error, null);
             manifest = validation.Manifest;
-            viewerPath = Save(bundle, manifest);
+            string viewerPath = Save(bundle, manifest);
+            // The builder escapes # and spaces but keeps % as an escape, so % is escaped first. A folder name holding
+            // either stays part of the path.
+            viewer = new UriBuilder
+            {
+                Scheme = Uri.UriSchemeFile,
+                Host = "",
+                Path = viewerPath.Replace("%", "%25", StringComparison.Ordinal),
+            }.Uri;
         }
         catch (Exception e) when (e is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
@@ -78,7 +89,7 @@ public sealed class LocalFolderSink : IBugReportSink
         }
 
         if (openViewer)
-            await Browser.LaunchBrowserAsync(new Uri(viewerPath), cancellationToken).ConfigureAwait(false);
+            await launch(viewer, cancellationToken).ConfigureAwait(false);
         return new BugReportSubmitResult(BugReportSubmitStatus.Sent, ReportIds.ReferenceCode(manifest.ReportId), null, null);
     }
 

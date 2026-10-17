@@ -132,6 +132,27 @@ public sealed class LocalFolderSinkTests : IDisposable
     }
 
     [Fact]
+    public async Task Root_with_hash_and_percent_saves_and_opens_the_viewer_path()
+    {
+        string odd = Path.Combine(root, "bugs #1 100% done %41");
+        Uri? opened = null;
+        var sink = new LocalFolderSink(odd, openViewer: true, BugReportViewerPage.Render, (uri, _) =>
+        {
+            opened = uri;
+            return Task.FromResult(true);
+        });
+
+        BugReportSubmitResult result = await sink.SubmitAsync(Submission(TestBundles.Default()), CancellationToken.None);
+
+        Assert.Equal(BugReportSubmitStatus.Sent, result.Status);
+        string viewer = Path.Combine(odd, TestBundles.ReportId, "viewer.html");
+        Assert.True(File.Exists(viewer));
+        Assert.NotNull(opened);
+        Assert.True(opened.IsFile);
+        Assert.Equal(viewer, opened.LocalPath);
+    }
+
+    [Fact]
     public async Task Write_failure_is_queued()
     {
         File.WriteAllText(root, "a file where the folder should be");

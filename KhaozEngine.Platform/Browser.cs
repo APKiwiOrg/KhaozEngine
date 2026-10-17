@@ -18,7 +18,8 @@ public static class Browser
             OSPlatform os = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? OSPlatform.Windows
                 : RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? OSPlatform.OSX
                 : OSPlatform.Linux;
-            Process.Start(CreateStartInfo(url, os));
+            // The browser outlives the call. Disposing the handle only releases this process's view of it.
+            using Process? _ = Process.Start(CreateStartInfo(url, os));
             return Task.FromResult(true);
         }
         catch

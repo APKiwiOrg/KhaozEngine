@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <OutputType>Library</OutputType>
+    <!-- Pinned so the declared namespaces stay KhaozEngine.Tests.BugReports.Relay, per AGENTS.md. -->
+    <RootNamespace>KhaozEngine.Tests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The relay and the engine projects its intake, issue and GitHub tests build bundles, logs and images with.
+         BugReportsRelayTests_ReferenceOnlyWhatTheyUse pins this set. -->
+    <ProjectReference Include="../KhaozEngine.BugReports/KhaozEngine.BugReports.csproj" />
+    <ProjectReference Include="../KhaozEngine.BugReports.Contracts/KhaozEngine.BugReports.Contracts.csproj" />
+    <ProjectReference Include="../KhaozEngine.BugReports.Relay/KhaozEngine.BugReports.Relay.csproj" />
+    <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
+    <ProjectReference Include="../KhaozEngine.Http/KhaozEngine.Http.csproj" />
+    <ProjectReference Include="../KhaozEngine.Imaging/KhaozEngine.Imaging.csproj" />
+  </ItemGroup>
+</Project>

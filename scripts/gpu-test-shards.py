@@ -12,8 +12,8 @@ and .github/workflows/cross-platform-gpu.yml reads it through the subcommands be
 THE SPLIT. Shard `rest` runs every test project in KhaozEngine.slnx except KhaozEngine.Render.Tests and
 the named projects in PROJECT_SLICES, through a solution derived from the current one at run time, so a new
 test project lands in it with no edit. Vulkan's `projects-1` takes MapEditor.Tests, Game.Tests and
-Movement.Tests (#1458). Only `rest` is primary and runs the once-per-leg steps. The unsharded Windows
-isolation pass still takes every non-Render project. Every `render-N` shard runs one slice of
+Movement.Tests, and Windows' takes Catalog.Tests (#1458). Only `rest` is primary and runs the once-per-leg
+steps. The unsharded Windows isolation pass still takes every non-Render project. Every `render-N` shard runs one slice of
 KhaozEngine.Render.Tests. Each backend has its own slice table,
 because the three rasterizers disagree about what is expensive (below). Within a table the slices are an
 ORDERED FIRST-MATCH partition: a test belongs to the first slice whose rules match it, and the last slice has
@@ -31,7 +31,8 @@ assembly ran on two shards or twice on one, Render.Tests ran outside its slices,
 solution ran nowhere.
 
 THE BALANCE comes from the per-test durations in the TRX files of dispatch runs 39039926687 and
-39072468288. A job's runner factor is the geometric mean of its repeated methods' duration ratios to their
+39072468288, with the Windows project split also reading assembly durations from 39074411898.
+A job's runner factor is the geometric mean of its repeated methods' duration ratios to their
 across-run geometric means. Divide durations by that factor, then take each method's geometric mean over
 the runs. Hosted speed varies uniformly across a job, so balancing raw times would move work toward the
 last run's fast hosts. Every job also spends about 4 minutes on setup and build before its tests start.
@@ -47,9 +48,10 @@ The shapes differ by backend:
   * direct3d11-native runs classes in parallel on WARP but the methods of one class in series, so a slice
     costs its slowest class or about a third of its summed time, whichever is more. The one method of
     ShadowCascadeCullPerfGpuTests took about 15 minutes there against 1 on Metal, has a slice to itself
-    and sets that backend's floor. The rest jobs took 14m24s and 18m55s, both under 20, so they stay whole.
-    TemporalFollowPhaseGpuTests' methods are spread
-    over two slices so that class is no longer a 16-minute serial chain. The other three slices sum 29 to
+    and sets that backend's floor. The rest jobs took 14m24s and 18m55s, then 22m54s in 39074411898.
+    Catalog.Tests took 16.30 minutes there against 13.01 for MapEditor.Tests, so Catalog.Tests moves to
+    projects-1 on its own host. Every other non-Render project stays on rest. TemporalFollowPhaseGpuTests'
+    methods are spread over two slices so that class is no longer a 16-minute serial chain. The other three slices sum 29 to
     35 minutes each.
   * metal-native has the same parallel shape on a real (paravirtual) GPU at about a third of the cost.
     Render.Tests is about 32 summed minutes in two slices of 7 to 9 minutes of wall time each.
@@ -120,6 +122,9 @@ REST = "rest"
 RENDER_PROJECT = f"{RENDER_ASSEMBLY}/{RENDER_ASSEMBLY}.csproj"
 # Only these named projects leave rest. Future test projects default to rest on every backend.
 PROJECT_SLICES = {
+    "direct3d11-native": [
+        ("projects-1", ("KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj",)),
+    ],
     "vulkan-native": [
         ("projects-1", tuple(f"{name}/{name}.csproj" for name in (
             "KhaozEngine.MapEditor.Tests", "KhaozEngine.Game.Tests", "KhaozEngine.Movement.Tests"))),

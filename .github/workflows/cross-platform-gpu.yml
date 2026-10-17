@@ -41,9 +41,9 @@
 # too. A leg is sharded when it runs its full suite on the schedule or a workflow_dispatch and the run neither
 # bakes nor sets renderTestFilter. metal-native also runs its full suite on push and pull_request, as one job
 # there (#1460, CONCURRENCY below). Each sharded leg runs as `rest` plus `render-1` to `render-N`
-# (Render.Tests in slices). Vulkan also moves three named non-Render projects to `projects-1` (#1458):
+# (Render.Tests in slices). The software legs also move named non-Render projects to `projects-1` (#1458):
 #   metal-native        rest + 2 render slices = 3 jobs
-#   direct3d11-native   rest + 4 render slices = 5 jobs
+#   direct3d11-native   rest + projects-1 + 4 render slices = 6 jobs
 #   vulkan-native       rest + projects-1 + 12 render slices = 14 jobs
 # Each backend has its own slice table, balanced from that backend's measured per-test times. The split lives
 # in scripts/gpu-test-shards.py, which is also the coverage guard: every render shard checks that its
@@ -55,8 +55,8 @@
 # per leg.
 #
 # CONCURRENCY. The org is on the Team plan: 60 concurrent GitHub-hosted standard jobs and 5 concurrent macOS
-# jobs (https://docs.github.com/en/actions/reference/limits). A default-input dispatch peaks at 23 jobs here
-# (3 Metal, 5 Windows, 14 Linux, the sync job), 27 with the `ci` dispatch the pre-tag gate runs beside it.
+# jobs (https://docs.github.com/en/actions/reference/limits). A default-input dispatch peaks at 24 jobs here
+# (3 Metal, 6 Windows, 14 Linux, the sync job), 28 with the `ci` dispatch the pre-tag gate runs beside it.
 # Metal takes no more than 3 because its slowest shard is already well under the Vulkan floor, so a fourth
 # macOS job would only spend the shared macOS allowance. That allowance is the one that binds in practice:
 # every push and pull_request runs Metal's full suite too, so overlapping runs share 5 macOS slots. While

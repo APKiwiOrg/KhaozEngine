@@ -39,6 +39,7 @@ matrix = json.loads(lines["matrix"])["include"]
 sharded = json.loads(lines["sharded"])
 primaries = {e["backend"] for e in matrix if e["primary"] == "1"}
 assert len(primaries) == 3 and sum(e["primary"] == "1" for e in matrix) == 3, "one primary entry per leg"
+assert all(e["shard"] in ("", "rest") for e in matrix if e["primary"] == "1"), "only rest is primary when sharded"
 print(len(matrix), ",".join(s["backend"] for s in sharded) or "none")
 PY
 }
@@ -46,8 +47,8 @@ PY
 echo "expand: which triggers shard which legs"
 check "push keeps Metal's full suite on one job" "3 none"    "$(expand push false '')"
 check "pull_request matches push"           "3 none"          "$(expand pull_request false '')"
-check "dispatch shards all three"           "22 metal-native,direct3d11-native,vulkan-native" "$(expand workflow_dispatch false '')"
-check "schedule matches dispatch"           "22 metal-native,direct3d11-native,vulkan-native" "$(expand schedule false '')"
+check "dispatch shards all three"           "23 metal-native,direct3d11-native,vulkan-native" "$(expand workflow_dispatch false '')"
+check "schedule matches dispatch"           "23 metal-native,direct3d11-native,vulkan-native" "$(expand schedule false '')"
 check "a bake shards nothing"               "3 none"          "$(expand workflow_dispatch true '')"
 check "a render filter shards nothing"      "3 none"          "$(expand workflow_dispatch false 'FullyQualifiedName~Golden')"
 
@@ -161,7 +162,7 @@ python3 - "$S" <<'PY'
 import pathlib, sys, xml.etree.ElementTree as ET
 base = pathlib.Path(sys.argv[1])
 solution = ET.parse(base / "Fixture.slnx")
-for name in ("KhaozEngine.MapEditor.Tests", "KhaozEngine.Game.Tests", "KhaozEngine.Movement.Tests"):
+for name in ("KhaozEngine.MapEditor.Tests", "KhaozEngine.Game.Tests", "KhaozEngine.Movement.Tests", "KhaozEngine.Catalog.Tests"):
     path = base / name / (name + ".csproj")
     path.parent.mkdir()
     override = "<AssemblyName>Fixture.Editor.Tests</AssemblyName>" if "MapEditor" in name else ""
@@ -177,8 +178,10 @@ check "the named project solution is generated" 0 \
   "$(run solution vulkan-native projects-1 "$S/Fixture.slnx" "$S/output/projects.slnx")"
 check "unsharded isolation keeps all non-render projects" 0 \
   "$(run solution vulkan-native '' "$S/Fixture.slnx" "$S/output/all.slnx")"
-check "Windows rest keeps its non-render projects" 0 \
+check "Windows rest excludes the named projects" 0 \
   "$(run solution direct3d11-native rest "$S/Fixture.slnx" "$S/output/windows.slnx")"
+check "the Windows named project solution is generated" 0 \
+  "$(run solution direct3d11-native projects-1 "$S/Fixture.slnx" "$S/output/windows-projects.slnx")"
 check "Render slices cannot generate a project solution" 1 \
   "$(run solution vulkan-native render-1 "$S/Fixture.slnx" "$S/output/invalid.slnx")"
 _rc=0
@@ -188,35 +191,41 @@ base = pathlib.Path(sys.argv[1])
 def paths(name):
     return {p.get("Path") for p in ET.parse(base / "output" / (name + ".slnx")).iter("Project")}
 rest = {"../A.Tests/A.Tests.csproj", "../Lib/Lib.csproj"}
+catalog = {"../KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj"}
 named = {f"../{name}/{name}.csproj" for name in
          ("KhaozEngine.MapEditor.Tests", "KhaozEngine.Game.Tests", "KhaozEngine.Movement.Tests")}
-assert paths("rest") == rest, paths("rest")
+assert paths("rest") == rest | catalog, paths("rest")
 assert paths("projects") == named, paths("projects")
-assert paths("all") == rest | named, paths("all")
+assert paths("all") == rest | named | catalog, paths("all")
 assert paths("windows") == rest | named, paths("windows")
+assert paths("windows-projects") == catalog, paths("windows-projects")
 assert not paths("rest") & paths("projects"), "project shards overlap"
+assert not paths("windows") & paths("windows-projects"), "Windows project shards overlap"
 assert all((base / "output" / p).exists() for p in paths("all")), "paths were not rebased"
 PY
 check "derived solutions partition projects and rebase paths" 0 "$_rc"
 
-project_reports() { # mutation applied to an otherwise complete Vulkan backend
+project_reports() { # mutation, backend. Applied to an otherwise complete software backend
   rm -rf "$TMPROOT/reports"; mkdir -p "$TMPROOT/reports"
-  python3 - "$PLAN" "$TMPROOT/reports" "$1" <<'PY'
+  python3 - "$PLAN" "$TMPROOT/reports" "$1" "$2" <<'PY'
 import importlib.util, json, sys
 spec = importlib.util.spec_from_file_location("plan", sys.argv[1])
 plan = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(plan)
-out, mutation = sys.argv[2:]
+out, mutation, backend = sys.argv[2:]
 one = {"total": 2, "passed": 2, "failed": 0, "skipped": 0, "runs": 1}
-where = {"a.tests": ["rest"], "Fixture.Editor.Tests": ["projects-1"],
-         "KhaozEngine.Game.Tests": ["projects-1"], "KhaozEngine.Movement.Tests": ["projects-1"],
-         "KhaozEngine.Render.Tests": [name for name, _ in plan.render_slices("vulkan-native")]}
+world = ["projects-1"] if backend == "vulkan-native" else ["rest"]
+where = {"a.tests": ["rest"], "Fixture.Editor.Tests": world.copy(),
+         "KhaozEngine.Game.Tests": world.copy(), "KhaozEngine.Movement.Tests": world.copy(),
+         "KhaozEngine.Catalog.Tests": ["projects-1"] if backend == "direct3d11-native" else ["rest"],
+         "KhaozEngine.Render.Tests": [name for name, _ in plan.render_slices(backend)]}
+moved = "Fixture.Editor.Tests" if backend == "vulkan-native" else "KhaozEngine.Catalog.Tests"
 if mutation == "duplicate":
-    where["Fixture.Editor.Tests"].append("rest")
+    where[moved].append("rest")
 elif mutation == "missing":
-    where["Fixture.Editor.Tests"] = []
+    where[moved] = []
 elif mutation == "wrong shard":
-    where["Fixture.Editor.Tests"] = ["rest"]
+    where[moved] = ["rest"]
 elif mutation == "new project moved":
     where["a.tests"] = ["projects-1"]
 elif mutation == "render moved":
@@ -224,17 +233,19 @@ elif mutation == "render moved":
 for shard in ["rest", "projects-1"] + where["KhaozEngine.Render.Tests"]:
     assemblies = {name: dict(one) for name, shards in where.items() if shard in shards}
     if mutation == "twice on one" and shard == "projects-1":
-        assemblies["Fixture.Editor.Tests"]["runs"] = 2
-    json.dump({"backend": "vulkan-native", "shard": shard, "outcome": "success", "assemblies": assemblies},
-              open(f"{out}/vulkan-native-{shard}.json", "w"))
+        assemblies[moved]["runs"] = 2
+    json.dump({"backend": backend, "shard": shard, "outcome": "success", "assemblies": assemblies},
+              open(f"{out}/{backend}-{shard}.json", "w"))
 PY
 }
-project_reports none
-check "named assemblies once and new assemblies on rest pass" 0 \
-  "$(run summarize vulkan-native "$TMPROOT/reports" "$S/Fixture.slnx")"
-for mutation in duplicate missing 'wrong shard' 'new project moved' 'render moved' 'twice on one'; do
-  project_reports "$mutation"
-  check "project coverage refuses $mutation" 1 "$(run summarize vulkan-native "$TMPROOT/reports" "$S/Fixture.slnx")"
+for backend in direct3d11-native vulkan-native; do
+  project_reports none "$backend"
+  check "$backend named assemblies once and new assemblies on rest pass" 0 \
+    "$(run summarize "$backend" "$TMPROOT/reports" "$S/Fixture.slnx")"
+  for mutation in duplicate missing 'wrong shard' 'new project moved' 'render moved' 'twice on one'; do
+    project_reports "$mutation" "$backend"
+    check "$backend project coverage refuses $mutation" 1 "$(run summarize "$backend" "$TMPROOT/reports" "$S/Fixture.slnx")"
+  done
 done
 
 echo "gpu-test-shards.test: $pass passed, $fail failed"

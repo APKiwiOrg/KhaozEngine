@@ -133,6 +133,9 @@ internal sealed class InstalledSupportWorldFace
     internal ReadOnlySpan<double> High => _high;
     internal bool IsResolved { get; }
     internal bool HasJoinIncidenceCertificate { get; }
+    internal GeometrySign NormalArea { get; }
+    internal GeometrySign Orientation { get; }
+    internal SupportContactDomain ContactDomain { get; }
 
     internal InstalledSupportWorldFace(SupportPolygon polygon)
     {
@@ -148,5 +151,8 @@ internal sealed class InstalledSupportWorldFace
         _high = [.. polygon.High];
         IsResolved = polygon.IsResolved;
         HasJoinIncidenceCertificate = polygon.HasJoinIncidenceCertificate;
+        NormalArea = polygon.NormalArea;
+        Orientation = polygon.Orientation;
+        ContactDomain = polygon.ContactDomain;
     }
 }

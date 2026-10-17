@@ -17,6 +17,9 @@ internal sealed class SupportPolygon
     SupportFootprintSourcePredicates? _sourcePredicates;
     readonly SupportFootprintEdgeWorkspace _footprintEdges = new();
     int _count;
+    GeometrySign _normalArea, _orientation;
+    SupportContactDomain _contactDomain;
+    bool _hasNormalArea, _hasOrientation, _hasContactDomain;
 
     internal StaticHandle Static { get; private set; }
     internal int ElementId { get; private set; }
@@ -37,12 +40,45 @@ internal sealed class SupportPolygon
     internal SupportFootprintEdgeOperands FootprintOperands(int index, FeaturePoint axis, bool share = true) =>
         _footprintEdges.Read(this, index, axis, share);
 
+    /// <summary>The sign of the normal's squared length, source-certified when its enclosure cannot decide it.
+    /// Derived once per finished polygon, or copied from the world form face it was bound from.</summary>
+    internal GeometrySign NormalArea
+    {
+        get
+        {
+            if (!_hasNormalArea) (_normalArea, _hasNormalArea) = (SupportFootprintPolygon.DeriveNormalArea(this), true);
+            return _normalArea;
+        }
+    }
+
+    /// <summary>The sign of the normal's upward component, source-certified when its enclosure cannot decide it.
+    /// Derived once per finished polygon, or copied from the world form face it was bound from.</summary>
+    internal GeometrySign Orientation
+    {
+        get
+        {
+            if (!_hasOrientation) (_orientation, _hasOrientation) = (SupportFootprintPolygon.DeriveOrientation(this), true);
+            return _orientation;
+        }
+    }
+
+    /// <summary>Whether the certified contact prefilter may stand in for the contact kernel on this polygon.
+    /// Derived once per finished polygon, or copied from the world form face it was bound from.</summary>
+    internal SupportContactDomain ContactDomain
+    {
+        get
+        {
+            if (!_hasContactDomain) (_contactDomain, _hasContactDomain) = (SupportContactPrefilter.Certify(this), true);
+            return _contactDomain;
+        }
+    }
+
     internal SupportPolygon(SupportFootprintSourcePredicates? sourcePredicates = null) => _sourcePredicates = sourcePredicates;
 
     /// <summary>Starts a polygon of <paramref name="count"/> vertices, growing the reused storage when needed.</summary>
     internal void Begin(StaticHandle owner, int elementId, int count)
     {
-        _footprintEdges.Clear();
+        ClearDerived();
         Static = owner;
         ElementId = elementId;
         HasSource = false;
@@ -57,7 +93,7 @@ internal sealed class SupportPolygon
 
     internal void BeginSource(in InstalledPoseOperator map)
     {
-        _footprintEdges.Clear();
+        ClearDerived();
         SourceMap = new(map.X.Bounds, map.Y.Bounds, map.Z.Bounds,
             new((float)map.Translation.X.Value, (float)map.Translation.Y.Value, (float)map.Translation.Z.Value));
         HasSource = map.IsResolved;
@@ -65,13 +101,13 @@ internal sealed class SupportPolygon
 
     internal void SetSource(int index, Vector3 local)
     {
-        _footprintEdges.Clear();
+        ClearDerived();
         _sourceVertices[index] = local;
     }
 
     internal void Set(int index, FeaturePoint vertex, FeaturePoint edge)
     {
-        _footprintEdges.Clear();
+        ClearDerived();
         _vertices[index] = vertex;
         _edges[index] = edge;
     }
@@ -79,7 +115,7 @@ internal sealed class SupportPolygon
     /// <summary>Completes the polygon: its normal length, bounds and whether every enclosure resolved.</summary>
     internal void Finish(FeaturePoint normal)
     {
-        _footprintEdges.Clear();
+        ClearDerived();
         Normal = normal;
         NormalLength = SupportGeometry.Length(normal.Bounds);
         bool resolved = NormalLength.IsResolved && NormalLength.Lower > 0 && _count >= 3;
@@ -119,6 +155,15 @@ internal sealed class SupportPolygon
         face.High.CopyTo(High);
         IsResolved = face.IsResolved;
         HasJoinIncidenceCertificate = face.HasJoinIncidenceCertificate;
+        (_normalArea, _orientation, _contactDomain) = (face.NormalArea, face.Orientation, face.ContactDomain);
+        _hasNormalArea = _hasOrientation = _hasContactDomain = true;
+    }
+
+    // Per-query operands and every derived polygon fact describe the geometry they were taken from.
+    void ClearDerived()
+    {
+        _footprintEdges.Clear();
+        _hasNormalArea = _hasOrientation = _hasContactDomain = false;
     }
 
     /// <summary>The signed height of <paramref name="point"/> above this polygon's plane, in metres.</summary>

@@ -31,6 +31,10 @@ internal enum SupportQueryCounter
     ModeSegments,
     /// <summary>Installed support world forms built, published or not.</summary>
     WorldFormBuilds,
+    /// <summary>Footprint polygons that passed the bounds and column reject and began per-query operands.</summary>
+    PolygonOperands,
+    /// <summary>Contact members the certified separation prefilter decided negative without the contact kernel.</summary>
+    PrefilterRejects,
 }
 
 internal readonly record struct SupportQueryCounts(
@@ -58,7 +62,9 @@ internal readonly record struct SupportQueryCounts(
     int GroundSubsteps,
     int MediumRetries,
     int ModeSegments,
-    int WorldFormBuilds)
+    int WorldFormBuilds,
+    int PolygonOperands,
+    int PrefilterRejects)
 {
     public static SupportQueryCounts operator -(SupportQueryCounts a, SupportQueryCounts b) => new(
         a.Find - b.Find,
@@ -85,7 +91,9 @@ internal readonly record struct SupportQueryCounts(
         a.GroundSubsteps - b.GroundSubsteps,
         a.MediumRetries - b.MediumRetries,
         a.ModeSegments - b.ModeSegments,
-        a.WorldFormBuilds - b.WorldFormBuilds);
+        a.WorldFormBuilds - b.WorldFormBuilds,
+        a.PolygonOperands - b.PolygonOperands,
+        a.PrefilterRejects - b.PrefilterRejects);
 }
 
 /// <summary>Opt-in counters owned by the executing thread. Installation is outside measured intervals.</summary>
@@ -156,7 +164,7 @@ internal static class SupportQueryDiagnostics
         t_enabled = enabled;
     }
 
-    const int CounterCount = 25;
+    const int CounterCount = 27;
 
     /// <summary>Every thread-local counter, observation and callback of one thread.</summary>
     internal readonly record struct ThreadState(bool Enabled, int[]? Counts, Action? Begin, Action? End,
@@ -212,6 +220,8 @@ internal static class SupportQueryDiagnostics
         c[(int)SupportQueryCounter.MediumRetries] += counts.MediumRetries;
         c[(int)SupportQueryCounter.ModeSegments] += counts.ModeSegments;
         c[(int)SupportQueryCounter.WorldFormBuilds] += counts.WorldFormBuilds;
+        c[(int)SupportQueryCounter.PolygonOperands] += counts.PolygonOperands;
+        c[(int)SupportQueryCounter.PrefilterRejects] += counts.PrefilterRejects;
         t_routes = new(t_routes.WallRetries + routes.WallRetries, t_routes.PushedPlacements + routes.PushedPlacements,
             t_routes.MediumResolves + routes.MediumResolves, Math.Max(t_routes.MaximumMediumRetries, routes.MaximumMediumRetries),
             t_routes.GroundSegments + routes.GroundSegments, t_routes.SlideSegments + routes.SlideSegments,
@@ -258,7 +268,9 @@ internal static class SupportQueryDiagnostics
             c[21],
             c[22],
             c[23],
-            c[24]);
+            c[24],
+            c[25],
+            c[26]);
     }
 
     internal static void SetGroundSubstepObserver(Action? begin, Action? end)

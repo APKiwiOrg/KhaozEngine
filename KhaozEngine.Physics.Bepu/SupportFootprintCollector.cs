@@ -184,9 +184,17 @@ internal sealed partial class SupportFootprintCollector
             SupportNeighborhoodPolyhedra.Polygons(owner, leaf, _pool, _polygons, footprint: true);
     }
 
-    GeometrySign ContactMember(SupportPolygon polygon, int index)
+    // A certified separation decides Negative before the kernel only where the kernel's verdict is a resolved
+    // Negative. The reference evaluator always runs the kernel.
+    internal GeometrySign ContactMember(SupportPolygon polygon, int index)
     {
         SupportFootprintProposal proposal = index == 0 ? _request.AxisProposal : _request.FootProposal;
+        if (!SupportReferenceEvaluation.Active && SupportContactPrefilter.Separated(polygon, _contactStarts[index],
+            _contactDirections[index], proposal.Probe.Radius, _request.ContactBand))
+        {
+            SupportQueryDiagnostics.Record(SupportQueryCounter.PrefilterRejects);
+            return GeometrySign.Negative;
+        }
         if (SupportPlanarProposal.Contact(polygon, _contactStarts[index], _contactDirections[index],
             proposal.Probe.Radius, _request.ContactBand))
         {

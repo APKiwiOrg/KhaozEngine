@@ -9,6 +9,7 @@ using KhaozEngine.Gpu.Metal;
 using KhaozEngine.Gpu.Metal.Internal;
 using KhaozEngine.Gpu.Metal.Internal.ObjC;
 using KhaozEngine.Primitives;
+using KhaozEngine.Render2D;
 using KhaozEngine.Windowing;
 using StbImageSharp;
 using Xunit;
@@ -59,6 +60,8 @@ namespace KhaozEngine.Tests.Gpu
             Color first = Color.FromBytes(200, 40, 60, 255);
             Color second = Color.FromBytes(30, 160, 90, 255);
             TimeSpan tick = TimeSpan.FromTicks(TimeSpan.TicksPerSecond / 12);
+            // A one-pixel outline drawn in the screenshot frame. The screenshot is 1:1, so it must come back sharp.
+            var outline = new Rect(100, 50, 1080, 620);
 
             // Ownership of the layer transfers into the device, as in MetalSwapchainGpuTests.
             GpuProviderDevice created = MetalGpuDevice.CreateForHost(
@@ -68,6 +71,12 @@ namespace KhaozEngine.Tests.Gpu
             var taps = new FrameCaptureTaps(device, device);
             var time = new SteppedTime();
             FrameHistoryRecorder? recorder = null;
+            var sprites = new SpriteBatch(device, device.SwapchainFramebuffer!.Outputs);
+            IGpuTexture whiteHandle = device.Factory.CreateTexture(GpuTextureDescription.Texture2D(
+                1, 1, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.Sampled));
+            device.UpdateTexture(whiteHandle, new byte[] { 255, 255, 255, 255 }, 0, 0, 1, 1);
+            var white = new Texture2D(whiteHandle, 1, 1);
+            var primitives = new PrimitiveRenderer(white);
 
             try
             {
@@ -95,7 +104,12 @@ namespace KhaozEngine.Tests.Gpu
                         i < SwitchFrame ? first : second, onPrepare: null,
                         onFrame: _ =>
                         {
-                            if (index == ScreenshotFrame) screenshot = recorder.CaptureScreenshotAsync();
+                            if (index != ScreenshotFrame) return;
+                            sprites.NewFrame(commands, (int)Width, (int)Height);
+                            sprites.Begin();
+                            primitives.DrawRect(sprites, outline, Color.White);
+                            sprites.End();
+                            screenshot = recorder.CaptureScreenshotAsync();
                         },
                         taps, tick.TotalMilliseconds);
                     time.Advance(tick);
@@ -134,7 +148,7 @@ namespace KhaozEngine.Tests.Gpu
                 Assert.Equal("image/png", image.MediaType);
                 Assert.Equal((int)Width, image.Width);
                 Assert.Equal((int)Height, image.Height);
-                AssertCentre(image.Bytes, (int)Width, (int)Height, second, 2, "the screenshot");
+                AssertOutline(image.Bytes, (int)Width, (int)Height, second, outline);
             }
             finally
             {
@@ -142,6 +156,9 @@ namespace KhaozEngine.Tests.Gpu
                 taps.Dispose();
                 commands.Dispose();
                 device.WaitForIdle();
+                primitives.Dispose();
+                white.Dispose();
+                sprites.Dispose();
                 device.Dispose();
             }
         }
@@ -159,6 +176,33 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(Math.Abs(r - er) <= tolerance && Math.Abs(g - eg) <= tolerance && Math.Abs(b - eb) <= tolerance,
                 $"{what} centre is ({r}, {g}, {b}), expected ({er}, {eg}, {eb}) within {tolerance}");
         }
+
+        // The whole decoded screenshot, byte for byte: the background everywhere except the one-pixel outline.
+        static void AssertOutline(ReadOnlyMemory<byte> png, int width, int height, Color background, Rect outline)
+        {
+            ImageResult decoded = ImageResult.FromMemory(png.ToArray(), ColorComponents.RedGreenBlue);
+            Assert.Equal(width, decoded.Width);
+            Assert.Equal(height, decoded.Height);
+            byte[] fill = { Byte(background.R), Byte(background.G), Byte(background.B) };
+            int left = (int)outline.X, top = (int)outline.Y;
+            int right = left + (int)outline.Width - 1, bottom = top + (int)outline.Height - 1;
+            for (int y = 0; y < height; y++)
+                for (int x = 0; x < width; x++)
+                {
+                    bool inside = x >= left && x <= right && y >= top && y <= bottom;
+                    bool edge = inside && (x == left || x == right || y == top || y == bottom);
+                    int at = (y * width + x) * 3;
+                    for (int c = 0; c < 3; c++)
+                    {
+                        byte expected = edge ? (byte)255 : fill[c];
+                        if (decoded.Data[at + c] == expected) continue;
+                        Assert.Fail($"the screenshot pixel ({x},{y}) channel {c} was {decoded.Data[at + c]}, "
+                            + $"expected {expected}");
+                    }
+                }
+        }
+
+        static byte Byte(float channel) => (byte)Math.Round(channel * 255f);
 
         static Frame NewFrame(IGpuCommandList commands) => new()
         {

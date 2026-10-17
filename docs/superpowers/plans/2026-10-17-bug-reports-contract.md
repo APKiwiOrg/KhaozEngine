@@ -382,9 +382,9 @@ Public names E1 added beyond its block above, and the rules E2 and E3 can rely o
   list is ordered after the image's acquire, so a swapchain copy goes into `FrameCaptureContext.Commands`.
 - **`GpuScaledCopy`** (`KhaozEngine.Gpu`). `new GpuScaledCopy(device)`, `Record(commands, source, destination)`,
   `Record(commands, source, destination, retire)` and `Dispose()`. One fullscreen linear downscale from any `Sampled`
-  texture into a single `R8G8B8A8UNorm` attachment, output in RGBA order, top row first, alpha one. A resource set
-  replaced by a new source goes to `retire`, or stays alive until `Dispose` when `retire` is null. It is never
-  disposed during the recording that used it.
+  texture into a single `R8G8B8A8UNorm` attachment, output in RGBA order, top row first, alpha one, and byte-exact
+  when the copy does not reduce. A resource set replaced by a new source goes to `retire`, or stays alive until
+  `Dispose` when `retire` is null. It is never disposed during the recording that used it.
 - **`IFrameCaptureTap` members** (`KhaozEngine.Windowing`). `Record(FrameCaptureContext)`,
   `AfterSubmit(FrameCaptureContext)` and `Detach(Action<IDisposable> retire)`.
 - **`FrameCaptureContext` members** (`KhaozEngine.Windowing`). `Frame`, `Device`, `Commands` (the frame's own list,

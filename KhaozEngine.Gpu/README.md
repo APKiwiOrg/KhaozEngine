@@ -526,8 +526,10 @@ to capture size before readback.
   `B8G8R8A8UNorm` source (every shipped swapchain) comes out in RGBA order with no CPU swizzle.
 - **Destination.** Exactly one single-sample `R8G8B8A8UNorm` colour attachment with no depth. Anything else is
   refused with an `ArgumentException` naming `destination`. Alpha is written as one.
-- **Filter.** Four bilinear taps a quarter of a destination texel either side of its centre, which is a box
-  filter over a 4x4 source footprint up to a four to one reduction.
+- **Filter.** Exact at 1:1. When a destination texel covers at most one source texel on both axes, one sample
+  at the texel centre returns that texel unchanged, so a same-size copy is byte-exact. A reduction takes four
+  bilinear taps a quarter of a destination texel either side of its centre, which is a box filter over a 4x4
+  source footprint up to a four to one reduction.
 - **Sampler.** The instance's own clamp-addressed `GpuSamplerDescription.Linear`, not the device's
   wrap-addressed `LinearSampler`, so a border tap never reads the opposite edge.
 - **Resource set.** One, cached over the last source drawn and replaced when a different source instance is

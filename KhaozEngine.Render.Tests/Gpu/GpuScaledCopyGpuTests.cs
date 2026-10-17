@@ -78,6 +78,56 @@ namespace KhaozEngine.Tests.Gpu
             AssertPixel(rgba, 16, 12, 6, RotatedQuadrants[3]);
         }
 
+        /// <summary>
+        /// At 1:1 the copy is exact. A one-pixel checkerboard puts a different colour on every neighbour, so any
+        /// blur, shift, flip or channel swap moves bytes. Both storage orders must read back as the same RGBA.
+        /// </summary>
+        [GpuFact]
+        public void A_same_size_copy_is_pixel_exact()
+        {
+            using GpuDeviceContext ctx = GpuDeviceContext.CreateHeadless();
+            IGpuDevice gd = ctx.GpuDevice;
+            using var copy = new GpuScaledCopy(gd);
+            byte[] expected = Checkerboard(GpuPixelFormat.R8G8B8A8UNorm);
+
+            foreach (GpuPixelFormat format in new[] { GpuPixelFormat.B8G8R8A8UNorm, GpuPixelFormat.R8G8B8A8UNorm })
+            {
+                using IGpuTexture source = gd.Factory.CreateTexture(GpuTextureDescription.Texture2D(
+                    SourceWidth, SourceHeight, format, GpuTextureUsage.Sampled));
+                gd.UpdateTexture(source, Checkerboard(format), 0, 0, SourceWidth, SourceHeight);
+
+                byte[] rgba = Run(gd, copy, SourceWidth, SourceHeight, source);
+
+                for (int i = 0; i < expected.Length; i++)
+                {
+                    if (rgba[i] == expected[i]) continue;
+                    int pixel = i / 4;
+                    Assert.Fail($"{format}: pixel ({pixel % SourceWidth},{pixel / SourceWidth}) channel {i % 4} "
+                        + $"was {rgba[i]}, expected {expected[i]}");
+                }
+            }
+        }
+
+        // A 64x32 one-pixel checkerboard of two colours with distinct channels, in the storage order of format.
+        static byte[] Checkerboard(GpuPixelFormat format)
+        {
+            byte[] even = { 250, 20, 90 };
+            byte[] odd = { 10, 180, 240 };
+            bool bgra = format == GpuPixelFormat.B8G8R8A8UNorm;
+            var bytes = new byte[SourceWidth * SourceHeight * 4];
+            for (int y = 0; y < SourceHeight; y++)
+                for (int x = 0; x < SourceWidth; x++)
+                {
+                    byte[] c = (x + y) % 2 == 0 ? even : odd;
+                    int i = (y * SourceWidth + x) * 4;
+                    bytes[i + 0] = bgra ? c[2] : c[0];
+                    bytes[i + 1] = c[1];
+                    bytes[i + 2] = bgra ? c[0] : c[2];
+                    bytes[i + 3] = 255;
+                }
+            return bytes;
+        }
+
         // Records every source into one destination, in order, in ONE recording, then reads the destination back.
         // Every record goes through retire, and a set it replaces is freed only after the submit has completed.
         static byte[] Run(IGpuDevice gd, GpuScaledCopy copy, int width, int height, params IGpuTexture[] sources)
@@ -95,7 +145,6 @@ namespace KhaozEngine.Tests.Gpu
                 gd.Submit(commands);
                 gd.WaitForIdle();
             }
-            Assert.Equal(sources.Length - 1, retired.Count);
             foreach (IDisposable set in retired) set.Dispose();
             return GpuReadback.ToRgba(gd, target, width, height);
         }

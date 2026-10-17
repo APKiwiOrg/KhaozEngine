@@ -15,9 +15,11 @@ namespace KhaozEngine.Gpu
     /// order with no CPU swizzle, and alpha is forced to one.
     /// </para>
     /// <para>
-    /// <b>A BOX FILTER UP TO FOUR TO ONE.</b> The fragment takes four bilinear taps a quarter of a destination
-    /// texel either side of its centre on each axis, which covers a 4x4 source footprint. A larger reduction
-    /// skips source texels between the taps.
+    /// <b>EXACT AT 1:1, A BOX FILTER UP TO FOUR TO ONE.</b> When a destination texel covers at most one source
+    /// texel on both axes, the fragment takes one sample at the texel centre, so a same-size copy is
+    /// byte-exact. Otherwise it takes four bilinear taps a quarter of a destination texel either side of its
+    /// centre on each axis, which covers a 4x4 source footprint. A larger reduction skips source texels between
+    /// the taps.
     /// </para>
     /// <para>
     /// The sampler is this instance's own clamp-addressed <see cref="GpuSamplerDescription.Linear"/>, not the
@@ -38,8 +40,10 @@ void main() {
     gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
 }";
 
-        /// <summary>Four bilinear taps around the destination texel's centre, averaged, alpha forced to one. V is
-        /// flipped first, because no final blit follows this pass to undo the fullscreen triangle's flip.</summary>
+        /// <summary>One exact sample when the copy does not reduce, else four bilinear taps around the destination
+        /// texel's centre, averaged. Alpha is forced to one. V is flipped first, because no final blit follows this
+        /// pass to undo the fullscreen triangle's flip. Both paths are sampled and one is selected, so every
+        /// texture read stays in uniform control flow on every backend.</summary>
         internal const string FragmentSource = @"#version 450
 layout(set=0, binding=0) uniform texture2D Src;
 layout(set=0, binding=1) uniform sampler Samp;
@@ -48,12 +52,17 @@ layout(location=0) out vec4 oColor;
 void main() {
     // Every fullscreen pass renders flipped on every backend (PixelPostProcess.cs:316). No final blit follows here, so flip V.
     vec2 uv = vec2(vUv.x, 1.0 - vUv.y);
-    vec2 o = 0.25 * vec2(dFdx(uv.x), dFdy(uv.y));   // a quarter of one destination texel in source UV
-    vec3 c = texture(sampler2D(Src, Samp), uv + vec2(-o.x, -o.y)).rgb
-           + texture(sampler2D(Src, Samp), uv + vec2( o.x, -o.y)).rgb
-           + texture(sampler2D(Src, Samp), uv + vec2(-o.x,  o.y)).rgb
-           + texture(sampler2D(Src, Samp), uv + vec2( o.x,  o.y)).rgb;
-    oColor = vec4(c * 0.25, 1.0);
+    vec2 texel = vec2(dFdx(uv.x), dFdy(uv.y));   // one destination texel in source UV
+    vec2 footprint = abs(texel) * vec2(textureSize(sampler2D(Src, Samp), 0));   // source texels per destination texel
+    // At 1:1 uv lands on a source texel centre, so one bilinear sample returns that texel exactly.
+    vec3 exact = texture(sampler2D(Src, Samp), uv).rgb;
+    vec2 o = 0.25 * texel;   // a quarter of one destination texel in source UV
+    vec3 box = (texture(sampler2D(Src, Samp), uv + vec2(-o.x, -o.y)).rgb
+              + texture(sampler2D(Src, Samp), uv + vec2( o.x, -o.y)).rgb
+              + texture(sampler2D(Src, Samp), uv + vec2(-o.x,  o.y)).rgb
+              + texture(sampler2D(Src, Samp), uv + vec2( o.x,  o.y)).rgb) * 0.25;
+    bool reduces = footprint.x > 1.0 + 1.0 / 256.0 || footprint.y > 1.0 + 1.0 / 256.0;
+    oColor = vec4(reduces ? box : exact, 1.0);
 }";
 
         readonly IGpuDevice _device;

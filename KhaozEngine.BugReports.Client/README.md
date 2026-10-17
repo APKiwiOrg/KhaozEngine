@@ -62,7 +62,7 @@ The screenshot tap stays registered from construction to `Dispose`, whether or n
 registration keeps the swapchain's copy-source usage on, so the trigger frame can be copied on every backend.
 It does nothing per frame until armed. The armed frame downscales its swapchain copy to a long edge of at most
 2560 px, reads it back once after the submit and encodes it off the frame thread: PNG when it encodes under
-4 MB, JPEG quality 92 otherwise.
+4 MB, JPEG quality 92 otherwise. A window whose long edge is 2560 px or less is copied 1:1, pixel for pixel.
 
 A frame whose image cannot be copied leaves the request pending for the next frame that can. That is the first
 frame after construction on Metal and Vulkan, and every frame of a minimised window.

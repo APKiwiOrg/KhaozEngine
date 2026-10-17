@@ -30,8 +30,5 @@
     <ProjectReference Include="../KhaozEngine.WorldStore/KhaozEngine.WorldStore.csproj" />
     <ProjectReference Include="../KhaozEngine.WorldStore.Sqlite/KhaozEngine.WorldStore.Sqlite.csproj" />
   </ItemGroup>
-  <ItemGroup>
-    <Compile Include="../test-shared/AllocationRegion.cs" Link="Shared/AllocationRegion.cs" />
-    <Compile Include="../test-shared/AllocationMeasurement.cs" Link="Shared/AllocationMeasurement.cs" />
-  </ItemGroup>
+  <Import Project="../test-shared/AllocationMeasurement.props" />
 </Project>

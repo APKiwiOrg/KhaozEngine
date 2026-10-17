@@ -24,8 +24,5 @@
     <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Fixtures/EnvironmentAcquisitionFixture.ContactSupport.cs" Link="Fixtures/EnvironmentAcquisitionFixture.ContactSupport.cs" />
     <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Fixtures/EnvironmentAcquisitionFixture.Witness.cs" Link="Fixtures/EnvironmentAcquisitionFixture.Witness.cs" />
   </ItemGroup>
-  <ItemGroup>
-    <Compile Include="../test-shared/AllocationRegion.cs" Link="Shared/AllocationRegion.cs" />
-    <Compile Include="../test-shared/AllocationMeasurement.cs" Link="Shared/AllocationMeasurement.cs" />
-  </ItemGroup>
+  <Import Project="../test-shared/AllocationMeasurement.props" />
 </Project>

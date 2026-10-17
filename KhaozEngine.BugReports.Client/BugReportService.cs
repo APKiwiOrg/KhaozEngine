@@ -257,7 +257,7 @@ public sealed class BugReportService : IDisposable
     void AddBuiltInSections(AppWindow? window)
     {
         _sections.Add(new BuildSection(() => _build));
-        _sections.Add(new PlatformSection(() => ClientFacts.Platform(_invariants, TriggerFrame())));
+        _sections.Add(new PlatformSection(() => ClientFacts.Platform(_invariants, TriggerFrame(), _context?.Ui)));
         if (window is not null) _sections.Add(new GraphicsSection(() => ClientFacts.Graphics(window, TriggerFrame())));
         _sections.Add(new SessionSection(SessionFacts));
         _sections.Add(new InputSection(() => new InputFacts(ClientFacts.Devices(TriggerFrame()),

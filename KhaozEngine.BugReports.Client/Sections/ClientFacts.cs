@@ -37,7 +37,7 @@ public sealed record BuildFacts(string GameId, string GameName, string Version, 
 /// <param name="WindowHeight">Window height in window coordinates.</param>
 /// <param name="FramebufferWidth">Framebuffer width in pixels.</param>
 /// <param name="FramebufferHeight">Framebuffer height in pixels.</param>
-/// <param name="ContentScale">Framebuffer pixels per window coordinate.</param>
+/// <param name="ContentScale">The OS content scale the UI used: device pixels per UI point.</param>
 /// <param name="Environment">The <c>KE_</c> variables, already passed through <see cref="ReportRedactor.SelectEnvironment"/>.</param>
 public sealed record PlatformFacts(string Os, string OsArchitecture, string ProcessArchitecture, string Runtime, int CpuCount,
     long TotalMemoryBytes, string Locale, int WindowWidth, int WindowHeight, int FramebufferWidth, int FramebufferHeight,
@@ -191,16 +191,18 @@ internal static class ClientFacts
     /// The platform facts for the trigger frame. The runtime facts and the environment are the
     /// <paramref name="invariants"/> that <see cref="CaptureInvariants"/> read at startup, never read here. Sizes come
     /// from <paramref name="frame"/>, so no window getter runs: its <see cref="InputState.Width"/> and
-    /// <see cref="InputState.Height"/> are the framebuffer in pixels, the window size is those divided by
-    /// <see cref="InputState.FramebufferScale"/> and rounded, and the content scale is the scale's X component.
+    /// <see cref="InputState.Height"/> are the framebuffer in pixels, and the window size is those divided by
+    /// <see cref="InputState.FramebufferScale"/> and rounded. The content scale is the OS scale the UI pass used this
+    /// frame, <see cref="UiViewport.DpiScale"/> of <paramref name="ui"/>, a stored value. Without a UI viewport it falls
+    /// back to the framebuffer scale's X component.
     /// </summary>
-    internal static PlatformFacts Platform(PlatformInvariants invariants, InputState frame)
+    internal static PlatformFacts Platform(PlatformInvariants invariants, InputState frame, UiViewport? ui)
     {
         Vector2 scale = frame.FramebufferScale;
         return new PlatformFacts(invariants.Os, invariants.OsArchitecture, invariants.ProcessArchitecture,
             invariants.Runtime, invariants.CpuCount, invariants.TotalMemoryBytes, invariants.Locale,
-            ToWindow(frame.Width, scale.X), ToWindow(frame.Height, scale.Y), frame.Width, frame.Height, scale.X,
-            invariants.Environment);
+            ToWindow(frame.Width, scale.X), ToWindow(frame.Height, scale.Y), frame.Width, frame.Height,
+            ui?.DpiScale ?? scale.X, invariants.Environment);
     }
 
     /// <summary>

@@ -182,7 +182,7 @@ public sealed class ClientFactsTests
             new HashSet<Key>(), new HashSet<MouseButton>(), new HashSet<MouseButton>(), Vector2.Zero, Vector2.Zero, 0f,
             framebufferWidth, framebufferHeight);
 
-        PlatformFacts facts = ClientFacts.Platform(invariants, frame);
+        PlatformFacts facts = ClientFacts.Platform(invariants, frame, ui: null);
 
         Assert.Equal(("Linux 6.8", "X64", "X64", ".NET 10.0.0", 8, 1024L, "en-NZ"),
             (facts.Os, facts.OsArchitecture, facts.ProcessArchitecture, facts.Runtime, facts.CpuCount, facts.TotalMemoryBytes,
@@ -192,6 +192,22 @@ public sealed class ClientFactsTests
         Assert.Equal(scale, facts.ContentScale);
         // The trigger frame reuses the environment selected at startup and never reads the process environment.
         Assert.Same(environment, facts.Environment);
+    }
+
+    [Fact]
+    public void Platform_content_scale_is_the_ui_dpi_scale()
+    {
+        var invariants = new PlatformInvariants("Linux 6.8", "X64", "X64", ".NET 10.0.0", 8, 1024L, "en-NZ", []);
+        var frame = new InputState(Vector2.Zero, new Vector2(2f, 2f), new HashSet<Key>(), new HashSet<Key>(),
+            new HashSet<Key>(), new HashSet<MouseButton>(), new HashSet<MouseButton>(), Vector2.Zero, Vector2.Zero, 0f,
+            2560, 1440);
+        var ui = new UiViewport(3000, 1500, 2000, 1000);
+
+        PlatformFacts facts = ClientFacts.Platform(invariants, frame, ui);
+
+        Assert.Equal(1.5f, facts.ContentScale);
+        // The window size still follows the trigger frame's framebuffer scale.
+        Assert.Equal((1280, 720), (facts.WindowWidth, facts.WindowHeight));
     }
 
     static void Touch(string directory, string name, DateTimeOffset writtenAt)

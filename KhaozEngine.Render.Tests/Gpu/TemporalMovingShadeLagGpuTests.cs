@@ -49,14 +49,16 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>Display pixels a frame the camera pans or the strips move, up the screen.</summary>
         public readonly float Motion;
 
+        readonly float? _halfHeightPixels;
         MeshHandle _panWall, _strip;
 
         public MovingShadeStage(int w, int h, MovingShadeKind kind, float shadowPixelsPerFrame, float motion,
-            int anchorFrame)
+            int anchorFrame, float? halfHeightPixels = null)
         {
             Edge = new ShadowEdgeStage(w, h, shadowPixelsPerFrame, anchorFrame);
             Kind = kind;
             Motion = motion;
+            _halfHeightPixels = halfHeightPixels;
         }
 
         FrontStage Stage => Edge.Stage;
@@ -89,8 +91,9 @@ namespace KhaozEngine.Tests.Gpu
             _strip = s.LoadMesh(TexturedQuad(-strip, 0f, -reach, reach, 0f), noise);
         }
 
-        // Half the strips' length: half the view, the travel over every frame to the anchor and 16 after, and a margin.
-        float StripReach() => (Stage.H * 0.5f + (Edge.AnchorFrame + 16) * MathF.Abs(Motion) + 32f) * Stage.PixelWorld;
+        // Half the strips' length: a finite silhouette for the rim facts, otherwise half the view, the travel over every frame to the anchor and 16 after, and a margin.
+        float StripReach() => _halfHeightPixels is float finite ? finite * Stage.PixelWorld
+            : (Stage.H * 0.5f + (Edge.AnchorFrame + 16) * MathF.Abs(Motion) + 32f) * Stage.PixelWorld;
 
         public void Draw(Scene3D s, int n)
         {

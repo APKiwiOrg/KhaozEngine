@@ -1000,7 +1000,7 @@ and changed these details. Its contract amendment blocks carry the evidence.
     zero gave 0.031 and 0.0125 at Quality at 1 but raised the still light's textured band from 0.0058 to 0.0072, so
     the locks keep texture detail where nothing changed and stay.
 
-    The rule. A pixel releases where it is still (below `LockMotionStartPixels`) at a preset whose internal texel is
+    The rule. A pixel releases where it is still (below `LockMotionStartPixels`, superseded by amendment 34) at a preset whose internal texel is
     below `ShadingMaxUpscale` (1.6) display pixels, a ridge refreshed its lock this frame or it holds no lock over a
     box whose half-width exceeds the ridge step, and its history luma lies past the variance box by more than
     `ShadingResetExtents` (0.25) of the half-width. Then the history luma lies more than `ShadingChangeExtents`
@@ -1054,7 +1054,7 @@ and changed these details. Its contract amendment blocks carry the evidence.
     The peak and detail tests hold each figure within a tenth of the figure before the release on the same device
     class, measured on the hosted Metal, WARP and lavapipe legs (`TemporalDeviceClass`), which agree within 2 percent.
     The resolve before the release fails six of the shadow bounds. The release adds one float to the 3x3's statistics
-    and a chain of comparisons per pixel, and four bilinear history taps only where a still pixel's history lies past
+    and a chain of comparisons per pixel, and four bilinear history taps only where a still pixel's history (still-only scope superseded by amendment 34) lies past
     its box and, at Native, its reconstruction alone does not decide or, where the frame upscales, its reconstruction
     reads a change. `TemporalResolveCostPerfGpuTests` on the hosted NVIDIA Tesla T4 (`gpu-hosted-bench`, runs
     39000442514 before and 39000447833 after) moves the split's resolve and sharpen by -0.06 to +0.19 ms over all

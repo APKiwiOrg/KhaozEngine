@@ -70,6 +70,17 @@ public sealed class BugReportServiceOptionsTests
     }
 
     [Fact]
+    public void Recording_budget_over_10_MiB_is_rejected()
+    {
+        const int TenMiB = 10 * 1024 * 1024;
+        BugReportServiceOptions.Validate(Valid() with { Recording = new FrameHistoryOptions { MaxBytes = TenMiB } });
+
+        ArgumentOutOfRangeException refused = Assert.Throws<ArgumentOutOfRangeException>(() =>
+            BugReportServiceOptions.Validate(Valid() with { Recording = new FrameHistoryOptions { MaxBytes = TenMiB + 1 } }));
+        Assert.Equal(nameof(FrameHistoryOptions.MaxBytes), refused.ParamName);
+    }
+
+    [Fact]
     public void Recording_longer_than_120_frames_is_rejected()
     {
         var options = Valid() with

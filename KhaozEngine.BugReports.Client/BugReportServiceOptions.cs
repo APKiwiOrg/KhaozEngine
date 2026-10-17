@@ -13,6 +13,13 @@ public sealed record BugReportServiceOptions
     internal const int MaxCategories = 16;
 
     /// <summary>
+    /// The largest clip budget a report can carry: the bundle limit less the largest PNG screenshot, the section total
+    /// and 1 MiB for the manifest and the zip framing. 10 MiB.
+    /// </summary>
+    internal const int MaxRecordingBytes = (int)(BugReportLimits.MaxBundleBytes - BugReportLimits.MaxPngScreenshotBytes
+        - BugReportLimits.MaxSectionBytesTotal - 1024 * 1024);
+
+    /// <summary>
     /// The game id stamped into every bundle: lowercase ASCII letters, digits and hyphens, not starting with a
     /// hyphen, at most 32 characters.
     /// </summary>
@@ -30,7 +37,8 @@ public sealed record BugReportServiceOptions
     /// </summary>
     public IReadOnlyList<string>? Categories { get; init; }
 
-    /// <summary>How the rolling clip records. Its length times its rate is at most 120 frames.</summary>
+    /// <summary>How the rolling clip records. Its length times its rate is at most 120 frames, and its byte budget is at
+    /// most 10 MiB.</summary>
     public FrameHistoryOptions Recording { get; init; } = new();
 
     /// <summary>Whether the clip records from the start. A settings toggle can change it later.</summary>
@@ -65,6 +73,12 @@ public sealed record BugReportServiceOptions
         if (options.Categories is { } categories) ValidateCategories(categories);
         ArgumentNullException.ThrowIfNull(options.Recording, nameof(options) + "." + nameof(Recording));
         FrameHistoryRecorder.Validate(options.Recording);
+        if (options.Recording.MaxBytes > MaxRecordingBytes)
+        {
+            throw new ArgumentOutOfRangeException(nameof(FrameHistoryOptions.MaxBytes), options.Recording.MaxBytes,
+                string.Create(CultureInfo.InvariantCulture,
+                    $"Recording.MaxBytes must be at most {MaxRecordingBytes}, so a full clip fits a bundle beside the screenshot and the sections."));
+        }
     }
 
     static void ValidateCategories(IReadOnlyList<string> categories)

@@ -402,15 +402,8 @@ internal sealed class BugReportFlow
             FinishStarting?.Invoke();
             IReadOnlyList<CapturedSection> sections =
                 BugReportSectionSet.Finish(report.Raw, _redactor, BugReportSectionSet.DefaultFinishBudget);
-            var draft = new BugReportDraft(report.Id, _options.GameId, BugReportKind.Bug, report.CapturedAt, sections,
-                screenshot, report.Clip)
-            {
-                Description = choices.Description,
-                Category = choices.Category,
-                IncludeScreenshot = screenshot is not null,
-                IncludeClip = choices.IncludeClip,
-            };
-            bundle = BugReportBundleWriter.Write(draft);
+            bundle = ReportBundleBuilder.Write(new ReportBundleBuilder.Request(report.Id, _options.GameId, report.CapturedAt,
+                sections, choices.Description, choices.Category, screenshot, choices.IncludeClip ? report.Clip : null));
         }
         catch (Exception exception)
         {

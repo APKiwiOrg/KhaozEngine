@@ -34,6 +34,10 @@ every section, then raises `ReportCaptured`. The next frame opens `BugReportScre
 `InputState.WithoutInteraction`, so typing never reaches the game. Send builds the bundle on the thread pool and
 hands it to the sink. The result shows as a toast and raises `ReportSubmitted` on the frame thread.
 
+Media never costs a report. Send keeps the newest clip frames that fit the bundle's 128 entries and 16 MiB beside the
+sections and the screenshot. When the bundle writer still refuses a size limit, Send retries once without the clip,
+then once with the sections only.
+
 ## What the service adds
 
 | Member | Use |
@@ -202,7 +206,7 @@ frame after construction on Metal and Vulkan, and every frame of a minimised win
 | `FramesPerSecond` | 12 | Clip frames per second at any display rate. |
 | `LongEdge` | 960 px | Longest frame edge. A smaller window is never scaled up. |
 | `JpegQuality` | 70 | JPEG quality of each frame. |
-| `MaxBytes` | 8 MB | Hard cap on encoded bytes. The oldest frames go first. |
+| `MaxBytes` | 8 MB | Hard cap on encoded bytes, at most 10 MiB under `BugReportService`. The oldest frames go first. |
 
 Frames live in memory only. The capture tick holds the configured rate on average at any display rate, and
 a display slower than the rate captures every frame. Each frame keeps its own size, so a resize during
@@ -210,7 +214,8 @@ recording leaves frames of two sizes in one clip.
 
 A refused option throws `ArgumentOutOfRangeException` naming it at construction. A report clip names at most
 120 frames, so `Duration` must be above zero and `Duration` times `FramesPerSecond` may not exceed 120. `FramesPerSecond` runs 1 to 60,
-`LongEdge` 16 to 2560, `JpegQuality` 1 to 100, and `MaxBytes` starts at 64 KiB.
+`LongEdge` 16 to 2560, `JpegQuality` 1 to 100, and `MaxBytes` starts at 64 KiB. `BugReportServiceOptions` also
+refuses a `MaxBytes` above 10 MiB, the bundle limit less the largest PNG screenshot, the section total and 1 MiB.
 That floor is a lower bound for sane configurations. It does not guarantee that one textured 960 px frame
 fits, and a frame larger than the cap is dropped. The default of 8 MB is a hard byte budget and does not
 guarantee a full clip either. Holding all 60 default frames needs an average under about 136 KiB a frame, so a

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Numerics;
@@ -18,7 +19,7 @@ namespace KhaozEngine.Physics.Bepu;
 internal sealed class InstalledSupportGeometryCache
 {
     readonly record struct Key(int Owner, TypedIndex Installation, long StaticGeometryVersion);
-    readonly ConcurrentDictionary<Key, Slot> _entries = new();
+    readonly ConcurrentDictionary<Key, Slot> _entries = new(KeyComparer.Instance);
     int _constructions, _captures;
 
     /// <summary>How many captures this cache has published.</summary>
@@ -112,6 +113,18 @@ internal sealed class InstalledSupportGeometryCache
     }
 
     sealed record Outcome(CapsuleFeatureStatus Status, InstalledSupportGeometry? Geometry);
+
+    // A hit compares keys, and a miss only hashes them. Without an explicit comparer the first hit in the process
+    // creates the default key and field comparers, which allocates inside a warm query.
+    sealed class KeyComparer : IEqualityComparer<Key>
+    {
+        internal static readonly KeyComparer Instance = new();
+
+        public bool Equals(Key a, Key b) => a.Owner == b.Owner && a.Installation.Packed == b.Installation.Packed &&
+            a.StaticGeometryVersion == b.StaticGeometryVersion;
+
+        public int GetHashCode(Key key) => HashCode.Combine(key.Owner, key.Installation.Packed, key.StaticGeometryVersion);
+    }
 
     /// <summary>One key's capture, published once by compare-and-exchange of an immutable outcome.</summary>
     sealed class Slot

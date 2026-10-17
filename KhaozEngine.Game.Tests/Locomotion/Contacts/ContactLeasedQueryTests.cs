@@ -148,12 +148,24 @@ public partial class ContactLeasedQueryTests
         ContactQueryFailure failure = Assert.Throws<ContactQueryFailure>(() => queries.FindSupport(
             Query(Vector3.Zero) with { Axis = new(0.25f, 0), ReachUp = 0.8f, ReachDown = 0.8f }));
         Assert.Equal(MovementAvailability.Unresolved, failure.Availability);
-        // A seated rise without a carried run triggers the look-ahead and leaves the samples to decide.
-        var signals = GroundSignals.Resolve(new MoveState(), 0, 0, true,
-            false, 0, Vector2.UnitX, Vector3.Zero, new(SupportStatus.Walkable, 0, 0, Vector3.UnitY,
-                null, -1, Vector3.Zero), true, 1f / 30, Tuning, 0.125f,
-            MathF.Cos(Tuning.MaxSlopeRadians), queries);
+        // A seated rise without a carried run triggers the look-ahead and leaves the samples to decide. Each sample
+        // enters the leased support read, which refuses it before any physics or producer access.
+        int attempts = 0;
+        var observer = ContactAllocationDiagnostics.Exchange((phase, entering) =>
+        {
+            if (entering && phase == ContactAllocationPhase.SupportRead) attempts++;
+        });
+        (float, float, float) signals;
+        try
+        {
+            signals = GroundSignals.Resolve(new MoveState(), 0, 0, true,
+                false, 0, Vector2.UnitX, Vector3.Zero, new(SupportStatus.Walkable, 0, 0, Vector3.UnitY,
+                    null, -1, Vector3.Zero), true, 1f / 30, Tuning, 0.125f,
+                MathF.Cos(Tuning.MaxSlopeRadians), queries);
+        }
+        finally { ContactAllocationDiagnostics.Exchange(observer); }
 
+        Assert.Equal(GroundSignals.Samples, attempts);
         Assert.Equal((0f, 0f, 0f), signals);
         Assert.Equal(0, scene.View.Calls);
         Assert.Equal(0, scene.Environment.AnalyticGroundCalls);

@@ -6,18 +6,20 @@ using System.Reflection;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Locomotion.Contacts;
 using KhaozEngine.Physics;
+using KhaozEngine.Tests.Physics;
 using Xunit;
 using Xunit.Abstractions;
 
 namespace KhaozEngine.Tests.Locomotion.Contacts;
 
-/// <summary>SC-13. A dry tick whose ascent is already decided skips its look-ahead Finds, and the skip must decide
+/// <summary>SC-13. A tick whose ascent is already decided skips its look-ahead Finds, and the skip must decide
 /// exactly what the sampled path decides.</summary>
 public sealed class LookAheadShortCircuitTests(ITestOutputHelper output)
 {
     static readonly MovementSpaceKey Room = new("world", "room");
 
-    readonly record struct TickResult(MoveState State, MovementStepOutcome? Outcome, int Finds,
+    /// <summary>One tick. <paramref name="Result"/> is the whole explicit step result, or the dry state.</summary>
+    readonly record struct TickResult(object Result, MoveState State, MovementStepOutcome? Outcome, int Finds,
         int LookAheadReads, int AnalyticSamples, int Bindings);
 
     // Every sparse cost scene, through the dry and the explicit door, with the row's own input and with an ascending,
@@ -39,11 +41,20 @@ public sealed class LookAheadShortCircuitTests(ITestOutputHelper output)
                         string name = $"{row.Name} {door} {run} {direction}";
                         TickResult skipping = Tick(execution, row, input, direction, sample: false);
                         TickResult sampled = Tick(execution, row, input, direction, sample: true);
-                        Assert.Equal(sampled.Outcome, skipping.Outcome);
-                        AssertSameBits(sampled.State, skipping.State, name);
+                        AssertSameBits(sampled.Result, skipping.Result, name);
                         Assert.True(skipping.Finds <= sampled.Finds, name);
                         Assert.Equal(sampled.Finds - skipping.Finds, sampled.LookAheadReads - skipping.LookAheadReads);
                         compared++;
+                        if (row.Name.StartsWith("stairs ", StringComparison.Ordinal) || row.Name == "hidden crate")
+                        {
+                            // Every stairs and crate tick that reaches its signals travels on walkable ground with a
+                            // trigger, so its sampled path takes all three samples. A refused explicit tick never
+                            // reaches them.
+                            bool reached = sampled.Outcome is null or MovementStepOutcome.Advanced;
+                            Assert.True(GroundSignals.Samples * (reached ? 1 : 0) == sampled.LookAheadReads,
+                                $"{name}: {sampled.Outcome}, {sampled.LookAheadReads} sampled reads");
+                            if (!reached) output.WriteLine($"{name}: refused {sampled.Outcome} before its signals.");
+                        }
                         if (skipping.Finds < sampled.Finds)
                         {
                             Assert.Equal(GroundSignals.Samples, sampled.LookAheadReads);
@@ -69,6 +80,70 @@ public sealed class LookAheadShortCircuitTests(ITestOutputHelper output)
         // The stairs row carries in an ascent its owed climb continues, and both doors skip on it.
         Assert.Contains("stairs box dry own", seen);
         Assert.Contains("stairs box explicit own", seen);
+    }
+
+    // Each disjunct of a decided ascent alone skips the samples, on the stairs where the window would see a rise. The
+    // seeded average and the ascent the wire cannot show are covered too. With none of them the samples are taken.
+    [Theory]
+    [InlineData("rise seen", 1f, 0.1f)]
+    [InlineData("lift over lag", 1f, 0.1f)]
+    [InlineData("owed climb", 1f, 0.1f)]
+    [InlineData("rise seen", 0f, 0.1f)]
+    [InlineData("lift over lag", 0f, 0.0001f)]
+    [InlineData("owed climb", 0f, 0.0001f)]
+    [InlineData("none", 1f, 0.1f)]
+    public void EachAscentDisjunctSkipsAloneAndMatchesTheSampledPath(string disjunct, float ewma, float moveRise)
+    {
+        SupportCostRow row = Row("stairs box");
+        MoveTuning tuning = SupportGateCostScenes.Tuning;
+        using SupportFootprintScene scene = SupportGateCostScenes.Build(row);
+        using IPhysicsQueryLease lease = scene.World.AcquireQueryReadLease();
+        ContactQueryContext queries = DryQueries.For(null, null, scene.World, lease, tuning);
+        var axis = new Vector2(row.Feet.X, row.Feet.Z);
+        FootSupportQuery query = row.Query;
+        SupportSample owed = FootSupport.Find(null, null, scene.World, lease, query);
+        // Feet on the support owe nothing. The row's own feet sit a riser below it.
+        float feetY = disjunct == "owed climb" ? row.Feet.Y : owed.Height;
+        SupportSample support = FootSupport.Find(null, null, scene.World, lease, query with { FeetY = feetY });
+        Assert.Equal(SupportStatus.Walkable, support.Status);
+        Assert.Equal(disjunct == "owed climb", support.Height - feetY > 0.01f);
+        bool riseSeen = disjunct == "rise seen";
+        float carriedLag = disjunct == "lift over lag" ? 0.1f : 0f;
+        float stepRise = riseSeen ? moveRise : 0f;
+        var input = new MoveState { ClimbRate = 1, ClimbRateEwma = ewma };
+        var feet = new Vector3(axis.X, feetY, axis.Y);
+
+        (int Reads, (float, float, float) Signals) Resolve(bool sample)
+        {
+            int reads = 0;
+            var prior = SupportQueryDiagnostics.Exchange(SupportQueryDiagnostics.ThreadState.Fresh(true));
+            try
+            {
+                SupportQueryDiagnostics.SetFindObserver(find =>
+                {
+                    if (IsLookAhead(find.ReachUp)) reads++;
+                });
+                IDisposable? forced = sample ? GroundSignals.AlwaysSample() : null;
+                try
+                {
+                    var signals = GroundSignals.Resolve(input, stepRise, moveRise, riseSeen, false, carriedLag,
+                        0.2f * Vector2.UnitX, feet, support, true, row.Dt, tuning, query.FootRadius, query.CosMaxSlope,
+                        queries);
+                    return (reads, signals);
+                }
+                finally { forced?.Dispose(); }
+            }
+            finally { SupportQueryDiagnostics.Exchange(prior); }
+        }
+
+        var skipping = Resolve(sample: false);
+        var sampled = Resolve(sample: true);
+        output.WriteLine($"{disjunct}, EWMA {ewma}, rise {moveRise}: {sampled.Signals}, reads {skipping.Reads} of {sampled.Reads}.");
+        Assert.Equal(GroundSignals.Samples, sampled.Reads);
+        Assert.Equal(disjunct == "none" ? GroundSignals.Samples : 0, skipping.Reads);
+        AssertSameBits(sampled.Signals, skipping.Signals, disjunct);
+        // A decided ascent reports its rate, except a seeded rise too small for the wire, which ends the run.
+        if (disjunct != "none") Assert.Equal(moveRise > 0.01f, sampled.Signals.Item1 > 0);
     }
 
     [Fact]
@@ -98,6 +173,19 @@ public sealed class LookAheadShortCircuitTests(ITestOutputHelper output)
         }
     }
 
+    [Fact]
+    public void SamplingScopesNest()
+    {
+        SupportCostRow stairs = Row("stairs box");
+        using var execution = new SupportCostExecution(stairs, "DryTick");
+        using (GroundSignals.AlwaysSample())
+        {
+            using (GroundSignals.AlwaysSample()) { }
+            Assert.Equal(GroundSignals.Samples, Tick(execution, stairs, stairs.Input, stairs.Direction, false).LookAheadReads);
+        }
+        Assert.Equal(0, Tick(execution, stairs, stairs.Input, stairs.Direction, false).LookAheadReads);
+    }
+
     static SupportCostRow Row(string name) =>
         SupportGateCostScenes.Rows().Select(r => (SupportCostRow)r[0]).Single(r => r.Name == name);
 
@@ -115,35 +203,41 @@ public sealed class LookAheadShortCircuitTests(ITestOutputHelper output)
     {
         int reads = 0;
         var prior = SupportQueryDiagnostics.Exchange(SupportQueryDiagnostics.ThreadState.Fresh(true));
+        IDisposable? forced = sample ? GroundSignals.AlwaysSample() : null;
         try
         {
             SupportQueryDiagnostics.SetFindObserver(find =>
             {
                 if (IsLookAhead(find.ReachUp)) reads++;
             });
+            object result;
             MoveState state;
             MovementStepOutcome? outcome = null;
-            using (sample ? GroundSignals.AlwaysSample() : default)
+            if (row.Explicit)
             {
-                if (row.Explicit)
-                {
-                    (MovementAvailability status, IDisposable? acquired) = execution.Producer.Acquire();
-                    Assert.Equal(MovementAvailability.Known, status);
-                    using var lease = (MovementQueryLease)acquired!;
-                    var framed = new FramedMovementState(input, lease.Frame, new(Room, null, lease.Identity));
-                    MovementStepResult result = ExplicitCharacterMovement.StepTowards(framed, direction, false,
-                        row.Dt, SupportGateCostScenes.Tuning, new(row.WaterMode), lease);
-                    (state, outcome) = (result.State.State, result.Outcome);
-                }
-                else
-                    state = ContactController.Step(input, direction, direction == Vector2.Zero ? 0 : 1, false, false,
-                        row.Dt, (x, _) => row.HeightAt(x), SupportGateCostScenes.Tuning, (x, _) => row.NormalAt(x),
-                        execution.View, null, null);
+                (MovementAvailability status, IDisposable? acquired) = execution.Producer.Acquire();
+                Assert.Equal(MovementAvailability.Known, status);
+                using var lease = (MovementQueryLease)acquired!;
+                var framed = new FramedMovementState(input, lease.Frame, new(Room, null, lease.Identity));
+                MovementStepResult step = ExplicitCharacterMovement.StepTowards(framed, direction, false,
+                    row.Dt, SupportGateCostScenes.Tuning, new(row.WaterMode), lease);
+                (result, state, outcome) = (step, step.State.State, step.Outcome);
+            }
+            else
+            {
+                state = ContactController.Step(input, direction, direction == Vector2.Zero ? 0 : 1, false, false,
+                    row.Dt, (x, _) => row.HeightAt(x), SupportGateCostScenes.Tuning, (x, _) => row.NormalAt(x),
+                    execution.View, null, null);
+                result = state;
             }
             SupportQueryCounts counts = SupportQueryDiagnostics.Snapshot();
-            return new(state, outcome, counts.Find, reads, counts.AnalyticSamples, counts.Bindings);
+            return new(result, state, outcome, counts.Find, reads, counts.AnalyticSamples, counts.Bindings);
         }
-        finally { SupportQueryDiagnostics.Exchange(prior); }
+        finally
+        {
+            forced?.Dispose();
+            SupportQueryDiagnostics.Exchange(prior);
+        }
     }
 
     // Look-ahead reaches StepHeight + 2 k CapsuleRadius for k = 1, 2, 3, beyond any other read's reach.
@@ -164,8 +258,18 @@ public sealed class LookAheadShortCircuitTests(ITestOutputHelper output)
                 $"{path}: expected {f:R}, actual {actual}");
             return;
         }
+        if (expected is double d)
+        {
+            Assert.True(BitConverter.DoubleToInt64Bits(d) == BitConverter.DoubleToInt64Bits((double)actual),
+                $"{path}: expected {d:R}, actual {actual}");
+            return;
+        }
         Type type = expected.GetType();
-        if (type.IsPrimitive || type.IsEnum) { Assert.True(expected.Equals(actual), $"{path}: {expected} against {actual}"); return; }
+        if (type.IsPrimitive || type.IsEnum || type == typeof(string))
+        {
+            Assert.True(expected.Equals(actual), $"{path}: {expected} against {actual}");
+            return;
+        }
         foreach (FieldInfo field in type.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
         {
             object? left = field.GetValue(expected), right = field.GetValue(actual);

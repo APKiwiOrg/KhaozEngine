@@ -18,17 +18,19 @@ internal static class GroundSignals
     [ThreadStatic] static bool t_alwaysSample;
 
     /// <summary>Test only. Makes look-ahead on this thread sample even when ascent is already decided, so a test can
-    /// compare the skip with the sampled path. Disposing the scope restores the skip.</summary>
+    /// compare the skip with the sampled path. Disposing the scope restores the setting it found, so scopes
+    /// nest.</summary>
     internal static SamplingScope AlwaysSample()
     {
+        var scope = new SamplingScope(t_alwaysSample);
         t_alwaysSample = true;
-        return default;
+        return scope;
     }
 
-    /// <summary>Restores the look-ahead skip on this thread when the forced scope ends.</summary>
-    internal readonly struct SamplingScope : IDisposable
+    /// <summary>Restores this thread's earlier look-ahead setting when the forced scope ends.</summary>
+    internal readonly struct SamplingScope(bool previous) : IDisposable
     {
-        public void Dispose() => t_alwaysSample = false;
+        public void Dispose() => t_alwaysSample = previous;
     }
 
     /// <summary>Resolves the move's ground signals before a jump consumes its footing. Look-ahead uses the tick's

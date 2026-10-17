@@ -124,7 +124,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // RETAINED BEFORE THE POOL POPS, which is what makes the drawable and its texture live across the
             // whole of the next frame's recording.
             drawable.Retain();
-            return new MetalAcquiredDrawable(drawable.Handle, drawable.Texture().Handle);
+
+            // THE TEXTURE'S OWN FLAG, one message per frame. A layer may recycle a pooled drawable made before a
+            // framebufferOnly write, so the property in force now says nothing certain about this texture.
+            MTLTexture texture = drawable.Texture();
+            return new MetalAcquiredDrawable(drawable.Handle, texture.Handle, texture.IsFramebufferOnly());
         }
 
         /// <inheritdoc/>

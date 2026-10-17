@@ -1021,9 +1021,10 @@ which is what `GpuDeviceCounters.HasValue` being true is for.
 
 **A swapchain capture request turns `framebufferOnly` off.** The device implements `IGpuSwapchainCapture`. Setting
 `SwapchainCopySourceRequested` queues a `framebufferOnly` write, and the present boundary applies it before it
-takes the next drawable, with no drain because the write releases nothing. Each held drawable keeps the value in
-force when it was vended, so the drawable held when the request arrives stays uncopyable, the next one is
-copyable, and the orphan target never is. `SwapchainCopyable` reports exactly that, and `CopySwapchainColor`
+takes the next drawable, with no drain because the write releases nothing. The layer may still hand back a pooled
+drawable made under the old value, so each acquire reads the texture's own `isFramebufferOnly`. The drawable held
+when the request arrives stays uncopyable, a recycled one stays uncopyable until the layer makes a fresh one, and
+the orphan target never is. `SwapchainCopyable` reports exactly that, and `CopySwapchainColor`
 throws `InvalidOperationException` when it is false. The copy is a blit from the drawable's texture on the same
 encoder `CopyTexture` uses. Clearing the request writes `framebufferOnly = true` again at the next boundary.
 

@@ -90,10 +90,13 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         /// <summary>
-        /// THE SWAPCHAIN CAPTURE ON A REAL DRAWABLE. A copy-source request is applied at a present, the next
-        /// drawable's texture must report <c>framebufferOnly</c> false, and a blit out of it must carry the colour
-        /// the frame cleared it to, recorded in the same clear-only recording as the clear. The present after the
-        /// copy exercises the drawable's lifetime across a copy still in flight. Releasing the request must make the swapchain uncopyable again.
+        /// THE SWAPCHAIN CAPTURE ON A REAL DRAWABLE, IN STEADY STATE. The layer's drawable pool is filled and cycled
+        /// before the request, so a recycled framebuffer-only drawable is possible after it. Every frame after the
+        /// request, <c>SwapchainCopyable</c> must equal the held texture's own <c>!isFramebufferOnly</c>, it must
+        /// become true within one pool cycle, and a copy on the first copyable frame must read back the colour the
+        /// same clear-only recording cleared it to. The next present runs before any wait, so the drawable is
+        /// released while the copy may still be in flight. Releasing the request must make the swapchain
+        /// uncopyable again.
         /// </summary>
         [GpuFact]
         public void A_requested_capture_copies_a_real_drawable()
@@ -304,25 +307,38 @@ namespace KhaozEngine.Tests.Gpu
                 Assert.True(format is GpuPixelFormat.B8G8R8A8UNorm or GpuPixelFormat.R8G8B8A8UNorm,
                     "the swapchain format is " + format + ", which this row has no channel order for.");
 
-                // THE DRAWABLE TAKEN AT CREATION WAS VENDED FRAMEBUFFER ONLY.
-                Assert.False(device.SwapchainCopyable);
+                int cycle = layer.MaximumDrawableCount() + 1;
 
-                device.SwapchainCopySourceRequested = true;
-                device.Present();
-
-                Assert.True(boundary.HasDrawable, "the headless layer vended no drawable after the request.");
-                Assert.True(device.SwapchainCopyable);
-                Assert.False(TextureIsFramebufferOnly(boundary.Framebuffer.Attachment.Texture),
-                    "the drawable taken after framebufferOnly was written false still reports framebufferOnly, so "
-                    + "the layer reused a pooled drawable and SwapchainCopyable is wrong.");
+                // FILL AND CYCLE THE POOL with framebuffer-only drawables before any request.
+                for (int i = 0; i < cycle; i++)
+                {
+                    device.Present();
+                    Assert.False(device.SwapchainCopyable);
+                }
 
                 using IGpuTexture staging = device.Factory.CreateTexture(
                     GpuTextureDescription.Texture2D(Size, Size, format, GpuTextureUsage.Staging));
 
-                // ONE RECORDING, CLEAR-ONLY: no draw opens the pass, so the copy itself must apply the pending
-                // clear before its blit, or it reads the drawable as it was before the clear.
-                using (IGpuCommandList cl = device.Factory.CreateCommandList())
+                device.SwapchainCopySourceRequested = true;
+
+                int firstCopyable = -1;
+                for (int frame = 0; frame < cycle; frame++)
                 {
+                    device.Present();
+                    Assert.True(boundary.HasDrawable, "the headless layer vended no drawable after the request.");
+
+                    bool real = !TextureIsFramebufferOnly(boundary.Framebuffer.Attachment.Texture);
+                    output.WriteLine($"after the request, frame {frame}: copyable={device.SwapchainCopyable}, "
+                        + $"texture copyable={real}");
+                    Assert.Equal(real, device.SwapchainCopyable);
+
+                    if (!device.SwapchainCopyable || firstCopyable >= 0) continue;
+                    firstCopyable = frame;
+
+                    // ONE RECORDING, CLEAR-ONLY: no draw opens the pass, so the copy itself must apply the pending
+                    // clear before its blit, or it reads the drawable as it was before the clear. No wait follows
+                    // the submit, so the next present releases the drawable with the copy possibly in flight.
+                    using IGpuCommandList cl = device.Factory.CreateCommandList();
                     cl.Begin();
                     cl.SetFramebuffer(swapchain);
                     cl.ClearColorTarget(0, clear);
@@ -330,6 +346,9 @@ namespace KhaozEngine.Tests.Gpu
                     cl.End();
                     device.Submit(cl);
                 }
+
+                Assert.True(firstCopyable >= 0,
+                    $"the swapchain never became copyable within {cycle} frames of the request.");
 
                 device.WaitForIdle();
 
@@ -350,20 +369,19 @@ namespace KhaozEngine.Tests.Gpu
                     ? (pixel[2], pixel[1], pixel[0], pixel[3])
                     : (pixel[0], pixel[1], pixel[2], pixel[3]);
 
-                output.WriteLine($"swapchain copy of a real drawable ({format}): centre = ({r}, {g}, {b}, {a})");
+                output.WriteLine($"swapchain copy of a real drawable ({format}) on frame {firstCopyable}: "
+                    + $"centre = ({r}, {g}, {b}, {a})");
                 Assert.InRange(r, 40 - 2, 40 + 2);
                 Assert.InRange(g, 120 - 2, 120 + 2);
                 Assert.InRange(b, 200 - 2, 200 + 2);
                 Assert.InRange(a, 255 - 2, 255);
 
-                // THE PRESENT AFTER THE COPY releases the drawable the copy read from.
-                device.Present();
-                Assert.True(device.SwapchainCopyable);
-
                 // RELEASED: the next boundary writes framebufferOnly true, the drawable after it is uncopyable.
                 device.SwapchainCopySourceRequested = false;
                 device.Present();
                 device.Present();
+                Assert.Equal(!TextureIsFramebufferOnly(boundary.Framebuffer.Attachment.Texture),
+                    device.SwapchainCopyable);
                 Assert.False(device.SwapchainCopyable);
                 Assert.True(layer.FramebufferOnly());
             }

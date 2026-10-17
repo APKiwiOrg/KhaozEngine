@@ -8,8 +8,9 @@ namespace KhaozEngine.Tests.Gpu
     /// <summary>
     /// The Metal half of <see cref="IGpuSwapchainCapture"/>, device free over <see cref="FakeMetalSwapchainApi"/>
     /// and <see cref="FakeMetalOrphanTarget"/>. A <c>framebufferOnly</c> drawable cannot be a blit source, so a
-    /// capture request turns the layer's <c>framebufferOnly</c> off at the next present boundary, and only a
-    /// drawable taken after that write is copyable. The blit itself needs a real drawable and runs only on a
+    /// capture request turns the layer's <c>framebufferOnly</c> off at the next present boundary, and a drawable
+    /// is copyable only when its own texture reports framebufferOnly false, so a pooled one the layer recycles
+    /// from before the write is not. The blit itself needs a real drawable and runs only on a
     /// device.
     /// </summary>
     public sealed class MetalSwapchainCaptureTests
@@ -76,6 +77,26 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(api.FramebufferOnly);
             Assert.True(boundary.HasDrawable);
             Assert.False(boundary.CurrentDrawableCopyable);
+        }
+
+        [Fact]
+        public void A_recycled_drawable_that_still_reports_framebuffer_only_is_not_copyable()
+        {
+            (FakeMetalSwapchainApi api, MetalPresentBoundary boundary) = Build(scriptDrawables: 1);
+
+            // THE LAYER RECYCLES A POOLED DRAWABLE made before the write, then makes a fresh one.
+            boundary.Pending.QueueFramebufferOnly(false);
+            api.ScriptDrawable(framebufferOnly: true);
+            api.ScriptDrawable();
+            boundary.Present();
+
+            Assert.False(api.FramebufferOnly);
+            Assert.True(boundary.HasDrawable);
+            Assert.False(boundary.CurrentDrawableCopyable);
+
+            boundary.Present();
+
+            Assert.True(boundary.CurrentDrawableCopyable);
         }
 
         [Fact]

@@ -11,8 +11,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <para><b>FOUR OF THE FIVE OPEN A BLIT ENCODER AND GET M-A5 FOR FREE. THE RESOLVE DOES NOT, AND IT IS THE
     /// ONE MEMBER THAT ENDS THE OPEN PASS ITSELF.</b> A blit is a DIFFERENT kind from the one a draw uses, so
     /// <see cref="MetalEncoderScope.EnsureBlitEncoder"/> ends whatever is open on the way and the invariant is the
-    /// scope's rather than a line repeated in four places, which is the decision row 12 recorded when it did NOT
-    /// add an <c>EndPass</c> for these callers to call. The resolve opens a RENDER encoder, which is the SAME kind
+    /// scope's rather than a line repeated in four places. The texture copies also flush a pending clear first,
+    /// through <see cref="EnsureCopyEncoder"/>, which calls <see cref="MetalRenderPassSchedule.EndPass"/> before
+    /// the blit, so a copy always sees a clear recorded before it. The buffer copy touches no attachment and does
+    /// not. Mip generation does not yet, tracked in https://github.com/APKiwiOrg/KhaozEngine/issues/1432. The
+    /// resolve opens a RENDER encoder, which is the SAME kind
     /// a draw uses, so <see cref="MetalEncoderScope.EnsureRenderEncoder"/> short-circuits on an open pass and hands
     /// the caller's own scene encoder straight back with the resolve descriptor unused. Row 12's comment said "a
     /// resolve opens a blit one" and it was wrong. So <see cref="ResolveTexture"/> calls
@@ -215,8 +218,9 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// loud: the pass ends normally, the buffer completes with a nil error, and the destination keeps whatever
         /// it held. <see cref="MetalEncoderScope.EnsureNoEncoder"/> is the parity-correct call rather than
         /// <c>EndPass</c>: the incumbent's <c>ResolveTextureCore</c> calls plain <c>EnsureNoRenderPass</c> and
-        /// leaves a clear-only pass's pending clears OWED across the resolve, which is M-A3's flush staying at its
-        /// two forcing sites (a framebuffer change and <c>End</c>) rather than gaining a third here.
+        /// leaves a clear-only pass's pending clears OWED across the resolve, and the resolve keeps that behaviour
+        /// on purpose. The texture copies differ: they flush a pending clear through <see cref="EnsureCopyEncoder"/>
+        /// before their blit.
         /// </para>
         /// </remarks>
         public void ResolveTexture(IGpuTexture src, IGpuTexture dst)

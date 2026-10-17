@@ -20,7 +20,7 @@ namespace KhaozEngine.Tests.Gpu
     /// </summary>
     internal sealed class FakeMetalSwapchainApi : IMetalSwapchainApi
     {
-        readonly Queue<MetalAcquiredDrawable> _scripted = new();
+        readonly Queue<(MetalAcquiredDrawable Drawable, bool? FramebufferOnly)> _scripted = new();
         int _nextHandle = 1000;
 
         /// <summary>Everything that happened, in order, across the api, the drain and the capture hook. The drain
@@ -86,15 +86,18 @@ namespace KhaozEngine.Tests.Gpu
         internal TimeSpan AcquireDelay { get; set; }
 
         /// <summary>Script the next acquire to answer with a drawable.</summary>
-        internal void ScriptDrawable()
+        /// <param name="framebufferOnly">What the drawable's texture reports, or null for a fresh drawable made
+        /// under the layer's <see cref="FramebufferOnly"/> at the acquire. A value is a pooled drawable the layer
+        /// recycled from before a write.</param>
+        internal void ScriptDrawable(bool? framebufferOnly = null)
         {
             IntPtr drawable = new(_nextHandle++);
             IntPtr texture = new(_nextHandle++);
-            _scripted.Enqueue(new MetalAcquiredDrawable(drawable, texture));
+            _scripted.Enqueue((new MetalAcquiredDrawable(drawable, texture), framebufferOnly));
         }
 
         /// <summary>Script the next acquire to answer NIL, which is M-W5's whole condition.</summary>
-        internal void ScriptNoDrawable() => _scripted.Enqueue(default);
+        internal void ScriptNoDrawable() => _scripted.Enqueue((default, null));
 
         /// <summary>Append a note from outside the api, so the drain and the capture hook land in the same
         /// ordered log the native calls do.</summary>
@@ -147,7 +150,15 @@ namespace KhaozEngine.Tests.Gpu
 
             // An unscripted acquire answers NIL rather than throwing, so a row that only cares about the first
             // few boundaries does not have to script every one of them.
-            MetalAcquiredDrawable answer = _scripted.Count > 0 ? _scripted.Dequeue() : default;
+            MetalAcquiredDrawable answer = default;
+            if (_scripted.Count > 0)
+            {
+                (MetalAcquiredDrawable scripted, bool? framebufferOnly) = _scripted.Dequeue();
+                answer = scripted.HasDrawable
+                    ? scripted with { FramebufferOnly = framebufferOnly ?? FramebufferOnly }
+                    : scripted;
+            }
+
             Handed.Add(answer);
             return answer;
         }

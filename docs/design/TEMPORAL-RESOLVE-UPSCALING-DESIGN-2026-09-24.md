@@ -1055,6 +1055,8 @@ and changed these details. Its contract amendment blocks carry the evidence.
     The resolve before the release fails six of the shadow bounds. The release adds one float to the 3x3's statistics
     and a chain of comparisons per pixel, and four bilinear history taps only where a still pixel's history lies past
     its box and, at Native, its reconstruction alone does not decide or, where the frame upscales, its reconstruction
-    reads a change. `TemporalResolveCostPerfGpuTests` after the change ran on a host loaded far
-    past its cores, where the off mode alone measured three to ten times its figure before the change, so the
-    resolve's timing with the release is still to be taken on an idle host.
+    reads a change. `TemporalResolveCostPerfGpuTests` on the hosted NVIDIA Tesla T4 (`gpu-hosted-bench`, runs
+    39000442514 before and 39000447833 after) moves the split's resolve and sharpen by -0.06 to +0.19 ms over all
+    eight cases on Direct3D 11, Windows Vulkan and Linux Vulkan, a mean of about 1.5 percent and within the run to run
+    spread of the paired rounds, since several cases measured faster after. At Quality 2560x1440 it is -0.02 to +0.08
+    ms.

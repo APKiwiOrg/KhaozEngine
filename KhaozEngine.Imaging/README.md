@@ -45,7 +45,9 @@ at `ceil(width / 8)` by `ceil(height / 8)`, with alpha 255. It reads sequential 
 markers. Only DC coefficients are dequantized, AC coefficients are consumed without an inverse DCT.
 Chroma maps to the output block grid by sampling ratio and uses the JFIF conversion matrix. Malformed
 or truncated input and edges outside 1 to 16384 throw `InvalidDataException`. Progressive, arithmetic,
-12-bit and other unsupported coding processes throw `NotSupportedException`.
+12-bit and other unsupported coding processes throw `NotSupportedException`, as do component counts
+other than one or three. Three components are always read as YCbCr, so an Adobe RGB JPEG decodes with
+wrong colours. The decoder is meant for frames that `JpegWriter` produced.
 
 ## PngReader
 

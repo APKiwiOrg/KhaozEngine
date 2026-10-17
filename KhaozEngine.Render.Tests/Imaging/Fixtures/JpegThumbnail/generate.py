@@ -4,7 +4,11 @@ import subprocess
 import tempfile
 
 here = Path(__file__).resolve().parent
-with tempfile.TemporaryDirectory(dir=here) as temporary:
+version = subprocess.run(["cjpeg", "-version"], capture_output=True, text=True).stderr
+if "version 3.2.0" not in version:
+    raise SystemExit("These fixtures were made with libjpeg-turbo cjpeg 3.2.0, found: " + version.strip())
+# The scratch inputs live in the system temp directory so an interrupted run leaves nothing in the test tree.
+with tempfile.TemporaryDirectory() as temporary:
     root = Path(temporary)
     gray = root / "grayscale.pgm"
     gray.write_bytes(b"P5\n64 48\n255\n" + bytes(32 if x < 32 else 224 for y in range(48) for x in range(64)))

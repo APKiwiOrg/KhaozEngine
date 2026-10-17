@@ -30,6 +30,15 @@ internal sealed class ReportRecordStore
     public Task<AcceptedReport?> LoadAcceptedAsync(string reportId, CancellationToken ct) =>
         LoadPrivateAsync<AcceptedReport>(ReportLayout.AcceptedIndex(reportId), ReportLayout.MaxAcceptedBytes, ct);
 
+    /// <summary>Claims a report id only when absent, preserving the first folder and reporter.</summary>
+    public Task<bool> CreateReportAsync(ReportRecord record, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(record);
+        string path = ReportLayout.ReportRecord(record.ReportId);
+        return media.PutAsync(ReportArea.Pending, path, JsonSerializer.SerializeToUtf8Bytes(record, RelayJson.Options),
+            ReportLayout.HeadersFor(path), overwrite: false, ct);
+    }
+
     /// <summary>Writes or replaces the private report record, including its current issue and snapshot state.</summary>
     public async Task SaveReportAsync(ReportRecord record, CancellationToken ct)
     {

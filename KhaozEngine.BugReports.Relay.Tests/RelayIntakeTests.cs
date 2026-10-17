@@ -361,6 +361,60 @@ public sealed class RelayIntakeTests
     }
 
     [Fact]
+    public async Task Intake_ConcurrentSameId_OneRecordWins_NoOverwrite()
+    {
+        RelayHarness harness = null!;
+        ReportRecord winner = null!;
+        byte[] savedWinner = null!;
+        harness = new RelayHarness(wrapMedia: inner => new HookedMediaStore(inner, "records/", async () =>
+        {
+            Assert.Null(await harness.Records.LoadReportAsync(Id, Ct));
+            AssertAccepted(await harness.IntakeAsync());
+            winner = (await harness.Records.LoadReportAsync(Id, Ct))! with
+            {
+                IssueNumber = 7,
+                ServerSnapshot = ServerSnapshotState.Commented,
+            };
+            await harness.Records.SaveReportAsync(winner, Ct);
+            savedWinner = (await inner.GetAsync(ReportArea.Pending, "records/" + Id + ".json", ReportLayout.MaxRecordBytes, Ct))!.Value.ToArray();
+            Assert.True(harness.Work.TryDequeue(out _));
+        }));
+
+        AssertAccepted(await harness.IntakeAsync(RelayHarness.Request(authorization: "Bearer other")));
+
+        ReportRecord record = Assert.IsType<ReportRecord>(await harness.Records.LoadReportAsync(Id, Ct));
+        AcceptedReport accepted = Assert.IsType<AcceptedReport>(await harness.Records.LoadAcceptedAsync(Id, Ct));
+        Assert.Single(harness.Media.Paths(ReportArea.Pending), path => path.StartsWith("records/", StringComparison.Ordinal));
+        Assert.Equal(winner.Folder, record.Folder);
+        Assert.Equal(new ReporterIdentity("discord:42", "Ash", null), record.Reporter);
+        Assert.Equal(7, record.IssueNumber);
+        Assert.Equal(ServerSnapshotState.Commented, record.ServerSnapshot);
+        Assert.Equal(savedWinner, (await harness.Media.GetAsync(ReportArea.Pending, "records/" + Id + ".json", ReportLayout.MaxRecordBytes, Ct))!.Value.ToArray());
+        Assert.Equal(new AcceptedReport(winner.Folder, winner.Reporter.Subject, winner.ReceivedAt), accepted);
+        Assert.Equal(0, harness.Work.Count);
+        Assert.Equal(2, harness.Media.Paths(ReportArea.Public).Count(path => path.EndsWith("/viewer.html", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task Intake_RecordWithoutAcceptedIndex_CompletesIndexAndEnqueues()
+    {
+        var harness = new RelayHarness();
+        ReportRecord original = IssueFixtures.Minimal().Report;
+        await harness.Records.SaveReportAsync(original, Ct);
+        byte[] savedRecord = (await harness.Media.GetAsync(ReportArea.Pending, "records/" + Id + ".json", ReportLayout.MaxRecordBytes, Ct))!.Value.ToArray();
+
+        AssertAccepted(await harness.IntakeAsync(RelayHarness.Request(authorization: "Bearer other")));
+
+        Assert.Equal(new AcceptedReport(original.Folder, original.Reporter.Subject, original.ReceivedAt),
+            await harness.Records.LoadAcceptedAsync(Id, Ct));
+        Assert.Equal(savedRecord, (await harness.Media.GetAsync(ReportArea.Pending, "records/" + Id + ".json", ReportLayout.MaxRecordBytes, Ct))!.Value.ToArray());
+        Assert.Empty(harness.Media.Paths(ReportArea.Public));
+        Assert.True(harness.Work.TryDequeue(out ReportWorkItem? work));
+        Assert.Equal(new ReportWorkItem(ReportWorkKind.CreateIssue, Id), work);
+        Assert.Equal(0, harness.Work.Count);
+    }
+
+    [Fact]
     public async Task Intake_AcceptedIndexLostRace_ReturnsWinnersReference()
     {
         var media = new InMemoryReportMediaStore();

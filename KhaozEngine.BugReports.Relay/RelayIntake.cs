@@ -58,9 +58,20 @@ internal sealed class RelayIntake
 
         AcceptedReport? accepted = await records.LoadAcceptedAsync(key, ct).ConfigureAwait(false);
         if (accepted is not null) return await AcceptedAsync(key, accepted, ct).ConfigureAwait(false);
-        DateTimeOffset receivedAt = time.GetUtcNow();
-        ReportRecord record = await storer.StoreAsync(body, manifest, reporter, receivedAt, ct).ConfigureAwait(false);
-        if (!await records.TryCreateAcceptedAsync(key, new AcceptedReport(record.Folder, reporter.Subject, receivedAt), ct).ConfigureAwait(false))
+        ReportRecord? record = await records.LoadReportAsync(key, ct).ConfigureAwait(false);
+        if (record is not null) return await CompleteAcceptanceAsync(record, ct).ConfigureAwait(false);
+
+        record = await storer.StoreAsync(body, manifest, reporter, time.GetUtcNow(), ct).ConfigureAwait(false);
+        if (!await records.CreateReportAsync(record, ct).ConfigureAwait(false))
+            record = await records.LoadReportAsync(key, ct).ConfigureAwait(false)
+                ?? throw new InvalidDataException("The winning report record is missing.");
+        return await CompleteAcceptanceAsync(record, ct).ConfigureAwait(false);
+    }
+
+    async Task<RelayResponse> CompleteAcceptanceAsync(ReportRecord record, CancellationToken ct)
+    {
+        string key = record.ReportId;
+        if (!await records.TryCreateAcceptedAsync(key, new AcceptedReport(record.Folder, record.Reporter.Subject, record.ReceivedAt), ct).ConfigureAwait(false))
         {
             AcceptedReport winner = await records.LoadAcceptedAsync(key, ct).ConfigureAwait(false)
                 ?? throw new InvalidDataException("The winning accepted index is missing.");

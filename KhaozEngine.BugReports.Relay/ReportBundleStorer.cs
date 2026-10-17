@@ -8,7 +8,7 @@ using KhaozEngine.BugReports.Contracts;
 namespace KhaozEngine.BugReports.Relay;
 
 /// <summary>Stores validated bundle entries and the viewer publicly, with account state kept private.</summary>
-internal sealed class ReportBundleStorer(IReportMediaStore media, ReportRecordStore records, ReportViewerWriter viewer)
+internal sealed class ReportBundleStorer(IReportMediaStore media, ReportViewerWriter viewer)
 {
     public async Task<ReportRecord> StoreAsync(MemoryStream bundle, BugReportManifest manifest, ReporterIdentity reporter,
         DateTimeOffset receivedAt, CancellationToken ct)
@@ -30,7 +30,6 @@ internal sealed class ReportBundleStorer(IReportMediaStore media, ReportRecordSt
         var record = new ReportRecord(BugReportFormat.Version, manifest.ReportId, ReportIds.ReferenceCode(manifest.ReportId),
             folder, receivedAt, reporter, manifest, null, ServerSnapshotState.None);
         await viewer.WriteAsync(record, null, ct).ConfigureAwait(false);
-        await records.SaveReportAsync(record, ct).ConfigureAwait(false);
         return record;
     }
 }

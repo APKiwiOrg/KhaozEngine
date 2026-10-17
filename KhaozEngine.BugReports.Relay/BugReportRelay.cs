@@ -28,7 +28,7 @@ public sealed class BugReportRelay
         var records = new ReportRecordStore(media);
         var viewer = new ReportViewerWriter(media);
         intake = new RelayIntake(options, authenticator, work, records,
-            new ReportQuotaGate(quotas, options, time, logger), new ReportBundleStorer(media, records, viewer), time);
+            new ReportQuotaGate(quotas, options, time, logger), new ReportBundleStorer(media, viewer), time);
     }
 
     /// <summary>Authenticates, quota-checks, validates and stores one client bundle, then queues issue creation.</summary>

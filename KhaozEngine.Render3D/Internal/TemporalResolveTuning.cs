@@ -145,6 +145,42 @@ namespace KhaozEngine.Render3D.Internal
         /// centre. With this floor it measures the same as at the centre, and every other thin-feature fact is unchanged.
         /// A nearer surface crossing a held line at 0.1 internal pixels a frame is a hundred times this.</summary>
         public const float LockEdgeFloorInternalPixels = 1e-3f;
+        /// <summary>Steps 6 and 8. How far past the variance box, in its half-widths beyond the first, a still pixel's
+        /// history luma lies before the pixel may read as one whose shading changed, a shadow or a light sliding over a
+        /// still surface, and let go of its hold and its accumulated weight for the frame
+        /// (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 33). The half-width there is at least a ridge's step. On its own
+        /// this test released every isolated stable peak every frame (<c>TemporalStablePeakGpuTests</c>), so it is a
+        /// gate, and <see cref="ShadingChangeExtents"/> or <see cref="ShadingRingExtents"/> decides. On Metal at 0.125
+        /// the stable peaks' frame-to-frame change at Quality over the textured wall rose 12 percent, and at 0 the
+        /// Native one 21 percent.</summary>
+        public const float ShadingResetExtents = 0.25f;
+        /// <summary>Steps 6 and 8. How far a still pixel's history luma must lie from this frame's reconstruction, in
+        /// the box's half-widths for each display pixel an internal texel spans, for the release to read its own pixel
+        /// as changed. The jitter moves a sub-texel feature's reconstruction by up to that texel, so a stable peak's
+        /// reconstruction varies about its history in proportion, while a shading change moves it away. On Metal at 1
+        /// unscaled, the stable peaks' frame-to-frame change at Quality over the textured wall rose 11 percent, and at
+        /// 1.25 unscaled the Native textured tail at 1 display pixel a frame retreating
+        /// (<c>TemporalShadowEdgeLagGpuTests</c>) measured 1.61 times the tail at 0.25, against 1.55 here.</summary>
+        public const float ShadingChangeExtents = 0.85f;
+        /// <summary>Steps 6 and 8. How far out on each diagonal, in display pixels, the release's four taps of last
+        /// frame's output sit around the previous position. At a still pixel centre each bilinear tap is the mean of the
+        /// 2x2 pixels one and two out, so the ring leaves out the pixel's own row and column, and at Quality it spans
+        /// what the 3x3 spans.</summary>
+        public const float ShadingRingPixels = 1.5f;
+        /// <summary>Steps 6 and 8. How far the ring's mean luma (<see cref="ShadingRingPixels"/>) must lie from the
+        /// mean of this frame's eight texels around the centre, in the box's half-widths and on the side the pixel's
+        /// history lies, for the release to read the neighbourhood's shading as changed. A stable peak's ring and its
+        /// eight texels hold the same ground and agree. A pixel whose neighbours were released first agrees too, so
+        /// on Metal the ring alone left the Native textured tail at 1 display pixel a frame retreating at 1.75 times the
+        /// tail at 0.25, and the least of the four taps in place of their mean at 3.98. At 0.125 the stable peaks'
+        /// change at Quality over the textured wall rose 9 percent.</summary>
+        public const float ShadingRingExtents = 0.25f;
+        /// <summary>Steps 6 and 8. The largest internal texel, in display pixels, at which the release runs: Native
+        /// and Quality, not Balanced and below. Beyond it the jitter aliases detail between the internal and the
+        /// display Nyquist as far from its accumulated history as a shading change moves it, and the release cost a
+        /// checkerboard at Performance (<c>TemporalMipBiasGoldenTests</c>) up to 0.022 of its golden, so a shadow edge
+        /// there still converges at the current weight's floor.</summary>
+        public const float ShadingMaxUpscale = 1.6f;
         /// <summary>Step 5. The least move the clip must make to the history, as blended, in the luma-weighted YCoCg
         /// space the clip runs in, for the pixel's clip flag. Passes that re-evaluate the resolve read the flag, such
         /// as the sampled temporal counts, and the resolve's colour never does. On flat content the variance box

@@ -124,8 +124,15 @@ namespace KhaozEngine.Tests.Gpu
     /// <see cref="FarPixels"/> or more ahead of it, which no edge has crossed, each split into the textured and the
     /// flat halves. Per region it prints the mean and 95th percentile absolute luma error, the mean signed error
     /// (bias), the grain of the output and of the reference, a pixel's luma less its 3x3 median, and the grain of the
-    /// error image itself, and per half the signed error profile along the travel. It asserts only what holds today:
-    /// the reference shows the edge and every region has pixels. Thresholds belong to the fix round.
+    /// error image itself, and per half the signed error profile along the travel.
+    /// </para>
+    /// <para>
+    /// It asserts the resolve's release of a still pixel whose shading changed (TEMPORAL-RESOLVE-UPSCALING-DESIGN
+    /// amendment 33). The textured tail at 1 display pixel a frame is at most <see cref="TravelTailRatio"/> times the
+    /// tail at 0.25, each way and at each preset, so the lag no longer grows with travel. At Quality the textured band
+    /// at 1 is at most <see cref="QualityBandLimit"/>. With the light still, the textured band and control stay within
+    /// a tenth of the resolve's figures before the release (<see cref="StillBand"/>, <see cref="StillFar"/>), and
+    /// their output grain stays at least <see cref="StillGrainShare"/> of the reference's, so texture detail is kept.
     /// </para>
     /// </summary>
     public sealed class TemporalShadowEdgeLagGpuTests(ITestOutputHelper output)
@@ -134,6 +141,26 @@ namespace KhaozEngine.Tests.Gpu
         const int FirstMeasured = 80, Measured = 8;
         const float BandPixels = 12f, TailPixels = 48f, FarPixels = 32f, SeamMargin = 4f;
         const int Border = 2, ProfileBins = 16, ProfileBin = 4, ProfileAhead = 16;
+
+        // Before the release, Metal measured the Quality textured tail at 1 display pixel a frame 10 and 8 times the
+        // tail at 0.25, and the band at 1 at 0.111 and 0.106, advancing and retreating. Native's tail was 9 and 7 times.
+        // The release measures 0.74 and 0.87 times at Quality, 1.26 and 1.55 at Native, and the Quality band at 1 0.027
+        // and 0.033. The tail bound keeps the lag's growth with travel within 1.75 times, against 7 to 10 before, with
+        // room for another backend over Native's 1.55 retreating. Forcing every hold to zero, the most the locks could
+        // give back, measured the Quality band at 0.031, and the band bound is that plus about a tenth.
+        const double TravelTailRatio = 1.75, QualityBandLimit = 0.035, StillGrainShare = 0.9;
+
+        // The still light's textured band and control mean errors before the release, plus a tenth: Quality 0.0058
+        // and 0.0052, Native 0.0044 and 0.0039. Forcing every hold to zero raised Quality's to 0.0072 and 0.0064.
+        static readonly Dictionary<TemporalUpscale, double> StillBand = new()
+        {
+            [TemporalUpscale.Quality] = 0.0058 * 1.1, [TemporalUpscale.Native] = 0.0044 * 1.1,
+        };
+
+        static readonly Dictionary<TemporalUpscale, double> StillFar = new()
+        {
+            [TemporalUpscale.Quality] = 0.0052 * 1.1, [TemporalUpscale.Native] = 0.0039 * 1.1,
+        };
 
         readonly record struct Case(string Name, TemporalUpscale Preset, float PixelsPerFrame, float Hold);
 
@@ -161,6 +188,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             PrintGeometry();
             var references = new Dictionary<float, byte[][]>();
+            var measured = new Dictionary<Case, Dictionary<string, RegionStats>>();
             foreach (Case c in Cases())
             {
                 var stage = new ShadowEdgeStage(W, H, c.PixelsPerFrame, FirstMeasured);
@@ -204,6 +232,45 @@ namespace KhaozEngine.Tests.Gpu
                 output.WriteLine($"  flat signed error x1000, {bins}: {m.Profile(flat: true)}");
                 Assert.True(m.ReferenceContrast > 0.05,
                     $"{c.Name}: the reference shows no shadow edge, contrast {m.ReferenceContrast:0.000}");
+                measured[c] = new Dictionary<string, RegionStats>();
+                foreach ((string name, RegionStats r) in m.Regions) measured[c][name] = r;
+            }
+            AssertReleased(measured);
+        }
+
+        // The acceptance bounds, checked after every case has printed, so a failure still shows the whole table.
+        static void AssertReleased(Dictionary<Case, Dictionary<string, RegionStats>> measured)
+        {
+            var failures = new List<string>();
+            foreach ((Case c, Dictionary<string, RegionStats> r) in measured)
+            {
+                if (c.Hold != 1f) continue;
+                if (c.PixelsPerFrame == 0f)
+                {
+                    Check(r["band textured"].Mean <= StillBand[c.Preset],
+                        $"{c.Name}: textured band {r["band textured"].Mean:0.0000} above {StillBand[c.Preset]:0.0000}");
+                    Check(r["far textured"].Mean <= StillFar[c.Preset],
+                        $"{c.Name}: textured control {r["far textured"].Mean:0.0000} above {StillFar[c.Preset]:0.0000}");
+                    foreach (string region in new[] { "band textured", "far textured" })
+                        Check(r[region].GrainOut >= StillGrainShare * r[region].GrainRef,
+                            $"{c.Name}: {region} grain {r[region].GrainOut:0.0000} below {StillGrainShare} of the "
+                            + $"reference's {r[region].GrainRef:0.0000}");
+                    continue;
+                }
+                if (MathF.Abs(c.PixelsPerFrame) != 1f) continue;
+                Case slow = c with { Name = c.Name.Replace("1.00", "0.25"), PixelsPerFrame = c.PixelsPerFrame / 4f };
+                double tail = r["tail textured"].Mean, slowTail = measured[slow]["tail textured"].Mean;
+                Check(tail <= TravelTailRatio * slowTail,
+                    $"{c.Name}: textured tail {tail:0.0000} above {TravelTailRatio} times the 0.25 px tail {slowTail:0.0000}");
+                if (c.Preset == TemporalUpscale.Quality)
+                    Check(r["band textured"].Mean <= QualityBandLimit,
+                        $"{c.Name}: textured band {r["band textured"].Mean:0.0000} above {QualityBandLimit}");
+            }
+            Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
+
+            void Check(bool ok, string failure)
+            {
+                if (!ok) failures.Add(failure);
             }
         }
 

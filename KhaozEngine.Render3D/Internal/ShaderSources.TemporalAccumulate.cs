@@ -173,10 +173,11 @@ afloat temporalLanczosWeight(TemporalKernels kernels, int x, int y) { return ker
 
 // The 3x3's statistics, gathered a texel at a time in reading order: the moments and range of its weighted YCoCg and
 // alpha, its Lanczos reconstructions sized in internal and in display pixels, what this frame is worth to the pixel,
-// and its largest reactive difference.
+// its largest reactive difference, and its centre texel's weighted luma.
 struct TemporalNeighbourhood {
     vec3 momentSum; vec3 momentSquares; avec3 neighbourMin; avec3 neighbourMax; afloat alphaMin; afloat alphaMax;
     vec4 reconstruction; float reconstructionWeight; vec4 display; afloat sampleWeight; afloat reactiveDifference;
+    float centreLuma;
 };
 
 TemporalNeighbourhood temporalNeighbourhood() {
@@ -192,6 +193,7 @@ TemporalNeighbourhood temporalNeighbourhood() {
     n.display = vec4(0.0);
     n.sampleWeight = afloat(0.0);
     n.reactiveDifference = afloat(0.0);
+    n.centreLuma = 0.0;
     return n;
 }
 
@@ -215,6 +217,7 @@ void temporalGather(inout TemporalNeighbourhood n, TemporalKernels kernels, int 
 #endif
     n.sampleWeight = max(n.sampleWeight, clamp(displayWeight, afloat(0.0), afloat(1.0)));
     n.reactiveDifference = max(n.reactiveDifference, reactiveDifference);
+    if (x == 1 && y == 1) n.centreLuma = toFloat(ycc.x);
 }
 " + TemporalDisplayKernelGlsl + @"
 // Step 1: where this display pixel was last frame if it moved as the surface it reprojects by did. A surface reads
@@ -231,6 +234,22 @@ vec2 temporalPreviousUv(vec2 uv, vec2 motion, bool isBackground) {
         previousUv = uv - motion;
     }
     return previousUv;
+}
+
+// Steps 6 and 8: how far last frame's output around previousUv lies from this frame's 3x3 less its centre texel, in
+// mean luma, on the side the pixel's own history lies (side, its offset from the box centre). Four bilinear taps
+// ShadingRingPixels out on the diagonals, each the mean of the 2x2 display pixels there at a still pixel centre, so
+// the ring leaves out the pixel's own row and column as the eight texels leave out the centre. A stable peak's ring
+// and eight texels hold the same ground around it and agree. Under a shading change the ring holds the old shading.
+float temporalHistoryRingShift(vec2 previousUv, vec2 displaySize, float aroundLuma, float side) {
+    vec2 reach = vec2(ShadingRingPixels) / displaySize;
+    float ring = 0.0;
+    for (int corner = 0; corner < 4; corner++) {
+        vec2 offset = reach * vec2((corner & 1) == 0 ? -1.0 : 1.0, (corner >> 1) == 0 ? -1.0 : 1.0);
+        vec3 tap = textureLod(sampler2D(HistoryColor, LinearClamp), previousUv + offset, 0.0).rgb;
+        ring += rgbToYCoCg(temporalWeighted(tap)).x;
+    }
+    return (0.25 * ring - aroundLuma) * sign(side);
 }
 
 // The per-pixel resolve over a gathered 3x3 (temporalGather), its ridge (temporalRidge) and the surface its centre
@@ -442,6 +461,35 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     vec3 boxExtent = 0.5 * (boxMax - boxMin) + vec3(1.0e-5);
     vec3 fromCentre = historyYcc - boxCentre;
     vec3 excess = abs(fromCentre) / boxExtent;
+
+    // Steps 6 and 8 where the shading changed under a still pixel: a light or a shadow sliding over a still surface.
+    // A ridged texel refreshes its lock every frame and the hold keeps the old luma out of the clip, so only the floor
+    // of the current weight, about one in sixteen, would move it, and the lag behind the edge would grow with the
+    // edge's travel a frame. A clip alone leaves up to the box's half-width behind the edge to fade at that floor. So
+    // such a pixel lets go of its hold and its accumulated weight for the frame and shows this frame's reconstruction.
+    // Four things must hold. The pixel is still, below LockMotionStartPixels, at a preset whose internal texel is at
+    // most ShadingMaxUpscale display pixels. Nothing missed explains its history: a ridge refreshed its lock this
+    // frame, or it holds no lock and its 3x3 varies by more than a ridge's step, since a lock carried with no ridge now
+    // is a thin feature the jitter missed and a flat 3x3 is one that missed a feature beside it. Its history luma lies
+    // past the box by more than ShadingResetExtents of the half-width. And either that luma lies from this frame's
+    // reconstruction by more than ShadingChangeExtents half-widths for each display pixel an internal texel spans, or
+    // last frame's ring around it lies more than ShadingRingExtents half-widths from this frame's eight texels around
+    // the centre, on the history's side (temporalHistoryRingShift). A stable peak one texel across lies past its own box, one bright
+    // texel of nine moving the mean little, but its reconstruction shows it and its ring agrees, so it keeps what it
+    // held. The half-width here is at least a ridge's step (LockRidgeAbsolute, LockRidgeRelative). The stored lock is
+    // left as it is: the next frame's ridge decides it, and a store that differed here moved other pixels' locks by a
+    // rounding step between the two entry points.
+    float ridgeStep = max(LockRidgeAbsolute, LockRidgeRelative * mean.x);
+    float releaseExtent = max(boxExtent.x, ridgeStep);
+    if (useHistory && motionPixels < LockMotionStartPixels && Jitter.z < ShadingMaxUpscale
+        && (ridge || (!(lockValue > 0.0) && boxExtent.x > ridgeStep))
+        && abs(fromCentre.x) > (1.0 + ShadingResetExtents) * releaseExtent
+        && (abs(historyYcc.x - current.x) > ShadingChangeExtents * Jitter.z * releaseExtent
+            || temporalHistoryRingShift(previousUv, displaySize, (n.momentSum.x - n.centreLuma) / 8.0, fromCentre.x)
+                > ShadingRingExtents * releaseExtent)) {
+        hold = 0.0;
+        accumulated = 0.0;
+    }
     excess.x *= 1.0 - hold;
     float clipScale = max(excess.x, max(excess.y, excess.z));
     vec3 clipped = clipScale > 1.0 ? boxCentre + fromCentre / clipScale : historyYcc;

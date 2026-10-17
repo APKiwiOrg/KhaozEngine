@@ -18,6 +18,7 @@ public partial class MapEditorSceneTests
     // Each filter must be constant-time. Count the maximum lookup-key reads on any one placement, so a scan
     // through a captured document or another collection still shows repeated visits to its placements. The
     // viewport's CPU pick state is ready too, so PlacementDrawnAt cannot short-circuit at the unbuilt guard.
+    // Read counts rather than a stopwatch, so a loaded machine cannot fail it (#1444, #1453).
     [Fact]
     public void ViewportPick_StaysLinearAcrossALargeAuthoredDocument()
     {

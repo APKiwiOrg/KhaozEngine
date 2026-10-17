@@ -6,6 +6,7 @@ namespace KhaozEngine.MapDoc;
 public sealed partial class MapPlacement
 {
     string _id = "";
+    string _kind = "";
     float _x;
     float _z;
 
@@ -21,7 +22,15 @@ public sealed partial class MapPlacement
     }
 
     /// <summary>The asset-manifest kit id to instance.</summary>
-    public string Kind { get; set; } = "";
+    public string Kind
+    {
+        get
+        {
+            LookupReads++;
+            return _kind;
+        }
+        set => _kind = value;
+    }
 
     public float X
     {
@@ -48,7 +57,7 @@ public sealed partial class MapPlacement
     public float Scale { get; set; } = 1f;
     public List<string> Tags { get; set; } = new();
 
-    /// <summary>Reads of this placement's identity and planar position lookup keys. A pick's maximum per-placement
+    /// <summary>Reads of this placement's lookup keys: identity, kit and planar position. A pick's maximum per-placement
     /// delta exposes nested scans through captured documents or other collections holding the same placements,
     /// independently of the document getter and without a clock.</summary>
     internal long LookupReads { get; private set; }

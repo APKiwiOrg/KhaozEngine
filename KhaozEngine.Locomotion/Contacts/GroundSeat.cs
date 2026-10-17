@@ -89,6 +89,7 @@ internal static class GroundSeat
         if (SameMember(start, support))
         {
             double excess = MemberExcess(start, startAxis, support, axis, cosMaxSlope);
+            // A drop on one member pays nothing.
             return excess > 0 ? GroundPlacement.NotBelow(excess) : 0;
         }
         double plane = start.Height - PlaneRise(start, startAxis,
@@ -98,7 +99,7 @@ internal static class GroundSeat
 
     // Between members a height jump belongs to a step only when both support planes agree on its direction and
     // clear the contact skin plus both certified height errors. Opposite signs identify continuous ground. On one
-    // member only a rise beyond a walkable grade over the move is a step, once it clears the contact skin.
+    // member only a rise or drop beyond a walkable grade over the move is a step, once it clears the contact skin.
     internal static float DiscreteStep(in SupportSample start, Vector2 startAxis, in SupportSample next,
         Vector2 axis, float cosMaxSlope)
     {
@@ -106,7 +107,7 @@ internal static class GroundSeat
         if (SameMember(start, next))
         {
             double excess = MemberExcess(start, startAxis, next, axis, cosMaxSlope);
-            return excess > ShellMotion.ContactSkin ? (float)excess : 0;
+            return Math.Abs(excess) > ShellMotion.ContactSkin ? (float)excess : 0;
         }
         double dx = (double)axis.X - startAxis.X, dz = (double)axis.Y - startAxis.Y;
         double forward = next.Height - (start.Height - PlaneRise(start, startAxis, dx, dz));
@@ -123,15 +124,17 @@ internal static class GroundSeat
         start.Static is StaticHandle owner && next.Static == owner && start.FeatureId == next.FeatureId;
 
     // A member's certified height is continuous in the axis but not bounded by its walkable slopes: a disc reaching
-    // up a curved part, or along a sloped edge it overhangs, can rise faster. The rise a walkable grade over the
-    // horizontal move explains, plus both certified errors, is no step. The excess is. A descent is never one.
+    // up a curved part, or along a sloped edge it overhangs, can rise or fall faster. The change a walkable grade over
+    // the horizontal move explains, plus both certified errors, is no step. The signed excess beyond it is.
     static double MemberExcess(in SupportSample start, Vector2 startAxis, in SupportSample next, Vector2 axis,
         float cosMaxSlope)
     {
         double dx = (double)axis.X - startAxis.X, dz = (double)axis.Y - startAxis.Y;
         double distance = Math.Sqrt(dx * dx + dz * dz), cosine = cosMaxSlope;
         double grade = distance > 0 ? Math.Sqrt(1 - cosine * cosine) / cosine * distance : 0;
-        return (double)next.Height - start.Height - grade - start.HeightError - next.HeightError;
+        double rise = (double)next.Height - start.Height;
+        double beyond = Math.Abs(rise) - grade - start.HeightError - next.HeightError;
+        return beyond > 0 ? Math.CopySign(beyond, rise) : 0;
     }
 
     // The rise of a support's plane over (dx, dz). A certified height is the least of the support's own plane at the

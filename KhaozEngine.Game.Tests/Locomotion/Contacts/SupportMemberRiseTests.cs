@@ -224,6 +224,43 @@ public sealed class SupportMemberRiseTests(ITestOutputHelper output)
         Assert.True(result.StepRise > 0, $"Step rise {result.StepRise:R}");
     }
 
+    // Stepping back off the prop's top, from axis -0.2 at 0.3 to -0.3 at 0.083, drops 0.217 over 0.1. The 0.117 beyond
+    // walkable grade is a step down for the signals, and a drop charges no climb.
+    [Fact]
+    public void SteppingDownOffACurvedPropReportsTheDropBeyondWalkableGrade()
+    {
+        using FootSupportScene scene = CurvedProp();
+        ContactQueryContext queries = DryQueries.For(null, null, scene.World, scene.Lease, Tuning);
+        SupportSample start = Find(queries, new(-0.2f, 0), 0.3f);
+        Assert.Equal(scene["prop"], start.Static);
+        Assert.InRange(Math.Abs(start.Height - 0.3), 0, start.HeightError + 1e-5);
+        GroundSeatResult seat = GroundSeat.Resolve(queries, start, new(-0.2f, 0), start.Height, new(-0.3f, 0),
+            -Vector2.UnitX, FootRadius, Tuning, CosMaxSlope);
+        output.WriteLine($"support {start.Height:R} -> {seat.FeetY:R}, step part {seat.StepPart:R}, " +
+            $"discrete step {seat.DiscreteStep:R}");
+        Assert.Equal(SeatOutcome.Seated, seat.Outcome);
+        Assert.Equal(start.Static, seat.Support.Static);
+        Assert.Equal(start.FeatureId, seat.Support.FeatureId);
+        double side = Math.Sqrt(0.15 * 0.15 - 0.1 * 0.1);
+        Assert.InRange(Math.Abs(seat.FeetY - (0.15 + side - 0.2 * 0.1 / side)), 0, seat.Support.HeightError + 1e-5);
+        double excess = (double)start.Height - seat.FeetY - WalkableGrade * ((double)-0.2f - -0.3f);
+        Assert.True(excess > 0.1, $"Excess {excess:R}");
+        Assert.Equal(0f, seat.StepPart);
+        double errors = start.HeightError + seat.Support.HeightError + (MathF.BitIncrement(0.125f) - 0.125f);
+        Assert.InRange(Math.Abs(seat.DiscreteStep + excess), 0, errors);
+
+        var feet = new Vector3(-0.2f, start.Height, 0);
+        const double budget = 0.02;
+        GroundStepResult result = GroundCore.Step(feet, new Vector2(-0.1f, 0), 1f / 30f, Tuning,
+            new GroundCoreSettings(), queries, climbBudget: budget);
+        output.WriteLine($"{feet} -> {result.Feet}, support {result.Support.Height:R}, step rise {result.StepRise:R}");
+        Assert.Equal(GroundFooting.Walkable, result.Footing);
+        Assert.Equal(scene["prop"], result.Support.Static);
+        Assert.True(result.StepRise < 0, $"Step rise {result.StepRise:R}");
+        // The drop pays nothing and leaves no lag.
+        Assert.InRange(Math.Abs((double)result.Support.Height - result.Feet.Y), 0, result.Support.HeightError);
+    }
+
     // Walking straight at the sloped edge from the cliff side, the disc's chord along the edge grows from 0.014 to
     // 0.138 over a 0.0545 move, while the face's own plane at the axis stays above the chord's end. The edge's 0.7
     // grade along that chord rises 0.087, beyond the walkable 0.0545.

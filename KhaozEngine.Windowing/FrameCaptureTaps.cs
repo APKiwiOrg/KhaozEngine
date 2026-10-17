@@ -97,7 +97,8 @@ namespace KhaozEngine.Windowing
         }
 
         /// <summary>Run every tap's <see cref="IFrameCaptureTap.AfterSubmit"/>, then advance the retire queue.
-        /// Nothing records during either.</summary>
+        /// Nothing records during either. A shared image left with no tap registered, made by a last tap that
+        /// removed itself and then acquired, is retired here, after the submit that used it.</summary>
         internal void AfterSubmit()
         {
             foreach (IFrameCaptureTap tap in _frameTaps)
@@ -105,6 +106,7 @@ namespace KhaozEngine.Windowing
                 if (Array.IndexOf(_taps, tap) >= 0) tap.AfterSubmit(_context);
             }
             _frameTaps = Array.Empty<IFrameCaptureTap>();
+            if (_taps.Length == 0) ReleaseImage();
             _retire?.BeginFrame();
         }
 
@@ -134,7 +136,8 @@ namespace KhaozEngine.Windowing
             return _image;
         }
 
-        /// <summary>Detach every tap, then free everything retired. Window teardown, with nothing recording.
+        /// <summary>Detach every tap, release the shared image whatever the tap count, then free everything retired.
+        /// Window teardown, with nothing recording.
         /// A tap whose <see cref="IFrameCaptureTap.Detach"/> throws does not stop the rest: every tap is still
         /// detached and the retire queue is still freed, then the failure is rethrown. More than one failure
         /// rethrows as an <see cref="AggregateException"/>.</summary>
@@ -156,6 +159,7 @@ namespace KhaozEngine.Windowing
             finally
             {
                 if (taps.Length > 0) ReleaseSwapchainUse();
+                else ReleaseImage();
                 // Dispose is FlushAll followed by freeing the queue's own fence barrier.
                 _retire?.Dispose();
                 _retire = null;
@@ -168,12 +172,17 @@ namespace KhaozEngine.Windowing
 
         void ReleaseSwapchainUse()
         {
-            if (_image is { } image)
-            {
-                Retire(image);
-                _image = null;
-            }
+            ReleaseImage();
             if (_capture is not null) _capture.SwapchainCopySourceRequested = false;
+        }
+
+        // Through the retire queue, never at once: the frame that made the image may still be recording or in
+        // flight, and its use stays valid until that submit completes.
+        void ReleaseImage()
+        {
+            if (_image is not { } image) return;
+            _image = null;
+            Retire(image);
         }
     }
 }

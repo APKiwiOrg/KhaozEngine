@@ -440,7 +440,9 @@ swapchain framebuffer in its current recording, and the frame's list has, so a t
 the first tap and releases it after the last. Metal and Vulkan apply the change at a later present, so the first
 frame or two after the first tap may give a null image. A device with no swapchain capture always gives null. A
 frame whose `onFrame` draws nothing still captures the cleared image. The copy texture is remade when the
-swapchain size changes and retired when the last tap leaves.
+swapchain size changes and retired when the last tap leaves. A last tap that removes itself in `Record` and then
+acquires still gets this frame's image, and the registry retires that image at the end of the frame, after its
+submit. Window disposal releases the copy texture whatever the tap count.
 
 ## `Frame` DPI members (since 10.12.0)
 

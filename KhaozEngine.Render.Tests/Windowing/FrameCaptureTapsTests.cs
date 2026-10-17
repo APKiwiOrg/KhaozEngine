@@ -234,6 +234,43 @@ namespace KhaozEngine.Tests.Windowing
             Assert.Equal(1, taps.Count);
         }
 
+        /// <summary>
+        /// The last tap may remove itself and then still use this frame's image. The image made after that removal
+        /// has no tap left to release it, so the registry retires it at the end of the frame, and once the retire
+        /// queue has drained the frame is the ordinary one again.
+        /// </summary>
+        [Fact]
+        public void A_last_tap_that_removes_itself_then_acquires_leaves_no_texture_alive()
+        {
+            using var device = new OpenListTrackingGpuDevice(swapchain: true);
+            using IGpuCommandList list = device.Factory.CreateCommandList();
+            var capture = new FakeSwapchainCapture { SwapchainCopyable = true };
+            using var taps = new FrameCaptureTaps(device, capture);
+            IGpuTexture? image = null;
+            var last = new RecordingTap(device, new List<string>());
+            last.OnRecord = c =>
+            {
+                taps.Remove(last);
+                image = c.AcquireSwapchainImage();
+            };
+            taps.Add(last);
+
+            RunFrame(device, list, taps);
+
+            Assert.NotNull(image);
+            Assert.Equal(1, capture.Copies);
+            Assert.Equal(0, taps.Count);
+            Assert.Equal(new[] { true, false }, capture.Requested);
+
+            for (int frame = 0; frame < 8 && taps.HasWork; frame++) RunFrame(device, list, taps);
+
+            Assert.False(taps.HasWork);
+            Assert.Equal(0, device.TexturesAlive);
+            device.Order.Clear();
+            RunFrame(device, list, taps);
+            Assert.Equal(new[] { "submit", "present" }, device.Order);
+        }
+
         [Fact]
         public void Disposing_the_registry_detaches_every_tap()
         {

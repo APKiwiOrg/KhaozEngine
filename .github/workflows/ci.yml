@@ -1,7 +1,14 @@
 name: ci
-# Two paths, split by event (see docs/design/CI-SELECTIVE-TESTS-DESIGN-2026-07-18.md, Decisions 4-5):
-#   * Tag pushes (refs/tags/v*) and workflow_dispatch run the FULL sequence inline: restore, build,
-#     full test, determinism double-pass, pack, and (tags only) publish. This is what gates a release.
+# Paths split by event (see docs/design/CI-SELECTIVE-TESTS-DESIGN-2026-07-18.md, Decisions 4, 5 and 7):
+#   * workflow_dispatch runs the FULL sequence inline: restore, build, full test, determinism double-pass,
+#     pack, plus the three SQL Server jobs. A dispatch on main at the release commit is the hosted
+#     pre-tag gate. It never publishes and never reuses anything.
+#   * Tag pushes (refs/tags/v*) first ask scripts/ci-prior-gate.sh (the prior-gate job) for a successful
+#     workflow_dispatch run of this file at the tag's exact commit. Found: restore, build, pack and
+#     publish, skipping the full test, the determinism pass and the SQL Server jobs that run already
+#     proved, and the run cites that run's URL. Not found, or any doubt (API error, pagination gap, a
+#     response outside the query): the full sequence plus publish, as a dispatch runs it. Reuse cannot
+#     chain, because only workflow_dispatch runs qualify and a dispatch always runs everything.
 #   * Push (main) and pull_request run scripts/ci-selective-test.sh, which builds and tests only the
 #     slice the diff affects (empty on a docs-only push). No pack or publish on this path.
 # Cancel a superseded in-flight run on the SAME ref (rapid push series stop stacking). Grouped by ref so
@@ -19,6 +26,40 @@ on:
   workflow_dispatch:   # manual re-trigger (e.g. to check a hosted runner image update) without a dummy commit
 
 jobs:
+  # The tag run's reuse decision, made once so every job below reads the same answer. Only tags and
+  # dispatches run it. On a dispatch it is report-only (--report-only always outputs reuse=false), which
+  # proves the real API query without changing what the gate runs. Its own job, so actions: read lands
+  # nowhere near the publish token. A usage error (exit 2) is a wiring bug and fails the job loudly, which
+  # the pre-tag dispatch catches first. The jobs below run with !cancelled(), so a failed or skipped
+  # prior-gate leaves them on the full path, never on reuse.
+  prior-gate:
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      reuse: ${{ steps.lookup.outputs.reuse }}
+      run_url: ${{ steps.lookup.outputs.run_url }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: scripts/ci-prior-gate.sh
+          sparse-checkout-cone-mode: false
+      - name: Look for a successful hosted gate at this commit
+        id: lookup
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rc=0
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            sh scripts/ci-prior-gate.sh --report-only "$GITHUB_SHA" || rc=$?
+          else
+            sh scripts/ci-prior-gate.sh "$GITHUB_SHA" || rc=$?
+          fi
+          [ "$rc" -le 1 ]
+
   # Runs on GitHub-hosted x64 ubuntu, NOT the self-hosted arm64 container. The engine test suite needs
   # x64-only native deps (notably libveldrid-spirv, which the Veldrid.SPIRV package ships for linux-x64
   # but NOT linux-arm64 - the SPIRV shader-source tests DllNotFound on the arm64 fleet). That constraint
@@ -26,6 +67,8 @@ jobs:
   # cannot run this suite. Cost is no longer a factor either way, because a public repo's GitHub-hosted
   # standard runners are free. Every leg of cross-platform-gpu.yml is hosted now too, Metal included.
   build-test-pack:
+    needs: prior-gate
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-26.04
     permissions:
       contents: read
@@ -33,6 +76,9 @@ jobs:
     env:
       # nuget.config's github source reads this; CI uses the workflow token.
       GITHUB_PACKAGES_PAT: ${{ secrets.GITHUB_TOKEN }}
+      # 'true' only on a v* tag whose commit already passed the hosted gate (see prior-gate above).
+      REUSED_GATE: ${{ startsWith(github.ref, 'refs/tags/v') && needs.prior-gate.outputs.reuse == 'true' }}
+      REUSED_GATE_URL: ${{ needs.prior-gate.outputs.run_url }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         # fetch-depth: 0 (full history) is required by the selective path: scripts/ci-selective-test.sh
@@ -71,9 +117,11 @@ jobs:
       - name: Agent hook and instruction tests
         run: |
           sh scripts/tests/check-agent-instructions.test.sh
+          sh scripts/tests/ci-prior-gate.test.sh
           sh scripts/tests/hooks-file-change-guard.test.sh
           sh scripts/tests/hooks-filesize-guard.test.sh
           sh scripts/tests/pack-local-feed.test.sh
+          sh scripts/tests/release-lock.test.sh
           sh scripts/tests/tag-collision-guard.test.sh
           sh scripts/tests/version-push-guard.test.sh
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
@@ -93,6 +141,8 @@ jobs:
         run: scripts/ci-selective-test.sh "$BASE" "$HEAD"
 
       # --- Full path: tag pushes (refs/tags/v*) and workflow_dispatch. Gates every release. ---
+      # A tag that reuses the hosted gate still restores, builds and packs here, and skips only the
+      # full test and the determinism pass, which the reused dispatch ran over the same commit.
       - name: Restore (full)
         if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
         run: dotnet restore
@@ -102,7 +152,7 @@ jobs:
       # Exclude live-socket smokes (real UDP, fixed port) from CI: they are a manual/local smoke, covered
       # headlessly by LoopbackTransport. Run them locally with the full (unfiltered) test command.
       - name: Test (full)
-        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        if: (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && env.REUSED_GATE != 'true'
         run: dotnet test -c Release --no-build --filter "Category!=LiveSocket"
       # Determinism guard: the FP-scope tests must stay byte-identical under both JIT tiering modes.
       # (The default run above covers ambient tiering. These pin the two extremes explicitly.) The
@@ -110,7 +160,7 @@ jobs:
       # scope is actually ENTERED on a scheduler worker (issue #197) live in KhaozEngine.Server.Tests,
       # so the pass is scoped to those two projects.
       - name: Determinism under JIT tiering 0 and 1 (full)
-        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        if: (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && env.REUSED_GATE != 'true'
         run: |
           for tc in 0 1; do
             echo "DOTNET_TieredCompilation=$tc"
@@ -119,6 +169,9 @@ jobs:
             DOTNET_TieredCompilation=$tc dotnet test KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj -c Release --no-build \
               --filter "FullyQualifiedName~FannedOutDeterminism"
           done
+      - name: Reused hosted gate (tags only)
+        if: env.REUSED_GATE == 'true'
+        run: echo "Full test and determinism pass skipped, both passed in the hosted gate $REUSED_GATE_URL at $GITHUB_SHA"
       - name: Pack (full)
         if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
         run: dotnet pack -c Release -o ./artifacts --no-build
@@ -142,11 +195,14 @@ jobs:
   # of them SKIPS, so the build-test-pack job above proves nothing about KhaozEngine.Catalog.SqlServer: before
   # this job they ran only through a manual leg against a cloud database. The fixture drops every catalog_
   # table it finds, so it insists on "-catalog-test-" in the database name. About two minutes of tests.
-  # Tags and manual dispatch always run it. A push or a pull request runs it only when the diff touches the
-  # catalog, the shared SQLite or server test projects, or this workflow. It is its own job rather than a
-  # step above because it needs the service container, and it does not gate the publish leg: a red run here
-  # on a tag is a release to pull, which is the same standing the cross-platform GPU matrix has.
+  # Manual dispatch always runs it, and so does a tag unless it reuses the hosted gate (prior-gate above),
+  # whose dispatch ran these facts at the same commit. A push or a pull request runs it only when the diff
+  # touches the catalog, the shared SQLite or server test projects, or this workflow. It is its own job rather
+  # than a step above because it needs the service container, and it does not gate the publish leg: a red run
+  # here on a tag is a release to pull, which is the same standing the cross-platform GPU matrix has.
   catalog-sqlserver:
+    needs: prior-gate
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-26.04
     timeout-minutes: 20
     permissions:
@@ -179,6 +235,8 @@ jobs:
           HEAD: ${{ github.sha }}
           EVENT: ${{ github.event_name }}
           REF: ${{ github.ref }}
+          REUSED_GATE: ${{ startsWith(github.ref, 'refs/tags/v') && needs.prior-gate.outputs.reuse == 'true' }}
+          REUSED_GATE_URL: ${{ needs.prior-gate.outputs.run_url }}
         run: |
           run=false
           case "$REF" in refs/tags/v*) run=true ;; esac
@@ -190,6 +248,11 @@ jobs:
             elif git diff --name-only "$BASE" "$HEAD" | grep -Eq '^(KhaozEngine\.Catalog[^/]*/|KhaozEngine\.Sqlite/|KhaozEngine\.Server\.Tests/|Directory\.Packages\.props|\.github/workflows/ci\.yml)'; then
               run=true
             fi
+          fi
+          # A tag whose commit passed the hosted gate skips: that dispatch ran these facts at this commit.
+          if [ "$REUSED_GATE" = true ]; then
+            run=false
+            echo "catalog-sqlserver: reusing the hosted gate $REUSED_GATE_URL"
           fi
           echo "run=$run" >> "$GITHUB_OUTPUT"
           echo "catalog-sqlserver: run=$run"
@@ -227,9 +290,12 @@ jobs:
   # nothing about KhaozEngine.Accounts.SqlServer. The fixtures create and drop their own tables, so they insist on
   # "-accounts-test-" in the database name. The service's default collation is case-insensitive, which is the
   # deployment the subject column's binary collation exists for. Same gating and standing as catalog-sqlserver:
-  # tags and manual dispatch always run it, a push or a pull request only when the diff touches the account
-  # packages, the package pins or this workflow, and it does not gate the publish leg.
+  # manual dispatch always runs it, a tag unless it reuses the hosted gate, a push or a pull request only when
+  # the diff touches the account packages, the package pins or this workflow, and it does not gate the publish
+  # leg.
   accounts-sqlserver:
+    needs: prior-gate
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-26.04
     timeout-minutes: 20
     permissions:
@@ -262,6 +328,8 @@ jobs:
           HEAD: ${{ github.sha }}
           EVENT: ${{ github.event_name }}
           REF: ${{ github.ref }}
+          REUSED_GATE: ${{ startsWith(github.ref, 'refs/tags/v') && needs.prior-gate.outputs.reuse == 'true' }}
+          REUSED_GATE_URL: ${{ needs.prior-gate.outputs.run_url }}
         run: |
           run=false
           case "$REF" in refs/tags/v*) run=true ;; esac
@@ -273,6 +341,11 @@ jobs:
             elif git diff --name-only "$BASE" "$HEAD" | grep -Eq '^(KhaozEngine\.Accounts[^/]*/|Directory\.Packages\.props|\.github/workflows/ci\.yml)'; then
               run=true
             fi
+          fi
+          # A tag whose commit passed the hosted gate skips: that dispatch ran these facts at this commit.
+          if [ "$REUSED_GATE" = true ]; then
+            run=false
+            echo "accounts-sqlserver: reusing the hosted gate $REUSED_GATE_URL"
           fi
           echo "run=$run" >> "$GITHUB_OUTPUT"
           echo "accounts-sqlserver: run=$run"
@@ -311,10 +384,12 @@ jobs:
   # the world store conformance shares that database. The commerce facts get a database of their own, and the one
   # that rebuilds the wallet tables insists on "-commerce-test-" in its name. The service's default collation is
   # case-insensitive, which is the deployment the wallet's pinned column collation exists for. Same gating and
-  # standing as catalog-sqlserver: tags and manual dispatch always run it, a push or a pull request only when the
-  # diff touches the world store or commerce packages, their server tests, the package pins or this workflow, and
-  # it does not gate the publish leg.
+  # standing as catalog-sqlserver: manual dispatch always runs it, a tag unless it reuses the hosted gate, a push
+  # or a pull request only when the diff touches the world store or commerce packages, their server tests, the
+  # package pins or this workflow, and it does not gate the publish leg.
   server-sqlserver:
+    needs: prior-gate
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-26.04
     timeout-minutes: 20
     permissions:
@@ -348,6 +423,8 @@ jobs:
           HEAD: ${{ github.sha }}
           EVENT: ${{ github.event_name }}
           REF: ${{ github.ref }}
+          REUSED_GATE: ${{ startsWith(github.ref, 'refs/tags/v') && needs.prior-gate.outputs.reuse == 'true' }}
+          REUSED_GATE_URL: ${{ needs.prior-gate.outputs.run_url }}
         run: |
           run=false
           case "$REF" in refs/tags/v*) run=true ;; esac
@@ -359,6 +436,11 @@ jobs:
             elif git diff --name-only "$BASE" "$HEAD" | grep -Eq '^(KhaozEngine\.WorldStore[^/]*/|KhaozEngine\.Commerce[^/]*/|KhaozEngine\.Server\.Tests/(WorldStore|Commerce)/|Directory\.Packages\.props|\.github/workflows/ci\.yml)'; then
               run=true
             fi
+          fi
+          # A tag whose commit passed the hosted gate skips: that dispatch ran these facts at this commit.
+          if [ "$REUSED_GATE" = true ]; then
+            run=false
+            echo "server-sqlserver: reusing the hosted gate $REUSED_GATE_URL"
           fi
           echo "run=$run" >> "$GITHUB_OUTPUT"
           echo "server-sqlserver: run=$run"

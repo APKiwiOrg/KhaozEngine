@@ -313,6 +313,21 @@ Windowing + input foundation for the custom MonoGame-free stack.
   or a same-frame tap), for a consumer keeping per-GESTURE state of its own: recompute on that frame, never on
   the release, which reads a world that has moved on since the press. `Gui.ScreenStack.PressBeganOverUi` is
   built on it.
+- **Pointer occlusion** (since 21.3.0) - opt-in covered areas that hit queries treat as misses. Cleared at the
+  start of every `Pointer.Update`. With nothing occluded every query reads exactly as before.
+  `Gui.WindowStack` is the normal producer.
+  - `Occlude(Rect)` adds an occluded area for the rest of the frame.
+  - `OccludeAll()` occludes the whole surface for the rest of the frame.
+  - `IsOccluded(Vector2)` reports whether a point is occluded.
+  - `ClearOcclusion()` drops every occluder before the next `Update`.
+  - `IsTapIn`, `IsTapFromTo`, `IsPressingIn`, `IsRightTapIn` and `IsRightPressingIn` miss when the press origin
+    or the cursor is occluded. `IsPointerIn` and `IsHoveringIn` miss when the cursor is. `IsDraggingIn`,
+    `GetDragDelta` and `IsDragStartIn` miss when the press origin is.
+  - `IsReleasedOutside` counts a release in an occluded area as outside.
+  - `IsRightPressOriginFresh` is the right-button twin of `IsPressOriginFresh`.
+  - `BlockRegion` and `IsBlocked` keep their meaning. Occlusion is the part the hit queries obey.
+  - `PanZoomController` admits no press, touch or gesture at an occluded point and records no tap on an
+    occluded release.
 - **Action maps + rebinding** (`KhaozEngine.Windowing.Actions`) - named actions instead of hardcoded key checks.
   A game declares `InputAction`s (`Button` / `Axis1D` / `Axis2D`) with default `InputBinding`s over `InputSource`s
   (key, mouse button, gamepad button, trigger, a whole stick via `WholeStick` for a 2D move/look, a single stick

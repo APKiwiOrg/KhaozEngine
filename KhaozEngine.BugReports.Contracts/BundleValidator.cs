@@ -1,20 +1,26 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.IO.Compression;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 
 namespace KhaozEngine.BugReports.Contracts;
 
 // Checks a report bundle against the version 1 contract. The relay runs this on untrusted uploads, so
-// it never inflates an entry, never reads past an entry's declared length and never throws for any
-// input bytes. Checks run in a fixed order and the first failure wins.
+// it never throws for any input bytes and never reads more than an entry's declared length plus one
+// byte. Entries must be stored, which is checked as equal compressed and uncompressed lengths. A
+// crafted compressed entry that passes that test is decompressed only up to the same bound. Checks
+// run in a fixed order and the first failure wins.
 public static class BundleValidator
 {
     const int MaxGameIdLength = 32;
     const int MaxCategoryLength = 64;
     const int MaxSectionDepth = 64;
+    const int MaxManifestBytes = 64 * 1024;
+    const int MaxClipIndexBytes = 64 * 1024;
 
     public static BundleValidationResult Validate(Stream zip, long maxBytes = BugReportLimits.MaxBundleBytes)
     {
@@ -42,6 +48,8 @@ public static class BundleValidator
         List<ZipArchiveEntry> entries;
         try
         {
+            if (ZipDirectoryScan.Check(source, archiveLength, BugReportLimits.MaxEntries) is { } directoryError)
+                return Fail(directoryError);
             archive = new ZipArchive(source, ZipArchiveMode.Read, leaveOpen: true);
             entries = [.. archive.Entries];
         }
@@ -92,6 +100,7 @@ public static class BundleValidator
 
         if (!byName.TryGetValue(BundleEntryNames.Manifest, out ZipArchiveEntry? manifestEntry))
             return Fail(BundleErrors.ManifestMissing);
+        if (manifestEntry.Length > MaxManifestBytes) return Fail(BundleErrors.ManifestInvalid);
         BugReportManifest manifest;
         try
         {
@@ -195,7 +204,7 @@ public static class BundleValidator
     // The running total is checked before each section is read, so oversized state is never parsed.
     static string? CheckSections(List<ZipArchiveEntry> entries, EntryReader reader)
     {
-        var options = new JsonDocumentOptions { MaxDepth = MaxSectionDepth };
+        var options = new JsonDocumentOptions { MaxDepth = MaxSectionDepth, AllowDuplicateProperties = false };
         long total = 0;
         foreach (ZipArchiveEntry entry in entries)
         {
@@ -223,6 +232,7 @@ public static class BundleValidator
         if (!byName.TryGetValue(BundleEntryNames.ClipIndex, out ZipArchiveEntry? indexEntry))
             return frameSizes.Count == 0 && !hasMp4;
 
+        if (indexEntry.Length > MaxClipIndexBytes) return false;
         ClipIndex index;
         try
         {
@@ -248,6 +258,7 @@ public static class BundleValidator
             if (hasMp4)
             {
                 if (frame.Entry != BundleEntryNames.ClipMp4) return false;
+                if (!IsValidEdge(frame.Width) || !IsValidEdge(frame.Height)) return false;
                 continue;
             }
             if (frame.Entry != BundleEntryNames.ClipFrame(i) || !frameSizes.TryGetValue(frame.Entry, out var size)) return false;
@@ -266,8 +277,9 @@ public static class BundleValidator
 
     static string Coded(string code, string entryName) => code + ": " + SafeName(entryName);
 
-    // Entry names come from the upload. Control characters become '?' and names over 64 characters
-    // are cut to 61 plus "...", never splitting a surrogate pair.
+    // Entry names come from the upload. Control, format, line separator and paragraph separator
+    // characters become '?', as do unpaired surrogates. Names over 64 characters are cut to 61 plus
+    // "...", and a pair split by the cut becomes '?'.
     internal static string SafeName(string name)
     {
         const int MaxLength = 64;
@@ -276,11 +288,24 @@ public static class BundleValidator
         int length = cut ? Kept : name.Length;
         Span<char> buffer = stackalloc char[MaxLength];
         for (int i = 0; i < length; i++)
-            buffer[i] = char.IsControl(name[i]) ? '?' : name[i];
-        if (cut && char.IsHighSurrogate(buffer[Kept - 1])) buffer[Kept - 1] = '?';
+        {
+            char c = name[i];
+            if (char.IsHighSurrogate(c) && i + 1 < length && char.IsLowSurrogate(name[i + 1]))
+            {
+                bool hidden = IsHidden(Rune.GetUnicodeCategory(new Rune(c, name[i + 1])));
+                buffer[i] = hidden ? '?' : c;
+                buffer[i + 1] = hidden ? '?' : name[i + 1];
+                i++;
+                continue;
+            }
+            buffer[i] = char.IsSurrogate(c) || IsHidden(char.GetUnicodeCategory(c)) ? '?' : c;
+        }
         if (cut) "...".AsSpan().CopyTo(buffer[Kept..]);
         return new string(buffer[..(cut ? MaxLength : length)]);
     }
+
+    static bool IsHidden(UnicodeCategory category) => category is UnicodeCategory.Control or UnicodeCategory.Format
+        or UnicodeCategory.LineSeparator or UnicodeCategory.ParagraphSeparator;
 
     static long ReadAtMost(Stream source, Stream destination, long limit)
     {

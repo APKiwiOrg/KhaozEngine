@@ -43,25 +43,47 @@ An MP4 clip uses `clip.mp4` for every frame's entry, with timing in the index.
 | Server snapshot bytes | 1 MiB |
 
 These constants describe the wire contract. The records and JSON helpers do not validate bundle
-contents or enforce the bounds. `BundleValidator` does, as the next section describes.
+contents or enforce the bounds. `BundleValidator` enforces the bundle bytes, entries, total section
+bytes, description and screenshot long edge limits, as the next section describes. It does not check
+the other three:
+
+- `MaxPngScreenshotBytes` is a client capture limit that decides between PNG and JPEG.
+- `MaxTitleChars` applies to the issue title, which is not part of the bundle.
+- `MaxServerSnapshotBytes` applies to `ServerSnapshotWire`, which is not part of the bundle.
 
 ## Bundle validation
 
 `BundleValidator.Validate(zip, maxBytes)` checks a bundle against the version 1 contract and returns
 `BundleValidationResult(IsValid, Error, Manifest)`. `maxBytes` defaults to
 `BugReportLimits.MaxBundleBytes`. Relays run it on untrusted uploads, so it never throws for any
-input bytes, never inflates an entry and never reads past an entry's declared length plus one byte.
-A non-seekable stream is copied up to `maxBytes + 1` bytes first.
+input bytes and never reads more than an entry's declared length plus one byte. A non-seekable stream
+is copied up to `maxBytes + 1` bytes first.
+
+Entries must be stored. The validator checks this as equal compressed and uncompressed lengths, not by
+compression method. A Deflate entry crafted to pass that test is decompressed only up to the same
+bound and then fails its size or hash check unless its output matches the manifest. An entry using a
+method the runtime cannot read gives `not_a_zip: <entry>`.
+
+Besides the `BugReportLimits` values above, the validator enforces these bounds:
+
+- 64 KiB each for `manifest.json` and `clip/index.json`, checked by declared length before reading.
+- At most 120 clip index frames.
+- 1 to 2560 pixels for both edges of every image, and for the index width and height of an MP4 clip.
+- Depth 64 and unique property names in every section object.
+- Category 1 to 64 characters and game id 1 to 32 characters.
 
 Checks run in this order and the first failure wins:
 
 1. Bundle size.
-2. Zip structure.
-3. Entry count.
+2. The end of central directory record, read from the tail before the zip is parsed. Zip64 records,
+   sentinel fields, multiple disks, or a directory that does not end at the end record give
+   `not_a_zip`. A declared count, or a walk of the directory headers, over 128 entries gives
+   `too_many_entries`.
+3. Zip structure, then entry count.
 4. Per entry, in zip order: name whitelist, duplicate name or both screenshot formats, encryption,
    then compression. No entry stream is opened before these pass.
 5. The sum of entry lengths against the archive length, before any entry is hashed.
-6. Manifest presence, then manifest parse.
+6. Manifest presence, then manifest length, then manifest parse.
 7. Manifest fields: format version, report id, game id, description, category, then kind.
 8. The listed entry names against the zip entries other than the manifest, as a set.
 9. Size, then SHA-256, per entry in zip order.
@@ -76,15 +98,15 @@ constant:
 | Code | Meaning |
 |---|---|
 | `too_large` | The bundle is over `maxBytes`. |
-| `not_a_zip` | The bytes are not a readable zip. With an entry name, that entry could not be read. |
-| `too_many_entries` | The archive has more than 128 entries. |
+| `not_a_zip` | The bytes are not a readable zip, or the end record uses Zip64, sentinels, multiple disks or an inconsistent directory. With an entry name, that entry could not be read. |
+| `too_many_entries` | The end record declares, or the central directory holds, more than 128 entries. |
 | `entry_not_allowed` | The name is outside the `BundleEntryNames` whitelist. |
 | `duplicate_entry` | A name appears twice, or `screenshot.png` and `screenshot.jpg` are both present. The pair always names `screenshot.jpg`. |
 | `encrypted_entry` | The entry is encrypted. |
 | `compressed_entry` | The entry is not stored, because its compressed and uncompressed lengths differ. |
 | `overlapping_entries` | Entry lengths sum past the archive length, so central directory records share stored bytes. |
 | `manifest_missing` | There is no `manifest.json`. |
-| `manifest_invalid` | The manifest does not parse, holds a null entry or names an undefined kind. |
+| `manifest_invalid` | The manifest is over 64 KiB, does not parse, holds a null entry or names an undefined kind. |
 | `format_version` | `formatVersion` is not `1`. |
 | `report_id_invalid` | `reportId` fails `ReportIds.IsValid`. |
 | `game_id_invalid` | `gameId` does not match `[a-z0-9][a-z0-9-]{0,31}`. |
@@ -95,17 +117,19 @@ constant:
 | `hash_mismatch` | The entry's SHA-256 differs from its manifest hash. |
 | `image_invalid` | A PNG or JPEG header does not parse or an edge is outside 1 to 2560 pixels. |
 | `media_invalid` | `clip.mp4` does not carry `ftyp` at bytes 4 to 8. |
-| `section_invalid` | A section is not a JSON object within depth 64. |
+| `section_invalid` | A section is not a JSON object within depth 64, or repeats a property name in any object. |
 | `sections_too_large` | Section entries total more than 1 MiB. |
-| `clip_index_invalid` | The clip index is missing while frames or `clip.mp4` exist, does not parse, holds a null frame, has more than 120 frames, has negative, decreasing or non-finite timing, or names entries wrongly. |
+| `clip_index_invalid` | The clip index is missing while frames or `clip.mp4` exist, is over 64 KiB, does not parse, holds a null frame, has more than 120 frames, has negative, decreasing or non-finite timing, names entries wrongly, or gives an MP4 frame an edge outside 1 to 2560. |
 
 Clip index entries follow one of two shapes. With JPEG frames, frame `i` names `clip/<iii>.jpg`, that
 entry exists with the index's width and height, and every JPEG frame has an index row. With
 `clip.mp4`, every frame names `clip.mp4` and no `clip/<iii>.jpg` entry may exist.
 
-Entry names in `Error` come from the upload, so they are sanitised. Control characters, including
-CR, LF, tab, DEL and the C1 range, become `?`. A name longer than 64 characters is cut to its first
-61 characters followed by `...`. A surrogate pair split by the cut becomes `?`.
+Entry names in `Error` come from the upload, so they are sanitised. Characters in the control,
+format, line separator and paragraph separator categories become `?`. That covers CR, LF, tab, DEL,
+the C1 range, bidirectional overrides such as U+202E, zero width characters, and U+2028 and U+2029.
+An unpaired surrogate becomes `?` too. A name longer than 64 characters is cut to its first 61
+characters followed by `...`, and a surrogate pair split by the cut becomes `?`.
 
 ## Ids and relay wire
 

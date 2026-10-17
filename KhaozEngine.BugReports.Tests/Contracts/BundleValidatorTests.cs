@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using KhaozEngine.BugReports.Contracts;
 using Xunit;
@@ -220,6 +222,86 @@ public sealed class BundleValidatorTests
         {
             Entries = [.. m.Entries, new BundleEntry("sections/\nx.json", 2, new string('a', 64))],
         })));
+        Assert.Equal("entry_not_allowed: a?b?c?d?e", ErrorOf(TestBundles.Default().WithEntry("a\u202Eb\u2028c\u2029d\u200Be", [1])));
+        Assert.Equal("entry_not_allowed: x??y", ErrorOf(TestBundles.Default().WithEntry("x\U000E0041y", [1])));
+    }
+
+    [Fact]
+    public void Too_many_central_records_are_rejected_before_parsing()
+    {
+        Assert.Equal("too_many_entries", BundleValidator.Validate(TestBundles.CentralRecords(records: 3, declared: 5000)).Error);
+        Assert.Equal("too_many_entries", BundleValidator.Validate(TestBundles.CentralRecords(records: 5000, declared: 5)).Error);
+
+        MemoryStream crafted = TestBundles.CentralRecords(records: 5000, declared: 5000);
+        BundleValidator.Validate(TestBundles.CentralRecords(records: 5000, declared: 5000));
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        BundleValidationResult result = BundleValidator.Validate(crafted);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.Equal("too_many_entries", result.Error);
+        // ZipArchive would build one entry object per record, about 500 bytes each.
+        Assert.True(allocated < crafted.Length, $"allocated {allocated} bytes for a {crafted.Length} byte archive");
+    }
+
+    [Fact]
+    public void Manifest_over_64_KiB_is_rejected()
+        => Assert.Equal("manifest_invalid", ErrorOf(TestBundles.Default().WithManifestJson(j => j + new string(' ', 64 * 1024))));
+
+    [Fact]
+    public void Clip_index_over_64_KiB_is_rejected()
+    {
+        byte[] index = [.. TestBundles.ClipIndexJson(
+            new ClipIndexFrame(0, 16.5, 4, 4, "clip/000.jpg"),
+            new ClipIndexFrame(83.25, 41, 4, 4, "clip/001.jpg")), .. new byte[64 * 1024].Select(_ => (byte)' ')];
+        Assert.Equal("clip_index_invalid", ErrorOf(TestBundles.Default().WithEntry(BundleEntryNames.ClipIndex, index)));
+    }
+
+    [Fact]
+    public void Mp4_index_frame_edges_must_be_1_to_2560()
+    {
+        foreach ((int width, int height) in new[] { (0, 540), (960, 0), (2561, 540), (960, 2561), (-1, 540) })
+        {
+            TestBundles bundle = Mp4Bundle(TestBundles.Mp4()).WithEntry(BundleEntryNames.ClipIndex, TestBundles.ClipIndexJson(
+                new ClipIndexFrame(0, 16.5, width, height, BundleEntryNames.ClipMp4)));
+            Assert.Equal("clip_index_invalid", ErrorOf(bundle));
+        }
+        Assert.Null(ErrorOf(Mp4Bundle(TestBundles.Mp4()).WithEntry(BundleEntryNames.ClipIndex, TestBundles.ClipIndexJson(
+            new ClipIndexFrame(0, 16.5, 2560, 1, BundleEntryNames.ClipMp4)))));
+    }
+
+    [Fact]
+    public void Duplicate_section_properties_are_rejected()
+    {
+        Assert.Equal("section_invalid: " + Build,
+            ErrorOf(TestBundles.Default().WithEntry(Build, Encoding.UTF8.GetBytes("{\"version\":\"1\",\"version\":\"2\"}"))));
+        Assert.Equal("section_invalid: " + Build,
+            ErrorOf(TestBundles.Default().WithEntry(Build, Encoding.UTF8.GetBytes("{\"a\":{\"b\":1,\"b\":2}}"))));
+    }
+
+    [Fact]
+    public void Byte_flips_inside_a_valid_bundle_never_throw()
+    {
+        var codes = typeof(BundleErrors).GetFields(BindingFlags.Public | BindingFlags.Static)
+            .Select(f => (string)f.GetRawConstantValue()!).ToHashSet(StringComparer.Ordinal);
+        byte[] bytes = TestBundles.Valid().ToArray();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        for (int position = 0; position < bytes.Length; position += 7)
+        {
+            byte original = bytes[position];
+            foreach (byte value in new[] { (byte)0x00, (byte)0xFF, (byte)(original + 1) })
+            {
+                byte[] mutant = (byte[])bytes.Clone();
+                mutant[position] = value;
+                BundleValidationResult result = BundleValidator.Validate(new MemoryStream(mutant));
+                Assert.NotNull(result);
+                if (result.Error is null) continue;
+                string code = result.Error.Split(": ", 2)[0];
+                Assert.Contains(code, codes);
+                seen.Add(code);
+            }
+        }
+        // The sweep reaches past the zip structure into the entry and content checks.
+        Assert.Contains(BundleErrors.HashMismatch, seen);
+        Assert.Contains(BundleErrors.ManifestInvalid, seen);
     }
 
     [Fact]

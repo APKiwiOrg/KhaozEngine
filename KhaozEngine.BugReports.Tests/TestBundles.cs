@@ -173,8 +173,17 @@ internal sealed class TestBundles
             [(BundleEntryNames.Manifest, 0), ("sections/a.json", 1), ("sections/b.json", 1)]);
     }
 
+    // One local section entry named by `records` central records, with `declared` written as the end
+    // record's entry counts.
+    public static MemoryStream CentralRecords(int records, int declared)
+    {
+        var central = new (string Name, int Local)[records];
+        for (int i = 0; i < records; i++) central[i] = ("sections/s" + i + ".json", 0);
+        return RawStoredZip([("sections/s0.json", Encoding.UTF8.GetBytes("{}"))], central, declared);
+    }
+
     // Writes local headers for each local entry, then one central record per (name, local index) pair.
-    static MemoryStream RawStoredZip((string Name, byte[] Data)[] locals, (string Name, int Local)[] central)
+    static MemoryStream RawStoredZip((string Name, byte[] Data)[] locals, (string Name, int Local)[] central, int? declared = null)
     {
         var output = new MemoryStream();
         using (var writer = new BinaryWriter(output, Encoding.UTF8, leaveOpen: true))
@@ -231,8 +240,8 @@ internal sealed class TestBundles
             writer.Write(0x06054b50u);
             writer.Write((ushort)0);
             writer.Write((ushort)0);
-            writer.Write((ushort)central.Length);
-            writer.Write((ushort)central.Length);
+            writer.Write((ushort)(declared ?? central.Length));
+            writer.Write((ushort)(declared ?? central.Length));
             writer.Write((uint)(directoryEnd - directoryStart));
             writer.Write((uint)directoryStart);
             writer.Write((ushort)0);

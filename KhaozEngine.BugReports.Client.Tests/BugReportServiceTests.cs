@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.BugReports;
@@ -202,6 +203,54 @@ public sealed class BugReportServiceTests : BugReportFlowHarness
 
         Assert.Contains(service.RecentLog.Snapshot(), line => line.Contains("before shutdown", StringComparison.Ordinal));
         Assert.DoesNotContain(service.RecentLog.Snapshot(), line => line.Contains("after shutdown", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Previous_crash_appears_once_the_scan_finishes()
+    {
+        string logs = Path.Combine(_root, "logs");
+        Directory.CreateDirectory(logs);
+        string crash = Path.Combine(logs, "game-crash-20200101.log");
+        File.WriteAllText(crash, "boom");
+        File.SetLastWriteTimeUtc(crash, new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        _subject = "discord:42";
+        using BugReportService service = NewService(new BugReportServiceOptions
+        {
+            GameId = "grimhollow",
+            GameDisplayName = "Grimhollow",
+            SessionLogPath = Path.Combine(logs, "session.log"),
+        });
+        await service.CrashScan.WaitAsync(TimeSpan.FromSeconds(30));
+
+        using JsonDocument session = JsonDocument.Parse(await SendAndReadSection(service, "session"));
+
+        JsonElement previous = session.RootElement.GetProperty("previousCrash");
+        Assert.Equal("game-crash-20200101.log", previous.GetProperty("file").GetString());
+    }
+
+    [Fact]
+    public async Task Previous_crash_stays_null_without_a_session_log()
+    {
+        _subject = "discord:42";
+        using BugReportService service = NewService();
+        Assert.True(service.CrashScan.IsCompleted);
+
+        using JsonDocument session = JsonDocument.Parse(await SendAndReadSection(service, "session"));
+
+        Assert.Equal(JsonValueKind.Null, session.RootElement.GetProperty("previousCrash").ValueKind);
+    }
+
+    /// <summary>Runs the sign-in frame, opens, sends and settles one report, then returns one section's JSON text.</summary>
+    async Task<string> SendAndReadSection(BugReportService service, string key)
+    {
+        Run(service);
+        await Settle(service);
+        Run(service, Frame(pressed: [Key.F10]));
+        Run(service, Frame(held: [Key.F10]));
+        Run(service, Frame(text: "Fell through"));
+        Run(service, Frame(pressed: [Key.Enter], held: [Key.LeftControl]));
+        await Settle(service);
+        return EntryText(Assert.Single(_sink.Submissions), BundleEntryNames.Section(key));
     }
 
     [Fact]

@@ -121,7 +121,7 @@ public sealed class BugReportService : IDisposable
             throw;
         }
         if (Log.Manager is { } manager) manager.AddSink(_logLink);
-        StartCrashScan(options.SessionLogPath);
+        CrashScan = StartCrashScan(options.SessionLogPath);
     }
 
     /// <summary>The rolling clip and screenshot recorder. <see cref="FrameHistoryRecorder.Suspend"/> and
@@ -156,6 +156,9 @@ public sealed class BugReportService : IDisposable
     internal IGameOverlay Overlay => _overlay;
 
     internal BugReportFlow Flow => _flow;
+
+    /// <summary>The previous crash scan, completed at once when there is no session log. Tests await it.</summary>
+    internal Task CrashScan { get; }
 
     /// <summary>Registers a game section after the built-in ones. See <see cref="BugReportSectionSet.Add"/>.</summary>
     public void AddSection(IBugReportSection section) => _sections.Add(section);
@@ -256,11 +259,11 @@ public sealed class BugReportService : IDisposable
     }
 
     /// <summary>The crash directory is the session log's. The scan runs once, off the frame thread.</summary>
-    void StartCrashScan(string? sessionLogPath)
+    Task StartCrashScan(string? sessionLogPath)
     {
-        if (string.IsNullOrWhiteSpace(sessionLogPath)) return;
+        if (string.IsNullOrWhiteSpace(sessionLogPath)) return Task.CompletedTask;
         DateTimeOffset start = _processStart;
-        _ = Task.Run(() =>
+        return Task.Run(() =>
         {
             try
             {

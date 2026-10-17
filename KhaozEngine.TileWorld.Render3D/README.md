@@ -371,6 +371,21 @@ the same local-space contract `GreyboxMeshResolver.BuildMesh` builds to:
 Colours come from the glb's own materials, or from per-vertex `COLOR_0`, which `GltfLoader` multiplies into the
 material base colour. So a palette-painted kit needs neither textures nor a material per shade.
 
+### Clearance meshes (`GltfTileMeshGeometry`)
+
+`GltfTileMeshGeometry(string rootDirectory)` is the glb `ITileMeshGeometry` that
+`TileWorldClearance.Check` reads archetype geometry through. A `meshRef` maps to a path exactly as
+`GltfMeshResolver.PathFor` maps it for drawing, and the geometry is `GltfLoader.Load`'s, which needs no GPU, so
+node transforms are baked and the mesh sits in the archetype's local metres the way it draws. It reads `MeshRef`
+only, never `LodMeshRef`. Nothing throws over bad content: a blank or path-rejected reference, a missing file, a
+loader throw and a load `ClearanceMesh` refuses each return false with a reason naming the reference and, once
+there is one, the full path. Each load is cached per reference with the file's last write time and length, and
+every ask re-stats the file and reloads when either differs, so an unchanged glb is parsed once and a re-export is
+seen at the next ask. A missing file is probed again on every ask rather than cached. Only a reference that names
+no usable path stays cached as a failure, since that depends on the reference alone. Only the named file is
+stamped, so a `.gltf` whose external buffers or images change on their own keeps its old load. The cache is a
+plain dictionary, so load on one thread.
+
 ## The scene seam (`ITileWorldScene`, `Scene3DTileWorldScene`)
 
 `Scene3DTileWorldScene` also implements the optional `IAttachmentScene` capability from

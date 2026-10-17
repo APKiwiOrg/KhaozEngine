@@ -135,6 +135,29 @@ automatically, so this is transparent to every other package.
   counts as 0 (`1.2` equals `1.2.0`), and a null or blank string is the empty all-zero version (never
   throws). The one shared rule behind `KhaozEngine.Updates.UpdateVersion.IsNewer` and
   `KhaozEngine.ServerStatus.VersionOrder.Compare`/`IsBelow`, both thin wrappers over `Compare` here.
+- `ClearanceMesh` / `ClearanceSolid` / `ClearanceSamples` / `ClearanceProbe` / `ClearancePenetration` - the
+  format-free geometry core of the tile world clearance check, which keeps one placed mesh out of another.
+  `ClearanceMesh` copies and validates an indexed triangle mesh once (whole triangles, indices in range, finite
+  positions, at least one triangle) and keeps its local bounds. Both builders sample each triangle in rows
+  parallel to its longest edge, no more than the pitch apart, plus its edges and exact vertices, so the count
+  grows with area plus perimeter for every triangle shape. `ClearanceSamples.Build(mesh, pitch)` is a subject's
+  probe points, and refuses a pitch below 0.01 or not finite. `ClearanceSolid.Build(mesh, cellSize)` accepts a
+  `cellSize` from 0.02 to 1 (otherwise `ArgumentOutOfRangeException`), samples the obstacle at half that size
+  and fills a planar grid from the samples, each filled cell solid from the mesh's lowest point up to its
+  highest sample. It throws `ClearanceTooLargeException` past `MaxCells`.
+  `DepthAt(local)` is the nearest way out: up to the top, down to the base or sideways to an empty cell (a chamfer
+  distance transform, quantized to the cell). A thin piece caps depth near half its thickness, and an overhang,
+  doorway or deck reads as filled, so the check leans toward reporting a contact a precise test would clear.
+  Readings carry an error band that scales with the cell size c. A point just outside a curved or off-grid edge
+  reads up to c / 2 inside, a cell with only a diagonal empty neighbour about 0.91 c, and a point just above a
+  sloped top up to about c times the slope's tangent (at c = 0.1, 0.05, 0.091 and about 0.09 for a point 1 cm
+  above a 45 degree slope). A contact narrower than the subject's sample pitch can be missed, and an obstacle
+  wholly inside a subject is never seen. A tolerance of at least c / 2 absorbs the edge band, and a smaller c
+  suits steep roofs. `ClearanceProbe.Deepest(samples, subjectToWorld, solid, obstacleToWorld, tolerance)` returns the deepest
+  `ClearancePenetration(Depth, WorldPoint)` beyond the tolerance or null, throwing `ArgumentException` for an
+  obstacle transform that cannot be inverted, and `PlanarBounds` is its broad phase. Each build is done once per
+  mesh in local space and probed under any placement. `KhaozEngine.TileWorld`'s `TileWorldClearance` is the
+  document adapter.
 - `RenderFrameStats` - per-frame render cost counters (draw calls, instances, triangles, buffer-update bytes,
   and the 2D quads / flushes / texture switches). A plain value type summed with `+`, so a host aggregates
   several surfaces' tallies into one frame total. Populated always-on by `Render2D.SpriteBatch.FrameStats` and

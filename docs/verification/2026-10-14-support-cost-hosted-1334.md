@@ -680,3 +680,330 @@ used the same reader and code path. The temporary reader is not a repository cod
 
 The whole-tree dash, prose, file-size and contributor-instruction guards and the doc-version guard
 passed. This is a documentation-only verdict record. No full solution test suite or release was required.
+
+## Corrected calibration (SC-2, SC-3)
+
+This section re-evaluates the same 20 artifacts under rulings SC-2 and SC-3 of
+[CONTACT-CONTROLLER-SUPPORT-COST-2026-10-17.md](../design/CONTACT-CONTROLLER-SUPPORT-COST-2026-10-17.md).
+The sections above are unchanged and remain the SG-24 verdict as first evaluated.
+
+**Verdict: still FAIL.** Under the corrected scale the ordinary median rows pass 94 of 139 and reject 45.
+Five rows are envelope rows, outside both counts. The 90 dense rows carry no time verdict (SC-1) and
+pass their allocation limits. #1334 remains open.
+
+### Reference and evaluation
+
+- Reference: section `reference-376971dda` of [2026-10-11-support-gates-cost.json](2026-10-11-support-gates-cost.json),
+  recorded at the measured candidate `376971dda8964849cac1a13fa7cad17a26bd45a5` in one SG-20 invocation of
+  `SupportGateCostTests.OneShotCostArtifact` on an Apple M2 Max, Arm64, macOS 27.0.1, .NET 10.0.13,
+  Release, `DOTNET_TieredCompilation=0`. Captured `2026-10-16T20:39:10.101774+00:00`, finalized with exit 0.
+- Its flat box legacy tick is 6.333 us. Against it, the retired single-row `k` would range 2.329 to 6.096
+  (median 2.372). The corrected `k` ranges 1.649 to 1.908.
+- `k` is the median of hosted/M2 warm time over every legacy row present and successful in both sections,
+  matched by scene and operation, with M2 warm time above 0.5 us. Each iteration has 56 such rows.
+  Quartiles interpolate at rank (n + 1) p.
+- Evaluator: `SupportCostHostedRecordTests.HostedRecordWithCorrectedCalibration`, run with
+  `KHAOZ_SUPPORT_COST_HOSTED_RUNS` naming the artifact directory, `KHAOZ_SUPPORT_COST_REFERENCE_COMMIT=376971dda`
+  and `KHAOZ_SUPPORT_COST_HOSTED_REPORT` naming the table output. It reads the artifacts in place, selects the
+  reference by commit, and judges each iteration with `SupportCostVerdict.TryJudgeHosted`, using that run's own
+  lifetime inventory. Every row and median verdict, limit and failure code comes from the shared
+  `SupportCostVerdict.JudgeRow` and `SupportCostVerdict.Check`. It measures nothing.
+- Aggregation is unchanged from the section above: each candidate and paired legacy time is divided by its
+  own iteration's `k`, the per-row median is taken, and the median row is judged at `k = 1`.
+  Warm bytes and envelope classification are identical across all 20 iterations.
+
+### Calibration
+
+| Iteration | k | Rows | Lower quartile | Upper quartile | Ordinary pass | Ordinary reject | Envelope |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 1.785998 | 56 | 0.840636 | 2.269917 | 91 | 48 | 5 |
+| 2 | 1.657313 | 56 | 0.817132 | 2.191561 | 91 | 48 | 5 |
+| 3 | 1.663902 | 56 | 0.822048 | 2.218743 | 91 | 48 | 5 |
+| 4 | 1.804506 | 56 | 0.824738 | 2.218031 | 93 | 46 | 5 |
+| 5 | 1.653244 | 56 | 0.840236 | 2.246575 | 92 | 47 | 5 |
+| 6 | 1.738414 | 56 | 0.823782 | 2.218067 | 93 | 46 | 5 |
+| 7 | 1.667620 | 56 | 0.811424 | 2.218471 | 92 | 47 | 5 |
+| 8 | 1.908185 | 56 | 0.834330 | 2.306601 | 97 | 42 | 5 |
+| 9 | 1.691086 | 56 | 0.829333 | 2.251751 | 91 | 48 | 5 |
+| 10 | 1.662579 | 56 | 0.806821 | 2.326501 | 94 | 45 | 5 |
+| 11 | 1.666606 | 56 | 0.803184 | 2.165530 | 92 | 47 | 5 |
+| 12 | 1.649738 | 56 | 0.811755 | 2.185597 | 90 | 49 | 5 |
+| 13 | 1.656057 | 56 | 0.854851 | 2.273178 | 91 | 48 | 5 |
+| 14 | 1.740778 | 56 | 0.815293 | 2.185157 | 91 | 48 | 5 |
+| 15 | 1.667721 | 56 | 0.811697 | 2.180985 | 92 | 47 | 5 |
+| 16 | 1.648725 | 56 | 0.839580 | 2.127818 | 92 | 47 | 5 |
+| 17 | 1.651163 | 56 | 0.809286 | 2.168936 | 94 | 45 | 5 |
+| 18 | 1.686582 | 56 | 0.847765 | 2.230200 | 92 | 47 | 5 |
+| 19 | 1.691741 | 56 | 0.816627 | 2.235761 | 90 | 49 | 5 |
+| 20 | 1.759028 | 56 | 0.840616 | 2.185938 | 93 | 46 | 5 |
+
+The interquartile range spans about 0.80 to 2.33 in every iteration. Legacy rows do not move by one
+common factor between the M2 Max and the hosted runner. SC-2 names this spread as the cost-if-wrong signal.
+
+### Ordinary rows
+
+Median rows: 94 ordinary pass, 45 ordinary reject, 5 envelope, 90 dense without a time verdict.
+
+| Family | Rows | Pass | Reject | Median C / limit |
+| --- | ---: | ---: | ---: | ---: |
+| Find | 25 | 16 | 9 | 0.923 |
+| Substep | 87 | 76 | 11 | 0.227 |
+| Whole tick | 27 | 2 | 25 | 1.267 |
+
+All table times are M2 Max equivalent us. Limits, pair rules, operation abbreviations and failure codes
+are those of the per-row section above. `Pass/20` counts the iterations whose own row passed.
+
+| Scene | Operation | Median C | Median L | Limit | C / limit | Verdict | Pass/20 |
+| --- | --- | ---: | ---: | ---: | ---: | --- | ---: |
+| flat box | Find | 56.031 | 2.433 | 50.000 | 1.121 | FAIL T | 0 |
+| flat box | B0 | 45.215 | 9.043 | 200.000 | 0.226 | PASS | 20 |
+| flat box | B1 | 45.041 | 9.043 | 200.000 | 0.225 | PASS | 20 |
+| flat box | Dry | 141.547 | 9.043 | 109.043 | 1.298 | FAIL T | 0 |
+| flat box | D0 | 45.456 | 9.043 | 200.000 | 0.227 | PASS | 20 |
+| flat box | D1 | 45.822 | 9.043 | 200.000 | 0.229 | PASS | 20 |
+| stairs box | Find | 327.139 | 3.792 | 50.000 | 6.543 | FAIL T | 0 |
+| stairs box | B0 | 196.743 | 16.731 | 200.000 | 0.984 | PASS | 16 |
+| stairs box | B1 | 196.851 | 16.731 | 200.000 | 0.984 | PASS | 13 |
+| stairs box | Dry | 1465.532 | 16.731 | 116.731 | 12.555 | FAIL T,L | 0 |
+| stairs box | D0 | 198.851 | 16.731 | 200.000 | 0.994 | PASS | 13 |
+| stairs box | D1 | 197.290 | 16.731 | 200.000 | 0.986 | PASS | 15 |
+| flat hull | Find | 88.094 | 2.436 | 50.000 | 1.762 | FAIL T | 0 |
+| flat hull | B0 | 88.502 | 12.247 | 200.000 | 0.443 | PASS | 20 |
+| flat hull | B1 | 87.957 | 12.247 | 200.000 | 0.440 | PASS | 20 |
+| flat hull | Dry | 269.004 | 12.247 | 112.247 | 2.397 | FAIL T | 0 |
+| flat hull | D0 | 88.708 | 12.247 | 200.000 | 0.444 | PASS | 20 |
+| flat hull | D1 | 88.317 | 12.247 | 200.000 | 0.442 | PASS | 20 |
+| stairs hull | Find | 365.086 | 5.716 | 50.000 | 7.302 | FAIL T | 0 |
+| stairs hull | B0 | 233.797 | 19.001 | 200.000 | 1.169 | FAIL T | 0 |
+| stairs hull | B1 | 229.459 | 19.001 | 200.000 | 1.147 | FAIL T | 1 |
+| stairs hull | Dry | 1656.780 | 19.001 | 119.001 | 13.922 | FAIL T,L | 0 |
+| stairs hull | D0 | 227.779 | 19.001 | 200.000 | 1.139 | FAIL T | 1 |
+| stairs hull | D1 | 229.242 | 19.001 | 200.000 | 1.146 | FAIL T | 1 |
+| flat mesh | Find | 43.110 | 3.109 | 50.000 | 0.862 | PASS | 18 |
+| flat mesh | B0 | 56.474 | 15.075 | 200.000 | 0.282 | PASS | 20 |
+| flat mesh | B1 | 56.335 | 15.075 | 200.000 | 0.282 | PASS | 20 |
+| flat mesh | Dry | 156.204 | 15.075 | 115.075 | 1.357 | FAIL T | 0 |
+| flat mesh | D0 | 56.311 | 15.075 | 200.000 | 0.282 | PASS | 20 |
+| flat mesh | D1 | 56.112 | 15.075 | 200.000 | 0.281 | PASS | 20 |
+| stairs mesh | Find | 157.214 | 7.857 | 50.000 | 3.144 | FAIL T | 0 |
+| stairs mesh | B0 | 112.687 | 22.489 | 200.000 | 0.563 | PASS | 20 |
+| stairs mesh | B1 | 123.190 | 22.489 | 200.000 | 0.616 | PASS | 20 |
+| stairs mesh | Dry | 718.666 | 22.489 | 122.489 | 5.867 | FAIL T,L | 0 |
+| stairs mesh | D0 | 115.862 | 22.489 | 200.000 | 0.579 | PASS | 20 |
+| stairs mesh | D1 | 123.027 | 22.489 | 200.000 | 0.615 | PASS | 20 |
+| analytic only | Find | 5.299 | 0.244 | 50.000 | 0.106 | PASS | 20 |
+| analytic only | B0 | 5.615 | 1.101 | 200.000 | 0.028 | PASS | 20 |
+| analytic only | B1 | 5.598 | 1.101 | 200.000 | 0.028 | PASS | 20 |
+| analytic only | Dry | 17.941 | 1.101 | 101.101 | 0.177 | PASS | 20 |
+| analytic only | D0 | 5.596 | 1.101 | 200.000 | 0.028 | PASS | 20 |
+| analytic only | D1 | 5.652 | 1.101 | 200.000 | 0.028 | PASS | 20 |
+| analytic plus props | Find | 46.700 | 1.160 | 50.000 | 0.934 | PASS | 17 |
+| analytic plus props | B0 | 44.894 | 6.911 | 200.000 | 0.224 | PASS | 20 |
+| analytic plus props | B1 | 44.614 | 6.911 | 200.000 | 0.223 | PASS | 20 |
+| analytic plus props | Dry | 136.080 | 6.911 | 106.911 | 1.273 | FAIL T | 0 |
+| analytic plus props | D0 | 44.865 | 6.911 | 200.000 | 0.224 | PASS | 20 |
+| analytic plus props | D1 | 44.456 | 6.911 | 200.000 | 0.222 | PASS | 20 |
+| hidden crate | Find | 492.239 | 5.576 | 50.000 | 9.845 | FAIL T | 0 |
+| hidden crate | B0 | 529.767 | 16.803 | 200.000 | 2.649 | FAIL T,G | 0 |
+| hidden crate | B1 | 665.085 | 16.803 | 200.000 | 3.325 | FAIL T,G | 0 |
+| hidden crate | Dry | 2033.278 | 16.803 | 116.803 | 17.408 | FAIL T,G,L | 0 |
+| hidden crate | D0 | 527.500 | 16.803 | 200.000 | 2.637 | FAIL T,G | 0 |
+| hidden crate | D1 | 666.794 | 16.803 | 200.000 | 3.334 | FAIL T,G | 0 |
+| sphere | Find | 54.347 | 0.447 | 50.000 | 1.087 | FAIL T | 1 |
+| sphere | B0 | 50.326 | 3.901 | 200.000 | 0.252 | PASS | 20 |
+| sphere | B1 | 50.721 | 3.901 | 200.000 | 0.254 | PASS | 20 |
+| sphere | Dry | 158.258 | 3.901 | 103.901 | 1.523 | FAIL T,L | 0 |
+| sphere | D0 | 50.575 | 3.901 | 200.000 | 0.253 | PASS | 20 |
+| sphere | D1 | 51.566 | 3.901 | 200.000 | 0.258 | PASS | 20 |
+| capsule | Find | 93.953 | 0.461 | 50.000 | 1.879 | FAIL T | 0 |
+| capsule | B0 | 88.114 | 4.188 | 200.000 | 0.441 | PASS | 20 |
+| capsule | B1 | 89.284 | 4.188 | 200.000 | 0.446 | PASS | 20 |
+| capsule | Dry | 280.804 | 4.188 | 104.188 | 2.695 | FAIL T,L | 0 |
+| capsule | D0 | 89.315 | 4.188 | 200.000 | 0.447 | PASS | 20 |
+| capsule | D1 | 89.815 | 4.188 | 200.000 | 0.449 | PASS | 20 |
+| cylinder | Find | 112.065 | 1.386 | 50.000 | 2.241 | FAIL T | 0 |
+| cylinder | B0 | 108.597 | 7.133 | 200.000 | 0.543 | PASS | 20 |
+| cylinder | B1 | 110.023 | 7.133 | 200.000 | 0.550 | PASS | 20 |
+| cylinder | Dry | 340.511 | 7.133 | 107.133 | 3.178 | FAIL T | 0 |
+| cylinder | D0 | 109.898 | 7.133 | 200.000 | 0.549 | PASS | 20 |
+| cylinder | D1 | 110.509 | 7.133 | 200.000 | 0.553 | PASS | 20 |
+| stacked irrelevant layers | Find | 46.697 | 9.957 | 50.000 | 0.934 | PASS | 18 |
+| stacked irrelevant layers | B0 | 44.618 | 13.344 | 200.000 | 0.223 | PASS | 20 |
+| stacked irrelevant layers | B1 | 44.458 | 13.344 | 200.000 | 0.222 | PASS | 20 |
+| stacked irrelevant layers | Dry | 137.141 | 13.344 | 113.344 | 1.210 | FAIL T | 0 |
+| stacked irrelevant layers | D0 | 45.154 | 13.344 | 200.000 | 0.226 | PASS | 20 |
+| stacked irrelevant layers | D1 | 44.649 | 13.344 | 200.000 | 0.223 | PASS | 20 |
+| stationary | Find | 45.267 | 2.250 | 50.000 | 0.905 | PASS | 18 |
+| stationary | Dry | 46.930 | 5.903 | 105.903 | 0.443 | FAIL E | 0 |
+| initial | Find | 45.287 | 2.255 | 50.000 | 0.906 | PASS | 19 |
+| initial | B0 | 44.925 | 8.615 | 200.000 | 0.225 | PASS | 20 |
+| initial | B1 | 44.617 | 8.615 | 200.000 | 0.223 | PASS | 20 |
+| initial | Dry | 137.583 | 8.615 | 108.615 | 1.267 | FAIL T | 0 |
+| initial | D0 | 44.981 | 8.615 | 200.000 | 0.225 | PASS | 20 |
+| initial | D1 | 44.695 | 8.615 | 200.000 | 0.223 | PASS | 20 |
+| wall retry | Find | 5.320 | 0.201 | 50.000 | 0.106 | PASS | 20 |
+| wall retry | B0 | 11.103 | 1.172 | 200.000 | 0.056 | PASS | 20 |
+| wall retry | B1 | 11.081 | 1.172 | 200.000 | 0.055 | PASS | 20 |
+| wall retry | Dry | 29.004 | 1.172 | 101.172 | 0.287 | PASS | 20 |
+| wall retry | D0 | 11.128 | 1.172 | 200.000 | 0.056 | PASS | 20 |
+| wall retry | D1 | 11.123 | 1.172 | 200.000 | 0.056 | PASS | 20 |
+| pushed seat | Find | 46.122 | 1.110 | 50.000 | 0.922 | PASS | 16 |
+| pushed seat | B0 | 288.444 | 36.163 | 200.000 | 1.442 | FAIL T | 0 |
+| pushed seat | B1 | 145.989 | 36.163 | 200.000 | 0.730 | PASS | 20 |
+| pushed seat | Dry | 1027.824 | 36.163 | 136.163 | 7.548 | FAIL T,G,L | 0 |
+| pushed seat | D0 | 294.174 | 36.163 | 200.000 | 1.471 | FAIL T,G | 0 |
+| pushed seat | D1 | 144.708 | 36.163 | 200.000 | 0.724 | FAIL G | 0 |
+| descending landing | Find | 47.221 | 1.177 | 50.000 | 0.944 | PASS | 16 |
+| descending landing | B0 | 45.431 | 8.602 | 200.000 | 0.227 | PASS | 20 |
+| descending landing | B1 | 45.133 | 8.602 | 200.000 | 0.226 | PASS | 20 |
+| descending landing | Dry | 216.808 | 8.602 | 108.602 | 1.996 | FAIL T,E | 0 |
+| descending landing | D0 | 44.504 | 8.602 | 200.000 | 0.223 | PASS | 20 |
+| slide opposing face | Find | 5.376 | 1.251 | 50.000 | 0.108 | PASS | 20 |
+| explicit entry | Find | 5.363 | 0.204 | 50.000 | 0.107 | PASS | 20 |
+| explicit entry | B0 | 5.569 | 1.124 | 200.000 | 0.028 | PASS | 20 |
+| explicit entry | B1 | 5.625 | 1.124 | 200.000 | 0.028 | PASS | 20 |
+| explicit entry | Explicit | 62.687 | 1.124 | 101.124 | 0.620 | FAIL E,L | 0 |
+| explicit entry | E0 | 15.990 | 1.124 | 200.000 | 0.080 | PASS | 20 |
+| explicit entry | E1 | 15.681 | 1.124 | 200.000 | 0.078 | PASS | 20 |
+| explicit rounding handoff | Explicit | 85.864 | 1.726 | 101.726 | 0.844 | FAIL E | 0 |
+| explicit rounding handoff | E0 | 16.327 | 1.726 | 200.000 | 0.082 | PASS | 20 |
+| explicit changed-axis rounding | Explicit | 90.023 | 1.723 | 101.723 | 0.885 | FAIL E,L | 0 |
+| explicit wade | Find | 5.274 | 0.203 | 50.000 | 0.105 | PASS | 20 |
+| explicit wade | B0 | 5.630 | 1.133 | 200.000 | 0.028 | PASS | 20 |
+| explicit wade | B1 | 5.629 | 1.133 | 200.000 | 0.028 | PASS | 20 |
+| explicit wade | Explicit | 45.766 | 1.133 | 101.133 | 0.453 | FAIL E,L | 0 |
+| explicit wade | E0 | 16.272 | 1.133 | 200.000 | 0.081 | PASS | 20 |
+| explicit swim | Explicit | 38.660 | 1.521 | 101.521 | 0.381 | FAIL E | 0 |
+| explicit medium descent retry | Find | 5.225 | 0.199 | 50.000 | 0.105 | PASS | 20 |
+| explicit medium descent retry | B0 | 5.577 | 2.601 | 200.000 | 0.028 | PASS | 20 |
+| explicit medium descent retry | B1 | 5.628 | 2.601 | 200.000 | 0.028 | PASS | 20 |
+| explicit medium descent retry | Explicit | 91.105 | 2.601 | 102.601 | 0.888 | FAIL E,L | 0 |
+| explicit medium descent retry | E0 | 15.857 | 2.601 | 200.000 | 0.079 | PASS | 20 |
+| explicit medium descent retry | E1 | 47.282 | 2.601 | 200.000 | 0.236 | PASS | 20 |
+| explicit dry swim handoff | Find | 5.281 | 0.207 | 50.000 | 0.106 | PASS | 20 |
+| explicit dry swim handoff | B0 | 5.628 | 1.122 | 200.000 | 0.028 | PASS | 20 |
+| explicit dry swim handoff | B1 | 5.623 | 1.122 | 200.000 | 0.028 | PASS | 20 |
+| explicit dry swim handoff | Explicit | 53.860 | 1.122 | 101.122 | 0.533 | FAIL E,L | 0 |
+| explicit dry swim handoff | E0 | 16.226 | 1.122 | 200.000 | 0.081 | PASS | 20 |
+| explicit dry wade handoff | Find | 5.256 | 0.202 | 50.000 | 0.105 | PASS | 20 |
+| explicit dry wade handoff | B0 | 5.600 | 1.101 | 200.000 | 0.028 | PASS | 20 |
+| explicit dry wade handoff | B1 | 5.638 | 1.101 | 200.000 | 0.028 | PASS | 20 |
+| explicit dry wade handoff | Explicit | 62.327 | 1.101 | 101.101 | 0.616 | FAIL E,L | 0 |
+| explicit dry wade handoff | E0 | 16.195 | 1.101 | 200.000 | 0.081 | PASS | 20 |
+| explicit dry wade handoff | E1 | 16.095 | 1.101 | 200.000 | 0.080 | PASS | 20 |
+| final clamp | Find | 46.160 | 2.271 | 50.000 | 0.923 | PASS | 19 |
+| final clamp | Dry | 93.607 | 7.383 | 107.383 | 0.872 | FAIL E | 0 |
+| final clamp | D0 | 45.330 | 7.383 | 200.000 | 0.227 | PASS | 20 |
+
+### Envelope rows
+
+An envelope row is a Find whose outcome and saved oracle outcome are both `None` with the oracle in
+agreement, or a stationary substep or whole tick that was not refused, whose every support read matched
+its oracle, and whose reads are all steep or absent. `Oracle` shows the saved outcome, or `reads` for a
+substep, whose oracle is checked per read.
+
+| Envelope scene | Operation | Outcome | Oracle | Reads | Median C |
+| --- | --- | --- | --- | --- | ---: |
+| slide opposing face | Dry | Grounded | Steep | Steep Steep Steep Steep | 23.055 |
+| slide opposing face | D0 | SupportedSubstep | reads | Steep | 5.583 |
+| explicit rounding handoff | Find | None | None | None | 5.349 |
+| explicit changed-axis rounding | Find | None | None | None | 5.326 |
+| explicit swim | Find | None | None | None | 5.236 |
+
+### Dense rows
+
+Dense rows have no per-operation time verdict (SC-1). Phase 6 judges their time against the SG-21 aggregate
+budget. Their allocation limits still gate: zero warm bytes for Find and substeps, 208 bytes for a dry tick.
+
+| Dense scene | Operation | Median C | Median L | Warm bytes | Allocation |
+| --- | --- | ---: | ---: | ---: | --- |
+| grid 100 | Find | 118854.418 | 20823.553 | 0 | PASS |
+| grid 100 | Dry | 119827.464 | 33247.800 | 64 | PASS |
+| fan 96 | Find | 1721.303 | 69.974 | 0 | PASS |
+| fan 96 | B0 | 3225.756 | 289.581 | 0 | PASS |
+| fan 96 | B1 | 3144.572 | 289.581 | 0 | PASS |
+| fan 96 | Dry | 8150.617 | 289.581 | 64 | PASS |
+| fan 96 | D0 | 3237.371 | 289.581 | 0 | PASS |
+| fan 96 | D1 | 3162.544 | 289.581 | 0 | PASS |
+| fan 256 | Find | 5993.924 | 181.166 | 0 | PASS |
+| fan 256 | B0 | 9964.128 | 1181.170 | 0 | PASS |
+| fan 256 | B1 | 9837.651 | 1181.170 | 0 | PASS |
+| fan 256 | Dry | 25860.921 | 1181.170 | 64 | PASS |
+| fan 256 | D0 | 9950.346 | 1181.170 | 0 | PASS |
+| fan 256 | D1 | 9850.685 | 1181.170 | 0 | PASS |
+| fan 257 | Find | 3589.134 | 189.854 | 0 | PASS |
+| fan 257 | Dry | 3642.749 | 994.140 | 64 | PASS |
+| fan 300 | Find | 3915.111 | 220.585 | 0 | PASS |
+| fan 300 | Dry | 3936.841 | 1197.961 | 64 | PASS |
+| cluster 8 mesh | Find | 132.643 | 14.959 | 0 | PASS |
+| cluster 8 mesh | B0 | 133.325 | 46.770 | 0 | PASS |
+| cluster 8 mesh | B1 | 131.317 | 46.770 | 0 | PASS |
+| cluster 8 mesh | Dry | 405.602 | 46.770 | 64 | PASS |
+| cluster 8 mesh | D0 | 135.631 | 46.770 | 0 | PASS |
+| cluster 8 mesh | D1 | 132.662 | 46.770 | 0 | PASS |
+| cluster 8 compound | Find | 398.190 | 19.278 | 0 | PASS |
+| cluster 8 compound | B0 | 398.459 | 45.718 | 0 | PASS |
+| cluster 8 compound | B1 | 396.196 | 45.718 | 0 | PASS |
+| cluster 8 compound | Dry | 1208.036 | 45.718 | 64 | PASS |
+| cluster 8 compound | D0 | 399.706 | 45.718 | 0 | PASS |
+| cluster 8 compound | D1 | 396.301 | 45.718 | 0 | PASS |
+| cluster 8 split | Find | 312.413 | 17.527 | 0 | PASS |
+| cluster 8 split | B0 | 319.940 | 42.882 | 0 | PASS |
+| cluster 8 split | B1 | 318.127 | 42.882 | 0 | PASS |
+| cluster 8 split | Dry | 955.038 | 42.882 | 64 | PASS |
+| cluster 8 split | D0 | 319.342 | 42.882 | 0 | PASS |
+| cluster 8 split | D1 | 313.149 | 42.882 | 0 | PASS |
+| cluster 32 mesh | Find | 547.679 | 57.994 | 0 | PASS |
+| cluster 32 mesh | B0 | 545.156 | 173.104 | 0 | PASS |
+| cluster 32 mesh | B1 | 537.001 | 173.104 | 0 | PASS |
+| cluster 32 mesh | Dry | 1643.985 | 173.104 | 64 | PASS |
+| cluster 32 mesh | D0 | 550.494 | 173.104 | 0 | PASS |
+| cluster 32 mesh | D1 | 547.319 | 173.104 | 0 | PASS |
+| cluster 32 compound | Find | 1599.180 | 76.312 | 0 | PASS |
+| cluster 32 compound | B0 | 1591.164 | 171.627 | 0 | PASS |
+| cluster 32 compound | B1 | 1593.562 | 171.627 | 0 | PASS |
+| cluster 32 compound | Dry | 4797.387 | 171.627 | 64 | PASS |
+| cluster 32 compound | D0 | 1599.564 | 171.627 | 0 | PASS |
+| cluster 32 compound | D1 | 1599.453 | 171.627 | 0 | PASS |
+| cluster 32 split | Find | 1294.834 | 70.027 | 0 | PASS |
+| cluster 32 split | B0 | 1291.829 | 165.309 | 0 | PASS |
+| cluster 32 split | B1 | 1283.062 | 165.309 | 0 | PASS |
+| cluster 32 split | Dry | 3874.037 | 165.309 | 64 | PASS |
+| cluster 32 split | D0 | 1296.650 | 165.309 | 0 | PASS |
+| cluster 32 split | D1 | 1287.225 | 165.309 | 0 | PASS |
+| cluster 128 mesh | Find | 2800.782 | 232.688 | 0 | PASS |
+| cluster 128 mesh | B0 | 2770.704 | 631.454 | 0 | PASS |
+| cluster 128 mesh | B1 | 2748.802 | 631.454 | 0 | PASS |
+| cluster 128 mesh | Dry | 8412.266 | 631.454 | 64 | PASS |
+| cluster 128 mesh | D0 | 2796.508 | 631.454 | 0 | PASS |
+| cluster 128 mesh | D1 | 2796.951 | 631.454 | 0 | PASS |
+| cluster 128 compound | Find | 7211.105 | 307.217 | 0 | PASS |
+| cluster 128 compound | B0 | 7163.865 | 678.382 | 0 | PASS |
+| cluster 128 compound | B1 | 7171.713 | 678.382 | 0 | PASS |
+| cluster 128 compound | Dry | 21499.275 | 678.382 | 64 | PASS |
+| cluster 128 compound | D0 | 7191.378 | 678.382 | 0 | PASS |
+| cluster 128 compound | D1 | 7179.649 | 678.382 | 0 | PASS |
+| cluster 128 split | Find | 6026.744 | 282.014 | 0 | PASS |
+| cluster 128 split | B0 | 5923.237 | 658.080 | 0 | PASS |
+| cluster 128 split | B1 | 5898.156 | 658.080 | 0 | PASS |
+| cluster 128 split | Dry | 17728.981 | 658.080 | 64 | PASS |
+| cluster 128 split | D0 | 5910.839 | 658.080 | 0 | PASS |
+| cluster 128 split | D1 | 5898.278 | 658.080 | 0 | PASS |
+| cluster 256 mesh | Find | 7414.475 | 467.021 | 0 | PASS |
+| cluster 256 mesh | B0 | 7199.881 | 1262.590 | 0 | PASS |
+| cluster 256 mesh | B1 | 7169.713 | 1262.590 | 0 | PASS |
+| cluster 256 mesh | Dry | 21772.398 | 1262.590 | 64 | PASS |
+| cluster 256 mesh | D0 | 7262.728 | 1262.590 | 0 | PASS |
+| cluster 256 mesh | D1 | 7206.858 | 1262.590 | 0 | PASS |
+| cluster 256 compound | Find | 16872.275 | 560.574 | 0 | PASS |
+| cluster 256 compound | B0 | 16598.827 | 1355.039 | 0 | PASS |
+| cluster 256 compound | B1 | 16533.753 | 1355.039 | 0 | PASS |
+| cluster 256 compound | Dry | 49523.983 | 1355.039 | 64 | PASS |
+| cluster 256 compound | D0 | 16546.333 | 1355.039 | 0 | PASS |
+| cluster 256 compound | D1 | 16518.493 | 1355.039 | 0 | PASS |
+| cluster 256 split | Find | 14276.474 | 561.475 | 0 | PASS |
+| cluster 256 split | B0 | 13978.656 | 1329.893 | 0 | PASS |
+| cluster 256 split | B1 | 13970.610 | 1329.893 | 0 | PASS |
+| cluster 256 split | Dry | 41572.436 | 1329.893 | 64 | PASS |
+| cluster 256 split | D0 | 13902.130 | 1329.893 | 0 | PASS |
+| cluster 256 split | D1 | 13852.021 | 1329.893 | 0 | PASS |

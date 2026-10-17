@@ -107,6 +107,8 @@ internal sealed class CapsuleFeaturePolyhedron
                     // Strictness refuses collinear aliases and self-intersecting or concave polygons.
                     if (side != winding) return CapsuleFeatureStatus.Ambiguous;
                 }
+                // InstalledSupportWorldForm.CapturedEdges re-derives this opposite-winding pairing for the world
+                // form's topology joins. A change to the pairing rule changes both.
                 var key = first < second ? (first, second) : (second, first);
                 if (edgeIds.TryGetValue(key, out int edgeId))
                 {

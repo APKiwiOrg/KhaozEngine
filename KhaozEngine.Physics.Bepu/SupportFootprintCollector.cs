@@ -114,24 +114,15 @@ internal sealed partial class SupportFootprintCollector
             else
             {
                 captured = installed.GetOrCapture(simulation, owner, description.Shape, staticGeometryVersion, out var geometry);
-                if (captured == CapsuleFeatureStatus.Complete)
-                {
-                    using var materialization = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportMaterialization);
-                    captured = geometry!.Materialize(simulation, description, _capture, _leaves, _curved);
-                    if (captured != CapsuleFeatureStatus.Complete && captured != CapsuleFeatureStatus.Ambiguous)
-                        captured = CapsuleFeatureStatus.Unsupported;
-                }
+                if (captured == CapsuleFeatureStatus.Complete) captured = Installed(simulation, owner, description, geometry!);
                 else
                 {
                     // A local capture failure must keep the full evaluator's original refusal ordering. The cache
                     // retains no refusal, so readers never write invalidations.
                     captured = SupportNeighborhoodPolyhedra.Capture(simulation, description.Shape, description.Pose,
                         _bounds, _capture, _leaves, _curved);
+                    if (captured == CapsuleFeatureStatus.Complete) DerivePolygons(owner);
                 }
-                if (captured != CapsuleFeatureStatus.Complete) return captured;
-                using (ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportMaterialization))
-                    foreach (CapsuleFeaturePolyhedron leaf in _leaves)
-                        SupportNeighborhoodPolyhedra.Polygons(owner, leaf, _pool, _polygons, footprint: true);
             }
         }
         if (captured != CapsuleFeatureStatus.Complete) return captured;
@@ -139,9 +130,83 @@ internal sealed partial class SupportFootprintCollector
         return polygons != CapsuleFeatureStatus.Complete ? polygons : CollectCurves(owner);
     }
 
-    GeometrySign ContactMember(SupportPolygon polygon, int index)
+    // Binds the published world form when its pose bits match the live description. Otherwise materializes as the
+    // reference does, and a reader that finds no published form also snapshots and publishes the result.
+    CapsuleFeatureStatus Installed(Simulation simulation, StaticHandle owner, in StaticDescription description,
+        InstalledSupportGeometry geometry)
+    {
+        if (SupportReferenceEvaluation.Active) return Materialize(simulation, owner, description, geometry);
+        InstalledSupportWorldForm? form = geometry.WorldForm;
+        if (form is null)
+        {
+            if (ContactAllocationDiagnostics.Observed) return BuildWorldForm(simulation, owner, description, geometry);
+            lock (geometry.WorldFormGate)
+            {
+                form = geometry.WorldForm;
+                if (form is null) return BuildWorldForm(simulation, owner, description, geometry);
+            }
+        }
+        if (!form.Matches(simulation, description)) return Materialize(simulation, owner, description, geometry);
+        using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportMaterialization);
+        form.Bind(owner, _pool, _polygons, _curved);
+        return CapsuleFeatureStatus.Complete;
+    }
+
+    // A refused materialization publishes nothing, so a later reader builds again. The building query joins with the
+    // topology it just certified, as a binding query would. The certification is form work, counted by
+    // WorldFormBuilds alone, so its arithmetic stays out of the query counters.
+    CapsuleFeatureStatus BuildWorldForm(Simulation simulation, StaticHandle owner, in StaticDescription description,
+        InstalledSupportGeometry geometry)
+    {
+        CapsuleFeatureStatus status = Materialize(simulation, owner, description, geometry);
+        if (status != CapsuleFeatureStatus.Complete) return status;
+        using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportMaterialization);
+        SupportQueryDiagnostics.Record(SupportQueryCounter.WorldFormBuilds);
+        InstalledSupportWorldForm form;
+        SupportQueryDiagnostics.ThreadState counting = SupportQueryDiagnostics.Exchange(
+            SupportQueryDiagnostics.ThreadState.Fresh(false));
+        try { form = new InstalledSupportWorldForm(simulation, description, _leaves, _polygons, _curved, _kernel); }
+        finally { SupportQueryDiagnostics.Exchange(counting); }
+        form.AttachTopology(_polygons);
+        geometry.Publish(form);
+        return status;
+    }
+
+    // The reference materialization and polygon derivation, into this collector's scratch.
+    CapsuleFeatureStatus Materialize(Simulation simulation, StaticHandle owner, in StaticDescription description,
+        InstalledSupportGeometry geometry)
+    {
+        CapsuleFeatureStatus status;
+        using (ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportMaterialization))
+            status = geometry.Materialize(simulation, description, _capture, _leaves, _curved);
+        if (status != CapsuleFeatureStatus.Complete)
+            return status == CapsuleFeatureStatus.Ambiguous ? status : CapsuleFeatureStatus.Unsupported;
+        DerivePolygons(owner);
+        return status;
+    }
+
+    void DerivePolygons(StaticHandle owner)
+    {
+        using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportMaterialization);
+        foreach (CapsuleFeaturePolyhedron leaf in _leaves)
+            SupportNeighborhoodPolyhedra.Polygons(owner, leaf, _pool, _polygons, footprint: true);
+    }
+
+    /// <summary>The retained contact segment of proposal <paramref name="index"/>, as the kernel receives it.</summary>
+    internal (FeaturePoint Start, FeaturePoint Direction) ContactSegment(int index) =>
+        (_contactStarts[index], _contactDirections[index]);
+
+    // A certified separation decides Negative before the kernel only where the kernel's verdict is a resolved
+    // Negative. The reference evaluator always runs the kernel.
+    internal GeometrySign ContactMember(SupportPolygon polygon, int index)
     {
         SupportFootprintProposal proposal = index == 0 ? _request.AxisProposal : _request.FootProposal;
+        if (!SupportReferenceEvaluation.Active && SupportContactPrefilter.Separated(polygon, _contactStarts[index],
+            _contactDirections[index], proposal.Probe.Radius, _request.ContactBand))
+        {
+            SupportQueryDiagnostics.Record(SupportQueryCounter.PrefilterRejects);
+            return GeometrySign.Negative;
+        }
         if (SupportPlanarProposal.Contact(polygon, _contactStarts[index], _contactDirections[index],
             proposal.Probe.Radius, _request.ContactBand))
         {
@@ -172,9 +237,10 @@ internal sealed partial class SupportFootprintCollector
     GeometrySign CurvedContactMember(StaticHandle owner, in SupportCurvedLeaf leaf, int part, int index)
     {
         SupportFootprintProposal proposal = index == 0 ? _request.AxisProposal : _request.FootProposal;
+        using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportCurvedContact);
         _contactKernel.Reset(_contactStarts[index], _contactEnds[index],
             GeometryInterval.Exact(proposal.Probe.Radius), _request.ContactBand);
-        return _contactKernel.Measure(owner, leaf, part, out _);
+        return _contactKernel.MeasureSign(owner, leaf, part);
     }
 
     bool CurvedContactHeight(in SupportCurvedLeaf leaf, int part, int index)
@@ -237,11 +303,14 @@ internal sealed partial class SupportFootprintCollector
                     SupportQueryDiagnostics.Record(SupportQueryCounter.JoinsPruned);
                     continue;
                 }
+                // The reference proves every meeting geometrically.
+                bool topology = !SupportReferenceEvaluation.Active && SupportNeighborhoodJoins.TopologyMeets(a, b);
                 GeometrySign joined = SupportNeighborhoodJoins.Joined(a, b, _request.ContactBand, _kernel,
-                    _incidence, first, second);
+                    _incidence, first, second, topology);
                 if (joined == GeometrySign.Unresolved) return Refused(CapsuleFeatureStatus.Unsupported);
                 if (joined != GeometrySign.Positive) continue;
-                SupportQueryDiagnostics.Record(SupportQueryCounter.JoinsProved);
+                SupportQueryDiagnostics.Record(
+                    topology ? SupportQueryCounter.TopologyJoins : SupportQueryCounter.JoinsProved);
                 matrix[first * stride + second / 64] |= 1UL << (second % 64);
                 matrix[second * stride + first / 64] |= 1UL << (first % 64);
             }

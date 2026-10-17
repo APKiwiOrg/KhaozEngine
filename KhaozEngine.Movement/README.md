@@ -326,7 +326,7 @@ public sealed record NavBakeExecution(int MaxDegreeOfParallelism)
 }
 ```
 
-`NavBakeExecution` scheduling shipped in 20.40.0. `UseStableLegacyReadScope` is introduced in staged 21.1.0.
+`NavBakeExecution` scheduling shipped in 20.40.0. `UseStableLegacyReadScope` shipped in 21.1.0.
 A null execution or a degree of 1 runs the serial build, and the existing `BuildProfile` and `Create` forms forward
 a null execution. Execution options are not part of `PhysicsNavBakeOptions` or the bake identity. Every degree
 produces the same graphs, resting heights and file bytes.

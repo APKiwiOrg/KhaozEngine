@@ -7,6 +7,47 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 21.2.0
 
+- Add an optional `clearance` block to the tile world manifest, held as `TileWorldDocument.Clearance`
+  (`TileClearanceSettings`): a mesh root relative to the world directory, a sampling cell size, an object
+  waiver tag and `TileClearanceRule` tag pairs that keep subject meshes out of obstacle meshes within a
+  tolerance. A rooted mesh root or one with a backslash is refused on every OS, rules compare by value and an
+  absent block keeps an older world's bytes.
+- The block is authoring metadata outside `TileWorldHash.OfWorld`, so editing it changes no world digest and
+  forces no navigation rebake. The TileWorld format version is unchanged.
+- Add `TileWorldClearance.Check`, which places every loaded object's mesh with
+  `TileObjectPlacement.LocalToWorld` and reports `clearance.overlap` per penetrating pair at its deepest
+  point, `clearance.mesh` per archetype whose mesh cannot be read and `clearance.rule` for a rule whose tags
+  match no archetype. `TileWorldValidator.Validate` never runs it. Meshes arrive through the new
+  `ITileMeshGeometry` seam, and `TileWorldClearance.ResolveMeshRoot` resolves the block's mesh root against the
+  world directory.
+- Add the format-free clearance core to `KhaozEngine.Primitives`: `ClearanceMesh`, `ClearanceSolid`,
+  `ClearanceSamples`, `ClearanceProbe`, `ClearancePenetration` and `ClearanceTooLargeException`. An obstacle is
+  solid from its lowest point to its top surface, depth is the nearest way out, and triangles are sampled in rows
+  along their longest edge plus every edge and vertex, so the count scales with area plus perimeter.
+- Add `GltfTileMeshGeometry` to `KhaozEngine.TileWorld.Render3D`, the GPU-free glb `ITileMeshGeometry` that
+  maps a `meshRef` as `GltfMeshResolver.PathFor` does. It caches each load per reference with the file's last
+  write time and length, reloads when either changes and probes a missing file again on every ask.
+- Add `SetClearanceCommand` to `KhaozEngine.TileWorld.Editing`, one undo step per clearance edit.
+- `ke-tileedit` gains `clearance_get`, `clearance_set`, `clearance_rule_set`, `clearance_rule_remove` and
+  `clearance_check`, for 55 verbs. `world_save` now refuses a world with any clearance issue and writes
+  nothing, and `world_validate` lists the clearance issues after the validator's. `clearance_set` sets the mesh
+  root, cell size and waiver tag on every call. A glb written or re-exported mid-session is seen at the next
+  save or check with no `world_open`.
+- Temporal anti-aliasing no longer leaves a grainy band trailing a shadow or light edge that slides over a still
+  surface under a still camera at Native and Quality. The trail no longer grows with the edge's travel per frame, so
+  a low frame rate, such as an unfocused window throttled to 15 Hz, no longer widens it. A still pixel whose shading
+  changed drops its lock and accumulated weight for one frame and shows the internal reconstruction. Stable isolated
+  detail, fine texture and slow pans resolve as before. Balanced and lower presets keep the old behaviour
+  ([#1431](https://github.com/APKiwiOrg/KhaozEngine/issues/1431)). See amendment 33 of the
+  [temporal resolve design](docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md)
+  ([#1427](https://github.com/APKiwiOrg/KhaozEngine/issues/1427)).
+- Contact controller support reads and `IPhysicsSupportFootprint.QuerySupportFootprint` cost less on ordinary
+  scenes. Installed box and hull statics reuse a cached pose-applied world form, a certified separation skips
+  the contact kernel, faces of one convex leaf join through their shared captured edge, and curved contact
+  members stop bisecting once their verdict is certified. Results stay bit-identical to the reference
+  evaluator, and the first warm query in a process no longer allocates. The
+  [cost record](docs/superpowers/plans/proofs/2026-10-17-support-cost-option-c.md) lists every ordinary
+  scene that still misses its SG-12 limits.
 - Add `WindowStack` to `KhaozEngine.Gui` for overlapping non-modal windows. Windows implement `IStackWindow`
   and live in `WindowBand.Docked`, `Floating` or `Topmost`. The stack raises a window when it opens or is
   pressed, updates open windows top to bottom with every window above occluded, and draws them bottom to top.

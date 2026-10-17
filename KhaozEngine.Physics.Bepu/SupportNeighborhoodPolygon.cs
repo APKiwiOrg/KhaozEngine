@@ -17,6 +17,10 @@ internal sealed class SupportPolygon
     SupportFootprintSourcePredicates? _sourcePredicates;
     readonly SupportFootprintEdgeWorkspace _footprintEdges = new();
     int _count;
+    GeometrySign _normalArea, _orientation;
+    SupportContactDomain _contactDomain;
+    InstalledSupportWorldFace? _face;
+    bool _hasNormalArea, _hasOrientation, _hasContactDomain;
 
     internal StaticHandle Static { get; private set; }
     internal int ElementId { get; private set; }
@@ -37,12 +41,49 @@ internal sealed class SupportPolygon
     internal SupportFootprintEdgeOperands FootprintOperands(int index, FeaturePoint axis, bool share = true) =>
         _footprintEdges.Read(this, index, axis, share);
 
+    /// <summary>The sign of the normal's squared length, source-certified when its enclosure cannot decide it.
+    /// Derived once per finished polygon, or copied from the world form face it was bound from.</summary>
+    internal GeometrySign NormalArea
+    {
+        get
+        {
+            if (!_hasNormalArea) (_normalArea, _hasNormalArea) = (SupportFootprintPolygon.DeriveNormalArea(this), true);
+            return _normalArea;
+        }
+    }
+
+    /// <summary>The sign of the normal's upward component, source-certified when its enclosure cannot decide it.
+    /// Derived once per finished polygon, or copied from the world form face it was bound from.</summary>
+    internal GeometrySign Orientation
+    {
+        get
+        {
+            if (!_hasOrientation) (_orientation, _hasOrientation) = (SupportFootprintPolygon.DeriveOrientation(this), true);
+            return _orientation;
+        }
+    }
+
+    /// <summary>Whether the certified contact prefilter may stand in for the contact kernel on this polygon.
+    /// Derived once per finished polygon, or copied from the world form face it was bound from.</summary>
+    internal SupportContactDomain ContactDomain
+    {
+        get
+        {
+            if (!_hasContactDomain) (_contactDomain, _hasContactDomain) = (SupportContactPrefilter.Certify(this), true);
+            return _contactDomain;
+        }
+    }
+
+    /// <summary>Element ids of the later faces of this face's world form leaf that share a captured edge with it and
+    /// whose meeting the form certified. Empty for a polygon that no world form face describes.</summary>
+    internal ReadOnlySpan<int> TopologyMeetings => _face is null ? [] : _face.TopologyMeetings;
+
     internal SupportPolygon(SupportFootprintSourcePredicates? sourcePredicates = null) => _sourcePredicates = sourcePredicates;
 
     /// <summary>Starts a polygon of <paramref name="count"/> vertices, growing the reused storage when needed.</summary>
     internal void Begin(StaticHandle owner, int elementId, int count)
     {
-        _footprintEdges.Clear();
+        ClearDerived();
         Static = owner;
         ElementId = elementId;
         HasSource = false;
@@ -57,7 +98,7 @@ internal sealed class SupportPolygon
 
     internal void BeginSource(in InstalledPoseOperator map)
     {
-        _footprintEdges.Clear();
+        ClearDerived();
         SourceMap = new(map.X.Bounds, map.Y.Bounds, map.Z.Bounds,
             new((float)map.Translation.X.Value, (float)map.Translation.Y.Value, (float)map.Translation.Z.Value));
         HasSource = map.IsResolved;
@@ -65,13 +106,13 @@ internal sealed class SupportPolygon
 
     internal void SetSource(int index, Vector3 local)
     {
-        _footprintEdges.Clear();
+        ClearDerived();
         _sourceVertices[index] = local;
     }
 
     internal void Set(int index, FeaturePoint vertex, FeaturePoint edge)
     {
-        _footprintEdges.Clear();
+        ClearDerived();
         _vertices[index] = vertex;
         _edges[index] = edge;
     }
@@ -79,7 +120,7 @@ internal sealed class SupportPolygon
     /// <summary>Completes the polygon: its normal length, bounds and whether every enclosure resolved.</summary>
     internal void Finish(FeaturePoint normal)
     {
-        _footprintEdges.Clear();
+        ClearDerived();
         Normal = normal;
         NormalLength = SupportGeometry.Length(normal.Bounds);
         bool resolved = NormalLength.IsResolved && NormalLength.Lower > 0 && _count >= 3;
@@ -101,6 +142,39 @@ internal sealed class SupportPolygon
         foreach (FeaturePoint edge in Edges) resolved &= edge.IsResolved;
         IsResolved = resolved;
         HasJoinIncidenceCertificate = SupportJoinIncidence.Certify(this);
+    }
+
+    /// <summary>Starts and finishes this polygon as a copy of a world form face, which a finished polygon of the
+    /// same face produced. Only the owner comes from the caller, and per-query operands start empty.</summary>
+    internal void Bind(StaticHandle owner, InstalledSupportWorldFace face)
+    {
+        Begin(owner, face.ElementId, face.Vertices.Length);
+        face.Vertices.CopyTo(_vertices);
+        face.Edges.CopyTo(_edges);
+        face.SourceVertices.CopyTo(_sourceVertices);
+        SourceMap = face.SourceMap;
+        HasSource = face.HasSource;
+        Normal = face.Normal;
+        NormalLength = face.NormalLength;
+        face.Low.CopyTo(Low);
+        face.High.CopyTo(High);
+        IsResolved = face.IsResolved;
+        HasJoinIncidenceCertificate = face.HasJoinIncidenceCertificate;
+        (_normalArea, _orientation, _contactDomain) = (face.NormalArea, face.Orientation, face.ContactDomain);
+        _hasNormalArea = _hasOrientation = _hasContactDomain = true;
+        _face = face;
+    }
+
+    /// <summary>Takes the certified topology meetings of <paramref name="face"/>, a world form face snapshotted from
+    /// this finished polygon.</summary>
+    internal void AttachTopology(InstalledSupportWorldFace face) => _face = face;
+
+    // Per-query operands and every derived polygon fact describe the geometry they were taken from.
+    void ClearDerived()
+    {
+        _footprintEdges.Clear();
+        _hasNormalArea = _hasOrientation = _hasContactDomain = false;
+        _face = null;
     }
 
     /// <summary>The signed height of <paramref name="point"/> above this polygon's plane, in metres.</summary>
@@ -165,7 +239,9 @@ internal readonly record struct SupportDistance(bool IsResolved, double Lower, d
 /// <summary>Complete enumeration of the closest pair strata of a segment and a closed convex polygon: vertex
 /// against segment, edge against segment endpoint, edge against segment interior, segment endpoint against
 /// face interior, and the segment crossing the face. An undecided stratum condition keeps every pair it may
-/// produce, so ties and boundary positions widen the bounds and never refuse.</summary>
+/// produce, so ties and boundary positions widen the bounds and never refuse. The margin derivation of
+/// <see cref="SupportContactPrefilter"/> depends on these strata, their refusals and their enclosure widths, so a
+/// change here must re-check it.</summary>
 internal sealed partial class SupportSegmentPolygon
 {
     static readonly FeatureNumber One = FeatureNumber.Exact(1);

@@ -121,6 +121,7 @@ public static partial class TileWorldFile
                 .Select(k => new TileWorldManifestRegion { Rx = k.Key.Rx, Rz = k.Key.Rz, Hash = k.Value }).ToList(),
             Markers = BuildMarkerIndex(doc, before, hashes),
             FoliageLayers = doc.FoliageLayers.Count == 0 ? null : doc.FoliageLayers.Select(FoliageToDto).ToList(),
+            Clearance = doc.Clearance is null ? null : ClearanceToDto(doc.Clearance),
         };
         WriteAtomic(ManifestPath(directory), JsonSerializer.SerializeToUtf8Bytes(manifest, TileWorldJson.Manifest));
         // Dirty clears only now, once the manifest naming these exact bytes is on disk. Clearing it as each
@@ -172,6 +173,7 @@ public static partial class TileWorldFile
         if (!(m.TileSize > 0f)) throw new TileWorldException($"{path}: tileSize must be positive");
         if (string.IsNullOrWhiteSpace(m.Id)) throw new TileWorldException($"{path}: id is required");
         ValidateFoliageDtos(m.FoliageLayers, m.PlaneCount, path);
+        ValidateClearanceDto(m.Clearance, path);
         return m;
     }
 

@@ -8,11 +8,12 @@ using Xunit.Abstractions;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// Texture detail under a light that never changes, where the release of a still pixel whose shading changed must
-    /// leave the resolve as it was (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 33). The release reads a pixel as still
-    /// below <c>LockMotionStartPixels</c>, so a slow pan is still to it, and it runs at Quality, where the jitter aliases
-    /// detail finer than an internal texel. Each run renders <see cref="FirstMeasured"/> frames and measures
-    /// <see cref="Measured"/> more over the view less a <see cref="Margin"/> pixel border, against the supersampled
+    /// Texture detail under a light that never changes, where the release of a pixel whose shading changed must leave
+    /// the resolve as it was (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendments 33 and 34). The release takes a pixel
+    /// below <c>LockMotionStartPixels</c> by the still pixel's rule, so a slow pan takes it as a still view does, and it
+    /// runs at Quality, where the jitter aliases detail finer than an internal texel. Each run renders
+    /// <see cref="FirstMeasured"/> frames and measures <see cref="Measured"/> more over the view less a
+    /// <see cref="Margin"/> pixel border, against the supersampled
     /// reference of the same frames: the mean absolute luma error, and the temporal error, how far each pixel's change
     /// from frame to frame lies from the reference's (<see cref="TemporalAcceptance.TemporalError"/>). Both stay
     /// within <see cref="Tolerance"/> of the resolve's figures before the release on the same device class, measured on

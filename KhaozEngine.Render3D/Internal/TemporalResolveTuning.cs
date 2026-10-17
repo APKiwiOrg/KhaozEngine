@@ -198,7 +198,8 @@ namespace KhaozEngine.Render3D.Internal
         /// (<c>TemporalResolveLockGpuTests</c>) changed by up to 51 percent of its contrast a frame. On Metal at 0.5
         /// the textured band of a shadow edge travelling 1 and 2 display pixels a frame retreating at Quality
         /// (<c>TemporalMovingShadeLagGpuTests</c>) measured 1.53 and 1.59 times the reference's grain, against 1.43
-        /// and 1.39 here, and at 0.7 the Quality textured tails at 4 and 8 rose to 1.9 to 2.8 times the tail at 1.</summary>
+        /// and 1.39 here, and at 0.7 the Quality textured tails at 4 and 8 rose to 1.9 to 2.8 times the tail at
+        /// 1.</summary>
         public const float ShadingLockRingShare = 0.35f;
         /// <summary>Steps 6 and 8. The share of the ridge step below which a carried lock's variance box reads as flat
         /// and the lock keeps its hold whatever its ring reads (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 34). Its 3x3

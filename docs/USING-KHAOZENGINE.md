@@ -4265,8 +4265,8 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   final image with each pixel's screen motion since the last frame: hue for direction (rightward cyan, leftward red,
   downward violet, upward yellow-green), brightness for length (full at 16 internal pixels), and black where nothing
   opaque drew or nothing moved. The screen overlays drawn after the post chain (target outlines, fills, lines,
-  billboards and the screen transition) still draw over it. `History` (black just after a reset and where a still
-  pixel's shading changed, white at the full history, green where thin feature retention holds a pixel's lock),
+  billboards and the screen transition) still draw over it. `History` (black just after a reset and where a pixel's
+  shading changed, white at the full history, green where thin feature retention holds a pixel's lock),
   `Disocclusion` (red where history was rejected) and `Reactive` (yellow where transparent content lowered the
   history weight) show the resolve's own decisions and take effect only under `AntiAliasing.Temporal`.
 - **Diagnostics.** `scene.LastTemporalDiagnostics` reports the frame index, the jitter phase and offset, the keyed

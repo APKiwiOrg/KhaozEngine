@@ -10,8 +10,8 @@ namespace KhaozEngine.Game
     /// <see cref="Pointer"/> and <see cref="InputManager"/> derive mouse presses and stick steps from down
     /// transitions, and a held frame reports nothing down, so a button or stick still down when the hold ends would
     /// read as fresh. On that first unheld frame every mouse button still down is hidden until its physical release,
-    /// and every gamepad with a button down or a stick past <see cref="InputManager.StickThreshold"/> reads as
-    /// neutral until it is idle. The frame a hidden input lets go is hidden too, so its release edge never shows.
+    /// and every gamepad with a button down, or a stick or trigger past <see cref="InputManager.StickThreshold"/>,
+    /// reads as neutral until it is idle. The frame a hidden input lets go is hidden too, so its release edge never shows.
     /// Keys need nothing, because their press edge comes from the window. This is the input-level form of
     /// <see cref="Pointer"/>'s suppress-until-release, so it covers every consumer, game-owned pointers included.
     /// A frame hiding nothing is returned as is and allocates nothing.
@@ -55,12 +55,15 @@ namespace KhaozEngine.Game
                 input.TextInput, input.TextInputAvailable, input.PointerCaptured);
         }
 
-        // A pad is idle once no button is down and both raw sticks are within the threshold. The raw length bounds
-        // the deadzoned per-axis value InputManager steps on, so an idle pad cannot step.
+        // A pad is idle once no button is down and both raw sticks and both triggers are within the threshold. The
+        // raw length bounds the deadzoned per-axis value InputManager steps on, so an idle pad cannot step, and a
+        // trigger bound as a button cannot fire a press the game did not see begin.
         static bool Active(GamepadState pad) =>
             pad.ButtonsDown.Count > 0 ||
             pad.LeftStick.Length() > InputManager.StickThreshold ||
-            pad.RightStick.Length() > InputManager.StickThreshold;
+            pad.RightStick.Length() > InputManager.StickThreshold ||
+            pad.LeftTrigger > InputManager.StickThreshold ||
+            pad.RightTrigger > InputManager.StickThreshold;
 
         static int Mask(IReadOnlySet<MouseButton> buttons)
         {

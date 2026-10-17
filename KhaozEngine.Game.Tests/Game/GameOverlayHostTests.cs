@@ -363,6 +363,23 @@ public sealed class GameOverlayHostTests
     }
 
     [Fact]
+    public void Hold_ending_with_a_trigger_pulled_hides_the_trigger_until_released()
+    {
+        var host = NewHost();
+        FakeOverlay a = Add(host, "a");
+        a.Holds = true;
+        host.Update(PadTrigger(1f), 0.016f);
+
+        a.Holds = false;
+        Assert.Equal(0f, host.Update(PadTrigger(1f), 0.016f).Gamepad(0).RightTrigger);
+        Assert.Equal(0f, host.Update(PadTrigger(0.8f), 0.016f).Gamepad(0).RightTrigger);
+
+        // Released, then a fresh pull reaches the game.
+        host.Update(PadTrigger(0f), 0.016f);
+        Assert.Equal(1f, host.Update(PadTrigger(1f), 0.016f).Gamepad(0).RightTrigger);
+    }
+
+    [Fact]
     public void Keys_held_across_a_hold_have_no_press_edge()
     {
         var host = NewHost();
@@ -415,6 +432,15 @@ public sealed class GameOverlayHostTests
         {
             new GamepadState(0, new HashSet<GamepadButton>(), new HashSet<GamepadButton>(),
                 new HashSet<GamepadButton>(), leftStick, Vector2.Zero, 0f, 0f),
+        });
+
+    static InputState PadTrigger(float rightTrigger) => new(
+        new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(),
+        new HashSet<MouseButton>(), new HashSet<MouseButton>(), new Vector2(5f, 5f), Vector2.Zero, 0f, 800, 600,
+        gamepads: new[]
+        {
+            new GamepadState(0, new HashSet<GamepadButton>(), new HashSet<GamepadButton>(),
+                new HashSet<GamepadButton>(), Vector2.Zero, Vector2.Zero, 0f, rightTrigger),
         });
 
     static InputState Keys(Key key, bool pressed) => new(

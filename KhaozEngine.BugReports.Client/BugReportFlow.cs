@@ -533,7 +533,8 @@ internal sealed class BugReportFlow
         {
             flushed = await _submitter.FlushAsync(subject, cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+        // As in SinkCall, only a cancellation that the token asked for propagates. A failure racing it is still a failure.
+        catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             Log.Warn("Saved bug reports could not be sent.", exception);
             return 0;

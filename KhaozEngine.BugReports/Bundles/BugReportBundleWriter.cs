@@ -41,7 +41,7 @@ public static class BugReportBundleWriter
                 $"The report needs {payloads.Count + 1} zip entries and a bundle holds at most {BugReportLimits.MaxEntries}."));
         long payloadBytes = 0;
         foreach ((_, ReadOnlyMemory<byte> data) in payloads) payloadBytes += data.Length;
-        if (payloadBytes > BugReportLimits.MaxBundleBytes) throw TooLarge(payloadBytes);
+        if (payloadBytes > BugReportLimits.MaxBundleBytes) throw TooLarge("The report payloads need", payloadBytes);
 
         var listed = new List<BundleEntry>(payloads.Count);
         foreach ((string name, ReadOnlyMemory<byte> data) in payloads)
@@ -56,7 +56,7 @@ public static class BugReportBundleWriter
             AddEntry(archive, BundleEntryNames.Manifest, manifest, stamp);
             foreach ((string name, ReadOnlyMemory<byte> data) in payloads) AddEntry(archive, name, data, stamp);
         }
-        if (output.Length > BugReportLimits.MaxBundleBytes) throw TooLarge(output.Length);
+        if (output.Length > BugReportLimits.MaxBundleBytes) throw TooLarge("The written archive is", output.Length);
         return output.Length == output.Capacity ? output.GetBuffer() : output.ToArray();
     }
 
@@ -77,14 +77,17 @@ public static class BugReportBundleWriter
         if (!ReportIds.IsValid(draft.ReportId))
             throw Invalid("The report id must be a canonical version 7 id from ReportIds.NewId.");
         if (!BundleEntryNames.IsValidGameId(draft.GameId))
-            throw Invalid("The game id must match [a-z0-9][a-z0-9-]{0,31}.");
+            throw Invalid(string.Create(CultureInfo.InvariantCulture,
+                $"The game id must match [a-z0-9][a-z0-9-]{{0,{BugReportLimits.MaxGameIdChars - 1}}}."));
         if (!Enum.IsDefined(draft.Kind))
             throw Invalid("The report kind is not a defined BugReportKind.");
         int year = draft.CapturedAt.UtcDateTime.Year;
         if (year is < MinZipYear or > MaxZipYear)
-            throw Invalid("The capture time must fall in the zip date range, 1980 to 2107 UTC.");
+            throw Invalid(string.Create(CultureInfo.InvariantCulture,
+                $"The capture time must fall in the zip date range, {MinZipYear} to {MaxZipYear} UTC."));
         if (draft.Category is null || draft.Category.Length is < 1 or > BugReportLimits.MaxCategoryChars || !IsWellFormed(draft.Category))
-            throw Invalid("The category must be 1 to 64 characters of well-formed text.");
+            throw Invalid(string.Create(CultureInfo.InvariantCulture,
+                $"The category must be 1 to {BugReportLimits.MaxCategoryChars} characters of well-formed text."));
 
         string description = draft.Description?.TrimEnd() ?? "";
         if (description.Length == 0)
@@ -223,6 +226,6 @@ public static class BugReportBundleWriter
 
     static ArgumentException Invalid(string message) => new(message, "draft");
 
-    static InvalidOperationException TooLarge(long bytes) => new(string.Create(CultureInfo.InvariantCulture,
-        $"The report needs {bytes} bytes and a bundle holds at most {BugReportLimits.MaxBundleBytes}."));
+    static InvalidOperationException TooLarge(string what, long bytes) => new(string.Create(CultureInfo.InvariantCulture,
+        $"{what} {bytes} bytes and a bundle holds at most {BugReportLimits.MaxBundleBytes}."));
 }

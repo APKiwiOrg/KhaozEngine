@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.BugReports.Contracts;
 using KhaozEngine.Imaging;
 
 namespace KhaozEngine.BugReports.Client.Internal;
@@ -26,8 +27,8 @@ internal static class ScreenshotEncoder
         ReadOnlySpan<byte> pixels = rgba.AsSpan(0, checked(width * height * 4));
 
         byte[] png = PngWriter.Encode(pixels, width, height);
-        if (png.Length < PngLimitBytes) return new ReportImage("image/png", width, height, png);
+        if (png.Length < PngLimitBytes) return new ReportImage(ImageHeaders.PngMediaType, width, height, png);
 
-        return new ReportImage("image/jpeg", width, height, JpegWriter.Encode(pixels, width, height, JpegQuality));
+        return new ReportImage(ImageHeaders.JpegMediaType, width, height, JpegWriter.Encode(pixels, width, height, JpegQuality));
     }
 }

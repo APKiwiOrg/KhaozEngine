@@ -61,9 +61,9 @@ public static class ImageHeaders
             byte marker = data[p++];
             if (marker is 0x01 or (>= 0xD0 and <= 0xD7)) continue;
             if (marker is 0x00 or 0xD8 or 0xD9 or 0xDA) return false;
-            if (p + 2 > data.Length) return false;
+            if (2 > data.Length - p) return false;
             int length = BinaryPrimitives.ReadUInt16BigEndian(data[p..]);
-            if (length < 2 || p + length > data.Length) return false;
+            if (length < 2 || length > data.Length - p) return false;
             if (marker is >= 0xC0 and <= 0xCF and not (0xC4 or 0xC8 or 0xCC))
             {
                 if (length < 8) return false;

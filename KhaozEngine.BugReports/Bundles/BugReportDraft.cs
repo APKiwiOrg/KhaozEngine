@@ -16,7 +16,10 @@ public sealed class BugReportDraft
 
     /// <summary>Creates a draft from what the trigger captured.</summary>
     /// <param name="reportId">A version 7 report id from <see cref="ReportIds.NewId"/>.</param>
-    /// <param name="gameId">The game id, matching <c>[a-z0-9][a-z0-9-]{0,31}</c>.</param>
+    /// <param name="gameId">
+    /// The game id: lowercase ASCII letters, digits and hyphens, not starting with a hyphen, at most
+    /// <see cref="BugReportLimits.MaxGameIdChars"/> characters. <see cref="BundleEntryNames.IsValidGameId"/> checks it.
+    /// </param>
     /// <param name="kind">Whether the player filed this or a crash produced it.</param>
     /// <param name="capturedAt">
     /// When the report was triggered. The manifest keeps it exactly, in UTC. It also stamps every zip entry, as the
@@ -54,7 +57,7 @@ public sealed class BugReportDraft
     /// <summary>The player's description. Trailing whitespace is dropped when written. Must not be blank.</summary>
     public string Description { get; set; } = "";
 
-    /// <summary>The category id, 1 to 64 characters.</summary>
+    /// <summary>The category id, 1 to <see cref="BugReportLimits.MaxCategoryChars"/> characters.</summary>
     public string Category { get; set; } = "Other";
 
     /// <summary>Whether <see cref="Screenshot"/> goes into the bundle.</summary>

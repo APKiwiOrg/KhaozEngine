@@ -5,26 +5,24 @@ using System.Globalization;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Unicode;
+using KhaozEngine.BugReports.Contracts;
 
 namespace KhaozEngine.BugReports;
 
 /// <summary>The JSON passes behind <see cref="BugReportSectionSet"/>: error objects, redaction and structural truncation.</summary>
 static class SectionJson
 {
-    /// <summary>The deepest nesting a section may write or a pass will read.</summary>
-    const int MaxDepth = 64;
-
     const string ErrorName = "error";
     const string TruncatedName = "truncated";
 
     internal static readonly JsonWriterOptions WriterOptions = new()
     {
         Indented = false,
-        MaxDepth = MaxDepth,
+        MaxDepth = BugReportLimits.MaxSectionDepth,
         Encoder = JavaScriptEncoder.Create(UnicodeRanges.All),
     };
 
-    static readonly JsonReaderOptions ReaderOptions = new() { MaxDepth = MaxDepth };
+    static readonly JsonReaderOptions ReaderOptions = new() { MaxDepth = BugReportLimits.MaxSectionDepth };
 
     static readonly byte[] TruncatedMarker = "{\"truncated\":true}"u8.ToArray();
 

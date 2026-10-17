@@ -479,8 +479,9 @@ public sealed class BugReportBundleWriterTests
     {
         int padding = (int)(BugReportLimits.MaxBundleBytes / BundleEntryNames.MaxClipFrames) + 1024;
 
-        Assert.Throws<InvalidOperationException>(
+        InvalidOperationException thrown = Assert.Throws<InvalidOperationException>(
             () => BugReportBundleWriter.Write(Draft(clip: Clip(BundleEntryNames.MaxClipFrames, padding))));
+        Assert.StartsWith("The report payloads need ", thrown.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -491,15 +492,14 @@ public sealed class BugReportBundleWriterTests
         int pngBytes = (int)BugReportLimits.MaxBundleBytes - 2 - 10;
         byte[] png = [.. TestBundles.Png(8, 6), .. new byte[pngBytes - TestBundles.Png(8, 6).Length]];
 
-        Assert.Throws<InvalidOperationException>(
+        InvalidOperationException thrown = Assert.Throws<InvalidOperationException>(
             () => BugReportBundleWriter.Write(Draft(sections: sections, screenshot: new ReportImage("image/png", 8, 6, png))));
+        Assert.StartsWith("The written archive is ", thrown.Message, StringComparison.Ordinal);
     }
 
     static void AssertRejected(BugReportDraft draft, string entry)
     {
-        byte[]? written = null;
-        ArgumentException thrown = Assert.Throws<ArgumentException>(() => written = BugReportBundleWriter.Write(draft));
-        Assert.Null(written);
+        ArgumentException thrown = Assert.Throws<ArgumentException>(() => BugReportBundleWriter.Write(draft));
         Assert.Contains(entry, thrown.Message, StringComparison.Ordinal);
     }
 

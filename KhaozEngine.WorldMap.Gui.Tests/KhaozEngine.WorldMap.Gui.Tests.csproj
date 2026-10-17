@@ -12,8 +12,5 @@
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.WorldMap.Gui/KhaozEngine.WorldMap.Gui.csproj" />
   </ItemGroup>
-  <ItemGroup>
-    <Compile Include="../test-shared/AllocationRegion.cs" Link="Shared/AllocationRegion.cs" />
-    <Compile Include="../test-shared/AllocationMeasurement.cs" Link="Shared/AllocationMeasurement.cs" />
-  </ItemGroup>
+  <Import Project="../test-shared/AllocationMeasurement.props" />
 </Project>

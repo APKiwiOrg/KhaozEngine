@@ -136,6 +136,28 @@ public sealed class WorldMapViewOverlayTests
         Assert.Null(view.Hovered);
     }
 
+    [Fact]
+    public void HoverOverlay_NotRebuiltForOccludedPointer()
+    {
+        using var cache = new WorldMapChunkCache(Source(), Style());
+        using var view = View(cache);
+        view.IconSizes = _ => new Vector2(12f, 16f);
+        var input = new TestInput();
+        BuildCenter(cache, view, input);
+        var pointer = input.At(new Vector2(300f, 184f));
+        view.Update(pointer, 0f);
+        Assert.Equal(new WorldMapHover(WorldMapHoverKind.Icon, "bank", Anchor), view.Hovered);
+
+        pointer.Occlude(new Rect(294f, 176f, 12f, 16f));
+        view.Update(pointer, 0f);
+        Assert.Null(view.Hovered);
+        Assert.Single(view.OverlayPlacement.Icons);
+
+        pointer.ClearOcclusion();
+        view.Update(pointer, 0f);
+        Assert.Equal(new WorldMapHover(WorldMapHoverKind.Icon, "bank", Anchor), view.Hovered);
+    }
+
     /// <summary>An unusable viewport clears overlay placement, marker draws and hover from the previous frame.</summary>
     [Fact]
     public void UnusableViewport_ClearsOverlaysAndHover()

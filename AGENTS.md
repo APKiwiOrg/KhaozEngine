@@ -96,7 +96,8 @@ minimum is:
 
 Never run a bare pack into `local-feed`. Never hand-create a release tag. `scripts/tag-release.sh`
 creates the canonical annotated tag only when a release is explicitly due. The sole automatic tag
-exception is an explicitly pinned and waiting consumer.
+exception is an explicitly pinned and waiting consumer. Check `scripts/release-lock.sh status` before
+merging into or pushing `main`, and wait while a release holds the lock.
 
 ## Documentation and issues
 

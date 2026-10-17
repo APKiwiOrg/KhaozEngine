@@ -33,6 +33,35 @@
 # The delete also shortened the matrix's own wall clock: the slowest leg was direct3d11 at 37m41s and is now
 # vulkan-native at 26m36s, and a full dispatch drops about 63 minutes of runner time.
 #
+# EVERY LEG'S FULL SUITE IS SHARDED SINCE #1438 (https://github.com/APKiwiOrg/KhaozEngine/issues/1438).
+# The suite outgrew one runner: vulkan-native took 2h40m in run 38991082421, 2h15m of it in Render.Tests,
+# and direct3d11-native spent 46m in Render.Tests alone in run 39010325116. The pre-tag release gate is a
+# dispatch of this workflow, so the slowest job sets the release time. Once the two software legs were split,
+# that job was Metal's unsharded full suite (a 26-minute test step in run 39022823501), so Metal is sharded
+# too. A leg is sharded whenever it runs its full suite and the run neither bakes nor sets renderTestFilter:
+# every trigger for metal-native, the schedule and workflow_dispatch for the other two. Each sharded leg runs
+# as `rest` (every test project except Render.Tests) plus `render-1` to `render-N` (Render.Tests in slices):
+#   metal-native        rest + 2 render slices = 3 jobs
+#   direct3d11-native   rest + 4 render slices = 5 jobs
+#   vulkan-native       rest + 9 render slices = 10 jobs
+# Each backend has its own slice table, balanced from that backend's measured per-test times. The split lives
+# in scripts/gpu-test-shards.py, which is also the coverage guard: every render shard checks that its
+# backend's slices partition the listed Render.Tests methods exactly once before it runs, and the per-backend
+# `full suite` job fails when a shard is missing or red or when a test assembly ran on no shard or on two.
+# Each shard keeps its leg's instruments (strict validation and serialisation on Vulkan, the pool watch on
+# Windows, the debug layer and the device-evidence detector on Metal), and every evidence artifact carries the
+# shard name. The two software legs' push path, a bake dispatch and a renderTestFilter dispatch stay one job
+# per leg, exactly as before.
+#
+# CONCURRENCY. The org is on the Team plan: 60 concurrent GitHub-hosted standard jobs and 5 concurrent macOS
+# jobs (https://docs.github.com/en/actions/reference/limits). A default-input dispatch peaks at 19 jobs here
+# (3 Metal, 5 Windows, 10 Linux, the sync job), 23 with the `ci` dispatch the pre-tag gate runs beside it.
+# Metal takes no more than 3 because its slowest shard is already well under the Vulkan floor, so a fourth
+# macOS job would only spend the shared macOS allowance. That allowance is the one that binds in practice:
+# every push and pull_request runs Metal's full suite too, so overlapping runs share 5 macOS slots, and in
+# run 39030778010 one Metal shard queued 4 minutes behind three other runs' Metal jobs. On the Free plan's 20
+# total the gate would also queue three Linux or Windows jobs until the first shards finish.
+#
 # What this does (suite split by leg + trigger, decided from measured cost + lavapipe stability):
 #   * The Metal NATIVE leg runs the engine's own KhaozEngine.Gpu.Metal backend
 #     (KE_GRAPHICS_BACKEND=metal-native) on the FULL test suite (every [GpuFact], golden and behavioral, plus
@@ -176,8 +205,9 @@
 #   trigger leaves the variables blank, which is the default location and the shipped behaviour.
 #
 # Software rasterizers (the Windows and Linux runners have no real GPU):
-#   * Linux uses Mesa lavapipe (software Vulkan). The workflow discovers the lavapipe ICD manifest at runtime
-#     (its name and path drift across Ubuntu images) and points VK_ICD_FILENAMES/VK_DRIVER_FILES at it. The
+#   * Linux uses Mesa lavapipe (software Vulkan). The workflow looks the lavapipe ICD manifest up in the
+#     mesa-vulkan-drivers file list at runtime (its name and path drift across Ubuntu images) and points
+#     VK_ICD_FILENAMES/VK_DRIVER_FILES at it. The
 #     leg additionally pins KE_VULKAN_DEVICE=llvmpipe (decision V-G2), for the reason the Windows leg pins
 #     its adapter: the loader-level ICD pin has needed repairing before when a runner image moved the
 #     manifest, and an unpinned physical-device selection could then land on something else entirely without
@@ -187,6 +217,11 @@
 #     does not ride that accident: it pins KE_D3D11_ADAPTER=warp (decision G2), so a runner image that
 #     grows a paravirtual adapter cannot silently change the rasterizer under the golden gate. The variable
 #     is read only by the native backend's adapter selection.
+#
+# Job setup: every matrix job and the sync job restore the NuGet global packages folder from the Actions
+# cache before `dotnet restore`, and each leg's primary entry saves it. KhaozEngine packages are excluded
+# from the cache because a same-version re-pack would otherwise restore stale engine bytes (the restore step
+# in the matrix job carries the reasoning). Build outputs are never cached.
 #
 # The headless golden tests use Render2D/3D Snapshot -> CreateHeadless (offscreen, NO window), so SDL2 is
 # NOT required here (only the Vulkan/D3D11/Metal runtime plus a (software) rasterizer where there is no real
@@ -437,12 +472,25 @@ jobs:
       # JSON with a substring test would tie a job's existence to jq's output formatting. This is the
       # same "selection arrives as data" argument the matrix output is built on.
       vulkan_native: ${{ steps.pick.outputs.vulkan_native }}
+      # The legs whose full suite this run shards, as [{os, backend}], read by the per-backend `full suite`
+      # job. `[]` on every run that shards nothing (push, pull_request, bake, renderTestFilter).
+      sharded: ${{ steps.pick.outputs.sharded }}
     steps:
+      # Only the shard plan is needed here, so the checkout is one file.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: scripts/gpu-test-shards.py
+          sparse-checkout-cone-mode: false
+
       - id: pick
         shell: bash
         env:
           # Only a dispatch can choose. Every other trigger gets the whole matrix, as before.
           WANT: ${{ github.event_name == 'workflow_dispatch' && inputs.legs || 'all' }}
+          # What decides whether a full suite is sharded (#1438). See scripts/gpu-test-shards.py `expand`.
+          EVENT: ${{ github.event_name }}
+          BAKE: ${{ (github.event_name == 'workflow_dispatch' && inputs.bake) && 'true' || 'false' }}
+          RENDER_FILTER: ${{ github.event_name == 'workflow_dispatch' && inputs.renderTestFilter || '' }}
         run: |
           set -euo pipefail
 
@@ -526,12 +574,21 @@ jobs:
           fi
 
           echo "selected legs: $(jq -r '[.[].backend] | join(", ")' <<<"$picked")"
-          echo "matrix={\"include\":$picked}" >> "$GITHUB_OUTPUT"
+          # SHARDING (#1438). A leg on one of its full-suite triggers (every trigger for metal-native, the
+          # schedule and a dispatch for the other two) that neither bakes nor filters becomes one matrix entry
+          # per shard, each carrying `shard` (`rest` or `render-N`) and `primary` (`1` on the
+          # one entry per leg that runs the once-per-leg steps). Every other leg stays one entry with an empty
+          # `shard` and `primary: 1`, which is exactly the shape it had before.
+          python3 scripts/gpu-test-shards.py expand <<<"$picked" >> "$GITHUB_OUTPUT"
           echo "vulkan_native=$(jq -r 'any(.[]; .backend == "vulkan-native")' <<<"$picked")" >> "$GITHUB_OUTPUT"
 
   gpu-golden:
     needs: legs
-    name: ${{ matrix.os }} / ${{ matrix.backend }}
+    # An unsharded leg keeps its historical name, so the software legs' push-path checks read exactly as before.
+    # A shard appends its own name, for example `ubuntu-latest / vulkan-native / render-3`. Metal is sharded on
+    # every trigger, so its checks are `macos-26 / metal-native / rest`, `/ render-1`, `/ render-2` and the
+    # `macos-26 / metal-native / full suite` job that answers for them.
+    name: ${{ matrix.os }} / ${{ matrix.backend }}${{ matrix.shard != '' && format(' / {0}', matrix.shard) || '' }}
     runs-on: ${{ matrix.runner }}
     # All three legs are blocking, with no continue-on-error on any of them. Each verifies its OWN golden
     # family since 17.41.0, on the rasterizer its deleted incumbent used to share (macOS paravirtual Metal,
@@ -551,10 +608,14 @@ jobs:
     strategy:
       fail-fast: false
       # Built by the `legs` job above, which is also where the leg table and its per-leg rationale live.
-      # The shape is unchanged: one combination per leg, carrying os / backend / runner / fullSuite /
-      # d3d11Adapter / vulkanDevice / vulkanValidation exactly as a static `include` list would.
+      # One combination per leg, carrying os / backend / runner / fullSuite / d3d11Adapter / vulkanDevice /
+      # vulkanValidation exactly as a static `include` list would, plus `shard` and `primary`. A sharded
+      # full suite (#1438) is one combination per shard of the same leg, identical but for those two.
       matrix: ${{ fromJSON(needs.legs.outputs.matrix) }}
     env:
+      # Appended to every per-run artifact name, so the shards of one leg cannot collide. Empty on an
+      # unsharded run, which keeps every artifact name that run had before #1438.
+      SHARD_SUFFIX: ${{ matrix.shard != '' && format('-{0}', matrix.shard) || '' }}
       # WHETHER THIS RUN ACTUALLY ARMS A VALIDATION TIER, as ONE expression with three readers, for the reason
       # Two conditions have to hold together and they come from different places: the leg must HAVE a tier (matrix.vulkanValidation, which
       # is vulkan-native alone) and this trigger must be one that runs the FULL suite, because the push-path
@@ -771,8 +832,48 @@ jobs:
       - run: mkdir -p local-feed
         shell: bash
 
+      # ON WINDOWS THE NUGET GLOBAL PACKAGES FOLDER IS CACHED, AND KHAOZENGINE PACKAGES NEVER ARE. Restore was
+      # 55 to 92 s on every Windows job and 14 to 21 s on Linux and macOS (run 39022823501), repeated on every
+      # shard. Measured warm (run 39031351066), the cache cut Windows to 27 s of cache restore plus 15 s of
+      # restore, but cost Linux 8 + 14 s and macOS 17 + 13 s, slower than restoring from nuget.org there. So
+      # only Windows jobs use it. Every Windows job restores the cache, and only the leg's `primary` entry saves
+      # it, right after `dotnet restore`, so the leg's shards never race to write the same key and a red suite still
+      # leaves a warm cache. The key is the OS plus every file that can change the restore graph: the csproj
+      # files, the props and targets files that carry central versions and PackageReference items, and
+      # nuget.config. A key miss falls back to the newest cache for the OS and restore tops it up.
+      #
+      # `khaozengine.*` is excluded from both the cached and the restored paths, and the exclusion is the
+      # same-version re-pack rule rather than tidiness. A KhaozEngine version can be packed again with new
+      # bytes under the same number (scripts/pack-local-feed.sh refreshes the current version in place), and
+      # NuGet trusts any extracted folder whose id and version match, so a cached copy would be restored in
+      # place of the re-pack and the run would test stale engine bytes while reporting the right version.
+      # Nothing in this workflow restores a KhaozEngine package today: every engine edge in KhaozEngine.slnx is
+      # a ProjectReference, local-feed is created empty, the GitHub Packages source is mapped to KhaozEngine.*
+      # alone and no job runs `dotnet tool restore`. The exclusion keeps that true if one ever appears.
+      - name: Restore the NuGet package cache
+        id: nuget-cache
+        if: runner.os == 'Windows'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.nuget/packages
+            !~/.nuget/packages/khaozengine.*
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/*.props', '**/*.targets', 'nuget.config', 'global.json') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
       - run: dotnet restore
 
+      - name: Save the NuGet package cache
+        if: runner.os == 'Windows' && matrix.primary == '1' && steps.nuget-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.nuget/packages
+            !~/.nuget/packages/khaozengine.*
+          key: ${{ steps.nuget-cache.outputs.cache-primary-key }}
+
+      # Build outputs are not cached: obj and bin are what this job exists to produce from the commit under test.
       - run: dotnet build -c Release --no-restore
 
       # TRIPWIRE for the Linux native load path. Silk.NET resolves its natives through its OWN path resolver,
@@ -795,6 +896,10 @@ jobs:
       # drifts across Ubuntu runner images, so DISCOVER it rather than hardcoding (the old hardcoded
       # /usr/share/vulkan/icd.d/lvp_icd.x86_64.json went missing and gave "Found no drivers!"). Dump what the
       # package shipped so a future drift is diagnosable from the log.
+      #
+      # The install is not cached. Measured in run 39022823501 it is about 10 s: apt-get update 5 s, a 0.6 s
+      # download of 17.8 MB and 3.5 s to unpack and set up. Caching the .deb archives would save the 0.6 s and
+      # add a cache step of its own, and the unpack and the index refresh would still run.
       - name: Install software Vulkan (lavapipe)
         if: matrix.os == 'ubuntu-latest'
         run: |
@@ -806,14 +911,17 @@ jobs:
           echo "--- ICD manifests on disk ---"
           ls -la /usr/share/vulkan/icd.d/ /etc/vulkan/icd.d/ 2>/dev/null || true
 
+      # The manifest is looked up in the package's own file list. A `find /usr /etc` walk of the hosted image
+      # found the same file and took 50 to 116 s per job (run 39022823501). The name still is not hardcoded,
+      # and a package that ships no lvp manifest still fails the job with the manifests it did ship.
       - name: Point Vulkan loader at lavapipe
         if: matrix.os == 'ubuntu-latest'
         run: |
           set -x
-          icd=$(find /usr /etc -name 'lvp_icd*.json' 2>/dev/null | head -1)
-          if [ -z "$icd" ]; then
-            echo "::error::lavapipe ICD manifest not found after installing mesa-vulkan-drivers"
-            find /usr /etc -name '*_icd*.json' 2>/dev/null || true
+          icd=$(dpkg -L mesa-vulkan-drivers | grep -E '/lvp_icd[^/]*\.json$' | head -1)
+          if [ -z "$icd" ] || [ ! -f "$icd" ]; then
+            echo "::error::lavapipe ICD manifest not found in the mesa-vulkan-drivers file list"
+            dpkg -L mesa-vulkan-drivers | grep -E '_icd[^/]*\.json$' || true
             exit 1
           fi
           echo "lavapipe ICD: $icd"; cat "$icd" || true
@@ -868,8 +976,9 @@ jobs:
       # in a run that also holds a full test suite, log retention is shorter than artifact retention, and the
       # numbers have to be quotable verbatim into section 2.1 of the design. `continue-on-error` stays, so a
       # runner without vulkaninfo costs an empty file rather than a red leg.
+      # One reading per leg: the primary entry alone, which is the `rest` shard on a sharded full suite.
       - name: Vulkan diagnostics
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest' && matrix.primary == '1'
         continue-on-error: true
         shell: bash
         run: |
@@ -880,7 +989,7 @@ jobs:
       # is read off a GREEN run, and a failure-only artifact could only ever show it after something broke.
       # Kilobytes of text. ignore = no spurious failure on a leg that never ran the step.
       - name: Upload Vulkan device limits
-        if: always() && matrix.os == 'ubuntu-latest'
+        if: always() && matrix.os == 'ubuntu-latest' && matrix.primary == '1'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: vulkan-device-limits-${{ matrix.backend }}
@@ -927,8 +1036,9 @@ jobs:
         # incumbent leg, so this moved to `direct3d11-native`, which is now the only Windows leg there is.
         # The pin key is LOAD-BEARING. Rename or retire that leg and this step silently stops running, with
         # nothing failing anywhere: the TreatNoTestsAsError guard below catches a filter that matches nothing,
-        # not a matrix-key rename.
-        if: matrix.backend == 'direct3d11-native'
+        # not a matrix-key rename. `primary` keeps it to one run per leg when the full suite is sharded
+        # (#1438): the `rest` shard runs it, and an unsharded run is always primary.
+        if: matrix.backend == 'direct3d11-native' && matrix.primary == '1'
         run: |
           dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build \
             --filter "FullyQualifiedName~D3D11FxcValidationTests|FullyQualifiedName~D3D11VorticeStructLayoutTests" \
@@ -955,8 +1065,9 @@ jobs:
       # guest leg, because a guest owned no family and could only have verified references being replaced
       # mid-run. From 17.41.0 every leg owns the family it reads (row 2 of #683), so every leg is a bake leg
       # and the condition is gone with the goldenGuest column it read.
+      # Once per leg, on the primary entry, which is the `rest` shard when the full suite is sharded (#1438).
       - name: Vulkan shader cache cold warm and disabled verification
-        if: github.event_name == 'workflow_dispatch' && matrix.backend == 'vulkan-native' && !inputs.disableGpuDiskCache
+        if: github.event_name == 'workflow_dispatch' && matrix.backend == 'vulkan-native' && matrix.primary == '1' && !inputs.disableGpuDiskCache
         env:
           KE_GPU_TESTS: '1'
           KE_GRAPHICS_BACKEND: vulkan-native
@@ -987,7 +1098,14 @@ jobs:
           PY
 
       - name: Run test suite
+        # Named, because the shard report below records this step's outcome and the per-backend `full suite`
+        # job reads it.
+        id: suite
         env:
+          # Which shard of a sharded full suite this entry runs (#1438), empty on every unsharded run. `rest`
+          # is the solution without Render.Tests, `render-N` is one Render.Tests slice from
+          # scripts/gpu-test-shards.py. See the run script below.
+          KE_TEST_SHARD: ${{ matrix.shard }}
           KE_GPU_TESTS: '1'
           KE_GRAPHICS_BACKEND: ${{ matrix.backend }}
           # The Windows leg pins the adapter (decision G2, matrix comment above). Empty on macOS and Linux,
@@ -1143,7 +1261,13 @@ jobs:
           #
           # AND A TRX LOGGER WHERE THE POOL WATCHDOG IS ARMED, so a starvation episode's timestamps can be laid
           # against the start and end of every test that was running beside it. The console logger is unchanged.
-          KE_TEST_LOGGER_ARGS: ${{ (env.VULKAN_VALIDATION_ARMED != '' || matrix.backend == 'metal-native') && '--logger console;verbosity=detailed' || (env.POOL_WATCH_ARMED != '' && '--logger trx' || '') }}
+          #
+          # AND ON EVERY SHARD (#1438), beside whatever console logger the leg has. The shard report reads its
+          # per-assembly totals from these files, one per test assembly, because the console cannot carry them on
+          # every leg: Metal runs its assemblies in parallel at detailed verbosity, and that output interleaves
+          # the assemblies' blocks with nothing to say which totals belong to which. The same files carry every
+          # test's duration, which is what the slice tables in scripts/gpu-test-shards.py are balanced from.
+          KE_TEST_LOGGER_ARGS: ${{ format('{0} {1}', (env.VULKAN_VALIDATION_ARMED != '' || matrix.backend == 'metal-native') && '--logger console;verbosity=detailed' || '', (env.POOL_WATCH_ARMED != '' || matrix.shard != '') && '--logger trx' || '') }}
           # The watchdog itself (see POOL_WATCH_ARMED in the job env). Empty everywhere else, which leaves it off.
           # Absolute, because each test host runs from its own output directory.
           KE_POOL_WATCH: ${{ env.POOL_WATCH_ARMED }}
@@ -1179,11 +1303,15 @@ jobs:
           KE_TEST_FILTER: ${{ (github.event_name == 'workflow_dispatch' && inputs.renderTestFilter) || ((matrix.fullSuite == 'always' || (matrix.fullSuite == 'scheduled' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'))) && 'Category!=LiveSocket' || 'FullyQualifiedName~Golden|FullyQualifiedName~FoliageGpuTests') }}
           # WARP saturates the Windows runner's CPUs. Keep Render.Tests out of the other hosts' pass while
           # retaining parallel execution among those hosts. Golden-only and targeted render runs stay single-pass.
+          # A sharded full suite (#1438) isolates by construction, because Render.Tests never shares a job with
+          # another test assembly, so this only still acts on the unsharded full run a bake dispatch takes.
           KE_TEST_ISOLATE_RENDER: ${{ (matrix.backend == 'direct3d11-native' && (matrix.fullSuite == 'always' || (matrix.fullSuite == 'scheduled' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'))) && !(github.event_name == 'workflow_dispatch' && inputs.renderTestFilter)) && '1' || '' }}
           # BOTH Vulkan legs' full-suite runs: serialize MSBuild projects, target frameworks, test hosts
           # and xUnit collections, one live device at a time. Collection settings alone cannot stop two
           # assemblies opening devices at once
-          # (~22 min serialized vs minutes parallel, header). Empty for every other leg and for
+          # (~22 min serialized vs minutes parallel, header). Every shard of a sharded full suite keeps it: each
+          # shard is its own runner, so one live device per runner is what the serialisation still buys there.
+          # Empty for every other leg and for
           # golden-only runs (months of parallel green history). It is named rather than matched on a prefix
           # because MV7 takes serialisation off this leg if it wins, and a prefix match would take it off any
           # future Linux leg with it.
@@ -1200,6 +1328,12 @@ jobs:
         # against last week's run. pipefail is set explicitly rather than relied on: it IS the default for
         # `shell: bash` here, and a gating command whose exit code depends on an implicit shell option is one
         # runner-image change away from a suite that fails green.
+        #
+        # SHARDS (#1438). `rest` runs the generated solution without Render.Tests, the same one the Windows
+        # isolation pass has always used, so a new test project lands in it with no edit. `render-N` first
+        # lists every Render.Tests method on this build and runs the coverage guard over this backend's whole
+        # slice table (each listed method in exactly one slice, or the shard fails before running anything),
+        # then runs Render.Tests under this trigger's filter ANDed with its own slice's filter.
         run: |
           set -o pipefail
           mkdir -p TestResults
@@ -1207,11 +1341,11 @@ jobs:
           read -r -a build_args <<< "$KE_TEST_BUILD_ARGS"
           read -r -a logger_args <<< "$KE_TEST_LOGGER_ARGS"
           read -r -a extra_args <<< "$KE_TEST_EXTRA_ARGS"
+          suite_filter="$KE_TEST_FILTER"
           run_suite() {
-            dotnet test "$@" -c Release --no-build "${build_args[@]}" --filter "$KE_TEST_FILTER" --blame --results-directory "$PWD/TestResults" "${logger_args[@]}" "${extra_args[@]}" 2>&1 | tee -a TestResults/suite-output.log
+            dotnet test "$@" -c Release --no-build "${build_args[@]}" --filter "$suite_filter" --blame --results-directory "$PWD/TestResults" "${logger_args[@]}" "${extra_args[@]}" 2>&1 | tee -a TestResults/suite-output.log
           }
-          status=0
-          if [ "$KE_TEST_ISOLATE_RENDER" = "1" ]; then
+          write_non_render_solution() {
             # The root keeps exactly one solution. Rebase project paths into the generated solution's directory.
             python3 - <<'PY'
           import xml.etree.ElementTree as ET
@@ -1229,6 +1363,23 @@ jobs:
           assert excluded == 1, "Expected exactly one Render.Tests project"
           solution.write("TestResults/KhaozEngine.NonRender.slnx", encoding="unicode")
           PY
+          }
+          status=0
+          if [ "$KE_TEST_SHARD" = "rest" ]; then
+            write_non_render_solution
+            run_suite TestResults/KhaozEngine.NonRender.slnx || status=$?
+            rm TestResults/KhaozEngine.NonRender.slnx
+          elif [ -n "$KE_TEST_SHARD" ]; then
+            render=KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj
+            dotnet test "$render" -c Release --no-build --list-tests > TestResults/render-tests.list 2>&1 \
+              || { tail -n 40 TestResults/render-tests.list; echo "::error::listing Render.Tests failed"; exit 1; }
+            python3 scripts/gpu-test-shards.py check-render "$KE_GRAPHICS_BACKEND" TestResults/render-tests.list
+            slice=$(python3 scripts/gpu-test-shards.py filter "$KE_GRAPHICS_BACKEND" "$KE_TEST_SHARD")
+            suite_filter="($KE_TEST_FILTER)&($slice)"
+            echo "shard $KE_TEST_SHARD filter: $suite_filter"
+            run_suite "$render" || status=$?
+          elif [ "$KE_TEST_ISOLATE_RENDER" = "1" ]; then
+            write_non_render_solution
             # Run both passes even after a test failure, and retain either failure as the step's exit status.
             run_suite TestResults/KhaozEngine.NonRender.slnx || status=$?
             run_suite KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj || status=$?
@@ -1388,11 +1539,14 @@ jobs:
 
       # Uploaded on always() for the reason the step above runs on always(): a green boot's readings are the
       # baseline the red boot's are read against, and half of a difference is not one. Kilobytes of text.
+      # PER SHARD, not once per leg (#1438): each shard of a sharded Metal suite is its own boot on its own host,
+      # which is exactly the reading #614 differences, and its detector scans that shard's own suite log. The
+      # shard suffix keeps the names apart. An unsharded run keeps `device-evidence-metal-native`.
       - name: Upload device evidence
         if: always() && matrix.os == 'macos-26'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: device-evidence-${{ matrix.backend }}
+          name: device-evidence-${{ matrix.backend }}${{ env.SHARD_SUFFIX }}
           path: device-evidence/
           if-no-files-found: ignore
 
@@ -1410,7 +1564,7 @@ jobs:
         if: always() && env.VULKAN_VALIDATION_ARMED != ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: vulkan-validation-strict-${{ matrix.backend }}
+          name: vulkan-validation-strict-${{ matrix.backend }}${{ env.SHARD_SUFFIX }}
           path: TestResults/suite-output.log
           if-no-files-found: ignore
 
@@ -1461,11 +1615,13 @@ jobs:
       #                         live instrument. Named for what it is rather than for what is merely set.
       #   * debug-layer       - every unattended trigger, and true again as of #614.
       # A fourth case, the #617 control on the incumbent Metal leg, went with that leg in 18.0.0.
+      # A sharded run appends the shard (#1438), so each shard's log is its own artifact, for example
+      # `metal-validation-debug-layer-metal-native-render-2`.
       - name: Upload Metal validation log
         if: always() && matrix.backend == 'metal-native'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: metal-validation-${{ env.METAL_DEEP_TIER != '' && 'shader-validation' || (env.METAL_CAPTURE_TIER != '' && 'capture' || 'debug-layer') }}-${{ matrix.backend }}
+          name: metal-validation-${{ env.METAL_DEEP_TIER != '' && 'shader-validation' || (env.METAL_CAPTURE_TIER != '' && 'capture' || 'debug-layer') }}-${{ matrix.backend }}${{ env.SHARD_SUFFIX }}
           path: TestResults/suite-output.log
           if-no-files-found: ignore
 
@@ -1477,7 +1633,7 @@ jobs:
         if: always() && env.POOL_WATCH_ARMED != ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: pool-watch-${{ matrix.backend }}
+          name: pool-watch-${{ matrix.backend }}${{ env.SHARD_SUFFIX }}
           path: |
             TestResults/pool-watch/
             TestResults/*.trx
@@ -1490,7 +1646,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: crash-sequence-${{ matrix.backend }}
+          name: crash-sequence-${{ matrix.backend }}${{ env.SHARD_SUFFIX }}
           path: TestResults/**/Sequence_*.xml
           if-no-files-found: ignore
 
@@ -1501,7 +1657,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: golden-evidence-${{ matrix.backend }}
+          name: golden-evidence-${{ matrix.backend }}${{ env.SHARD_SUFFIX }}
           path: KhaozEngine.Render.Tests/Gpu/goldens-evidence/
           if-no-files-found: ignore
 
@@ -1514,7 +1670,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: golden-deltas-${{ matrix.backend }}
+          name: golden-deltas-${{ matrix.backend }}${{ env.SHARD_SUFFIX }}
           path: KhaozEngine.Render.Tests/Gpu/goldens-evidence/golden-deltas.*.txt
           if-no-files-found: ignore
 
@@ -1526,7 +1682,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: hlsl-evidence-${{ matrix.backend }}
+          name: hlsl-evidence-${{ matrix.backend }}${{ env.SHARD_SUFFIX }}
           path: KhaozEngine.Render.Tests/Gpu/hlsl-evidence/
           if-no-files-found: ignore
 
@@ -1540,11 +1696,81 @@ jobs:
         if: always() && github.event_name == 'workflow_dispatch' && inputs.bake
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: goldens-${{ matrix.backend }}
+          name: goldens-${{ matrix.backend }}${{ env.SHARD_SUFFIX }}
           path: |
             KhaozEngine.Render.Tests/Gpu/goldens/*.${{ matrix.backend }}.txt
             KhaozEngine.Render.Tests/Gpu/goldens-evidence/*.${{ matrix.backend }}.bake.png
           if-no-files-found: ignore
+
+      # THE SHARD'S TESTIMONY FOR THE PER-BACKEND `full suite` JOB (#1438): the test step's outcome and the
+      # per-assembly totals read off this shard's TRX files, one per test assembly the suite ran. always(), so a
+      # shard that failed or was cancelled still reports what it got to. A shard that never reaches this step
+      # leaves no report, and the summary job reads a missing report as a failed shard rather than as a smaller
+      # suite.
+      - name: Record the shard report
+        if: always() && matrix.shard != ''
+        shell: bash
+        env:
+          LEG: ${{ matrix.backend }}
+          SHARD: ${{ matrix.shard }}
+          OUTCOME: ${{ steps.suite.outcome }}
+        run: |
+          mkdir -p shard-report TestResults
+          python3 scripts/gpu-test-shards.py report "$LEG" "$SHARD" "${OUTCOME:-skipped}" TestResults "shard-report/$LEG-$SHARD.json"
+
+      - name: Upload the shard report
+        if: always() && matrix.shard != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: shard-report-${{ matrix.backend }}-${{ matrix.shard }}
+          path: shard-report/
+          if-no-files-found: ignore
+
+      # THE BALANCE'S EVIDENCE: the TRX files the report was read from, which carry every test's duration on
+      # this backend's rasterizer. The slice tables in scripts/gpu-test-shards.py are re-balanced from these,
+      # so a slice that drifts long can be moved without a diagnostic re-run. Kept a week. A few MB per backend.
+      - name: Upload the shard test timings
+        if: always() && matrix.shard != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: shard-trx-${{ matrix.backend }}-${{ matrix.shard }}
+          path: TestResults/*.trx
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # ONE CHECK PER SHARDED BACKEND (#1438), named `<os> / <backend> / full suite`. A sharded full suite is three to
+  # ten jobs per leg, and this is the one that answers for all of them: it is red when any shard is red, missing
+  # or cancelled, and when the shards' own reports show a test assembly that ran on no shard, on two shards,
+  # or Render.Tests outside its slices. Its job summary carries the per-assembly totals summed across the
+  # shards, which is the reading to compare against an unsharded run. It runs on always() because a red shard
+  # is exactly the case it has to report, and it exists only on runs that shard something.
+  gpu-full-suite:
+    needs: [legs, gpu-golden]
+    if: always() && needs.legs.result == 'success' && needs.legs.outputs.sharded != '[]'
+    name: ${{ matrix.os }} / ${{ matrix.backend }} / full suite
+    runs-on: ubuntu-26.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.legs.outputs.sharded) }}
+    steps:
+      # The solution and the csproj files are what the assembly coverage check reads, so this is a full checkout.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download the shard reports
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: shard-report-${{ matrix.backend }}-*
+          path: shard-reports
+
+      - name: Check every shard ran and every test assembly ran exactly once
+        shell: bash
+        env:
+          LEG: ${{ matrix.backend }}
+        run: |
+          mkdir -p shard-reports
+          python3 scripts/gpu-test-shards.py summarize "$LEG" shard-reports KhaozEngine.slnx
 
   # TIER TWO OF THE VALIDATION GATE (decision V-T4): core validation PLUS synchronisation validation, over the
   # golden subset plus the compute suite, on the native Vulkan backend and lavapipe.
@@ -1606,11 +1832,12 @@ jobs:
       - run: mkdir -p local-feed
         shell: bash
 
+      # No NuGet cache on Linux: restoring it measured slower than restoring from nuget.org (see the matrix job).
       - run: dotnet restore
 
       - run: dotnet build -c Release --no-restore
 
-      # The same lavapipe install and the same runtime ICD discovery as the matrix job, for the same reasons.
+      # The same lavapipe install and the same ICD lookup as the matrix job, for the same reasons.
       - name: Install software Vulkan (lavapipe)
         run: |
           set -x
@@ -1622,10 +1849,10 @@ jobs:
       - name: Point Vulkan loader at lavapipe
         run: |
           set -x
-          icd=$(find /usr /etc -name 'lvp_icd*.json' 2>/dev/null | head -1)
-          if [ -z "$icd" ]; then
-            echo "::error::lavapipe ICD manifest not found after installing mesa-vulkan-drivers"
-            find /usr /etc -name '*_icd*.json' 2>/dev/null || true
+          icd=$(dpkg -L mesa-vulkan-drivers | grep -E '/lvp_icd[^/]*\.json$' | head -1)
+          if [ -z "$icd" ] || [ ! -f "$icd" ]; then
+            echo "::error::lavapipe ICD manifest not found in the mesa-vulkan-drivers file list"
+            dpkg -L mesa-vulkan-drivers | grep -E '_icd[^/]*\.json$' || true
             exit 1
           fi
           echo "lavapipe ICD: $icd"

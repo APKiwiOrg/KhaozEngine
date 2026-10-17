@@ -94,7 +94,8 @@ public sealed class PanZoomController
         }
 
         bool admits(Vector2 position) => DragMotionTracker.IsFinite(position) && viewport.Contains(position)
-            && !pointer.IsBlocked(position) && !(isBlocked?.Invoke(position) ?? false);
+            && !pointer.IsBlocked(position) && !pointer.IsOccluded(position)
+            && !(isBlocked?.Invoke(position) ?? false);
         void pan(Vector2 delta) => DirectPan(target, delta);
         void zoom(float factor, Vector2 anchor) => DirectZoom(target, factor, anchor);
 
@@ -183,7 +184,8 @@ public sealed class PanZoomController
             _drag.Release(pointer.Position, sameFrameTap ? 0 : dtSeconds);
             DirectPan(target, _drag.DragDelta);
             _velocity = _drag.ReleaseVelocity;
-            if (_drag.TapEligible && _viewport.Contains(pointer.Position)) RecordTap(target, pointer.Position);
+            if (_drag.TapEligible && !pointer.IsOccluded(pointer.Position) && _viewport.Contains(pointer.Position))
+                RecordTap(target, pointer.Position);
         }
         _mouseSequence = _mouseAdmitted = false;
         return true;

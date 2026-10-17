@@ -36,7 +36,7 @@ public sealed partial class ScrollablePanel
         {
             DragScrollingEnabled = dragPanEnabled;
         }
-        ApplyDragEdgeScroll(dragContext, dt);
+        if (!pointer.IsOccluded(dragContext.PointerPosition)) ApplyDragEdgeScroll(dragContext, dt);
     }
 
     void ApplyDragEdgeScroll(GuiDragContext dragContext, float dt)

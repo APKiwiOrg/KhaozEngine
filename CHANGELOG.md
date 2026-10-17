@@ -13,6 +13,10 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - `EditorDocument` in `KhaozEngine.MapEditor` counts reads of `Doc` internally, so the viewport pick linearity
   test asserts a constant read count per pick instead of a wall-clock bound (#1444). Public behaviour is
   unchanged.
+- The `ke-tileedit` MCP adapter now drops a queued tool call as soon as it reads that call's cancellation from
+  the transport, under the same lock that releases the next call. A call cancelled while queued never starts
+  and gets no response, whatever order the thread pool runs the SDK's handlers in (#1443). A malformed or
+  unknown cancellation is ignored and leaves the session serving calls.
 
 ## 21.3.0
 

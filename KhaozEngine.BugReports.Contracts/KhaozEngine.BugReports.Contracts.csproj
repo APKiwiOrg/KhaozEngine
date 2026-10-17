@@ -8,4 +8,8 @@
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- Contracts/ZipDirectoryScanTests.cs drives each branch of the internal directory scan directly. -->
+    <InternalsVisibleTo Include="KhaozEngine.BugReports.Tests" />
+  </ItemGroup>
 </Project>

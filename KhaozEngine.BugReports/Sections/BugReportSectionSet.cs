@@ -21,6 +21,12 @@ public sealed class BugReportSectionSet
     /// <summary>The smallest budget a section may have. A section left with less is dropped.</summary>
     public const int MinSectionBytes = 64;
 
+    /// <summary>
+    /// The most sections one set holds, so the manifest, the sections, the screenshot and a clip always fit the
+    /// bundle's <see cref="BugReportLimits.MaxEntries"/>.
+    /// </summary>
+    public const int MaxSections = 64;
+
     /// <summary>How long <see cref="Finish"/> may spend redacting before it masks every remaining string.</summary>
     public static readonly TimeSpan DefaultFinishBudget = TimeSpan.FromSeconds(2);
 
@@ -51,9 +57,13 @@ public sealed class BugReportSectionSet
     /// <exception cref="ArgumentNullException"><paramref name="section"/> is null.</exception>
     /// <exception cref="ArgumentException">The key is not a valid section key or is already registered.</exception>
     /// <exception cref="ArgumentOutOfRangeException">The budget is under <see cref="MinSectionBytes"/>.</exception>
+    /// <exception cref="InvalidOperationException">The set already holds <see cref="MaxSections"/> sections.</exception>
     public void Add(IBugReportSection section)
     {
         ArgumentNullException.ThrowIfNull(section);
+        if (entries.Count >= MaxSections)
+            throw new InvalidOperationException(string.Create(CultureInfo.InvariantCulture,
+                $"A bug report holds at most {MaxSections} sections."));
         string key = section.Key;
         int maxBytes = section.MaxBytes;
         if (!BundleEntryNames.IsValidSectionKey(key))

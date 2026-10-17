@@ -16,7 +16,8 @@ Depends on `KhaozEngine.BugReports.Contracts`, `KhaozEngine.Diagnostics`, `Khaoz
 An `IBugReportSection` names one block of report state with a `Key` (`[a-z0-9][a-z0-9._-]{0,47}`, stored at
 `sections/<key>.json`) and a `MaxBytes` budget, and writes exactly one JSON object.
 
-`BugReportSectionSet` captures in two steps:
+`BugReportSectionSet` holds at most `MaxSections`, 64 sections, so a report's entries always leave room for the
+screenshot and a clip. `Add` throws `InvalidOperationException` past it. It captures in two steps:
 
 1. `CaptureAll(context)` runs on the thread that triggers the report and only isolates. Each section writes into
    its own capped buffer. A section that throws, writes more than 4 MiB, leaves a container open or writes anything

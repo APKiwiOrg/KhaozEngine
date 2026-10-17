@@ -50,7 +50,7 @@ then once with the sections only.
 | `TriggerActionId` | `"ReportBug"`, the trigger action in `TriggerControls`. |
 | `Begin()` | Opens a report on the next frame from a menu entry. False while a report is already open. |
 | `IsOpen` | True from the trigger frame until the screen closes. |
-| `AddSection(section)` | Adds a game section after the seven built-in ones. |
+| `AddSection(section)` | Adds a game section after the seven built-in ones, up to 64 sections in all. |
 | `ReportCaptured` | The new report id, raised in the trigger frame. |
 | `ReportSubmitted` | Each send's `BugReportSubmitResult`, raised on the frame thread. |
 | `SetRecordingEnabled(bool)` | Starts or stops the clip from a settings toggle. |

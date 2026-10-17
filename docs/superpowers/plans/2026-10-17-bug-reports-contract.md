@@ -223,6 +223,7 @@ public sealed record CapturedSection(string Key, ReadOnlyMemory<byte> Json);   /
 public sealed class BugReportSectionSet
 {
     public const int MinSectionBytes = 64;
+    public const int MaxSections = 64;                                         // Add throws InvalidOperationException past it
     public static readonly TimeSpan DefaultFinishBudget = TimeSpan.FromSeconds(2);
     public IReadOnlyList<string> Keys { get; }
     public void Add(IBugReportSection section);

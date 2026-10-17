@@ -161,7 +161,11 @@ public sealed class BugReportService : IDisposable
     /// <summary>The previous crash scan, completed at once when there is no session log. Tests await it.</summary>
     internal Task CrashScan { get; }
 
-    /// <summary>Registers a game section after the built-in ones. See <see cref="BugReportSectionSet.Add"/>.</summary>
+    /// <summary>
+    /// Registers a game section after the built-in ones. See <see cref="BugReportSectionSet.Add"/>. A report holds at
+    /// most <see cref="BugReportSectionSet.MaxSections"/> (64) sections, the seven built-in ones included.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">64 sections are already registered.</exception>
     public void AddSection(IBugReportSection section) => _sections.Add(section);
 
     /// <summary>Opens a report from a menu on the next frame. False while a report is captured or open.</summary>

@@ -54,7 +54,8 @@ internal static class ReportBundleBuilder
         long bytes = OverheadBytes + (screenshot?.Bytes.Length ?? 0);
         foreach (CapturedSection section in sections) bytes += section.Json.Length;
 
-        int first = Math.Max(0, frames.Count - (BugReportLimits.MaxEntries - entries));
+        // Entries past the limit leave no room for any frame, so the start is clamped to the end of the clip.
+        int first = Math.Clamp(frames.Count - (BugReportLimits.MaxEntries - entries), 0, frames.Count);
         long frameBytes = 0;
         for (int i = first; i < frames.Count; i++) frameBytes += frames[i].Jpeg.Length;
         while (first < frames.Count && bytes + frameBytes > BugReportLimits.MaxBundleBytes)

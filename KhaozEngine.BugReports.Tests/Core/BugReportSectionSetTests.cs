@@ -406,6 +406,20 @@ public sealed class BugReportSectionSetTests
     }
 
     [Fact]
+    public void Section_set_rejects_more_than_64_sections()
+    {
+        var set = new BugReportSectionSet();
+        for (int i = 0; i < BugReportSectionSet.MaxSections; i++) set.Add(new TestSection("s" + i, 1024, WriteObject("ok", "yes")));
+
+        InvalidOperationException refused = Assert.Throws<InvalidOperationException>(() =>
+            set.Add(new TestSection("extra", 1024, WriteObject("ok", "yes"))));
+
+        Assert.Equal(64, BugReportSectionSet.MaxSections);
+        Assert.Contains("64", refused.Message, StringComparison.Ordinal);
+        Assert.Equal(64, set.Keys.Count);
+    }
+
+    [Fact]
     public void Hand_built_section_nested_deeper_than_64_becomes_an_error()
     {
         static byte[] Nested(int arrays) =>

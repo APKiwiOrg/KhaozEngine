@@ -143,19 +143,84 @@ public class GltfTileMeshGeometryTests : IDisposable
         Assert.False(string.IsNullOrWhiteSpace(error));
     }
 
+    static readonly DateTime FirstStamp = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+    static readonly DateTime SecondStamp = FirstStamp.AddMinutes(5);
+
     [Fact]
-    public void CachesByMeshRefIncludingFailures()
+    public void ReusesALoadWhileTheFileStampIsUnchanged()
     {
         var geometry = new GltfTileMeshGeometry(_root);
-        ClearanceGlbFixtures.WriteBox(KitPath("box.glb"), Vector3.Zero, Vector3.One);
+        string path = KitPath("box.glb");
+        ClearanceGlbFixtures.WriteBox(path, Vector3.Zero, Vector3.One);
+        File.SetLastWriteTimeUtc(path, FirstStamp);
 
         Assert.True(geometry.TryLoad("kit/box.glb", out ClearanceMesh? first, out _));
         Assert.True(geometry.TryLoad("kit/box.glb", out ClearanceMesh? second, out _));
         Assert.Same(first, second);
 
-        Assert.False(geometry.TryLoad("kit/late.glb", out _, out string? firstError));
+        // Same length and the stamp put back, so the stamp cannot tell the files apart and the load is reused.
+        ClearanceGlbFixtures.WriteBox(path, Vector3.Zero, new Vector3(2f));
+        File.SetLastWriteTimeUtc(path, FirstStamp);
+        Assert.True(geometry.TryLoad("kit/box.glb", out ClearanceMesh? third, out _));
+        Assert.Same(first, third);
+    }
+
+    [Fact]
+    public void AMissingGlbThatAppearsIsSeenAtTheNextLoad()
+    {
+        var geometry = new GltfTileMeshGeometry(_root);
+
+        Assert.False(geometry.TryLoad("kit/late.glb", out _, out string? error));
+        Assert.Contains("missing", error, StringComparison.Ordinal);
         ClearanceGlbFixtures.WriteBox(KitPath("late.glb"), Vector3.Zero, Vector3.One);
-        Assert.False(geometry.TryLoad("kit/late.glb", out _, out string? secondError));
-        Assert.Equal(firstError, secondError);
+
+        Assert.True(geometry.TryLoad("kit/late.glb", out ClearanceMesh? mesh, out error), error);
+        AssertNear(Vector3.One, mesh.Max);
+    }
+
+    [Fact]
+    public void ARewrittenGlbIsReloaded()
+    {
+        var geometry = new GltfTileMeshGeometry(_root);
+        string path = KitPath("box.glb");
+        ClearanceGlbFixtures.WriteBox(path, Vector3.Zero, Vector3.One);
+        File.SetLastWriteTimeUtc(path, FirstStamp);
+        Assert.True(geometry.TryLoad("kit/box.glb", out ClearanceMesh? first, out _));
+
+        ClearanceGlbFixtures.WriteBox(path, Vector3.Zero, new Vector3(2f));
+        File.SetLastWriteTimeUtc(path, SecondStamp);
+
+        Assert.True(geometry.TryLoad("kit/box.glb", out ClearanceMesh? second, out string? error), error);
+        Assert.NotSame(first, second);
+        AssertNear(new Vector3(2f), second.Max);
+    }
+
+    [Fact]
+    public void ACorruptGlbThatIsReExportedIsReloaded()
+    {
+        var geometry = new GltfTileMeshGeometry(_root);
+        string path = KitPath("fixed.glb");
+        File.WriteAllBytes(path, new byte[64]);
+        File.SetLastWriteTimeUtc(path, FirstStamp);
+        Assert.False(geometry.TryLoad("kit/fixed.glb", out _, out _));
+
+        ClearanceGlbFixtures.WriteBox(path, Vector3.Zero, Vector3.One);
+        File.SetLastWriteTimeUtc(path, SecondStamp);
+
+        Assert.True(geometry.TryLoad("kit/fixed.glb", out ClearanceMesh? mesh, out string? error), error);
+        AssertNear(Vector3.One, mesh.Max);
+    }
+
+    [Fact]
+    public void AGlbDeletedAfterALoadIsMissing()
+    {
+        var geometry = new GltfTileMeshGeometry(_root);
+        ClearanceGlbFixtures.WriteBox(KitPath("gone.glb"), Vector3.Zero, Vector3.One);
+        Assert.True(geometry.TryLoad("kit/gone.glb", out _, out _));
+
+        File.Delete(KitPath("gone.glb"));
+
+        Assert.False(geometry.TryLoad("kit/gone.glb", out _, out string? error));
+        Assert.Contains("missing", error, StringComparison.Ordinal);
     }
 }

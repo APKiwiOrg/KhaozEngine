@@ -264,10 +264,53 @@ public class ClearanceToolsTests
         Assert.NotNull(second);
         Assert.NotSame(first, second);
 
+        // Undo moves the root back, and the next check replaces the source again without a world_open.
+        f.Worlds.Undo();
+        f.Clearance.ClearanceCheck();
+        object? third = f.Session.ClearanceMeshes;
+        Assert.NotSame(second, third);
+
         f.Worlds.WorldOpen(f.World);
         Assert.Null(f.Session.ClearanceMeshes);
         f.Clearance.ClearanceCheck();
-        Assert.NotSame(second, f.Session.ClearanceMeshes);
+        Assert.NotSame(third, f.Session.ClearanceMeshes);
+    }
+
+    [Fact]
+    public void SaveSeesAGlbExportedAfterACheck()
+    {
+        using var f = new Fixture();
+        f.DeclareRule();
+        string tree = f.Temp.Sub(Path.Combine("models", "kit", "tree.glb"));
+        File.Delete(tree);
+        f.Mutate.ObjectPlace("tree", 5, 5, 0);
+
+        string issue = Assert.Single(f.Clearance.ClearanceCheck().Issues);
+        Assert.StartsWith($"[{TileWorldClearance.MeshCode}] ", issue);
+        object? source = f.Session.ClearanceMeshes;
+        f.WriteMeshes("models");
+
+        f.Worlds.WorldSave();
+        Assert.False(f.Worlds.Summary().Dirty);
+        Assert.Same(source, f.Session.ClearanceMeshes);
+    }
+
+    [Fact]
+    public void SaveSeesAMeshReExportedClearOfItsOverlap()
+    {
+        using var f = new Fixture();
+        f.DeclareRule();
+        f.PlaceOverlap();
+        string wall = f.Temp.Sub(Path.Combine("models", "kit", "wall.glb"));
+        File.SetLastWriteTimeUtc(wall, new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        Assert.Throws<McpException>(() => f.Worlds.WorldSave());
+
+        // The slab moved to the north edge of its tile, clear of the tree box at the centre.
+        ClearanceGlbFixtures.WriteBox(wall, new Vector3(-0.5f, 0f, -0.5f), new Vector3(0.5f, 2f, -0.4f));
+        File.SetLastWriteTimeUtc(wall, new DateTime(2026, 1, 1, 0, 5, 0, DateTimeKind.Utc));
+
+        f.Worlds.WorldSave();
+        Assert.False(f.Worlds.Summary().Dirty);
     }
 
     static void AssertBlock(ClearanceInfo? info, string meshRoot, float cellSize, string? waiverTag,

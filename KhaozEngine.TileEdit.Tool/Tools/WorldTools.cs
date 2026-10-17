@@ -39,7 +39,7 @@ public sealed class WorldTools(TileEditSession session, QueryService query, Muta
         => ToolGuard.Guard(() => session.Create(path, id, displayName, planeCount, tileSize, catalogPaths));
 
     /// <summary>Validates and checks clearance, then writes the open world back to its own directory.</summary>
-    [McpServerTool(Name = "world_save"), Description("Validates the open world and checks its clearance rules against the meshes on disk and, when both pass, writes it back to its own directory and clears the dirty flag. An invalid world, or one with any clearance issue, throws listing the issues and nothing is written. Clearance meshes are read once per open world, so a glb re-exported while the world is open is seen after world_open. Returns the directory and the world hash of what landed there.")]
+    [McpServerTool(Name = "world_save"), Description("Validates the open world and checks its clearance rules against the meshes on disk and, when both pass, writes it back to its own directory and clears the dirty flag. An invalid world, or one with any clearance issue, throws listing the issues and nothing is written. Each clearance glb is re-read when its last write time or length changes, so a glb exported or re-exported while the world is open is seen at the next save. Returns the directory and the world hash of what landed there.")]
     public SaveResult WorldSave()
         => ToolGuard.Guard(session.Save);
 

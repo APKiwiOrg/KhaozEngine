@@ -126,8 +126,11 @@ is correct for roofs. A hollow piece such as a bridge deck or a balcony must not
 `meshRef` to a path exactly as `GltfMeshResolver.PathFor` does and reads geometry through `GltfLoader.Load`,
 which needs no GPU, so node transforms are baked and the mesh sits in the archetype's local metres as drawn. It
 reads `meshRef`, never `lodMeshRef`. A blank reference, a rejected path, a missing file, a loader throw and a
-mesh `ClearanceMesh` refuses each return false with a reason naming the reference. Every answer is cached per
-reference, failures included, so a glb written after the first ask is not picked up by that instance.
+mesh `ClearanceMesh` refuses each return false with a reason naming the reference. Each load is cached per
+reference with the file's last write time and length, and every ask re-stats the file and reloads when either
+differs. A missing file is probed again on every ask, and only a reference that names no usable path stays cached
+as a failure. Only the named file is stamped, so a `.gltf` whose external buffers change on their own keeps its
+old load.
 
 ## ke-tileedit
 
@@ -145,8 +148,9 @@ reference, failures included, so a glb written after the first ask is not picked
   Its rules are kept.
 - The session keeps one `GltfTileMeshGeometry` per open world, created lazily for the resolved mesh root and
   reused across saves and checks, because each one parses every glb it is asked for and a kit runs to a hundred or
-  more. It is replaced on `world_open`, `world_create` or a `clearance_set` that changes the resolved root. A
-  glb written or re-exported while the world is open is therefore seen only after `world_open`.
+  more. It is replaced lazily at the next check after the resolved root changes, through `clearance_set` or an
+  undo or redo of one, and on `world_open` or `world_create`. Because each glb is stamped, a glb written or
+  re-exported while the world is open is seen at the next save or check with no `world_open`.
 
 ## Follow-ups
 

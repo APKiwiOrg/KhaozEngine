@@ -15,13 +15,23 @@ namespace KhaozEngine.TileWorld;
 ///
 /// <para>Nothing here throws over bad content or a bad reference. A blank or path-rejected reference, a missing
 /// file, a loader throw and a load that yields no valid <see cref="ClearanceMesh"/> each return false with a reason
-/// naming the reference, and the full path once there is one. Each answer is cached per reference, failures
-/// included, so a glb written after the first ask is not picked up. The cache is a plain dictionary, so load on
-/// one thread.</para></summary>
+/// naming the reference, and the full path once there is one.</para>
+///
+/// <para>Each load is cached per reference together with its file stamp, the file's last write time and length.
+/// Every ask re-stats the file and reloads when the stamp differs, so a glb exported or re-exported after the first
+/// ask is seen at the next one while an unchanged glb is parsed once. A missing file is probed again on every ask
+/// rather than remembered. Only a reference that names no usable path stays cached as a failure, because that
+/// depends on the reference alone. Only the named file is stamped, so a .gltf whose external buffers or images
+/// change without the .gltf itself changing keeps its old load. The cache is a plain dictionary, so load on one
+/// thread.</para></summary>
 public sealed class GltfTileMeshGeometry : ITileMeshGeometry
 {
     readonly GltfMeshResolver _paths;
-    readonly Dictionary<string, (ClearanceMesh? Mesh, string? Error)> _cache = new(StringComparer.Ordinal);
+    readonly Dictionary<string, Entry> _cache = new(StringComparer.Ordinal);
+
+    // Path is null for a reference that names no usable path, and then the error stands for good. Otherwise the
+    // answer holds while the file at Path still carries Stamp.
+    readonly record struct Entry(string? Path, (DateTime WriteTimeUtc, long Length) Stamp, ClearanceMesh? Mesh, string? Error);
 
     /// <summary>A mesh source that reads every mesh reference relative to <paramref name="rootDirectory"/>.</summary>
     /// <exception cref="ArgumentNullException"><paramref name="rootDirectory"/> is null.</exception>
@@ -41,9 +51,7 @@ public sealed class GltfTileMeshGeometry : ITileMeshGeometry
             return false;
         }
 
-        if (!_cache.TryGetValue(meshRef, out (ClearanceMesh? Mesh, string? Error) entry))
-            _cache[meshRef] = entry = Load(meshRef);
-
+        Entry entry = Current(meshRef);
         mesh = entry.Mesh;
         if (mesh is not null)
         {
@@ -55,21 +63,57 @@ public sealed class GltfTileMeshGeometry : ITileMeshGeometry
         return false;
     }
 
-    (ClearanceMesh? Mesh, string? Error) Load(string meshRef)
+    Entry Current(string meshRef)
     {
+        bool known = _cache.TryGetValue(meshRef, out Entry entry);
+        if (known && entry.Path is null) return entry;
+
         string path;
+        if (known)
+        {
+            path = entry.Path!;
+        }
+        else
+        {
+            try
+            {
+                path = _paths.PathFor(meshRef);
+            }
+            catch (Exception ex)
+            {
+                return _cache[meshRef] = new Entry(null, default,
+                    null, $"mesh '{meshRef}' does not name a usable path: {ex.Message}");
+            }
+        }
+
+        (DateTime, long)? stamp;
         try
         {
-            path = _paths.PathFor(meshRef);
+            var file = new FileInfo(path);
+            stamp = file.Exists ? (file.LastWriteTimeUtc, file.Length) : null;
         }
         catch (Exception ex)
         {
-            return (null, $"mesh '{meshRef}' does not name a usable path: {ex.Message}");
+            // A stat that fails is reported like a load that fails, and asked again next time.
+            _cache.Remove(meshRef);
+            return new Entry(path, default, null, $"mesh '{meshRef}' at '{path}' could not be read: {ex.Message}");
         }
 
+        if (stamp is not { } current)
+        {
+            // Not cached, so the file is probed again at the next ask and an export in between is seen.
+            _cache.Remove(meshRef);
+            return new Entry(path, default, null, $"mesh '{meshRef}' is missing at '{path}'");
+        }
+
+        if (known && entry.Stamp == current) return entry;
+        return _cache[meshRef] = Load(meshRef, path, current);
+    }
+
+    static Entry Load(string meshRef, string path, (DateTime WriteTimeUtc, long Length) stamp)
+    {
         try
         {
-            if (!File.Exists(path)) return (null, $"mesh '{meshRef}' is missing at '{path}'");
             GltfMesh loaded = GltfLoader.Load(path);
             var positions = new Vector3[loaded.Vertices.Length];
             for (int i = 0; i < positions.Length; i++) positions[i] = loaded.Vertices[i].Position;
@@ -80,14 +124,14 @@ public sealed class GltfTileMeshGeometry : ITileMeshGeometry
                 indices[i] = index > int.MaxValue ? -1 : (int)index;
             }
 
-            return (new ClearanceMesh(positions, indices), null);
+            return new Entry(path, stamp, new ClearanceMesh(positions, indices), null);
         }
         catch (Exception ex)
         {
             // Deliberately broad: a corrupt or unsupported glb surfaces as anything from a format exception to an
             // IO one, and a glb that loads into no valid clearance mesh throws ArgumentException. Each is one
-            // reported mesh, never a failed check.
-            return (null, $"mesh '{meshRef}' at '{path}' could not be read: {ex.Message}");
+            // reported mesh, never a failed check. Cached under the stamp it was read at, so a re-export retries.
+            return new Entry(path, stamp, null, $"mesh '{meshRef}' at '{path}' could not be read: {ex.Message}");
         }
     }
 }

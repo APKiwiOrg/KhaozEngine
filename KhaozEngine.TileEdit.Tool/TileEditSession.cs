@@ -157,8 +157,10 @@ public sealed class TileEditSession
     /// declares no rules. A mesh root that is not a directory is one <c>clearance.mesh</c> issue, so a typo in the
     /// root never reads as a world with nothing to check.
     ///
-    /// <para>The meshes are read once per open world and mesh root (see <see cref="ClearanceMeshes"/>), so a glb
-    /// re-exported while the world is open is seen after <c>world_open</c>.</para></summary>
+    /// <para>One mesh source serves the open world while its resolved mesh root stays the same (see
+    /// <see cref="ClearanceMeshes"/>). It re-reads a glb whose last write time or length changed and probes a missing
+    /// one again on every check, so a glb exported or re-exported while the world is open is seen at the next
+    /// check.</para></summary>
     /// <exception cref="TileWorldException">No world is open.</exception>
     public IReadOnlyList<TileWorldIssue> ClearanceIssues()
     {

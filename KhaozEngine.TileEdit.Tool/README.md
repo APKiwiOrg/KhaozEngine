@@ -191,8 +191,12 @@ with the waiver tag, which is a decision for the world's owner. `world_validate`
 failing.
 
 Meshes are read through one `GltfTileMeshGeometry` per open world, resolved as `meshRef` under the mesh root and
-reused across saves and checks. It is replaced on `world_open`, `world_create` or a `clearance_set` that changes
-the resolved root, so a glb written or re-exported while the world is open is seen after `world_open`.
+reused across saves and checks, so an unchanged glb is parsed once. It is replaced lazily at the next check after
+the resolved root changes, whether through `clearance_set` or an undo or redo of one, and on `world_open` or
+`world_create`. Each glb is stamped with its last write time and length and re-read when the stamp changes, and a
+missing glb is probed again on every check, so a glb exported or re-exported while the world is open is seen at
+the next save or check with no `world_open`. Only the named file is stamped, so a `.gltf` whose external buffers
+change on their own keeps its old geometry until the `.gltf` itself is rewritten.
 
 ### Heights (corner rects, rows north first)
 

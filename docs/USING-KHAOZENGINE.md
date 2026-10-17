@@ -12126,8 +12126,9 @@ centre and radius. Every configure, density, paint and remove call is one undo s
 `clearance.overlap`, `clearance.mesh` or `clearance.rule` issue refuses the save with every issue listed and
 nothing written. `world_validate` appends the same issues and `clearance_check` reports them alone, neither
 writing. `clearance_set` replaces the mesh root, cell size and waiver tag on every call, so an omitted value
-resets to its default. The session reads meshes through one `GltfTileMeshGeometry` per open world, so a glb
-written or re-exported while the world is open is seen after `world_open`. The block and the check are under
+resets to its default. The session reads meshes through one `GltfTileMeshGeometry` per open world, which
+re-reads a glb whose last write time or length changed, so a glb written or re-exported while the world is open
+is seen at the next save or check with no `world_open`. The block and the check are under
 [Tile world](#tile-world-khaozenginetileworld).
 
 **Renders return the image inline.** `render_topdown` and `render_view` are the only two verbs that need a GPU

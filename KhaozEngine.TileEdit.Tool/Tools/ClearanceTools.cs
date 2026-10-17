@@ -31,7 +31,7 @@ public sealed class ClearanceTools(QueryService query, MutationService mutate)
     public MutationResult ClearanceRuleRemove([Description("Rule name.")] string name)
         => ToolGuard.Guard(() => mutate.ClearanceRuleRemove(name));
 
-    [McpServerTool(Name = "clearance_check"), Description("Checks every placed object's mesh against the clearance rules and reports each issue as '[code] message' without writing anything. Codes are clearance.overlap for a subject inside an obstacle, clearance.mesh for a mesh root or mesh that cannot be read, and clearance.rule for a rule whose tags match no archetype. world_save refuses a world with any of them. Meshes are read once per open world, so a glb re-exported while the world is open is seen after world_open.")]
+    [McpServerTool(Name = "clearance_check"), Description("Checks every placed object's mesh against the clearance rules and reports each issue as '[code] message' without writing anything. Codes are clearance.overlap for a subject inside an obstacle, clearance.mesh for a mesh root or mesh that cannot be read, and clearance.rule for a rule whose tags match no archetype. world_save refuses a world with any of them. Each glb is re-read when its last write time or length changes, so a glb exported or re-exported while the world is open is seen at the next check.")]
     public ClearanceCheckResult ClearanceCheck()
         => ToolGuard.Guard(query.ClearanceCheck);
 }

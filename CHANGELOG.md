@@ -18,20 +18,21 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   `TileObjectPlacement.LocalToWorld` and reports `clearance.overlap` per penetrating pair at its deepest
   point, `clearance.mesh` per archetype whose mesh cannot be read and `clearance.rule` for a rule whose tags
   match no archetype. `TileWorldValidator.Validate` never runs it. Meshes arrive through the new
-  `ITileMeshGeometry` seam.
+  `ITileMeshGeometry` seam, and `TileWorldClearance.ResolveMeshRoot` resolves the block's mesh root against the
+  world directory.
 - Add the format-free clearance core to `KhaozEngine.Primitives`: `ClearanceMesh`, `ClearanceSolid`,
   `ClearanceSamples`, `ClearanceProbe`, `ClearancePenetration` and `ClearanceTooLargeException`. An obstacle is
   solid from its lowest point to its top surface, depth is the nearest way out, and triangles are sampled in rows
   along their longest edge plus every edge and vertex, so the count scales with area plus perimeter.
-- `TileWorldClearance.ResolveMeshRoot` resolves the block's mesh root against the world directory.
 - Add `GltfTileMeshGeometry` to `KhaozEngine.TileWorld.Render3D`, the GPU-free glb `ITileMeshGeometry` that
-  maps a `meshRef` as `GltfMeshResolver.PathFor` does and caches each answer per reference.
+  maps a `meshRef` as `GltfMeshResolver.PathFor` does. It caches each load per reference with the file's last
+  write time and length, reloads when either changes and probes a missing file again on every ask.
 - Add `SetClearanceCommand` to `KhaozEngine.TileWorld.Editing`, one undo step per clearance edit.
 - `ke-tileedit` gains `clearance_get`, `clearance_set`, `clearance_rule_set`, `clearance_rule_remove` and
   `clearance_check`, for 55 verbs. `world_save` now refuses a world with any clearance issue and writes
   nothing, and `world_validate` lists the clearance issues after the validator's. `clearance_set` sets the mesh
-  root, cell size and waiver tag on every call. Meshes are read once per open world, so a glb written or
-  re-exported mid-session is seen after `world_open`.
+  root, cell size and waiver tag on every call. A glb written or re-exported mid-session is seen at the next
+  save or check with no `world_open`.
 
 ## 21.1.0
 

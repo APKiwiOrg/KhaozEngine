@@ -2,6 +2,7 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Threading;
+using KhaozEngine.Diagnostics;
 
 namespace KhaozEngine.BugReports.Client.Internal;
 
@@ -9,7 +10,8 @@ namespace KhaozEngine.BugReports.Client.Internal;
 /// Keeps clip encoding off the frame thread. The frame thread hands mapped frames to <see cref="Enqueue"/>, which
 /// never blocks. One dedicated background thread encodes them in order and delivers each record. At most
 /// <see cref="Capacity"/> frames wait, and a full queue drops its oldest waiting frame. Every frame's buffer goes
-/// back to the pool exactly once, after its encode or its drop.
+/// back to the pool exactly once, after its encode or its drop. A throw from the encoder or the deliver callback drops
+/// that frame, reports the fault and leaves the worker running, so a capture fault never takes the game down.
 /// </summary>
 internal sealed class ClipEncodeQueue : IDisposable
 {
@@ -20,20 +22,29 @@ internal sealed class ClipEncodeQueue : IDisposable
     readonly SemaphoreSlim _signal = new(0);
     readonly Func<RawClipFrame, byte[]> _encode;
     readonly Action<ClipFrameRecord> _deliver;
+    readonly Action<Exception> _onFault;
     readonly ArrayPool<byte> _pool;
     readonly Thread _worker;
     int _dropped;
+    int _faults;
+    int _warned;
     bool _encoding;
     bool _disposed;
 
     /// <param name="encode">Encodes a frame from <c>Rgba.AsSpan(0, Width * Height * 4)</c>. Runs on the worker.</param>
     /// <param name="deliver">Receives each encoded frame, in enqueue order. Runs on the worker.</param>
+    /// <param name="onFault">
+    /// Receives each exception thrown by <paramref name="encode"/> or <paramref name="deliver"/>, on the worker. A
+    /// throw from it is swallowed. The recorder wires it to the clip guard's trip. Defaults to one
+    /// <see cref="Log.Warn"/> naming the queue, silent for later faults.
+    /// </param>
     /// <param name="pool">The pool frame buffers were rented from. Defaults to <see cref="ArrayPool{T}.Shared"/>.</param>
     internal ClipEncodeQueue(Func<RawClipFrame, byte[]> encode, Action<ClipFrameRecord> deliver,
-        ArrayPool<byte>? pool = null)
+        Action<Exception>? onFault = null, ArrayPool<byte>? pool = null)
     {
         _encode = encode ?? throw new ArgumentNullException(nameof(encode));
         _deliver = deliver ?? throw new ArgumentNullException(nameof(deliver));
+        _onFault = onFault ?? WarnOnce;
         _pool = pool ?? ArrayPool<byte>.Shared;
         _worker = new Thread(Work) { IsBackground = true, Name = "KhaozEngine clip encode" };
         _worker.Start();
@@ -41,6 +52,9 @@ internal sealed class ClipEncodeQueue : IDisposable
 
     /// <summary>Frames dropped because the queue was full when a newer frame arrived.</summary>
     internal int Dropped { get { lock (_gate) return _dropped; } }
+
+    /// <summary>Frames lost to a throw from the encoder or the deliver callback.</summary>
+    internal int Faults => Volatile.Read(ref _faults);
 
     /// <summary>
     /// Queues <paramref name="frame"/> for encoding without blocking. When <see cref="Capacity"/> frames already
@@ -137,6 +151,18 @@ internal sealed class ClipEncodeQueue : IDisposable
                     _deliver(new ClipFrameRecord(frame.CapturedAt, frame.RenderMilliseconds, frame.Width, frame.Height,
                         jpeg, frame.Generation));
             }
+            catch (Exception ex)
+            {
+                Interlocked.Increment(ref _faults);
+                try
+                {
+                    _onFault(ex);
+                }
+                catch (Exception)
+                {
+                    // The fault callback must not end the worker either. The frame is already lost.
+                }
+            }
             finally
             {
                 _pool.Return(frame.Rgba);
@@ -147,5 +173,11 @@ internal sealed class ClipEncodeQueue : IDisposable
                 }
             }
         }
+    }
+
+    void WarnOnce(Exception fault)
+    {
+        if (Interlocked.Exchange(ref _warned, 1) == 0)
+            Log.Warn("ClipEncodeQueue dropped a clip frame after a fault. Later faults are not reported.", fault);
     }
 }

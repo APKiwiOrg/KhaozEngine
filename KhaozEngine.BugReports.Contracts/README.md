@@ -106,7 +106,7 @@ constant:
 | `compressed_entry` | The entry is not stored, because its compressed and uncompressed lengths differ. |
 | `overlapping_entries` | Entry lengths sum past the archive length, so central directory records share stored bytes. |
 | `manifest_missing` | There is no `manifest.json`. |
-| `manifest_invalid` | The manifest is over 64 KiB, does not parse, holds a null entry or names an undefined kind. |
+| `manifest_invalid` | The manifest is over 64 KiB, does not parse, repeats a property name, holds a null entry or names an undefined kind. |
 | `format_version` | `formatVersion` is not `1`. |
 | `report_id_invalid` | `reportId` fails `ReportIds.IsValid`. |
 | `game_id_invalid` | `gameId` does not match `[a-z0-9][a-z0-9-]{0,31}`. |
@@ -119,7 +119,7 @@ constant:
 | `media_invalid` | `clip.mp4` does not carry `ftyp` at bytes 4 to 8. |
 | `section_invalid` | A section is not a JSON object within depth 64, or repeats a property name in any object. |
 | `sections_too_large` | Section entries total more than 1 MiB. |
-| `clip_index_invalid` | The clip index is missing while frames or `clip.mp4` exist, is over 64 KiB, does not parse, holds a null frame, has more than 120 frames, has negative, decreasing or non-finite timing, names entries wrongly, or gives an MP4 frame an edge outside 1 to 2560. |
+| `clip_index_invalid` | The clip index is missing while frames or `clip.mp4` exist, is over 64 KiB, does not parse, repeats a property name, holds a null frame, has more than 120 frames, has negative, decreasing or non-finite timing, names entries wrongly, or gives an MP4 frame an edge outside 1 to 2560. |
 
 Clip index entries follow one of two shapes. With JPEG frames, frame `i` names `clip/<iii>.jpg`, that
 entry exists with the index's width and height, and every JPEG frame has an index row. With
@@ -150,7 +150,9 @@ JSON section objects. `ReporterIdentity` carries the subject, display name and n
 
 `BugReportJson` exposes typed UTF-8 serialize and deserialize helpers for the manifest, clip index,
 intake acceptance, relay error and server snapshot. Deserializers throw `JsonException` for malformed
-JSON, a null root, a missing property or a null value in a non-nullable property. Every constructor
+JSON, a null root, a missing property, a null value in a non-nullable property or a property name
+repeated in any object, including section dictionaries and their JSON values. `Options` applies the
+same duplicate rule. Every constructor
 property is required, including the nullable `handle`, which is written as `null`. `Options` exposes the
 same read-only source-generated settings, including the reporter identity shape. Copy the options if a
 caller needs different settings.

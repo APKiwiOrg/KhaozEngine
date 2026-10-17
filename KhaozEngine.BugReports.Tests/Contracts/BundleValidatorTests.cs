@@ -278,6 +278,25 @@ public sealed class BundleValidatorTests
     }
 
     [Fact]
+    public void Duplicate_manifest_keys_are_manifest_invalid()
+    {
+        Assert.Equal("manifest_invalid", ErrorOf(TestBundles.Default().WithManifestJson(j =>
+            j.Replace("\"gameId\":\"grimhollow\",", "\"gameId\":\"grimhollow\",\"gameId\":\"other\",", StringComparison.Ordinal))));
+        Assert.Equal("manifest_invalid", ErrorOf(TestBundles.Default().WithManifestJson(j =>
+            j.Replace("{\"name\":", "{\"name\":\"x\",\"name\":", StringComparison.Ordinal))));
+    }
+
+    [Fact]
+    public void Duplicate_clip_index_keys_are_clip_index_invalid()
+    {
+        string index = Encoding.UTF8.GetString(TestBundles.ClipIndexJson(
+            new ClipIndexFrame(0, 16.5, 4, 4, "clip/000.jpg"),
+            new ClipIndexFrame(83.25, 41, 4, 4, "clip/001.jpg")));
+        byte[] duplicated = Encoding.UTF8.GetBytes(index.Replace("\"width\":4,", "\"width\":4,\"width\":4,", StringComparison.Ordinal));
+        Assert.Equal("clip_index_invalid", ErrorOf(TestBundles.Default().WithEntry(BundleEntryNames.ClipIndex, duplicated)));
+    }
+
+    [Fact]
     public void Byte_flips_inside_a_valid_bundle_never_throw()
     {
         var codes = typeof(BundleErrors).GetFields(BindingFlags.Public | BindingFlags.Static)

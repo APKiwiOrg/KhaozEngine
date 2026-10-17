@@ -47,6 +47,7 @@ public static class BugReportJson
         var options = new JsonSerializerOptions(BugReportJsonContext.Default.Options)
         {
             Encoder = JavaScriptEncoder.Create(UnicodeRanges.All),
+            AllowDuplicateProperties = false,
         };
         options.Converters.Add(new UtcDateTimeOffsetConverter());
         return new BugReportJsonContext(options);

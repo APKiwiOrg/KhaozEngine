@@ -201,6 +201,39 @@ public sealed class BugReportJsonTests
     public void Snapshot_fixture_is_a_valid_document()
         => Assert.Equal("player-1", BugReportJson.DeserializeServerSnapshot(Encoding.UTF8.GetBytes(SnapshotJson)).Subject);
 
+    [Fact]
+    public void Duplicate_keys_are_rejected_in_every_wire_document()
+    {
+        var cases = new (string Document, string Json, Func<byte[], object> Read)[]
+        {
+            ("manifest", Replace(ManifestGolden, "\"gameId\":\"grimhollow\",", "\"gameId\":\"grimhollow\",\"gameId\":\"other\","),
+                json => BugReportJson.DeserializeManifest(json)),
+            ("manifest entry", Replace(ManifestGolden, "\"size\":42,", "\"size\":42,\"size\":43,"),
+                json => BugReportJson.DeserializeManifest(json)),
+            ("clip index", Replace(ClipGolden, "{\"frames\":", "{\"frames\":[],\"frames\":"),
+                json => BugReportJson.DeserializeClipIndex(json)),
+            ("clip frame", Replace(ClipGolden, "\"width\":960,", "\"width\":960,\"width\":961,"),
+                json => BugReportJson.DeserializeClipIndex(json)),
+            ("intake accepted", "{\"reportId\":\"" + Id + "\",\"reportId\":\"" + Id + "\",\"reference\":\"R-P3TKJZ\"}",
+                json => BugReportJson.DeserializeIntakeAccepted(json)),
+            ("relay error", "{\"error\":\"a\",\"error\":\"b\"}", json => BugReportJson.DeserializeRelayError(json)),
+            ("server snapshot", Replace(SnapshotJson, "\"subject\":\"player-1\",", "\"subject\":\"player-1\",\"subject\":\"player-2\","),
+                json => BugReportJson.DeserializeServerSnapshot(json)),
+            ("snapshot section key", Replace(SnapshotJson, "{\"build\":{", "{\"build\":{},\"build\":{"),
+                json => BugReportJson.DeserializeServerSnapshot(json)),
+            ("snapshot section value", Replace(SnapshotJson, "{\"version\":\"1.0.0\"}", "{\"version\":\"1\",\"version\":\"2\"}"),
+                json => BugReportJson.DeserializeServerSnapshot(json)),
+            ("reporter identity", "{\"subject\":\"a\",\"subject\":\"b\",\"displayName\":\"x\",\"handle\":null}",
+                json => JsonSerializer.Deserialize<ReporterIdentity>(json, BugReportJson.Options)!),
+        };
+        foreach ((string document, string json, Func<byte[], object> read) in cases)
+        {
+            byte[] bytes = Encoding.UTF8.GetBytes(json);
+            Exception? thrown = Record.Exception(() => read(bytes));
+            Assert.True(thrown is JsonException, document + " accepted a duplicate key");
+        }
+    }
+
     static string Replace(string golden, string field, string replacement)
     {
         Assert.Contains(field, golden, StringComparison.Ordinal);

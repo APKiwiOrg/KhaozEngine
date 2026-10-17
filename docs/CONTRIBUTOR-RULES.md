@@ -138,8 +138,9 @@ guarded current version's generated `nupkg` and `snupkg` files, then removes sam
 pack no longer generates. A repeated pack refreshes stale outputs while leaving every other version
 untouched. The pack standard lives in
 `scripts/pack-standard.sh` and is covered by
-`scripts/tests/pack-local-feed.test.sh`. Run `scripts/check-local-feed.sh` before a consumer vendors
-packages.
+`scripts/tests/pack-local-feed.test.sh`. Run `scripts/check-local-feed.sh --version X.Y.Z` for the
+version a consumer is about to vendor. A release checks its own version with `--current`. With no
+scope the report walks every version in the feed.
 
 The pack builds the current tree, worktree or not, and writes to the main checkout's `local-feed`,
 which is the feed consumers read. `scripts/check-local-feed.sh` reads the same feed and flags staged

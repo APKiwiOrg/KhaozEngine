@@ -1,0 +1,14 @@
+<Project>
+  <!-- Every test assembly that measures allocation imports this file instead of linking the sources one by one,
+       so the region, its isolation contract and the contract tests always arrive together. See README.md. -->
+  <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)AllocationRegion.cs" Link="Shared/AllocationRegion.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)AllocationMeasurement.cs" Link="Shared/AllocationMeasurement.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)SerializedReportingTestFramework.cs" Link="Shared/SerializedReportingTestFramework.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)AllocationIsolationContractTests.cs" Link="Shared/AllocationIsolationContractTests.cs" />
+    <AssemblyAttribute Include="Xunit.TestFrameworkAttribute">
+      <_Parameter1>KhaozEngine.Tests.SerializedReportingTestFramework</_Parameter1>
+      <_Parameter2>$(AssemblyName)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+</Project>

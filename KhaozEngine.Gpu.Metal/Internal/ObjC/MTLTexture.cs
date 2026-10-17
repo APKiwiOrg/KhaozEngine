@@ -158,6 +158,13 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
         /// satisfy.</summary>
         internal bool IsNull => Handle == IntPtr.Zero;
 
+        /// <summary><c>-isFramebufferOnly</c>: true when the texture can only be a render attachment and never a
+        /// blit or sampling source. A drawable's texture reports the layer's <c>framebufferOnly</c> as it was when
+        /// that drawable was made.</summary>
+        [SupportedOSPlatform("macos")]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal bool IsFramebufferOnly() => ObjCMsgSend.SendBool(Handle, ObjCRuntime.Sel("isFramebufferOnly")) != 0;
+
         /// <summary>Release this texture. Only ever called on a handle that arrived at +1.</summary>
         [SupportedOSPlatform("macos")]
         [MethodImpl(MethodImplOptions.NoInlining)]

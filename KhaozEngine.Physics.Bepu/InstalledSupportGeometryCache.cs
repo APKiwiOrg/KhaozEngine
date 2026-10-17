@@ -21,6 +21,7 @@ internal sealed class InstalledSupportGeometryCache
     readonly record struct Key(int Owner, TypedIndex Installation, long StaticGeometryVersion);
     readonly ConcurrentDictionary<Key, Slot> _entries = new(KeyComparer.Instance);
     int _constructions, _captures;
+    internal InstalledSupportMeshWorldCache MeshWorldForms { get; } = new();
 
     /// <summary>How many captures this cache has published.</summary>
     internal int Constructions => Volatile.Read(ref _constructions);
@@ -49,11 +50,12 @@ internal sealed class InstalledSupportGeometryCache
 
     internal void Remove(StaticHandle owner)
     {
+        MeshWorldForms.Remove(owner);
         foreach (Key key in _entries.Keys)
             if (key.Owner == owner.Value) _entries.TryRemove(key, out _);
     }
 
-    internal void Clear() => _entries.Clear();
+    internal void Clear() { _entries.Clear(); MeshWorldForms.Clear(); }
 
     Outcome Capture(Simulation simulation, TypedIndex installation)
     {

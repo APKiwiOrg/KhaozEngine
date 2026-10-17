@@ -4,6 +4,7 @@ using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Metal;
 using KhaozEngine.Gpu.Metal.Internal;
 using KhaozEngine.Gpu.Metal.Internal.ObjC;
+using KhaozEngine.Primitives;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -86,6 +87,24 @@ namespace KhaozEngine.Tests.Gpu
             if (!MetalDormancy.NativeDeviceAvailable(_out)) return;
 
             DriveALayerBackedDevice(_out);
+        }
+
+        /// <summary>
+        /// THE SWAPCHAIN CAPTURE ON A REAL DRAWABLE, IN STEADY STATE. The layer's drawable pool is filled and cycled
+        /// before the request, so a recycled framebuffer-only drawable is possible after it. Every frame after the
+        /// request, <c>SwapchainCopyable</c> must equal the held texture's own <c>!isFramebufferOnly</c>, it must
+        /// become true within one pool cycle, and a copy on the first copyable frame must read back the colour the
+        /// same clear-only recording cleared it to. The copy is submitted with no wait after it, and a later present
+        /// in the loop, when the first copyable frame is not the last, releases the drawable before the wait. The
+        /// row does not force that ordering, so it is no proof of the drawable's lifetime while a copy is in flight.
+        /// Releasing the request must make the swapchain uncopyable again.
+        /// </summary>
+        [GpuFact]
+        public void A_requested_capture_copies_a_real_drawable()
+        {
+            if (!MetalDormancy.NativeDeviceAvailable(_out)) return;
+
+            CopyARealDrawable(_out);
         }
 
         // ---- The macOS-only bodies ----------------------------------------------------------------------------
@@ -265,6 +284,118 @@ namespace KhaozEngine.Tests.Gpu
                 device.Dispose();
             }
         }
+
+        [SupportedOSPlatform("macos")]
+        static void CopyARealDrawable(ITestOutputHelper output)
+        {
+            CAMetalLayer layer = NewLayer(output);
+            if (layer.IsNull) return;
+
+            const uint Size = 64u;
+            Color clear = Color.FromBytes(40, 120, 200, 255);
+
+            // OWNERSHIP OF THE LAYER TRANSFERS INTO THE DEVICE, as in DriveALayerBackedDevice.
+            GpuProviderDevice created = MetalGpuDevice.CreateForHost(
+                new MetalSwapchainHost(layer, new MetalDrawableSize(Size, Size)), syncToVerticalBlank: false);
+
+            var device = (MetalGpuDevice)created.Device;
+
+            try
+            {
+                MetalPresentBoundary boundary = device.PresentBoundary!;
+                IGpuFramebuffer swapchain = device.SwapchainFramebuffer!;
+                GpuPixelFormat format = swapchain.Outputs.Colour[0];
+                Assert.True(format is GpuPixelFormat.B8G8R8A8UNorm or GpuPixelFormat.R8G8B8A8UNorm,
+                    "the swapchain format is " + format + ", which this row has no channel order for.");
+
+                int cycle = layer.MaximumDrawableCount() + 1;
+
+                // FILL AND CYCLE THE POOL with framebuffer-only drawables before any request.
+                for (int i = 0; i < cycle; i++)
+                {
+                    device.Present();
+                    Assert.False(device.SwapchainCopyable);
+                }
+
+                using IGpuTexture staging = device.Factory.CreateTexture(
+                    GpuTextureDescription.Texture2D(Size, Size, format, GpuTextureUsage.Staging));
+
+                device.SwapchainCopySourceRequested = true;
+
+                int firstCopyable = -1;
+                for (int frame = 0; frame < cycle; frame++)
+                {
+                    device.Present();
+                    Assert.True(boundary.HasDrawable, "the headless layer vended no drawable after the request.");
+
+                    bool real = !TextureIsFramebufferOnly(boundary.Framebuffer.Attachment.Texture);
+                    output.WriteLine($"after the request, frame {frame}: copyable={device.SwapchainCopyable}, "
+                        + $"texture copyable={real}");
+                    Assert.Equal(real, device.SwapchainCopyable);
+
+                    if (!device.SwapchainCopyable || firstCopyable >= 0) continue;
+                    firstCopyable = frame;
+
+                    // ONE RECORDING, CLEAR-ONLY: no draw opens the pass, so the copy itself must apply the pending
+                    // clear before its blit, or it reads the drawable as it was before the clear. No wait follows
+                    // the submit. A later loop present may release the drawable first, but only when one is left.
+                    using IGpuCommandList cl = device.Factory.CreateCommandList();
+                    cl.Begin();
+                    cl.SetFramebuffer(swapchain);
+                    cl.ClearColorTarget(0, clear);
+                    device.CopySwapchainColor(cl, staging);
+                    cl.End();
+                    device.Submit(cl);
+                }
+
+                Assert.True(firstCopyable >= 0,
+                    $"the swapchain never became copyable within {cycle} frames of the request.");
+
+                device.WaitForIdle();
+
+                byte[] pixel = new byte[4];
+                MappedData map = device.Map(staging, GpuMapMode.Read);
+                try
+                {
+                    int centre = (int)((Size / 2) * map.RowPitch + (Size / 2) * 4);
+                    System.Runtime.InteropServices.Marshal.Copy(map.Data + centre, pixel, 0, 4);
+                }
+                finally
+                {
+                    device.Unmap(staging);
+                }
+
+                // BGRA STORAGE ON THE SHIPPED FORMAT, so the red and blue bytes swap places.
+                (int r, int g, int b, int a) = format == GpuPixelFormat.B8G8R8A8UNorm
+                    ? (pixel[2], pixel[1], pixel[0], pixel[3])
+                    : (pixel[0], pixel[1], pixel[2], pixel[3]);
+
+                output.WriteLine($"swapchain copy of a real drawable ({format}) on frame {firstCopyable}: "
+                    + $"centre = ({r}, {g}, {b}, {a})");
+                Assert.InRange(r, 40 - 2, 40 + 2);
+                Assert.InRange(g, 120 - 2, 120 + 2);
+                Assert.InRange(b, 200 - 2, 200 + 2);
+                Assert.InRange(a, 255 - 2, 255);
+
+                // RELEASED: the next boundary writes framebufferOnly true, the drawable after it is uncopyable.
+                device.SwapchainCopySourceRequested = false;
+                device.Present();
+                device.Present();
+                Assert.Equal(!TextureIsFramebufferOnly(boundary.Framebuffer.Attachment.Texture),
+                    device.SwapchainCopyable);
+                Assert.False(device.SwapchainCopyable);
+                Assert.True(layer.FramebufferOnly());
+            }
+            finally
+            {
+                device.Dispose();
+            }
+        }
+
+        // -[MTLTexture isFramebufferOnly], read off the held drawable's texture by value.
+        [SupportedOSPlatform("macos")]
+        static bool TextureIsFramebufferOnly(IntPtr texture)
+            => ObjCMsgSend.SendBool(texture, ObjCRuntime.Sel("isFramebufferOnly")) != 0;
 
         // A CAMetalLayer with no window, no view and no display server. Row 1's spike established that this
         // works and this is the first thing in the backend to depend on it, so a machine that cannot make one

@@ -191,7 +191,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             VulkanSwapchainSpec spec = VulkanSwapchainPolicy.Decide(
                 FakeVulkanSurfaceApi.Minimised(), new VulkanExtent(1280, 720), syncToVerticalBlank: true,
-                srgb: false, out _);
+                srgb: false, copySource: false, out _);
 
             Assert.Equal(new VulkanExtent(0, 0), spec.Extent);
             Assert.False(spec.IsCreatable);
@@ -210,7 +210,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             VulkanSwapchainSpec spec = VulkanSwapchainPolicy.Decide(
                 FakeVulkanSurfaceApi.Desktop(), new VulkanExtent(1280, 720), syncToVerticalBlank: true,
-                srgb: false, out _);
+                srgb: false, copySource: false, out _);
 
             Assert.Equal(ImageUsageFlags.ColorAttachmentBit | ImageUsageFlags.TransferDstBit, spec.Usage);
             Assert.Equal(CompositeAlphaFlagsKHR.OpaqueBitKhr, spec.CompositeAlpha);
@@ -233,7 +233,8 @@ namespace KhaozEngine.Tests.Gpu
             };
 
             VulkanSwapchainSpec spec = VulkanSwapchainPolicy.Decide(
-                rotated, new VulkanExtent(1280, 720), syncToVerticalBlank: true, srgb: false, out _);
+                rotated, new VulkanExtent(1280, 720), syncToVerticalBlank: true, srgb: false, copySource: false,
+                out _);
 
             Assert.Equal(SurfaceTransformFlagsKHR.Rotate90BitKhr, spec.PreTransform);
             Assert.NotEqual(SurfaceTransformFlagsKHR.IdentityBitKhr, spec.PreTransform);
@@ -258,9 +259,11 @@ namespace KhaozEngine.Tests.Gpu
             IReadOnlyList<VulkanSurfaceFormatPair> formats = report.Formats;
 
             VulkanSwapchainSpec first = VulkanSwapchainPolicy.Decide(
-                report, new VulkanExtent(1280, 720), syncToVerticalBlank: false, srgb: false, out _);
+                report, new VulkanExtent(1280, 720), syncToVerticalBlank: false, srgb: false, copySource: false,
+                out _);
             VulkanSwapchainSpec second = VulkanSwapchainPolicy.Decide(
-                report, new VulkanExtent(1280, 720), syncToVerticalBlank: false, srgb: false, out _);
+                report, new VulkanExtent(1280, 720), syncToVerticalBlank: false, srgb: false, copySource: false,
+                out _);
 
             Assert.Equal(first, second);
             Assert.Same(formats, report.Formats);

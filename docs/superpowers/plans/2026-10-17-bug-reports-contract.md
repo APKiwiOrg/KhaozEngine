@@ -100,7 +100,25 @@ public sealed class FrameHistoryRecorder : IDisposable
 ```csharp
 namespace KhaozEngine.BugReports.Contracts;
 public static class BugReportFormat { public const int Version = 1; }
-public static class BugReportJson { public static JsonSerializerOptions Options { get; } }   // D9
+public static class BugReportJson
+{
+    public static JsonSerializerOptions Options { get; }                       // D9
+    public static JsonDocumentOptions SectionDocumentOptions { get; }          // depth MaxSectionDepth, no duplicate names
+    public static bool IsValidSection(ReadOnlyMemory<byte> json);              // one object, every string decodes
+    public static bool IsWellFormedText(string text);                          // false on any lone surrogate
+    // One Serialize<T> returning UTF-8 bytes and one Deserialize<T> over a UTF-8 span per wire document, each
+    // Deserialize throwing JsonException on a malformed, incomplete or duplicate-keyed document:
+    public static byte[] SerializeManifest(BugReportManifest manifest);
+    public static BugReportManifest DeserializeManifest(ReadOnlySpan<byte> json);
+    public static byte[] SerializeClipIndex(ClipIndex index);
+    public static ClipIndex DeserializeClipIndex(ReadOnlySpan<byte> json);
+    public static byte[] SerializeIntakeAccepted(IntakeAccepted value);
+    public static IntakeAccepted DeserializeIntakeAccepted(ReadOnlySpan<byte> json);
+    public static byte[] SerializeRelayError(RelayError value);
+    public static RelayError DeserializeRelayError(ReadOnlySpan<byte> json);
+    public static byte[] SerializeServerSnapshot(ServerSnapshotWire value);
+    public static ServerSnapshotWire DeserializeServerSnapshot(ReadOnlySpan<byte> json);   // also rejects undecodable strings
+}
 public static class BundleErrors { /* stable error codes, E2's choice */ }
 public static class BugReportLimits
 {
@@ -111,7 +129,19 @@ public static class BugReportLimits
     public const int MaxTitleChars = 70;
     public const int MaxScreenshotLongEdge = 2560;
     public const int MaxServerSnapshotBytes = 1024 * 1024;
+    public const int ServerSnapshotEnvelopeReserveBytes = 16 * 1024;
     public const int MaxPngScreenshotBytes = 4 * 1024 * 1024;
+    public const int MaxCategoryChars = 64;
+    public const int MaxGameIdChars = 32;
+    public const int MaxSectionDepth = 64;
+    public const int MaxClipOffsetMilliseconds = 600000;
+    public const int MaxRenderMilliseconds = 60000;
+}
+public static class ImageHeaders
+{
+    public const string PngMediaType = "image/png";
+    public const string JpegMediaType = "image/jpeg";
+    public static bool TryReadSize(string mediaType, ReadOnlySpan<byte> bytes, out int width, out int height);
 }
 public enum BugReportKind { Bug, Crash }
 public sealed record BundleEntry(string Name, long Size, string Sha256);
@@ -127,6 +157,9 @@ public static class BundleEntryNames
     public const string ScreenshotJpeg = "screenshot.jpg";
     public const string ClipIndex = "clip/index.json";
     public const string ClipMp4 = "clip.mp4";
+    public const int MaxClipFrames = 120;
+    public static bool IsValidSectionKey(string key);   // D10
+    public static bool IsValidGameId(string gameId);    // [a-z0-9][a-z0-9-]{0,31}
     public static string Section(string key);      // "sections/<key>.json", key is [a-z0-9._-]{1,48}
     public static string ClipFrame(int index);     // "clip/000.jpg" to "clip/119.jpg"
     public static bool IsAllowed(string name);
@@ -183,12 +216,20 @@ public interface IBugReportSection
     int MaxBytes { get; }
     void Write(Utf8JsonWriter writer, BugReportContext context);
 }
-public sealed record BugReportContext(string ReportId, DateTimeOffset CapturedAt, ReportRedactor Redactor, string? Subject = null);
-public sealed record CapturedSection(string Key, ReadOnlyMemory<byte> Json);
+public sealed record BugReportContext(string ReportId, DateTimeOffset CapturedAt, string? Subject = null);
+public sealed record RawSection(string Key, int MaxBytes, ReadOnlyMemory<byte> Json, bool IsError);   // unredacted capture output
+public sealed record CapturedSection(string Key, ReadOnlyMemory<byte> Json);   // finished: redacted, truncated, inside the selected total
+// Only Finish produces redacted sections. The bundle writer trusts a hand-built CapturedSection to be finished output.
 public sealed class BugReportSectionSet
 {
+    public const int MinSectionBytes = 64;
+    public const int MaxSections = 64;                                         // Add throws InvalidOperationException past it
+    public static readonly TimeSpan DefaultFinishBudget = TimeSpan.FromSeconds(2);
+    public IReadOnlyList<string> Keys { get; }
     public void Add(IBugReportSection section);
-    public IReadOnlyList<CapturedSection> CaptureAll(BugReportContext context);   // isolation, truncation, 1 MiB total
+    public IReadOnlyList<RawSection> CaptureAll(BugReportContext context);   // isolation only, frame thread
+    // Off the frame thread: redaction, error message cut, truncation, configurable total (1 MiB by default). Masks every remaining string once budget is spent.
+    public static IReadOnlyList<CapturedSection> Finish(IReadOnlyList<RawSection> raw, ReportRedactor redactor, TimeSpan budget, int totalBytes = BugReportLimits.MaxSectionBytesTotal);
 }
 public sealed class BugReportDraft
 {
@@ -219,8 +260,13 @@ public interface IBugReportSink
 }
 public sealed class HttpRelaySink : IBugReportSink
 {
-    public HttpRelaySink(HttpClient http, Uri relayBase, Func<string?> bearerToken);
+    public const string UnconfirmedError = "unconfirmed";
+    public HttpRelaySink(HttpClient http, Uri relayBase, Func<string?> bearerToken);   // token read on a pool thread
 }
+// HttpRelaySink results: Sent only for a 2xx IntakeAccepted whose ReportId equals the submission's. Any other 2xx is
+// Queued "unconfirmed". Rejected only for 400, 403, 413 or 422 with a RelayError body. Everything else is Queued
+// "http_<status>", or "no_token" and "network".
+public readonly record struct BugReportFlushResult(int Sent, int Rejected);
 public sealed class LocalFolderSink : IBugReportSink
 {
     public LocalFolderSink(string root, bool openViewer);
@@ -232,7 +278,7 @@ public sealed class BugReportOfflineQueue
     public static readonly TimeSpan MaxAge = TimeSpan.FromDays(7);
     public BugReportOfflineQueue(string directory, TimeProvider time);
     public void Enqueue(BugReportSubmission submission);      // Subject null binds to the first account that flushes
-    public Task<int> FlushAsync(string subject, IBugReportSink sink, CancellationToken cancellationToken);
+    public Task<BugReportFlushResult> FlushAsync(string subject, IBugReportSink sink, CancellationToken cancellationToken);
 }
 public sealed record BugReportViewerModel(BugReportManifest Manifest, ClipIndex? Clip, IReadOnlyList<CapturedSection> Sections,
     ReporterIdentity? Reporter, ReadOnlyMemory<byte>? ServerSnapshotJson, IReadOnlyList<string> LogTail);
@@ -240,7 +286,7 @@ public static class BugReportViewerPage
 {
     public static string Render(BugReportViewerModel model);  // self-contained, media by relative path
 }
-public sealed record ServerSnapshot(string ReportId, string Subject, DateTimeOffset CapturedAt, IReadOnlyList<CapturedSection> Sections);
+public sealed record ServerSnapshot(string ReportId, string Subject, DateTimeOffset CapturedAt, IReadOnlyList<RawSection> Sections);
 public sealed class BugReportServerCapture
 {
     public BugReportServerCapture(TimeProvider time, int perAccountPerHour = 5);
@@ -250,7 +296,7 @@ public sealed class BugReportServerCapture
 }
 public sealed class ServerSnapshotPoster
 {
-    public ServerSnapshotPoster(HttpClient http, Uri relayBase, string serviceKey);
+    public ServerSnapshotPoster(HttpClient http, Uri relayBase, string serviceKey, ReportRedactor? redactor = null);
     public Task<bool> PostAsync(ServerSnapshot snapshot, CancellationToken cancellationToken);   // false and a warning on failure
 }
 ```
@@ -279,11 +325,26 @@ public sealed class BugReportService : IDisposable
     public bool Begin();                             // the menu path, false when a report is already open
     public event Action<string>? ReportCaptured;     // report id, raised in the trigger frame
     public void SetRecordingEnabled(bool enabled);
-    public Task<int> RetryQueuedAsync(CancellationToken cancellationToken);   // flushes for currentSubject()
+    public Task<int> RetryQueuedAsync(CancellationToken cancellationToken);   // flushes for currentSubject(), returns sent
+    // currentSubject is called on the frame thread every frame and on the thread that calls RetryQueuedAsync.
+    // E2 additions
+    public ActionMapController TriggerControls { get; }
+    public RecentLogSink RecentLog { get; }
+    public event Action<BugReportSubmitResult>? ReportSubmitted;   // frame thread
+    public void SetPassTimingsSource(Func<PassTimings?> source);
 }
 ```
 
 E2 also adds these public names, members its own choice: `TextArea` (Gui), `JpegThumbnailDecoder` (Imaging), `IGameOverlay`, `GameOverlayContext`, `GameApp.AddOverlay` and `GameApp.RemoveOverlay` (Game), `InputState.WithoutInteraction` (Windowing), `BugReportSubmitter` (core).
+
+The Client package keeps its implementation internal: the seven built-in section classes, their five `*Facts`
+records, `FrameTimeRing`, `BugReportScreen`, `BugReportScreenModel`, `BugReportScreenResources`,
+`BugReportScreenResult`, `BugReportScreenLayout` and `ReportThumbnails`. Its public surface is `BugReportService`,
+`BugReportServiceOptions`, `FrameHistoryRecorder`, `FrameHistoryOptions` and `BugReportStrings`.
+
+`BugReportStrings` (Client) holds the `bugreport.*` `StringId` keys with an English fallback. Its category field
+label is `BugReportStrings.CategoryFieldLabel`, because `BugReportStrings.CategoryLabel(string categoryId)` resolves a
+category id and a field of the same name would clash.
 
 ## E3 produces
 
@@ -362,3 +423,50 @@ public sealed class PoisonQueueRequeuer
 
 Every public name above, plus the spec's host settings: queue `bug-report-work`, poison queue
 `bug-report-work-poison`, containers `reports` (public) and `pending` (private), table `quotas`.
+
+## E1 as built
+
+Public names E1 added beyond its block above, and the rules E2 and E3 can rely on. The READMEs of
+`KhaozEngine.Gpu`, `KhaozEngine.Windowing` and `KhaozEngine.BugReports.Client` carry the full detail.
+
+- **`IGpuFencedReadback`** (`KhaozEngine.Gpu`). An optional device capability with one member,
+  `MappedData MapForRead(IGpuTexture staging, IGpuFence fence)`. It maps a staging texture once its fence has
+  signaled, never drains, and throws `InvalidOperationException` before the fence signals. The three native devices
+  implement it. Unmap with `IGpuDevice.Unmap`.
+- **`GpuReadbackRing` members.** `Width`, `Height`, `SlotCount`, `PendingCount`, `HasFreeSlot`,
+  `TryRecordCopy(commands, source, tag, out fence)` and `TryReadCompleted(destination, out tag)`. The constructor
+  refuses a device without completion fences or without `IGpuFencedReadback` with `NotSupportedException`.
+- **`IGpuSwapchainCapture`** (`KhaozEngine.Gpu`). An optional device capability with `SwapchainCopySourceRequested`,
+  `SwapchainCopySupported`, `SwapchainCopyable` and `CopySwapchainColor(commands, destination)`. The three native
+  devices implement it. `SwapchainCopySupported` is the permanent answer: whether this device can ever produce a
+  copyable swapchain image for its surface. Direct3D 11 and Metal answer true. Vulkan answers true only when the
+  surface's `supportedUsageFlags` include `TRANSFER_SRC`, refreshed on every recreation. `SwapchainCopyable` is the
+  current frame's answer and can be false transiently on a supported device.
+- **The bound-this-recording precondition.** `CopySwapchainColor` refuses with `InvalidOperationException` a list
+  that has not bound `SwapchainFramebuffer` in its current recording, on all three backends. Only the frame's own
+  list is ordered after the image's acquire, so a swapchain copy goes into `FrameCaptureContext.Commands`.
+- **`GpuScaledCopy`** (`KhaozEngine.Gpu`). `new GpuScaledCopy(device)`, `Record(commands, source, destination)`,
+  `Record(commands, source, destination, retire)` and `Dispose()`. One fullscreen linear downscale from any `Sampled`
+  texture into a single `R8G8B8A8UNorm` attachment, output in RGBA order, top row first, alpha one, and byte-exact
+  when the copy does not reduce. A resource set replaced by a new source goes to `retire`, or stays alive until
+  `Dispose` when `retire` is null. It is never disposed during the recording that used it.
+- **`IFrameCaptureTap` members** (`KhaozEngine.Windowing`). `Record(FrameCaptureContext)`,
+  `AfterSubmit(FrameCaptureContext)` and `Detach(Action<IDisposable> retire)`.
+- **`FrameCaptureContext` members** (`KhaozEngine.Windowing`). `Frame`, `Device`, `Commands` (the frame's own list,
+  open during `Record` only), `FrameMilliseconds` (the unclamped loop delta, D14), `AcquireSwapchainImage()` (one
+  shared `Sampled` copy per frame, null when uncopyable), `SignalOnSubmit(fence)` (one fence per frame across every
+  tap) and `Retire(resource)`.
+- **Recorder availability.** `IsAvailable` is true only when the device has completion fences, implements both
+  `IGpuSwapchainCapture` and `IGpuFencedReadback`, and reports `SwapchainCopySupported`. A screenshot needs only
+  `IGpuSwapchainCapture` with `SwapchainCopySupported` true. A device without that gets no standby screenshot tap,
+  `IsAvailable` is false, and `CaptureScreenshotAsync()` returns a task faulted with `NotSupportedException`. A
+  transiently uncopyable frame on a supported device keeps a screenshot request pending.
+- **Recorder faults.** No capture fault reaches the game's frame, and they take three forms. A clip encode fault
+  is recorded on the encode thread, handled on the frame thread at the clip tap's next frame, warned once, and
+  stops recording for the recorder's lifetime, as a fault in the clip tap itself does: `IsRecording` is false and
+  later `Start()` calls do nothing. A screenshot tap fault trips its guard, faults the pending task and every
+  later request. A screenshot encoder exception faults only that request, and the next request may succeed.
+- **`MaxBytes` floor.** `FrameHistoryOptions.MaxBytes` below 64 KiB is refused. The floor is a lower bound for sane
+  configurations and does not guarantee that one frame fits. The default of 8 MB is the hard byte budget and does
+  not guarantee a full clip. Holding all 60 default frames needs an average under about 136 KiB, and a detailed
+  scene can shorten the clip, which then keeps the newest frames.

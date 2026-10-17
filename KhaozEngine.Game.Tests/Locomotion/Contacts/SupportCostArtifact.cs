@@ -62,6 +62,11 @@ internal static class SupportCostVerdict
     internal const int MinimumCalibrationRows = 40;
     internal const double MinimumReferenceMicroseconds = 0.5;
 
+    /// <summary>The operation of the leading row a cost run records and discards (SC-16). The first measured row
+    /// reads high on every machine, so a fixed cheap scene takes that position. It is neither gated nor a legacy
+    /// row, so no verdict or host scale reads it.</summary>
+    internal const string DiscardedLeadingOperation = "DiscardedLeading/Find";
+
     internal static bool TryHostedScale(JsonObject? m2MaxReference, JsonObject? hosted, out HostedScale scale)
     {
         scale = default;
@@ -340,6 +345,8 @@ internal static class SupportCostArtifact
             OperatingSystem = RuntimeInformation.OSDescription,
             TieredCompilation = Environment.GetEnvironmentVariable("DOTNET_TieredCompilation"),
             Compilation = "Release, tiering disabled. First-use sample, one unmeasured priming call, warm sample. No warm-up loop.",
+            LeadingRow = samples.All(sample => sample.Operation != SupportCostVerdict.DiscardedLeadingOperation) ? null
+                : $"One flat box Find recorded as {SupportCostVerdict.DiscardedLeadingOperation} runs the same protocol before the first measured row and is discarded. No verdict or host scale reads it.",
             ColdJit = "First use may include optimized JIT. The second invocation primes hit-only paths outside measurement before the warm sample. ColdBytes measures managed allocation, not JIT code memory.",
             ColdScratch = "Scene construction excluded. Each new scene has its own backend scratch. FootSupport thread scratch is shared across rows.",
             Scratch = "High-water retained managed array payload in support scratch, every constructed query scratch and privately owned installed local geometry, plus each query scratch's native Bepu pool capacity. Excludes object headers.",

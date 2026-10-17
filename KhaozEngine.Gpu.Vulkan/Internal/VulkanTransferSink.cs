@@ -47,6 +47,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             => VulkanTransferBarrier.Emit(new VulkanCmdSink(_vk, Cmd(commandBuffer)), toTransfer);
 
         /// <inheritdoc/>
+        public void HostReadBarrier(ulong commandBuffer)
+            => VulkanTransferBarrier.EmitToHost(new VulkanCmdSink(_vk, Cmd(commandBuffer)));
+
+        /// <inheritdoc/>
         public void CopyImage(ulong commandBuffer, ulong source, ulong destination, in ImageCopy region)
             => _vk.CmdCopyImage(Cmd(commandBuffer), new Image(source), ImageLayout.TransferSrcOptimal,
                 new Image(destination), ImageLayout.TransferDstOptimal, 1, in region);

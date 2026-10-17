@@ -43,10 +43,15 @@ internal static class SupportFootprintPolygon
             polygon.High[2] < bounds.Minimum.Z || polygon.Low[2] > bounds.Maximum.Z) return GeometrySign.Negative;
         if (!reference) BeginOperands(polygon, request);
         FeatureNumber expanded = FeatureNumber.Exact(request.Radius).Add(FeatureNumber.Exact(request.ContactBand));
-        GeometrySign admission = Extrema(polygon, request, expanded, out Range column);
-        if (admission != GeometrySign.Positive) return admission;
-        if (column.Minimum.Lower > top || column.Maximum.Upper < bottom) return GeometrySign.Negative;
-        if (column.Minimum.Upper > top || column.Maximum.Lower < bottom) return GeometrySign.Unresolved;
+        GeometrySign certified = SupportVerticalAdmission.Admit(polygon, request, expanded, bottom, top);
+        if (certified == GeometrySign.Negative) return certified;
+        if (certified == GeometrySign.Unresolved)
+        {
+            GeometrySign admission = Extrema(polygon, request, expanded, out Range column);
+            if (admission != GeometrySign.Positive) return admission;
+            if (column.Minimum.Lower > top || column.Maximum.Upper < bottom) return GeometrySign.Negative;
+            if (column.Minimum.Upper > top || column.Maximum.Lower < bottom) return GeometrySign.Unresolved;
+        }
         GeometryVector normalBounds = GeometryVectorOperations.Normalize(polygon.Normal.Bounds);
         if (normalBounds.IsResolved && normalBounds.Y.Lower < request.CosMaxSlope &&
             normalBounds.Y.Upper >= request.CosMaxSlope && Orientation(polygon) == GeometrySign.Positive &&

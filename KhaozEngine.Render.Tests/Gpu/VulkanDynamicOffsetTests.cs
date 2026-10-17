@@ -54,8 +54,8 @@ namespace KhaozEngine.Tests.Gpu
             }
 
             // Includes atmosphere producers, target outlines, the point-skinned caster header,
-            // split resolves and the foliage cascade block.
-            Assert.Equal(62, shapes.Count);
+            // split resolves, the foliage cascade block and GpuScaledCopy.
+            Assert.Equal(63, shapes.Count);
 
             for (int segment = 0; segment < harness.Rings.FramesInFlight; segment++)
             {

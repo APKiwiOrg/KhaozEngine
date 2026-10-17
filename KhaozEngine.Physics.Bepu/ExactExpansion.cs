@@ -6,10 +6,11 @@ namespace KhaozEngine.Physics.Bepu;
 /// <summary>Allocation-free exact signs over binary64 operands, by error-free transformations and expansion
 /// arithmetic (Shewchuk, Adaptive Precision Floating-Point Arithmetic, 1997). Every operand passed here is zero or
 /// has a magnitude in [2^-200, 2^200), which every finite binary32 value does. Every operand is then a multiple of
-/// 2^-252, and so is each Two-Sum part of a difference of two operands. The predicates here multiply at most three
+/// 2^-252, and so is each Two-Sum part of a difference of two operands. The general predicates multiply at most three
 /// such values, so every product and its rounding error are multiples of 2^-756, far above the smallest subnormal,
 /// and no magnitude reaches 2^610. Two-Sum and the fused Two-Product are then exact, Grow-Expansion keeps a
-/// nonoverlapping expansion of the exact sum, and its largest component carries the sign.
+/// nonoverlapping expansion of the exact sum, and its largest component carries the sign. The degree-four disc
+/// predicate uses its narrower 2^-80 coordinate lattice, documented in CompareDiscEdge.
 /// <see cref="BoundedGeometryArithmetic"/> takes this path only inside that domain, where its dyadic path never
 /// reaches the 4096 bit cap either, so both paths return the same exact sign.</summary>
 internal ref struct ExactExpansion
@@ -81,4 +82,7 @@ internal ref struct ExactExpansion
             return top > 0 ? GeometrySign.Positive : top < 0 ? GeometrySign.Negative : GeometrySign.Zero;
         }
     }
+
+    /// <summary>The nonoverlapping terms of this exact sum, in increasing magnitude.</summary>
+    internal readonly ReadOnlySpan<double> Components => _components[.._count];
 }

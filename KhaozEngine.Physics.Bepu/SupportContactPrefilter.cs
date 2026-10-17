@@ -138,8 +138,9 @@ internal static class SupportContactPrefilter
         return new(true, offPlane);
     }
 
-    // Whether the exact edge is exactly the difference of its exact endpoints. Two-Sum is error free here.
-    static bool Chord(FeaturePoint from, FeaturePoint to, FeaturePoint edge) =>
+    /// <summary>Whether the exact <paramref name="edge"/> is exactly the difference of its exact endpoints. Two-Sum is
+    /// error free here.</summary>
+    internal static bool Chord(FeaturePoint from, FeaturePoint to, FeaturePoint edge) =>
         Chord(from.X.Value, to.X.Value, edge.X.Value) && Chord(from.Y.Value, to.Y.Value, edge.Y.Value) &&
         Chord(from.Z.Value, to.Z.Value, edge.Z.Value);
 

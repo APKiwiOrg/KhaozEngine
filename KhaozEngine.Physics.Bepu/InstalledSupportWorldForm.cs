@@ -176,6 +176,7 @@ internal sealed class InstalledSupportWorldFace
     internal GeometrySign NormalArea { get; }
     internal GeometrySign Orientation { get; }
     internal SupportContactDomain ContactDomain { get; }
+    internal SupportVerticalDomain VerticalDomain { get; }
 
     /// <summary>Element ids of the later faces of the same leaf that share a captured edge with this face and whose
     /// meeting with it, this face first, <see cref="SupportNeighborhoodJoins.CertifiesTopologyMeeting"/> proved.</summary>
@@ -199,5 +200,6 @@ internal sealed class InstalledSupportWorldFace
         NormalArea = polygon.NormalArea;
         Orientation = polygon.Orientation;
         ContactDomain = polygon.ContactDomain;
+        VerticalDomain = polygon.VerticalDomain;
     }
 }

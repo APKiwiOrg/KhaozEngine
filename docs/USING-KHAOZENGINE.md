@@ -29,6 +29,7 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [File-size ratchet (KESIZE analyzer)](#file-size-ratchet-kesize-analyzer)
 - [In-game patch notes (`PatchNotesLoader` / `PatchNotesView` / `PatchNotesScreen`, 10.45.0)](#in-game-patch-notes-patchnotesloader--patchnotesview--patchnotesscreen-10450)
 - [Reconnect / connection-outage screen (`ConnectionStatusController` / `ReconnectScreen`, 13.2.0)](#reconnect--connection-outage-screen-connectionstatuscontroller--reconnectscreen-1320)
+- [In-game bug reports (`BugReportService`)](#in-game-bug-reports-bugreportservice)
 - [Render2D (`KhaozEngine.Render2D`)](#render2d-khaozenginerender2d)
 - [DPI-aware / crisp UI (the point-space path)](#dpi-aware--crisp-ui-the-point-space-path)
 - [Floating world text (`FloatingTextStore` / `FloatingBannerStore`, 18.16.0)](#floating-world-text-floatingtextstore--floatingbannerstore-18160)
@@ -3360,6 +3361,51 @@ after the scrim and before the content (for custom art or a logo), and the butto
 `ReconnectStrings` supplies the engine-owned `reconnect.*` keys (title, planned-update title, reassurance,
 attempt, retry) with a built-in English fallback, so the screen renders correctly before a game wires its own
 localization catalog.
+
+---
+
+## In-game bug reports (`BugReportService`)
+
+Bug reports are opt-in and sit in no umbrella. A client references `KhaozEngine.BugReports.Client`, which brings
+`KhaozEngine.BugReports` and `KhaozEngine.BugReports.Contracts`. A game server references `KhaozEngine.BugReports`
+alone, which has no GPU, window or game dependency.
+
+`BugReportService` lives at the `GameApp` level, as an overlay added through `GameApp.AddOverlay`, so the trigger
+works on the title, login, loading and game screens. Build it once on the frame thread after the app is
+constructed:
+
+```csharp
+var reports = new BugReportService(app,
+    new BugReportServiceOptions { GameId = "mygame", GameDisplayName = "My Game", SessionLogPath = logPath },
+    new HttpRelaySink(http, relay, () => token),
+    new BugReportOfflineQueue(Path.Combine(stateDir, "bug-reports", "pending"), TimeProvider.System),
+    () => subject);
+```
+
+- **Trigger.** F10 by default, rebindable through `reports.TriggerControls`, persisted through
+  `SaveTriggerBindings` and `TriggerBindingsJson`. `reports.Begin()` serves a menu entry.
+- **Capture.** The trigger frame freezes the clip, arms the screenshot and captures every section, then raises
+  `ReportCaptured(reportId)` for a server-backed game to request a server snapshot. The confirmation screen opens
+  once the screenshot is taken, at most three frames later, and the game sees `InputState.WithoutInteraction` from
+  the trigger until it closes. The game decides whether its
+  world pauses.
+- **Sections.** Seven built-in sections (`build`, `platform`, `graphics`, `session`, `input`, `performance`,
+  `log`) plus any `AddSection`. Sections run in the trigger frame and must be cheap. Redaction and truncation run
+  off the frame thread before anything leaves the machine.
+- **Delivery.** Send builds the bundle on the thread pool. `BugReportSubmitter` writes it to the offline queue
+  before the first send, so a crash, a shutdown or an unreachable relay keeps it for the next sign-in. Only a relay
+  acceptance that echoes the report id, or a refusal with the relay's error, deletes it. Use
+  `LocalFolderSink` in development to open each report in the frame viewer without a relay.
+- **Clip.** `reports.Recorder.Suspend()` and `Resume()` around a pause menu, and `SetRecordingEnabled` for a
+  settings toggle.
+- **Strings.** Every line resolves through `bugreport.*` `StringId` keys with an English fallback. Add a key to
+  the game's catalog to override it.
+- **Shutdown.** `reports.Dispose()` removes the overlay, waits up to 3 s for sends to reach the offline queue,
+  cancels sends and flushes, disposes the recorder and detaches the log ring. Dispose it before the app.
+
+A game server registers its own sections on `BugReportServerCapture`, checks `ReportIds.IsValid` and `TryAccept`
+with the subject it authenticated before it calls `Capture` on the simulation thread, and posts with
+`ServerSnapshotPoster` off that thread. The package READMEs carry the full examples.
 
 ---
 
@@ -8428,7 +8474,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.3.1" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.4.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -8829,7 +8875,7 @@ option does not enter bake identity or change canonical bytes. See the
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.3.1" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.4.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -9594,7 +9640,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.3.1" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.4.0" />
 ```
 
 ```csharp
@@ -17378,7 +17424,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.3.1" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.4.0" />
 ```
 
 ```csharp
@@ -17414,7 +17460,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.3.1" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.4.0" />
 ```
 
 ```csharp
@@ -17658,7 +17704,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.3.1" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.4.0" />
 ```
 
 ```csharp
@@ -22018,7 +22064,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="21.3.1" />
+  <PackageReference Include="KhaozEngine.Automation" Version="21.4.0" />
 </ItemGroup>
 ```
 

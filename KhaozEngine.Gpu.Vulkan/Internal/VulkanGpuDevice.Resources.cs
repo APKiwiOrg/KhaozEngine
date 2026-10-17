@@ -113,10 +113,18 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             RequireLiveForMap();
 
             VulkanTexture target = RequireMappable(staging);
-            VulkanSubresourceLayout layout = VulkanStagingLayout.For(
-                target.StagingShape, VulkanStagingMaps.Subresource, VulkanStagingMaps.Subresource);
 
             DrainBeforeRead(mode);
+
+            return OpenTextureMap(target, mode);
+        }
+
+        // THE MAP ITSELF, after whatever proved the bytes complete: the drain above, or a signaled fence in
+        // MapForRead. Shared so the two cannot drift on the invalidate.
+        MappedData OpenTextureMap(VulkanTexture target, GpuMapMode mode)
+        {
+            VulkanSubresourceLayout layout = VulkanStagingLayout.For(
+                target.StagingShape, VulkanStagingMaps.Subresource, VulkanStagingMaps.Subresource);
 
             lock (_submitLock)
             {

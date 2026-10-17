@@ -97,7 +97,7 @@ internal enum GeometrySign : byte { Unresolved, Negative, Zero, Positive }
 /// inside the <see cref="ExactExpansion"/> domain take its allocation-free path, which returns the exact sign the
 /// dyadic path returns there. Every other operand takes the dyadic path and its 4096 bit refusal.</summary>
 [SkipLocalsInit]
-internal static class BoundedGeometryArithmetic
+internal static partial class BoundedGeometryArithmetic
 {
     internal const int MaximumPredicateBits = 4096;
 
@@ -238,29 +238,47 @@ internal static class BoundedGeometryArithmetic
         return Compare(sum, Split(expected));
     }
 
-    /// <summary>Exact oriented area sign for three supplied binary32 points. Finite binary32 values lie in the
-    /// <see cref="ExactExpansion"/> domain, and the dyadic path never refuses them.</summary>
-    internal static GeometrySign Orient2D(float ax, float ay, float bx, float by, float cx, float cy)
+    /// <summary>Exact oriented area sign for three supplied binary32 points. Every binary32 value converts exactly to
+    /// binary64, and every finite one lies in the <see cref="ExactExpansion"/> domain, so the dyadic path never
+    /// refuses them.</summary>
+    internal static GeometrySign Orient2D(float ax, float ay, float bx, float by, float cx, float cy) =>
+        Orient2D((double)ax, ay, bx, by, cx, cy);
+
+    /// <summary>Exact oriented area sign for three supplied binary64 points. Operands inside the
+    /// <see cref="ExactExpansion"/> domain take its path. Every other operand takes the dyadic path and its bit
+    /// cap.</summary>
+    internal static GeometrySign Orient2D(double ax, double ay, double bx, double by, double cx, double cy)
     {
-        if (!float.IsFinite(ax) || !float.IsFinite(ay) || !float.IsFinite(bx) ||
-            !float.IsFinite(by) || !float.IsFinite(cx) || !float.IsFinite(cy))
+        if (!double.IsFinite(ax) || !double.IsFinite(ay) || !double.IsFinite(bx) ||
+            !double.IsFinite(by) || !double.IsFinite(cx) || !double.IsFinite(cy))
             return GeometrySign.Unresolved;
+        if (!ExactExpansion.InRange(ax) || !ExactExpansion.InRange(ay) || !ExactExpansion.InRange(bx) ||
+            !ExactExpansion.InRange(by) || !ExactExpansion.InRange(cx) || !ExactExpansion.InRange(cy))
+            return Orient2DDyadic(ax, ay, bx, by, cx, cy);
+        // Each difference is exact as its Two-Sum value and error, and each product of those parts is exact as its
+        // rounded value and fused error.
         var area = new ExactExpansion(stackalloc double[17]);
-        ExactExpansion.TwoSum(bx, -(double)ax, out double x1, out double x1Error);
-        ExactExpansion.TwoSum(cy, -(double)ay, out double y2, out double y2Error);
-        ExactExpansion.TwoSum(by, -(double)ay, out double y1, out double y1Error);
-        ExactExpansion.TwoSum(cx, -(double)ax, out double x2, out double x2Error);
+        ExactExpansion.TwoSum(bx, -ax, out double x1, out double x1Error);
+        ExactExpansion.TwoSum(cy, -ay, out double y2, out double y2Error);
+        ExactExpansion.TwoSum(by, -ay, out double y1, out double y1Error);
+        ExactExpansion.TwoSum(cx, -ax, out double x2, out double x2Error);
         AddProduct(ref area, x1, x1Error, y2, y2Error, 1);
         AddProduct(ref area, y1, y1Error, x2, x2Error, -1);
         return area.Sign;
     }
 
-    /// <summary>The dyadic path of <see cref="Orient2D"/>, the reference its expansion path is proved against.</summary>
-    internal static GeometrySign Orient2DDyadic(float ax, float ay, float bx, float by, float cx, float cy)
+    /// <summary>The dyadic path of <see cref="Orient2D(float, float, float, float, float, float)"/>, the reference
+    /// its expansion path is proved against.</summary>
+    internal static GeometrySign Orient2DDyadic(float ax, float ay, float bx, float by, float cx, float cy) =>
+        Orient2DDyadic((double)ax, ay, bx, by, cx, cy);
+
+    /// <summary>The dyadic path of <see cref="Orient2D(double, double, double, double, double, double)"/>, the
+    /// reference its expansion path is proved against.</summary>
+    internal static GeometrySign Orient2DDyadic(double ax, double ay, double bx, double by, double cx, double cy)
     {
         SupportQueryDiagnostics.Record(SupportQueryCounter.ExactFallbacks);
-        if (!float.IsFinite(ax) || !float.IsFinite(ay) || !float.IsFinite(bx) ||
-            !float.IsFinite(by) || !float.IsFinite(cx) || !float.IsFinite(cy) ||
+        if (!double.IsFinite(ax) || !double.IsFinite(ay) || !double.IsFinite(bx) ||
+            !double.IsFinite(by) || !double.IsFinite(cx) || !double.IsFinite(cy) ||
             !TryDifference(bx, ax, out Dyadic x1) || !TryDifference(by, ay, out Dyadic y1) ||
             !TryDifference(cx, ax, out Dyadic x2) || !TryDifference(cy, ay, out Dyadic y2) ||
             !TryProductDifference(x1, y2, y1, x2, out Dyadic area))
@@ -370,7 +388,7 @@ internal static class BoundedGeometryArithmetic
         return true;
     }
 
-    static bool TryDifference(float a, float b, out Dyadic result)
+    static bool TryDifference(double a, double b, out Dyadic result)
     {
         Dyadic second = Split(b);
         return TryAdd(Split(a), new(-second.Mantissa, second.Exponent), out result);

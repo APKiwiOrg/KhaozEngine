@@ -68,7 +68,6 @@ namespace KhaozEngine.Tests.Gpu
         const FollowHeading A = FollowHeading.Away, S = FollowHeading.Sideways, T = FollowHeading.Towards;
 
         static readonly float[] Speeds = { 0.5f, 1f, 1.5f, 2f, 2.5f, 3f };
-        static readonly TemporalUpscale[] Presets = { N, Q, P, U };
         static readonly FollowHeading[] Headings = { A, S, T };
 
         /// <summary>The length of <paramref name="preset"/>'s jitter sequence at 320 x 180: 8 at Native, 18 at Quality,
@@ -141,19 +140,30 @@ namespace KhaozEngine.Tests.Gpu
                 bounds.Select(b => b!.Value).ToArray());
         }
 
-        /// <summary>Every orthographic follow walk (<see cref="TemporalFollowCameraRuns"/>) over its start phases, the
-        /// trail near the edge against the bound of <see cref="TemporalFollowCameraGpuTests.Walks"/>, and beside it at
-        /// Quality, Performance and UltraPerformance the trail past the reconstruction's reach, against
-        /// <see cref="TemporalFollowCameraGpuTests.SpillWalks"/> at UltraPerformance and acceptance 3 of its region
-        /// elsewhere. By default the walk at 1 display pixel a frame at Native, Quality and Performance, and at half a
-        /// pixel at Quality.</summary>
+        /// <summary>Every orthographic follow walk at Native and Quality (<see cref="TemporalFollowCameraRuns"/>) over its
+        /// start phases, the trail near the edge against the bound of <see cref="TemporalFollowCameraGpuTests.Walks"/>,
+        /// and beside it on Quality the trail past the reconstruction's reach against acceptance 3 of its region. By
+        /// default the walk at 1 display pixel a frame at Native and Quality, and at half a pixel at Quality.</summary>
         [GpuFact]
-        public void The_orthographic_follow_holds_its_bounds_from_every_start_phase()
+        public void The_orthographic_follow_holds_its_bounds_from_every_start_phase_at_Native_and_Quality() =>
+            OrthographicTable(N, Q);
+
+        /// <summary>The same at Performance and UltraPerformance, the trail past the reconstruction's reach against
+        /// acceptance 3 of its region on Performance and against <see cref="TemporalFollowCameraGpuTests.SpillWalks"/>
+        /// on UltraPerformance. By default the walk at 1 display pixel a frame on Performance. Split from the Native and
+        /// Quality half so the whole sweep is not one test (#1438): it was the longest single test in the suite, and
+        /// the GPU matrix runs each half in its own shard.</summary>
+        [GpuFact]
+        public void The_orthographic_follow_holds_its_bounds_from_every_start_phase_at_Performance_and_Ultra() =>
+            OrthographicTable(P, U);
+
+        void OrthographicTable(params TemporalUpscale[] presets)
         {
             double before = ortho.Seconds;
-            Header(output, "orthographic follow over jitter start phases (#1207), regression bounds");
+            Header(output, $"orthographic follow at {string.Join(" and ", presets)} over jitter start phases (#1207), "
+                + "regression bounds");
             var sweeps = new List<PhaseSweep>();
-            foreach (TemporalUpscale preset in Presets)
+            foreach (TemporalUpscale preset in presets)
                 foreach (float speed in Speeds)
                 {
                     bool every = OrthoEvery(preset, speed);

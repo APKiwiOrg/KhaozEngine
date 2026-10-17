@@ -1,10 +1,12 @@
 using System;
 
-namespace KhaozEngine.Physics.Bepu;
+namespace KhaozEngine.Physics;
 
 /// <summary>A thread-scoped switch to the uncached support evaluator. While it is active on a thread, every
-/// support cost optimization is bypassed on that thread, so equivalence tests can compare an optimized result
-/// with the reference result bit for bit. Nothing it bypasses is published or consumed.</summary>
+/// support query optimization is bypassed on that thread, the exact repeat memo included, so equivalence tests can
+/// compare an optimized result with the reference result bit for bit. Nothing it bypasses is published or consumed.
+/// It does not decide which reads a tick issues: the look-ahead skip of SC-13 is bypassed by
+/// <c>GroundSignals.AlwaysSample</c> in Locomotion.</summary>
 internal static class SupportReferenceEvaluation
 {
     [ThreadStatic] static bool t_active;

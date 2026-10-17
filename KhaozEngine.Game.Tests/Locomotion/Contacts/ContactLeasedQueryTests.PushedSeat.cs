@@ -100,8 +100,10 @@ public partial class ContactLeasedQueryTests
     {
         using var geometry = new FootSupportScene(SceneVariant.Box).Flat("floor", -4, 4, -4, 4, 0)
             .Flat("step", 0.3f, 3, -4, 4, 0.25f);
-        // The initial 1.5 m body clears the roof. Paying the step rise makes the seat require a downward push.
-        geometry.World.AddStatic(new BoxShape(new(4, 0.1f, 4)), Pose.At(new(0, 1.62f, 0)));
+        // The initial 1.5 m body clears the roof. Paying the step rise makes the seat require a downward push. The
+        // roof's edge lies just beside the walk line, so the push also carries the body sideways and its support read
+        // is a new axis. An exact repeat would be served by the interval's memo and never reach the faulting view.
+        geometry.World.AddStatic(new BoxShape(new(4, 0.1f, 4)), Pose.At(new(0, 1.62f, 4.02f)));
         using var scene = new QueryScene(geometry);
         scene.View.FailPushedSupport = expired;
         scene.View.RefusePushedSupport = !expired;
@@ -114,6 +116,7 @@ public partial class ContactLeasedQueryTests
 
         Assert.NotNull(scene.View.PushedSupportRequest);
         Assert.True(scene.View.PushMtv.Y < 0);
+        Assert.NotEqual(0, scene.View.PushedSupportRequest!.Value.Axis.Y);
         Assert.Equal(expired ? MovementStepOutcome.EnvironmentUnresolved : MovementStepOutcome.Blocked, result.Outcome);
         if (expired)
         {

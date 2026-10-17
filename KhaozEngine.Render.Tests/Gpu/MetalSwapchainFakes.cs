@@ -20,7 +20,7 @@ namespace KhaozEngine.Tests.Gpu
     /// </summary>
     internal sealed class FakeMetalSwapchainApi : IMetalSwapchainApi
     {
-        readonly Queue<MetalAcquiredDrawable> _scripted = new();
+        readonly Queue<(MetalAcquiredDrawable Drawable, bool? FramebufferOnly)> _scripted = new();
         int _nextHandle = 1000;
 
         /// <summary>Everything that happened, in order, across the api, the drain and the capture hook. The drain
@@ -34,6 +34,10 @@ namespace KhaozEngine.Tests.Gpu
 
         internal MetalDrawableSize LastDrawableSize { get; private set; }
         internal bool? LastDisplaySync { get; private set; }
+
+        /// <summary>The layer's <c>framebufferOnly</c> as last written, by <see cref="Configure"/> or by
+        /// <see cref="SetFramebufferOnly"/>. False until the layer is configured.</summary>
+        internal bool FramebufferOnly { get; private set; }
 
         /// <summary>Every acquire's answer, in order, so a row can assert the RELATION between what was handed
         /// out and what was presented rather than encoding this fake's handle arithmetic.</summary>
@@ -82,15 +86,18 @@ namespace KhaozEngine.Tests.Gpu
         internal TimeSpan AcquireDelay { get; set; }
 
         /// <summary>Script the next acquire to answer with a drawable.</summary>
-        internal void ScriptDrawable()
+        /// <param name="framebufferOnly">What the drawable's texture reports, or null for a fresh drawable made
+        /// under the layer's <see cref="FramebufferOnly"/> at the acquire. A value is a pooled drawable the layer
+        /// recycled from before a write.</param>
+        internal void ScriptDrawable(bool? framebufferOnly = null)
         {
             IntPtr drawable = new(_nextHandle++);
             IntPtr texture = new(_nextHandle++);
-            _scripted.Enqueue(new MetalAcquiredDrawable(drawable, texture));
+            _scripted.Enqueue((new MetalAcquiredDrawable(drawable, texture), framebufferOnly));
         }
 
         /// <summary>Script the next acquire to answer NIL, which is M-W5's whole condition.</summary>
-        internal void ScriptNoDrawable() => _scripted.Enqueue(default);
+        internal void ScriptNoDrawable() => _scripted.Enqueue((default, null));
 
         /// <summary>Append a note from outside the api, so the drain and the capture hook land in the same
         /// ordered log the native calls do.</summary>
@@ -104,6 +111,7 @@ namespace KhaozEngine.Tests.Gpu
             ConfiguredSync = syncToVerticalBlank;
             ConfiguredMaximumDrawableCount = maximumDrawableCount;
             LastDrawableSize = size;
+            FramebufferOnly = true;
             Log.Add("configure");
         }
 
@@ -117,6 +125,12 @@ namespace KhaozEngine.Tests.Gpu
         {
             LastDisplaySync = enabled;
             Log.Add($"displaySync={enabled}");
+        }
+
+        public void SetFramebufferOnly(bool value)
+        {
+            FramebufferOnly = value;
+            Log.Add($"SetFramebufferOnly({value})");
         }
 
         public MetalAcquiredDrawable NextDrawable()
@@ -136,7 +150,15 @@ namespace KhaozEngine.Tests.Gpu
 
             // An unscripted acquire answers NIL rather than throwing, so a row that only cares about the first
             // few boundaries does not have to script every one of them.
-            MetalAcquiredDrawable answer = _scripted.Count > 0 ? _scripted.Dequeue() : default;
+            MetalAcquiredDrawable answer = default;
+            if (_scripted.Count > 0)
+            {
+                (MetalAcquiredDrawable scripted, bool? framebufferOnly) = _scripted.Dequeue();
+                answer = scripted.HasDrawable
+                    ? scripted with { FramebufferOnly = framebufferOnly ?? FramebufferOnly }
+                    : scripted;
+            }
+
             Handed.Add(answer);
             return answer;
         }

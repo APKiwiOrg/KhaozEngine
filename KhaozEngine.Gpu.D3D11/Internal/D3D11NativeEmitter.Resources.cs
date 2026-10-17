@@ -70,9 +70,41 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 box);
         }
 
-        /// <summary>Copy a whole texture, every mip and every layer.</summary>
+        /// <summary>Copy a whole texture, every mip and every layer. A swapchain copy's source is the back buffer
+        /// stand-in, which is resolved through its view here and nowhere else.</summary>
         public void CopyTexture(IGpuTexture src, IGpuTexture dst)
-            => Native.CopyResource(NativeTexture(dst).DeviceTexture, NativeTexture(src).DeviceTexture);
+        {
+            if (src is D3D11BackBufferCopySource backBuffer)
+            {
+                CopyBackBuffer(backBuffer, NativeTexture(dst));
+                return;
+            }
+
+            Native.CopyResource(NativeTexture(dst).DeviceTexture, NativeTexture(src).DeviceTexture);
+        }
+
+        /// <summary>
+        /// The back buffer is taken from the named render target view for this one call (the <c>Resource</c>
+        /// getter is <c>GetResource</c>, which adds a reference) and released straight after, so no reference
+        /// survives to make the next <c>ResizeBuffers</c> fail.
+        /// </summary>
+        void CopyBackBuffer(D3D11BackBufferCopySource source, D3D11Texture destination)
+        {
+            var view = source.ColourView as ID3D11RenderTargetView ?? throw new ArgumentException(
+                "A swapchain copy reached the native Direct3D 11 emitter naming a "
+                + source.ColourView.GetType().Name + " as its colour view. The swapchain names an "
+                + "ID3D11RenderTargetView over the back buffer.", nameof(source));
+
+            ID3D11Resource backBuffer = view.Resource;
+            try
+            {
+                Native.CopyResource(destination.DeviceTexture, backBuffer);
+            }
+            finally
+            {
+                backBuffer.Dispose();
+            }
+        }
 
         /// <summary>
         /// Copy one mip level and array layer into another, at the origin of both. The seam carries no source or

@@ -125,7 +125,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 new VulkanExtent(caps.MaxImageExtent.Width, caps.MaxImageExtent.Height),
                 caps.CurrentTransform,
                 ReadFormats(handle),
-                ReadPresentModes(handle));
+                ReadPresentModes(handle),
+                caps.SupportedUsageFlags);
 
             return VulkanPresentOutcome.Success;
         }

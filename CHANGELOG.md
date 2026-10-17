@@ -5,8 +5,33 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 21.3.1
+## 21.4.0
 
+- New in-game bug reports. A player presses F10 on any screen (title, login or in game). The frame that saw
+  the key keeps its screenshot, the last few seconds of video and every report section, and a confirmation screen
+  then takes a description, a category and the media choices. Games wire it with one `BugReportService` from
+  `KhaozEngine.BugReports.Client`, an `IBugReportSink` and an offline queue. See
+  [In-game bug reports](docs/USING-KHAOZENGINE.md) and the package READMEs.
+- New package `KhaozEngine.BugReports.Contracts`. It holds the version 1 bundle format (a stored zip with a
+  manifest, sections, screenshot and clip frames), the strict JSON shapes, the relay routes and `BundleValidator`,
+  the trust boundary a relay runs on every upload.
+- New package `KhaozEngine.BugReports`. It provides isolated report sections with redaction, truncation and a
+  1 MiB total finished off the frame thread, the bundle writer, `HttpRelaySink` and `LocalFolderSink`, a
+  write-ahead offline queue that binds signed-out reports to the next account that signs in, a self-contained
+  frame viewer page, and server snapshot capture and posting.
+- New package `KhaozEngine.BugReports.Client`. It provides `FrameHistoryRecorder`, a constant JPEG clip ring and an
+  on-demand screenshot fed by GPU capture taps that never stall a frame, plus the built-in build, platform, graphics,
+  performance, log, session and input sections, the confirmation screen and `BugReportService`.
+- `KhaozEngine.Gpu`: `GpuScaledCopy`, `GpuReadbackRing`, `IGpuFencedReadback` (a read map that never drains the
+  device) and `IGpuSwapchainCapture` on Metal, Vulkan and Direct3D 11. `KhaozEngine.Windowing` adds frame capture
+  taps, and Vulkan requests `TRANSFER_SRC` swapchain images where the surface allows it.
+- `KhaozEngine.Imaging` adds `JpegWriter` and `JpegThumbnailDecoder`, which decodes one-eighth scale thumbnails from
+  DC coefficients. `KhaozEngine.Diagnostics` adds `RecentLogSink` and `ReportRedactor`.
+- `KhaozEngine.Gui` adds the multi-line `TextArea`. `KhaozEngine.Game` adds `GameApp.AddOverlay` and
+  `RemoveOverlay` for overlays that draw above any screen and can hold the game's input, and
+  `InputState.WithoutInteraction`. A button, trigger or stick still held when a hold ends stays hidden from the
+  game until it is released.
+- `Browser` on macOS and Linux now passes a URL as one process argument, so a file path containing spaces opens.
 - `PersistenceQueue` in `KhaozEngine.Persistence` gains an internal drain scheduling seam for tests. Public
   behaviour is unchanged. The tracked persistence tests now hold every controlled pause on test-owned threads,
   which ends their intermittent watchdog failures on loaded hosted runners (#1317).
@@ -17,6 +42,16 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   the transport, under the same lock that releases the next call. A call cancelled while queued never starts
   and gets no response, whatever order the thread pool runs the SDK's handlers in (#1443). A malformed or
   unknown cancellation is ignored and leaves the session serving calls.
+- Contact controller movement changes on some support, and support reads cost less again. A paced climb past an
+  overhung sloped edge no longer lowers the feet below the support they stand on (#1437). On one support member a
+  rise up to the walkable grade is continuous, and only the excess counts as a step. A drop on one member steeper
+  than walkable now raises the step down signal and still costs no climb budget. A tick skips its three look-ahead
+  support reads once its climb is decided, so movement and signals are unchanged but an explicit producer sees
+  fewer reads. Support reads build joins only where certification reads them, certify planar contacts on exact
+  coordinates, cache mesh triangles in a bounded world form, admit vertical faces with a certified segment test and
+  serve an exact repeat inside one lease interval from a memo, with results bit-identical to the reference
+  evaluator. The [phase 2 cost record](docs/superpowers/plans/proofs/2026-10-17-support-cost-option-c-phase2.md)
+  lists the stairs, crate and pushed seat rows that still miss SG-12.
 
 ## 21.3.0
 

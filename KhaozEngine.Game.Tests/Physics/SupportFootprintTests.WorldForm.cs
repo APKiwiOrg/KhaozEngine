@@ -334,7 +334,7 @@ public partial class SupportFootprintTests
             Query = query;
         }
 
-        IPhysicsWorld Target => _view ?? (IPhysicsWorld)World;
+        internal IPhysicsWorld Target => _view ?? (IPhysicsWorld)World;
 
         internal IPhysicsQueryLease AcquireLease() => ((IPhysicsQueryLeaseSource)Target).AcquireQueryReadLease();
 

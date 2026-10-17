@@ -220,7 +220,7 @@ Expected: both `Passed!` with `Failed: 0`. Then `bash scripts/check-doc-versions
 ### Task 2: Bundle validator
 
 **Files:**
-- Create: `KhaozEngine.BugReports.Contracts/BundleValidator.cs`, `BundleValidationResult.cs`, `ImageHeaders.cs` (internal PNG and JPEG header parsing)
+- Create: `KhaozEngine.BugReports.Contracts/BundleValidator.cs`, `BundleValidationResult.cs`, `ImageHeaders.cs` (public PNG and JPEG header reading: `TryReadSize`, `PngMediaType` and `JpegMediaType`, shared with the bundle writer)
 - Create: `KhaozEngine.BugReports.Tests/Contracts/BundleValidatorTests.cs`, `KhaozEngine.BugReports.Tests/TestBundles.cs` (builder for hand-made bundles, minimal PNG and JPEG headers)
 
 **Interfaces:**
@@ -940,7 +940,7 @@ Section JSON property names (camelCase): `build` `{gameId, gameName, version, bu
 ```csharp
 public static class BugReportStrings
 {
-    public static readonly StringId Title, DescriptionLabel, DescriptionPlaceholder, DescriptionCounter, CategoryLabel,
+    public static readonly StringId Title, DescriptionLabel, DescriptionPlaceholder, DescriptionCounter, CategoryFieldLabel,
         ScreenshotToggle, ClipToggle, ClipUnavailable, Included, SignedOut, Send, Cancel, Capturing,
         ToastSent, ToastQueued, ToastQueuedSignedOut, ToastRejected, ToastFailed, ToastFlushed;
     public static IStringCatalog EnglishDefaults { get; }

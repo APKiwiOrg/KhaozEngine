@@ -748,6 +748,7 @@ namespace KhaozEngine.Windowing
             try { Clipboard.ClearTextProvider(); } catch { }
             try { _rumble?.StopAll(); } catch { } // leave no motor buzzing after teardown
             try { _input?.Dispose(); } catch { }
+            try { _captureTaps?.Dispose(); } catch { }
             try { _cl?.Dispose(); } catch { }
             try { _gpu?.Dispose(); } catch { }
             try { _window?.Dispose(); } catch { }

@@ -569,6 +569,9 @@ to a Windows-only type, and nothing off Windows could reach past it. The Windows
 `Unmap` calls and nothing else. The device constructs
 `new D3D11StagingAccess(new D3D11ContextStagingMemory(context), submitLock, latch)`.
 
+`IGpuFencedReadback.MapForRead(staging, fence)` is this same read map behind a signaled-fence check, with no
+`DO_NOT_WAIT` loop, because a `Map(READ)` after a signaled fence has nothing left to wait on.
+
 **A failed map throws rather than handing back the null pointer it left behind**, and that is decision G3's
 second check site. Vortice's `Map` returns its result rather than throwing, so a caller that ignored it would
 read through null and report an empty readback with nothing logged. `D3D11StagingMaps.RequireMapped` is the one
@@ -1008,6 +1011,18 @@ immune by accident, because it reset the context state at the end of every submi
 one `ClearState` at the head of a replay instead, so the last frame's targets are still bound when a resize
 applies at the present boundary. That half is not device-free testable, because a fake surface has no context to
 inspect, and its evidence is a real window resize on the WARP leg.
+
+**`IGpuSwapchainCapture` needs no usage change here.** The back buffer is created `RenderTargetOutput`, which is
+already a `CopyResource` source, so `SwapchainCopySourceRequested` is stored and does nothing,
+`SwapchainCopySupported` is always true, and `SwapchainCopyable` is true whenever the attachments are live (false
+inside a resize and after disposal).
+`CopySwapchainColor` records an ordinary `CopyTexture` whose source is `D3D11BackBufferCopySource`, a stand-in that
+names the current render target view and holds no native reference. At replay the native emitter takes the back
+buffer from that view with `GetResource`, issues `CopyResource` and releases the reference at once, so no reference
+survives to make the next `ResizeBuffers` fail. A list that never bound the swapchain framebuffer in its current
+recording is refused with `InvalidOperationException` at the call, in the same words the other backends use, and
+records nothing. The engine half is device-free tested. The native half runs only
+on a Windows device.
 
 ## Capabilities, adapter selection, the debug layer and device loss
 

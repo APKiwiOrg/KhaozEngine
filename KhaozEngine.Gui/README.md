@@ -750,6 +750,20 @@ chat.Draw(batch, white);
     (caret included) rather than painting over whatever is beside the field, and the clip only engages when the
     content actually overflows, so a field that fits costs no extra flush. `NumberField` clips the same way.
     Neither scrolls the visible window with the caret yet.
+  - `TextArea` - multi-line field for long free text, constructed with the `ITextMeasurer` its layout uses
+    until a `Font` is set. `MaxLength` defaults to `DefaultMaxLength` (4000 UTF-16 units). Tap focuses and places
+    the caret, and a release outside unfocuses. While focused, committed text, Backspace and Ctrl+V or Cmd+V
+    paste edit at the caret through `TextEntry`. Enter inserts a newline, while Ctrl+Enter or Cmd+Enter is left
+    for the host to read, for example as Send. Delete removes the next scalar. Left and Right step one scalar, Up
+    and Down move over visual lines and keep their column across consecutive moves, and Home and End go to the
+    ends of the visual line. `SetText(value)` normalises line endings to `'\n'`, drops other control characters,
+    replaces lone surrogates with U+FFFD, clamps without splitting a surrogate pair and moves the caret to the
+    end. Text greedy word wraps inside an 8 px horizontal and 6 px vertical padding, and long words hard break.
+    `ScrollY` (pixels) follows the caret line and the wheel scrolls three lines. The layout is cached until the
+    text, inner width, `TextScale` or font changes. A focused frame with no committed text, edit or navigation
+    key, paste chord, press or wheel allocates nothing, so held modifiers and function keys cost nothing. `Draw`
+    clips to the padded area and draws only the visible lines. Colours, caret blink and the focused hover glow
+    match `TextInput`. The placeholder is `LocalizedText` via `PlaceholderContent`. There is no selection.
   - `Tooltip` - auto-sized floating bubble; `ComputeBounds` (flip/clamp) is a pure, testable layout function.
     Opt-in (default off): a two-column title (`Show(title, titleRight, ...)`), a `ShowTitleSeparator` rule under the
     title, a width cap (`MaxWidth` px and/or `MaxWidthFraction` of the viewport) that word-wraps long body lines

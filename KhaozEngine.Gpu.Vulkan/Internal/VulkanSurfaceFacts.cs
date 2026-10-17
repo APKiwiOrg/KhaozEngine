@@ -43,11 +43,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// natively again, so every choice made from it is decidable with no loader.
     /// <para>
     /// <b>IT CARRIES LESS THAN <c>VkSurfaceCapabilitiesKHR</c> DOES, and the omissions are the decision.</b> The
-    /// supported composite-alpha mask and the supported usage mask are deliberately NOT here, because this
-    /// backend passes <c>OPAQUE</c> and <c>COLOR_ATTACHMENT | TRANSFER_DST</c> unconditionally, reproducing the
-    /// incumbent (V-W1). Reading those masks and narrowing the request against them would be a THIRD departure
-    /// from the reproduction, and the design names exactly two. A surface that supported neither would fail
-    /// creation here exactly as it fails creation on the incumbent, which is the parity this row is for.
+    /// supported composite-alpha mask is deliberately NOT here, because this backend passes <c>OPAQUE</c>
+    /// unconditionally, reproducing the incumbent (V-W1). The base usage <c>COLOR_ATTACHMENT | TRANSFER_DST</c> is
+    /// passed unconditionally too and is never narrowed against the mask. A surface that supported neither would
+    /// fail creation here exactly as it fails creation on the incumbent, which is the parity this row is for.
+    /// </para>
+    /// <para>
+    /// <b>THE USAGE MASK IS READ FOR ONE BIT ONLY.</b> A frame capture adds <c>TRANSFER_SRC</c>, which the
+    /// incumbent never asked for, and asking for a bit the surface does not support fails creation. So
+    /// <see cref="SupportedUsage"/> decides whether the capture bit is added at all, and nothing else.
     /// </para>
     /// </summary>
     /// <param name="MinImageCount">The fewest images the surface will give a swapchain.</param>
@@ -65,6 +69,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <param name="PresentModes">Every present mode the surface supports. <c>FIFO</c> is required by the
     /// specification to be among them on every implementation, which is why the mode ladder can end there without
     /// a failure arm.</param>
+    /// <param name="SupportedUsage">The surface's <c>supportedUsageFlags</c>: every usage bit a swapchain image on
+    /// it may be created with.</param>
     internal readonly record struct VulkanSurfaceReport(
         uint MinImageCount,
         uint MaxImageCount,
@@ -73,5 +79,6 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         VulkanExtent MaxExtent,
         SurfaceTransformFlagsKHR CurrentTransform,
         IReadOnlyList<VulkanSurfaceFormatPair> Formats,
-        IReadOnlyList<PresentModeKHR> PresentModes);
+        IReadOnlyList<PresentModeKHR> PresentModes,
+        ImageUsageFlags SupportedUsage);
 }

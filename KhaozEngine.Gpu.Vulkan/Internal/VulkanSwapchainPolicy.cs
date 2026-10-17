@@ -15,9 +15,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// here with MORE force: the Vulkan golden legs are headless and a headless Vulkan device enables no surface
     /// extension at all, so not one line of this path runs in CI, on any leg, ever (MV9). What is reproduced is
     /// the surface format and colour space, the present-mode preference order, the image count, the usage bits,
-    /// the composite alpha and <c>clipped</c>. What has no Vulkan analogue at all is phase 2's actual subject:
-    /// rendering here goes DIRECTLY into the swapchain image, so there is no blit-versus-flip question to
-    /// have.</para>
+    /// the composite alpha and <c>clipped</c>. The one addition is <c>TRANSFER_SRC</c> while a frame capture is
+    /// requested, which the incumbent had no use for and which is off on every frame without one. What has no
+    /// Vulkan analogue at all is phase 2's actual subject: rendering here goes DIRECTLY into the swapchain image,
+    /// so there is no blit-versus-flip question to have.</para>
     ///
     /// <para><b>FIFO_RELAXED UNDER A VSYNC REQUEST IS ARGUABLY THE WRONG ANSWER AND IS REPRODUCED ANYWAY.</b> It
     /// permits tearing on a late frame, which is not what somebody asking for vsync asked for. It stays because
@@ -64,12 +65,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// which selects the present-mode ladder.</param>
         /// <param name="srgb">Whether the caller wants an sRGB swapchain. False on every shipped path, because the
         /// engine's windowed device is created with sRGB off.</param>
+        /// <param name="copySource">Whether a frame capture wants the swapchain images as copy sources. Adds
+        /// <c>TRANSFER_SRC</c> when the surface supports it, and is dropped with a warning when it does not.</param>
         /// <param name="warning">A line worth logging about a choice that was not the preferred one, or null when
         /// everything came back as asked for. Returned rather than logged so this stays pure.</param>
         internal static VulkanSwapchainSpec Decide(in VulkanSurfaceReport surface, VulkanExtent requested,
-            bool syncToVerticalBlank, bool srgb, out string? warning)
+            bool syncToVerticalBlank, bool srgb, bool copySource, out string? warning)
         {
             VulkanSurfaceFormatPair format = ChooseFormat(surface.Formats, srgb, out warning);
+            ImageUsageFlags usage = ChooseUsage(surface.SupportedUsage, copySource, out string? usageWarning);
+
+            if (usageWarning is not null) warning = warning is null ? usageWarning : warning + " " + usageWarning;
 
             return new VulkanSwapchainSpec(
                 ImageCount: ChooseImageCount(surface.MinImageCount, surface.MaxImageCount),
@@ -80,8 +86,26 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
                 // DEPARTURE ONE. See the type remarks.
                 PreTransform: surface.CurrentTransform,
                 CompositeAlpha: VulkanSwapchainSpec.Opaque,
-                Usage: VulkanSwapchainSpec.ColourAndTransferDst,
+                Usage: usage,
                 Clipped: true);
+        }
+
+        /// <summary>
+        /// THE USAGE BITS: <c>COLOR_ATTACHMENT | TRANSFER_DST</c> always, plus <c>TRANSFER_SRC</c> while a capture
+        /// is requested. The capture bit is the one bit checked against the surface's
+        /// <c>supportedUsageFlags</c>, because asking for an unsupported bit fails creation, and a capture request
+        /// must never cost the window its swapchain. The base bits are not checked, reproducing the incumbent.
+        /// </summary>
+        internal static ImageUsageFlags ChooseUsage(ImageUsageFlags supported, bool copySource, out string? warning)
+        {
+            warning = null;
+            if (!copySource) return VulkanSwapchainSpec.ColourAndTransferDst;
+
+            if ((supported & ImageUsageFlags.TransferSrcBit) != 0) return VulkanSwapchainSpec.ColourTransferDstAndSrc;
+
+            warning = "The surface does not support TRANSFER_SRC on swapchain images, so frame capture is "
+                + "unavailable.";
+            return VulkanSwapchainSpec.ColourAndTransferDst;
         }
 
         /// <summary>

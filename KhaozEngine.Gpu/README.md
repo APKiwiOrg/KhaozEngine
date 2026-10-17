@@ -491,3 +491,106 @@ there on `build` and on a rid-agnostic `publish`, no-op on Windows, macOS and `p
 `<KhaozEngineFlattenHostNatives>false</KhaozEngineFlattenHostNatives>`. It ships here as well as in `Foundation`
 because `Foundation` is not in this package's dependency closure, so a project that references this one and no
 umbrella would otherwise get nothing. One physical rule file, so the two copies cannot drift.
+
+## IGpuFencedReadback
+
+An optional device capability, tested with a type check on the device. The three native devices implement it.
+`MapForRead(staging, fence)` maps a `Staging` texture for reading when `fence` has signaled and covers the
+submission that wrote it, and it never waits on or drains the device. `IGpuDevice.Map(staging, Read)` drains the
+whole device on native Metal and Vulkan, which would make a readback ring stall every frame on the work submitted
+after the copy. Unmap with `IGpuDevice.Unmap(staging)`.
+
+- **Refusals.** An `InvalidOperationException` when the fence has not signaled, with nothing mapped. An
+  `ArgumentException` naming `staging` when the texture is not a staging texture of this device, or naming `fence`
+  when the fence belongs to another device.
+- **Metal.** The same pointer `Map` returns, with no setup flush and no wait. A staging texture is Shared storage
+  on every Mac, so there is no Managed resource to synchronise.
+- **Vulkan.** No setup flush and no timeline wait. The invalidate of a non-coherent range stays. Every copy into a
+  staging texture ends with a transfer-to-host barrier, because a timeline signal makes device writes available
+  to the device only.
+- **Direct3D 11.** The existing staging map. `Map(READ)` waits only on work touching that resource, which a
+  signaled fence has already completed.
+
+`FencedReadbackTests` drives the refusals and the no-drain rule on the Vulkan device over its fakes.
+`FencedReadbackGpuTests` reads a fenced copy back while later work is in flight and asserts no drain was asked
+for.
+
+## GpuScaledCopy
+
+A fullscreen linear downscale pass. `new GpuScaledCopy(device)` builds its shaders, layout, sampler and pipeline
+once. `Record(commands, source, destination)` records, into an open recording, one triangle that samples
+`source` over the whole of `destination`. The frame capture path uses it to shrink a copy of the swapchain image
+to capture size before readback.
+
+- **Source.** Any size and any colour format with `Sampled` usage. Sampling returns logical RGBA, so a
+  `B8G8R8A8UNorm` source (every shipped swapchain) comes out in RGBA order with no CPU swizzle.
+- **Destination.** Exactly one single-sample `R8G8B8A8UNorm` colour attachment with no depth. Anything else is
+  refused with an `ArgumentException` naming `destination`. Alpha is written as one.
+- **Filter.** Exact at 1:1. When a destination texel covers at most one source texel on both axes, one sample
+  at the texel centre returns that texel unchanged, so a same-size copy is byte-exact. A reduction takes four
+  bilinear taps a quarter of a destination texel either side of its centre, which is a box filter over a 4x4
+  source footprint up to a four to one reduction.
+- **Sampler.** The instance's own clamp-addressed `GpuSamplerDescription.Linear`, not the device's
+  wrap-addressed `LinearSampler`, so a border tap never reads the opposite edge.
+- **Resource set.** One, cached over the last source drawn and replaced when a different source instance is
+  passed. A replaced set is never disposed during `Record`, because a draw in the open recording may still use
+  it. `Record(commands, source, destination, retire)` hands it to `retire`, which must free it only once the GPU
+  has finished every submission that used it. A frame capture tap passes `FrameCaptureContext.Retire`. With no
+  `retire` it stays alive until `Dispose`.
+
+The vertex stage is Render3D's fullscreen triangle copied verbatim, since this package does not reference
+Render3D. Every fullscreen pass over it renders vertically flipped on every backend, and the post chain undoes
+that with a parity flip in its final blit. No blit follows this pass, so the fragment flips V itself.
+`GpuScaledCopyGpuTests` pins the orientation and channel order with a four quadrant source.
+
+## GpuReadbackRing
+
+A ring of fenced staging slots for reading downscaled frames back without stalling a frame.
+`new GpuReadbackRing(device, width, height, slotCount = 3)` creates one `R8G8B8A8UNorm` `Staging` texture and one
+fence per slot.
+
+- **Requirement.** The device must report `GpuCapabilities.SupportsCompletionFences` and implement
+  `IGpuFencedReadback`. Anything else is refused with a `NotSupportedException` at construction.
+- **Record.** `TryRecordCopy(commands, source, tag, out fence)` records, into an open recording, a whole copy of
+  `source` into the next free slot. Hand `fence` to `Submit(commands, fence)`. With every slot in flight it
+  returns false and records nothing, so the caller drops that tick. The source must be single-mip, single-sample
+  `R8G8B8A8UNorm` at exactly the ring's size, the same rule `GpuReadback.ToRgba` enforces, or it is refused with an
+  `ArgumentException`.
+- **Read.** `TryReadCompleted(destination, out tag)` reads the oldest slot once its fence has signaled, through
+  `IGpuFencedReadback.MapForRead`, never through the draining `IGpuDevice.Map`. It de-strides into packed RGBA
+  rows, top row first, unmaps, resets the fence and frees the slot. It never waits. A later slot is never read
+  ahead of an earlier one. Call it only while nothing is recording.
+- **Dispose.** Frees every slot without draining. Retire the ring once `PendingCount` reaches zero, or after the
+  device drains at teardown.
+
+`GpuReadbackRingTests` drives the slot rules on a fake device. `GpuReadbackRingGpuTests` reads a copy back
+exactly and cycles three slots through six frames with no device drain.
+
+## IGpuSwapchainCapture
+
+An optional device capability, tested with a type check on the device. The three native devices implement it.
+Fakes and headless devices need not. The frame capture path uses it to copy the image a frame rendered before it
+is presented.
+
+- **Request.** `SwapchainCopySourceRequested` asks for copy-source usage on the swapchain colour images. It is
+  applied at the next present boundary, so the first frame after a change may still be uncopyable. The window sets
+  it only while a capture tap is registered.
+- **Supported.** `SwapchainCopySupported` is true when this device can ever produce a copyable swapchain image
+  for its surface. Direct3D 11 and Metal always answer true. Vulkan answers true only when the surface's
+  `supportedUsageFlags` include `TRANSFER_SRC`, read again on every swapchain recreation, and false on a headless
+  device. False means `SwapchainCopyable` never becomes true, so a caller must not wait for a copyable frame.
+- **Copyable.** `SwapchainCopyable` is true when the image the current frame renders into can be copied out. It
+  can be false for a transient frame on a supported device, such as the first after a request, a minimised window
+  or a recreation.
+- **Copy.** `CopySwapchainColor(commands, destination)` records, into an open recording, a whole copy of the
+  current swapchain colour image into `destination`. The destination must have the size of `SwapchainFramebuffer`,
+  the swapchain's colour format, one mip and one sample, or it is refused with an `ArgumentException` naming both
+  shapes. `commands` must have bound `SwapchainFramebuffer` in its current recording, which makes it the frame's
+  own list. Only that list is ordered after the image's acquire and holds what the frame drew. A list that never
+  bound it, and an uncopyable swapchain, are both refused with an `InvalidOperationException`, with one message
+  for the first on every backend. Nothing is recorded on any refusal.
+- **Direct3D 11.** The request is stored and changes nothing, because a `RenderTargetOutput` back buffer is
+  already a `CopyResource` source. The image is copyable whenever the swapchain's attachments are live.
+
+`SwapchainCopyCheck` holds the destination rule and the bound-this-recording refusal for all three backends. `SwapchainCopyCheckTests` drives it, and
+`D3D11SwapchainCaptureTests` drives the Direct3D 11 half over a fake swapchain surface.

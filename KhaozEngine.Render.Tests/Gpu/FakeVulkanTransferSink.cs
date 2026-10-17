@@ -102,6 +102,8 @@ namespace KhaozEngine.Tests.Gpu
             _trace.Add(toTransfer ? "MemoryBarrier(toTransfer)" : "MemoryBarrier(fromTransfer)");
         }
 
+        public void HostReadBarrier(ulong commandBuffer) => _trace.Add("HostReadBarrier");
+
         /// <inheritdoc/>
         public void CopyImage(ulong commandBuffer, ulong source, ulong destination, in ImageCopy region)
         {

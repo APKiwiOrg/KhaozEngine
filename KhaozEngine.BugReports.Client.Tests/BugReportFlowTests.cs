@@ -22,139 +22,10 @@ using Xunit;
 
 namespace KhaozEngine.Tests.BugReports.Client;
 
-/// <summary>
-/// Drives <see cref="BugReportFlow"/> frame by frame with a scripted capture and sink, a real submitter and offline
-/// queue in a temporary directory, and a headless <see cref="BugReportScreen"/>. The test thread is the frame thread.
-/// </summary>
+/// <summary>The trigger, the screen, input holding and the frame-thread failure paths of <see cref="BugReportFlow"/>.</summary>
 [Collection("AmbientLocalization")]
-public sealed class BugReportFlowTests : IDisposable
+public sealed class BugReportFlowTests : BugReportFlowHarness
 {
-    const float Dt = 1f / 60f;
-
-    readonly string _root = Path.Combine(Path.GetTempPath(), "ke-bugreport-flow-" + Guid.NewGuid().ToString("N"));
-    readonly ManualTimeProvider _time = new();
-    readonly FakeCapture _capture = new();
-    readonly FakeSink _sink = new();
-    readonly BugReportSectionSet _sections = new();
-    readonly DesignViewport _viewport = new(1280, 720);
-    readonly List<string> _captured = new();
-    readonly List<BugReportSubmitResult> _submitted = new();
-    readonly List<bool> _submittedOnFrameThread = new();
-    readonly List<(int Width, int Height, bool OnFrameThread)> _textures = new();
-    readonly List<string> _saved = new();
-    readonly ProbeSection _probe;
-    string? _subject = "discord:42";
-    int _frameThread;
-    bool _inUpdate;
-
-    public BugReportFlowTests()
-    {
-        _probe = new ProbeSection((writer, context) =>
-        {
-            writer.WriteStartObject();
-            writer.WriteString("subject", context.Subject);
-            writer.WriteEndObject();
-        });
-        _sections.Add(_probe);
-    }
-
-    public void Dispose()
-    {
-        if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);
-        else if (File.Exists(_root)) File.Delete(_root);
-    }
-
-    BugReportFlow NewFlow(BugReportServiceOptions? options = null, string? queueDirectory = null)
-    {
-        options ??= new BugReportServiceOptions
-        {
-            GameId = "grimhollow",
-            GameDisplayName = "Grimhollow",
-            SaveTriggerBindings = _saved.Add,
-        };
-        var queue = new BugReportOfflineQueue(queueDirectory ?? Path.Combine(_root, "pending"), _time);
-        var flow = new BugReportFlow(options, _capture, _sections, new BugReportSubmitter(_sink, queue), new ReportRedactor(),
-            () => _subject,
-            model => new BugReportScreen(model, new BugReportScreenResources(new FixedMeasurer(), null, null, _viewport)),
-            image =>
-            {
-                _textures.Add((image.Width, image.Height, OnFrameThread()));
-                return null;
-            },
-            _time);
-        flow.ReportCaptured += _captured.Add;
-        flow.ReportSubmitted += result =>
-        {
-            _submitted.Add(result);
-            _submittedOnFrameThread.Add(OnFrameThread());
-        };
-        return flow;
-    }
-
-    static InputState Frame(Key[]? pressed = null, Key[]? held = null, string? text = null)
-    {
-        var down = new HashSet<Key>(held ?? []);
-        var edges = new HashSet<Key>(pressed ?? []);
-        down.UnionWith(edges);
-        return new InputState(down, edges, new HashSet<Key>(), new HashSet<MouseButton>(), new HashSet<MouseButton>(),
-            Vector2.Zero, Vector2.Zero, 0f, 1280, 720, textInput: text ?? "", textInputAvailable: text is not null);
-    }
-
-    /// <summary>Runs one frame. The calling thread is the frame thread for the length of the call.</summary>
-    bool Step(BugReportFlow flow, InputState? input = null)
-    {
-        _frameThread = Environment.CurrentManagedThreadId;
-        Volatile.Write(ref _inUpdate, true);
-        try
-        {
-            return flow.Update(input ?? Frame(), Dt, _viewport);
-        }
-        finally
-        {
-            Volatile.Write(ref _inUpdate, false);
-        }
-    }
-
-    /// <summary>True when called from inside <see cref="Step"/> on its thread.</summary>
-    bool OnFrameThread() => Volatile.Read(ref _inUpdate) && Environment.CurrentManagedThreadId == _frameThread;
-
-    /// <summary>Presses F10, then runs the frame that pushes the screen, and returns the screen.</summary>
-    BugReportScreen Open(BugReportFlow flow)
-    {
-        Assert.True(Step(flow, Frame(pressed: [Key.F10])));
-        Assert.True(Step(flow, Frame(held: [Key.F10])));
-        return Assert.IsType<BugReportScreen>(Assert.Single(flow.Screens.Screens));
-    }
-
-    /// <summary>Types a description and sends with Ctrl+Enter. Returns what the send frame returned.</summary>
-    bool Send(BugReportFlow flow, string description = "Fell through")
-    {
-        Assert.True(Step(flow, Frame(text: description)));
-        return Step(flow, Frame(pressed: [Key.Enter], held: [Key.LeftControl]));
-    }
-
-    /// <summary>Awaits the latest background task, then runs one frame so its posted work lands.</summary>
-    async Task Settle(BugReportFlow flow)
-    {
-        if (flow.PendingWork is { } work) await work.WaitAsync(TimeSpan.FromSeconds(30));
-        Step(flow);
-    }
-
-    string Toast(BugReportFlow flow) => flow.Toasts.Active[0].Message.Resolve();
-
-    static string[] EntryNames(BugReportSubmission submission)
-    {
-        using var zip = new ZipArchive(new MemoryStream(submission.Bundle.ToArray()), ZipArchiveMode.Read);
-        return zip.Entries.Select(e => e.FullName).ToArray();
-    }
-
-    static string EntryText(BugReportSubmission submission, string name)
-    {
-        using var zip = new ZipArchive(new MemoryStream(submission.Bundle.ToArray()), ZipArchiveMode.Read);
-        using var reader = new StreamReader(zip.GetEntry(name)!.Open(), Encoding.UTF8);
-        return reader.ReadToEnd();
-    }
-
     [Fact]
     public void Trigger_captures_in_the_same_frame_and_opens_next_frame()
     {
@@ -192,17 +63,17 @@ public sealed class BugReportFlowTests : IDisposable
     }
 
     [Fact]
-    public void Context_carries_the_signed_in_subject()
+    public async Task Context_carries_the_signed_in_subject()
     {
-        _subject = null;
         BugReportFlow flow = NewFlow();
 
         Open(flow);
         Step(flow, Frame(pressed: [Key.Escape]));
         Step(flow);
-        Step(flow);
 
         _subject = "discord:42";
+        Step(flow);
+        await Settle(flow);
         Open(flow);
 
         Assert.Equal([null, "discord:42"], _probe.Subjects);
@@ -323,243 +194,6 @@ public sealed class BugReportFlowTests : IDisposable
     }
 
     [Fact]
-    public async Task Send_submits_a_valid_bundle_and_toasts_the_reference()
-    {
-        BugReportFlow flow = NewFlow();
-        Open(flow);
-
-        Assert.True(Send(flow));
-        Assert.Equal(1, _capture.ThawCount);
-        Assert.Empty(flow.Screens.Screens);
-        await Settle(flow);
-
-        BugReportSubmission submission = Assert.Single(_sink.Submissions);
-        Assert.Equal(_captured[0], submission.ReportId);
-        Assert.Equal("discord:42", submission.Subject);
-        BundleValidationResult validation = BundleValidator.Validate(new MemoryStream(submission.Bundle.ToArray()));
-        Assert.True(validation.IsValid, validation.Error);
-        Assert.Equal("Fell through", validation.Manifest!.Description);
-        Assert.Equal("Other", validation.Manifest.Category);
-        Assert.Equal("grimhollow", validation.Manifest.GameId);
-        Assert.Equal(new DateTimeOffset(2026, 10, 17, 3, 4, 5, TimeSpan.Zero), validation.Manifest.CapturedAt);
-        string[] names = EntryNames(submission);
-        Assert.Contains("sections/probe.json", names);
-        Assert.Contains(BundleEntryNames.ScreenshotPng, names);
-        Assert.Contains(BundleEntryNames.ClipIndex, names);
-
-        Assert.Equal("Bug report sent. Reference " + ReportIds.ReferenceCode(submission.ReportId), Toast(flow));
-        BugReportSubmitResult result = Assert.Single(_submitted);
-        Assert.Equal(BugReportSubmitStatus.Sent, result.Status);
-        Assert.Equal([true], _submittedOnFrameThread);
-    }
-
-    [Fact]
-    public async Task Sections_are_redacted_off_the_frame_thread()
-    {
-        _sections.Add(new ProbeSection((writer, _) =>
-        {
-            writer.WriteStartObject();
-            writer.WriteString("token", "Bearer abcdefgh12");
-            writer.WriteEndObject();
-        }, "secrets"));
-        BugReportFlow flow = NewFlow();
-        bool? finishOnFrameThread = null;
-        flow.FinishStarting = () => finishOnFrameThread = OnFrameThread();
-        Open(flow);
-
-        Send(flow);
-        await Settle(flow);
-
-        string section = EntryText(Assert.Single(_sink.Submissions), "sections/secrets.json");
-        Assert.Contains(ReportRedactor.Mask, section, StringComparison.Ordinal);
-        Assert.DoesNotContain("abcdefgh12", section, StringComparison.Ordinal);
-        Assert.False(finishOnFrameThread);
-    }
-
-    [Fact]
-    public async Task Signed_out_send_is_queued_without_the_sink()
-    {
-        _subject = null;
-        BugReportFlow flow = NewFlow();
-        BugReportScreen screen = Open(flow);
-        Assert.False(screen.Model.SignedIn);
-
-        Send(flow);
-        await Settle(flow);
-
-        Assert.Empty(_sink.Submissions);
-        Assert.Equal("Bug report saved. It will be sent after you sign in.", Toast(flow));
-        BugReportSubmitResult result = Assert.Single(_submitted);
-        Assert.Equal(BugReportSubmitStatus.Queued, result.Status);
-        Assert.Equal(BugReportSubmitter.SignedOutError, result.Error);
-    }
-
-    [Fact]
-    public async Task Sign_in_flushes_the_queue_once()
-    {
-        _subject = null;
-        BugReportFlow flow = NewFlow();
-        Open(flow);
-        Send(flow);
-        await Settle(flow);
-        Assert.Empty(_sink.Submissions);
-
-        _subject = "acct-1";
-        Step(flow);
-        await Settle(flow);
-
-        BugReportSubmission submission = Assert.Single(_sink.Submissions);
-        Assert.Equal("acct-1", submission.Subject);
-        Assert.Equal(_captured[0], submission.ReportId);
-        Assert.Equal("1 saved bug reports sent.", Toast(flow));
-
-        Step(flow);
-        Step(flow);
-        await Settle(flow);
-        Assert.Single(_sink.Submissions);
-    }
-
-    [Fact]
-    public async Task Retry_flushes_for_the_current_subject()
-    {
-        _subject = null;
-        BugReportFlow flow = NewFlow();
-        Open(flow);
-        Send(flow);
-        await Settle(flow);
-
-        Assert.Equal(0, await flow.RetryQueuedAsync(default));
-        _subject = "acct-1";
-        Assert.Equal(1, await flow.RetryQueuedAsync(default));
-        Step(flow);
-
-        Assert.Equal("acct-1", Assert.Single(_sink.Submissions).Subject);
-        Assert.Equal("1 saved bug reports sent.", Toast(flow));
-    }
-
-    [Fact]
-    public async Task Screenshot_failure_disables_the_toggle_and_still_sends()
-    {
-        _capture.Screenshot = () => Task.FromException<ReportImage>(new InvalidOperationException("tap fault"));
-        BugReportFlow flow = NewFlow();
-        BugReportScreen screen = Open(flow);
-
-        Assert.False(screen.Model.ScreenshotAvailable);
-        Assert.False(screen.Model.IncludeScreenshot);
-        Send(flow);
-        await Settle(flow);
-
-        BugReportSubmission submission = Assert.Single(_sink.Submissions);
-        Assert.True(BundleValidator.Validate(new MemoryStream(submission.Bundle.ToArray())).IsValid);
-        Assert.DoesNotContain(EntryNames(submission), n => n.StartsWith("screenshot", StringComparison.Ordinal));
-        Assert.Equal("Bug report sent. Reference " + ReportIds.ReferenceCode(submission.ReportId), Toast(flow));
-    }
-
-    [Fact]
-    public async Task Screenshot_failure_after_open_disables_the_toggle_on_the_frame_thread()
-    {
-        var shot = new TaskCompletionSource<ReportImage>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _capture.Screenshot = () => shot.Task;
-        BugReportFlow flow = NewFlow();
-        BugReportScreen screen = Open(flow);
-        Assert.True(screen.Model.ScreenshotAvailable);
-
-        shot.SetException(new InvalidOperationException("tap fault"));
-        await Settle(flow);
-
-        Assert.False(screen.Model.ScreenshotAvailable);
-        Assert.False(screen.ScreenshotToggle.Enabled || screen.ScreenshotToggle.IsOn);
-        Send(flow);
-        await Settle(flow);
-        Assert.DoesNotContain(EntryNames(Assert.Single(_sink.Submissions)),
-            n => n.StartsWith("screenshot", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public async Task No_clip_sends_without_clip_entries()
-    {
-        _capture.ClipAvailable = false;
-        BugReportFlow flow = NewFlow();
-        BugReportScreen screen = Open(flow);
-
-        Assert.False(screen.Model.ClipAvailable);
-        Assert.False(screen.Model.IncludeClip);
-        Step(flow);
-        Assert.False(screen.ClipToggle.Enabled);
-        Send(flow);
-        await Settle(flow);
-
-        BugReportSubmission submission = Assert.Single(_sink.Submissions);
-        Assert.True(BundleValidator.Validate(new MemoryStream(submission.Bundle.ToArray())).IsValid);
-        Assert.DoesNotContain(EntryNames(submission), n => n.StartsWith("clip/", StringComparison.Ordinal));
-        Assert.Contains(BundleEntryNames.ScreenshotPng, EntryNames(submission));
-    }
-
-    [Fact]
-    public async Task Rejected_send_toasts_the_reason()
-    {
-        _sink.Respond(BugReportSubmitStatus.Rejected, "blocked");
-        BugReportFlow flow = NewFlow();
-        Open(flow);
-
-        Send(flow);
-        await Settle(flow);
-
-        Assert.Equal("Bug report not accepted (blocked).", Toast(flow));
-        BugReportSubmitResult result = Assert.Single(_submitted);
-        Assert.Equal(BugReportSubmitStatus.Rejected, result.Status);
-    }
-
-    [Fact]
-    public async Task Queue_failure_toasts_the_failed_line()
-    {
-        Directory.CreateDirectory(_root);
-        string blocked = Path.Combine(_root, "not-a-directory");
-        File.WriteAllText(blocked, "x");
-        _sink.Respond(BugReportSubmitStatus.Queued, "network");
-        BugReportFlow flow = NewFlow(queueDirectory: Path.Combine(blocked, "pending"));
-        Open(flow);
-
-        Send(flow);
-        await Settle(flow);
-
-        Assert.Single(_sink.Submissions);
-        BugReportSubmitResult result = Assert.Single(_submitted);
-        Assert.Equal(BugReportSubmitter.QueueFailedError, result.Error);
-        Assert.Equal("The bug report could not be prepared.", Toast(flow));
-    }
-
-    [Fact]
-    public async Task Sink_failure_toasts_the_queued_line()
-    {
-        _sink.Throw(new HttpRequestException("offline"));
-        BugReportFlow flow = NewFlow();
-        Open(flow);
-
-        Send(flow);
-        await Settle(flow);
-
-        Assert.Equal(BugReportSubmitter.SinkFailedError, Assert.Single(_submitted).Error);
-        Assert.Equal("Bug report saved. It will be sent the next time you sign in.", Toast(flow));
-    }
-
-    [Fact]
-    public async Task Build_failure_toasts_the_failed_line()
-    {
-        ReportClipFrame frame = FakeCapture.DefaultClip(1).Frames[0];
-        _capture.Clip = new ReportClip([frame with { Width = frame.Width + 1 }]);
-        BugReportFlow flow = NewFlow();
-        Open(flow);
-
-        Send(flow);
-        await Settle(flow);
-
-        Assert.Empty(_sink.Submissions);
-        Assert.Empty(_submitted);
-        Assert.Equal("The bug report could not be prepared.", Toast(flow));
-    }
-
-    [Fact]
     public async Task Thumbnails_are_textured_on_the_frame_thread()
     {
         BugReportFlow flow = NewFlow();
@@ -571,27 +205,6 @@ public sealed class BugReportFlowTests : IDisposable
         Assert.All(_textures, t => Assert.True(t.OnFrameThread));
         Assert.Single(_textures, t => (t.Width, t.Height) == (FakeCapture.ShotWidth, FakeCapture.ShotHeight));
         Assert.Equal(4, _textures.Count(t => (t.Width, t.Height) == (FakeCapture.ClipWidth / 8, FakeCapture.ClipHeight / 8)));
-    }
-
-    [Fact]
-    public async Task Corrupt_screenshot_shows_no_thumbnail_and_still_sends()
-    {
-        _capture.Screenshot = () => Task.FromResult(FakeCapture.CorruptScreenshot());
-        BugReportFlow flow = NewFlow();
-        BugReportScreen screen = Open(flow);
-        await Settle(flow);
-
-        Assert.Equal(4, _textures.Count);
-        Assert.DoesNotContain(_textures, t => (t.Width, t.Height) == (FakeCapture.ShotWidth, FakeCapture.ShotHeight));
-        Assert.Empty(flow.Toasts.Active);
-        Assert.True(screen.Model.ScreenshotAvailable);
-
-        Send(flow);
-        await Settle(flow);
-
-        BugReportSubmission submission = Assert.Single(_sink.Submissions);
-        Assert.Contains(BundleEntryNames.ScreenshotPng, EntryNames(submission));
-        Assert.Equal("Bug report sent. Reference " + ReportIds.ReferenceCode(submission.ReportId), Toast(flow));
     }
 
     [Fact]
@@ -637,12 +250,14 @@ public sealed class BugReportFlowTests : IDisposable
         Assert.True(Step(flow, Frame(pressed: [Key.F9])));
         Assert.Single(_captured);
 
+        using IDisposable logs = CaptureLogs();
         BugReportFlow reloaded = NewFlow(new BugReportServiceOptions
         {
             GameId = "grimhollow",
             GameDisplayName = "Grimhollow",
             TriggerBindingsJson = saved,
         });
+        Assert.Empty(Warnings);
         Assert.False(Step(reloaded, Frame(pressed: [Key.F10])));
         Assert.True(Step(reloaded, Frame(pressed: [Key.F9])));
         Assert.Equal(2, _captured.Count);
@@ -669,30 +284,79 @@ public sealed class BugReportFlowTests : IDisposable
         Assert.Equal(BugReportDraft.DefaultCategories, Open(defaults).Model.Categories);
     }
 
-    sealed class ProbeSection(Action<Utf8JsonWriter, BugReportContext> write, string key = "probe") : IBugReportSection
+    [Fact]
+    public void Throwing_capture_handler_leaves_the_flow_working()
     {
-        public string Key => key;
+        BugReportFlow flow = NewFlow();
+        flow.ReportCaptured += _ => throw new InvalidOperationException("game hook");
+        using IDisposable logs = CaptureLogs();
 
-        public int MaxBytes => 4096;
+        Assert.True(Step(flow, Frame(pressed: [Key.F10])));
 
-        public int Writes { get; private set; }
-
-        public List<string?> Subjects { get; } = new();
-
-        public void Write(Utf8JsonWriter writer, BugReportContext context)
-        {
-            Writes++;
-            Subjects.Add(context.Subject);
-            write(writer, context);
-        }
+        Assert.Single(_captured);
+        Assert.Equal(BugReportFlowState.Captured, flow.State);
+        Assert.Single(Warnings);
+        Assert.True(Step(flow));
+        Assert.Equal(BugReportFlowState.Open, flow.State);
+        Assert.Single(flow.Screens.Screens);
+        Assert.True(Step(flow, Frame(pressed: [Key.Escape])));
+        Assert.Equal(1, _capture.ThawCount);
+        Assert.Equal(BugReportFlowState.Idle, flow.State);
     }
 
-    sealed class FixedMeasurer : ITextMeasurer
+    [Fact]
+    public void Throwing_thaw_still_closes_the_report()
     {
-        public float LineHeight => 20f;
+        BugReportFlow flow = NewFlow();
+        Open(flow);
+        _capture.ThawFailure = new ObjectDisposedException("recorder");
 
-        public Vector2 Measure(string text) => new(text.Length * 10f, LineHeight);
+        Assert.Throws<ObjectDisposedException>(() => Step(flow, Frame(pressed: [Key.Escape])));
 
-        public Vector2 Measure(ReadOnlySpan<char> text) => new(text.Length * 10f, LineHeight);
+        Assert.Equal(BugReportFlowState.Idle, flow.State);
+        Assert.Empty(flow.Screens.Screens);
+        _capture.ThawFailure = null;
+        Step(flow);
+        Open(flow);
+        Assert.Equal(2, _captured.Count);
+    }
+
+    [Fact]
+    public void Screen_failure_thaws_and_toasts_the_failed_line()
+    {
+        BugReportFlow flow = NewFlow();
+        _screenFailure = new InvalidOperationException("no font");
+        using IDisposable logs = CaptureLogs();
+        Assert.True(Step(flow, Frame(pressed: [Key.F10])));
+
+        Assert.True(Step(flow));
+
+        Assert.Equal(BugReportFlowState.Idle, flow.State);
+        Assert.Empty(flow.Screens.Screens);
+        Assert.Equal(1, _capture.ThawCount);
+        Assert.Single(Warnings);
+        Assert.Equal("The bug report could not be prepared.", Toast(flow));
+
+        _screenFailure = null;
+        Assert.True(Step(flow));
+        Open(flow);
+        Assert.Equal(2, _captured.Count);
+    }
+
+    [Fact]
+    public void Malformed_trigger_bindings_keep_the_default_key()
+    {
+        using IDisposable logs = CaptureLogs();
+
+        BugReportFlow flow = NewFlow(new BugReportServiceOptions
+        {
+            GameId = "grimhollow",
+            GameDisplayName = "Grimhollow",
+            TriggerBindingsJson = "{",
+        });
+
+        Assert.Single(Warnings);
+        Assert.True(Step(flow, Frame(pressed: [Key.F10])));
+        Assert.Single(_captured);
     }
 }

@@ -32,7 +32,14 @@ internal sealed class FakeCapture : IBugReportCapture
         return ClipAvailable ? Clip : null;
     }
 
-    public void Thaw() => ThawCount++;
+    /// <summary>When set, <see cref="Thaw"/> counts the call and then throws it.</summary>
+    internal Exception? ThawFailure { get; set; }
+
+    public void Thaw()
+    {
+        ThawCount++;
+        if (ThawFailure is { } failure) throw failure;
+    }
 
     public Task<ReportImage> CaptureScreenshotAsync()
     {

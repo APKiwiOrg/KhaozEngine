@@ -78,7 +78,12 @@ internal sealed class BugReportFlow
 
         var map = new ActionMap();
         map.AddAction(InputAction.Button(TriggerActionId), InputSource.FromKey(options.DefaultKey));
-        TriggerControls = new ActionMapController(map, options.TriggerBindingsJson, options.SaveTriggerBindings);
+        TriggerControls = new ActionMapController(map, persistedJson: null, options.SaveTriggerBindings);
+        if (!string.IsNullOrWhiteSpace(options.TriggerBindingsJson)
+            && ActionMapSerializer.Load(map, options.TriggerBindingsJson).AppliedCount == 0)
+        {
+            Log.Warn("The saved bug report trigger bindings did not apply. The default key stays bound.");
+        }
     }
 
     /// <summary>The trigger binding. A rebind captured here saves through the options' callback.</summary>
@@ -155,12 +160,15 @@ internal sealed class BugReportFlow
         return hold;
     }
 
-    /// <summary>Sends the queued reports for the signed-in account. Returns how many the sink accepted.</summary>
-    internal async Task<int> RetryQueuedAsync(CancellationToken cancellationToken)
+    /// <summary>
+    /// Sends the queued reports for the signed-in account on the thread pool, because the queue scans and reads the
+    /// disk before its first await. Returns how many the sink accepted.
+    /// </summary>
+    internal Task<int> RetryQueuedAsync(CancellationToken cancellationToken)
     {
         string? subject = _currentSubject();
-        if (string.IsNullOrWhiteSpace(subject)) return 0;
-        return await FlushAsync(subject, cancellationToken).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(subject)) return Task.FromResult(0);
+        return Task.Run(() => FlushAsync(subject, cancellationToken), cancellationToken);
     }
 
     void RunPosted()
@@ -185,6 +193,13 @@ internal sealed class BugReportFlow
         string? subject = _currentSubject();
         if (string.Equals(subject, _subject, StringComparison.Ordinal)) return;
         _subject = subject;
+        StartFlush();
+    }
+
+    /// <summary>Flushes the queue for the polled subject on the thread pool. Does nothing while signed out.</summary>
+    void StartFlush()
+    {
+        string? subject = _subject;
         if (string.IsNullOrWhiteSpace(subject)) return;
         PendingWork = Task.Run(() => FlushAsync(subject, CancellationToken.None));
     }
@@ -198,7 +213,15 @@ internal sealed class BugReportFlow
         IReadOnlyList<RawSection> raw = _sections.CaptureAll(new BugReportContext(id, capturedAt, _subject));
         _report = new ActiveReport(id, capturedAt, raw, clip, screenshot);
         State = BugReportFlowState.Captured;
-        ReportCaptured?.Invoke(id);
+        try
+        {
+            ReportCaptured?.Invoke(id);
+        }
+        catch (Exception exception)
+        {
+            // A game hook must not take the overlay down with the clip still frozen.
+            Log.Warn("A ReportCaptured handler failed for bug report " + id + ".", exception);
+        }
     }
 
     ReportClip? FreezeClip()
@@ -231,9 +254,23 @@ internal sealed class BugReportFlow
         bool screenshotAvailable = !report.Screenshot.IsFaulted && !report.Screenshot.IsCanceled;
         var model = new BugReportScreenModel(_categories, signedIn: !string.IsNullOrWhiteSpace(_subject),
             screenshotAvailable, clipAvailable: report.Clip is { Frames.Count: > 0 });
-        BugReportScreen screen = _screenFactory(model);
+        BugReportScreen screen;
+        try
+        {
+            screen = _screenFactory(model);
+            Screens.Add(screen);
+        }
+        catch (Exception exception)
+        {
+            Log.Warn("The bug report screen could not be opened.", exception);
+            _report = null;
+            State = BugReportFlowState.Idle;
+            _holdNextFrame = true;
+            ShowToast(BugReportStrings.Resolve(BugReportStrings.ToastFailed), ToastKind.Danger);
+            _capture.Thaw();
+            return;
+        }
         report.Screen = screen;
-        Screens.Add(screen);
         State = BugReportFlowState.Open;
         PendingWork = Task.Run(() => DecodeThumbnailsAsync(report));
     }
@@ -247,9 +284,7 @@ internal sealed class BugReportFlow
 
         BugReportScreenModel model = screen.Model;
         var choices = new ReportChoices(model.Description, model.Category, model.IncludeScreenshot, model.IncludeClip);
-        _capture.Thaw();
-        Screens.Remove(screen);
-        report.Close();
+        // The state goes first, so a throwing Thaw, UnloadContent or texture Dispose cannot strand an open report.
         _report = null;
         State = BugReportFlowState.Idle;
         _holdNextFrame = true;
@@ -257,6 +292,21 @@ internal sealed class BugReportFlow
         {
             string? subject = _subject;
             PendingWork = Task.Run(() => SendAsync(report, choices, subject));
+        }
+        try
+        {
+            _capture.Thaw();
+        }
+        finally
+        {
+            try
+            {
+                Screens.Remove(screen);
+            }
+            finally
+            {
+                report.Close();
+            }
         }
     }
 
@@ -375,6 +425,8 @@ internal sealed class BugReportFlow
         Post(() =>
         {
             ShowResult(result);
+            // A player who signed in while this send was queueing signed out would otherwise wait for the next sign in.
+            if (result is { Status: BugReportSubmitStatus.Queued, Error: BugReportSubmitter.SignedOutError }) StartFlush();
             ReportSubmitted?.Invoke(result);
         });
     }
@@ -446,8 +498,14 @@ internal sealed class BugReportFlow
         internal void Close()
         {
             Screen = null;
-            foreach (Texture2D texture in Textures) texture.Dispose();
-            Textures.Clear();
+            try
+            {
+                foreach (Texture2D texture in Textures) texture.Dispose();
+            }
+            finally
+            {
+                Textures.Clear();
+            }
         }
     }
 }

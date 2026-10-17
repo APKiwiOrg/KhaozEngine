@@ -24,7 +24,10 @@ public sealed record BugReportServiceOptions
     /// <summary>The key bound to the report trigger until the player rebinds it.</summary>
     public Key DefaultKey { get; init; } = Key.F10;
 
-    /// <summary>The category ids, in display order, 1 to 16 ids of 1 to 64 characters. Null keeps the engine default list.</summary>
+    /// <summary>
+    /// The category ids, in display order, 1 to 16 ids of 1 to 64 characters of well-formed text. Null keeps the engine
+    /// default list.
+    /// </summary>
     public IReadOnlyList<string>? Categories { get; init; }
 
     /// <summary>How the rolling clip records. Its length times its rate is at most 120 frames.</summary>
@@ -33,7 +36,10 @@ public sealed record BugReportServiceOptions
     /// <summary>Whether the clip records from the start. A settings toggle can change it later.</summary>
     public bool RecordingEnabled { get; init; } = true;
 
-    /// <summary>The trigger bindings the game saved from <see cref="SaveTriggerBindings"/>, applied over <see cref="DefaultKey"/>.</summary>
+    /// <summary>
+    /// The trigger bindings the game saved from <see cref="SaveTriggerBindings"/>, applied over <see cref="DefaultKey"/>.
+    /// Text that applies no binding is logged once and leaves <see cref="DefaultKey"/> bound.
+    /// </summary>
     public string? TriggerBindingsJson { get; init; }
 
     /// <summary>Receives the trigger bindings as JSON whenever the player rebinds the trigger.</summary>
@@ -70,12 +76,24 @@ public sealed record BugReportServiceOptions
         }
         foreach (string id in categories)
         {
-            if (string.IsNullOrWhiteSpace(id) || id.Length > BugReportLimits.MaxCategoryChars)
+            if (string.IsNullOrWhiteSpace(id) || id.Length > BugReportLimits.MaxCategoryChars || !IsWellFormed(id))
             {
                 throw new ArgumentException(string.Create(CultureInfo.InvariantCulture,
-                    $"Every category id must be 1 to {BugReportLimits.MaxCategoryChars} characters and not blank."),
+                    $"Every category id must be 1 to {BugReportLimits.MaxCategoryChars} characters of well-formed text and not blank."),
                     nameof(Categories));
             }
         }
+    }
+
+    // The bundle writer's own rule: an unpaired surrogate cannot round-trip through the manifest's JSON.
+    static bool IsWellFormed(string text)
+    {
+        for (int i = 0; i < text.Length; i++)
+        {
+            if (!char.IsSurrogate(text[i])) continue;
+            if (!char.IsHighSurrogate(text[i]) || i + 1 == text.Length || !char.IsLowSurrogate(text[i + 1])) return false;
+            i++;
+        }
+        return true;
     }
 }

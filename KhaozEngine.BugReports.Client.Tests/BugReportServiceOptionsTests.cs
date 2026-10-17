@@ -59,6 +59,17 @@ public sealed class BugReportServiceOptionsTests
     }
 
     [Fact]
+    public void Ill_formed_category_ids_are_rejected()
+    {
+        BugReportServiceOptions.Validate(Valid() with { Categories = ["Bugs \uD83D\uDC1B"] });
+
+        Assert.ThrowsAny<ArgumentException>(() => BugReportServiceOptions.Validate(Valid() with { Categories = ["\uD800"] }));
+        Assert.ThrowsAny<ArgumentException>(() => BugReportServiceOptions.Validate(Valid() with { Categories = ["Bad\uDC1B"] }));
+        Assert.ThrowsAny<ArgumentException>(() =>
+            BugReportServiceOptions.Validate(Valid() with { Categories = ["Cut \uD83D"] }));
+    }
+
+    [Fact]
     public void Recording_longer_than_120_frames_is_rejected()
     {
         var options = Valid() with

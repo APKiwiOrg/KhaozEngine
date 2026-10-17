@@ -22,6 +22,9 @@ internal sealed class FakeSink : IBugReportSink
         }
     }
 
+    /// <summary>Runs inside every <see cref="SubmitAsync"/> call, on the calling thread.</summary>
+    internal Action? OnSubmit { get; set; }
+
     internal FakeSink Respond(BugReportSubmitStatus status, string? error = null)
     {
         lock (_sync)
@@ -39,6 +42,7 @@ internal sealed class FakeSink : IBugReportSink
 
     public Task<BugReportSubmitResult> SubmitAsync(BugReportSubmission submission, CancellationToken cancellationToken)
     {
+        OnSubmit?.Invoke();
         Func<BugReportSubmission, BugReportSubmitResult> next;
         lock (_sync)
         {

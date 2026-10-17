@@ -54,11 +54,16 @@ false, and `CaptureScreenshotAsync()` returns a task faulted with `NotSupportedE
 whose current frame is not copyable, during startup, minimisation or a swapchain recreation, keeps the request
 pending instead.
 
-A fault inside a tap, such as a lost device, or a fault on the encode thread, is warned once and turns that
-capture off for the recorder's lifetime. An encode fault is only recorded on the encode thread and is handled on
-the frame thread at the clip tap's next frame. The game's frame continues. A clip fault removes the clip tap, drops
-the frames held and leaves `IsRecording` false, and a later `Start()` does nothing. Build a new recorder to
-record again. A screenshot fault faults the pending task and every later one.
+No capture fault reaches the game's frame. Faults take three forms:
+
+- **Clip encode fault.** Recorded on the encode thread and handled on the frame thread at the clip tap's next
+  frame. It is warned once and stops recording for the recorder's lifetime, the same way a fault inside the clip
+  tap, such as a lost device, does at once: the clip tap is removed, the frames held are dropped, `IsRecording` is
+  false and a later `Start()` does nothing. Build a new recorder to record again.
+- **Screenshot tap fault.** A fault inside the screenshot tap's frame callbacks trips its guard. It is warned
+  once, faults the pending task, and every later `CaptureScreenshotAsync()` returns a faulted task.
+- **Screenshot encoder exception.** Faults only that request's task. It trips nothing, and the next request may
+  succeed.
 
 ## The standby screenshot tap
 

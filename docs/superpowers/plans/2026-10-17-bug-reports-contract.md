@@ -400,10 +400,11 @@ Public names E1 added beyond its block above, and the rules E2 and E3 can rely o
   `IGpuSwapchainCapture` with `SwapchainCopySupported` true. A device without that gets no standby screenshot tap,
   `IsAvailable` is false, and `CaptureScreenshotAsync()` returns a task faulted with `NotSupportedException`. A
   transiently uncopyable frame on a supported device keeps a screenshot request pending.
-- **Recorder faults.** A fault in a tap or on the encode thread is warned once and turns that capture off for the
-  recorder's lifetime. A clip fault leaves `IsRecording` false and makes later `Start()` calls do nothing. A
-  screenshot fault faults the pending task and every later one. Encode faults are recorded on the encode thread
-  and handled on the frame thread. A tap fault never reaches the game's frame.
+- **Recorder faults.** No capture fault reaches the game's frame, and they take three forms. A clip encode fault
+  is recorded on the encode thread, handled on the frame thread at the clip tap's next frame, warned once, and
+  stops recording for the recorder's lifetime, as a fault in the clip tap itself does: `IsRecording` is false and
+  later `Start()` calls do nothing. A screenshot tap fault trips its guard, faults the pending task and every
+  later request. A screenshot encoder exception faults only that request, and the next request may succeed.
 - **`MaxBytes` floor.** `FrameHistoryOptions.MaxBytes` below 64 KiB is refused. The floor is a lower bound for sane
   configurations and does not guarantee that one frame fits. The default of 8 MB is the hard byte budget and does
   not guarantee a full clip. Holding all 60 default frames needs an average under about 136 KiB, and a detailed

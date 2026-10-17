@@ -38,9 +38,9 @@
 # and direct3d11-native spent 46m in Render.Tests alone in run 39010325116. The pre-tag release gate is a
 # dispatch of this workflow, so the slowest job sets the release time. Once the two software legs were split,
 # that job was Metal's unsharded full suite (a 26-minute test step in run 39022823501), so Metal is sharded
-# too. A leg is sharded whenever it runs its full suite and the run neither bakes nor sets renderTestFilter:
-# every trigger for metal-native, the schedule and workflow_dispatch for the other two. Each sharded leg runs
-# as `rest` (every test project except Render.Tests) plus `render-1` to `render-N` (Render.Tests in slices):
+# too. A leg is sharded when it runs its full suite on the schedule or a workflow_dispatch and the run neither
+# bakes nor sets renderTestFilter. metal-native also runs its full suite on push and pull_request, as one job
+# there (#1460, CONCURRENCY below). Each sharded leg runs as `rest` (every test project except Render.Tests) plus `render-1` to `render-N` (Render.Tests in slices):
 #   metal-native        rest + 2 render slices = 3 jobs
 #   direct3d11-native   rest + 4 render slices = 5 jobs
 #   vulkan-native       rest + 9 render slices = 10 jobs
@@ -50,17 +50,21 @@
 # `full suite` job fails when a shard is missing or red or when a test assembly ran on no shard or on two.
 # Each shard keeps its leg's instruments (strict validation and serialisation on Vulkan, the pool watch on
 # Windows, the debug layer and the device-evidence detector on Metal), and every evidence artifact carries the
-# shard name. The two software legs' push path, a bake dispatch and a renderTestFilter dispatch stay one job
-# per leg, exactly as before.
+# shard name. Every push and pull_request path, a bake dispatch and a renderTestFilter dispatch stay one job
+# per leg.
 #
 # CONCURRENCY. The org is on the Team plan: 60 concurrent GitHub-hosted standard jobs and 5 concurrent macOS
 # jobs (https://docs.github.com/en/actions/reference/limits). A default-input dispatch peaks at 19 jobs here
 # (3 Metal, 5 Windows, 10 Linux, the sync job), 23 with the `ci` dispatch the pre-tag gate runs beside it.
 # Metal takes no more than 3 because its slowest shard is already well under the Vulkan floor, so a fourth
 # macOS job would only spend the shared macOS allowance. That allowance is the one that binds in practice:
-# every push and pull_request runs Metal's full suite too, so overlapping runs share 5 macOS slots, and in
-# run 39030778010 one Metal shard queued 4 minutes behind three other runs' Metal jobs. On the Free plan's 20
-# total the gate would also queue three Linux or Windows jobs until the first shards finish.
+# every push and pull_request runs Metal's full suite too, so overlapping runs share 5 macOS slots. While
+# Metal was sharded on every trigger, two overlapping runs needed 6. A push run on main that started 18 s
+# before the gate dispatch (run 39041774821) held 3 slots, and the dispatch's render-1 shard queued 13 minutes
+# (run 39041795759 took 27.3 minutes against 21.3 uncontended at the same commit). So push and pull_request
+# run Metal's full suite as one job, about half an hour that nothing waits on, and a push run beside the gate
+# needs 4 macOS slots (#1460). On the Free plan's 20 total the gate would also queue three Linux or Windows
+# jobs until the first shards finish.
 #
 # What this does (suite split by leg + trigger, decided from measured cost + lavapipe stability):
 #   * The Metal NATIVE leg runs the engine's own KhaozEngine.Gpu.Metal backend
@@ -574,9 +578,8 @@ jobs:
           fi
 
           echo "selected legs: $(jq -r '[.[].backend] | join(", ")' <<<"$picked")"
-          # SHARDING (#1438). A leg on one of its full-suite triggers (every trigger for metal-native, the
-          # schedule and a dispatch for the other two) that neither bakes nor filters becomes one matrix entry
-          # per shard, each carrying `shard` (`rest` or `render-N`) and `primary` (`1` on the
+          # SHARDING (#1438). A leg running its full suite on the schedule or a dispatch that neither bakes nor
+          # filters becomes one matrix entry per shard, each carrying `shard` (`rest` or `render-N`) and `primary` (`1` on the
           # one entry per leg that runs the once-per-leg steps). Every other leg stays one entry with an empty
           # `shard` and `primary: 1`, which is exactly the shape it had before.
           python3 scripts/gpu-test-shards.py expand <<<"$picked" >> "$GITHUB_OUTPUT"
@@ -584,10 +587,11 @@ jobs:
 
   gpu-golden:
     needs: legs
-    # An unsharded leg keeps its historical name, so the software legs' push-path checks read exactly as before.
-    # A shard appends its own name, for example `ubuntu-latest / vulkan-native / render-3`. Metal is sharded on
-    # every trigger, so its checks are `macos-26 / metal-native / rest`, `/ render-1`, `/ render-2` and the
-    # `macos-26 / metal-native / full suite` job that answers for them.
+    # An unsharded leg keeps its historical name, so every push-path check reads as it did before #1438, Metal's
+    # `macos-26 / metal-native` included (#1460). A shard appends its own name, for example
+    # `ubuntu-latest / vulkan-native / render-3`. On the schedule and a dispatch Metal's checks are
+    # `macos-26 / metal-native / rest`, `/ render-1`, `/ render-2` and the `macos-26 / metal-native / full suite`
+    # job that answers for them.
     name: ${{ matrix.os }} / ${{ matrix.backend }}${{ matrix.shard != '' && format(' / {0}', matrix.shard) || '' }}
     runs-on: ${{ matrix.runner }}
     # All three legs are blocking, with no continue-on-error on any of them. Each verifies its OWN golden
@@ -1629,6 +1633,8 @@ jobs:
       # episode lines are as much a reading as a red run's. The watch directory holds one log per armed test host
       # (an armed line, then one line per episode), and the trx files give every test's start and end from both
       # passes. The directory also carries dumps from explicit diagnostic runs, never the default full tier.
+      # A shard's trx files are already its `shard-trx-<backend>-<shard>` artifact below, kept longer, so they
+      # ride here only on an unsharded run (#1461).
       - name: Upload thread pool watch evidence
         if: always() && env.POOL_WATCH_ARMED != ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -1636,7 +1642,7 @@ jobs:
           name: pool-watch-${{ matrix.backend }}${{ env.SHARD_SUFFIX }}
           path: |
             TestResults/pool-watch/
-            TestResults/*.trx
+            ${{ matrix.shard == '' && 'TestResults/*.trx' || '' }}
           retention-days: 3
           if-no-files-found: warn
 

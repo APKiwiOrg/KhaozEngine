@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Shard plan and coverage guard for the GPU matrix's full suites (#1438).
 
-Every leg's full suite runs across several hosted jobs whenever that leg runs its full suite and the run
-neither bakes nor sets renderTestFilter. For metal-native (`fullSuite: always`) that is every trigger, push and
-pull_request included. For direct3d11-native and vulkan-native (`fullSuite: scheduled`) it is the schedule and
-workflow_dispatch. This file is the single source of the split, and .github/workflows/cross-platform-gpu.yml
-reads it through the subcommands below.
+Every leg's full suite runs across several hosted jobs on the schedule and workflow_dispatch, when the run
+neither bakes nor sets renderTestFilter. Those are the only triggers on which direct3d11-native and
+vulkan-native (`fullSuite: scheduled`) run their full suites at all. metal-native (`fullSuite: always`) also
+runs its full suite on push and pull_request, but as one job there (#1460): the org runs at most 5 macOS jobs
+at once, and three shards on every trigger let a push run starve the gate dispatch of macOS slots. One job
+on push and three on the gate keep two overlapping runs at 4. This file is the single source of the split,
+and .github/workflows/cross-platform-gpu.yml reads it through the subcommands below.
 
 THE SPLIT. Shard `rest` runs every test project in KhaozEngine.slnx except KhaozEngine.Render.Tests,
 through a solution derived from the current one at run time, so a new test project lands in it with no
@@ -211,6 +213,11 @@ def parse_filter(text):
     return predicate
 
 
+# The triggers whose full suites are sharded: the weekly sweep and the pre-tag gate dispatch. A push or
+# pull_request full suite (metal-native only) stays one job, so it holds one macOS slot (#1460).
+SHARD_EVENTS = ("schedule", "workflow_dispatch")
+
+
 def full_suite_trigger(leg, event):
     """Whether this leg runs its full suite on this trigger, as the workflow's KE_TEST_FILTER decides it."""
     return leg["fullSuite"] == "always" or (leg["fullSuite"] == "scheduled" and event in ("schedule", "workflow_dispatch"))
@@ -225,7 +232,7 @@ def cmd_expand(_args):
     entries, summaries = [], []
     for leg in legs:
         sharded = (leg["backend"] in RENDER_SLICES and full_suite_trigger(leg, event)
-                   and not bake and not render_filter)
+                   and event in SHARD_EVENTS and not bake and not render_filter)
         if not sharded:
             entries.append(dict(leg, shard="", primary="1"))
             continue

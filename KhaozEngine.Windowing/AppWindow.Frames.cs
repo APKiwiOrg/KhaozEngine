@@ -76,9 +76,10 @@ namespace KhaozEngine.Windowing
                 _frame.Commands = _cl;
                 _frame.RenderSuppressed = !render;
 
-                // The frame's whole shape: prepare (nothing open) -> open + clear -> record -> end + submit +
-                // present. Both callbacks always run, so update advances even on a render-suppressed frame.
-                FramePhases.Run(_frame, render, _device, _cl, ClearColor, onPrepare, record);
+                // The frame's whole shape: prepare (nothing open) -> open + clear -> record -> capture taps -> end +
+                // submit -> taps' after-submit -> present. Both callbacks always run, so update advances even on a
+                // render-suppressed frame. The taps get the unclamped delta (see AppWindow.CaptureTaps.cs).
+                FramePhases.Run(_frame, render, _device, _cl, ClearColor, onPrepare, record, _captureTaps, dt * 1000.0);
 
                 // Pace the loop to the plan's cap. Silk's own loop runs the callback as fast as the GPU allows (a
                 // Metal present does not throttle the CPU), so idle here to hold the target cadence - the base

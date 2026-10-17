@@ -517,7 +517,8 @@ public sealed class CoverageCostContractTests
             "run: echo \"quoted # EquipmentCoverage.Cost.Tests\"",
             "<ProjectReference Include=\"tools/EquipmentCoverage.Cost.Tests/EquipmentCoverage.Cost.Tests.csproj\" />",
         ]);
-        Assert.Contains(cost, ActiveSelectionText(activeLines), StringComparison.Ordinal);
+        foreach (string line in activeLines.Split(new[] { newline }, StringSplitOptions.None))
+            Assert.Contains(cost, ActiveSelectionText(line), StringComparison.Ordinal);
     }
 
     static string ManifestWithoutAuthorization(string json, string newline)

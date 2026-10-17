@@ -637,7 +637,8 @@ Software rasterizers on the runners (no real GPU):
 
 - Linux Vulkan → Mesa **lavapipe** (`mesa-vulkan-drivers`). The lavapipe ICD manifest's name/path drifts across
   Ubuntu runner images (it is now `lvp_icd.json`, was `lvp_icd.x86_64.json`), so the workflow **discovers it at
-  runtime** and points `VK_ICD_FILENAMES` + `VK_DRIVER_FILES` at it rather than hardcoding. A second step used
+  runtime** in the `mesa-vulkan-drivers` file list (`dpkg -L`, not a walk of the image) and points
+  `VK_ICD_FILENAMES` + `VK_DRIVER_FILES` at it rather than hardcoding. A second step used
   to symlink `libdl.so` → `libdl.so.2` and `libvulkan.so` → `libvulkan.so.1`, because Veldrid 4.9.0's Vulkan
   binding P/Invoked the bare names that modern Ubuntu only ships versioned. Silk.NET resolves through its own
   native-context search and needs neither, so that step went with the Veldrid backend in `18.0.0`

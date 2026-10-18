@@ -234,7 +234,10 @@ public sealed class MapMarkerHeightTests
         MapLocalMarkerDoc entry = resources.BuildingIntent.Markers.Single(m => m.Id == id);
         // The effective intent keeps the canonical carrier, so no sampled height appears as a second authored height.
         Assert.Equal(0u, BitConverter.SingleToUInt32Bits(entry.Position.Y));
-        Assert.Equal((marker.Position.X.ToSingle(), marker.Position.Z.ToSingle(), marker.YawRadians), (entry.Position.X, entry.Position.Z, entry.YawRadians));
+        Assert.Equal((marker.Position.X.ToSingle(), marker.Position.Z.ToSingle()), (entry.Position.X, entry.Position.Z));
+        // The transferred frame's yaw composed independently with the child's local yaw.
+        float yaw = (float)((form == "surface" ? MarkerFixtures.SurfaceChild() : MarkerFixtures.SpaceChild()).Value.YawRadians + (double)0.371f);
+        Assert.Equal((yaw, yaw), (entry.YawRadians, marker.YawRadians));
         MapSupportBinding expected = form == "surface"
             ? MarkerFixtures.SurfaceBinding("a/floor")
             : MarkerFixtures.SpaceBinding("a/room", Frozen(-450d + 0.5d * 1.2f), 1.2f, 1.2f);

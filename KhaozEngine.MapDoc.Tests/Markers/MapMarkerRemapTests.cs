@@ -163,14 +163,15 @@ public sealed class MapMarkerRemapTests
         Assert.Equal(new[] { Slot("spaceId", MapPrefabReferenceScope.World, MapPrefabChildKind.Record, "level-2") }, child.References);
         Assert.Equal(0u, BitConverter.SingleToUInt32Bits(child.Value.Position.Y));
 
-        // Replacement: one instance of the extracted prefab at the extraction origin takes the standalone marker's place.
+        // Replacement: the extracted prefab placed through the product place edit at the extraction origin takes the
+        // standalone marker's place.
         MapAssetClosure assets = MarkerFixtures.PrefabClosure(extracted);
-        MapDocument replaced = MapDocumentFile.LoadText(MapDocumentFile.SaveText(fixture.Document));
-        replaced.NativeAssets = assets.Roots.ToList();
-        replaced.BuildingIntent = new(1, [], [], [], replaced.BuildingIntent!.Markers.Where(m => m.Id != "stacked-space").ToArray());
-        replaced.Prefabs = new(1, 1, new[] { new MapPrefabInstance("lifted", "lifted", assets.GetResource("lifted").Reference.Sha256, origin, null,
-            new(new[] { new MapPrefabBinding(child.Key, "stacked-space", null, false) }), []) }, []);
-        MapEffectiveMarker after = Marker(MarkerFixtures.Effective(new(replaced, assets)), "stacked-space");
+        MapDocument host = MapDocumentFile.LoadText(MapDocumentFile.SaveText(fixture.Document));
+        host.NativeAssets = assets.Roots.ToList();
+        host.BuildingIntent = new(1, [], [], [], host.BuildingIntent!.Markers.Where(m => m.Id != "stacked-space").ToArray());
+        MapDocument replaced = MapPrefabEdits.Prepare(host, assets, new MapPlacePrefab("lifted", "lifted", origin)).After;
+        string placedId = replaced.Prefabs!.Instances.Single(i => i.Id == "lifted").Bindings.Entries.Single(b => b.Child == child.Key).WorldId;
+        MapEffectiveMarker after = Marker(MarkerFixtures.Effective(new(replaced, assets)), placedId);
         AssertBits(before.HeightProvenance!.Binding!, after.HeightProvenance!.Binding!);
         Assert.Equal(before.HeightProvenance, after.HeightProvenance);
         Assert.Equal(before.Position, after.Position);

@@ -11,9 +11,11 @@ The fix-round-1 local Release build passed with zero warnings and zero errors. A
 including three native facts on MetalNative with an Apple M2 Max. The coverage fact compared all
 13,949 words from 377 dynamic rows exactly. Scoped whitespace and SPIR-V validation passed.
 The first hosted run, 39165413387, exposed Windows CRLF helper comparisons and WARP dynamic
-component-selection poisoning. Fix round 1 addresses both below. Fresh native Vulkan and Direct3D11
-WARP execution, Vulkan validation-layer results and actual FXC compilation remain **hosted-only and
-pending**. Source qualifiers and cross-compilation alone do not close those gates.
+component-selection poisoning. Fix round 1 addresses both below. Hosted run 39169835980 on commit
+4f2bf49bb then passed every leg with no skipped facts. The run covered MetalNative (113 of 113),
+Direct3D11 WARP with FXC (113 of 113, plus 32 FXC and struct-size checks) and Vulkan lavapipe (113 of
+113). Its Vulkan synchronization-validation selections of 1, 7 and 493 tests passed with no VUID or
+hazard lines.
 No timing, load, performance budget or whole-coverage correctness claim follows from this record.
 The 72 frozen cases and their 144-row `outputs.sha256` manifest are unchanged.
 
@@ -85,9 +87,9 @@ The emitted helper intermediates are `precise float _161 = a + b`,
 operands and results. The headless checks inspect the emitted shader and pin the compute
 `D3DCOMPILE_IEEE_STRICTNESS` flag to `00002000`.
 
-Actual FXC compilation and Direct3D11 word equality are hosted-only and pending. The native compute
-fact creates its shader through the real factory with PreciseMath enabled. The hosted Windows leg
-therefore compiles with FXC and executes the same dynamic probe on WARP.
+The native compute fact creates its shader through the real factory with PreciseMath enabled, so
+the hosted Windows leg compiles with FXC and executes the same dynamic probe on WARP. Run 39169835980
+recorded exact Direct3D11 word equality there.
 
 C5 prohibits `OpVectorExtractDynamic` and `OpVectorInsertDynamic` in every coverage kernel and
 probe. It also prohibits non-constant vector or matrix component indices in `OpAccessChain` and
@@ -147,8 +149,8 @@ Vulkan 1.3 floor, and have no device feature enable bit. Precise shader creation
 property through ShaderValidationException before native module creation. The unsupported-device
 factory regression covers both compute and vertex shader requests.
 
-Native Vulkan word equality and validation-layer results remain hosted-only and pending. Local
-SPIR-V validation does not substitute for executing that backend.
+Run 39169835980 recorded exact native Vulkan word equality on lavapipe and clean validation-layer
+results. Local SPIR-V validation alone would not have substituted for executing that backend.
 
 ## Reproduction and remaining gates
 
@@ -166,5 +168,5 @@ and layout rows. No existing shipped-program hash is rebaked to accept a numeric
 
 Root's hosted filter is the same five-class expression above. It includes the generic
 exceptional-value rows and the module-wide coverage audit.
-Require zero-error Vulkan validation logs and no skipped native facts. Hosted Vulkan and D3D11 gates
-remain pending until their actual results are recorded.
+Require zero-error Vulkan validation logs and no skipped native facts. Run 39169835980 met both on
+all three legs.

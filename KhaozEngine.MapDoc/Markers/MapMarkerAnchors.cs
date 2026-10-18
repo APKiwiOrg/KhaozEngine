@@ -39,11 +39,14 @@ public static class MapMarkerAnchors
     /// <summary>Every marker candidate of <paramref name="manifest"/> after prefab overrides, removals and remaps, through
     /// the shared metadata enumeration. Each XZ passes through its frame once with the same kernel effective resolution
     /// uses, so an anchor matches the resolved marker's XZ. Heights are never read. A prefab missing from
-    /// <paramref name="assets"/> refuses.</summary>
+    /// <paramref name="assets"/> refuses. The aggregate expansion preflight charges the loaded metadata and every
+    /// instance first, so an input whose per-instance expansion exceeds a ceiling refuses before any candidate is
+    /// materialized.</summary>
     public static IReadOnlyList<MapMarkerAnchor> Read(MapDocument manifest, MapAssetClosure assets)
     {
         ArgumentNullException.ThrowIfNull(manifest);
         ArgumentNullException.ThrowIfNull(assets);
+        _ = MapPrefabPreflight.Count(manifest, assets, new());
         var anchors = new List<MapMarkerAnchor>();
         foreach (MapMarkerCandidate candidate in MapMarkerExpansion.Capture(manifest, assets))
         {

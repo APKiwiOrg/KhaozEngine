@@ -292,6 +292,12 @@ public sealed class CoverageRefinement
     /// <summary>True for every vertex of an authored core triangle, whose region strength is exactly one.</summary>
     internal bool IsCoreVertex(int vertex) => coreVertices[vertex];
 
+    internal CoveragePositionRecipe GetPositionRecipe(int positionGroup)
+    {
+        var recipe = positionRecipes[positionGroup];
+        return new(recipe.A, recipe.B, recipe.C, recipe.Weights.A, recipe.Weights.B, recipe.Weights.C, Denominator);
+    }
+
     /// <summary>Rest-pose refined position, used only to shape cold spatial hierarchies.</summary>
     internal Vector3 RestPosition(int vertex)
     {

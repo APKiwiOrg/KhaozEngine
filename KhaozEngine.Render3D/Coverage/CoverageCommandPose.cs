@@ -160,51 +160,20 @@ internal static class CoverageFrames
 {
     /// <summary>Share of the authored clearance that numerical uncertainty may consume before a frame refuses.</summary>
     internal const double MarginFraction = .25;
-    const double MaxCondition = 1e6;
 
     internal static bool TryPrepare(CoverageRefinement topology, in Matrix4x4 actorModel, ReadOnlySpan<CoverageCommandPose> commands,
         CoverageScratch scratch, double hostMagnitude, out CoverageFailure failure)
     {
-        failure = default;
-        if (commands.Length > scratch.CommandCapacity)
-            return Refuse(topology, CoverageFailureCode.CapacityExceeded, 0, 0, commands.Length, scratch.CommandCapacity, out failure);
+        if (!CoverageFrameAdmission.TryBegin(topology, commands, scratch.CommandCapacity, scratch.Order, scratch.RegionCommands, out failure)) return false;
         Span<int> order = scratch.Order.AsSpan(0, commands.Length);
-        for (int i = 0; i < order.Length; i++)
-        {
-            int j = i;
-            while (j > 0 && commands[order[j - 1]].Id > commands[i].Id) { order[j] = order[j - 1]; j--; }
-            order[j] = i;
-        }
         scratch.ActiveCommands = commands.Length;
-        scratch.RegionCommands.AsSpan().Fill(-1);
         if (commands.Length == 0) return true;
-        bool actorValid = CoverageAffine.TryFrom(actorModel, out var actor) && Valid(actor) && actor.TryInverse(out _);
+        bool actorValid = CoverageFrameAdmission.TryActor(actorModel, out var actor);
         for (int slot = 0; slot < order.Length; slot++)
         {
             CoverageCommandPose command = commands[order[slot]];
-            if (command.Id == 0 || command.EquipmentInstanceId == 0 || !ReferenceEquals(command.Topology, topology) || command.Support is null || slot > 0 && commands[order[slot - 1]].Id == command.Id)
-                return Refuse(topology, CoverageFailureCode.IdentityMismatch, command, out failure);
-            if (command.RegionIndex < 0 || command.RegionIndex >= scratch.RegionCommands.Length)
-                return Refuse(topology, CoverageFailureCode.UnknownRegion, command, out failure);
-            if (scratch.RegionCommands[command.RegionIndex] >= 0)
-                return Refuse(topology, CoverageFailureCode.OverlappingConformers, command, out failure);
-            scratch.RegionCommands[command.RegionIndex] = slot;
-            CoverageSupportSurface support = command.Support;
-            if (support.InwardTriangles.Count > CoverageSupportSurface.MaxTriangles)
-                return Refuse(topology, CoverageFailureCode.CapacityExceeded, command.EquipmentInstanceId, command.Id,
-                    support.InwardTriangles.Count, CoverageSupportSurface.MaxTriangles, out failure);
-            if (!float.IsFinite(command.MinZ) || !float.IsFinite(command.MaxZ) || !(command.MinZ < command.MaxZ)
-                || !float.IsFinite(command.CollarWidth) || !(command.CollarWidth > 0) || !float.IsFinite(command.Clearance)
-                || !(command.Clearance > 0) || !float.IsFinite(command.MaxWorldRecession) || !(command.MaxWorldRecession >= 0)
-                || !support.InwardOfClosedSolid)
-                return Refuse(topology, CoverageFailureCode.UnsupportedSupport, command, out failure);
-            if (!actorValid || !float.IsFinite(command.TransitionWeight) || command.TransitionWeight is < 0 or > 1
-                || !CoverageAffine.TryFrom(command.EquipmentWorld, out var equipment) || !Valid(equipment)
-                || !CoverageAffine.TryFrom(command.CoverageWorld, out var coverage) || !Valid(coverage)
-                || !CoverageAffine.TryFrom(support.CoverageLocal, out _))
-                return Refuse(topology, CoverageFailureCode.UnsupportedTransform, command, out failure);
-            if (command.CoverageWorld != support.CoverageLocal * command.EquipmentWorld)
-                return Refuse(topology, CoverageFailureCode.StaleFrame, command, out failure);
+            if (!CoverageFrameAdmission.TryCommand(topology, commands, order, scratch.RegionCommands, slot, actorValid,
+                out var equipment, out var coverage, out failure)) return false;
             if (!Derive(actor, equipment, coverage, command, hostMagnitude, out scratch.Frames[slot]))
                 return Refuse(topology, CoverageFailureCode.UnsupportedTransform, command, out failure);
             scratch.Frames[slot].Command = order[slot];
@@ -212,13 +181,6 @@ internal static class CoverageFrames
             scratch.Frames[slot].CoverageZ = new(command.CoverageWorld.M31, command.CoverageWorld.M32, command.CoverageWorld.M33);
         }
         return true;
-    }
-
-    static bool Valid(in CoverageAffine m)
-    {
-        if (!(m.Determinant > 0) || !m.TryInverse(out var inverse)) return false;
-        double condition = m.Frobenius * inverse.Frobenius;
-        return double.IsFinite(condition) && condition <= MaxCondition;
     }
 
     static bool Derive(in CoverageAffine actor, in CoverageAffine equipment, in CoverageAffine coverage, in CoverageCommandPose command,

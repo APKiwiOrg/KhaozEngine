@@ -3385,14 +3385,16 @@ var reports = new BugReportService(app,
 - **Trigger.** F10 by default, rebindable through `reports.TriggerControls`, persisted through
   `SaveTriggerBindings` and `TriggerBindingsJson`. `reports.Begin()` serves a menu entry.
 - **Capture.** The trigger frame freezes the clip, arms the screenshot and captures every section, then raises
-  `ReportCaptured(reportId)` for a server-backed game to request a server snapshot. The confirmation screen opens
+  `ReportCaptured(reportId)` for a server-backed game to capture and hold a server snapshot. The confirmation screen opens
   once the screenshot is taken, at most three frames later, and the game sees `InputState.WithoutInteraction` from
   the trigger until it closes. The game decides whether its
   world pauses.
 - **Sections.** Seven built-in sections (`build`, `platform`, `graphics`, `session`, `input`, `performance`,
   `log`) plus any `AddSection`. Sections run in the trigger frame and must be cheap. Redaction and truncation run
   off the frame thread before anything leaves the machine.
-- **Delivery.** Send builds the bundle on the thread pool. `BugReportSubmitter` writes it to the offline queue
+- **Delivery.** Send raises `ReportConfirmed(reportId)` once on the frame thread before building the bundle on the
+  thread pool. A server-backed game releases its held snapshot here. Cancel and shutdown never raise it, and a
+  throwing handler is logged without stopping the send. `BugReportSubmitter` writes the bundle to the offline queue
   before the first send, so a crash, a shutdown or an unreachable relay keeps it for the next sign-in. Only a relay
   acceptance that echoes the report id, or a refusal with the relay's error, deletes it. Use
   `LocalFolderSink` in development to open each report in the frame viewer without a relay.
@@ -3406,10 +3408,18 @@ var reports = new BugReportService(app,
 ### Server snapshot
 
 A game server registers its own sections on `BugReportServerCapture`, checks `ReportIds.IsValid` and `TryAccept`
-with the subject it authenticated before it calls `Capture` on the simulation thread, and posts with
-`ServerSnapshotPoster` off that thread. `TryAccept(subject)` defaults to 5 requests per rolling hour per
-account. The game carries the report id from `ReportCaptured` to the server over its own authenticated
-protocol. Never accept a subject from that message.
+with the subject it authenticated before it calls `Capture` on the simulation thread. Hold the snapshot until the
+player confirms, then post with `ServerSnapshotPoster` off that thread. `TryAccept(subject)` defaults to 5 requests
+per rolling hour per account. The game carries the report id from `ReportCaptured` to the server over its own
+authenticated protocol to capture, and from `ReportConfirmed` to release that same snapshot:
+
+```csharp
+reports.ReportCaptured += reportId => connection.Send(new RequestBugSnapshot(reportId));
+reports.ReportConfirmed += reportId => connection.Send(new ConfirmBugSnapshot(reportId));
+```
+
+Key held snapshots by the authenticated account and report id, and expire snapshots that are never confirmed.
+Never accept a subject from either message. Do not post the snapshot on capture, so evidence stays held until Send.
 
 `ServerSnapshotPoster(http, relayBase, serviceKey, redactor)` finishes sections off the simulation thread,
 redacts and truncates within the 1 MiB snapshot cap, and posts with `X-Report-Service-Key` to

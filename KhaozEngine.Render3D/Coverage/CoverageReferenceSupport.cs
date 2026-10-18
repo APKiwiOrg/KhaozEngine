@@ -118,7 +118,9 @@ internal sealed class CoverageReferenceSupport
         return float.IsFinite(distance);
     }
 
-    /// <summary>Analytic overlay vertices in source order. Disjoint pairs still execute their arithmetic guards.</summary>
+    /// <summary>Analytic overlay vertices in source order. Area, inside and side guards run for every pair. Crossing
+    /// arithmetic runs only for edges whose bounds overlap, and an endpoint contact needs the endpoint inside the other
+    /// segment's bounds.</summary>
     internal bool TryOverlayMaximum(ReadOnlySpan<Vector3> host, out float maximum)
     {
         maximum = float.NegativeInfinity;
@@ -159,8 +161,17 @@ internal sealed class CoverageReferenceSupport
                 Vector3 a = host[i], b = host[nextI], p;
                 // Rounded zero sides cannot create a contact between disjoint finite segments.
                 if (!OverlayEdgesOverlap(a, b, sheet[j], sheet[nextJ])) continue;
-                if (ca == 0) p = a;
-                else if (cb == 0) p = b;
+                // An endpoint on the other segment lies inside its bounds. A rounded zero side alone does not place it there.
+                if (ca == 0)
+                {
+                    if (!OverlayInBounds(a, sheet[j], sheet[nextJ])) continue;
+                    p = a;
+                }
+                else if (cb == 0)
+                {
+                    if (!OverlayInBounds(b, sheet[j], sheet[nextJ])) continue;
+                    p = b;
+                }
                 else
                 {
                     float denominator = ca - cb;
@@ -180,6 +191,9 @@ internal sealed class CoverageReferenceSupport
     static bool OverlayEdgesOverlap(Vector3 a, Vector3 b, Vector3 c, Vector3 d) =>
         MathF.Max(a.X, b.X) >= MathF.Min(c.X, d.X) && MathF.Max(c.X, d.X) >= MathF.Min(a.X, b.X)
         && MathF.Max(a.Y, b.Y) >= MathF.Min(c.Y, d.Y) && MathF.Max(c.Y, d.Y) >= MathF.Min(a.Y, b.Y);
+
+    static bool OverlayInBounds(Vector3 p, Vector3 c, Vector3 d) =>
+        p.X >= MathF.Min(c.X, d.X) && p.X <= MathF.Max(c.X, d.X) && p.Y >= MathF.Min(c.Y, d.Y) && p.Y <= MathF.Max(c.Y, d.Y);
 
     static bool OverlayInside(ReadOnlySpan<Vector3> triangle, Vector3 p, float area, Span<float> sides, out bool inside)
     {

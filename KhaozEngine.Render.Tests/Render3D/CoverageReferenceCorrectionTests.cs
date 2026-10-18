@@ -145,6 +145,93 @@ public sealed class CoverageReferenceCorrectionTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void Float_overlay_rejects_false_endpoint_contact_on_overlapping_nearly_collinear_edges()
+    {
+        // Group 224's sheet triangle and host corner a. Host b lies near the line from a to (.2,.2), so host edge a-b and
+        // sheet edge 1-2 have overlapping XY bounds while a lies outside the sheet edge's bounds.
+        Vector3[] sheet = [new(.25f, -.25f, .04f), new(.25f, .25f, .04f), new(0, 0, .02f)];
+        Vector3[] host = [new(-0.050000011920928955f, -0.04999999701976776f, 0),
+            new(0.10000000149011612f, 0.10000000894069672f, 0), new(-.2f, .2f, 0)];
+        Assert.Equal(0f, CoverageReferenceMath.Edge(sheet[1], sheet[2], host[0]));
+        Assert.True(CoverageReferenceMath.Edge(sheet[1], sheet[2], host[1]) < 0);
+        Assert.Equal(0f, CoverageReferenceMath.Edge(host[0], host[1], sheet[1]));
+        Assert.True(CoverageReferenceMath.Edge(host[0], host[1], sheet[2]) < 0);
+        Assert.True(MathF.Max(host[0].X, host[1].X) >= MathF.Min(sheet[1].X, sheet[2].X)
+            && MathF.Max(host[0].Y, host[1].Y) >= MathF.Min(sheet[1].Y, sheet[2].Y));
+        Assert.True(host[0].X < MathF.Min(sheet[1].X, sheet[2].X));
+        CoverageAffinePoint Exact(Vector3 p) => CoverageAffinePoint.FromDouble(p.X, p.Y, p.Z);
+        Assert.Equal(-1, CoverageGeometry.Edge(Exact(sheet[1]), Exact(sheet[2]), Exact(host[0])).Sign);
+        Assert.Equal(-1, CoverageGeometry.Edge(Exact(host[0]), Exact(host[1]), Exact(sheet[1])).Sign);
+        Assert.True(CoverageFaceOverlay.TryMaximum(host.Select(Exact).ToArray(), sheet.Select(Exact).ToArray(), out double exactPair));
+        Assert.True(Triangle(sheet).TryOverlayMaximum(host, out float pair));
+        Assert.Equal(exactPair, pair);
+        Assert.Equal(float.NegativeInfinity, pair);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Partial_strength_core_corner_refuses_folded_patch_only_for_a_positive_deficit(bool positive)
+    {
+        var fixture = CoverageFixture.CurvedPanel(seams: false, level: 2);
+        var topology = CoverageRefinement.Build(fixture.Source, fixture.Map);
+        // The importer refuses partial core strength and the fixture derives roles from strength, so the built topology's
+        // records are lowered directly.
+        // Surface 24 is the raised centre whose core faces need correction. Surface 18 is a corner of the flat cell (3,2)
+        // whose only core face (3,2),(4,2),(4,3) lies far below the plate.
+        int surface = positive ? 24 : 18;
+        var entry = fixture.Map.Topology.Single(e => e.SurfaceId == surface);
+        int sourceVertex = Enumerable.Range(0, fixture.Source.Vertices.Count).Single(i =>
+            (fixture.Source.Vertices[i].Mesh, fixture.Source.Vertices[i].Primitive, fixture.Source.Vertices[i].Vertex) == (entry.Mesh, entry.Primitive, entry.Vertex));
+        var records = (CoverageRefinedVertex[])typeof(System.Collections.ObjectModel.ReadOnlyCollection<CoverageRefinedVertex>)
+            .GetField("list", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(topology.Vertices)!;
+        int lowered = Array.FindIndex(records, r => r.SourceVertex == sourceVertex);
+        Assert.True(lowered >= 0 && topology.IsCoreVertex(lowered));
+        int group = records[lowered].PositionGroup;
+        for (int v = 0; v < records.Length; v++)
+            if (records[v].PositionGroup == group) records[v] = records[v] with { Strength = .5f };
+        var commands = CoverageCommands.Poses(fixture, topology, CoverageCommands.Plate(fixture), Matrix4x4.Identity);
+        int[] partial = Enumerable.Range(0, topology.TriangleCount).Where(t => topology.Triangles[t].Role == CoverageTriangleRole.Core
+            && Enumerable.Range(0, 3).Any(k => topology.Vertices[(int)topology.Indices[t * 3 + k]].Strength != 1)).ToArray();
+        Assert.NotEmpty(partial);
+        var exactScratch = new CoverageScratch(topology);
+        bool exact = CoverageEvaluator.TryConstructCandidate(topology, fixture.Posed, Matrix4x4.Identity, commands,
+            exactScratch, new ModelVertex[topology.VertexCount], out var exactFailure);
+        var frame = exactScratch.Frames[0];
+        Assert.True(CoverageCoreCorrection.TryTerms(exactScratch.Before, Matrix4x4.Identity, commands[frame.Command], frame,
+            out double clearance, out _, out double conversion));
+        var c = new CoverageReferenceCase("strength", topology, [], [], fixture.Posed, Matrix4x4.Identity, commands);
+        // Like-for-like conform and correction terms decide the same faces as the exact path. The reserve's larger
+        // clearance may add faces, but never changes the refusal code.
+        var scratch = Pointwise(c, [frame.ClearanceCoverage + frame.Slack]);
+        bool reference = CoverageReferenceCorrection.TryApply(topology, commands, scratch, out var referenceFailure,
+            new[] { clearance }, new[] { conversion });
+        var reserved = Pointwise(c);
+        bool reserve = CoverageReferenceCorrection.TryApply(topology, commands, reserved, out var reserveFailure);
+        output.WriteLine($"STRENGTH positive={positive} partialFaces={partial.Length} exact={exactFailure} reference={referenceFailure} reserve={reserveFailure}");
+        if (positive)
+        {
+            Assert.False(exact);
+            Assert.False(reference);
+            Assert.False(reserve);
+            Assert.Equal(CoverageFailureCode.FoldedPatch, exactFailure.Code);
+            Assert.Equal(exactFailure, referenceFailure);
+            Assert.Equal(CoverageFailureCode.FoldedPatch, reserveFailure.Code);
+        }
+        else
+        {
+            Assert.True(exact, exactFailure.ToString());
+            Assert.True(reference, referenceFailure.ToString());
+            Assert.True(reserve, reserveFailure.ToString());
+            foreach (var result in new[] { scratch, reserved })
+            {
+                Assert.All(partial, t => Assert.True(result.FaceGuards[t]));
+                Assert.All(partial, t => Assert.Equal(0f, result.FaceCorrections[t]));
+            }
+        }
+    }
+
+    [Fact]
     public void Float_overlay_includes_edge_crossings_not_only_corners()
     {
         // The crossing pair from CoverageFaceOverlayTests. No corner is inside the other triangle.
@@ -329,12 +416,14 @@ public sealed class CoverageReferenceCorrectionTests(ITestOutputHelper output)
         Assert.Equal(0, bytes);
     }
 
-    static CoverageReferenceScratch Pointwise(CoverageReferenceCase c, CoverageExactCapture? capture = null)
+    static CoverageReferenceScratch Pointwise(CoverageReferenceCase c, CoverageExactCapture? capture = null) =>
+        Pointwise(c, capture is null ? [] : capture.ClearanceCoverage.Zip(capture.SlackCoverage, (a, b) => a + b).ToArray());
+
+    static CoverageReferenceScratch Pointwise(CoverageReferenceCase c, double[] target)
     {
         var scratch = new CoverageReferenceScratch(c.Topology);
         Assert.True(CoverageReferenceFrames.TryPrepare(c.Topology, c.Model, c.Commands, scratch, out var failure), failure.ToString());
         Assert.True(CoverageReferenceConstructor.TryInterpolate(c.Topology, c.Posed, scratch, out failure), failure.ToString());
-        double[] target = capture is null ? [] : capture.ClearanceCoverage.Zip(capture.SlackCoverage, (a, b) => a + b).ToArray();
         Assert.True(CoverageReferenceConstructor.TryConformGroups(c.Topology, c.Commands, scratch, out failure, target), failure.ToString());
         return scratch;
     }

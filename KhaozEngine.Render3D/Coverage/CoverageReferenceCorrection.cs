@@ -98,8 +98,6 @@ internal static class CoverageReferenceCorrection
         for (int corner = 0; corner < 3; corner++)
         {
             int vertex = (int)topology.Indices[triangle * 3 + corner];
-            if (topology.Vertices[vertex].Strength != 1f)
-            { tally.Note(CoverageFailureCode.FoldedPatch, slot); valid = false; continue; }
             Vector3 position = scratch.After[vertex].Position;
             Vector3 actual = CoverageReferenceMath.Point(position, frame.HostToActualSheet),
                 nominal = CoverageReferenceMath.Point(position, frame.HostToCoverage);
@@ -120,9 +118,15 @@ internal static class CoverageReferenceCorrection
         float deficit = (maximum + clearance) + discrepancy;
         if (!float.IsFinite(deficit))
         { tally.Note(CoverageFailureCode.UnsupportedTransform, slot); return false; }
-        correction = deficit <= 0 ? 0 : (deficit + conversion) / frame.CorrectionRate;
-        if (float.IsFinite(correction)) return true;
-        tally.Note(CoverageFailureCode.UnsupportedTransform, slot);
+        if (deficit <= 0) return true;
+        correction = (deficit + conversion) / frame.CorrectionRate;
+        if (!float.IsFinite(correction))
+        { tally.Note(CoverageFailureCode.UnsupportedTransform, slot); correction = 0; return false; }
+        // As in the exact path, only a correcting face needs every corner at full strength.
+        for (int corner = 0; corner < 3; corner++)
+            if (topology.Vertices[(int)topology.Indices[triangle * 3 + corner]].Strength != 1f)
+            { tally.Note(CoverageFailureCode.FoldedPatch, slot); valid = false; }
+        if (valid) return true;
         correction = 0;
         return false;
     }

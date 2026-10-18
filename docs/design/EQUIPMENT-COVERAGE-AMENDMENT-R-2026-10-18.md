@@ -2,7 +2,8 @@
 
 Status: owner approved on 2026-10-18, including the model, the GPU approach, the four design sections
 and this written amendment. It replaces the CPU-approach text first committed as `7b786f6cd`.
-Implementation follows only after the plans are approved.
+Implementation follows only after the plans are approved. Owner ruling NC2, also chosen on 2026-10-18,
+replaces NC1's device tolerance with device exactness.
 Measurements and any release remain unauthorized until their own approvals.
 It amends sections 7, 8, 10, 11 and 12 of the [approved design](EQUIPMENT-COVERAGE-DESIGN-2026-10-16.md)
 and replaces the actual render-frame error contract of the
@@ -44,6 +45,10 @@ owner's choices are recorded in the ledger research and root assessment for this
 - **NC1, numerical tolerance.** Device tolerance is a per-sample interval enclosure, not a fixed bound,
   and construction reserves `MarginFraction x Clearance` for it. Chosen over a conditioned asset domain
   and bit-exact GPU arithmetic after the part B planner showed a fixed bound cannot be derived.
+- **NC2, device exactness, supersedes NC1.** The NC1 enclosure was built and failed on real fixtures:
+  intervals lose correlations and branch joins hull covered and uncovered outcomes, so one vertex the
+  reference moved by 4e-9 m received a 2.8 cm box. Every coverage kernel now reproduces the reference bit
+  for bit, and the device tolerance is zero. Chosen over measured tolerance and a correlated enclosure.
 
 ## What a covered actor means after this amendment
 
@@ -52,8 +57,8 @@ completeness) and whose GPU conformation produced a finite surface without any g
 guard refuses, the same buffer receives the actor's uncovered current pose, so every pass draws the
 explicit fallback without a CPU wait. No submitted surface carries a runtime proof.
 
-The no-breakthrough guarantee comes from the oracle. It is proved exactly, with the device tolerance in
-the reference and oracle section, for every sampled pose in R2. It is not proved between samples, for
+The no-breakthrough guarantee comes from the oracle. It is proved exactly for every sampled pose in R2,
+on every device that meets the exactness contract in the reference and oracle section. It is not proved between samples, for
 blends outside the declared grid, or for poses from layers the game did not declare. Those poses still run
 the same construction and guard, so a gross failure still falls back, but a subtle breakthrough there is
 possible and unproved.
@@ -88,29 +93,27 @@ engine guide, and tested on all three CI devices.
 2. **`CoverageOracle`.** Public and headless, with no `Scene3D` and no GPU. It is built for one
    `CoverageRefinement` and its inverse binds and owns its scratch. `TryCheck(palette, model, commands,
    out certificate, out failure)` skins and constructs with the reference, then runs the exact
-   `CoverageCertification.ValidateGeometry` with clearance tightened by the device tolerance ε. A failure
-   states its stage: construction with its guard code, or certification with its predicate code, command
-   and count. Warm checks allocate no managed memory.
-3. **Device tolerance ε, per sample (owner ruling NC1).** A fixed ε from operation count cannot be an
-   honest bound, because ill-conditioned support queries and correction divisors amplify rounding. A
-   projected support triangle that current validation admits can amplify one float step by about 2^23.
-   Instead, for each oracle sample the reference formulas are also evaluated in interval arithmetic.
-   Every scalar operation is widened by the largest per-operation error the Vulkan, Metal and Direct3D11
-   precision rules permit, counting a correctly rounded operation as one unit in the last place so that
-   contraction is also enclosed, plus an absolute term for flushed subnormals. The result encloses the
-   output of every conforming device for that pose, with conditioning included automatically. ε for the
-   sample is the largest enclosure radius over host vertices plus the device bound for the equipment's
-   rigid transform. Coverage kernels still compile in precise mode without fast maths (GLSL `precise`,
-   Metal fast maths off for these kernels, FXC IEEE strictness) so the formulas and operation order are
-   the ones enclosed. Construction reserves the approved numerical budget `MarginFraction x Clearance` in
-   the receding direction. The oracle certifies with `Clearance + ε` and fails the sample with a
-   device-tolerance code when ε exceeds that budget. Native equivalence tests on all three CI backends
-   assert that every GPU output lies inside its enclosure on every fixture. A breach fails, and no bound
-   is widened to pass.
+   `CoverageCertification.ValidateGeometry` at the approved clearance. A failure states its stage:
+   construction with its guard code, device exactness with the first subnormal operation, or
+   certification with its predicate code, command and count. Warm checks allocate no managed memory.
+3. **Device exactness (owner ruling NC2).** Every coverage kernel computes the same binary32 bits as the
+   reference. Add, subtract and multiply are correctly rounded on Vulkan, on Metal with fast maths off and
+   on Direct3D11, and kernels compile in precise mode (GLSL `precise`, Metal fast maths off for these
+   kernels, FXC IEEE strictness) so nothing contracts or reorders. Division and square root are correctly
+   rounded in the reference. Where a backend's native operation is not, the kernel corrects its result to
+   the correctly rounded value with an exact residual check built from correctly rounded multiply and add.
+   Exact predicates follow item 6. Every value is then a function of the uploaded binary32 inputs and the
+   pinned operation order, so a conforming device reproduces the reference bit for bit. Subnormals are
+   the one place backends may differ, because Direct3D11 flushes them and Vulkan and Metal may. The oracle
+   therefore fails a sample with a device-exactness code if any reference operand or result in it is
+   subnormal, so every certified sample is identical on every conforming device. Construction still
+   reserves `MarginFraction x Clearance` in the receding direction, as margin against a driver that breaks
+   its precision rules. Native equivalence tests on all three CI backends assert bit equality on every
+   fixture. A mismatch fails, and nothing is loosened to pass.
 4. **Real-hardware verification.** CI GPUs are software or virtual. A dev-only verification mode, off by
-   default, reads the local player's GPU surface back asynchronously every N frames, evaluates the
-   reference enclosure for that pose and logs any vertex outside it. Playtests on real GPUs therefore
-   check driver behaviour.
+   default, reads the local player's GPU surface back asynchronously every N frames, reconstructs the
+   reference for that pose and logs the first vertex whose bits differ, with the pose and the difference.
+   Playtests on real GPUs therefore check driver conformance.
 5. **Consumer contract.** Each game owns its sampler and grid. Grimhollow adds a headless blocking CI test
    over every armour asset and its host: every authored frame of every clip at the clip's own sample
    rate, and a blend grid over travel weight, travel-clip pairs, and turn and jump crossfades at weights
@@ -129,12 +132,8 @@ engine guide, and tested on all three CI devices.
    where correctly rounded add, subtract and multiply without contraction are verified, otherwise 32-bit
    integer multiword arithmetic. A crossing parameter divides the two exact side values after scaling
    both by the common power of two that puts the larger magnitude in [1, 2). The result is bit-identical
-   whenever the values are normal, and a device that flushes subnormals never divides zero by zero. The
-   per-sample enclosure takes a sign from the exact determinant's range over the input boxes, never from a
-   widened stored value, and evaluates both branches only when that range contains zero, so ε covers
-   either decision. A joined crossing encloses its parameter by the set the device's own parameter
-   provably lies in (the unit interval, the quotient bound and the projected overlap), not by an
-   unbounded quotient (root ruling B30).
+   whenever the values are normal, and a device that flushes subnormals never divides zero by zero (root
+   ruling B30).
 
 ## Part C: GPU coverage path in Render3D
 
@@ -172,7 +171,8 @@ One batched kernel chain over all covered actors:
 2. Refine to the refined surface.
 3. Conform one thread per position group toward the actual inward sheet with the collar smoothstep,
    reserving `MarginFraction x Clearance` beyond the clearance in the receding direction. That reserve
-   holds the per-sample device tolerance the oracle certifies, so results never under-recede against it.
+   is margin against a driver that breaks its precision rules. A conforming device reproduces the
+   reference exactly.
 4. Core-face correction gathered per group.
 5. Transition weighting.
 6. Normals gathered per vertex. A folded patch is a refusal.
@@ -227,13 +227,13 @@ affected.
 2. **Reference fidelity.** Run at the capture's own effective clearance, so the comparison measures float
    construction differences only, each reference position stays within `Clearance x MarginFraction` of the
    exact capture. A core-corrected group that exceeds it is investigated, never accepted by widening the
-   bound. The NC1 reserve's deliberate extra recession is checked separately against its mapped size.
+   bound. The reserve's deliberate extra recession is checked separately against its mapped size.
    Refusal codes match on the existing construction negatives.
 3. **Oracle.** Every fixture's reference output passes the oracle. An over-tight clearance, a support
    escape and a recession-budget excess each fail with the correct stage and code.
 4. **Part A capabilities.** A backend test per capability on all three CI devices. Vulkan synchronisation
    validation stays clean.
-5. **Device equivalence.** Every GPU output vertex lies inside its per-sample reference enclosure on every
+5. **Device equivalence.** Every GPU output vertex equals its reference vertex bit for bit on every
    fixture on all three backends.
 6. **Scene behaviour.** Every pass reads the same surface, using the existing ghost envelopes, masks and
    negative controls adapted to the GPU surface. A forced GPU refusal draws the uncovered pose in every
@@ -266,7 +266,7 @@ are software or virtual, so the place GPU timing runs is decided with the owner 
 ## Superseded text
 
 - Design section 7: runtime checks no longer apply to every submitted pose. The offline suite becomes the
-  R2 oracle domain and certifies exactly, with ε.
+  R2 oracle domain and certifies exactly.
 - Design section 8: the public surface adds `CoverageOracle` and the asynchronous GPU result, and loses
   the render-context evaluators.
 - Design section 10 and the construction and render-error amendment: the CPU-prepared final stream

@@ -280,7 +280,7 @@ public sealed partial class TileWorldPropClusters : IDisposable
         {
             PropLayer layer = PropLayer.PlacementLayer(placements, Full, Definition.DrawRadius,
                 Definition.HlodCrossfadeWidth, Lod, Definition.LodDistance, colliders: false,
-                castsShadows: Definition.CastsShadows).WithLodCrossfade(Definition.LodCrossfadeWidth);
+                castsShadows: Definition.CastsShadows, cutInsideInteriors: Definition.CutInsideInteriors).WithLodCrossfade(Definition.LodCrossfadeWidth);
             bool hasEverySource = placements.Count > 0;
             for (int i = 0; i < placements.Count && hasEverySource; i++)
                 hasEverySource = Flat.ContainsKey(placements[i].Id);

@@ -64,7 +64,7 @@ namespace KhaozEngine.Terrain
         /// <summary>True when <paramref name="after"/> has the same count as <paramref name="before"/> and each layer
         /// differs from its counterpart at most in <see cref="PropLayer.Scatter"/> and
         /// <see cref="PropLayer.Companions"/>. Kind, companion host, HLOD, placements, meshes, radii, fades, shadow
-        /// policy and identity all compare equal.</summary>
+        /// policy, interior cutting and identity all compare equal.</summary>
         internal static bool OnlyGenerationDiffers(PropLayer[] before, IReadOnlyList<PropLayer> after)
         {
             if (after.Count != before.Length) return false;

@@ -42,6 +42,9 @@ public interface ITileWorldPropClusterOwner : IDisposable
 /// is <see cref="Scene3DTileWorldScene"/>, and the tests drive a recording fake.</summary>
 public interface ITileWorldScene
 {
+    /// <summary>Publish the interior field shared by the picture and this view's picks.</summary>
+    void SetInteriorCut(InteriorHeightField? field) { }
+
     /// <summary>Create one view-owned adapter around the shared prop-cluster renderer.</summary>
     ITileWorldPropClusterOwner CreatePropClusterOwner() =>
         throw new NotSupportedException("This tile-world scene does not support prop clusters.");
@@ -287,6 +290,8 @@ public sealed class Scene3DTileWorldScene : ITileWorldScene, IAttachmentScene
     /// <exception cref="ArgumentException">The descriptor is shadow-only and casts no shadow, which the scene's
     /// instance queue refuses.</exception>
     public void DrawMesh(in RigidInstanceDraw draw) => _scene.Draw(in draw);
+    /// <summary>Publish the field for the next scene render.</summary>
+    public void SetInteriorCut(InteriorHeightField? field) => _scene.InteriorCut = field;
 
     /// <inheritdoc />
     public SkinnedMeshHandle LoadSkinnedMesh(SkinnedGltfMesh mesh) => _scene.LoadSkinnedMesh(mesh);

@@ -36,11 +36,9 @@ public class SupportNeighborhoodEquivalenceTests(ITestOutputHelper output)
     public void NeighborhoodsAndSupportMatchTheRecordedFixture()
     {
         var lines = new List<string>();
-        Polyhedra(lines);
-        Meshes(lines);
-        Curved(lines);
-        Fans(lines);
-        Features(lines);
+        var anchors = new SupportEquivalenceQueryAnchors();
+        Generate(lines, anchors);
+        anchors.Complete();
         string? capture = Environment.GetEnvironmentVariable(CaptureVariable);
         if (!string.IsNullOrEmpty(capture))
         {
@@ -60,8 +58,25 @@ public class SupportNeighborhoodEquivalenceTests(ITestOutputHelper output)
         Assert.True(mismatches.Count == 0, string.Join("\n", mismatches.Take(20)));
     }
 
+    [Fact]
+    public void SupportEquivalenceAnchorsKeepEveryOriginalQueryBit()
+    {
+        var anchors = new SupportEquivalenceQueryAnchors(verifyOnly: true);
+        Generate([], anchors);
+        anchors.Complete();
+    }
+
+    static void Generate(List<string> lines, SupportEquivalenceQueryAnchors anchors)
+    {
+        Polyhedra(lines, anchors);
+        Meshes(lines, anchors);
+        Curved(lines, anchors);
+        Fans(lines, anchors);
+        Features(lines, anchors);
+    }
+
     // Random boxes and hulls under random rotations, each probe placed against a random face point, both radii.
-    static void Polyhedra(List<string> lines)
+    static void Polyhedra(List<string> lines, SupportEquivalenceQueryAnchors anchors)
     {
         var random = new Random(6438);
         for (int solid = 0; solid < 40; solid++)
@@ -74,7 +89,7 @@ public class SupportNeighborhoodEquivalenceTests(ITestOutputHelper output)
             {
                 var half = new Vector3(Between(random, 0.15, 0.8), Between(random, 0.15, 0.8), Between(random, 0.15, 0.8));
                 var pose = new Pose(position, rotation);
-                faces = SupportNeighborhoodOracle.Box(world.AddStatic(new BoxShape(half), pose), half, pose);
+                faces = SupportNeighborhoodOracle.Box(anchors.AddStatic(world, new BoxShape(half), pose), half, pose);
             }
             else
             {
@@ -85,7 +100,7 @@ public class SupportNeighborhoodEquivalenceTests(ITestOutputHelper output)
                     OracleVector direction = new OracleVector(Signed(random), Signed(random), Signed(random)).Unit;
                     points[i] = new Vector3((float)direction.X, (float)direction.Y, (float)direction.Z) * scale;
                 }
-                StaticHandle hull = world.AddStatic(new ConvexHullShape(points), new Pose(position, rotation));
+                StaticHandle hull = anchors.AddStatic(world, new ConvexHullShape(points), new Pose(position, rotation));
                 faces = SupportNeighborhoodOracle.InstalledHull(world, hull);
             }
             using IPhysicsQueryLease lease = world.AcquireQueryReadLease();
@@ -95,14 +110,14 @@ public class SupportNeighborhoodEquivalenceTests(ITestOutputHelper output)
                 OracleVector target = SupportNeighborhoodTests.SurfacePoint(random, face);
                 OracleVector anchor = Outward(random, target, face.Normal);
                 foreach (CapsuleShape probe in Probes)
-                    lines.Add(Neighborhood($"poly/{solid}/{sample}/{probe.Radius}", world, lease, probe,
+                    lines.Add(Neighborhood(anchors, $"poly/{solid}/{sample}/{probe.Radius}", world, lease, probe,
                         anchor + face.Normal * probe.Radius));
             }
         }
     }
 
     // Random heightfields, level or under any rotation, each probe placed against a random triangle point.
-    static void Meshes(List<string> lines)
+    static void Meshes(List<string> lines, SupportEquivalenceQueryAnchors anchors)
     {
         var random = new Random(7438);
         for (int field = 0; field < 20; field++)
@@ -111,7 +126,7 @@ public class SupportNeighborhoodEquivalenceTests(ITestOutputHelper output)
             Vector3[] vertices = Heightfield(random, 4, Between(random, 0.2, 0.5), Between(random, 0.05, 0.3));
             Quaternion rotation = field % 2 == 0 ? Quaternion.Identity : RandomRotation(random);
             var position = new Vector3(Signed(random), Signed(random), Signed(random));
-            StaticHandle mesh = world.AddStatic(new TriangleMeshShape(vertices,
+            StaticHandle mesh = anchors.AddStatic(world, new TriangleMeshShape(vertices,
                 [.. Enumerable.Range(0, vertices.Length)]), new Pose(position, rotation));
             List<OracleFace> faces = SupportNeighborhoodOracle.InstalledMesh(world, mesh);
             using IPhysicsQueryLease lease = world.AcquireQueryReadLease();
@@ -125,14 +140,14 @@ public class SupportNeighborhoodEquivalenceTests(ITestOutputHelper output)
                     // The axis end nearer the face's plane takes the point, so the whole axis lies in front of it.
                     OracleVector lowest = anchor + face.Normal * probe.Radius;
                     if (face.Normal.Y < 0) lowest -= new OracleVector(0, probe.Length, 0);
-                    lines.Add(Neighborhood($"mesh/{field}/{sample}/{probe.Radius}", world, lease, probe, lowest));
+                    lines.Add(Neighborhood(anchors, $"mesh/{field}/{sample}/{probe.Radius}", world, lease, probe, lowest));
                 }
             }
         }
     }
 
     // Spheres, capsules and cylinders, every other one a compound leaf under its own rotated pose.
-    static void Curved(List<string> lines)
+    static void Curved(List<string> lines, SupportEquivalenceQueryAnchors anchors)
     {
         var random = new Random(8331);
         for (int solid = 0; solid < 30; solid++)
@@ -150,7 +165,7 @@ public class SupportNeighborhoodEquivalenceTests(ITestOutputHelper output)
             if (solid % 2 == 1)
                 shape = new CompoundShape([new(shape, new Pose(new Vector3(Signed(random), Signed(random),
                     Signed(random)) * 0.5f, RandomRotation(random)))]);
-            StaticHandle handle = world.AddStatic(shape, new Pose(position, rotation));
+            StaticHandle handle = anchors.AddStatic(world, shape, new Pose(position, rotation));
             List<OracleTangent> tangents = SupportNeighborhoodOracle.InstalledCurved(world, handle);
             using IPhysicsQueryLease lease = world.AcquireQueryReadLease();
             for (int sample = 0; sample < 10; sample++)
@@ -163,7 +178,7 @@ public class SupportNeighborhoodEquivalenceTests(ITestOutputHelper output)
                 OracleTangentPoint surface = element.Closest(inside + direction * (2 * element.Radius + 1));
                 OracleVector anchor = Outward(random, surface.Witness, surface.Normal);
                 foreach (CapsuleShape probe in Probes)
-                    lines.Add(Neighborhood($"curved/{solid}/{sample}/{probe.Radius}", world, lease, probe,
+                    lines.Add(Neighborhood(anchors, $"curved/{solid}/{sample}/{probe.Radius}", world, lease, probe,
                         anchor + surface.Normal * probe.Radius));
             }
         }
@@ -171,19 +186,19 @@ public class SupportNeighborhoodEquivalenceTests(ITestOutputHelper output)
 
     // Flat fans of up-facing triangles meeting at the origin, with a square rim of half size 1. A probe at the apex
     // meets every triangle, which is the join pass's worst case below capacity and a capacity refusal above it.
-    static void Fans(List<string> lines)
+    static void Fans(List<string> lines, SupportEquivalenceQueryAnchors anchors)
     {
         foreach (int triangles in new[] { 96, 300 })
         {
             using var world = new BepuPhysicsWorld(Vector3.Zero);
-            world.AddStatic(new TriangleMeshShape(Fan(triangles), [.. Enumerable.Range(0, 3 * triangles)]),
+            anchors.AddStatic(world, new TriangleMeshShape(Fan(triangles), [.. Enumerable.Range(0, 3 * triangles)]),
                 Pose.Identity);
             using IPhysicsQueryLease lease = world.AcquireQueryReadLease();
             foreach (CapsuleShape probe in Probes)
             {
-                lines.Add(Neighborhood($"fan/{triangles}/apex/{probe.Radius}", world, lease, probe,
+                lines.Add(Neighborhood(anchors, $"fan/{triangles}/apex/{probe.Radius}", world, lease, probe,
                     new OracleVector(0, 0, 0)));
-                lines.Add(Neighborhood($"fan/{triangles}/side/{probe.Radius}", world, lease, probe,
+                lines.Add(Neighborhood(anchors, $"fan/{triangles}/side/{probe.Radius}", world, lease, probe,
                     new OracleVector(0.5, 0, 0.25)));
             }
         }
@@ -218,7 +233,7 @@ public class SupportNeighborhoodEquivalenceTests(ITestOutputHelper output)
 
     // The closest-feature query over random boxes, hulls and heightfields, unrotated or under random rotations, each
     // probe placed within the band of a random face point.
-    static void Features(List<string> lines)
+    static void Features(List<string> lines, SupportEquivalenceQueryAnchors anchors)
     {
         var random = new Random(9438);
         for (int solid = 0; solid < 18; solid++)
@@ -235,7 +250,7 @@ public class SupportNeighborhoodEquivalenceTests(ITestOutputHelper output)
                 case 0:
                     var half = new Vector3(Between(random, 0.15, 0.8), Between(random, 0.15, 0.8),
                         Between(random, 0.15, 0.8));
-                    target = world.AddStatic(new BoxShape(half), pose);
+                    target = anchors.AddStatic(world, new BoxShape(half), pose);
                     faces = SupportNeighborhoodOracle.Box(target, half, pose);
                     break;
                 case 1:
@@ -246,12 +261,12 @@ public class SupportNeighborhoodEquivalenceTests(ITestOutputHelper output)
                         OracleVector direction = new OracleVector(Signed(random), Signed(random), Signed(random)).Unit;
                         points[i] = new Vector3((float)direction.X, (float)direction.Y, (float)direction.Z) * scale;
                     }
-                    target = world.AddStatic(new ConvexHullShape(points), pose);
+                    target = anchors.AddStatic(world, new ConvexHullShape(points), pose);
                     faces = SupportNeighborhoodOracle.InstalledHull(world, target);
                     break;
                 default:
                     Vector3[] vertices = Heightfield(random, 4, Between(random, 0.2, 0.5), Between(random, 0.05, 0.3));
-                    target = world.AddStatic(new TriangleMeshShape(vertices, [.. Enumerable.Range(0, vertices.Length)]),
+                    target = anchors.AddStatic(world, new TriangleMeshShape(vertices, [.. Enumerable.Range(0, vertices.Length)]),
                         pose);
                     faces = SupportNeighborhoodOracle.InstalledMesh(world, target);
                     break;
@@ -267,45 +282,54 @@ public class SupportNeighborhoodEquivalenceTests(ITestOutputHelper output)
                 {
                     OracleVector lowest = anchor + face.Normal * probe.Radius;
                     if (face.Normal.Y < 0) lowest -= new OracleVector(0, probe.Length, 0);
-                    lines.Add(Feature($"feature/{solid}/{sample}/{probe.Radius}", world, lease, target, probe, lowest));
+                    lines.Add(Feature(anchors, $"feature/{solid}/{sample}/{probe.Radius}", world, lease, target, probe, lowest));
                 }
             }
         }
     }
 
-    static string Feature(string label, IPhysicsWorld world, IPhysicsQueryLease lease, StaticHandle target,
+    static string Feature(SupportEquivalenceQueryAnchors anchors, string label, IPhysicsWorld world, IPhysicsQueryLease lease, StaticHandle target,
         CapsuleShape probe, OracleVector lowest)
     {
-        Pose pose = SupportNeighborhoodTests.Lowest(lowest.X, lowest.Y, lowest.Z);
+        SupportEquivalenceQueryAnchor query = anchors.Resolve(label, world, probe,
+            SupportNeighborhoodTests.Lowest(lowest.X, lowest.Y, lowest.Z), target.Value);
+        if (anchors.VerifyOnly) return label;
+        Pose pose = query.Pose;
+        probe = new(query.Radius, query.Length);
+        target = new(query.TargetId!.Value);
         var faces = new CapsuleIncidentFace[Capacity];
         CapsuleFeatureResult result = ((IPhysicsCapsuleFeatures)world).QueryCapsuleFeature(lease, target, probe, pose,
-            Band, faces, QueryFilter.StaticsOnly);
+            query.Band, faces, QueryFilter.StaticsOnly);
         var digest = new Digest();
         digest.Feature(result);
         for (int i = 0; i < result.Written; i++) digest.Face(faces[i]);
         return $"{label} {result.Status} {result.Kind} {result.Written} {digest.Hex()}";
     }
 
-    static string Neighborhood(string label, IPhysicsWorld world, IPhysicsQueryLease lease, CapsuleShape probe,
+    static string Neighborhood(SupportEquivalenceQueryAnchors anchors, string label, IPhysicsWorld world, IPhysicsQueryLease lease, CapsuleShape probe,
         OracleVector lowest)
     {
-        Pose pose = SupportNeighborhoodTests.Lowest(lowest.X, lowest.Y, lowest.Z);
+        SupportEquivalenceQueryAnchor query = anchors.Resolve(label, world, probe,
+            SupportNeighborhoodTests.Lowest(lowest.X, lowest.Y, lowest.Z));
+        if (anchors.VerifyOnly) return label;
+        Pose pose = query.Pose;
+        probe = new(query.Radius, query.Length);
         var digest = new Digest();
         (SupportNeighborhoodResult result, int joined) = Query(world, lease, probe, pose,
-            new Vector2(pose.Position.X, pose.Position.Z), CosMaxSlope, digest);
+            query.Axis, query.Slope, query.Band, digest);
         // A second slope limit makes steep and walkable members trade places.
-        Query(world, lease, probe, pose, new Vector2(pose.Position.X, pose.Position.Z), 0.5f, digest);
+        Query(world, lease, probe, pose, query.Axis, query.AlternateSlope, query.Band, digest);
         return $"{label} {result.Status} {result.Elements} {joined} {digest.Hex()}";
     }
 
     static (SupportNeighborhoodResult, int) Query(IPhysicsWorld world, IPhysicsQueryLease lease, CapsuleShape probe,
-        Pose pose, Vector2 axis, float cosMaxSlope, Digest digest)
+        Pose pose, Vector2 axis, float cosMaxSlope, float band, Digest digest)
     {
         var features = (IPhysicsSupportNeighborhood)world;
         var elements = new SupportElement[Capacity];
         var joins = new ulong[Capacity * SupportNeighborhoodResult.JoinWordsFor(Capacity)];
         var contributions = new SupportContribution[Capacity];
-        SupportNeighborhoodResult result = features.QuerySupportNeighborhood(lease, probe, pose, Band, elements, joins,
+        SupportNeighborhoodResult result = features.QuerySupportNeighborhood(lease, probe, pose, band, elements, joins,
             QueryFilter.StaticsOnly);
         digest.Int((int)result.Status);
         digest.Int(result.Elements);

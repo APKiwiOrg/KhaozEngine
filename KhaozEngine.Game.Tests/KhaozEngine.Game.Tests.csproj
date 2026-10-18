@@ -40,6 +40,8 @@
     <None Include="Physics/Fixtures/house_2_proxy.coll" CopyToOutputDirectory="PreserveNewest" />
     <!-- One digest per support neighborhood and FootSupport question, recorded before the neighborhood was made
          allocation free. SupportNeighborhoodEquivalenceTests proves every result is still bit-identical. -->
+    <None Include="Locomotion/Contacts/Fixtures/support-equivalence-queries.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Locomotion/Contacts/Fixtures/support-exact-install-controls.txt" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Locomotion/Contacts/Fixtures/support-equivalence.txt" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Locomotion/Contacts/Fixtures/grimhollow-stairs-collision.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

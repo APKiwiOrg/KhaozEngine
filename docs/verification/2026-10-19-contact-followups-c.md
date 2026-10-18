@@ -437,16 +437,26 @@ Limit 1,048,576 and the seven-category sum equal to Consumed. Counters are funct
 
 The three X values are BitIncrement(-0.7f), -0.7f and BitDecrement(-0.7f), in table order.
 The capsule passes. Its critical 967 is at most 10 * min(646, 978) = 6460 and all rows are
-Complete/Walkable with Failure None. The cylinder fails. Its critical 72032 satisfies the
-715900 work bound, but both bf333333 and bf333334 return None rather than Walkable. Neither
-is a budget or storage refusal. All three cylinder rows visit 1696 admission cells with high
-water 352. Task 6 is required to investigate the missing support and perform its planned
-finite-surface admission repair. These observations do not identify which internal subphase
-excluded support. Task 5 does not repair the cylinder or substitute capsule evidence for it.
+Complete/Walkable with Failure None. The original cylinder all-Walkable requirement was wrong.
+FC-R10 corrects the premise using an independent exact rational/radical oracle. The upward
+barrel's closest projected point is its end crest. With S = 16777215, N = S*S+1,
+h = 1/2, r = 5033165/16777216, rho = 13421773/67108864 and A = -x-rho, its disc
+membership is decided by E = N*A*A-(h*S-r)^2. The three exact signs are negative,
+positive and positive. The crest is walkable and in band only in bf333332. Every upward cap
+point has tangent contribution cy + sqrt(N)/2 + S*x below the reach band, with installed
+cy = 10066331/33554432. For bf333334, N*A*A-(h*S+r)^2 is also positive, excluding
+the entire cylinder. The floor is below band. Correct statuses are Walkable, None, None.
+Production agrees on all three, with Complete footprints and Failure None.
 
-FU-R4 therefore mandates the crown branch even though the capsule already passes. This record
-was written before any certificate implementation. The combined Walkable gate remains pending
-Task 6, whose plan strengthens it after the cylinder repair. No test is skipped.
+The cost defect is independent. Each Find spends 1,696 admission cells in two passes, each
+with 846 barrel membership search cells before attaining a point, one upward-cap cell and
+one opposite-cap exclusion cell. The adjacent-neighbor bound conceals this uniformly hot seam.
+Task 6 is a cost repair with unchanged public results, bounded per row by ten times the same
+fixture's interior cylinder Find at x = -0.25f. It may not change either None to Walkable.
+
+FU-R4 selected the crown branch under the original premise. FC-R10 explicitly retains that
+certificate. The executable gate now asserts oracle statuses separately from integer cost.
+No test is skipped.
 
 ### Whole-capsule source certificate
 
@@ -480,7 +490,7 @@ returns false with default outputs and preserves WorkLimit. A later Round remain
 
 Each counter row below again uses one fresh scene, lease and Find. All are Complete/Walkable
 with Failure None, Find 1, Proposals 2 and Limit 1048576. The cylinder code was not changed
-or remeasured after the certificate. Its initial failed verdict above remains Task 6's evidence.
+or remeasured after the certificate. Its initial cost evidence above remains Task 6's starting record.
 
 | X bits | New | Sign | Split | Compile | RootCells | Refine | AdmissionCells | Consumed | Root high water | Admission high water |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -525,9 +535,9 @@ no compiler warnings. The selection was:
 build-slot --heavy --label fu-c-crown-green -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --filter 'FullyQualifiedName~CapsuleCrown|FullyQualifiedName~RepresentedCapsuleRoundedEndTraversal|FullyQualifiedName~CurvedOracle|FullyQualifiedName~FootSupportBoundaryTests' --logger 'console;verbosity=detailed'
 ```
 
-Task 5 took the required crown branch. Task 6 is needed because the cylinder critical and outer
-rows are None, despite Complete footprints, Failure None and work within the integer bound.
-The combined record remains executable and unskipped, with its final Walkable assertions pending
-Task 6's planned strengthening. Full solution build, full Game.Tests, format verification and
+Task 5 took the required crown branch, retained by FC-R10. The cylinder results already match
+the independent oracle (Walkable, None, None). Task 6 repairs its successful but expensive
+barrel admission search. The combined record asserts per-row status separately from cost,
+with bit-identical public results and the interior-cylinder cost bound required for Task 6. Full solution build, full Game.Tests, format verification and
 living-contract publication remain Task 7 work. No tolerance, band, limit, identity or arrival
 rule changed. No capture variables, cost artifacts, load, consumer launch or full suite was used.

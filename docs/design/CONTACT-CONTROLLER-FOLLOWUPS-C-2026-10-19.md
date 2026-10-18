@@ -59,6 +59,8 @@ The following rulings are quoted from the dispatch. They are decisions, not alte
 
 > FU-R4: the capsule global-crown certificate from research-1487 is a gated task placed after the FU-R2 work. Its first step measures the exact #1487 Find (and the cylinder outside-end tangency sibling) with deterministic work counters on the new contract. If both complete Walkable within ten times the work of their adjacent binary32 neighbours, the task records that result as a test and stops without building the certificate. Otherwise it builds the certificate as research-1487 describes. Write both branches into the plan so the implementer needs no further decision.
 
+> FC-R10: cylinder gate statuses come from the independent exact oracle per row (Walkable, None, None), asserted separately from an integer cost bound. Task 6 is a cost repair, never a status change. Certify barrel and cap admission membership from a finite attained witness before subdivision. All three cylinder seam rows must publish bit-identical outputs to a251a3bf4, and each row must consume at most ten times the same fixture's interior cylinder row at x = -0.25f. If the witness set does not reach that bound, report the counters and stop without changing any limit. The capsule crown selected under FU-R4 remains required.
+
 ## Requirements
 
 ### CC-1. Capture one represented support authority
@@ -181,10 +183,13 @@ x in `{BitIncrement(-0.7f),-0.7f,BitDecrement(-0.7f)}`. Shapes use
 both reaches 0.4f and the existing 45-degree cosine. Critical x bits remain `0xbf333333`.
 Measure the cylinder sibling as well as the capsule, with the same charged-event definition.
 
-For each shape, all three Finds must be Complete/Walkable and the critical work must be at most
-ten times **each** adjacent neighbor's work, equivalently `critical <= 10*min(left,right)`.
-Use integer comparisons, not an elapsed-time gate. If both shapes satisfy it, commit the tests
-and counter record and stop the certificate task with no crown implementation.
+Assert Complete footprints and Failure None in every row. Capsule statuses are all Walkable.
+Cylinder statuses are independently derived from exact represented geometry, respectively Walkable,
+None and None. Assert these statuses separately from cost. The capsule critical work must be at
+most ten times each adjacent neighbor, `critical <= 10*min(left,right)`. Each cylinder seam row
+must consume at most ten times the same fixture's interior cylinder row at x = -0.25f.
+Use integer comparisons, never elapsed time. FC-R10 corrects the earlier all-Walkable premise
+without undoing the capsule crown selected under FU-R4.
 
 Otherwise add a capsule-wide global-crown certificate before Side for the footprint role.
 Prove the higher endpoint from the exact sign of normalized axis Y, zero nearest gap between
@@ -195,9 +200,10 @@ Prove this expression identity, not equality of independently rounded height end
 Failure to prove the certificate continues into the unchanged complete general path. Merely
 evaluating hemispheres first, choosing a sampled maximum or reusing it for axis/lowest roles is insufficient.
 
-The cylinder has no capsule crown. If its gate fails, its owning admission proof must be repaired,
-not hidden by the work refusal. The plan supplies a separate finite-surface attained-point task
-for that branch. Acceptance still requires both sibling queries to meet the same counter gate.
+The cylinder has no capsule crown. Its public statuses already agree with the independent exact
+oracle. Task 6 repairs admission cost with finite attained points while preserving every public
+result bit. Failure to meet the interior-row cost bound requires counters and investigation,
+never a status change or a larger limit.
 Whole-surface admission, axis witnesses, contact-height/roof checks and every other raw member remain required.
 
 ### CC-9. Freeze golden questions and explain every changed answer
@@ -262,7 +268,7 @@ solution format verification once at that finish. This design commit changes nei
 | D. All support doors | Scalar/all SIMD lanes, signed-zero/identity/cyclic/general quaternions, actual composed poses, determinant/Gram/inverse and domain rejection. Boxes, hull wrappers, reordered children, meshes and every curved orientation, first form/hit/pose miss/reference/nested/concurrent paths. No private cache injection. |
 | E. Safety and lifetime | Retain existing protection/capacity/uncertainty suites. Add rotated lower tread under an independent roof, coincident raw statics/children, direct-only joins, exact memo hits/misses, stale/foreign leases, exclusions, mutation/rebase and handle reuse. Zero warm allocation and bit-exact SC-9. |
 | F. Cumulative work | Assert the exact budget derivation, all seven event classes, exhaustion with diagnostics off, restore/Reset/sub-solve/below-band persistence, independent nested owners, root-storage reason without WorkLimit, sentinel atomicity and certified-strata/max-capacity fit. |
-| G. End-seam gate | Record the six new-contract single Finds and apply CC-8's integer rule. No certificate if both pass. Otherwise source-certified capsule crown and the failing cylinder admission repair must pass, including negative certificate controls, independent low roof and bounded rounded-end traversal at the unchanged arrival rule. |
+| G. End-seam gate | Assert independent per-row statuses (capsule all Walkable, cylinder Walkable, None, None), Complete footprints and Failure None separately from cost. Retain the FU-R4 crown and capsule smaller-neighbor bound. Each cylinder seam row must fit ten times its interior x = -0.25f reference with bit-identical public outputs. Negative certificate controls, independent low roof and bounded rounded-end traversal retain the unchanged arrival rule. |
 
 ## Explicit non-goals
 

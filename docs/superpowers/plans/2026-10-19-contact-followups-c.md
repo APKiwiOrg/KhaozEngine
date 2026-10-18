@@ -556,32 +556,18 @@ Consumed, Limit, Failure and cell high water. A budget refusal is a failed gate,
 build-slot --label fu-c-end-gate -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --filter 'FullyQualifiedName~RepresentedEndTangencyCounterGate'
 ```
 
-Initially make `RepresentedEndTangencyCounterGate` record and validate observation integrity,
-not demand a selected branch. Save the six rows and per-shape Boolean decision in the proof record.
-The rule is all rows Complete/Walkable and `critical.Consumed <= 10L * Math.Min(left.Consumed,right.Consumed)`.
-Compare against each neighbor by that minimum, never the maximum or an average. The final gate asserts
+The original gate selected the crown branch under an all-Walkable premise. FC-R10 retains
+that branch and corrects the final gate. Capsule rows are all Walkable. Cylinder statuses
+are independently derived as Walkable, None, None. Every row asserts Complete footprint
+and Failure None. Status assertions are separate from integer cost. The capsule bound is
+`critical.Consumed <= 10L * Math.Min(left.Consumed,right.Consumed)`.
+The cylinder bound is per seam row against ten times its same-test interior x = -0.25f row.
 
-```csharp
-Assert.Equal(SupportStatus.Walkable, critical.Sample.Status);
-Assert.Equal(CapsuleFeatureStatus.Complete, critical.Work.FootprintStatus);
-Assert.Equal(SupportCurvedWorkFailure.None, critical.Work.Failure);
-Assert.True(critical.Work.Consumed <= 10L * Math.Min(left.Work.Consumed, right.Work.Consumed));
-```
+- [ ] **Step 2: Retain the crown branch selected under FU-R4.**
 
-Assert the same status/failure conditions for both neighbors and apply the rule separately to both shapes.
-
-- [ ] **Step 2: Take the deterministic branch prescribed by the gate.**
-
-If both shapes pass, strengthen `RepresentedEndTangencyCounterGate` to assert Walkable,
-Failure None, Complete footprint status and the integer bound. Add the public roof negative
-in Step 5 and its bounded traversal, run the green selection and commit the counter regression.
-Skip Steps 3 and 4 with no TryGlobalCrown declaration, implementation or helper tests. Task 6 is
-recorded not needed.
-
-If either shape fails, the crown branch is mandatory even if the capsule itself passed.
-Save the pre-certificate record, then add the failing certificate tests and implement Steps 3
-to 5. If the cylinder alone still fails, Task 6 owns that distinct admission cause. Do not treat
-the capsule repair as cylinder evidence or accept WorkLimit as its resolution.
+The capsule certificate remains required by FC-R10. Task 6 owns the distinct expensive
+cylinder admission search and preserves all public outputs. Do not treat capsule evidence
+as cylinder evidence or accept WorkLimit as a cost repair.
 
 - [ ] **Step 3: On the required branch, add source-proof crown tests and run them red.**
 
@@ -650,7 +636,7 @@ No-certificate commit `test(support): pin represented end tangency work bounds`.
 Required-branch commit `fix(support): certify attained whole-capsule crowns before side isolation`.
 Record which branch ran and its exact six-row evidence. No owner choice is required.
 
-### Task 6: Repair cylinder admission only if its recorded gate failed (CC-8, G)
+### Task 6: Repair cylinder admission cost without changing exact statuses (CC-8, G, FC-R10)
 
 **Files:**
 - Modify only if required: `KhaozEngine.Physics.Bepu/SupportCurvedSurfaceAdmission.cs`, `KhaozEngine.Physics.Bepu/SupportTiltedCurvedGeometry.Admission.cs`
@@ -664,11 +650,15 @@ Record which branch ran and its exact six-row evidence. No owner choice is requi
 
 - [ ] **Step 1: Apply the recorded gate without repeating unchanged measurements.**
 
-If the cylinder passed Task 5's initial gate, record this task as not needed and stop without
-production/test-helper edits. This remains true when the capsule required its own certificate.
-Otherwise preserve the failed phase/reason and add `CylinderEndTangencyHasAnAttainedFiniteAdmissionWitness`.
-Use the exact outside-end sibling and both neighbors. Require source-certified admission of
-the actual raw part and the final complete Walkable Find within the same integer work bound.
+FC-R10 supersedes the all-Walkable premise. The independent rational/radical oracle proves
+Walkable, None, None for bf333332, bf333333 and bf333334. Production already agrees.
+Preserve those statuses and record the admission cost of 1,696 cells per Find, comprising two
+passes of 846 barrel search cells and one cell for each cap. Add
+`CylinderEndTangencyHasAnAttainedFiniteAdmissionWitness`. Before production edits, serialize
+all public result bits at a251a3bf4, including both roles, witnesses, normals, heights/errors,
+XZ, owner and joins. Require each seam row's Consumed to be at most ten times the same
+fixture's interior cylinder row at x = -0.25f, measured in the same test. Status and cost
+assertions are separate. Capsule statuses and the smaller-adjacent-neighbor bound stay unchanged.
 
 - [ ] **Step 2: Add safety tests and run the focused regression red if this task is required.**
 
@@ -682,15 +672,15 @@ Assert.True(actualPartAdmissionCertified);
 Assert.False(outsideColumnCertified);
 Assert.False(downwardCapAcceptedForUpwardCoverage);
 Assert.Equal(SupportStatus.Refused, independentRoofSample.Status);
-Assert.Equal(SupportStatus.Walkable, critical.Sample.Status);
-Assert.True(critical.Work.Consumed <= 10L * Math.Min(left.Work.Consumed, right.Work.Consumed));
+Assert.Equal(independentOracleStatus, row.Sample.Status);
+Assert.True(row.Work.Consumed <= 10L * interior.Work.Consumed);
 ```
 
 ```bash
 build-slot --label fu-c-cylinder-red -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --filter 'FullyQualifiedName~CylinderEndTangencyHasAnAttainedFiniteAdmissionWitness|FullyQualifiedName~CylinderAdmissionWitnessNeverCertifiesAbsenceOrTheWrongPart'
 ```
 
-Expected: critical admission/work assertion fails before the repair. Use an inert helper
+Expected: the interior-reference cost assertion fails before the repair. Public status and bit comparisons pass. Use an inert helper
 declaration first if needed, never a compiler error as evidence.
 
 - [ ] **Step 3: Certify finite surface membership before subdivision.**
@@ -714,10 +704,12 @@ to enlarge limits, omit the sibling or replace its failure with a budget refusal
 build-slot --heavy --label fu-c-cylinder-green -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --filter 'FullyQualifiedName~CylinderAdmissionWitness|FullyQualifiedName~CylinderEndTangency|FullyQualifiedName~RepresentedEndTangencyCounterGate|FullyQualifiedName~CurvedOracle|FullyQualifiedName~FootSupportBoundaryTests'
 ```
 
-Expected: exit 0, all six exact gate rows Complete/Walkable, Failure None and critical work no
-more than ten times either adjacent neighbor. Source/member/tail safety and SC-9 remain exact.
-Record the row/phase proof and final counters. If no cylinder repair was required, Task 7's
-focused integration includes the combined gate once after the capsule change.
+Expected: exit 0, every footprint Complete with Failure None. Independent statuses are capsule
+all Walkable and cylinder Walkable, None, None. Each cylinder seam row consumes at most ten
+times the same-test interior reference, and all public bits equal the pre-edit capture. Capsule
+smaller-neighbor cost, source/member/tail safety, zero warm allocation and SC-9 remain exact.
+Record before/after counters. If the bound fails, report the subdividing part and stop without
+changing any limit.
 
 - [ ] **Step 5: Stage only required Files paths, run staged guards and commit if changed.**
 

@@ -6,13 +6,14 @@ using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
 using Xunit;
 using Xunit.Abstractions;
+using B = KhaozEngine.Tests.Physics.SupportFootprintExactOracle.Bounds;
+using R = KhaozEngine.Tests.Physics.InstalledPoseOracle.R;
 
 namespace KhaozEngine.Tests.Locomotion.Contacts;
 
 /// <summary>Single-Find evidence for the represented capsule seam and cylinder end tangency.</summary>
 public sealed class ContactFollowupEndWorkTests(ITestOutputHelper output)
 {
-    // Task 6 strengthens this combined record to the Walkable gate after its cylinder repair.
     [Fact]
     public void RepresentedEndTangencyCounterGate()
     {
@@ -25,9 +26,11 @@ public sealed class ContactFollowupEndWorkTests(ITestOutputHelper output)
             Write(capsule, MathF.BitIncrement(-0.7f), left);
             Write(capsule, -0.7f, critical);
             Write(capsule, MathF.BitDecrement(-0.7f), right);
-            bool passed = Complete(left) && Complete(critical) && Complete(right) &&
-                critical.Work.Consumed <= 10L * Math.Min(left.Work.Consumed, right.Work.Consumed);
-            output.WriteLine($"gate capsule={capsule} pass={passed}");
+            AssertComplete(left, capsule ? SupportStatus.Walkable : CylinderEndStatus(MathF.BitIncrement(-0.7f)));
+            AssertComplete(critical, capsule ? SupportStatus.Walkable : CylinderEndStatus(-0.7f));
+            AssertComplete(right, capsule ? SupportStatus.Walkable : CylinderEndStatus(MathF.BitDecrement(-0.7f)));
+            if (capsule)
+                Assert.True(critical.Work.Consumed <= 10L * Math.Min(left.Work.Consumed, right.Work.Consumed));
         }
     }
 
@@ -172,13 +175,39 @@ public sealed class ContactFollowupEndWorkTests(ITestOutputHelper output)
         }
     }
 
-    static bool Complete((SupportSample Sample, SupportCurvedWorkObservation Work) row) =>
-        row.Sample.Status == SupportStatus.Walkable && row.Work.FootprintStatus == CapsuleFeatureStatus.Complete &&
-        row.Work.Failure == SupportCurvedWorkFailure.None;
-
-    static void AssertComplete((SupportSample Sample, SupportCurvedWorkObservation Work) row)
+    // Independent exact construction from the represented dyadics, not production predicates.
+    // F(v) is concave on the upward barrel, so only its two endpoints can minimize disc distance.
+    internal static SupportStatus CylinderEndStatus(float x)
     {
-        Assert.Equal(SupportStatus.Walkable, row.Sample.Status);
+        R s = new(16777215, 1), n = s.Square() + R.One, h = new(1, 2);
+        R r = R.From(0.3f), rho = R.From(0.2f), a = -R.From(x) - rho;
+        R cy = new(10066331, 33554432), lower = R.From(0.6f) - R.From(0.4f);
+        R upper = R.From(0.6f) + R.From(0.4f), cosine = R.From(ContactFollowupTraversalTests.CosMaxSlope);
+        B length = B.Root(n);
+        B d = -(B)(h * s) / length - (B)R.From(x);
+        Assert.True(a > R.Zero && d.Lower > R.Zero);
+        Assert.True(d.Lower.Square() + r.Square() > rho.Square()); // F(0) is outside.
+        B capTangent = (B)cy + length * (B)h + (B)(s * R.From(x));
+        Assert.True(capTangent.Upper < lower); // The upward cap cannot contribute in band.
+        Assert.True(R.Zero < lower); // The floor cannot contribute either.
+        R crestGap = n * a.Square() - (h * s - r).Square();
+        if (crestGap <= R.Zero)
+        {
+            Assert.True(s.Square() > cosine.Square() * n);
+            B crestHeight = (B)cy + (B)(h + r * s) / length;
+            Assert.True(crestHeight.Lower >= lower && crestHeight.Upper <= upper);
+            return SupportStatus.Walkable;
+        }
+        R solidGap = n * a.Square() - (h * s + r).Square();
+        if (solidGap <= R.Zero)
+            Assert.True(n * a.Square() < (h * s).Square()); // Only the steep cap meets this disc.
+        return SupportStatus.None;
+    }
+
+    static void AssertComplete((SupportSample Sample, SupportCurvedWorkObservation Work) row,
+        SupportStatus status = SupportStatus.Walkable)
+    {
+        Assert.Equal(status, row.Sample.Status);
         Assert.Equal(CapsuleFeatureStatus.Complete, row.Work.FootprintStatus);
         Assert.Equal(SupportCurvedWorkFailure.None, row.Work.Failure);
     }

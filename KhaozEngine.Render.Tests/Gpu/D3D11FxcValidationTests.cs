@@ -89,6 +89,19 @@ namespace KhaozEngine.Tests.Gpu
                 ShaderSources.TargetOutlineCompositeFrag, "TargetOutlineComposite");
         }
 
+        /// <summary>The shadow filter readback kernels, the shipped explicit filter and the gather candidate, which
+        /// <c>TemporalShadowGatherCompileTests</c> holds to SPIR-V, MSL and HLSL off Windows.</summary>
+        [Fact]
+        public void TheShadowFilterKernels_ExplicitAndGather_SurviveFxc()
+        {
+            if (!KhaozEngineD3D11.IsPlatformSupported) return;
+
+            KhaozEngineD3D11.ValidateShaderPair(ComputeShaders.FullscreenVert,
+                TemporalShadowGatherCompileTests.ShippedKernel, "shadow filter explicit");
+            KhaozEngineD3D11.ValidateShaderPair(ComputeShaders.FullscreenVert,
+                TemporalShadowGatherCompileTests.GatherKernel, "shadow filter gather");
+        }
+
         /// <summary>The compute kernels, across the four cascade resolutions shipped code can reach.</summary>
         [Fact]
         public void EveryShippedComputeKernel_SurvivesFxc()

@@ -1,0 +1,29 @@
+Engine base dcb0599e3
+Backend MetalNative
+
+Release build
+build-slot --label taa-game-shadow-final -- dotnet build KhaozEngine.Render.Tests -c Release --no-restore
+Exit 0, zero warnings, zero errors.
+
+Restored renderer GPU verification
+KE_GPU_TESTS=1 build-slot --label taa-game-shadow-restored -- dotnet test KhaozEngine.Render.Tests -c Release --no-build --filter 'FullyQualifiedName~TemporalGameShadowGrainGpuTests|FullyQualifiedName~TemporalStableDetailGpuTests' --logger 'console;verbosity=detailed'
+Exit 0, four passed, zero failed, zero skipped.
+All 24 restored baseline metric rows match the instrumented normal output at printed precision.
+
+Requested attribution runs a, b, d and e
+Four passed per run, including the two existing TemporalStableDetailGpuTests.
+Supplemental current-only control f
+Two measurement facts passed. It is an attribution control, not a quality candidate.
+
+Whole-tree guards
+sh scripts/check-dashes.sh --tree
+Exit 0, through build-slot. Final invocation completed after the evidence README was finalized.
+sh scripts/check-file-size.sh --tree
+Exit 0, through build-slot. The check scanned the 7,491 tracked C# files.
+
+Git diff checks
+Both experimental shader files match the starting commit exactly.
+git diff --cached --check
+Exit 0.
+
+No engine version or changelog change. No game or sample client launched.

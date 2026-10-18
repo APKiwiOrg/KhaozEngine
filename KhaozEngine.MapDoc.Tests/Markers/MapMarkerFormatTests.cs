@@ -378,10 +378,10 @@ public sealed class MapMarkerFormatTests
     }
 
     [Fact]
-    public void MarkerSchema_PinsPayloadShapesAndFormatEight()
+    public void MarkerSchema_PinsPayloadShapesAndFormatNine()
     {
         var schema = JsonNode.Parse(MapDocumentSchema.GetJson())!.AsObject();
-        Assert.Equal(8, schema["properties"]!["formatVersion"]!["const"]!.GetValue<int>());
+        Assert.Equal(9, schema["properties"]!["formatVersion"]!["const"]!.GetValue<int>());
         JsonNode defs = schema["$defs"]!;
         // The released payload-1 shape is the first alternative, byte for byte.
         Assert.True(JsonNode.DeepEquals(JsonNode.Parse("""
@@ -416,7 +416,7 @@ public sealed class MapMarkerFormatTests
             JsonObject versionOnly = MapMarkerMigration.Upgrade(seven);
             MapDocument migrated = MapDocumentFile.LoadText(seven.ToJsonString());
             MapDocument direct = MapDocumentFile.LoadText(versionOnly.ToJsonString());
-            Assert.Equal(8, migrated.FormatVersion);
+            Assert.Equal(9, migrated.FormatVersion);
             Assert.Equal(current, MapDocumentFile.SaveText(migrated));
             Assert.Equal(current, MapDocumentFile.SaveText(direct));
 
@@ -445,7 +445,7 @@ public sealed class MapMarkerFormatTests
             MapDocumentFile.SaveTiled(stored.Document, directory);
             string manifestPath = Path.Combine(directory, "map.json");
             var manifest = JsonNode.Parse(File.ReadAllBytes(manifestPath))!.AsObject();
-            Assert.Equal(8, manifest["formatVersion"]!.GetValue<int>());
+            Assert.Equal(9, manifest["formatVersion"]!.GetValue<int>());
             string expected = MapAuthoredIdentityV2.Compute(stored.Document, stored.Assets, MarkerFixtures.Options());
             Assert.Equal(expected, MapAuthoredIdentityV2.Compute(MapStoredSurfaceSource.Open(directory), stored.Assets, MarkerFixtures.Options()));
             manifest["formatVersion"] = 7;
@@ -466,7 +466,7 @@ public sealed class MapMarkerFormatTests
     {
         // Unchanged recorded placements and callbacks, monolithic and through the tiled reader.
         MapDocument monolithic = MapDocumentFile.Load(FormatFourFixtures.MonolithicPath);
-        Assert.Equal(8, monolithic.FormatVersion);
+        Assert.Equal(9, monolithic.FormatVersion);
         var resolved = FormatFourFixtures.ResolveRecording(monolithic, out var calls);
         FormatFourFixtures.AssertMatchesExpectations(resolved, calls);
         var tiled = FormatFourFixtures.ResolveRecording(MapDocumentFile.LoadTiled(FormatFourFixtures.TiledDirectory), out var tiledCalls);
@@ -488,7 +488,7 @@ public sealed class MapMarkerFormatTests
         Assert.Equal(("start", 1.5f, -2.75f), (start.Id, start.X, start.Z));
         Assert.Equal(BitConverter.SingleToUInt32Bits(0.371f), BitConverter.SingleToUInt32Bits(start.Yaw));
         var saved = JsonNode.Parse(MapDocumentFile.SaveText(analytic))!.AsObject();
-        Assert.Equal(8, saved["formatVersion"]!.GetValue<int>());
+        Assert.Equal(9, saved["formatVersion"]!.GetValue<int>());
         Assert.True(JsonNode.DeepEquals(seven["spawns"], saved["spawns"]));
         Assert.True(JsonNode.DeepEquals(seven["playerSpawns"], saved["playerSpawns"]));
     }

@@ -29,6 +29,7 @@ public class PersistedOrderTests
         "companionLayers", "exclusions", "scatterOverrides", "placements", "spawns", "playerSpawns", "regions",
         "terrainOverrides", "prefabs", "buildingIntent", "nativeResourceTransforms", "supportRecipe", "surfaces",
         "surfacePatches", "water", "playableBounds", "nativeAssets", "numericIdHighWaterMark", "resolverIdentity",
+        "foliage",
     };
 
     static readonly string[] PlacementOrder =

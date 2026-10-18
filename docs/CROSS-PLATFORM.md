@@ -329,7 +329,9 @@ Unsharded paths still restore and build `KhaozEngine.slnx`. Build selection leav
 coverage guards unchanged. Reduced solutions explicitly preserve Release on their project references with
 `ShouldUnsetParentConfigurationAndPlatform=false`. Otherwise MSBuild resets unlisted references to their
 default configuration, which is Debug. A build guard rejects any Debug output on the fresh CI checkout.
-The Windows-only NuGet cache still excludes every KhaozEngine extraction.
+The Windows-only NuGet cache still excludes every KhaozEngine extraction. The
+[measurement record](verification/2026-10-18-gpu-shard-build-cost-1472.md) compares scoped builds with per-OS
+output sharing.
 
 So a default-input dispatch is 3 Metal, 6 Windows and 14 Linux jobs plus the `sync` job. The org's Team plan
 allows 60 concurrent hosted jobs and 5 concurrent macOS jobs

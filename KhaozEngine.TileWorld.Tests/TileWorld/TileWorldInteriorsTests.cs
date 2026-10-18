@@ -182,12 +182,90 @@ public class TileWorldInteriorsTests
         doc.SetSettings(10, 10, 0, TileSettings.Indoors);
         doc.SetSettings(10, 10, 1, TileSettings.Indoors);
         doc.AddObject("wall", 10, 10, 0, 0);
+        doc.AddObject("roof_flat", 10, 10, 2, 0);
 
         InteriorSourceResult result = new TileWorldInteriors(doc, Catalogs(), new Meshes()).Collect(Window);
 
         InteriorVolume volume = Assert.Single(result.Volumes);
         Assert.Equal(3f, volume.FloorY);
         Assert.Equal(6f, volume.CeilingY);
+        Assert.Single(volume.Roofs);
+    }
+
+    [Theory]
+    [InlineData(1, 3f)]
+    [InlineData(2, 6f)]
+    public void UnsafeStoreyStopsTheColumnBeforeThatStorey(int unsafePlane, float ceiling)
+    {
+        TileWorldDocument doc = TileWorldTestData.FlatWorld();
+        for (int plane = 0; plane < 3; plane++) doc.SetSettings(10, 10, plane, TileSettings.Indoors);
+        TileObject wall = doc.AddObject("wall", 10, 10, unsafePlane, 0);
+        doc.AddObject("roof_flat", 10, 10, 1, 0);
+        doc.AddObject("roof_flat", 10, 10, 2, 0);
+        doc.AddObject("roof_flat", 10, 10, 3, 0);
+        var source = new TileWorldInteriors(doc, Catalogs(), new Meshes());
+
+        InteriorSourceResult result = source.Collect(Window);
+
+        TileWorldIssue issue = Assert.Single(source.LastIssues);
+        Assert.Equal("interior.wall-inner-edge", issue.Code);
+        Assert.Equal(wall.Coord, issue.Tile);
+        InteriorVolume volume = Assert.Single(result.Volumes);
+        Assert.Equal(0f, volume.FloorY);
+        Assert.Equal(ceiling, volume.CeilingY);
+        Assert.Empty(volume.Roofs);
+        InteriorHeightField field = InteriorHeightFieldBuilder.Build(result.Volumes, Window, result.Encoding);
+        Assert.True(field.Contains(new Vector3(10.5f, ceiling - 0.5f, -10.5f)));
+        Assert.False(field.Contains(new Vector3(10.5f, ceiling, -10.5f)));
+        Assert.False(field.Contains(new Vector3(10.5f, unsafePlane * 3f + 1f, -10.5f)));
+        Assert.False(field.Contains(new Vector3(10.5f, 7f, -10.5f)));
+    }
+
+    [Fact]
+    public void MixedRoofEligibilityKeepsTheEligibleColumnRoof()
+    {
+        TileWorldDocument doc = TileWorldTestData.FlatWorld();
+        doc.SetSettings(10, 10, 0, TileSettings.Indoors);
+        for (int plane = 0; plane < 3; plane++) doc.SetSettings(11, 10, plane, TileSettings.Indoors);
+        doc.AddObject("wall", 11, 10, 1, 0);
+        doc.AddObject("roof_flat", 10, 10, 1, 0);
+        doc.AddObject("roof_flat", 10, 10, 3, 0);
+
+        InteriorSourceResult result = new TileWorldInteriors(doc, Catalogs(), new Meshes()).Collect(Window);
+
+        Assert.Equal(2, result.Volumes.Count);
+        InteriorVolume eligible = Assert.Single(result.Volumes, v => v.Outline.Min(p => p.X) == 10f);
+        InteriorVolume truncated = Assert.Single(result.Volumes, v => v.Outline.Min(p => p.X) == 11f);
+        Assert.Equal(0f, eligible.FloorY);
+        Assert.Equal(0f, truncated.FloorY);
+        Assert.Equal(3f, eligible.CeilingY);
+        Assert.Equal(3f, truncated.CeilingY);
+        Assert.Single(eligible.Roofs);
+        Assert.Empty(truncated.Roofs);
+        InteriorHeightField field = InteriorHeightFieldBuilder.Build(result.Volumes, Window, result.Encoding);
+        Assert.True(field.TryGetSpan(10, 22, out _, out float eligibleTop));
+        Assert.Equal(4f, eligibleTop);
+        Assert.True(field.TryGetSpan(14, 22, out _, out float truncatedTop));
+        Assert.Equal(3f, truncatedTop);
+        Assert.True(field.Contains(new Vector3(10.5f, 3.5f, -10.5f)));
+        Assert.False(field.Contains(new Vector3(11.5f, 3.5f, -10.5f)));
+    }
+
+    [Fact]
+    public void DisjointIndoorStoreysKeepOnlyTheLowestContiguousRun()
+    {
+        TileWorldDocument doc = TileWorldTestData.FlatWorld();
+        doc.SetSettings(10, 10, 0, TileSettings.Indoors);
+        doc.SetSettings(10, 10, 2, TileSettings.Indoors);
+        doc.AddObject("roof_flat", 10, 10, 1, 0);
+        doc.AddObject("roof_flat", 10, 10, 3, 0);
+
+        InteriorSourceResult result = new TileWorldInteriors(doc, Catalogs(), new Meshes()).Collect(Window);
+
+        InteriorVolume volume = Assert.Single(result.Volumes);
+        Assert.Equal(0f, volume.FloorY);
+        Assert.Equal(3f, volume.CeilingY);
+        Assert.Empty(volume.Roofs);
     }
 
     [Fact]

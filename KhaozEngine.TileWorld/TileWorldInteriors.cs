@@ -65,7 +65,7 @@ public sealed class TileWorldInteriors : IInteriorSource
             var assigned = new List<InteriorRoof>();
             float top = ceiling;
             foreach (PlacedRoof roof in roofs)
-                if (roof.Plane == roofPlane && roof.Tiles.Intersects(rect.Tiles))
+                if (rect.Planes.RoofEligible && roof.Plane == roofPlane && roof.Tiles.Intersects(rect.Tiles))
                 {
                     assigned.Add(roof.Roof);
                     top = Math.Max(top, roof.HighestY);
@@ -191,18 +191,32 @@ public sealed class TileWorldInteriors : IInteriorSource
         return roofs;
     }
 
-    static List<IndoorRect> Rectangles(HashSet<TileCoord> indoor)
+    List<IndoorRect> Rectangles(HashSet<TileCoord> indoor)
     {
         var columns = new Dictionary<(int X, int Z), Planes>();
         foreach (TileCoord tile in indoor)
         {
             var key = (tile.X, tile.Z);
-            columns[key] = columns.TryGetValue(key, out Planes p)
-                ? new Planes(Math.Min(p.Lowest, tile.Plane), Math.Max(p.Top, tile.Plane))
-                : new Planes(tile.Plane, tile.Plane);
+            if (!columns.TryGetValue(key, out Planes p) || tile.Plane < p.Lowest)
+                columns[key] = new Planes(tile.Plane, tile.Plane, false);
+        }
+        var origins = columns.Keys.OrderBy(k => k.Z).ThenBy(k => k.X).ToArray();
+        foreach (var origin in origins)
+        {
+            int lowest = columns[origin].Lowest, top = lowest;
+            // A rejected or absent storey ends the span, even when indoor planes remain above it.
+            while (top + 1 < _document.PlaneCount && indoor.Contains(new TileCoord(origin.X, origin.Z, top + 1))) top++;
+            bool roofEligible = true;
+            for (int plane = top + 1; plane < _document.PlaneCount; plane++)
+                if ((_document.GetSettings(origin.X, origin.Z, plane) & TileSettings.Indoors) != 0)
+                {
+                    roofEligible = false;
+                    break;
+                }
+            columns[origin] = new Planes(lowest, top, roofEligible);
         }
         var rectangles = new List<IndoorRect>();
-        foreach (var origin in columns.Keys.OrderBy(k => k.Z).ThenBy(k => k.X).ToArray())
+        foreach (var origin in origins)
         {
             if (!columns.TryGetValue(origin, out Planes planes)) continue;
             int width = 1, height = 1;
@@ -262,7 +276,7 @@ public sealed class TileWorldInteriors : IInteriorSource
         _ => TileDirection.N,
     };
 
-    readonly record struct Planes(int Lowest, int Top);
+    readonly record struct Planes(int Lowest, int Top, bool RoofEligible);
     readonly record struct IndoorRect(TileRect Tiles, Planes Planes);
     readonly record struct PlacedRoof(TileRect Tiles, int Plane, InteriorRoof Roof, float HighestY);
 }

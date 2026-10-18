@@ -45,6 +45,9 @@ do not validate. `BugReportBundleWriter.Write(draft)` checks every field, writes
 its SHA-256 hashes, and throws when a field or a limit is broken. Every bundle it writes passes
 `BundleValidator.Validate`.
 
+The viewer and relay share `BugReportLogTail.FromLogSection(json)` with a default limit of 50 lines. It reads the newest string
+lines in their original order. Missing or malformed log data gives an empty tail.
+
 ## Sinks
 
 An `IBugReportSink` delivers one bundle. Every delivery outcome is a `BugReportSubmitResult` (`Sent`, `Queued` or
@@ -77,21 +80,30 @@ from uploaded bundles. `LocalFolderSink` and the relay share it.
 
 ## Server snapshot
 
-A server-backed game captures its own view of the player under the same report id. The game owns the message that
-carries the id from client to server.
+A server-backed game captures its own view of the player under the same report id. The game owns the messages that
+carry the id from client to server. `BugReportService.ReportCaptured` requests capture, and
+`BugReportService.ReportConfirmed` permits posting only when the player presses Send.
 
 ```csharp
 var capture = new BugReportServerCapture(TimeProvider.System);
 capture.Add(new PlayerStateSection(world));
 var poster = new ServerSnapshotPoster(http, relay, serviceKey);
+var pending = new Dictionary<(string Subject, string ReportId), ServerSnapshot>();
 
-// On the simulation thread, when a client's report message arrives:
+// On the simulation thread, when a client's capture message arrives:
 void OnBugSnapshotRequest(Session session, string reportId)
 {
     if (!ReportIds.IsValid(reportId)) return;
     string subject = session.AuthenticatedSubject;
     if (!capture.TryAccept(subject)) return;
-    ServerSnapshot snapshot = capture.Capture(reportId, subject);
+    pending[(subject, reportId)] = capture.Capture(reportId, subject);
+}
+
+// On the simulation thread, only after that client confirms Send:
+void OnBugSnapshotConfirmed(Session session, string reportId)
+{
+    if (!ReportIds.IsValid(reportId)) return;
+    if (!pending.Remove((session.AuthenticatedSubject, reportId), out var snapshot)) return;
     _ = Task.Run(() => poster.PostAsync(snapshot, CancellationToken.None));
 }
 ```
@@ -101,6 +113,7 @@ void OnBugSnapshotRequest(Session session, string reportId)
 - The subject must be the account the server authenticated for that connection, never a value the client sent.
   The relay merges a snapshot only when its subject equals the subject of the reporter's token.
 - `Capture` runs the sections synchronously on the simulation thread, so keep them within the tick budget.
+- Bound the game's pending snapshot store and expire entries that are never confirmed. Do not post on capture.
 - `PostAsync` redacts, serializes and posts off that thread with the service key. A failed post returns false with
   one warning. A report without the server view is still a report.
 

@@ -280,6 +280,10 @@ public sealed class BugReportOfflineQueue
     public void Enqueue(BugReportSubmission submission);      // Subject null binds to the first account that flushes
     public Task<BugReportFlushResult> FlushAsync(string subject, IBugReportSink sink, CancellationToken cancellationToken);
 }
+public static class BugReportLogTail
+{
+    public static IReadOnlyList<string> FromLogSection(ReadOnlyMemory<byte> json, int maxLines = 50);
+}
 public sealed record BugReportViewerModel(BugReportManifest Manifest, ClipIndex? Clip, IReadOnlyList<CapturedSection> Sections,
     ReporterIdentity? Reporter, ReadOnlyMemory<byte>? ServerSnapshotJson, IReadOnlyList<string> LogTail);
 public static class BugReportViewerPage
@@ -324,6 +328,7 @@ public sealed class BugReportService : IDisposable
     public void AddSection(IBugReportSection section);
     public bool Begin();                             // the menu path, false when a report is already open
     public event Action<string>? ReportCaptured;     // report id, raised in the trigger frame
+    public event Action<string>? ReportConfirmed;    // report id, frame thread on Send before the bundle is built
     public void SetRecordingEnabled(bool enabled);
     public Task<int> RetryQueuedAsync(CancellationToken cancellationToken);   // flushes for currentSubject(), returns sent
     // currentSubject is called on the frame thread every frame and on the thread that calls RetryQueuedAsync.

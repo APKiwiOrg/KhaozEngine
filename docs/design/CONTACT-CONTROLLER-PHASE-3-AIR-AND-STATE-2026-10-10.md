@@ -64,15 +64,17 @@ behaviour stay unchanged. The intent arithmetic is short enough to restate, so n
   `MaxStepClimbSpeed * dt`. The result reports `ClimbBudget`, the budget left after the tick's paced climbing, so
   later modes in the same tick pay from what is left.
 - **Remaining time.** `RemainingTime` is the time left after the footing changed to `Steep` or `None`, for the next
-  mode to run. The substep that found the change counts as spent.
+  mode to run. An accepted substep that found the change counts as spent. A rejected slide placement accepts no
+  motion, so its substep's time belongs to the receiving air pass too (#1486).
 - **`ChangedAtStart`.** True when the start was already steep or unsupported, so the footing changed before any time
   was spent and `RemainingTime` is the whole tick.
 - **Slide mode.** The internal `GroundCore.Slide` runs the same substep loop for a sliding body with these
   differences: a steep start moves, a steep seat at or below the feet continues the tick instead of ending it, and
-  a steep seat must clear the shell without a push. A steep seat that fails clearance ends the tick with footing
-  `None` at the last clear position, for the air pass. Steep ground above the feet stays a wall, walkable support
-  grounds the body and the rest of the move walks on, and no support gives `None`. Each slide substep's drop along
-  the start plane stays within half `StepHeight`, so the seat's reach down holds it. From a steep start the seat's
+  a steep seat must clear the shell without a push. A steep or walkable seat that fails placement ends the tick
+  with footing `None` at the last clear position, with its failed substep's time left for the air pass. Steep ground
+  above the feet stays a wall, walkable support grounds the body and the rest of the move walks on, and no support
+  gives `None`. Each slide substep's drop along the start plane stays within half `StepHeight`, so the seat's reach
+  down holds it. From a steep start the seat's
   step part is only the rise above the start feet, so a slide that drops onto walkable ground charges nothing
   against the climb budget. One loop serves both modes, so the slide never duplicates the ground core's shape.
 

@@ -175,6 +175,8 @@ public sealed class BugReportServiceTests : BugReportFlowHarness
     public async Task Dispose_closes_an_open_report()
     {
         BugReportService service = await SignedInService();
+        var confirmed = new List<string>();
+        service.ReportConfirmed += confirmed.Add;
         Run(service, Frame(pressed: [Key.F10]));
         Run(service, Frame(held: [Key.F10]));
         Assert.True(service.IsOpen);
@@ -185,6 +187,7 @@ public sealed class BugReportServiceTests : BugReportFlowHarness
         Assert.False(service.IsOpen);
         Assert.Empty(service.Flow.Screens.Screens);
         Assert.Equal(1, _capture.ThawCount);
+        Assert.Empty(confirmed);
     }
 
     [Fact]

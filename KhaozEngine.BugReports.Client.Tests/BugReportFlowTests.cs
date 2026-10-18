@@ -404,6 +404,8 @@ public sealed class BugReportFlowTests : BugReportFlowHarness
     public void Unexpected_fault_while_open_thaws_closes_and_rethrows()
     {
         BugReportFlow flow = NewFlow();
+        var confirmed = new List<string>();
+        flow.ReportConfirmed += confirmed.Add;
         Open(flow);
 
         using (LocalizationContext.Use(new ThrowingCatalog()))
@@ -412,6 +414,7 @@ public sealed class BugReportFlowTests : BugReportFlowHarness
         Assert.Equal(1, _capture.ThawCount);
         Assert.Equal(BugReportFlowState.Idle, flow.State);
         Assert.Empty(flow.Screens.Screens);
+        Assert.Empty(confirmed);
         Step(flow);
         Open(flow);
         Assert.Equal(2, _captured.Count);

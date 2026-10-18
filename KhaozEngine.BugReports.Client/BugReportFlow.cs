@@ -125,6 +125,9 @@ internal sealed class BugReportFlow
     /// <summary>Raised in the trigger frame with the new report id.</summary>
     internal event Action<string>? ReportCaptured;
 
+    /// <summary>Raised on the frame thread with the report id when Send is pressed, before the bundle is built.</summary>
+    internal event Action<string>? ReportConfirmed;
+
     /// <summary>Raised on the frame thread with each submission's result.</summary>
     internal event Action<BugReportSubmitResult>? ReportSubmitted;
 
@@ -402,6 +405,14 @@ internal sealed class BugReportFlow
         _holdNextFrame = true;
         if (result == BugReportScreenResult.Send)
         {
+            try
+            {
+                ReportConfirmed?.Invoke(report.Id);
+            }
+            catch (Exception exception)
+            {
+                Log.Warn("A ReportConfirmed handler failed for bug report " + report.Id + ".", exception);
+            }
             string? subject = _subject;
             TaskCompletionSource queued = Builds.Start();
             PendingWork = Task.Run(async () =>

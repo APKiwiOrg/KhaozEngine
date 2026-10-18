@@ -18,6 +18,7 @@ public partial class MapEditorScene
     Vector3 WindowCameraStart()
     {
         var offset = new Vector3(0, 24, -32);
+        if (MarkerCameraStart() is { } start) return start + offset;
         if (_window is not MapTileRect window) return offset;
 
         var center = new MapTileCoord(

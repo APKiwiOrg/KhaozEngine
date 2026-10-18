@@ -10,16 +10,24 @@ namespace KhaozEngine.Locomotion.Contacts;
 /// for its lease, and its owner closes it when that interval or tick ends, so nothing crosses ticks, bodies,
 /// reconciles or leases and no refusal outlives its interval. Storage is fixed at <see cref="Capacity"/>, and a full
 /// memo stops remembering rather than evicting.</summary>
+/// <remarks>The memo also owns its interval's <see cref="SupportContinuityArena"/> (CF-4), opened and closed with it.
+/// Each entry holds the complete sample value with its continuity handle, so a hit resolves to the row its first
+/// read wrote in this interval, the same row a fresh read of the key would write, and the key itself is unchanged.
+/// <see cref="Close"/> clears every entry and the arena, which releases the evidence's lease and world references
+/// and advances the arena epoch, so no earlier handle resolves again.</remarks>
 internal sealed class SupportRequestMemo
 {
     internal const int Capacity = 16;
 
-    // The dry door's memo for this thread, provisioned once. Thread-static storage is never shared between threads.
-    [ThreadStatic] static SupportRequestMemo? t_dry;
+    // The dry door provisions all nesting slots together, so a warm nested interval never allocates its evidence.
+    [ThreadStatic] static DrySupportMemoPool? t_dry;
     [ThreadStatic] static bool t_bypass;
 
     readonly Entry[] _entries = new Entry[Capacity];
     int _count;
+
+    /// <summary>The interval's continuity evidence, open exactly while the memo is.</summary>
+    internal SupportContinuityArena Arena { get; } = new();
 
     /// <summary>The lease this memo serves, or null while it is closed.</summary>
     internal IPhysicsQueryLease? Lease { get; private set; }
@@ -42,22 +50,20 @@ internal sealed class SupportRequestMemo
         public void Dispose() => t_bypass = previous;
     }
 
-    /// <summary>Opens this thread's dry memo for one tick's <paramref name="lease"/>. Null without a lease, or when
-    /// the memo is already open, which only a tick nested on the same thread finds. The nested tick then reads
-    /// uncached.</summary>
+    /// <summary>Opens one independent dry memo for <paramref name="lease"/>. Null only without a lease. Up to four
+    /// simultaneous intervals on this thread have preprovisioned storage, including nested ticks. Exceeding that
+    /// bound throws rather than silently dropping continuity evidence.</summary>
     internal static SupportRequestMemo? OpenDry(IPhysicsQueryLease? lease)
     {
         if (lease is null) return null;
-        SupportRequestMemo memo = t_dry ??= new SupportRequestMemo();
-        if (memo.Lease is not null) return null;
-        memo.Open(lease);
-        return memo;
+        return (t_dry ??= new DrySupportMemoPool()).Open(lease);
     }
 
     internal void Open(IPhysicsQueryLease lease)
     {
         ArgumentNullException.ThrowIfNull(lease);
         if (Lease is not null) throw new InvalidOperationException("The support memo is already open.");
+        Arena.Open();
         Lease = lease;
     }
 
@@ -65,6 +71,7 @@ internal sealed class SupportRequestMemo
     {
         Array.Clear(_entries, 0, _count);
         _count = 0;
+        if (Arena.IsOpen) Arena.Close();
         Lease = null;
     }
 

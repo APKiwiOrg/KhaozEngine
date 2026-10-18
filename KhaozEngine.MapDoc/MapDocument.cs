@@ -11,11 +11,16 @@ namespace KhaozEngine.MapDoc;
 public sealed partial class MapDocument
 {
     [JsonPropertyName("$schema")]
+    [JsonPropertyOrder(MapDocumentOrder.Schema)]
     public string? Schema { get; set; }
 
+    [JsonPropertyOrder(MapDocumentOrder.FormatVersion)]
     public int FormatVersion { get; set; } = MapDocumentFile.CurrentFormatVersion;
+    [JsonPropertyOrder(MapDocumentOrder.Id)]
     public string Id { get; set; } = "";
+    [JsonPropertyOrder(MapDocumentOrder.DisplayName)]
     public string DisplayName { get; set; } = "";
+    [JsonPropertyOrder(MapDocumentOrder.Bounds)]
     public MapBounds Bounds { get; set; } = new();
 
     /// <summary>Document tile edge in world meters, added at format version 3. Declared once for the whole
@@ -27,22 +32,33 @@ public sealed partial class MapDocument
     /// that cannot certify the bucketing the tile hashes were computed under. What follows is a hard rule for
     /// any conversion between the two forms: PRESERVE this value, never re-derive or default it, or a round
     /// trip through the monolithic form would silently change world identity.</para></summary>
+    [JsonPropertyOrder(MapDocumentOrder.TileSize)]
     public float TileSize { get; set; } = MapDocumentFile.DefaultTileSize;
 
+    [JsonPropertyOrder(MapDocumentOrder.Terrain)]
     public MapTerrain Terrain { get; set; } = new();
+    [JsonPropertyOrder(MapDocumentOrder.ScatterLayers)]
     public List<MapScatterLayer> ScatterLayers { get; set; } = new();
+    [JsonPropertyOrder(MapDocumentOrder.CompanionLayers)]
     public List<MapCompanionLayer> CompanionLayers { get; set; } = new();
+    [JsonPropertyOrder(MapDocumentOrder.Exclusions)]
     public List<MapExclusion> Exclusions { get; set; } = new();
+    [JsonPropertyOrder(MapDocumentOrder.ScatterOverrides)]
     public List<MapScatterOverrideDoc> ScatterOverrides { get; set; } = new();
+    [JsonPropertyOrder(MapDocumentOrder.Placements)]
     public List<MapPlacement> Placements { get; set; } = new();
+    [JsonPropertyOrder(MapDocumentOrder.Spawns)]
     public List<MapSpawn> Spawns { get; set; } = new();
+    [JsonPropertyOrder(MapDocumentOrder.PlayerSpawns)]
     public List<MapPlayerSpawn> PlayerSpawns { get; set; } = new();
+    [JsonPropertyOrder(MapDocumentOrder.Regions)]
     public List<MapRegion> Regions { get; set; } = new();
 
     /// <summary>The authored terrain sculpt/delta layer (format version 2). Null or absent means no
     /// sculpting, so the terrain is the pure analytic field; a present block adds hand-authored height
     /// deltas that <see cref="MapRuntime.BuildField"/> folds into the <see cref="TerrainField"/>. The
     /// validating writer refuses tiles whose extent leaves <see cref="Bounds"/>.</summary>
+    [JsonPropertyOrder(MapDocumentOrder.TerrainOverrides)]
     public MapTerrainOverrides? TerrainOverrides { get; set; }
 
     /// <summary>The tile index of a tiled document, null for a monolithic one. Present even when only part of
@@ -173,6 +189,7 @@ public sealed partial class MapPlacement
     float _z;
 
     /// <summary>Stable editor identity, unique within the document.</summary>
+    [JsonPropertyOrder(MapPlacementOrder.Id)]
     public string Id
     {
         get
@@ -184,6 +201,7 @@ public sealed partial class MapPlacement
     }
 
     /// <summary>The asset-manifest kit id to instance.</summary>
+    [JsonPropertyOrder(MapPlacementOrder.Kind)]
     public string Kind
     {
         get
@@ -194,6 +212,7 @@ public sealed partial class MapPlacement
         set => _kind = value;
     }
 
+    [JsonPropertyOrder(MapPlacementOrder.X)]
     public float X
     {
         get
@@ -204,6 +223,7 @@ public sealed partial class MapPlacement
         set => _x = value;
     }
 
+    [JsonPropertyOrder(MapPlacementOrder.Z)]
     public float Z
     {
         get
@@ -214,9 +234,13 @@ public sealed partial class MapPlacement
         set => _z = value;
     }
 
+    [JsonPropertyOrder(MapPlacementOrder.Y)]
     public float? Y { get; set; }
+    [JsonPropertyOrder(MapPlacementOrder.Yaw)]
     public float Yaw { get; set; }
+    [JsonPropertyOrder(MapPlacementOrder.Scale)]
     public float Scale { get; set; } = 1f;
+    [JsonPropertyOrder(MapPlacementOrder.Tags)]
     public List<string> Tags { get; set; } = new();
 
     /// <summary>Reads of this placement's lookup keys: identity, kit and planar position. A pick's maximum per-placement

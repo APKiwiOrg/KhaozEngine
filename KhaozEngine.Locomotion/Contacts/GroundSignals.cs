@@ -62,9 +62,10 @@ internal static class GroundSignals
         Vector2 direction = achieved > 0f ? groundTravel / achieved : Vector2.Zero;
         var axis = new Vector2(feet.X, feet.Z);
         Span<Vector2> samples = stackalloc Vector2[Samples + 1];
-        Span<SupportSample> supports = stackalloc SupportSample[Samples + 1];
         samples[0] = new Vector2(0f, axisSupport.Height);
-        supports[0] = axisSupport;
+        // A sample holds its interval evidence by reference, so it cannot live in stack memory. Only the last
+        // accepted walkable sample is compared with the next.
+        SupportSample previousSupport = axisSupport;
         int count = 1;
         bool windowRise = false, windowDrop = false;
         // No travel empties the window, but still allows applied steps and a carried run to report.
@@ -82,12 +83,12 @@ internal static class GroundSignals
             // Optional presentation evidence cannot veto the accepted move.
             catch (ContactQueryFailure) { continue; }
             if (support.Status != SupportStatus.Walkable) continue;
-            float step = GroundSeat.DiscreteStep(supports[count - 1], axis + samples[count - 1].X * direction,
+            float step = GroundSeat.DiscreteStep(previousSupport, axis + samples[count - 1].X * direction,
                 support, sampleAxis, cosMaxSlope);
             windowRise |= step > 0f;
             windowDrop |= step < 0f;
-            samples[count] = new Vector2(distance, support.Height);
-            supports[count++] = support;
+            samples[count++] = new Vector2(distance, support.Height);
+            previousSupport = support;
         }
 
         // Fit against heights relative to the axis support, so a large world height does not erase the grade.

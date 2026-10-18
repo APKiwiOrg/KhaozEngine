@@ -47,6 +47,12 @@ public sealed class MapScopedSurfaces
     /// declares. A scoped acquisition lists only the surfaces it captured, so a surface it does not list may exist.</summary>
     internal bool ListsEverySurface { get; private init; }
 
+    /// <summary>The query policy version of effective acquisitions, the shared seat query and the typed refusals that
+    /// record it without acquiring.</summary>
+    internal const int EffectiveQueryPolicyVersion = 2;
+    /// <summary>The build policy version of effective acquisitions and the shared seat query.</summary>
+    internal const int EffectiveBuildPolicyVersion = 2;
+
     public static MapScopedSurfaces Acquire(IMapSurfaceSource source, MapSurfaceScope scope, IReadOnlyList<string> assetSha256,
         int queryPolicyVersion = 1, int buildPolicyVersion = 1) =>
         Acquire(source, scope, assetSha256, queryPolicyVersion, buildPolicyVersion, null);
@@ -128,7 +134,8 @@ public sealed class MapScopedSurfaces
             LocalMin = corners.Length == 0 ? Vector2.Zero : new(Outward(corners.Min(c => c.X.Floor()) - ax, true), Outward(corners.Min(c => c.Z.Floor()) - az, true)),
             LocalMax = corners.Length == 0 ? Vector2.Zero : new(Outward(corners.Max(c => c.X.Ceiling()) - ax, false), Outward(corners.Max(c => c.Z.Ceiling()) - az, false)),
         };
-        return new(new(MapAcquireStatus.Complete, null, facts, "effective:" + context.Digest, context.Digest, 0, 0), scope, new[] { context.Digest }, 2, 2)
+        return new(new(MapAcquireStatus.Complete, null, facts, "effective:" + context.Digest, context.Digest, 0, 0), scope, new[] { context.Digest },
+            EffectiveQueryPolicyVersion, EffectiveBuildPolicyVersion)
         { EffectiveContext = context, ListsEverySurface = true };
     }
     static MapSurfaceScope ResidentScope(MapAcquiredFacts facts)
@@ -165,6 +172,8 @@ public sealed class MapScopedSurfaces
     internal bool TryRecord(MapRecordRef r, out MapTopologyRecord? record, out MapPatchStatus status, bool borrow) =>
         borrow ? _facts.TryRecord(r, out record, out status) : _facts.CopyRecord(r, out record, out status);
     public IEnumerable<MapTopologyRecord> RecordsIn(MapPatchKey key) => _facts.CopyRecords(key);
+    /// <summary>True when the acquisition recorded a read of <paramref name="key"/>, whatever its status.</summary>
+    internal bool HasRead(MapPatchKey key) => _facts.HasRead(key);
     internal bool TryAcquiredPatch(MapPatchKey key, out MapSurfacePatch? patch, out MapPatchStatus status)
     {
         patch = _facts.OwnedPatch(key);

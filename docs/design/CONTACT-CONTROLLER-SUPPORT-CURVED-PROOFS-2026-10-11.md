@@ -311,6 +311,10 @@ z and `Q+R*z` to have opposite signs, so the squared equation's other roots cann
 points of the original branch. The displayed strictly negative second derivative proves uniqueness
 of a disc-branch stationary maximum on its smooth domain. Source-uniform endpoint signs and a
 nonzero derivative enclosure certify existence and coverage of each retained root region.
+The squared polynomial's constant term is `-k*k*Q*Q`. When its source sign is proved nonzero, no
+source has a root at z=0. A root region closed at zero then holds its root strictly on its open
+side, which fixes the sign of z for the opposite-sign test. Without that proof, a region touching
+zero still refuses. This is what lets a lying log's crest region resolve when Q is nonzero.
 
 When Y includes zero, the disc branch uses `|k|` and its unsquared stationary function is
 `z/sqrt(1-z*z) + |k|*(Q+R*z)/sqrt(disc*disc-(Q+R*z)^2)`. Its derivative is strictly positive
@@ -365,6 +369,30 @@ candidate cannot establish the attained lower bound. All candidates which can at
 remain in the published hull. The original maximum and the walkable replacement are separate.
 The member's maximum bounds the unrestricted height. The footprint role carries the replacement
 when the certified walkable region is nonempty, retaining an exact normal Y at the slope boundary.
+
+CF-3 retains a signed source identity for each original disc-lateral endpoint. For sign s equal
+to -1 or +1, the candidate is created only by `z=(s*disc-Q)/R` and retains `Q+R*z=s*disc`.
+Its original quotient enclosure is not clipped into the circle domain. Since R is positive,
+source signs of `s*disc-Q+R` and `R-(s*disc-Q)` certify `-1 <= z <= 1` for every represented
+source. A strictly outside root is absent. An undecided domain does not establish attainment.
+The defining equation proves `disc*disc-(Q+R*z)^2=0`, hence transverse extent is exactly zero.
+Reconstructing the quotient with independent intervals and subtracting two enclosures of the
+same squared quantity would lose this identity and cannot be used as an absence proof.
+
+For a proved endpoint, evaluate `v=sqrt(1-z*z)` through source arithmetic. Its only possible
+axial coordinate is `t=(R*k*v-P)/u`, with positive u. Source signs of
+`R*k*v-P+u*H` and `u*H-(R*k*v-P)` certify the two finite-axis bounds. The original source
+normal is `w*v+f*z`, with Y equal to `u*v`. A source sign of `u*v-c` certifies slope, including
+equality. Only the joint domain, finite-axis and slope certificate makes this endpoint attained.
+The certificate preserves the tiny signed installed Y and original normal enclosures. It supplies
+the maximum's lower bound while possible stationary regions retain the enclosing upper bound.
+It grants no attainment to a merely possible stationary region, clipped root or nearby pole.
+An endpoint whose domain, slope or finite-axis sign stays unresolved is neither discarded nor
+attained. It takes the untagged clipped candidate's role. Its possible enclosure can widen the
+witness hull and upper bound but never sets the attained lower bound. The half-skin error ceiling
+downstream decides whether the widened range is usable. The side refuses when no attained lower
+bound exists.
+Unproved relevant predicates still refuse atomically within the existing cell and candidate bounds.
 
 Caps enumerate their crest, the disc uphill point and both signed rim crossings. Capsule ends
 keep the sphere's nearest-point solve and its original hemisphere predicate. The finite barrel

@@ -184,7 +184,7 @@ summary { cursor: pointer; }
         stop();
         return;
       }
-      const delay = Math.min(Math.max(frames[index + 1].offsetMilliseconds - frames[index].offsetMilliseconds, 0), 1000);
+      const delay = Math.max(frames[index + 1].offsetMilliseconds - frames[index].offsetMilliseconds, 0);
       timer = setTimeout(() => {
         show(index + 1);
         advance();

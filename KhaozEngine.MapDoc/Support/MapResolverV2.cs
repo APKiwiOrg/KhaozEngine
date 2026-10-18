@@ -45,16 +45,8 @@ public static class MapResolverV2
             if (placement.Y is null)
             {
                 var binding = RequireBinding(placement);
-                var world = new MapResourceTransform(pose).Point(new(default, default, default)) with
-                { Y = MapExactValue.FromSingle(binding.ReferenceY ?? 0) };
-                var frame = WorldFrame.Nearest(world.X.ToSingle(), world.Z.ToSingle());
-                float x = world.X.Subtract(new((long)frame.X * (long)WorldFrame.Grid, 1)).ToSingle();
-                float z = world.Z.Subtract(new((long)frame.Z * (long)WorldFrame.Grid, 1)).ToSingle();
-                var scope = new MapSurfaceScope(frame, new(x - 2, z - 2), new(x + 2, z + 2), null, null, Enum.GetValues<MapSurfaceRole>(), null, new());
-                var view = MapScopedSurfaces.Acquire(surfaces, scope, assets.Roots.Select(a => a.Sha256).ToArray(), 2, 2);
-                var query = new MapSupportQuery(view);
-                var support = binding.Kind == MapSupportBindingKind.Surface ? query.SampleSurfaceExact(world, binding.SurfaceId!)
-                    : query.SelectExact(new(MapEffectiveGeometry.Presentation(view, world), null, binding.SpaceId, null, binding.SearchAbove!.Value, binding.SearchBelow!.Value, null), world);
+                var support = SeatSupport(new MapResourceTransform(pose).Point(new(default, default, default)), binding, surfaces,
+                    assets.Roots.Select(a => a.Sha256).ToArray(), new());
                 if (support.Status != MapSupportStatus.Supported) throw new MapDocumentException($"Placement '{placement.Id}' support status {support.Status}: {support.Detail}");
                 if (support.Face is { } face && owners is not null &&
                     owners.TryGetValue(MapEffectiveContext.Key(MapPrefabChildKind.Surface, face.OwnerId), out var provider) && missingY.Contains(provider))
@@ -67,6 +59,26 @@ public static class MapResolverV2
         }
         supports = Array.AsReadOnly(selected.ToArray());
         return result.AsReadOnly();
+    }
+
+    /// <summary>The one support answer a world binding seats on at the exact XZ of <paramref name="point"/>, shared by
+    /// support-bound placements and Support-height markers. The query point takes the binding's reference height. A
+    /// Surface binding samples only its owner. A Space binding searches below and above that height by its two extents.
+    /// The per-point scope spans 2 m around the point in its nearest frame, with every role and the given budgets. Callers
+    /// own their refusal wording.</summary>
+    internal static MapSupportResult SeatSupport(MapExactPoint point, MapSupportBinding binding, IMapSurfaceSource surfaces,
+        IReadOnlyList<string> assetSha256, MapQueryLimits limits)
+    {
+        var world = point with { Y = MapExactValue.FromSingle(binding.ReferenceY ?? 0) };
+        var frame = WorldFrame.Nearest(world.X.ToSingle(), world.Z.ToSingle());
+        float x = world.X.Subtract(new((long)frame.X * (long)WorldFrame.Grid, 1)).ToSingle();
+        float z = world.Z.Subtract(new((long)frame.Z * (long)WorldFrame.Grid, 1)).ToSingle();
+        var scope = new MapSurfaceScope(frame, new(x - 2, z - 2), new(x + 2, z + 2), null, null, Enum.GetValues<MapSurfaceRole>(), null, limits);
+        var view = MapScopedSurfaces.Acquire(surfaces, scope, assetSha256, MapScopedSurfaces.EffectiveQueryPolicyVersion,
+            MapScopedSurfaces.EffectiveBuildPolicyVersion);
+        var query = new MapSupportQuery(view);
+        return binding.Kind == MapSupportBindingKind.Surface ? query.SampleSurfaceExact(world, binding.SurfaceId!)
+            : query.SelectExact(new(MapEffectiveGeometry.Presentation(view, world), null, binding.SpaceId, null, binding.SearchAbove!.Value, binding.SearchBelow!.Value, null), world);
     }
 
     /// <summary>Resolves <paramref name="placements"/>, which belong to <paramref name="document"/>, in the given order

@@ -79,6 +79,11 @@ internal static class NativeDocumentSnapshot
         }
         if (writeSet.Prefabs) target.Prefabs = candidate.Prefabs?.Clone();
         if (writeSet.BuildingIntent) target.BuildingIntent = candidate.BuildingIntent?.Clone();
+        if (writeSet.LegacySpawns)
+        {
+            target.Spawns = candidate.Spawns;
+            target.PlayerSpawns = candidate.PlayerSpawns;
+        }
         if (writeSet.NativeResourceTransforms) target.NativeResourceTransforms = candidate.NativeResourceTransforms?.ToArray();
         if (writeSet.NumericReservations)
             target.NumericIdHighWaterMark = Math.Max(target.NumericIdHighWaterMark, candidate.NumericIdHighWaterMark);

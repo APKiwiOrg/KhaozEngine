@@ -26,10 +26,19 @@ public sealed class PrefabTools(PrefabService prefab, MutationService mutation, 
     public MapPrefabAsset PrefabExtract(string selectedJson, float x, float y, float z, float yaw, float scale, string assetId) =>
         ToolGuard.Guard(() => prefab.Extract(MapPrefabJson.ReadReferences(selectedJson), new(new(x, y, z), yaw, scale), assetId));
 
-    [McpServerTool(Name = "prefab_place"), Description("Places an immutable prefab using free XYZ metres, yaw radians and positive uniform scale.")]
+    /// <summary>The released positional adapter. The wire registers <see cref="PrefabPlaceWithOverrides"/> under prefab_place.</summary>
     public MapPrefabMutationResult PrefabPlace(string instanceId, string resourceId, float x, float y, float z, float yaw, float scale,
-        string? parentRefJson = null, bool numericLeaves = true) => ToolGuard.Guard(() => mutation.PrefabApply(new MapPlacePrefab(instanceId,
-            resourceId, new(new(x, y, z), yaw, scale), parentRefJson is null ? null : MapPrefabJson.ReadRecordRef(parentRefJson), numericLeaves)));
+        string? parentRefJson = null, bool numericLeaves = true) =>
+        PrefabPlaceWithOverrides(instanceId, resourceId, x, y, z, yaw, scale, parentRefJson, numericLeaves);
+
+    [McpServerTool(Name = "prefab_place"), Description("Places an immutable prefab using free XYZ metres, yaw radians and positive uniform scale. " +
+        "Optional overridesJson is a JSON array of closed keyed overrides the instance starts with, validated in the same placement, " +
+        "such as a marker replace override that gives a repeated instance its own marker name.")]
+    public MapPrefabMutationResult PrefabPlaceWithOverrides(string instanceId, string resourceId, float x, float y, float z, float yaw, float scale,
+        string? parentRefJson = null, bool numericLeaves = true, string? overridesJson = null) => ToolGuard.Guard(() => mutation.PrefabApply(
+            new MapPlacePrefab(instanceId, resourceId, new(new(x, y, z), yaw, scale), parentRefJson is null ? null : MapPrefabJson.ReadRecordRef(parentRefJson),
+                numericLeaves)
+            { InitialOverrides = overridesJson is null ? [] : MapPrefabJson.ReadOverrides(overridesJson) }));
 
     [McpServerTool(Name = "prefab_list"), Description("Lists the immutable prefab resources in the open map's verified closure.")]
     public IReadOnlyList<MapPrefabAssetInfo> PrefabList() => ToolGuard.Guard(prefab.List);

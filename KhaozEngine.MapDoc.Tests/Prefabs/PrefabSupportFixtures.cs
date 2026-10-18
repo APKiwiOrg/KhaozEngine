@@ -50,6 +50,19 @@ internal static partial class PrefabFixtures
         return Reasset(f, asset, captured: AssetsWithSupport(asset, support));
     }
 
+    /// <summary>The support-resource variant without the room records, their portal and the roof link, so no topology
+    /// anchors on or depends on the deck's implicit floor. It is captured through the same helpers.</summary>
+    internal static PrefabFixture RoomFreeSupportResource()
+    {
+        var f = SupportResourceFixture();
+        var removed = new HashSet<MapPrefabChildKey>(new[] { "room", "room-domain", "door-bottom", "door-top", "room-portal" }
+            .Select(key => new MapPrefabChildKey(MapPrefabChildKind.Record, key)))
+        { new(MapPrefabChildKind.RoofLink, "roof-link") };
+        var original = f.Assets.GetPrefab("hut");
+        var asset = original with { Children = original.Children.Where(c => !removed.Contains(c.Key)).ToArray() };
+        return Reasset(f, asset, captured: AssetsWithSupport(asset, f.Assets.BorrowSupport("deck-support")));
+    }
+
     sealed class SupportFloorReferences(string floor) : MapPrefabReferenceMap
     {
         internal override (string Id, MapPrefabReferenceScope? Scope) Text(string path, MapPrefabChildKind kind, string id, bool space) =>

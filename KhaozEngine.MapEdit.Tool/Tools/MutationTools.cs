@@ -66,7 +66,7 @@ public sealed class MutationTools(MutationService mutation, MapEditSession sessi
 
     // ---- spawns -------------------------------------------------------------------------------------------
 
-    [McpServerTool(Name = "spawn_add"), Description("Adds an NPC spawn marker. A null id auto-generates s-<archetypeId>-N.")]
+    [McpServerTool(Name = "spawn_add"), Description("Adds an NPC spawn marker. A null id auto-generates s-<archetypeId>-N. Analytic documents only. On native documents use marker_set, marker_remove or spawns_adopt.")]
     public MutationResult SpawnAdd(
         [Description("Archetype id of the NPC to spawn.")] string archetypeId,
         [Description("World X in meters (ground plane).")] float x,
@@ -76,33 +76,33 @@ public sealed class MutationTools(MutationService mutation, MapEditSession sessi
         [Description("Freeform tags to attach to the spawn. Null for none.")] string[]? tags = null)
         => ToolGuard.Guard(() => mutation.SpawnAdd(archetypeId, x, z, enabled, id, tags));
 
-    [McpServerTool(Name = "spawn_move"), Description("Moves a spawn to a new world XZ.")]
+    [McpServerTool(Name = "spawn_move"), Description("Moves a spawn to a new world XZ. Analytic documents only. On native documents use marker_set, marker_remove or spawns_adopt.")]
     public MutationResult SpawnMove(
         [Description("Id of the spawn to move.")] string id,
         [Description("New world X in meters (ground plane).")] float x,
         [Description("New world Z in meters (ground plane).")] float z)
         => ToolGuard.Guard(() => mutation.SpawnMove(id, x, z));
 
-    [McpServerTool(Name = "spawn_set_enabled"), Description("Toggles a spawn's enabled flag.")]
+    [McpServerTool(Name = "spawn_set_enabled"), Description("Toggles a spawn's enabled flag. Analytic documents only. On native documents use marker_set, marker_remove or spawns_adopt.")]
     public MutationResult SpawnSetEnabled(
         [Description("Id of the spawn to toggle.")] string id,
         [Description("New enabled state for the spawn.")] bool enabled)
         => ToolGuard.Guard(() => mutation.SpawnSetEnabled(id, enabled));
 
-    [McpServerTool(Name = "spawn_rename"), Description("Renames a spawn. The new id must be unique in the document.")]
+    [McpServerTool(Name = "spawn_rename"), Description("Renames a spawn. The new id must be unique in the document. Analytic documents only. On native documents use marker_set, marker_remove or spawns_adopt.")]
     public MutationResult SpawnRename(
         [Description("Current id of the spawn.")] string oldId,
         [Description("New id for the spawn, unique in the document.")] string newId)
         => ToolGuard.Guard(() => mutation.SpawnRename(oldId, newId));
 
-    [McpServerTool(Name = "spawn_remove"), Description("Removes a spawn by id.")]
+    [McpServerTool(Name = "spawn_remove"), Description("Removes a spawn by id. Analytic documents only. On native documents use marker_set, marker_remove or spawns_adopt.")]
     public MutationResult SpawnRemove(
         [Description("Id of the spawn to remove.")] string id)
         => ToolGuard.Guard(() => mutation.SpawnRemove(id));
 
     // ---- player spawns --------------------------------------------------------------------------------------
 
-    [McpServerTool(Name = "player_spawn_add"), Description("Adds a player start marker. A null id auto-generates player-N. Which spawn a game uses at runtime (single-player start, party rally point, respawn point) is game code's concern, so there is no archetype here.")]
+    [McpServerTool(Name = "player_spawn_add"), Description("Adds a player start marker. A null id auto-generates player-N. Which spawn a game uses at runtime (single-player start, party rally point, respawn point) is game code's concern, so there is no archetype here. Analytic documents only. On native documents use marker_set, marker_remove or spawns_adopt.")]
     public MutationResult PlayerSpawnAdd(
         [Description("World X in meters (ground plane).")] float x,
         [Description("World Z in meters (ground plane).")] float z,
@@ -112,32 +112,32 @@ public sealed class MutationTools(MutationService mutation, MapEditSession sessi
         [Description("Freeform tags to attach to the player spawn. Null for none.")] string[]? tags = null)
         => ToolGuard.Guard(() => mutation.PlayerSpawnAdd(x, z, yaw, enabled, id, tags));
 
-    [McpServerTool(Name = "player_spawn_move"), Description("Moves a player spawn to a new world XZ.")]
+    [McpServerTool(Name = "player_spawn_move"), Description("Moves a player spawn to a new world XZ. Analytic documents only. On native documents use marker_set, marker_remove or spawns_adopt.")]
     public MutationResult PlayerSpawnMove(
         [Description("Id of the player spawn to move.")] string id,
         [Description("New world X in meters (ground plane).")] float x,
         [Description("New world Z in meters (ground plane).")] float z)
         => ToolGuard.Guard(() => mutation.PlayerSpawnMove(id, x, z));
 
-    [McpServerTool(Name = "player_spawn_set_yaw"), Description("Sets a player spawn's facing yaw, in radians.")]
+    [McpServerTool(Name = "player_spawn_set_yaw"), Description("Sets a player spawn's facing yaw, in radians. Analytic documents only. On native documents use marker_set, marker_remove or spawns_adopt.")]
     public MutationResult PlayerSpawnSetYaw(
         [Description("Id of the player spawn to rotate.")] string id,
         [Description("New facing about the vertical Y axis, in radians.")] float yaw)
         => ToolGuard.Guard(() => mutation.PlayerSpawnSetYaw(id, yaw));
 
-    [McpServerTool(Name = "player_spawn_set_enabled"), Description("Toggles a player spawn's enabled flag.")]
+    [McpServerTool(Name = "player_spawn_set_enabled"), Description("Toggles a player spawn's enabled flag. Analytic documents only. On native documents use marker_set, marker_remove or spawns_adopt.")]
     public MutationResult PlayerSpawnSetEnabled(
         [Description("Id of the player spawn to toggle.")] string id,
         [Description("New enabled state for the player spawn.")] bool enabled)
         => ToolGuard.Guard(() => mutation.PlayerSpawnSetEnabled(id, enabled));
 
-    [McpServerTool(Name = "player_spawn_rename"), Description("Renames a player spawn. The new id must be unique in the document.")]
+    [McpServerTool(Name = "player_spawn_rename"), Description("Renames a player spawn. The new id must be unique in the document. Analytic documents only. On native documents use marker_set, marker_remove or spawns_adopt.")]
     public MutationResult PlayerSpawnRename(
         [Description("Current id of the player spawn.")] string oldId,
         [Description("New id for the player spawn, unique in the document.")] string newId)
         => ToolGuard.Guard(() => mutation.PlayerSpawnRename(oldId, newId));
 
-    [McpServerTool(Name = "player_spawn_remove"), Description("Removes a player spawn by id.")]
+    [McpServerTool(Name = "player_spawn_remove"), Description("Removes a player spawn by id. Analytic documents only. On native documents use marker_set, marker_remove or spawns_adopt.")]
     public MutationResult PlayerSpawnRemove(
         [Description("Id of the player spawn to remove.")] string id)
         => ToolGuard.Guard(() => mutation.PlayerSpawnRemove(id));
@@ -464,7 +464,7 @@ public sealed class MutationTools(MutationService mutation, MapEditSession sessi
 
     // ---- element duplicate (cross-kind) --------------------------------------------------------------------
 
-    [McpServerTool(Name = "element_duplicate"), Description("Duplicates one document element: a deep clone with a fresh unique identity, offset +2/+2 world units on X/Z for the kinds that carry a position. Mirrors the editor's own Cmd+D duplicate exactly (same id/name prefixes, same offset, named features/exclusions/scatter overrides get a uniquified '-copy' suffix while unnamed ones stay unnamed). Terrain has no duplicate, since it is a document singleton. Exactly one of id or index must be supplied, matching the kind's own addressing.")]
+    [McpServerTool(Name = "element_duplicate"), Description("Duplicates one document element: a deep clone with a fresh unique identity, offset +2/+2 world units on X/Z for the kinds that carry a position. Mirrors the editor's own Cmd+D duplicate exactly (same id/name prefixes, same offset, named features/exclusions/scatter overrides get a uniquified '-copy' suffix while unnamed ones stay unnamed). Terrain has no duplicate, since it is a document singleton. Exactly one of id or index must be supplied, matching the kind's own addressing. Native spawn and player_spawn duplication refuses. Use marker_set or spawns_adopt.")]
     public MutationResult ElementDuplicate(
         [Description("Element kind: placement, spawn, player_spawn, region, scatter_layer, or companion_layer (id/name-keyed), or feature, exclusion, scatter_override, or biome_band (index-keyed).")] string kind,
         [Description("Id or name of the element to duplicate, for an id/name-keyed kind. Null for an index-keyed kind.")] string? id = null,

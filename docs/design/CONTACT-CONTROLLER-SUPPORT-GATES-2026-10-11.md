@@ -678,6 +678,123 @@ An existing row's expectation changes only by geometric derivation, recorded in 
 the changelog. Phase 5 bakes navigation from the complete rule. Cost if wrong: the owner disagrees
 with one class, and that class alone is reverted with its rows.
 
+CF-1 and CF-2 add the derived #1429 disposition. An obliquely yawed plate pitched 0.05 or 0.1 radians,
+or 3 or 6 degrees, changes from Refused to Walkable in floating, bottom-corner resting and intersecting
+placements, for compounds, split statics and standalone installations. Its installed top-face height
+is `min(own plane, closed-disc maximum, directly joined same-kind planes)`. A face disappears only
+after every projected source vertex is proved strictly beyond a separating halfplane's entire
+expanded-disc support bound. Closed tangency and ring-only context remain. An axis or disc extremum
+proved outside the finite face needs no plane height. Relevant unresolved orientation, retained
+membership, plane divisors and proposal guards still refuse atomically. This changes certification
+completeness only, with no join, guard, selection, tolerance or cost-gate change. The final follow-up
+task records the player-facing changelog entry under CF-7.
+
+CF-3 and CF-6 add the derived #1455 disposition. Ordinary float quarter turns about X and Z,
+with radii 0.1, 0.15 and 0.3 m and either approach sign, change from Refused to Walkable when
+their installed geometry, proposal guards and band permit support. Their small nonzero installed
+Y remains tilted. The two signed closed-disc lateral endpoints retain their defining source
+equations. Source-proved parameter, finite-axis and slope membership establish an attained lower
+bound without subtracting independently enclosed equal squared quantities. Possible stationary
+regions still enclose the maximum above that bound and are not promoted to attained points.
+The selected contribution remains SG-19's tangent capped by witness height, with independent Axis
+and Footprint roles and original raw leaf and part identity. The exact horizontal radius-0.15 flank
+control contributes about 0.22071071 m, rather than the 0.3 m crest. Tilted poses use their own
+installed-geometry oracle. Unproved source families, including the original cell-bound fixture,
+continue to refuse atomically. Above-band and invalid starts, steep-only climbs, raw capacity,
+closed-disc and ring protections are unchanged. No timing, adoption, navigation or release
+acceptance follows from this certification change. CF-7's final task records the changelog entry.
+
+The crest-region follow-up changes 128 more query rows of
+`LyingLogCrestRegionSupportsWithInstalledPoseOracle` from Refused to Walkable. These queries have feet
+on the crest, cylinder or capsule, either turn, and across offsets from -0.2 to 0.2 m in 1/60 m
+steps. For radius 0.1 they are the 32 queries at |across| 7/60 to 10/60 m. For radius 0.15 they are
+the 96 queries at every nonzero offset. Their stationary root region was closed at z=0 and refused
+before the source-proved nonzero constant term excluded that root. The radius-0.15 rim tangency
+queries at |across| 0.2 m are Walkable with HeightError near 0.00054 m. Their containment holds, and
+SG-16 keeps the half-skin ceiling for the interior rows only.
+
+The changed rows are exactly the 24 `LyingLogFlankSupportsWithInstalledPoseOracle` rows. They cover
+cylinder and capsule, radius 0.1, 0.15 and 0.3 m, a `MathF.PI/2` turn about X or Z, and a query
+0.25 m across the barrel on either side. Each was Refused before this change and is now Walkable
+with a Complete footprint. The 144-row `LyingLogRolesAndEndSeamsKeepRawParts` matrix pins 116
+Complete footprints with their raw parts and roles. Its results before this change were not
+measured, so it records no further change. Its other 28 rows still refuse atomically. Write t for
+the longitudinal query coordinate along the upward source core axis and a for the across-barrel
+coordinate. Counts include both rotations.
+
+| Shape | Radius | Across a | Longitudinal t | Rows |
+| --- | --- | --- | --- | --- |
+| Cylinder | 0.15 | 0 | 0.5 | 2 |
+| Cylinder | 0.3 | 0, -0.25, +0.25 | 0.5 | 6 |
+| Cylinder | 0.3 | 0 | BitDecrement(0.5) | 2 |
+| Capsule | 0.15 | 0 | -0.5 | 2 |
+| Capsule | 0.15 | -0.25, +0.25 | BitDecrement(0.5) | 4 |
+| Capsule | 0.3 | 0 | -0.5, BitDecrement(0.5) | 4 |
+| Capsule | 0.3 | -0.25, +0.25 | -0.5, BitDecrement(-0.5) | 8 |
+
+Each of these rows has a source-proved side, but an end or hemisphere certificate that this change
+leaves untouched is unresolved. All 10 cylinder rows have an unresolved cap Axis. Ten capsule rows
+have an unresolved round Axis. Four radius-0.3 rows outside the lower end have a proved round Axis
+and an unresolved round disc maximum. Four radius-0.15 rows inside the upper end have no round Axis
+and an unresolved round disc maximum. Each returns Unsupported with unchanged member spans and join
+words, and Find returns Refused with no lower-floor fallback.
+
+CF-4, CF-5 and CF-6 add the derived #1454 disposition. Support selection is identical: the same raw winner,
+height, error, normal, witness and status. What changes is accounting at a crossing between two different walkable
+raw members whose selected pair either endpoint's complete footprint directly joins under the released predicate.
+`GroundSeat.StepPart` and `DiscreteStep` then take the SC-17 same-member signed grade excess instead of the
+edge-aware level residual. The pinned rows are `JoinedEdgeWithinWalkableGradeDoesNotCharge` on the plane
+y = 0.7x + 0.7z ending at x 0, footprint radius 0.2 at x 0.18, moving 0.1 along z. Two mesh triangles or two
+statics changed from StepPart 0.07 and DiscreteStep 0.07 to zero, and in reverse from StepPart -0.06999999 and
+DiscreteStep -0.07 to zero. The one-polygon control was already zero. Through ground signals, look-ahead from the
+same plane at radius 0.125 that crosses from A to B at its first 0.25 m sample, with a seated rise and no carried run,
+changed from a false ascent (ClimbRate and EWMA 1.47, StepDeltaY 0) to no run (0, 0 and the move's own 0.02 step).
+Prediction and server run the same seat and signal code on the same certified samples, so they stay in parity.
+Still charged: a rise beyond the walkable grade across a joined edge keeps its signed excess
+(`JoinedEdgeGradeExcessAndDropsKeepTheClimbBudget`, about 0.028 m over a 0.019 m move), a drop beyond grade stays a
+negative discrete step with no climb charge, and owed debt, placement and the climb budget are unchanged. A crack
+wider than the 0.1 mm band, or a transitive A-B-C chain without a direct A-C join, keeps the level residual
+(`JoinedEdgeNeedsTheDirectSelectedPair`). Curved parts and analytic terrain carry no joins. An unresolved relevant
+join still refuses the whole footprint. Evidence from a disposed, rebased or rebuilt interval, another receiver or
+another thread throws rather than excusing a rise. No selection, tolerance, band, raw-member bound or cost gate changes. Per
+FA-R5 the rows live in an arena the support memo owns for its interval, and a supported physics sample carries
+only a 16-byte handle (arena, slot and epoch). A stale handle from a closed interval throws, even after the arena
+reuses its slots. Measured on the 64-bit layout, a sample is 64 bytes, a seat result and a placement 96 and a
+ground step result 120, pinned by `JoinedEdgeEvidenceIsAnIntervalHandleThatAllocatesNothing`. One support memo
+with its arena provisions 21,040 bytes once. FA-R10 fixes retention at 64 rows and 1,024 keys. A complete row
+that would exceed either budget gets no handle and keeps the unjoined rule, identically on both heads, without
+truncating earlier evidence or allocating in Find. Warm support reads, their row capture and copies allocate
+nothing. The dry door preprovisions four independent memo arenas on first use, so an ordinary tick and three
+nested intervals keep the same certified joins. A fifth simultaneous dry interval throws InvalidOperationException
+before execution. A support read outside an open interval carries no handle and keeps the unjoined rule.
+No timing is claimed for the larger copies.
+
+CF-6's headless traversal adds no further result change. `ContactFollowupTraversalTests` drives the dry ground
+core through each tick's own lease and open support memo, with the default tuning at 1 m/s and 60 Hz. Planks
+pitched 3 and 6 degrees at yaw 0.77, compound and standalone, in both directions, reach the plank centre or a
+floor target 0.75 m past it within the 1 mm arrival ball in at most 240 ticks. HeightError stays at most
+0.0005 m, and a tick seated on the top face throughout has no step rise. Cylinders and capsules of radius 0.1
+and 0.15 m, in both turns and both directions, arrive the same way on the crest or past it. Per ruling FA-R8
+the 0.3 m log's 0.6 m crest is above the 0.4 m step height. Its approach stays on the floor with no climb and
+no shell overlap, blocked within two contact skins of the lifted shell's analytic contact near 0.49 m. A body
+seated on that crest walks 0.25 m along it or 0.3 m down its walkable flank and arrives within 1 mm. Every
+row replays bit for bit. Those ground-core rows stop before the steep lower flank. Per FA-R9
+the leased head's traversal over rotated, hull, mesh and curved props waits on certified general sweeps (#1355).
+
+The #1486 walk-off adds four full dry controller rows in `ContactCurvedFlankLandingTests`: cylinder and capsule,
+radius 0.3 m, both lying turns, starting on the 0.6 m crest and walking across the flank toward the floor.
+Previously all four stopped airborne at tick 29, feet about 0.0359118 m above the floor, through tick 240.
+All four now land on the raw floor at tick 31, remain shell-clear throughout, and arrive Grounded at tick 46
+within the unchanged 1 mm ball and 240-tick bound. Eight `RejectedSlideSeatHandsUnspentTimeToAir` rows pin both
+rejected seat kinds.
+A walkable floor seat can fail clearance against the curved flank. Previously it retained the old steep
+support, so the slide clipped its fall to zero. A rejected steep seat already reported airborne, but lost the
+failed substep's time. Both now hand off from the last clear position with that unspent time. No placement
+was accepted in the failed substep. Ordinary shell sweeps own the fall from there, before footprint support
+lands the feet. Recovery, support selection, raw owner and part identity, roof and footprint protections,
+skins, bands and the rule that steep contact never grounds the body are unchanged. This is a controller
+handoff correction, with no certified sweep, cost, adoption or navigation acceptance.
+
 **Ruling SG-24. The hosted proof is plumbed, normalized and approved before it gates #1334.** The
 repository's stress caller (`.github/workflows/stress-test.yml`) now forwards support-cost mode to the
 pinned shared workflow, which sets `KHAOZ_SUPPORT_COST_ARTIFACT` and `DOTNET_TieredCompilation=0`,

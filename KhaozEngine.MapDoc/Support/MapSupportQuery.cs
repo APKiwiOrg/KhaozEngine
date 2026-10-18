@@ -81,7 +81,13 @@ public sealed class MapSupportQuery
                 {
                     MapPatchKey key = MapPatchKey.ForCell(surface.Id, x, z);
                     if (!_view.TryAcquiredPatch(key, out MapSurfacePatch? patch, out MapPatchStatus status))
+                    {
+                        // A complete acquisition reads every patch that meets its scope, and the point lies inside the
+                        // scope. A floor captured through incident records or an empty neighbouring slot therefore holds
+                        // no cell here when its slot was never read. A recorded unavailable read still refuses.
+                        if (!_view.HasRead(key)) continue;
                         return Failure(MapSupportStatus.MissingGeometry, $"patch {key}: {status}");
+                    }
                     if (patch is not null) cells.Add(new(key, MapLowerCellClassifier.SlotCell(x, z)));
                 }
             }

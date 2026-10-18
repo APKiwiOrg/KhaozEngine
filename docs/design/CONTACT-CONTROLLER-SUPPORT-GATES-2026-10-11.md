@@ -778,8 +778,22 @@ and 0.15 m, in both turns and both directions, arrive the same way on the crest 
 the 0.3 m log's 0.6 m crest is above the 0.4 m step height. Its approach stays on the floor with no climb and
 no shell overlap, blocked within two contact skins of the lifted shell's analytic contact near 0.49 m. A body
 seated on that crest walks 0.25 m along it or 0.3 m down its walkable flank and arrives within 1 mm. Every
-row replays bit for bit. Walking on past the steep lower flank into the air pass is not covered. Per FA-R9
+row replays bit for bit. Those ground-core rows stop before the steep lower flank. Per FA-R9
 the leased head's traversal over rotated, hull, mesh and curved props waits on certified general sweeps (#1355).
+
+The #1486 walk-off adds four full dry controller rows in `ContactCurvedFlankLandingTests`: cylinder and capsule,
+radius 0.3 m, both lying turns, starting on the 0.6 m crest and walking across the flank toward the floor.
+Previously all four stopped airborne at tick 29, feet about 0.0359118 m above the floor, through tick 240.
+All four now land on the raw floor at tick 31, remain shell-clear throughout, and arrive Grounded at tick 46
+within the unchanged 1 mm ball and 240-tick bound. Eight `RejectedSlideSeatHandsUnspentTimeToAir` rows pin both
+rejected seat kinds.
+A walkable floor seat can fail clearance against the curved flank. Previously it retained the old steep
+support, so the slide clipped its fall to zero. A rejected steep seat already reported airborne, but lost the
+failed substep's time. Both now hand off from the last clear position with that unspent time. No placement
+was accepted in the failed substep. Ordinary shell sweeps own the fall from there, before footprint support
+lands the feet. Recovery, support selection, raw owner and part identity, roof and footprint protections,
+skins, bands and the rule that steep contact never grounds the body are unchanged. This is a controller
+handoff correction, with no certified sweep, cost, adoption or navigation acceptance.
 
 **Ruling SG-24. The hosted proof is plumbed, normalized and approved before it gates #1334.** The
 repository's stress caller (`.github/workflows/stress-test.yml`) now forwards support-cost mode to the

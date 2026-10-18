@@ -26,6 +26,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   triangles or statics without a pacing hitch or a false step signal (#1429, #1455, #1454). Log ends and capsule caps
   can still refuse support, and authoritative ticks over rotated, hull, mesh and round props still wait on certified
   shell sweeps (#1355).
+- Contact controller bodies walking off a tall lying log fall to the floor instead of hanging beside its steep
+  lower flank. A slide whose next seat fails shell clearance hands its unspent motion to the air pass (#1486).
 
 ## 21.4.0
 

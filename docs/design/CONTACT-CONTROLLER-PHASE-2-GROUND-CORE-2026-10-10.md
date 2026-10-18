@@ -131,6 +131,9 @@ internal static class GroundCore
    Commit position, support and budget only after selecting a valid attempt. An unaffordable clearance push
    invalidates only that attempt. A paced shell can still advance along a valid standing route to the next
    nosing contact less skin, pay the remaining climb in later ticks and reach the next tread.
+   In slide mode, a steep or walkable seat that fails placement leaves the body airborne at the last clear
+   position. Its failed substep accepted no motion, so the air pass receives that substep's time too (#1486).
+   Keeping the old steep support would clip the fall to zero when the floor seat overlaps a curved flank.
 
 The contact skin is 1 mm. It backs off a sweep only when the sweep hits something, so it never shortens free
 motion. That is the difference from the legacy pre-sweep clearance push measured in #1270.

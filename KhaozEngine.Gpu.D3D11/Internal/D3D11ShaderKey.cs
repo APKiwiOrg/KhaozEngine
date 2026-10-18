@@ -79,7 +79,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <param name="programSources">Every GLSL source of the program, in declaration order.</param>
         /// <returns>Lowercase hex SHA-256, 64 characters, safe as a file name on every platform.</returns>
         internal static string For(D3D11ShaderStage stage, uint flags, params string[] programSources)
-            => For(stage, flags, SpirvToolchainVersion.Identity, programSources);
+            => For(stage, flags, default(GpuShaderCompileOptions), programSources);
+
+        internal static string For(D3D11ShaderStage stage, uint flags, GpuShaderCompileOptions options,
+            params string[] programSources)
+            => For(stage, flags, SpirvToolchainVersion.Identity, programSources, options);
 
         /// <summary>
         /// The same key with the cross-compiler's identity passed in, so its contribution is testable without
@@ -94,9 +98,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <param name="stage">Which stage's DXBC this key identifies.</param>
         /// <param name="flags">The FXC flags the compile will use.</param>
         /// <param name="spirvToolchain">Stands in for <see cref="SpirvToolchainVersion.Identity"/>.</param>
+        /// <param name="options">Per-shader arithmetic policy. For graphics pairs it applies to the vertex stage.</param>
         /// <param name="programSources">Every GLSL source of the program, in declaration order.</param>
         internal static string For(D3D11ShaderStage stage, uint flags, string spirvToolchain,
-            string[] programSources)
+            string[] programSources, GpuShaderCompileOptions options = default)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(spirvToolchain);
             ArgumentNullException.ThrowIfNull(programSources);
@@ -111,12 +116,14 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             text.Append(Schema).Append('\n')
                 .Append(EngineVersion).Append('\n')
                 .Append(spirvToolchain).Append('\n')
-                .Append(SpirvFrontEndPin.Identity).Append('\n')
+                .Append(SpirvFrontEndPin.IdentityFor(options)).Append('\n')
                 .Append(HlslCrossCompilePin.Identity).Append('\n')
                 .Append(D3D11ShaderProfile.For(stage)).Append('\n')
-                .Append(flags.ToString("x8", CultureInfo.InvariantCulture)).Append('\n')
+                .Append(D3D11ShaderCompileFlags.For(stage, flags, options).ToString("x8", CultureInfo.InvariantCulture)).Append('\n')
                 .Append(D3D11ShaderProfile.EntryPoint).Append('\n')
                 .Append(programSources.Length.ToString(CultureInfo.InvariantCulture)).Append('\n');
+
+            if (options.PreciseMath) text.Append("precise=1\n");
 
             // Each source is LENGTH-PREFIXED, so two sources cannot be confused for one longer one by moving the
             // boundary between them. A plain separator would be forgeable by a source containing the separator.

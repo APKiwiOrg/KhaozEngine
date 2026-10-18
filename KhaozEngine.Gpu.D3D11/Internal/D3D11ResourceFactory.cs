@@ -206,14 +206,22 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
         /// <inheritdoc/>
         public IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl)
+            => CreateShadersFromSpirv(vertGlsl, fragGlsl, default);
+
+        /// <inheritdoc/>
+        public IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl, GpuShaderCompileOptions vertexOptions)
         {
-            using (_creation.Enter()) return _shaders.CreateShaderSet(vertGlsl, fragGlsl);
+            using (_creation.Enter()) return _shaders.CreateShaderSet(vertGlsl, fragGlsl, vertexOptions);
         }
 
         /// <inheritdoc/>
         public IGpuComputeShader CreateComputeShaderFromSpirv(string computeGlsl)
+            => CreateComputeShaderFromSpirv(computeGlsl, default);
+
+        /// <inheritdoc/>
+        public IGpuComputeShader CreateComputeShaderFromSpirv(string computeGlsl, GpuShaderCompileOptions options)
         {
-            using (_creation.Enter()) return _shaders.CreateComputeShader(computeGlsl);
+            using (_creation.Enter()) return _shaders.CreateComputeShader(computeGlsl, options);
         }
 
         /// <inheritdoc/>

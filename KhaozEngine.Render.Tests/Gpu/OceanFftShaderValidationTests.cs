@@ -7,7 +7,7 @@ namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
     /// Device-free validation of the FFT ocean's two compute kernels at every resolution the producer will build
-    /// them at, through <see cref="ShaderValidation.ValidateCompute"/> (SPIR-V, then HLSL / MSL / GLSL / ESSL).
+    /// them at, through <see cref="ShaderValidation.ValidateCompute(string, string?)"/> (SPIR-V, then HLSL / MSL / GLSL / ESSL).
     /// Plain <c>[Fact]</c>s, so a source that fails to cross-compile to one backend fails the fast lane on every
     /// push instead of surfacing only on that backend's GPU leg.
     /// <para>

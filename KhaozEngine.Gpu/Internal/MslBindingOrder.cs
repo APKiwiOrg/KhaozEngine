@@ -14,8 +14,8 @@ namespace KhaozEngine.Gpu.Internal
     internal readonly record struct MslBoundResource(string Space, int Index, uint Set, uint Binding);
 
     /// <summary>
-    /// THE METAL INDEX-ORDER GUARD, run by <see cref="ShaderValidation.ValidatePair"/> and
-    /// <see cref="ShaderValidation.ValidateCompute"/> over every stage they cross-compile. One check, device-free,
+    /// THE METAL INDEX-ORDER GUARD, run by <see cref="ShaderValidation.ValidatePair(string, string, string?)"/> and
+    /// <see cref="ShaderValidation.ValidateCompute(string, string?)"/> over every stage they cross-compile. One check, device-free,
     /// reading only what a cross-compile already produced.
     ///
     /// <para>
@@ -88,7 +88,7 @@ namespace KhaozEngine.Gpu.Internal
         /// <param name="msl">The emitted Metal source for that stage.</param>
         /// <param name="stage">Which stage, for the entry-point keyword and the error message.</param>
         /// <param name="tag">The shader's label, included in any error message.</param>
-        /// <returns>The resolved arguments per index space, which <see cref="ShaderValidation.ValidateCompute"/>
+        /// <returns>The resolved arguments per index space, which <see cref="ShaderValidation.ValidateCompute(string, string?)"/>
         /// reads to decide whether its kind-comparing fallback has anything left to do, or null when the entry
         /// point could not be read at all.</returns>
         /// <exception cref="ShaderValidationException">A stage's Metal index order disagrees with its binding

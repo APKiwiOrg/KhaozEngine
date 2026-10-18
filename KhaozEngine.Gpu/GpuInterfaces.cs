@@ -143,6 +143,12 @@ namespace KhaozEngine.Gpu
         /// <c>SpirvCrossCompile</c> where its API wants HLSL or MSL (until 18.0.0 the incumbent wrapped
         /// <c>Veldrid.SPIRV.CreateFromSpirv</c> instead).</summary>
         IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl);
+        /// <summary>Compile a graphics pair with per-vertex arithmetic policy. Fragment compilation stays at
+        /// its default policy. Implementations without precision support refuse a precise request.</summary>
+        IGpuShaderSet CreateShadersFromSpirv(string vertGlsl, string fragGlsl, GpuShaderCompileOptions vertexOptions)
+            => vertexOptions.PreciseMath
+                ? throw new NotSupportedException("This GPU factory does not support precise vertex math.")
+                : CreateShadersFromSpirv(vertGlsl, fragGlsl);
         /// <summary>Cross-compile a GLSL 450 SPIR-V COMPUTE source (entry point <c>main</c>) into a backend compute
         /// shader, by the same front end and cross-compile path as the graphics pair. The workgroup size is read
         /// back off the compiled module and surfaced on <see cref="IGpuComputeShader.ThreadGroupSizeX"/>, which is
@@ -151,11 +157,17 @@ namespace KhaozEngine.Gpu
         /// default workgroup size is 1x1x1 and that is what gets compiled in, so a dispatch runs ONE invocation per
         /// group and the shader is silently a few hundred times slower than intended rather than broken. Nothing
         /// can catch that for you, because a deliberate 1x1x1 is legal.</para>
-        /// Validate the source device-free first with <see cref="ShaderValidation.ValidateCompute"/>. Throws
+        /// Validate the source device-free first with <see cref="ShaderValidation.ValidateCompute(string, string?)"/>. Throws
         /// <see cref="NotSupportedException"/> on a device whose <see cref="GpuCapabilities.SupportsCompute"/> is
         /// false, so a caller that forgot to gate fails loudly instead of at dispatch, and
         /// <see cref="ShaderValidationException"/> when the source does not compile.</summary>
         IGpuComputeShader CreateComputeShaderFromSpirv(string computeGlsl);
+        /// <summary>Compile a compute shader with per-shader arithmetic policy. Implementations without
+        /// precision support refuse a precise request.</summary>
+        IGpuComputeShader CreateComputeShaderFromSpirv(string computeGlsl, GpuShaderCompileOptions options)
+            => options.PreciseMath
+                ? throw new NotSupportedException("This GPU factory does not support precise compute math.")
+                : CreateComputeShaderFromSpirv(computeGlsl);
         /// <summary>Create a graphics pipeline.</summary>
         IGpuPipeline CreateGraphicsPipeline(in GpuPipelineDescription d);
         /// <summary>Create a compute pipeline. Throws <see cref="NotSupportedException"/> when the device does not

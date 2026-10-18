@@ -132,10 +132,15 @@ namespace KhaozEngine.Gpu.Internal
         /// the SPIR-V itself, and the bytes already embody every option that produced them.
         /// </para>
         /// </summary>
-        internal static readonly string Identity =
+        internal static readonly string Identity = IdentityFor(default);
+
+        internal static OptimizationLevel OptimizationFor(GpuShaderCompileOptions options)
+            => options.PreciseMath ? OptimizationLevel.Zero : Optimization;
+
+        internal static string IdentityFor(GpuShaderCompileOptions options) =>
             "shaderc/spirv"
             + ";debug=" + Bit(Debug)
-            + ";opt=" + Optimization.ToString()
+            + ";opt=" + OptimizationFor(options).ToString()
             + ";env=" + TargetEnvironment.ToString() + "." + TargetEnvironmentVersion.ToString(CultureInfo.InvariantCulture)
             + ";spirv=" + SpirvTarget.ToString()
             + ";macros=" + MacroCount.ToString(CultureInfo.InvariantCulture)

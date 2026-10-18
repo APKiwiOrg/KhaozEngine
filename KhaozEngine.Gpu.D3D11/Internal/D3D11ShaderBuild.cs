@@ -51,13 +51,13 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <exception cref="ShaderValidationException">A source failed to compile to SPIR-V, the pair failed to
         /// cross-compile, FXC rejected the emitted HLSL, or the vertex input signature is holed.</exception>
         internal static D3D11CompiledPair Pair(string vertexGlsl, string fragmentGlsl, uint flags,
-            D3D11DxbcCache? cache, string? label = null)
+            D3D11DxbcCache? cache, string? label = null, GpuShaderCompileOptions options = default)
         {
             ArgumentNullException.ThrowIfNull(vertexGlsl);
             ArgumentNullException.ThrowIfNull(fragmentGlsl);
 
-            string vertexKey = D3D11ShaderKey.For(D3D11ShaderStage.Vertex, flags, vertexGlsl, fragmentGlsl);
-            string fragmentKey = D3D11ShaderKey.For(D3D11ShaderStage.Fragment, flags, vertexGlsl, fragmentGlsl);
+            string vertexKey = D3D11ShaderKey.For(D3D11ShaderStage.Vertex, flags, options, vertexGlsl, fragmentGlsl);
+            string fragmentKey = D3D11ShaderKey.For(D3D11ShaderStage.Fragment, flags, options, vertexGlsl, fragmentGlsl);
             string tag = label ?? ("d3d11 program " + D3D11ShaderKey.ShortTag(vertexKey));
 
             byte[]? vertexDxbc = cache?.TryRead(vertexKey);
@@ -65,9 +65,9 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
             if (vertexDxbc is null || fragmentDxbc is null)
             {
-                CrossCompiledPair hlsl = SpirvCrossCompile.GlslPairToHlsl(vertexGlsl, fragmentGlsl, tag);
+                CrossCompiledPair hlsl = SpirvCrossCompile.GlslPairToHlsl(vertexGlsl, fragmentGlsl, tag, options);
                 vertexDxbc ??= CompileAndCache(
-                    hlsl.VertexSource, D3D11ShaderStage.Vertex, flags, cache, vertexKey, tag + " [vertex]");
+                    hlsl.VertexSource, D3D11ShaderStage.Vertex, flags, cache, vertexKey, tag + " [vertex]", options);
                 fragmentDxbc ??= CompileAndCache(
                     hlsl.FragmentSource, D3D11ShaderStage.Fragment, flags, cache, fragmentKey, tag + " [fragment]");
             }
@@ -106,30 +106,30 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <exception cref="ShaderValidationException">The source failed to compile to SPIR-V, failed to
         /// cross-compile, declares no resolvable workgroup size, or FXC rejected the emitted HLSL.</exception>
         internal static D3D11CompiledCompute Compute(string computeGlsl, uint flags, D3D11DxbcCache? cache,
-            string? label = null)
+            string? label = null, GpuShaderCompileOptions options = default)
         {
             ArgumentNullException.ThrowIfNull(computeGlsl);
 
-            string key = D3D11ShaderKey.For(D3D11ShaderStage.Compute, flags, computeGlsl);
+            string key = D3D11ShaderKey.For(D3D11ShaderStage.Compute, flags, options, computeGlsl);
             string tag = label ?? ("d3d11 compute " + D3D11ShaderKey.ShortTag(key));
 
-            byte[] spirv = SpirvFrontEnd.ToSpirv(computeGlsl, GpuShaderStages.Compute, tag);
+            byte[] spirv = SpirvFrontEnd.ToSpirv(computeGlsl, GpuShaderStages.Compute, tag, options);
             (uint x, uint y, uint z) = SpirvLocalSize.Parse(spirv, tag);
 
             byte[]? dxbc = cache?.TryRead(key);
             if (dxbc is null)
             {
-                CrossCompiledCompute hlsl = SpirvCrossCompile.ComputeToHlsl(spirv, tag);
-                dxbc = CompileAndCache(hlsl.ComputeSource, D3D11ShaderStage.Compute, flags, cache, key, tag);
+                CrossCompiledCompute hlsl = SpirvCrossCompile.ComputeToHlsl(spirv, tag, options);
+                dxbc = CompileAndCache(hlsl.ComputeSource, D3D11ShaderStage.Compute, flags, cache, key, tag, options);
             }
 
             return new D3D11CompiledCompute(dxbc, x, y, z);
         }
 
         static byte[] CompileAndCache(string hlsl, D3D11ShaderStage stage, uint flags, D3D11DxbcCache? cache,
-            string key, string label)
+            string key, string label, GpuShaderCompileOptions options = default)
         {
-            byte[] dxbc = D3D11Fxc.Compile(hlsl, D3D11ShaderProfile.For(stage), flags, label);
+            byte[] dxbc = D3D11Fxc.Compile(hlsl, D3D11ShaderProfile.For(stage), D3D11ShaderCompileFlags.For(stage, flags, options), label);
             cache?.TryWrite(key, dxbc);   // best effort by contract: a cache that cannot be written is a slower start
             return dxbc;
         }

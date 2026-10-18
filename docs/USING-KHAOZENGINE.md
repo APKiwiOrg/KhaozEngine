@@ -22129,6 +22129,32 @@ shader fails CI instead of surfacing only when a player on that backend loads th
 `ShaderValidation.ValidateCompute(computeGlsl, label?)` is the single-stage sibling for a compute shader
 (see the next section).
 
+### Precise compute and vertex arithmetic
+
+Use both authored GLSL `precise` qualifiers and the per-shader compile option when an algorithm depends on
+separate multiply and add operations:
+
+```csharp
+var precise = new GpuShaderCompileOptions(PreciseMath: true);
+ShaderValidation.ValidateCompute(computeGlsl, precise, "coverage kernel");
+ShaderValidation.ValidatePair(vertexGlsl, fragmentGlsl, precise, "coverage pair");
+using IGpuComputeShader compute = factory.CreateComputeShaderFromSpirv(computeGlsl, precise);
+using IGpuShaderSet pair = factory.CreateShadersFromSpirv(vertexGlsl, fragmentGlsl, precise);
+```
+
+For example, `precise float p = a * b; precise float q = p + c;` preserves the authored operations. Precise
+mode selects shaderc optimization Zero while retaining Vulkan 1.0, SPIR-V 1.0 and entry point `main`.
+The resulting `NoContraction` decorations survive into HLSL `precise` and MSL `spvFMul` and `spvFAdd` helpers.
+FXC adds IEEE strictness to compute and vertex compilation. Metal disables fast math for those precise stages
+while retaining MSL language 3.2 and the existing preserve-invariance policy. Graphics fragments still compile
+with their default options. The process memo and SPIR-V, DXBC and MSL disk caches keep the two policies separate,
+including the whole paired-program identity where stages are emitted together.
+
+The default overloads retain optimized compilation. The option does not insert GLSL qualifiers or establish
+identical transcendental or denormal behavior across devices. Coverage kernels must opt in and author their
+position arithmetic as `precise`. External factories that have not implemented precision reject a precise
+request with `NotSupportedException` rather than silently ignoring it.
+
 ### A shader source is compiled to SPIR-V once per process (17.37.0)
 
 Nothing to call and nothing to configure, but worth knowing about if you have ever wondered why standing up a

@@ -5,7 +5,7 @@ namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
     /// Device-free validation of every compute shader in the proof suite, through
-    /// <see cref="ShaderValidation.ValidateCompute"/>. Plain <c>[Fact]</c>s, not <c>[GpuFact]</c>s, so a compute
+    /// <see cref="ShaderValidation.ValidateCompute(string, string?)"/>. Plain <c>[Fact]</c>s, not <c>[GpuFact]</c>s, so a compute
     /// source that fails to cross-compile to one backend fails the fast GPU-free lane on every push instead of
     /// surfacing only on that backend's GPU leg. The compute mirror of
     /// <see cref="ShaderSourceValidationTests"/>.

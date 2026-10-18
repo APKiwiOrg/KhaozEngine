@@ -8,7 +8,7 @@ namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>End-to-end smoke of the engine GPU abstraction on the real device (Metal on the dev box): create
     /// a device, a buffer, a render-target texture + framebuffer, a passthrough graphics pipeline (built via
-    /// <see cref="IGpuResourceFactory.CreateShadersFromSpirv"/>), and a command list; record + submit an empty
+    /// <see cref="IGpuResourceFactory.CreateShadersFromSpirv(string, string)"/>), and a command list; record + submit an empty
     /// clear pass; read back one pixel; dispose. Proves the platform's backend actually works through the seam.
     /// Runs only with <c>KE_GPU_TESTS=1</c>.</summary>
     public class GpuDeviceSmokeTests

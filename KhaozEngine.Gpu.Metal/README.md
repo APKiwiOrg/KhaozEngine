@@ -564,7 +564,7 @@ anything to see them by. All of it happens with no device involved, so a shader 
 on a CI leg that has no GPU rather than as a wrong pixel on one that does.
 
 **The emission is pinned twice and neither pin covers the numbering.** One pin freezes the cross-compile options
-and one freezes `MTLCompileOptions` (`languageVersion` 3.2, fast math on, `preserveInvariance` off, all measured
+and one freezes default `MTLCompileOptions` (`languageVersion` 3.2, fast math on, `preserveInvariance` off, all measured
 rather than assumed). Neither reaches the cross-compiler's naming or index assignment, which the binding table
 depends on. What freezes those is the exact `Silk.NET.Shaderc` and `Silk.NET.SPIRV.Cross` versions the engine
 pins, so that drift arrives on a deliberate package bump and lands as a red device-free test rather than as a
@@ -572,6 +572,11 @@ wrong frame. Those versions are in the emission cache's key as well, read off th
 rather than out of the props file, so a bump partitions the cache instead of serving the previous
 cross-compiler's output
 ([#610](https://github.com/APKiwiOrg/KhaozEngine/issues/610)).
+
+`GpuShaderCompileOptions(PreciseMath: true)` selects invariant MSL arithmetic helpers and disables fast math
+only for the requested compute or vertex stage. Author the corresponding GLSL arithmetic as `precise` too.
+Fragment compilation, language version and preserve-invariance policy retain their defaults. The program cache
+identity includes the option before lookup, so default and precise programs never share an emission entry.
 
 **The disk cache holds the EMISSION, not a `.metallib`.** macOS already caches the MSL-to-library compile across
 processes (0.02 ms for a source it has seen before, against 68 to 98 ms cold, both taken with the compiler

@@ -452,7 +452,7 @@ namespace KhaozEngine.Gpu
         public GpuPrimitiveTopology Topology;
         /// <summary>One layout per vertex buffer slot (empty for fullscreen passes).</summary>
         public List<GpuVertexLayoutDescription> VertexLayouts;
-        /// <summary>The compiled shaders (created via <see cref="IGpuResourceFactory.CreateShadersFromSpirv"/>).</summary>
+        /// <summary>The compiled shaders (created via <see cref="IGpuResourceFactory.CreateShadersFromSpirv(string, string)"/>).</summary>
         public IGpuShaderSet ShaderSet;
         /// <summary>The resource layouts (binding sets), in set order.</summary>
         public IGpuResourceLayout[] ResourceLayouts;
@@ -471,7 +471,7 @@ namespace KhaozEngine.Gpu
     /// a draw.</summary>
     public readonly struct GpuComputePipelineDescription
     {
-        /// <summary>The compiled compute shader (from <see cref="IGpuResourceFactory.CreateComputeShaderFromSpirv"/>).</summary>
+        /// <summary>The compiled compute shader (from <see cref="IGpuResourceFactory.CreateComputeShaderFromSpirv(string)"/>).</summary>
         public IGpuComputeShader Shader { get; }
         /// <summary>The resource layouts (binding sets), in set order. Every element's
         /// <see cref="GpuResourceLayoutElement.Stages"/> must include <see cref="GpuShaderStages.Compute"/>.</summary>

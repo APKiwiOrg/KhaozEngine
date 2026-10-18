@@ -28,6 +28,9 @@ public sealed class CoverageReferenceFidelityTests(ITestOutputHelper output)
         Assert.True(CoverageReferenceConstructor.TryConstruct(c.Topology, c.Posed, c.Model, c.Commands, reserve, reserved, out failure), $"{id}: {failure}");
         double worst = -1, worstBound = 0, maxReserve = 0;
         int worstVertex = -1, protectedByteChanges = 0, positionWeldBitDifferences = 0;
+        uint[] indices = c.Topology.Indices.ToArray();
+        float worstNormal = -1, worstTangent = -1;
+        int worstNormalVertex = -1, worstTangentVertex = -1, displacedVertices = 0;
         for (int v = 0; v < final.Length; v++)
         {
             var record = c.Topology.Vertices[v];
@@ -41,6 +44,22 @@ public sealed class CoverageReferenceFidelityTests(ITestOutputHelper output)
             if (representative >= 0 && !Bits(final[v].Position).SequenceEqual(Bits(final[representative].Position))) positionWeldBitDifferences++;
             if ((record.Strength == 0 || record.RegionIndex < 0 || slot < 0 || scratch.Before[v].Position == final[v].Position)
                 && !Bytes(scratch.Before.AsSpan(v, 1)).SequenceEqual(Bytes(final.AsSpan(v, 1)))) protectedByteChanges++;
+            if (scratch.Before[v].Position != final[v].Position)
+            {
+                displacedVertices++;
+                // Join seam corners only for the independent normal oracle. Tangents stay indexed.
+                uint[] shading = indices.Select(i => c.Topology.Vertices[(int)i].ShadingGroup == record.ShadingGroup ? (uint)v : i).ToArray();
+                Vector3 expectedNormal = CoverageGeometryOracle.ExpectedNormal(shading, scratch.Before, scratch.After, v);
+                Vector3 expectedTangent = CoverageGeometryOracle.ExpectedTangent(indices, scratch.Before, scratch.After, v);
+                Vector3 actualTangent = new(final[v].Tangent.X, final[v].Tangent.Y, final[v].Tangent.Z);
+                float normalDistance = Vector3.Distance(expectedNormal, final[v].Normal);
+                float tangentDistance = Vector3.Distance(expectedTangent, actualTangent);
+                Assert.True(normalDistance < 2e-5f, $"{id}, vertex {v}, normal distance {normalDistance:R}, expected {expectedNormal}, actual {final[v].Normal}");
+                Assert.True(tangentDistance < 2e-5f, $"{id}, vertex {v}, tangent distance {tangentDistance:R}, expected {expectedTangent}, actual {actualTangent}");
+                Assert.Equal(scratch.Before[v].Tangent.W, final[v].Tangent.W);
+                if (normalDistance > worstNormal) { worstNormal = normalDistance; worstNormalVertex = v; }
+                if (tangentDistance > worstTangent) { worstTangent = tangentDistance; worstTangentVertex = v; }
+            }
             double reserveShift = WorldDistance(reserved[v].Position, final[v].Position, c.Model);
             maxReserve = Math.Max(maxReserve, reserveShift);
             if (slot < 0 || scratch.Corrections[record.PositionGroup] > 0 || reserve.Corrections[record.PositionGroup] > 0) continue;
@@ -64,6 +83,7 @@ public sealed class CoverageReferenceFidelityTests(ITestOutputHelper output)
         Assert.Equal(0, protectedByteChanges);
         Assert.Equal(0, positionWeldBitDifferences);
         output.WriteLine($"FIDELITY {id} worstWorldDistance={worst:R} vertex={worstVertex} group={c.Topology.Vertices[worstVertex].PositionGroup} bound={worstBound:R} reserveDifference={maxReserve:R} correctedGroups={scratch.Corrections.Count(c => c > 0)}");
+        output.WriteLine($"ATTRIBUTES {id} displacedVertices={displacedVertices} worstNormalDistance={worstNormal:R} normalVertex={worstNormalVertex} worstTangentDistance={worstTangent:R} tangentVertex={worstTangentVertex}");
     }
 
     [Fact]

@@ -81,9 +81,9 @@ namespace KhaozEngine.Tests.Gpu
                 ["GroundDecal"] = L(AtmosphereBindings.AppendLayout(T("DepthTex"), S("Samp"), U("Frame", F, dynamic: true), T("NormalTex"))),
 
                 // Render3D/Rendering/ModelRenderer.cs:225, :270 and :273
-                ["Model"] = L(AtmosphereBindings.AppendLayout(U("U", VF), Ro("PointLights", F), Ro("PointLightClusters", F), T("Albedo"),
+                ["Model"] = L([.. AtmosphereBindings.AppendLayout(U("U", VF), Ro("PointLights", F), Ro("PointLightClusters", F), T("Albedo"),
                     T("NormalMap"), T("RoughnessMap"), S("Sampler"), T("ShadowMap"), S("ShadowSamp"),
-                    T("PointShadowMap"), T("PointShadowTransientMap"))),
+                    T("PointShadowMap"), T("PointShadowTransientMap")), T("InteriorCut")]),
                 ["Foliage"] = L(U("Foliage", V, dynamic: true)),
                 // The shared frame block, fragment-only point lights and per-draw vertex block in binding order.
                 // The two uniform buffers retain their relative order from #604.

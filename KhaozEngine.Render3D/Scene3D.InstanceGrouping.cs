@@ -117,7 +117,7 @@ namespace KhaozEngine.Render3D
                         // zero Dissolve, so it is byte-identical to the pre-dissolve packing (issue #253). SpecParams.z is
                         // left 0 for ApplyAlphaCutoffs to fill with the MASK cutoff, independent of dissolve.
                         Emissive = dissolving ? inst.DissolveEdge : inst.Material.Emissive,
-                        SpecParams = new Vector4(inst.Material.Specular, inst.Material.Shininess, 0f, 0f),
+                        SpecParams = new Vector4(inst.Material.Specular, inst.Material.Shininess, 0f, inst.CutInsideInteriors ? 1f : 0f),
                         Dissolve = dissolving ? new Vector2(inst.DissolveThreshold, inst.DissolveEdgeWidth) : Vector2.Zero,
                         DissolveComplement = dissolving ? inst.DissolveComplement : 0f,
                     };

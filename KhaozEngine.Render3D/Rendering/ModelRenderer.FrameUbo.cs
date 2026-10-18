@@ -133,7 +133,7 @@ namespace KhaozEngine.Render3D.Rendering
         // The first five offsets are the same constants the five writes used, so those bytes are the same bytes.
         // PointShadowParams is MaxPointLights vec4s, which is LightArrayBytes by the same definition the two light
         // arrays use, so PointShadowAtlas lands one array past the tail's base and PointShadowFilter one vec4
-        // after that. The transient atlas shape follows, then ClusterDepth and ClusterCamera occupy the final 32 bytes.
+        // after that. The transient atlas shape and cluster fields follow, then the two interior-cut vec4 end the block.
         void PackFrameImage()
         {
             Span<byte> img = _frameImage;
@@ -148,6 +148,7 @@ namespace KhaozEngine.Render3D.Rendering
             MemoryMarshal.Write(img.Slice((int)PointShadowTransientTailOffset), in _pointShadowTransientAtlas);
             MemoryMarshal.Write(img.Slice((int)ClusterTailOffset), in _clusterDepth);
             MemoryMarshal.Write(img.Slice((int)(ClusterTailOffset + 16)), in _clusterCamera);
+            MemoryMarshal.Write(img.Slice((int)InteriorCutWindowOffset), in _interiorCutUniforms);
             _frameImageDirty = false;
         }
 

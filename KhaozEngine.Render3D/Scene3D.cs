@@ -1976,7 +1976,6 @@ namespace KhaozEngine.Render3D
             _gd.WaitForIdle();
             _retired.Dispose();    // flushes the retired tail (it would outlive the scene) and frees the fence barrier
             DisposeFoliage();
-            _model.Dispose();
             _post.Dispose();
             _lines.Dispose();
             _depthLines.Dispose();
@@ -2020,6 +2019,7 @@ namespace KhaozEngine.Render3D
             foreach (var t in _textures) t?.Dispose();
             _textures.Clear();
             DisposeSplatMaterials();
+            _model.Dispose();
             DisposeMotionVectorsView();
             DisposeTileGroundAndPointShadowResources();
             DisposeTemporalResolve();

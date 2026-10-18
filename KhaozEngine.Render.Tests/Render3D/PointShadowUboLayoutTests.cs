@@ -35,7 +35,7 @@ public sealed class PointShadowUboLayoutTests
         Assert.Equal(1296u, ModelRenderer.PointShadowTransientTailOffset);
         Assert.Equal(16u, ModelRenderer.PointShadowTransientTailBytes);
         Assert.Equal(1312u, ModelRenderer.ClusterTailOffset);
-        Assert.Equal(1344u, ModelRenderer.UboBytes);
+        Assert.Equal(1376u, ModelRenderer.UboBytes);
     }
 
     static ModelRenderer NewRenderer(FakeGpuDevice device)
@@ -85,7 +85,7 @@ public sealed class PointShadowUboLayoutTests
         Assert.Equal(OldUboBytes + ModelRenderer.PointShadowTailBytes,
             ModelRenderer.PointShadowTransientTailOffset);
         Assert.Equal(1312u, ModelRenderer.ClusterTailOffset);
-        Assert.Equal(1344u, ModelRenderer.UboBytes);
+        Assert.Equal(1376u, ModelRenderer.UboBytes);
     }
 
     [Fact]
@@ -278,7 +278,7 @@ public sealed class PointShadowUboLayoutTests
             Assert.True(atlas < filter, $"{name}: PointShadowFilter follows PointShadowAtlas.");
             Assert.True(filter < transient, $"{name}: PointShadowTransientAtlas follows PointShadowFilter.");
             Assert.True(transient < clusterDepth, $"{name}: ClusterDepth follows the transient atlas shape.");
-            Assert.True(clusterDepth < clusterCamera, $"{name}: ClusterCamera is the last member of the block.");
+            Assert.True(clusterDepth < clusterCamera, $"{name}: ClusterCamera follows ClusterDepth before the interior tail.");
         }
     }
 

@@ -77,4 +77,7 @@ public readonly struct RigidInstanceDraw
     /// <summary>The draw's identity across frames, for temporal effects. <see cref="MotionKey.None"/> (the default)
     /// marks a static draw. See <see cref="MotionKey"/>.</summary>
     public MotionKey Motion { get; init; }
+
+    /// <summary>Cut the rigid draw's pixels inside the scene's interior spans. False by default.</summary>
+    public bool CutInsideInteriors { get; init; }
 }

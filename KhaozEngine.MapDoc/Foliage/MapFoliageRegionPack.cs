@@ -21,6 +21,7 @@ internal static class MapFoliageRegionPack
     }
     internal static byte[] Encode(IReadOnlyList<MapFoliageChunk> chunks)
     {
+        if (MapFoliageStorageWork.Current is { } work) work.PackEncodes++;
         int length = ByteLength(chunks.Count);
         MapFoliageChunk[] sorted = chunks.OrderBy(c => c.Key.Z).ThenBy(c => c.Key.X).ToArray();
         var bytes = new byte[length];
@@ -34,7 +35,7 @@ internal static class MapFoliageRegionPack
             Span<byte> record = bytes.AsSpan(HeaderLength + i * RecordLength, RecordLength);
             BinaryPrimitives.WriteInt32LittleEndian(record, chunk.Key.X);
             BinaryPrimitives.WriteInt32LittleEndian(record[4..], chunk.Key.Z);
-            SHA256.HashData(chunk.Density, record.Slice(8, 32));
+            Convert.FromHexString(chunk.Sha256).CopyTo(record.Slice(8, 32));
             chunk.Density.CopyTo(record[40..]);
         }
         return bytes;
@@ -48,7 +49,6 @@ internal static class MapFoliageRegionPack
         if (ByteLength(count) != span.Length) throw new MapDocumentException("foliage pack byte length does not match its count.");
         var chunks = new MapFoliageChunk[count];
         MapFoliageChunkKey prior = new(-1, -1);
-        Span<byte> digest = stackalloc byte[32];
         for (int i = 0; i < count; i++)
         {
             ReadOnlySpan<byte> record = span.Slice(HeaderLength + i * RecordLength, RecordLength);
@@ -56,9 +56,10 @@ internal static class MapFoliageRegionPack
             if (key.X is < 0 or > 32767 || key.Z is < 0 or > 32767 ||
                 (i > 0 && (key.Z < prior.Z || (key.Z == prior.Z && key.X <= prior.X))))
                 throw new MapDocumentException("foliage pack keys are not unique and ordered by Z then X.");
-            SHA256.HashData(record[40..], digest);
-            if (!digest.SequenceEqual(record.Slice(8, 32))) throw new MapDocumentException("foliage pack raw chunk digest mismatch.");
-            chunks[i] = new(key, record[40..]); prior = key;
+            var chunk = new MapFoliageChunk(key, record[40..]);
+            if (chunk.Sha256 != Convert.ToHexStringLower(record.Slice(8, 32)))
+                throw new MapDocumentException("foliage pack raw chunk digest mismatch.");
+            chunks[i] = chunk; prior = key;
         }
         return Array.AsReadOnly(chunks);
     }

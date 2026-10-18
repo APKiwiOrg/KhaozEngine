@@ -79,6 +79,7 @@ public static class MapFoliageValidation
     internal static void ValidateDocument(MapDocument doc, List<string> errors)
     {
         if (doc.Foliage is not { } set) return;
+        if (MapFoliageStorageWork.Current is { } work) work.DocumentGates++;
         if (doc.ResolverIdentity is not { PayloadVersion: 1, ResolverVersion: 2 } || doc.SupportRecipe != MapSupportRecipe.AuthoredBindingsV2)
             errors.Add("foliage: requires resolver identity (1, 2) and supportRecipe AuthoredBindingsV2. Adopt authored support " +
                 "with MapResolverAdoption.ConvertToAuthoredSupport before adding foliage.");
@@ -226,22 +227,31 @@ public static class MapFoliageValidation
             MapFoliageChunkKey key = chunk.Key;
             string at = $"{label} chunk ({key.X}, {key.Z})";
             if (!keys.Add(key)) errors.Add(at + " is listed twice.");
-            if (key.X < 0 || key.X >= columns || key.Z < 0 || key.Z >= rows)
-            {
-                errors.Add(at + " lies outside the density domain.");
-                continue;
-            }
-            int usedX = Math.Min(MapFoliageChunk.Size, layer.Width - key.X * MapFoliageChunk.Size);
-            int usedZ = Math.Min(MapFoliageChunk.Size, layer.Depth - key.Z * MapFoliageChunk.Size);
-            if (usedX == MapFoliageChunk.Size && usedZ == MapFoliageChunk.Size) continue;
-            ReadOnlySpan<byte> density = chunk.Density;
-            for (int i = 0; i < density.Length; i++)
-                if (density[i] != 0 && (i % MapFoliageChunk.Size >= usedX || i / MapFoliageChunk.Size >= usedZ))
-                {
-                    errors.Add(at + ": padding outside the density domain must be zero.");
-                    break;
-                }
+            ValidateChunk(layer, chunk, errors);
         }
+    }
+
+    internal static void ValidateChunk(MapFoliageLayer layer, MapFoliageChunk chunk, List<string> errors)
+    {
+        MapFoliageChunkKey key = chunk.Key;
+        string at = $"foliage layer '{layer.Id}' chunk ({key.X}, {key.Z})";
+        int columns = (layer.Width + MapFoliageChunk.Size - 1) / MapFoliageChunk.Size;
+        int rows = (layer.Depth + MapFoliageChunk.Size - 1) / MapFoliageChunk.Size;
+        if (key.X < 0 || key.X >= columns || key.Z < 0 || key.Z >= rows)
+        {
+            errors.Add(at + " lies outside the density domain.");
+            return;
+        }
+        int usedX = Math.Min(MapFoliageChunk.Size, layer.Width - key.X * MapFoliageChunk.Size);
+        int usedZ = Math.Min(MapFoliageChunk.Size, layer.Depth - key.Z * MapFoliageChunk.Size);
+        if (usedX == MapFoliageChunk.Size && usedZ == MapFoliageChunk.Size) return;
+        ReadOnlySpan<byte> density = chunk.Density;
+        for (int i = 0; i < density.Length; i++)
+            if (density[i] != 0 && (i % MapFoliageChunk.Size >= usedX || i / MapFoliageChunk.Size >= usedZ))
+            {
+                errors.Add(at + ": padding outside the density domain must be zero.");
+                break;
+            }
     }
 
     // The marker's closed binding rule, so blank IDs refuse here exactly as they do for markers.

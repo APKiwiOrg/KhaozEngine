@@ -112,7 +112,6 @@ public static class MapDocumentValidator
         MapTileContent content, HashSet<long> numericIds)
     {
         var errors = new List<string>();
-        MapFoliageValidation.ValidateDocument(globals, errors);
         foreach (MapPlacement p in content.Placements)
             MapNativeValidation.ValidateNumericId(p, globals.NumericIdHighWaterMark, numericIds, errors);
         foreach (MapPlacement p in content.Placements) MapNativeValidation.ValidateSupportBinding(p, surfaces, errors);

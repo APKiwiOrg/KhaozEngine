@@ -13,10 +13,12 @@ internal sealed record MapFoliagePreparedStorage(MapFoliageStorageIndex Index,
     internal string FoliageSha256 { get; init; } = MapFoliageProjection.Digest(null);
 }
 
-/// <summary>Closed stored foliage, bounded pack reads and manifest-last preparation. With 2 m samples and 512 m tiles,
-/// 64 chunks share one 68,108 byte pack. This trades 64 opens/files and 1024 rewritten density bytes per changed chunk
-/// for one open/file and 68,108 rewritten bytes, including the header and records. A one-chunk region still costs one
-/// file, and tiny cells can reach the explicit 16,384 chunk pack ceiling. These are size facts, not timing results.</summary>
+/// <summary>Closed stored foliage and manifest-last publication. Unchanged logical rows carry a present pinned pack
+/// by reference without reading or encoding it. Rewriting a pack encodes only that region, reading its prior pack only
+/// when needed for nonresident records. Full byte verification belongs to VerifyTiled and stored identity.
+/// With 2 m samples and 512 m tiles, 64 chunks share one 68,108 byte file. A changed chunk rewrites that file rather
+/// than a 1024 byte individual payload, trading 64 possible files/opens for one region file. Sparse one-chunk regions
+/// still cost one file, and tiny cells can reach the 16,384 chunk ceiling. These are size facts, not timings.</summary>
 internal static class MapFoliageStorage
 {
     internal static (MapFoliageSet Set, MapFoliageStorageIndex Index) ReadManifest(JsonElement value)
@@ -57,73 +59,8 @@ internal static class MapFoliageStorage
         return (set, new(packs, chunks));
     }
 
-    internal static MapFoliagePreparedStorage Prepare(MapDocument document, string directory)
-    {
-        MapFoliageStorageIndex? prior = document.Tiles?.Foliage;
-        bool partial = document.Tiles?.IsPartial == true;
-        var carried = new Dictionary<(string Layer, MapFoliageChunkKey Key), MapFoliageChunk>();
-        if (partial && prior is not null)
-        {
-            foreach (MapFoliagePackRef pack in prior.Packs)
-            {
-                Require(prior.ReadPack(directory, pack, out var records), pack);
-                foreach (MapFoliageChunk chunk in records!) carried.Add((pack.LayerId, chunk.Key), chunk);
-            }
-            // An unseen advertised record cannot be removed by dropping its layer or directory row.
-            foreach (MapFoliageChunkRef row in prior.Chunks.Where(c => !prior.WasResident(c.LayerId, c.Key)))
-            {
-                MapFoliageLayer? layer = document.Foliage?.Layers.FirstOrDefault(l => l.Id == row.LayerId);
-                if (layer is null || !layer.ChunkDigests.Any(d => d.Key == row.Key && d.Sha256 == row.Sha256))
-                    throw new MapDocumentException("foliage partial save would drop or replace unavailable advertised data.");
-            }
-        }
-        var packs = new List<MapFoliagePackRef>();
-        var references = new List<MapFoliageChunkRef>();
-        var payloads = new Dictionary<string, ReadOnlyMemory<byte>>(StringComparer.Ordinal);
-        var keep = new HashSet<string>(StringComparer.Ordinal);
-        if (document.Foliage is not { } set) return new(new(packs, references), [], keep);
-        RequireValid(set);
-        long membershipCount = 0;
-        foreach (MapFoliageLayer layer in set.Layers)
-            foreach (MapFoliageChunkDigest row in layer.ChunkDigests)
-            {
-                membershipCount = checked(membershipCount + RegionRange(layer, row.Key, document.TileSize).Count);
-                MapFoliageManifestBudget.CheckMemberships(membershipCount);
-            }
-        foreach (MapFoliageLayer layer in set.Layers)
-        {
-            var resident = layer.Chunks.ToDictionary(c => c.Key);
-            var chunks = new List<MapFoliageChunk>();
-            foreach (MapFoliageChunkDigest row in layer.ChunkDigests)
-            {
-                if (resident.TryGetValue(row.Key, out MapFoliageChunk? chunk)) chunks.Add(chunk);
-                else if (partial && carried.TryGetValue((layer.Id, row.Key), out chunk) && MapFoliageLayer.Digest(chunk) == row.Sha256) chunks.Add(chunk);
-                else throw new MapDocumentException("foliage advertised density is unavailable, refusing to publish zero.");
-            }
-            // Padding is checked on carried records too, against the proposed metadata.
-            RequireValid(new(1, [MapFoliageLayer.FromStorage(layer, layer.ChunkDigests, chunks)]));
-            var membership = chunks.ToDictionary(c => c.Key, c => Regions(layer, c.Key, document.TileSize));
-            foreach (var group in chunks.GroupBy(c => membership[c.Key][0]).OrderBy(g => g.Key.Z).ThenBy(g => g.Key.X))
-            {
-                MapFoliageChunk[] sorted = group.OrderBy(c => c.Key.Z).ThenBy(c => c.Key.X).ToArray();
-                byte[] bytes = MapFoliageRegionPack.Encode(sorted);
-                string hash = MapFoliageRegionPack.Digest(bytes);
-                var pack = new MapFoliagePackRef(layer.Id, group.Key, hash, sorted.Length, bytes.Length);
-                packs.Add(pack);
-                string relative = MapFoliageStorageIndex.RelativePath(pack);
-                payloads.TryAdd(relative, bytes); keep.Add(MapTiledFile.Normalize(Path.Combine(directory, relative)));
-                for (int i = 0; i < sorted.Length; i++)
-                {
-                    MapFoliageChunk chunk = sorted[i];
-                    references.Add(new(layer.Id, chunk.Key, group.Key, membership[chunk.Key], MapFoliageLayer.Digest(chunk), hash, MapFoliageRegionPack.DataOffset(i)));
-                }
-            }
-        }
-        var index = new MapFoliageStorageIndex(packs, references, directory, set);
-        MapFoliageManifestBudget.Check(set, index);
-        return new(index, Array.AsReadOnly(payloads.Select(p => (p.Key, p.Value)).ToArray()), keep)
-        { FoliageSha256 = MapFoliageProjection.Digest(set) };
-    }
+    internal static MapFoliagePreparedStorage Prepare(MapDocument document, string directory) =>
+        MapFoliagePackPreparation.Prepare(document, directory);
 
     internal static void RequireUnchanged(MapDocument document, MapFoliagePreparedStorage prepared)
     {
@@ -138,7 +75,7 @@ internal static class MapFoliageStorage
         var resident = new Dictionary<string, List<MapFoliageChunk>>(StringComparer.Ordinal);
         foreach (MapFoliagePackRef pack in index.Packs)
         {
-            MapFoliageChunkRef[] selected = index.Chunks.Where(c => c.LayerId == pack.LayerId && c.OwnerRegion == pack.Region &&
+            MapFoliageChunkRef[] selected = index.ChunksFor(pack).Select(MapFoliageStorageWork.Inspect).Where(c => c.LayerId == pack.LayerId && c.OwnerRegion == pack.Region &&
                 (window is null || c.Regions.Any(window.Value.Contains))).ToArray();
             if (selected.Length == 0) continue;
             Require(index.ReadPack(directory, pack, out var chunks), pack);
@@ -200,18 +137,21 @@ internal static class MapFoliageStorage
 
     internal static void Write(string directory, MapFoliagePreparedStorage prepared, MapDocumentSaveOptions save, HashSet<string> touched)
     {
+        var byPath = new Dictionary<string, MapFoliagePackRef>(StringComparer.Ordinal);
+        foreach (var pack in prepared.Index.Packs) byPath.TryAdd(MapFoliageStorageIndex.RelativePath(pack), pack);
         foreach (var payload in prepared.Payloads)
         {
             string path = Path.Combine(directory, payload.RelativePath);
             if (File.Exists(path))
             {
-                MapFoliagePackRef pack = prepared.Index.Packs.First(p => MapFoliageStorageIndex.RelativePath(p) == payload.RelativePath);
+                MapFoliagePackRef pack = byPath[payload.RelativePath];
                 Require(prepared.Index.ReadPack(directory, pack, out _), pack);
                 continue;
             }
             save.OnStep?.Invoke(MapTiledSaveStep.BeforeTileWrite);
             string parent = Path.GetDirectoryName(path)!; Directory.CreateDirectory(parent);
             string temp = path + MapTileFile.TempSuffix;
+            if (MapFoliageStorageWork.Current is { } work) work.PackWrites++;
             using (var stream = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None))
             {
                 stream.Write(payload.Bytes.Span);
@@ -251,7 +191,7 @@ internal static class MapFoliageStorage
         }
     }
 
-    static IReadOnlyList<MapTileCoord> Regions(MapFoliageLayer layer, MapFoliageChunkKey key, float tileSize)
+    internal static IReadOnlyList<MapTileCoord> Regions(MapFoliageLayer layer, MapFoliageChunkKey key, float tileSize)
     {
         var range = RegionRange(layer, key, tileSize);
         var regions = new List<MapTileCoord>((int)range.Count);
@@ -260,7 +200,7 @@ internal static class MapFoliageStorage
         return Array.AsReadOnly(regions.ToArray());
     }
 
-    static (long MinX, long MinZ, long MaxX, long MaxZ, long Count) RegionRange(MapFoliageLayer layer, MapFoliageChunkKey key, float tileSize)
+    internal static (long MinX, long MinZ, long MaxX, long MaxZ, long Count) RegionRange(MapFoliageLayer layer, MapFoliageChunkKey key, float tileSize)
     {
         try
         {
@@ -291,12 +231,12 @@ internal static class MapFoliageStorage
                     throw new MapDocumentException("foliage advertised density digest mismatch.");
         }
     }
-    static void RequireValid(MapFoliageSet set)
+    internal static void RequireValid(MapFoliageSet set)
     {
         var errors = MapFoliageValidation.Validate(set);
         if (errors.Count > 0) throw new MapDocumentException(string.Join("\n", errors));
     }
-    static void Require(MapFoliageReadStatus status, MapFoliagePackRef pack)
+    internal static void Require(MapFoliageReadStatus status, MapFoliagePackRef pack)
     {
         if (status != MapFoliageReadStatus.Found) throw new MapDocumentException($"foliage pack {status}: {pack.PayloadSha256}");
     }

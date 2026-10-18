@@ -57,6 +57,21 @@ public sealed class NativeFoliageSnapshotTests
     }
 
     [Fact]
+    public void Snapshot_AttachesAndValidatesFoliageWithoutInlineDensityWrites()
+    {
+        var fixture = FoliageFixtures.Create();
+        using var work = MapFoliageStorageWork.Capture();
+        var candidate = NativeDocumentSnapshot.Clone(fixture.Document, MapDocRegistry.CreateDefault());
+        Assert.NotNull(candidate.Foliage);
+        Assert.NotSame(fixture.Document.Foliage, candidate.Foliage);
+        Assert.Equal(0, work.InlineWrites);
+        Assert.Equal(0, work.ChunkHashes);
+        fixture.Document.Foliage = new(1, [FoliageStorageFixtures.Change(fixture.Document.Foliage!.Layers[0], l => l["cellSize"] = -1)]);
+        Assert.Contains("cellSize", Assert.Throws<MapDocumentException>(() =>
+            NativeDocumentSnapshot.Clone(fixture.Document, MapDocRegistry.CreateDefault())).Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void LocalHistoryAndSemanticHash_ObserveFoliageOnlyChanges()
     {
         var fixture = FoliageFixtures.Create();

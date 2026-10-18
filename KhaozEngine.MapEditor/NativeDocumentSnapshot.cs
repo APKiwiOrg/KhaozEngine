@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Editing;
+using KhaozEngine.MapDoc.Foliage;
 using KhaozEngine.MapDoc.Surfaces;
 
 namespace KhaozEngine.MapEditor;
@@ -38,7 +39,6 @@ internal static class NativeDocumentSnapshot
             NumericIdHighWaterMark = document.NumericIdHighWaterMark,
             ResolverIdentity = document.ResolverIdentity,
             SupportRecipe = document.SupportRecipe,
-            Foliage = document.Foliage?.Clone(),
             Prefabs = document.Prefabs?.Clone(),
             BuildingIntent = document.BuildingIntent?.Clone(),
             NativeResourceTransforms = document.NativeResourceTransforms?.ToArray(),
@@ -52,6 +52,11 @@ internal static class NativeDocumentSnapshot
             new MapDocumentLoadOptions { Registry = registry });
         candidate.Surfaces = document.Surfaces.Clone();
         candidate.Water = document.Water?.Clone();
+        candidate.Foliage = document.Foliage?.Clone();
+        MapFoliageStorage.RequireComplete(candidate.Foliage);
+        var foliageErrors = new List<string>();
+        MapFoliageValidation.ValidateDocument(candidate, foliageErrors);
+        if (foliageErrors.Count > 0) throw new MapDocumentException(string.Join("\n", foliageErrors));
         candidate.Tiles = document.Tiles;
         return candidate;
     }

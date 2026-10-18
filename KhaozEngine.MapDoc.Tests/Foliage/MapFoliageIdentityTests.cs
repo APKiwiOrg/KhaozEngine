@@ -108,14 +108,16 @@ public sealed class MapFoliageIdentityTests
     public void Projection_HashesIndependentCanonicalBytesAndIgnoresPacking()
     {
         var fixture = FoliageFixtures.Create("decorated");
-        JsonObject expected = JsonNode.Parse(FoliageStorageFixtures.Json(fixture.Document.Foliage!))!.AsObject();
-        foreach (JsonNode? layer in expected["layers"]!.AsArray())
-            foreach (JsonNode? chunk in layer!["chunks"]!.AsArray())
-            {
-                byte[] bytes = Convert.FromBase64String(chunk!["density"]!.GetValue<string>());
-                chunk.AsObject().Remove("density"); chunk["sha256"] = FoliageStorageFixtures.Hash(bytes);
-            }
-        string independent = FoliageStorageFixtures.Hash(Encoding.UTF8.GetBytes("kemap/foliage-authored/1\0" + expected.ToJsonString()));
+        const string expectedMetadata = """
+            {"payloadVersion":1,"layers":[{"payloadVersion":1,"id":"cover-a","support":{"kind":"Surface","surfaceId":"floor"},"originX":-3,"originZ":-5,"cellSize":2,"width":35,"depth":3,"rowDirection":"PositiveZ","seed":17,"spacing":0.5,"scaleMin":0.8,"scaleMax":1.4,"rootOffset":-0.01,"models":[{"assetId":"reed-a","weight":3},{"assetId":"reed-b","weight":1}],"allowedVisibleMaterials":[10,11],"materials":[{"id":10,"resourceId":"moss-material","kind":"Ordinary"},{"id":11,"resourceId":"soil-material","kind":"Ordinary"},{"id":12,"resourceId":"pond-material","kind":"Water"}],"policy":{"id":"legacy-tile","version":1,"normalBoundaryHeight":0},"excludeIndoors":true,"excludeSolidObjects":true,"doorClearance":1.5,"edgeFade":0.5,"compatibilityOrdinals":[{"surfaceId":"floor","ordinal":0},{"surfaceId":"upper","ordinal":0}],"clearanceRules":[{"id":"door-rule","assetId":"tree","placementTag":"door","kind":"Door","footprint":{"minX":-0.5,"minZ":-0.25,"maxX":0.5,"maxZ":0.25}}],"exceptionMasks":[{"id":"roof-mask","owner":{"scope":"World","kind":"Placement","id":"house-1"},"support":{"kind":"Surface","surfaceId":"floor"},"kind":"RoofAbove","footprint":{"minX":-2,"minZ":-1.5,"maxX":2,"maxZ":1.5}}],"ownerSupports":[{"owner":{"scope":"World","kind":"Placement","id":"house-1"},"support":{"kind":"Space","spaceId":"hall","referenceY":1.25,"searchBelow":0.5,"searchAbove":0.75}}],"chunks":[{"x":0,"z":0,"sha256":"@CHUNK0@"},{"x":1,"z":0,"sha256":"@CHUNK1@"}]}]}
+            """;
+        var first = new byte[1024]; var second = new byte[1024];
+        for (int z = 0; z < 3; z++)
+            for (int x = 0; x < 35; x++)
+                (x < 32 ? first : second)[z * 32 + x % 32] = (byte)(z * 35 + x);
+        string expected = expectedMetadata.Replace("@CHUNK0@", FoliageStorageFixtures.Hash(first), StringComparison.Ordinal)
+            .Replace("@CHUNK1@", FoliageStorageFixtures.Hash(second), StringComparison.Ordinal);
+        string independent = FoliageStorageFixtures.Hash(Encoding.UTF8.GetBytes("kemap/foliage-authored/1\0" + expected));
         Assert.Equal(independent, MapFoliageProjection.Digest(fixture.Document.Foliage));
         using var dir = new FoliageStorageFixtures.DirectoryScope();
         MapDocumentFile.SaveTiled(fixture.Document, dir.Root);

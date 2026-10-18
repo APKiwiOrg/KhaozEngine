@@ -20,6 +20,7 @@ public sealed class MapFoliageStorageIndex
     readonly Dictionary<(string Layer, MapTileCoord Region), MapFoliageChunkRef[]> _packChunks;
     readonly Dictionary<(string Layer, MapFoliageChunkKey Key), MapFoliageChunk> _resident = new();
     readonly string? _directory;
+    readonly Dictionary<string, (int Width, int Depth)> _extents = new(StringComparer.Ordinal);
 
     internal MapFoliageStorageIndex(IReadOnlyList<MapFoliagePackRef> packs, IReadOnlyList<MapFoliageChunkRef> chunks,
         string? directory = null, MapFoliageSet? resident = null)
@@ -56,6 +57,7 @@ public sealed class MapFoliageStorageIndex
                     throw new MapDocumentException("foliage chunk data offset disagrees with canonical pack order.");
         }
         if (resident is null) return;
+        foreach (MapFoliageLayer layer in resident.Layers) _extents.Add(layer.Id, (layer.Width, layer.Depth));
         foreach (MapFoliageLayer layer in resident.Layers)
             foreach (MapFoliageChunk chunk in layer.Chunks)
             {
@@ -78,12 +80,19 @@ public sealed class MapFoliageStorageIndex
         return status == MapFoliageReadStatus.Found ? new(status, chunks![(row.DataOffset - 52) / MapFoliageRegionPack.RecordLength]) : new(status, null);
     }
 
+    internal IReadOnlyList<MapFoliageChunkRef> ChunksFor(MapFoliagePackRef pack) => _packChunks[(pack.LayerId, pack.Region)];
+    internal bool TryGetPack(string layer, MapTileCoord region, out MapFoliagePackRef pack) => _byRegion.TryGetValue((layer, region), out pack!);
+    internal bool TryGetChunk(string layer, MapFoliageChunkKey key, out MapFoliageChunkRef chunk) => _byKey.TryGetValue((layer, key), out chunk!);
+    internal bool PreservesPadding(MapFoliageLayer layer) => _extents.TryGetValue(layer.Id, out var extent) &&
+        layer.Width >= extent.Width && layer.Depth >= extent.Depth;
+
     internal MapFoliageStorageIndex WithResidency(string directory, MapFoliageSet? set) => new(Packs, Chunks, directory, set);
     internal bool WasResident(string layer, MapFoliageChunkKey key) => _resident.ContainsKey((layer, key));
 
     internal MapFoliageReadStatus ReadPack(string directory, MapFoliagePackRef pack, out IReadOnlyList<MapFoliageChunk>? chunks)
     {
         chunks = null;
+        if (MapFoliageStorageWork.Current is { } work) work.PackReads++;
         try
         {
             using var stream = new FileStream(PathOf(directory, pack), FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
@@ -104,7 +113,10 @@ public sealed class MapFoliageStorageIndex
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or MapDocumentException) { return MapFoliageReadStatus.Invalid; }
     }
 
-    internal static string RelativePath(MapFoliagePackRef pack) =>
-        FormattableString.Invariant($"tiles/foliage/r_{pack.Region.X}_{pack.Region.Z}/{pack.PayloadSha256}.pack");
+    internal static string RelativePath(MapFoliagePackRef pack)
+    {
+        if (MapFoliageStorageWork.Current is { } work) work.PackPathFormats++;
+        return FormattableString.Invariant($"tiles/foliage/r_{pack.Region.X}_{pack.Region.Z}/{pack.PayloadSha256}.pack");
+    }
     internal static string PathOf(string directory, MapFoliagePackRef pack) => Path.Combine(directory, RelativePath(pack));
 }

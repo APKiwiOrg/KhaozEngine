@@ -186,6 +186,7 @@ internal static class MapFoliageJson
 
     internal static void Write(Utf8JsonWriter w, MapFoliageSet set)
     {
+        if (MapFoliageStorageWork.Current is { } work) work.InlineWrites++;
         MapFoliageStorage.RequireComplete(set);
         w.WriteStartObject();
         w.WriteNumber("payloadVersion", set.PayloadVersion);

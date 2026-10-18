@@ -82,7 +82,12 @@ public sealed class MapFoliageStorageTests
         byte[] beforeBytes = File.ReadAllBytes(Path.Combine(dir.Root, "map.json"));
         var read = partial.Tiles.Foliage!.Read(FoliageFixtures.LayerId, new(0, 0));
         if (failure != "stale") Assert.Contains(read.Status, new[] { MapFoliageReadStatus.Unavailable, MapFoliageReadStatus.Invalid });
-        Assert.Throws<MapDocumentException>(() => MapDocumentFile.SaveTiled(partial, dir.Root));
+        if (failure == "corrupt")
+        {
+            MapDocumentFile.SaveTiled(partial, dir.Root);
+            Assert.Contains(MapDocumentFile.VerifyTiled(dir.Root), e => e.Contains("foliage", StringComparison.Ordinal));
+        }
+        else Assert.Throws<MapDocumentException>(() => MapDocumentFile.SaveTiled(partial, dir.Root));
         Assert.Equal(beforeBytes, File.ReadAllBytes(Path.Combine(dir.Root, "map.json")));
     }
 
@@ -303,13 +308,15 @@ public sealed class MapFoliageStorageTests
     [Fact]
     public void ContentValidation_AppliesTheFoliageResolverGate()
     {
+        using var dir = new FoliageStorageFixtures.DirectoryScope();
         var fixture = FoliageFixtures.Create();
-        fixture.Document.ResolverIdentity = new(1, 1);
-        var content = new MapTileContent(default, [], [], [], []);
-        var surfaces = fixture.Document.Surfaces.Refs.ToDictionary(s => s.Id);
-        var errors = MapDocumentValidator.ValidateContent(fixture.Document, surfaces, content, []);
-        Assert.Contains(errors, e => e.StartsWith("foliage: requires resolver identity", StringComparison.Ordinal));
+        MapDocumentFile.SaveTiled(fixture.Document, dir.Root);
+        JsonObject manifest = FoliageStorageFixtures.Manifest(dir.Root);
+        manifest["resolverIdentity"]!["resolverVersion"] = 1;
+        manifest["supportRecipe"] = "LegacyXzCallbackV1";
+        File.WriteAllText(Path.Combine(dir.Root, "map.json"), manifest.ToJsonString());
         Assert.Contains("foliage: requires resolver identity", Assert.Throws<MapDocumentException>(() =>
-            MapBoundDocumentValidation.ValidateContent(fixture.Document, surfaces, content, [], fixture.Assets)).Message, StringComparison.Ordinal);
+            MapAuthoredIdentityV2.Compute(MapStoredSurfaceSource.Open(dir.Root), fixture.Assets, FoliageFixtures.Options())).Message,
+            StringComparison.Ordinal);
     }
 }

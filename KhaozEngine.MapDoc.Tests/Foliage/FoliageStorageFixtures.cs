@@ -36,6 +36,35 @@ internal static class FoliageStorageFixtures
         fixture.Document.TileSize = 512;
         return fixture;
     }
+    internal static FoliageFixture ManyPacks(int count = 64, bool withTiles = false)
+    {
+        FoliageFixture fixture = FoliageFixtures.Create();
+        var layer = Change(FoliageFixtures.BasicLayer([]), l =>
+        {
+            l["originX"] = 0; l["originZ"] = 0; l["width"] = count * 32; l["depth"] = 32;
+            l["chunks"] = new JsonArray(Enumerable.Range(0, count).Select(i => (JsonNode)new JsonObject
+            {
+                ["x"] = i,
+                ["z"] = 0,
+                ["density"] = Convert.ToBase64String(Enumerable.Repeat((byte)(i + 1), 1024).ToArray()),
+            }).ToArray());
+        });
+        fixture.Document.Foliage = new(1, [layer]);
+        fixture.Document.TileSize = 64;
+        if (withTiles)
+            for (int i = 0; i < count; i++) fixture.Document.Placements.Add(new MapPlacement
+            {
+                Id = "tree-" + i,
+                AssetId = "tree",
+                Kind = "scenery",
+                NumericId = MapNumericIds.Allocate(fixture.Document),
+                X = i * 64 + 4,
+                Z = 4,
+                Y = 1,
+            });
+        return fixture;
+    }
+
     internal static JsonObject Manifest(string root) => JsonNode.Parse(File.ReadAllText(Path.Combine(root, "map.json")))!.AsObject();
     internal static string[] Packs(string root) => Directory.GetFiles(Path.Combine(root, "tiles", "foliage"), "*.pack", SearchOption.AllDirectories);
     internal sealed class DirectoryScope : IDisposable

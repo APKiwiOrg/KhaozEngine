@@ -50,9 +50,12 @@ public sealed class MapFoliageChunk
             throw new ArgumentException($"A foliage chunk holds exactly {ByteLength} density bytes, not {density.Length}.", nameof(density));
         Key = key;
         _density = density.ToArray();
+        if (MapFoliageStorageWork.Current is { } work) work.ChunkHashes++;
+        Sha256 = Convert.ToHexStringLower(SHA256.HashData(_density));
     }
 
     public MapFoliageChunkKey Key { get; }
+    internal string Sha256 { get; }
 
     /// <summary>Reads one density byte at a local column and row.</summary>
     public byte DensityAt(int localX, int localZ)
@@ -226,7 +229,7 @@ public sealed class MapFoliageLayer
         _advertisedKeys = digests.Keys.ToHashSet();
     }
 
-    internal static string Digest(MapFoliageChunk chunk) => Convert.ToHexStringLower(SHA256.HashData(chunk.Density));
+    internal static string Digest(MapFoliageChunk chunk) => chunk.Sha256;
 
     internal static ReadOnlyCollection<T> Copy<T>(IReadOnlyList<T> items, string name) where T : class
     {

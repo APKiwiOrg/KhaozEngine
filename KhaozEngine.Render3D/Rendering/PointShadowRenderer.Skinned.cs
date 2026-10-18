@@ -44,9 +44,9 @@ internal sealed partial class PointShadowRenderer
         _skinnedShaders = Built(built, factory.CreateShadersFromSpirv(
             ShaderSources.PointShadowSkinnedVert, ShaderSources.PointShadowRigidFrag));
         _skinnedDissolveShaders = Built(built, factory.CreateShadersFromSpirv(
-            ShaderSources.PointShadowSkinnedDissolveVert, ShaderSources.PointShadowRigidDissolveFrag));
+            ShaderSources.PointShadowSkinnedDissolveVert, ShaderSources.PointShadowSkinnedDissolveFrag));
         _skinnedDissolveInvertedShaders = Built(built, factory.CreateShadersFromSpirv(
-            ShaderSources.PointShadowSkinnedDissolveVert, ShaderSources.PointShadowRigidDissolveInvertedFrag));
+            ShaderSources.PointShadowSkinnedDissolveVert, ShaderSources.PointShadowSkinnedDissolveInvertedFrag));
         _skinnedCasterLayout = Built(built, factory.CreateResourceLayout(new GpuResourceLayoutDescription(
             new GpuResourceLayoutElement("Caster", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex,
                 dynamic: true))));

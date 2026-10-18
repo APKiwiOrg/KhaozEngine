@@ -180,6 +180,8 @@ namespace KhaozEngine.Tests.Gpu
 
                 // Render3D/Rendering/ShadowMapRenderer.cs:125 and :141
                 ["Shadow"] = L(U("U", V, dynamic: true)),
+                ["Shadow.interiorFrame"] = L(U("U", VF, dynamic: true)),
+                ["InteriorCut"] = L(T("InteriorCut"), S("Samp")),
                 // Render3D/Rendering/FoliageShadowRenderer.cs. Cascade matrices, camera fade matrix and origin.
                 ["FoliageShadow"] = L(U("U", V, dynamic: true)),
                 ["Shadow.skinned"] = L(U("VBlock", V, dynamic: true)),
@@ -294,10 +296,9 @@ namespace KhaozEngine.Tests.Gpu
             ("TemporalResolveRenderer count probe", ["Temporal.resolve"]),
             ("TemporalSplitResolve prepare", ["Temporal.prepare"]),
             ("TemporalSplitResolve accumulate", ["Temporal.accumulate"]),
-            // The four rigid point-shadow pipelines (three caster variants and the row clear) are one row, the way
-            // the cascade pass's three depth variants are: they differ in blend, depth state and shaders, and a
-            // pipeline is in this table for its LAYOUT ARRAY, which is the same single set for all of them.
+            // Rigid dissolve pipelines add the shared interior image and sampler, with no extra uniform buffer.
             ("PointShadowRenderer", ["PointShadow"]),
+            ("PointShadowRenderer dissolve", ["PointShadow", "InteriorCut"]),
             ("PointShadowRenderer skinned", ["PointShadow", "PointShadow.skinnedCaster", "SkinnedBonePalette"]),
             ("PointShadowRenderer skinned dissolve", ["PointShadow", "PointShadow.skinnedCaster", "SkinnedBonePalette"]),
             ("PointShadowRenderer skinned dissolve inverted", ["PointShadow", "PointShadow.skinnedCaster", "SkinnedBonePalette"]),
@@ -305,7 +306,8 @@ namespace KhaozEngine.Tests.Gpu
             ("FoliageShadowRenderer cutout depth", ["FoliageShadow", "Foliage", "Shadow.cutout"]),
             ("ShadowMapRenderer depth", ["Shadow"]),
             ("ShadowMapRenderer skinned depth", ["Shadow.skinned", "SkinnedBonePalette"]),
-            ("ShadowMapRenderer cutout depth", ["Shadow", "Shadow.cutout"]),
+            ("ShadowMapRenderer dissolve depth", ["Shadow.interiorFrame", "InteriorCut"]),
+            ("ShadowMapRenderer cutout depth", ["Shadow.interiorFrame", "Shadow.cutout", "InteriorCut"]),
             ("SkyRenderer", ["Sky"]),
             ("StarfieldRenderer", ["Starfield"]),
             ("TexturedBillboardRenderer", ["TexturedBillboard"]),
@@ -326,8 +328,8 @@ namespace KhaozEngine.Tests.Gpu
         {
             // The atmosphere producers add three dense layouts and pipeline rows. GpuScaledCopy adds one of each.
             // Both counts are stated so an emptied table cannot pass by agreeing with itself.
-            Assert.Equal(63, ShippedLayouts.Count);
-            Assert.Equal(68, ShippedPipelines.Count);
+            Assert.Equal(65, ShippedLayouts.Count);
+            Assert.Equal(70, ShippedPipelines.Count);
 
             foreach ((string pipeline, string[] slots) in ShippedPipelines)
             {

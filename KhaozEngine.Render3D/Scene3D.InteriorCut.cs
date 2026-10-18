@@ -12,6 +12,14 @@ public sealed partial class Scene3D
 
     long _interiorTextureGeneration;
 
+    void DisposeModelWithInteriorCutBorrowers()
+    {
+        // The point renderer borrows the model owner's cut image. Its atlas stays alive for model receivers.
+        _pointShadows?.Dispose();
+        _pointShadows = null;
+        _model.Dispose();
+    }
+
     void PrepareInteriorCut()
     {
         InteriorCutResources resources = _model.InteriorResources;
@@ -25,6 +33,8 @@ public sealed partial class Scene3D
             _interiorTextureGeneration = resources.TextureGeneration;
         }
         else _model.SetInteriorCut(resources.Texture, uniforms);
+        _model.ShadowMap.SetInteriorCut(resources.Texture, uniforms);
+        _pointShadows?.SetInteriorCut(resources.Texture, uniforms);
         resources.CommitBindings();
     }
 }

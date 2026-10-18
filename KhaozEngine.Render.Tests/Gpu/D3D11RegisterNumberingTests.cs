@@ -159,6 +159,9 @@ namespace KhaozEngine.Tests.Gpu
             ("TemporalDebugViewPass._modeLayout", new[] { U("DebugView") }, "b0"),
 
             ("ShadowMapRenderer._layout", new[] { U("U", dynamic: true) }, "b0"),
+            ("ShadowMapRenderer._interiorFrameLayout", new[] { U("U", dynamic: true) }, "b0"),
+            ("ShadowMapRenderer._interiorCutLayout", new[] { T("InteriorCut"), S("Samp") }, "t0 s0"),
+            ("PointShadowRenderer._interiorCutLayout", new[] { T("InteriorCut"), S("Samp") }, "t0 s0"),
             ("ShadowMapRenderer._skinnedLayout", new[] { U("VBlock", dynamic: true) }, "b0"),
             ("SkyRenderer._layout", new[] { U("Sky") }, "b0"),
             ("StarfieldRenderer._layout", new[] { U("Starfield") }, "b0"),

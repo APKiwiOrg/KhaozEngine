@@ -37,9 +37,9 @@ namespace KhaozEngine.Render3D.Rendering
     /// </remarks>
     internal sealed partial class PointShadowRenderer : IDisposable
     {
-        /// <summary>One 256-byte-aligned dynamic slot per (light, face). The payload is 144 bytes (a mat4, the
-        /// light position and radius, the dissolve noise scale beside the render origin, the light's near radius
-        /// and the two corners of its exclusion box); 256 is the alignment every supported backend is safe at and
+        /// <summary>One 256-byte-aligned dynamic slot per (light, face). The payload is 176 bytes (a mat4, the
+        /// light position and radius, the dissolve noise scale beside the render origin, the light's near radius,
+        /// the two corners of its exclusion box and the interior cut). The slot is aligned for every backend and
         /// the Direct3D 11 friendly 16-constant multiple.</summary>
         internal const uint FaceSlotBytes = 256;
 
@@ -63,7 +63,7 @@ namespace KhaozEngine.Render3D.Rendering
         readonly List<IDisposable> _retired = new();
 
         /// <summary>
-        /// Build the pass: seven shader sets, two owned layouts, seven pipelines and the first slot rings.
+        /// Build the pass: seven shader sets, three owned layouts, seven pipelines and the first slot rings.
         /// <para>
         /// EVERY ONE OF THOSE CAN BE REFUSED BY A BACKEND, and a refusal halfway through must not leave the
         /// earlier ones behind: the caller's contract is that a failed reconfigure keeps its PREVIOUS atlas
@@ -96,6 +96,10 @@ namespace KhaozEngine.Render3D.Rendering
                 _layout = Built(built, f.CreateResourceLayout(new GpuResourceLayoutDescription(
                     new GpuResourceLayoutElement("U", GpuResourceKind.UniformBuffer,
                         GpuShaderStages.Vertex | GpuShaderStages.Fragment, dynamic: true))));
+
+                _interiorCutLayout = Built(built, f.CreateResourceLayout(new GpuResourceLayoutDescription(
+                    new GpuResourceLayoutElement("InteriorCut", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
+                    new GpuResourceLayoutElement("Samp", GpuResourceKind.Sampler, GpuShaderStages.Fragment))));
 
                 GpuOutputDescription outputs = new(GpuPixelFormat.D32FloatS8UInt, GpuPixelFormat.R32Float);
                 _pipeline = Built(built, BuildCasterPipeline(f, outputs, _shaders, dissolve: false));
@@ -173,6 +177,7 @@ namespace KhaozEngine.Render3D.Rendering
             MemoryMarshal.Write(slot.Slice(96), in near);
             MemoryMarshal.Write(slot.Slice(112), in exclusionMin);
             MemoryMarshal.Write(slot.Slice(128), in exclusionMax);
+            PackInteriorCut(slot);
         }
 
         /// <summary>Upload every packed slot in ONE whole-buffer write. Must run OUTSIDE the pass (before
@@ -234,6 +239,7 @@ namespace KhaozEngine.Render3D.Rendering
             cl.SetScissorRect(0, (uint)Math.Clamp(face, 0, PointShadowMath.FaceCount - 1) * res,
                 (uint)Math.Clamp(slot, 0, atlas.Rows - 1) * res, res, res);
             cl.SetGraphicsResourceSet(0, _set, (uint)packedIndex * FaceSlotBytes);
+            if (kind != ShadowCastKind.Opaque) cl.SetGraphicsResourceSet(1, _interiorCutSet!);
         }
 
         /// <summary>Draw one caster run into the CURRENTLY-BOUND cell: <paramref name="instanceCount"/> instances
@@ -321,7 +327,7 @@ namespace KhaozEngine.Render3D.Rendering
                 Rasterizer = new GpuRasterizerState(GpuFaceCull.None, GpuPolygonFill.Solid, GpuFrontFace.Clockwise,
                     depthClipEnabled: true, scissorTestEnabled: true),
                 Topology = GpuPrimitiveTopology.TriangleList,
-                ResourceLayouts = new[] { _layout },
+                ResourceLayouts = dissolve ? new[] { _layout, _interiorCutLayout } : new[] { _layout },
                 ShaderSet = shaders,
                 VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout, instanceLayout },
                 Outputs = outputs,
@@ -352,6 +358,8 @@ namespace KhaozEngine.Render3D.Rendering
             _dissolveInvertedPipeline.Dispose();
             _dissolvePipeline.Dispose();
             _pipeline.Dispose();
+            _interiorCutSet?.Dispose();
+            _interiorCutLayout.Dispose();
             _set.Dispose();
             _faceUbo.Dispose();
             _layout.Dispose();

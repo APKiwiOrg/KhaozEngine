@@ -2019,7 +2019,7 @@ namespace KhaozEngine.Render3D
             foreach (var t in _textures) t?.Dispose();
             _textures.Clear();
             DisposeSplatMaterials();
-            _model.Dispose();
+            DisposeModelWithInteriorCutBorrowers();
             DisposeMotionVectorsView();
             DisposeTileGroundAndPointShadowResources();
             DisposeTemporalResolve();

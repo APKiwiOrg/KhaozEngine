@@ -35,6 +35,8 @@ namespace KhaozEngine.Render3D
         // _shadowPassRendered, so a true value already implies there is a previous pass to have baked them in.
         bool _lastAnySkinnedCaster;
         bool _lastAnyFoliageCaster;
+        long _lastShadowInteriorVersion;
+        bool InteriorShadowChanged => _lastShadowInteriorVersion != _model.InteriorResources.Version;
 
         /// <summary>
         /// Whether this frame's skinned casters went from SOME to NONE since the last rendered pass, which is the
@@ -63,6 +65,7 @@ namespace KhaozEngine.Render3D
             _lastShadowResolution = _model.ShadowMap.Resolution;
             _lastAnySkinnedCaster = anySkinnedCaster;
             _lastAnyFoliageCaster = anyFoliageCaster;
+            _lastShadowInteriorVersion = _model.InteriorResources.Version;
             _shadowPassRendered = true;
         }
     }

@@ -30,7 +30,7 @@ namespace KhaozEngine.Render3D.Rendering
     /// handle - the shader gates on <c>ShadowParams.y</c> (strength), so an inactive frame never taps it and stays
     /// byte-identical to ShadowMode.Off. The depth pass reuses the model pass's instance buffer (no second upload).
     /// </remarks>
-    internal sealed class ShadowMapRenderer : IDisposable
+    internal sealed partial class ShadowMapRenderer : IDisposable
     {
         /// <summary>Default per-cascade shadow-map resolution per axis (a game may scale it down via
         /// <see cref="ShadowSettings.ShadowMapResolution"/>).</summary>
@@ -94,7 +94,7 @@ namespace KhaozEngine.Render3D.Rendering
         // GPU-skinning depth pipeline (mirrors _pipeline for skinned casters) + its light-matrix grow-with-retire buffer.
         readonly IGpuShaderSet _skinnedShaders;
         // Its dissolve-aware sibling (issue #387): same layouts, same slot buffer, the SkinnedShadowDepthDissolveVert
-        // vertex and the rigid ShadowDepthDissolveFrag. Bound only for a skinned caster that is dissolving.
+        // vertex and its uncut skinned-only fragment. Bound only for a skinned caster that is dissolving.
         readonly IGpuShaderSet _skinnedDissolveShaders;
         readonly IGpuShaderSet _skinnedDissolveInvertedShaders;
         readonly IGpuResourceLayout _skinnedLayout;   // set 0: { LightMvp } dynamic UBO, vertex only
@@ -146,12 +146,16 @@ namespace KhaozEngine.Render3D.Rendering
             _set = f.CreateResourceSet(new GpuResourceSetDescription(_layout, new GpuBufferRange(_lightUbo, 0, 64)));
 
             // Dissolve depth shaders + their window over the same buffer. The window is the WHOLE 256-byte slot (not
-            // 64) so the vertex can read RenderOrigin at offset 64 as well as the matrix, and 256 bytes is also the
-            // D3D11-friendly 16-constant multiple. The layout description is identical to the plain one, so the same
-            // _layout object backs both sets and both pipelines.
+            // 64) so both stages can read the full frame, including the interior tail, in a D3D11-friendly window.
             _dissolveShaders = f.CreateShadersFromSpirv(ShaderSources.ShadowDepthDissolveVert, ShaderSources.ShadowDepthDissolveFrag);
             _dissolveInvertedShaders = f.CreateShadersFromSpirv(ShaderSources.ShadowDepthDissolveVert, ShaderSources.ShadowDepthDissolveInvertedFrag);
-            _dissolveSet = f.CreateResourceSet(new GpuResourceSetDescription(_layout, new GpuBufferRange(_lightUbo, 0, CascadeSlotBytes)));
+            _interiorFrameLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
+                new GpuResourceLayoutElement("U", GpuResourceKind.UniformBuffer,
+                    GpuShaderStages.Vertex | GpuShaderStages.Fragment, dynamic: true)));
+            _interiorCutLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
+                new GpuResourceLayoutElement("InteriorCut", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
+                new GpuResourceLayoutElement("Samp", GpuResourceKind.Sampler, GpuShaderStages.Fragment)));
+            _dissolveSet = f.CreateResourceSet(new GpuResourceSetDescription(_interiorFrameLayout, new GpuBufferRange(_lightUbo, 0, CascadeSlotBytes)));
 
             // Cutout depth shaders + the per-mesh albedo layout their fragment samples at set 1.
             _cutoutShaders = f.CreateShadersFromSpirv(ShaderSources.ShadowDepthCutoutVert, ShaderSources.ShadowDepthCutoutFrag);
@@ -163,8 +167,8 @@ namespace KhaozEngine.Render3D.Rendering
             // GPU-skinning depth shaders/layout (the fragment is the shared ShadowDepthFrag). Set 0 = { LightMvp }
             // dynamic UBO, vertex only, and set 1 = the shared per-caster palette. Built per shadow layout.
             _skinnedShaders = f.CreateShadersFromSpirv(ShaderSources.SkinnedShadowDepthVert, ShaderSources.ShadowDepthFrag);
-            _skinnedDissolveShaders = f.CreateShadersFromSpirv(ShaderSources.SkinnedShadowDepthDissolveVert, ShaderSources.ShadowDepthDissolveFrag);
-            _skinnedDissolveInvertedShaders = f.CreateShadersFromSpirv(ShaderSources.SkinnedShadowDepthDissolveVert, ShaderSources.ShadowDepthDissolveInvertedFrag);
+            _skinnedDissolveShaders = f.CreateShadersFromSpirv(ShaderSources.SkinnedShadowDepthDissolveVert, ShaderSources.SkinnedShadowDepthDissolveFrag);
+            _skinnedDissolveInvertedShaders = f.CreateShadersFromSpirv(ShaderSources.SkinnedShadowDepthDissolveVert, ShaderSources.SkinnedShadowDepthDissolveInvertedFrag);
             _skinnedLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 new GpuResourceLayoutElement("VBlock", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex, dynamic: true)));
 
@@ -361,7 +365,8 @@ namespace KhaozEngine.Render3D.Rendering
                 Rasterizer = new GpuRasterizerState(cutout ? GpuFaceCull.None : GpuFaceCull.Front, GpuPolygonFill.Solid,
                     GpuFrontFace.Clockwise, depthClipEnabled: true, scissorTestEnabled: true),
                 Topology = GpuPrimitiveTopology.TriangleList,
-                ResourceLayouts = cutout ? new[] { _layout, _cutoutMaterialLayout } : new[] { _layout },
+                ResourceLayouts = cutout ? new[] { _interiorFrameLayout, _cutoutMaterialLayout, _interiorCutLayout }
+                    : dissolve ? new[] { _interiorFrameLayout, _interiorCutLayout } : new[] { _layout },
                 ShaderSet = cutout ? (invertedDissolve ? _cutoutInvertedShaders : _cutoutShaders)
                     : dissolve ? (invertedDissolve ? _dissolveInvertedShaders : _dissolveShaders) : _shaders,
                 VertexLayouts = new List<GpuVertexLayoutDescription> { vertexLayout, instanceLayout },
@@ -393,12 +398,13 @@ namespace KhaozEngine.Render3D.Rendering
                 MemoryMarshal.Write(slotBytes, in m);
                 MemoryMarshal.Write(slotBytes.Slice(64), in origin);
                 MemoryMarshal.Write(slotBytes.Slice(80), in dissolveParams);
+                PackInteriorCut(slotBytes);
             }
             // ONE upload of the whole cascade buffer instead of three writes per cascade (twelve at four cascades).
             // _lightImage is the CPU mirror of _lightUbo and nothing else writes that buffer, so carrying it across
             // frames keeps every byte identical to what the per-slot writes left behind - including the slots past
             // `count` and the unread tail of each slot, which the depth shaders never declare (the dissolve block
-            // stops at 96 of the 256 slot bytes). Covering offset 0 to SizeInBytes also matters on D3D11: only a
+            // stops at 128 of the 256 slot bytes). Covering offset 0 to SizeInBytes also matters on D3D11: only a
             // whole-buffer write escapes the partial-uniform-write staging route the incumbent had, which Mapped the
             // immediate context and stalled on the GPU (see the _frameImage note in ModelRenderer.FrameUbo.cs).
             cl.UpdateBuffer(_lightUbo, 0, (ReadOnlySpan<byte>)_lightImage);
@@ -427,6 +433,7 @@ namespace KhaozEngine.Render3D.Rendering
             cl.SetPipeline(_graph.DissolvePipeline);
             SetCascadeScissor(cl, cascade);
             cl.SetGraphicsResourceSet(0, _dissolveSet, (uint)cascade * CascadeSlotBytes);
+            cl.SetGraphicsResourceSet(1, _interiorCutSet!);
         }
 
         /// <summary>As <see cref="BeginCascadeRigidDissolve"/>, but binds the INVERTED dissolve fragment (issue
@@ -438,6 +445,7 @@ namespace KhaozEngine.Render3D.Rendering
             cl.SetPipeline(_graph.DissolveInvertedPipeline);
             SetCascadeScissor(cl, cascade);
             cl.SetGraphicsResourceSet(0, _dissolveSet, (uint)cascade * CascadeSlotBytes);
+            cl.SetGraphicsResourceSet(1, _interiorCutSet!);
         }
 
         /// <summary>As <see cref="BeginCascadeRigidDissolve"/>, but binds an ALPHA-CUTOUT depth pipeline (issue #15)
@@ -449,6 +457,7 @@ namespace KhaozEngine.Render3D.Rendering
             cl.SetPipeline(inverted ? _graph.CutoutInvertedPipeline : _graph.CutoutPipeline);
             SetCascadeScissor(cl, cascade);
             cl.SetGraphicsResourceSet(0, _dissolveSet, (uint)cascade * CascadeSlotBytes);
+            cl.SetGraphicsResourceSet(2, _interiorCutSet!);
         }
 
         /// <summary>Bind one MASK caster's albedo set (from <see cref="CreateCutoutMaterialSet"/>) at set 1 for the
@@ -595,6 +604,9 @@ namespace KhaozEngine.Render3D.Rendering
             _graph.Dispose();
             _set.Dispose();
             _dissolveSet.Dispose();
+            _interiorCutSet?.Dispose();
+            _interiorCutLayout.Dispose();
+            _interiorFrameLayout.Dispose();
             _dissolveShaders.Dispose();
             _dissolveInvertedShaders.Dispose();
             _cutoutShaders.Dispose();

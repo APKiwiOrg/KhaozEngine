@@ -433,6 +433,25 @@ bash scripts/check-doc-versions.sh
 git commit -m "feat(physics): certify finite mesh capsule sweeps (#1355)" -- "${gs_task_paths[@]}"
 ```
 
+### Task 7: Certify sphere, capsule and cylinder leaves (ruling GB-R3, runs after Task 3 and before Task 4)
+
+Added 2026-10-18 after the contact follow-up traversal tests showed every leased tick over a lying log or pipe throws in `SweepShell`. Without this task an authoritative tick holds a body still over any round prop. It runs before Task 4 so compounds can aggregate curved children.
+
+**Files:**
+- Create: `KhaozEngine.Physics.Bepu/CapsuleRoundSweep.cs` (sphere and capsule leaves: whole-path closed segment and point distance), `KhaozEngine.Physics.Bepu/CapsuleCylinderSweep.cs` (cylinder leaves: side, cap disc and rim circle features)
+- Modify: `KhaozEngine.Physics.Bepu/CapsuleSweepGeometry.cs`, `InstalledSweepGeometry.cs`, `InstalledSweepBounds.cs`, `CapsuleGeneralSweep.cs` (capture and dispatch for the three curved families)
+- Test: create `KhaozEngine.Game.Tests/Physics/CertifiedCurvedSweepTests.cs`, `CertifiedCurvedSweepLifetimeTests.cs`, and extend `CertifiedSweepExactOracle.cs` with independent sphere, capsule and cylinder predicates
+
+**Interfaces:**
+- Consumes: the Task 1 to 3 dispatch, installed geometry capture, operational correspondence proof (rigid and non-rigid, ruling GB-R6), retained nested scratch and work ceilings.
+- Produces: certified Clear, Hit or atomic refusal for sphere, capsule and cylinder leaves at any installed pose, through the same public sweep routes.
+
+- [ ] **Step 1: Write the failing tests.** `CurvedLeavesSweepMatchesIndependentOracle` (sphere, capsule and cylinder at radius 0.1, 0.15 and 0.3, standing and lying in both lying turns, approach from the side, from above and along the axis, grazing, exact tangency, stationary overlap and moving away), `CylinderRimAndCapFeaturesAreComplete` (paths that touch only a rim circle or only a cap disc), `CurvedLeafRigidCancellationRefuses` (the GB-R6 large-coordinate cancellation case for each curved family), `CurvedLeafWorkCeilingRefusesAtomically`, and `LyingLogLeasedTraversalAdvances` (the contact follow-up lying-log and pipe traversal through the real leased tick, radius 0.1 and 0.15, arriving within the 1 mm rule). Confirm they fail on the unsupported curved gate.
+- [ ] **Step 2: Implement sphere and capsule leaves** as exact closed distance between the swept capsule segment and the leaf point or segment, with interval bounds, exact fallback and bounded refinement, through the shared operational correspondence proof.
+- [ ] **Step 3: Implement cylinder leaves** with side, cap-disc and rim-circle features. A rim contact is never approximated by a polygon, and a feature that cannot be certified refuses atomically.
+- [ ] **Step 4: Run the focused tests, then the certified-sweep families and the full `KhaozEngine.Game.Tests` suite once, with the Release solution build, through `build-slot --heavy`.** Box, hull and mesh results stay bit-identical.
+- [ ] **Step 5: Commit** `feat(physics): certify curved leaf capsule sweeps (#1355)`.
+
 ### Task 4: Certify all supported compound descendants atomically
 
 **Files:**

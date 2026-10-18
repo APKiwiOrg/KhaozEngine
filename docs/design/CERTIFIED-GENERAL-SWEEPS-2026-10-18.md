@@ -296,6 +296,11 @@ primitive account even after Hit(0). All required triangles must complete before
 Installation and mutation may scan the mesh. Warm queries traverse its existing tree and allocate
 nothing. There is no total-mesh triangle cap or replacement spatial index.
 
+### GS-10a. Certify sphere, capsule and cylinder leaves
+
+Added 2026-10-18 (ruling GB-R3). Every leased tick over a lying log or pipe threw in `SweepShell` because curved leaves were unsupported, so an authoritative tick held a body still over any round prop. Sphere and capsule leaves use exact closed distance between the swept capsule segment and the leaf point or segment. Cylinder leaves add side, cap-disc and rim-circle features, and a rim is never approximated by a polygon. Every curved family goes through the same operational correspondence proof as the polyhedral families (GS-6, ruling GB-R6), the same work ceilings and atomic refusal. This task runs before compounds so GS-10 can aggregate curved children.
+Cost if wrong: a false Clear past a round prop, or round props that keep holding authoritative ticks.
+
 ### GS-10. Aggregate every supported compound descendant
 
 Use the installer's actual flattened leaves and each stored child pose, including hull centering.

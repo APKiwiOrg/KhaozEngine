@@ -13,6 +13,7 @@ public sealed partial class BepuPhysicsWorld
     readonly Dictionary<int, bool> _sweepDynamicBounds = new();
     readonly HashSet<int> _unprovedSweepStatics = new();
     readonly HashSet<int> _unprovedSweepDynamics = new();
+    readonly CapsuleSweepSelection _sweepSelection = new();
 
     bool ObserveStaticSweepBounds(int id)
     {
@@ -29,6 +30,7 @@ public sealed partial class BepuPhysicsWorld
         if (!ObserveInstalledSweepBounds(new CollidableReference(entry.Handle), body.Shape, body.Pose, min, max,
             out bool proved)) return false;
         SetSweepBoundStatus(_sweepStaticBounds, _unprovedSweepStatics, id, proved);
+        _sweepSelection.Observe(id, dynamic: false, !CapsuleSweepGeometry.TryReadIdentityBox(_sim.Shapes, body.Shape, body.Pose, out _));
         return true;
     }
 
@@ -45,6 +47,7 @@ public sealed partial class BepuPhysicsWorld
         if (!stored) return false;
         if (!ObserveInstalledSweepBounds(new CollidableReference(CollidableMobility.Dynamic, entry.Handle), body.Collidable.Shape, body.Pose, min, max, out bool proved)) return false;
         SetSweepBoundStatus(_sweepDynamicBounds, _unprovedSweepDynamics, id, proved);
+        _sweepSelection.Observe(id, dynamic: true, !CapsuleSweepGeometry.TryReadIdentityBox(_sim.Shapes, body.Collidable.Shape, body.Pose, out _));
         return true;
     }
 

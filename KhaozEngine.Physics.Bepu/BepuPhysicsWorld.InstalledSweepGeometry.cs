@@ -26,12 +26,14 @@ public sealed partial class BepuPhysicsWorld
 
     void RemoveSweepGeometry(int id, bool dynamic)
     {
+        _sweepSelection.Observe(id, dynamic, general: false);
         (dynamic ? _installedSweepDynamics : _installedSweepStatics).Remove(id);
         _sweepInstallationGenerations.Remove(id);
     }
 
     void ClearSweepGeometry()
     {
+        _sweepSelection.Clear();
         _installedSweepStatics.Clear(); _installedSweepDynamics.Clear(); _sweepInstallationGenerations.Clear();
     }
 

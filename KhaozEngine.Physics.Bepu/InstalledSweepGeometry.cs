@@ -35,6 +35,7 @@ internal sealed class InstalledSweepGeometry
     internal int SurfaceCount => _faces.Length;
     internal int EdgeCount => _edges.Length;
     internal int FeatureCount => SurfaceCount + EdgeCount + VertexCount + (IsTriangle || Curved.HasValue ? 0 : 1);
+    internal (Vector3 Min, Vector3 Max)? PruningBounds { get; set; }
     internal RigidPose LeafPose { get; private set; }
     internal RigidPose ParentPose => _pose;
     RigidPose _pose;

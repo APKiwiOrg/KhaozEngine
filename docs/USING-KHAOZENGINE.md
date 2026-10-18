@@ -9588,8 +9588,11 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
   poses are retained. Mesh children remain an installation refusal. Unsupported children, stale
   registration or installation generation, and any unproved child discard the whole query even
   after Hit(0). Admitted non-rigid poses can still refuse on an ambiguous enclosed tangency.
-  General poses require proved forward/operational correspondence and a complete bracket within
-  0.001 m. The [backend domain and work ceilings](../KhaozEngine.Physics.Bepu/README.md) apply. Default is
+  General queries require radius and half-cylinder length at most 1000 m, with original centre and
+  displacement components within [-1000000, 1000000] m. Out-of-domain requests refuse before traversal
+  if the selected set contains any non-identity-box installation. Identity-only selections keep their
+  original domain. General poses require proved forward/operational correspondence and a complete
+  bracket within 0.001 m. The [backend domain and work ceilings](../KhaozEngine.Physics.Bepu/README.md) apply. Default is
   `Unresolved` without a usable prefix. `IsComplete` reports structural Clear/Hit status, not proof of
   the backend certificate. Validate the whole request extent, error budget, scope and read lifetime.
   Closed endpoints and stationary requests are included. Hit bounds do not authorize placement.

@@ -19,11 +19,11 @@ public sealed partial class BepuPhysicsWorld
                 throw new ArgumentException($"StaticHandle {handle.Value} is not a live static.", nameof(excludedStatics));
         }
 
-        return new QueryView(this, new StaticQueryExclusions(snapshot, _reverseHandles));
+        return new QueryView(this, _sweepSelection.CreateExclusions(snapshot, _reverseHandles));
     }
 
-    // The view's own state is an immutable exclusion snapshot and a disposal flag written only by an exclusive
-    // writer, so it declares concurrent reads alongside its owner.
+    // Exclusions are immutable. Selection counts and disposal change only under the owner's
+    // exclusive writer gate, so the view declares concurrent reads alongside its owner.
     private sealed class QueryView : IPhysicsWorldQueryView, IPhysicsQueryLeaseSource, IPhysicsConcurrentReadSource,
         IPhysicsCapsuleContacts, IPhysicsCapsuleSweep, IPhysicsCapsuleGeometryQueries, IPhysicsCapsuleFeatures,
         IPhysicsSupportNeighborhood, IPhysicsSupportFootprint, IPhysicsStaticGeometrySource

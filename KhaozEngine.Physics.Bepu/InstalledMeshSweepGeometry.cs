@@ -20,6 +20,7 @@ internal sealed class InstalledMeshSweepGeometry
     RigidPose _lastPose;
     bool _posed;
     internal (Vector3 Min, Vector3 Max) RootBounds { get; private set; }
+    internal (Vector3 Min, Vector3 Max) PruningBounds { get; private set; }
     readonly int _triangleBuffer, _nodeBuffer, _leafBuffer;
     readonly Node[] _nodes;
     readonly (Vector3 Min, Vector3 Max)[] _posedBounds;
@@ -103,6 +104,7 @@ internal sealed class InstalledMeshSweepGeometry
         ref Mesh mesh = ref _owner.GetShape<Mesh>(_root.Index);
         if (_posed && pose.Position == _lastPose.Position && pose.Orientation == _lastPose.Orientation && MatchesProof(mesh)) return true;
         if (!ProveTree(ref mesh)) return false;
+        if (!CapsuleSweepPruning.TryStoredPad(pose, pose, Vector3.Zero, out double rawPad)) return false;
         bool identity = pose.Orientation == Quaternion.Identity;
         for (int i = 0; i < Count; i++)
         {
@@ -125,6 +127,7 @@ internal sealed class InstalledMeshSweepGeometry
             _triangles[i].PublishPose(pose, pose, map);
             _triangles[i].SweepCompanion!.PublishPose(pose, nativePose, nativeMap);
         }
+        Vector3 pruningMin = new(float.PositiveInfinity), pruningMax = new(float.NegativeInfinity);
         for (int i = 0; i < _nodes.Length; i++)
         {
             _nodes[i] = mesh.Tree.Nodes[i];
@@ -146,6 +149,7 @@ internal sealed class InstalledMeshSweepGeometry
                     if (!Local(point) || !InstalledSweepBounds.TryPoint(map, pose, point, out Vector3 lo, out Vector3 hi)) return false;
                     min = Vector3.Min(min, lo); max = Vector3.Max(max, hi);
                 }
+                double pad = rawPad;
                 if (source.Index < 0)
                 {
                     // ConvexHomogeneousCompoundSweepTask uses GetPosedLocalChild.
@@ -153,7 +157,9 @@ internal sealed class InstalledMeshSweepGeometry
                     // geometry, instead of asserting that subtracting the center is exact.
                     int triangle = Tree.Encode(source.Index);
                     InstalledSweepGeometry native = _triangles[triangle].SweepCompanion!;
-                    if (!native.TryPose(pose, out var nativeMap)) return false;
+                    if (!native.TryPose(pose, out var nativeMap) ||
+                        !CapsuleSweepPruning.TryStoredPad(pose, native.LeafPose, native.LocalPose.Position, out double nativePad)) return false;
+                    pad = Math.Max(pad, nativePad);
                     if (identity)
                     {
                         var local = _nativeBounds[triangle];
@@ -166,6 +172,8 @@ internal sealed class InstalledMeshSweepGeometry
                         min = Vector3.Min(min, lo); max = Vector3.Max(max, hi);
                     }
                 }
+                pruningMin = Vector3.Min(pruningMin, min); pruningMax = Vector3.Max(pruningMax, max);
+                if (!CapsuleSweepPruning.ExpandStored(min, max, pad, out min, out max)) return false;
                 _posedBounds[i * 2 + child] = (min, max);
             }
         }
@@ -186,6 +194,7 @@ internal sealed class InstalledMeshSweepGeometry
         }
         var first = _posedBounds[0];
         RootBounds = Count == 1 ? first : (Vector3.Min(first.Min, _posedBounds[1].Min), Vector3.Max(first.Max, _posedBounds[1].Max));
+        PruningBounds = (pruningMin, pruningMax);
         _lastPose = pose; _posed = true;
         return true;
     }

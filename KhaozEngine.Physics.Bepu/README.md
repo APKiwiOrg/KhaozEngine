@@ -245,13 +245,24 @@ defines this family and the remaining adoption gates.
 
 Queries require an upright identity-oriented capsule, positive finite radius, nonnegative finite
 cylindrical length, finite centre/displacement, `Layers == 0` and a supported mobility selection.
-Both culling flag values are retained. General installed local coordinates and translations stay
+Both culling flag values are retained. General queries require radius and half-cylinder length at
+most 1000 m, with each original centre and displacement component within [-1000000, 1000000] m.
+Mutation-maintained owner and view selection counts refuse an out-of-domain query before traversal
+when it selects any non-identity-box installation. Identity-only selections retain their original
+domain and aperture, including when general statics are excluded or mobility is unselected.
+General installed local coordinates and translations stay
 within 2048 m, with the existing squared quaternion norm band `1 +/- 2^-20` and positive determinant.
 A rounded quaternion is never normalized. The forward finite geometry and the pinned transpose-local
 operation graph must both prove the same outcome, including exactly rigid maps. Rounded root-offset
 subtraction and child-offset addition can disagree even with identity rotation. Outer and mesh inner
-pruning enclose the full operational graph as well as the forward model, including cancellation
-along the original path. An unbounded pruning enclosure retains candidates for the leaf proof.
+pruning use mutation-proved padded general-leaf bounds that enclose the full operational graph
+as well as the forward model, including cancellation along the original path. The stored pad
+covers root subtraction, child addition, full-axis rounding and inverse-transpose skin contraction
+for the complete general query domain. Outer and inner queries keep the original unpadded aperture.
+Unproved stored enclosures refuse. A general-only rejection after enumeration uses the retained
+geometry union and the same enclosure proof with this query's smaller operands. It avoids
+unnecessary leaf refusals without changing tree traversal or work limits.
+Identity-box bounds and kernels receive no padding.
 Hit brackets include their complete disagreement
 within 0.001 m. Unknown coefficient correspondence, ambiguous tangency and ill-conditioned transforms
 refuse. Hulls use the installed face loops and point identities, including SIMD padding, after strict

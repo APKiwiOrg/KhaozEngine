@@ -41,7 +41,9 @@ public sealed partial class BepuPhysicsWorld : IPhysicsCapsuleSweep
             !_sweepEvidence.IsCurrent(this, _queryGeneration) || !SweepRecordCountsMatch() ||
             !SelectedSweepBoundsProved(filter.Mobility, exclusions)) return default;
         float halfCylinder = capsule.Length * 0.5f;
-        if (!CapsuleSweepPruning.TryAperture(pose.Position, capsule.Radius, halfCylinder, displacement,
+        if (!CapsuleGeneralSweepPolicy.ContainsQuery(pose.Position, capsule.Radius, halfCylinder, displacement) &&
+            _sweepSelection.HasGeneral(filter.Mobility, exclusions)) return default;
+        if (!CapsuleSweepAperture.TryCreate(pose.Position, capsule.Radius, halfCylinder, displacement,
             out Vector3 min, out Vector3 max)) return default;
         double length = System.Math.Sqrt((double)displacement.X * displacement.X +
             (double)displacement.Y * displacement.Y + (double)displacement.Z * displacement.Z);
@@ -67,18 +69,19 @@ public sealed partial class BepuPhysicsWorld : IPhysicsCapsuleSweep
             _sim.BroadPhase.GetOverlaps(min, max, ref collector);
             if (collector.Overflow) return default;
             return CertifyCandidates(candidates, capsule, pose, halfCylinder, displacement, length,
-                representedLength, filter, general);
+                representedLength, min, max, filter, general);
         }
         finally { scratch.GeneralSweeps.Restore(general); scratch.SweepCandidates.Restore(candidates); }
     }
 
     CapsuleSweepResult CertifyCandidates(List<CollidableReference> candidates, in CapsuleQueryDimensions capsule,
         Pose pose, float halfCylinder, Vector3 displacement, double length, float representedLength,
-        QueryFilter filter, CapsuleSweepScratch scratch)
+        Vector3 queryMin, Vector3 queryMax, QueryFilter filter, CapsuleSweepScratch scratch)
     {
         var work = new CapsuleSweepWork();
         bool hit = false;
         float lower = float.PositiveInfinity, upper = float.PositiveInfinity, error = 0;
+        double queryPad = -1;
         foreach (CollidableReference candidate in candidates)
         {
             if (!TryGetSweepLeaf(candidate, out TypedIndex shape, out RigidPose bodyPose)) return default;
@@ -93,6 +96,13 @@ public sealed partial class BepuPhysicsWorld : IPhysicsCapsuleSweep
             {
                 if (!TryGetInstalledSweepGeometry(candidate, out InstalledSweepGeometry? geometry) || geometry is null)
                     return default;
+                if (!geometry.Matches(_sim.Shapes, shape) || !geometry.TryPose(bodyPose, out _) ||
+                    geometry.PruningBounds is not { } bounds) return default;
+                if (queryPad < 0 && !CapsuleSweepPruning.TryQueryPad(pose.Position, capsule.Radius, halfCylinder, displacement, out queryPad))
+                    return default;
+                if (!CapsuleSweepPruning.ExpandStored(bounds.Min, bounds.Max, queryPad, out var requiredMin, out var requiredMax))
+                    return default;
+                if (!BoundingBox.Intersects(queryMin, queryMax, requiredMin, requiredMax)) continue;
                 leaf = CapsuleGeneralSweep.Sweep(_sim.Shapes, shape, bodyPose, geometry, capsule, pose.Position,
                     displacement, filter, ref work, scratch);
             }

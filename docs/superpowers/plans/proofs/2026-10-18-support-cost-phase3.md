@@ -106,3 +106,43 @@ run performed by this task.
 The local stairs box and hull Finds remain above the 50 us ordinary limit. SC-20 authorizes the next
 plan amendment after this prototype gate passes. This record does not close SG-12 or authorize a
 fourth hosted run.
+
+## Task 4 local measurement
+
+Base `976c487d7` and head `7f49ced18`.
+Both processes exited 0 on Apple M2 Max, Arm64, .NET 10.0.13, Release, with tiered compilation disabled.
+B1 is `GroundSubstep/GroundTickBorrowed/1`. D1 is `GroundSubstep/DryTick/1`.
+
+| Scene | Operation | Base us | Head us | Saving us | Head counters |
+| --- | --- | ---: | ---: | ---: | --- |
+| stairs box | Find | 61.292 | 40.667 | 20.625 | Extrema=18, StairStratum=6, RectangleContact=2, SharedMemberFacts=33 |
+| stairs box | DryTick | 134.417 | 102.291 | 32.126 | Extrema=38, StairStratum=14, RectangleContact=4, SharedMemberFacts=73 |
+| stairs box | B1 | 36.750 | 32.167 | 4.583 | Extrema=10, StairStratum=4, RectangleContact=0, SharedMemberFacts=20 |
+| stairs box | D1 | 37.166 | 34.000 | 3.166 | Extrema=10, StairStratum=4, RectangleContact=0, SharedMemberFacts=20 |
+| stairs hull | Find | 65.541 | 43.750 | 21.791 | Extrema=18, StairStratum=6, RectangleContact=2, SharedMemberFacts=33 |
+| stairs hull | DryTick | 344.583 | 113.292 | 231.291 | Extrema=38, StairStratum=14, RectangleContact=4, SharedMemberFacts=73 |
+| stairs hull | B1 | 67.375 | 39.334 | 28.041 | Extrema=10, StairStratum=4, RectangleContact=0, SharedMemberFacts=20 |
+| stairs hull | D1 | 219.417 | 37.959 | 181.458 | Extrema=10, StairStratum=4, RectangleContact=0, SharedMemberFacts=20 |
+| stairs mesh | Find | 64.250 | 62.042 | 2.208 | Extrema=26, StairStratum=0, RectangleContact=0, SharedMemberFacts=32 |
+| stairs mesh | DryTick | 169.791 | 176.417 | -6.626 | Extrema=70, StairStratum=0, RectangleContact=0, SharedMemberFacts=78 |
+| stairs mesh | B1 | 56.250 | 55.208 | 1.042 | Extrema=26, StairStratum=0, RectangleContact=0, SharedMemberFacts=24 |
+| stairs mesh | D1 | 55.875 | 58.042 | -2.167 | Extrema=26, StairStratum=0, RectangleContact=0, SharedMemberFacts=24 |
+| hidden crate | Find | 78.667 | 76.042 | 2.625 | Extrema=23, StairStratum=4, RectangleContact=0, SharedMemberFacts=44 |
+| hidden crate | DryTick | 489.041 | 991.583 | -502.542 | Extrema=130, StairStratum=18, RectangleContact=0, SharedMemberFacts=208 |
+| hidden crate | B1 | 190.750 | 200.416 | -9.666 | Extrema=56, StairStratum=4, RectangleContact=0, SharedMemberFacts=74 |
+| hidden crate | D1 | 192.833 | 385.958 | -193.125 | Extrema=56, StairStratum=4, RectangleContact=0, SharedMemberFacts=74 |
+| pushed seat | Find | 14.250 | 9.375 | 4.875 | Extrema=2, StairStratum=2, RectangleContact=0, SharedMemberFacts=3 |
+| pushed seat | DryTick | 210.500 | 135.000 | 75.500 | Extrema=40, StairStratum=26, RectangleContact=4, SharedMemberFacts=99 |
+| pushed seat | B1 | 42.584 | 20.750 | 21.834 | Extrema=6, StairStratum=4, RectangleContact=2, SharedMemberFacts=13 |
+| pushed seat | D1 | 39.000 | 21.209 | 17.791 | Extrema=6, StairStratum=4, RectangleContact=2, SharedMemberFacts=13 |
+| flat mesh | Find | 36.542 | 40.167 | -3.625 | Extrema=12, StairStratum=0, RectangleContact=0, SharedMemberFacts=12 |
+| flat mesh | DryTick | 111.125 | 109.834 | 1.291 | Extrema=32, StairStratum=0, RectangleContact=0, SharedMemberFacts=36 |
+| flat mesh | B1 | 37.917 | 37.375 | 0.542 | Extrema=10, StairStratum=0, RectangleContact=0, SharedMemberFacts=12 |
+| flat mesh | D1 | 38.583 | 37.459 | 1.124 | Extrema=10, StairStratum=0, RectangleContact=0, SharedMemberFacts=12 |
+
+| Artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| t4-base-cost.json | 2372346 | `aae51f7122a0b562a8189701af9427cdd471aaac7a7a4f131217b9368c3b9179` |
+| t4-head-cost.json | 2453177 | `faf86c20e5f859766614bd5f07cbc66626b4809eb7b2586656f8b60f58fd7641` |
+
+These are single local warm samples per row, not SG-12 verdicts.

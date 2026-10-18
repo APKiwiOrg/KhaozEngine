@@ -3,10 +3,39 @@ using System.Numerics;
 
 namespace KhaozEngine.Render3D;
 
-/// <summary>Scalar binary32 construction phases for the headless reference. Only scratch is written here.</summary>
+/// <summary>Scalar binary32 construction for the headless reference, with one atomic caller-output copy.</summary>
 internal static class CoverageReferenceConstructor
 {
     const float SurvivingFractionSquared = 1f / (1L << 50);
+
+    /// <summary>Constructs a finite reference candidate atomically. Success supplies no certification or certificate.</summary>
+    internal static bool TryConstruct(CoverageRefinement topology, ReadOnlySpan<ModelVertex> posedSource, in Matrix4x4 model,
+        ReadOnlySpan<CoverageCommandPose> commands, CoverageReferenceScratch scratch, Span<ModelVertex> finalVertices,
+        out CoverageFailure failure) => TryConstruct(topology, posedSource, model, commands, scratch, finalVertices,
+            out failure, default);
+
+    /// <summary>Internal like-for-like seam. Capture target and correction terms replace only the corresponding depths.</summary>
+    internal static bool TryConstruct(CoverageRefinement topology, ReadOnlySpan<ModelVertex> posedSource, in Matrix4x4 model,
+        ReadOnlySpan<CoverageCommandPose> commands, CoverageReferenceScratch scratch, Span<ModelVertex> finalVertices,
+        out CoverageFailure failure, ReadOnlySpan<double> clearanceCoverageOverride,
+        ReadOnlySpan<double> correctionClearanceOverride = default, ReadOnlySpan<double> correctionConversionOverride = default)
+    {
+        Validate(topology, scratch);
+        if (posedSource.Length != topology.SourceVertexCount || finalVertices.Length != topology.VertexCount
+            || posedSource.Overlaps(finalVertices) || posedSource.Overlaps(scratch.Before) || posedSource.Overlaps(scratch.After)
+            || posedSource.Overlaps(scratch.Published) || finalVertices.Overlaps(scratch.Before)
+            || finalVertices.Overlaps(scratch.After) || finalVertices.Overlaps(scratch.Published))
+            throw new ArgumentException("Reference construction requires exact source and final lengths and disjoint buffers.");
+        if (!CoverageReferenceFrames.TryPrepare(topology, model, commands, scratch, out failure)
+            || !TryInterpolate(topology, posedSource, scratch, out failure)
+            || !TryConformGroups(topology, commands, scratch, out failure, clearanceCoverageOverride)
+            || !CoverageReferenceCorrection.TryApply(topology, commands, scratch, out failure,
+                correctionClearanceOverride, correctionConversionOverride)) return false;
+        CoverageReferenceCorrection.ApplyTransition(topology, commands, scratch);
+        if (!CoverageReferenceNormals.TryUpdate(topology, scratch, out failure)) return false;
+        scratch.Published.AsSpan().CopyTo(finalVertices);
+        return true;
+    }
 
     internal static bool TryInterpolate(CoverageRefinement topology, ReadOnlySpan<ModelVertex> posedSource,
         CoverageReferenceScratch scratch, out CoverageFailure failure)

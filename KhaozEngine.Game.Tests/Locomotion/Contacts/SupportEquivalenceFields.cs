@@ -142,7 +142,12 @@ internal sealed class SupportEquivalenceFields
 
     internal static string Fixture(string name) => Path.Combine(AppContext.BaseDirectory, "Locomotion", "Contacts", "Fixtures", name);
     internal const string BaselineName = "support-equivalence-fields.jsonl";
-    internal static Row[] Baseline() => File.ReadLines(Fixture(BaselineName)).Select(line => JsonSerializer.Deserialize<Row>(line)!).ToArray();
+    internal static Row[] Baseline()
+    {
+        Assert.Equal("67DA85EBB30678C4168299A33115385C70546CA5B4A7A726B19749102D468FBA",
+            Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(Fixture(BaselineName)))));
+        return File.ReadLines(Fixture(BaselineName)).Select(line => JsonSerializer.Deserialize<Row>(line)!).ToArray();
+    }
 
     // The source and scene generator are byte-identical in the detached baseline checkout and lane C.
     // Capture checks every old digest before writing anything, so a different question cannot bless a baseline.
@@ -163,7 +168,7 @@ internal sealed class SupportEquivalenceFields
 public sealed class SupportEquivalenceFieldBaselineTests
 {
     [Fact]
-    public void FrozenEquivalenceFieldsRehashTheOriginalDigests()
+    public void FrozenEquivalenceFieldsMatchThePinnedOriginalBaseline()
     {
         if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("KHAOZENGINE_SUPPORT_FIELD_BASELINE_CAPTURE")))
         {
@@ -177,7 +182,6 @@ public sealed class SupportEquivalenceFieldBaselineTests
             var q = SupportEquivalenceQueryAnchors.Read(row.Name);
             Assert.Equal(row.Scene, q.SceneDigest);
             Assert.Equal(row.Question, JsonSerializer.Serialize(SupportEquivalenceQueryAnchors.Bits.Encode(q)));
-            Assert.Equal(row.Hash, row.Line.Split(' ').Last());
         }
     }
 }

@@ -164,6 +164,68 @@ public partial class SupportFootprintTests
         }
     }
 
+    [Fact]
+    public void RepresentedSlopeAdjustedNormalIsNeverShared()
+    {
+        using var counters = new WorldFormCounters();
+        var world = new BepuPhysicsWorld(Vector3.Zero);
+        StaticHandle owner = world.AddStatic(new BoxShape(new(0.9f, 0.2f, 1.1f)),
+            new(new(0, -0.1f, 0), Quaternion.CreateFromAxisAngle(Vector3.UnitY, 0.37f)));
+        using var scene = new WorldFormScene(world, new(Vector2.Zero, 0, 0.2f, 0.4f, 0.4f, 0.7f));
+        scene.Find();
+        InstalledSupportWorldFace top = scene.Form(owner)!.Leaves[0].Faces.ToArray()
+            .Single(face => face.Orientation == GeometrySign.Positive);
+        const float equalityCosine = 1, interiorCosine = 0.7f;
+        GeometryVector unadjusted = GeometryVectorOperations.Normalize(top.Normal.Bounds);
+        Assert.True(unadjusted.IsResolved);
+        Assert.True(unadjusted.Y.Lower < equalityCosine,
+            "The equality query must enter the slope-adjustment branch.");
+        Assert.True(unadjusted.Y.Upper >= equalityCosine);
+        Assert.True(unadjusted.Y.Lower > interiorCosine);
+        AssertMemberFactInterval(unadjusted.Y, top.MemberFacts.NormalBounds.Y);
+        _output.WriteLine($"Unadjusted upward [{unadjusted.Y.Lower:R}, {unadjusted.Y.Upper:R}], " +
+            $"lower bits {BitConverter.DoubleToInt64Bits(unadjusted.Y.Lower):X16}.");
+
+        // Read the installed pose and extents, then prove exact source slope equality using rational edges.
+        var simulation = SimulationOf(world);
+        ref var box = ref simulation.Shapes.GetShape<BepuPhysics.Collidables.Box>(HandlesOf(world)[owner.Value].Shape.Index);
+        var matrix = InstalledPoseOracle.Represented(scene.StaticPose(owner).Orientation);
+        var twice = new InstalledPoseOracle.R(2, 1);
+        var edgeX = matrix.X * (InstalledPoseOracle.R.From(box.HalfWidth) * twice);
+        var edgeZ = matrix.Z * (InstalledPoseOracle.R.From(box.HalfLength) * twice);
+        var normal = InstalledPoseOracle.V.Cross(edgeZ, edgeX);
+        Assert.Equal(InstalledPoseOracle.R.Zero, normal.X);
+        Assert.Equal(InstalledPoseOracle.R.Zero, normal.Z);
+        Assert.True(normal.Y > InstalledPoseOracle.R.Zero);
+        Assert.Equal(normal.Y.Square(),
+            InstalledPoseOracle.R.From(equalityCosine).Square() * normal.LengthSquared);
+
+        var polygon = new SupportPolygon();
+        polygon.Bind(owner, top);
+        Assert.True(polygon.HasSource);
+        Assert.Same(top.MemberFacts, polygon.SharedMemberFacts);
+        Assert.Equal(GeometrySign.Zero, polygon.SourcePredicates.NormalSlope(polygon, equalityCosine));
+        var json = new JsonSerializerOptions { IncludeFields = true };
+        foreach (float cosine in new[] { equalityCosine, interiorCosine, equalityCosine })
+        {
+            var request = FootSupport.DescribeFootprint(scene.Query) with { CosMaxSlope = cosine };
+            SupportQueryDiagnostics.Reset();
+            Assert.Equal(GeometrySign.Positive, SupportFootprintPolygon.Measure(polygon, request, out var member));
+            int hits = SharedMemberFactHits();
+            Assert.True(hits > 0);
+            Assert.Equal(BitConverter.DoubleToInt64Bits(cosine == equalityCosine ? equalityCosine : unadjusted.Y.Lower),
+                BitConverter.DoubleToInt64Bits(member.UpwardLower));
+            using (SupportReferenceEvaluation.Begin())
+            {
+                Assert.Equal(GeometrySign.Positive, SupportFootprintPolygon.Measure(polygon, request, out var reference));
+                Assert.Equal(reference, member);
+                Assert.Equal(JsonSerializer.Serialize(reference, json), JsonSerializer.Serialize(member, json));
+            }
+            Assert.Equal(hits, SharedMemberFactHits());
+        }
+        AssertMemberFactInterval(unadjusted.Y, top.MemberFacts.NormalBounds.Y);
+    }
+
     static void AssertMemberFactInterval(GeometryInterval expected, GeometryInterval actual)
     {
         Assert.Equal(expected.IsResolved, actual.IsResolved);

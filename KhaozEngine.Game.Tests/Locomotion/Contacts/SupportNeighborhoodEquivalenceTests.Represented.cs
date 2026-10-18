@@ -15,8 +15,6 @@ public partial class SupportNeighborhoodEquivalenceTests
     [Fact]
     public void RepresentedGoldenChangesHaveIndependentPerRowDerivations()
     {
-        Assert.Equal("67DA85EBB30678C4168299A33115385C70546CA5B4A7A726B19749102D468FBA",
-            Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(SupportEquivalenceFields.Fixture(SupportEquivalenceFields.BaselineName)))));
         var baseline = SupportEquivalenceFields.Baseline().ToDictionary(r => r.Name);
         var table = new List<string>
         {

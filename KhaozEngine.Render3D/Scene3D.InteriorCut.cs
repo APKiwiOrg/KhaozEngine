@@ -25,18 +25,24 @@ public sealed partial class Scene3D
         InteriorCutResources resources = _model.InteriorResources;
         resources.Apply(InteriorCut);
         InteriorCutUniforms uniforms = InteriorCutUniforms.From(InteriorCut, _currentFrameView.RenderOrigin);
-        if (_interiorTextureGeneration != resources.TextureGeneration)
+        bool textureChanged = _interiorTextureGeneration != resources.TextureGeneration;
+        if (textureChanged)
         {
             var liveSets = new List<IGpuResourceSet>();
             CollectLiveMaterialSets(liveSets);
             _model.SetInteriorCut(resources.Texture, uniforms, liveSets, CommitMaterialSets);
-            _interiorTextureGeneration = resources.TextureGeneration;
         }
         else _model.SetInteriorCut(resources.Texture, uniforms);
-        _model.ShadowMap.SetInteriorCut(resources.Texture, uniforms);
-        _pointShadows?.SetInteriorCut(resources.Texture, uniforms);
-        _targetOutlines.SetInteriorCut(resources.Texture, uniforms);
-        _silhouettes.SetInteriorCut(resources.Texture, uniforms);
+        // Empty frames need no cut borrowers. A texture change must still rebind every borrower before retirement.
+        if (textureChanged || InteriorCut is not null || _instances.Items.Count > 0 || _skinnedInstances.Items.Count > 0
+            || _meshOutlinePartCount > 0 || _silhouetteDraws.Count > 0)
+        {
+            _model.ShadowMap.SetInteriorCut(resources.Texture, uniforms);
+            _pointShadows?.SetInteriorCut(resources.Texture, uniforms);
+            _targetOutlines.SetInteriorCut(resources.Texture, uniforms);
+            _silhouettes.SetInteriorCut(resources.Texture, uniforms);
+        }
         resources.CommitBindings();
+        _interiorTextureGeneration = resources.TextureGeneration;
     }
 }

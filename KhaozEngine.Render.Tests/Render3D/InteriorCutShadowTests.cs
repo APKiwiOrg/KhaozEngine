@@ -119,6 +119,34 @@ public sealed class InteriorCutShadowTests
     }
 
     [Fact]
+    public void ClearingTheFieldRetriesBorrowersAfterAFailedEmptyFrame()
+    {
+        using var stage = new Stage();
+        stage.Scene.InteriorCut = Field();
+        stage.Frame();
+        stage.Frame();
+        var factory = (FakeGpuResourceFactory)stage.Device.Factory;
+        var texture = Assert.IsType<FakeTexture>(factory.ResourceSets.First(set => !set.Disposed
+            && set.Resources.Length == 15).Resources[14]);
+        FakeResourceSet[] borrowers = factory.ResourceSets.Where(set => !set.Disposed
+            && set.Resources.Length == 2 && set.Resources.Contains(texture)).ToArray();
+        Assert.Equal(4, borrowers.Length);
+        texture.OnDispose = () => Assert.All(borrowers, set => Assert.True(set.Disposed));
+        int receivers = factory.ResourceSets.Count(set => !set.Disposed
+            && set.Resources.Length == 15 && ReferenceEquals(set.Resources[14], texture));
+        stage.Scene.InteriorCut = null;
+        factory.ThrowOnResourceSetCreate = factory.ResourceSets.Count + receivers + 1;
+        Assert.Throws<InvalidOperationException>(() => { stage.Frame(draw: false); });
+        Assert.False(texture.Disposed);
+        factory.ThrowOnResourceSetCreate = 0;
+
+        stage.Frame(draw: false);
+
+        Assert.True(texture.Disposed);
+        Assert.Equal(0, factory.LiveSetsNamingAFreedTexture);
+    }
+
+    [Fact]
     public void CutBindingsAreSharedAndBorrowersRetireBeforeTheirTexture()
     {
         using var stage = new Stage();
@@ -216,12 +244,15 @@ public sealed class InteriorCutShadowTests
             _box = Scene.LoadMesh(MeshPrimitives.Box(1));
         }
 
-        internal ShadowPassDiagnostics Frame()
+        internal ShadowPassDiagnostics Frame(bool draw = true)
         {
             using var commands = Device.Factory.CreateCommandList();
             Scene.Begin();
-            Scene.Draw(new RigidInstanceDraw(_box, Matrix4x4.Identity) { CutInsideInteriors = Cut, Dissolve = .4f });
-            Scene.AddLight(new Vector3(0, 4, 0), Color.White, 10, 1, LightShadow.Static(1));
+            if (draw)
+            {
+                Scene.Draw(new RigidInstanceDraw(_box, Matrix4x4.Identity) { CutInsideInteriors = Cut, Dissolve = .4f });
+                Scene.AddLight(new Vector3(0, 4, 0), Color.White, 10, 1, LightShadow.Static(1));
+            }
             Scene.PrepareFrame();
             commands.Begin();
             Scene.RenderInternal(commands, 128, 96, _target);

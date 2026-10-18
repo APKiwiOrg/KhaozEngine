@@ -30,6 +30,30 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   [phase 3 hosted verdict](docs/verification/2026-10-18-support-cost-hosted-1334-phase3.md) passes 135 of 139
   ordinary rows. The stairs mesh and hidden crate rows that still miss SG-12 are judged against the aggregate
   actor budget before a consumer pin (#1334).
+- `KhaozEngine.MapDoc` adds general world-authoring markers. Payload 2 requires `heightMode`: `Explicit` keeps
+  `Position.Y`, while `Support` binds a `MapSupportBinding` and resolves through the shared seat query. The
+  value-only `HeightProvenance` and witness-bearing `MarkerSupports` channel keep support evidence separate.
+  Payload-1 bytes and annotation digest scheme `/1` stay unchanged, while any payload-2 marker selects `/2`.
+- MapDoc format 8 is a pure version-only migration from format 7. Every native identity moves once, as it did for
+  format 7, so identity-keyed caches and navigation captures rebuild after migration.
+- Effective marker names and IDs are globally unique and refuse before any read. Repeated prefab marker names now
+  refuse until each repeat carries a marker replace override, and `MapPlacePrefab.InitialOverrides` carries those
+  overrides atomically.
+- `MapMarkerRegistry` adds lookup by ID, name, caller role and tag plus half-open rectangles. Typed player-start,
+  spawn and landmark projections and `MapMarkerSpaces` point membership expose the effective marker view.
+- Native marker editing adds one diff across every transaction, `MarkerNameChanges`, support edits that reseat or
+  remove a bound marker or refuse, `MarkerEditCommand` and `AdoptSpawnsCommand`.
+- `KhaozEngine.MapEdit.Tool` adds `marker_set`, `marker_remove`, `marker_list` and `spawns_adopt`, bringing the
+  surface to 96 tools. Native open, summary and placement queries accept marker options and native resolution,
+  while legacy spawn mutations refuse with marker guidance. `prefab_place` accepts `overridesJson`, and vector
+  queries serialize losslessly.
+- Native editor starts select a window and camera anchor from caller-supplied roles, while spawn billboards,
+  picking and focus use named native support. Public `EditorPicking.Pick` overloads omit legacy spawn boxes when
+  readouts are absent.
+- Support-bound placements and markers on sparse native floors now resolve instead of refusing missing geometry.
+  Markers stay out of `MapBuiltWorld.Bounds`, and post-staging session callbacks publish one snapshot with matching
+  document, undo and redo effects.
+- The private oracle harness adds marker comparison and `KhaozEngine.TileWorld.Netcode` as its sixth reference.
 
 ## 21.4.0
 

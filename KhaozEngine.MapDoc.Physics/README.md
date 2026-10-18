@@ -206,7 +206,7 @@ world point. Both drive residency invalidation and neither registers a physics s
 bounds. Markers do not, so a marker-only edit never changes the world extent, a static or a navigation capture identity.
 `Build` remains the static-only ownership list and `BuildWater` remains the compiled-water list.
 
-Format-7 builds consume `kemap/effective-resources/1` with query policy 2 from the captured MapDoc snapshot.
+Format-8 builds consume `kemap/effective-resources/1` with query policy 2 from the captured MapDoc snapshot.
 Rebuild identity-keyed world and navigation captures when adopting 20.40.0, including prefab-free native maps.
 AuthoredOpen doorway clearance is a geometry proof. Controller walking and layered routes still require G1b,
 #1355 and #438, and intent does not supply R8 pixels or live door state.
@@ -462,7 +462,6 @@ separate spatial values fall back to their reported bounds.
 | Vertical-layer navigation capture on native worlds | #438 phase 5 | `MapNavTiling` provides tile, seam and link identity only |
 | Incremental rebake orchestration, planning budgets, on-demand loading | #1301 | After #438 phase 5 |
 | Multi-cell ghost handoff proof | R8 and G3 | `MapWorldGrids` and `MapResidencyOwnership` provide grid mapping and ownership |
-| Placement-local support surfaces (`Surface` resources) | R5 | Installed in MapDoc before sampling and compiled here with canonical owners |
 | Live portal and door state | [#1363](https://github.com/APKiwiOrg/KhaozEngine/issues/1363) | Portals remain authored open |
 | Clearance body model confirmation | Owner, #1344 | Clearance uses the #438 shell through `ContactShell` |
 | Support certification of curved statics, creases and one-sided back faces | #438 phase 2b | Landed. Staged complete-footprint discovery uses `IPhysicsSupportFootprint` for explicit movement, and diagnostics here still predict only `IPhysicsCapsuleFeatures`. Native adoption remains separately gated |

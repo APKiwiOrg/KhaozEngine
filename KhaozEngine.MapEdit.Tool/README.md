@@ -130,7 +130,7 @@ These are service APIs. Water MCP registrations remain with R10, so the register
 
 ## Prefab assets and native history
 
-The 20.40.0 native surface uses MapDoc format 7 and prefab payload 1. Rebuild identity-keyed caches/captures
+The 21.5.0 native surface uses MapDoc format 8 and prefab payload 1. Rebuild identity-keyed caches/captures
 when adopting its effective resource policy. Light and Support resources require the `resourceSchema`
 discriminant documented in the [MapDoc reference](../KhaozEngine.MapDoc/README.md#rigid-prefab-payloads-and-building-intent).
 Unmarked bytes retain their released opaque meaning, and typed consumers refuse them clearly.

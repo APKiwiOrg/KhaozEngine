@@ -991,7 +991,7 @@ inherit it. The effective resource policy `kemap/effective-resources/1` and quer
 captured GPU-free resource view. The Light/Support `resourceSchema` discriminant does not move decoding into
 a renderer or physics backend, and unmarked bytes retain the released opaque path.
 
-Rigid prefab payloads, persisted bindings, format-7 identity, strict immutable resource closure,
+Rigid prefab payloads, persisted bindings, format-8 identity, strict immutable resource closure,
 local support ownership, partial paint, room parenting, AuthoredOpen portals, bounded effective
 witnesses, roof flags and versioned marker/light values stay in `MapDoc`. `MapDoc.Physics` consumes
 that same effective village for statics, water inputs, membership and annotation intent. Neither

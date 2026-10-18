@@ -154,6 +154,14 @@ public sealed class MapFoliagePayloadTests
     [InlineData("rule-rect-empty", "footprint must be finite")]
     [InlineData("rule-ordering", "unknown property 'ordinal'")]
     [InlineData("rule-tag-null", "must not be null")]
+    [InlineData("rule-id-empty", "every clearance rule needs a non-empty id")]
+    [InlineData("rule-id-duplicate", "rule 'door-rule' is listed twice")]
+    [InlineData("mask-id-empty", "every exception mask needs a non-empty id")]
+    [InlineData("mask-id-duplicate", "mask 'roof-mask' is listed twice")]
+    [InlineData("mask-rect-reversed", "mask 'roof-mask': footprint must be finite")]
+    [InlineData("mask-surface-blank", "mask 'roof-mask' support: a Surface binding names only a surfaceId")]
+    [InlineData("owner-surface-blank", "owner support 'house-1' support: a Surface binding names only a surfaceId")]
+    [InlineData("owner-space-blank", "owner support 'house-1' support: a Space binding names a spaceId and no surfaceId")]
     [InlineData("mask-witness", "unknown property 'witness'")]
     [InlineData("mask-local-owner", "owner must be a World")]
     [InlineData("mask-wrong-kind", "owner must be a World")]
@@ -201,6 +209,24 @@ public sealed class MapFoliagePayloadTests
         Assert.Single(MapFoliageJson.Read(foliage, size).Layers);
         var error = Assert.Throws<MapDocumentException>(() => MapFoliageJson.Read(foliage, size - 1));
         Assert.Contains($"exceeds {size - 1} UTF-8 bytes", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Converter_RefusesAnOversizedOrIncompleteSectionBeforeParsing()
+    {
+        byte[] section = Encoding.UTF8.GetBytes(JsonNode.Parse(MapDocumentFile.SaveText(FoliageFixtures.Create().Document))!["foliage"]!.ToJsonString());
+        var options = new JsonSerializerOptions();
+        MapFoliageSet Convert(long limit, bool complete)
+        {
+            var reader = new Utf8JsonReader(complete ? section : section.AsSpan(0, section.Length / 2), complete, default);
+            reader.Read();
+            return new MapFoliageSetJsonConverter(limit).Read(ref reader, typeof(MapFoliageSet), options);
+        }
+        Assert.Single(Convert(section.Length, complete: true).Layers);
+        var over = Assert.Throws<JsonException>(() => Convert(section.Length - 1, complete: true));
+        Assert.Contains($"exceeds {section.Length - 1} UTF-8 bytes", over.Message, StringComparison.Ordinal);
+        var partial = Assert.Throws<JsonException>(() => Convert(section.Length, complete: false));
+        Assert.Contains("fully buffered", partial.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -270,7 +296,8 @@ public sealed class MapFoliagePayloadTests
         Assert.True(JsonNode.DeepEquals(expectedVersionOnlyClone, upgraded));
         Assert.Equal("unreadable", upgraded["surfaces"]!["sentinel"]!.GetValue<string>());
         // Positive control: the sentinel section is genuinely unreadable, and the migration never read it.
-        Assert.ThrowsAny<Exception>(() => MapDocumentFile.LoadText(sentinelText));
+        var sentinel = Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadText(sentinelText));
+        Assert.Contains("surfaces", sentinel.Message, StringComparison.Ordinal);
 
         // The result is an independent clone, format 9 passes through unchanged and other versions refuse.
         upgraded["surfaces"]!["sentinel"] = "changed";
@@ -552,6 +579,14 @@ public sealed class MapFoliagePayloadTests
             case "rule-rect-empty": rule["footprint"]!["minZ"] = 0.25; break;
             case "rule-ordering": rule["ordinal"] = 1; break;
             case "rule-tag-null": rule["placementTag"] = null; break;
+            case "rule-id-empty": rule["id"] = ""; break;
+            case "rule-id-duplicate": layer["clearanceRules"]!.AsArray().Add(rule.DeepClone()); break;
+            case "mask-id-empty": mask["id"] = ""; break;
+            case "mask-id-duplicate": layer["exceptionMasks"]!.AsArray().Add(mask.DeepClone()); break;
+            case "mask-rect-reversed": mask["footprint"]!["maxZ"] = -2; break;
+            case "mask-surface-blank": mask["support"]!["surfaceId"] = " "; break;
+            case "owner-surface-blank": owner["support"] = new JsonObject { ["kind"] = "Surface", ["surfaceId"] = "\t" }; break;
+            case "owner-space-blank": owner["support"]!["spaceId"] = "  "; break;
             case "mask-witness": mask["witness"] = "upper"; break;
             case "mask-local-owner": mask["owner"]!["scope"] = "Local"; break;
             case "mask-wrong-kind": mask["owner"]!["kind"] = "Light"; break;

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Prefabs;
+using KhaozEngine.MapDoc.Support;
 using KhaozEngine.MapDoc.Surfaces;
 
 namespace KhaozEngine.MapDoc.Foliage;
@@ -240,32 +241,11 @@ public static class MapFoliageValidation
         }
     }
 
+    // The marker's closed binding rule, so blank IDs refuse here exactly as they do for markers.
     static void Binding(MapSupportBinding? binding, string label, List<string> errors)
     {
-        if (binding is null)
-        {
-            errors.Add(label + ": a support binding is required.");
-            return;
-        }
-        switch (binding.Kind)
-        {
-            case MapSupportBindingKind.Surface:
-                if (string.IsNullOrEmpty(binding.SurfaceId) || binding.SpaceId is not null ||
-                    binding.ReferenceY is not null || binding.SearchBelow is not null || binding.SearchAbove is not null)
-                    errors.Add(label + ": a Surface binding names only a surfaceId.");
-                break;
-            case MapSupportBindingKind.Space:
-                if (string.IsNullOrEmpty(binding.SpaceId) || binding.SurfaceId is not null)
-                    errors.Add(label + ": a Space binding names a spaceId and no surfaceId.");
-                if (binding.ReferenceY is not { } y || !float.IsFinite(y) ||
-                    binding.SearchBelow is not { } below || !float.IsFinite(below) || below < 0 ||
-                    binding.SearchAbove is not { } above || !float.IsFinite(above) || above < 0)
-                    errors.Add(label + ": a Space binding requires a finite referenceY and finite nonnegative searchBelow and searchAbove.");
-                break;
-            default:
-                errors.Add(label + ": a support binding must be Surface or Space.");
-                break;
-        }
+        if (binding is null) errors.Add(label + ": a support binding is required.");
+        else MapSupportBindingRules.Validate(binding, label + ": ", errors);
     }
 
     static void Owner(MapPrefabReference? owner, string label, List<string> errors)

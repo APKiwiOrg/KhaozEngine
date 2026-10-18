@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using KhaozEngine.MapDoc.Prefabs;
+using KhaozEngine.MapDoc.Support;
 using KhaozEngine.MapDoc.Surfaces;
 
 namespace KhaozEngine.MapDoc.Foliage;
@@ -12,7 +13,13 @@ namespace KhaozEngine.MapDoc.Foliage;
 // Internal implementation. System.Text.Json instantiates an attribute-named converter through its public parameterless constructor.
 internal sealed class MapFoliageSetJsonConverter : JsonConverter<MapFoliageSet>
 {
-    public MapFoliageSetJsonConverter() { }
+    readonly long _maxUtf8Bytes;
+
+    public MapFoliageSetJsonConverter() : this(MapFoliagePayloadLimits.MaxUtf8Bytes) { }
+
+    /// <summary>A converter refusing sections above <paramref name="maxUtf8Bytes"/>, so the pre-parse probe is
+    /// observable at a small size.</summary>
+    internal MapFoliageSetJsonConverter(long maxUtf8Bytes) => _maxUtf8Bytes = maxUtf8Bytes;
 
     // A null section is refused, not read as absent. An absent section is the only spelling of no foliage.
     public override bool HandleNull => true;
@@ -20,12 +27,14 @@ internal sealed class MapFoliageSetJsonConverter : JsonConverter<MapFoliageSet>
     public override MapFoliageSet Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         if (reader.TokenType == JsonTokenType.Null) throw new JsonException("foliage: omit the section instead of writing null.");
-        // Measure the buffered value before parsing it, so an oversized section never reaches a document.
+        // Measure the buffered value before parsing it, so an oversized section never reaches a document. A section the
+        // reader cannot skip is not fully buffered and cannot be measured, so it refuses instead of escaping the limit.
         Utf8JsonReader probe = reader;
-        if (probe.TrySkip() && probe.BytesConsumed - reader.TokenStartIndex > MapFoliagePayloadLimits.MaxUtf8Bytes)
-            throw new JsonException($"foliage: the section exceeds {MapFoliagePayloadLimits.MaxUtf8Bytes} UTF-8 bytes.");
+        if (!probe.TrySkip()) throw new JsonException("foliage: the section must be fully buffered before it is read.");
+        if (probe.BytesConsumed - reader.TokenStartIndex > _maxUtf8Bytes)
+            throw new JsonException($"foliage: the section exceeds {_maxUtf8Bytes} UTF-8 bytes.");
         using JsonDocument json = JsonDocument.ParseValue(ref reader);
-        try { return MapFoliageJson.Read(json.RootElement); }
+        try { return MapFoliageJson.Read(json.RootElement, _maxUtf8Bytes); }
         catch (MapDocumentException ex) { throw new JsonException(ex.Message, ex); }
     }
 
@@ -168,25 +177,7 @@ internal static class MapFoliageJson
 
     internal static void WriteBinding(Utf8JsonWriter w, MapSupportBinding value, string label)
     {
-        w.WriteStartObject();
-        switch (value.Kind)
-        {
-            case MapSupportBindingKind.Surface when value.SurfaceId is { } surface && value.SpaceId is null &&
-                value.ReferenceY is null && value.SearchBelow is null && value.SearchAbove is null:
-                w.WriteString("kind", "Surface");
-                w.WriteString("surfaceId", surface);
-                break;
-            case MapSupportBindingKind.Space when value.SpaceId is { } space && value.SurfaceId is null &&
-                value.ReferenceY is { } y && value.SearchBelow is { } below && value.SearchAbove is { } above:
-                w.WriteString("kind", "Space");
-                w.WriteString("spaceId", space);
-                w.WriteNumber("referenceY", y);
-                w.WriteNumber("searchBelow", below);
-                w.WriteNumber("searchAbove", above);
-                break;
-            default: throw Fail(label + " carries exactly the members of its kind.");
-        }
-        w.WriteEndObject();
+        if (!MapSupportBindingRules.TryWrite(w, value)) throw Fail(label + " carries exactly the members of its kind.");
     }
 
     internal static void Write(Utf8JsonWriter w, MapFoliageSet set)

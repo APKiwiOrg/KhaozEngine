@@ -53,6 +53,9 @@
 # Windows, the debug layer and the device-evidence detector on Metal), and every evidence artifact carries the
 # shard name. Every push and pull_request path, a bake dispatch and a renderTestFilter dispatch stay one job
 # per leg.
+# Sharded jobs restore and build only their assigned test projects and their references (#1472). Rest also
+# builds Render.Tests on Windows for FXC validation and on Vulkan for shader-cache verification. Unsharded
+# paths still build KhaozEngine.slnx. The build selection does not change test selection or coverage guards.
 #
 # CONCURRENCY. The org is on the Team plan: 60 concurrent GitHub-hosted standard jobs and 5 concurrent macOS
 # jobs (https://docs.github.com/en/actions/reference/limits). A default-input dispatch peaks at 24 jobs here
@@ -867,7 +870,26 @@ jobs:
           restore-keys: |
             nuget-${{ runner.os }}-
 
-      - run: dotnet restore
+      - name: Select the shard build inputs
+        id: build-inputs
+        shell: bash
+        env:
+          LEG: ${{ matrix.backend }}
+          SHARD: ${{ matrix.shard }}
+        run: |
+          target=KhaozEngine.slnx
+          if [ -n "$SHARD" ]; then
+            mkdir -p TestResults
+            target=TestResults/gpu-build.slnx
+            python3 scripts/gpu-test-shards.py build-solution "$LEG" "$SHARD" KhaozEngine.slnx "$target"
+          fi
+          echo "target=$target" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the shard build inputs
+        run: dotnet restore "$BUILD_TARGET"
+        shell: bash
+        env:
+          BUILD_TARGET: ${{ steps.build-inputs.outputs.target }}
 
       - name: Save the NuGet package cache
         if: runner.os == 'Windows' && matrix.primary == '1' && steps.nuget-cache.outputs.cache-hit != 'true'
@@ -878,8 +900,12 @@ jobs:
             !~/.nuget/packages/khaozengine.*
           key: ${{ steps.nuget-cache.outputs.cache-primary-key }}
 
-      # Build outputs are not cached: obj and bin are what this job exists to produce from the commit under test.
-      - run: dotnet build -c Release --no-restore
+      # Build the shard's test roots and their references, never another shard's test projects (#1472).
+      - name: Build the shard in Release
+        run: dotnet build "$BUILD_TARGET" -c Release --no-restore
+        shell: bash
+        env:
+          BUILD_TARGET: ${{ steps.build-inputs.outputs.target }}
 
       # TRIPWIRE for the Linux native load path. Silk.NET resolves its natives through its OWN path resolver,
       # which on Linux asks for the distro rid (ubuntu.24.04-x64) and so never looks under runtimes/linux-x64,
@@ -888,7 +914,7 @@ jobs:
       # symptom is hundreds of tests failing inside a shaderc type initializer, which reads like a shader bug and
       # is not one, so assert the files are where the resolver looks instead.
       - name: Assert the host natives landed beside the assemblies (Linux)
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest' && matrix.shard != 'projects-1'
         shell: bash
         run: |
           out=KhaozEngine.Render.Tests/bin/Release/net10.0

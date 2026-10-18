@@ -205,6 +205,42 @@ assert all((base / "output" / p).exists() for p in paths("all")), "paths were no
 PY
 check "derived solutions partition projects and rebase paths" 0 "$_rc"
 
+echo "build solutions: only shard test roots and required instrumentation"
+for backend in metal-native direct3d11-native vulkan-native; do
+  for shard in rest render-1; do
+    check "$backend $shard build solution" 0 \
+      "$(run build-solution "$backend" "$shard" "$S/Fixture.slnx" "$S/output/build-$backend-$shard.slnx")"
+  done
+done
+for backend in direct3d11-native vulkan-native; do
+  check "$backend projects-1 build solution" 0 \
+    "$(run build-solution "$backend" projects-1 "$S/Fixture.slnx" "$S/output/build-$backend-projects-1.slnx")"
+done
+_rc=0
+python3 - "$S" > "$OUTFILE" 2>&1 <<'PYBUILD' || _rc=$?
+import pathlib, sys, xml.etree.ElementTree as ET
+base = pathlib.Path(sys.argv[1])
+def paths(backend, shard):
+    return {p.get("Path") for p in ET.parse(base / "output" / f"build-{backend}-{shard}.slnx").iter("Project")}
+render = {"../KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj"}
+catalog = {"../KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj"}
+named = {f"../{n}/{n}.csproj" for n in
+         ("KhaozEngine.MapEditor.Tests", "KhaozEngine.Game.Tests", "KhaozEngine.Movement.Tests")}
+for backend in ("metal-native", "direct3d11-native", "vulkan-native"):
+    assert paths(backend, "render-1") == render
+    rest = paths(backend, "rest")
+    assert "../Lib/Lib.csproj" not in rest, "standalone library roots are unnecessary"
+    assert "../A.Tests/A.Tests.csproj" in rest, "new test projects must default to rest"
+    assert (render <= rest) == (backend != "metal-native"), "once-per-leg checks need Render.Tests"
+assert paths("metal-native", "rest") == {"../A.Tests/A.Tests.csproj"} | named | catalog
+assert paths("direct3d11-native", "rest") == {"../A.Tests/A.Tests.csproj"} | named | render
+assert paths("vulkan-native", "rest") == {"../A.Tests/A.Tests.csproj"} | catalog | render
+assert paths("direct3d11-native", "projects-1") == catalog
+assert paths("vulkan-native", "projects-1") == named
+PYBUILD
+check "build roots preserve coverage and instrumentation" 0 "$_rc"
+check "an unknown build shard fails" 1 "$(run build-solution metal-native render-3 "$S/Fixture.slnx" "$S/output/no.slnx")"
+
 project_reports() { # mutation, backend. Applied to an otherwise complete software backend
   rm -rf "$TMPROOT/reports"; mkdir -p "$TMPROOT/reports"
   python3 - "$PLAN" "$TMPROOT/reports" "$1" "$2" <<'PY'

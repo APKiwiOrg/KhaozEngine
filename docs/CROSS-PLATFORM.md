@@ -321,6 +321,13 @@ below). Each sharded leg runs as jobs named `<os> / <backend> / <shard>`:
   `ShadowCascadeCullPerfGpuTests` takes 13 to 15 minutes on WARP and has a Windows slice to itself. Each shard
   uploads its TRX files as `shard-trx-<backend>-<shard>`, which carry the per-test durations to re-balance from.
 
+Each shard restores and builds a solution containing only its assigned test projects and their project
+references ([#1472](https://github.com/APKiwiOrg/KhaozEngine/issues/1472)). A render shard builds
+`KhaozEngine.Render.Tests`, a `projects-1` shard builds its named projects, and `rest` builds its non-Render
+test projects. Windows and Vulkan `rest` also build `Render.Tests` for the FXC and shader-cache checks.
+Unsharded paths still restore and build `KhaozEngine.slnx`. Build selection leaves test selection and both
+coverage guards unchanged. The Windows-only NuGet cache still excludes every KhaozEngine extraction.
+
 So a default-input dispatch is 3 Metal, 6 Windows and 14 Linux jobs plus the `sync` job. The org's Team plan
 allows 60 concurrent hosted jobs and 5 concurrent macOS jobs
 ([GitHub Actions limits](https://docs.github.com/en/actions/reference/limits)), so the 24 jobs of the dispatch

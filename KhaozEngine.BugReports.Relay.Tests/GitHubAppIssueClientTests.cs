@@ -467,6 +467,26 @@ public sealed class GitHubAppIssueClientTests : IDisposable
         Assert.Equal("Bearer " + Token, handler.Requests[2].Authorization);
     }
 
+    [Fact]
+    public async Task Token_FailedExchange_IsNotCached_AndNextCallSucceeds()
+    {
+        handler.Enqueue(HttpStatusCode.Forbidden, "{\"message\":\"exchange denied\"}");
+        TokenResponse("ghs_recovered");
+        IssueResponse();
+        IssueResponse();
+        using var client = Client();
+
+        var error = await Assert.ThrowsAsync<GitHubApiException>(() => client.CreateIssueAsync(Draft, CancellationToken.None));
+        Assert.Equal(403, error.StatusCode);
+        Assert.Single(handler.Requests);
+        Assert.Equal(42, await client.CreateIssueAsync(Draft, CancellationToken.None));
+        Assert.Equal(42, await client.CreateIssueAsync(Draft, CancellationToken.None));
+
+        Assert.Equal(new[] { "/app/installations/789/access_tokens", "/app/installations/789/access_tokens",
+            "/repos/example/reports/issues", "/repos/example/reports/issues" }, handler.Requests.Select(request => request.Uri.AbsolutePath));
+        Assert.All(handler.Requests.Skip(2), request => Assert.Equal("Bearer ghs_recovered", request.Authorization));
+    }
+
     public void Dispose()
     {
         http.Dispose();

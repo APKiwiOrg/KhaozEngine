@@ -24,10 +24,9 @@ namespace KhaozEngine.Tests.Gpu
     ///   self-consistent forward pass alone would not.</item>
     /// </list>
     ///
-    /// Every stage is its own submit + drain, per the ordering contract on <see cref="IGpuCommandList"/>: each stage
-    /// reads what the previous stage wrote, and chaining dependent dispatches inside one command list is not safe on
-    /// every backend. N stays at 64 (12 dispatches per 2D transform) so the software rasterizers on CI are not asked
-    /// to do real work.
+    /// Every stage uses its own submit + drain, exercising explicit cross-list ordering. Dependent storage-buffer
+    /// dispatches in one command list are also ordered by <see cref="IGpuCommandList"/>, without an intermediate
+    /// drain. N stays at 64 (12 dispatches per 2D transform) to keep the native software-rasterizer proof small.
     /// </summary>
     public sealed class ComputeFftGpuTests
     {
@@ -186,8 +185,8 @@ namespace KhaozEngine.Tests.Gpu
                 cl.Dispatch(groups, 1, 1);
                 cl.End();
                 _dev.Submit(cl);
-                // Each stage reads the previous stage's output, so the submit boundary plus this drain is the
-                // ordering. See the IGpuCommandList ordering contract.
+                // This fixture uses separate command lists, so each stage's submit needs this wait before the
+                // next list consumes its output. In-list dependent dispatches would need no intermediate drain.
                 _dev.WaitForIdle();
             }
 

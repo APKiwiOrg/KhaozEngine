@@ -901,12 +901,12 @@ block, the viewport, the scissor) is encoder state and is re-issued after any bo
 ARGUMENT here too, where Direct3D 11 sets it on the input assembler and Vulkan bakes it into the pipeline, so
 the pipeline resolves it once at creation and nothing is mapped per draw.
 
-**Two dependent dispatches inside one recording are ordered, and that is a BACKEND PROPERTY rather than a
-contract.** The compute encoder is opened with the SERIAL dispatch type, so dispatches inside it do not overlap
-and a read-after-write between them needs no barrier, which is why this backend carries no barrier batch, no
-layout tracker and no dependency analysis at all. **The GPU seam's compute rule 2 is unchanged**: chaining
-dependent dispatches still needs `End`, `Submit` and `WaitForIdle` in portable code, because the other backends
-need the drain and code that drops it because THIS one tolerates the chain breaks on them.
+**Compute rule 2 guarantees in-list storage-buffer ordering without a barrier member.** The compute encoder
+uses the SERIAL dispatch type, and buffers use hazard-tracked resource options. A dispatch or draw reading a
+storage buffer an earlier dispatch wrote sees the write without an intermediate `End`, `Submit` or
+`WaitForIdle`. The encoder boundary and tracked resources order the compute-to-graphics handoff. This backend
+needs no barrier batch, layout tracker or dependency analysis for that contract. Ordering across command lists
+still requires a submit boundary and a wait.
 
 **`ResolveTexture` DESTROYS the source texture's contents, and that is deliberate.** The resolve is a
 standalone render pass whose one colour attachment is the multisampled source at `loadAction = Load` and

@@ -5,14 +5,14 @@ using Silk.NET.Vulkan;
 namespace KhaozEngine.Gpu.Vulkan.Internal
 {
     /// <summary>
-    /// WHICH RESOURCES A DISPATCH IN THIS RECORDING HAS WRITTEN OR READ, and therefore whether the NEXT dispatch
+    /// WHICH RESOURCES A COMMAND IN THIS RECORDING HAS WRITTEN OR READ, and therefore whether the NEXT dispatch
     /// or draw owes a barrier before it runs (V-C2). Work-breakdown row 15
     /// (https://github.com/APKiwiOrg/KhaozEngine/issues/525).
     ///
     /// <para><b>A SET OF ACCESSED RESOURCES, NOT A BARRIER PER DISPATCH, and that is the whole decision.</b> A
     /// barrier before every dispatch would serialise a run of independent dispatches that share nothing, which is
     /// the common shape (a particle update and an unrelated reduction in one list). A barrier before a command
-    /// that BINDS something an earlier dispatch wrote is the dependency the classic ping-pong actually has, and it
+    /// that BINDS something an earlier command wrote is the dependency the classic ping-pong actually has, and it
     /// is the one the design asks for in as many words.</para>
     ///
     /// <para><b>THE SAME QUESTION SERVES BOTH BIND POINTS.</b> <see cref="NeedsBarrier"/> takes either the compute
@@ -23,13 +23,13 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     ///
     /// <para><b>A STORAGE BUFFER HAS A DIRECTION, A STORAGE IMAGE DOES NOT.</b>
     /// <see cref="GpuResourceKind"/> has a read-only and a read-write structured-buffer kind, so a set records
-    /// which of its buffers a dispatch can write (<see cref="VulkanBoundSet.BoundWritableStorageBuffers"/>) and
+    /// which of its buffers a command can write (<see cref="VulkanBoundSet.BoundWritableStorageBuffers"/>) and
     /// only those are noted as written. A storage image has one kind, so every storage image binding is still
     /// treated as a write, and assuming a read would drop the barrier on exactly the chain it exists for.</para>
     ///
-    /// <para><b>A READ-ONLY DISPATCH BINDING IS STILL REMEMBERED, AS A READ.</b> A later dispatch that WRITES a
-    /// buffer an earlier dispatch read owes an execution dependency, or the write can land under the read. Before
-    /// buffers had a direction that edge was covered by counting the read as a write. Now it is covered by
+    /// <para><b>A READ-ONLY BINDING IS STILL REMEMBERED, AS A READ.</b> A later command that WRITES a
+    /// buffer an earlier draw or dispatch read owes an execution dependency, or the write can land under the read.
+    /// Before buffers had a direction that edge was covered by counting the read as a write. Now it is covered by
     /// remembering the read and asking whether a later binding can write it, so dropping the over-count drops no
     /// barrier a write-after-read needs.</para>
     ///
@@ -40,8 +40,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// transition already orders them, so the graphics arm asks only about its storage images and buffers.</para>
     ///
     /// <para><b>THE SET IS CLEARED BY THE BARRIER RATHER THAN DECREMENTED.</b>
-    /// <see cref="VulkanDispatchBarrier.ReadAfterWrite"/> is a GLOBAL memory barrier whose destination names the
-    /// compute stage and every graphics stage, so it orders every earlier compute access against every later
+    /// <see cref="VulkanDispatchBarrier.ReadAfterWrite"/> is a GLOBAL memory barrier that names the compute stage
+    /// and every graphics stage on BOTH sides, so it orders every earlier shader access against every later
     /// shader access at once: once one is emitted there is no resource left in this recording whose earlier
     /// access is still unordered, whichever bind point reads it next. Keeping the entries would emit a second
     /// barrier for a dependency the first one already covered. A compute-only destination could not be cleared
@@ -85,14 +85,14 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         readonly HashSet<ulong> _written = new();
         readonly HashSet<ulong> _read = new();
 
-        /// <summary>How many distinct resources an earlier dispatch in this recording wrote and no barrier has
+        /// <summary>How many distinct resources an earlier command in this recording wrote and no barrier has
         /// ordered yet. For the tests, and the number that reading zero means no later reader owes
         /// anything.</summary>
         internal int WrittenCount => _written.Count;
 
         /// <summary>
-        /// Whether a command binding <paramref name="records"/> reads or overwrites something an earlier dispatch
-        /// in this recording wrote, or writes a buffer an earlier dispatch read, and therefore owes a barrier
+        /// Whether a command binding <paramref name="records"/> reads or overwrites something an earlier command
+        /// in this recording wrote, or writes a buffer an earlier command read, and therefore owes a barrier
         /// before it runs.
         /// </summary>
         /// <param name="records">The COMPUTE or GRAPHICS bind records as they stand, whose DECLARED slots are
@@ -139,16 +139,17 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         }
 
         /// <summary>
-        /// Record everything the dispatch about to run can access: every STORAGE image and every WRITABLE storage
-        /// buffer as written, and every read-only storage buffer as read. Called AFTER the dispatch is emitted,
-        /// because a dispatch does not depend on its own accesses.
+        /// Record everything the command can access: every STORAGE image and every WRITABLE storage buffer as
+        /// written, and every read-only storage buffer as read. Called AFTER a draw or dispatch is emitted,
+        /// because a command does not depend on its own accesses. Fragment-stage writable bindings are writes
+        /// just like compute bindings.
         /// </summary>
-        /// <param name="records">The compute bind records as they stand.</param>
-        internal void NoteWrites(VulkanBindRecords records)
+        /// <param name="records">The compute or graphics bind records as they stand.</param>
+        internal void NoteAccesses(VulkanBindRecords records)
         {
             // BOUNDED IDENTICALLY TO THE QUESTION ABOVE, and that is load-bearing rather than tidy: a walk that
             // reached further would put a resource back into the sets the barrier had just cleared, and the next
-            // command to bind it would pay for an access no dispatch in this recording made.
+            // command to bind it would pay for an access no command in this recording made.
             uint limit = (uint)records.BindableSlotLimit();
 
             for (uint slot = 0; slot < limit; slot++)

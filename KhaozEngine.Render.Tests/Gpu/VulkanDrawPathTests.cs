@@ -517,16 +517,17 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// THE BARRIER NAMES BOTH STAGE MASKS AND BOTH ACCESS MASKS EXPLICITLY (V-F6), and its destination side
         /// carries the WRITE as well as the read: the ping-pong's second stage writes its own output, and a
-        /// write-after-write on one resource is the same hazard with the same answer. The destination stages
-        /// include every graphics stage, because the barrier clears the hazard set and a later draw reading the
-        /// same buffer must be covered by it.
+        /// write-after-write on one resource is the same hazard with the same answer. Both stage masks include
+        /// every graphics stage, covering graphics-to-compute dependencies as well as the reverse handoff.
+        /// Clearing the global hazard set requires publication to every later shader stage.
         /// </summary>
         [Fact]
         public void TheDependentDispatchBarrier_NamesEveryMaskAndOrdersWritesToo()
         {
             MemoryBarrier2 barrier = VulkanDispatchBarrier.ReadAfterWrite;
 
-            Assert.Equal(PipelineStageFlags2.ComputeShaderBit, barrier.SrcStageMask);
+            Assert.Equal(PipelineStageFlags2.ComputeShaderBit | PipelineStageFlags2.AllGraphicsBit,
+                barrier.SrcStageMask);
             Assert.Equal(AccessFlags2.ShaderWriteBit, barrier.SrcAccessMask);
             Assert.Equal(PipelineStageFlags2.ComputeShaderBit | PipelineStageFlags2.AllGraphicsBit,
                 barrier.DstStageMask);

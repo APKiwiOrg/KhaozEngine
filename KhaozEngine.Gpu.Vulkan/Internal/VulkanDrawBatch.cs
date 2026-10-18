@@ -3,12 +3,12 @@ using Silk.NET.Vulkan;
 namespace KhaozEngine.Gpu.Vulkan.Internal
 {
     /// <summary>
-    /// THE DEPENDENCY BETWEEN A DISPATCH AND A LATER DISPATCH OR DRAW IN ONE LIST (V-C2), as a pure function over
+    /// THE DEPENDENCY BETWEEN DISPATCHES AND DRAWS IN ONE LIST (V-C2), as a pure function over
     /// enums, so what it synchronises is a plain <c>[Fact]</c> rather than a thing only a validation layer on a
     /// real device can see. The same shape <see cref="VulkanImageTransition"/> takes for the layout half.
     ///
     /// <para><b>A GLOBAL MEMORY BARRIER RATHER THAN A BUFFER OR IMAGE ONE, AND THAT IS THE DECISION.</b> The
-    /// hazard this closes is "some resource an earlier dispatch accessed is bound to this command", and the set
+    /// hazard this closes is "some resource an earlier command accessed is bound to this command", and the set
     /// that answers it (<see cref="VulkanComputeHazards"/>) carries handles rather than ranges: a storage buffer
     /// has no tracked sub-range here and a storage image is already in <c>GENERAL</c> at both ends, so a
     /// per-resource barrier would name the same two stage masks N times and buy nothing a single global one does
@@ -21,25 +21,26 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// compute encoder and tracked resources. Here it is this barrier, asked for by the dispatch path and by the
     /// draw path alike.</para>
     ///
-    /// <para><b>COMPUTE ON THE SOURCE SIDE, COMPUTE AND EVERY GRAPHICS STAGE ON THE DESTINATION SIDE.</b> Only a
-    /// dispatch is noted as writing, so the source is the compute stage. The destination names every graphics
-    /// stage as well as compute because the hazard set is CLEARED by this barrier: a barrier emitted for a
-    /// dependent dispatch also has to publish the same writes to a vertex or fragment reader later in the list,
-    /// or that reader would find its entry gone and no barrier of its own. The image direction of rule 1 is still
-    /// a LAYOUT transition through <see cref="VulkanLayoutTracker"/>, whose <see cref="VulkanImageTransition"/>
+    /// <para><b>COMPUTE AND EVERY GRAPHICS STAGE ON BOTH SIDES.</b> Draws and dispatches both record storage
+    /// accesses. The source stages order earlier graphics reads before a dispatch overwrites their buffer, and
+    /// the shader-write source access publishes fragment writes as well as compute writes. Both stage masks
+    /// cover both bind points because the hazard set is CLEARED by this global barrier: every earlier access
+    /// must be ordered against every later shader access, including resources not bound by the command that
+    /// triggered it. A narrower mask would leave an entry cleared without its dependency covered. The image
+    /// direction of rule 1 is still a LAYOUT transition through <see cref="VulkanLayoutTracker"/>, whose <see cref="VulkanImageTransition"/>
     /// already names <c>ALL_COMMANDS</c> and <c>MEMORY_WRITE</c> as the source side of a <c>GENERAL</c>
     /// image.</para>
     /// </summary>
     internal static unsafe class VulkanDispatchBarrier
     {
         /// <summary>
-        /// The barrier that makes an earlier dispatch's shader writes visible to a later dispatch's or draw's
-        /// shader reads. Both stage masks and both access masks named explicitly (V-F6), like every other barrier
-        /// in this backend.
+        /// The barrier that publishes earlier shader writes and orders earlier shader reads before a later
+        /// writer. Write-after-read needs an execution dependency, supplied by the source and destination stages.
+        /// Both stage masks and both access masks are explicit (V-F6).
         /// </summary>
         internal static MemoryBarrier2 ReadAfterWrite => new(
             sType: StructureType.MemoryBarrier2,
-            srcStageMask: PipelineStageFlags2.ComputeShaderBit,
+            srcStageMask: PipelineStageFlags2.ComputeShaderBit | PipelineStageFlags2.AllGraphicsBit,
             srcAccessMask: AccessFlags2.ShaderWriteBit,
             dstStageMask: PipelineStageFlags2.ComputeShaderBit | PipelineStageFlags2.AllGraphicsBit,
             // BOTH READ AND WRITE ON THE DESTINATION SIDE, because the classic ping-pong reads stage N-1's output

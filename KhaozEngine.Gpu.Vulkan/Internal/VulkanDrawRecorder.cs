@@ -5,7 +5,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <summary>
     /// THE PRE-COMMAND ORDERING, IN ONE PLACE: everything that has to happen before a <c>vkCmdDraw</c>,
     /// a <c>vkCmdDrawIndexed</c> or a <c>vkCmdDispatch</c>, in the one order that is correct, plus the vertex and
-    /// index bind state and the dependent-dispatch hazard set that feed it. Work-breakdown row 15
+    /// index bind state and the draw/dispatch hazard set that feed it. Work-breakdown row 15
     /// (https://github.com/APKiwiOrg/KhaozEngine/issues/525).
     ///
     /// <para><b>IT IS ITS OWN TYPE BECAUSE THE ORDER IS THE THING THAT CAN BE WRONG</b>
@@ -50,7 +50,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <para><b>THE DISPATCH ORDER IS THE SAME SHAPE WITH TWO DIFFERENCES.</b> It ENDS any pending rendering
     /// first and unconditionally (V-A4), because a dispatch is illegal inside a render pass instance, and it emits
     /// the read-after-write barrier between the transitions and the command, when
-    /// <see cref="VulkanComputeHazards"/> says an earlier dispatch accessed something this one binds (V-C2). A
+    /// <see cref="VulkanComputeHazards"/> says an earlier draw or dispatch has a conflicting access (V-C2). A
     /// compute set's STORAGE images go to <c>GENERAL</c> and its sampled ones to
     /// <c>SHADER_READ_ONLY_OPTIMAL</c>, which is the same walk with the layout taken off the binding rather than
     /// off the texture.</para>
@@ -106,12 +106,11 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// and because the device-free tests drive the run cutting through it.</summary>
         internal VulkanGeometryBinds Geometry => _geometry;
 
-        /// <summary>The dependent-dispatch hazard set (V-C2), exposed for the tests that assert a barrier is
-        /// emitted for a chain and not for two independent dispatches.</summary>
+        /// <summary>The draw/dispatch hazard set (V-C2), exposed for tests of dependencies and independent work.</summary>
         internal VulkanComputeHazards Hazards => _hazards;
 
         /// <summary>
-        /// FORGET EVERY BIND AND EVERY WRITE, which is what a fresh <c>VkCommandBuffer</c> holds. Called from
+        /// FORGET EVERY BIND AND EVERY ACCESS, which is what a fresh <c>VkCommandBuffer</c> holds. Called from
         /// <c>VulkanCommandList.Begin</c> alongside the other recorder resets, for the reason they are all called
         /// there: the state belonged to a recording that was discarded, and keeping it would let the next one skip
         /// a bind as redundant against a command buffer nobody submitted.
@@ -132,6 +131,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             PrepareGraphics(commandBuffer, rendering, binds);
             _emitter.Draw(commandBuffer, binds, in call);
+            _hazards.NoteAccesses(binds);
         }
 
         /// <summary><c>vkCmdDrawIndexed</c>, with the identical four steps.</summary>
@@ -140,11 +140,12 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         {
             PrepareGraphics(commandBuffer, rendering, binds);
             _emitter.DrawIndexed(commandBuffer, binds, in call);
+            _hazards.NoteAccesses(binds);
         }
 
         /// <summary>
         /// <c>vkCmdDispatch</c>, with the pass ended, the compute set's images in the layouts their bindings need,
-        /// and the read-after-write barrier when this dispatch depends on an earlier one.
+        /// and the dependency barrier when this dispatch conflicts with an earlier draw or dispatch.
         /// </summary>
         /// <param name="commandBuffer">The buffer being recorded into.</param>
         /// <param name="rendering">The list's rendering schedule, whose pending instance this ends (V-A4).</param>
@@ -164,9 +165,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
 
             TransitionBoundImages(commandBuffer, binds);
 
-            // THE DEPENDENCY, IF THERE IS ONE. Asked before the writes of THIS dispatch are recorded, because a
+            // THE DEPENDENCY, IF THERE IS ONE. Asked before the accesses of THIS dispatch are recorded, because a
             // dispatch does not depend on itself, and cleared by the barrier because a global memory barrier
-            // orders every earlier write at once.
+            // orders every earlier shader access at once.
             if (_hazards.NeedsBarrier(binds))
             {
                 _emitter.DependencyBarrier(commandBuffer);
@@ -174,7 +175,7 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             }
 
             _emitter.Dispatch(commandBuffer, binds, groupCountX, groupCountY, groupCountZ);
-            _hazards.NoteWrites(binds);
+            _hazards.NoteAccesses(binds);
         }
 
         // STEPS 1 TO 3 OF THE DRAW ORDER. Step 4 is the emitter's, because the descriptor flush and the command
@@ -185,8 +186,8 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             ArgumentNullException.ThrowIfNull(binds);
 
             // THE BUFFER DEPENDENCY IS ASKED FIRST, with the same hazard set and the same question a dependent
-            // dispatch asks. A storage buffer an earlier dispatch in this recording wrote is ordered against this
-            // draw's shader reads by one global memory barrier, and that barrier is not legal inside a render pass
+            // dispatch asks. Conflicting storage accesses from earlier draws or dispatches are ordered against
+            // this draw by one global memory barrier, and that barrier is not legal inside a render pass
             // instance, so it joins the transitions as a reason to close the pass.
             bool dependency = _hazards.NeedsBarrier(binds);
 

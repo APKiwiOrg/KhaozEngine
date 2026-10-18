@@ -22321,11 +22321,12 @@ cl.End();
 gd.Submit(cl);
 ```
 
-Vulkan queues a layout restore when the dispatch binds the texture and drains it before the next draw, but that
-queue is per-command-list state and is armed only by the `Sampled` usage flag, so a `Storage`-only texture or a
-split across two command lists silently skips the barrier. Metal ends the compute encoder as the render encoder
-begins. Direct3D11 unbinds the UAV as the SRV is bound. You do not need to unbind the compute set or switch
-pipeline first; all three cope.
+The native Vulkan backend tracks layouts per command list. A dispatch leaves the storage image in `GENERAL`,
+and the draw transitions each bound sampled image to `SHADER_READ_ONLY_OPTIMAL` before rendering begins.
+An open rendering scope ends before that transition. The walk covers every set the current pipeline declares,
+including sets bound before the dispatch. Create the texture with `Storage | Sampled` and keep both commands
+in the same list. Metal ends the compute encoder as the render encoder begins. Direct3D11 unbinds the UAV as
+the SRV is bound. You do not need to unbind the compute set or switch pipeline first.
 
 **2. A dispatch or a draw that reads a storage buffer an earlier dispatch wrote: same command list, nothing
 between them.**

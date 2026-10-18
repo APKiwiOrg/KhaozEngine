@@ -205,6 +205,69 @@ void main() { Values[0] = vec4(0.0, 0.0, 1.0, 1.0); }";
             Assert.Equal(new byte[] { 0, 0, 255, 255 }, Centre(device, target));
         }
 
+        /// <summary>The first draw must finish reading green before compute overwrites its source with blue.</summary>
+        [GpuFact]
+        public void ADrawReadsTheOldValueBeforeALaterDispatchOverwritesIt()
+        {
+            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
+            IGpuDevice device = gpu.GpuDevice;
+            Assert.True(device.Capabilities.SupportsCompute, $"{device.Backend} reports no compute support");
+            IGpuResourceFactory f = device.Factory;
+
+            using IGpuBuffer values = f.CreateBuffer(new GpuBufferDescription(
+                16, GpuBufferUsage.StructuredBufferReadWrite, 16));
+            device.UpdateBuffer(values, 0, new Vector4(0f, 1f, 0f, 1f));
+            using IGpuBuffer tint = f.CreateBuffer(new GpuBufferDescription(16, GpuBufferUsage.UniformBuffer));
+            device.UpdateBuffer(tint, 0, Vector4.One);
+
+            using IGpuResourceLayout tintLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
+                new GpuResourceLayoutElement("Tint", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex)));
+            using IGpuResourceLayout readerLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
+                new GpuResourceLayoutElement("ValueBuf", GpuResourceKind.StructuredBufferReadOnly, GpuShaderStages.Vertex)));
+            using IGpuResourceSet tintSet = f.CreateResourceSet(new GpuResourceSetDescription(tintLayout, tint));
+            using IGpuResourceSet readerSet = f.CreateResourceSet(new GpuResourceSetDescription(readerLayout, values));
+            using IGpuShaderSet readerShaders = f.CreateShadersFromSpirv(ValueVert, Frag);
+            using IGpuTexture before = Target(f);
+            using IGpuTexture after = Target(f);
+            using IGpuFramebuffer beforeFb = f.CreateFramebuffer(null, before);
+            using IGpuFramebuffer afterFb = f.CreateFramebuffer(null, after);
+            using IGpuPipeline reader = f.CreateGraphicsPipeline(Pipeline(readerShaders, beforeFb, tintLayout, readerLayout));
+
+            using IGpuComputeShader writerShader = f.CreateComputeShaderFromSpirv(WriteValue);
+            using IGpuResourceLayout writerLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
+                new GpuResourceLayoutElement("ValueBuf", GpuResourceKind.StructuredBufferReadWrite, GpuShaderStages.Compute)));
+            using IGpuResourceSet writerSet = f.CreateResourceSet(new GpuResourceSetDescription(writerLayout, values));
+            using IGpuComputePipeline writer = f.CreateComputePipeline(new GpuComputePipelineDescription(writerShader, writerLayout));
+
+            using (IGpuCommandList cl = f.CreateCommandList())
+            {
+                cl.Begin();
+                cl.SetFramebuffer(beforeFb);
+                cl.ClearColorTarget(0, Color.Black);
+                cl.SetPipeline(reader);
+                cl.SetGraphicsResourceSet(0, tintSet);
+                cl.SetGraphicsResourceSet(1, readerSet);
+                cl.Draw(3);
+
+                cl.SetComputePipeline(writer);
+                cl.SetComputeResourceSet(0, writerSet);
+                cl.Dispatch(1, 1, 1);
+
+                cl.SetFramebuffer(afterFb);
+                cl.ClearColorTarget(0, Color.Black);
+                cl.SetPipeline(reader);
+                cl.SetGraphicsResourceSet(0, tintSet);
+                cl.SetGraphicsResourceSet(1, readerSet);
+                cl.Draw(3);
+                cl.End();
+                device.Submit(cl);
+                device.WaitForIdle();
+            }
+
+            Assert.Equal(new byte[] { 0, 255, 0, 255 }, Centre(device, before));
+            Assert.Equal(new byte[] { 0, 0, 255, 255 }, Centre(device, after));
+        }
+
         static IGpuBuffer Uniform(IGpuDevice device, ReduceParams value)
         {
             IGpuBuffer b = device.Factory.CreateBuffer(new GpuBufferDescription(16, GpuBufferUsage.UniformBuffer));

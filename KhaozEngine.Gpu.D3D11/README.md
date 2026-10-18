@@ -518,14 +518,13 @@ backend does, so a steady cost on a set no renderer writes is the better of the 
 cross-arm case is unaffected: the other arm's next flush puts the register back and the slot goes clean. A
 device-free test pins the repeating trace, so a change here has to be a decision rather than an accident.
 
-**Rule 2 is honoured as written and adds no barrier member.** A dispatch that reads an earlier dispatch's writes
-is separated by `End` plus `Submit` plus `WaitForIdle`, which is the cross-backend contract stated on
-`IGpuCommandList` itself, and the ocean's `PrimeRowPass` is the shipped consumer of it. Worth naming so it is not
-rediscovered: Direct3D 11 tracks hazards itself and inserts that synchronisation between dependent dispatches on
-one context, so rule 2 is a Vulkan-shaped requirement being paid on a backend that does not need it. The right
-resolution is a seam capability letting a consumer skip the drain where hazards are tracked, which is a seam
-change plus a renderer change and is therefore outside this backend's "zero renderer changes by construction"
-scope. A device-free test asserts that neither seam grew a barrier member, so the decision cannot drift quietly.
+**Compute rule 2 guarantees in-list storage-buffer ordering without a barrier member.** A dispatch or draw
+reading a storage buffer an earlier dispatch wrote sees the write without an intermediate `End`, `Submit` or
+`WaitForIdle`. The SRV/UAV conflict tracker unbinds a buffer's UAV before binding its graphics or compute SRV,
+and invalidates the reader's graphics binding when a later compute UAV takes ownership. The Direct3D 11 runtime
+orders dependent accesses on the context, including successive dispatches that keep a UAV bound. Ordering
+across command lists still requires a submit boundary and a wait. The production ocean keeps its existing
+submission pattern. A device-free test asserts that neither seam grew a barrier member.
 
 **Structured buffers keep the RAW byte-address treatment**, created by the resource path and consumed unchanged
 here. SPIRV-Cross emits a GLSL storage block as a `ByteAddressBuffer` or an `RWByteAddressBuffer`, never a

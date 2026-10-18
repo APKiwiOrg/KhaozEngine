@@ -8,7 +8,7 @@ using Xunit;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// HOW FAR THE DEPENDENT-DISPATCH HAZARD WALK REACHES
+    /// HOW FAR THE DRAW AND DISPATCH HAZARD WALK REACHES
     /// (https://github.com/APKiwiOrg/KhaozEngine/issues/632), device-free. The third and last walk over
     /// <c>VulkanBindRecords</c>' per-slot array to be bounded by the bound pipeline layout: the bind flush was
     /// first (https://github.com/APKiwiOrg/KhaozEngine/issues/625), the draw recorder's image walk second
@@ -18,7 +18,7 @@ namespace KhaozEngine.Tests.Gpu
     ///
     /// <para><b>THE SHAPE IS THE SAME ONE BOTH SIBLINGS WERE FIXED IN.</b> A compute pipeline switch to a layout
     /// declaring fewer sets leaves the dropped slots recording their sets on purpose, so the trip back rebinds
-    /// them. Those slots named storage resources here: <c>NoteWrites</c> recorded them as written by a dispatch
+    /// them. Those slots named storage resources here: <c>NoteAccesses</c> recorded them as written by a dispatch
     /// that cannot reach them, and <c>NeedsBarrier</c> then answered yes for a later dispatch that merely binds
     /// one.</para>
     ///
@@ -84,7 +84,7 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>
         /// AND A DISPATCH UNDER A SHORTER LAYOUT WRITES ONLY WHAT IT CAN REACH, which is the write half and the
-        /// one that outlives the barrier. The barrier CLEARS the written set, so a <c>NoteWrites</c> that walked
+        /// one that outlives the barrier. The barrier CLEARS the written set, so a <c>NoteAccesses</c> that walked
         /// past the limit put the dropped slot's resource straight back into a set the barrier had just emptied,
         /// and the next dispatch to bind that resource paid for a write no dispatch in this recording made.
         /// </summary>
@@ -171,12 +171,15 @@ namespace KhaozEngine.Tests.Gpu
                 list.Dispatch(1, 1, 1);
                 list.SetComputeResourceSet(0, WriterSet(fixture, owned, unrelated));
                 list.Dispatch(1, 1, 1);
-                Assert.Equal(0, fixture.DrawEmitter.DependencyBarrierCount);
+                // The first dispatch orders the preceding graphics read before its overwrite.
+                int barriersBeforeReader = fixture.DrawEmitter.DependencyBarrierCount;
+                Assert.Equal(1, barriersBeforeReader);
 
                 fixture.Trace.Clear();
                 list.Draw(3);
 
-                int dependencyBarrierCount = fixture.DrawEmitter.DependencyBarrierCount;
+                int barriersAfterReader = fixture.DrawEmitter.DependencyBarrierCount;
+                int dependencyBarrierCount = barriersAfterReader - barriersBeforeReader;
                 int barrier = fixture.Trace.IndexOf("DependencyBarrier()");
                 int begin = fixture.Trace.FindIndex(t => t.StartsWith("BeginRendering", StringComparison.Ordinal));
                 int draw = fixture.Trace.IndexOf("Draw(3,1)");
@@ -187,7 +190,7 @@ namespace KhaozEngine.Tests.Gpu
                 list.Dispatch(1, 1, 1);
                 list.SetGraphicsResourceSet(0, ReaderSet(fixture, owned, independent));
                 list.Draw(3);
-                int independentReaderBarrierCount = fixture.DrawEmitter.DependencyBarrierCount - dependencyBarrierCount;
+                int independentReaderBarrierCount = fixture.DrawEmitter.DependencyBarrierCount - barriersAfterReader;
 
                 MemoryBarrier2 dependency = VulkanDispatchBarrier.ReadAfterWrite;
                 const PipelineStageFlags2 Stages = PipelineStageFlags2.ComputeShaderBit

@@ -14,6 +14,13 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - `GameStorage` in `KhaozEngine.Persistence` gains an internal drain scheduling seam for tests, the same one
   `PersistenceQueue` has. Public behaviour is unchanged. The Foundation tests that waited on thread-pool work
   under a short bound now run it on test-owned threads (#1467).
+- Contact controller support reads cost less on stairs and boxes. Exactly horizontal axis-aligned rectangular
+  faces take an exact path through support extrema and contact height, axis-aligned rectangular faces certify
+  their contact sign directly, and installed faces keep their query-independent edge, normal and plane facts.
+  Results stay bit-identical to the reference evaluator. The
+  [phase 3 hosted verdict](docs/verification/2026-10-18-support-cost-hosted-1334-phase3.md) passes 135 of 139
+  ordinary rows. The stairs mesh and hidden crate rows that still miss SG-12 are judged against the aggregate
+  actor budget before a consumer pin (#1334).
 
 ## 21.4.0
 

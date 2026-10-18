@@ -11,19 +11,24 @@ namespace KhaozEngine.BugReports.Relay.Azure;
 /// <summary>Drains visible poison messages back to work, retaining malformed or exhausted items.</summary>
 public sealed class PoisonQueueRequeuer
 {
+    static readonly TimeSpan RunDeadline = TimeSpan.FromHours(1);
+    static readonly TimeSpan ReceiveVisibility = TimeSpan.FromHours(2);
+    static readonly TimeSpan CleanupDeadline = TimeSpan.FromSeconds(30);
     readonly IPoisonQueue poison;
     readonly IReportQueueSender work;
     readonly int maxRequeues;
     readonly ILogger log;
+    readonly TimeProvider time;
 
     /// <summary>
     /// Wraps existing queues. Hosts must build both the work and poison QueueClient instances with
     /// <see cref="ReportQueueClientOptions.Create"/>, matching the Azure Functions trigger's Base64 default.
     /// </summary>
-    public PoisonQueueRequeuer(QueueClient poison, QueueClient work, int maxRequeues = 3)
-        : this(new PoisonQueueAdapter(poison), new QueueSenderAdapter(work), maxRequeues) { }
+    public PoisonQueueRequeuer(QueueClient poison, QueueClient work, int maxRequeues = 3, TimeProvider? time = null)
+        : this(new PoisonQueueAdapter(poison), new QueueSenderAdapter(work), maxRequeues, time: time) { }
 
-    internal PoisonQueueRequeuer(IPoisonQueue poison, IReportQueueSender work, int maxRequeues = 3, ILogger? log = null)
+    internal PoisonQueueRequeuer(IPoisonQueue poison, IReportQueueSender work, int maxRequeues = 3, ILogger? log = null,
+        TimeProvider? time = null)
     {
         ArgumentNullException.ThrowIfNull(poison);
         ArgumentNullException.ThrowIfNull(work);
@@ -32,26 +37,29 @@ public sealed class PoisonQueueRequeuer
         this.work = work;
         this.maxRequeues = maxRequeues;
         this.log = log ?? Log.For<PoisonQueueRequeuer>();
+        this.time = time ?? TimeProvider.System;
     }
 
     /// <summary>
     /// Moves eligible items, in batches of 32, until no visible messages remain and returns the moved count.
-    /// Runs cancel after one hour, inside a two-hour receive visibility lease. Retained and unprocessed
+    /// Runs end after one hour, returning progress, inside a two-hour receive visibility lease. Only caller
+    /// cancellation throws <see cref="OperationCanceledException"/>. Retained and unprocessed
     /// messages are made visible on exit. A successful send followed by a failed delete can deliver twice.
     /// </summary>
     public async Task<int> RequeueAsync(CancellationToken cancellationToken)
     {
-        using var run = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        run.CancelAfter(TimeSpan.FromHours(1));
+        using var deadline = new CancellationTokenSource(RunDeadline, time);
+        using var run = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
         var held = new Dictionary<string, PoisonQueueMessage>(StringComparer.Ordinal);
         bool failed = false;
+        bool deadlineReached = false;
         int moved = 0;
         try
         {
             while (true)
             {
                 run.Token.ThrowIfCancellationRequested();
-                IReadOnlyList<PoisonQueueMessage> batch = await poison.ReceiveAsync(32, TimeSpan.FromHours(2), run.Token).ConfigureAwait(false);
+                IReadOnlyList<PoisonQueueMessage> batch = await poison.ReceiveAsync(32, ReceiveVisibility, run.Token).ConfigureAwait(false);
                 if (batch.Count == 0)
                     return moved;
                 // Track the entire batch before processing, so a failed send releases its untouched tail too.
@@ -79,6 +87,11 @@ public sealed class PoisonQueueRequeuer
                 }
             }
         }
+        catch (OperationCanceledException) when (deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            deadlineReached = true;
+            return moved;
+        }
         catch
         {
             failed = true;
@@ -87,18 +100,19 @@ public sealed class PoisonQueueRequeuer
         finally
         {
             // The caller's cancellation must not prevent cleanup or hide the original failure.
-            using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            using var cleanup = new CancellationTokenSource(CleanupDeadline, time);
             Exception? releaseFailure = null;
             foreach (PoisonQueueMessage message in held.Values)
             {
                 try { await poison.SetVisibilityAsync(message, TimeSpan.Zero, cleanup.Token).ConfigureAwait(false); }
                 catch (Exception failure)
                 {
-                    releaseFailure ??= failure;
+                    if (failure is not OperationCanceledException || cancellationToken.IsCancellationRequested)
+                        releaseFailure ??= failure;
                     log.Warn($"Poison message {message.Id} could not be made visible.");
                 }
             }
-            if (!failed && releaseFailure is not null)
+            if (!failed && !deadlineReached && releaseFailure is not null)
                 ExceptionDispatchInfo.Capture(releaseFailure).Throw();
         }
     }

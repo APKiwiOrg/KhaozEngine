@@ -24,11 +24,13 @@ entity cleanup, since Azure Table Storage does not expire entities from an `Expi
 
 `PoisonQueueRequeuer` drains batches of up to 32 until no visible messages remain. It increments
 `Requeues`, sends to the work queue, then deletes from poison. The default cap is 3. Malformed and
-capped items stay and log only their message id once per drain. A drain cancels after one hour and
+capped items stay and log only their message id once per drain. A drain returns its moved count after one hour and
 receives with two hours of visibility so retained items cannot starve later batches. On exit it
 releases retained and unprocessed messages, with a separate 30-second cleanup deadline. A failed
-release propagates unless the drain already failed, in which case the original fault is preserved
-and the lease eventually expires. Delivery remains at least once if sending
+release logs a warning. Cleanup timeout preserves the moved count. Other release faults propagate unless
+the drain already failed or reached its deadline, preserving the original outcome. Leases eventually expire.
+An optional `TimeProvider` drives the deadlines and defaults to `TimeProvider.System`.
+Only caller cancellation throws `OperationCanceledException`. Delivery remains at least once if sending
 succeeds but deleting fails. The host owns poison routing after 5 dequeues and when this requeuer runs.
 
 The ordinary tests link the relay conformance suites and use in-memory seams plus in-process SDK

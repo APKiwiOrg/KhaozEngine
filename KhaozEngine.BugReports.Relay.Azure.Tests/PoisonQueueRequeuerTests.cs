@@ -128,12 +128,16 @@ public sealed class PoisonQueueRequeuerTests
         public List<string> Released { get; } = new();
         public List<TimeSpan> Visibility { get; } = new();
         public int Receives { get; private set; }
+        public Action? AfterDelete { get; set; }
+        public Action<CancellationToken>? BeforeReceive { get; set; }
+        public Action<CancellationToken>? BeforeRelease { get; set; }
 
         public void Add(string id, ReportWorkItem item)
             => Messages.Add(new PoisonQueueMessage(id, "receipt", ReportWorkItemJson.Serialize(item)));
 
         public Task<IReadOnlyList<PoisonQueueMessage>> ReceiveAsync(int maxMessages, TimeSpan visibilityTimeout, CancellationToken ct)
         {
+            BeforeReceive?.Invoke(ct);
             ct.ThrowIfCancellationRequested();
             Receives++;
             Visibility.Add(visibilityTimeout);
@@ -149,11 +153,13 @@ public sealed class PoisonQueueRequeuerTests
             Messages.Remove(message);
             Deleted.Add(message.Id);
             hidden.Remove(message.Id);
+            AfterDelete?.Invoke();
             return Task.CompletedTask;
         }
 
         public Task SetVisibilityAsync(PoisonQueueMessage message, TimeSpan visibilityTimeout, CancellationToken ct)
         {
+            BeforeRelease?.Invoke(ct);
             ct.ThrowIfCancellationRequested();
             Assert.Equal(TimeSpan.Zero, visibilityTimeout);
             Released.Add(message.Id);

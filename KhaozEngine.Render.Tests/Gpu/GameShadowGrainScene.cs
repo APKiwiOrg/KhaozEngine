@@ -15,7 +15,7 @@ public sealed class GameShadowGrainScene : IDisposable
     const float Reach = 12f, Tilt = 15f * MathF.PI / 180f;
     const int Sides = 16;
     TemporalFixture? _fixture;
-    MeshHandle _torso, _box;
+    MeshHandle _torso, _box, _texturedTorso;
     long _begins;
 
     internal sealed record Capture(byte[][] Frames, bool[] Refits);
@@ -30,6 +30,8 @@ public sealed class GameShadowGrainScene : IDisposable
             _fixture = new TemporalFixture(W, H);
             _torso = _fixture.Scene.LoadMesh(Torso());
             _box = _fixture.Scene.LoadMesh(MeshPrimitives.Box(1f));
+            _texturedTorso = _fixture.Scene.LoadMesh(Torso(textured: true),
+                _fixture.Scene.LoadTexture(TexturedShadowGrainProbe.RidgeTexture(), FrontStage.TextureSize, FrontStage.TextureSize));
             return _fixture;
         }
     }
@@ -40,7 +42,7 @@ public sealed class GameShadowGrainScene : IDisposable
     internal static Vector3 Light(int n, float rate) => Vector3.Normalize(new Vector3(0f, -Tangent(n, rate), -1f));
 
     // A 16-sided vertical prism. Each face owns four vertices and one constant normal and colour.
-    static GltfMesh Torso()
+    static GltfMesh Torso(bool textured = false)
     {
         var vertices = new List<ModelVertex>();
         var indices = new List<ushort>();
@@ -53,7 +55,8 @@ public sealed class GameShadowGrainScene : IDisposable
             foreach ((float angle, float y) in new[] { (a, -0.4f), (b, -0.4f), (b, 0.4f), (a, 0.4f) })
                 vertices.Add(new ModelVertex(new Vector3(Radius * MathF.Sin(angle), y,
                     WallZ - Radius * MathF.Cos(MathF.PI / Sides) + Radius * MathF.Cos(angle)),
-                    normal, colour, Vector2.Zero));
+                    normal, colour, textured ? new Vector2(Radius * MathF.Sin(angle), -y)
+                        / (0.8f * Pixel * FrontStage.TextureSize) : Vector2.Zero));
             foreach (int offset in new[] { 0, 1, 2, 0, 2, 3, 0, 2, 1, 0, 3, 2 }) indices.Add((ushort)(start + offset));
         }
         return new GltfMesh(vertices.ToArray(), indices.ToArray());
@@ -82,10 +85,11 @@ public sealed class GameShadowGrainScene : IDisposable
         s.DebugView = SceneDebugView.None;
     }
 
-    void Draw(Scene3D s, int n, float rate, bool sway)
+    void Draw(Scene3D s, int n, float rate, bool sway, bool textured)
     {
         s.Post.LightDirection = Light(n, rate);
-        s.Draw(new RigidInstanceDraw(_torso, Matrix4x4.CreateTranslation(Sway(n, sway), 0f, 0f))
+        if (textured) s.Post.AmbientColor = new Color(0.03f, 0.03f, 0.03f, 1f);
+        s.Draw(new RigidInstanceDraw(textured ? _texturedTorso : _torso, Matrix4x4.CreateTranslation(Sway(n, sway), 0f, 0f))
         {
             Motion = MotionKey.From(73),
         });
@@ -97,14 +101,14 @@ public sealed class GameShadowGrainScene : IDisposable
     /// <summary>Supersampled spatial reference, live light and no temporal resolve, box filtered on the CPU.
     /// All captures reuse one scene, with an off frame resetting held light and history, and aligned jitter phases.</summary>
     internal Capture Run(float rate, float hold, AntiAliasing aa, TemporalUpscale preset, bool sway,
-        bool reference = false, bool releaseMask = false)
+        bool reference = false, bool releaseMask = false, bool textured = false)
     {
         TemporalFixture fx = Fixture;
         const int ReferenceFactor = 4;
         int factor = reference ? ReferenceFactor : 1;
         if (fx.DisplayWidth != W * factor) fx.Resize(W * factor, H * factor);
         Setup(fx.Scene, AntiAliasing.Off, TemporalUpscale.Native, 0f, factor);
-        fx.Frame((s, _) => Draw(s, 0, rate, sway));
+        fx.Frame((s, _) => Draw(s, 0, rate, sway, textured));
         _begins++;
         Setup(fx.Scene, reference ? AntiAliasing.Off : aa, preset, reference ? 0f : hold, factor);
         fx.Scene.CameraCut();
@@ -117,7 +121,7 @@ public sealed class GameShadowGrainScene : IDisposable
             for (int n = 0; n < Warm; n++)
             {
                 int frame = n;
-                fx.Frames(1, (s, _) => Draw(s, frame, rate, sway));
+                fx.Frames(1, (s, _) => Draw(s, frame, rate, sway, textured));
                 _begins++;
             }
         var frames = new byte[Count][];
@@ -125,7 +129,7 @@ public sealed class GameShadowGrainScene : IDisposable
         for (int i = 0; i < Count; i++)
         {
             int frame = Warm + i;
-            byte[] rgba = fx.Frame((s, _) => Draw(s, frame, rate, sway));
+            byte[] rgba = fx.Frame((s, _) => Draw(s, frame, rate, sway, textured));
             _begins++;
             frames[i] = reference ? Rgba8Stats.BoxDownsample(rgba, W * factor, H * factor, factor) : rgba;
             refits[i] = fx.Scene.LastShadowPassDiagnostics.LightMatrixChanged;

@@ -20,6 +20,7 @@ archive and is never merged.
 
 | Token | Effect |
 | --- | --- |
+| `show-locked` | Active lock this frame, refreshed or carried, drawn pure cyan by the same post-chain overlay. Show-locked takes precedence if both overlays are set. |
 | `show-released` | Released pixels drawn pure magenta over the final image by a pass that re-evaluates the resolve after the post chain. History never holds the colour. Visual only. |
 | `release-off` | `released` forced false on both release paths (#1427 still and #1448 moving). |
 | `release-floor-2`, `release-floor-4` | A released pixel keeps its history clipped to a box of half the gamma, with accumulated weight capped at 2 or 4 frames, and keeps its display share. |
@@ -261,3 +262,113 @@ python3 scripts/sparkcount.py /tmp/grimhollow-shadowgrain/engine-diag baseline n
 python3 scripts/hold.py /tmp/grimhollow-shadowgrain/engine-diag/baseline
 python3 scripts/mdtable.py /tmp/grimhollow-shadowgrain/engine-diag baseline locks-off
 ```
+
+## Direct lock coincidence
+
+The `show-locked` overlay reads `TemporalPixel.stability > 0` from this frame's per-pixel resolve. It reports the
+stored lock after refresh, decay, motion and reactive release. The shading release only drops its hold for the
+current frame and leaves that stored lock intact, so those pixels remain cyan. The overlay never enters history.
+
+Back-edge, dt 1/15, five-minute day, start time `0.49777777777777776`, all 16 frames. The same `coincide.py`
+median and FXAA criterion as the release round, using the `noop` image underneath. Outside cyan, zero pixels
+differ from `noop` at either preset.
+
+| Metric | Native | Quality |
+| --- | ---: | ---: |
+| Character band pixels | 39873 | 39873 |
+| Locked band pixels | 26048 | 28979 |
+| Locked share of band | 65.3274% | 72.6783% |
+| Bright dots | 1739 | 1733 |
+| Bright dots locked this frame | 1685 | 1678 |
+| Share of bright dots locked | 96.8948% | 96.8263% |
+| Dots within 1 px of a lock | 98.9% | 99.2% |
+
+The direct evidence passes the brief's gate. The earlier thin-feature inference is now measured.
+Crop [show-locked character frame 15, 4x](crops/show-locked-character-015-4x.png) places Native, Quality and FXAA
+left to right, as the other crops do. The full capture is under `/tmp/grimhollow-shadowgrain/engine-diag/show-locked`.
+
+```bash
+build-slot --heavy --label grain-show-locked -- dotnet run --project tools/SnapshotTool -c Release --no-build -- \
+  shadowgrain /tmp/grimhollow-shadowgrain/engine-diag/show-locked --spot back-edge --frame-time 1/15 \
+  --start-time 0.49777777777777776 --temporal-diag show-locked
+python3 scripts/coincide.py /tmp/grimhollow-shadowgrain/engine-diag show-locked
+```
+
+## Lock-rule round
+
+The three new tokens are independent diagnostic arms. They do not change tuning or default behavior.
+
+| Token | Computation |
+| --- | --- |
+| `lock-history-ridge` | Refresh only if history is valid and a ridge of the same direction and polarity exists in both neighbourhoods. Four directions, horizontal, vertical and both diagonals. Current luma is weighted Y from the current internal texels around the centre. History luma is weighted Y from bilinear taps around the reprojected display pixel at the same internal-texel spacing (`1 / Sizes.xy`). Each side uses `max(LockRidgeAbsolute, LockRidgeRelative * centreLuma)`. A bright ridge must be above both neighbours on both sides of the comparison, or a dark ridge below both. Carried locks still decay normally. |
+| `lock-shade-release` | Keep the existing shading eligibility, history-versus-box, own-shift and ring-mean thresholds, including strict ring distance and `ShadingLockRingShare` for a carried lock. Drop only the opposite-pair condition. Where that evidence fires on a carried lock, clear its stored lock and run the normal full shading release, zero hold and accumulated weight. A refreshed ridge follows the normal release. |
+| `lock-bound-current` | Use the same shading evidence with the opposite-pair condition omitted. Where it fires, set hold to zero for the variance clip, so the current `mean +/- gamma * deviation` box bounds the history with no luma exemption. Keep stored lock and normal accumulated weight. Pixels the normal release already releases still take that full release. No extra box margin. |
+
+The shader helpers and branches remain under `TemporalDiagnostics`. The paired synthetic case temporarily overrides
+only the diagnostic mask, creates its scene with `noop` so all arms compile, and restores the process mask in a
+`finally` block. Its test class is in the nonparallel `NativeDeviceLifecycle` collection.
+
+### Synthetic fixture and limits
+
+The existing untextured torso fails the separation test, Native 0.001566 with either arm. Dense wall noise at
+0.8 display pixels per texel gives Native 0.026380 versus 0.023567, a ratio of 1.119, where actual texture grain
+dominates the measure. Sparse highlights give Native 1.153 and Quality 1.433. Reducing highlight contrast and
+ambient does not improve Native's separation.
+
+The retained fixture uses diagonal one-texel bright lines (`(x + y) % 8 == 0`, greys 255 and 32), at 0.8 display
+pixels per texture texel, on the existing faceted receiver. Camera and receiver are still, the shadow advances
+4 display pixels per frame, cascade texels are about 5 display pixels, light hold is one texel, ambient is 0.03,
+and sharpness is 0.25. It measures the 12-pixel band for 16 frames after 80 warm-up frames, against the existing
+4x spatial reference with no temporal resolve or light hold. It also prints a still-light control using its own
+spatial reference. Each capture resets held light, history and jitter phase.
+
+The acceptance bound is on Quality only, baseline band output grain must exceed `1.3 * locks-off`. Both presets
+are printed. Quality reproduces roughly the real scene's 1.66 ratio. Native remains weaker than the real scene's
+2.00 ratio, so this is not a complete Native reproduction. The retained case deliberately leaves that limitation
+visible. The test does not claim the whole difference is unwanted detail, so reference error grain and the
+still-light control are also printed.
+
+### Synthetic values and guard results
+
+Metal hardware, one filtered `dotnet test` process per candidate, `KE_GPU_TESTS=1`. All eight facts execute,
+zero skipped. Full measured rows and failure messages are committed in [guards](guards/).
+
+| Preset | Moving baseline grain | Moving locks-off grain | Ratio | History ridge | Shade release | Bound current | Still baseline | Still locks-off |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Native | 0.012026 | 0.010435 | 1.152 | 0.011864 | 0.011481 | 0.011450 | 0.009340 | 0.009313 |
+| Quality | 0.010852 | 0.006727 | 1.613 | 0.010680 | 0.009964 | 0.009803 | 0.008210 | 0.005315 |
+
+The synthetic Quality gate is 0.010852 > 1.3 * 0.006727 = 0.008746. The still-light control shows Quality's
+ratio partly reflects legitimate detail retention. Native's still grain is almost identical between arms, while
+the moving edge separates them, but its moving ratio is too small to match the real scene. Moving error-image
+grain is 0.007782 versus 0.006190 at Native and 0.009786 versus 0.009510 at Quality. The spatial reference's
+grain is 0.009643. This fixture demonstrates the lock contribution and roughly matches Quality output grain,
+but does not fully isolate or reproduce the real-scene defect. A stronger synthetic Native reproduction remains open
+within the diagnosis. The bound was not relaxed for Native, it was scoped to the Quality reproduction.
+
+| GPU fact | History ridge | Shade release | Bound current |
+| --- | --- | --- | --- |
+| New textured grain case | Pass | Pass | Pass |
+| Shadow-edge lag | Pass | Pass | Pass |
+| Moving-shade lag | Fail | Pass | Pass |
+| Slow texture pan | Pass | Pass | Pass |
+| Near-Nyquist texture detail | Fail | Pass | Pass |
+| Stable peaks | Pass | Pass | Pass |
+| Existing faceted grain measurement | Pass | Pass | Pass |
+| Shared-scene parity | Pass | Pass | Pass |
+| Total | 6 pass, 2 fail | 8 pass | 8 pass |
+
+Representative values against their actual bounds, rather than pass status alone:
+
+| Guard metric | Bound | History ridge | Shade release | Bound current |
+| --- | ---: | ---: | ---: | ---: |
+| Quality still 1 px texture error | <= 0.005885 | 0.00811 fail | 0.00548 pass | 0.00548 pass |
+| Quality still 1 px texture temporal error | <= 0.001155 | 0.00128 fail | 0.00112 pass | 0.00112 pass |
+| Quality still 0.5 px texture error | <= 0.007931 | 0.01391 fail | Within bound | Within bound |
+| Quality camera pan 2 px textured band error | <= 0.00605 | 0.0076 fail | 0.0055 pass | 0.0055 pass |
+| Quality camera pan 2 px textured tail error | <= 0.00429 | 0.0057 fail | Within bound | Within bound |
+| Quality flat stable-peak error | <= 0.016544 | 0.01532 pass | 0.01504 pass | 0.01504 pass |
+| Quality flat stable-peak change | <= 0.002233 | 0.00207 pass | 0.00203 pass | 0.00203 pass |
+
+No bounds or shipping tuning were changed. The existing lag assertions also retain their fast-tail ratio,
+control-error, moving-tail-excess and band-grain limits. The full per-case values are in the logs above.

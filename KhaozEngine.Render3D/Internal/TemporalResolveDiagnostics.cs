@@ -44,14 +44,28 @@ namespace KhaozEngine.Render3D.Internal
         /// <summary>Compiles the switches in and changes nothing, the control for the others.</summary>
         public const int NoOp = 256;
 
+        /// <summary>Active locks, refreshed or carried this frame, draw pure cyan after the post chain.</summary>
+        public const int ShowLocked = 512;
+
+        /// <summary>Refresh a ridge lock only where history has the same ridge direction and polarity.</summary>
+        public const int LockHistoryRidge = 1024;
+        /// <summary>Release a carried lock on the ring shading evidence without the opposite-pair condition.</summary>
+        public const int LockShadeRelease = 2048;
+        /// <summary>On that shading evidence, clip with no lock exemption and keep the lock state.</summary>
+        public const int LockBoundCurrent = 4096;
+
         /// <summary>The define that compiles the switches' GLSL in.</summary>
         internal const string Define = "#define TemporalDiagnostics\n";
 
         /// <summary>The mask the tokens set when the process first asked.</summary>
-        public static int Mask { get; } = Parse(Environment.GetEnvironmentVariable(EnvironmentVariable));
+        public static int Mask { get; private set; } = Parse(Environment.GetEnvironmentVariable(EnvironmentVariable));
 
-        /// <summary>Whether <see cref="ShowReleased"/> is set.</summary>
-        public static bool ShowsReleased => (Mask & ShowReleased) != 0;
+        /// <summary>Override the mask for a paired diagnostic measurement. The caller serializes process-global
+        /// state, creates the scene with a nonzero mask to compile the diagnostic GLSL, and restores the old mask.</summary>
+        internal static void OverrideMaskForMeasurement(int mask) => Mask = mask;
+
+        /// <summary>Whether a diagnostic overlay is set. ShowLocked takes precedence if both are set.</summary>
+        public static bool ShowsOverlay => (Mask & (ShowReleased | ShowLocked)) != 0;
 
         /// <summary><paramref name="program"/> with <see cref="Define"/> after its <c>#version</c> line while the mask
         /// is not 0, else <paramref name="program"/> itself.</summary>
@@ -73,6 +87,10 @@ namespace KhaozEngine.Render3D.Internal
                 mask |= raw.ToLowerInvariant() switch
                 {
                     "show-released" => ShowReleased,
+                    "show-locked" => ShowLocked,
+                    "lock-history-ridge" => LockHistoryRidge,
+                    "lock-shade-release" => LockShadeRelease,
+                    "lock-bound-current" => LockBoundCurrent,
                     "release-off" => ReleaseOff,
                     "release-floor-2" => ReleaseFloor2,
                     "release-floor-4" => ReleaseFloor4,

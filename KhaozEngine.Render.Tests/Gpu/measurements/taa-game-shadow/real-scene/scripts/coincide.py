@@ -2,6 +2,9 @@ import sys
 import numpy as np
 from PIL import Image
 D=sys.argv[1]
+overlay=sys.argv[2] if len(sys.argv)>2 else 'show-released'
+control=sys.argv[3] if len(sys.argv)>3 else 'noop'
+colour=(0,255,255) if overlay=='show-locked' else (255,0,255)
 def img(p): return np.asarray(Image.open(p).convert('RGB')).astype(np.int32)
 def luma(a): return (0.2126*a[...,0]+0.7152*a[...,1]+0.0722*a[...,2])/255.0
 def med3(l):
@@ -12,10 +15,10 @@ for mode in ['taa-native','taa-quality']:
     for i in range(16):
         reg=img(f'{D}/baseline/regions-{i:03d}.png')
         band=(reg[...,0]==0)&(reg[...,1]==255)&(reg[...,2]==0)
-        base=img(f'{D}/noop/{mode}/crop-{i:03d}.png')
-        sr=img(f'{D}/show-released/{mode}/crop-{i:03d}.png')
+        base=img(f'{D}/{control}/{mode}/crop-{i:03d}.png')
+        sr=img(f'{D}/{overlay}/{mode}/crop-{i:03d}.png')
         fx=img(f'{D}/baseline/fxaa/crop-{i:03d}.png')
-        mag=(sr[...,0]==255)&(sr[...,1]==0)&(sr[...,2]==255)&~((base[...,0]==255)&(base[...,1]==0)&(base[...,2]==255))
+        mag=np.all(sr==colour,axis=2)&~np.all(base==colour,axis=2)
         tot['nonmag_diff']+=int((np.abs(sr-base).max(axis=2)>0)[~mag].sum())
         lb=luma(base); res=lb-med3(lb)
         spark=band&(res>0.05)&(lb-luma(fx)>0.05)
@@ -26,7 +29,7 @@ for mode in ['taa-native','taa-quality']:
         if prev_rel is not None: tot['spark_rel_prev']+=int((spark&prev_rel).sum())
         prev_rel=mag
     print(mode, tot,
-          'released share of band %.3f' % (tot['rel_band']/max(tot['band'],1)),
-          'sparkles released same frame %.3f' % (tot['spark_rel']/max(tot['spark'],1)),
+          overlay+' share of band %.6f' % (tot['rel_band']/max(tot['band'],1)),
+          'sparkles overlaid same frame %.6f' % (tot['spark_rel']/max(tot['spark'],1)),
           'within 1px %.3f' % (tot['rel_spark']/max(tot['spark'],1)),
-          'released previous frame %.3f' % (tot['spark_rel_prev']/max(tot['spark'],1)))
+          'overlaid previous frame %.3f' % (tot['spark_rel_prev']/max(tot['spark'],1)))

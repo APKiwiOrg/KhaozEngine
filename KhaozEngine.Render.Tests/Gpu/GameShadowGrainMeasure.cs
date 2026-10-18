@@ -12,7 +12,7 @@ internal sealed class GameShadowGrainMeasure
     internal double Penumbra { get; private set; }
     internal double Contrast { get; private set; }
 
-    internal GameShadowGrainMeasure(byte[][] frames, byte[][] reference, bool sway, byte[][]? release = null)
+    internal GameShadowGrainMeasure(byte[][] frames, byte[][] reference, bool sway, byte[][]? release = null, float bandPixels = BandPixels)
     {
         int w = GameShadowGrainScene.W, h = GameShadowGrainScene.H;
         float[]? previous = null, previousRef = null;
@@ -49,7 +49,7 @@ internal sealed class GameShadowGrainMeasure
                 for (int y = 4; y < h - 4; y++)
                 {
                     float d = MathF.Abs(y + 0.5f - edge);
-                    ShadowEdgeRegion? region = d <= BandPixels ? Band : d >= FarPixels ? Far : null;
+                    ShadowEdgeRegion? region = d <= bandPixels ? Band : d >= FarPixels ? Far : null;
                     if (region == null) continue;
                     int p = y * w + x;
                     region.Add(error[p], MathF.Abs(lo[p] - Median(lo, x, y, window)),

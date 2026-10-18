@@ -66,9 +66,9 @@ namespace KhaozEngine.Render3D
                     break;
                 default:
                     RetireMotionVectorsView();
-                    if (Internal.TemporalResolveDiagnostics.ShowsReleased && _resolveThisRender
+                    if (Internal.TemporalResolveDiagnostics.ShowsOverlay && _resolveThisRender
                         && _temporalResolve is { } resolve)
-                        resolve.DrawReleasedOverlay(cl, target, _targetOutput);
+                        resolve.DrawDiagnosticOverlay(cl, target, _targetOutput);
                     break;
             }
         }

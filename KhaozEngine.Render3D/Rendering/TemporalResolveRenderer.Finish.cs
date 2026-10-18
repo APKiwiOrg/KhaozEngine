@@ -24,12 +24,12 @@ namespace KhaozEngine.Render3D.Rendering
         }
 
         /// <summary>Paint this frame's released pixels magenta over <paramref name="target"/>, the show-released
-        /// diagnostic (<see cref="Internal.TemporalResolveDiagnostics.ShowReleased"/>). Called as
+        /// diagnostic, or active locks cyan for show-locked. Called as
         /// <see cref="DrawDebugView"/> is.</summary>
-        internal void DrawReleasedOverlay(IGpuCommandList cl, IGpuFramebuffer target, GpuOutputDescription targetOutput)
+        internal void DrawDiagnosticOverlay(IGpuCommandList cl, IGpuFramebuffer target, GpuOutputDescription targetOutput)
         {
             if (CurrentSet is not { } set) return;
-            (_debugView ??= new TemporalDebugViewPass(_gd, ResolveLayout, targetOutput)).DrawReleasedOverlay(cl, set,
+            (_debugView ??= new TemporalDebugViewPass(_gd, ResolveLayout, targetOutput)).DrawDiagnosticOverlay(cl, set,
                 target);
         }
 

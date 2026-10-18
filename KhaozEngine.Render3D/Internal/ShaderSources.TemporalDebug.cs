@@ -22,11 +22,11 @@ void main() {
     ivec2 p = clamp(ivec2(vec2(vUv.x, 1.0 - vUv.y) * vec2(size)), ivec2(0), size - ivec2(1));
     TemporalPixel t = temporalResolvePixel(p);
 #ifdef TemporalDiagnostics
-    // Mode 5 is the show-released diagnostic (TemporalResolveDiagnostics): every pixel the shading release kept is
-    // left as it is, and the released ones turn magenta.
+    // Mode 5 overlays the resolve decision without putting its colour into history.
     if (int(Mode.x + 0.5) == 5) {
-        if (t.released < 0.5) discard;
-        oColor = vec4(1.0, 0.0, 1.0, 1.0);
+        bool lockedView = (temporalDiag() & DiagShowLocked) != 0;
+        if (lockedView ? t.stability <= 0.0 : t.released < 0.5) discard;
+        oColor = lockedView ? vec4(0.0, 1.0, 1.0, 1.0) : vec4(1.0, 0.0, 1.0, 1.0);
         return;
     }
 #endif

@@ -333,6 +333,7 @@ vec2 temporalHistoryRingShift(vec2 previousUv, vec2 displaySize, float aroundLum
     return vec2((0.25 * ring - aroundLuma) * sign(side), min(shift.x, shift.y));
 }
 
+" + TemporalDiagnosticLockGlsl + @"
 // The per-pixel resolve over a gathered 3x3 (temporalGather), its ridge (temporalRidge) and the surface its centre
 // texel prepared (temporalPrepareSurface), in the display pixel at uv whose 3x3 is centred on centreTexel.
 TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel, TemporalNeighbourhood n,
@@ -533,7 +534,13 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     // which is no moving edge. The hold on the clip stays whole while the lock is at least 1 / LockHoldGain, so a
     // sub-texel feature missed for a few frames keeps its luma, and it lets go over the rest of the lock.
     float lockValue = useHistory && !heldFromFarther ? max(historyState.y - LockDecay, 0.0) : 0.0;
+#ifdef TemporalDiagnostics
+    bool refreshRidge = ridge && ((diag & DiagLockHistoryRidge) == 0
+        || (useHistory && temporalDiagnosticHistoryRidge(centreTexel, maxTexel, previousUv)));
+    if (refreshRidge) lockValue = 1.0;
+#else
     if (ridge) lockValue = 1.0;
+#endif
     float motionRelease = clamp((motionPixels - LockMotionStartPixels)
         / (LockMotionEndPixels - LockMotionStartPixels), 0.0, 1.0);
     lockValue *= (1.0 - motionRelease) * (1.0 - clamp(reactive * LockReactiveRelease, 0.0, 1.0))
@@ -595,21 +602,37 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     bool upscaled = Jitter.z > 1.0;
     bool carriedLock = !ridge && lockValue > 0.0;
     bool strict = carriedLock || !(motionPixels < LockMotionStartPixels);
+#ifdef TemporalDiagnostics
+    bool lockShadingChange = false;
+#endif
     if (useHistory && Jitter.z < ShadingMaxUpscale
         && (ridge || boxExtent.x > (carriedLock ? ShadingLockFlatShare : 1.0) * ridgeStep)
         && abs(fromCentre.x) > (1.0 + ShadingResetExtents) * releaseExtent) {
         float ownShift = abs(historyYcc.x - current.x);
         bool ownChanged = ownShift > ShadingChangeExtents * Jitter.z * releaseExtent;
         released = ownChanged && !upscaled && !strict;
+#ifdef TemporalDiagnostics
+        lockShadingChange = released;
+#endif
         if (!released && (ownChanged || !upscaled)) {
             vec2 ringShift = temporalHistoryRingShift(previousUv, displaySize,
                 (n.momentSum.x - n.centreLuma) / 8.0, fromCentre.x);
             released = ringShift.x > (strict ? max(ShadingStrictRingExtents * releaseExtent,
                 carriedLock ? ShadingLockRingShare * ownShift : 0.0) : ShadingRingExtents * releaseExtent)
                 && (!carriedLock || ringShift.y > ShadingLockPairExtents * releaseExtent);
+#ifdef TemporalDiagnostics
+            lockShadingChange = ringShift.x > (strict ? max(ShadingStrictRingExtents * releaseExtent,
+                carriedLock ? ShadingLockRingShare * ownShift : 0.0) : ShadingRingExtents * releaseExtent);
+#endif
         }
     }
 #ifdef TemporalDiagnostics
+    if ((diag & DiagLockShadeRelease) != 0 && carriedLock && lockShadingChange) {
+        released = true;
+        lockValue = 0.0;
+    }
+    // Only the clip loses its hold. The accumulated weight and stored lock retain the normal rule.
+    if ((diag & DiagLockBoundCurrent) != 0 && lockShadingChange) hold = 0.0;
     if ((diag & DiagReleaseOff) != 0) released = false;
     // The release-floor diagnostics keep a released pixel's history, clipped to a box of half the gamma, with the
     // accumulated weight capped at 2 or 4 frames, and its display share.

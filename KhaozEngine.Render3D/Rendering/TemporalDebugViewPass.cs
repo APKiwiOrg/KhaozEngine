@@ -81,8 +81,8 @@ namespace KhaozEngine.Render3D.Rendering
         }
 
         /// <summary>Paint the pixels the shading release let go magenta over <paramref name="target"/>, leaving the
-        /// rest of its image as it is. The show-released diagnostic.</summary>
-        public void DrawReleasedOverlay(IGpuCommandList cl, IGpuResourceSet resolveSet, IGpuFramebuffer target)
+        /// rest of its image as it is. Show-locked uses the same mode to paint active locks cyan.</summary>
+        public void DrawDiagnosticOverlay(IGpuCommandList cl, IGpuResourceSet resolveSet, IGpuFramebuffer target)
             => Record(cl, Views.Length, resolveSet, target);
 
         void Record(IGpuCommandList cl, int slot, IGpuResourceSet resolveSet, IGpuFramebuffer target)

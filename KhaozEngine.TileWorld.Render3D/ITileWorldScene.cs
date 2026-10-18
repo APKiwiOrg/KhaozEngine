@@ -42,6 +42,9 @@ public interface ITileWorldPropClusterOwner : IDisposable
 /// is <see cref="Scene3DTileWorldScene"/>, and the tests drive a recording fake.</summary>
 public interface ITileWorldScene
 {
+    /// <summary>The render frame of the current picture, shared with cut-aware picks.</summary>
+    InteriorCutFrame InteriorCutFrame => default;
+
     /// <summary>Publish the interior field shared by the picture and this view's picks.</summary>
     void SetInteriorCut(InteriorHeightField? field) { }
 
@@ -301,6 +304,9 @@ public sealed class Scene3DTileWorldScene : ITileWorldScene, IAttachmentScene
     public void DrawMesh(in RigidInstanceDraw draw) => _scene.Draw(in draw);
     /// <summary>Publish the field for the next scene render.</summary>
     public void SetInteriorCut(InteriorHeightField? field) => _scene.InteriorCut = field;
+
+    /// <inheritdoc />
+    public InteriorCutFrame InteriorCutFrame => new(_scene.RenderOrigin ?? Vector3.Zero);
 
     /// <inheritdoc />
     public SkinnedMeshHandle LoadSkinnedMesh(SkinnedGltfMesh mesh) => _scene.LoadSkinnedMesh(mesh);

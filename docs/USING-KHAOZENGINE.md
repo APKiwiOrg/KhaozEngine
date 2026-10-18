@@ -11668,9 +11668,10 @@ TilePropLayerDefinition cutTrees = treeLayer with { CutInsideInteriors = true };
 view.InteriorMeshes = dedicatedInteriorMeshes;
 ```
 
-`TileWorldInteriors` derives simple polygons from indoor tiles, safe wall boundaries and sampled roofs.
+`TileWorldInteriors` derives simple polygons from indoor tiles, safe wall boundaries and roof meshes.
 A column keeps its lowest contiguous run of retained indoor planes, so no cut crosses an excluded storey or
-an outdoor gap. Roof samples lower the top, missing samples use the ceiling, and cells must be wholly inside
+an outdoor gap. Roof triangles clipped to each cell supply its exact minimum top. Missing geometry uses the
+ceiling, and cells must be wholly inside
 the polygon. The field covers 512 m around the prop focus, re-centres at 64 m along either axis, and uses the
 largest cell at or below 25 cm dividing `TileSize`. `CellsFor` caps the side at 4096 cells. Its encoding comes
 from all source interiors and stays fixed across re-centres. Membership is floor-inclusive, top-exclusive in
@@ -11692,8 +11693,9 @@ uncut. Physics and editor rays are unchanged. MapDoc and world validation integr
 [#1474](https://github.com/APKiwiOrg/KhaozEngine/issues/1474) and
 [#1473](https://github.com/APKiwiOrg/KhaozEngine/issues/1473).
 
-A custom `ITileWorldScene` forwards `SetInteriorCut(field)` to its renderer. The default is a no-op, and
-`Scene3DTileWorldScene` already forwards it. Without the view, build an `InteriorHeightField` through
+A custom `ITileWorldScene` forwards `SetInteriorCut(field)` to its renderer and exposes `InteriorCutFrame`
+from the current picture's render origin. Their defaults are a no-op and origin zero. `Scene3DTileWorldScene`
+already forwards both. Without the view, build an `InteriorHeightField` through
 `InteriorHeightFieldBuilder.Build(volumes, window, sourceEncoding)`, set `scene.InteriorCut`, and submit
 `RigidInstanceDraw` with `CutInsideInteriors = true`. Null disables the field. A field uploads once at the
 next render, and a version change invalidates shadow caches. No opted-in draws preserves existing rendering.
@@ -11709,10 +11711,12 @@ non-interactive archetype, or a cut at the ground hit's distance are all the cal
 The candidate walk allocates nothing. Reuse a hit list with enough capacity and a warmed bounds cache for
 allocation-free repeated picks, including the per-frame picks made by `TileWorldCameraProbe`.
 
-The overload with trailing `TileObjectCut(field, archetypeIds)` intersects an opted-in object's OBB entry/exit
-interval with `field.FirstUncut`. A wholly cut interval disappears, while a partial interval reports the first
+The overload with trailing `TileObjectCut(field, archetypeIds, frame)` intersects an opted-in object's OBB
+entry/exit interval with `field.FirstUncut`. The optional frame defaults to origin zero. CPU queries and GPU
+uniforms use the same `InteriorCutFrame`, including reciprocal cell addressing and rounded render-relative
+heights. A wholly cut interval disappears, while a partial interval reports the first
 visible point. The original overload remains inactive. `view.PickObjects` supplies `AppliedInteriorCut` and
-the opted-in union automatically, so cut branches do not catch a click through a doorway. The camera probe
+the opted-in union and the scene's current frame automatically, so cut branches do not catch a click through a doorway. The camera probe
 applies the same field to opted-in object intervals after inflating their boxes by its sphere radius, including
 a start inside that inflated box, so invisible branches do not shorten the camera boom.
 

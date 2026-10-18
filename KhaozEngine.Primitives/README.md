@@ -94,7 +94,11 @@ automatically, so this is transparent to every other package.
   The immutable field packs floor high/low in RG and top high/low in BA, rows toward +world Z, with a 1 cm
   step through 655.35 m or a coarser source-wide step beyond that. `Texels`, `Version`, `MergedCells` and
   `OutOfRangeCells` describe the result. `TryGetSpan` returns approximate decoded heights, while `Contains`
-  tests float32 code space, `q = (y - BaseY) * (1f / StepY)`, floor-inclusive and top-exclusive.
+  tests the shader's float32 code space, floor-inclusive and top-exclusive. `InteriorCutFrame` carries a double
+  render origin and produces both the uniforms and the render-relative point used by membership. Cell addressing
+  multiplies by the rounded reciprocal cell size. `Contains(world, frame)` and the overload
+  `FirstUncut(origin, direction, tStart, tEnd, frame, out t)` share that frame, including represented ray crossings.
+  Overloads without a frame use origin zero.
   `FirstUncut(origin, direction, tStart, tEnd, out t)` finds the first uncut point in ray-parameter units,
   treating empty cells and points outside the window as uncut. It returns false for a wholly cut segment.
   `RayMath.IntersectObbY(..., out tNear, out tFar)` supplies the matching box entry and exit, including

@@ -51,22 +51,34 @@ public sealed partial class InteriorHeightField
     }
 
     /// <summary>Test the same texel and float32 code-space expression as the shader.</summary>
-    public bool Contains(Vector3 world) =>
-        TryCell(world, out int x, out int z) && TryGetCodes(x, z, out int floor, out int top) && ContainsHeight(world.Y, floor, top);
+    public bool Contains(Vector3 world) => Contains(world, default);
 
-    bool ContainsHeight(float y, int lo, int hi)
+    /// <summary>Test membership in the same render frame as the visible scene.</summary>
+    public bool Contains(Vector3 world, InteriorCutFrame frame)
     {
-        float q = (y - BaseY) * (1f / StepY);
+        var (window, heights) = frame.Uniforms(this);
+        return ContainsPoint(frame.ToRender(world), window, heights, out _, out _, out _, out _);
+    }
+
+    bool ContainsPoint(Vector3 relative, Vector4 window, Vector4 heights, out int x, out int z, out int lo, out int hi)
+    {
+        lo = hi = 0;
+        return TryCell(relative, window, out x, out z) && TryGetCodes(x, z, out lo, out hi) && ContainsHeight(relative.Y, heights, lo, hi);
+    }
+
+    static bool ContainsHeight(float y, Vector4 heights, int lo, int hi)
+    {
+        float q = (y - heights.X) * heights.Y;
         return hi > lo && q >= lo && q < hi;
     }
 
-    bool TryCell(Vector3 world, out int x, out int z)
+    static bool TryCell(Vector3 relative, Vector4 window, out int x, out int z)
     {
         x = z = 0;
-        if (!Finite(world)) return false;
-        float cx = (world.X - Window.Min.X) / Window.CellSize;
-        float cz = (world.Z - Window.Min.Y) / Window.CellSize;
-        if (!(cx >= 0f && cz >= 0f && cx < Window.Cells && cz < Window.Cells)) return false;
+        if (!Finite(relative)) return false;
+        float cx = (relative.X - window.X) * window.Z;
+        float cz = (relative.Z - window.Y) * window.Z;
+        if (!(cx >= 0f && cz >= 0f && cx < window.W && cz < window.W)) return false;
         x = (int)MathF.Floor(cx);
         z = (int)MathF.Floor(cz);
         return true;

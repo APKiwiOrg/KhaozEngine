@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using KhaozEngine.Primitives;
 using KhaozEngine.TileWorld;
 using KhaozEngine.TileWorld.Render3D;
 using Xunit;
@@ -61,6 +62,26 @@ public sealed class TileWorldInteriorPickingTests
         Assert.Equal(0f, rig.View.PickSurface(0, origin, -Vector3.UnitY, 2f)!.Value.Point.Y);
     }
 
+    [Fact]
+    public void ObjectAndWalkSurfacePicksUseTheScenesCurrentRenderFrame()
+    {
+        using var rig = new Rig(true);
+        float height = MathF.BitDecrement(3f);
+        var point = new Vector3(11.5f, height, -10.5f);
+        var frame = new InteriorCutFrame(0d, 128d, 0d);
+        Assert.True(rig.View.AppliedInteriorCut!.Contains(point));
+        Assert.False(rig.View.AppliedInteriorCut.Contains(point, frame));
+        rig.Scene.InteriorCutFrame = frame;
+        var hits = new List<TileObjectHit>();
+        Assert.Equal(1, rig.View.PickObjects(0, point, -Vector3.UnitZ, .01f, rig.Bounds, hits));
+        Assert.Equal(rig.Tree.Id, hits[0].ObjectId);
+        Assert.Equal(0f, hits[0].Distance);
+
+        rig.Catalogs.Archetype("tree")!.WalkSurfaces = [new TileWalkSurface { Height = height }];
+        TileHit hit = Assert.IsType<TileHit>(rig.View.PickSurface(0, new Vector3(11.5f, 4f, -10.5f), -Vector3.UnitY, 5f));
+        Assert.Equal(height, hit.Point.Y);
+    }
+
     internal sealed class Rig : IDisposable
     {
         readonly ManualTileBuildDispatcher _dispatcher = new();
@@ -68,6 +89,7 @@ public sealed class TileWorldInteriorPickingTests
         public TileWorldDocument Doc { get; } = TileRenderTestData.HouseWorld();
         public TileWorldCatalogs Catalogs { get; } = TileRenderTestData.Catalogs;
         public TileWorldView View { get; }
+        public RecordingTileWorldScene Scene { get; } = new();
         public TileObject Tree { get; }
 
         public Rig(bool cut, bool complete = true)
@@ -84,7 +106,7 @@ public sealed class TileWorldInteriorPickingTests
                     DrawRadius = 192f, LodDistance = 64f, CutInsideInteriors = cut,
                 }],
             };
-            View = new TileWorldView(new RecordingTileWorldScene(), Doc, Catalogs, resolver,
+            View = new TileWorldView(Scene, Doc, Catalogs, resolver,
                 options, null, _dispatcher);
             View.InteriorMeshes = new InteriorTestMeshes();
             View.LoadRegion(default);

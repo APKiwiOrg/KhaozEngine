@@ -10,7 +10,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Gpu;
 
-public sealed class InteriorCutHighlightGpuTests : IClassFixture<InteriorCutHighlightGpuTests.Stage>
+public sealed partial class InteriorCutHighlightGpuTests : IClassFixture<InteriorCutHighlightGpuTests.Stage>
 {
     readonly Stage _stage;
     public InteriorCutHighlightGpuTests(Stage stage) => _stage = stage;
@@ -100,18 +100,20 @@ public sealed class InteriorCutHighlightGpuTests : IClassFixture<InteriorCutHigh
     [GpuFact]
     public void ReusedSceneMatchesFreshAfterHighlightAndFieldChanges()
     {
+        _stage.BoundaryFrame(null, new Vector3(4096f, .4f, 4096f), new Vector3(4096f, 128f, 4096f),
+            false, BoundaryMode.SilhouetteTemporal);
         _stage.Frame(Stage.Field, true);
         _stage.Frame(Stage.HullField, true, silhouette: true, temporal: true);
         _stage.Frame(null, true);
-        byte[] reused = _stage.Frame(Stage.Field, false);
+        byte[] reused = _stage.Frame(Stage.Field, false, silhouette: true, temporal: true);
         using var fresh = new Stage();
-        Assert.Equal(fresh.Frame(Stage.Field, false), reused);
+        Assert.Equal(fresh.Frame(Stage.Field, false, silhouette: true, temporal: true), reused);
     }
 
     static bool IsRim(byte[] pixels, int pixel) => pixels[pixel * 4] > 100
         && pixels[pixel * 4] > pixels[pixel * 4 + 1] * 2 && pixels[pixel * 4] > pixels[pixel * 4 + 2] * 2;
 
-    public sealed class Stage : IDisposable
+    public sealed partial class Stage : IDisposable
     {
         internal const int W = 256, H = 256;
         internal static readonly InteriorHeightField Field = MakeField(0, -.5f, .5f);
@@ -139,6 +141,11 @@ public sealed class InteriorCutHighlightGpuTests : IClassFixture<InteriorCutHigh
         internal byte[] Frame(InteriorHeightField? field, bool cut, bool silhouette = false, bool temporal = false,
             MeshOutlineOcclusion occlusion = MeshOutlineOcclusion.SceneDepth, bool model = true)
         {
+            Scene.RenderOrigin = Vector3.Zero;
+            Scene.Camera.Target = Vector3.Zero;
+            Scene.Camera.Azimuth = 0f;
+            Scene.Camera.Elevation = 0f;
+            Scene.Camera.OrthoSize = 4f;
             Scene.InteriorCut = field;
             Scene.ForceTemporalForTests = temporal;
             // Every capture starts from the same history and jitter phase for exact byte comparisons.

@@ -16,7 +16,7 @@ public readonly record struct TileObjectHit(long ObjectId, string ArchetypeId, f
 
 /// <summary>The applied interior field and the archetypes whose pixels opt into its cut.
 /// A default value leaves every object uncut.</summary>
-public readonly record struct TileObjectCut(InteriorHeightField? Field, IReadOnlySet<string> ArchetypeIds);
+public readonly record struct TileObjectCut(InteriorHeightField? Field, IReadOnlySet<string> ArchetypeIds, InteriorCutFrame Frame = default);
 
 /// <summary>
 /// Ray picking against the MODELS of a document's objects: every object whose drawn body the ray passes
@@ -103,7 +103,7 @@ public static class TileObjectRaycast
             if (cut.Field is { } field && cut.ArchetypeIds?.Contains(o.ArchetypeId) == true)
             {
                 float tEnd = MathF.Min(tFar, maxDistance);
-                if (!field.FirstUncut(origin, direction, t, tEnd, out t) || t >= tEnd) continue;
+                if (!field.FirstUncut(origin, direction, t, tEnd, cut.Frame, out t) || t >= tEnd) continue;
             }
             hits.Add(new TileObjectHit(o.Id, o.ArchetypeId, t));
         }

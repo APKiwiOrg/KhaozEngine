@@ -18,7 +18,9 @@ void main() {
     vec4 world = World * vec4(Position, 1.0);
     float sink = Normal.x + Color.x;
     world.x += sink * 1e-30;
-    vWorldPos = world.xyz + RenderOrigin.xyz;
+    // Opted-in masks interpolate in the same render frame as colour. Keep the original absolute
+    // varying for unopted dissolve draws, whose pixels must stay byte-identical.
+    vWorldPos = Params.w > 0.5 ? world.xyz : world.xyz + RenderOrigin.xyz;
     gl_Position = ViewProj * world;
 }";
 
@@ -115,7 +117,9 @@ void main() {
         fragment = ShaderText.After(fragment, "uniform sampler AlbedoSamp;", @"
 layout(set=2, binding=0) uniform texture2D InteriorCut;
 layout(set=2, binding=1) uniform sampler Samp;");
-        fragment = ShaderText.After(fragment, "void main() {", "\n    if (Params.w > 0.5 && interiorCut(vWorldPos - RenderOrigin.xyz)) discard;");
+        fragment = fragment.Replace("dnoise(vWorldPos * 6.0)",
+            "dnoise((Params.w > 0.5 ? vWorldPos + RenderOrigin.xyz : vWorldPos) * 6.0)");
+        fragment = ShaderText.After(fragment, "void main() {", "\n    if (Params.w > 0.5 && interiorCut(vWorldPos)) discard;");
         return ShaderText.After(fragment, "layout(location=1) in vec3 vWorldPos;", InteriorCutGlsl);
     }
 

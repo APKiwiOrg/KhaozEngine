@@ -12,6 +12,7 @@ namespace KhaozEngine.Tests.TileWorld;
 
 public sealed partial class RecordingTileWorldScene
 {
+    public InteriorCutFrame InteriorCutFrame { get; set; }
     public InteriorHeightField? InteriorCut { get; private set; }
     public List<InteriorHeightField?> InteriorPublications { get; } = new();
     public Action<InteriorHeightField?>? OnInteriorPublication { get; set; }

@@ -769,3 +769,7 @@ the same shot renders the channel as a flat blue ground strip). All four pass a 
 procedural sky. Golden images live in `KhaozEngine.Render.Tests/Gpu/goldens/`, one file per backend, and a new or
 rebaked golden must be baked on D3D11 and Vulkan through the `cross-platform-gpu.yml` `bake=true` dispatch before
 it can gate, or a Metal-only bake turns `main` red on every other backend.
+
+Cut-aware object and walk-surface picks use `ITileWorldScene.InteriorCutFrame` from the current picture.
+`Scene3DTileWorldScene` supplies the live scene origin. A custom scene supplies the same frame it used for
+its interior cut uniforms. The default frame and the frameless core query overloads use origin zero.

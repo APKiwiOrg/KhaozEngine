@@ -12,9 +12,13 @@ The rulings and API sketch below preserve the approved design history. The shipp
   `interior.window` once when the cap reduces coverage. H2 puts source-wide `InteriorEncoding` in
   `InteriorSourceResult.Encoding`. `Build(volumes, window, encoding)` takes it explicitly, and the adapter
   reports `interior.step` at collection, not after building a window.
-- Membership uses float32 code space everywhere (F4-1): `q = (y - BaseY) * (1f / StepY)`, with
-  `hi > lo && q >= lo && q < hi`. `TryGetSpan` is an approximate decoded-height query. `FirstUncut` solves
-  in code space so its returned point agrees with `Contains` and shader pixels.
+- Membership uses `InteriorCutFrame` (Final-3), whose double render origin reduces the point, window minimum
+  and height base before rounding to float32. Uniforms and CPU queries share its exact vectors. Addressing
+  multiplies by the rounded reciprocal cell size, and height uses `q = (relativeY - relativeBase) * (1f / StepY)`,
+  with `hi > lo && q >= lo && q < hi`. Frameless overloads use origin zero. `TryGetSpan` remains approximate.
+  `FirstUncut` confirms cell and height crossings with that same predicate. TileWorld picks use the scene's
+  current frame. Opted-in rigid outline masks interpolate render-relative positions directly, with no absolute
+  coordinate round trip. Unopted dissolve draws keep their original absolute varying.
 - TileWorld columns retain only their lowest contiguous run of retained indoor planes, never spanning a
   rejected storey or an outdoor gap (F3-1 and follow-up). Roofs apply only when that run reaches the column's
   highest indoor plane. Rectangle grouping also separates roof eligibility. Core supplied-volume merging

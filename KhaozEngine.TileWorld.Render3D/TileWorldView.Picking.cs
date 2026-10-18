@@ -25,7 +25,7 @@ public sealed partial class TileWorldView
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         int count = TileObjectRaycast.Pick(_doc, _catalogs, plane, origin, direction, maxDistance, bounds, hits,
-            new TileObjectCut(AppliedInteriorCut, CutArchetypeIds));
+            new TileObjectCut(AppliedInteriorCut, CutArchetypeIds, _scene.InteriorCutFrame));
         int kept = 0;
         for (int i = 0; i < count; i++)
         {
@@ -103,7 +103,7 @@ public sealed partial class TileWorldView
         && handles.Residency == TileRegionResidencyState.Gameplay;
 
     bool AcceptWalkSurfacePoint(TileObject o, Vector3 point) =>
-        AppliedInteriorCut is not { } field || !CutArchetypeIds.Contains(o.ArchetypeId) || !field.Contains(point);
+        AppliedInteriorCut is not { } field || !CutArchetypeIds.Contains(o.ArchetypeId) || !field.Contains(point, _scene.InteriorCutFrame);
 
     bool IsRenderedTerrain(int x, int z, int plane) =>
         _loaded.TryGetValue(RegionCoord.Of(x, z), out RegionHandles? handles)

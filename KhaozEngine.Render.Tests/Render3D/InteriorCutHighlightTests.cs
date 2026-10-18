@@ -121,7 +121,7 @@ public sealed class InteriorCutHighlightTests
         foreach (string fragment in new[] { ShaderSources.TargetOutlineRigidFullMaskFrag, ShaderSources.TargetOutlineRigidVisibleMaskFrag })
         {
             Assert.Contains(ShaderSources.InteriorCutGlsl, fragment);
-            Assert.Contains("if (Params.w > 0.5 && interiorCut(vWorldPos - RenderOrigin.xyz)) discard;", fragment);
+            Assert.Contains("if (Params.w > 0.5 && interiorCut(vWorldPos)) discard;", fragment);
             var pair = SpirvCrossCompile.GlslPairToHlsl(ShaderSources.TargetOutlineMaskVert, fragment);
             Assert.Equal(new[] { GpuResourceKind.TextureReadOnly, GpuResourceKind.Sampler },
                 pair.Reflection.ResourceLayouts[2].Elements.Select(element => element.Kind));

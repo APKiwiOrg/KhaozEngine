@@ -25,28 +25,67 @@ public sealed class AzureLiveTests
     static readonly ReportBlobHeaders Headers = new("application/json; charset=utf-8", "no-cache");
 
     [BugReportsAzureFact]
-    public async Task Live_MediaStore_PassesConformance()
-    {
-        await using var suite = new LiveMediaConformance();
-        await suite.Put_ThenGet_RoundTripsBytes();
-        await suite.Put_WithoutOverwrite_ExistingPath_ReturnsFalseAndKeepsFirst();
-        await suite.Put_WithoutOverwrite_ConcurrentCallers_ExactlyOneWins();
-        await suite.Put_WithOverwrite_ReplacesAndReturnsTrue();
-        await suite.Get_Absent_ReturnsNull();
-        await suite.Get_OverMaxBytes_ThrowsInvalidDataException();
-        await suite.Areas_AreIndependent();
-        await suite.Exists_ReflectsPut();
-    }
+    public Task Live_Media_Put_ThenGet_RoundTripsBytes()
+        => RunMedia(suite => suite.Put_ThenGet_RoundTripsBytes());
 
     [BugReportsAzureFact]
-    public async Task Live_QuotaStore_PassesConformance()
+    public Task Live_Media_Put_WithoutOverwrite_ExistingPath_ReturnsFalseAndKeepsFirst()
+        => RunMedia(suite => suite.Put_WithoutOverwrite_ExistingPath_ReturnsFalseAndKeepsFirst());
+
+    [BugReportsAzureFact]
+    public Task Live_Media_Put_WithoutOverwrite_ConcurrentCallers_ExactlyOneWins()
+        => RunMedia(suite => suite.Put_WithoutOverwrite_ConcurrentCallers_ExactlyOneWins());
+
+    [BugReportsAzureFact]
+    public Task Live_Media_Put_WithOverwrite_ReplacesAndReturnsTrue()
+        => RunMedia(suite => suite.Put_WithOverwrite_ReplacesAndReturnsTrue());
+
+    [BugReportsAzureFact]
+    public Task Live_Media_Get_Absent_ReturnsNull()
+        => RunMedia(suite => suite.Get_Absent_ReturnsNull());
+
+    [BugReportsAzureFact]
+    public Task Live_Media_Get_OverMaxBytes_ThrowsInvalidDataException()
+        => RunMedia(suite => suite.Get_OverMaxBytes_ThrowsInvalidDataException());
+
+    [BugReportsAzureFact]
+    public Task Live_Media_Areas_AreIndependent()
+        => RunMedia(suite => suite.Areas_AreIndependent());
+
+    [BugReportsAzureFact]
+    public Task Live_Media_Exists_ReflectsPut()
+        => RunMedia(suite => suite.Exists_ReflectsPut());
+
+    [BugReportsAzureFact]
+    public Task Live_Quota_Read_Absent_ReturnsNull()
+        => RunQuota(suite => suite.Read_Absent_ReturnsNull());
+
+    [BugReportsAzureFact]
+    public Task Live_Quota_CreateOnly_WhenAbsent_WritesCountOne()
+        => RunQuota(suite => suite.CreateOnly_WhenAbsent_WritesCountOne());
+
+    [BugReportsAzureFact]
+    public Task Live_Quota_CreateOnly_WhenPresent_ReturnsFalse()
+        => RunQuota(suite => suite.CreateOnly_WhenPresent_ReturnsFalse());
+
+    [BugReportsAzureFact]
+    public Task Live_Quota_Write_WithCurrentVersion_SucceedsAndChangesVersion()
+        => RunQuota(suite => suite.Write_WithCurrentVersion_SucceedsAndChangesVersion());
+
+    [BugReportsAzureFact]
+    public Task Live_Quota_Write_WithStaleVersion_ReturnsFalseAndKeepsCount()
+        => RunQuota(suite => suite.Write_WithStaleVersion_ReturnsFalseAndKeepsCount());
+
+    static async Task RunMedia(Func<LiveMediaConformance, Task> fact)
+    {
+        await using var suite = new LiveMediaConformance();
+        await fact(suite);
+    }
+
+    static async Task RunQuota(Func<LiveQuotaConformance, Task> fact)
     {
         await using var suite = new LiveQuotaConformance();
-        await suite.Read_Absent_ReturnsNull();
-        await suite.CreateOnly_WhenAbsent_WritesCountOne();
-        await suite.CreateOnly_WhenPresent_ReturnsFalse();
-        await suite.Write_WithCurrentVersion_SucceedsAndChangesVersion();
-        await suite.Write_WithStaleVersion_ReturnsFalseAndKeepsCount();
+        await fact(suite);
     }
 
     [BugReportsAzureFact]

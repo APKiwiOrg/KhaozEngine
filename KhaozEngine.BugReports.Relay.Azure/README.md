@@ -34,7 +34,8 @@ Only caller cancellation throws `OperationCanceledException`. Delivery remains a
 succeeds but deleting fails. The host owns poison routing after 5 dequeues and when this requeuer runs.
 
 The ordinary tests link the relay conformance suites and use in-memory seams plus in-process SDK
-HTTP transports. The four live facts skip unless `KE_BUGREPORTS_STORAGE` names a test storage account.
+HTTP transports. Every conformance fact has a named, gated live counterpart, enforced by an offline
+reflection test. The live facts skip unless `KE_BUGREPORTS_STORAGE` names a test storage account.
 An authorized live run uses DefaultAzureCredential against pre-created `kebugtest-public` and
 `kebugtest-pending` containers, the dedicated, empty `kebugtest-work` queue and the `kebugtestquota`
 table. It creates and deletes only its own blobs, messages and entities inside those resources.

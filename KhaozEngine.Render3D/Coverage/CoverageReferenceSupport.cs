@@ -118,6 +118,91 @@ internal sealed class CoverageReferenceSupport
         return float.IsFinite(distance);
     }
 
+    /// <summary>Analytic overlay vertices in source order. Disjoint pairs still execute their arithmetic guards.</summary>
+    internal bool TryOverlayMaximum(ReadOnlySpan<Vector3> host, out float maximum)
+    {
+        maximum = float.NegativeInfinity;
+        if (host.Length != 3) return false;
+        for (int i = 0; i < 3; i++) if (!CoverageRefinement.Finite(host[i])) return false;
+        float hostArea = CoverageReferenceMath.Edge(host[0], host[1], host[2]);
+        if (hostArea == 0 || !float.IsFinite(hostArea)) return false;
+        Span<Vector3> sheet = stackalloc Vector3[3];
+        for (int t = 0; t < Triangles.Length; t++)
+        {
+            var triangle = Triangles[t];
+            sheet[0] = Positions[triangle.A]; sheet[1] = Positions[triangle.B]; sheet[2] = Positions[triangle.C];
+            if (!OverlayPair(host, sheet, hostArea, ref maximum)) return false;
+        }
+        return true;
+    }
+
+    static bool OverlayPair(ReadOnlySpan<Vector3> host, ReadOnlySpan<Vector3> sheet, float hostArea, ref float maximum)
+    {
+        for (int i = 0; i < 3; i++) if (!CoverageRefinement.Finite(sheet[i])) return false;
+        float sheetArea = CoverageReferenceMath.Edge(sheet[0], sheet[1], sheet[2]);
+        if (sheetArea == 0 || !float.IsFinite(sheetArea)) return false;
+        Span<float> hostInSheet = stackalloc float[9], sheetInHost = stackalloc float[9];
+        for (int i = 0; i < 3; i++)
+        {
+            if (!OverlayInside(sheet, host[i], sheetArea, hostInSheet.Slice(i * 3, 3), out bool inside)) return false;
+            if (inside && !OverlayAccumulate(host, sheet, host[i], ref maximum)) return false;
+            if (!OverlayInside(host, sheet[i], hostArea, sheetInHost.Slice(i * 3, 3), out inside)) return false;
+            if (inside && !OverlayAccumulate(host, sheet, sheet[i], ref maximum)) return false;
+        }
+        for (int i = 0; i < 3; i++)
+            for (int j = 0; j < 3; j++)
+            {
+                int nextI = (i + 1) % 3, nextJ = (j + 1) % 3;
+                float ca = hostInSheet[i * 3 + j], cb = hostInSheet[nextI * 3 + j],
+                    ac = sheetInHost[j * 3 + i], ad = sheetInHost[nextJ * 3 + i];
+                if (SameSign(ca, cb) || SameSign(ac, ad) || ca == 0 && cb == 0) continue;
+                Vector3 a = host[i], b = host[nextI], p;
+                // Rounded zero sides cannot create a contact between disjoint finite segments.
+                if (!OverlayEdgesOverlap(a, b, sheet[j], sheet[nextJ])) continue;
+                if (ca == 0) p = a;
+                else if (cb == 0) p = b;
+                else
+                {
+                    float denominator = ca - cb;
+                    if (denominator == 0 || !float.IsFinite(denominator)) return false;
+                    float quotient = ca / denominator;
+                    if (!float.IsFinite(quotient)) return false;
+                    float u = Math.Clamp(quotient, 0, 1);
+                    p = new(a.X + (u * (b.X - a.X)), a.Y + (u * (b.Y - a.Y)), a.Z + (u * (b.Z - a.Z)));
+                }
+                if (!CoverageRefinement.Finite(p) || !OverlayAccumulate(host, sheet, p, ref maximum)) return false;
+            }
+        return true;
+    }
+
+    static bool SameSign(float a, float b) => a > 0 && b > 0 || a < 0 && b < 0;
+
+    static bool OverlayEdgesOverlap(Vector3 a, Vector3 b, Vector3 c, Vector3 d) =>
+        MathF.Max(a.X, b.X) >= MathF.Min(c.X, d.X) && MathF.Max(c.X, d.X) >= MathF.Min(a.X, b.X)
+        && MathF.Max(a.Y, b.Y) >= MathF.Min(c.Y, d.Y) && MathF.Max(c.Y, d.Y) >= MathF.Min(a.Y, b.Y);
+
+    static bool OverlayInside(ReadOnlySpan<Vector3> triangle, Vector3 p, float area, Span<float> sides, out bool inside)
+    {
+        inside = true;
+        for (int i = 0; i < 3; i++)
+        {
+            float side = sides[i] = CoverageReferenceMath.Edge(triangle[i], triangle[(i + 1) % 3], p);
+            if (!float.IsFinite(side)) return false;
+            if (area > 0 ? side < 0 : side > 0) inside = false;
+        }
+        return true;
+    }
+
+    static bool OverlayAccumulate(ReadOnlySpan<Vector3> host, ReadOnlySpan<Vector3> sheet, Vector3 p, ref float maximum)
+    {
+        Vector2 xy = new(p.X, p.Y);
+        float h = CoverageReferenceMath.Height(host[0], host[1], host[2], xy),
+            s = CoverageReferenceMath.Height(sheet[0], sheet[1], sheet[2], xy), difference = h - s;
+        if (!float.IsFinite(h) || !float.IsFinite(s) || !float.IsFinite(difference)) return false;
+        maximum = MathF.Max(maximum, difference);
+        return true;
+    }
+
     void VisitCells(int triangle, bool counting, int[]? next)
     {
         var t = Triangles[triangle];

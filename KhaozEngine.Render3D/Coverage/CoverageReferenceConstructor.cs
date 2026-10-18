@@ -55,6 +55,14 @@ internal static class CoverageReferenceConstructor
         CoverageReferenceScratch scratch, out CoverageFailure failure) =>
         TryConformGroups(topology, commands, scratch, out failure, default);
 
+    internal static bool TryCorrectAndTransition(CoverageRefinement topology, ReadOnlySpan<CoverageCommandPose> commands,
+        CoverageReferenceScratch scratch, out CoverageFailure failure)
+    {
+        if (!CoverageReferenceCorrection.TryApply(topology, commands, scratch, out failure)) return false;
+        CoverageReferenceCorrection.ApplyTransition(topology, commands, scratch);
+        return true;
+    }
+
     /// <summary>Overrides are exact capture target depths in sorted active-slot order. Frame preparation precedes each run.</summary>
     internal static bool TryConformGroups(CoverageRefinement topology, ReadOnlySpan<CoverageCommandPose> commands,
         CoverageReferenceScratch scratch, out CoverageFailure failure, ReadOnlySpan<double> clearanceCoverageOverride)

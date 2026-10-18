@@ -434,6 +434,12 @@ What it owns today:
     is no second copy of `layout(local_size_x = ...)` to drift (which would be invisible on Vulkan/D3D11 and
     silently wrong on Metal, the only backend that reads it). Do declare it: omitting the layout is legal GLSL and
     compiles in the 1x1x1 default, which dispatches one invocation per group rather than failing.
+  - **Unsigned storage-buffer atomics.** GLSL `atomicOr` and `atomicMax` on a std430 `uint` word update that
+    32-bit word atomically across invocations and workgroups, and return its previous value. `atomicMax` compares
+    unsigned values, so `0x80000000u` is greater than `0x7fffffffu`. Use the existing
+    `StructuredBufferReadWrite` buffer usage and resource kind, with a four-byte `uint` stride. Atomic word updates
+    do not order workgroups or publish unrelated words. A later dispatch in the same command list observes the
+    completed writes through the ordering rule below. This contract covers unsigned integers only.
   - **Ordering rules, since there is no barrier call.** Compute writes a storage texture that a graphics pass then
     samples: record BOTH in the SAME command list and create the texture `Storage | Sampled`. A dispatch or a draw
     that reads a storage buffer an earlier dispatch in the SAME command list wrote sees the write, with no drain

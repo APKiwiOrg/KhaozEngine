@@ -22296,6 +22296,24 @@ byte[] bad = GpuReadback.ToRgba(gd, swapchainBgra, w, h);       // throws: B8G8R
 byte[] mip = GpuReadback.ToRgbaMip(gd, mipped, 2, 0, w / 4, h / 4);   // one level of a mip chain
 ```
 
+### Unsigned storage-buffer atomics
+
+GLSL `uint atomicOr(inout uint word, uint value)` and `uint atomicMax(inout uint word, uint value)` operate on
+std430 `uint` storage-buffer words on Metal, Direct3D11 and Vulkan. Create a buffer with
+`GpuBufferUsage.StructuredBufferReadWrite`, a four-byte `uint` stride and the matching
+`GpuResourceKind.StructuredBufferReadWrite` binding. No separate atomic resource kind is needed.
+
+Each operation atomically updates one 32-bit word across invocations and workgroups, and returns the value
+that word held immediately before the update. `atomicOr` combines bits. `atomicMax` uses unsigned comparison,
+so `0x80000000u` wins over `0x7fffffffu`. Starting at `0x20u`, OR with `4u` returns `0x20u` and leaves `0x24u`.
+A following MAX with `0x80000000u` returns `0x24u` and leaves `0x80000000u`. This contract covers unsigned
+integer words only, with no floating-point atomic accumulation.
+
+An atomic word update does not order workgroups, finish other invocations or publish unrelated words. Do not
+rely on workgroup execution order. To consume the completed result, record a later dispatch in the same command
+list. The inter-dispatch visibility rule below makes preceding dispatch writes visible to that reader.
+Atomicity within a dispatch and visibility between dispatches are separate guarantees.
+
 ### Ordering: two rules, because there is no barrier call
 
 There is no barrier method on this seam. Inside one command list each backend orders what the bound sets name, by

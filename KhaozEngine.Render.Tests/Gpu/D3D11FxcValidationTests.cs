@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.D3D11;
+using KhaozEngine.Gpu.D3D11.Internal;
 using KhaozEngine.Gpu.Internal;
 using KhaozEngine.Render3D.Internal;
 using Xunit;
@@ -110,6 +111,18 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.True(failures.Count == 0,
                 "FXC rejected a cross-compiled compute kernel.\n" + string.Join("\n", failures));
+        }
+
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void UnsignedStorageAtomics_SurviveFxc(bool returnOldValue)
+        {
+            if (!KhaozEngineD3D11.IsPlatformSupported) return;
+
+            string source = returnOldValue ? ComputeAtomicShaders.ReturnOldValue : ComputeAtomicShaders.UnsignedOrMax;
+            string label = returnOldValue ? nameof(ComputeAtomicShaders.ReturnOldValue) : nameof(ComputeAtomicShaders.UnsignedOrMax);
+            D3D11ShaderValidation.ValidateCompute(source, label);
         }
 
         /// <summary>

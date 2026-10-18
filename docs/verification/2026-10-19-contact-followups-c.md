@@ -37,9 +37,10 @@ rounded diagnostics. The original test probe sizes and tuning remain unchanged.
 ## Audited source dispositions
 
 The numbered table below follows the 51-site audit in research-1494 sections 1 to 4.
-Task 1 covers the planar doors. Curved-specific source changes belong to Task 2.
+Task 1 covers the planar doors. Task 2 records sites 35 to 42 and the curved paths of sites 43 and 44.
+Curved line references are at the Task 2 commit.
 
-| Site | Audited source | Task 1 disposition | Evidence and retained obligation |
+| Site | Audited source | Disposition | Evidence and retained obligation |
 | --- | --- | --- | --- |
 | 1 | `InstalledPoseOperator.cs:64`, `:93`, `:112`, `:141` | changed | Explicit support door directly certifies represented columns. Legacy TryCreate, RealCoefficients and union remain. Scalar and SIMD capture is shared. |
 | 2 | `InstalledPoseOperations.cs:55` | changed | Separate support admission feeds the same rounded composition enclosure and actual SIMD continuation. |
@@ -75,16 +76,16 @@ Task 1 covers the planar doors. Curved-specific source changes belong to Task 2.
 | 32 | `SupportJoinIncidence.cs:13`, `:71` | derived-unchanged | Same-plane and common-vertex certificates retain their bounds and raw rows. |
 | 33 | `SupportMeetingDomain.cs:15`, `:34` | derived-unchanged | Meeting denominator and rate domains remain. |
 | 34 | `SupportNeighborhoodJoins.cs:21`, `:39`, `:66`, `:80` | derived-unchanged | Whole joins and mutual-below tests remain. Equal source maps never replace raw identity. |
-| 35 | `SupportNeighborhoodCurved.cs:46`, `:54`, `:57` and `:19`, `:70`, `:102`, `:110`, `:218` | changed (shared gate), legacy-retained (curved source) | The compound root, curved child pose and composition gates at `:46`, `:54` and `:57` run for every non-mesh compound, including box-only, hull-only and hull-centroid wrappers, so they use TryCreateSupport and ProveSupportComposition (fix round 1, FC-R4). The curved leaf operator, `SupportCurvedLeaf.SourceColumn` and tangent capture at `:19`, `:70`, `:102`, `:110` and `:218` remain dual and are explicitly deferred to Task 2. |
-| 36 | `SupportCurvedSourceArithmetic.cs:33`, `:42`, `:200` | legacy-retained | Curved source-column constants and removal of alternative-transform nodes belong to Task 2. |
-| 37 | `SupportCurvedRootRegions.cs:42`, `:78`, `:216` | derived-unchanged | Curved root isolation remains for Task 2 source adoption and later work enforcement. |
-| 38 | `SupportFootprintCurved.cs:40`, `:65`, `SupportFootprintCurved.Admission.cs:6`, `SupportFootprintCurved.Proposal.cs:10` | derived-unchanged | Curved footprint, admission and proposal formulas are untouched in Task 1. |
-| 39 | `SupportTiltedCurved.cs:13`, `:87` | derived-unchanged | Tilted curved coordination is untouched in Task 1. |
-| 40 | `SupportTiltedCurvedGeometry.cs:46`, `:137`, `:260` and partials listed below | derived-unchanged | Tilted curved frame and all listed partials are untouched in Task 1. Task 2 owns source adoption. |
-| 41 | `SupportCurvedSurfaceAdmission.cs:24` | derived-unchanged | Curved whole-surface protection, cells and atomic refusal remain. |
-| 42 | `GeometryVectorOperations.cs:42`, `:77`, `SupportFootprintPublication.cs:8` | derived-unchanged | Normalization, witness conversion and arithmetic/publication errors remain. |
-| 43 | `SupportFootprintCollector.cs:103`, `:135`, `:202`, `:277`, `SupportFootprintCollector.Geometry.cs:12`, `SupportFootprintCollector.Relevance.cs:21` | derived-unchanged | Cached, fallback and reference planar materialization now share represented capture. Collector formulas and build-before-copy remain. |
-| 44 | `SupportNeighborhoodCollector.cs:118`, `:162`, `:194` | derived-unchanged | Uncached planar neighborhoods receive the same represented source. Curved changes wait for Task 2. |
+| 35 | `SupportNeighborhoodCurved.cs:22`, `:49`, `:57`, `:60`, `:72`, `:104`, `:116`, `:354` | changed | Compound root, child pose and composition gates use the support door (Task 1 fix round 1). Both Leaf doors (`:72`, `:104`) now admit through TryCreateSupport. `SourceColumn` (`:22`) is the represented binary32 Y column, extracted only from exact, bit-matching represented entries. Axis (`:116`) is the outward normalization of that same point, and Across derives from Axis, so the tangent kernel (`:354`) and every footprint stratum read one column. Radius, half length, part ids and the circular primitive are unchanged. |
+| 36 | `SupportCurvedSourceArithmetic.cs:37`, `:197`, `:222` | changed | `Reset(Vector3)` installs the column as exact constants. The Source operation, `_column` interval storage, source-polynomial coefficients and their compile branch are removed. The node graph, denominator signs, radical elimination, 4,096-node and 54-rent compile ceilings, degree-eight bound and Checkpoint/Restore are unchanged. Constant polynomials still decide undecided interval signs exactly. |
+| 37 | `SupportCurvedRootRegions.cs:42`, `:78`, `:216` | derived-unchanged | Root isolation, endpoint exact signs, 1,024 live and 12 terminal cells are unchanged. Irrational coefficients still arrive as enclosures, so whole-region certificates remain necessary. Only the class comment now names a coefficient enclosure instead of a source family. |
+| 38 | `SupportFootprintCurved.cs:42`, `:52`, `SupportFootprintCurved.Admission.cs:29`, `SupportFootprintCurved.Proposal.cs:28` | changed (source only) | Begin resets from the represented column. `_axisSign` reads the binary32 Y sign. Spherical, upright and horizontal strata, admission and lowest proposal contacts use the same constants. Finite-end clipping and inclusive equalities are unchanged. A represented column with exact zero Y now takes the closed-form horizontal stratum where the old box was tilted. |
+| 39 | `SupportTiltedCurved.cs:13`, `:87` | derived-unchanged | Tilted coordination consumes the geometry owner below. Full-part admission and atomic refusal remain. |
+| 40 | `SupportTiltedCurvedGeometry.cs:48` and partials listed below | derived-unchanged (source switched through site 36) | Begin resets from the represented column and keeps algebraic normalization, the axial and radial frame and every guarded boundary, stationary, contact and surface equation. The weak-sign clipping in NormalizedYBounds stays, and it is now exact for a signed zero column. |
+| 41 | `SupportCurvedSurfaceAdmission.cs:24` | derived-unchanged | All coverage cells, maxima, caps and atomic refusal remain even where the point column resolves more signs. |
+| 42 | `GeometryVectorOperations.cs:42`, `:77`, `SupportFootprintPublication.cs:8` | derived-unchanged | Normalization and binary32 publication still enclose arithmetic and conversion error. An irrational unit axis from a point column publishes a nonzero error, proved by RepresentedCurvedRadicalsRemainGuardedAfterPointSources. |
+| 43 | `SupportFootprintCollector.cs:103`, `:135`, `:202`, `:277`, `SupportFootprintCollector.Geometry.cs:12`, `SupportFootprintCollector.Relevance.cs:21` | derived-unchanged | Cached, fallback and reference planar materialization now share represented capture. Collector formulas and build-before-copy remain. Curved leaves reach the support door through `InstalledSupportGeometry.Materialize` and its cache identity leaf (`InstalledSupportGeometryCache.cs:111`), with no dual admission on either public query. |
+| 44 | `SupportNeighborhoodCollector.cs:118`, `:162`, `:194` | derived-unchanged | Uncached planar neighborhoods receive the same represented source. Curved capture at `:131` uses the represented column and support door. |
 | 45 | `BepuPhysicsWorld.SupportFootprint.cs:13`, `:66`, `:114` | changed | Proposal pose-domain admission uses the support factory. Raw sweeps, lease, selections, versions and publication remain. |
 | 46 | `BepuPhysicsWorld.SupportNeighborhood.cs:30`, `:78` | changed | Probe pose-domain admission uses the support factory. Static-only selection and query limits remain. |
 | 47 | `KhaozEngine.Locomotion/Contacts/SupportCertification.Footprint.cs:27`, `:52`, `:79`, `:118` | derived-unchanged | Locomotion footprint certification receives represented published bounds. Provenance, steep suppression and direct joins remain. |
@@ -122,3 +123,28 @@ SourceCorrections, the old mesh-sliver skip and the rotated equivalence digest c
 Of 1,952 golden rows, 735 changed under identical frozen questions. Zero identity mesh, fan or
 legacy feature rows changed. The complete test names and row parameters are in the Task 1 report.
 Task 3 owns reconciliation. No old expectation was skipped, removed or rewritten.
+
+## Task 2 curved source
+
+`SupportCurvedLeaf.SourceColumn` is the represented Y column of the actual installed or composed leaf
+pose, bit for bit, and Axis encloses its exact normalization. Both capture doors, cached, reference and
+compound child order return the same leaf. The curved arithmetic owner installs that column as constants.
+Sphere, capsule and cylinder statics and curved compound children reach zero dual admissions across
+both public support queries. The legacy feature and sweeps factory keeps its dual contract.
+
+Changed curved expectations, each against the represented exact or closed-form oracle:
+
+- 28 lying-log end-seam rows that expected refusal now certify Complete. Every one was a box artifact.
+- Synthetic box sources in TiltedRegions and LyingLogs became per-column point sources at the old box
+  endpoints. Former capacity refusals across a box are replaced by per-column certificates. A genuine
+  irrational double root and a genuine compile-ceiling failure keep the bounded refusal contracts.
+- The quarter-turn boundary pose `(0.6, 0, 0.3741657, 0.70710677)` has an exactly horizontal represented
+  column. It certifies in the closed-form stratum for all eight former tilted rows.
+- The crest-region test now bounds height with the rational tilted certificate. Its binary64 locator plane
+  misses the exact attained point by about 7e-9 on a 6e-8 tilt.
+- Off-crest rows of the tiny-tilt side test keep exact witness, normal and maximum checks. The binary64
+  per-point sampler cannot resolve a 1e-8 tilt there, so only the crest rows keep that sampler check.
+- The proof and neighborhood oracles read the represented column of the actual composed leaf pose.
+  Historical anchor callbacks are unchanged.
+
+No tolerance, band, limit, storage bound or fallback-count assertion changed. No timing conclusion follows.

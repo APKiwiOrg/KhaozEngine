@@ -1,23 +1,23 @@
 using System;
+using System.Numerics;
 
 namespace KhaozEngine.Physics.Bepu;
 
-/// <summary>Closed-form expressions over one unnormalized source column. Radical signs are reduced under
-/// sign guards to the existing degree-eight polynomial owner. Storage is reused, including fallback scratch.</summary>
+/// <summary>Closed-form expressions over one unnormalized represented source column, installed as exact constants.
+/// Radical signs are reduced under sign guards to the existing degree-eight polynomial owner, whose constant
+/// polynomials decide the remaining signs exactly. Storage is reused, including fallback scratch.</summary>
 internal sealed class SupportCurvedSourceArithmetic
 {
     // Handles stay valid until Reset. Enclosures live in the graph rather than recursive stack frames.
     internal readonly record struct Number(int Id);
-    enum Operation : byte { Constant, Source, Add, Multiply, Divide, Root }
+    enum Operation : byte { Constant, Add, Multiply, Divide, Root }
     readonly record struct Node(Operation Op, Number Left, Number Right, int Root, double Constant, FeatureNumber Value);
     readonly record struct Fraction(Number A, Number B, Number D);
     readonly record struct Polynomial(SupportSourcePolynomial N, SupportSourcePolynomial D);
     const int MaximumNodes = 4096;
     readonly Node[] _nodes = new Node[MaximumNodes];
     readonly SupportSourcePolynomialWorkspace _work = new();
-    readonly SupportSourcePolynomial[] _sources = new SupportSourcePolynomial[3];
     readonly Polynomial?[] _compiled = new Polynomial?[MaximumNodes];
-    readonly GeometryInterval[] _column = new GeometryInterval[3];
     int _count, _compiledCount;
     SupportSourcePolynomial _onePolynomial = null!;
     bool _resolved;
@@ -34,19 +34,16 @@ internal sealed class SupportCurvedSourceArithmetic
         _resolved = true;
     }
 
-    internal void Reset(FeaturePoint source)
+    internal void Reset(Vector3 source)
     {
         _count = 0; _resolved = true;
         Zero = Constant(0); One = Constant(1);
-        _column[0] = source.X.Bounds; _column[1] = source.Y.Bounds; _column[2] = source.Z.Bounds;
-        X = Source(source.X, 0); Y = Source(source.Y, 1); Z = Source(source.Z, 2);
+        X = Constant(source.X); Y = Constant(source.Y); Z = Constant(source.Z);
     }
 
     FeatureNumber Value(Number number) => _resolved ? _nodes[number.Id].Value : default;
     internal GeometryInterval Bounds(Number number) => Value(number).Bounds;
 
-    Number Source(FeatureNumber value, int axis) => value.IsExact ? Constant(value.Value) :
-        New(Operation.Source, default, default, value, axis);
     internal Number Constant(double value) => New(Operation.Constant, default, default, FeatureNumber.Exact(value), value);
     internal Number Add(Number a, Number b)
     {
@@ -132,7 +129,7 @@ internal sealed class SupportCurvedSourceArithmetic
         for (int i = 0; i < _count; i++)
             if (_nodes[i].Op == op && _nodes[i].Left.Id == a.Id && _nodes[i].Right.Id == b.Id &&
                 _nodes[i].Constant == constant) return new(i);
-        int root = op == Operation.Root ? _count : op is Operation.Constant or Operation.Source ? -1 :
+        int root = op == Operation.Root ? _count : op == Operation.Constant ? -1 :
             Math.Max(_nodes[a.Id].Root, _nodes[b.Id].Root);
         int id = _count++;
         _nodes[id] = new(op, a, b, root, constant, value);
@@ -200,8 +197,6 @@ internal sealed class SupportCurvedSourceArithmetic
     GeometrySign PolynomialSign(Number number)
     {
         _work.Reset(); Array.Clear(_compiled); _compiledCount = 0;
-        for (int i = 0; i < 3; i++) _sources[i] = _work.Coefficient(_column[i]);
-        _work.CompleteMap();
         _onePolynomial = _work.Constant(1);
         Polynomial? value = Compile(number);
         if (value is not { } polynomial) return GeometrySign.Unresolved;
@@ -229,10 +224,9 @@ internal sealed class SupportCurvedSourceArithmetic
         if (_compiled[number.Id] is { } cached) return cached;
         Node node = _nodes[number.Id];
 
-        if (node.Op is Operation.Constant or Operation.Source)
+        if (node.Op == Operation.Constant)
         {
-            SupportSourcePolynomial? n = node.Op == Operation.Source ? _sources[(int)node.Constant] :
-                Rent(Operation.Constant, constant: node.Constant);
+            SupportSourcePolynomial? n = Rent(Operation.Constant, constant: node.Constant);
             return n is null ? null : _compiled[number.Id] = new Polynomial(n, _onePolynomial);
         }
         if (Compile(node.Left) is not { } a || Compile(node.Right) is not { } b) return null;

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 using BepuPhysics;
 using BepuPhysics.Collidables;
 using KhaozEngine.Physics;
@@ -13,12 +14,14 @@ internal enum SupportCurvedShape : byte { Sphere, Capsule, Cylinder }
 /// direction of its installed local Y axis, its radius and its half length. A sphere is round about its centre, a
 /// capsule is round about its core segment, and a cylinder has a side and two caps. Published errors enclose this
 /// rigid solid, with the centre and Y column of the leaf's float world pose, not the float path Bepu evaluates for
-/// each colliding pair, which can differ from it by about 1e-7 m. The rows of I - Axis Axis^T
+/// each colliding pair, which can differ from it by about 1e-7 m. <see cref="SourceColumn"/> is the represented
+/// binary32 Y column Bepu builds from that pose, and <see cref="Axis"/> encloses its exact normalization, so the
+/// tangent kernel and every footprint stratum read one column. The rows of I - Axis Axis^T
 /// project an offset across the axis with each offset component used once, so interval dependency does not widen
 /// the radial direction along the axis.</summary>
 internal readonly record struct SupportCurvedLeaf(int LeafId, SupportCurvedShape Shape, GeometryVector Centre,
     GeometryVector Axis, double Radius, double HalfLength, GeometryVector AcrossX, GeometryVector AcrossY,
-    GeometryVector AcrossZ, FeaturePoint SourceColumn)
+    GeometryVector AcrossZ, Vector3 SourceColumn)
 {
     internal int Parts => Shape == SupportCurvedShape.Cylinder ? 3 : 1;
 
@@ -62,12 +65,11 @@ internal static class SupportNeighborhoodCurved
         return CapsuleFeatureStatus.Complete;
     }
 
-    // The axis is the normalized enclosure of the installed operator's Y column, which holds both the real
-    // quaternion polynomial and the represented maps. Curved sizes retain their independent 64 m domain.
+    // Both doors admit the leaf pose through the support factory. Curved sizes retain their independent 64 m domain.
     internal static CapsuleFeatureStatus Leaf(Simulation simulation, TypedIndex index, in RigidPose pose, int leafId,
         List<SupportCurvedLeaf> leaves)
     {
-        if (!InstalledPoseOperator.TryCreate(pose, out InstalledPoseOperator transform))
+        if (!InstalledPoseOperator.TryCreateSupport(pose, out InstalledPoseOperator transform))
             return CapsuleFeatureStatus.Unsupported;
         SupportCurvedShape shape;
         float radius, half;
@@ -99,15 +101,19 @@ internal static class SupportNeighborhoodCurved
     internal static CapsuleFeatureStatus Leaf(SupportCurvedShape shape, float radius, float half,
         in RigidPose pose, int leafId, List<SupportCurvedLeaf> leaves)
     {
-        if (!InstalledPoseOperator.TryCreate(pose, out InstalledPoseOperator transform))
+        if (!InstalledPoseOperator.TryCreateSupport(pose, out InstalledPoseOperator transform))
             return CapsuleFeatureStatus.Unsupported;
         return Leaf(shape, radius, half, pose, leafId, transform, leaves);
     }
 
+    // The support operator's Y column is the represented point. The axis is the outward enclosure of its exact
+    // normalization, and Across derives from that axis, so neither reads a second transform.
     static CapsuleFeatureStatus Leaf(SupportCurvedShape shape, float radius, float half, in RigidPose pose,
         int leafId, in InstalledPoseOperator transform, List<SupportCurvedLeaf> leaves)
     {
-        GeometryVector axis = GeometryVectorOperations.Normalize(transform.Y.Bounds);
+        if (!RepresentedColumn(transform.Y, transform.RepresentedY, out Vector3 column))
+            throw new InvalidOperationException("Curved support requires an exact represented source column.");
+        GeometryVector axis = GeometryVectorOperations.Normalize(FeaturePoint.Exact(column).Bounds);
         if (!axis.IsResolved) return CapsuleFeatureStatus.Unsupported;
         GeometryInterval one = GeometryInterval.Exact(1);
         GeometryInterval xy = Negate(axis.X.Multiply(axis.Y)), xz = Negate(axis.X.Multiply(axis.Z));
@@ -117,8 +123,25 @@ internal static class SupportNeighborhoodCurved
         var acrossZ = new GeometryVector(xz, yz, one.Subtract(axis.Z.Square()));
         if (!acrossX.IsResolved || !acrossY.IsResolved || !acrossZ.IsResolved) return CapsuleFeatureStatus.Unsupported;
         leaves.Add(new(leafId, shape, FeaturePoint.Exact(pose.Position).Bounds, axis, radius, half, acrossX, acrossY,
-            acrossZ, transform.Y));
+            acrossZ, column));
         return CapsuleFeatureStatus.Complete;
+    }
+
+    static bool RepresentedColumn(FeaturePoint point, FeaturePoint represented, out Vector3 column)
+    {
+        column = default;
+        if (!Represented(point.X, represented.X, out float x) || !Represented(point.Y, represented.Y, out float y) ||
+            !Represented(point.Z, represented.Z, out float z)) return false;
+        column = new(x, y, z);
+        return true;
+    }
+
+    // No interval midpoint or inexact value is cast. Signed zeros keep their bits.
+    static bool Represented(FeatureNumber value, FeatureNumber represented, out float component)
+    {
+        component = (float)value.Value;
+        return value.IsExact && represented.IsExact && component == value.Value &&
+            BitConverter.DoubleToInt64Bits(value.Value) == BitConverter.DoubleToInt64Bits(represented.Value);
     }
 
     static GeometryInterval Negate(GeometryInterval value) =>

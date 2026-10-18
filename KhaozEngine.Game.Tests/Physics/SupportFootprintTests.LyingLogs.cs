@@ -118,29 +118,34 @@ public partial class SupportFootprintTests
                 Assert.Equal(GeometrySign.Negative, geometry.Side(query.CosMaxSlope, out _, out _));
             }
         }
-        var uncertain = new FeaturePoint(FeatureNumber.Exact(1), FeatureNumber.Exact(1e-8),
-            FeatureNumber.Enclosed(GeometryInterval.Enclose(-1e-8, 1e-8)));
-        var family = new SupportCurvedLeaf(0, SupportCurvedShape.Cylinder,
-            FeaturePoint.Exact(Vector3.Zero).Bounds, default, 0.25, 0.5, default, default, default, uncertain);
-        var unproved = new SupportTiltedCurvedGeometry();
-        Assert.True(unproved.Begin(family, 0.5, 0.5, 0.25));
-        Assert.Equal(GeometrySign.Unresolved, unproved.Side(0, out _, out _));
+        // The old box spanned both horizontal Z signs. Each represented column decides its own side.
+        foreach (float z in new[] { -1e-8f, 1e-8f })
+        {
+            var column = new Vector3(1, 1e-8f, z);
+            var geometry = new SupportTiltedCurvedGeometry();
+            Assert.True(geometry.Begin(ColumnLeaf(column), 0.5, 0.5, 0.25));
+            GeometrySign side = geometry.Side(0, out _, out _);
+            _output.WriteLine($"z={z:R} side={side}");
+            Assert.NotEqual(GeometrySign.Unresolved, side);
+        }
     }
 
-    static SupportCurvedLeaf LyingLogBoundaryLeaf(double lower, double upper) =>
-        new(0, SupportCurvedShape.Cylinder, FeaturePoint.Exact(Vector3.Zero).Bounds, default, 0.25, 1,
-            default, default, default, new FeaturePoint(FeatureNumber.Exact(1), lower == upper ?
-                FeatureNumber.Exact(lower) : FeatureNumber.Enclosed(GeometryInterval.Enclose(lower, upper)),
-                FeatureNumber.Exact(0)));
+    static SupportCurvedLeaf LyingLogBoundaryLeaf(float y) => ColumnLeaf(new(1, y, 0), half: 1);
 
-    [Fact]
-    public void LyingLogUnprovedBoundaryBelowAnAttainedPointKeepsTheSide()
+    // The old box made this flank endpoint's slope unprovable. Each represented column now decides it, and the
+    // attained crest still dominates.
+    [Theory]
+    [InlineData(1e-5f)]
+    [InlineData(1e-4f)]
+    public void LyingLogBoundaryBelowAnAttainedPointKeepsTheSide(float y)
     {
         var geometry = new SupportTiltedCurvedGeometry();
         double slope = Math.Sqrt(0.84) * (1 - 2.5e-9);
-        Assert.True(geometry.Begin(LyingLogBoundaryLeaf(0, 1e-4), 0, -0.1, 0.2));
-        // The positive endpoint near z=0.4 has an upward normal that crosses the slope across the family.
-        Assert.Equal(GeometrySign.Unresolved, geometry.SideBoundary(1, slope, out _));
+        Assert.True(geometry.Begin(LyingLogBoundaryLeaf(y), 0, -0.1, 0.2));
+        // The positive endpoint near z=0.4 has an upward normal near the slope.
+        GeometrySign boundary = geometry.SideBoundary(1, slope, out _);
+        _output.WriteLine($"y={y:R} boundary={boundary}");
+        Assert.NotEqual(GeometrySign.Unresolved, boundary);
         // The crest at z=0 is attained near 0.25, above that endpoint's height near 0.22913.
         Assert.Equal(GeometrySign.Positive, geometry.Side(slope, out _, out var maximum));
         Assert.InRange(maximum.Lower, 0.2499, 0.2501);
@@ -148,26 +153,28 @@ public partial class SupportFootprintTests
     }
 
     [Theory]
-    [InlineData(0.0, 1e-4, 0.0, -0.1, true)]
-    [InlineData(1e-5, 1e-4, 1 - 1e-5, -0.3, false)]
-    [InlineData(0.0, 1e-4, 0.0, -0.3, true)]
-    public void LyingLogUnprovedBoundaryTakesTheUntaggedCandidateRole(double lower, double upper, double x, double z, bool steep)
+    [InlineData(1e-5f, 0.0, -0.1, true)]
+    [InlineData(1e-4f, 0.0, -0.1, true)]
+    [InlineData(1e-5f, 1 - 1e-5, -0.3, false)]
+    [InlineData(1e-4f, 1 - 1e-5, -0.3, false)]
+    [InlineData(1e-5f, 0.0, -0.3, true)]
+    [InlineData(1e-4f, 0.0, -0.3, true)]
+    public void LyingLogBoundaryTakesTheUntaggedCandidateRole(float y, double x, double z, bool steep)
     {
-        // Rows: dominated by the attained crest, at the maximum with an unresolved finite axis,
-        // and the only walkable candidate with an unresolved slope.
+        // Rows: dominated by the attained crest, at the maximum near a finite end, and a slope-gated endpoint.
         double slope = steep ? Math.Sqrt(0.84) * (1 - 2.5e-9) : 0;
         var geometry = new SupportTiltedCurvedGeometry();
-        Assert.True(geometry.Begin(LyingLogBoundaryLeaf(lower, upper), x, z, 0.2));
-        Assert.Equal(GeometrySign.Unresolved, geometry.SideBoundary(1, slope, out _));
+        Assert.True(geometry.Begin(LyingLogBoundaryLeaf(y), x, z, 0.2));
+        GeometrySign boundary = geometry.SideBoundary(1, slope, out _);
         var tagged = geometry.Side(slope, out var taggedWitness, out var taggedMaximum);
-        Assert.True(geometry.Begin(LyingLogBoundaryLeaf(lower, upper), x, z, 0.2));
+        Assert.True(geometry.Begin(LyingLogBoundaryLeaf(y), x, z, 0.2));
         var untagged = geometry.Side(slope, out var untaggedWitness, out var untaggedMaximum, equations: false);
+        _output.WriteLine($"y={y:R} boundary={boundary} tagged={tagged}");
+        Assert.NotEqual(GeometrySign.Unresolved, boundary);
         Assert.Equal(untagged, tagged);
         Assert.Equal(untaggedMaximum, taggedMaximum);
         Assert.Equal(untaggedWitness, taggedWitness);
         if (z == -0.1) Assert.Equal(GeometrySign.Positive, tagged);
-        // No other candidate is attained, so both paths refuse.
-        if (steep && z == -0.3) Assert.Equal(GeometrySign.Unresolved, tagged);
     }
 
     [Fact]
@@ -175,14 +182,14 @@ public partial class SupportFootprintTests
     {
         var geometry = new SupportTiltedCurvedGeometry();
         // Domain: Q+R*z=-disc gives z=-2, outside the circle for every source.
-        Assert.True(geometry.Begin(LyingLogBoundaryLeaf(1e-3, 1e-3), 0, -0.3, 0.2));
+        Assert.True(geometry.Begin(LyingLogBoundaryLeaf(1e-3f), 0, -0.3, 0.2));
         Assert.Equal(GeometrySign.Negative, geometry.SideBoundary(-1, 0, out _));
         // Slope: the endpoint z=-0.4 has upward normal near 0.9165, below 0.95.
         Assert.Equal(GeometrySign.Positive, geometry.SideBoundary(1, 0, out var flank));
         Assert.Equal(GeometrySign.Negative, geometry.SideBoundary(1, 0.95, out _));
         Assert.Equal(GeometrySign.Negative, geometry.Side(0.95, out _, out _));
         // Finite axis: the endpoint lies near t=1.1, beyond the end at 1, where it would be near 0.2302.
-        Assert.True(geometry.Begin(LyingLogBoundaryLeaf(1e-3, 1e-3), 1.1, -0.3, 0.2));
+        Assert.True(geometry.Begin(LyingLogBoundaryLeaf(1e-3f), 1.1, -0.3, 0.2));
         Assert.Equal(GeometrySign.Negative, geometry.SideBoundary(1, 0, out _));
         Assert.Equal(GeometrySign.Positive, geometry.Side(0, out _, out var maximum));
         Assert.True(maximum.Lower < flank.Position.Y.Lower);
@@ -200,17 +207,12 @@ public partial class SupportFootprintTests
                             yield return [capsule, radius, aboutX, across, along];
     }
 
+    // Every seam row, including the exact end seams and their adjacent binary32 axes, certifies against the
+    // represented oracle. The former refusals came only from the coefficient box spanning both readings.
     [Theory]
     [MemberData(nameof(LyingLogSeamRows))]
     public void LyingLogRolesAndEndSeamsKeepRawParts(bool capsule, float radius, bool aboutX, float across, float along)
     {
-        // Positive longitudinal coordinates point along the source's upward core axis.
-        float longitudinal = aboutX ? along : -along;
-        bool refused = capsule ?
-            across == 0 ? longitudinal == -0.5f || radius == 0.3f && longitudinal == MathF.BitDecrement(0.5f) :
-                radius == 0.15f ? longitudinal == MathF.BitDecrement(0.5f) : longitudinal <= -0.5f :
-            longitudinal == 0.5f && (radius == 0.3f || across == 0) ||
-                radius == 0.3f && across == 0 && longitudinal == MathF.BitDecrement(0.5f);
         for (int rebuild = 0; rebuild < 2; rebuild++)
         {
             using var scene = new SupportFootprintScene();
@@ -223,42 +225,11 @@ public partial class SupportFootprintTests
             foreach (bool reference in new[] { false, true })
             {
                 using IDisposable? evaluation = reference ? SupportReferenceEvaluation.Begin() : null;
-                if (refused) CheckLyingLogRefusal(scene, owner, query, lease);
-                else CheckLyingLogParts(scene, owner, FootSupport.DescribeFootprint(query), lease: lease);
+                CheckLyingLogParts(scene, owner, FootSupport.DescribeFootprint(query), lease: lease);
                 FootSupport.Find(null, scene.World, lease, LyingLogQuery(radius, aboutX, across));
-                if (refused) CheckLyingLogRefusal(scene, owner, query, lease);
-                else CheckLyingLogParts(scene, owner, FootSupport.DescribeFootprint(query), lease: lease);
+                CheckLyingLogParts(scene, owner, FootSupport.DescribeFootprint(query), lease: lease);
             }
         }
-    }
-
-    void CheckLyingLogRefusal(SupportFootprintScene scene, StaticHandle owner, FootSupportQuery query, IPhysicsQueryLease lease)
-    {
-        var request = FootSupport.DescribeFootprint(query);
-        Assert.Contains(Members(scene, request), m => m.Static == owner && m.HasDiscMaximum);
-        var members = MemberSentinels(256);
-        var before = (SupportFootprintMember[])members.Clone();
-        var joins = Enumerable.Repeat(73UL, 1024).ToArray();
-        var result = Capability(scene.World).QuerySupportFootprint(lease, request, members, joins);
-        Assert.Equal(CapsuleFeatureStatus.Unsupported, result.Status);
-        Assert.Equal(0, result.Members);
-        Assert.Equal(0, result.Witnesses);
-        Assert.Equal(before, members);
-        Assert.All(joins, word => Assert.Equal(73UL, word));
-        Assert.Equal(SupportStatus.Refused, FootSupport.Find(null, scene.World, lease, query).Status);
-        var simulation = SimulationOf(scene.World);
-        simulation.Statics.GetDescription(HandlesOf(scene.World)[owner.Value].Handle, out var description);
-        var leaves = new List<SupportCurvedLeaf>();
-        SupportNeighborhoodCurved.Capture(simulation, description.Shape, description.Pose, leaves);
-        var geometry = new SupportTiltedCurvedGeometry();
-        Assert.True(geometry.Begin(Assert.Single(leaves), query.Axis.X, query.Axis.Y, query.FootRadius));
-        var axis = geometry.Axis(false, 0, out _);
-        var side = geometry.Side(0, out _, out _);
-        _output.WriteLine($"axis={axis} side={side}");
-        if (leaves[0].Shape == SupportCurvedShape.Capsule)
-            _output.WriteLine($"round-axis={geometry.Round(true, 0, out _, out _)} round-disc={geometry.Round(false, 0, out _, out _)}");
-        else
-            _output.WriteLine($"cap-axis={geometry.Axis(true, 1, out _)} cap-disc={geometry.Cap(1, false, out _, out _)}");
     }
 
     [Fact]

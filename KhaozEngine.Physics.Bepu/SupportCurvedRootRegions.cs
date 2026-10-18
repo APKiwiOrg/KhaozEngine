@@ -12,7 +12,7 @@ internal interface ISupportCurvedRootFunction
 
 /// <summary>Source-uniform simple-root regions for a degree-four boundary polynomial.
 /// A region proves existence by endpoint signs, uniqueness by its derivative, and coverage by
-/// exhaustive interval subdivision. An uncertified source family refuses at the live storage bound.</summary>
+/// exhaustive interval subdivision. An uncertified coefficient enclosure refuses at the live storage bound.</summary>
 internal sealed class SupportCurvedRootRegions
 {
     internal const int MaximumLiveCells = 1024;

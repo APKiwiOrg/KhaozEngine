@@ -49,7 +49,7 @@ internal sealed partial class SupportFootprintCurved
         _upright = vertical == GeometrySign.Zero;
         if (_sphere || _upright)
         {
-            _axisSign = leaf.SourceColumn.Y.Bounds.Upper < 0 ? -1 : 1;
+            _axisSign = leaf.SourceColumn.Y < 0 ? -1 : 1;
             _p = C(0); _q = C(0); _e = Up; _f = new(C(1), C(0), C(0));
             return true;
         }
@@ -123,7 +123,7 @@ internal sealed partial class SupportFootprintCurved
     Number CoreParameter()
     {
         // Cauchy bounds every unit-axis projection by the query's distance from the core centre.
-        // A closed bounding-circle endpoint remains in the strip for the whole source box.
+        // A closed bounding-circle endpoint remains in the strip for every enclosed unit axis.
         GeometrySign circle = Sign(Sub(_distanceSquared, Sq(_half)));
         return circle is GeometrySign.Negative or GeometrySign.Zero ? _p : _arithmetic.Clamp(_p, _half);
     }

@@ -253,7 +253,7 @@ public sealed class InstalledSupportPoseTests
         public static SingleValue operator -(SingleValue a, SingleValue b) => a + new SingleValue(-b.Value, !b.Negative);
         public static SingleValue operator *(SingleValue a, SingleValue b) => Round(a.Value * b.Value, a.Negative != b.Negative);
     }
-    static int[] CoefficientBits(Quaternion q)
+    internal static int[] CoefficientBits(Quaternion q)
     {
         SingleValue x = SingleValue.From(q.X), y = SingleValue.From(q.Y), z = SingleValue.From(q.Z), w = SingleValue.From(q.W);
         SingleValue x2 = x + x, y2 = y + y, z2 = z + z, one = SingleValue.From(1);

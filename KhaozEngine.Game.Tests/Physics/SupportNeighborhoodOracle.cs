@@ -206,7 +206,7 @@ internal static class SupportNeighborhoodOracle
         OracleVector position = OracleVector.From(description.Pose.Position);
         if (description.Shape.Type != default(BepuCompound).TypeId)
         {
-            var frame = historical is null ? (position, OracleVector.Rotate(orientation, new OracleVector(0, 1, 0)).Unit)
+            var frame = historical is null ? (position, RepresentedAxis(orientation))
                 : historical(new(description.Pose.Position, orientation), null);
             AddCurved(simulation, description.Shape, owner, 0, frame.Item1, frame.Item2, tangents);
             return tangents;
@@ -215,14 +215,23 @@ internal static class SupportNeighborhoodOracle
         for (int leaf = 0; leaf < compound.Children.Length; leaf++)
         {
             var child = compound.Children[leaf];
-            OracleVector centre = OracleVector.Rotate(orientation, OracleVector.From(child.LocalPose.Position)) + position;
-            OracleVector axis = OracleVector.Rotate(orientation,
-                OracleVector.Rotate(child.LocalPose.Orientation, new OracleVector(0, 1, 0))).Unit;
+            // The actual composed binary32 leaf pose, whose represented Y column is the support axis.
+            BepuCompound.GetWorldPose(child.LocalPose, description.Pose, out var installed);
+            OracleVector centre = OracleVector.From(installed.Position);
+            OracleVector axis = RepresentedAxis(installed.Orientation);
             if (historical is not null)
                 (centre, axis) = historical(new(description.Pose.Position, orientation), new Pose(child.LocalPose.Position, child.LocalPose.Orientation));
             AddCurved(simulation, child.ShapeIndex, owner, leaf, centre, axis, tangents);
         }
         return tangents;
+    }
+
+    // The exact represented column converts to binary64 before this approximate normalization.
+    static OracleVector RepresentedAxis(Quaternion orientation)
+    {
+        InstalledPoseOracle.V column = InstalledPoseOracle.Represented(orientation).Y;
+        return new OracleVector(SupportFootprintExactOracle.AsDouble(column.X), SupportFootprintExactOracle.AsDouble(column.Y),
+            SupportFootprintExactOracle.AsDouble(column.Z)).Unit;
     }
 
     internal static OracleVector Point(Pose pose, Vector3 local)

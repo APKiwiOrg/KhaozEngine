@@ -418,3 +418,116 @@ Two regressions failed before the fix. The represented cylinder rotated about Z 
 -2 and 2, then exhausted during optional cap upward refinement and retained a resolved witness.
 Both now refuse or clear their output, preserve WorkLimit and keep Consumed at 85 on later attempts.
 The Contact regression also checks cached cap bounds, surface output and root callbacks after failure.
+
+## Task 5 initial represented end-seam gate
+
+Each row installs a fresh `ContactFollowupScenes.Log(capsule, 0.3f, false)`, acquires one fresh
+lease and makes exactly one Find. FeetY is 0.6f, foot radius 0.2f, both reaches 0.4f and slope
+is the existing 45-degree cosine. Every row asserts Find 1, Proposals 2, one observation,
+Limit 1,048,576 and the seven-category sum equal to Consumed. Counters are functional evidence.
+
+| Shape | X bits | Status | Footprint | Failure | New | Sign | Split | Compile | RootCells | Refine | AdmissionCells | Consumed | Limit | Root high water | Admission high water |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Capsule | bf333332 | Walkable | Complete | None | 514 | 92 | 0 | 0 | 10 | 24 | 6 | 646 | 1048576 | 2 | 6 |
+| Capsule | bf333333 | Walkable | Complete | None | 766 | 146 | 0 | 0 | 26 | 23 | 6 | 967 | 1048576 | 4 | 6 |
+| Capsule | bf333334 | Walkable | Complete | None | 792 | 142 | 0 | 0 | 14 | 24 | 6 | 978 | 1048576 | 2 | 6 |
+| Cylinder | bf333332 | Walkable | Complete | None | 64860 | 4942 | 0 | 0 | 266 | 161 | 1696 | 71925 | 1048576 | 4 | 352 |
+| Cylinder | bf333333 | None | Complete | None | 65112 | 4960 | 0 | 0 | 192 | 72 | 1696 | 72032 | 1048576 | 4 | 352 |
+| Cylinder | bf333334 | None | Complete | None | 65006 | 4880 | 0 | 0 | 8 | 0 | 1696 | 71590 | 1048576 | 1 | 352 |
+
+The three X values are BitIncrement(-0.7f), -0.7f and BitDecrement(-0.7f), in table order.
+The capsule passes. Its critical 967 is at most 10 * min(646, 978) = 6460 and all rows are
+Complete/Walkable with Failure None. The cylinder fails. Its critical 72032 satisfies the
+715900 work bound, but both bf333333 and bf333334 return None rather than Walkable. Neither
+is a budget or storage refusal. All three cylinder rows visit 1696 admission cells with high
+water 352. Task 6 is required to investigate the missing support and perform its planned
+finite-surface admission repair. These observations do not identify which internal subphase
+excluded support. Task 5 does not repair the cylinder or substitute capsule evidence for it.
+
+FU-R4 therefore mandates the crown branch even though the capsule already passes. This record
+was written before any certificate implementation. The combined Walkable gate remains pending
+Task 6, whose plan strengthens it after the cylinder repair. No test is skipped.
+
+### Whole-capsule source certificate
+
+`TryGlobalCrown` runs only for the capsule footprint role, before Side. The exact sign of the
+normalized source Y chooses the higher endpoint in Begin's canonical frame. Its nearest gap
+to the original closed disc must be exactly zero. RoundEnd then proves the hemisphere and
+requested slope and supplies its attained vertical radial vector. That vector has height radius,
+so the source identity is centre.Y + abs(axis.Y) * halfLength + radius. The global enclosure is
+evaluated from that expression, without comparing separately rounded endpoint heights for equality.
+False retains the general path. Axis, Lowest, complete admission, both proposals and every other
+raw member remain unchanged. The same certificate runs in optimized and reference evaluation.
+
+The four installed attainment rows cover both quarter-turn axes and both physical ends, using
+the actual represented sign independently for each pose. Rational/radical oracle bounds enclose
+the attained global height and position inside the original disc and correct hemisphere. Normal Y
+is exactly [1,1], and X/Z enclose zero. Direct Round uses zero root cells and zero refinements.
+Raw key, Axis then Footprint role order, HeightError at most 0.0005f and bit-exact reference
+equality are asserted through publication and public Find.
+
+The 36 classified controls cover exact positive, negative and zero source Y, exact original-disc
+boundary and adjacent represented positions, and nonzero lateral displacement. Outside or
+unresolved classifications cannot certify. Exact horizontal Y declines and retains its general
+Round path. A crown outside the original disc but inside the contact-band admission ring declines.
+The independent low roof leaves the complete footprint and both InvalidStart proposal guards
+intact, with a lower floor present, and public Find refuses in optimized and reference modes.
+
+FC-R9 is also pinned at the final charged event of a successful crown proof. Denying that event
+returns false with default outputs and preserves WorkLimit. A later Round remains Unresolved.
+
+### Post-certificate capsule counters and arrival
+
+Each counter row below again uses one fresh scene, lease and Find. All are Complete/Walkable
+with Failure None, Find 1, Proposals 2 and Limit 1048576. The cylinder code was not changed
+or remeasured after the certificate. Its initial failed verdict above remains Task 6's evidence.
+
+| X bits | New | Sign | Split | Compile | RootCells | Refine | AdmissionCells | Consumed | Root high water | Admission high water |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| bf333332 | 502 | 94 | 0 | 0 | 10 | 24 | 6 | 636 | 2 | 6 |
+| bf333333 | 502 | 94 | 0 | 0 | 10 | 23 | 6 | 635 | 2 | 6 |
+| bf333334 | 812 | 150 | 0 | 0 | 14 | 24 | 6 | 1006 | 2 | 6 |
+
+The capsule critical row satisfies 635 <= 10 * min(636,1006) = 6360.
+The rounded-end traversal installs the work observer before its initial seat and every dry tick.
+It throws on the first Failure other than None or Consumed above 10 * max(636,1006) = 10060,
+before the Find can return and before another tick can run. Each dry tick owns and disposes its
+lease and memo and authenticates the returned support. Default tuning, 240 ticks and the exact
+Euclidean 0.001f arrival rule are unchanged. Traversal starts on the crest and walks to either
+rounded end or down either walkable flank, without trying to mount the 0.6 m crest from the floor.
+
+| Quarter-turn axis | Direction | Path | Ticks | Curved observations | Largest Consumed |
+| --- | --- | --- | --- | --- | --- |
+| Z | -1 | Rounded end | 45 | 91 | 923 |
+| Z | +1 | Rounded end | 45 | 91 | 965 |
+| X | -1 | Rounded end | 45 | 91 | 949 |
+| X | +1 | Rounded end | 45 | 91 | 907 |
+| Z | -1 | Down flank | 18 | 37 | 1919 |
+| Z | +1 | Down flank | 18 | 37 | 1907 |
+| X | -1 | Down flank | 18 | 37 | 1895 |
+| X | +1 | Down flank | 18 | 37 | 1883 |
+
+### Task 5 verification and pending gate
+
+The initial integrity-only gate exited 0 with one passing test. The default logger hid passing
+output, so one diagnostic-only invocation added detailed console logging to retain the six rows.
+It also exited 0 with one passing test, before any certificate edit. No timing data decided a gate.
+
+The inert false-returning crown produced the expected behavioral red, exit 1 with six failed
+and one passed. All four installed attainment rows failed at crownCertified and the two control
+groups failed at their first independently proved inside point. The public roof negative passed.
+The first green selection exited 0 with 99 passed. Self-review added direct zero-root/refinement,
+horizontal fallback and final-event work-denial assertions. The final required green selection
+exited 0 with 100 passed, zero failed and zero skipped. Referenced Release projects built with
+no compiler warnings. The selection was:
+
+```bash
+build-slot --heavy --label fu-c-crown-green -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --filter 'FullyQualifiedName~CapsuleCrown|FullyQualifiedName~RepresentedCapsuleRoundedEndTraversal|FullyQualifiedName~CurvedOracle|FullyQualifiedName~FootSupportBoundaryTests' --logger 'console;verbosity=detailed'
+```
+
+Task 5 took the required crown branch. Task 6 is needed because the cylinder critical and outer
+rows are None, despite Complete footprints, Failure None and work within the integer bound.
+The combined record remains executable and unskipped, with its final Walkable assertions pending
+Task 6's planned strengthening. Full solution build, full Game.Tests, format verification and
+living-contract publication remain Task 7 work. No tolerance, band, limit, identity or arrival
+rule changed. No capture variables, cost artifacts, load, consumer launch or full suite was used.

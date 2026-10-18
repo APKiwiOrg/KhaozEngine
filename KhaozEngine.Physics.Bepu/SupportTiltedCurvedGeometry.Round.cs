@@ -4,10 +4,32 @@ namespace KhaozEngine.Physics.Bepu;
 
 internal sealed partial class SupportTiltedCurvedGeometry
 {
+    internal bool TryGlobalCrown(double slope, out Witness witness, out GeometryInterval maximum)
+    {
+        witness = default; maximum = default;
+        if (_work.Failed) return false;
+        GeometrySign vertical = Sign(_k);
+        if (vertical is not (GeometrySign.Positive or GeometrySign.Negative)) return false;
+        int end = vertical == GeometrySign.Positive ? 1 : -1;
+        var p = Add(_p, Mul(_u, Mul(C(end), _h)));
+        var distance = Root(Add(Sq(p), Sq(_q)));
+        var nearest = _arithmetic.Max(Sub(distance, _disc), C(0));
+        if (Sign(nearest) != GeometrySign.Zero || Sign(_r) != GeometrySign.Positive) return false;
+        if (RoundEnd(end, false, slope, out var crown) != GeometrySign.Positive) return false;
+        // Zero nearest gap makes RoundEnd's radial vector (0, radius, 0). The signed higher
+        // endpoint therefore attains centre.Y + abs(axis.Y) * halfLength + radius for the whole capsule.
+        var global = B(Add(Add(C(_centre.Y.Lower), Mul(_arithmetic.Abs(_k), _h)), _r));
+        if (!global.IsResolved) return false;
+        witness = crown; maximum = global;
+        return _work.Complete(true, ref witness, ref maximum);
+    }
+
     internal GeometrySign Round(bool axis, double slope, out Witness witness, out GeometryInterval maximum)
     {
         witness = default; maximum = default;
         if (_work.Failed) return _work.Complete(GeometrySign.Unresolved, ref witness, ref maximum);
+        if (!axis && TryGlobalCrown(slope, out witness, out maximum))
+            return _work.Complete(GeometrySign.Positive, ref witness, ref maximum);
         GeometrySign side = axis ? Axis(false, 0, out witness) : Side(slope, out witness, out _);
         maximum = side == GeometrySign.Positive ? witness.Position.Y : default;
         if (side == GeometrySign.Unresolved) return _work.Complete(side, ref witness, ref maximum);

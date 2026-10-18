@@ -3435,6 +3435,17 @@ Every resend of an unfinished report enqueues `CreateIssue` before returning 202
 If enqueue fails, the request fails so the client keeps its bundle. Worker claims and result markers
 suppress duplicate messages.
 
+To revoke a report:
+
+1. Call `BugReportRelay.RevokeAsync(reportId, cancellationToken)`.
+2. Delete its public capability folder.
+3. Delete it again after the 10-minute claim lease. A holder that passed its check before the call can
+   still finish a write inside its lease. Holders running beyond that lease are outside the guarantee.
+
+Retain the private `revoked/` tombstone and idempotency state for at least the report retention and the
+client queue's 7-day maximum age. A missing public manifest is also treated as revoked. Late snapshots
+and full-bundle resends return 202 without enqueueing revoked work.
+
 The [relay README](../KhaozEngine.BugReports.Relay/README.md) has the isolated-worker host sketch and status
 codes. Read its [Host duties](../KhaozEngine.BugReports.Relay/README.md#host-duties) for the 5-dequeue poison
 policy, visibility backoff, daily requeue and prefix-scoped retention, and its

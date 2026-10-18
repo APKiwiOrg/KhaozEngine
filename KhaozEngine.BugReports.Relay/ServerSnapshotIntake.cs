@@ -10,7 +10,7 @@ namespace KhaozEngine.BugReports.Relay;
 
 /// <summary>Authenticates and stores the first server snapshot, then schedules any required late append.</summary>
 internal sealed class ServerSnapshotIntake(BugReportRelayOptions options, ReportRecordStore records,
-    IReportWorkQueue work, ILogger logger)
+    IReportWorkQueue work, ILogger logger, ReportRevocation revocation)
 {
     public async Task<RelayResponse> RunAsync(string reportId, RelayRequest request, CancellationToken ct)
     {
@@ -18,6 +18,7 @@ internal sealed class ServerSnapshotIntake(BugReportRelayOptions options, Report
         if (!ServiceKeyCheck.Matches(options.ServiceKey, new RequestHeaderReader(request.Headers).Get(RelayHeaders.ServiceKey)))
             return RelayResponses.Error(403, "forbidden");
         if (!ReportIds.IsValid(reportId)) return RelayResponses.Error(400, "bad_request");
+        if (await revocation.IsRevokedAsync(reportId, ct).ConfigureAwait(false)) return RelayResponses.Accepted(reportId);
         using MemoryStream? body = await CappedBody.ReadAsync(request.Body, request.ContentLength,
             BugReportLimits.MaxServerSnapshotBytes, ct).ConfigureAwait(false);
         if (body is null) return RelayResponses.Error(413, "too_large");
@@ -35,6 +36,8 @@ internal sealed class ServerSnapshotIntake(BugReportRelayOptions options, Report
             return RelayResponses.Error(400, "bad_request");
 
         AcceptedReport? accepted = await records.LoadAcceptedAsync(reportId, ct).ConfigureAwait(false);
+        string? folder = accepted?.Folder ?? (await records.LoadReportAsync(reportId, ct).ConfigureAwait(false))?.Folder;
+        if (await revocation.IsRevokedAsync(reportId, ct, folder).ConfigureAwait(false)) return RelayResponses.Accepted(reportId);
         if (accepted is not null && !string.Equals(accepted.Subject, snapshot.Subject, StringComparison.Ordinal))
         {
             logger.Warn("Server snapshot subject mismatch for report " + reportId + ".");
@@ -44,6 +47,7 @@ internal sealed class ServerSnapshotIntake(BugReportRelayOptions options, Report
         accepted ??= await records.LoadAcceptedAsync(reportId, ct).ConfigureAwait(false);
         if (accepted is not null)
         {
+            if (await revocation.IsRevokedAsync(reportId, ct, accepted.Folder).ConfigureAwait(false)) return RelayResponses.Accepted(reportId);
             if (!wrote)
             {
                 // A resend repairs a lost append enqueue even while CreateIssue is in flight. The append worker

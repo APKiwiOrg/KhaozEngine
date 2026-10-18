@@ -9,7 +9,7 @@ namespace KhaozEngine.BugReports.Relay;
 /// <summary>
 /// Blob names and headers for the relay. In the Pending area, <c>accepted/</c> must outlive the client queue's
 /// 7-day <c>BugReportOfflineQueue.MaxAge</c>, <c>records/</c> lives as long as the public report folder, and
-/// <c>snapshots/</c> may expire after 1 day.
+/// <c>snapshots/</c> may expire after 1 day. <c>revoked/</c> outlives both the report retention and client retries.
 /// </summary>
 internal static class ReportLayout
 {
@@ -56,6 +56,13 @@ internal static class ReportLayout
     {
         ValidateReportId(reportId);
         return "snapshots/" + reportId + ".json";
+    }
+
+    /// <summary>The durable revocation tombstone path in the Pending area.</summary>
+    public static string Revoked(string reportId)
+    {
+        ValidateReportId(reportId);
+        return "revoked/" + reportId + ".json";
     }
 
     /// <summary>Returns the explicit content type and cache policy for a supported entry extension.</summary>

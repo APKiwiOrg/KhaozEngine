@@ -400,6 +400,8 @@ public sealed class RelayIntakeTests
         var harness = new RelayHarness();
         ReportRecord original = IssueFixtures.Minimal().Report;
         await harness.Records.SaveReportAsync(original, Ct);
+        await harness.Media.PutAsync(ReportArea.Public, original.Folder + "/manifest.json", "{}"u8.ToArray(),
+            ReportLayout.HeadersFor("manifest.json"), false, Ct);
         byte[] savedRecord = (await harness.Media.GetAsync(ReportArea.Pending, "records/" + Id + ".json", ReportLayout.MaxRecordBytes, Ct))!.Value.ToArray();
 
         AssertAccepted(await harness.IntakeAsync(RelayHarness.Request(authorization: "Bearer other")));
@@ -407,7 +409,7 @@ public sealed class RelayIntakeTests
         Assert.Equal(new AcceptedReport(original.Folder, original.Reporter.Subject, original.ReceivedAt),
             await harness.Records.LoadAcceptedAsync(Id, Ct));
         Assert.Equal(savedRecord, (await harness.Media.GetAsync(ReportArea.Pending, "records/" + Id + ".json", ReportLayout.MaxRecordBytes, Ct))!.Value.ToArray());
-        Assert.Empty(harness.Media.Paths(ReportArea.Public));
+        Assert.Equal(original.Folder + "/manifest.json", Assert.Single(harness.Media.Paths(ReportArea.Public)));
         Assert.True(harness.Work.TryDequeue(out ReportWorkItem? work));
         Assert.Equal(new ReportWorkItem(ReportWorkKind.CreateIssue, Id), work);
         Assert.Equal(0, harness.Work.Count);

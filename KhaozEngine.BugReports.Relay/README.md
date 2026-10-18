@@ -23,6 +23,7 @@ least 32 characters. `Logger` is an optional engine `ILogger`, defaulting to `Lo
 | --- | --- | --- |
 | `IntakeAsync(request, cancellationToken)` | HTTP POST `bug-reports` | Authenticates the bearer token, checks blocked subjects and quota before reading the body, validates and stores the bundle, then enqueues `CreateIssue`. |
 | `ServerSnapshotIntakeAsync(reportId, request, cancellationToken)` | HTTP POST `bug-reports/{reportId}/server` | Checks `X-Report-Service-Key` before reading the body, stores the first snapshot and enqueues `AppendServerSnapshot` for an accepted report. |
+| `RevokeAsync(reportId, cancellationToken)` | Host administration | Writes a create-only private tombstone. Follow the folder deletion procedure in Host duties. |
 | `ProcessWorkAsync(item, cancellationToken)` | Queue trigger | Creates an issue or appends a late snapshot. Completed work returns normally. Failures throw for host redelivery. |
 
 `RelayRequest` carries headers, the unread body stream and an optional content length. Forward
@@ -141,6 +142,7 @@ HTTP client and disposes the GitHub client at shutdown. Grant the app issue writ
   | `accepted/` | At least `BugReportOfflineQueue.MaxAge` (7 days) or the report retention. |
   | `records/` | The report retention, 180 days for the first consumer. |
   | `claims/` | The report retention, 180 days for the first consumer, including release and result markers. |
+  | `revoked/` | At least the report retention and the client queue's 7-day maximum age. |
 
   Keep public report folders for the report retention too. Removing the accepted index or private state
   early can break retry deduplication. The one-day rule covers `snapshots/` only.
@@ -150,6 +152,16 @@ HTTP client and disposes the GitHub client at shutdown. Grant the app issue writ
   Keep Pending private. Serve only Public media, with HTTPS off loopback, and own expired quota cleanup.
 - Protect the service key and GitHub App private key as server secrets. Logs carry report ids and
   references, never a bearer token, service key, installation token, JWT or subject.
+
+To revoke a report:
+
+1. Call `BugReportRelay.RevokeAsync(reportId, cancellationToken)` to create its durable private tombstone.
+2. Delete its public capability folder.
+3. Delete the folder again after the 10-minute claim lease. A holder that passed its check before
+   revocation can still finish a write inside its lease.
+
+Keep the tombstone and idempotency state. A missing public `manifest.json` also means revoked, and
+the relay writes a tombstone when it discovers that deletion.
 
 The relevant `host.json` settings are:
 
@@ -180,7 +192,8 @@ merges. The relay-private report record, including reporter identity and the iss
 `records/<reportId>.json` in Pending. It is not a public `report.json`.
 
 Pending also holds `accepted/<reportId>.json` (folder, subject and received time),
-`snapshots/<reportId>.json` (the first raw snapshot), and the `claims/` files described below.
+`snapshots/<reportId>.json` (the first raw snapshot), `revoked/<reportId>.json` (the first revocation time),
+and the `claims/` files described below.
 Every media store enforces the public `ReportPaths.IsValid(path)` rule. It allows one or more
 `/`-separated segments of `[a-z0-9._-]`, with no leading or trailing slash, empty segment, `.` or `..` segment.
 
@@ -208,6 +221,10 @@ to public `server.json`. The subject stays in private state. Issue composition u
   This covers a crash or a failed result-marker write before the result is saved. If that holder crashed
   before writing its result marker, a later holder can post a duplicate.
 - **Leases are unfenced.** A holder working past 10 minutes is outside the guarantee.
+- **Revocation is durable.** Tombstones and missing public manifests stop new issue, comment and public
+  snapshot or viewer writes. Snapshot POSTs and bundle resends return 202 without enqueueing revoked work.
+  A holder that passed its check before revocation can still finish a write inside its 10-minute lease.
+  Follow the two deletions in Host duties. A holder running beyond the lease is the unfenced residual above.
 - **A transport timeout can hide a POST that succeeded.** The failure releases the claim, so redelivery can
   repeat that write. Issue and comment POSTs are sent once per attempt, with no `HttpRetry`.
 - **Exhausting the 64 claim epochs needs operator recovery.** It throws the internal

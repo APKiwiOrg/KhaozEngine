@@ -17,10 +17,11 @@ internal sealed class RelayIntake
     readonly ReportQuotaGate quotas;
     readonly ReportBundleStorer storer;
     readonly TimeProvider time;
+    readonly ReportRevocation revocation;
     readonly HashSet<string> blockedSubjects;
 
     public RelayIntake(BugReportRelayOptions options, IReporterAuthenticator authenticator, IReportWorkQueue work,
-        ReportRecordStore records, ReportQuotaGate quotas, ReportBundleStorer storer, TimeProvider time)
+        ReportRecordStore records, ReportQuotaGate quotas, ReportBundleStorer storer, TimeProvider time, ReportRevocation revocation)
     {
         this.options = options;
         this.authenticator = authenticator;
@@ -29,6 +30,7 @@ internal sealed class RelayIntake
         this.quotas = quotas;
         this.storer = storer;
         this.time = time;
+        this.revocation = revocation;
         blockedSubjects = new HashSet<string>(options.BlockedSubjects, StringComparer.Ordinal);
     }
 
@@ -55,10 +57,19 @@ internal sealed class RelayIntake
         if (!string.Equals(manifest.ReportId, key, StringComparison.Ordinal)) return RelayResponses.Error(400, "id_mismatch");
         if (!string.Equals(manifest.GameId, options.GameId, StringComparison.Ordinal)) return RelayResponses.Error(422, "game_mismatch");
 
+        if (await revocation.IsRevokedAsync(key, ct).ConfigureAwait(false)) return RelayResponses.Accepted(key);
         AcceptedReport? accepted = await records.LoadAcceptedAsync(key, ct).ConfigureAwait(false);
-        if (accepted is not null) return await AcceptedAsync(key, ct).ConfigureAwait(false);
+        if (accepted is not null)
+        {
+            if (await revocation.IsRevokedAsync(key, ct, accepted.Folder).ConfigureAwait(false)) return RelayResponses.Accepted(key);
+            return await AcceptedAsync(key, ct).ConfigureAwait(false);
+        }
         ReportRecord? record = await records.LoadReportAsync(key, ct).ConfigureAwait(false);
-        if (record is not null) return await CompleteAcceptanceAsync(record, ct).ConfigureAwait(false);
+        if (record is not null)
+        {
+            if (await revocation.IsRevokedAsync(key, ct, record.Folder).ConfigureAwait(false)) return RelayResponses.Accepted(key);
+            return await CompleteAcceptanceAsync(record, ct).ConfigureAwait(false);
+        }
 
         record = await storer.StoreAsync(body, manifest, reporter, time.GetUtcNow(), ct).ConfigureAwait(false);
         if (!await records.CreateReportAsync(record, ct).ConfigureAwait(false))
@@ -83,7 +94,7 @@ internal sealed class RelayIntake
     async Task<RelayResponse> AcceptedAsync(string reportId, CancellationToken ct)
     {
         ReportRecord? record = await records.LoadReportAsync(reportId, ct).ConfigureAwait(false);
-        if (record is { IssueNumber: null })
+        if (record is { IssueNumber: null } && !await revocation.IsRevokedAsync(reportId, ct, record.Folder).ConfigureAwait(false))
             await work.EnqueueAsync(new ReportWorkItem(ReportWorkKind.CreateIssue, reportId), ct).ConfigureAwait(false);
         return RelayResponses.Accepted(reportId);
     }

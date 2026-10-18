@@ -14,6 +14,7 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - `KhaozEngine.BugReports` exposes `BugReportLogTail.FromLogSection` for the viewer and relay to share the newest captured log lines.
 - `KhaozEngine.BugReports.Relay` exposes `ReportPaths.IsValid` as the media path rule shared by every store.
 - Every unfinished relay resend enqueues issue work before acceptance, including immediate retries after a failed enqueue.
+- `BugReportRelay.RevokeAsync` durably revokes reports, and missing public manifests stop late work from republishing deleted media.
 
 ## 21.4.0
 

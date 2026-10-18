@@ -10,7 +10,7 @@ namespace KhaozEngine.BugReports.Relay;
 
 /// <summary>Merges validated snapshots and performs claimed GitHub issue and comment writes.</summary>
 internal sealed class ReportWorker(BugReportRelayOptions options, IReportMediaStore media, ReportRecordStore records,
-    ReportViewerWriter viewer, IGitHubIssueClient github, TimeProvider time, ILogger logger)
+    ReportViewerWriter viewer, IGitHubIssueClient github, TimeProvider time, ILogger logger, ReportRevocation revocation)
 {
     readonly WorkClaim claims = new(media, time);
     readonly ReportIssueInputLoader loader = new(media);
@@ -56,11 +56,12 @@ internal sealed class ReportWorker(BugReportRelayOptions options, IReportMediaSt
             ServerSnapshotWire? snapshot = await LoadSnapshotAsync(record, warnIfMissing: false, ct).ConfigureAwait(false);
             if (snapshot is not null)
             {
-                await WriteSnapshotAsync(record, snapshot, ct).ConfigureAwait(false);
+                if (!await WriteSnapshotAsync(record, snapshot, ct).ConfigureAwait(false)) return;
                 record = record with { ServerSnapshot = ServerSnapshotState.InBody };
-                await SaveProgressAsync(reportId, null, ServerSnapshotState.InBody, ct).ConfigureAwait(false);
+                if (!await SaveProgressAsync(reportId, null, ServerSnapshotState.InBody, ct).ConfigureAwait(false)) return;
             }
             IssueInput input = await loader.LoadAsync(record, snapshot, ct).ConfigureAwait(false);
+            if (await revocation.IsRevokedAsync(reportId, ct, record.Folder).ConfigureAwait(false)) return;
             number = await github.CreateIssueAsync(composer.ComposeIssue(input), ct).ConfigureAwait(false);
         }
         catch
@@ -103,8 +104,9 @@ internal sealed class ReportWorker(BugReportRelayOptions options, IReportMediaSt
             if (record.IssueNumber is null) throw new ReportNotReadyException(reportId);
             ServerSnapshotWire? snapshot = await LoadSnapshotAsync(record, warnIfMissing: true, ct).ConfigureAwait(false);
             if (snapshot is null) return;
-            await WriteSnapshotAsync(record, snapshot, ct).ConfigureAwait(false);
+            if (!await WriteSnapshotAsync(record, snapshot, ct).ConfigureAwait(false)) return;
             IssueInput input = await loader.LoadAsync(record, snapshot, ct).ConfigureAwait(false);
+            if (await revocation.IsRevokedAsync(reportId, ct, record.Folder).ConfigureAwait(false)) return;
             await github.AddCommentAsync(record.IssueNumber.Value, composer.ComposeSnapshotComment(input), ct).ConfigureAwait(false);
         }
         catch
@@ -116,14 +118,15 @@ internal sealed class ReportWorker(BugReportRelayOptions options, IReportMediaSt
         await SaveProgressAsync(reportId, null, ServerSnapshotState.Commented, ct).ConfigureAwait(false);
     }
 
-    async Task SaveProgressAsync(string reportId, int? issueNumber, ServerSnapshotState snapshot, CancellationToken ct)
+    async Task<bool> SaveProgressAsync(string reportId, int? issueNumber, ServerSnapshotState snapshot, CancellationToken ct)
     {
         ReportRecord? current = await LoadAsync(reportId, ct).ConfigureAwait(false);
-        if (current is null) return;
+        if (current is null) return false;
         int? mergedIssue = current.IssueNumber ?? issueNumber;
         ServerSnapshotState mergedSnapshot = current.ServerSnapshot == ServerSnapshotState.None ? snapshot : current.ServerSnapshot;
-        if (mergedIssue == current.IssueNumber && mergedSnapshot == current.ServerSnapshot) return;
+        if (mergedIssue == current.IssueNumber && mergedSnapshot == current.ServerSnapshot) return true;
         await records.SaveReportAsync(current with { IssueNumber = mergedIssue, ServerSnapshot = mergedSnapshot }, ct).ConfigureAwait(false);
+        return true;
     }
 
     static int ParseIssueNumber(string reportId, string result) =>
@@ -133,6 +136,7 @@ internal sealed class ReportWorker(BugReportRelayOptions options, IReportMediaSt
 
     async Task<ReportRecord?> LoadAsync(string reportId, CancellationToken ct)
     {
+        if (await revocation.IsRevokedAsync(reportId, ct).ConfigureAwait(false)) return null;
         AcceptedReport? accepted = await records.LoadAcceptedAsync(reportId, ct).ConfigureAwait(false);
         if (accepted is null)
         {
@@ -141,6 +145,7 @@ internal sealed class ReportWorker(BugReportRelayOptions options, IReportMediaSt
         }
         ReportRecord? record = await records.LoadReportAsync(reportId, ct).ConfigureAwait(false);
         if (record is null) logger.Error("Missing private record for report " + reportId + ".");
+        else if (await revocation.IsRevokedAsync(reportId, ct, record.Folder).ConfigureAwait(false)) return null;
         return record;
     }
 
@@ -168,11 +173,12 @@ internal sealed class ReportWorker(BugReportRelayOptions options, IReportMediaSt
     }
 
     // Both public outputs get the subject-free document. The authenticated wire never leaves the Pending area.
-    async Task WriteSnapshotAsync(ReportRecord record, ServerSnapshotWire snapshot, CancellationToken ct)
+    async Task<bool> WriteSnapshotAsync(ReportRecord record, ServerSnapshotWire snapshot, CancellationToken ct)
     {
         byte[] json = PublicServerSnapshot.Serialize(snapshot);
         string path = ReportLayout.Entry(record.Folder, ReportLayout.ServerSnapshotFile);
+        if (await revocation.IsRevokedAsync(record.ReportId, ct, record.Folder).ConfigureAwait(false)) return false;
         await media.PutAsync(ReportArea.Public, path, json, ReportLayout.HeadersFor(path), overwrite: true, ct).ConfigureAwait(false);
-        await viewer.WriteAsync(record, json, ct).ConfigureAwait(false);
+        return await viewer.WriteAsync(record, json, ct).ConfigureAwait(false);
     }
 }

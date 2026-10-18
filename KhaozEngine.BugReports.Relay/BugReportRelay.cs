@@ -12,6 +12,7 @@ public sealed class BugReportRelay
     readonly RelayIntake intake;
     readonly ServerSnapshotIntake snapshots;
     readonly ReportWorker worker;
+    readonly ReportRevocation revocation;
 
     /// <summary>Creates a relay over host-provided authentication, storage, queue and GitHub seams.</summary>
     /// <exception cref="ArgumentException">An option is outside the relay's supported limits.</exception>
@@ -28,11 +29,12 @@ public sealed class BugReportRelay
         Validate(options);
         ILogger logger = options.Logger ?? Log.Get("BugReports.Relay");
         var records = new ReportRecordStore(media);
-        var viewer = new ReportViewerWriter(media);
+        revocation = new ReportRevocation(media, time, logger);
+        var viewer = new ReportViewerWriter(media, revocation);
         intake = new RelayIntake(options, authenticator, work, records,
-            new ReportQuotaGate(quotas, options, time, logger), new ReportBundleStorer(media, viewer), time);
-        snapshots = new ServerSnapshotIntake(options, records, work, logger);
-        worker = new ReportWorker(options, media, records, viewer, github, time, logger);
+            new ReportQuotaGate(quotas, options, time, logger), new ReportBundleStorer(media, viewer), time, revocation);
+        snapshots = new ServerSnapshotIntake(options, records, work, logger, revocation);
+        worker = new ReportWorker(options, media, records, viewer, github, time, logger, revocation);
     }
 
     /// <summary>Authenticates, quota-checks, validates and stores one client bundle, then queues issue creation.</summary>
@@ -47,6 +49,11 @@ public sealed class BugReportRelay
     /// <summary>Authenticates and stores the first server snapshot, then queues a late append when accepted.</summary>
     public Task<RelayResponse> ServerSnapshotIntakeAsync(string reportId, RelayRequest request, CancellationToken cancellationToken)
         => snapshots.RunAsync(reportId, request, cancellationToken);
+
+    /// <summary>Durably revokes a report. Repeated calls retain the first revocation time.</summary>
+    /// <remarks>Delete the public folder after this call and again after the ten-minute claim lease.</remarks>
+    /// <exception cref="ArgumentException">The report id is not a canonical version 7 id.</exception>
+    public Task RevokeAsync(string reportId, CancellationToken ct) => revocation.RevokeAsync(reportId, ct);
 
     /// <summary>Processes durable issue work using create-only, ten-minute claims.</summary>
     /// <remarks>

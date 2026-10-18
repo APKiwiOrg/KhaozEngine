@@ -12,7 +12,10 @@ public sealed class ClearanceSamples
 {
     readonly Vector3[] _points;
 
-    ClearanceSamples(Vector3[] points) => _points = points;
+    ClearanceSamples(ClearanceMesh mesh, Vector3[] points) => (Mesh, _points) = (mesh, points);
+
+    // Keep the validated triangles for consumers that need exact surface bounds rather than probes.
+    internal ClearanceMesh Mesh { get; }
 
     /// <summary>The sample points, in the mesh's local frame.</summary>
     public IReadOnlyList<Vector3> Points => _points;
@@ -26,6 +29,6 @@ public sealed class ClearanceSamples
 
         var points = new List<Vector3>();
         mesh.ForEachSample(pitch, points.Add);
-        return new ClearanceSamples(points.ToArray());
+        return new ClearanceSamples(mesh, points.ToArray());
     }
 }

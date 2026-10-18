@@ -408,7 +408,8 @@ issues also on `LastIssues`. The cell size divides `TileSize`, at most 25 cm (`C
 keep only their lowest contiguous run of retained indoor planes, never bridging an outdoor gap or a storey
 excluded by a wall check. Roofs apply only if that run reaches the column's highest indoor plane.
 `TileInteriorRoofSamples` uses `ClearanceSamples.Build(mesh, cellSize / 2f)`, not the clearance distance field.
-The lowest roof sample wins, with `CeilingY` as the fallback, including unreadable roofs and courtyards.
+The core clips the retained source mesh triangles to each field cell and takes their exact minimum height.
+`CeilingY` is the fallback where no roof triangle intersects, including unreadable roofs and courtyards.
 On the highest plane the fallback ceiling is the corner height plus `PlaneHeight`. Inner-edge and diagonal
 boundary walls leave affected tiles uncut and report `interior.wall-inner-edge` or `interior.diagonal-wall`.
 Unreadable roofs report `interior.roof-mesh`, and coarser vertical encoding reports `interior.step` at

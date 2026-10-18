@@ -84,11 +84,12 @@ automatically, so this is transparent to every other package.
   every edge case above holds unchanged and a `yaw` of 0 gives the same answer as `IntersectAabb` with the
   anchor subtracted out.
 - `InteriorVolume` / `InteriorRoof` / `IInteriorSource` describe simple world-XZ polygons, floor and ceiling
-  heights and roof samples without a renderer dependency. `InteriorSourceResult.Encoding` carries the
+  heights and roof geometry without a renderer dependency. `InteriorSourceResult.Encoding` carries the
   source-wide `InteriorEncoding.For(lowestFloorY, highestTopY)`, stable across window re-centres.
   `InteriorWindow.Centred` snaps to the world-origin lattice. `CellsFor(512f, cellSize)` rounds up and caps
   at 4096 cells per side. `InteriorHeightFieldBuilder.Build(volumes, window, encoding)` fills only whole
-  polygon cells, samples the lowest roof, and merges overlapping spans to their lowest floor and highest top.
+  polygon cells, clips roof triangles to each cell for their exact minimum height, and merges overlapping spans
+  to their lowest floor and highest top.
   The immutable field packs floor high/low in RG and top high/low in BA, rows toward +world Z, with a 1 cm
   step through 655.35 m or a coarser source-wide step beyond that. `Texels`, `Version`, `MergedCells` and
   `OutOfRangeCells` describe the result. `TryGetSpan` returns approximate decoded heights, while `Contains`

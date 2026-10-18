@@ -247,6 +247,14 @@ until a world needs it.
 
 ## Roof surface sampling
 
+**As built (Final-1).** The lowest discrete sample rule below is superseded. The rasterizer reads the
+validated `ClearanceMesh` triangles retained by `ClearanceSamples`, through the same `ITileMeshGeometry`
+path. It transforms each triangle, clips it against each cell's XZ rectangle and takes the minimum linear
+height over the clipped polygon's vertices. The result is rounded downward before height packing. Unlike
+an unaligned sample grid, this bounds the roof everywhere in the cell. Closed slab undersides and vertical
+gable faces still lower the cut. A cell with no triangle intersection, including an unreadable roof,
+keeps `CeilingY`. The shifted 1 cm sloped slab regression checks every cell's low side.
+
 The roof surface reuses the 21.2.0 sampling. `ClearanceSamples.Build(mesh, pitch)` samples every triangle in rows
 along its longest edge, no coarser than the pitch, and keeps the points in mesh-local metres
 (`KhaozEngine.Primitives/Clearance/ClearanceSamples.cs`, `ClearanceMesh.ForEachSample`). The core transforms each

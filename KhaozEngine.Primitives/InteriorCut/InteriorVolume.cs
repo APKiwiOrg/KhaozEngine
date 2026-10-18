@@ -12,5 +12,5 @@ public sealed record InteriorVolume
     public IReadOnlyList<InteriorRoof> Roofs { get; init; } = [];
 }
 
-/// <summary>Roof surface samples and their mesh-local to world transform.</summary>
+/// <summary>Roof geometry carried by its sample set and its mesh-local to world transform.</summary>
 public readonly record struct InteriorRoof(ClearanceSamples Samples, Matrix4x4 LocalToWorld);

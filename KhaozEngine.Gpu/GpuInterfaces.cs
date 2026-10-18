@@ -545,6 +545,17 @@ namespace KhaozEngine.Gpu
         /// an <paramref name="offsetBytes"/> that is not a multiple of four, and a window that leaves the buffer.
         /// </para>
         /// <para>
+        /// THE EXCEPTIONS. A disposed or lost device throws <see cref="InvalidOperationException"/>. Its subclass
+        /// <see cref="ObjectDisposedException"/> is what most backends throw, and a caller catches the base type
+        /// because a backend may throw either. A disposed fence or buffer throws
+        /// <see cref="ObjectDisposedException"/>. A null argument throws <see cref="ArgumentNullException"/>. A
+        /// fence or buffer from another device or backend, and a buffer without
+        /// <see cref="GpuBufferUsage.Staging"/>, throw <see cref="ArgumentException"/> naming the parameter. An
+        /// unaligned or past-the-end <paramref name="offsetBytes"/> throws
+        /// <see cref="ArgumentOutOfRangeException"/> naming <c>offsetBytes</c>, and a window that starts inside
+        /// the buffer but runs off its end names <c>destination</c>.
+        /// </para>
+        /// <para>
         /// DEFAULT-IMPLEMENTED to throw <see cref="NotSupportedException"/>, so an implementer that cannot read
         /// without waiting says so rather than hiding a wait. The three native backends implement it.
         /// </para>

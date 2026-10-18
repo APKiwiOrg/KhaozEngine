@@ -672,7 +672,9 @@ the drain.
 window on a non-coherent memory type and copies from the persistently mapped pointer, calling neither `Map` nor
 `WaitForIdle`, the setup flush, a submit or the submit lock. Visibility comes from the copy itself: the barrier
 after every `CopyBuffer` names the HOST stage and `HOST_READ`, because `ALL_COMMANDS` covers only stages that run on
-the queue and a completed timeline value alone does not make a device write visible to a CPU read.
+the queue and a completed timeline value alone does not make a device write visible to a CPU read. A
+`CopyTexture` or `CopyTextureSubresource` into a staging texture takes the same barrier once after its last region,
+so a staging texture read after its fence has the same HOST dependency.
 
 **Disposal is one TERMINAL retire per resource.** The single held entry destroys a texture's views inline, then
 its image, then its memory, and never re-retires a child. A destroy that retired another destroy that then freed

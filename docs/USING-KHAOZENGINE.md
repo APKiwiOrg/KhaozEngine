@@ -22342,6 +22342,8 @@ result can arrive a few frames late.
 - It refuses, before any poll or native access, a disposed or lost device, a fence or buffer from another device or
   backend, a disposed fence or buffer, a buffer without `GpuBufferUsage.Staging`, an `offsetBytes` that is not a
   multiple of four, and a `destination` that runs past the end of the buffer.
+- Do not hold a synchronous `Map` of the same staging buffer while polling. Direct3D 11 refuses the read with the
+  double-map `InvalidOperationException`, and Metal and Vulkan do not detect it.
 - On Direct3D 11 a `Submit` does not flush the immediate context. The next `Present` or drain hands the work to the
   driver, which in a presenting frame loop is the frame boundary. A headless loop that neither presents nor drains
   can read `false` indefinitely.

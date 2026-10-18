@@ -49,7 +49,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <c>VkBuffer</c> as well, and its memory range is handed to the next staging texture once the frame boundary
     /// frees it, so two readbacks in a row write one range from two submissions. The barrier before the copy is
     /// what orders the second write after the first inside the command stream rather than only through the host's
-    /// wait between them.</para>
+    /// wait between them. A texture copy whose DESTINATION is staging takes the second one as well, once after its
+    /// last region, because a host read of that staging memory needs the same HOST dependency a buffer readback
+    /// does.</para>
     /// </summary>
     internal static unsafe class VulkanTransferBarrier
     {

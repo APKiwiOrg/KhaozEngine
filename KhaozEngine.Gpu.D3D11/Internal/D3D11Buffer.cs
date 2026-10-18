@@ -108,10 +108,6 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <summary>True once disposed, whether or not anything native was released.</summary>
         internal bool IsDisposed { get; private set; }
 
-        /// <summary>The creating device's liveness token, which is that device's identity for a reference
-        /// comparison. A staging read refuses a buffer whose owner is not the reading device.</summary>
-        internal DeviceLiveness Owner => _liveness;
-
         // ---- ID3D11BindableViews: the 'b' file takes the BUFFER, the other two take a view if it has one ----
         //
         // The constant-buffer member hands back the buffer itself rather than a view, because Direct3D 11 binds a

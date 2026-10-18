@@ -79,6 +79,57 @@ void main() {
         }
 
         /// <summary>
+        /// EVERY BUFFER REFUSAL FIRES BEFORE ANY READ, on whatever real device the host resolves: a non-staging
+        /// source, a disposed staging buffer, an unaligned offset and a window that runs off the end. Each throws
+        /// the type and names the parameter the seam documents, and leaves the destination as it was. The
+        /// foreign-device refusals are covered device-free only.
+        /// </summary>
+        [GpuFact]
+        public void RefusedReadsThrowBeforeTouchingTheDestination()
+        {
+            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
+            IGpuDevice device = gpu.GpuDevice;
+            _output.WriteLine("backend: " + device.Backend + " (" + device.Capabilities.DeviceName + ")");
+            Assert.True(device.Capabilities.SupportsCompletionFences,
+                $"{device.Backend} reports no completion fences");
+            IGpuResourceFactory f = device.Factory;
+
+            using IGpuBuffer words = f.CreateBuffer(new GpuBufferDescription(
+                Bytes, GpuBufferUsage.StructuredBufferReadWrite, sizeof(uint)));
+            using IGpuBuffer staging = f.CreateBuffer(new GpuBufferDescription(Bytes, GpuBufferUsage.Staging));
+            IGpuBuffer disposed = f.CreateBuffer(new GpuBufferDescription(Bytes, GpuBufferUsage.Staging));
+            disposed.Dispose();
+            using IGpuFence completion = f.CreateFence();
+
+            byte[] four = Filled(4);
+            ArgumentException nonStaging = Assert.Throws<ArgumentException>(
+                () => device.TryReadBuffer(words, completion, 0, four));
+            Assert.Equal("staging", nonStaging.ParamName);
+            Assert.Equal(Filled(4), four);
+
+            Assert.Throws<ObjectDisposedException>(() => device.TryReadBuffer(disposed, completion, 0, four));
+            Assert.Equal(Filled(4), four);
+
+            ArgumentOutOfRangeException unaligned = Assert.Throws<ArgumentOutOfRangeException>(
+                () => device.TryReadBuffer(staging, completion, 3, four));
+            Assert.Equal("offsetBytes", unaligned.ParamName);
+            Assert.Equal(Filled(4), four);
+
+            byte[] eight = Filled(8);
+            ArgumentOutOfRangeException pastEnd = Assert.Throws<ArgumentOutOfRangeException>(
+                () => device.TryReadBuffer(staging, completion, 12, eight));
+            Assert.Equal("destination", pastEnd.ParamName);
+            Assert.Equal(Filled(8), eight);
+        }
+
+        static byte[] Filled(int length)
+        {
+            var bytes = new byte[length];
+            bytes.AsSpan().Fill(0xcc);
+            return bytes;
+        }
+
+        /// <summary>
         /// AN OLD SUBMISSION THAT HAS COMPLETED IS READ WITHOUT THE DEVICE-WIDE DRAIN, even while later unrelated
         /// work is still pending. The read asks the fence it was given and nothing broader, so the second
         /// submission's outstanding value never selects a wait or a flush.

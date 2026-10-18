@@ -3,7 +3,7 @@
     <PackageId>KhaozEngine.Imaging</PackageId>
     <Version>$(KhaozEngineVersion)</Version>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <Description>Dependency-free PNG I/O for KhaozEngine using BCL zlib. Includes RGBA8 encoding and decoding of every PNG colour type and bit depth, noninterlaced or Adam7.</Description>
+    <Description>Dependency-free PNG I/O for KhaozEngine using BCL zlib. Includes RGBA8 encoding and decoding of every PNG colour type and bit depth, noninterlaced or Adam7, and a baseline JPEG encoder for RGBA8 buffers.</Description>
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="KhaozEngine.Render.Tests" />

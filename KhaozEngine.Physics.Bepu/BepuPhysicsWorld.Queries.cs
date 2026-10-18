@@ -114,11 +114,8 @@ public sealed partial class BepuPhysicsWorld
         if (collector.Found.Count == 0) { mtv = default; return false; }
 
         var callbacks = new PenetrationCallbacks();
-        // Reuse the live collision-task registry off NarrowPhase. Bepu's own narrow phase shares it across
-        // workers, and every batch allocation goes to the interval's pool. dt = 0 so there is no velocity-bound
-        // expansion. speculativeMargin = 0 below so only real penetration (depth >= 0) reaches the callback.
-        var batcher = new CollisionBatcher<PenetrationCallbacks>(
-            scratch.Pool, _sim.Shapes, _sim.NarrowPhase.CollisionTaskRegistry, 0f, callbacks);
+        CollisionBatcher<PenetrationCallbacks> batcher = default;
+        bool initialized = false;
         try
         {
             int capsuleType = bepuCapsule.TypeId;
@@ -127,6 +124,16 @@ public sealed partial class BepuPhysicsWorld
             {
                 if (collidable.Mobility != CollidableMobility.Static) continue;
                 if (exclusions is not null && !exclusions.Allows(collidable)) continue;
+                if (!initialized)
+                {
+                    // Ignore ineligible overlaps before renting or clearing native batcher storage.
+                    // Reuse the live registry that Bepu's narrow phase shares across workers. Every batch
+                    // allocation goes to the interval's pool. dt = 0 prevents velocity-bound expansion.
+                    // speculativeMargin = 0 below admits only real penetration (depth >= 0).
+                    batcher = new CollisionBatcher<PenetrationCallbacks>(
+                        scratch.Pool, _sim.Shapes, _sim.NarrowPhase.CollisionTaskRegistry, 0f, callbacks);
+                    initialized = true;
+                }
                 _sim.Statics.GetDescription(collidable.StaticHandle, out var desc);
                 _sim.Shapes[desc.Shape.Type].GetShapeData(desc.Shape.Index, out var staticData, out _);
 
@@ -145,10 +152,11 @@ public sealed partial class BepuPhysicsWorld
         finally
         {
             // Flush executes all collision testers synchronously AND returns every pool buffer the
-            // batcher took. It must run on every path, so it lives in finally.
-            batcher.Flush();
+            // batcher took. Every successfully initialized batcher must reach it, even if pair setup throws.
+            if (initialized) batcher.Flush();
         }
 
+        if (!initialized) { mtv = default; return false; }
         callbacks = batcher.Callbacks; // read accumulated result AFTER flush
         if (callbacks.DeepestDepth <= 0f) { mtv = default; return false; }
         // With A = static, B = capsule, the BepuPhysics 2.4.0 contact normal points from the CAPSULE

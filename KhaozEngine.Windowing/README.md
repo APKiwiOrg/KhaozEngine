@@ -313,6 +313,21 @@ Windowing + input foundation for the custom MonoGame-free stack.
   or a same-frame tap), for a consumer keeping per-GESTURE state of its own: recompute on that frame, never on
   the release, which reads a world that has moved on since the press. `Gui.ScreenStack.PressBeganOverUi` is
   built on it.
+- **Pointer occlusion** (since 21.3.0) - opt-in covered areas that hit queries treat as misses. Cleared at the
+  start of every `Pointer.Update`. With nothing occluded every query reads exactly as before.
+  `Gui.WindowStack` is the normal producer.
+  - `Occlude(Rect)` adds an occluded area for the rest of the frame.
+  - `OccludeAll()` occludes the whole surface for the rest of the frame.
+  - `IsOccluded(Vector2)` reports whether a point is occluded.
+  - `ClearOcclusion()` drops every occluder before the next `Update`.
+  - `IsTapIn`, `IsTapFromTo`, `IsPressingIn`, `IsRightTapIn` and `IsRightPressingIn` miss when the press origin
+    or the cursor is occluded. `IsPointerIn` and `IsHoveringIn` miss when the cursor is. `IsDraggingIn`,
+    `GetDragDelta` and `IsDragStartIn` miss when the press origin is.
+  - `IsReleasedOutside` counts a release in an occluded area as outside.
+  - `IsRightPressOriginFresh` is the right-button twin of `IsPressOriginFresh`.
+  - `BlockRegion` and `IsBlocked` keep their meaning. Occlusion is the part the hit queries obey.
+  - `PanZoomController` admits no press, touch or gesture at an occluded point and records no tap on an
+    occluded release.
 - **Action maps + rebinding** (`KhaozEngine.Windowing.Actions`) - named actions instead of hardcoded key checks.
   A game declares `InputAction`s (`Button` / `Axis1D` / `Axis2D`) with default `InputBinding`s over `InputSource`s
   (key, mouse button, gamepad button, trigger, a whole stick via `WholeStick` for a 2D move/look, a single stick
@@ -396,6 +411,53 @@ Windowing + input foundation for the custom MonoGame-free stack.
   it drops straight into `SpriteBatch.Begin`, `Pointer.Update`, `ComputeScissor`, and the Gui screens/layout
   unchanged. Contrast with `DesignViewport` (a fixed design canvas Fit-scaled onto the framebuffer, which magnifies
   fractionally on HiDPI): use `DesignViewport` for the letterboxed game field, `UiViewport` for the crisp UI layer.
+
+## Frame capture taps
+
+An `IFrameCaptureTap` reads the frame the game just rendered, for a screenshot or a rolling clip. Register one
+with `AppWindow.AddCaptureTap(tap)` and unregister it with `AppWindow.RemoveCaptureTap(tap)`. Both run on the frame
+thread, adding the same tap twice is a no-op, and removing is safe from inside a tap callback. Removal calls the
+tap's `Detach(retire)` once, and so does window disposal. The tap hands every GPU resource it owns to `retire`,
+which destroys it once the GPU has finished with it.
+
+A rendered frame with a tap registered runs in this order:
+
+1. `onPrepare`, then the frame's list opens, binds `SwapchainFramebuffer` and clears.
+2. `onFrame`, the game's draws.
+3. Every tap's `Record(context)`, still inside the frame's list.
+4. The list closes and is submitted, with the fence a tap handed in or without one.
+5. Every tap's `AfterSubmit(context)`, with nothing recording, so a map or a blocking readback is legal.
+6. `Present`.
+
+A render-suppressed (minimised) frame runs no tap. A window that never registered a tap always runs the unchanged
+frame: one `Submit(commands)` and one `Present()`, nothing else. After the last tap leaves, the registry keeps the
+tap path for the few frames its retired resources need to clear the GPU. On a device with completion fences that
+includes one empty fenced submit that seals them. Once nothing is pending, frames return to exactly one
+`Submit(commands)` and one `Present()`.
+
+Window disposal detaches every tap. A tap whose `Detach` throws does not stop the others from being detached, and
+does not stop the registry, the command list, the device or the window from being freed.
+
+`FrameCaptureContext` is shared by every tap in a frame:
+
+| Member | Meaning |
+|--------|---------|
+| `Frame`, `Device` | the frame being captured and the window's device |
+| `Commands` | the frame's own list, open during `Record` only |
+| `FrameMilliseconds` | the loop's frame delta in milliseconds, before the 100 ms clamp `Frame.Dt` carries |
+| `AcquireSwapchainImage()` | `Record` only. A copy of this frame's swapchain image, taken once per frame however many taps ask. It has the swapchain's size and colour format, one mip and `Sampled` usage, and the registry owns it. Null when the image cannot be copied this frame |
+| `SignalOnSubmit(fence)` | `Record` only. Submit the frame with this fence. One fence per frame across every tap, and a second call throws `InvalidOperationException` |
+| `Retire(resource)` | destroy a resource once the GPU has finished with it |
+
+The swapchain copy goes through the device's `IGpuSwapchainCapture`. That copy needs a list that bound the
+swapchain framebuffer in its current recording, and the frame's list has, so a tap records its copies into
+`Commands` and never into a list of its own. The registry asks for copy-source usage on the swapchain images with
+the first tap and releases it after the last. Metal and Vulkan apply the change at a later present, so the first
+frame or two after the first tap may give a null image. A device with no swapchain capture always gives null. A
+frame whose `onFrame` draws nothing still captures the cleared image. The copy texture is remade when the
+swapchain size changes and retired when the last tap leaves. A last tap that removes itself in `Record` and then
+acquires still gets this frame's image, and the registry retires that image at the end of the frame, after its
+submit. Window disposal releases the copy texture whatever the tap count.
 
 ## `Frame` DPI members (since 10.12.0)
 

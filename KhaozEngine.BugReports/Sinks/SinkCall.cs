@@ -1,0 +1,32 @@
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+using KhaozEngine.Diagnostics;
+
+namespace KhaozEngine.BugReports;
+
+// Holds the queue and the submitter to the sink contract when a sink breaks it. Every send of the submitter and the
+// queue goes through here, so a rejection is logged once wherever it happens.
+internal static class SinkCall
+{
+    // Null when the sink threw or returned no result. Only an OperationCanceledException while the caller's token
+    // is canceled is rethrown, so a sink failure that races the caller's cancel is still a failure, not a throw.
+    // A Rejected result deletes the report, so it is logged with its id and error.
+    public static async Task<BugReportSubmitResult?> TrySubmitAsync(IBugReportSink sink, BugReportSubmission submission, CancellationToken cancellationToken)
+    {
+        try
+        {
+            BugReportSubmitResult? result = await sink.SubmitAsync(submission, cancellationToken).ConfigureAwait(false);
+            if (result is null)
+                Log.Warn("Bug report sink " + sink.GetType().Name + " returned no result for report " + submission.ReportId + ".");
+            else if (result.Status == BugReportSubmitStatus.Rejected)
+                Log.Warn("Bug report " + submission.ReportId + " was rejected by " + sink.GetType().Name + ": " + result.Error + ".");
+            return result;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            Log.Warn("Bug report sink " + sink.GetType().Name + " failed for report " + submission.ReportId + ".", ex);
+            return null;
+        }
+    }
+}

@@ -186,6 +186,26 @@ namespace KhaozEngine.Tests.Gui
         }
 
         [Fact]
+        public void PointerCaptured_is_true_when_press_origin_is_occluded()
+        {
+            var ui = Surface();
+            var p = new Pointer();
+            var at = new Vector2(500, 400);
+
+            p.Update(Frame(at, false));
+            p.Update(Frame(at, true));                      // press-origin far from any widget
+            ui.Begin(null, p);
+            Assert.False(ui.PointerCaptured);
+
+            p.Occlude(new Rect(450, 350, 100, 100));        // something drawn in front covers the origin
+            Assert.True(ui.PointerCaptured);
+
+            p.ClearOcclusion();
+            p.Occlude(new Rect(0, 0, 50, 50));              // an occluder elsewhere captures nothing
+            Assert.False(ui.PointerCaptured);
+        }
+
+        [Fact]
         public void HoverCaptured_is_false_when_position_outside_everything()
         {
             var ui = Surface();

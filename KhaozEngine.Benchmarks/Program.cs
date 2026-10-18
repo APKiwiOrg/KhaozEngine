@@ -5,6 +5,7 @@ using System.Threading;
 using KhaozEngine.Benchmarks;
 using KhaozEngine.Benchmarks.Catalog;
 using KhaozEngine.Benchmarks.CatalogCrash;
+using KhaozEngine.Benchmarks.Imaging;
 using KhaozEngine.Benchmarks.Items;
 using KhaozEngine.Benchmarks.Journal;
 using KhaozEngine.Simulation;
@@ -20,6 +21,7 @@ using KhaozEngine.Simulation;
 //   dotnet run --project KhaozEngine.Benchmarks -c Release -- --replication  (replication-hotpath jobs-1 matrix only)
 //   dotnet run --project KhaozEngine.Benchmarks -c Release -- --catalog      (content catalog section 14 budgets)
 //   dotnet run --project KhaozEngine.Benchmarks -c Release -- --items        (item-instances section 16 budgets)
+//   dotnet run --project KhaozEngine.Benchmarks -c Release -- --jpeg         (one 960x540 JpegWriter encode)
 // See KhaozEngine.Benchmarks/README.md for how to read the output.
 
 // content-catalog stage 5: the --catalog mode measures every budget of section 14 of the content catalog
@@ -110,6 +112,13 @@ if (Array.IndexOf(args, "--items") >= 0)
     {
         Console.CancelKeyPress -= itemsCancel;
     }
+    return;
+}
+
+// bug reports E1: the --jpeg mode times one 960x540 clip frame encode through JpegWriter and prints one line.
+if (Array.IndexOf(args, "--jpeg") >= 0)
+{
+    Environment.ExitCode = JpegEncodeBenchmark.Run(args);
     return;
 }
 

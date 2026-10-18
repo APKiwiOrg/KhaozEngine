@@ -290,6 +290,39 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Equal(1, fb.Outputs.SampleCount);
         }
 
+        /// <summary>
+        /// A COPY RECORDED AFTER A CLEAR-ONLY PASS READS THE CLEARED TEXELS. No draw opens the pass, so the clear
+        /// is still pending when the copy opens its blit encoder, and the copy must apply it first. Without that
+        /// the clear lands at <c>End</c>, after the copy, and the copy reads whatever the texture held before.
+        /// </summary>
+        [GpuFact]
+        public void A_copy_after_a_clear_only_pass_reads_the_cleared_texels()
+        {
+            if (!Available()) return;
+
+            Color colour = Color.FromBytes(40, 120, 200, 255);
+
+            using MetalGpuDevice device = CreateHeadless();
+            using IGpuTexture target = Target(device);
+            using IGpuTexture copy = Target(device);
+            using IGpuFramebuffer fb = device.Factory.CreateFramebuffer(null, target);
+
+            using (MetalCommandList list = device.CreateCommandList())
+            {
+                list.Begin();
+                list.SetFramebuffer(fb);
+                list.ClearColorTarget(0, colour);
+                list.CopyTexture(target, copy);
+                list.End();
+
+                device.Submit(list);
+            }
+
+            device.WaitForIdle();
+
+            Assert.Equal(colour, ReadFirstTexel(device, copy));
+        }
+
         // ---- Fixtures ----------------------------------------------------------------------------------------
 
         [SupportedOSPlatform("macos")]

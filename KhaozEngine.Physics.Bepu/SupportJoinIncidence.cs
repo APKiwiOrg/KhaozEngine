@@ -19,9 +19,10 @@ internal static class SupportJoinIncidence
             polygon.NormalLength.Lower < MinimumLength)
             return false;
         double height = polygon.Vertices[0].Y.Value;
+        bool binary32 = SupportReferenceEvaluation.Active;
         foreach (FeaturePoint vertex in polygon.Vertices)
-            if (!vertex.IsExact || vertex.Y.Value != height || !Coordinate(vertex.X.Value) ||
-                !Coordinate(vertex.Y.Value) || !Coordinate(vertex.Z.Value)) return false;
+            if (!vertex.IsExact || vertex.Y.Value != height || !Coordinate(vertex.X.Value, binary32) ||
+                !Coordinate(vertex.Y.Value, binary32) || !Coordinate(vertex.Z.Value, binary32)) return false;
         for (int i = 0; i < polygon.Edges.Length; i++)
         {
             FeaturePoint edge = polygon.Edges[i];
@@ -40,16 +41,19 @@ internal static class SupportJoinIncidence
     static double MagnitudeLower(GeometryInterval value) =>
         value.Lower > 0 ? value.Lower : value.Upper < 0 ? -value.Upper : 0;
 
-    // Binary32 coordinates bounded by 2^8 and on the 2^-80 lattice give edge products on the
+    // Represented coordinates bounded by 2^8 and on the 2^-80 lattice give edge products on the
     // 2^-160 lattice and determinants on the 2^-320 lattice. Outward operations and division
     // stay finite, including uncertain near-parallel strata. Edge and normal denominators
     // are strictly positive. Face rates are zero or enclose zero, so the face-crossing
     // branch never divides by an uncertain rate. The released Measure therefore
     // resolves every edge of these polygons. At a common vertex its minimum lower bound is
     // zero, so incidence proves the same positive verdict without hiding an earlier refusal.
-    static bool Coordinate(double value)
+    // None of this needs binary32 coordinates, so a hull installed at an offset centre keeps
+    // the certificate. The reference evaluator keeps the binary32 domain, so it still measures
+    // such faces with the released kernel.
+    static bool Coordinate(double value, bool binary32)
     {
-        if (Math.Abs(value) > 256 || (double)(float)value != value) return false;
+        if (Math.Abs(value) > 256 || (binary32 && (double)(float)value != value)) return false;
         double scaled = value * CoordinateScale;
         return Math.Truncate(scaled) == scaled;
     }

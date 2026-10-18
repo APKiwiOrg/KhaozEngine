@@ -6,7 +6,7 @@ using KhaozEngine.Gpu.Metal.Internal.ObjC;
 namespace KhaozEngine.Gpu.Metal.Internal
 {
     /// <summary>
-    /// THE REAL <see cref="IMetalSwapchainApi"/>: six members, each one Objective-C message or a short fixed
+    /// THE REAL <see cref="IMetalSwapchainApi"/>: every member is one Objective-C message or a short fixed
     /// sequence of them, with NO decisions in it at all. Everything that decides anything lives above this line in
     /// <see cref="MetalPresentBoundary"/> and <see cref="MetalSwapchainPolicy"/>, where a headless leg can drive
     /// it (MM7).
@@ -69,6 +69,8 @@ namespace KhaozEngine.Gpu.Metal.Internal
             using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
 
             // THE INCUMBENT'S ORDER AND THE INCUMBENT'S FIELDS (M-W1), plus M-W4's one addition at the end.
+            // framebufferOnly is always true here. Configure runs once, at creation, before any capture request
+            // can exist, and a later request turns it off through SetFramebufferOnly at a present boundary.
             _layer.SetDevice(_device.Handle);
             _layer.SetPixelFormat(MetalSwapchainPolicy.LayerPixelFormat(colourSrgb));
             _layer.SetFramebufferOnly(true);
@@ -101,6 +103,14 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         /// <inheritdoc/>
         [MethodImpl(MethodImplOptions.NoInlining)]
+        public void SetFramebufferOnly(bool value)
+        {
+            using ObjCAutoreleasePool pool = ObjCAutoreleasePool.Enter();
+            _layer.SetFramebufferOnly(value);
+        }
+
+        /// <inheritdoc/>
+        [MethodImpl(MethodImplOptions.NoInlining)]
         public MetalAcquiredDrawable NextDrawable()
         {
             // ITS OWN POOL, and it is load-bearing rather than habitual: -nextDrawable autoreleases, so without
@@ -114,7 +124,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
             // RETAINED BEFORE THE POOL POPS, which is what makes the drawable and its texture live across the
             // whole of the next frame's recording.
             drawable.Retain();
-            return new MetalAcquiredDrawable(drawable.Handle, drawable.Texture().Handle);
+
+            // THE TEXTURE'S OWN FLAG, one message per frame. A layer may recycle a pooled drawable made before a
+            // framebufferOnly write, so the property in force now says nothing certain about this texture.
+            MTLTexture texture = drawable.Texture();
+            return new MetalAcquiredDrawable(drawable.Handle, texture.Handle, texture.IsFramebufferOnly());
         }
 
         /// <inheritdoc/>

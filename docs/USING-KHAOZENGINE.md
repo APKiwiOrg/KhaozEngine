@@ -29,6 +29,7 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [File-size ratchet (KESIZE analyzer)](#file-size-ratchet-kesize-analyzer)
 - [In-game patch notes (`PatchNotesLoader` / `PatchNotesView` / `PatchNotesScreen`, 10.45.0)](#in-game-patch-notes-patchnotesloader--patchnotesview--patchnotesscreen-10450)
 - [Reconnect / connection-outage screen (`ConnectionStatusController` / `ReconnectScreen`, 13.2.0)](#reconnect--connection-outage-screen-connectionstatuscontroller--reconnectscreen-1320)
+- [In-game bug reports (`BugReportService`)](#in-game-bug-reports-bugreportservice)
 - [Render2D (`KhaozEngine.Render2D`)](#render2d-khaozenginerender2d)
 - [DPI-aware / crisp UI (the point-space path)](#dpi-aware--crisp-ui-the-point-space-path)
 - [Floating world text (`FloatingTextStore` / `FloatingBannerStore`, 18.16.0)](#floating-world-text-floatingtextstore--floatingbannerstore-18160)
@@ -155,9 +156,14 @@ These are not style preferences. Breaking them re-introduces the exact bugs this
 4. **An overlay above a still-updating layer must reserve its footprint** with `BlockInputRegion(rect)` every
    frame, and the layer beneath must guard its actions with `IsInputBlocked(point)`. This is half of the
    click-through fix. The other half is `IsTapIn`.
-5. **Pass the design viewport to `Pointer.Update` / `InputManager.Update`** so hit-testing lines up with what's
+5. **Overlapping windows go on a `WindowStack`** (21.3.0). Register every non-modal window that can overlap
+   another, and update the stack before any layer beneath it reads the same pointer. Decide every pointer
+   behaviour through a `Pointer` hit query or `IsOccluded`, and read raw `Position` only after such a gate. A
+   covered area then answers nothing, engine widgets included. See
+   [Overlapping windows](#overlapping-windows-windowstack-2130).
+6. **Pass the design viewport to `Pointer.Update` / `InputManager.Update`** so hit-testing lines up with what's
    drawn. `GameApp` does this for you. If you build your own loop, do it yourself.
-6. **`System.Numerics` only** - `Vector2/3/4`, `Matrix4x4`. No XNA / MonoGame types anywhere. (An RGBA color
+7. **`System.Numerics` only** - `Vector2/3/4`, `Matrix4x4`. No XNA / MonoGame types anywhere. (An RGBA color
    is `KhaozEngine.Primitives.Color`, not a bare `Vector4`. GPU-layout structs still use `Vector4`.) To dim
    or brighten a color for a tint, use `color.ScaleRgb(factor)`: it scales RGB and keeps alpha. `color *
    factor` scales alpha too, which under the 2D batch's straight-alpha blend turns a dim into translucency
@@ -165,7 +171,7 @@ These are not style preferences. Breaking them re-introduces the exact bugs this
    `ScaleRgb` is unclamped, so a brighten factor over an already-bright color can overshoot 1.0 per channel.
    Use `color.ScaleRgbClamped(factor)` (same contract, each scaled channel clamped to 0..1) whenever the
    factor can push a channel out of range, e.g. a UI "selected" highlight tint.
-7. **Don't fork the packages.** Need an API that isn't there? Add it to KhaozEngine, ship a headless test, bump
+8. **Don't fork the packages.** Need an API that isn't there? Add it to KhaozEngine, ship a headless test, bump
    the version, and consume the new version. Pinned versions are how games stay green during each other's
    migrations.
 
@@ -938,6 +944,18 @@ interactive layout mid-gesture without a scene transition.
 
 **Region blocking (the other half of click-through):** `BlockInputRegion(Rect)` from the higher overlay each
 frame; `IsInputBlocked(Vector2)` from the layer beneath before acting. Cleared at the start of every `Update`.
+
+**Occlusion (21.3.0):** `Pointer.Occlude(Rect)` and `Pointer.OccludeAll()` mark an area, or the whole surface,
+as covered for the rest of the frame. `IsOccluded(Vector2)` reads it and `ClearOcclusion()` drops it early.
+Every `Pointer.Update` clears it, as it clears blocked regions. Unlike `BlockRegion`, which only answers
+`IsBlocked`, occlusion changes what the hit queries report: `IsTapIn`, `IsTapFromTo`, `IsPressingIn`,
+`IsRightTapIn` and `IsRightPressingIn` miss when the press origin or the cursor is occluded, `IsPointerIn` and
+`IsHoveringIn` miss when the cursor is, and `IsDraggingIn`, `GetDragDelta` and `IsDragStartIn` miss when the
+press origin is. `IsReleasedOutside` counts a release in an occluded area as outside, so a click on a window in
+front dismisses a dropdown or text focus in a window behind it. The `InputManager` pass-throughs inherit all of
+this. With nothing occluded every query reads exactly as in 21.1.0. `WindowStack` is the normal producer of
+occlusion. `IsRightPressOriginFresh` is the right-button twin of `IsPressOriginFresh`, true only on the frame
+`RightPressOrigin` latched, a same-frame right tap included.
 
 **Scroll:** `ScrollDelta`, `IsMouseWheelScrolledUp/Down`.
 
@@ -1901,7 +1919,9 @@ nothing catches that, so make it the first line of the window's update.
 `WindowDrag` is the title-bar drag. It stores an OFFSET from wherever the window's own layout put it, so a
 window keeps its placement rule (centred, docked, anchored) across a resize instead of being stranded at an
 absolute position. `Update(pointer, grip)` latches the grab ONCE on the press frame, through
-`Pointer.IsPressOriginFresh`, and holds it until the button goes up wherever the cursor wanders. Re-reading the
+`Pointer.IsPressOriginFresh` and `Pointer.IsDragStartIn(grip)`, and holds it until the button goes up wherever
+the cursor wanders. Since 21.3.0 an occluded press origin never latches, so of two overlapping windows on a
+`WindowStack` only the front one under the press can grab it. Re-reading the
 press origin every frame is the defect this exists to avoid: the grip travels with the window while the press
 origin stays where the button went down, so a window dragged further than its title row is tall moves the grip
 out from under its own press and drops the grab part way. A held drag calls `Pointer.ConsumeGesture`, so a
@@ -1930,13 +1950,103 @@ pointer.BlockRegion(bounds);   // this window's call, not the frame's
 PanelFrame.DrawFrame(batch, white, bounds);
 PanelFrame.DrawTitle(batch, font, white, bounds, stripHeight: 0f, title: Strings.BankTitle,
     readout: LocalizedText.Of(Strings.BankUsed, used, capacity), showClose: true,
-    closeHovered: close.Contains(pointer.Position));
+    closeHovered: pointer.IsPointerIn(close));
 DrawRows(batch, PanelFrame.ContentRect(bounds, stripHeight: 0f));
 ```
 
 What stays in the GAME: the palette values it assigns to `GuiTheme`, the metric numbers if the default shape is
 wrong for it, which taps it swallows through `BlockRegion`, each window's natural-bounds rule, the grip rect,
 and whatever fills the strip, content and footer bands.
+
+### Overlapping windows (`WindowStack`, 21.3.0)
+
+`WindowStack` owns the z-order of a consumer's non-modal windows. Register each window once with
+`Add(window, band)`. The stack raises a window when it opens or is pressed, updates open windows top to
+bottom so each sees only its uncovered area, and draws them bottom to top. A covered area of a window is dead
+to every pointer read, engine widgets included, with no extra code in the window.
+
+A window implements `IStackWindow`: `IsOpen`, `Bounds`, `Close()`, `Update(in WindowUpdate)` and
+`Draw(batch, pointer)`. `CapturesPointer` defaults to false and `ClosesOnEscape` to true. `Contains(point)` and
+`Occlude(pointer)` default to `Bounds`, so override both for a window that is not one rectangle, such as a
+docked panel whose tab strip and body are separate rects. `WindowUpdate` carries the frame's `Pointer`,
+`Input`, `Dt`, `ReceivesInput` and `IsFront`, true for the top-most open window of its band, so up to one
+window per band. For a single global focus read the last open entry of `Order`.
+
+- **Bands.** `WindowBand.Docked`, `Floating` (the default) and `Topmost`, bottom to top. No window rises above
+  a higher band. `Add` places a window at the front of its band, and `Add` on a registered window moves it.
+  `BringToFront` raises within the band. `Order` lists every registered window bottom to top.
+- **Raise on open.** A window that becomes open goes to the front of its band. While the left button is held
+  that raise waits until the gesture has ended. `Update` skips it on the release frame too and that frame's
+  `Draw` applies it, so the release's taps and drops resolve against the order the player saw and the window
+  draws on top from that frame.
+- **Raise on press.** A fresh left or right press raises the front-most open window containing the press
+  origin, tested against where the windows were before this frame's updates. No press raises anything while a
+  window captures the pointer, while the other button is held from an earlier frame, or on a frame with
+  `receivesInput: false`.
+- **A gesture keeps its owner.** Queries that test the press origin (`IsDragStartIn`, `IsDraggingIn`,
+  `GetDragDelta`) keep answering for the window the press began in for the whole gesture. The press raised
+  that window, and a window opened mid-gesture rises only after the release frame's update.
+- **Update.** Each open window updates with every window above it occluded. A window that closes during its
+  own update still occludes for the rest of that frame, so the tap that closed it cannot reach the window
+  behind, and it is not drawn. A window another window closed or removed earlier in the frame is skipped.
+- **Capture.** A window reporting `CapturesPointer`, normally while a context menu it owns stands, updates
+  first with nothing occluded. Every other window then updates with the whole surface occluded. The top-most
+  captor wins.
+- **No input.** `Update(..., receivesInput: false)` still updates every open window, with the whole surface
+  occluded and `ReceivesInput` false. Read no keyboard input on such a frame, the `Screen.Update` contract.
+- **Draw.** Before each window the stack re-applies the occluders of the open windows above it, so a
+  draw-time hover read such as a lit close square normally agrees with the update. It mirrors the last
+  `Update`'s mode: after a capture frame the captor draws with nothing occluded and the rest fully occluded,
+  and after a no-input frame every window draws fully occluded. Occluders come from the order and open state
+  at draw time, so for one frame they can differ from the update, for example when a window closed during its
+  own update or a window was raised between `Update` and `Draw`. Occluders a consumer adds to the pointer
+  before `Update` are respected by `Update` but not kept by `Draw`, which clears occlusion before each window.
+- **Escape and hit tests.** `CloseFront()` closes the top-most open window that closes on Escape, searching
+  `Topmost`, then `Floating`, then `Docked`, and reports whether it closed one. `Covers(point)` is true over
+  any open window. A closed window stays registered and is skipped by update, draw, `Covers` and `CloseFront`.
+  `IsCapturing` is true when the last `Update` ran in capture mode.
+
+Frame ordering is the part a consumer must get right:
+
+1. `Pointer.Update` runs first, as `GameApp` already does.
+2. Update the stack before any layer beneath it reads the same pointer. After `Update` every window that
+   updated stays occluded and reserved with `BlockRegion` for the rest of the frame, so the world, a HUD and
+   `ScreenStack.PressBeganOverUi` treat the windows as UI. After a capture or no-input frame the whole surface
+   stays occluded for those layers.
+3. `Draw` clears occlusion when it finishes. Content drawn after `WindowStack.Draw`, such as tooltips, context
+   menus and drag ghosts, reads the pointer as uncovered and draws above every window.
+
+```csharp
+// Once, at construction.
+_windows.Add(_sidePanel, WindowBand.Docked);
+_windows.Add(_bank);
+_windows.Add(_debugMenu, WindowBand.Topmost);
+
+// Update: after Pointer.Update, before the world reads the pointer.
+// Escape goes to the stack only on a frame it receives input, so one press never closes an overlay and a window.
+bool escapeSpent = !overlayOpen && !_windows.IsCapturing && input.WasPressed(Key.Escape) && _windows.CloseFront();
+_windows.Update(pointer, input, dt, receivesInput: !overlayOpen);
+UpdateWorld(pointer);   // windows are occluded and blocked here
+
+// Draw: windows bottom to top, then content that floats above them.
+_windows.Draw(batch, pointer);
+_tooltip.Draw(batch, pointer);
+```
+
+`IsCapturing` reports the last `Update`, read here before this frame's. While a window captures, a capturing
+window's own popup, normally its context menu, handles Escape that frame, so the stack closes nothing.
+
+The engine widgets inside a window already honour occlusion. `WindowDrag` latches through `IsDragStartIn`.
+`SlotGrid` offers no drop slot, `GuiDragContext.OfferTargetIn` refuses, `TreeView` computes no drop position
+and `ScrollablePanel` does no drag edge scroll while the pointer is occluded. `PropertyGrid` hit-tests through
+`IsPointerIn`, `WorldMapViewCore` builds no hover overlay for an occluded position,
+`GuiSurface.HoverCaptured` is true over an occluded position, `GuiSurface.PointerCaptured` and
+`ScreenStack.PressBeganOverUi` are true for an occluded press origin and `DraggableBottomSheet` refuses an
+occluded press. `PannableCanvas.TryGetTap` misses when the press origin or the release is occluded, and
+`PanZoomController` admits no press, touch or gesture at an occluded point and records no tap on an occluded
+release. A consumer's own widgets follow the same gate rule: a `Pointer` hit query or `IsOccluded` first, raw
+`Position` only after it. Out of scope for the stack: saved order or position, cascade placement, docking,
+minimising, keyboard focus beyond `IsFront`, and modal dialogs, which stay on `PopupPanel`.
 
 ---
 
@@ -3254,6 +3364,98 @@ localization catalog.
 
 ---
 
+## In-game bug reports (`BugReportService`)
+
+Bug reports are opt-in and sit in no umbrella. A client references `KhaozEngine.BugReports.Client`, which brings
+`KhaozEngine.BugReports` and `KhaozEngine.BugReports.Contracts`. A game server references `KhaozEngine.BugReports`
+alone, which has no GPU, window or game dependency.
+
+`BugReportService` lives at the `GameApp` level, as an overlay added through `GameApp.AddOverlay`, so the trigger
+works on the title, login, loading and game screens. Build it once on the frame thread after the app is
+constructed:
+
+```csharp
+var reports = new BugReportService(app,
+    new BugReportServiceOptions { GameId = "mygame", GameDisplayName = "My Game", SessionLogPath = logPath },
+    new HttpRelaySink(http, relay, () => token),
+    new BugReportOfflineQueue(Path.Combine(stateDir, "bug-reports", "pending"), TimeProvider.System),
+    () => subject);
+```
+
+- **Trigger.** F10 by default, rebindable through `reports.TriggerControls`, persisted through
+  `SaveTriggerBindings` and `TriggerBindingsJson`. `reports.Begin()` serves a menu entry.
+- **Capture.** The trigger frame freezes the clip, arms the screenshot and captures every section, then raises
+  `ReportCaptured(reportId)` for a server-backed game to request a server snapshot. The confirmation screen opens
+  once the screenshot is taken, at most three frames later, and the game sees `InputState.WithoutInteraction` from
+  the trigger until it closes. The game decides whether its
+  world pauses.
+- **Sections.** Seven built-in sections (`build`, `platform`, `graphics`, `session`, `input`, `performance`,
+  `log`) plus any `AddSection`. Sections run in the trigger frame and must be cheap. Redaction and truncation run
+  off the frame thread before anything leaves the machine.
+- **Delivery.** Send builds the bundle on the thread pool. `BugReportSubmitter` writes it to the offline queue
+  before the first send, so a crash, a shutdown or an unreachable relay keeps it for the next sign-in. Only a relay
+  acceptance that echoes the report id, or a refusal with the relay's error, deletes it. Use
+  `LocalFolderSink` in development to open each report in the frame viewer without a relay.
+- **Clip.** `reports.Recorder.Suspend()` and `Resume()` around a pause menu, and `SetRecordingEnabled` for a
+  settings toggle.
+- **Strings.** Every line resolves through `bugreport.*` `StringId` keys with an English fallback. Add a key to
+  the game's catalog to override it.
+- **Shutdown.** `reports.Dispose()` removes the overlay, waits up to 3 s for sends to reach the offline queue,
+  cancels sends and flushes, disposes the recorder and detaches the log ring. Dispose it before the app.
+
+### Server snapshot
+
+A game server registers its own sections on `BugReportServerCapture`, checks `ReportIds.IsValid` and `TryAccept`
+with the subject it authenticated before it calls `Capture` on the simulation thread, and posts with
+`ServerSnapshotPoster` off that thread. `TryAccept(subject)` defaults to 5 requests per rolling hour per
+account. The game carries the report id from `ReportCaptured` to the server over its own authenticated
+protocol. Never accept a subject from that message.
+
+`ServerSnapshotPoster(http, relayBase, serviceKey, redactor)` finishes sections off the simulation thread,
+redacts and truncates within the 1 MiB snapshot cap, and posts with `X-Report-Service-Key` to
+`bug-reports/{reportId}/server`. The optional redactor defaults to the engine rules. `PostAsync` returns false
+with one warning on failure, except caller cancellation, which throws. Snapshot failure does not discard
+the client report. See the [server example](../KhaozEngine.BugReports/README.md#server-snapshot).
+
+### Relay host
+
+E1 capture and the E2 report client ship in 21.4.0. E3 adds `KhaozEngine.BugReports.Relay` and
+`KhaozEngine.BugReports.Relay.Azure` for staged 21.5.0. Both are opt-in, outside every umbrella, and target
+`net10.0`. The first consumer uses .NET 10 isolated on Functions Flex Consumption.
+
+The host supplies an `IReporterAuthenticator` over its verified game token and constructs `BugReportRelay`
+with media, queue, quota and GitHub seams plus a `TimeProvider`. Only the authenticator's returned subject
+is authoritative. Map HTTP POST `bug-reports` to `IntakeAsync`, HTTP POST `bug-reports/{reportId}/server`
+to `ServerSnapshotIntakeAsync`, and the queue trigger to
+`ProcessWorkAsync(ReportWorkItemJson.Parse(message), cancellationToken)`. Pass request bodies unread and
+forward the `RelayResponse` status, JSON and headers, including `Retry-After`. Let worker exceptions escape
+for durable queue redelivery.
+
+Every resend of an unfinished report enqueues `CreateIssue` before returning 202, regardless of age.
+If enqueue fails, the request fails so the client keeps its bundle. Worker claims and result markers
+suppress duplicate messages.
+
+To revoke a report:
+
+1. Call `BugReportRelay.RevokeAsync(reportId, cancellationToken)`.
+2. Delete its public capability folder.
+3. Delete it again after the 10-minute claim lease. A holder that passed its check before the call can
+   still finish a write inside its lease. Holders running beyond that lease are outside the guarantee.
+
+Retain the private `revoked/` tombstone and idempotency state for at least the report retention and the
+client queue's 7-day maximum age. A missing public manifest is also treated as revoked. Late snapshots
+and full-bundle resends return 202 without enqueueing revoked work.
+
+The [relay README](../KhaozEngine.BugReports.Relay/README.md) has the isolated-worker host sketch and status
+codes. Read its [Host duties](../KhaozEngine.BugReports.Relay/README.md#host-duties) for the 5-dequeue poison
+policy, visibility backoff, daily requeue and prefix-scoped retention, and its
+[Guarantees and residuals](../KhaozEngine.BugReports.Relay/README.md#guarantees-and-residuals) for claims,
+crash windows, unfenced leases and operator recovery. The
+[Azure backend README](../KhaozEngine.BugReports.Relay.Azure/README.md) covers caller-built clients,
+`ReportQueueClientOptions.Create(logger)`, RBAC roles and the separately gated live storage tests.
+
+---
+
 ## Render2D (`KhaozEngine.Render2D`)
 
 2D rendering on the custom stack. `Render2DSurface(window)` owns the `SpriteBatch` and the loaders;
@@ -4265,10 +4467,10 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
   final image with each pixel's screen motion since the last frame: hue for direction (rightward cyan, leftward red,
   downward violet, upward yellow-green), brightness for length (full at 16 internal pixels), and black where nothing
   opaque drew or nothing moved. The screen overlays drawn after the post chain (target outlines, fills, lines,
-  billboards and the screen transition) still draw over it. `History` (black just after a reset, white at the full
-  history, green where thin feature retention holds a pixel), `Disocclusion` (red where history was rejected) and
-  `Reactive` (yellow where transparent content lowered the history weight) show the resolve's own decisions and take
-  effect only under `AntiAliasing.Temporal`.
+  billboards and the screen transition) still draw over it. `History` (black just after a reset and where a pixel's
+  shading changed, white at the full history, green where thin feature retention holds a pixel's lock),
+  `Disocclusion` (red where history was rejected) and `Reactive` (yellow where transparent content lowered the
+  history weight) show the resolve's own decisions and take effect only under `AntiAliasing.Temporal`.
 - **Diagnostics.** `scene.LastTemporalDiagnostics` reports the frame index, the jitter phase and offset, the keyed
   rigid and skinned draws and key collisions, whether history was valid and why it was last reset, the internal and
   display sizes, the preset and the effective `UpscaleRatio`. `LastReset` is a `TemporalResetReason`: `None`,
@@ -6456,6 +6658,8 @@ carry no scale track, or it is refused before it is sampled. `BaseLocal` is the 
 `BaseWorld`, `ParentBaseInverse` and `BodyAlignment` return a contract joint's base model frame, the inverse of its
 parent's, and the rotation that takes its base orientation back out. They refuse a node outside the contract
 rather than return a zero matrix. `Node` resolves any named node and `Bone` its skin bone.
+The alignment's homogeneous component is exactly one, including when general inversion rounds it for oblique
+base axes. External attachment matrices still require an exact affine column.
 
 `ClipRefusals` words a skin loader's clip refusals one way, naming the clip, the rule and the joint. `Only` throws
 on a second clip of one name. The other checks return null for a clean clip and a message otherwise, so a loader
@@ -7560,7 +7764,9 @@ if (camController.OrbitTap) Select(camController.OrbitGesture!.TapPosition);
 
 Gate `UiBlocked` on `GuiSurface.HoverCaptured`, which tests the pointer against every UI rect reserved whichever
 button is pressed, and reads the frozen capture point while captured. `GuiSurface.PointerCaptured` tracks only the
-left button's press origin, so it would let a right drag start on an inventory slot.
+left button's press origin, so it would let a right drag start on an inventory slot. Since 21.3.0
+`HoverCaptured` is also true while the live position is occluded, so a camera gated after `WindowStack.Update`
+stays still under every window.
 
 `HoverCaptured` tests the rects reserved since the last `GuiSurface.Begin`, which clears them, against the live
 position of the `Pointer` handed to that `Begin`. A game that passes its one long-lived `Pointer` and sets
@@ -8315,7 +8521,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.1.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.5.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -8643,7 +8849,10 @@ collider options, catalog rows that drive colliders, heights and medium, the gro
 the clamp bounds and the classifier policy. Normalise text to LF before digesting so a CRLF checkout matches.
 Prefer authored inputs to `TileWorldColliders.Hash` for walk surfaces yawed off a quarter turn, since that hash is
 not promised equal across x64 and ARM64. Rebake when any input, option, probed tuning field or the engine pin
-changes, and keep a game test that loads the shipped bake and expects `Loaded`.
+changes, and keep a game test that loads the shipped bake and expects `Loaded`. Load also compares the normalized
+`KhaozEngine.Movement` assembly version. Any engine version change, a patch included, therefore requires
+regeneration and returns `EngineChanged`, even when the format and payload algorithm are unchanged. A backend fix
+within the same engine version does not add another invalidation when the bake identity and payload remain unchanged.
 
 On the dev Mac a 36,864-column flat world wrote 664,689 bytes and loaded in about 20 to 23 ms, allocating
 1,958,264 bytes against about 0.85 to 0.96 MB retained. These are single observations, not startup guarantees.
@@ -8662,7 +8871,7 @@ A null execution or a degree of 1 runs the serial build, and the older overloads
 part of the options or the bake identity, so every degree writes the same bytes and loads against the same
 expectation. Above degree 1 an ordinary contact profile proves its admissions, edges and Stair links on up to
 `MaxDegreeOfParallelism` workers, over `min(rows, workers * 4)` row bands claimed in order. Legacy profiles always
-build serially. `Create` builds profiles one after another and passes the setting to each contact profile.
+build serially. `Create` builds profiles one after another and passes execution options to each profile.
 
 A degree below 1 throws `ArgumentOutOfRangeException` before any other check. After every existing check, a contact
 profile above degree 1 needs `IPhysicsConcurrentReadSource` on both the capture's physics source and the context's
@@ -8684,12 +8893,36 @@ otherwise idle. See the [cost record](superpowers/plans/proofs/2026-10-14-parall
 [slowdown record](superpowers/plans/proofs/2026-10-14-parallel-proof-slowdown.md) for the metrics and the Hollowmere
 extrapolation.
 
+### Stable legacy profile reads
+
+An audited content pipeline can reuse one synchronous physics read interval for each legacy profile:
+
+```csharp
+var execution = new NavBakeExecution(1) { UseStableLegacyReadScope = true };
+GroundNavigationBake bake = GroundNavigationBake.Create(capture, sources, profiles, execution);
+// The same execution argument is accepted by capture.BuildProfile(tuning, areas, profileOptions, execution).
+```
+
+The default is false. True is a caller assertion that every provider used by the build is deterministic, stable and
+read-only. Keep ground, normals, bounds, medium, water and area data fixed. Callbacks must not mutate physics,
+acquire an incompatible explicit nested lease or wait for another thread to mutate that owner. The complete physics
+source and any selected movement query view must each declare `IPhysicsQueryLeaseSource` themselves. Unsupported
+true throws `NotSupportedException` after argument checks and before proofs, with no capability inferred from an
+underlying backend. The live lease authenticates the exact owner, selected view, origin and captured geometry.
+
+The scope is thread-affine and releases on success or exception. An opted-in build inside an existing explicit lease
+receives the backend's non-nesting refusal and leaves that caller lease live. False retains historical callback and
+outer-lease behavior. Legacy proofs remain serial at every degree. Contact profiles ignore this property, and their
+existing scheduling stays unchanged. Both paths keep every hold, directed edge, Stair proof and origin check. The
+option does not enter bake identity or change canonical bytes. See the
+[Movement contract](../KhaozEngine.Movement/README.md#stable-legacy-read-scope) for failure details.
+
 ### Range steering, NPC stepping and client path commands
 
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="21.1.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="21.5.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -9454,7 +9687,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.1.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="21.5.0" />
 ```
 
 ```csharp
@@ -11247,6 +11480,24 @@ tagged `door` within `DoorClearance`. Its height and normal use the selected `Ti
 the same interpolated lattice values as the rendered ground. Non-solid decorative objects remain eligible.
 Validation resolves the foliage archetype and material ids against the same catalogs as the rest of the world.
 
+**Clearance is an authoring check, never a runtime rule.** An optional `clearance` manifest block
+(`TileWorldDocument.Clearance`, a `TileClearanceSettings`) declares rules such as "objects whose archetype is
+tagged `tree` keep their meshes clear of objects tagged `structure`", with a mesh root (relative to the world
+directory, forward slashes only, refused when rooted or holding a backslash on every OS), a sampling cell size and
+an object waiver tag. `TileWorldClearance.Check(doc, catalogs, meshes)` places every loaded object's mesh as the
+prop renderer draws it and returns `clearance.overlap`, `clearance.mesh` and `clearance.rule` issues, reading
+meshes through `ITileMeshGeometry` (the glb implementation is `GltfTileMeshGeometry` in
+`KhaozEngine.TileWorld.Render3D`). `TileWorldValidator.Validate` never runs it, the block is outside
+`TileWorldHash.OfWorld`, and the geometry core is `ClearanceMesh`, `ClearanceSolid`, `ClearanceSamples` and
+`ClearanceProbe` in `KhaozEngine.Primitives`. An obstacle is solid from its lowest point to its top surface, so a
+hollow piece such as a bridge deck must not carry an obstacle tag. Field contracts, rule matching and the issue
+order are in the `KhaozEngine.TileWorld` package README under Clearance.
+
+```csharp
+var meshes = new GltfTileMeshGeometry(TileWorldClearance.ResolveMeshRoot(worldDir, doc.Clearance!));
+IReadOnlyList<TileWorldIssue> clearance = TileWorldClearance.Check(doc, catalogs, meshes);
+```
+
 **Two conventions run through every type.** Coordinates are WORLD tile coordinates everywhere, including
 `TileObject.X/Z` and `TileMarker.X/Z`, and the owning region is always `RegionCoord.Of(X, Z)`, which floors, so
 a negative coordinate lands in a negative region with a local coordinate in 0..63. Rotation is quarter turns
@@ -11980,7 +12231,9 @@ after every command, so one verb is one undo step there.
 `SetCornerHeightsCommand` (a rect of CORNERS, skipping corners no region holds and reporting `WrittenCount`
 against `CornerCount`), `PlaceObjectCommand` / `MoveObjectCommand` / `RotateObjectCommand` /
 `RemoveObjectCommand` / `SetObjectTagsCommand`, `SetMarkerCommand` / `RemoveMarkerCommand`,
-`CreateRegionCommand` / `DeleteRegionCommand`, `CompositeCommand` (a list of commands as one undo step, rolled
+`SetFoliageLayerCommand` / `RemoveFoliageLayerCommand` (replace or remove one cosmetic foliage layer, reporting
+its raster extent), `SetClearanceCommand` (one replace or remove of the whole clearance settings, no dirty
+rects), `CreateRegionCommand` / `DeleteRegionCommand`, `CompositeCommand` (a list of commands as one undo step, rolled
 back whole when a child throws) and `SnapshotRectCommand` (an arbitrary mutation made undoable by capturing the
 rect's pre-image first). An object placed and then undone comes back with the id it HAD on redo, so anything
 referring to it by id keeps resolving.
@@ -12049,14 +12302,15 @@ working directory, because an MCP server is started by a client whose working di
 The two verbs that OPEN a world (`world_open`, `world_create`) are the exception, since there is no world to be
 relative to yet: pass them an absolute path.
 
-**Verb families (50 tools).** World lifecycle, catalogs, regions and history (`world_open`, `world_create`,
+**Verb families (55 tools).** World lifecycle, catalogs, regions and history (`world_open`, `world_create`,
 `world_save`, `world_summary`, `world_validate`, `catalog_list`, `region_create`, `region_delete`,
 `region_list`, `undo`, `redo`), tiles (`tile_get`, `tile_set`, `tiles_fill`, `tiles_get_rect`), heights
 (`height_set`, `height_raise`, `height_flatten`, `height_smooth`, `height_get_rect`, `height_import`), objects
 (`object_place`, `object_move`, `object_rotate`, `object_remove`, `object_set_tags`, `object_get`,
 `objects_in_rect`, `object_find`, `objects_line`, `objects_scatter`), markers (`marker_set`, `marker_remove`,
 `marker_list`), foliage (`foliage_layer_set`, `foliage_get`, `foliage_density_set`, `foliage_paint`,
-`foliage_remove`), prefabs (`prefab_save`, `prefab_place`, `prefab_list`), derived collision (`collision_at`,
+`foliage_remove`), clearance (`clearance_get`, `clearance_set`, `clearance_rule_set`, `clearance_rule_remove`,
+`clearance_check`), prefabs (`prefab_save`, `prefab_place`, `prefab_list`), derived collision (`collision_at`,
 `is_walkable`, `path`, `walkable_rect`), archetype collision heights (`archetype_measure_heights`,
 `archetype_set_collision_heights`) and renders (`render_topdown`, `render_view`). The per-verb reference,
 with every argument and the ASCII map legends, is the
@@ -12073,6 +12327,16 @@ while `foliage_density_set` takes explicit numeric rows and dimensions. `foliage
 centre and radius. Every configure, density, paint and remove call is one undo step.
 `render_view` is the one verb in WORLD metres, where y is up and world z is MINUS tile z: to look at tile
 (10, 20) from the south-east, target world (10.5, 0, -20.5) with the eye at (18, 8, -12).
+
+**Clearance refuses the save.** When the world declares clearance rules, `world_save` runs
+`TileWorldClearance.Check` after the validator against the glb meshes under the block's mesh root, and any
+`clearance.overlap`, `clearance.mesh` or `clearance.rule` issue refuses the save with every issue listed and
+nothing written. `world_validate` appends the same issues and `clearance_check` reports them alone, neither
+writing. `clearance_set` replaces the mesh root, cell size and waiver tag on every call, so an omitted value
+resets to its default. The session reads meshes through one `GltfTileMeshGeometry` per open world, which
+re-reads a glb whose last write time or length changed, so a glb written or re-exported while the world is open
+is seen at the next save or check with no `world_open`. The block and the check are under
+[Tile world](#tile-world-khaozenginetileworld).
 
 **Renders return the image inline.** `render_topdown` and `render_view` are the only two verbs that need a GPU
 (a headless Metal, D3D11 or Vulkan device, through `TileWorldSnapshot`, the same path the render goldens take),
@@ -17207,7 +17471,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.1.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="21.5.0" />
 ```
 
 ```csharp
@@ -17243,7 +17507,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.1.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="21.5.0" />
 ```
 
 ```csharp
@@ -17487,7 +17751,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.1.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="21.5.0" />
 ```
 
 ```csharp
@@ -21847,7 +22111,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="21.1.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="21.5.0" />
 </ItemGroup>
 ```
 

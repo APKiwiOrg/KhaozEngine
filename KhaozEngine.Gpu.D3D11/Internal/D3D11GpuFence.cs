@@ -56,6 +56,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// surface: the seam sees only <see cref="Signaled"/>.</summary>
         internal ulong Target => _target;
 
+        /// <summary>The fence subsystem this fence was created on. Each device has one, so this is device
+        /// identity, which is how the fenced read map refuses another device's fence.</summary>
+        internal D3D11FenceSubsystem Owner => _owner;
+
         /// <inheritdoc/>
         public bool Signaled
         {

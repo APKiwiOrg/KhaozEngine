@@ -422,7 +422,7 @@ namespace KhaozEngine.Gui
 
             if (!drag.IsDragging) return;
 
-            int over = SlotAt(pointer.Position);
+            int over = pointer.IsOccluded(pointer.Position) ? -1 : SlotAt(pointer.Position);
             if (over < 0) return;
 
             bool accept = CanAcceptDrop is null || CanAcceptDrop(over, drag.Payload);

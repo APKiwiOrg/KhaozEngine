@@ -187,6 +187,8 @@ public sealed class RigidAttachmentBindingTests
     [InlineData(1)]
     [InlineData(2)]
     [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(5)]
     public void Invalid_model_is_refused_before_writing(int kind)
     {
         Skeleton skeleton = Create();
@@ -203,6 +205,8 @@ public sealed class RigidAttachmentBindingTests
     [InlineData(1)]
     [InlineData(2)]
     [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(5)]
     public void Invalid_later_joint_pose_leaves_all_output_untouched(int kind)
     {
         Skeleton skeleton = Create();
@@ -225,7 +229,9 @@ public sealed class RigidAttachmentBindingTests
         if (kind == 0) matrix.M41 = float.NaN;
         else if (kind == 1) matrix.M11 = 0;
         else if (kind == 2) matrix.M14 = 0.5f;
-        else matrix.M22 = float.PositiveInfinity;
+        else if (kind == 3) matrix.M22 = float.PositiveInfinity;
+        else if (kind == 4) matrix.M44 = float.BitDecrement(1f);
+        else matrix.M14 = float.Epsilon;
         return matrix;
     }
 }

@@ -45,6 +45,11 @@ either value shifts the bit-exact result legitimately.
   pressure. Throws on a stale handle or a motorless joint.
 - **`Step(dt)`**, **`Raycast`**, **`SweepCapsule`**, **`ComputePenetration`** - the last is one
   CollisionBatcher manifold query over every shape type, deepest contact wins.
+  Penetration initializes its batcher only after the first static passes mobility and view exclusions.
+  If none is eligible, it returns false with a positive-zero MTV without renting, clearing or flushing
+  native batcher storage. Broad-phase traversal and managed overlap scratch still run. Eligible pairs
+  retain their submission order, and every initialized batcher reaches one `Flush` in `finally`.
+  Whole-navigation CPU impact requires separate measurement.
 - **Complete capsule contacts** - the owner and restricted views implement `IPhysicsCapsuleContacts`.
   A bounded empty selection returns a complete empty result with zero error, without capsule/hull
   face selection. Excessive coordinate spacing still refuses. Every candidate query retains the

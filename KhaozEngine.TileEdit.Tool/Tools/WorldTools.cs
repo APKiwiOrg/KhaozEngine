@@ -38,8 +38,8 @@ public sealed class WorldTools(TileEditSession session, QueryService query, Muta
         [Description("Tile edge length in world metres. Defaults to 1.")] float tileSize = 1f)
         => ToolGuard.Guard(() => session.Create(path, id, displayName, planeCount, tileSize, catalogPaths));
 
-    /// <summary>Validates then writes the open world back to its own directory.</summary>
-    [McpServerTool(Name = "world_save"), Description("Validates the open world and, when it passes, writes it back to its own directory and clears the dirty flag. An invalid world throws and nothing is written. Returns the directory and the world hash of what landed there.")]
+    /// <summary>Validates and checks clearance, then writes the open world back to its own directory.</summary>
+    [McpServerTool(Name = "world_save"), Description("Validates the open world and checks its clearance rules against the meshes on disk and, when both pass, writes it back to its own directory and clears the dirty flag. An invalid world, or one with any clearance issue, throws listing the issues and nothing is written. Each clearance glb is re-read when its last write time or length changes, so a glb exported or re-exported while the world is open is seen at the next save. Returns the directory and the world hash of what landed there.")]
     public SaveResult WorldSave()
         => ToolGuard.Guard(session.Save);
 
@@ -49,7 +49,7 @@ public sealed class WorldTools(TileEditSession session, QueryService query, Muta
         => ToolGuard.Guard(session.Summary);
 
     /// <summary>Validates the open world without throwing.</summary>
-    [McpServerTool(Name = "world_validate"), Description("Validates the open world against its catalogs and reports every issue as '[code] message' rather than failing, so a client can ask what is wrong without a failed call. Returns a valid flag and the issue list.")]
+    [McpServerTool(Name = "world_validate"), Description("Validates the open world against its catalogs, then its clearance rules against the meshes on disk, and reports every issue as '[code] message' rather than failing, so a client can ask what is wrong without a failed call. Returns a valid flag and the issue list.")]
     public ValidateResult WorldValidate()
         => ToolGuard.Guard(session.Validate);
 

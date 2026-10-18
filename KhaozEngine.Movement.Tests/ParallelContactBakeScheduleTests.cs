@@ -28,6 +28,28 @@ public class ParallelContactBakeScheduleTests
     }
 
     [Fact]
+    public void AnEarlierFailureCanCutOffTheUnclaimedDistantFault()
+    {
+        // The old edge fixture held layer 0 row 0 while the other worker traversed bands 1 through 6.
+        // Its later fault was in band 7. A missed wait let ordinal 2 fail before that band was claimed.
+        var cutoff = new ContactNavigationCutoff();
+        var schedule = new ContactNavigationSchedule(12, ContactNavigationWorkers.BandCount(2, 12),
+            row => row * 16L, cutoff);
+        Assert.True(schedule.TryClaim(out var earlier));
+        Assert.True(earlier.Admits(2));
+        for (int index = 1; index < 7; index++)
+        {
+            Assert.True(schedule.TryClaim(out var intervening));
+            Assert.Equal(index, intervening.Index);
+            Assert.True(intervening.End <= 10);
+        }
+        var failure = new ProviderFaultException("earlier", default);
+        earlier.Fail(failure);
+        Assert.False(schedule.TryClaim(out _));
+        Assert.Same(failure, Assert.Throws<ProviderFaultException>(cutoff.ThrowSelected));
+    }
+
+    [Fact]
     public void DuplicateAnchorBelowAWorkerFailureThrowsTheDuplicate()
     {
         var cutoff = new ContactNavigationCutoff();

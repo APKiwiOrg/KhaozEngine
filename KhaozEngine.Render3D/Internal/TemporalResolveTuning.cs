@@ -145,6 +145,93 @@ namespace KhaozEngine.Render3D.Internal
         /// centre. With this floor it measures the same as at the centre, and every other thin-feature fact is unchanged.
         /// A nearer surface crossing a held line at 0.1 internal pixels a frame is a hundred times this.</summary>
         public const float LockEdgeFloorInternalPixels = 1e-3f;
+        /// <summary>Steps 6 and 8. How far past the variance box, in its half-widths beyond the first, a pixel's
+        /// history luma lies before the pixel may read as one whose shading changed, a shadow or a light sliding over a
+        /// surface, still or moving, and let go of its hold and its accumulated weight for the frame
+        /// (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendments 33 and 34). The half-width there is at least a ridge's step. On its own
+        /// this test released every isolated stable peak every frame (<c>TemporalStablePeakGpuTests</c>), so it is a
+        /// gate, and <see cref="ShadingChangeExtents"/> or <see cref="ShadingRingExtents"/> decides. On Metal at 0.125
+        /// the stable peaks' frame-to-frame change at Quality over the textured wall rose 12 percent, and at 0 the
+        /// Native one 21 percent.</summary>
+        public const float ShadingResetExtents = 0.25f;
+        /// <summary>Steps 6 and 8. How far a pixel's history luma must lie from this frame's reconstruction, in
+        /// the box's half-widths for each display pixel an internal texel spans, for the release to read its own pixel
+        /// as changed. The jitter moves a sub-texel feature's reconstruction by up to that texel, so a stable peak's
+        /// reconstruction varies about its history in proportion, while a shading change moves it away. On Metal at 1
+        /// unscaled, the stable peaks' frame-to-frame change at Quality over the textured wall rose 11 percent, and at
+        /// 1.25 unscaled the Native textured tail at 1 display pixel a frame retreating
+        /// (<c>TemporalShadowEdgeLagGpuTests</c>) measured 1.61 times the tail at 0.25, against 1.55 here.</summary>
+        public const float ShadingChangeExtents = 0.85f;
+        /// <summary>Steps 6 and 8. How far out on each diagonal, in display pixels, the release's four taps of last
+        /// frame's output sit around the previous position. At a still pixel centre each bilinear tap is the mean of the
+        /// 2x2 pixels one and two out, so the ring leaves out the pixel's own row and column, and at Quality it spans
+        /// what the 3x3 spans.</summary>
+        public const float ShadingRingPixels = 1.5f;
+        /// <summary>Steps 6 and 8. How far the ring's mean luma (<see cref="ShadingRingPixels"/>) must lie from the
+        /// mean of this frame's eight texels around the centre, in the box's half-widths and on the side the pixel's
+        /// history lies, for the release to read the neighbourhood's shading as changed. A stable peak's ring and its
+        /// eight texels hold the same ground and agree. A pixel whose neighbours were released first agrees too, so
+        /// on Metal the ring alone left the Native textured tail at 1 display pixel a frame retreating at 1.75 times the
+        /// tail at 0.25, and the least of the four taps in place of their mean at 3.98. At 0.125 the stable peaks'
+        /// change at Quality over the textured wall rose 9 percent. Where the frame upscales, this and
+        /// <see cref="ShadingChangeExtents"/> must both read a change: with either alone, a still wall of one display
+        /// pixel texels at Quality (<c>TemporalStableDetailGpuTests</c>) measured 15 percent more error against its
+        /// reference and 44 percent more temporal error than before the release, and with both 2 and 7.</summary>
+        public const float ShadingRingExtents = 0.25f;
+        /// <summary>Steps 6 and 8. <see cref="ShadingRingExtents"/> for a pixel that carries a lock with no ridge this
+        /// frame or moves at <see cref="LockMotionStartPixels"/> or more (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment
+        /// 34). Such a pixel's history lies apart from its reconstruction with nothing changed, a sub-texel feature the
+        /// jitter missed by nature and a moving one by its resampled history, so its reconstruction never decides
+        /// alone and its ring must lie this far from its eight texels. On Metal, with a carried lock's ring at the
+        /// still pixel's 0.25, a still wall of one display pixel texels at Quality
+        /// (<c>TemporalStableDetailGpuTests</c>) measured a temporal error of 0.00122 against 0.00112 before, and at
+        /// 0.5 the half pixel texels 0.00106 against 0.00098. With a moving pixel under the still pixel's rule, still
+        /// lines a quarter texel wide beside the orthographic follow walk at 1.5 display pixels a frame on Quality
+        /// (<c>TemporalFollowPhaseGpuTests</c>) kept 830 thousandths of their energy at their worst start phase,
+        /// against a bound of 850, and here 898, as before amendment 34.</summary>
+        public const float ShadingStrictRingExtents = 1f;
+        /// <summary>Steps 6 and 8. The least share of a carried lock's own shift, its history luma less this frame's
+        /// reconstruction, that its ring (<see cref="ShadingStrictRingExtents"/>) must read on the history's side for
+        /// it to release (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 34). A sub-texel feature the jitter missed spills
+        /// into the ring by a small share of its contrast, and a shading change that passed moves the ring as far as
+        /// the pixel. A missed diagonal blade crosses two opposite ring taps. Taking the whole ring's mean let its
+        /// spill plus texture noise release the lock: the still 45 degree line at about ten texture half-widths on
+        /// Quality (<c>TemporalDiagonalDetailGpuTests</c>) changed 51 percent more than v21.2.0. Both opposite-pair
+        /// means must therefore also read a change (<see cref="ShadingLockPairExtents"/>). With none, a still line
+        /// beside a still nearer surface at Quality
+        /// (<c>TemporalResolveLockGpuTests</c>) changed by up to 51 percent of its contrast a frame. On Metal at 0.5
+        /// the textured band of a shadow edge travelling 1 and 2 display pixels a frame retreating at Quality
+        /// (<c>TemporalMovingShadeLagGpuTests</c>) measured 1.53 and 1.59 times the reference's grain, against 1.46
+        /// and 1.43 here, and at 0.7 the Quality textured tails at 4 and 8 rose to 1.9 to 2.8 times the tail at
+        /// 1.</summary>
+        public const float ShadingLockRingShare = 0.35f;
+        /// <summary>Steps 6 and 8. Each opposite-corner pair's mean luma must shift this many half-widths on the
+        /// history's side before a carried lock releases. A missed diagonal line crosses one pair but not the other,
+        /// so its spill cannot decide alone. The full ring still takes <see cref="ShadingStrictRingExtents"/> and
+        /// <see cref="ShadingLockRingShare"/>. At one half-width, the Quality textured band of a shadow retreating at
+        /// two display pixels a frame measured grain of 0.0228 against the reference's 0.0150, past its 1.5 bound.
+        /// Taking the own-shift share on each pair too raised it to 0.0232.</summary>
+        public const float ShadingLockPairExtents = 0.75f;
+        /// <summary>Steps 6 and 8. The share of the ridge step below which a carried lock's variance box reads as flat
+        /// and the lock keeps its hold whatever its ring reads (TEMPORAL-RESOLVE-UPSCALING-DESIGN amendment 34). Its 3x3
+        /// is then flat ground with the thin feature the jitter missed, and the feature's spill into the ring and a
+        /// neighbouring feature in it read as a change. Without it, at a share (<see cref="ShadingLockRingShare"/>) of
+        /// 0.5, of three still sub-texel lines side by side the outer one at Quality averaged 18.4 percent of its
+        /// contrast against a coverage of 37.5
+        /// (<c>TemporalResolveLockGpuTests</c>), and the Quality chart (<c>TemporalUpscalingGoldenTests</c>) moved 0.03
+        /// from its golden. At 1, the step the lockless test takes, with no share, a textured wall in shadow reads as
+        /// flat too, and on Metal the textured tail of a shadow edge travelling 8 display pixels a frame measured 2.9
+        /// and 1.8 times the tail at 1 at Quality, advancing and retreating, and 2.8 and 2.6 at Native, against 1.4
+        /// and 0.9, and 1.3 and 1.2 here.</summary>
+        public const float ShadingLockFlatShare = 0.25f;
+        /// <summary>Steps 6 and 8. The internal texel, in display pixels, below which the release runs: Native and
+        /// Quality, not Balanced and below. It lies midway between Quality's 1.5 and Balanced's 1.7. A custom
+        /// <c>UpscaleRatio</c> near 0.625 falls either side by how its whole-pixel internal size rounds, so the release
+        /// is not promised there. At and above it the jitter aliases detail between the internal and the
+        /// display Nyquist as far from its accumulated history as a shading change moves it, and the release cost a
+        /// checkerboard at Performance (<c>TemporalMipBiasGoldenTests</c>) up to 0.022 of its golden, so a shadow edge
+        /// there still converges at the current weight's floor.</summary>
+        public const float ShadingMaxUpscale = 1.6f;
         /// <summary>Step 5. The least move the clip must make to the history, as blended, in the luma-weighted YCoCg
         /// space the clip runs in, for the pixel's clip flag. Passes that re-evaluate the resolve read the flag, such
         /// as the sampled temporal counts, and the resolve's colour never does. On flat content the variance box

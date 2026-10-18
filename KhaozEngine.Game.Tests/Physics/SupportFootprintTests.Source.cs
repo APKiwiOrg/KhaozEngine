@@ -242,15 +242,15 @@ public partial class SupportFootprintTests
             [0, 2, 1]), new(Vector3.Zero, new Quaternion(0.5f, 0.5f, 0.5f, 0.5f)));
         var request = Request(radius: 5 * s, upper: 7);
         var polygon = Assert.Single(CapturedMesh(scene, request));
-        using var region = SupportAllocationRegion.Start();
         Assert.Equal(GeometrySign.Positive, SupportFootprintPolygon.Measure(polygon, request, out _));
         Assert.Equal(GeometrySign.Positive, SupportFootprintProposalGeometry.Lowest(polygon, request.FootProposal, out _));
         SupportQueryDiagnostics.Reset();
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        var footprint = SupportFootprintPolygon.Measure(polygon, request, out _);
-        var contact = SupportFootprintProposalGeometry.Lowest(polygon, request.FootProposal, out _);
-        long bytes = GC.GetAllocatedBytesForCurrentThread() - before;
-        region.Dispose();
+        GeometrySign footprint = default, contact = default;
+        long bytes = AllocationMeasurement.Measure(nameof(WarmSourceStrataAllocateNothing), () =>
+        {
+            footprint = SupportFootprintPolygon.Measure(polygon, request, out _);
+            contact = SupportFootprintProposalGeometry.Lowest(polygon, request.FootProposal, out _);
+        });
         Assert.Equal(GeometrySign.Positive, footprint);
         Assert.Equal(GeometrySign.Positive, contact);
         Assert.Equal(0, bytes);

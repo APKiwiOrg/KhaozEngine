@@ -32,6 +32,7 @@ public static class McpBootstrap
         builder.WithTools<ObjectTools>();
         builder.WithTools<MarkerTools>();
         builder.WithTools<FoliageTools>();
+        builder.WithTools<ClearanceTools>();
         builder.WithTools<PrefabTools>();
         builder.WithTools<CollisionTools>();
         builder.WithTools<ArchetypeHeightTools>();

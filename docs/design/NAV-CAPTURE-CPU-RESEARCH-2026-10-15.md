@@ -3,25 +3,67 @@
 Research for [#1417](https://github.com/APKiwiOrg/KhaozEngine/issues/1417).
 One representative caller-selected ground window was captured on engine commit
 `cbeff834a55f1e982dbaaeea21a154ff49e9ea31`, in Release, on ARM64 with .NET 10.0.13.
-Production behavior and bake formats were not changed.
+The original capture and local experiments changed neither production behavior nor bake formats.
+Staged 21.1.0 includes the default-off stable legacy scope and the independent lazy penetration-batcher fix.
+Bake formats and default callback behavior remain unchanged.
 
 ## Final disposition
 
-E2 is a parked research outcome, not a shipping performance fix for [#1417](https://github.com/APKiwiOrg/KhaozEngine/issues/1417). The original capture remains the valid isolated capture result at 0.541884 process CPU seconds, 2.3564423 wall seconds and 4,417,632 managed bytes.
+End-to-end consumer-window and complete consumer-suite savings remain unmeasured for [#1417](https://github.com/APKiwiOrg/KhaozEngine/issues/1417). The original capture remains the valid isolated capture result at 0.541884 process CPU seconds, 2.3564423 wall seconds and 4,417,632 managed bytes. The separately authorized hosted pair below gives one unprofiled ordered A/B result for the stable-read candidate on a public fixture, but it does not establish statistical significance, a native Mac gain or Grimhollow full-suite savings. The default-off `NavBakeExecution.UseStableLegacyReadScope` API is selected for staged 21.1.0. The independent backend fix below adds no public API. Neither changes the bake format. Their combined performance gain has not been measured.
 
-### Local candidate
+### Historical local stable-read candidate
 
-The local comparison did not demonstrate a speedup. The baseline profile used 15.199555 process CPU seconds and 15.855458 wall seconds. The candidate used 16.399351 process CPU seconds and 88.2522843 wall seconds under different conditions. Complete KENB output was equal at 588425 bytes, and the complete snapshot was equal at 535326 bytes. The candidate at [commit 7f51f266](https://github.com/APKiwiOrg/KhaozEngine/commit/7f51f266b91452fd82391df82b3ce21c7e438f98) is functionally reviewed and remains parked, not a shipping API recommendation. `UseStableLegacyReadScope` exists only on the retained experiment branch.
+The local comparison remained inconclusive. The baseline profile used 15.199555 process CPU seconds and 15.855458 wall seconds. The candidate used 16.399351 process CPU seconds and 88.2522843 wall seconds under different conditions. Complete KENB output was equal at 588425 bytes, and the complete snapshot was equal at 535326 bytes. The candidate at [commit 7f51f266](https://github.com/APKiwiOrg/KhaozEngine/commit/7f51f266b91452fd82391df82b3ce21c7e438f98) was functionally reviewed and parked after the local comparison. The local data alone did not demonstrate a whole-navigation CPU win. The later public-fixture pair supports the current default-off staged integration. The later separately authorized hosted ordered pair is recorded below. No further timing run is authorized.
 
 ### Offline limits
 
 Offline analysis found 39.58 seconds of suspension-coordination intervals in the after trace. That is not 39.58 seconds of CPU and not disjoint application-paused time, so it cannot be subtracted from process CPU. Sampling safe points and off-CPU inclusion prevent claiming that `Monitor` was the dominant CPU cost. The trace supports research leads only.
 
-### Approved hosted outcome
+### Accepted narrow backend work reduction
 
-The approved unprofiled hosted run was [run 38802161651](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/38802161651) at `fc9a6a7d2` on GitHub-hosted Ubuntu 26.04 x64. A false completed one profile, then graph validation failed. B never started. The final process exit status was 1 with one failed test and no retries. Whole-child elapsed time was 13.0587502 seconds. It is not profile wall time. Profile metrics, counts and KENB output were not retained, so no performance or parity comparison exists. Harness repair is separate, and no fresh run is approved.
+The [`CollectPenetration` lazy-batcher fix](https://github.com/APKiwiOrg/KhaozEngine/commit/ffa70bad4ce0e4403ec606a922a76d8a1a5bbbe4) constructs the collision batcher only after the first eligible static. On excluded-only and dynamic-only cold queries, retained native scratch capacity changed from 131,072 B to 0 B. Existing empty-query controls remained at 0, and an eligible query remained positive. This is cold retained native capacity, not per-call cleared bytes, warm rental count or CPU gain. Original pair order, penetration math and `Flush` finally ownership are retained.
 
-Issue #1417 remains open. There is no proven engine performance fix, bake format change or rebake from this research. E1 is a separate accepted feature. The bounded collision-batcher initialization, repeated source holds and point-footprint observations remain research leads under #1417 with unproven CPU benefit. They are not resolved defects or a new implementation plan. Future timing needs separate owner approval and must not imply active automatic repetitions. The experiment sources and valid research remain preserved in pushed branch history. Main receives the research record only.
+Before stable-scope integration, the backend fix passed its Release build with zero warnings or errors, 62 focused physics tests and 3 movement tests. Its full suite passed with 33,109 passed, 0 failed and 1,386 existing opt-in skips across 37 project runs. All five whole-tree guards passed. These are the backend fix's historical validation results, not a full-suite proof of the combined tree. The normalized nine-cell, 516-byte canonical test deliberately substitutes only the engine identity. Its matching hash proves unchanged normalized header and payload, not cross-version load compatibility:
+
+```text
+8dc879897a4cdfed8602306ff7fc9d7c6d316988270a01de71ee5c55a523bc17
+```
+
+The lazy-batcher fix preserves bake output for a fixed engine version and introduces no bake format or API change. The existing loader checks the Movement assembly's normalized engine version, so consumers upgrading from an older engine version to 21.1.0 must regenerate bakes to avoid `EngineChanged`, even though the format and payload algorithm are unchanged. Existing 21.1.0 bakes gain no additional invalidation from this same-version backend fix. The staged 21.1.0 version remains unchanged. No new version is claimed.
+
+### Original approved hosted outcome
+
+The approved unprofiled hosted run was [run 38802161651](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/38802161651) at `fc9a6a7d2` on GitHub-hosted Ubuntu 26.04 x64. A false completed one profile, then graph validation failed. B never started. The final process exit status was 1 with one failed test and no retries. Whole-child elapsed time was 13.0587502 seconds. It is not profile wall time. Profile metrics, counts and KENB output were not retained, so no performance or parity comparison exists. The later harness repair and hosted run below supersede its unknown predicate, but not its lost metrics.
+
+### Later hosted outcome and harness repair
+
+The separately approved [hosted run 38807384252](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/38807384252) at [`24c83b0e4`](https://github.com/APKiwiOrg/KhaozEngine/commit/24c83b0e49f60be6e51fe3ba3b2bd98dc8b4f35a) identified only `CentralObstacleRejected=false`. A ran, B did not run, and the failure exit status was 1. Baseline A retained 7.3916306 wall seconds, 7.391034 process CPU seconds and 7.390059832 calling-thread CPU seconds. There is no A/B comparison from this run. This supersedes the first failed run's unknown predicate, not its lost metrics.
+
+### Successful hosted pair and staged integration
+
+The separately owner-approved [hosted run 38813435238](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/38813435238) at [`1883c7b03`](https://github.com/APKiwiOrg/KhaozEngine/commit/1883c7b031a28728dace1540537c2204e3263818) ran one unprofiled ordered pair on GitHub-hosted Ubuntu 26.04 x64 with `iterations=1`, `load=0`, `Release` and `support-cost=true`. Both children succeeded with finalized process exit status 0. The approval is consumed. No further timing run is authorized.
+
+| Metric | Baseline | Stable read scope | Reduction |
+| --- | ---: | ---: | ---: |
+| BuildProfile wall seconds | 12.7162112 | 7.7351701 | 39.1708% |
+| Process CPU seconds | 12.716042 | 7.735654 | 39.1662% |
+| Main-thread CPU seconds | 12.714819959 | 7.734685588 | 39.1680% |
+
+The complete baseline and stable-read KENB files were each 602,366 bytes and equal, with SHA-256 `C15802EC6D23542057DBEAF66B4F9CB78828C28395F85F296479275E934F3D0F`. All eight acceptance predicates passed. Both graphs retained one layer, 32,582 accepted nodes, 874 rejected layer cells, 258,106 directed edges and no candidate or accepted links. Canonical roundtrip and scope-release checks passed. Recorded binary-set hashes matched, but executable binaries were not retained for independent hashing. Managed allocation increased by 128 bytes, GC counts remained at one per generation and recorded Monitor contention was zero. Setup and capture were outside profile timing. First-use JIT and measurement boundaries remained included.
+
+Each fresh process timed one `BuildProfile` at degree 1 on .NET 10.0.13. The `public-flat-boxes-v1` fixture uses 164 by 204 columns at 0.25 metres, a floor and boxes. `DOTNET_TieredCompilation=0` was fixed for both. There were no warm-ups, retries, deliberate load or order randomization. Native allocation and operation counts were not measured. GC and contention snapshots bracket the profile and do not give exclusive stage attribution.
+
+This is a coherent public-fixture CPU reduction supporting the measured default-off option. It is one ordered pair, not evidence of statistical significance, a native Mac gain or Grimhollow full-suite savings. It is not a timing measurement of the lazy-batcher fix. The combined gain from both changes has not been measured.
+
+### Staged implementation and validation boundary
+
+Staged 21.1.0 contains both the opt-in stable legacy scope and the independent lazy penetration-batcher fix. The [Movement README](../../KhaozEngine.Movement/README.md#stable-legacy-read-scope) and [consumer guide](../USING-KHAOZENGINE.md#stable-legacy-profile-reads) own API usage and provider obligations. Consumers must audit their providers before opting in. No consumer is opted in here, and no capture proof, profile proof, bake identity or format changes. The combined tree requires separate Release validation. The hosted proof harness remains outside normal engine test discovery.
+
+The [fixture repair](https://github.com/APKiwiOrg/KhaozEngine/commit/8d91a7c575a57920fa2f8ed6977df98c6f9a51a1) proves with a 144-cell correctness test that the center is accepted as a Y=2 roof. Its replacement four-sided check tests adjacent ground obstruction using real accepted sources, permits the roof and keeps the other thresholds. Independent review passed, and parent evidence reports 26 small and pure tests passed. The repaired harness remains on the proof branch, not main. The later approved hosted run above exercised this corrected acceptance.
+
+### Issue status
+
+Issue #1417 remains open pending consumer adoption and end-to-end measurement. The hosted scope pair establishes a measured public-fixture result, while end-to-end consumer-window, native Mac and Grimhollow full-suite savings remain unmeasured. The independent collision-batcher fix has a bounded native work reduction with no timing claim. Their combined gain has not been measured. Source-hold reuse and point-footprint observations remain unproven leads. No further timing run is authorized. No release.
 
 ## Historical capture result and decision boundary
 
@@ -113,7 +155,7 @@ The code explains the relevant paths without proving their individual costs.
   `PhysicsNavColumns.cs` copies the retained arrays. Allocation stacks were not
   separately decoded, so the relative allocation contributions remain unmeasured.
 
-## Alternatives for the orchestrator
+## Historical alternatives for the orchestrator
 
 Scores are 1 to 10, with higher better. They rank the next action for this measured
 window, not general engine architecture. Equal weighting is used.
@@ -374,3 +416,85 @@ Keep the original capture, restored bytes, exact options and complete profile
 baseline for one separately authorized after comparison. No such comparison or
 production change ran here. Any changed captured or shipped byte returns to the
 orchestrator for owner approval before adoption.
+
+## Historical stable legacy scope implementation and local after observation
+
+The approved implementation adds `NavBakeExecution.UseStableLegacyReadScope`, default false. It is a caller
+assertion that every provider used for a synchronous legacy profile is deterministic, stable and read-only.
+`BuildProfile` and `GroundNavigationBake.Create` reuse one thread-affine lease per selected legacy profile.
+The exact complete source and selected movement view must declare `IPhysicsQueryLeaseSource` themselves.
+The helper authenticates the live lease against the exact owner, view origin and captured geometry without
+acquiring another lease inside it. Existing degree and profile argument checks keep their order.
+
+This explicit contract preserves mutable callbacks and existing outer leases on the default path. True refuses
+unsupported capability before proofs, refuses physics mutation and incompatible explicit nested leases in
+callbacks, and receives the backend's existing non-nesting refusal under a caller lease. Scope cleanup runs on
+success and failure. Ordinary contact profiles ignore the property. Legacy work stays serial. No proof, budget,
+footprint, origin check, floating-point operation, graph order, capture format or bake identity changed.
+The [Movement contract](../../KhaozEngine.Movement/README.md#stable-legacy-read-scope) owns API usage details.
+
+The single authorized after profile restored the retained columns. It did not call `Capture` again. The exact
+source, input, tuning, scene, collider, capture-option and snapshot identities were checked before and after.
+The adapter, runtime, architecture, trace providers and stage-counter implementation matched the baseline.
+Fresh Release assemblies included the new option. The same seven inner stage boundaries were reproduced,
+with scope admission included in profile checks and its release included in the outer profile interval.
+Temporary instrumentation was removed afterwards and every authored Movement source matched its saved
+pre-instrumentation hash. Raw traces and private reproduction data stay outside the public repository.
+
+| Outer stage | Baseline CPU s | After CPU s | Baseline wall s | After wall s | After managed B | After GC 0 / 1 / 2 |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| context-rebuild | 1.785892 | 2.134660 | 1.7981888 | 10.9853080 | 173,177,848 | 20 / 9 / 6 |
+| snapshot-reconstruction | 0.009516 | 0.013190 | 0.0094449 | 0.0286770 | 2,116,296 | 0 / 0 / 0 |
+| restore-validation | 0.022923 | 0.093096 | 0.0243743 | 0.6198890 | 1,167,312 | 0 / 0 / 0 |
+| build-profile | 15.199555 | 16.399351 | 15.8554580 | 88.2522843 | 3,186,856 | 0 / 0 / 0 |
+| bake-assembly | 0.005084 | 0.006690 | 0.0049077 | 0.0122319 | 23,800 | 0 / 0 / 0 |
+| serialization | 0.018377 | 0.039455 | 0.0179106 | 0.2249139 | 2,692,680 | 0 / 0 / 0 |
+| load-validation | 0.037254 | 0.061391 | 0.0375760 | 0.2838634 | 6,266,096 | 0 / 0 / 0 |
+
+Current-thread and process allocation counts were equal in every downstream after stage. Setup's current-thread
+count was 173,115,800 bytes. BuildProfile allocated 96 bytes more than the baseline and collected no GC.
+
+| After subdivision | Wall s | Process CPU s | Managed B | GC 0 / 1 / 2 |
+| --- | ---: | ---: | ---: | --- |
+| profile-checks | 0.0058455 | 0.005502 | 1,544 | 0 / 0 / 0 |
+| layered-candidates | 3.9592816 | 1.169047 | 2,962,224 | 0 / 0 / 0 |
+| node-arrays | 0.0235628 | 0.021091 | 67,264 | 0 / 0 / 0 |
+| directed-edges | 84.2401606 | 15.185862 | 67,360 | 0 / 0 / 0 |
+| stair-links | 0.0010351 | 0.001222 | 304 | 0 / 0 / 0 |
+| graph-finalization | 0.0051887 | 0.005085 | 1,392 | 0 / 0 / 0 |
+
+**The performance gate was not met.** Profile CPU rose from 15.199555 to 16.399351 seconds, an observed 7.9%
+increase. Wall time rose from 15.8554580 to 88.2522843 seconds, 5.57 times the baseline. Directed-edge CPU
+rose from 14.301217 to 15.185862 seconds. These observations establish no performance win and do not resolve
+[#1417](https://github.com/APKiwiOrg/KhaozEngine/issues/1417). At that stage the default-off candidate was retained for review,
+without evidence supporting integration as a performance fix. The later hosted pair is a separate observation.
+
+The host was under different contention. After-run load averages were approximately 58 / 85 / 80 before and
+42 / 71 / 76 afterwards, compared with the baseline profile's 29 / 36 / 61 and 27 / 35 / 60.
+Profile process CPU per wall second fell from 0.96 to 0.19. No competing query or mutation thread was deliberately
+introduced inside the measured owner. A single profiled cold observation cannot isolate the scope's cost from
+host scheduling, runtime, profiler and JIT effects. Native allocation remains uncounted. There was no warm-up,
+baseline rerun, second after trial or stress run. Further representative measurement needs separate authorization.
+
+Offline decoding of the same after trace reported 71,901 events, no lost-event callback and one unresolved native
+address. Its directed-edge interval contained 11,374 main-thread sample events with zero
+`Monitor.Enter_Slowpath` leaves, compared with 2,312 of 3,246 baseline events. The trace also decoded 1,406
+allocation ticks, 1,405 with stacks and one without. Removing the sampled monitor leaf did not produce a measured
+CPU saving. Sample counts and thread-time weights remain unsuitable as exclusive CPU percentages or savings
+estimates, especially across these different wall-time and scheduling conditions.
+
+The complete 588,425-byte KENB was equal to the baseline, SHA-256
+`7D07149A3DA1582016A9DE4872B56348AF6A945BD4050453DB6B845BFEA6876A`.
+The complete 535,326-byte diagnostic snapshot was equal too, SHA-256
+`E6D195C94B5A7F7E2746119DBDF39B837E6AAE1FDB87C8FDF949BDD45662FDB5`.
+All 86 retained input and baseline hashes matched. Profile counts stayed at one layer, 29,401 accepted nodes,
+232,388 directed edges and no cross-layer links. Canonical load and rewrite remained byte-identical.
+
+The candidate's focused Release verification passed 282 tests, including 27 new scope and fixture parity cases. Complete
+canonical KENB comparisons cover flat and sloped analytic ground over a complete physics capture, two capsule
+sizes, restricted movement views, thin walls and doors, stacked surfaces and Stair links, rebase, missing and padded
+columns, area footprints, water, aquatic float routing and dry fallback. Behavioral cases cover capability and live
+owner/view/lease identity, captured geometry, callbacks, cleanup, disposed and wrong-thread tokens, preserved caller
+leases and ignored contact execution. Existing capture, profile, lifetime, scheduling, format and traversal coverage
+also ran. No existing test was weakened or skipped. This is focused verification, not a full engine suite or consumer
+adoption proof. No consumer file or pin changed.

@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-{{SCRIPT_HASH}}'; style-src 'sha256-{{STYLE_HASH}}'; img-src 'self' file:; media-src 'self' file:; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}}</title>
+<style>
+body { margin: 0 auto; max-width: 1100px; padding: 16px; font: 14px/1.4 system-ui, sans-serif; background: #1c1e22; color: #e4e4e4; }
+[hidden] { display: none !important; }
+h1 { font-size: 20px; margin: 0 0 8px; }
+h2 { font-size: 16px; margin: 24px 0 8px; }
+dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 0; }
+dt { color: #9aa0a8; }
+dd { margin: 0; }
+#description { white-space: pre-wrap; }
+img, video { display: block; max-width: 100%; border: 1px solid #3a3e45; }
+#controls { margin: 8px 0; }
+#scrub { width: 40%; vertical-align: middle; }
+#graph { display: block; width: 100%; height: 120px; background: #25282d; }
+.bar { fill: #6b8fb5; cursor: pointer; }
+.hitch { fill: #d9534f; cursor: pointer; }
+rect.current { fill: #f0c040; }
+.limit { stroke: #d9534f; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; }
+pre { margin: 4px 0 8px; padding: 8px; overflow: auto; max-height: 420px; background: #25282d; white-space: pre-wrap; word-break: break-word; }
+summary { cursor: pointer; }
+</style>
+</head>
+<body>
+<header>
+<h1 id="title"></h1>
+<dl id="facts"></dl>
+</header>
+<main>
+<section>
+<h2>Description</h2>
+<p id="description"></p>
+</section>
+<section id="screenshot-panel" hidden>
+<h2>Screenshot</h2>
+<img id="screenshot" alt="Screenshot">
+</section>
+<section id="clip-panel" hidden>
+<h2>Clip</h2>
+<img id="frame" alt="Clip frame" hidden>
+<video id="video" controls hidden></video>
+<div id="controls">
+<button id="prev" type="button">Previous</button>
+<button id="play" type="button">Play</button>
+<button id="next" type="button">Next</button>
+<input id="scrub" type="range" min="0" max="0" step="1" value="0" aria-label="Frame">
+<span id="position"></span>
+</div>
+<div id="graph-panel">
+<svg id="graph" preserveAspectRatio="none" role="img" aria-label="Frame time graph"></svg>
+<p id="graph-note"></p>
+</div>
+</section>
+<section>
+<h2>Sections</h2>
+<div id="sections"></div>
+</section>
+<section id="reporter-panel" hidden>
+<h2>Reporter</h2>
+<div id="reporter"></div>
+</section>
+<section id="server-panel" hidden>
+<h2>Server snapshot</h2>
+<div id="server"></div>
+</section>
+<section>
+<h2>Log</h2>
+<pre id="log"></pre>
+</section>
+</main>
+<script type="application/json" id="report-data">{{REPORT_JSON}}</script>
+<script>
+(function () {
+  'use strict';
+  const data = JSON.parse(document.getElementById('report-data').textContent);
+  const manifest = data.manifest;
+  const frameEntry = /^clip\/[0-9]{3}\.jpg$/;
+
+  function byId(id) {
+    return document.getElementById(id);
+  }
+
+  function element(tag, text) {
+    const node = document.createElement(tag);
+    if (text !== undefined) node.textContent = text;
+    return node;
+  }
+
+  function addText(parent, label, text) {
+    const details = element('details');
+    details.open = true;
+    details.append(element('summary', label), element('pre', text));
+    parent.append(details);
+  }
+
+  function drawGraph(frames, hitches, pick) {
+    const svg = byId('graph');
+    const ns = svg.namespaceURI;
+    const height = 100;
+    const width = 6;
+    const median = data.medianRenderMilliseconds;
+    const peak = Math.max(1, 2 * median, ...frames.map((frame) => frame.renderMilliseconds));
+    svg.setAttribute('viewBox', '0 0 ' + frames.length * width + ' ' + height);
+    const bars = frames.map((frame, i) => {
+      const bar = document.createElementNS(ns, 'rect');
+      const barHeight = Math.max(1, (frame.renderMilliseconds / peak) * height);
+      bar.setAttribute('x', String(i * width));
+      bar.setAttribute('y', String(height - barHeight));
+      bar.setAttribute('width', String(width - 1));
+      bar.setAttribute('height', String(barHeight));
+      bar.classList.add(hitches.has(i) ? 'hitch' : 'bar');
+      const tip = document.createElementNS(ns, 'title');
+      tip.textContent = 'Frame ' + (i + 1) + ': ' + frame.renderMilliseconds.toFixed(1) + ' ms';
+      bar.append(tip);
+      bar.addEventListener('click', () => pick(i));
+      svg.append(bar);
+      return bar;
+    });
+    const limit = document.createElementNS(ns, 'line');
+    const y = String(height - ((2 * median) / peak) * height);
+    limit.setAttribute('x1', '0');
+    limit.setAttribute('x2', String(frames.length * width));
+    limit.setAttribute('y1', y);
+    limit.setAttribute('y2', y);
+    limit.classList.add('limit');
+    svg.append(limit);
+    byId('graph-note').textContent = 'Median frame time ' + median.toFixed(1) + ' ms. ' + hitches.size +
+      ' hitches over ' + (2 * median).toFixed(1) + ' ms are marked in red.';
+    return bars;
+  }
+
+  function setUpClip(frames) {
+    const video = data.media.video ? byId('video') : null;
+    if (frames.length === 0) {
+      video.src = data.media.video;
+      video.hidden = false;
+      byId('controls').hidden = true;
+      byId('graph-panel').hidden = true;
+      byId('clip-panel').hidden = false;
+      return;
+    }
+    const image = byId('frame');
+    const scrub = byId('scrub');
+    const play = byId('play');
+    const hitches = new Set(data.hitches);
+    let index = 0;
+    let timer = null;
+
+    function show(i, fromVideo) {
+      index = Math.max(0, Math.min(frames.length - 1, i));
+      const frame = frames[index];
+      scrub.value = String(index);
+      byId('position').textContent = 'Frame ' + (index + 1) + ' of ' + frames.length + ', ' +
+        frame.renderMilliseconds.toFixed(1) + ' ms' + (hitches.has(index) ? ', hitch' : '');
+      bars.forEach((bar, n) => bar.classList.toggle('current', n === index));
+      if (video) {
+        if (!fromVideo) video.currentTime = frame.offsetMilliseconds / 1000;
+      } else if (frameEntry.test(frame.entry)) {
+        image.src = frame.entry;
+      }
+    }
+
+    function frameAt(milliseconds) {
+      let i = 0;
+      while (i + 1 < frames.length && frames[i + 1].offsetMilliseconds <= milliseconds) i++;
+      return i;
+    }
+
+    function stop() {
+      clearTimeout(timer);
+      timer = null;
+      if (video) video.pause();
+      play.textContent = 'Play';
+    }
+
+    function advance() {
+      if (index >= frames.length - 1) {
+        stop();
+        return;
+      }
+      const delay = Math.max(frames[index + 1].offsetMilliseconds - frames[index].offsetMilliseconds, 0);
+      timer = setTimeout(() => {
+        show(index + 1);
+        advance();
+      }, delay);
+    }
+
+    function start() {
+      play.textContent = 'Pause';
+      if (video) {
+        video.play().catch(() => (play.textContent = 'Play'));
+        return;
+      }
+      if (index >= frames.length - 1) show(0);
+      advance();
+    }
+
+    function step(delta) {
+      stop();
+      show(index + delta);
+    }
+
+    const bars = drawGraph(frames, hitches, (i) => {
+      stop();
+      show(i);
+    });
+    if (video) {
+      video.src = data.media.video;
+      video.hidden = false;
+      video.addEventListener('timeupdate', () => show(frameAt(video.currentTime * 1000), true));
+      video.addEventListener('pause', () => (play.textContent = 'Play'));
+      video.addEventListener('play', () => (play.textContent = 'Pause'));
+    } else {
+      image.hidden = false;
+    }
+    scrub.max = String(frames.length - 1);
+    scrub.addEventListener('input', () => {
+      stop();
+      show(Number(scrub.value));
+    });
+    play.addEventListener('click', () => ((video ? !video.paused : timer !== null) ? stop() : start()));
+    byId('prev').addEventListener('click', () => step(-1));
+    byId('next').addEventListener('click', () => step(1));
+    document.addEventListener('keydown', (event) => {
+      if (event.target === scrub || event.target === video) return;
+      if (event.key === 'ArrowLeft') step(-1);
+      else if (event.key === 'ArrowRight') step(1);
+      else return;
+      event.preventDefault();
+    });
+    byId('clip-panel').hidden = false;
+    show(0);
+  }
+
+  byId('title').textContent = document.title;
+  [['Report', manifest.reportId], ['Kind', manifest.kind], ['Category', manifest.category],
+    ['Game', manifest.gameId], ['Captured', manifest.capturedAt]].forEach(([name, value]) => {
+    byId('facts').append(element('dt', name), element('dd', String(value)));
+  });
+  byId('description').textContent = manifest.description;
+
+  if (data.media.screenshot) {
+    byId('screenshot').src = data.media.screenshot;
+    byId('screenshot-panel').hidden = false;
+  }
+
+  const frames = data.clip ? data.clip.frames : [];
+  if (frames.length > 0 || data.media.video) setUpClip(frames);
+
+  const sections = byId('sections');
+  const keys = Object.keys(data.sections);
+  keys.forEach((key) => addText(sections, key, data.sections[key]));
+  if (keys.length === 0) sections.textContent = 'No sections.';
+
+  if (data.reporter) {
+    addText(byId('reporter'), data.reporter.displayName, JSON.stringify(data.reporter, null, 2));
+    byId('reporter-panel').hidden = false;
+  }
+  if (data.server) {
+    addText(byId('server'), 'Snapshot', data.server);
+    byId('server-panel').hidden = false;
+  }
+
+  byId('log').textContent = data.logTail.length > 0 ? data.logTail.join('\n') : 'No log lines.';
+})();
+</script>
+</body>
+</html>

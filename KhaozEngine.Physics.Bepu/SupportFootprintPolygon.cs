@@ -5,7 +5,7 @@ namespace KhaozEngine.Physics.Bepu;
 
 /// <summary>Complete convex polygon/disc extrema. Admission uses the connected height interval over the expanded
 /// disc, then support measures the original disc on the whole polygon. No clipping or sweep witness is used.</summary>
-internal static class SupportFootprintPolygon
+internal static partial class SupportFootprintPolygon
 {
     static readonly FeatureNumber Zero = FeatureNumber.Exact(0), One = FeatureNumber.Exact(1);
 
@@ -25,32 +25,50 @@ internal static class SupportFootprintPolygon
         return Measure(polygon, request, bounds, bottom, top, out member);
     }
 
-    // The collector certifies these identical request operands once, before traversing any static.
+    // The collector certifies these identical request operands once, before traversing any static. The certified
+    // bounds and column reject runs before any per-query operand is begun, reading the polygon's derived normal
+    // signs. The area and resolution checks keep their place ahead of it, so every verdict is unchanged.
     internal static GeometrySign Measure(SupportPolygon polygon, in SupportFootprintRequest request,
         in SupportFootprintBounds bounds, double bottom, double top, out SupportFootprintMember member)
     {
         member = default;
-        polygon.BeginFootprintOperands(request);
+        bool reference = SupportReferenceEvaluation.Active;
+        if (reference) BeginOperands(polygon, request);
         SupportQueryDiagnostics.Record(SupportQueryCounter.Polygons);
-        GeometrySign area = FeaturePoint.Dot(polygon.Normal, polygon.Normal).Sign;
-        if (area == GeometrySign.Unresolved && polygon.HasSource) area = polygon.SourcePredicates.NormalSquared(polygon);
+        GeometrySign area = reference ? DeriveNormalArea(polygon) : polygon.NormalArea;
         if (area == GeometrySign.Zero) return GeometrySign.Negative;
         if (!polygon.IsResolved || area != GeometrySign.Positive) return GeometrySign.Unresolved;
         if (polygon.High[0] < bounds.Minimum.X || polygon.Low[0] > bounds.Maximum.X ||
             polygon.High[1] < bottom || polygon.Low[1] > top ||
             polygon.High[2] < bounds.Minimum.Z || polygon.Low[2] > bounds.Maximum.Z) return GeometrySign.Negative;
+        if (!reference) BeginOperands(polygon, request);
         FeatureNumber expanded = FeatureNumber.Exact(request.Radius).Add(FeatureNumber.Exact(request.ContactBand));
-        GeometrySign admission = Extrema(polygon, request, expanded, out Range column);
-        if (admission != GeometrySign.Positive) return admission;
-        if (column.Minimum.Lower > top || column.Maximum.Upper < bottom) return GeometrySign.Negative;
-        if (column.Minimum.Upper > top || column.Maximum.Lower < bottom) return GeometrySign.Unresolved;
-        GeometryVector normalBounds = GeometryVectorOperations.Normalize(polygon.Normal.Bounds);
+        GeometrySign certified = SupportVerticalAdmission.Admit(polygon, request, expanded, bottom, top);
+        if (certified == GeometrySign.Negative) return certified;
+        if (certified == GeometrySign.Unresolved)
+        {
+            GeometrySign admission = Extrema(polygon, request, expanded, out Range column);
+            if (admission != GeometrySign.Positive) return admission;
+            if (column.Minimum.Lower > top || column.Maximum.Upper < bottom) return GeometrySign.Negative;
+            if (column.Minimum.Upper > top || column.Maximum.Lower < bottom) return GeometrySign.Unresolved;
+        }
+        InstalledSupportMemberFacts? facts = polygon.SharedMemberFacts;
+        GeometryVector normalBounds = facts is null
+            ? GeometryVectorOperations.Normalize(polygon.Normal.Bounds) : facts.NormalBounds;
+        if (facts is not null) SupportQueryDiagnostics.Record(SupportQueryCounter.SharedMemberFacts, 2);
+        bool adjusted = false;
         if (normalBounds.IsResolved && normalBounds.Y.Lower < request.CosMaxSlope &&
             normalBounds.Y.Upper >= request.CosMaxSlope && Orientation(polygon) == GeometrySign.Positive &&
             polygon.HasSource && polygon.SourcePredicates.NormalSlope(polygon, request.CosMaxSlope) == GeometrySign.Zero)
+        {
             normalBounds = new(normalBounds.X, GeometryInterval.Exact(request.CosMaxSlope), normalBounds.Z);
-        GeometryVectorOutput normal = GeometryVectorOperations.Publish(normalBounds);
-        GeometryVectorOutput plane = GeometryVectorOperations.Publish(polygon.Vertices[0].Bounds);
+            adjusted = true;
+        }
+        GeometryVectorOutput normal = facts is null || adjusted
+            ? GeometryVectorOperations.Publish(normalBounds) : facts.PublishedNormal;
+        GeometryVectorOutput plane = facts is null
+            ? GeometryVectorOperations.Publish(polygon.Vertices[0].Bounds) : facts.PublishedPlane;
+        if (facts is not null && !adjusted) SupportQueryDiagnostics.Record(SupportQueryCounter.SharedMemberFacts);
         if (!normal.IsResolved || !plane.IsResolved) return GeometrySign.Unresolved;
         Range disc = default;
         GeometrySign orientation = Orientation(polygon);
@@ -71,6 +89,12 @@ internal static class SupportFootprintPolygon
                 normalBounds.Y.Lower) : default,
             default);
         return GeometrySign.Positive;
+    }
+
+    static void BeginOperands(SupportPolygon polygon, in SupportFootprintRequest request)
+    {
+        polygon.BeginFootprintOperands(request);
+        SupportQueryDiagnostics.Record(SupportQueryCounter.PolygonOperands);
     }
 
     struct Range
@@ -108,6 +132,8 @@ internal static class SupportFootprintPolygon
         out Range range)
     {
         range = default;
+        if (!SupportReferenceEvaluation.Active && TryStairExtrema(polygon, request, radius, ref range,
+            out GeometrySign stair)) return stair;
         FeaturePoint axis = new(FeatureNumber.Exact(request.Axis.X), Zero, FeatureNumber.Exact(request.Axis.Y));
         GeometrySign orientation = Orientation(polygon);
         if (orientation == GeometrySign.Unresolved) return orientation;
@@ -184,10 +210,19 @@ internal static class SupportFootprintPolygon
 
     static FeatureNumber DotXZ(FeaturePoint a, FeaturePoint b) => a.X.Multiply(b.X, exactZeroProducts: true).Add(a.Z.Multiply(b.Z, exactZeroProducts: true));
 
-    internal static GeometrySign Orientation(SupportPolygon polygon)
+    internal static GeometrySign Orientation(SupportPolygon polygon) =>
+        SupportReferenceEvaluation.Active ? DeriveOrientation(polygon) : polygon.Orientation;
+
+    internal static GeometrySign DeriveOrientation(SupportPolygon polygon)
     {
         GeometrySign sign = polygon.Normal.Y.Sign;
         return sign == GeometrySign.Unresolved && polygon.HasSource ? polygon.SourcePredicates.NormalComponent(polygon, 1) : sign;
+    }
+
+    internal static GeometrySign DeriveNormalArea(SupportPolygon polygon)
+    {
+        GeometrySign area = FeaturePoint.Dot(polygon.Normal, polygon.Normal).Sign;
+        return area == GeometrySign.Unresolved && polygon.HasSource ? polygon.SourcePredicates.NormalSquared(polygon) : area;
     }
 
     static GeometrySign InDisc(SupportPolygon polygon, int index, FeaturePoint point, FeaturePoint axis,

@@ -7,12 +7,13 @@ using KhaozEngine.Movement;
 using KhaozEngine.Navigation;
 using KhaozEngine.Tests.Movement.Fixtures;
 using Xunit;
+using Stopwatch = System.Diagnostics.Stopwatch;
 
 namespace KhaozEngine.Tests.Movement;
 
 // Every fault here is a pure function of the query it sees, so the set of failing work items is fixed and the
 // serial build's first failure is the expected exception on every interleaving. Coordination only reorders wall-clock
-// time: the earlier fault waits, bounded, until the later one has thrown.
+// time: the earlier fault waits, bounded, until the later worker has recorded its failure and terminated.
 public class ParallelContactBakeFailureTests
 {
     static readonly TimeSpan Timeout = TimeSpan.FromSeconds(30);
@@ -21,7 +22,7 @@ public class ParallelContactBakeFailureTests
     [Fact]
     public void TwoAdmissionFailuresOnDifferentRawSurfacesThrowTheSerialFailure()
     {
-        var faults = new Faults
+        using var faults = new Faults
         {
             // The right column's slab top in the first row, after its floor surface admits.
             Earlier = Near(Centre(1, 0), 0.45f, 0.8f),
@@ -34,15 +35,22 @@ public class ParallelContactBakeFailureTests
     [Fact]
     public void TwoEdgeFailuresInDifferentLayersThrowTheSerialFailure()
     {
-        var faults = new Faults();
+        using var faults = new Faults();
         using (var reference = new SmallStairScene())
         {
             GroundNavigation nav = reference.Build(null);
-            Assert.True(nav.Space.Layers.Count >= 2);
-            (int x, int z) first = ForwardEdges(nav, 0).First();
-            (int x, int z) last = ForwardEdges(nav, nav.Space.Layers.Count - 1).Last();
-            faults.Earlier = MovingFrom(nav.Space.Layers[0], first.x, first.z, Vector2.UnitY);
-            faults.Later = MovingFrom(nav.Space.Layers[^1], last.x, last.z, Vector2.UnitY);
+            Assert.Equal(2, nav.Space.Layers.Count);
+            // Faults straddle the layer boundary in adjacent bands at every tested degree. Holding the first
+            // row for a fault near the final row made the wait depend on nearly the whole edge phase.
+            // The left deck permits the full lift that MovingFrom targets. The right floor sits under the slab.
+            (int x, int z) earlier = DirectedEdges(nav, 0, 3).Last(edge => edge.x == 0);
+            (int x, int z) later = DirectedEdges(nav, 1, 2).First();
+            Assert.Equal(nav.Space.Layers[0].Height - 1, earlier.z);
+            Assert.Equal(0, later.z);
+            AssertAdjacentBands(nav.Space.Layers.Sum(layer => layer.Height), nav.Space.Layers[0].Height, earlier.z,
+                nav.Space.Layers[0].Height + later.z);
+            faults.Earlier = MovingFrom(nav.Space.Layers[0], earlier.x, earlier.z, -Vector2.UnitY);
+            faults.Later = MovingFrom(nav.Space.Layers[1], later.x, later.z, Vector2.UnitY);
         }
         AssertSerialFailureWins(faults);
     }
@@ -50,7 +58,7 @@ public class ParallelContactBakeFailureTests
     [Fact]
     public void TwoStairLinkFailuresInCandidateOrderThrowTheSerialFailure()
     {
-        var faults = new Faults();
+        using var faults = new Faults();
         using (var reference = new SmallStairScene())
         {
             GroundNavigation nav = reference.Build(null);
@@ -72,7 +80,7 @@ public class ParallelContactBakeFailureTests
     [Fact]
     public void ProviderExceptionIsTheSerialException()
     {
-        var faults = new Faults { Earlier = Near(Centre(1, 2), 0.45f, 0.8f) };
+        using var faults = new Faults { Earlier = Near(Centre(1, 2), 0.45f, 0.8f) };
         using var scene = new SmallStairScene(fault: faults.Check);
         var serial = Assert.Throws<ProviderFaultException>(() => scene.Build(null));
         foreach (int degree in Degrees)
@@ -135,7 +143,7 @@ public class ParallelContactBakeFailureTests
     [Fact]
     public void CleanupFailureRidesOnThePrimaryFailure()
     {
-        var faults = new Faults { Earlier = Near(Centre(1, 2), 0.45f, 0.8f) };
+        using var faults = new Faults { Earlier = Near(Centre(1, 2), 0.45f, 0.8f) };
         using var scene = new SmallStairScene(fault: faults.Check);
         string expected = Assert.Throws<ProviderFaultException>(() => scene.Build(null)).Message;
         var released = new List<int>();
@@ -242,7 +250,9 @@ public class ParallelContactBakeFailureTests
             faults.Coordinate();
             var parallel = Assert.Throws<ProviderFaultException>(() => scene.Build(new NavBakeExecution(degree)));
             Assert.Equal(serial.Message, parallel.Message);
-            Assert.True(faults.EarlierWaitedForLater, $"The later failure did not throw first at degree {degree}.");
+            Assert.Contains(nameof(Faults.Check), parallel.StackTrace);
+            Assert.True(faults.EarlierWaitedForLater,
+                $"The later failure did not finish first at degree {degree}. {faults.CoordinationState}");
             scene.AssertUsable();
         }
     }
@@ -278,42 +288,80 @@ public class ParallelContactBakeFailureTests
             Vector2.Normalize(to.CellCenter(link.ToX, link.ToZ) - from.CellCenter(link.FromX, link.FromZ)));
     }
 
-    // Accepted +Z edges of one layer in row order.
-    static IEnumerable<(int x, int z)> ForwardEdges(GroundNavigation nav, int layer)
+    // Accepted edges of one layer in row order, with the production neighbor index.
+    static IEnumerable<(int x, int z)> DirectedEdges(GroundNavigation nav, int layer, int direction)
     {
         NavTraversalLayer exits = nav.Graph.Layers[layer];
         for (int z = 0; z < exits.Height; z++)
             for (int x = 0; x < exits.Width; x++)
-                if ((exits.ExitMask(x, z) & (1 << 2)) != 0) yield return (x, z);
+                if ((exits.ExitMask(x, z) & (1 << direction)) != 0) yield return (x, z);
     }
 
-    sealed class Faults
+    static void AssertAdjacentBands(int rows, int workerRows, int earlierRow, int laterRow)
     {
-        ManualResetEventSlim _laterThrown = new();
+        foreach (int degree in Degrees)
+        {
+            int count = ContactNavigationWorkers.BandCount(Math.Min(degree, workerRows), rows);
+            var schedule = new ContactNavigationSchedule(rows, count, row => row, new ContactNavigationCutoff());
+            int earlierBand = -1, laterBand = -1;
+            while (schedule.TryClaim(out var band))
+            {
+                if (earlierRow >= band.Start && earlierRow < band.End) earlierBand = band.Index;
+                if (laterRow >= band.Start && laterRow < band.End) laterBand = band.Index;
+            }
+            Assert.True(earlierBand >= 0);
+            Assert.Equal(earlierBand + 1, laterBand);
+        }
+    }
+
+    sealed class Faults : IDisposable
+    {
+        readonly ManualResetEventSlim _laterThrown = new();
+        Thread? _laterWorker;
         bool _coordinate;
-        int _waited;
+        int _waited, _signalled, _earlierMatches, _laterMatches;
 
         internal Func<Vector3, Vector3, bool>? Earlier { get; set; }
         internal Func<Vector3, Vector3, bool>? Later { get; set; }
         internal bool EarlierWaitedForLater => Volatile.Read(ref _waited) == 1;
+        internal string CoordinationState => $"Earlier matches: {_earlierMatches}, later matches: {_laterMatches}, " +
+            $"signal observed: {_signalled}, later worker: {_laterWorker?.ThreadState}.";
 
         internal void Coordinate()
         {
-            _laterThrown = new ManualResetEventSlim();
+            _laterThrown.Reset();
+            _laterWorker = null;
             _coordinate = true;
-            _waited = 0;
+            _waited = _signalled = _earlierMatches = _laterMatches = 0;
         }
 
         internal void Check(Vector3 position, Vector3 displacement)
         {
             if (Later?.Invoke(position, displacement) == true)
             {
+                Interlocked.Increment(ref _laterMatches);
+                _laterWorker = Thread.CurrentThread;
                 _laterThrown.Set();
                 throw new ProviderFaultException("later", position);
             }
             if (Earlier?.Invoke(position, displacement) != true) return;
-            if (_coordinate && _laterThrown.Wait(Timeout)) Interlocked.Exchange(ref _waited, 1);
+            Interlocked.Increment(ref _earlierMatches);
+            if (_coordinate)
+            {
+                long start = Stopwatch.GetTimestamp();
+                if (_laterThrown.Wait(Timeout))
+                {
+                    Interlocked.Exchange(ref _signalled, 1);
+                    // The event precedes the throw. Joining proves the later failure reached the worker's cutoff
+                    // before this earlier failure can throw, within the original wait budget.
+                    TimeSpan remaining = Timeout - Stopwatch.GetElapsedTime(start);
+                    if (_laterWorker!.Join(remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero))
+                        Interlocked.Exchange(ref _waited, 1);
+                }
+            }
             throw new ProviderFaultException("earlier", position);
         }
+
+        public void Dispose() => _laterThrown.Dispose();
     }
 }

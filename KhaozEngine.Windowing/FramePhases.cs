@@ -47,6 +47,28 @@ namespace KhaozEngine.Windowing
         /// </summary>
         internal static void Run(Frame frame, bool render, IGpuDevice device, IGpuCommandList commands,
             Color clearColor, Action<Frame>? onPrepare, Action<Frame> onFrame)
+            => Run(frame, render, device, commands, clearColor, onPrepare, onFrame, null, 0);
+
+        /// <summary>
+        /// The same frame with the window's capture taps. A null registry, or one with nothing to do, runs the
+        /// frame exactly as the overload without taps: one submit and one present. Otherwise every tap records
+        /// after <paramref name="onFrame"/> inside the frame's list, the list is submitted with the fence a tap
+        /// handed in (or without one), every tap's after-submit callback runs with nothing recording, and then
+        /// the frame presents. A render-suppressed frame runs no tap. <c>frameMilliseconds</c> is the loop's
+        /// unclamped frame delta, handed to the taps.
+        /// </summary>
+        internal static void Run(Frame frame, bool render, IGpuDevice device, IGpuCommandList commands,
+            Color clearColor, Action<Frame>? onPrepare, Action<Frame> onFrame, FrameCaptureTaps? taps,
+            double frameMilliseconds)
+        {
+            if (taps is { HasWork: true })
+                RunWithTaps(frame, render, device, commands, clearColor, onPrepare, onFrame, taps, frameMilliseconds);
+            else
+                RunPlain(frame, render, device, commands, clearColor, onPrepare, onFrame);
+        }
+
+        static void RunPlain(Frame frame, bool render, IGpuDevice device, IGpuCommandList commands,
+            Color clearColor, Action<Frame>? onPrepare, Action<Frame> onFrame)
         {
             // Prepare. The frame's dt / input / size are already latched onto `frame`, so a callback sees this
             // frame's state, not the previous one's - which is what lets the world's queues be filled here rather
@@ -75,6 +97,40 @@ namespace KhaozEngine.Windowing
             if (render)
             {
                 device.Submit(commands);
+                device.Present();
+            }
+        }
+
+        static void RunWithTaps(Frame frame, bool render, IGpuDevice device, IGpuCommandList commands,
+            Color clearColor, Action<Frame>? onPrepare, Action<Frame> onFrame, FrameCaptureTaps taps,
+            double frameMilliseconds)
+        {
+            onPrepare?.Invoke(frame);
+
+            IGpuFence? fence = null;
+            GpuRecordingScope recording = render
+                ? GpuRecording.Open(device, commands, "the window's frame list")
+                : default;
+            try
+            {
+                if (render)
+                {
+                    commands.SetFramebuffer(device.SwapchainFramebuffer!);
+                    commands.ClearColorTarget(0, clearColor);
+                }
+                onFrame(frame);
+                // Still inside the recording and after the game's draws, so a tap's copy sees the finished image
+                // and lands in the same submit. The list has bound the swapchain framebuffer above, which is what
+                // a swapchain copy requires.
+                if (render) fence = taps.Record(frame, commands, frameMilliseconds);
+            }
+            finally { recording.Dispose(); }
+
+            if (render)
+            {
+                if (fence is null) device.Submit(commands);
+                else device.Submit(commands, fence);
+                taps.AfterSubmit();
                 device.Present();
             }
         }

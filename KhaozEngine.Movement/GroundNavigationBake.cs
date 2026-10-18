@@ -70,13 +70,14 @@ public sealed partial class GroundNavigationBake
         => Create(capture, sources, profiles, null);
 
     /// <summary>Builds every profile as <see cref="Create(PhysicsNavBake, NavBakeSources, IReadOnlyList{NavBakeProfile})"/>
-    /// does, one after another, passing <paramref name="execution"/> to each contact profile. Legacy profiles build
+    /// does, one after another, passing <paramref name="execution"/> to each profile. Legacy profiles build
     /// serially. The execution is not part of the identity, so the bake is byte-identical for any degree.</summary>
     /// <exception cref="ArgumentOutOfRangeException">The execution's degree is below 1, checked before every other
     /// argument. Also as the three-argument form.</exception>
     /// <exception cref="NotSupportedException">A contact profile above degree 1 has a physics source or selected query
     /// view without <see cref="KhaozEngine.Physics.IPhysicsConcurrentReadSource"/>. Above degree 1 with a contact
-    /// profile, every profile's argument checks run first, then this check, before any profile builds.</exception>
+    /// profile, every profile's argument checks run first, then this check, before any profile builds. A stable legacy
+    /// scope requires <see cref="KhaozEngine.Physics.IPhysicsQueryLeaseSource"/> on its exact source and selected view.</exception>
     public static GroundNavigationBake Create(PhysicsNavBake capture, NavBakeSources sources,
         IReadOnlyList<NavBakeProfile> profiles, NavBakeExecution? execution)
     {

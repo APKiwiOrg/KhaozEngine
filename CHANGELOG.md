@@ -5,8 +5,165 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.5.0
+
+2026-10-18
+
+- New opt-in `KhaozEngine.BugReports.Relay` authenticates and validates uploads, stores capability-linked media and queues GitHub issues and server snapshot comments with epoch claims and result markers.
+- New opt-in `KhaozEngine.BugReports.Relay.Azure` supplies Blob media, Queue work, Table quota counters and daily poison requeueing over host-owned clients, with offline conformance tests and a gated live leg.
+- `KhaozEngine.BugReports` exposes `BugReportLogTail.FromLogSection` for the viewer and relay to share the newest captured log lines.
+- `KhaozEngine.BugReports.Relay` exposes `ReportPaths.IsValid` as the media path rule shared by every store.
+- Every unfinished relay resend enqueues issue work before acceptance, including immediate retries after a failed enqueue.
+- `BugReportRelay.RevokeAsync` durably revokes reports, and missing public manifests stop late work from republishing deleted media.
+- The bug report viewer plays the full recorded interval between clip frames, including gaps longer than one second.
+- `MapPlacement` in `KhaozEngine.MapDoc` counts reads of its lookup keys (`Id`, `Kind`, `X`, `Z`) internally,
+  so the viewport pick linearity test in `KhaozEngine.MapEditor` also catches a per-element scan through a
+  captured document or the viewport's own copy, with the viewport's pick state built (#1453). Public behaviour
+  and the serialized document are unchanged.
+- `GameStorage` in `KhaozEngine.Persistence` gains an internal drain scheduling seam for tests, the same one
+  `PersistenceQueue` has. Public behaviour is unchanged. The Foundation tests that waited on thread-pool work
+  under a short bound now run it on test-owned threads (#1467).
+- Contact controller support reads cost less on stairs and boxes. Exactly horizontal axis-aligned rectangular
+  faces take an exact path through support extrema and contact height, axis-aligned rectangular faces certify
+  their contact sign directly, and installed faces keep their query-independent edge, normal and plane facts.
+  Results stay bit-identical to the reference evaluator. The
+  [phase 3 hosted verdict](docs/verification/2026-10-18-support-cost-hosted-1334-phase3.md) passes 135 of 139
+  ordinary rows. The stairs mesh and hidden crate rows that still miss SG-12 are judged against the aggregate
+  actor budget before a consumer pin (#1334).
+
+## 21.4.0
+
+- New in-game bug reports. A player presses F10 on any screen (title, login or in game). The frame that saw
+  the key keeps its screenshot, the last few seconds of video and every report section, and a confirmation screen
+  then takes a description, a category and the media choices. Games wire it with one `BugReportService` from
+  `KhaozEngine.BugReports.Client`, an `IBugReportSink` and an offline queue. See
+  [In-game bug reports](docs/USING-KHAOZENGINE.md) and the package READMEs.
+- New package `KhaozEngine.BugReports.Contracts`. It holds the version 1 bundle format (a stored zip with a
+  manifest, sections, screenshot and clip frames), the strict JSON shapes, the relay routes and `BundleValidator`,
+  the trust boundary a relay runs on every upload.
+- New package `KhaozEngine.BugReports`. It provides isolated report sections with redaction, truncation and a
+  1 MiB total finished off the frame thread, the bundle writer, `HttpRelaySink` and `LocalFolderSink`, a
+  write-ahead offline queue that binds signed-out reports to the next account that signs in, a self-contained
+  frame viewer page, and server snapshot capture and posting.
+- New package `KhaozEngine.BugReports.Client`. It provides `FrameHistoryRecorder`, a constant JPEG clip ring and an
+  on-demand screenshot fed by GPU capture taps that never stall a frame, plus the built-in build, platform, graphics,
+  performance, log, session and input sections, the confirmation screen and `BugReportService`.
+- `KhaozEngine.Gpu`: `GpuScaledCopy`, `GpuReadbackRing`, `IGpuFencedReadback` (a read map that never drains the
+  device) and `IGpuSwapchainCapture` on Metal, Vulkan and Direct3D 11. `KhaozEngine.Windowing` adds frame capture
+  taps, and Vulkan requests `TRANSFER_SRC` swapchain images where the surface allows it.
+- `KhaozEngine.Imaging` adds `JpegWriter` and `JpegThumbnailDecoder`, which decodes one-eighth scale thumbnails from
+  DC coefficients. `KhaozEngine.Diagnostics` adds `RecentLogSink` and `ReportRedactor`.
+- `KhaozEngine.Gui` adds the multi-line `TextArea`. `KhaozEngine.Game` adds `GameApp.AddOverlay` and
+  `RemoveOverlay` for overlays that draw above any screen and can hold the game's input, and
+  `InputState.WithoutInteraction`. A button, trigger or stick still held when a hold ends stays hidden from the
+  game until it is released.
+- Temporal anti-aliasing no longer leaves a speckled band or a fading tail behind a shadow edge that travels several
+  pixels a frame, or that crosses a moving object, at Native and Quality. The shading release from 21.2.0 now also
+  covers moving pixels through the history ring test, and a carried lock with no ridge this frame releases only when
+  both diagonal pairs of its ring read the change, so missed thin and diagonal detail keeps its hold. Balanced and
+  lower presets are unchanged ([#1431](https://github.com/APKiwiOrg/KhaozEngine/issues/1431)). See amendment 34 of
+  the [temporal resolve design](docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md)
+  ([#1448](https://github.com/APKiwiOrg/KhaozEngine/issues/1448)).
+- `Browser` on macOS and Linux now passes a URL as one process argument, so a file path containing spaces opens.
+- `PersistenceQueue` in `KhaozEngine.Persistence` gains an internal drain scheduling seam for tests. Public
+  behaviour is unchanged. The tracked persistence tests now hold every controlled pause on test-owned threads,
+  which ends their intermittent watchdog failures on loaded hosted runners (#1317).
+- `EditorDocument` in `KhaozEngine.MapEditor` counts reads of `Doc` internally, so the viewport pick linearity
+  test asserts a constant read count per pick instead of a wall-clock bound (#1444). Public behaviour is
+  unchanged.
+- The `ke-tileedit` MCP adapter now drops a queued tool call as soon as it reads that call's cancellation from
+  the transport, under the same lock that releases the next call. A call cancelled while queued never starts
+  and gets no response, whatever order the thread pool runs the SDK's handlers in (#1443). A malformed or
+  unknown cancellation is ignored and leaves the session serving calls.
+- Contact controller movement changes on some support, and support reads cost less again. A paced climb past an
+  overhung sloped edge no longer lowers the feet below the support they stand on (#1437). On one support member a
+  rise up to the walkable grade is continuous, and only the excess counts as a step. A drop on one member steeper
+  than walkable now raises the step down signal and still costs no climb budget. A tick skips its three look-ahead
+  support reads once its climb is decided, so movement and signals are unchanged but an explicit producer sees
+  fewer reads. Support reads build joins only where certification reads them, certify planar contacts on exact
+  coordinates, cache mesh triangles in a bounded world form, admit vertical faces with a certified segment test and
+  serve an exact repeat inside one lease interval from a memo, with results bit-identical to the reference
+  evaluator. The [phase 2 cost record](docs/superpowers/plans/proofs/2026-10-17-support-cost-option-c-phase2.md)
+  lists the stairs, crate and pushed seat rows that still miss SG-12.
+
+## 21.3.0
+
+- Add `WindowStack` to `KhaozEngine.Gui` for overlapping non-modal windows. Windows implement `IStackWindow`
+  and live in `WindowBand.Docked`, `Floating` or `Topmost`. The stack raises a window when it opens or is
+  pressed, updates open windows top to bottom with every window above occluded, and draws them bottom to top.
+  `WindowUpdate` hands each window its pointer, input, `ReceivesInput` and `IsFront`. `CloseFront` closes the
+  top-most window that closes on Escape and `Covers` reports whether an open window lies under a point.
+  `IsCapturing` reports whether the last update ran in capture mode, so a consumer can leave Escape to the
+  captor's popup.
+- A window that opens while the left button is held rises only after the release frame, so that release's
+  taps and drops resolve against the order the player saw.
+- A window that closes during its own update still occludes for that frame and is not drawn. No press raises
+  a window while another window captures the pointer, while the other button is held or on a frame that
+  receives no input. `Draw` mirrors the last update's capture and no-input occlusion, skips windows removed
+  mid-frame and clears occlusion when it finishes, so tooltips and menus drawn afterwards stay live.
+- Add opt-in `Pointer` occlusion with `Occlude`, `OccludeAll`, `IsOccluded` and `ClearOcclusion`. Every hit
+  query misses when its test point is occluded, and `IsReleasedOutside` counts an occluded release as
+  outside. Occlusion clears on every `Pointer.Update`. With nothing occluded every query behaves as in 21.1.0.
+- Add `Pointer.IsRightPressOriginFresh`, the right-button twin of `IsPressOriginFresh`, a same-frame right tap
+  included.
+- `WindowDrag` now latches its grab through `Pointer.IsDragStartIn`, so an occluded press origin never grabs
+  and on a `WindowStack` only the front window under a press can move. Windows without a stack still need
+  their caller to order them. A single window behaves as before.
+- `SlotGrid` drops, `GuiDragContext.OfferTargetIn`, `TreeView` drop positions, `ScrollablePanel` drag edge
+  scroll, `PropertyGrid` hover, `WorldMapView` hover, `GuiSurface.HoverCaptured` and `PointerCaptured`,
+  `ScreenStack.PressBeganOverUi`, `PannableCanvas.TryGetTap`, `PanZoomController` admission and taps, and
+  `DraggableBottomSheet` presses now honour occlusion. Their behaviour with nothing occluded is unchanged. See the
+  [design record](docs/design/WINDOW-STACK-DESIGN-2026-10-16.md).
+
+## 21.2.0
+
+- Add an optional `clearance` block to the tile world manifest, held as `TileWorldDocument.Clearance`
+  (`TileClearanceSettings`): a mesh root relative to the world directory, a sampling cell size, an object
+  waiver tag and `TileClearanceRule` tag pairs that keep subject meshes out of obstacle meshes within a
+  tolerance. A rooted mesh root or one with a backslash is refused on every OS, rules compare by value and an
+  absent block keeps an older world's bytes.
+- The block is authoring metadata outside `TileWorldHash.OfWorld`, so editing it changes no world digest and
+  forces no navigation rebake. The TileWorld format version is unchanged.
+- Add `TileWorldClearance.Check`, which places every loaded object's mesh with
+  `TileObjectPlacement.LocalToWorld` and reports `clearance.overlap` per penetrating pair at its deepest
+  point, `clearance.mesh` per archetype whose mesh cannot be read and `clearance.rule` for a rule whose tags
+  match no archetype. `TileWorldValidator.Validate` never runs it. Meshes arrive through the new
+  `ITileMeshGeometry` seam, and `TileWorldClearance.ResolveMeshRoot` resolves the block's mesh root against the
+  world directory.
+- Add the format-free clearance core to `KhaozEngine.Primitives`: `ClearanceMesh`, `ClearanceSolid`,
+  `ClearanceSamples`, `ClearanceProbe`, `ClearancePenetration` and `ClearanceTooLargeException`. An obstacle is
+  solid from its lowest point to its top surface, depth is the nearest way out, and triangles are sampled in rows
+  along their longest edge plus every edge and vertex, so the count scales with area plus perimeter.
+- Add `GltfTileMeshGeometry` to `KhaozEngine.TileWorld.Render3D`, the GPU-free glb `ITileMeshGeometry` that
+  maps a `meshRef` as `GltfMeshResolver.PathFor` does. It caches each load per reference with the file's last
+  write time and length, reloads when either changes and probes a missing file again on every ask.
+- Add `SetClearanceCommand` to `KhaozEngine.TileWorld.Editing`, one undo step per clearance edit.
+- `ke-tileedit` gains `clearance_get`, `clearance_set`, `clearance_rule_set`, `clearance_rule_remove` and
+  `clearance_check`, for 55 verbs. `world_save` now refuses a world with any clearance issue and writes
+  nothing, and `world_validate` lists the clearance issues after the validator's. `clearance_set` sets the mesh
+  root, cell size and waiver tag on every call. A glb written or re-exported mid-session is seen at the next
+  save or check with no `world_open`.
+- Temporal anti-aliasing no longer leaves a grainy band trailing a shadow or light edge that slides over a still
+  surface under a still camera at Native and Quality. The trail no longer grows with the edge's travel per frame, so
+  a low frame rate, such as an unfocused window throttled to 15 Hz, no longer widens it. A still pixel whose shading
+  changed drops its lock and accumulated weight for one frame and shows the internal reconstruction. Stable isolated
+  detail, fine texture and slow pans resolve as before. Balanced and lower presets keep the old behaviour
+  ([#1431](https://github.com/APKiwiOrg/KhaozEngine/issues/1431)). See amendment 33 of the
+  [temporal resolve design](docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md)
+  ([#1427](https://github.com/APKiwiOrg/KhaozEngine/issues/1427)).
+- Contact controller support reads and `IPhysicsSupportFootprint.QuerySupportFootprint` cost less on ordinary
+  scenes. Installed box and hull statics reuse a cached pose-applied world form, a certified separation skips
+  the contact kernel, faces of one convex leaf join through their shared captured edge, and curved contact
+  members stop bisecting once their verdict is certified. Results stay bit-identical to the reference
+  evaluator, and the first warm query in a process no longer allocates. The
+  [cost record](docs/superpowers/plans/proofs/2026-10-17-support-cost-option-c.md) lists every ordinary
+  scene that still misses its SG-12 limits.
+
 ## 21.1.0
 
+- Keep rigid attachment body alignments exactly affine when general inversion rounds their homogeneous
+  component on x64. Oblique base axes compose without rejecting a valid attachment world. External matrix
+  validation remains strict, and the alignment's other fifteen elements retain their existing values.
 - Add nested async-flow overrides through `LocalizationContext.Use`, `Log.Use` and `GuiTheme.Use`.
   Reads select the innermost scope, then the current process default. Disposal restores the enclosing
   scope without disposing borrowed catalogs or shutting down log managers.
@@ -14,8 +171,15 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   Cached ambient category loggers follow the active scope. Before first scope use, ambient reads bypass
   async-local lookup. Localization and cached logging read paths retain zero per-call allocations.
 - Document theme scopes for both controls that copy construction-time colors and live theme readers.
-  Navigation CPU research is recorded separately. No navigation performance option or bake format
-  change ships in this version.
+- Add default-off `NavBakeExecution.UseStableLegacyReadScope` for synchronous legacy navigation profiles.
+  Stable, deterministic and read-only providers can reuse one authenticated physics read lease per profile.
+  Existing callbacks and contact scheduling keep their behavior. Canonical bake bytes and identity stay equal.
+  See the [bounded hosted evidence](docs/design/NAV-CAPTURE-CPU-RESEARCH-2026-10-15.md#successful-hosted-pair-and-staged-integration)
+  for the public-fixture result and its limits.
+- Bepu penetration queries now initialize a collision batcher only after finding an eligible static.
+  Excluded-only and non-static-only overlaps avoid native task-table work while preserving collision
+  results, submission order and query cleanup. Cold ignored-query scratch capacity drops from 128 KiB
+  to zero in the regression fixtures. This is not a measured whole-navigation CPU improvement.
 
 ## 21.0.0
 

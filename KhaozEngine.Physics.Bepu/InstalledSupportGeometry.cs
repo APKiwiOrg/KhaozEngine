@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Threading;
 using BepuPhysics;
 using BepuPhysics.Collidables;
 using KhaozEngine.Physics;
@@ -63,9 +64,28 @@ internal sealed class InstalledSupportLeaf
     }
 }
 
+/// <summary>Immutable local topology of one installed static, keyed by owner, installation and static geometry
+/// version, with at most one lazily published <see cref="InstalledSupportWorldForm"/>.</summary>
 internal sealed class InstalledSupportGeometry
 {
+    InstalledSupportWorldForm? _worldForm;
+
     internal IReadOnlyList<InstalledSupportLeaf> Leaves { get; }
+
+    /// <summary>The published world form, or null before the first build publishes one.</summary>
+    internal InstalledSupportWorldForm? WorldForm => Volatile.Read(ref _worldForm);
+
+    /// <summary>Serializes unobserved world form builds, so concurrent unobserved misses build once. It follows the
+    /// <see cref="InstalledSupportGeometryCache"/> slot rule: a build with an allocation observer installed runs
+    /// observer code at its phase boundaries, which may block on another reader or reenter this geometry on its own
+    /// thread, so it builds outside this gate, and the first publication wins. Unobserved builds run engine code
+    /// alone and are held under it.</summary>
+    internal Lock WorldFormGate { get; } = new();
+
+    /// <summary>Publishes <paramref name="built"/> unless a form is already published, and returns the published
+    /// form. A form built later, such as an outer build whose observer ran a nested build, is discarded.</summary>
+    internal InstalledSupportWorldForm Publish(InstalledSupportWorldForm built) =>
+        Interlocked.CompareExchange(ref _worldForm, built, null) ?? built;
 
     internal InstalledSupportGeometry(IReadOnlyList<InstalledSupportLeaf> leaves)
     {

@@ -14,7 +14,12 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// <param name="Drawable">The retained drawable, or <see cref="IntPtr.Zero"/> when the layer had none to
     /// give, which is M-W5's whole condition.</param>
     /// <param name="Texture">Its <c>MTLTexture</c>, borrowed, or <see cref="IntPtr.Zero"/> with it.</param>
-    internal readonly record struct MetalAcquiredDrawable(IntPtr Drawable, IntPtr Texture)
+    /// <param name="FramebufferOnly">The texture's own <c>-isFramebufferOnly</c>, read at the acquire. A layer may
+    /// hand back a pooled drawable made before a <c>framebufferOnly</c> write, so the swapchain capture reads this
+    /// rather than the layer's property. True unless the texture says otherwise, so a drawable nobody asked about
+    /// is never treated as a copy source.</param>
+    internal readonly record struct MetalAcquiredDrawable(IntPtr Drawable, IntPtr Texture,
+        bool FramebufferOnly = true)
     {
         /// <summary>Whether an acquire produced anything. False is the nil-drawable frame.</summary>
         internal bool HasDrawable => Drawable != IntPtr.Zero;
@@ -64,9 +69,16 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// vsync toggle silently does nothing.</summary>
         void SetDisplaySyncEnabled(bool enabled);
 
+        /// <summary><c>-setFramebufferOnly:</c>. <see cref="Configure"/> writes true, and the boundary writes false
+        /// while a swapchain capture is requested so the drawables vended afterwards can be a blit source. A drawable
+        /// already vended keeps the value it was made with, which is why <see cref="NextDrawable"/> reports each
+        /// texture's own flag.</summary>
+        void SetFramebufferOnly(bool value);
+
         /// <summary>
         /// <c>-nextDrawable</c>, RETAINED, or <see cref="MetalAcquiredDrawable.HasDrawable"/> false when the layer
-        /// had none to give. IT BLOCKS and cannot be asked not to, which is why the caller times it (M-W4).
+        /// had none to give. Carries the texture's own <c>-isFramebufferOnly</c>. IT BLOCKS and cannot be asked not
+        /// to, which is why the caller times it (M-W4).
         /// </summary>
         MetalAcquiredDrawable NextDrawable();
 

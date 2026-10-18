@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.BugReports.Client</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>The client side of KhaozEngine in-game bug reports (opt-in, NOT in any umbrella). BugReportService adds a rebindable report trigger, a rolling in-memory clip, a trigger frame screenshot, the built-in sections, the confirmation screen and the result toasts to a GameApp as one overlay.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../KhaozEngine.BugReports/KhaozEngine.BugReports.csproj" />
+    <ProjectReference Include="../KhaozEngine.BugReports.Contracts/KhaozEngine.BugReports.Contracts.csproj" />
+    <ProjectReference Include="../KhaozEngine.Diagnostics/KhaozEngine.Diagnostics.csproj" />
+    <ProjectReference Include="../KhaozEngine.Gpu/KhaozEngine.Gpu.csproj" />
+    <ProjectReference Include="../KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />
+    <ProjectReference Include="../KhaozEngine.Imaging/KhaozEngine.Imaging.csproj" />
+    <ProjectReference Include="../KhaozEngine.Gui/KhaozEngine.Gui.csproj" />
+    <ProjectReference Include="../KhaozEngine.Game/KhaozEngine.Game.csproj" />
+    <ProjectReference Include="../KhaozEngine.App/KhaozEngine.App.csproj" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.BugReports.Client.Tests" />
+    <!-- Gpu/FrameHistoryRecorderGpuTests.cs drives the recorder over a real device through FrameCaptureTaps. -->
+    <InternalsVisibleTo Include="KhaozEngine.Render.Tests" />
+  </ItemGroup>
+</Project>

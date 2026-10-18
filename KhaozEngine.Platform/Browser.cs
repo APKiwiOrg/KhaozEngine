@@ -15,17 +15,27 @@ public static class Browser
         if (url is null) return Task.FromResult(false);
         try
         {
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                Process.Start(new ProcessStartInfo(url.ToString()) { UseShellExecute = true });
-            else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-                Process.Start("open", url.ToString());
-            else
-                Process.Start("xdg-open", url.ToString());
+            OSPlatform os = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? OSPlatform.Windows
+                : RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? OSPlatform.OSX
+                : OSPlatform.Linux;
+            // The browser outlives the call. Disposing the handle only releases this process's view of it.
+            using Process? _ = Process.Start(CreateStartInfo(url, os));
             return Task.FromResult(true);
         }
         catch
         {
             return Task.FromResult(false);
         }
+    }
+
+    // Windows hands the URL to the shell as the file to open. Elsewhere the URL is one argument in its escaped
+    // AbsoluteUri form, so a path with spaces is never split into several arguments.
+    internal static ProcessStartInfo CreateStartInfo(Uri url, OSPlatform os)
+    {
+        if (os == OSPlatform.Windows)
+            return new ProcessStartInfo(url.ToString()) { UseShellExecute = true };
+        var info = new ProcessStartInfo(os == OSPlatform.OSX ? "open" : "xdg-open");
+        info.ArgumentList.Add(url.AbsoluteUri);
+        return info;
     }
 }

@@ -83,6 +83,8 @@ namespace KhaozEngine.Render3D
                 if (!Matrix4x4.Invert(rigidBase, out Matrix4x4 inverseRigidBase))
                     throw new ArgumentException($"Joint '{name}' has a singular base frame.", nameof(skeleton));
                 _bodyAlignment[node] = Matrix4x4.CreateTranslation(rigidBase.Translation) * inverseRigidBase;
+                // General inversion can round the homogeneous one of this engine-owned rigid affine frame.
+                _bodyAlignment[node].M44 = 1f;
                 _isContract[node] = true;
             }
         }
@@ -136,7 +138,8 @@ namespace KhaozEngine.Render3D
         /// piece at the joint with the body's axes at the base and carries it through the joint's motion from there.
         /// This is <c>T(baseOffset) * inverse(jointBaseModel)</c>, taken off the rigid part of the base frame so it
         /// cancels exactly what <see cref="BoneSocket.ComposeRigid"/> keeps. A pure rotation, and the identity on a
-        /// joint that sits at the body's axes at the base.</remarks>
+        /// joint that sits at the body's axes at the base. The homogeneous component is exactly one even when
+        /// general inversion rounds it for oblique base axes.</remarks>
         /// <param name="node">A contract joint's node.</param>
         /// <exception cref="ArgumentException">The node is not a contract joint.</exception>
         public Matrix4x4 BodyAlignment(int node) => _bodyAlignment[ContractNode(node)];

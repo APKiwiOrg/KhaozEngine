@@ -63,7 +63,8 @@ public partial class ContactLeasedQueryTests
         GroundStepResult step = GroundCore.Step(Vector3.Zero, new(0.1f, 0), 1f / 30, Tuning, Settings, queries);
         Assert.Equal(GroundFooting.Walkable, step.Footing);
         int before = scene.View.FootprintCalls;
-        var signals = GroundSignals.Resolve(new MoveState { ClimbRate = 1 }, 0.1f, 0.1f, true,
+        // No carried run, so the seated rise leaves the run to the samples and all three are taken.
+        var signals = GroundSignals.Resolve(new MoveState(), 0.1f, 0.1f, true,
             false, 0, new(0.1f, 0), step.Feet, step.Support, true, 1f / 30, Tuning, 0.125f,
             MathF.Cos(Tuning.MaxSlopeRadians), queries);
         Assert.Equal(before + GroundSignals.Samples, scene.View.FootprintCalls);

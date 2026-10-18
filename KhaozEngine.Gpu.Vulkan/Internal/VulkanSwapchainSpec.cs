@@ -23,8 +23,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
     /// <param name="PreTransform">The surface's own <c>currentTransform</c>, which is departure one of V-W2. The
     /// incumbent hardcodes <c>IDENTITY</c>, which is wrong on any surface reporting a rotation.</param>
     /// <param name="CompositeAlpha">Always <c>OPAQUE</c>, reproduced.</param>
-    /// <param name="Usage">Always <c>COLOR_ATTACHMENT | TRANSFER_DST</c>, reproduced. Rendering goes DIRECTLY
-    /// into the swapchain image, and the transfer bit is what lets a capture copy one out.</param>
+    /// <param name="Usage"><c>COLOR_ATTACHMENT | TRANSFER_DST</c>, reproduced. Rendering goes DIRECTLY into the
+    /// swapchain image, and <c>TRANSFER_DST</c> lets a copy or a clear write into one. Copying one OUT needs
+    /// <c>TRANSFER_SRC</c>, which is added only while a frame capture is requested and the surface supports it
+    /// (<see cref="ColourTransferDstAndSrc"/>).</param>
     /// <param name="Clipped">Always true, reproduced.</param>
     internal readonly record struct VulkanSwapchainSpec(
         uint ImageCount,
@@ -40,9 +42,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// <summary>The composite alpha every swapchain this backend creates asks for.</summary>
         internal const CompositeAlphaFlagsKHR Opaque = CompositeAlphaFlagsKHR.OpaqueBitKhr;
 
-        /// <summary>The usage bits every swapchain this backend creates asks for.</summary>
+        /// <summary>The usage bits every swapchain this backend creates asks for when no capture is requested.
+        /// </summary>
         internal const ImageUsageFlags ColourAndTransferDst =
             ImageUsageFlags.ColorAttachmentBit | ImageUsageFlags.TransferDstBit;
+
+        /// <summary>The usage bits a swapchain asks for while a frame capture is requested: the base bits plus
+        /// <c>TRANSFER_SRC</c>, which is what makes a swapchain image a copy source.</summary>
+        internal const ImageUsageFlags ColourTransferDstAndSrc =
+            ColourAndTransferDst | ImageUsageFlags.TransferSrcBit;
 
         /// <summary>
         /// Whether this spec can actually be handed to <c>vkCreateSwapchainKHR</c>. False on a zero extent, which
@@ -51,5 +59,9 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// a quiet frame rather than a validation failure.
         /// </summary>
         internal bool IsCreatable => Extent.IsPresentable && ImageCount != 0;
+
+        /// <summary>Whether images made from this spec can be a copy source, which is the
+        /// <c>TRANSFER_SRC</c> bit a frame capture needs.</summary>
+        internal bool IsCopySource => (Usage & ImageUsageFlags.TransferSrcBit) != 0;
     }
 }

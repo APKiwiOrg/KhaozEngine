@@ -49,6 +49,10 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
         /// later.</param>
         void MemoryBarrier(ulong commandBuffer, bool toTransfer);
 
+        /// <summary>One <c>vkCmdPipelineBarrier2</c> carrying <see cref="VulkanTransferBarrier.ToHost"/>, after the
+        /// last region of a copy into a staging texture, so the host can read what the copy wrote.</summary>
+        void HostReadBarrier(ulong commandBuffer);
+
         /// <summary><c>vkCmdCopyImage</c> of ONE region, with <paramref name="source"/> already in
         /// <c>TRANSFER_SRC_OPTIMAL</c> and <paramref name="destination"/> already in
         /// <c>TRANSFER_DST_OPTIMAL</c>.</summary>

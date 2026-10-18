@@ -1,6 +1,6 @@
 using System;
-using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Numerics;
 using KhaozEngine.Game;
 using KhaozEngine.MapDoc;
@@ -15,18 +15,30 @@ public partial class MapEditorSceneTests
     static EditorFrameInput DownwardPress(float x, float z) =>
         new(new Vector3(x, 100f, z), -Vector3.UnitY, pointerPressed: true, pointerDown: true, dt: 0.016f);
 
-    // A viewport click runs the visibility filter once per placement, so the filter has to stay constant-time per
-    // element. Resolving each placement's kit through an id lookup made one click quadratic: about half a second on
-    // a 17,000-placement island. Linear work here is around a millisecond, so the bound leaves two orders of
-    // magnitude for a loaded machine while still failing the quadratic shape.
+    // Each filter must be constant-time. Count the maximum lookup-key reads on any one placement, so a scan
+    // through a captured document or another collection still shows repeated visits to its placements. The
+    // viewport's CPU pick state is ready too, so PlacementDrawnAt cannot short-circuit at the unbuilt guard.
+    // Read counts rather than a stopwatch, so a loaded machine cannot fail it (#1444, #1453).
     [Fact]
     public void ViewportPick_StaysLinearAcrossALargeAuthoredDocument()
     {
-        const int Count = 20_000;
+        var small = ReadsForOnePick(200);
+        var large = ReadsForOnePick(20_000);
+
+        Assert.True(small.DocumentReads > 0, "The read probe did not see the pick reach the document.");
+        Assert.Equal(small.DocumentReads, large.DocumentReads);
+        Assert.True(small.PlacementReads > 0, "The placement lookup probe did not see the pick reach a placement.");
+        Assert.True(small.PlacementReads == large.PlacementReads,
+            $"Placement lookup reads per pick grew with document size: {small.PlacementReads} versus {large.PlacementReads}.");
+    }
+
+    // Reads during one Select-mode press over count far placements plus one target under the ray.
+    static (long DocumentReads, long PlacementReads) ReadsForOnePick(int count)
+    {
         var scene = new FieldDocScene(() =>
         {
             MapDocument doc = ValidDoc();
-            for (int i = 0; i < Count; i++)
+            for (int i = 0; i < count; i++)
                 doc.Placements.Add(new MapPlacement { Id = $"baked-{i}", Kind = "oak", X = 1000f + i, Z = 1000f, Y = 0f });
             doc.Placements.Add(new MapPlacement { Id = "target", Kind = "oak", X = 0f, Z = 0f, Y = 0f });
             return doc;
@@ -36,20 +48,20 @@ public partial class MapEditorSceneTests
             ResolvePropCategory = _ => EditorPropCategory.Trees,
         });
         new SceneManager().Push(scene);
+        scene.Document.Selection.Clear();
+        using var viewport = new HeadlessPickViewport(scene);
+        Assert.True(scene.Controller.PlacementDrawnAt(0f, 0f));
+        Assert.False(scene.Controller.PlacementDrawnAt(5000f, 5000f));
+        MapPlacement[] placements = scene.Document.Doc.Placements.ToArray();
+        long[] placementReadsBefore = placements.Select(p => p.LookupReads).ToArray();
 
-        double best = double.MaxValue;
-        for (int attempt = 0; attempt < 3; attempt++)
-        {
-            scene.Document.Selection.Clear();
-            var watch = Stopwatch.StartNew();
-            scene.Controller.Update(DownwardPress(0f, 0f));
-            best = Math.Min(best, watch.Elapsed.TotalMilliseconds);
-            scene.Controller.Update(new EditorFrameInput(new Vector3(0f, 100f, 0f), -Vector3.UnitY,
-                pointerReleased: true, dt: 0.016f));
-        }
+        long before = scene.Document.DocReads;
+        scene.Controller.Update(DownwardPress(0f, 0f));
+        long reads = scene.Document.DocReads - before;
+        long placementReads = placements.Select((p, i) => p.LookupReads - placementReadsBefore[i]).Max();
 
         Assert.Equal("target", scene.Document.Selection.Id);
-        Assert.True(best < 150.0, $"A viewport pick over {Count} placements took {best:F1} ms.");
+        return (reads, placementReads);
     }
 
     [Fact]

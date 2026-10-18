@@ -300,6 +300,7 @@ namespace KhaozEngine.Gui
             WasSelectionChanged = false;
             WasExpansionChanged = false;
             WasReordered = false;
+            if (pointer.IsOccluded(pointer.Position)) _dropValid = false;
             pointer.BlockRegion(Bounds);
             if (!Enabled) { _dragCancelled = _dragNode is not null; AbandonDrag(); return false; }
 
@@ -330,7 +331,7 @@ namespace KhaozEngine.Gui
             // cross-parent release cancels and a valid slot that actually moves the row fires OnReordered.
             if (pointer.IsJustReleased && _dragNode is not null)
             {
-                ComputeDrop(pointer.Position, rows);
+                ComputeDrop(pointer, rows);
                 if (_dropValid && _dropIndex != _dragFromIndex)
                 {
                     OnReordered?.Invoke(_dragNode, _dragFromIndex, _dropIndex);
@@ -379,6 +380,7 @@ namespace KhaozEngine.Gui
         // began in a parent's caret zone), then recompute the live drop slot from the current pointer.
         void TrackDrag(Pointer pointer, IReadOnlyList<(TreeNode Node, int Depth)> rows)
         {
+            if (pointer.IsOccluded(pointer.Position)) return;
             Vector2 pos = pointer.Position;
             Vector2 origin = pointer.PressOrigin;
 
@@ -396,15 +398,16 @@ namespace KhaozEngine.Gui
                 _dragNode = node;
             }
 
-            ComputeDrop(pos, rows);
+            ComputeDrop(pointer, rows);
         }
 
         // The insertion slot for the current pointer, constrained to the dragged node's own sibling list (the
         // same-parent rule). Sets `_dropValid` false when the pointer is off the tree or over a non-sibling row.
-        void ComputeDrop(Vector2 pos, IReadOnlyList<(TreeNode Node, int Depth)> rows)
+        void ComputeDrop(Pointer pointer, IReadOnlyList<(TreeNode Node, int Depth)> rows)
         {
             _dropValid = false;
-            if (!Bounds.Contains(pos)) return;
+            Vector2 pos = pointer.Position;
+            if (pointer.IsOccluded(pos) || !Bounds.Contains(pos)) return;
             int over = RowAt(pos.Y, rows.Count);
             if (over < 0) return;
 

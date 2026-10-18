@@ -1,0 +1,18 @@
+#!/bin/sh
+# reference-transaction: refuse moving refs/heads/main while another session holds the engine release
+# lock (issue #1439, scripts/release-lock.sh). Shared via core.hooksPath=.githooks.
+#
+# Git runs this on every ref update, so the common path is shell builtins only: anything but the
+# prepared state, or a transaction that does not touch refs/heads/main, exits 0 at once. Every
+# unexpected error fails open. The holder sets KE_RELEASE_LOCK_OWNER to the lock's owner.
+[ "$1" = prepared ] || exit 0
+hit=0
+while read -r _old _new ref; do
+  [ "$ref" = refs/heads/main ] && hit=1
+done
+[ "$hit" = 1 ] || exit 0
+[ -f scripts/release-lock-standard.sh ] || exit 0
+# A subshell, so a broken library cannot abort the transaction. Only its refusal code 3 refuses.
+( . scripts/release-lock-standard.sh && { rl_main_guard reference-transaction || exit 3; } )
+[ $? -eq 3 ] && exit 1
+exit 0

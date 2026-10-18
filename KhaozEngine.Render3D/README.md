@@ -1336,6 +1336,7 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     each track once, animate contract joints only and carry no scale track. `BaseLocal`, `BaseWorld`,
     `ParentBaseInverse` and `BodyAlignment` expose the base frames, and the frame accessors refuse a node outside
     the contract. `BodyAlignment` pairs with `BoneSocket.ComposeRigid` to seat a piece authored in the body's axes.
+    Its homogeneous component stays exactly one when general inversion rounds it for oblique base axes.
     `SkinAtBase` deforms a skin to the base on the CPU and allocates, so call it at load.
   - `ClipRefusals` words a skin loader's clip refusals one way, naming the clip, the rule and the joint. `Only`
     throws on a second clip of one name. `NoLength`, `Unkeyed`, `Uncovered` and `Breach` return null for a clean

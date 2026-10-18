@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.IO;
-using System.IO.Pipelines;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
@@ -12,12 +10,9 @@ using KhaozEngine.TileEdit;
 using KhaozEngine.TileEdit.Tools;
 using KhaozEngine.Tests.Gpu;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
-using ModelContextProtocol.Server;
 using Xunit;
 
 namespace KhaozEngine.Tests.TileEdit;
@@ -59,6 +54,8 @@ public class McpAdapterTests
         "marker_set", "marker_remove", "marker_list",
         // Cosmetic foliage
         "foliage_layer_set", "foliage_get", "foliage_density_set", "foliage_paint", "foliage_remove",
+        // Clearance rules
+        "clearance_get", "clearance_set", "clearance_rule_set", "clearance_rule_remove", "clearance_check",
         // Prefabs
         "prefab_save", "prefab_place", "prefab_list",
         // Derived collision
@@ -114,102 +111,6 @@ public class McpAdapterTests
         var session = harness.Services.GetRequiredService<TileEditSession>();
         Assert.Equal(world, session.DocumentPath);
     }
-
-    [Fact]
-    public async Task ToolCalls_ExecuteInTransportArrivalOrder()
-    {
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        var probe = new OrderingProbe();
-        await using McpHarness harness = await McpHarness.StartAsync(cts.Token, probe);
-
-        ValueTask<CallToolResult> first = harness.CallAsync("ordering_probe", cts.Token, ("position", 1));
-        await probe.FirstEntered.Task.WaitAsync(cts.Token);
-        ValueTask<CallToolResult> second = harness.CallAsync("ordering_probe", cts.Token, ("position", 2));
-
-        try
-        {
-            await Assert.ThrowsAsync<TimeoutException>(async () =>
-                await probe.SecondEntered.Task.WaitAsync(TimeSpan.FromMilliseconds(250), cts.Token));
-        }
-        finally
-        {
-            probe.ReleaseFirst.TrySetResult();
-        }
-
-        await first;
-        await second;
-        Assert.Equal(new[] { "start-1", "finish-1", "start-2", "finish-2" }, probe.Events);
-    }
-
-    [Fact]
-    public async Task ThrowingMiddleToolCall_ReleasesTheNextArrivalWithoutOvertakingTheFirst()
-    {
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        var probe = new OrderingProbe();
-        await using McpHarness harness = await McpHarness.StartAsync(cts.Token, probe);
-
-        ValueTask<CallToolResult> first = harness.CallAsync("ordering_probe", cts.Token, ("position", 1));
-        await probe.FirstEntered.Task.WaitAsync(cts.Token);
-        ValueTask<CallToolResult> second = harness.CallAsync("ordering_probe", cts.Token,
-            ("position", 2), ("behavior", "throw"));
-        ValueTask<CallToolResult> third = harness.CallAsync("ordering_probe", cts.Token, ("position", 3));
-
-        try
-        {
-            await AssertNotEnteredAsync(probe.SecondEntered.Task, cts.Token);
-            await AssertNotEnteredAsync(probe.ThirdEntered.Task, cts.Token);
-        }
-        finally
-        {
-            probe.ReleaseFirst.TrySetResult();
-        }
-
-        Assert.NotEqual(true, (await first).IsError);
-        Assert.True((await second).IsError);
-        Assert.NotEqual(true, (await third).IsError);
-        Assert.Equal(new[]
-        {
-            "start-1", "finish-1", "start-2", "throw-2", "start-3", "finish-3",
-        }, probe.Events);
-    }
-
-    [Fact]
-    public async Task CancelledMiddleToolCall_ReleasesTheNextArrivalWithoutOvertakingTheFirst()
-    {
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        using var middleCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
-        var probe = new OrderingProbe();
-        await using McpHarness harness = await McpHarness.StartAsync(cts.Token, probe);
-        var middleId = new RequestId("cancelled-middle");
-
-        ValueTask<CallToolResult> first = harness.CallAsync("ordering_probe", cts.Token, ("position", 1));
-        await probe.FirstEntered.Task.WaitAsync(cts.Token);
-        Task<CallToolResult> second = harness.CallWithIdAsync("ordering_probe", middleId, middleCts.Token,
-            ("position", 2), ("behavior", "wait-for-cancel")).AsTask();
-        ValueTask<CallToolResult> third = harness.CallAsync("ordering_probe", cts.Token, ("position", 3));
-
-        await AssertNotEnteredAsync(probe.SecondEntered.Task, cts.Token);
-        await AssertNotEnteredAsync(probe.ThirdEntered.Task, cts.Token);
-        await harness.CancelAsync(middleId, cts.Token);
-        middleCts.Cancel();
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await second);
-        try
-        {
-            await AssertNotEnteredAsync(probe.ThirdEntered.Task, cts.Token);
-        }
-        finally
-        {
-            probe.ReleaseFirst.TrySetResult();
-        }
-
-        Assert.NotEqual(true, (await first).IsError);
-        Assert.NotEqual(true, (await third).IsError);
-        Assert.Equal(new[] { "start-1", "finish-1", "start-3", "finish-3" }, probe.Events);
-    }
-
-    static async Task AssertNotEnteredAsync(Task entered, CancellationToken cancellationToken) =>
-        await Assert.ThrowsAsync<TimeoutException>(async () =>
-            await entered.WaitAsync(TimeSpan.FromMilliseconds(250), cancellationToken));
 
     [Fact]
     public async Task TilesFillThenUndo_RoundTripsThroughMcpCalls()
@@ -491,149 +392,6 @@ public class McpAdapterTests
             return structured.Deserialize<T>(options)
                 ?? throw new InvalidOperationException("tool result structured content deserialized to null.");
         throw new InvalidOperationException("tool result carried neither text nor structured content.");
-    }
-
-    /// <summary>A live in-process MCP client and server, wired over a pair of pipes through the same composition
-    /// path the stdio host uses. Disposing tears the client down first, then the host.</summary>
-    sealed class McpHarness : IAsyncDisposable
-    {
-        readonly IHost _host;
-
-        public McpClient Client { get; }
-        public IServiceProvider Services => _host.Services;
-
-        McpHarness(IHost host, McpClient client)
-        {
-            _host = host;
-            Client = client;
-        }
-
-        public static async Task<McpHarness> StartAsync(CancellationToken cancellationToken,
-            OrderingProbe? orderingProbe = null)
-        {
-            var clientToServer = new Pipe();
-            var serverToClient = new Pipe();
-
-            HostApplicationBuilder builder = Host.CreateApplicationBuilder();
-            builder.Logging.ClearProviders();
-            builder.Services.AddTileEditServices();
-            IMcpServerBuilder server = builder.Services.AddMcpServer()
-                .WithStreamServerTransport(clientToServer.Reader.AsStream(), serverToClient.Writer.AsStream())
-                .WithArrivalOrderedToolCalls()
-                .WithTileEditTools();
-            if (orderingProbe is not null)
-                server.WithTools(new OrderingProbeTools(orderingProbe));
-
-            IHost host = builder.Build();
-            await host.StartAsync(cancellationToken);
-
-            var transport = new StreamClientTransport(
-                serverInput: clientToServer.Writer.AsStream(),
-                serverOutput: serverToClient.Reader.AsStream());
-            McpClient client = await McpClient.CreateAsync(transport, cancellationToken: cancellationToken);
-            return new McpHarness(host, client);
-        }
-
-        /// <summary>Calls a verb with named arguments, which is how an MCP client passes them.</summary>
-        public ValueTask<CallToolResult> CallAsync(string verb, CancellationToken cancellationToken,
-            params (string Name, object? Value)[] arguments) =>
-            Client.CallToolAsync(verb, arguments.ToDictionary(a => a.Name, a => a.Value),
-                cancellationToken: cancellationToken);
-
-        public ValueTask<CallToolResult> CallWithIdAsync(string verb, RequestId requestId,
-            CancellationToken cancellationToken, params (string Name, object? Value)[] arguments) =>
-            Client.SendRequestAsync<CallToolRequestParams, CallToolResult>(RequestMethods.ToolsCall,
-                new CallToolRequestParams
-                {
-                    Name = verb,
-                    Arguments = arguments.ToDictionary(a => a.Name,
-                        a => JsonSerializer.SerializeToElement(a.Value)),
-                }, requestId: requestId, cancellationToken: cancellationToken);
-
-        public Task CancelAsync(RequestId requestId, CancellationToken cancellationToken) =>
-            Client.SendNotificationAsync(NotificationMethods.CancelledNotification,
-                new CancelledNotificationParams { RequestId = requestId },
-                cancellationToken: cancellationToken);
-
-        /// <summary>Writes the greybox catalog into a fresh directory and opens a world there THROUGH THE WIRE,
-        /// so even the setup of a later test goes over MCP rather than around it.</summary>
-        public async Task CreateWorldAsync(string directory, CancellationToken cancellationToken)
-        {
-            TileEditTestWorld.WriteCatalog(Path.Combine(directory, TileEditTestWorld.CatalogFileName));
-            CallToolResult created = await CallAsync("world_create", cancellationToken,
-                ("path", directory), ("id", "wire-world"), ("displayName", "Wire World"),
-                ("catalogPaths", new[] { TileEditTestWorld.CatalogFileName }));
-            Assert.NotEqual(true, created.IsError);
-        }
-
-        public async ValueTask DisposeAsync()
-        {
-            await Client.DisposeAsync();
-            await _host.StopAsync();
-            _host.Dispose();
-        }
-    }
-
-    sealed class OrderingProbe
-    {
-        readonly object _lock = new();
-
-        public TaskCompletionSource FirstEntered { get; } =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public TaskCompletionSource SecondEntered { get; } =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public TaskCompletionSource ThirdEntered { get; } =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public TaskCompletionSource ReleaseFirst { get; } =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public List<string> Events { get; } = new();
-
-        public async Task RunAsync(int position, string behavior, CancellationToken cancellationToken)
-        {
-            Add($"start-{position}");
-            if (position == 1)
-            {
-                FirstEntered.TrySetResult();
-                await ReleaseFirst.Task.WaitAsync(cancellationToken);
-            }
-            else
-            {
-                if (position == 2) SecondEntered.TrySetResult();
-                if (position == 3) ThirdEntered.TrySetResult();
-            }
-
-            if (behavior == "throw")
-            {
-                Add($"throw-{position}");
-                throw new InvalidOperationException("scripted ordering probe failure");
-            }
-            if (behavior == "wait-for-cancel")
-            {
-                try
-                {
-                    await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
-                }
-                catch (OperationCanceledException)
-                {
-                    Add($"cancel-{position}");
-                    throw;
-                }
-            }
-            Add($"finish-{position}");
-        }
-
-        void Add(string value)
-        {
-            lock (_lock) Events.Add(value);
-        }
-    }
-
-    [McpServerToolType]
-    sealed class OrderingProbeTools(OrderingProbe probe)
-    {
-        [McpServerTool(Name = "ordering_probe"), Description("Blocks the first call so transport ordering can be observed.")]
-        public Task Probe(int position, string behavior = "complete", CancellationToken cancellationToken = default) =>
-            probe.RunAsync(position, behavior, cancellationToken);
     }
 }
 

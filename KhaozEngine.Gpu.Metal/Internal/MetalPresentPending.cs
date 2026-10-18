@@ -3,8 +3,9 @@ using System.Threading;
 namespace KhaozEngine.Gpu.Metal.Internal
 {
     /// <summary>
-    /// THE TWO THINGS THAT QUEUE WORK FOR THE NEXT PRESENT BOUNDARY (M-W7): a resize, and a runtime
-    /// <c>SyncToVerticalBlank</c> change. Both are stored here and applied by the boundary on the submit thread.
+    /// THE THREE THINGS THAT QUEUE WORK FOR THE NEXT PRESENT BOUNDARY (M-W7): a resize, a runtime
+    /// <c>SyncToVerticalBlank</c> change and a <c>framebufferOnly</c> change for a swapchain capture request. All
+    /// are stored here and applied by the boundary on the submit thread.
     ///
     /// <para><b>THEY ARE TWO PIECES OF STATE RATHER THAN ONE, WHICH IS THE DIFFERENCE FROM THE VULKAN
     /// SIBLING.</b> There a resize and a present-mode change are the SAME event, because a <c>VkSwapchainKHR</c>
@@ -31,6 +32,11 @@ namespace KhaozEngine.Gpu.Metal.Internal
     /// enum (M-W2), and here the write is unconditional and cheap. Queueing a redundant flip costs one boolean
     /// store and one property write per boundary, and it removes the state this type would otherwise have to keep
     /// in step with the layer's.</para>
+    ///
+    /// <para><b>A FRAMEBUFFER-ONLY CHANGE IS THE THIRD PIECE, AND IT IS TAKEN APART FROM THE OTHER TWO.</b> It is a
+    /// <c>framebufferOnly</c> write on the same layer, coalesced and queued the same way as the vsync value. It
+    /// releases and recreates nothing, so it needs no drain, and <see cref="TakeFramebufferOnly"/> is a separate
+    /// call so it never makes <see cref="Take"/> report drain-worthy work.</para>
     /// </summary>
     internal sealed class MetalPresentPending
     {
@@ -41,15 +47,17 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
         // Three states in one int, because a bool plus a "was it set" bool is two fields a reader can catch
         // between.
-        const int NoVsyncChange = -1;
+        const int NoChange = -1;
 
         long _size = NothingPending;
-        int _vsync = NoVsyncChange;
+        int _vsync = NoChange;
+        int _framebufferOnly = NoChange;
 
         /// <summary>Whether anything is queued. For diagnostics and for the tests that pin the coalescing, never
         /// to decide anything: <see cref="Take"/> is what the boundary calls.</summary>
         internal bool HasWork
-            => Interlocked.Read(ref _size) != NothingPending || Volatile.Read(ref _vsync) != NoVsyncChange;
+            => Interlocked.Read(ref _size) != NothingPending || Volatile.Read(ref _vsync) != NoChange
+                || Volatile.Read(ref _framebufferOnly) != NoChange;
 
         /// <summary>The size queued but not yet applied, or null when there is none. Diagnostic only.</summary>
         internal MetalDrawableSize? PendingSize
@@ -68,7 +76,18 @@ namespace KhaozEngine.Gpu.Metal.Internal
             get
             {
                 int vsync = Volatile.Read(ref _vsync);
-                return vsync == NoVsyncChange ? null : vsync != 0;
+                return vsync == NoChange ? null : vsync != 0;
+            }
+        }
+
+        /// <summary>The <c>framebufferOnly</c> value queued but not yet applied, or null when there is none.
+        /// Diagnostic only.</summary>
+        internal bool? PendingFramebufferOnly
+        {
+            get
+            {
+                int value = Volatile.Read(ref _framebufferOnly);
+                return value == NoChange ? null : value != 0;
             }
         }
 
@@ -82,6 +101,10 @@ namespace KhaozEngine.Gpu.Metal.Internal
         /// <summary>Queue a runtime vsync change, coalescing onto any earlier one.</summary>
         internal void QueueSyncToVerticalBlank(bool value) => Volatile.Write(ref _vsync, value ? 1 : 0);
 
+        /// <summary>Queue a <c>framebufferOnly</c> change, coalescing onto any earlier one. False makes the
+        /// drawables the layer vends afterwards copyable.</summary>
+        internal void QueueFramebufferOnly(bool value) => Volatile.Write(ref _framebufferOnly, value ? 1 : 0);
+
         /// <summary>
         /// TAKE EVERYTHING QUEUED AND CLEAR IT, atomically enough that a request arriving while the boundary runs
         /// is queued for the NEXT boundary rather than lost or half-applied.
@@ -93,11 +116,21 @@ namespace KhaozEngine.Gpu.Metal.Internal
         internal bool Take(out MetalDrawableSize? size, out bool? syncToVerticalBlank)
         {
             long packed = Interlocked.Exchange(ref _size, NothingPending);
-            int vsync = Interlocked.Exchange(ref _vsync, NoVsyncChange);
+            int vsync = Interlocked.Exchange(ref _vsync, NoChange);
 
             size = packed == NothingPending ? null : Unpack(packed);
-            syncToVerticalBlank = vsync == NoVsyncChange ? null : vsync != 0;
+            syncToVerticalBlank = vsync == NoChange ? null : vsync != 0;
             return size is not null || syncToVerticalBlank is not null;
+        }
+
+        /// <summary>Take the queued <c>framebufferOnly</c> change and clear it.</summary>
+        /// <param name="framebufferOnly">The coalesced value, or null when no change was queued.</param>
+        /// <returns>Whether a change is due.</returns>
+        internal bool TakeFramebufferOnly(out bool? framebufferOnly)
+        {
+            int value = Interlocked.Exchange(ref _framebufferOnly, NoChange);
+            framebufferOnly = value == NoChange ? null : value != 0;
+            return framebufferOnly is not null;
         }
 
         // One long carries both halves so the queue is a single atomic exchange rather than two fields a reader

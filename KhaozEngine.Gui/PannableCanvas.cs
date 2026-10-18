@@ -199,7 +199,7 @@ namespace KhaozEngine.Gui
 
         /// <summary>
         /// Legacy release hit testing for <see cref="Update(Pointer, float)"/>. True when press-origin and
-        /// release are both inside the viewport. Returns the
+        /// release are both inside the viewport and neither is occluded. Returns the
         /// press and release world points so the caller can hit-test both and require the same target; a pan
         /// that ends inside returns true too, but its press/release world points differ so the check rejects it.
         /// When not a tap, both out-params are <c>default</c>.
@@ -208,7 +208,9 @@ namespace KhaozEngine.Gui
         {
             if (pointer.IsJustReleased
                 && Viewport.Contains(pointer.PressOrigin)
-                && Viewport.Contains(pointer.Position))
+                && Viewport.Contains(pointer.Position)
+                && !pointer.IsOccluded(pointer.PressOrigin)
+                && !pointer.IsOccluded(pointer.Position))
             {
                 pressWorld = ScreenToWorld(pointer.PressOrigin);
                 releaseWorld = ScreenToWorld(pointer.Position);

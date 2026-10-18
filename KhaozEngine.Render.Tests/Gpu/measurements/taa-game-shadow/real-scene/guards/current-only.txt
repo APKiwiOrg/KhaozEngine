@@ -1,0 +1,34 @@
+  Passed KhaozEngine.Tests.Gpu.TemporalGameShadowGrainGpuTests.Shared_scene_matches_a_fresh_scene_after_changes_of_size_hold_and_temporal_mode [1 s]
+  Failed KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.A_slow_pan_over_the_textured_wall_resolves_as_before_the_release [2 s]
+   Quality pan 0.3 px: temporal error 0.01443 above 0.00612 plus a tenth
+Native pan 0.3 px: temporal error 0.00626 above 0.00529 plus a tenth
+  Failed KhaozEngine.Tests.Gpu.TemporalStablePeakGpuTests.Isolated_stable_peaks_keep_their_history_under_a_still_camera_and_light [2 s]
+   Quality flat: change 0.07830 above 0.00203 plus a tenth
+Quality flat: error 0.04852 above 0.01504 plus a tenth
+Quality textured: change 0.08436 above 0.00237 plus a tenth
+Quality textured: error 0.05243 above 0.01541 plus a tenth
+Native flat: change 0.04248 above 0.00134 plus a tenth
+Native flat: error 0.02559 above 0.01149 plus a tenth
+Native textured: change 0.05090 above 0.00148 plus a tenth
+Native textured: error 0.03066 above 0.01284 plus a tenth
+  Failed KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.Texture_detail_near_the_display_nyquist_resolves_as_before_the_release_at_quality [423 ms]
+   Quality still, 1 px texels: error 0.02941 above 0.00535 plus a tenth
+Quality still, 1 px texels: temporal error 0.04023 above 0.00105 plus a tenth
+Quality still, 0.5 px texels: error 0.02692 above 0.00721 plus a tenth
+Quality still, 0.5 px texels: temporal error 0.03543 above 0.00096 plus a tenth
+  Passed KhaozEngine.Tests.Gpu.TemporalGameShadowGrainGpuTests.Coarse_shadow_texels_on_a_swaying_faceted_receiver_report_grain_against_fxaa [4 s]
+  Failed KhaozEngine.Tests.Gpu.TemporalShadowEdgeLagGpuTests.Shadow_edge_lag_metrics_under_a_turning_key_light_at_each_travel_rate [7 s]
+   Quality still: textured band 0.0124 above 0.0064
+Quality still: textured control 0.0096 above 0.0057
+Native still: textured band 0.0080 above 0.0048
+Native still: textured control 0.0049 above 0.0043
+  Failed KhaozEngine.Tests.Gpu.TemporalMovingShadeLagGpuTests.Shadow_edge_lag_on_moving_pixels_and_fast_shadows_stays_within_its_bounds [9 s]
+   Quality C pan 1.0 px: textured band 0.0121 above 0.0105 plus a tenth
+Quality C pan 2.0 px: textured band 0.0123 above 0.0055 plus a tenth
+Quality C pan 2.0 px: textured tail 0.0083 above 0.0039 plus a tenth
+Native C pan 1.0 px: textured band 0.0080 above 0.0046 plus a tenth
+Native C pan 1.0 px: textured tail 0.0042 above 0.0037 plus a tenth
+Native C pan 2.0 px: textured band 0.0080 above 0.0046 plus a tenth
+Native C pan 2.0 px: textured tail 0.0042 above 0.0035 plus a tenth
+Native C pan 4.0 px: textured band 0.0080 above 0.0061 plus a tenth
+Native C pan 8.0 px: textured band 0.0080 above 0.0055 plus a tenth

@@ -1,0 +1,7 @@
+  Passed KhaozEngine.Tests.Gpu.TemporalGameShadowGrainGpuTests.Shared_scene_matches_a_fresh_scene_after_changes_of_size_hold_and_temporal_mode [20 s]
+  Passed KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.A_slow_pan_over_the_textured_wall_resolves_as_before_the_release [20 s]
+  Passed KhaozEngine.Tests.Gpu.TemporalStablePeakGpuTests.Isolated_stable_peaks_keep_their_history_under_a_still_camera_and_light [20 s]
+  Passed KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.Texture_detail_near_the_display_nyquist_resolves_as_before_the_release_at_quality [385 ms]
+  Passed KhaozEngine.Tests.Gpu.TemporalGameShadowGrainGpuTests.Coarse_shadow_texels_on_a_swaying_faceted_receiver_report_grain_against_fxaa [4 s]
+  Passed KhaozEngine.Tests.Gpu.TemporalShadowEdgeLagGpuTests.Shadow_edge_lag_metrics_under_a_turning_key_light_at_each_travel_rate [25 s]
+  Passed KhaozEngine.Tests.Gpu.TemporalMovingShadeLagGpuTests.Shadow_edge_lag_on_moving_pixels_and_fast_shadows_stays_within_its_bounds [31 s]

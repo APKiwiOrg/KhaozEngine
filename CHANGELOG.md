@@ -11,6 +11,9 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   so the viewport pick linearity test in `KhaozEngine.MapEditor` also catches a per-element scan through a
   captured document or the viewport's own copy, with the viewport's pick state built (#1453). Public behaviour
   and the serialized document are unchanged.
+- `GameStorage` in `KhaozEngine.Persistence` gains an internal drain scheduling seam for tests, the same one
+  `PersistenceQueue` has. Public behaviour is unchanged. The Foundation tests that waited on thread-pool work
+  under a short bound now run it on test-owned threads (#1467).
 
 ## 21.4.0
 

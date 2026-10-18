@@ -18,8 +18,6 @@ internal static class CoverageReferenceMath
         ((p.X * matrix.M11) + (p.Y * matrix.M21)) + (p.Z * matrix.M31),
         ((p.X * matrix.M12) + (p.Y * matrix.M22)) + (p.Z * matrix.M32),
         ((p.X * matrix.M13) + (p.Y * matrix.M23)) + (p.Z * matrix.M33));
-    internal static float Edge(Vector3 a, Vector3 b, Vector3 p) =>
-        ((b.X - a.X) * (p.Y - a.Y)) - ((b.Y - a.Y) * (p.X - a.X));
 
     internal static float Height(Vector3 a, Vector3 b, Vector3 c, Vector2 p)
     {
@@ -27,11 +25,12 @@ internal static class CoverageReferenceMath
         if (p.X == b.X && p.Y == b.Y) return b.Z;
         if (p.X == c.X && p.Y == c.Y) return c.Z;
         Vector3 query = new(p, 0);
-        float u = Edge(b, c, query), v = Edge(c, a, query), w = Edge(a, b, query);
-        if (u == 0) return EdgeHeight(b, c, p);
-        if (v == 0) return EdgeHeight(c, a, p);
-        if (w == 0) return EdgeHeight(a, b, p);
-        return (((u * a.Z) + (v * b.Z)) + (w * c.Z)) / Edge(a, b, c);
+        CoverageReferenceScalar u = CoverageReferencePredicates.Edge(b, c, query), v = CoverageReferencePredicates.Edge(c, a, query),
+            w = CoverageReferencePredicates.Edge(a, b, query);
+        if (u.Sign == 0) return EdgeHeight(b, c, p);
+        if (v.Sign == 0) return EdgeHeight(c, a, p);
+        if (w.Sign == 0) return EdgeHeight(a, b, p);
+        return (((u.Value * a.Z) + (v.Value * b.Z)) + (w.Value * c.Z)) / CoverageReferencePredicates.Edge(a, b, c).Value;
     }
 
     static float EdgeHeight(Vector3 a, Vector3 b, Vector2 p)

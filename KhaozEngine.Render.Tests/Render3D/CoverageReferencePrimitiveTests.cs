@@ -81,7 +81,7 @@ public sealed class CoverageReferencePrimitiveTests
         Vector3 a = Vector3.Zero, b = new(1, 1, 0), c = new(1, 1 + MathF.ScaleB(1, -23), 1);
         Assert.Equal(0f, M.Height(a, b, c, new(.5f, .5f)));
         Assert.Equal(.5f, M.Height(a, b, c, new(.5f, .5f + MathF.ScaleB(1, -24))));
-        Assert.Equal(MathF.ScaleB(1, -23), M.Edge(a, b, c));
+        Assert.Equal(MathF.ScaleB(1, -23), CoverageReferencePredicates.Edge(a, b, c).Value);
         // This is the height expression graph on a query interval covering both adjacent points.
         I x = F.Point(.5f), y = new(.5, .5 + Math.ScaleB(1, -24));
         I Edge(Vector3 from, Vector3 to, I px, I py) => F.Subtract(
@@ -321,10 +321,12 @@ public sealed class CoverageReferencePrimitiveTests
         Vector3 a = support.Positions[triangle.A], b = support.Positions[triangle.B], c = support.Positions[triangle.C];
         Vector2 point = new(1, -MathF.ScaleB(1, -24) / (1 - MathF.ScaleB(1, -24)));
         Vector3 p = new(point, 0);
-        Assert.True(M.Edge(a, b, c) > 0);
-        Assert.Equal(0f, M.Edge(b, c, p));
-        Assert.True(M.Edge(c, a, p) > 0);
-        Assert.Equal(0f, M.Edge(a, b, p));
+        float RoundedEdge(Vector3 x, Vector3 y, Vector3 z) =>
+            ((y.X - x.X) * (z.Y - x.Y)) - ((y.Y - x.Y) * (z.X - x.X));
+        Assert.True(RoundedEdge(a, b, c) > 0);
+        Assert.Equal(0f, RoundedEdge(b, c, p));
+        Assert.True(RoundedEdge(c, a, p) > 0);
+        Assert.Equal(0f, RoundedEdge(a, b, p));
         Assert.True(point.X > b.X);
         Assert.False(support.Support.TryGetHeight(point, out _));
         Assert.False(support.TryHeight(point, out float height, out int source));
@@ -496,9 +498,13 @@ public sealed class CoverageReferencePrimitiveTests
             Vector3 a = support.Positions[triangle.A], b = support.Positions[triangle.B], c = support.Positions[triangle.C];
             if (OutsideBounds(point.X, a.X, b.X, c.X) || OutsideBounds(point.Y, a.Y, b.Y, c.Y)) continue;
             Vector3 p = new(point, 0);
-            float area = M.Edge(a, b, c), u = M.Edge(b, c, p), v = M.Edge(c, a, p), w = M.Edge(a, b, p);
-            if (!float.IsFinite(area) || area == 0 || !float.IsFinite(u) || !float.IsFinite(v) || !float.IsFinite(w)) return false;
-            if (area > 0 ? u < 0 || v < 0 || w < 0 : u > 0 || v > 0 || w > 0) continue;
+            CoverageAffinePoint Exact(Vector3 v) => CoverageAffinePoint.FromDouble(v.X, v.Y, v.Z);
+            var area = CoverageGeometry.Edge(Exact(a), Exact(b), Exact(c));
+            var u = CoverageGeometry.Edge(Exact(b), Exact(c), Exact(p));
+            var v = CoverageGeometry.Edge(Exact(c), Exact(a), Exact(p));
+            var w = CoverageGeometry.Edge(Exact(a), Exact(b), Exact(p));
+            if (!area.IsFinite || area.Sign == 0 || !u.IsFinite || !v.IsFinite || !w.IsFinite) return false;
+            if (u.Sign * area.Sign < 0 || v.Sign * area.Sign < 0 || w.Sign * area.Sign < 0) continue;
             height = M.Height(a, b, c, point);
             if (!float.IsFinite(height)) return false;
             source = support.SourceIndices[i];

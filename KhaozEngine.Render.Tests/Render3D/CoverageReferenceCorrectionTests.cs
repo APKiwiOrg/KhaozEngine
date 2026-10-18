@@ -97,7 +97,7 @@ public sealed class CoverageReferenceCorrectionTests(ITestOutputHelper output)
     [Theory]
     [InlineData(459)]
     [InlineData(463)]
-    public void Lifted_group_224_faces_reject_disjoint_sheet_edges_despite_rounded_zero_sides(int face)
+    public void Lifted_group_224_faces_reject_false_contacts_on_exact_side_signs(int face)
     {
         var c = CoverageReferenceCases.Get("cost-limit-l2-lifted-w1");
         var capture = CoverageExactCaptureTests.Read(c.Id);
@@ -123,8 +123,8 @@ public sealed class CoverageReferenceCorrectionTests(ITestOutputHelper output)
         Vector3[] sheet = [support.Positions[triangle.A], support.Positions[triangle.B], support.Positions[triangle.C]];
         Assert.True(host.Max(p => p.X) < sheet.Min(p => p.X));
         int touch = face == 459 ? 2 : 1;
-        Assert.Equal(0f, CoverageReferenceMath.Edge(sheet[1], sheet[2], host[touch]));
-        // The exact predicate on these same binary32 inputs is negative, not an endpoint touch.
+        Assert.Equal(-1, CoverageReferencePredicates.Edge(sheet[1], sheet[2], host[touch]).Sign);
+        // Both predicates on these same binary32 inputs are negative, not an endpoint touch.
         CoverageAffinePoint Exact(Vector3 p) => CoverageAffinePoint.FromDouble(p.X, p.Y, p.Z);
         Assert.Equal(-1, CoverageGeometry.Edge(Exact(sheet[1]), Exact(sheet[2]), Exact(host[touch])).Sign);
         Assert.True(CoverageFaceOverlay.TryMaximum(host.Select(Exact).ToArray(), sheet.Select(Exact).ToArray(), out double exactPair));
@@ -152,10 +152,10 @@ public sealed class CoverageReferenceCorrectionTests(ITestOutputHelper output)
         Vector3[] sheet = [new(.25f, -.25f, .04f), new(.25f, .25f, .04f), new(0, 0, .02f)];
         Vector3[] host = [new(-0.050000011920928955f, -0.04999999701976776f, 0),
             new(0.10000000149011612f, 0.10000000894069672f, 0), new(-.2f, .2f, 0)];
-        Assert.Equal(0f, CoverageReferenceMath.Edge(sheet[1], sheet[2], host[0]));
-        Assert.True(CoverageReferenceMath.Edge(sheet[1], sheet[2], host[1]) < 0);
-        Assert.Equal(0f, CoverageReferenceMath.Edge(host[0], host[1], sheet[1]));
-        Assert.True(CoverageReferenceMath.Edge(host[0], host[1], sheet[2]) < 0);
+        Assert.Equal(-1, CoverageReferencePredicates.Edge(sheet[1], sheet[2], host[0]).Sign);
+        Assert.Equal(-1, CoverageReferencePredicates.Edge(sheet[1], sheet[2], host[1]).Sign);
+        Assert.Equal(-1, CoverageReferencePredicates.Edge(host[0], host[1], sheet[1]).Sign);
+        Assert.Equal(-1, CoverageReferencePredicates.Edge(host[0], host[1], sheet[2]).Sign);
         Assert.True(MathF.Max(host[0].X, host[1].X) >= MathF.Min(sheet[1].X, sheet[2].X)
             && MathF.Max(host[0].Y, host[1].Y) >= MathF.Min(sheet[1].Y, sheet[2].Y));
         Assert.True(host[0].X < MathF.Min(sheet[1].X, sheet[2].X));
@@ -166,6 +166,35 @@ public sealed class CoverageReferenceCorrectionTests(ITestOutputHelper output)
         Assert.True(Triangle(sheet).TryOverlayMaximum(host, out float pair));
         Assert.Equal(exactPair, pair);
         Assert.Equal(float.NegativeInfinity, pair);
+    }
+
+    [Fact]
+    public void Float_overlay_keeps_the_near_collinear_proper_crossing_at_half_parameter()
+    {
+        Vector3[] sheet = [new(.25f, -.25f, .04f), new(.25f, .25f, .04f), new(0, 0, .02f)];
+        Vector3[] host = [new(-0.050000011920928955f, -0.04999999701976776f, 0),
+            new(0.20000001788139343f, 0.20000000298023224f, 0), new(-.2f, .2f, 0)];
+        CoverageAffinePoint Exact(Vector3 p) => CoverageAffinePoint.FromDouble(p.X, p.Y, p.Z);
+        var ca = CoverageGeometry.Edge(Exact(sheet[1]), Exact(sheet[2]), Exact(host[0]));
+        var cb = CoverageGeometry.Edge(Exact(sheet[1]), Exact(sheet[2]), Exact(host[1]));
+        Assert.Equal(-Math.ScaleB(1, -28), ca.Estimate);
+        Assert.Equal(Math.ScaleB(1, -28), cb.Estimate);
+        Assert.Equal(.5, ca.Estimate / (ca.Estimate - cb.Estimate));
+        Assert.True(CoverageFaceOverlay.TryMaximum(host.Select(Exact).ToArray(), sheet.Select(Exact).ToArray(), out double exact));
+        Assert.InRange(exact, -.026000001, -.025999998);
+        Assert.True(Triangle(sheet).TryOverlayMaximum(host, out float reference));
+        output.WriteLine($"N1 exact={exact:R} reference={reference:R}");
+        Assert.InRange(Math.Abs(reference - exact), 0, 1e-8);
+    }
+
+    [Fact]
+    public void Float_support_rejects_a_rounded_zero_side_with_exact_outside_sign_inside_the_aabb()
+    {
+        Vector3[] sheet = [new(.25f, -.25f, .04f), new(.25f, .25f, .04f), new(0, 0, .02f)];
+        Vector2 point = new(.0625f, MathF.BitIncrement(.0625f));
+        var support = Triangle(sheet);
+        Assert.False(support.Support.TryGetHeight(point, out _));
+        Assert.False(support.TryHeight(point, out _));
     }
 
     [Theory]

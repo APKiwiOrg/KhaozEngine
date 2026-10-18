@@ -210,11 +210,28 @@ public sealed partial class JoinedEdgeContinuityTests(ITestOutputHelper output)
             $"{sample.Height:R} against {expected.Height:R} within {sample.HeightError:R}");
     }
 
-    // A seat from one oracle start to the target, with the start feet on the independent start height.
-    (SupportSample Start, GroundSeatResult Seat, float StartFeetY) Cross(FootSupportScene scene, string partition,
-        Vector2 from, Vector2 to)
+    /// <summary>One open read interval over a lease, as a dry tick opens it: a support memo whose arena holds the
+    /// samples' continuity evidence until the interval closes.</summary>
+    internal sealed class OpenInterval : IDisposable
     {
-        ContactQueryContext queries = DryQueries.For(null, null, scene.World, scene.Lease, Tuning);
+        internal OpenInterval(IPhysicsWorld world, IPhysicsQueryLease lease, MoveTuning? tuning = null)
+        {
+            Memo.Open(lease);
+            Queries = new DryContactQueryContext(null, null, world, lease, tuning ?? Tuning, null, Memo);
+        }
+
+        internal OpenInterval(FootSupportScene scene) : this(scene.World, scene.Lease) { }
+
+        internal SupportRequestMemo Memo { get; } = new();
+        internal ContactQueryContext Queries { get; }
+
+        public void Dispose() => Memo.Close();
+    }
+
+    // A seat from one oracle start to the target, with the start feet on the independent start height.
+    (SupportSample Start, GroundSeatResult Seat, float StartFeetY) Cross(ContactQueryContext queries,
+        FootSupportScene scene, string partition, Vector2 from, Vector2 to)
+    {
         Expected origin = Oracle(scene, partition, from), expected = Oracle(scene, partition, to);
         float startFeetY = (float)origin.Height;
         SupportSample start = Find(queries, from, startFeetY);
@@ -245,7 +262,8 @@ public sealed partial class JoinedEdgeContinuityTests(ITestOutputHelper output)
     public void JoinedEdgeWithinWalkableGradeDoesNotCharge(string partition, bool reverse)
     {
         using FootSupportScene scene = Partition(partition);
-        ContactQueryContext queries = DryQueries.For(null, null, scene.World, scene.Lease, Tuning);
+        using var interval = new OpenInterval(scene);
+        ContactQueryContext queries = interval.Queries;
         Vector2 from = new(0.18f, -0.125f), to = new(0.18f, -0.025f);
         if (reverse) (from, to) = (to, from);
         Expected origin = Oracle(scene, partition, from), expected = Oracle(scene, partition, to);
@@ -293,7 +311,8 @@ public sealed partial class JoinedEdgeContinuityTests(ITestOutputHelper output)
         using FootSupportScene scene = Partition(partition);
         bool strip = partition == "strip";
         Vector2 from = strip ? new(0.18f, -0.2f) : new(0.18f, -0.125f), to = strip ? new(0.18f, 0) : new(0.18f, -0.025f);
-        var (start, seat, startFeetY) = Cross(scene, partition, from, to);
+        using var interval = new OpenInterval(scene);
+        var (start, seat, startFeetY) = Cross(interval.Queries, scene, partition, from, to);
         FootSupportQuery target = GroundSeat.Query(to, start, startFeetY, FootRadius, Tuning, CosMaxSlope);
         RawFootprint raw = RawFootprint.Query(scene.World, scene.Lease, target);
         int a = raw.IndexOf(start), c = raw.IndexOf(seat.Support);
@@ -335,6 +354,7 @@ public sealed partial class JoinedEdgeContinuityTests(ITestOutputHelper output)
         using FootSupportScene scene = Partition(partition);
         Vector2 near = new(0.18f, -0.075f), far = new(0.18f, -0.275f);
         Vector2 from = reverse ? far : near, to = reverse ? near : far;
+        using var interval = new OpenInterval(scene);
         var prior = SupportQueryDiagnostics.Exchange(SupportQueryDiagnostics.ThreadState.Fresh(true));
         SupportSample start;
         GroundSeatResult seat;
@@ -342,7 +362,7 @@ public sealed partial class JoinedEdgeContinuityTests(ITestOutputHelper output)
         int finds;
         try
         {
-            ContactQueryContext queries = DryQueries.For(null, null, scene.World, scene.Lease, Tuning);
+            ContactQueryContext queries = interval.Queries;
             startFeetY = (float)Oracle(scene, partition, from).Height;
             start = Find(queries, from, startFeetY);
             int before = SupportQueryDiagnostics.Snapshot().Find;
@@ -408,7 +428,8 @@ public sealed partial class JoinedEdgeContinuityTests(ITestOutputHelper output)
         // about 0.019, beyond the 45 degree grade.
         Vector2 from = new(0.199f, -0.03f), to = new(0.18f, -0.03f);
         if (reverse) (from, to) = (to, from);
-        var (start, seat, startFeetY) = Cross(scene, partition, from, to);
+        using var interval = new OpenInterval(scene);
+        var (start, seat, startFeetY) = Cross(interval.Queries, scene, partition, from, to);
         Assert.NotEqual(Key(start), Key(seat.Support));
         Assert.True(DirectlyJoined(scene, Query(from, startFeetY), start, seat.Support) |
             DirectlyJoined(scene, GroundSeat.Query(to, start, startFeetY, FootRadius, Tuning, CosMaxSlope), start,
@@ -482,27 +503,36 @@ public sealed partial class JoinedEdgeContinuityTests(ITestOutputHelper output)
         FootSupportQuery targetQuery = startQuery with { Axis = to };
         // A view is created and released outside any read interval.
         using IPhysicsWorldQueryView view = world.CreateQueryViewExcludingStatics([]);
+        var memo = new SupportRequestMemo();
         IPhysicsQueryLease lease = world.AcquireQueryReadLease();
-        try { Interval(scene, world, view, lease, from, to, feet, startQuery, targetQuery); }
-        finally { lease.Dispose(); }
+        memo.Open(lease);
+        try { AcrossIntervals(scene, world, view, lease, memo, from, to, startQuery, targetQuery); }
+        finally
+        {
+            memo.Close();
+            lease.Dispose();
+        }
     }
 
-    void Interval(FootSupportScene scene, BepuPhysicsWorld world, IPhysicsWorld view, IPhysicsQueryLease lease,
-        Vector2 from, Vector2 to, float feet, FootSupportQuery startQuery, FootSupportQuery targetQuery)
+    void AcrossIntervals(FootSupportScene scene, BepuPhysicsWorld world, IPhysicsWorld view, IPhysicsQueryLease lease,
+        SupportRequestMemo memo, Vector2 from, Vector2 to, FootSupportQuery startQuery, FootSupportQuery targetQuery)
     {
-        SupportSample start = FootSupport.Find(null, world, lease, startQuery);
-        SupportSample target = FootSupport.Find(null, world, lease, targetQuery);
+        SupportSample Read(IPhysicsWorld receiver, IPhysicsQueryLease interval, in FootSupportQuery query) =>
+            FootSupport.Find(null, receiver, interval, query, null, memo);
+        SupportSample start = Read(world, lease, startQuery);
+        SupportSample target = Read(world, lease, targetQuery);
         string startCertificate = Certificate(start), targetCertificate = Certificate(target);
         output.WriteLine(startCertificate);
         output.WriteLine(targetCertificate);
         Assert.True(SupportContinuity.IsContinuous(start, from, target, to, CosMaxSlope));
 
-        // Sixteen unrelated Finds reuse the thread's scratch. The copied certificates do not change.
+        // Sixteen unrelated Finds reuse the thread's scratch and append to the arena. The rows the samples name do
+        // not change.
         for (int k = 0; k < 16; k++)
-            FootSupport.Find(null, world, lease, Query(new(-0.6f + 0.02f * k, 0.3f), PlaneY(-0.6f + 0.02f * k, 0.3f)));
+            Read(world, lease, Query(new(-0.6f + 0.02f * k, 0.3f), PlaneY(-0.6f + 0.02f * k, 0.3f)));
         Assert.Equal(startCertificate, Certificate(start));
         Assert.Equal(targetCertificate, Certificate(target));
-        Assert.Equal(0f, GroundSeat.StepPart(target, start, from, feet, to, CosMaxSlope));
+        Assert.Equal(0f, GroundSeat.StepPart(target, start, from, start.Height, to, CosMaxSlope));
         Assert.Equal(0f, GroundSeat.DiscreteStep(start, from, target, to, CosMaxSlope));
 
         // Each selected row is exactly the raw matrix's direct walkable neighbours, never a prefix or closure.
@@ -511,7 +541,7 @@ public sealed partial class JoinedEdgeContinuityTests(ITestOutputHelper output)
         // At axis z -0.0873 B lies 0.20005 from the axis, inside the 0.1 mm ring only, so it is context-only and still
         // listed.
         FootSupportQuery ring = startQuery with { Axis = new(0.18f, -0.0873f) };
-        SupportSample ringed = FootSupport.Find(null, world, lease, ring);
+        SupportSample ringed = Read(world, lease, ring);
         RawFootprint context = RawFootprint.Query(world, lease, ring);
         int b = context.IndexOf(scene["a"], 1);
         Assert.True(b >= 0 && !context.Members[b].HasDiscMaximum, "B is not a context-only member");
@@ -519,42 +549,35 @@ public sealed partial class JoinedEdgeContinuityTests(ITestOutputHelper output)
         Assert.True(ringed.Joined.Contains(new(scene["a"], 1)));
         AssertRow(ringed, DirectRow(context, context.IndexOf(ringed), CosMaxSlope));
 
-        // An exact repeat is served whole from the memo with its key, the same complete value a fresh read gives.
-        var memo = new SupportRequestMemo();
-        memo.Open(lease);
+        // An exact repeat is served from the memo with the same handle. A fresh uncached read in the interval writes
+        // its own row with the same complete content.
         var prior = SupportQueryDiagnostics.Exchange(SupportQueryDiagnostics.ThreadState.Fresh(true));
-        SupportSample remembered, served;
+        SupportSample served, fresh;
         int hits;
         try
         {
-            remembered = FootSupport.Find(null, world, lease, targetQuery, null, memo);
-            served = FootSupport.Find(null, world, lease, targetQuery, null, memo);
+            served = Read(world, lease, targetQuery);
             hits = SupportQueryDiagnostics.Snapshot().FindMemoHits;
+            using (SupportRequestMemo.Bypass()) fresh = Read(world, lease, targetQuery);
         }
         finally { SupportQueryDiagnostics.Exchange(prior); }
         Assert.Equal(1, hits);
-        Assert.Equal(targetCertificate, Certificate(remembered));
-        Assert.Equal(targetCertificate, Certificate(served));
         Assert.Equal(target, served);
-        memo.Close();
-        var entries = (Array)typeof(SupportRequestMemo).GetField("_entries",
-            BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(memo)!;
-        foreach (object entry in entries)
-        {
-            var sample = (SupportSample)entry.GetType().GetProperty("Sample")!.GetValue(entry)!;
-            Assert.Null(sample.Source.Result.Lease);
-            Assert.Equal(0, sample.Joined.Count);
-        }
+        Assert.Same(target.Continuity.Arena, served.Continuity.Arena);
+        Assert.Equal((target.Continuity.Epoch, target.Continuity.Slot), (served.Continuity.Epoch, served.Continuity.Slot));
+        Assert.NotEqual(target.Continuity.Slot, fresh.Continuity.Slot);
+        Assert.Equal(targetCertificate, Certificate(served));
+        Assert.Equal(targetCertificate, Certificate(fresh));
 
         // Geometric equality and hashing ignore the evidence. The certificate does not.
-        SupportSample bare = target with { Source = default, Joined = default };
+        SupportSample bare = target with { Continuity = default };
         Assert.Equal(target, bare);
         Assert.Equal(target.GetHashCode(), bare.GetHashCode());
         Assert.NotEqual(targetCertificate, Certificate(bare));
         Assert.False(SupportContinuity.IsContinuous(bare, to, start, from, CosMaxSlope));
 
         // Another selected view over the same lease is another receiver, and another thread is not the interval's.
-        SupportSample viewed = FootSupport.Find(null, view, lease, targetQuery);
+        SupportSample viewed = Read(view, lease, targetQuery);
         Assert.Equal(target, viewed);
         Assert.Throws<InvalidOperationException>(() => SupportContinuity.IsContinuous(start, from, viewed, to, CosMaxSlope));
         Exception? foreign = null;
@@ -567,46 +590,66 @@ public sealed partial class JoinedEdgeContinuityTests(ITestOutputHelper output)
         thread.Join();
         Assert.IsType<InvalidOperationException>(foreign);
 
-        // A disposed interval cannot be revived by a same-generation replacement.
+        // A disposed lease fails its source authentication while the interval is still open, and a closed interval
+        // fails the handle itself.
         long generation = lease.GeometryGeneration;
         lease.Dispose();
         Assert.Throws<ObjectDisposedException>(() => SupportContinuity.IsContinuous(start, from, target, to, CosMaxSlope));
         Assert.Throws<ObjectDisposedException>(() => GroundSeat.DiscreteStep(start, from, target, to, CosMaxSlope));
+        memo.Close();
+        Assert.Throws<InvalidOperationException>(() => SupportContinuity.IsContinuous(start, from, target, to, CosMaxSlope));
+        Assert.Throws<InvalidOperationException>(() => start.Source);
+        var entries = (Array)typeof(SupportRequestMemo).GetField("_entries",
+            BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(memo)!;
+        foreach (object entry in entries)
+            Assert.True(((SupportSample)entry.GetType().GetProperty("Sample")!.GetValue(entry)!).Continuity.IsEmpty);
+        Assert.Equal(0, memo.Arena.Count);
+
+        // A same-generation replacement reopens the same arena and reuses its slots. The closed interval's handles name
+        // those slots but not the new epoch, so they cannot read the new rows.
         using (IPhysicsQueryLease replacement = world.AcquireQueryReadLease())
         {
             Assert.Equal(generation, replacement.GeometryGeneration);
-            SupportSample freshStart = FootSupport.Find(null, world, replacement, startQuery);
-            SupportSample freshTarget = FootSupport.Find(null, world, replacement, targetQuery);
+            memo.Open(replacement);
+            SupportSample freshStart = Read(world, replacement, startQuery);
+            SupportSample freshTarget = Read(world, replacement, targetQuery);
+            Assert.Same(start.Continuity.Arena, freshStart.Continuity.Arena);
+            Assert.Equal(start.Continuity.Slot, freshStart.Continuity.Slot);
+            Assert.Equal(target.Continuity.Slot, freshTarget.Continuity.Slot);
+            Assert.True(freshStart.Continuity.Epoch > start.Continuity.Epoch);
             Assert.Equal(start, freshStart);
             Assert.True(SupportContinuity.IsContinuous(freshStart, from, freshTarget, to, CosMaxSlope));
-            Assert.Throws<ObjectDisposedException>(() =>
+            Assert.Throws<InvalidOperationException>(() =>
                 SupportContinuity.IsContinuous(start, from, freshTarget, to, CosMaxSlope));
             Assert.Throws<InvalidOperationException>(() =>
                 SupportContinuity.IsContinuous(freshStart, from, target, to, CosMaxSlope));
+            Assert.Throws<InvalidOperationException>(() => start.Joined);
+            memo.Close();
         }
 
-        // Handle reuse and a rebase after disposal change the interval, and the old evidence stays dead.
+        // Reinstalling the static and a rebase after disposal change the interval, and the old evidence stays dead.
         StaticHandle original = scene["a"];
         world.RemoveStatic(original);
-        StaticHandle reused = world.AddStatic(new TriangleMeshShape([.. TriangleA(), .. TriangleB()], [0, 1, 2, 3, 4, 5]),
-            Pose.Identity);
-        output.WriteLine($"static {original} reinstalled as {reused}");
+        StaticHandle reinstalled = world.AddStatic(new TriangleMeshShape([.. TriangleA(), .. TriangleB()],
+            [0, 1, 2, 3, 4, 5]), Pose.Identity);
+        output.WriteLine($"static {original} reinstalled as {reinstalled}");
         using (IPhysicsQueryLease rebuilt = world.AcquireQueryReadLease())
         {
             Assert.NotEqual(generation, rebuilt.GeometryGeneration);
-            SupportSample again = FootSupport.Find(null, world, rebuilt, startQuery);
-            Assert.Equal(reused, again.Static);
+            memo.Open(rebuilt);
+            SupportSample again = Read(world, rebuilt, startQuery);
+            Assert.Equal(reinstalled, again.Static);
             Assert.Throws<InvalidOperationException>(() =>
                 SupportContinuity.IsContinuous(again, from, target, to, CosMaxSlope));
-            Assert.Throws<ObjectDisposedException>(() =>
-                SupportContinuity.IsContinuous(start, from, again, to, CosMaxSlope));
+            memo.Close();
         }
         world.Rebase(new(1, 0, 0));
         using (IPhysicsQueryLease rebased = world.AcquireQueryReadLease())
         {
-            Assert.NotEqual(start.Source.Result.Origin, rebased.Origin);
-            Assert.Throws<ObjectDisposedException>(() =>
+            memo.Open(rebased);
+            Assert.Throws<InvalidOperationException>(() =>
                 SupportContinuity.IsContinuous(start, from, target, to, CosMaxSlope));
+            memo.Close();
         }
     }
 
@@ -618,7 +661,8 @@ public sealed partial class JoinedEdgeContinuityTests(ITestOutputHelper output)
         FootSupportQuery query = new(Vector2.Zero, 0, FootRadius, Reach, Reach, CosMaxSlope);
         using (FootSupportScene full = Fan(SupportFootprintResult.MaximumElements))
         {
-            SupportSample sample = FootSupport.Find(null, full.World, full.Lease, query);
+            using var interval = new OpenInterval(full);
+            SupportSample sample = FootSupport.Find(null, full.World, full.Lease, query, null, interval.Memo);
             RawFootprint raw = RawFootprint.Query(full.World, full.Lease, query);
             Assert.Equal(SupportStatus.Walkable, sample.Status);
             Assert.Equal(SupportFootprintResult.MaximumElements, raw.Result.Members);
@@ -630,11 +674,11 @@ public sealed partial class JoinedEdgeContinuityTests(ITestOutputHelper output)
                 Assert.Equal(j != selected, sample.Joined.Contains(new(raw.Members[j].Static, raw.Members[j].ElementId)));
         }
         using FootSupportScene over = Fan(SupportFootprintResult.MaximumElements + 1);
-        SupportSample refused = FootSupport.Find(null, over.World, over.Lease, query);
+        using var refusing = new OpenInterval(over);
+        SupportSample refused = FootSupport.Find(null, over.World, over.Lease, query, null, refusing.Memo);
         Assert.Equal(SupportStatus.Refused, refused.Status);
-        Assert.Equal(default(CapsuleFeatureStatus), refused.Source.Result.Status);
-        Assert.Null(refused.Source.Result.Lease);
-        Assert.Equal(0, refused.Joined.Count);
+        Assert.True(refused.Continuity.IsEmpty);
+        Assert.Equal(0, refusing.Memo.Arena.Count);
         RawFootprint capacity = RawFootprint.Query(over.World, over.Lease, query);
         Assert.Equal(CapsuleFeatureStatus.CapacityExceeded, capacity.Result.Status);
         Assert.Equal(SupportFootprintResult.MaximumElements + 1, capacity.Result.RequiredElements);
@@ -682,7 +726,11 @@ public sealed partial class JoinedEdgeContinuityTests(ITestOutputHelper output)
             raw.Result, raw.Members, raw.Joins, request.Axis, request.CosMaxSlope,
             new FootprintContribution[2 * SupportFootprintResult.MaximumElements]));
         FootSupportQuery query = Query(request.Axis, 0);
-        Assert.Throws<ArgumentException>(() => SupportContinuity.Capture(raw.Result, query, raw.Members, raw.Joins, 0));
+        var arena = new SupportContinuityArena();
+        arena.Open();
+        Assert.Throws<ArgumentException>(() =>
+            SupportContinuity.Capture(arena, raw.Result, query, raw.Members, raw.Joins, 0));
+        Assert.Equal(0, arena.Count);
     }
 
     static SupportPolygon JoinFace(int element, Vector3[] vertices)

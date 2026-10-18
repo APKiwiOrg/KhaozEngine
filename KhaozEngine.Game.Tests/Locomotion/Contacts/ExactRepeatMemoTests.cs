@@ -358,8 +358,7 @@ public sealed class ExactRepeatMemoTests(ITestOutputHelper output)
         foreach (FieldInfo field in type.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
         {
             // CF-4 interval evidence is not geometric state. JoinedEdgeContinuityTests compares it explicitly.
-            if (field.FieldType == typeof(SupportContinuitySource) || field.FieldType == typeof(SupportJoinedMembers))
-                continue;
+            if (field.FieldType == typeof(SupportContinuityHandle)) continue;
             object? left = field.GetValue(expected), right = field.GetValue(actual);
             if (left is null) Assert.Null(right);
             else AssertSameBits(left, right!, path + "." + field.Name);

@@ -90,9 +90,9 @@ internal static class GroundCore
      walkable sloped edge the footprint overhangs are therefore never charged, while a disc reaching up a curved
      prop's flank, or closing on a sloped edge so fast its chord outruns a walkable grade, is. The same rule
      holds across two different walkable members when either endpoint's complete footprint directly joins the
-     selected pair (CF-4, CF-5): each physics sample carries a value copy of its selected member's direct
-     joined walkable row, bound to its source footprint, exact query and lease interval, and the seat reads it
-     only after both sources authenticate as one interval. Equal normals, mesh adjacency or an A-B-C chain never
+     selected pair (CF-4, CF-5): each physics sample carries a 16-byte handle to its selected member's direct
+     joined walkable row in the read interval's arena, bound to its source footprint, exact query and lease
+     interval, and the seat reads a row only after both handles and both sources authenticate as one interval. Equal normals, mesh adjacency or an A-B-C chain never
      stand in for the direct A-C join. Analytic terrain has no member. Across other members the start field is
      its plane, or level when the start height lies below that plane at its axis by more than the contact skin
      plus the start support's own certified error, because the footprint then overhangs an edge or vertex.

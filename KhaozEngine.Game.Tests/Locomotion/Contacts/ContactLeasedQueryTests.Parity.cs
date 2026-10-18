@@ -141,8 +141,7 @@ public partial class ContactLeasedQueryTests
         foreach (FieldInfo field in type.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
         {
             // CF-4 interval evidence names each head's own receiver and lease, so parity reads geometric fields only.
-            if (field.FieldType == typeof(SupportContinuitySource) || field.FieldType == typeof(SupportJoinedMembers))
-                continue;
+            if (field.FieldType == typeof(SupportContinuityHandle)) continue;
             object? left = field.GetValue(expected), right = field.GetValue(actual);
             if (left is null) Assert.Null(right);
             else { Assert.IsType(left.GetType(), right); AssertBits(left, right!, path + "." + field.Name); }

@@ -111,6 +111,9 @@ internal static class FootSupport
             ArgumentNullException.ThrowIfNull(lease);
             IPhysicsSupportFootprint features = world as IPhysicsSupportFootprint ?? throw new NotSupportedException(
                 "Foot support needs a physics world that offers complete footprint queries.");
+            // The interval's arena holds evidence whether or not the memo serves repeats, so a bypassed or reference
+            // read keeps the same accounting.
+            SupportContinuityArena? arena = memo is not null && ReferenceEquals(memo.Lease, lease) ? memo.Arena : null;
             if (memo is not null && memo.Serves(lease))
             {
                 // The lease is authenticated before the memo is read, as the backend authenticates it before a
@@ -138,8 +141,9 @@ internal static class FootSupport
                 // certified join row is copied before the scratch can serve another Find.
                 if (analytic is { } terrain) selection.Terrain(terrain);
                 sample = refused ? RefusedSupport : selection.Result();
-                if (!refused && selection.Member >= 0 && sample.Status is SupportStatus.Walkable or SupportStatus.Steep)
-                    sample = WithEvidence(features, lease, result, query, scratch, selection.Member, sample);
+                if (!refused && arena is not null && selection.Member >= 0 &&
+                    sample.Status is SupportStatus.Walkable or SupportStatus.Steep)
+                    sample = WithEvidence(features, lease, arena, result, query, scratch, selection.Member, sample);
             }
             finally { scratch.InUse = false; }
         }
@@ -158,16 +162,16 @@ internal static class FootSupport
             query.ReachUp, query.ReachDown, query.CosMaxSlope, (byte)sample.Status, sample.Height, sample.HeightError));
 
     // The selected physics member's interval evidence (CF-4). The footprint is authenticated again after selection,
-    // then the winner's direct joined walkable row is copied by value with its source and exact query.
+    // then the winner's direct joined walkable row is copied into the interval arena with its source and exact query,
+    // and the sample keeps only the handle.
     static SupportSample WithEvidence(IPhysicsSupportFootprint features, IPhysicsQueryLease lease,
-        in SupportFootprintResult result, in FootSupportQuery query, ProbeScratch scratch, int member,
-        in SupportSample sample)
+        SupportContinuityArena arena, in SupportFootprintResult result, in FootSupportQuery query, ProbeScratch scratch,
+        int member, in SupportSample sample)
     {
         features.AssertFootprintCurrent(result, lease);
         return sample with
         {
-            Source = new(result, query),
-            Joined = SupportContinuity.Capture(result, query, scratch.Members, scratch.Joins, member),
+            Continuity = SupportContinuity.Capture(arena, result, query, scratch.Members, scratch.Joins, member),
         };
     }
 

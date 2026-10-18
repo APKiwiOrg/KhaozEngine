@@ -21,12 +21,25 @@ public partial class ContactLeasedQueryTests
 
     static SupportMemberKey JoinedKey(in SupportSample sample) => new(sample.Static!.Value, sample.FeatureId);
 
+    // A borrowed tick opens the workspace memo, whose arena holds the interval's continuity evidence.
+    readonly struct JoinedTick(MovementQueryLease lease) : IDisposable
+    {
+        public void Dispose() => lease.EndContactTick();
+    }
+
+    static JoinedTick BeginJoinedTick(MovementQueryLease lease)
+    {
+        lease.BeginContactTick();
+        return new(lease);
+    }
+
     [Fact]
     public void JoinedEdgeLeasedSeatAndLookAheadKeepThePair()
     {
         using FootSupportScene geometry = JoinedEdgeContinuityTests.Partition("split-statics");
         using var scene = new QueryScene(geometry);
         var queries = scene.Queries();
+        using JoinedTick tick = BeginJoinedTick(scene.Lease);
         Vector2 from = new(0.1f, -0.125f), to = new(0.1f, -0.025f);
         JoinedEdgeContinuityTests.Expected origin = JoinedOracle(geometry, from), expected = JoinedOracle(geometry, to);
         float feetY = (float)origin.Height;
@@ -81,6 +94,7 @@ public partial class ContactLeasedQueryTests
         using var geometry = PushedAxisGeometry();
         using var scene = new QueryScene(geometry);
         var queries = scene.Queries();
+        using JoinedTick tick = BeginJoinedTick(scene.Lease);
         var feet = new Vector3(0.7f, 0, 0);
         SupportSample start = queries.FindSupport(Query(feet));
         var seat = new GroundSeatResult(SeatOutcome.Seated, 0, start, 0, Vector3.Zero);
@@ -106,15 +120,17 @@ public partial class ContactLeasedQueryTests
         float feetY = (float)JoinedOracle(geometry, from).Height;
         var b = new SupportMemberKey(geometry["b"], 0);
         using IPhysicsQueryLease lease = geometry.World.AcquireQueryReadLease();
+        using var interval = new JoinedEdgeContinuityTests.OpenInterval(view, lease);
         FootSupportQuery query = Query(new(from.X, feetY, from.Y));
-        SupportSample start = FootSupport.Find(null, view, lease, query);
-        SupportSample target = FootSupport.Find(null, view, lease, query with { Axis = to });
+        SupportSample start = FootSupport.Find(null, view, lease, query, null, interval.Memo);
+        SupportSample target = FootSupport.Find(null, view, lease, query with { Axis = to }, null, interval.Memo);
         Assert.Equal(geometry["a"], start.Static);
         Assert.Equal(geometry["a"], target.Static);
         Assert.Same(view, target.Source.Result.QueryWorld);
         Assert.False(start.Joined.Contains(b));
         Assert.False(target.Joined.Contains(b));
-        SupportSample whole = FootSupport.Find(null, geometry.World, lease, query with { Axis = to });
+        SupportSample whole = FootSupport.Find(null, geometry.World, lease, query with { Axis = to }, null,
+            interval.Memo);
         Assert.Equal(b, JoinedKey(whole));
     }
 
@@ -142,47 +158,58 @@ public partial class ContactLeasedQueryTests
         Assert.Equal(1, scene.Environment.ContactSupportCalls);
     }
 
-    /// <summary>The copied evidence is a value. A warm borrowed support read and its copies allocate nothing.</summary>
+    /// <summary>The evidence is a 16-byte handle into the interval arena. These sizes are pinned, so a payload carried
+    /// inline again fails here. A warm borrowed support read, its row capture and its copies allocate nothing.</summary>
     [Collection("AllocSensitive")]
     public sealed class JoinedEdgeAllocation(ITestOutputHelper output)
     {
         [Fact]
-        public void JoinedEdgeEvidenceCopiesAllocateNothing()
+        public void JoinedEdgeEvidenceIsAnIntervalHandleThatAllocatesNothing()
         {
-            output.WriteLine($"SupportSample {Unsafe.SizeOf<SupportSample>()} bytes, joined members " +
-                $"{Unsafe.SizeOf<SupportJoinedMembers>()}, key storage {Unsafe.SizeOf<SupportJoinedMemberKeys>()}, " +
-                $"source {Unsafe.SizeOf<SupportContinuitySource>()}, seat {Unsafe.SizeOf<GroundSeatResult>()}, " +
+            output.WriteLine($"SupportSample {Unsafe.SizeOf<SupportSample>()} bytes, handle " +
+                $"{Unsafe.SizeOf<SupportContinuityHandle>()}, seat {Unsafe.SizeOf<GroundSeatResult>()}, " +
                 $"placement {Unsafe.SizeOf<GroundPlacement>()}, ground step {Unsafe.SizeOf<GroundStepResult>()}");
-            Assert.Equal(2048, Unsafe.SizeOf<SupportJoinedMemberKeys>());
-            // The memo's fixed entries are provisioned once per memo, never per Find.
             long memoBytes = GC.GetAllocatedBytesForCurrentThread();
             GC.KeepAlive(new SupportRequestMemo());
             memoBytes = GC.GetAllocatedBytesForCurrentThread() - memoBytes;
-            output.WriteLine($"One SupportRequestMemo provisions {memoBytes} bytes for {SupportRequestMemo.Capacity} entries");
+            output.WriteLine($"One SupportRequestMemo with its arena provisions {memoBytes} bytes");
+            Assert.Equal(16, Unsafe.SizeOf<SupportContinuityHandle>());
+            Assert.Equal(SampleBytes, Unsafe.SizeOf<SupportSample>());
+            Assert.Equal(SeatBytes, Unsafe.SizeOf<GroundSeatResult>());
+            Assert.Equal(PlacementBytes, Unsafe.SizeOf<GroundPlacement>());
+            Assert.Equal(StepBytes, Unsafe.SizeOf<GroundStepResult>());
+
             using FootSupportScene geometry = JoinedEdgeContinuityTests.Partition("split-statics");
             using var scene = new QueryScene(geometry);
             var queries = scene.Queries();
+            using JoinedTick tick = BeginJoinedTick(scene.Lease);
             Vector2 from = new(0.1f, -0.125f), to = new(0.1f, -0.025f);
             float feetY = (float)JoinedOracle(geometry, from).Height;
             FootSupportQuery start = Query(new(from.X, feetY, from.Y)), target = start with { Axis = to };
-            // Warm every path once, including GroundSeat's static initialization, which boxes its static sample.
-            SupportSample a = queries.FindSupport(start), b = queries.FindSupport(target);
-            Assert.True(SupportContinuity.IsContinuous(a, from, b, to, JoinedGate));
-            Assert.Equal(0f, GroundSeat.DiscreteStep(a, from, b, to, JoinedGate));
             long bytes;
             bool continuous;
-            using (SupportAllocationRegion.Start())
+            // Uncached reads write a row each. Warm every path once, including GroundSeat's static initialization.
+            using (SupportRequestMemo.Bypass())
             {
-                long before = GC.GetAllocatedBytesForCurrentThread();
-                a = queries.FindSupport(start);
-                b = queries.FindSupport(target);
-                SupportSample copy = b;
-                continuous = SupportContinuity.IsContinuous(a, from, copy, to, JoinedGate) &&
-                    GroundSeat.DiscreteStep(a, from, copy, to, JoinedGate) == 0;
-                bytes = GC.GetAllocatedBytesForCurrentThread() - before;
+                SupportSample a = queries.FindSupport(start), b = queries.FindSupport(target);
+                Assert.True(SupportContinuity.IsContinuous(a, from, b, to, JoinedGate));
+                Assert.Equal(0f, GroundSeat.DiscreteStep(a, from, b, to, JoinedGate));
+                using (SupportAllocationRegion.Start())
+                {
+                    long before = GC.GetAllocatedBytesForCurrentThread();
+                    a = queries.FindSupport(start);
+                    b = queries.FindSupport(target);
+                    SupportSample copy = b;
+                    continuous = SupportContinuity.IsContinuous(a, from, copy, to, JoinedGate) &&
+                        GroundSeat.DiscreteStep(a, from, copy, to, JoinedGate) == 0;
+                    bytes = GC.GetAllocatedBytesForCurrentThread() - before;
+                }
             }
             Assert.True(continuous);
             Assert.Equal(0, bytes);
         }
+
+        // Measured on the 64-bit layout. The seven geometric fields take 48 bytes and the handle 16.
+        const int SampleBytes = 64, SeatBytes = 96, PlacementBytes = 96, StepBytes = 120;
     }
 }

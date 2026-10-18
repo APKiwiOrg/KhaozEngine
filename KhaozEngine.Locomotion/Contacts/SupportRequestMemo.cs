@@ -10,10 +10,11 @@ namespace KhaozEngine.Locomotion.Contacts;
 /// for its lease, and its owner closes it when that interval or tick ends, so nothing crosses ticks, bodies,
 /// reconciles or leases and no refusal outlives its interval. Storage is fixed at <see cref="Capacity"/>, and a full
 /// memo stops remembering rather than evicting.</summary>
-/// <remarks>Each entry holds the complete sample value, its interval evidence included: the source footprint, the
-/// exact query and the inline 256-slot join row (CF-4). A hit copies that value whole, so it carries the same
-/// evidence a fresh read of the same key would, and the key itself is unchanged. <see cref="Close"/> clears every
-/// entry, which releases the evidence's lease and world references with the interval.</remarks>
+/// <remarks>The memo also owns its interval's <see cref="SupportContinuityArena"/> (CF-4), opened and closed with it.
+/// Each entry holds the complete sample value with its continuity handle, so a hit resolves to the row its first
+/// read wrote in this interval, the same row a fresh read of the key would write, and the key itself is unchanged.
+/// <see cref="Close"/> clears every entry and the arena, which releases the evidence's lease and world references
+/// and advances the arena epoch, so no earlier handle resolves again.</remarks>
 internal sealed class SupportRequestMemo
 {
     internal const int Capacity = 16;
@@ -24,6 +25,9 @@ internal sealed class SupportRequestMemo
 
     readonly Entry[] _entries = new Entry[Capacity];
     int _count;
+
+    /// <summary>The interval's continuity evidence, open exactly while the memo is.</summary>
+    internal SupportContinuityArena Arena { get; } = new();
 
     /// <summary>The lease this memo serves, or null while it is closed.</summary>
     internal IPhysicsQueryLease? Lease { get; private set; }
@@ -62,6 +66,7 @@ internal sealed class SupportRequestMemo
     {
         ArgumentNullException.ThrowIfNull(lease);
         if (Lease is not null) throw new InvalidOperationException("The support memo is already open.");
+        Arena.Open();
         Lease = lease;
     }
 
@@ -69,6 +74,7 @@ internal sealed class SupportRequestMemo
     {
         Array.Clear(_entries, 0, _count);
         _count = 0;
+        if (Arena.IsOpen) Arena.Close();
         Lease = null;
     }
 

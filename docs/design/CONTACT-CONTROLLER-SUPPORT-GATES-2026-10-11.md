@@ -747,10 +747,14 @@ negative discrete step with no climb charge, and owed debt, placement and the cl
 wider than the 0.1 mm band, or a transitive A-B-C chain without a direct A-C join, keeps the level residual
 (`JoinedEdgeNeedsTheDirectSelectedPair`). Curved parts and analytic terrain carry no joins. An unresolved relevant
 join still refuses the whole footprint. Evidence from a disposed, rebased or rebuilt interval, another receiver or
-another thread throws rather than excusing a rise. No selection, tolerance, band, bound or cost gate changes. Each
-supported physics sample now carries a 2,048-byte inline key row and its source, so a sample is 2,256 bytes and
-every value copy of it, in seat, placement and tick results and in each support memo entry, copies that payload.
-One 16-entry support memo now provisions 37,568 bytes once. Warm support reads still allocate nothing. No timing is claimed for the larger copies.
+another thread throws rather than excusing a rise. No selection, tolerance, band, bound or cost gate changes. Per
+FA-R5 the rows live in an arena the support memo owns for its interval, and a supported physics sample carries
+only a 16-byte handle (arena, slot and epoch). A stale handle from a closed interval throws, even after the arena
+reuses its slots. Measured on the 64-bit layout, a sample is 64 bytes, a seat result and a placement 96 and a
+ground step result 120, pinned by `JoinedEdgeEvidenceIsAnIntervalHandleThatAllocatesNothing`. One support memo
+with its arena provisions 21,040 bytes once and grows only past its previous high-water mark. Warm support reads,
+their row capture and copies still allocate nothing. A support read outside an open interval, such as a nested
+tick whose memo is already open, carries no handle and keeps the unjoined rule. No timing is claimed for the larger copies.
 
 **Ruling SG-24. The hosted proof is plumbed, normalized and approved before it gates #1334.** The
 repository's stress caller (`.github/workflows/stress-test.yml`) now forwards support-cost mode to the

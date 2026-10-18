@@ -1,0 +1,16 @@
+check-agent-instructions: 7772 / 16384 bytes
+engine version (Directory.Build.props KhaozEngineVersion): 21.5.0-grain.1
+ok    README.md: PackageReference example version = 21.5.0-grain.1
+ok    README.md: PackageReference example version = 21.5.0-grain.1
+ok    README.md: PackageReference example version = 21.5.0-grain.1
+ok    README.md: PackageReference example version = 21.5.0-grain.1
+ok    docs/USING-KHAOZENGINE.md: PackageReference example version = 21.5.0-grain.1
+ok    docs/USING-KHAOZENGINE.md: PackageReference example version = 21.5.0-grain.1
+ok    docs/USING-KHAOZENGINE.md: PackageReference example version = 21.5.0-grain.1
+ok    docs/USING-KHAOZENGINE.md: PackageReference example version = 21.5.0-grain.1
+ok    docs/USING-KHAOZENGINE.md: PackageReference example version = 21.5.0-grain.1
+ok    docs/USING-KHAOZENGINE.md: PackageReference example version = 21.5.0-grain.1
+ok    docs/USING-KHAOZENGINE.md: PackageReference example version = 21.5.0-grain.1
+ok    CHANGELOG.md: newest entry heading = ## 21.5.0-grain.1
+all engine-version declarations match 21.5.0-grain.1, and package inventory plus umbrella membership are documented
+build-slot: exit=0 waited=0.087s ran=1615.172s

@@ -1,0 +1,2 @@
+taa-native {'band': 39873, 'rel_band': 26048, 'spark': 1739, 'spark_rel': 1685, 'spark_rel_prev': 1421, 'rel_spark': 1720, 'nonmag_diff': 0} back15-show-locked share of band 0.653274 sparkles overlaid same frame 0.968948 within 1px 0.989 overlaid previous frame 0.817
+taa-quality {'band': 39873, 'rel_band': 28979, 'spark': 1733, 'spark_rel': 1678, 'spark_rel_prev': 1495, 'rel_spark': 1719, 'nonmag_diff': 0} back15-show-locked share of band 0.726783 sparkles overlaid same frame 0.968263 within 1px 0.992 overlaid previous frame 0.863

@@ -9,7 +9,7 @@ archive and is never merged.
 - Engine: this branch, version `21.5.0-grain.1`, packed into a private feed. The switches are in
   `KhaozEngine.Render3D/Internal/TemporalResolveDiagnostics.cs` and under `#ifdef TemporalDiagnostics` in
   `ShaderSources.TemporalAccumulate.cs` and `ShaderSources.TemporalDebug.cs`.
-- Game: Grimhollow `probe/taa-grain-engine` at `73201a64`, pinned to `21.5.0-grain.1`. Its `shadowgrain`
+- Game: Grimhollow `probe/taa-grain-engine`, originally `73201a64`, with this round vendored at `f5cf414dd`, pinned to `21.5.0-grain.1`. Its `shadowgrain`
   verb takes `--temporal-diag <tokens>` and names the mask the engine parsed in `metrics.txt`.
 - Metal, Apple Silicon, 2560x1440, the `back-edge` spot (100.9, 89.5, yaw 230) unless named otherwise.
 
@@ -173,7 +173,7 @@ another 15% to 17% off what `locks-off` leaves.
 removed coming back. `current-only` raises change mean to 1.6 to 6 times FXAA's, frame-to-frame flicker of the
 aliased current frame.
 
-## GPU guards with the token set
+## Prior-round GPU guards with the token set
 
 Metal, `KE_GPU_TESTS=1`, one filtered run per token over `TemporalShadowEdgeLagGpuTests`,
 `TemporalMovingShadeLagGpuTests`, `TemporalStableDetailGpuTests`, `TemporalStablePeakGpuTests` and
@@ -206,15 +206,15 @@ frame, past the hold's threshold every frame, so the hold never engages. That is
 bit-identical. At the thirty-minute day and dt 1/15 it changes on 4 of 16 frames, and at the five-minute day
 and dt 1/60 on 5 of 16, so the hold engages there and the shadow moves in steps about every fourth frame.
 
-## Reading
+## Prior-round reading
 
 The working hypothesis does not hold. Released pixels are not the dots. The dominant source is the thin-feature
 lock. A texel that stands out from both neighbours, a texture highlight on the skin or a lit texel the jittered
 coarse shadow edge leaves between shadowed ones, reads as a thin feature and takes a whole lock. The hold then
 keeps that pixel's lit history luma out of the clip for about four frames and lets it go over four more, while
 its unlocked neighbours clip to the new shadow. The release fires beside these pixels but almost never on them
-(1.2% and 0.3% above), and the sharpen lifts a lone bright pixel against a dark ring further. That the dots are
-held locks is inferred from `locks-off` and the coincidence figures. No lock overlay was captured.
+(1.2% and 0.3% above), and the sharpen lifts a lone bright pixel against a dark ring further. At that checkpoint the lock attribution
+was inferred from `locks-off` and the coincidence figures. The direct cyan overlay in this round confirms it.
 
 The remainder, about twice FXAA, matches `current-only`: the aliased jittered frame at the silhouette. The
 reconstruction kernel and its clamp contribute little (`recon-nonneg` minus 4% to 10%, `dering-near` nothing).
@@ -344,7 +344,7 @@ the moving edge separates them, but its moving ratio is too small to match the r
 grain is 0.007782 versus 0.006190 at Native and 0.009786 versus 0.009510 at Quality. The spatial reference's
 grain is 0.009643. This fixture demonstrates the lock contribution and roughly matches Quality output grain,
 but does not fully isolate or reproduce the real-scene defect. A stronger synthetic Native reproduction remains open
-within the diagnosis. The bound was not relaxed for Native, it was scoped to the Quality reproduction.
+within the diagnosis. The separation assertion covers Quality only. Native remains diagnostic evidence and does not meet 1.3x separation.
 
 | GPU fact | History ridge | Shade release | Bound current |
 | --- | --- | --- | --- |
@@ -364,11 +364,236 @@ Representative values against their actual bounds, rather than pass status alone
 | --- | ---: | ---: | ---: | ---: |
 | Quality still 1 px texture error | <= 0.005885 | 0.00811 fail | 0.00548 pass | 0.00548 pass |
 | Quality still 1 px texture temporal error | <= 0.001155 | 0.00128 fail | 0.00112 pass | 0.00112 pass |
-| Quality still 0.5 px texture error | <= 0.007931 | 0.01391 fail | Within bound | Within bound |
+| Quality still 0.5 px texture error | <= 0.007931 | 0.01391 fail | 0.00724 pass | 0.00724 pass |
 | Quality camera pan 2 px textured band error | <= 0.00605 | 0.0076 fail | 0.0055 pass | 0.0055 pass |
-| Quality camera pan 2 px textured tail error | <= 0.00429 | 0.0057 fail | Within bound | Within bound |
+| Quality camera pan 2 px textured tail error | <= 0.00429 | 0.0057 fail | 0.0039 pass | 0.0039 pass |
 | Quality flat stable-peak error | <= 0.016544 | 0.01532 pass | 0.01504 pass | 0.01504 pass |
 | Quality flat stable-peak change | <= 0.002233 | 0.00207 pass | 0.00203 pass | 0.00203 pass |
 
-No bounds or shipping tuning were changed. The existing lag assertions also retain their fast-tail ratio,
+Existing acceptance bounds and shipping tuning were unchanged. The existing lag assertions also retain their fast-tail ratio,
 control-error, moving-tail-excess and band-grain limits. The full per-case values are in the logs above.
+
+### Broader verification and scope limits
+
+The engine solution Release build passed with zero warnings. The broader engine run completed 41 assemblies,
+35109 passed, 1424 skipped and one failure, the raw shader-text kernel-count assertion in
+`TemporalResolveShaderTests.The_separable_Lanczos_kernel_takes_twelve_evaluations_per_pixel`. It expects five
+`lanczos2(` occurrences, while starting commit `f22cb609f` already has nine in the diagnostic shader's current
+and default alternatives. The new lock helpers add none. This pre-existing diagnostic-archive assertion was
+reported without changing it. See [the failure](guards/engine-broad-failure.txt).
+
+The game solution Release build passed with zero warnings. Its broader suite ended with 9321 passed, 10 failed
+and 6 skipped, then the test host aborted on an unhandled `ObjectDisposedException`, the cancellation token
+source was disposed in a clock-host test thread. The ten assertion failures are navigation bake expectations.
+The diagnostic branch already pins `21.5.0-grain.1`, while the committed bakes name `21.4.0`, and the refusal
+says `EngineChanged`. No navigation content was rebaked, no clock-host code was changed, no tests were retried
+and no issues were filed under this brief. See [the game run](guards/game-broad-suite.txt).
+
+The final private pack is based on engine code commit `dc7b51a7d`. The game stays at `21.5.0-grain.1`.
+The refresh evicted 78 extracted package versions, then the engine build DLL, the vendored DLL and SnapshotTool's
+loaded `KhaozEngine.Render3D.dll` all matched SHA-256
+`5c83039e6403bf4ecead6cc8cf58fbe687d76122029a39c2a7b840d7be86a35e`.
+The private feed contains 222 refreshed package files. The shared engine feed was not used as an output.
+
+### Final-binary baseline and overlay recheck
+
+Fresh captures from the final private binary reproduce every prior baseline frame in all four conditions,
+16 frames each at Native, Quality and FXAA, 192 images total. There are zero differing pixels, maximum channel
+difference zero, and all four `metrics.txt` files are byte-identical. The prior baseline was independently
+pixel-identical to 21.4.0, so the unset invariant still holds. See [the identity report](runs/lock-rules/baseline-identity.txt).
+The final-binary `noop` row also matches the old round's printed metrics, Native character grain 0.014280 and
+Quality 0.014124, within 0.000007 and 0.000032 of the unset values. The game format verification passed.
+
+The cyan overlay was recaptured after adding all candidate code and repacking. Its coincidence is unchanged,
+1685 of 1739 bright dots locked at Native (96.8948%), 1678 of 1733 at Quality (96.8263%). Locked band share is
+26048 of 39873 (65.3274%) and 28979 of 39873 (72.6783%). Outside cyan, zero pixels differ from the new `noop`.
+See [the counts](runs/lock-rules/lock-coincidence.txt) and
+[the final 4x crop](crops/lock-rule-show-locked-character-015-4x.png).
+
+### Real-scene candidate comparisons
+
+The tables below are the complete requested comparison, including both character and ground regions. Luma is
+0..1, mean and p95 are pooled over 16 frames, and change is the mean absolute per-frame change. Bright dots are
+positive residuals over the 3x3 median greater than 0.05 and also greater than 0.05 above the baseline FXAA pixel,
+counted over the same 16 frames. Character uses the green region mask, ground the yellow mask. FXAA therefore
+has zero excess dots by definition. All arms use the baseline FXAA masks and dot reference. All 288 non-baseline FXAA crops were also verified pixel-identical to their corresponding baseline, see [the FXAA control proof](runs/lock-rules/fxaa-control-identity.txt).
+
+| Condition | Spot | Frame time | Day minutes |
+| --- | --- | --- | ---: |
+| back15 | back-edge | 1/15 | 5 |
+| day30 | back-edge | 1/15 | 30 |
+| back60 | back-edge | 1/60 | 5 |
+| ground15 | ground-edge | 1/15 | 5 |
+
+Every capture is Metal, 2560x1440, 80 warm-up frames and start time `0.49777777777777776`. All 22 captures exited
+zero, including the four baselines, one noop, one cyan overlay, four locks-off and twelve candidate captures.
+See [capture options and exits](runs/lock-rules/capture-headers-and-exits.txt), [sweep](runs/lock-rules/capture-sweep.txt),
+[all machine-readable measurements](runs/lock-rules/summary.json) and each run's `metrics.txt` and `metrics.json`
+under [runs/lock-rules](runs/lock-rules/). The enlarged first-condition candidate crops are
+[history ridge](crops/lock-rule-back15-lock-history-ridge-character-015-4x.png),
+[shade release](crops/lock-rule-back15-lock-shade-release-character-015-4x.png), and
+[bound current](crops/lock-rule-back15-lock-bound-current-character-015-4x.png).
+All four conditions have corresponding character and ground 4x crops under [crops](crops/), named
+`lock-rule-<condition>-<arm>-<region>-015-4x.png`. Panels are Native, Quality and FXAA from left to right.
+
+### Real-scene lock-history-ridge
+
+| Condition | Arm | Mode | Character grain mean | p95 | Change mean | Dots | Ground grain mean | p95 | Change mean | Dots |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| back15 | baseline | taa-native | 0.014287 | 0.07499 | 0.01795 | 1742 | 0.006708 | 0.02635 | 0.01249 | 485 |
+| back15 | baseline | taa-quality | 0.014156 | 0.07334 | 0.01757 | 1733 | 0.007330 | 0.02830 | 0.01235 | 1881 |
+| back15 | locks-off | taa-native | 0.007125 | 0.04005 | 0.01883 | 591 | 0.006238 | 0.02383 | 0.01252 | 124 |
+| back15 | locks-off | taa-quality | 0.008529 | 0.04754 | 0.01829 | 771 | 0.006368 | 0.02494 | 0.01247 | 1004 |
+| back15 | lock-history-ridge | taa-native | 0.009307 | 0.04953 | 0.01882 | 957 | 0.006253 | 0.02389 | 0.01252 | 130 |
+| back15 | lock-history-ridge | taa-quality | 0.011486 | 0.05932 | 0.01810 | 1211 | 0.006432 | 0.02573 | 0.01246 | 1025 |
+| back15 | fxaa | fxaa | 0.002961 | 0.01649 | 0.01911 | 0 | 0.002130 | 0.00869 | 0.01311 | 0 |
+| day30 | baseline | taa-native | 0.008413 | 0.04997 | 0.00371 | 1097 | 0.005930 | 0.02326 | 0.00234 | 310 |
+| day30 | baseline | taa-quality | 0.009148 | 0.05207 | 0.00366 | 1117 | 0.006355 | 0.02524 | 0.00238 | 906 |
+| day30 | locks-off | taa-native | 0.005653 | 0.03105 | 0.00377 | 461 | 0.005272 | 0.01965 | 0.00231 | 25 |
+| day30 | locks-off | taa-quality | 0.006261 | 0.03471 | 0.00354 | 467 | 0.005076 | 0.01934 | 0.00232 | 203 |
+| day30 | lock-history-ridge | taa-native | 0.007094 | 0.04003 | 0.00380 | 792 | 0.005293 | 0.01986 | 0.00231 | 34 |
+| day30 | lock-history-ridge | taa-quality | 0.008039 | 0.04534 | 0.00361 | 919 | 0.005126 | 0.01959 | 0.00232 | 215 |
+| day30 | fxaa | fxaa | 0.002976 | 0.01624 | 0.00402 | 0 | 0.002071 | 0.00868 | 0.00202 | 0 |
+| back60 | baseline | taa-native | 0.009675 | 0.05484 | 0.00488 | 1355 | 0.006055 | 0.02353 | 0.00328 | 379 |
+| back60 | baseline | taa-quality | 0.010472 | 0.05966 | 0.00500 | 1535 | 0.006729 | 0.02718 | 0.00327 | 1303 |
+| back60 | locks-off | taa-native | 0.006230 | 0.03358 | 0.00482 | 619 | 0.005363 | 0.01992 | 0.00325 | 42 |
+| back60 | locks-off | taa-quality | 0.007109 | 0.03920 | 0.00487 | 724 | 0.005514 | 0.02073 | 0.00322 | 394 |
+| back60 | lock-history-ridge | taa-native | 0.008081 | 0.04534 | 0.00490 | 1057 | 0.005387 | 0.02013 | 0.00325 | 45 |
+| back60 | lock-history-ridge | taa-quality | 0.009345 | 0.05120 | 0.00497 | 1271 | 0.005586 | 0.02127 | 0.00321 | 416 |
+| back60 | fxaa | fxaa | 0.002955 | 0.01595 | 0.00470 | 0 | 0.002090 | 0.00868 | 0.00307 | 0 |
+| ground15 | baseline | taa-native | 0.002957 | 0.01148 | 0.00116 | 371 | 0.005274 | 0.01937 | 0.00373 | 512 |
+| ground15 | baseline | taa-quality | 0.003024 | 0.01176 | 0.00118 | 340 | 0.005695 | 0.02242 | 0.00378 | 1305 |
+| ground15 | locks-off | taa-native | 0.002877 | 0.01065 | 0.00120 | 321 | 0.004504 | 0.01713 | 0.00384 | 259 |
+| ground15 | locks-off | taa-quality | 0.002878 | 0.01148 | 0.00121 | 272 | 0.004389 | 0.01710 | 0.00387 | 686 |
+| ground15 | lock-history-ridge | taa-native | 0.002939 | 0.01077 | 0.00117 | 363 | 0.005042 | 0.01740 | 0.00373 | 323 |
+| ground15 | lock-history-ridge | taa-quality | 0.003018 | 0.01176 | 0.00119 | 340 | 0.004777 | 0.01794 | 0.00383 | 839 |
+| ground15 | fxaa | fxaa | 0.002280 | 0.01260 | 0.00135 | 0 | 0.002343 | 0.00784 | 0.00334 | 0 |
+
+### Real-scene lock-shade-release
+
+| Condition | Arm | Mode | Character grain mean | p95 | Change mean | Dots | Ground grain mean | p95 | Change mean | Dots |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| back15 | baseline | taa-native | 0.014287 | 0.07499 | 0.01795 | 1742 | 0.006708 | 0.02635 | 0.01249 | 485 |
+| back15 | baseline | taa-quality | 0.014156 | 0.07334 | 0.01757 | 1733 | 0.007330 | 0.02830 | 0.01235 | 1881 |
+| back15 | locks-off | taa-native | 0.007125 | 0.04005 | 0.01883 | 591 | 0.006238 | 0.02383 | 0.01252 | 124 |
+| back15 | locks-off | taa-quality | 0.008529 | 0.04754 | 0.01829 | 771 | 0.006368 | 0.02494 | 0.01247 | 1004 |
+| back15 | lock-shade-release | taa-native | 0.013702 | 0.07111 | 0.01803 | 1648 | 0.006661 | 0.02607 | 0.01251 | 440 |
+| back15 | lock-shade-release | taa-quality | 0.013554 | 0.07074 | 0.01763 | 1645 | 0.007209 | 0.02799 | 0.01238 | 1743 |
+| back15 | fxaa | fxaa | 0.002961 | 0.01649 | 0.01911 | 0 | 0.002130 | 0.00869 | 0.01311 | 0 |
+| day30 | baseline | taa-native | 0.008413 | 0.04997 | 0.00371 | 1097 | 0.005930 | 0.02326 | 0.00234 | 310 |
+| day30 | baseline | taa-quality | 0.009148 | 0.05207 | 0.00366 | 1117 | 0.006355 | 0.02524 | 0.00238 | 906 |
+| day30 | locks-off | taa-native | 0.005653 | 0.03105 | 0.00377 | 461 | 0.005272 | 0.01965 | 0.00231 | 25 |
+| day30 | locks-off | taa-quality | 0.006261 | 0.03471 | 0.00354 | 467 | 0.005076 | 0.01934 | 0.00232 | 203 |
+| day30 | lock-shade-release | taa-native | 0.008315 | 0.04953 | 0.00368 | 1072 | 0.005903 | 0.02315 | 0.00235 | 295 |
+| day30 | lock-shade-release | taa-quality | 0.009226 | 0.05265 | 0.00366 | 1128 | 0.006322 | 0.02500 | 0.00238 | 894 |
+| day30 | fxaa | fxaa | 0.002976 | 0.01624 | 0.00402 | 0 | 0.002071 | 0.00868 | 0.00202 | 0 |
+| back60 | baseline | taa-native | 0.009675 | 0.05484 | 0.00488 | 1355 | 0.006055 | 0.02353 | 0.00328 | 379 |
+| back60 | baseline | taa-quality | 0.010472 | 0.05966 | 0.00500 | 1535 | 0.006729 | 0.02718 | 0.00327 | 1303 |
+| back60 | locks-off | taa-native | 0.006230 | 0.03358 | 0.00482 | 619 | 0.005363 | 0.01992 | 0.00325 | 42 |
+| back60 | locks-off | taa-quality | 0.007109 | 0.03920 | 0.00487 | 724 | 0.005514 | 0.02073 | 0.00322 | 394 |
+| back60 | lock-shade-release | taa-native | 0.009612 | 0.05446 | 0.00487 | 1348 | 0.006005 | 0.02327 | 0.00328 | 356 |
+| back60 | lock-shade-release | taa-quality | 0.010367 | 0.05932 | 0.00501 | 1498 | 0.006664 | 0.02690 | 0.00327 | 1215 |
+| back60 | fxaa | fxaa | 0.002955 | 0.01595 | 0.00470 | 0 | 0.002090 | 0.00868 | 0.00307 | 0 |
+| ground15 | baseline | taa-native | 0.002957 | 0.01148 | 0.00116 | 371 | 0.005274 | 0.01937 | 0.00373 | 512 |
+| ground15 | baseline | taa-quality | 0.003024 | 0.01176 | 0.00118 | 340 | 0.005695 | 0.02242 | 0.00378 | 1305 |
+| ground15 | locks-off | taa-native | 0.002877 | 0.01065 | 0.00120 | 321 | 0.004504 | 0.01713 | 0.00384 | 259 |
+| ground15 | locks-off | taa-quality | 0.002878 | 0.01148 | 0.00121 | 272 | 0.004389 | 0.01710 | 0.00387 | 686 |
+| ground15 | lock-shade-release | taa-native | 0.002962 | 0.01148 | 0.00116 | 371 | 0.005261 | 0.01934 | 0.00373 | 507 |
+| ground15 | lock-shade-release | taa-quality | 0.003039 | 0.01203 | 0.00118 | 350 | 0.005657 | 0.02216 | 0.00378 | 1259 |
+| ground15 | fxaa | fxaa | 0.002280 | 0.01260 | 0.00135 | 0 | 0.002343 | 0.00784 | 0.00334 | 0 |
+
+### Real-scene lock-bound-current
+
+| Condition | Arm | Mode | Character grain mean | p95 | Change mean | Dots | Ground grain mean | p95 | Change mean | Dots |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| back15 | baseline | taa-native | 0.014287 | 0.07499 | 0.01795 | 1742 | 0.006708 | 0.02635 | 0.01249 | 485 |
+| back15 | baseline | taa-quality | 0.014156 | 0.07334 | 0.01757 | 1733 | 0.007330 | 0.02830 | 0.01235 | 1881 |
+| back15 | locks-off | taa-native | 0.007125 | 0.04005 | 0.01883 | 591 | 0.006238 | 0.02383 | 0.01252 | 124 |
+| back15 | locks-off | taa-quality | 0.008529 | 0.04754 | 0.01829 | 771 | 0.006368 | 0.02494 | 0.01247 | 1004 |
+| back15 | lock-bound-current | taa-native | 0.014024 | 0.07249 | 0.01793 | 1663 | 0.006687 | 0.02624 | 0.01250 | 443 |
+| back15 | lock-bound-current | taa-quality | 0.013738 | 0.07079 | 0.01756 | 1660 | 0.007264 | 0.02825 | 0.01237 | 1765 |
+| back15 | fxaa | fxaa | 0.002961 | 0.01649 | 0.01911 | 0 | 0.002130 | 0.00869 | 0.01311 | 0 |
+| day30 | baseline | taa-native | 0.008413 | 0.04997 | 0.00371 | 1097 | 0.005930 | 0.02326 | 0.00234 | 310 |
+| day30 | baseline | taa-quality | 0.009148 | 0.05207 | 0.00366 | 1117 | 0.006355 | 0.02524 | 0.00238 | 906 |
+| day30 | locks-off | taa-native | 0.005653 | 0.03105 | 0.00377 | 461 | 0.005272 | 0.01965 | 0.00231 | 25 |
+| day30 | locks-off | taa-quality | 0.006261 | 0.03471 | 0.00354 | 467 | 0.005076 | 0.01934 | 0.00232 | 203 |
+| day30 | lock-bound-current | taa-native | 0.008270 | 0.04800 | 0.00370 | 1023 | 0.005903 | 0.02317 | 0.00234 | 286 |
+| day30 | lock-bound-current | taa-quality | 0.009203 | 0.05341 | 0.00365 | 1127 | 0.006338 | 0.02523 | 0.00238 | 871 |
+| day30 | fxaa | fxaa | 0.002976 | 0.01624 | 0.00402 | 0 | 0.002071 | 0.00868 | 0.00202 | 0 |
+| back60 | baseline | taa-native | 0.009675 | 0.05484 | 0.00488 | 1355 | 0.006055 | 0.02353 | 0.00328 | 379 |
+| back60 | baseline | taa-quality | 0.010472 | 0.05966 | 0.00500 | 1535 | 0.006729 | 0.02718 | 0.00327 | 1303 |
+| back60 | locks-off | taa-native | 0.006230 | 0.03358 | 0.00482 | 619 | 0.005363 | 0.01992 | 0.00325 | 42 |
+| back60 | locks-off | taa-quality | 0.007109 | 0.03920 | 0.00487 | 724 | 0.005514 | 0.02073 | 0.00322 | 394 |
+| back60 | lock-bound-current | taa-native | 0.009568 | 0.05430 | 0.00488 | 1335 | 0.006034 | 0.02350 | 0.00328 | 352 |
+| back60 | lock-bound-current | taa-quality | 0.010418 | 0.05934 | 0.00499 | 1497 | 0.006692 | 0.02715 | 0.00326 | 1209 |
+| back60 | fxaa | fxaa | 0.002955 | 0.01595 | 0.00470 | 0 | 0.002090 | 0.00868 | 0.00307 | 0 |
+| ground15 | baseline | taa-native | 0.002957 | 0.01148 | 0.00116 | 371 | 0.005274 | 0.01937 | 0.00373 | 512 |
+| ground15 | baseline | taa-quality | 0.003024 | 0.01176 | 0.00118 | 340 | 0.005695 | 0.02242 | 0.00378 | 1305 |
+| ground15 | locks-off | taa-native | 0.002877 | 0.01065 | 0.00120 | 321 | 0.004504 | 0.01713 | 0.00384 | 259 |
+| ground15 | locks-off | taa-quality | 0.002878 | 0.01148 | 0.00121 | 272 | 0.004389 | 0.01710 | 0.00387 | 686 |
+| ground15 | lock-bound-current | taa-native | 0.002962 | 0.01148 | 0.00116 | 371 | 0.005271 | 0.01936 | 0.00373 | 505 |
+| ground15 | lock-bound-current | taa-quality | 0.003044 | 0.01184 | 0.00118 | 343 | 0.005670 | 0.02238 | 0.00378 | 1262 |
+| ground15 | fxaa | fxaa | 0.002280 | 0.01260 | 0.00135 | 0 | 0.002343 | 0.00784 | 0.00334 | 0 |
+
+
+### Recommendation from this round
+
+Continue the history-ridge direction as diagnosis, but implement none of these tested rules as a shipping fix.
+It is the only substantial reduction. At back15 it cuts character grain by 34.9% at Native and 18.9% at Quality,
+and dots by 45.1% and 30.1%. At day30 and back60 the character grain reductions are 15.7% and 16.5% at Native,
+12.1% and 10.8% at Quality. Ground-edge grain falls 4.4% and 16.1%. Change mean stays near the baseline and FXAA,
+so the benefit is not a return of the old shadow lag. But the fine-detail and camera-pan guard failures prevent
+adoption of this predicate.
+
+The carried-lock opposite-pair exception is not the dominant source of the real-scene dots. Dropping it while
+clearing the carried lock cuts back15 character grain only 4.1% and 4.3%, and dots 5.4% and 5.1%. Bounding the
+hold only at that same evidence cuts grain 1.8% and 3.0%, and dots 4.5% and 4.2%. Their other-condition changes
+are mostly around one percent or less, sometimes worse, despite both arms passing all eight GPU facts. They
+preserve the guards but do not address most of the visible problem.
+
+The next proper design should make history ridge confirmation aware of jitter and subpixel feature support,
+rather than requiring a full current-strength ridge in the accumulated history neighbourhood. This is a
+recommendation for further design, not a measured fix. The tested history threshold is absolute 0.02 and
+relative 0.1, independently at the history centre. No safe tuning interval was established. Lower history
+contrast thresholds and phase-aware matching require their own paired measurements and the same detail guards,
+not a looser acceptance bound. The other two candidates used the existing shading thresholds unchanged and a
+zero extra clip margin. No range beyond those tested points is claimed.
+
+The synthetic Native ratio remains unresolved. Its rigid orthographic receiver and authored repeating lines do
+not match the real skinned idle player's perspective geometry and material/shadow detail. Quality's ratio also
+contains stable texture retention, as the still-light control shows. These are fixture differences, not a proven
+causal explanation of the remaining gap. A stronger synthetic reproduction is required before a production fix.
+
+### Reproduce this round
+
+From the engine worktree, after the private pack and game refresh/build commands above. The capture script checks
+the game root and branch before every serial capture and clears any inherited diagnostic variable for the baseline.
+
+```bash
+python3 KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/real-scene/scripts/capture_lock_rules.py \
+  /Users/antonio/Grimhollow/.worktrees/taa-grain-probe /tmp/grimhollow-shadowgrain/lock-rule-round
+python3 KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/real-scene/scripts/lock_rule_tables.py \
+  /tmp/grimhollow-shadowgrain/lock-rule-round
+python3 KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/real-scene/scripts/coincide.py \
+  /tmp/grimhollow-shadowgrain/lock-rule-round back15-show-locked back15-noop back15-baseline
+```
+
+Each GPU command below ran once, sequentially. The filter includes the new synthetic method in the existing class.
+
+```bash
+grain_guard_filter='FullyQualifiedName~TemporalShadowEdgeLagGpuTests|FullyQualifiedName~TemporalMovingShadeLagGpuTests|FullyQualifiedName~TemporalStableDetailGpuTests|FullyQualifiedName~TemporalStablePeakGpuTests|FullyQualifiedName~TemporalGameShadowGrainGpuTests'
+KE_TEMPORAL_DIAG=lock-history-ridge KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-native \
+  build-slot --heavy --label grain-history-guards -- dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj \
+  -c Release --no-build --filter "$grain_guard_filter" --logger 'console;verbosity=detailed'
+KE_TEMPORAL_DIAG=lock-shade-release KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-native \
+  build-slot --heavy --label grain-shade-guards -- dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj \
+  -c Release --no-build --filter "$grain_guard_filter" --logger 'console;verbosity=detailed'
+KE_TEMPORAL_DIAG=lock-bound-current KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-native \
+  build-slot --heavy --label grain-bound-guards -- dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj \
+  -c Release --no-build --filter "$grain_guard_filter" --logger 'console;verbosity=detailed'
+```
+
+Final whole-tree dash, prose, file-size, instruction-budget and version guards passed. The staged whitespace check
+also passed. See [repository guard output](guards/repository-guards.txt) and
+[the exact measured binary provenance](runs/lock-rules/provenance.json).
+Both branches remain diagnostic archives. Neither is a shipping fix or a merge candidate.

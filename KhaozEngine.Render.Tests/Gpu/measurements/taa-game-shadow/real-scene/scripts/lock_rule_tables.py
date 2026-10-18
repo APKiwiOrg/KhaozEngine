@@ -63,6 +63,7 @@ for candidate in CANDIDATES:
                 r = results[f"{condition}/{arm}/{mode}"]
                 c, g = r["character"], r["ground"]
                 print(f"| {condition} | {arm} | {mode} | {c[0]:.6f} | {c[1]:.5f} | {c[2]:.5f} | {c[3]} | {g[0]:.6f} | {g[1]:.5f} | {g[2]:.5f} | {g[3]} |")
-    print()
+    if candidate != CANDIDATES[-1]:
+        print()
 if len(sys.argv) > 2:
     Path(sys.argv[2]).write_text(json.dumps(results, indent=2) + "\n")

@@ -1,0 +1,20 @@
+Command: build-slot --heavy --label grain-engine-suite -- dotnet test KhaozEngine.slnx -c Release --no-build --filter Category!=LiveSocket
+Exit: 1
+Completed assemblies: 41
+Passed: 35109
+Failed: 1
+Skipped: 1424
+
+  Failed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.The_separable_Lanczos_kernel_takes_twelve_evaluations_per_pixel [1 ms]
+  Error Message:
+   Assert.Equal() Failure: Values differ
+Expected: 5
+Actual:   9
+  Stack Trace:
+     at KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.The_separable_Lanczos_kernel_takes_twelve_evaluations_per_pixel() in /Users/antonio/KhaozEngine/.worktrees/taa-grain-switches/KhaozEngine.Render.Tests/Render3D/TemporalResolveShaderTests.cs:line 492
+   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)
+   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+
+Starting commit f22cb609f and the measured tree both have 9 lanczos2( occurrences in ShaderSources.TemporalAccumulate.cs. The raw-source assertion expects 5.

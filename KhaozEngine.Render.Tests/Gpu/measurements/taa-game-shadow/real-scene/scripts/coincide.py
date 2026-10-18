@@ -4,7 +4,8 @@ from PIL import Image
 D=sys.argv[1]
 overlay=sys.argv[2] if len(sys.argv)>2 else 'show-released'
 control=sys.argv[3] if len(sys.argv)>3 else 'noop'
-colour=(0,255,255) if overlay=='show-locked' else (255,0,255)
+baseline=sys.argv[4] if len(sys.argv)>4 else 'baseline'
+colour=(0,255,255) if overlay.endswith('show-locked') else (255,0,255)
 def img(p): return np.asarray(Image.open(p).convert('RGB')).astype(np.int32)
 def luma(a): return (0.2126*a[...,0]+0.7152*a[...,1]+0.0722*a[...,2])/255.0
 def med3(l):
@@ -13,11 +14,11 @@ for mode in ['taa-native','taa-quality']:
     tot=dict(band=0,rel_band=0,spark=0,spark_rel=0,spark_rel_prev=0,rel_spark=0,nonmag_diff=0)
     prev_rel=None
     for i in range(16):
-        reg=img(f'{D}/baseline/regions-{i:03d}.png')
+        reg=img(f'{D}/{baseline}/regions-{i:03d}.png')
         band=(reg[...,0]==0)&(reg[...,1]==255)&(reg[...,2]==0)
         base=img(f'{D}/{control}/{mode}/crop-{i:03d}.png')
         sr=img(f'{D}/{overlay}/{mode}/crop-{i:03d}.png')
-        fx=img(f'{D}/baseline/fxaa/crop-{i:03d}.png')
+        fx=img(f'{D}/{baseline}/fxaa/crop-{i:03d}.png')
         mag=np.all(sr==colour,axis=2)&~np.all(base==colour,axis=2)
         tot['nonmag_diff']+=int((np.abs(sr-base).max(axis=2)>0)[~mag].sum())
         lb=luma(base); res=lb-med3(lb)

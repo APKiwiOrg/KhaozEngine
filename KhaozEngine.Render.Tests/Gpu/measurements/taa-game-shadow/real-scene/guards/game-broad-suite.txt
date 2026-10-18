@@ -1,0 +1,188 @@
+
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  Grimhollow.Shared -> /Users/antonio/Grimhollow/.worktrees/taa-grain-probe/Grimhollow.Shared/bin/Release/net10.0/Grimhollow.Shared.dll
+  WorldTrees -> /Users/antonio/Grimhollow/.worktrees/taa-grain-probe/tools/worldtrees/bin/Release/net10.0/WorldTrees.dll
+  NavBake -> /Users/antonio/Grimhollow/.worktrees/taa-grain-probe/tools/navbake/bin/Release/net10.0/NavBake.dll
+  Grimhollow.Persistence -> /Users/antonio/Grimhollow/.worktrees/taa-grain-probe/Grimhollow.Persistence/bin/Release/net10.0/Grimhollow.Persistence.dll
+  PlaytestMcp -> /Users/antonio/Grimhollow/.worktrees/taa-grain-probe/tools/playtest-mcp/bin/Release/net10.0/PlaytestMcp.dll
+  Grimhollow.Core -> /Users/antonio/Grimhollow/.worktrees/taa-grain-probe/Grimhollow.Core/bin/Release/net10.0/Grimhollow.Core.dll
+  Determining projects to restore...
+  Grimhollow.Server -> /Users/antonio/Grimhollow/.worktrees/taa-grain-probe/Grimhollow.Server/bin/Release/net10.0/Grimhollow.Server.dll
+  ServerProbe -> /Users/antonio/Grimhollow/.worktrees/taa-grain-probe/tools/server-probe/bin/Release/net10.0/ServerProbe.dll
+  SnapshotTool -> /Users/antonio/Grimhollow/.worktrees/taa-grain-probe/tools/SnapshotTool/bin/Release/net10.0/SnapshotTool.dll
+  Grimhollow.Auth -> /Users/antonio/Grimhollow/.worktrees/taa-grain-probe/Grimhollow.Auth/bin/Release/net10.0/Grimhollow.Auth.dll
+  Grimhollow.Admin -> /Users/antonio/Grimhollow/.worktrees/taa-grain-probe/Grimhollow.Admin/bin/Release/net10.0/Grimhollow.Admin.dll
+  All projects are up-to-date for restore.
+  JournalRehearsal -> /Users/antonio/Grimhollow/.worktrees/taa-grain-probe/tools/journal-rehearsal/bin/Release/net10.0/JournalRehearsal.dll
+  WorkerExtensions -> /Users/antonio/Grimhollow/.worktrees/taa-grain-probe/GrimhollowStatusFunction/obj/Release/net10.0/WorkerExtensions/bin/Release/net8.0/Microsoft.Azure.Functions.Worker.Extensions.dll
+  GrimhollowStatusFunction -> /Users/antonio/Grimhollow/.worktrees/taa-grain-probe/GrimhollowStatusFunction/bin/Release/net10.0/GrimhollowStatusFunction.dll
+  Grimhollow.Tests -> /Users/antonio/Grimhollow/.worktrees/taa-grain-probe/Grimhollow.Tests/bin/Release/net10.0/Grimhollow.Tests.dll
+Test run for /Users/antonio/Grimhollow/.worktrees/taa-grain-probe/Grimhollow.Tests/bin/Release/net10.0/Grimhollow.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:01:33.02]     Grimhollow.Tests.World.ShippedCreatureNavigationRebuildTests.ABakedWindowRoutesAsTheStartupBuild [FAIL]
+  Failed Grimhollow.Tests.World.ShippedCreatureNavigationRebuildTests.ABakedWindowRoutesAsTheStartupBuild [1 m 30 s]
+  Error Message:
+   Assert.IsType() Failure: Value is null
+Expected: typeof(KhaozEngine.Movement.GroundNavigation)
+Actual:   null
+  Stack Trace:
+     at Grimhollow.Tests.World.ShippedCreatureNavigationRebuildTests.ABakedWindowRoutesAsTheStartupBuild() in /Users/antonio/Grimhollow/.worktrees/taa-grain-probe/Grimhollow.Tests/World/ShippedNavigationBakeTests.cs:line 420
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+[xUnit.net 00:01:34.55]     Grimhollow.Tests.Server.Hosting.ContinuousCreatureCorruptBakeLoadTests.ARefusedCreatureBakeBuildsAtStartupAndLogsTheReason [FAIL]
+  Failed Grimhollow.Tests.Server.Hosting.ContinuousCreatureCorruptBakeLoadTests.ARefusedCreatureBakeBuildsAtStartupAndLogsTheReason [1 m 32 s]
+  Error Message:
+   Assert.Equal() Failure: Values differ
+Expected: 1
+Actual:   6
+  Stack Trace:
+     at Grimhollow.Tests.Server.Hosting.ContinuousCreatureCorruptBakeLoadTests.ARefusedCreatureBakeBuildsAtStartupAndLogsTheReason() in /Users/antonio/Grimhollow/.worktrees/taa-grain-probe/Grimhollow.Tests/Server/Hosting/ContinuousCreatureBakeLoadTests.cs:line 159
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+[xUnit.net 00:02:24.46]     Grimhollow.Tests.World.HollowmereHumanoidBridgeNavigationTests.AHumanoidCrossesTheBridgeFromBankToBank [SKIP]
+  Skipped Grimhollow.Tests.World.HollowmereHumanoidBridgeNavigationTests.AHumanoidCrossesTheBridgeFromBankToBank [1 ms]
+[xUnit.net 00:02:33.98]     Grimhollow.Tests.World.ShippedNavigationBakeLoadTests.ShippedKnobsMatchTheBakedTuning [FAIL]
+[xUnit.net 00:02:33.99]     Grimhollow.Tests.World.ShippedNavigationBakeLoadTests.TheShippedPlayerBakeLoads [FAIL]
+[xUnit.net 00:02:33.99]     Grimhollow.Tests.Server.Hosting.ContinuousCreatureShippedBakeLoadTests.AMarkerMovedWithoutARebakeRefusesAsOptionsChanged [FAIL]
+[xUnit.net 00:02:34.00]     Grimhollow.Tests.World.ShippedNavigationBakeLoadTests.EveryShippedCreatureBakeLoads [FAIL]
+[xUnit.net 00:02:34.08]     Grimhollow.Tests.World.ShippedPlayerNavigationRouteTests.ThePlayerProfileRoutesAcrossTheRiver [FAIL]
+  Failed Grimhollow.Tests.World.ShippedNavigationBakeLoadTests.ShippedKnobsMatchTheBakedTuning [25 ms]
+  Error Message:
+   the published movement knobs refuse the bake: EngineChanged Bake engine 21.4.0, expected 21.5.0-grain.1.. Rebake with scripts/bake-navigation.sh and commit the bake and its sidecar.
+  Stack Trace:
+     at Grimhollow.Tests.World.ShippedNavigationBakeLoadTests.ShippedKnobsMatchTheBakedTuning() in /Users/antonio/Grimhollow/.worktrees/taa-grain-probe/Grimhollow.Tests/World/ShippedNavigationBakeTests.cs:line 301
+   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)
+   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+  Failed Grimhollow.Tests.World.ShippedNavigationBakeLoadTests.TheShippedPlayerBakeLoads [6 ms]
+  Error Message:
+   Refused EngineChanged Bake engine 21.4.0, expected 21.5.0-grain.1.. Rebake with scripts/bake-navigation.sh and commit the bake and its sidecar.
+  Stack Trace:
+     at Grimhollow.Tests.World.ShippedNavigationBakeLoadTests.TheShippedPlayerBakeLoads() in /Users/antonio/Grimhollow/.worktrees/taa-grain-probe/Grimhollow.Tests/World/ShippedNavigationBakeTests.cs:line 287
+   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)
+   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+  Standard Output Messages:
+ shipped player bake: Refused EngineChanged in 121 ms
+
+
+  Failed Grimhollow.Tests.Server.Hosting.ContinuousCreatureShippedBakeLoadTests.AMarkerMovedWithoutARebakeRefusesAsOptionsChanged [929 ms]
+  Error Message:
+   Assert.Equal() Failure: Values differ
+Expected: OptionsChanged
+Actual:   EngineChanged
+  Stack Trace:
+     at Grimhollow.Tests.Server.Hosting.ContinuousCreatureShippedBakeLoadTests.AMarkerMovedWithoutARebakeRefusesAsOptionsChanged() in /Users/antonio/Grimhollow/.worktrees/taa-grain-probe/Grimhollow.Tests/Server/Hosting/ContinuousCreatureBakeLoadTests.cs:line 134
+   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)
+   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+  Failed Grimhollow.Tests.World.ShippedNavigationBakeLoadTests.EveryShippedCreatureBakeLoads [14 ms]
+  Error Message:
+   cow-0.kenav: EngineChanged Bake engine 21.4.0, expected 21.5.0-grain.1.. Rebake with scripts/bake-navigation.sh and commit the bake and its sidecar.
+  Stack Trace:
+     at Grimhollow.Tests.World.ShippedNavigationBakeLoadTests.EveryShippedCreatureBakeLoads() in /Users/antonio/Grimhollow/.worktrees/taa-grain-probe/Grimhollow.Tests/World/ShippedNavigationBakeTests.cs:line 322
+   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)
+   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+  Failed Grimhollow.Tests.World.ShippedPlayerNavigationRouteTests.ThePlayerProfileRoutesAcrossTheRiver [73 ms]
+  Error Message:
+   Assert.IsType() Failure: Value is null
+Expected: typeof(KhaozEngine.Movement.GroundNavigation)
+Actual:   null
+  Stack Trace:
+     at Grimhollow.Tests.World.ShippedPlayerNavigationRouteTests.ThePlayerProfileRoutesAcrossTheRiver() in /Users/antonio/Grimhollow/.worktrees/taa-grain-probe/Grimhollow.Tests/World/ShippedNavigationBakeTests.cs:line 344
+   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)
+   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+[xUnit.net 00:02:34.11]     Grimhollow.Tests.World.ShippedPlayerNavigationRouteTests.VillageWalkUpsPlanCompleteAndArrive [FAIL]
+  Failed Grimhollow.Tests.World.ShippedPlayerNavigationRouteTests.VillageWalkUpsPlanCompleteAndArrive [26 ms]
+  Error Message:
+   Assert.IsType() Failure: Value is null
+Expected: typeof(KhaozEngine.Movement.GroundNavigation)
+Actual:   null
+  Stack Trace:
+     at Grimhollow.Tests.World.ShippedPlayerNavigationRouteTests.VillageWalkUpsPlanCompleteAndArrive() in /Users/antonio/Grimhollow/.worktrees/taa-grain-probe/Grimhollow.Tests/World/ShippedNavigationBakeTests.cs:line 364
+   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)
+   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+[xUnit.net 00:02:34.73]     Grimhollow.Tests.Persistence.LegacyTilePlayerRecordTests.GenerateGoldenRecords [SKIP]
+  Skipped Grimhollow.Tests.Persistence.LegacyTilePlayerRecordTests.GenerateGoldenRecords [1 ms]
+[xUnit.net 00:03:13.81]     Grimhollow.Tests.Persistence.LegacyEventGoldenTests.GenerateGoldens [SKIP]
+  Skipped Grimhollow.Tests.Persistence.LegacyEventGoldenTests.GenerateGoldens [1 ms]
+[xUnit.net 00:03:40.30]     Grimhollow.Tests.Server.Hosting.ContinuousCreatureShippedBakeLoadTests.TheShippedInstallLoadsEveryWindowFromItsBake [FAIL]
+  Failed Grimhollow.Tests.Server.Hosting.ContinuousCreatureShippedBakeLoadTests.TheShippedInstallLoadsEveryWindowFromItsBake [1 m 6 s]
+  Error Message:
+   Assert.Equal() Failure: Values differ
+Expected: 0
+Actual:   6
+  Stack Trace:
+     at Grimhollow.Tests.Server.Hosting.ContinuousCreatureShippedBakeLoadTests.TheShippedInstallLoadsEveryWindowFromItsBake() in /Users/antonio/Grimhollow/.worktrees/taa-grain-probe/Grimhollow.Tests/Server/Hosting/ContinuousCreatureBakeLoadTests.cs:line 104
+   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)
+   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+  Standard Output Messages:
+ shipped creature install with bakes: 64919 ms
+
+
+[xUnit.net 00:04:17.05]     Grimhollow.Tests.Server.Hosting.Continuous.ContinuousCreatureShippedHostTests.TheClassInstallLoadsEveryWindowFromItsBake [FAIL]
+  Failed Grimhollow.Tests.Server.Hosting.Continuous.ContinuousCreatureShippedHostTests.TheClassInstallLoadsEveryWindowFromItsBake [36 s]
+  Error Message:
+   Assert.Equal() Failure: Values differ
+Expected: 0
+Actual:   6
+  Stack Trace:
+     at Grimhollow.Tests.Server.Hosting.Continuous.ContinuousCreatureShippedHostTests.TheClassInstallLoadsEveryWindowFromItsBake() in /Users/antonio/Grimhollow/.worktrees/taa-grain-probe/Grimhollow.Tests/Server/Hosting/Continuous/ContinuousCreatureShippedHostTests.cs:line 42
+   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)
+   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+[xUnit.net 00:04:33.82]     Grimhollow.Tests.World.HollowmereRouteStallProbe.HollowmereCreatureRoutesStall [SKIP]
+  Skipped Grimhollow.Tests.World.HollowmereRouteStallProbe.HollowmereCreatureRoutesStall [1 ms]
+[xUnit.net 00:04:59.02]     Grimhollow.Tests.Client.Quadruped.DrawHashProbe.EveryOtherBodyDrawsTheSame [SKIP]
+  Skipped Grimhollow.Tests.Client.Quadruped.DrawHashProbe.EveryOtherBodyDrawsTheSame [1 ms]
+[xUnit.net 00:06:18.00]     Grimhollow.Tests.World.HollowmereNavigationCostProbe.HollowmereCreatureProfilesCost [SKIP]
+  Skipped Grimhollow.Tests.World.HollowmereNavigationCostProbe.HollowmereCreatureProfilesCost [1 ms]
+The active test run was aborted. Reason: Test host process crashed : stone-armour: '' is not an output directory.
+usage: stone-armour <out-dir> <shield|helmet|body|legs|full-set|all> [stance|walk|turn|jump|attack|block|gathering|bench|butcher|death|all]
+stone-armour: expected an output directory, an item and an optional sample.
+usage: stone-armour <out-dir> <shield|helmet|body|legs|full-set|all> [stance|walk|turn|jump|attack|block|gathering|bench|butcher|death|all]
+stone-armour: expected an output directory, an item and an optional sample.
+usage: stone-armour <out-dir> <shield|helmet|body|legs|full-set|all> [stance|walk|turn|jump|attack|block|gathering|bench|butcher|death|all]
+stone-armour: unknown item 'cape'.
+usage: stone-armour <out-dir> <shield|helmet|body|legs|full-set|all> [stance|walk|turn|jump|attack|block|gathering|bench|butcher|death|all]
+stone-armour: expected an output directory, an item and an optional sample.
+usage: stone-armour <out-dir> <shield|helmet|body|legs|full-set|all> [stance|walk|turn|jump|attack|block|gathering|bench|butcher|death|all]
+stone-armour: '--out' is not an output directory.
+usage: stone-armour <out-dir> <shield|helmet|body|legs|full-set|all> [stance|walk|turn|jump|attack|block|gathering|bench|butcher|death|all]
+stone-armour: unknown sample 'dance'.
+usage: stone-armour <out-dir> <shield|helmet|body|legs|full-set|all> [stance|walk|turn|jump|attack|block|gathering|bench|butcher|death|all]
+content: https://grimhollow.blob.core.windows.net/content was not filled with version 1 (origin-write-failed at 31f7d1256d92634c80bf469393272344ee0a42a27d39c38de09746ab821bfb3f: This request is not authorized to perform this operation using this permission.). 0 of 0 object(s) reached the container. Check that this server's identity holds Storage Blob Data Contributor on that container and that GRIMHOLLOW_CONTENT_ORIGIN_CONTAINER names the container clients fetch from. Clients refused at the door fetch from there, so this server would turn away every client on another content version with nothing for them to download. No world was started.
+content: the catalog at /var/folders/hv/h61llc292r31xm2_3qlw_gdr0000gn/T/grimhollow-content-boot-842e461a05bb4cb3a88a44593bf5649c/grimhollow-catalog.db would not open: SQLite Error 14: 'unable to open database file'.
+Unhandled exception. System.ObjectDisposedException: The CancellationTokenSource has been disposed.
+   at System.Threading.CancellationTokenSource.Cancel()
+   at Grimhollow.Tests.Server.WorldClockReplicationTests.<>c__DisplayClass9_1.<FullHostFlushesAClockAnchorDuringCleanShutdown>b__3(ContinuousComposition _) in /Users/antonio/Grimhollow/.worktrees/taa-grain-probe/Grimhollow.Tests/Server/WorldClockReplicationTests.cs:line 179
+   at Grimhollow.Server.ContinuousServerHost.ServeAsync(ContinuousServeOptions options, Int32 port, Single drainGraceSeconds, CancellationToken cancel, Action`1 onStarted, Action`1 reportJournalStoreDisposal)
+   at Grimhollow.Server.ContinuousServerHost.ServeAsync(ContinuousServeOptions options, Int32 port, Single drainGraceSeconds, CancellationToken cancel, Action`1 onStarted, Action`1 reportJournalStoreDisposal) in /Users/antonio/Grimhollow/.worktrees/taa-grain-probe/Grimhollow.Server/ContinuousServerHost.Serve.cs:line 72
+   at Grimhollow.Server.ContinuousServerHost.Serve(ContinuousServeOptions options, Int32 port, Single drainGraceSeconds, CancellationToken cancel, Action`1 onStarted, Action`1 reportJournalStoreDisposal) in /Users/antonio/Grimhollow/.worktrees/taa-grain-probe/Grimhollow.Server/ContinuousServerHost.Serve.cs:line 40
+   at Grimhollow.Server.SoloServerHost.Serve(ServerWorld world, IWorldStore store, IMutationJournalStore journalStore, IMutationJournalStreamListing streamListing, GrimhollowLegacyPlayerMigration playerMigration, IChatAuditStore chatStore, Boolean hosted, String sqlConnection, Byte[] secret, GrimhollowAuthMode authMode, GrimhollowServerAdmin admin, String localDebugSubject, Int32 port, Single drainGraceSeconds, GrimhollowJournalOptions journalOptions, GrimhollowJournalOperations journalOperations, GrimhollowRandomSources randomSources, CancellationToken cancel, Func`2 env, Action`1 onStarted, Func`2 openTransport, GrimhollowContentReads reads, GrimhollowContentAuthoring authoring, GrimhollowDropReads dropReads, ContentVersionIdentity doorContent, Int32 minimumClientBuild, Action onChatDrainStarted, Action`1 reportJournalStoreDisposal) in /Users/antonio/Grimhollow/.worktrees/taa-grain-probe/Grimhollow.Server/SoloServerHost.Serve.cs:line 101
+   at Grimhollow.Server.SoloServerHost.RunCore(String[] args, CancellationToken cancel, Func`2 env, Action`1 onStarted, Func`1 openChatStore, Func`2 openTransport, Action onChatDrainStarted, Boolean prepareLocalPlayerJournal, Func`2 decorateJournalStore, Action`1 onJournalOperationsStarted, String localDebugSubject, IClientPackOrigin clientPackOrigin, Func`2 decorateWorldStore) in /Users/antonio/Grimhollow/.worktrees/taa-grain-probe/Grimhollow.Server/SoloServerHost.cs:line 448
+   at Grimhollow.Server.SoloServerHost.Run(String[] args, CancellationToken cancel, Func`2 env, Action`1 onStarted) in /Users/antonio/Grimhollow/.worktrees/taa-grain-probe/Grimhollow.Server/SoloServerHost.cs:line 95
+   at Grimhollow.Tests.Server.WorldClockReplicationTests.<>c__DisplayClass9_1.<FullHostFlushesAClockAnchorDuringCleanShutdown>b__1() in /Users/antonio/Grimhollow/.worktrees/taa-grain-probe/Grimhollow.Tests/Server/WorldClockReplicationTests.cs:line 175
+   at System.Threading.Thread.StartHelper.Callback(Object state)
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+--- End of stack trace from previous location ---
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Threading.Thread.StartCallback()
+
+
+Failed!  - Failed:    10, Passed:  9321, Skipped:     6, Total:  9337, Duration: 6 m 38 s - Grimhollow.Tests.dll (net10.0)
+Test Run Aborted.
+build-slot: exit=1 waited=0.060s ran=408.512s

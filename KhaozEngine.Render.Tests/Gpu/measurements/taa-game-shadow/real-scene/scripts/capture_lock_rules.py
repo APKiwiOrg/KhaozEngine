@@ -6,7 +6,7 @@ import sys
 
 GAME = Path(sys.argv[1]).resolve()
 OUTPUT = Path(sys.argv[2]).resolve()
-ARMS = sys.argv[3:] or ["baseline", "noop", "locks-off", "lock-history-ridge", "lock-shade-release", "lock-bound-current"]
+ARMS = sys.argv[3:] or ["baseline", "noop", "show-locked", "locks-off", "lock-history-ridge", "lock-shade-release", "lock-bound-current"]
 CONDITIONS = [
     ("back15", "back-edge", "1/15", "5"),
     ("day30", "back-edge", "1/15", "30"),
@@ -15,7 +15,7 @@ CONDITIONS = [
 ]
 for arm in ARMS:
     for condition, spot, dt, day in CONDITIONS:
-        if arm == "noop" and condition != "back15":
+        if arm in ("noop", "show-locked") and condition != "back15":
             continue
         assert subprocess.check_output(["git", "rev-parse", "--show-toplevel"], cwd=GAME, text=True).strip() == str(GAME)
         assert subprocess.check_output(["git", "branch", "--show-current"], cwd=GAME, text=True).strip() == "probe/taa-grain-engine"

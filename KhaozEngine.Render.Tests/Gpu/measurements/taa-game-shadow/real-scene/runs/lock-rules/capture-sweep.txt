@@ -1,0 +1,44 @@
+START back15-baseline
+END back15-baseline exit 0
+START day30-baseline
+END day30-baseline exit 0
+START back60-baseline
+END back60-baseline exit 0
+START ground15-baseline
+END ground15-baseline exit 0
+START back15-noop
+END back15-noop exit 0
+START back15-show-locked
+END back15-show-locked exit 0
+START back15-locks-off
+END back15-locks-off exit 0
+START day30-locks-off
+END day30-locks-off exit 0
+START back60-locks-off
+END back60-locks-off exit 0
+START ground15-locks-off
+END ground15-locks-off exit 0
+START back15-lock-history-ridge
+END back15-lock-history-ridge exit 0
+START day30-lock-history-ridge
+END day30-lock-history-ridge exit 0
+START back60-lock-history-ridge
+END back60-lock-history-ridge exit 0
+START ground15-lock-history-ridge
+END ground15-lock-history-ridge exit 0
+START back15-lock-shade-release
+END back15-lock-shade-release exit 0
+START day30-lock-shade-release
+END day30-lock-shade-release exit 0
+START back60-lock-shade-release
+END back60-lock-shade-release exit 0
+START ground15-lock-shade-release
+END ground15-lock-shade-release exit 0
+START back15-lock-bound-current
+END back15-lock-bound-current exit 0
+START day30-lock-bound-current
+END day30-lock-bound-current exit 0
+START back60-lock-bound-current
+END back60-lock-bound-current exit 0
+START ground15-lock-bound-current
+END ground15-lock-bound-current exit 0

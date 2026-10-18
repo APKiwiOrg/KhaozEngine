@@ -1,0 +1,13 @@
+{
+  "engineCodeCommit": "dc7b51a7d4346f8e5e613fa4f4fbed66ca363c8d",
+  "gameCommit": "f5cf414dd18726912122a97ce4801e7ea2cc5379",
+  "engineBranch": "fix/taa-grain-switches",
+  "gameBranch": "probe/taa-grain-engine",
+  "engineVersion": "21.5.0-grain.1",
+  "backend": "MetalNative",
+  "render3dDllSha256": "5c83039e6403bf4ecead6cc8cf58fbe687d76122029a39c2a7b840d7be86a35e",
+  "captureCount": 22,
+  "referenceIdenticalFrames": 192,
+  "startTime": "0.49777777777777776",
+  "privateFeed": "/Users/antonio/.cache/khaozengine-probe-feed/taa-grain"
+}

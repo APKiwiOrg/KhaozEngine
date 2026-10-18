@@ -1,0 +1,131 @@
+back15-baseline
+shadowgrain: ShadowGrainSpot { Name = back-edge, X = 100.9, Z = 89.5, YawDegrees = 230, Focus = Character }, 2560x1440, dt=0.06666666666666667, 80 warm-up + 16 saved frames per mode, sharpen engine, hold texels engine, shadow detail default, temporal resolve engine, temporal diag none (engine mask 0)
+Region checks passed for Character. Confirm the edge in the edge crops.
+done -> /private/tmp/grimhollow-shadowgrain/lock-rule-round/back15-baseline (85 shots)
+build-slot: exit=0 waited=0.048s ran=49.715s
+
+back15-lock-bound-current
+build-slot: queued position=3 waiting=3, held by: spacegame-21.4.0-ci-guards (heavy, 254.6s), shadowgrain-format (quick, 688.1s), hardpoint-21.4.0-script-checks (heavy, 339.2s), interior-picks-green (quick, 145.1s), ability-client-format-verify (quick, 676.1s), template-21.4.0-package-proof (quick, 52.4s), a5-format-apply (quick, 49.9s)
+Region checks passed for Character. Confirm the edge in the edge crops.
+done -> /private/tmp/grimhollow-shadowgrain/lock-rule-round/back15-lock-bound-current (85 shots)
+build-slot: exit=0 waited=34.264s ran=54.007s
+
+back15-lock-history-ridge
+shadowgrain: ShadowGrainSpot { Name = back-edge, X = 100.9, Z = 89.5, YawDegrees = 230, Focus = Character }, 2560x1440, dt=0.06666666666666667, 80 warm-up + 16 saved frames per mode, sharpen engine, hold texels engine, shadow detail default, temporal resolve engine, temporal diag lock-history-ridge (engine mask 1024)
+Region checks passed for Character. Confirm the edge in the edge crops.
+done -> /private/tmp/grimhollow-shadowgrain/lock-rule-round/back15-lock-history-ridge (85 shots)
+build-slot: exit=0 waited=0.044s ran=36.555s
+
+back15-lock-shade-release
+build-slot: queued position=2 waiting=2, held by: fa-t2-crest-trace (quick, 79.5s), spacegame-21.4.0-ci-guards (heavy, 12.2s), shadowgrain-format (quick, 445.6s), hardpoint-21.4.0-script-checks (heavy, 96.8s), template-21.4.0-script-tests (heavy, 275.5s), ability-client-format-verify (quick, 433.7s), interior-walk-green (quick, 62.4s)
+Region checks passed for Character. Confirm the edge in the edge crops.
+done -> /private/tmp/grimhollow-shadowgrain/lock-rule-round/back15-lock-shade-release (85 shots)
+build-slot: exit=0 waited=82.147s ran=27.229s
+
+back15-locks-off
+shadowgrain: ShadowGrainSpot { Name = back-edge, X = 100.9, Z = 89.5, YawDegrees = 230, Focus = Character }, 2560x1440, dt=0.06666666666666667, 80 warm-up + 16 saved frames per mode, sharpen engine, hold texels engine, shadow detail default, temporal resolve engine, temporal diag locks-off (engine mask 16)
+Region checks passed for Character. Confirm the edge in the edge crops.
+done -> /private/tmp/grimhollow-shadowgrain/lock-rule-round/back15-locks-off (85 shots)
+build-slot: exit=0 waited=0.036s ran=26.063s
+
+back15-noop
+shadowgrain: ShadowGrainSpot { Name = back-edge, X = 100.9, Z = 89.5, YawDegrees = 230, Focus = Character }, 2560x1440, dt=0.06666666666666667, 80 warm-up + 16 saved frames per mode, sharpen engine, hold texels engine, shadow detail default, temporal resolve engine, temporal diag noop (engine mask 256)
+Region checks passed for Character. Confirm the edge in the edge crops.
+done -> /private/tmp/grimhollow-shadowgrain/lock-rule-round/back15-noop (85 shots)
+build-slot: exit=0 waited=0.052s ran=29.868s
+
+back15-show-locked
+shadowgrain: ShadowGrainSpot { Name = back-edge, X = 100.9, Z = 89.5, YawDegrees = 230, Focus = Character }, 2560x1440, dt=0.06666666666666667, 80 warm-up + 16 saved frames per mode, sharpen engine, hold texels engine, shadow detail default, temporal resolve engine, temporal diag show-locked (engine mask 512)
+Region checks passed for Character. Confirm the edge in the edge crops.
+done -> /private/tmp/grimhollow-shadowgrain/lock-rule-round/back15-show-locked (85 shots)
+build-slot: exit=0 waited=0.086s ran=26.223s
+
+back60-baseline
+shadowgrain: ShadowGrainSpot { Name = back-edge, X = 100.9, Z = 89.5, YawDegrees = 230, Focus = Character }, 2560x1440, dt=0.016666666666666666, 80 warm-up + 16 saved frames per mode, sharpen engine, hold texels engine, shadow detail default, temporal resolve engine, temporal diag none (engine mask 0)
+Region checks passed for Character. Confirm the edge in the edge crops.
+done -> /private/tmp/grimhollow-shadowgrain/lock-rule-round/back60-baseline (85 shots)
+build-slot: exit=0 waited=0.038s ran=25.689s
+
+back60-lock-bound-current
+shadowgrain: ShadowGrainSpot { Name = back-edge, X = 100.9, Z = 89.5, YawDegrees = 230, Focus = Character }, 2560x1440, dt=0.016666666666666666, 80 warm-up + 16 saved frames per mode, sharpen engine, hold texels engine, shadow detail default, temporal resolve engine, temporal diag lock-bound-current (engine mask 4096)
+Region checks passed for Character. Confirm the edge in the edge crops.
+done -> /private/tmp/grimhollow-shadowgrain/lock-rule-round/back60-lock-bound-current (85 shots)
+build-slot: exit=0 waited=0.035s ran=29.548s
+
+back60-lock-history-ridge
+build-slot: queued position=2 waiting=2, held by: fa-t2-crest-red (quick, 144.7s), shadowgrain-format (quick, 289.1s), spacegame-21.4.0-final-tests (heavy, 6.6s), template-21.4.0-script-tests (heavy, 119.0s), ability-client-format-verify (quick, 277.2s), interior-ray-green (quick, 87.4s), a5-red (quick, 61.9s)
+Region checks passed for Character. Confirm the edge in the edge crops.
+done -> /private/tmp/grimhollow-shadowgrain/lock-rule-round/back60-lock-history-ridge (85 shots)
+build-slot: exit=0 waited=16.271s ran=60.480s
+
+back60-lock-shade-release
+shadowgrain: ShadowGrainSpot { Name = back-edge, X = 100.9, Z = 89.5, YawDegrees = 230, Focus = Character }, 2560x1440, dt=0.016666666666666666, 80 warm-up + 16 saved frames per mode, sharpen engine, hold texels engine, shadow detail default, temporal resolve engine, temporal diag lock-shade-release (engine mask 2048)
+Region checks passed for Character. Confirm the edge in the edge crops.
+done -> /private/tmp/grimhollow-shadowgrain/lock-rule-round/back60-lock-shade-release (85 shots)
+build-slot: exit=0 waited=0.044s ran=37.956s
+
+back60-locks-off
+shadowgrain: ShadowGrainSpot { Name = back-edge, X = 100.9, Z = 89.5, YawDegrees = 230, Focus = Character }, 2560x1440, dt=0.016666666666666666, 80 warm-up + 16 saved frames per mode, sharpen engine, hold texels engine, shadow detail default, temporal resolve engine, temporal diag locks-off (engine mask 16)
+Region checks passed for Character. Confirm the edge in the edge crops.
+done -> /private/tmp/grimhollow-shadowgrain/lock-rule-round/back60-locks-off (85 shots)
+build-slot: exit=0 waited=0.030s ran=25.928s
+
+day30-baseline
+shadowgrain: ShadowGrainSpot { Name = back-edge, X = 100.9, Z = 89.5, YawDegrees = 230, Focus = Character }, 2560x1440, dt=0.06666666666666667, 80 warm-up + 16 saved frames per mode, sharpen engine, hold texels engine, shadow detail default, temporal resolve engine, temporal diag none (engine mask 0)
+Region checks passed for Character. Confirm the edge in the edge crops.
+done -> /private/tmp/grimhollow-shadowgrain/lock-rule-round/day30-baseline (85 shots)
+build-slot: exit=0 waited=0.039s ran=26.074s
+
+day30-lock-bound-current
+build-slot: queued position=2 waiting=2, held by: fa-t2-crest-green (quick, 88.6s), spacegame-21.4.0-ci-guards (heavy, 343.4s), ec-b6-red (quick, 0.4s), hardpoint-21.4.0-script-checks (heavy, 428.0s), interior-picks-green (quick, 233.9s), ability-client-format-verify (quick, 764.9s), template-21.4.0-package-proof (quick, 141.1s), a5-format-apply (quick, 138.6s)
+Region checks passed for Character. Confirm the edge in the edge crops.
+done -> /private/tmp/grimhollow-shadowgrain/lock-rule-round/day30-lock-bound-current (85 shots)
+build-slot: exit=0 waited=37.439s ran=30.974s
+
+day30-lock-history-ridge
+shadowgrain: ShadowGrainSpot { Name = back-edge, X = 100.9, Z = 89.5, YawDegrees = 230, Focus = Character }, 2560x1440, dt=0.06666666666666667, 80 warm-up + 16 saved frames per mode, sharpen engine, hold texels engine, shadow detail default, temporal resolve engine, temporal diag lock-history-ridge (engine mask 1024)
+Region checks passed for Character. Confirm the edge in the edge crops.
+done -> /private/tmp/grimhollow-shadowgrain/lock-rule-round/day30-lock-history-ridge (85 shots)
+build-slot: exit=0 waited=0.025s ran=26.341s
+
+day30-lock-shade-release
+build-slot: queued position=2 waiting=2, held by: fa-t2-crest-trace (quick, 189.0s), spacegame-21.4.0-ci-guards (heavy, 121.7s), shadowgrain-format (quick, 555.1s), hardpoint-21.4.0-script-checks (heavy, 206.3s), interior-picks-green (quick, 12.2s), ability-client-format-verify (quick, 543.2s), a5-red2 (quick, 109.4s)
+Region checks passed for Character. Confirm the edge in the edge crops.
+done -> /private/tmp/grimhollow-shadowgrain/lock-rule-round/day30-lock-shade-release (85 shots)
+build-slot: exit=0 waited=13.115s ran=32.532s
+
+day30-locks-off
+shadowgrain: ShadowGrainSpot { Name = back-edge, X = 100.9, Z = 89.5, YawDegrees = 230, Focus = Character }, 2560x1440, dt=0.06666666666666667, 80 warm-up + 16 saved frames per mode, sharpen engine, hold texels engine, shadow detail default, temporal resolve engine, temporal diag locks-off (engine mask 16)
+Region checks passed for Character. Confirm the edge in the edge crops.
+done -> /private/tmp/grimhollow-shadowgrain/lock-rule-round/day30-locks-off (85 shots)
+build-slot: exit=0 waited=0.025s ran=24.699s
+
+ground15-baseline
+shadowgrain: ShadowGrainSpot { Name = ground-edge, X = 100.3, Z = 88.5, YawDegrees = 180, Focus = Ground }, 2560x1440, dt=0.06666666666666667, 80 warm-up + 16 saved frames per mode, sharpen engine, hold texels engine, shadow detail default, temporal resolve engine, temporal diag none (engine mask 0)
+Region checks passed for Ground. Confirm the edge in the edge crops.
+done -> /private/tmp/grimhollow-shadowgrain/lock-rule-round/ground15-baseline (85 shots)
+build-slot: exit=0 waited=0.103s ran=29.995s
+
+ground15-lock-bound-current
+build-slot: queued position=2 waiting=2, held by: fa-t2-crest-green (quick, 186.9s), hardpoint-21.4.0-release-build (quick, 37.8s), ec-b6-red (quick, 98.7s), nullwake-21.4.0-repo-checks (heavy, 61.5s), interior-picks-green (quick, 332.2s), template-21.4.0-package-proof (quick, 239.4s), a5-format-apply (quick, 237.0s)
+Region checks passed for Ground. Confirm the edge in the edge crops.
+done -> /private/tmp/grimhollow-shadowgrain/lock-rule-round/ground15-lock-bound-current (85 shots)
+build-slot: exit=0 waited=4.062s ran=30.563s
+
+ground15-lock-history-ridge
+build-slot: queued position=3 waiting=3, held by: nullwake-21.4.0-status-build (quick, 45.6s), shadowgrain-format (quick, 366.1s), hardpoint-21.4.0-script-checks (heavy, 17.2s), template-21.4.0-script-tests (heavy, 196.0s), ability-client-format-verify (quick, 354.2s), flightline-21.4.0-final-build (quick, 34.1s), a5-red (quick, 138.9s)
+Region checks passed for Ground. Confirm the edge in the edge crops.
+done -> /private/tmp/grimhollow-shadowgrain/lock-rule-round/ground15-lock-history-ridge (85 shots)
+build-slot: exit=0 waited=44.333s ran=35.019s
+
+ground15-lock-shade-release
+shadowgrain: ShadowGrainSpot { Name = ground-edge, X = 100.3, Z = 88.5, YawDegrees = 180, Focus = Ground }, 2560x1440, dt=0.06666666666666667, 80 warm-up + 16 saved frames per mode, sharpen engine, hold texels engine, shadow detail default, temporal resolve engine, temporal diag lock-shade-release (engine mask 2048)
+Region checks passed for Ground. Confirm the edge in the edge crops.
+done -> /private/tmp/grimhollow-shadowgrain/lock-rule-round/ground15-lock-shade-release (85 shots)
+build-slot: exit=0 waited=0.674s ran=47.282s
+
+ground15-locks-off
+shadowgrain: ShadowGrainSpot { Name = ground-edge, X = 100.3, Z = 88.5, YawDegrees = 180, Focus = Ground }, 2560x1440, dt=0.06666666666666667, 80 warm-up + 16 saved frames per mode, sharpen engine, hold texels engine, shadow detail default, temporal resolve engine, temporal diag locks-off (engine mask 16)
+Region checks passed for Ground. Confirm the edge in the edge crops.
+done -> /private/tmp/grimhollow-shadowgrain/lock-rule-round/ground15-locks-off (85 shots)
+build-slot: exit=0 waited=0.034s ran=28.585s

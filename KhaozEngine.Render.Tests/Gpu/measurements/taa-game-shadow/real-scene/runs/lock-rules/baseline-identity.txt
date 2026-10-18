@@ -1,0 +1,19 @@
+back15: all 16 frames per mode pixel-identical, zero differing pixels and max channel difference 0 at Native, Quality and FXAA. metrics.txt cmp exit 0.
+day30-baseline
+taa-native differing pixels over 16 frames 0 max channel diff 0 first differing frame None
+taa-quality differing pixels over 16 frames 0 max channel diff 0 first differing frame None
+fxaa differing pixels over 16 frames 0 max channel diff 0 first differing frame None
+
+metrics.txt cmp exit 0
+back60-baseline
+taa-native differing pixels over 16 frames 0 max channel diff 0 first differing frame None
+taa-quality differing pixels over 16 frames 0 max channel diff 0 first differing frame None
+fxaa differing pixels over 16 frames 0 max channel diff 0 first differing frame None
+
+metrics.txt cmp exit 0
+ground15-baseline
+taa-native differing pixels over 16 frames 0 max channel diff 0 first differing frame None
+taa-quality differing pixels over 16 frames 0 max channel diff 0 first differing frame None
+fxaa differing pixels over 16 frames 0 max channel diff 0 first differing frame None
+
+metrics.txt cmp exit 0

@@ -107,6 +107,7 @@ namespace KhaozEngine.Tests.Gpu
         {
             yield return new(CoverageGpuArithmeticProbe.Name, CoverageGpuArithmeticProbe.Source);
             yield return new(CoverageGpuExactWordsProbe.Name, CoverageGpuExactWordsProbe.Source);
+            yield return new(CoverageGpuResidualProbe.Name, CoverageGpuResidualProbe.Source);
             yield return new(CoverageGpuRoundingProbe.Name, CoverageGpuRoundingProbe.Source);
         }
 

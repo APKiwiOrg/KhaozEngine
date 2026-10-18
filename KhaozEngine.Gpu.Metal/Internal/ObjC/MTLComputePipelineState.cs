@@ -46,9 +46,17 @@ namespace KhaozEngine.Gpu.Metal.Internal.ObjC
     /// <param name="Handle">The Objective-C object, or <see cref="IntPtr.Zero"/> for nil.</param>
     internal readonly record struct MTLComputePipelineState(IntPtr Handle)
     {
-        /// <summary>True when the device would not make a compute pipeline state, which always comes with an
-        /// <c>NSError</c>.</summary>
+        /// <summary>True when the device returned nil for a compute pipeline state. The accompanying
+        /// <c>NSError</c> may also be nil.</summary>
         internal bool IsNull => Handle == IntPtr.Zero;
+
+        /// <summary>The compiled kernel's maximum total threads in a threadgroup.</summary>
+        [SupportedOSPlatform("macos")]
+        internal nuint MaxTotalThreadsPerThreadgroup => ObjCMsgSend.SendNUInt(Handle, ObjCRuntime.Sel("maxTotalThreadsPerThreadgroup"));
+
+        /// <summary>The compiled kernel's execution width.</summary>
+        [SupportedOSPlatform("macos")]
+        internal nuint ThreadExecutionWidth => ObjCMsgSend.SendNUInt(Handle, ObjCRuntime.Sel("threadExecutionWidth"));
 
         /// <summary>Release this pipeline state.</summary>
         [SupportedOSPlatform("macos")]

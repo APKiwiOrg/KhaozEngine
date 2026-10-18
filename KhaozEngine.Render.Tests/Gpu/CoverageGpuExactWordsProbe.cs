@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Text;
 using KhaozEngine.Render3D;
 
 namespace KhaozEngine.Tests.Gpu;
@@ -21,14 +22,14 @@ internal static class CoverageGpuExactWordsProbe
             uint s = 1u + row * 40u, d = row * 23u;
             CovExact a, b;
             a.sign = int(Inputs[s+1u]); b.sign = int(Inputs[s+20u]);
-            for (int j = 0; j < 18; j++) { a.limb[j] = Inputs[s+2u+uint(j)]; b.limb[j] = Inputs[s+21u+uint(j)]; }
+        """ + LoadLimbs() + """
             uint overflow = 0u;
             CovExact result = a;
             if (Inputs[s] == 0u) result = covExactAdd(a, b, overflow);
             if (Inputs[s] == 1u) result = covExactSub(a, b, overflow);
             if (Inputs[s] == 2u) result = covExactProduct(a, b, overflow);
             if (Inputs[s] == 3u) result = covExactFromWord(a.limb[0]);
-            for (int j = 0; j < 18; j++) Results[d+uint(j)] = result.limb[j];
+        """ + StoreLimbs() + """
             Results[d+18u] = uint(result.sign);
             Results[d+19u] = overflow;
             Results[d+20u] = uint(covExactCompare(a, b));
@@ -36,6 +37,21 @@ internal static class CoverageGpuExactWordsProbe
             Results[d+22u] = covRound32(result, int(Inputs[s+39u]));
         }
         """;
+
+    static string LoadLimbs()
+    {
+        var source = new StringBuilder();
+        for (int j = 0; j < 18; j++)
+            source.AppendLine($"a.limb[{j}] = Inputs[s+{2 + j}u]; b.limb[{j}] = Inputs[s+{21 + j}u];");
+        return source.ToString();
+    }
+
+    static string StoreLimbs()
+    {
+        var source = new StringBuilder();
+        for (int j = 0; j < 18; j++) source.AppendLine($"Results[d+{j}u] = result.limb[{j}];");
+        return source.ToString();
+    }
 
     internal static readonly (uint Op, BigInteger A, BigInteger B, int Power, int ZeroSign)[] Cases =
     {
@@ -51,6 +67,10 @@ internal static class CoverageGpuExactWordsProbe
         (2, 0xffff0001u, 0x0001ffffu, -40, 0),
         (2, 0x80000000u, 0xffffffffu, -40, 0),
         (2, 0, BigInteger.One << 277, -149, 0),
+        (2, (BigInteger.One << 288) - 1, (BigInteger.One << 288) - 1, -550, 0),
+        (2, (BigInteger.One << 576) - 1, 1, -552, 0),
+        (2, 1, (BigInteger.One << 576) - 1, -552, 0),
+        (2, BigInteger.One << 575, 1, -552, 0),
         (4, (BigInteger.One << 24) + 1, 0, -24, 0),
         (4, (BigInteger.One << 24) + 3, 0, -24, 0),
         (4, -((BigInteger.One << 24) + 3), 0, -24, 0),

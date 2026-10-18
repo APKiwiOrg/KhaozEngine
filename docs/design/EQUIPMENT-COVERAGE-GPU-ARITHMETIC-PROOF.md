@@ -7,7 +7,7 @@ root. Exact predicates and complete construction equivalence belong to later tas
 
 ## Evidence status
 
-The fix-round-1 local Release build passed with zero warnings and zero errors. All 103 focused tests passed,
+The Task 1 fix-round-1 local Release build passed with zero warnings and zero errors. All 103 focused tests passed,
 including three native facts on MetalNative with an Apple M2 Max. The coverage fact compared all
 13,949 words from 377 dynamic rows exactly. Scoped whitespace and SPIR-V validation passed.
 The first hosted run, 39165413387, exposed Windows CRLF helper comparisons and WARP dynamic
@@ -16,6 +16,9 @@ component-selection poisoning. Fix round 1 addresses both below. Hosted run 3916
 Direct3D11 WARP with FXC (113 of 113, plus 32 FXC and struct-size checks) and Vulkan lavapipe (113 of
 113). Its Vulkan synchronization-validation selections of 1, 7 and 493 tests passed with no VUID or
 hazard lines.
+Task 2's first hosted run, 39173376064 on 7d402576c, passed Vulkan but failed FXC compilation
+and Apple Paravirtual pipeline creation. Its C6 correction below passes a zero-warning local
+Release build and all 114 focused Metal tests. Hosted verification of that correction is pending.
 No timing, load, performance budget or whole-coverage correctness claim follows from this record.
 The 72 frozen cases and their 144-row `outputs.sha256` manifest are unchanged.
 
@@ -181,6 +184,22 @@ sum fit below `2^557`. The 576-bit representation therefore covers the admitted 
 Checked add and product overloads expose overflow to the native probe. The production overloads
 use the same implementation under the proved domain bound.
 
+Under C6 the C# generator emits every limb operation as straight-line GLSL with literal indices.
+There is no shader limb loop, dynamic private-array read or dynamic private-array write, including
+in the probe. A requested word is selected through 18 constant-index branches. Multiplication
+emits the 171 partial products whose destination is inside the representation. For each nonzero
+outer limb it records the outgoing carry and any nonzero multiplier limbs beyond the retained
+window as overflow. All terms are nonnegative, so discarded terms cannot cancel. Within the
+window each row adds its partial product and carry to the prior rows rather than overwriting a
+carry slot. This retains the checked full-width product while removing FXC's X3550/X3511 pattern.
+The compiled SPIR-V audit requires constant private-array indices for all exact-word probes.
+
+The wide `CovExact` interface stays in Task 2 for Task 3, with its existing 576-bit storage and
+`covRound32` scale parameter. Its fixed accesses meet C6 without coupling rounding to determinant
+storage. Task 3 must prove its own operation bounds and use this layer only where those bounds
+require it. Division and square root never include or instantiate it. The shared 32-bit product
+definition has an include guard, so wide predicates and compact rounding compose in one shader.
+
 The multiply primitive uses four 16 by 16 partial products and explicit unsigned carry comparisons.
 It deliberately avoids `umulExtended`, `uaddCarry`, float64 and int64, so Shader Model 5.0 does not
 need a 64-bit intermediate or an extended-integer intrinsic lowering. In the partial-product
@@ -213,19 +232,40 @@ their sign and payload with the quiet bit set. Invalid operations return `ffc000
 Division's result sign is the operand-sign XOR, including underflow and infinity. Square root
 preserves negative zero after operand F and rejects negative nonzero operands.
 
-For adjacent positive ordinal words lower and upper, decode their integer magnitudes as M(lower)
-and M(upper), and let S be their exact sum. Their midpoint is `S*2^-150`. For the infinity
-endpoint only, M(infinity) means the virtual finite successor `2^128`, whose integer magnitude
-is `2^277`. This makes the overflow boundary exactly `2^128-2^103`, without doing arithmetic
-with an infinity value.
+### C6 compact residual bound
 
-Division compares `A<<150` with `B*S`, where `a=A*2^-149` and `b=B*2^-149` are positive operand
-magnitudes. This is the exact sign of `a-b*midpoint`, scaled by positive `2^299`.
-Square root compares `A<<151` with `S*S`. This is the exact sign of `a-midpoint*midpoint`,
-scaled by positive `2^300`. M(finite) is below `2^277` and S is below `2^278`, so division's
-product is below `2^555` and square root's product is below `2^556`. The shifted left sides
-are below `2^427` and `2^428`. All fit 18 limbs, including the overflow midpoint. Integer
-comparison supplies the residual sign without subtracting rounded float values.
+`CoverageGpuResidualGlsl` represents a nonnegative magnitude as two uint words and an explicit
+integer power of two. Decode a positive finite word with encoded exponent E as `s*2^e`.
+For E=0, s is the fraction and e=-149. Otherwise s includes the hidden bit and e=E-150.
+Thus every operand significand has at most 24 bits. Signs, zeros and nonfinite operands resolve
+before any finite residual work. Division searches positive magnitudes and restores the sign XOR.
+
+For any finite positive ordinal lower word, including zero, its boundary midpoint is exactly
+`(2*s+1)*2^(e-1)`. Within a binade its successor is `(s+1)*2^e`. At the last subnormal the
+smallest normal has the same quantum. At a normal binade end the successor is `2^24*2^e`,
+so the same expression holds. At maximum finite the virtual successor is `2^128`, giving
+`(2^25-1)*2^103 = 2^128-2^103`. Infinity itself is handled before constructing a midpoint.
+The midpoint numerator therefore has at most 25 bits, even at overflow.
+
+Division compares `sA*2^eA` with `(sB*midpointNumerator)*2^(eB+midpointExponent)`.
+Its product is strictly below `2^49`. Square root compares `sA*2^eA` with
+`midpointNumerator^2 * 2^(2*midpointExponent)`, whose product is strictly below `2^50`.
+The shared 32 by 32 partial-product primitive produces both exact words. No float residual,
+shader int64, shader float64, flush or wide determinant operation participates.
+
+For nonzero integers U and V with bit lengths L and K, compare the leading powers `eU+L`
+and `eV+K` first. If they differ, their magnitude intervals are disjoint and decide the result
+without alignment. This includes arbitrarily separated input exponents. If the leading powers
+agree, alignment to the smaller exponent would occupy exactly max(L,K) bits, at most 50.
+The implementation instead shifts each significand left to bit 63. Each shift is `64-L` or
+`64-K` and loses no bit. Equal leading powers make the two normalized integers share one scale.
+Unsigned high-word then low-word comparison is therefore exact. Zeros resolve before the shifts.
+The two-word representation is sufficient and is tighter than C6's four-word upper bound.
+
+All product and normalization code is straight-line and uses explicit scalar fields. The
+rounding shader contains no `CovExact`, limb array or limb loop. This removes the large private
+state previously copied through every midpoint search. Native Metal probes record each compiled
+pipeline's `maxTotalThreadsPerThreadgroup` and `threadExecutionWidth` before dispatch.
 
 At an exact midpoint the boundary belongs to the even endpoint word. This defines a monotone
 predicate for whether RN32 is at or below an ordinal word. Both boundaries of the native
@@ -256,8 +296,8 @@ guard. ARM64 .NET invalid arithmetic can return `7fc00000` where the determinist
 oracle selects `ffc00000`. The device probe still compares every oracle word exactly, including
 NaNs. No accepted finite or infinity result is classified or canonicalized.
 
-`CoverageExactWords` and `CoverageRounding` are registered in the coverage shader corpus, so the
-module-wide C5 audit checks both. Their storage-driven native probes poison outputs before
+`CoverageExactWords`, `CoverageResidual` and `CoverageRounding` are registered in the coverage
+shader corpus. Their SPIR-V passes C5 and C6 access audits. Storage-driven native probes poison outputs before
 dispatch and compare uint words exactly. The limb probe checks every limb, sign, overflow,
 comparison, bit length and RN32 word. The rounding probe checks RN32 before F, the final F word
 and the production helper's final word independently. It checks each bisection count is at most 31.
@@ -266,20 +306,30 @@ previous-word and next-word seeds, replacing only the approximate candidate. The
 the specified tiny division results, wide divisor exponents, overflow, both zero signs and signed
 quiet/signaling NaN, infinity and zero divisor classes.
 
-The red test failed because the planned exact-word and rounding GLSL types were absent. The focused
-local green run passed on MetalNative with Apple M2 Max. It checked 34 integer rows and 315
-rounding rows, with zero limb overflows and a maximum of 30 bisections. The three focused tests
-and four corpus/coverage-module checks passed with no skipped facts. The emitted SPIR-V retains a
+The initial red test failed because the planned exact-word and rounding GLSL types were absent.
+The C6 red test rejected a non-constant private-array access in the original wide module.
+After the C6 correction, the required six-class selection passed all 114 tests on MetalNative
+with Apple M2 Max, with no failures or skips. It checked 38 integer rows, 29 compact residual
+rows and all 315 rounding rows, with zero limb overflows and a maximum of 30 bisections.
+The compact rows cover zero, disjoint leading powers, the 32-bit boundary, 49/50-bit products
+and equal leading powers differing by one low bit, all against independent BigInteger values.
+The composition test also compiles the wide and compact helpers together, catching duplicate
+shared definitions before Task 3 consumes both layers.
+The emitted SPIR-V retains a
 NoContraction OpFDiv and a GLSL.std.450 Sqrt. Type-width checks reject any float or integer type
-wider than 32 bits. Text
-comparisons normalize line endings for Windows checkouts. This is a bounded correctness proof,
+wider than 32 bits. Text comparisons normalize line endings for Windows checkouts.
+Metal reports maximum threads per group of 576 for the wide probe and 1,024 for each compact
+probe, with execution width 32 for all three. Emitted HLSL has only literal wide limb indices,
+no wide helper loops and no wide type in either compact module. This addresses the observed
+FXC source pattern. It does not establish native FXC compilation or Paravirtual pipeline creation.
+This is a bounded correctness proof,
 with no timing, load, stress, performance-budget or complete-construction claim.
 
 ```bash
-build-slot --label c02-build -- dotnet build KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release
-build-slot --label c02-tests -- env KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-native dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~CoverageGpuExactWordsTests|FullyQualifiedName~CoverageComputeRoundingGpuTests|FullyQualifiedName~CoverageComputeArithmeticGpuTests' --logger 'console;verbosity=normal'
+build-slot --label c02-fix-r1b-final-build -- dotnet build KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release
+build-slot --label c02-fix-r1b-final-metal -- env KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-native dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~CoverageGpuExactWordsTests|FullyQualifiedName~CoverageComputeRoundingGpuTests|FullyQualifiedName~CoverageComputeArithmeticGpuTests|FullyQualifiedName~CoverageGpuArithmeticTests|FullyQualifiedName~ShaderSourceValidationTests|FullyQualifiedName~PreciseShaderCompileTests' --logger 'console;verbosity=detailed'
 ```
 
-The root hosted filter is the same three-class expression. Direct3D11 and Vulkan native results
-are pending until the root's hosted legs run this commit. Shader compilation and local Metal
-results do not substitute for those backend executions.
+The root hosted filter is the same six-class expression. Direct3D11, Apple Paravirtual and Vulkan
+native results are pending until the root's hosted legs run the C6 commit. Shader compilation
+and local Metal results do not substitute for those backend executions.

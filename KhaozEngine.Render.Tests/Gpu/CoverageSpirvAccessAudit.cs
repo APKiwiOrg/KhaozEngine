@@ -8,7 +8,7 @@ namespace KhaozEngine.Tests.Gpu;
 // FXC can implement dynamic vector indexing arithmetically, letting an unselected infinity poison the result.
 internal static class CoverageSpirvAccessAudit
 {
-    internal static void Validate(byte[] spirv, string label)
+    internal static void Validate(byte[] spirv, string label, bool constantPrivateArrays = false)
     {
         uint[] words = MemoryMarshal.Cast<byte, uint>(spirv).ToArray();
         var instructions = new List<uint[]>();
@@ -51,7 +51,9 @@ internal static class CoverageSpirvAccessAudit
                 Assert.True(typeOpcode is not (23 or 24) || constant,
                     $"{label}: C5 prohibits non-constant {(opcode == 65 ? "OpAccessChain" : "OpInBoundsAccessChain")} "
                     + $"index %{instruction[index]} into {(typeOpcode == 23 ? "vector" : "matrix")} type %{typeId}");
-                // Array indices may remain dynamic. Only the vector/matrix steps require constants.
+                Assert.True(!constantPrivateArrays || typeOpcode is not (28 or 29) || constant,
+                    $"{label}: C6 prohibits non-constant private array index %{instruction[index]}");
+                // C6 exact-word helpers also need constant array accesses for FXC addressability.
                 if (typeOpcode == 30)
                 {
                     Assert.True(constant && member < type.Length - 2, $"{label}: invalid structure member index");

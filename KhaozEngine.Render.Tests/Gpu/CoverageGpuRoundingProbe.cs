@@ -13,7 +13,7 @@ internal static class CoverageGpuRoundingProbe
         layout(local_size_x = 64) in;
         layout(std430, set = 0, binding = 0) readonly buffer InputBuf { uint Inputs[]; };
         layout(std430, set = 0, binding = 1) buffer ResultBuf { uint Results[]; };
-        """ + CoverageGpuArithmeticGlsl.Source + CoverageGpuExactWordsGlsl.Source + CoverageGpuRoundingGlsl.Source + """
+        """ + CoverageGpuArithmeticGlsl.Source + CoverageGpuRoundingGlsl.Source + """
         void main() {
             uint row = gl_GlobalInvocationID.x;
             if (row >= Inputs[0]) return;

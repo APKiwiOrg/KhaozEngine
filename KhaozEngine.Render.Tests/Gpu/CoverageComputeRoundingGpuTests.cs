@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using KhaozEngine.Gpu;
+using KhaozEngine.Gpu.Metal.Internal;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -12,13 +13,16 @@ public sealed class CoverageComputeRoundingGpuTests(ITestOutputHelper output)
     public void Limb_carries_midpoints_and_corrected_results_match_independent_integers()
     {
         var exact = CoverageGpuExactWordsProbe.Data();
-        uint[] words = Run(CoverageGpuExactWordsProbe.Source, exact.Inputs, exact.Expected.Length);
+        uint[] words = Run(CoverageGpuExactWordsProbe.Name, CoverageGpuExactWordsProbe.Source, exact.Inputs, exact.Expected.Length);
         Assert.Equal(exact.Expected, words);
         uint limbOverflowCount = 0;
         for (int i = 19; i < words.Length; i += CoverageGpuExactWordsProbe.OutputWords) limbOverflowCount += words[i];
         Assert.Equal(0u, limbOverflowCount);
+        var residual = CoverageGpuResidualProbe.Data();
+        words = Run(CoverageGpuResidualProbe.Name, CoverageGpuResidualProbe.Source, residual.Inputs, residual.Expected.Length);
+        Assert.Equal(residual.Expected, words);
         var rounding = CoverageGpuRoundingProbe.Data();
-        words = Run(CoverageGpuRoundingProbe.Source, rounding.Inputs, (int)rounding.Inputs[0] * CoverageGpuRoundingProbe.OutputWords);
+        words = Run(CoverageGpuRoundingProbe.Name, CoverageGpuRoundingProbe.Source, rounding.Inputs, (int)rounding.Inputs[0] * CoverageGpuRoundingProbe.OutputWords);
         var actualDeviceWords = new List<uint>();
         uint maxBracketBisections = 0;
         for (int i = 0; i < words.Length; i += 4)
@@ -29,10 +33,10 @@ public sealed class CoverageComputeRoundingGpuTests(ITestOutputHelper output)
         }
         Assert.Equal(rounding.Expected, actualDeviceWords.ToArray());
         Assert.InRange(maxBracketBisections, 1u, 31u);
-        output.WriteLine($"Exact {exact.Inputs[0]} integer rows and {rounding.Inputs[0]} rounding rows, including injected seeds. Max bisections {maxBracketBisections}");
+        output.WriteLine($"Exact {exact.Inputs[0]} integer rows, {residual.Inputs[0]} compact residual rows and {rounding.Inputs[0]} rounding rows, including injected seeds. Max bisections {maxBracketBisections}");
     }
 
-    uint[] Run(string sourceText, uint[] inputs, int count)
+    uint[] Run(string name, string sourceText, uint[] inputs, int count)
     {
         using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
         IGpuDevice device = gpu.GpuDevice;
@@ -53,6 +57,12 @@ public sealed class CoverageComputeRoundingGpuTests(ITestOutputHelper output)
         using IGpuResourceSet set = factory.CreateResourceSet(new GpuResourceSetDescription(layout, source, result));
         using IGpuComputeShader shader = factory.CreateComputeShaderFromSpirv(sourceText, new GpuShaderCompileOptions(PreciseMath: true));
         using IGpuComputePipeline pipeline = factory.CreateComputePipeline(new GpuComputePipelineDescription(shader, layout));
+        if (System.OperatingSystem.IsMacOS() && pipeline is MetalComputePipeline metal)
+        {
+            output.WriteLine($"{name}: maxTotalThreadsPerThreadgroup={metal.State.MaxTotalThreadsPerThreadgroup}, threadExecutionWidth={metal.State.ThreadExecutionWidth}");
+            Assert.True(metal.State.MaxTotalThreadsPerThreadgroup >= 64);
+            Assert.True(metal.State.ThreadExecutionWidth > 0);
+        }
         using IGpuCommandList commands = factory.CreateCommandList();
         commands.Begin(); commands.SetComputePipeline(pipeline); commands.SetComputeResourceSet(0, set);
         commands.Dispatch((inputs[0] + 63) / 64, 1, 1); commands.End();

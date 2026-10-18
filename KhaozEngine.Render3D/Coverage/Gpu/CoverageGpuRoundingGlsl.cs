@@ -3,21 +3,18 @@ namespace KhaozEngine.Render3D;
 /// <summary>Native seeds with exact integer midpoint correction, followed by the inventory flush.</summary>
 internal static class CoverageGpuRoundingGlsl
 {
-    internal static string Source => """
+    internal static string Source => CoverageGpuResidualGlsl.Source + """
 
         // True iff RN32(exact result) is at or below 'lower'. Both endpoint values
-        // are expressed in units of 2^-149, so their sum is the midpoint in 2^-150.
-        bool covRoundedAtOrBelow(CovExact a, CovExact b, bool root, uint lower) {
+        // use a 25-bit midpoint significand and an explicit power of two.
+        bool covRoundedAtOrBelow(CovResidual a, CovResidual b, bool root, uint lower) {
             if (lower == 0x7f800000u) return true;
-            CovExact midpoint = covExactAdd(covExactFromWord(lower), covExactFromWord(lower+1u));
-            CovExact left = covExactShift(a, root ? 151 : 150);
-            CovExact right;
-            if (root) right = covExactProduct(midpoint, midpoint);
-            else right = covExactProduct(b, midpoint);
-            int residual = covExactMagnitudeCompare(left, right);
+            CovResidual midpoint = covResidualMidpoint(lower);
+            CovResidual right = root ? covResidualProduct(midpoint, midpoint) : covResidualProduct(b, midpoint);
+            int residual = covResidualCompare(a, right);
             return residual < 0 || (residual == 0 && (lower & 1u) == 0u);
         }
-        uint covCorrectPositive(CovExact a, CovExact b, bool root, uint seed, out uint bisections) {
+        uint covCorrectPositive(CovResidual a, CovResidual b, bool root, uint seed, out uint bisections) {
             const uint end = 0x7f800000u;
             uint candidate = min(seed & 0x7fffffffu, end);
             bisections = 0u;
@@ -65,7 +62,7 @@ internal static class CoverageGpuRoundingGlsl
             if ((ax == 0u && by == 0u) || (ax == 0x7f800000u && by == 0x7f800000u)) return 0xffc00000u;
             if (ax == 0x7f800000u || by == 0u) return sign | 0x7f800000u;
             if (ax == 0u || by == 0x7f800000u) return sign;
-            return sign | covCorrectPositive(covExactFromWord(ax), covExactFromWord(by), false, seed, bisections);
+            return sign | covCorrectPositive(covResidualFromWord(ax), covResidualFromWord(by), false, seed, bisections);
         }
         uint covSqrtSeeded(float a, uint seed, out uint bisections) {
             a = covF(a);
@@ -75,7 +72,7 @@ internal static class CoverageGpuRoundingGlsl
             if (magnitude == 0u) return x;
             if ((x & 0x80000000u) != 0u) return 0xffc00000u;
             if (magnitude == 0x7f800000u) return magnitude;
-            return covCorrectPositive(covExactFromWord(x), covExactZero(), true, seed, bisections);
+            return covCorrectPositive(covResidualFromWord(x), CovResidual(0u, 0u, 0), true, seed, bisections);
         }
         uint covDivRn32(float a, float b, out uint bisections) {
             a = covF(a); b = covF(b);

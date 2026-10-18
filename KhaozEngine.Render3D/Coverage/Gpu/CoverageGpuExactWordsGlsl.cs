@@ -1,27 +1,46 @@
+using System;
+using System.Text;
+
 namespace KhaozEngine.Render3D;
 
 /// <summary>Signed magnitude integers in 18 little-endian 32-bit limbs. No floating arithmetic.</summary>
 internal static class CoverageGpuExactWordsGlsl
 {
-    internal static string Source => """
+    // Shared with the compact residual layer, which never includes the wide helpers.
+    internal const string WordProductSource = """
+
+        #ifndef KE_COVERAGE_MUL32_DEFINED
+        #define KE_COVERAGE_MUL32_DEFINED
+        void covExactMul32(uint a, uint b, out uint low, out uint high) {
+            uint a0 = a & 65535u, a1 = a >> 16, b0 = b & 65535u, b1 = b >> 16;
+            uint p = a0 * b0;
+            uint t = a1 * b0 + (p >> 16);
+            uint middle = t & 65535u, upper = t >> 16;
+            t = a0 * b1 + middle;
+            low = (t << 16) | (p & 65535u);
+            high = a1 * b1 + upper + (t >> 16);
+        }
+        #endif
+
+        """;
+
+    internal static readonly string Source = BuildSource();
+
+    const string Template = """
 
         struct CovExact { uint limb[18]; int sign; };
         CovExact covExactZero() {
             CovExact result;
-            for (int i = 0; i < 18; i++) result.limb[i] = 0u;
+            /* ZERO */
             result.sign = 0;
             return result;
         }
         int covExactBitLength(CovExact a) {
-            for (int i = 17; i >= 0; i--)
-                if (a.limb[i] != 0u) return i * 32 + findMSB(a.limb[i]) + 1;
+            /* LENGTH */
             return 0;
         }
         int covExactMagnitudeCompare(CovExact a, CovExact b) {
-            for (int i = 17; i >= 0; i--) {
-                if (a.limb[i] < b.limb[i]) return -1;
-                if (a.limb[i] > b.limb[i]) return 1;
-            }
+            /* COMPARE */
             return 0;
         }
         int covExactCompare(CovExact a, CovExact b) {
@@ -30,14 +49,15 @@ internal static class CoverageGpuExactWordsGlsl
             if (sa != sb) return sa < sb ? -1 : 1;
             return sa * covExactMagnitudeCompare(a, b);
         }
-        // The caller proves the shifted result fits 576 bits.
+        uint covExactWord(CovExact a, int index) {
+            /* WORD */
+            return 0u;
+        }
+        // The caller proves the shifted result fits 576 bits. Every limb access is constant.
         CovExact covExactShift(CovExact a, int bits) {
             CovExact result = covExactZero();
             int words = bits / 32, part = bits % 32;
-            for (int i = 17; i >= words; i--) {
-                result.limb[i] = a.limb[i-words] << part;
-                if (part != 0 && i > words) result.limb[i] |= a.limb[i-words-1] >> (32-part);
-            }
+            /* SHIFT */
             result.sign = a.sign;
             return result;
         }
@@ -53,12 +73,7 @@ internal static class CoverageGpuExactWordsGlsl
         CovExact covExactMagnitudeAdd(CovExact a, CovExact b, out uint overflow) {
             CovExact result = covExactZero();
             uint carry = 0u;
-            for (int i = 0; i < 18; i++) {
-                uint sum = a.limb[i] + b.limb[i];
-                uint next = sum + carry;
-                carry = uint(sum < a.limb[i]) | uint(next < sum);
-                result.limb[i] = next;
-            }
+            /* ADD */
             overflow = carry;
             result.sign = covExactBitLength(result) == 0 ? 0 : 1;
             return result;
@@ -67,12 +82,7 @@ internal static class CoverageGpuExactWordsGlsl
         CovExact covExactMagnitudeSub(CovExact a, CovExact b) {
             CovExact result = covExactZero();
             uint borrow = 0u;
-            for (int i = 0; i < 18; i++) {
-                uint difference = a.limb[i] - b.limb[i];
-                uint next = difference - borrow;
-                borrow = uint(a.limb[i] < b.limb[i]) | uint(difference < borrow);
-                result.limb[i] = next;
-            }
+            /* SUBTRACT */
             result.sign = covExactBitLength(result) == 0 ? 0 : 1;
             return result;
         }
@@ -94,34 +104,10 @@ internal static class CoverageGpuExactWordsGlsl
             return covExactAdd(a, b, overflow);
         }
         CovExact covExactSub(CovExact a, CovExact b) { uint overflow; return covExactSub(a, b, overflow); }
-        // Shader Model 5.0 needs no int64 lowering. Each partial product is 16 by 16.
-        void covExactMul32(uint a, uint b, out uint low, out uint high) {
-            uint a0 = a & 65535u, a1 = a >> 16, b0 = b & 65535u, b1 = b >> 16;
-            uint p = a0 * b0;
-            uint t = a1 * b0 + (p >> 16);
-            uint middle = t & 65535u, upper = t >> 16;
-            t = a0 * b1 + middle;
-            low = (t << 16) | (p & 65535u);
-            high = a1 * b1 + upper + (t >> 16);
-        }
         CovExact covExactProduct(CovExact a, CovExact b, out uint overflow) {
             CovExact result = covExactZero();
             overflow = 0u;
-            int na = (covExactBitLength(a)+31)/32, nb = (covExactBitLength(b)+31)/32;
-            for (int i = 0; i < na; i++) {
-                uint carry = 0u;
-                for (int j = 0; j < nb; j++) {
-                    uint low, high;
-                    covExactMul32(a.limb[i], b.limb[j], low, high);
-                    if (i+j >= 18) { overflow |= low | high; continue; }
-                    uint sum = result.limb[i+j] + low;
-                    uint next = sum + carry;
-                    carry = high + uint(sum < low) + uint(next < sum);
-                    result.limb[i+j] = next;
-                }
-                if (i+nb < 18) result.limb[i+nb] = carry;
-                else overflow |= carry;
-            }
+            /* PRODUCT */
             overflow = uint(overflow != 0u);
             result.sign = covExactBitLength(result) == 0 ? 0 : a.sign * b.sign;
             return result;
@@ -130,20 +116,15 @@ internal static class CoverageGpuExactWordsGlsl
         uint covExactRightWord(CovExact a, int shift) {
             int index = shift / 32, part = shift % 32;
             if (index >= 18) return 0u;
-            uint result = a.limb[index] >> part;
-            if (part != 0 && index < 17) result |= a.limb[index+1] << (32-part);
+            uint result = covExactWord(a, index) >> part;
+            if (part != 0 && index < 17) result |= covExactWord(a, index+1) << (32-part);
             return result;
         }
         bool covExactBit(CovExact a, int bit) {
-            return bit >= 0 && bit < 576 && (a.limb[bit/32] & (1u << (bit%32))) != 0u;
+            return bit >= 0 && bit < 576 && (covExactWord(a, bit/32) & (1u << (bit%32))) != 0u;
         }
         bool covExactAnyBelow(CovExact a, int count) {
-            for (int i = 0; i < 18; i++) {
-                int bits = count - i*32;
-                if (bits <= 0) return false;
-                if (bits >= 32) { if (a.limb[i] != 0u) return true; }
-                else return (a.limb[i] & ((1u << bits)-1u)) != 0u;
-            }
+            /* STICKY */
             return false;
         }
         // RN-even only. Inventory callers apply F after this exact conversion.
@@ -165,4 +146,57 @@ internal static class CoverageGpuExactWordsGlsl
         }
 
         """;
+
+    // Generate the fixed-width arithmetic before GLSL compilation. FXC never needs to unroll a
+    // data-dependent loop or turn a private array's dynamic l-value into a register address.
+    static string BuildSource()
+    {
+        string source = Template
+            .Replace("/* ZERO */", Limbs(i => $"result.limb[{i}] = 0u;"))
+            .Replace("/* LENGTH */", Limbs(i => $"if (a.limb[{i}] != 0u) return {i * 32} + findMSB(a.limb[{i}]) + 1;", reverse: true))
+            .Replace("/* COMPARE */", Limbs(i => $"if (a.limb[{i}] < b.limb[{i}]) return -1; if (a.limb[{i}] > b.limb[{i}]) return 1;", reverse: true))
+            .Replace("/* WORD */", Limbs(i => $"if (index == {i}) return a.limb[{i}];"))
+            .Replace("/* SHIFT */", Limbs(i => $$"""
+                if ({{i}} >= words) {
+                    result.limb[{{i}}] = covExactWord(a, {{i}}-words) << part;
+                    if (part != 0 && {{i}} > words) result.limb[{{i}}] |= covExactWord(a, {{i}}-words-1) >> (32-part);
+                }
+                """))
+            .Replace("/* ADD */", Limbs(i => $$"""
+                { uint sum = a.limb[{{i}}] + b.limb[{{i}}]; uint next = sum + carry;
+                  carry = uint(sum < a.limb[{{i}}]) | uint(next < sum); result.limb[{{i}}] = next; }
+                """))
+            .Replace("/* SUBTRACT */", Limbs(i => $$"""
+                { uint difference = a.limb[{{i}}] - b.limb[{{i}}]; uint next = difference - borrow;
+                  borrow = uint(a.limb[{{i}}] < b.limb[{{i}}]) | uint(difference < borrow); result.limb[{{i}}] = next; }
+                """))
+            .Replace("/* STICKY */", Limbs(i => $$"""
+                { int bits = count - {{i * 32}}; if (bits <= 0) return false;
+                  if (bits >= 32) { if (a.limb[{{i}}] != 0u) return true; }
+                  else return (a.limb[{{i}}] & ((1u << bits)-1u)) != 0u; }
+                """));
+        var product = new StringBuilder();
+        for (int i = 0; i < 18; i++)
+        {
+            product.AppendLine($"if (a.limb[{i}] != 0u) {{ uint carry = 0u;");
+            for (int j = 0; j < 18 - i; j++)
+                product.AppendLine($$"""
+                    { uint low, high; covExactMul32(a.limb[{{i}}], b.limb[{{j}}], low, high);
+                      uint sum = result.limb[{{i + j}}] + low; uint next = sum + carry;
+                      carry = high + uint(sum < low) + uint(next < sum); result.limb[{{i + j}}] = next; }
+                    """);
+            product.AppendLine("overflow |= carry;");
+            for (int j = 18 - i; j < 18; j++)
+                product.AppendLine($"overflow |= b.limb[{j}];");
+            product.AppendLine("}");
+        }
+        return WordProductSource + source.Replace("/* PRODUCT */", product.ToString());
+    }
+
+    static string Limbs(Func<int, string> emit, bool reverse = false)
+    {
+        var source = new StringBuilder();
+        for (int i = 0; i < 18; i++) source.AppendLine(emit(reverse ? 17 - i : i));
+        return source.ToString();
+    }
 }

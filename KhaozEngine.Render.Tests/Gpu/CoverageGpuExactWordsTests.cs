@@ -15,6 +15,14 @@ namespace KhaozEngine.Tests.Gpu;
 public sealed class CoverageGpuExactWordsTests(ITestOutputHelper output)
 {
     [Fact]
+    public void Wide_predicates_and_compact_rounding_helpers_compile_together()
+    {
+        string source = CoverageGpuRoundingProbe.Source.Replace("void main()",
+            CoverageGpuExactWordsGlsl.Source + "\nvoid main()");
+        ShaderValidation.ValidateCompute(source, new GpuShaderCompileOptions(PreciseMath: true), "CoverageRoundingWithWide");
+    }
+
+    [Fact]
     public void Limb_carries_midpoints_and_corrected_results_match_independent_integers()
     {
         Assert.Equal(0x3f800000u, CoverageBinary32IntegerOracle.Round((BigInteger.One << 24) + 1, -24, 1));
@@ -33,6 +41,7 @@ public sealed class CoverageGpuExactWordsTests(ITestOutputHelper output)
             AssertReferenceWord(CoverageBinary32IntegerOracle.Flush(CoverageBinary32IntegerOracle.Sqrt(a)),
                 BitConverter.SingleToUInt32Bits(reference.Sqrt(BitConverter.UInt32BitsToSingle(a))));
         Validate(CoverageGpuExactWordsProbe.Name, CoverageGpuExactWordsProbe.Source);
+        Validate(CoverageGpuResidualProbe.Name, CoverageGpuResidualProbe.Source);
         Validate(CoverageGpuRoundingProbe.Name, CoverageGpuRoundingProbe.Source);
     }
 
@@ -49,7 +58,7 @@ public sealed class CoverageGpuExactWordsTests(ITestOutputHelper output)
     {
         var precise = new GpuShaderCompileOptions(PreciseMath: true);
         byte[] spirv = SpirvFrontEnd.ToSpirv(source, GpuShaderStages.Compute, name, precise);
-        CoverageSpirvAccessAudit.Validate(spirv, name);
+        CoverageSpirvAccessAudit.Validate(spirv, name, constantPrivateArrays: true);
         AssertInstructions(spirv, name == CoverageGpuRoundingProbe.Name);
         var hlslResult = SpirvCrossCompile.ComputeToHlsl(spirv, name, precise);
         var mslResult = SpirvCrossCompile.ComputeToMsl(spirv, name, precise);

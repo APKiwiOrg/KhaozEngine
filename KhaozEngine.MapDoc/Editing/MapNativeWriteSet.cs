@@ -18,6 +18,9 @@ public sealed record MapNativeWriteSet(IReadOnlyList<MapPatchKey> Patches, IRead
     /// <summary>True when publication replaces the complete bounded water set, including a null legacy section.</summary>
     public bool Water { get; init; }
 
+    /// <summary>Replaces the foliage root, including an absent section.</summary>
+    public bool Foliage { get; init; }
+
     public bool Prefabs { get; init; }
     public bool BuildingIntent { get; init; }
     public bool NativeResourceTransforms { get; init; }

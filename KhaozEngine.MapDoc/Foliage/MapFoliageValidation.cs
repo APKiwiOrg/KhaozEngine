@@ -26,7 +26,7 @@ public static class MapFoliageValidation
         if (set.PayloadVersion != 1) errors.Add("foliage: unsupported payloadVersion, only payload 1 is supported.");
         if (set.Layers.Count > MapFoliagePayloadLimits.MaxLayers)
             errors.Add($"foliage: more than {MapFoliagePayloadLimits.MaxLayers} layers.");
-        if (set.Layers.Sum(l => (long)l.Chunks.Count) > MapFoliagePayloadLimits.MaxDocumentChunks)
+        if (set.Layers.Sum(l => (long)l.ChunkDigests.Count) > MapFoliagePayloadLimits.MaxDocumentChunks)
             errors.Add($"foliage: density exceeds {MapFoliagePayloadLimits.MaxDensityBytes} decoded bytes per document.");
         var ids = new HashSet<string>(StringComparer.Ordinal);
         foreach (MapFoliageLayer layer in set.Layers)
@@ -212,11 +212,14 @@ public static class MapFoliageValidation
     // Keys inside the chunk grid of the domain, unique, with zero padding outside [0, Width) by [0, Depth).
     static void Chunks(MapFoliageLayer layer, string label, List<string> errors)
     {
-        if (layer.Chunks.Count > MapFoliagePayloadLimits.MaxChunksPerLayer)
+        if (layer.ChunkDigests.Count > MapFoliagePayloadLimits.MaxChunksPerLayer)
             errors.Add($"{label}: more than {MapFoliagePayloadLimits.MaxChunksPerLayer} chunks.");
         if (layer.Width is < 1 or > MapFoliagePayloadLimits.MaxExtent || layer.Depth is < 1 or > MapFoliagePayloadLimits.MaxExtent) return;
         int columns = (layer.Width + MapFoliageChunk.Size - 1) / MapFoliageChunk.Size;
         int rows = (layer.Depth + MapFoliageChunk.Size - 1) / MapFoliageChunk.Size;
+        foreach (MapFoliageChunkDigest advertised in layer.ChunkDigests)
+            if (advertised.Key.X < 0 || advertised.Key.X >= columns || advertised.Key.Z < 0 || advertised.Key.Z >= rows)
+                errors.Add($"{label} advertised chunk {advertised.Key} lies outside the density domain.");
         var keys = new HashSet<MapFoliageChunkKey>();
         foreach (MapFoliageChunk chunk in layer.Chunks)
         {

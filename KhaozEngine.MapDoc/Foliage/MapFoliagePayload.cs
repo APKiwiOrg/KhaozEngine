@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text.Json.Serialization;
 using KhaozEngine.MapDoc.Surfaces;
 
@@ -27,6 +28,9 @@ internal static class MapFoliagePayloadLimits
 
 /// <summary>A density chunk address. Chunk (X, Z) holds sample indices [32X, 32X + 32) by [32Z, 32Z + 32).</summary>
 public readonly record struct MapFoliageChunkKey(int X, int Z);
+
+/// <summary>One advertised logical chunk, independently of packing and residency.</summary>
+public sealed record MapFoliageChunkDigest(MapFoliageChunkKey Key, string Sha256);
 
 /// <summary>One immutable 32 by 32 block of density bytes. Rows advance positive world Z and X advances within a row.
 /// The bytes are copied in and out, so no caller can reach the stored array.</summary>
@@ -109,6 +113,8 @@ public sealed class MapFoliageLayer
     readonly ReadOnlyCollection<MapFoliageMask> _masks;
     readonly ReadOnlyCollection<MapFoliageOwnerSupport> _owners;
     readonly ReadOnlyCollection<MapFoliageChunk> _chunks;
+    readonly ReadOnlyCollection<MapFoliageChunkDigest> _digests;
+    readonly HashSet<MapFoliageChunkKey> _advertisedKeys;
     readonly Dictionary<MapFoliageChunkKey, MapFoliageChunk> _byKey = new();
 
     public MapFoliageLayer(int PayloadVersion, string Id, MapSupportBinding Support, float OriginX, float OriginZ,
@@ -152,6 +158,8 @@ public sealed class MapFoliageLayer
         // a repeated key, and reads use the first.
         _chunks = Array.AsReadOnly(Copy(Chunks, nameof(Chunks)).OrderBy(c => c.Key.Z).ThenBy(c => c.Key.X).ToArray());
         foreach (MapFoliageChunk chunk in _chunks) _byKey.TryAdd(chunk.Key, chunk);
+        _digests = Array.AsReadOnly(_chunks.Select(c => new MapFoliageChunkDigest(c.Key, Digest(c))).ToArray());
+        _advertisedKeys = _digests.Select(d => d.Key).ToHashSet();
     }
 
     public int PayloadVersion { get; }
@@ -181,21 +189,44 @@ public sealed class MapFoliageLayer
     public IReadOnlyList<MapFoliageMask> ExceptionMasks => _masks;
     public IReadOnlyList<MapFoliageOwnerSupport> OwnerSupports => _owners;
     public IReadOnlyList<MapFoliageChunk> Chunks => _chunks;
+    public IReadOnlyList<MapFoliageChunkDigest> ChunkDigests => _digests;
 
     /// <summary>Reads one sample. X is the column and Z the row, inside [0, Width) by [0, Depth). An absent chunk reads
-    /// zero.</summary>
+    /// zero. An advertised nonresident chunk refuses rather than publishing zero.</summary>
     public byte DensityAt(int x, int z)
     {
         if (x < 0 || x >= Width) throw new ArgumentOutOfRangeException(nameof(x));
         if (z < 0 || z >= Depth) throw new ArgumentOutOfRangeException(nameof(z));
-        return _byKey.TryGetValue(new(x / MapFoliageChunk.Size, z / MapFoliageChunk.Size), out MapFoliageChunk? chunk)
-            ? chunk.DensityAt(x % MapFoliageChunk.Size, z % MapFoliageChunk.Size)
-            : (byte)0;
+        var key = new MapFoliageChunkKey(x / MapFoliageChunk.Size, z / MapFoliageChunk.Size);
+        if (_byKey.TryGetValue(key, out MapFoliageChunk? chunk))
+            return chunk.DensityAt(x % MapFoliageChunk.Size, z % MapFoliageChunk.Size);
+        if (_advertisedKeys.Contains(key)) throw new MapDocumentException($"foliage layer '{Id}' chunk {key} is unavailable.");
+        return 0;
     }
 
-    internal MapFoliageLayer Copy() => new(PayloadVersion, Id, Support, OriginX, OriginZ, CellSize, Width, Depth, RowDirection,
-        Seed, Spacing, ScaleMin, ScaleMax, RootOffset, _models, _allowed, _materials, Policy, ExcludeIndoors, ExcludeSolidObjects,
-        DoorClearance, EdgeFade, _ordinals, _rules, _masks, _owners, _chunks);
+    internal MapFoliageLayer Copy() => FromStorage(this, _digests, _chunks);
+
+    internal static MapFoliageLayer FromStorage(MapFoliageLayer metadata,
+        IReadOnlyList<MapFoliageChunkDigest> advertised, IReadOnlyList<MapFoliageChunk> resident) => new(metadata, advertised, resident);
+
+    MapFoliageLayer(MapFoliageLayer m, IReadOnlyList<MapFoliageChunkDigest> advertised, IReadOnlyList<MapFoliageChunk> resident)
+        : this(m.PayloadVersion, m.Id, m.Support, m.OriginX, m.OriginZ, m.CellSize, m.Width, m.Depth, m.RowDirection,
+            m.Seed, m.Spacing, m.ScaleMin, m.ScaleMax, m.RootOffset, m.Models, m.AllowedVisibleMaterials, m.Materials,
+            m.Policy, m.ExcludeIndoors, m.ExcludeSolidObjects, m.DoorClearance, m.EdgeFade, m.CompatibilityOrdinals,
+            m.ClearanceRules, m.ExceptionMasks, m.OwnerSupports, resident)
+    {
+        var digests = new Dictionary<MapFoliageChunkKey, MapFoliageChunkDigest>();
+        foreach (MapFoliageChunkDigest row in Copy(advertised, nameof(advertised)))
+        {
+            MapFoliageRegionPack.RequireDigest(row.Sha256);
+            if (!digests.TryAdd(row.Key, row)) throw new MapDocumentException("foliage: duplicate advertised chunk key.");
+        }
+        foreach (MapFoliageChunk chunk in _chunks) digests[chunk.Key] = new(chunk.Key, Digest(chunk));
+        _digests = Array.AsReadOnly(digests.Values.OrderBy(d => d.Key.Z).ThenBy(d => d.Key.X).ToArray());
+        _advertisedKeys = digests.Keys.ToHashSet();
+    }
+
+    internal static string Digest(MapFoliageChunk chunk) => Convert.ToHexStringLower(SHA256.HashData(chunk.Density));
 
     internal static ReadOnlyCollection<T> Copy<T>(IReadOnlyList<T> items, string name) where T : class
     {

@@ -38,6 +38,7 @@ internal static class NativeDocumentSnapshot
             NumericIdHighWaterMark = document.NumericIdHighWaterMark,
             ResolverIdentity = document.ResolverIdentity,
             SupportRecipe = document.SupportRecipe,
+            Foliage = document.Foliage?.Clone(),
             Prefabs = document.Prefabs?.Clone(),
             BuildingIntent = document.BuildingIntent?.Clone(),
             NativeResourceTransforms = document.NativeResourceTransforms?.ToArray(),
@@ -89,6 +90,7 @@ internal static class NativeDocumentSnapshot
             target.NumericIdHighWaterMark = Math.Max(target.NumericIdHighWaterMark, candidate.NumericIdHighWaterMark);
         if (writeSet.NativeAssets) target.NativeAssets = new List<MapAssetRef>(candidate.NativeAssets);
         if (writeSet.Water) target.Water = candidate.Water?.Clone();
+        if (writeSet.Foliage) target.Foliage = candidate.Foliage?.Clone();
     }
 
     /// <summary>Replaces a ref in place, or inserts it before the first existing ref that follows it in
@@ -140,6 +142,7 @@ internal static class NativeDocumentSnapshot
         target.SupportRecipe = candidate.SupportRecipe;
         target.Surfaces = candidate.Surfaces;
         target.Water = candidate.Water?.Clone();
+        target.Foliage = candidate.Foliage?.Clone();
         target.Prefabs = candidate.Prefabs?.Clone();
         target.BuildingIntent = candidate.BuildingIntent?.Clone();
         target.NativeResourceTransforms = candidate.NativeResourceTransforms?.ToArray();

@@ -77,12 +77,16 @@ internal static class MapFoliageJson
     internal static MapFoliageSet Read(JsonElement value) => Read(value, MapFoliagePayloadLimits.MaxUtf8Bytes);
 
     /// <summary>Reads under an explicit section size ceiling. The payload ceiling is <see cref="MapFoliagePayloadLimits.MaxUtf8Bytes"/>.</summary>
-    internal static MapFoliageSet Read(JsonElement value, long maxUtf8Bytes)
+    internal static MapFoliageSet Read(JsonElement value, long maxUtf8Bytes) => ReadCore(value, maxUtf8Bytes, stored: false);
+
+    internal static MapFoliageSet ReadStoredMetadata(JsonElement value) => ReadCore(value, MapFoliagePayloadLimits.MaxUtf8Bytes, stored: true);
+
+    static MapFoliageSet ReadCore(JsonElement value, long maxUtf8Bytes, bool stored)
     {
         if (value.ValueKind != JsonValueKind.Object) throw Fail("foliage must be an object.");
         if (JsonMarshal.GetRawUtf8Value(value).Length > maxUtf8Bytes)
             throw Fail($"foliage: the section exceeds {maxUtf8Bytes} UTF-8 bytes.");
-        Closed(value, "foliage", SetMembers);
+        Closed(value, "foliage", stored ? ["payloadVersion", "layers", "packs"] : SetMembers);
         RequireVersion(value, "foliage");
         JsonElement layers = RequireArray(value, "layers", "foliage", MapFoliagePayloadLimits.MaxLayers);
 
@@ -106,10 +110,10 @@ internal static class MapFoliageJson
             if (documentChunks > MapFoliagePayloadLimits.MaxDocumentChunks)
                 throw Fail($"foliage: density exceeds {MapFoliagePayloadLimits.MaxDensityBytes} decoded bytes per document.");
         }
-        return new MapFoliageSet(1, layers.EnumerateArray().Select((l, i) => ReadLayer(l, $"foliage layer [{i}]")).ToArray());
+        return new MapFoliageSet(1, layers.EnumerateArray().Select((l, i) => ReadLayer(l, $"foliage layer [{i}]", !stored)).ToArray());
     }
 
-    static MapFoliageLayer ReadLayer(JsonElement e, string label)
+    static MapFoliageLayer ReadLayer(JsonElement e, string label, bool readChunks)
     {
         string id = Text(e, "id", label);
         label = $"foliage layer '{id}'";
@@ -153,7 +157,7 @@ internal static class MapFoliageJson
                 return new MapFoliageOwnerSupport(ReadReference(RequireObject(o, "owner", at), at + " owner"),
                     ReadBinding(o.GetProperty("support"), at + " support"));
             }),
-            Items(e, "chunks", label, (c, at) => ReadChunk(c, at)));
+            readChunks ? Items(e, "chunks", label, (c, at) => ReadChunk(c, at)) : []);
     }
 
     /// <summary>The closed foliage support binding: a Surface binding carries only its surface ID, and a Space binding
@@ -182,6 +186,7 @@ internal static class MapFoliageJson
 
     internal static void Write(Utf8JsonWriter w, MapFoliageSet set)
     {
+        MapFoliageStorage.RequireComplete(set);
         w.WriteStartObject();
         w.WriteNumber("payloadVersion", set.PayloadVersion);
         w.WriteStartArray("layers");
@@ -190,7 +195,8 @@ internal static class MapFoliageJson
         w.WriteEndObject();
     }
 
-    static void WriteLayer(Utf8JsonWriter w, MapFoliageLayer layer)
+    internal static void WriteLayer(Utf8JsonWriter w, MapFoliageLayer layer,
+        Action<Utf8JsonWriter, MapFoliageLayer>? writeChunks = null)
     {
         string label = $"foliage layer '{layer.Id}'";
         w.WriteStartObject();
@@ -285,7 +291,8 @@ internal static class MapFoliageJson
         }
         w.WriteEndArray();
         w.WriteStartArray("chunks");
-        foreach (MapFoliageChunk chunk in layer.Chunks)
+        if (writeChunks is not null) writeChunks(w, layer);
+        else foreach (MapFoliageChunk chunk in layer.Chunks)
         {
             w.WriteStartObject();
             w.WriteNumber("x", chunk.Key.X);
@@ -372,8 +379,9 @@ internal static class MapFoliageJson
     }
 
     // Unknown, repeated and null members refuse, and every required member must be present. Names compare ordinally.
-    static void Closed(JsonElement e, string label, string[] required, string[]? optional = null)
+    internal static void Closed(JsonElement e, string label, string[] required, string[]? optional = null)
     {
+        if (e.ValueKind != JsonValueKind.Object) throw Fail(label + " must be an object.");
         var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (JsonProperty p in e.EnumerateObject())
         {
@@ -391,7 +399,7 @@ internal static class MapFoliageJson
         if (Int(e, "payloadVersion", label) != 1) throw Fail(label + ": unsupported payloadVersion, only payload 1 is supported.");
     }
 
-    static JsonElement RequireArray(JsonElement e, string name, string label, int max)
+    internal static JsonElement RequireArray(JsonElement e, string name, string label, int max)
     {
         JsonElement value = e.GetProperty(name);
         if (value.ValueKind != JsonValueKind.Array) throw Fail($"{label}: '{name}' must be an array.");
@@ -405,14 +413,14 @@ internal static class MapFoliageJson
         return value.ValueKind == JsonValueKind.Object ? value : throw Fail($"{label}: '{name}' must be an object.");
     }
 
-    static string Text(JsonElement e, string name, string label) => e.GetProperty(name) is { ValueKind: JsonValueKind.String } value
+    internal static string Text(JsonElement e, string name, string label) => e.GetProperty(name) is { ValueKind: JsonValueKind.String } value
         ? value.GetString()! : throw Fail($"{label}: '{name}' must be a string.");
 
     static float Finite(JsonElement e, string name, string label) =>
         e.GetProperty(name) is { ValueKind: JsonValueKind.Number } value && value.TryGetSingle(out float number) && float.IsFinite(number)
             ? number : throw Fail($"{label}: '{name}' must be a finite number.");
 
-    static int Int(JsonElement e, string name, string label) =>
+    internal static int Int(JsonElement e, string name, string label) =>
         e.GetProperty(name) is { ValueKind: JsonValueKind.Number } value && value.TryGetInt32(out int number)
             ? number : throw Fail($"{label}: '{name}' must be a 32-bit integer.");
 

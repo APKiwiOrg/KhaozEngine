@@ -44,7 +44,8 @@ public sealed class MapFoliagePayloadTests
     {
         FoliageFixture fixture = FoliageFixtures.Create();
         FoliageFixture reloaded = FoliageFixtures.Reload(fixture, tiled: false);
-        foreach (MapFoliageLayer layer in new[] { Single(fixture), Single(reloaded) })
+        FoliageFixture tiled = FoliageFixtures.Reload(fixture, tiled: true);
+        foreach (MapFoliageLayer layer in new[] { Single(fixture), Single(reloaded), Single(tiled) })
         {
             Assert.Equal((35, 3, MapRowDirection.PositiveZ), (layer.Width, layer.Depth, layer.RowDirection));
             Assert.Equal((byte)0, layer.DensityAt(0, 0));
@@ -78,7 +79,7 @@ public sealed class MapFoliagePayloadTests
         }
         string text = MapDocumentFile.SaveText(fixture.Document);
         Assert.Equal(text, MapDocumentFile.SaveText(reloaded.Document));
-        Assert.Throws<NotSupportedException>(() => FoliageFixtures.Reload(fixture, tiled: true));
+        Assert.Equal(text, MapDocumentFile.SaveText(tiled.Document));
     }
 
     [Theory]

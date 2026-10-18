@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.IO;
 using System.Text;
 using System.Text.Json.Nodes;
 using KhaozEngine.MapDoc;
@@ -41,12 +42,17 @@ internal static partial class FoliageFixtures
         return new(document, MapAssetClosure.Load(roots, source));
     }
 
-    /// <summary>Saves and reloads the monolithic form through the public codec. Tiled foliage storage is not available yet,
-    /// so the tiled form refuses rather than dropping the section.</summary>
+    /// <summary>Saves and reloads either public storage form, including every native density byte and setting.</summary>
     internal static FoliageFixture Reload(FoliageFixture fixture, bool tiled)
     {
-        if (tiled) throw new NotSupportedException("Tiled foliage storage is not available yet.");
-        return fixture with { Document = MapDocumentFile.LoadText(MapDocumentFile.SaveText(fixture.Document)) };
+        if (!tiled) return fixture with { Document = MapDocumentFile.LoadText(MapDocumentFile.SaveText(fixture.Document)) };
+        string root = Path.Combine(Path.GetTempPath(), "foliage-reload-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            MapDocumentFile.SaveTiled(fixture.Document, root);
+            return fixture with { Document = MapDocumentFile.LoadTiled(root) };
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
     }
 
     /// <summary>Layer cover-a: origin (-3, -5), cell size 2, 35 by 3 samples with row bytes z * 35 + x in two chunks, seed 17,

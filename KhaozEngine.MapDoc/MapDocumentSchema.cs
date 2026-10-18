@@ -52,6 +52,7 @@ public static class MapDocumentSchema
         properties.Remove("playerSpawns");
         properties.Remove("terrainOverrides");
         properties.Remove("surfacePatches");
+        properties["foliage"] = Ref("foliageStored");
         properties["surfaceStorage"] = new JsonObject { ["type"] = "array", ["items"] = Ref("surfaceDirectoryRef") };
 
         properties["schemeVersion"] = new JsonObject { ["type"] = "integer", ["minimum"] = 0 };

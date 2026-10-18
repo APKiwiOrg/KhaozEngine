@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using KhaozEngine.MapDoc.Foliage;
 
 namespace KhaozEngine.MapDoc;
 
@@ -62,6 +63,7 @@ public static class MapDocumentHash
             w.WriteNumber("formatVersion", doc.FormatVersion);
             w.WriteString("id", doc.Id);
             MapCanonical.WriteGlobals(w, doc, options);
+            MapFoliageProjection.WriteProperty(w, doc.Foliage);
             w.WriteEndObject();
         });
     }

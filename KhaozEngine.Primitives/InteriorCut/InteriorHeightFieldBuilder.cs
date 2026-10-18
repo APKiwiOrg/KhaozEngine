@@ -20,7 +20,6 @@ public static class InteriorHeightFieldBuilder
         const int sliceSize = 64;
         float[]? roofScratch = null;
         int mergedCells = 0, outOfRangeCells = 0;
-        double originX = RasterOrigin(window.Min.X, window.CellSize), originZ = RasterOrigin(window.Min.Y, window.CellSize);
         foreach (InteriorVolume volume in volumes)
         {
             ArgumentNullException.ThrowIfNull(volume);
@@ -35,8 +34,10 @@ public static class InteriorHeightFieldBuilder
                 min = Vector2.Min(min, point);
                 max = Vector2.Max(max, point);
             }
-            int x0 = CellBound(min.X, originX, window), x1 = CellBound(max.X, originX, window);
-            int z0 = CellBound(min.Y, originZ, window), z1 = CellBound(max.Y, originZ, window);
+            int x0 = InteriorLattice.Bound(min.X, window.Min.X, window.CellSize, window.Cells);
+            int x1 = InteriorLattice.Bound(max.X, window.Min.X, window.CellSize, window.Cells);
+            int z0 = InteriorLattice.Bound(min.Y, window.Min.Y, window.CellSize, window.Cells);
+            int z1 = InteriorLattice.Bound(max.Y, window.Min.Y, window.CellSize, window.Cells);
             for (int firstZ = z0; firstZ < z1; firstZ += sliceSize)
                 for (int firstX = x0; firstX < x1; firstX += sliceSize)
                 {
@@ -53,8 +54,8 @@ public static class InteriorHeightFieldBuilder
                     for (int z = firstZ; z < firstZ + height; z++)
                         for (int x = firstX; x < firstX + width; x++)
                         {
-                            var cellMin = new Vector2((float)(originX + x * (double)window.CellSize), (float)(originZ + z * (double)window.CellSize));
-                            if (!InteriorFieldRasterizer.Covers(volume.Outline, cellMin, window.CellSize)) continue;
+                            if (!InteriorFieldRasterizer.Covers(volume.Outline, InteriorLattice.Corner(window, x, z),
+                                InteriorLattice.Corner(window, x + 1, z + 1))) continue;
                             float sample = lowestSamples.IsEmpty ? float.PositiveInfinity : lowestSamples[(z - firstZ) * width + x - firstX];
                             float topY = float.IsPositiveInfinity(sample) ? volume.CeilingY : sample;
                             if (topY <= volume.FloorY) continue;
@@ -90,17 +91,6 @@ public static class InteriorHeightFieldBuilder
                 }
         }
         return new InteriorHeightField(window, encoding, texels, mergedCells, outOfRangeCells);
-    }
-
-    static int CellBound(float value, double min, InteriorWindow window) =>
-        (int)Math.Clamp(Math.Ceiling(((double)value - min) / window.CellSize), 0d, window.Cells);
-
-    static double RasterOrigin(float min, float cellSize)
-    {
-        // Recover the world-origin lattice before adding local indices. Reusing a rounded float minimum
-        // otherwise changes the first filled cell after a re-centre at non-binary pitches such as 0.24 m.
-        double snapped = Math.Round((double)min / cellSize) * cellSize;
-        return (float)snapped == min ? snapped : min;
     }
 
     static int Pack(float height, InteriorEncoding encoding)

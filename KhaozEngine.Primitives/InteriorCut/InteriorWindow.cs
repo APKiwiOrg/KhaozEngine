@@ -23,8 +23,8 @@ public readonly record struct InteriorWindow(Vector2 Min, float CellSize, int Ce
         RequirePositive(cellSize, nameof(cellSize));
         double half = (double)cellSize * cells / 2d;
         var min = new Vector2(
-            (float)(Math.Floor(((double)focus.X - half) / cellSize) * cellSize),
-            (float)(Math.Floor(((double)focus.Y - half) / cellSize) * cellSize));
+            InteriorLattice.Edge(Math.Floor(((double)focus.X - half) / cellSize), cellSize),
+            InteriorLattice.Edge(Math.Floor(((double)focus.Y - half) / cellSize), cellSize));
         var window = new InteriorWindow(min, cellSize, cells);
         window.Validate();
         return window;

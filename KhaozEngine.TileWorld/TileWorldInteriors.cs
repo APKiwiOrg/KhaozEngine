@@ -250,19 +250,24 @@ public sealed class TileWorldInteriors : IInteriorSource
 
     Vector2[] Outline(TileRect rect) =>
     [
-        new(TileWorldSpace.WorldX(rect.X, _document.TileSize), TileWorldSpace.WorldZ(rect.Z, _document.TileSize)),
-        new(TileWorldSpace.WorldX(rect.X1, _document.TileSize), TileWorldSpace.WorldZ(rect.Z, _document.TileSize)),
-        new(TileWorldSpace.WorldX(rect.X1, _document.TileSize), TileWorldSpace.WorldZ(rect.Z1, _document.TileSize)),
-        new(TileWorldSpace.WorldX(rect.X, _document.TileSize), TileWorldSpace.WorldZ(rect.Z1, _document.TileSize)),
+        new(TileEdge(rect.X), TileEdge(-rect.Z)),
+        new(TileEdge(rect.X1), TileEdge(-rect.Z)),
+        new(TileEdge(rect.X1), TileEdge(-rect.Z1)),
+        new(TileEdge(rect.X), TileEdge(-rect.Z1)),
     ];
+
+    float TileEdge(int tileIndex)
+    {
+        float cellSize = CellSizeFor(_document.TileSize);
+        double cellsPerTile = Math.Round((double)_document.TileSize / cellSize);
+        return InteriorLattice.Edge(tileIndex * cellsPerTile, cellSize);
+    }
 
     bool Touches(TileRect rect, InteriorWindow window)
     {
-        float extent = window.CellSize * window.Cells;
-        return TileWorldSpace.WorldX(rect.X, _document.TileSize) <= window.Min.X + extent &&
-            TileWorldSpace.WorldX(rect.X1, _document.TileSize) >= window.Min.X &&
-            TileWorldSpace.WorldZ(rect.Z1, _document.TileSize) <= window.Min.Y + extent &&
-            TileWorldSpace.WorldZ(rect.Z, _document.TileSize) >= window.Min.Y;
+        Vector2 max = InteriorLattice.Corner(window, window.Cells, window.Cells);
+        return TileEdge(rect.X) <= max.X && TileEdge(rect.X1) >= window.Min.X &&
+            TileEdge(-rect.Z1) <= max.Y && TileEdge(-rect.Z) >= window.Min.Y;
     }
 
     static TileWorldIssue ObjectIssue(string code, TileObject o, string reason) => new(code,

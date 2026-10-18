@@ -11,8 +11,6 @@ internal static class InteriorRoofRasterizer
     {
         ArgumentNullException.ThrowIfNull(roof.Samples);
         ClearanceMesh mesh = roof.Samples.Mesh;
-        double originX = RasterOrigin(window.Min.X, window.CellSize);
-        double originZ = RasterOrigin(window.Min.Y, window.CellSize);
         for (int triangle = 0; triangle < mesh.Indices.Count; triangle += 3)
         {
             Vector3 a = World(mesh.Positions[mesh.Indices[triangle]]);
@@ -21,10 +19,9 @@ internal static class InteriorRoofRasterizer
             for (int z = 0; z < height; z++)
                 for (int x = 0; x < width; x++)
                 {
-                    float x0 = (float)(originX + (firstCellX + x) * (double)window.CellSize);
-                    float z0 = (float)(originZ + (firstCellZ + z) * (double)window.CellSize);
-                    float x1 = (float)(originX + (firstCellX + x + 1) * (double)window.CellSize);
-                    float z1 = (float)(originZ + (firstCellZ + z + 1) * (double)window.CellSize);
+                    Vector2 min = InteriorLattice.Corner(window, firstCellX + x, firstCellZ + z);
+                    Vector2 max = InteriorLattice.Corner(window, firstCellX + x + 1, firstCellZ + z + 1);
+                    float x0 = min.X, z0 = min.Y, x1 = max.X, z1 = max.Y;
                     if (Math.Max(a.X, Math.Max(b.X, c.X)) < x0 || Math.Min(a.X, Math.Min(b.X, c.X)) > x1 ||
                         Math.Max(a.Z, Math.Max(b.Z, c.Z)) < z0 || Math.Min(a.Z, Math.Min(b.Z, c.Z)) > z1) continue;
                     float minimum = InteriorRoofTriangle.Minimum(a, b, c, x0, z0, x1, z1);
@@ -42,9 +39,4 @@ internal static class InteriorRoofRasterizer
         }
     }
 
-    static double RasterOrigin(float min, float cellSize)
-    {
-        double snapped = Math.Round((double)min / cellSize) * cellSize;
-        return (float)snapped == min ? snapped : min;
-    }
 }

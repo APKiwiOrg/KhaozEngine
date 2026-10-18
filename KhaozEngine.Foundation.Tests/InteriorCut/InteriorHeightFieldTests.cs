@@ -50,8 +50,8 @@ public class InteriorHeightFieldTests
 
         // All four cell corners are inside, but a narrow notch crosses its top edge.
         Vector2[] notch = [new(-1f, -1f), new(2f, -1f), new(2f, 2f), new(0.6f, 2f), new(0.6f, 0.5f), new(0.4f, 0.5f), new(0.4f, 2f), new(-1f, 2f)];
-        Assert.False(InteriorFieldRasterizer.Covers(notch, Vector2.Zero, 1f));
-        Assert.False(InteriorFieldRasterizer.Covers(notch.Reverse().ToArray(), Vector2.Zero, 1f));
+        Assert.False(InteriorFieldRasterizer.Covers(notch, Vector2.Zero, Vector2.One));
+        Assert.False(InteriorFieldRasterizer.Covers(notch.Reverse().ToArray(), Vector2.Zero, Vector2.One));
     }
 
     [Fact]

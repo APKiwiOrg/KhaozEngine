@@ -6,9 +6,8 @@ namespace KhaozEngine.Primitives;
 
 internal static class InteriorFieldRasterizer
 {
-    internal static bool Covers(IReadOnlyList<Vector2> outline, Vector2 min, float cellSize)
+    internal static bool Covers(IReadOnlyList<Vector2> outline, Vector2 min, Vector2 max)
     {
-        Vector2 max = min + new Vector2(cellSize);
         if (!Contains(outline, min) || !Contains(outline, max) ||
             !Contains(outline, new Vector2(min.X, max.Y)) || !Contains(outline, new Vector2(max.X, min.Y)))
             return false;

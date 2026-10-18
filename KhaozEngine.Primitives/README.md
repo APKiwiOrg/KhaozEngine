@@ -86,6 +86,7 @@ automatically, so this is transparent to every other package.
 - `InteriorVolume` / `InteriorRoof` / `IInteriorSource` describe simple world-XZ polygons, floor and ceiling
   heights and roof geometry without a renderer dependency. `InteriorSourceResult.Encoding` carries the
   source-wide `InteriorEncoding.For(lowestFloorY, highestTopY)`, stable across window re-centres.
+  `InteriorLattice` supplies identical represented edges for window corners, roof clipping and adapter outlines.
   `InteriorWindow.Centred` snaps to the world-origin lattice. `CellsFor(512f, cellSize)` rounds up and caps
   at 4096 cells per side. `InteriorHeightFieldBuilder.Build(volumes, window, encoding)` fills only whole
   polygon cells, clips roof triangles to each cell for their exact minimum height, and merges overlapping spans

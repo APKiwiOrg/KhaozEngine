@@ -198,6 +198,13 @@ sampler it already binds or one bound beside the texture.
 
 ### Cell size
 
+**As built (Final-2).** `InteriorLattice` owns the represented cell edges. Snapped window corners, roof
+clipping and whole-cell polygon coverage reconstruct the integer world lattice index before multiplying
+by the cell size. The TileWorld adapter emits tile edges as tile index times cells per tile through that
+same helper, including negative Z. It never reconstructs them with `tileIndex * TileSize`. Off-lattice
+polygons keep strict inward coverage, without an epsilon. Adapter-to-field tests retain all 25 cells of a
+1.2 m tile and all 16 cells of a 1 m tile, at both signs and across a 64 m re-centre.
+
 The core takes any cell size. The TileWorld adapter picks the largest cell at or below 25 cm that divides the
 document's `TileSize` exactly (OC3): 25 cm for a 1 m tile (`TileWorldDocument.DefaultTileSize`), and for example
 `1.5 / 6 = 25 cm` or `1.2 / 5 = 24 cm`. Tile edges then fall on cell edges and a TileWorld outline is exact.

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.BugReports.Relay;
@@ -363,6 +364,54 @@ public sealed class ReportQuotaGateTests
         Assert.DoesNotContain(Hash, warning.Message);
         Assert.DoesNotContain(key, warning.Message);
         Assert.DoesNotContain("20261017", warning.Message);
+    }
+
+    [Fact]
+    public async Task Consume_OverlappingLastSlot_AdmitsExactlyOneRequest()
+    {
+        var store = new HeldLastSlotStore();
+        Assert.True(await store.Inner.TryWriteAsync(HourKey, 4, null, DayExpiry, CancellationToken.None));
+        string version = (await store.Inner.ReadAsync(HourKey, CancellationToken.None))!.Version;
+        using var fixture = new Fixture(store);
+
+        Task<QuotaDecision> first = fixture.Consume();
+        Task<QuotaDecision> second = fixture.Consume();
+        await store.BothWrites.Task;
+        Assert.Equal(new[] { version, version }, store.Versions.ToArray());
+        Assert.False(first.IsCompleted);
+        Assert.False(second.IsCompleted);
+        store.Release.SetResult();
+        QuotaDecision[] results = await Task.WhenAll(first, second);
+
+        Assert.Single(results, result => result.Allowed);
+        Assert.Equal(TimeSpan.FromMinutes(45), Assert.Single(results, result => !result.Allowed).RetryAfter);
+        Assert.Equal(5, (await store.Inner.ReadAsync(HourKey, CancellationToken.None))!.Count);
+        Assert.Equal(1, (await store.Inner.ReadAsync(DayKey, CancellationToken.None))!.Count);
+        Assert.Equal(1, (await store.Inner.ReadAsync(GlobalKey, CancellationToken.None))!.Count);
+    }
+
+    sealed class HeldLastSlotStore : IReportQuotaStore
+    {
+        int writes;
+        public InMemoryReportQuotaStore Inner { get; } = new();
+        public ConcurrentQueue<string?> Versions { get; } = new();
+        public TaskCompletionSource BothWrites { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task<QuotaCounter?> ReadAsync(string key, CancellationToken cancellationToken) => Inner.ReadAsync(key, cancellationToken);
+
+        public async Task<bool> TryWriteAsync(string key, long count, string? expectedVersion, DateTimeOffset expiresAt,
+            CancellationToken cancellationToken)
+        {
+            if (key == HourKey)
+            {
+                Assert.Equal(5, count);
+                Versions.Enqueue(expectedVersion);
+                if (Interlocked.Increment(ref writes) == 2) BothWrites.SetResult();
+                await Release.Task.WaitAsync(cancellationToken);
+            }
+            return await Inner.TryWriteAsync(key, count, expectedVersion, expiresAt, cancellationToken);
+        }
     }
 
     static BugReportRelayOptions Options() => new()

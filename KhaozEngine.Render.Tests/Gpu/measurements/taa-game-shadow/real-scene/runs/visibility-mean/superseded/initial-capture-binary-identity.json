@@ -1,0 +1,19 @@
+{
+  "version": "21.5.0-grain.1",
+  "build_base_commit": "1cd15b7acd140a58846187b151b56768af095a60",
+  "sha256": {
+    "engine": "45b9c55eb36442b11d324b1f3191a91fb3f078fab484bb1be80742c9eb4136fa",
+    "probe": "45b9c55eb36442b11d324b1f3191a91fb3f078fab484bb1be80742c9eb4136fa",
+    "private_feed": "45b9c55eb36442b11d324b1f3191a91fb3f078fab484bb1be80742c9eb4136fa",
+    "vendored": "45b9c55eb36442b11d324b1f3191a91fb3f078fab484bb1be80742c9eb4136fa"
+  },
+  "renderer_source_blobs": {
+    "KhaozEngine.Render3D/Internal/ShaderSources.TemporalAccumulate.cs": "6f70bebf41feea1a9e2f68edbd4df408daa10f31",
+    "KhaozEngine.Render3D/Internal/ShaderSources.TemporalVisibility.cs": "f44e0f135e68ec945bd9a4b79e044f3ce25e3f31",
+    "KhaozEngine.Render3D/Internal/ShaderSources.TemporalVisibilityMean.cs": "bf909b2ac65ab0114212f399e850f8bf474dd6e8",
+    "KhaozEngine.Render3D/Internal/TemporalResolveDiagnostics.cs": "8f5ef8254bc09a8a94322613580897c5c30b7d3a",
+    "KhaozEngine.Render3D/Internal/TemporalVisibilityDiagnostics.cs": "a94b680ba901d6dfb488321c523e87c8fbbc8cda",
+    "KhaozEngine.Render3D/Rendering/TemporalVisibilityHistory.cs": "c23f17d7ce74d5deeaf9eb882a7245824ccd11a3"
+  },
+  "note": "Built from the archive working tree. Source blob ids identify the tested code independently of assembly revision metadata."
+}

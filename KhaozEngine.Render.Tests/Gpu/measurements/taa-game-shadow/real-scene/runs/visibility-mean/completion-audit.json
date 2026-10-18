@@ -1,0 +1,39 @@
+{
+  "renderer_commit": "d5c841eb2cac697e165056b91e3cc89bb6d2f113",
+  "renderer_sha256": "f35c7337ff21649515e522a6e5e336aca7606e99030aa016f4052a8d4d53f3b6",
+  "baseline_full_frames_verified_identical": 192,
+  "baseline_metrics_verified_identical": 4,
+  "captures": 96,
+  "image_hashes": 17376,
+  "all_temporal_classes_present_except": [
+    "TemporalOutlineCostPerfGpuTests",
+    "TemporalResolveCostPerfGpuTests"
+  ],
+  "local_test_processes": 9,
+  "tests_per_process": 1360,
+  "temporal_classes_per_process": 48,
+  "skips_per_process": 0,
+  "local_run_policy": "Completed one-process-per-arm TRX files independently re-parsed. No test was repeated during archive completion.",
+  "hosted": "Skipped because every comparison arm has local shadow-fact acceptance failures.",
+  "source_equivalence": "The pre-mask-gate accumulate source was reconstructed, its Git blob matched the recorded before_blob, and all source outside TemporalVisibilityLarge was verified identical.",
+  "missing_max_release_overlay_conditions": [
+    "day30",
+    "back60",
+    "ground15"
+  ],
+  "max_control_frames_verified_against_prior_capture": 192,
+  "new_arm_release_overlay_rows_verified": 96,
+  "max_control_release_overlay_rows_verified": 4,
+  "verification": {
+    "engine_render_tests_release_build": "exit 0, zero warnings and errors",
+    "probe_solution_release_build": "exit 0, zero warnings and errors",
+    "probe_solution_format_verify_no_restore": "exit 0",
+    "engine_whole_tree_dashes": "exit 0",
+    "engine_whole_tree_prose": "exit 0",
+    "engine_whole_tree_file_size": "exit 0",
+    "engine_agent_instruction_budget": "exit 0, 7772 of 16384 bytes",
+    "engine_doc_versions": "exit 0",
+    "report_regeneration": "exit 0, both receiver regions and all four conditions",
+    "full_probe_test_suite": "Skipped as requested"
+  }
+}

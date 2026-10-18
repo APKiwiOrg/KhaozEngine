@@ -1408,7 +1408,7 @@ shader-discovery test after the diagnostic fragments became properties. That tes
 and explicitly checks the model, skinned, splat and tile-ground members. The correction passed all 35 focused
 token and frame-block tests. No renderer code changed after the captures or GPU runs.
 
-The remaining failure is TemporalMovingShadeRimGpuTests.Moving_shadow_receivers_keep_their_leading_and_trailing_rims.
+The remaining failure is TemporalMovingShadeRimGpuTests.moving-rim acceptance.
 Besides the expected pinned spatial-reference changes, it reports these acceptance misses.
 
 | Moving-rim metric | Bound including baseline rounding | shadow-bilinear-3x3 | shadow-bilinear-1 |
@@ -1931,7 +1931,7 @@ host crashes, so total coverage is unknown. The line-ending regression fails und
 normalization in `83f63d024`. These first-run Windows results do not evaluate the visibility hypothesis.
 Every completed failing test and its full error is retained in the [first-run result inventory](runs/visibility/hosted/39131215312/results.json).
 
-The orchestrating session authorized one corrected matrix after the first run fully finishes. The corrected selection is
+The orchestrating session authorized the second matrix after the first run fully finished. The corrected selection is
 `shadow-bilinear-3x3,vis-release-0.1`, the best measured overall arm, with mask 20971520. Its test-only selection
 and exact dispatch-environment proof are in `b4b03ece4` and
 [the stamp proof](runs/visibility/verification/host-token-proof.txt). The corrected source includes the synthetic
@@ -2067,3 +2067,208 @@ The two-level rule is compiled only for its own token. Other arms do not compile
 mean and qualification flags occupy bits 29 and 30, still carried exactly through the small integer in
 `Params.x`. In the new mean path the old reset bit selects centre-only comparison, and the combination of
 0.1 and 0.2 threshold bits identifies the two-level arm. It cannot reset an ordinary release-only arm.
+
+### Real-scene comparison and evidence
+
+All 96 existing captures were reused. The rebuilt renderer and the re-vendored probe DLL have SHA256
+`f35c7337ff21649515e522a6e5e336aca7606e99030aa016f4052a8d4d53f3b6`, matching source `d5c841eb2`.
+The first 19 captures used the earlier build recorded in the superseded manifest. Its only renderer source
+difference is inside the large-arm conditional, which those captures do not compile. Reconstructing that
+source reproduces its recorded Git blob exactly. No large-arm capture used the superseded build.
+The unset controls match all 192 archived full frames and all four metrics files byte for byte.
+
+- [Four-condition comparisons](runs/visibility-mean/comparison-tables.md) put every mean arm beside unset,
+  bilinear-only, max-of-nine 0.1 and its own FXAA. Both character and ground rows include grain mean, p95,
+  change mean, dot count and locked share.
+- [Dot and release coincidence](runs/visibility-mean/coincidence-tables.md) covers both receiver regions,
+  including the fraction of each arm's dots that remain locked and the fraction on a release pixel.
+- [Raw capture metrics](runs/visibility-mean/raw), [image hashes](runs/visibility-mean/capture-sha256.json),
+  [binary identity](runs/visibility-mean/binary-identity.json),
+  [unset identity](runs/visibility-mean/baseline-identity.json) and
+  [completion audit](runs/visibility-mean/completion-audit.json) preserve the provenance. Capture output
+  locations in the archived JSON are repository-relative. Image payloads remain outside git except the crops.
+- [Character 4x crops](runs/visibility-mean/visuals) include Native, Quality and own FXAA for every arm.
+  The `ground-edge-fxaa-015-2x.png` panel compares the spatial edge.
+
+Dots are pooled pixel-frame counts, with luma more than 0.05 above both the local 3 by 3 median and own FXAA.
+Locked and released shares use the final cyan and magenta overlays. Each release overlay leaves all pixels
+outside its marked set identical to the matching normal capture. Coincidence is measured in screen space,
+including the previous frame and last four frames. It is evidence of association, not causal tracking.
+The report helper accepts `--ground` to select the yellow receiver mask without changing the dot definition.
+
+Unset and bilinear-only have no visibility-release path. Their release overlap is structurally zero.
+Max-of-nine release overlays exist only for back15. Its other three conditions are explicitly unmeasured in
+the release columns. All four conditions still have its ordinary and locked captures. The prior back15
+max-of-nine normal frames match this round byte for byte, so its existing release overlay is comparable.
+No missing overlay was filled by a new render.
+
+### Local Metal guards and absolute tails
+
+The final inventory has nine processes, 1360 tests per arm, 48 temporal correctness classes and zero skips.
+The two timing-cost classes are excluded. All selected shadow and golden tests remain in the selection.
+No assertion or bound changed. Every failure and its bound is retained in [the full bounds report](runs/visibility-mean/local-failures.md).
+
+| Arm | Passed | Failed | Inherited identity facts | Other failing facts |
+| --- | ---: | ---: | ---: | --- |
+| unset | 1360 | 0 | 0 | none |
+| shadow-bilinear-3x3 | 1359 | 1 | 0 | moving-rim acceptance |
+| shadow-bilinear-3x3,vis-release-0.1 | 1354 | 6 | 4 | moving-rim acceptance, fast-shadow tails |
+| vis-mean-0.1 | 1354 | 6 | 4 | fast-shadow tails, moving-rim acceptance |
+| vis-mean-0.15 | 1354 | 6 | 4 | fast-shadow tails, moving-rim acceptance |
+| vis-mean-0.2 | 1354 | 6 | 4 | moving-rim acceptance, fast-shadow tails |
+| vis-mean-dq-0.1 | 1354 | 6 | 4 | moving-rim acceptance, fast-shadow tails |
+| vis-centre-dq-0.1 | 1354 | 6 | 4 | fast-shadow tails, moving-rim acceptance |
+| vis-mean-dq-large-0.1 | 1355 | 5 | 4 | moving-rim acceptance |
+
+All six new arms retain the previous arm's printed stable-detail and stable-peak values exactly.
+Against unset, the masked programs inherit a Native flat-peak error of 0.01146 instead of 0.01149.
+The two stable-detail outputs are identical to unset. This is the preceding diagnostic compilation difference,
+not a new visibility effect. See [printed-value identity](runs/visibility-mean/static-printed-value-identity.json).
+
+The same four entry-identity failures match the original archive noop messages exactly. Maximum stored-lock
+difference is 0.00048828125 and maximum colour difference is 0.010253906, against zero. Unset passes them.
+The bilinear pinned spatial-reference movements still fail their unchanged 0.000001 identity bound.
+They are listed individually in the bounds report and are separate from temporal acceptance misses.
+
+| Arm | Native advancing 1 px | Native advancing 8 px | Native retreating 1 px | Native retreating 8 px |
+| --- | ---: | ---: | ---: | ---: |
+| unset | 0.003323324 | 0.004441862 | 0.005669552 | 0.006978498 |
+| shadow-bilinear-3x3 | 0.003147699 | 0.004456877 | 0.005600124 | 0.007138471 |
+| shadow-bilinear-3x3,vis-release-0.1 | 0.002863098 | 0.004590698 | 0.005470012 | 0.008260028 |
+| vis-mean-0.1 | 0.002999368 | 0.004627341 | 0.005611383 | 0.008277088 |
+| vis-mean-0.15 | 0.003047064 | 0.004661668 | 0.005727080 | 0.008282422 |
+| vis-mean-0.2 | 0.003089056 | 0.004694436 | 0.005656195 | 0.008295858 |
+| vis-mean-dq-0.1 | 0.002999069 | 0.004627341 | 0.005611383 | 0.008277088 |
+| vis-centre-dq-0.1 | 0.003006249 | 0.004654312 | 0.005632795 | 0.008283819 |
+| vis-mean-dq-large-0.1 | 0.002999069 | 0.003520131 | 0.005611383 | 0.004718931 |
+
+The non-reset mean arms have a real absolute 8 px increase against unset, as well as a better 1 px denominator.
+For depth-qualified mean 0.1, advancing 8 px is 0.004627341 against unset 0.004441862.
+Retreating 8 px is 0.008277088 against 0.006978498, even though that ratio passes.
+The two-level arm leaves its 1 px tails unchanged from depth-qualified release-only, while reducing both 8 px tails
+below unset and the previous arm. [All Native and Quality absolute tails, ratios and unchanged bounds](runs/visibility-mean/absolute-tails.md)
+include the deltas against both controls.
+
+Every new release-only arm still misses Quality M 0.5 leading-flat error at 0.010466 against 0.01023825.
+Bilinear-only is 0.010485. The two-level arm has eight temporal acceptance misses inside the same rim fact,
+including new flat trailing-rim misses. Fewer failing facts does not mean fewer failed measurements.
+
+| Two-level rim measurement | Value | Bound |
+| --- | ---: | ---: |
+| Quality M 0.5 leading flat error | 0.010435 | 0.01023825 |
+| Quality M 0.5 trailing flat temporal error | 0.006479 | 0.00633985 |
+| Quality M 1 trailing flat error | 0.000273 | 0.00024585 |
+| Quality M 1 trailing flat temporal error | 0.000297 | 0.00024585 |
+| Quality MS 1 trailing flat error | 0.000378 | 0.00032175 |
+| Quality MS 1 trailing flat temporal error | 0.000488 | 0.00042075 |
+| Native M 0.5 trailing flat error | 0.001018 | 0.00099495 |
+| Native M 0.5 trailing flat temporal error | 0.001113 | 0.00109065 |
+
+The previous arm's Quality M 1 trailing-textured temporal error, 0.010086 against 0.00886655, falls to 0.008798
+with mean 0.1, 0.007892 with depth qualification and 0.007957 with the two-level rule.
+
+One preliminary two-level process was superseded after adding its runtime mask gate for paired controls.
+Its [log](runs/visibility-mean/superseded/large-before-mask-gate.txt) is retained separately. The corrected arm
+was rebuilt and measured once. No unchanged test was retried and no workflow was dispatched.
+
+### Compact format and memory
+
+The only single-channel colour formats in the GPU seam are R8UNorm and R32Float. It has no R16Float.
+Every new arm uses R8UNorm for the lit attachment, both histories and the synthetic fully lit fallback.
+The previous arm keeps R32Float. The real-scene path needs no fallback texture and reuses the existing previous depth.
+
+At a 2560 by 1440 display, Native is 2560 by 1440 and Quality is 1707 by 960 internally.
+
+| Resource | Native R8 bytes (MiB) | Quality R8 bytes (MiB) |
+| --- | ---: | ---: |
+| Lit signal | 3686400 (3.515625) | 1638720 (1.562805) |
+| One visibility history | 3686400 (3.515625) | 1638720 (1.562805) |
+| Two histories | 7372800 (7.031250) | 3277440 (3.125610) |
+| Signal plus history pair | 11059200 (10.546875) | 4916160 (4.688416) |
+
+Signal plus history pair falls from 42.187500 to 10.546875 MiB at Native, and from 18.753662 to 4.688416 MiB
+at Quality, a 75% payload reduction. These are logical non-MSAA texture bytes, excluding allocation alignment,
+retired generations and the 16-byte previous-jitter buffer. MSAA adds its own multisampled signal when enabled.
+R8 stores the lit pass's exact keyShadow variable with UNorm quantization. A matched R32 mean arm was not measured,
+so the format's numerical effect is not isolated. No frame-time, bandwidth or billed benchmark claim is made.
+
+### Hosted gate and token proof
+
+No new hosted run was dispatched and there is no new run id. The local shadow-fact gate remains closed.
+The two-level arm still has eight rim acceptance misses, and the pinned spatial references still move.
+The test-scoped hosted stamp is prepared for `vis-mean-dq-large-0.1`, mask 1665138688, MRT enabled and R8UNorm.
+A local simulation of only that stamp passes. It does not start a workflow. The [stamp proof](runs/visibility-mean/host-token-proof.txt)
+records the exact environment selection. The existing workflow file is unchanged.
+
+### Reproduce the comparison round
+
+Supply the private feed, probe checkout and capture and guard roots through the existing environment variables.
+These commands do not select a shipping branch, publish packages or create a hosted workflow.
+
+~~~bash
+# Engine archive.
+KHAOZENGINE_FEED="${KHAOZENGINE_FEED:?private feed required}" build-slot --heavy --label mean-pack -- scripts/pack-local-feed.sh
+build-slot --label mean-build -- dotnet build KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release
+python3 KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/real-scene/scripts/run_shadow_filter_guards.py \
+  "$GUARD_ROOT" unset shadow-bilinear-3x3 shadow-bilinear-3x3,vis-release-0.1 \
+  vis-mean-0.1 vis-mean-0.15 vis-mean-0.2 vis-mean-dq-0.1 vis-centre-dq-0.1 vis-mean-dq-large-0.1
+# From the game probe.
+KHAOZENGINE_FEED="${KHAOZENGINE_FEED:?private feed required}" build-slot --label mean-refresh -- scripts/refresh-engine.sh
+build-slot --label mean-game-build -- dotnet build Grimhollow.slnx -c Release
+# A direct capture, showing the required time explicitly.
+build-slot --heavy --label mean-back15 -- dotnet run --project tools/SnapshotTool -c Release --no-build -- \
+  shadowgrain "$CAPTURE_ROOT/back15-vis-mean-dq-large-0.1" --spot back-edge --frame-time 1/15 \
+  --start-time 0.49777777777777776 --temporal-diag vis-mean-dq-large-0.1
+# Back in the engine archive. The helper passes that same start time for every condition.
+python3 KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/real-scene/scripts/capture_shadow_filters.py \
+  "$GAME_PROBE" "$CAPTURE_ROOT" baseline shadow-bilinear-3x3 shadow-bilinear-3x3,vis-release-0.1 \
+  vis-mean-0.1 vis-mean-0.15 vis-mean-0.2 vis-mean-dq-0.1 vis-centre-dq-0.1 vis-mean-dq-large-0.1
+python3 KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/real-scene/scripts/capture_shadow_filters.py \
+  "$GAME_PROBE" "$CAPTURE_ROOT" show-locked shadow-bilinear-3x3,show-locked \
+  shadow-bilinear-3x3,vis-release-0.1,show-locked vis-mean-0.1,show-locked vis-mean-0.15,show-locked \
+  vis-mean-0.2,show-locked vis-mean-dq-0.1,show-locked vis-centre-dq-0.1,show-locked \
+  vis-mean-dq-large-0.1,show-locked
+python3 KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/real-scene/scripts/capture_shadow_filters.py \
+  "$GAME_PROBE" "$CAPTURE_ROOT" vis-mean-0.1,show-vis-release vis-mean-0.15,show-vis-release \
+  vis-mean-0.2,show-vis-release vis-mean-dq-0.1,show-vis-release vis-centre-dq-0.1,show-vis-release \
+  vis-mean-dq-large-0.1,show-vis-release
+# Rebuild tables from the saved captures, without rendering.
+build-slot --heavy --label mean-report -- python3 KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/real-scene/scripts/shadow_filter_report.py \
+  "$CAPTURE_ROOT" "$REPORT_ROOT" shadow-bilinear-3x3 shadow-bilinear-3x3+vis-release-0.1 \
+  vis-mean-0.1 vis-mean-0.15 vis-mean-0.2 vis-mean-dq-0.1 vis-centre-dq-0.1 vis-mean-dq-large-0.1
+python3 KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/real-scene/scripts/visibility_tables.py \
+  "$REPORT_ROOT/summary.json" "$REPORT_ROOT/comparison-tables.md" \
+  vis-mean-0.1 vis-mean-0.15 vis-mean-0.2 vis-mean-dq-0.1 vis-centre-dq-0.1 vis-mean-dq-large-0.1
+# Run visibility_report.py once per region, passing --ground for the ground report.
+# Keep the existing back15-only max-of-nine reports. The other three overlays do not exist.
+python3 KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/real-scene/scripts/comparison_coincidence_tables.py "$REPORT_ROOT"
+~~~
+
+### Comparison recommendation and remaining proof
+
+No arm is ready for production. Use the depth-qualified 3 by 3 mean at 0.1 as the next comparison basis,
+and retain the greater-than-0.5 weight reset as a separate experimental arm. It fixes the absolute fast tails
+but introduces seven additional rim acceptance misses. The ordinary mean comparison preserves more flat-rim
+behaviour, yet still increases absolute 8 px tails. The leading-flat miss already exists with bilinear-only.
+All of these need a proper fix while the existing bounds stay unchanged.
+
+Prefer R8UNorm provisionally for visibility storage because the quantity is bounded and the three textures
+use a quarter of the R32Float payload. This round combines that format change with the comparison change.
+A matched R32Float mean control is still needed to isolate quantization and sampling effects. No R16Float
+format is exposed by the seam. Jitter invariance is a design aim here, not a demonstrated guarantee.
+
+Remaining proof is clean shadow acceptance on Metal, unchanged entry-point identity, all-backend correctness,
+a matched-format comparison and any separately authorized cost measurement. The absence of the three
+max-of-nine release overlays also limits the four-condition release comparison. The synthetic flat and
+textured guards and these real-scene captures cannot establish production frame cost or all scene coverage.
+The full shipping implementation, release and consumer adoption belong to a later approved production plan.
+
+### Archive completion checks
+
+The completion pass rebuilt the engine render test project and the full probe solution in Release, both
+with zero warnings and errors. The rebuilt renderer, vendored package and both probe output copies match
+byte for byte. The probe solution format verification passed. The engine whole-tree dash, prose, file-size,
+agent-instruction and documentation-version checks passed. Both report scripts parsed, all comparison tables
+regenerated, and all nine raw TRX inventories were independently checked against the retained outcomes.
+No local test was repeated during this completion pass. The full Grimhollow test suite was skipped as requested.
+No engine or game shipping branch was integrated, and no release, package publication or hosted run was started.

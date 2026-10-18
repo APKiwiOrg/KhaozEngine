@@ -1,0 +1,26 @@
+{
+  "back15/shadow-bilinear-3x3+vis-release-0.1/taa-native": {
+    "band": 39074,
+    "released": 11690,
+    "dots": 313,
+    "released_dots": 109,
+    "baseline_dots": 851,
+    "released_baseline_dots": 290,
+    "baseline_dots_near_release": 335,
+    "baseline_dots_released_previous_frame": 289,
+    "baseline_dots_released_last4_screen_frames": 404,
+    "outside_overlay_different": 0
+  },
+  "back15/shadow-bilinear-3x3+vis-release-0.1/taa-quality": {
+    "band": 39074,
+    "released": 14406,
+    "dots": 602,
+    "released_dots": 315,
+    "baseline_dots": 1166,
+    "released_baseline_dots": 539,
+    "baseline_dots_near_release": 577,
+    "baseline_dots_released_previous_frame": 526,
+    "baseline_dots_released_last4_screen_frames": 661,
+    "outside_overlay_different": 0
+  }
+}

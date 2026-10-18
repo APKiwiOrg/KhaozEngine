@@ -1,4 +1,4 @@
-"""Release coincidence against each arm and against its baseline dots. Captures are untracked."""
+"""Release coincidence against each arm and its baseline dots. Use --ground for the ground region."""
 import json
 from pathlib import Path
 import subprocess
@@ -26,6 +26,10 @@ arms = sys.argv[3:]
 conditions = ("back15", "day30", "back60", "ground15")
 if arms and arms[0] == "--back15-only":
     conditions, arms = ("back15",), arms[1:]
+colour = (0, 255, 0)
+if "--ground" in arms:
+    arms.remove("--ground")
+    colour = (255, 220, 0)
 rows = {}
 for condition in conditions:
     for arm in arms:
@@ -42,7 +46,7 @@ for condition in conditions:
             for i in range(16):
                 image, marked = rgb(run/mode/f"crop-{i:03d}.png"), rgb(overlay/mode/f"crop-{i:03d}.png")
                 region = rgb(run/f"regions-{i:03d}.png")
-                mask = np.all(region == (0,255,0),axis=2)
+                mask = np.all(region == colour,axis=2)
                 release = np.all(marked == (255,0,255),axis=2)
                 d, b = dots(run,mode,i), dots(baseline,mode,i)
                 near = np.pad(release,1)

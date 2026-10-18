@@ -1,0 +1,9 @@
+{
+  "changed_renderer_source": "KhaozEngine.Render3D/Internal/ShaderSources.TemporalAccumulate.cs",
+  "before_blob": "6f70bebf41feea1a9e2f68edbd4df408daa10f31",
+  "after_blob": "9f245fdfd46e04dd9b95d3d3071f99b091fdf67c",
+  "non_large_shader_body_identical": true,
+  "non_large_source_sha256": "28f3a22ba1910b5e1748f0c854bb829d003c8c93d36902f9e9dd9092f8e8a082",
+  "all_other_renderer_source_blobs_unchanged": true,
+  "note": "The only renderer change after the initial captures is inside the undefined TemporalVisibilityLarge block for every other arm. The capture queue was paused before any large-arm capture."
+}

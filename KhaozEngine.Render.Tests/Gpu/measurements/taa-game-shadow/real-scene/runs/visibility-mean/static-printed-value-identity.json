@@ -1,0 +1,96 @@
+{
+  "unset": {
+    "unset": {
+      "KhaozEngine.Tests.Gpu.TemporalStablePeakGpuTests.Isolated_stable_peaks_keep_their_history_under_a_still_camera_and_light": true,
+      "KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.Texture_detail_near_the_display_nyquist_resolves_as_before_the_release_at_quality": true,
+      "KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.A_slow_pan_over_the_textured_wall_resolves_as_before_the_release": true
+    },
+    "shadow-bilinear-3x3": {
+      "KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.Texture_detail_near_the_display_nyquist_resolves_as_before_the_release_at_quality": true,
+      "KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.A_slow_pan_over_the_textured_wall_resolves_as_before_the_release": true,
+      "KhaozEngine.Tests.Gpu.TemporalStablePeakGpuTests.Isolated_stable_peaks_keep_their_history_under_a_still_camera_and_light": true
+    },
+    "shadow-bilinear-3x3,vis-release-0.1": {
+      "KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.Texture_detail_near_the_display_nyquist_resolves_as_before_the_release_at_quality": true,
+      "KhaozEngine.Tests.Gpu.TemporalStablePeakGpuTests.Isolated_stable_peaks_keep_their_history_under_a_still_camera_and_light": false,
+      "KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.A_slow_pan_over_the_textured_wall_resolves_as_before_the_release": true
+    },
+    "vis-mean-0.1": {
+      "KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.A_slow_pan_over_the_textured_wall_resolves_as_before_the_release": true,
+      "KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.Texture_detail_near_the_display_nyquist_resolves_as_before_the_release_at_quality": true,
+      "KhaozEngine.Tests.Gpu.TemporalStablePeakGpuTests.Isolated_stable_peaks_keep_their_history_under_a_still_camera_and_light": false
+    },
+    "vis-mean-0.15": {
+      "KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.A_slow_pan_over_the_textured_wall_resolves_as_before_the_release": true,
+      "KhaozEngine.Tests.Gpu.TemporalStablePeakGpuTests.Isolated_stable_peaks_keep_their_history_under_a_still_camera_and_light": false,
+      "KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.Texture_detail_near_the_display_nyquist_resolves_as_before_the_release_at_quality": true
+    },
+    "vis-mean-0.2": {
+      "KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.Texture_detail_near_the_display_nyquist_resolves_as_before_the_release_at_quality": true,
+      "KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.A_slow_pan_over_the_textured_wall_resolves_as_before_the_release": true,
+      "KhaozEngine.Tests.Gpu.TemporalStablePeakGpuTests.Isolated_stable_peaks_keep_their_history_under_a_still_camera_and_light": false
+    },
+    "vis-mean-dq-0.1": {
+      "KhaozEngine.Tests.Gpu.TemporalStablePeakGpuTests.Isolated_stable_peaks_keep_their_history_under_a_still_camera_and_light": false,
+      "KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.A_slow_pan_over_the_textured_wall_resolves_as_before_the_release": true,
+      "KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.Texture_detail_near_the_display_nyquist_resolves_as_before_the_release_at_quality": true
+    },
+    "vis-centre-dq-0.1": {
+      "KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.A_slow_pan_over_the_textured_wall_resolves_as_before_the_release": true,
+      "KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.Texture_detail_near_the_display_nyquist_resolves_as_before_the_release_at_quality": true,
+      "KhaozEngine.Tests.Gpu.TemporalStablePeakGpuTests.Isolated_stable_peaks_keep_their_history_under_a_still_camera_and_light": false
+    },
+    "vis-mean-dq-large-0.1": {
+      "KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.Texture_detail_near_the_display_nyquist_resolves_as_before_the_release_at_quality": true,
+      "KhaozEngine.Tests.Gpu.TemporalStablePeakGpuTests.Isolated_stable_peaks_keep_their_history_under_a_still_camera_and_light": false,
+      "KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.A_slow_pan_over_the_textured_wall_resolves_as_before_the_release": true
+    }
+  },
+  "shadow-bilinear-3x3,vis-release-0.1": {
+    "unset": {
+      "KhaozEngine.Tests.Gpu.TemporalStablePeakGpuTests.Isolated_stable_peaks_keep_their_history_under_a_still_camera_and_light": false,
+      "KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.Texture_detail_near_the_display_nyquist_resolves_as_before_the_release_at_quality": true,
+      "KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.A_slow_pan_over_the_textured_wall_resolves_as_before_the_release": true
+    },
+    "shadow-bilinear-3x3": {
+      "KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.Texture_detail_near_the_display_nyquist_resolves_as_before_the_release_at_quality": true,
+      "KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.A_slow_pan_over_the_textured_wall_resolves_as_before_the_release": true,
+      "KhaozEngine.Tests.Gpu.TemporalStablePeakGpuTests.Isolated_stable_peaks_keep_their_history_under_a_still_camera_and_light": false
+    },
+    "shadow-bilinear-3x3,vis-release-0.1": {
+      "KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.Texture_detail_near_the_display_nyquist_resolves_as_before_the_release_at_quality": true,
+      "KhaozEngine.Tests.Gpu.TemporalStablePeakGpuTests.Isolated_stable_peaks_keep_their_history_under_a_still_camera_and_light": true,
+      "KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.A_slow_pan_over_the_textured_wall_resolves_as_before_the_release": true
+    },
+    "vis-mean-0.1": {
+      "KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.A_slow_pan_over_the_textured_wall_resolves_as_before_the_release": true,
+      "KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.Texture_detail_near_the_display_nyquist_resolves_as_before_the_release_at_quality": true,
+      "KhaozEngine.Tests.Gpu.TemporalStablePeakGpuTests.Isolated_stable_peaks_keep_their_history_under_a_still_camera_and_light": true
+    },
+    "vis-mean-0.15": {
+      "KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.A_slow_pan_over_the_textured_wall_resolves_as_before_the_release": true,
+      "KhaozEngine.Tests.Gpu.TemporalStablePeakGpuTests.Isolated_stable_peaks_keep_their_history_under_a_still_camera_and_light": true,
+      "KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.Texture_detail_near_the_display_nyquist_resolves_as_before_the_release_at_quality": true
+    },
+    "vis-mean-0.2": {
+      "KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.Texture_detail_near_the_display_nyquist_resolves_as_before_the_release_at_quality": true,
+      "KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.A_slow_pan_over_the_textured_wall_resolves_as_before_the_release": true,
+      "KhaozEngine.Tests.Gpu.TemporalStablePeakGpuTests.Isolated_stable_peaks_keep_their_history_under_a_still_camera_and_light": true
+    },
+    "vis-mean-dq-0.1": {
+      "KhaozEngine.Tests.Gpu.TemporalStablePeakGpuTests.Isolated_stable_peaks_keep_their_history_under_a_still_camera_and_light": true,
+      "KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.A_slow_pan_over_the_textured_wall_resolves_as_before_the_release": true,
+      "KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.Texture_detail_near_the_display_nyquist_resolves_as_before_the_release_at_quality": true
+    },
+    "vis-centre-dq-0.1": {
+      "KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.A_slow_pan_over_the_textured_wall_resolves_as_before_the_release": true,
+      "KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.Texture_detail_near_the_display_nyquist_resolves_as_before_the_release_at_quality": true,
+      "KhaozEngine.Tests.Gpu.TemporalStablePeakGpuTests.Isolated_stable_peaks_keep_their_history_under_a_still_camera_and_light": true
+    },
+    "vis-mean-dq-large-0.1": {
+      "KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.Texture_detail_near_the_display_nyquist_resolves_as_before_the_release_at_quality": true,
+      "KhaozEngine.Tests.Gpu.TemporalStablePeakGpuTests.Isolated_stable_peaks_keep_their_history_under_a_still_camera_and_light": true,
+      "KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.A_slow_pan_over_the_textured_wall_resolves_as_before_the_release": true
+    }
+  }
+}

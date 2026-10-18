@@ -1,0 +1,16 @@
+back-edge at 100.9,89.5 yaw 230, dt 0.06667 s, day 5 min, 2560x1440, sharpen engine, hold texels engine, shadow detail default, temporal resolve engine, temporal diag vis-mean-0.2 (engine mask 574619648)
+Luma 0..1. Pooled samples. Columns are grain mean, grain p95, change mean, change p95.
+mode         region      pixels   grain mean grain p95  change mean change p95
+taa-native   character      39074     0.007346  0.038099    0.017576   0.107220
+taa-native   control        59138     0.000562  0.003638    0.000296   0.002805
+taa-native   ground        225555     0.005286  0.020489    0.012355   0.067988
+taa-native   ground-ctrl  2267742     0.004741  0.017846    0.000170   0.000834
+taa-quality  character      39074     0.010881  0.052848    0.017332   0.115860
+taa-quality  control        59138     0.000894  0.003922    0.000380   0.002805
+taa-quality  ground        225555     0.006276  0.024410    0.012265   0.076681
+taa-quality  ground-ctrl  2267742     0.004378  0.016536    0.000292   0.002805
+fxaa         character      39074     0.002607  0.015403    0.018395   0.084787
+fxaa         control        59138     0.000669  0.003638    0.000246   0.001117
+fxaa         ground        225555     0.001655  0.007560    0.013101   0.057089
+fxaa         ground-ctrl  2267742     0.001884  0.007843    0.000005   0.000000
+Region checks passed for Character. Confirm the edge in the edge crops.

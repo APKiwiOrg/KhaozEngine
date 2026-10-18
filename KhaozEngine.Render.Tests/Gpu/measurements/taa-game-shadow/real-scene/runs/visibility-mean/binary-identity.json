@@ -1,0 +1,39 @@
+{
+  "version": "21.5.0-grain.1",
+  "source_commit": "d5c841eb2cac697e165056b91e3cc89bb6d2f113",
+  "sha256": {
+    "engine": "f35c7337ff21649515e522a6e5e336aca7606e99030aa016f4052a8d4d53f3b6",
+    "probe": "f35c7337ff21649515e522a6e5e336aca7606e99030aa016f4052a8d4d53f3b6",
+    "private_feed": "f35c7337ff21649515e522a6e5e336aca7606e99030aa016f4052a8d4d53f3b6",
+    "vendored": "f35c7337ff21649515e522a6e5e336aca7606e99030aa016f4052a8d4d53f3b6"
+  },
+  "renderer_source_blobs": {
+    "KhaozEngine.Render3D/Internal/ShaderSources.TemporalAccumulate.cs": "9f245fdfd46e04dd9b95d3d3071f99b091fdf67c",
+    "KhaozEngine.Render3D/Internal/ShaderSources.TemporalVisibility.cs": "f44e0f135e68ec945bd9a4b79e044f3ce25e3f31",
+    "KhaozEngine.Render3D/Internal/ShaderSources.TemporalVisibilityMean.cs": "bf909b2ac65ab0114212f399e850f8bf474dd6e8",
+    "KhaozEngine.Render3D/Internal/TemporalResolveDiagnostics.cs": "8f5ef8254bc09a8a94322613580897c5c30b7d3a",
+    "KhaozEngine.Render3D/Internal/TemporalVisibilityDiagnostics.cs": "a94b680ba901d6dfb488321c523e87c8fbbc8cda",
+    "KhaozEngine.Render3D/Rendering/TemporalVisibilityHistory.cs": "c23f17d7ce74d5deeaf9eb882a7245824ccd11a3"
+  },
+  "initial_package_captures": [
+    "back15-baseline",
+    "back15-shadow-bilinear-3x3",
+    "back15-shadow-bilinear-3x3+vis-release-0.1",
+    "back15-vis-mean-0.1",
+    "back15-vis-mean-0.15",
+    "back60-baseline",
+    "back60-shadow-bilinear-3x3",
+    "back60-shadow-bilinear-3x3+vis-release-0.1",
+    "back60-vis-mean-0.1",
+    "back60-vis-mean-0.15",
+    "day30-baseline",
+    "day30-shadow-bilinear-3x3",
+    "day30-shadow-bilinear-3x3+vis-release-0.1",
+    "day30-vis-mean-0.1",
+    "day30-vis-mean-0.15",
+    "ground15-baseline",
+    "ground15-shadow-bilinear-3x3",
+    "ground15-shadow-bilinear-3x3+vis-release-0.1",
+    "ground15-vis-mean-0.1"
+  ]
+}

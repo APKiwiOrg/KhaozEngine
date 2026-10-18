@@ -13,19 +13,7 @@ internal static class InstalledSweepBounds
     {
         error = 0;
         InstalledPoseOperator map = leaf.Map;
-        if (!map.RepresentedX.IsExact || !map.RepresentedY.IsExact || !map.RepresentedZ.IsExact) return false;
-        Quaternion q = leaf.Pose.Orientation;
-        var wide = new QuaternionWide { X = new(q.X), Y = new(q.Y), Z = new(q.Z), W = new(q.W) };
-        QuaternionWide.Conjugate(wide, out QuaternionWide local);
-        for (int component = 0; component < 3; component++)
-        {
-            Vector3Wide.Broadcast(component == 0 ? Vector3.UnitX : component == 1 ? Vector3.UnitY : Vector3.UnitZ, out var unit);
-            QuaternionWide.TransformWithoutOverlap(unit, local, out var transformed);
-            double x = Component(map.RepresentedX, component), y = Component(map.RepresentedY, component), z = Component(map.RepresentedZ, component);
-            if (Math.Abs(x) >= 2 || Math.Abs(y) >= 2 || Math.Abs(z) >= 2) return false;
-            for (int lane = 0; lane < Vector<float>.Count; lane++)
-                if (transformed.X[lane] != x || transformed.Y[lane] != y || transformed.Z[lane] != z) return false;
-        }
+        if (!OperationalCoefficientsMatch(map, leaf.Pose.Orientation)) return false;
         double extent = 0;
         for (int component = 0; component < 3; component++)
         {
@@ -45,9 +33,7 @@ internal static class InstalledSweepBounds
         // and both sums stay below 16 M. U is the full neighboring binary32 spacing.
         // Rounded axis multiplication and addition contribute the final two terms for
         // every s in [-h,h]. Each sum is outward in binary64. No geometric radius is enlarged.
-        GeometryInterval bound = Term(6, Spacing(extent)).Add(Term(3, Spacing(4 * extent)))
-            .Add(Term(2, Spacing(16 * extent))).Add(Term(1, Spacing(2d * halfCylinderLength)))
-            .Add(Term(1, Spacing(16 * (extent + halfCylinderLength))));
+        GeometryInterval bound = BaseOperationalError(extent, halfCylinderLength);
         if (leaf.Geometry.LocalPose.Position != Vector3.Zero)
         {
             // Mesh and hull recentering add the rotated child offset after the original relative
@@ -75,8 +61,7 @@ internal static class InstalledSweepBounds
             // One initial subtraction, one displacement product, one path sum, one
             // child sum and the composed-pose sum. Propagate that offset error through
             // the actual absolute transpose row sums, retaining outward accumulation.
-            GeometryInterval extra = Term(1, Spacing(m)).Add(Term(1, Spacing(2 * m)))
-                .Add(Term(1, Spacing(4 * m))).Add(Term(1, Spacing(4 * m + h))).Add(Term(1, Spacing(p + h)));
+            GeometryInterval extra = ChildOperationalError(m, h, p);
             double norm = 0;
             for (int rowIndex = 0; rowIndex < 3; rowIndex++)
             {
@@ -93,6 +78,32 @@ internal static class InstalledSweepBounds
         return double.IsFinite(error);
     }
 
+    internal static bool OperationalCoefficientsMatch(InstalledPoseOperator map, Quaternion q)
+    {
+        if (!map.RepresentedX.IsExact || !map.RepresentedY.IsExact || !map.RepresentedZ.IsExact) return false;
+        var wide = new QuaternionWide { X = new(q.X), Y = new(q.Y), Z = new(q.Z), W = new(q.W) };
+        QuaternionWide.Conjugate(wide, out QuaternionWide local);
+        for (int component = 0; component < 3; component++)
+        {
+            Vector3Wide.Broadcast(component == 0 ? Vector3.UnitX : component == 1 ? Vector3.UnitY : Vector3.UnitZ, out var unit);
+            QuaternionWide.TransformWithoutOverlap(unit, local, out var transformed);
+            double x = Component(map.RepresentedX, component), y = Component(map.RepresentedY, component), z = Component(map.RepresentedZ, component);
+            if (Math.Abs(x) >= 2 || Math.Abs(y) >= 2 || Math.Abs(z) >= 2) return false;
+            for (int lane = 0; lane < Vector<float>.Count; lane++)
+                if (transformed.X[lane] != x || transformed.Y[lane] != y || transformed.Z[lane] != z) return false;
+        }
+        return true;
+    }
+
+    internal static GeometryInterval BaseOperationalError(double extent, float half) =>
+        Term(6, Spacing(extent)).Add(Term(3, Spacing(4 * extent)))
+            .Add(Term(2, Spacing(16 * extent))).Add(Term(1, Spacing(2d * half)))
+            .Add(Term(1, Spacing(16 * (extent + half))));
+
+    internal static GeometryInterval ChildOperationalError(double m, double h, double p) =>
+        Term(1, Spacing(m)).Add(Term(1, Spacing(2 * m)))
+            .Add(Term(1, Spacing(4 * m))).Add(Term(1, Spacing(4 * m + h))).Add(Term(1, Spacing(p + h)));
+
     static GeometryInterval Term(double count, double spacing) => GeometryInterval.Exact(count).Multiply(GeometryInterval.Exact(spacing));
     static double Component(FeaturePoint point, int component) => component == 0 ? point.X.Value : component == 1 ? point.Y.Value : point.Z.Value;
     static double Spacing(double value)
@@ -106,7 +117,7 @@ internal static class InstalledSweepBounds
     {
         minimum = maximum = default;
         if (!geometry.TryComposePose(pose, out RigidPose leafPose) ||
-            !InstalledPoseOperator.TryCreate(leafPose, out InstalledPoseOperator map)) return false;
+            !InstalledPoseOperator.TryCreate(leafPose, out InstalledPoseOperator map) || !CapsuleSweepPruning.Validate(map, leafPose.Orientation)) return false;
         if (geometry.Children is { } children)
         {
             Vector3 childMin = new(float.PositiveInfinity), childMax = new(float.NegativeInfinity);
@@ -152,14 +163,8 @@ internal static class InstalledSweepBounds
         }
         for (int i = 0; i < geometry.VertexCount; i++)
         {
-            Vector3 point = geometry.Vertex(i);
-            FeaturePoint affine = map.Point(point, exactZeroProducts: true);
-            GeometryVector rounded = RepresentedGeometryTransforms.PosePoint(new Pose(leafPose.Position, leafPose.Orientation), point);
-            if (!affine.IsResolved || !rounded.IsResolved) return false;
-            min = Vector3.Min(min, new(Down(Math.Min(affine.X.Bounds.Lower, rounded.X.Lower)),
-                Down(Math.Min(affine.Y.Bounds.Lower, rounded.Y.Lower)), Down(Math.Min(affine.Z.Bounds.Lower, rounded.Z.Lower))));
-            max = Vector3.Max(max, new(Up(Math.Max(affine.X.Bounds.Upper, rounded.X.Upper)),
-                Up(Math.Max(affine.Y.Bounds.Upper, rounded.Y.Upper)), Up(Math.Max(affine.Z.Bounds.Upper, rounded.Z.Upper))));
+            if (!TryPoint(map, leafPose, geometry.Vertex(i), out var lo, out var hi)) return false;
+            min = Vector3.Min(min, lo); max = Vector3.Max(max, hi);
         }
         if (!InstalledPoseOperator.Within(min, CapsuleGeneralSweepPolicy.MaximumStoredCoordinate) ||
             !InstalledPoseOperator.Within(max, CapsuleGeneralSweepPolicy.MaximumStoredCoordinate)) return false;
@@ -173,11 +178,17 @@ internal static class InstalledSweepBounds
         minimum = maximum = default;
         FeaturePoint affine = map.Point(point, exactZeroProducts: true);
         GeometryVector rounded = RepresentedGeometryTransforms.PosePoint(new Pose(pose.Position, pose.Orientation), point);
-        if (!affine.IsResolved || !rounded.IsResolved) return false;
+        // The source tests distance after the transpose map. Its preimage is the inverse
+        // transpose, which need not equal the forward quaternion map. Rounded root/child
+        // arithmetic is separately enclosed by the query's operational aperture.
+        FeaturePoint operational = CapsuleSweepPruning.OperationalPoint(map, point);
+        if (!affine.IsResolved || !rounded.IsResolved || !operational.IsResolved) return false;
         minimum = new(Down(Math.Min(affine.X.Bounds.Lower, rounded.X.Lower)),
             Down(Math.Min(affine.Y.Bounds.Lower, rounded.Y.Lower)), Down(Math.Min(affine.Z.Bounds.Lower, rounded.Z.Lower)));
         maximum = new(Up(Math.Max(affine.X.Bounds.Upper, rounded.X.Upper)),
             Up(Math.Max(affine.Y.Bounds.Upper, rounded.Y.Upper)), Up(Math.Max(affine.Z.Bounds.Upper, rounded.Z.Upper)));
+        minimum = Vector3.Min(minimum, new(Down(operational.X.Bounds.Lower), Down(operational.Y.Bounds.Lower), Down(operational.Z.Bounds.Lower)));
+        maximum = Vector3.Max(maximum, new(Up(operational.X.Bounds.Upper), Up(operational.Y.Bounds.Upper), Up(operational.Z.Bounds.Upper)));
         return InstalledPoseOperator.Within(minimum, CapsuleGeneralSweepPolicy.MaximumStoredCoordinate) &&
             InstalledPoseOperator.Within(maximum, CapsuleGeneralSweepPolicy.MaximumStoredCoordinate);
     }

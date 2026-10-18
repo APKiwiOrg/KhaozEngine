@@ -26,7 +26,7 @@ internal static class CapsuleMeshSweep
             !geometry.TryPose(pose, out var map) || maximumNodes <= 0 || maximumNodes > CapsuleGeneralSweepPolicy.MaximumNodes ||
             maximumLeaves <= 0 || maximumLeaves > CapsuleGeneralSweepPolicy.MaximumLeaves ||
             maximumPending <= 0 || maximumPending > CapsuleGeneralSweepPolicy.MaximumPending ||
-            !CapsuleSweepAperture.TryCreate(centre, capsule.Radius, capsule.Length * 0.5f, displacement, out Vector3 min, out Vector3 max)) return default;
+            !CapsuleSweepPruning.TryAperture(centre, capsule.Radius, capsule.Length * 0.5f, displacement, out Vector3 min, out Vector3 max)) return default;
         ref Mesh mesh = ref shapes.GetShape<Mesh>(root.Index);
         int index = 0, count = 0, nodes = 0, leaves = 0;
         bool hit = false;

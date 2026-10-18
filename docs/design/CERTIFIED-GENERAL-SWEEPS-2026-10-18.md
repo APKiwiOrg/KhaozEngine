@@ -104,7 +104,7 @@ expand it through Bepu's owning broad-phase update path and refit ancestors unde
 gate, then verify the installed result. Never write only a leaf while leaving its ancestors stale.
 Failure leaves evidence invalid. An ordinary rounded `ComputeBounds` result is not the proof.
 
-The unchanged original-path aperture and both checked tree preflights precede enumeration under
+The original-path aperture with its operational arithmetic enclosure and both checked tree preflights precede enumeration under
 one read interval. Inner mesh traversal has the same closed-bound and checked-stack obligations.
 Every pruned subtree needs conservative installed bounds. Budget counts include examined entries
 before filtering, and exhaustion stays sticky across trees and descendants.
@@ -114,6 +114,20 @@ An unproved selected bound still refuses even outside the apparent aperture. Exc
 may remove unsupported geometry, but cannot hide structurally invalid tree bounds or evidence.
 No per-query whole-world scan or replacement spatial index is introduced.
 Cost if wrong: correct leaf proofs certify Clear after the tree silently omitted a collision.
+
+Ruling GB-R14. Forward-pose bounds alone do not prove operational exclusion. Installed general
+bounds also enclose local geometry mapped through the inverse of the represented transpose.
+Every admitted operator proves inverse infinity norm at most 2 and Euclidean row norm at most
+`1 + 2^-15`. These are pruning proof bounds, not collision tolerances. The query aperture carries
+the complete root subtraction, original displacement product and sum, rotated child addition,
+transpose and capsule-axis rounding account from GS-6, using the admitted root/leaf position
+magnitude 2048 and rotated child magnitude below 16384. Its local uncertainty is propagated by
+the proved inverse infinity norm, and its spherical skin by the proved Euclidean row norm.
+The same aperture is used by outer preflight/enumeration and mesh inner traversal. Mesh bounds
+retain both raw/scaled and recentered preimages and union them through every ancestor.
+If a finite arithmetic enclosure cannot be formed, retain all candidates in the existing tree's
+admitted stored-coordinate domain, under the unchanged work caps. Only the existing complete leaf
+proof can publish a result. No geometric radius, leaf error ceiling or work limit changes.
 
 ### GS-5. Bind immutable geometry to installation and mutation lifetime
 

@@ -249,7 +249,10 @@ Both culling flag values are retained. General installed local coordinates and t
 within 2048 m, with the existing squared quaternion norm band `1 +/- 2^-20` and positive determinant.
 A rounded quaternion is never normalized. The forward finite geometry and the pinned transpose-local
 operation graph must both prove the same outcome, including exactly rigid maps. Rounded root-offset
-subtraction and child-offset addition can disagree even with identity rotation. Hit brackets include their complete disagreement
+subtraction and child-offset addition can disagree even with identity rotation. Outer and mesh inner
+pruning enclose the full operational graph as well as the forward model, including cancellation
+along the original path. An unbounded pruning enclosure retains candidates for the leaf proof.
+Hit brackets include their complete disagreement
 within 0.001 m. Unknown coefficient correspondence, ambiguous tangency and ill-conditioned transforms
 refuse. Hulls use the installed face loops and point identities, including SIMD padding, after strict
 exact topology validation. Planar convex faces, opposite edge pairing, Euler closure and connected

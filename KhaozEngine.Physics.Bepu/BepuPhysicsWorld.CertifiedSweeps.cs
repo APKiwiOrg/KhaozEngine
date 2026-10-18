@@ -41,7 +41,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsCapsuleSweep
             !_sweepEvidence.IsCurrent(this, _queryGeneration) || !SweepRecordCountsMatch() ||
             !SelectedSweepBoundsProved(filter.Mobility, exclusions)) return default;
         float halfCylinder = capsule.Length * 0.5f;
-        if (!CapsuleSweepAperture.TryCreate(pose.Position, capsule.Radius, halfCylinder, displacement,
+        if (!CapsuleSweepPruning.TryAperture(pose.Position, capsule.Radius, halfCylinder, displacement,
             out Vector3 min, out Vector3 max)) return default;
         double length = System.Math.Sqrt((double)displacement.X * displacement.X +
             (double)displacement.Y * displacement.Y + (double)displacement.Z * displacement.Z);

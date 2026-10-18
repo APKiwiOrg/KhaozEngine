@@ -99,7 +99,7 @@ internal sealed class InstalledMeshSweepGeometry
 
     internal bool ProvePose(RigidPose pose, InstalledPoseOperator map)
     {
-        if (!Matches(_owner, _root)) return false;
+        if (!Matches(_owner, _root) || !CapsuleSweepPruning.Validate(map, pose.Orientation)) return false;
         ref Mesh mesh = ref _owner.GetShape<Mesh>(_root.Index);
         if (_posed && pose.Position == _lastPose.Position && pose.Orientation == _lastPose.Orientation && MatchesProof(mesh)) return true;
         if (!ProveTree(ref mesh)) return false;

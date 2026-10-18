@@ -9,6 +9,12 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 2026-10-18
 
+- Static interior cuts hide opted-in individual rigid props inside building outlines and below their roofs.
+  The shared height field cuts colour, temporal motion, cascaded and point shadows, object and walk-surface
+  picks, camera probes, target outlines and silhouettes. TileWorld builds the field off-thread and publishes
+  it with picks on the view thread.
+  Ordinary props, roofs, merged HLOD geometry, grass, ground cover, animated foliage and skinned meshes stay
+  uncut by default or by their excluded draw paths. MapDoc and world validation integration remain follow-ups.
 - New opt-in `KhaozEngine.BugReports.Relay` authenticates and validates uploads, stores capability-linked media and queues GitHub issues and server snapshot comments with epoch claims and result markers.
 - New opt-in `KhaozEngine.BugReports.Relay.Azure` supplies Blob media, Queue work, Table quota counters and daily poison requeueing over host-owned clients, with offline conformance tests and a gated live leg.
 - `KhaozEngine.BugReports` exposes `BugReportLogTail.FromLogSection` for the viewer and relay to share the newest captured log lines.

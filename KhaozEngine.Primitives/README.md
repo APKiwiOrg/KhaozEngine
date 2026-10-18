@@ -83,6 +83,20 @@ automatically, so this is transparent to every other package.
   they are relative to that anchor. It untranslates and unrotates the ray and defers to `IntersectAabb`, so
   every edge case above holds unchanged and a `yaw` of 0 gives the same answer as `IntersectAabb` with the
   anchor subtracted out.
+- `InteriorVolume` / `InteriorRoof` / `IInteriorSource` describe simple world-XZ polygons, floor and ceiling
+  heights and roof samples without a renderer dependency. `InteriorSourceResult.Encoding` carries the
+  source-wide `InteriorEncoding.For(lowestFloorY, highestTopY)`, stable across window re-centres.
+  `InteriorWindow.Centred` snaps to the world-origin lattice. `CellsFor(512f, cellSize)` rounds up and caps
+  at 4096 cells per side. `InteriorHeightFieldBuilder.Build(volumes, window, encoding)` fills only whole
+  polygon cells, samples the lowest roof, and merges overlapping spans to their lowest floor and highest top.
+  The immutable field packs floor high/low in RG and top high/low in BA, rows toward +world Z, with a 1 cm
+  step through 655.35 m or a coarser source-wide step beyond that. `Texels`, `Version`, `MergedCells` and
+  `OutOfRangeCells` describe the result. `TryGetSpan` returns approximate decoded heights, while `Contains`
+  tests float32 code space, `q = (y - BaseY) * (1f / StepY)`, floor-inclusive and top-exclusive.
+  `FirstUncut(origin, direction, tStart, tEnd, out t)` finds the first uncut point in ray-parameter units,
+  treating empty cells and points outside the window as uncut. It returns false for a wholly cut segment.
+  `RayMath.IntersectObbY(..., out tNear, out tFar)` supplies the matching box entry and exit, including
+  `tNear = 0` for a ray starting inside, without changing the existing entry-only overload.
 - `WorldFrame` - a quantized planar frame for large worlds, the floating-origin primitive: a `(short X, short Z)`
   index onto a 128 m grid whose `Anchor` is `(X, 0, Z) * Grid` metres, always exactly representable in float32.
   `Nearest(world)` rounds (never floors) so a freshly anchored local lies inside half a grid, which is what makes

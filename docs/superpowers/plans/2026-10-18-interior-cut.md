@@ -1,5 +1,11 @@
 # Interior Cut Implementation Plan
 
+As built. This plan is historical. The accepted deviations and final API differences are recorded in
+[the spec's As built section](../../design/INTERIOR-CUT-DESIGN-2026-10-18.md#as-built), including source-wide
+encoding, code-space membership, contiguous retained TileWorld storeys, the two terminal `DrawProps`
+cut-flag overloads, `CutArchetypeIds`, `InteriorCutBinding` and core tests in Foundation.Tests. Backend
+correctness and timing evidence remain pending. Living use is in USING-KHAOZENGINE and the package READMEs.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Cut opted-in rigid prop pixels inside authored interiors, including their shadows and interactions, while preserving crowns above roofs and every non-opted-in picture.

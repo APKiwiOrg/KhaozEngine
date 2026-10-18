@@ -7983,6 +7983,19 @@ distance-culls the rest, so an N-tree forest batches into a handful of draws (on
 scene.DrawProps(placements, meshes, focus: character.Position, drawRadius: 90f);   // each frame
 ```
 
+For a static layer cut inside building interiors, set `scene.InteriorCut` and use a terminal filtered overload:
+
+```csharp
+scene.DrawProps(placements, meshes, focus: character.Position, drawRadius: 192f,
+    lodCrossfadeWidth: 0f, drawFilter: null, layerIdentity: null, cutInsideInteriors: true);
+```
+
+Only the two terminal single-mesh and multi-part overloads expose the trailing flag, after `drawFilter` and
+`layerIdentity`. Supplying `lodCrossfadeWidth` selects that form. The four convenience overloads, `Queue` and
+`DrawShadowOnlyProps` keep forwarding false. `PropLayer` factories take `cutInsideInteriors: true` and expose
+`CutsInsideInteriors` on the readonly struct, preserving it through copies. Full and authored LOD parts cut,
+while merged HLOD never does. Grass, ground cover, animated foliage and skinned paths remain excluded.
+
 `PropRenderer.Queue(SceneInstances, ...)` is the same logic against a raw instance queue (headless-testable).
 `DrawProps`/`Queue` also overload on `IReadOnlyDictionary<string, IReadOnlyList<MeshHandle>>` (one-or-many
 mesh parts per kit id, from `Scene3D.LoadPropMeshes`) for scattering multi-material textured props - see
@@ -11619,6 +11632,48 @@ foreach (TileWaterBody body in TileWaterBodies.Collect(doc, catalogs, region, pl
     Console.WriteLine($"{body.Rects.Count} rects at {body.SurfaceY} m");
 ```
 
+**Static interior cuts for prop layers.** Opt a tree layer into render-time cutting inside buildings by
+setting `TilePropLayerDefinition.CutInsideInteriors = true`. Give `view.InteriorMeshes` a dedicated
+`ITileMeshGeometry` reader, such as a separate `GltfTileMeshGeometry`, used only by this serialized driver.
+That reader is single-threaded, so never share it with capture, another job or view-thread geometry reads.
+For an existing definition, its required identity, archetypes and LOD distances stay in the definition:
+
+```csharp
+TilePropLayerDefinition cutTrees = treeLayer with { CutInsideInteriors = true };
+// Supply cutTrees in TileWorldViewOptions.PropLayers when constructing the view.
+view.InteriorMeshes = dedicatedInteriorMeshes;
+```
+
+`TileWorldInteriors` derives simple polygons from indoor tiles, safe wall boundaries and sampled roofs.
+A column keeps its lowest contiguous run of retained indoor planes, so no cut crosses an excluded storey or
+an outdoor gap. Roof samples lower the top, missing samples use the ceiling, and cells must be wholly inside
+the polygon. The field covers 512 m around the prop focus, re-centres at 64 m along either axis, and uses the
+largest cell at or below 25 cm dividing `TileSize`. `CellsFor` caps the side at 4096 cells. Its encoding comes
+from all source interiors and stays fixed across re-centres. Membership is floor-inclusive, top-exclusive in
+the shader's float32 code space, shared with CPU queries.
+
+The view captures detached inputs, collects and rasterizes on one background worker, and applies only the
+newest generation at `Draw(focus)`. `AppliedInteriorCut` and the scene field publish together. Before the
+first result both picture and picks are uncut. While re-centring they keep the previous field until its
+replacement arrives. Replacing `InteriorMeshes` or changing layers clears stale fields.
+`TileWorldViewOptions.Log` receives each source issue once: `interior.wall-inner-edge`, `interior.diagonal-wall`, `interior.roof-mesh` and
+`interior.step`. The view logs `interior.window` once when the cell cap reduces the window's physical extent.
+An unsafe wall leaves affected tiles uncut. An unreadable roof keeps its ceiling fallback.
+
+`CutArchetypeIds` is the view's internal union of opted-in layer archetypes, refreshed when `PropLayers`
+change. It drives object and walk-surface picks, camera probes, individual target outlines and silhouettes.
+Full and authored LOD parts cut in colour, temporal motion and both cascaded and point-light shadows.
+Merged HLOD, roofs, unflagged ordinary props, grass, ground cover, animated foliage and skinned meshes stay
+uncut. Physics and editor rays are unchanged. MapDoc and world validation integration remain
+[#1474](https://github.com/APKiwiOrg/KhaozEngine/issues/1474) and
+[#1473](https://github.com/APKiwiOrg/KhaozEngine/issues/1473).
+
+A custom `ITileWorldScene` forwards `SetInteriorCut(field)` to its renderer. The default is a no-op, and
+`Scene3DTileWorldScene` already forwards it. Without the view, build an `InteriorHeightField` through
+`InteriorHeightFieldBuilder.Build(volumes, window, sourceEncoding)`, set `scene.InteriorCut`, and submit
+`RigidInstanceDraw` with `CutInsideInteriors = true`. Null disables the field. A field uploads once at the
+next render, and a version change invalidates shadow caches. No opted-in draws preserves existing rendering.
+
 **Picking object models.** `TileRaycast` answers the GROUND. For the objects standing on it,
 `TileObjectRaycast.Pick(doc, catalogs, plane, origin, direction, maxDistance, bounds, hits)` (in
 `KhaozEngine.TileWorld.Render3D`) names every object whose drawn MODEL the ray passes through, nearest first,
@@ -11629,6 +11684,13 @@ bounds source (the per-archetype vertex box, measured once), and apply your own 
 non-interactive archetype, or a cut at the ground hit's distance are all the caller's rules, deliberately.
 The candidate walk allocates nothing. Reuse a hit list with enough capacity and a warmed bounds cache for
 allocation-free repeated picks, including the per-frame picks made by `TileWorldCameraProbe`.
+
+The overload with trailing `TileObjectCut(field, archetypeIds)` intersects an opted-in object's OBB entry/exit
+interval with `field.FirstUncut`. A wholly cut interval disappears, while a partial interval reports the first
+visible point. The original overload remains inactive. `view.PickObjects` supplies `AppliedInteriorCut` and
+the opted-in union automatically, so cut branches do not catch a click through a doorway. The camera probe
+applies the same field to opted-in object intervals after inflating their boxes by its sphere radius, including
+a start inside that inflated box, so invisible branches do not shorten the camera boom.
 
 ---
 
@@ -12131,6 +12193,11 @@ terrain or water, because the prop draws on top. `TileWalkSurfaces.Raycast(docum
 direction, maxDistance)` is the same query without a view. The picker does not call `Flush`, so an announced
 edit keeps picking the plane still on screen until that region-plane mesh is rebuilt. Changing the water look
 invalidates the cache too, exactly as it does for the draw path.
+
+`TileWalkSurfaces.Raycast` also accepts optional `include` and
+`Func<TileObject, Vector3, bool>? acceptPoint` filters. The latter tests each intersection before nearest-hit
+selection, so a rejected point still allows a farther surface to win. `PickSurface` supplies that point filter
+for opted-in archetypes using `AppliedInteriorCut`. `TryHeightAt` and physics surface queries are unchanged.
 
 **Two conventions carry over from the document.** World z is MINUS tile z (`TileWorldSpace`), so a region-local
 ground mesh runs from 0 to minus 64 tiles on z and `TileGroundMesher.WorldMatrix` translates it into place, and
@@ -18744,6 +18811,10 @@ self-corrects when its region streams in, so a click handler may set it optimist
 `ITileWorldScene.DrawMeshSilhouette` defaults to a no-op, so custom scene implementations keep compiling and
 simply draw no rims.
 
+The rigid `DrawMeshSilhouette(mesh, world, color, widthMetres, cutInsideInteriors)` overload cuts its extruded
+hull against `Scene3D.InteriorCut`. Existing overloads forward false. The tile-world view forwards the opted-in
+archetype flag itself, so a selected tree's rim does not restore the branches hidden inside a room.
+
 ### Grouped target outlines (`DrawMeshOutline`, 18.47.0)
 
 Use a grouped target outline when the border must follow only the visible camera-projected exterior at a
@@ -18825,6 +18896,13 @@ The occlusion overload of `BeginMeshOutline` defaults to the two-argument one, s
 scene-depth border.
 An implementation that supports outlines can construct its own `MeshOutlineGroup(int index)` and interpret
 the index when parts are submitted.
+
+The rigid `DrawMeshOutlineDissolved(group, mesh, world, dissolve, dissolveComplement,
+cutInsideInteriors)` overload applies the field to both full and visible coverage masks in either occlusion
+mode. Its border follows the cut boundary. Existing overloads forward false, and skinned outlines remain
+uncut. The view forwards the individual layer's flag but explicitly leaves merged HLOD outlines uncut.
+The cut-aware outline and silhouette defaults on `ITileWorldScene` forward to their old methods, keeping
+custom implementations compatible.
 
 The tile-world seam adds the grouped skinned outline methods with the same compatibility defaults:
 

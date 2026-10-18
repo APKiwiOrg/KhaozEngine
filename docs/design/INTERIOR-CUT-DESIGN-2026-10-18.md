@@ -1,9 +1,42 @@
 # Interior cut for props inside buildings
 
-Status: design for [#1470](https://github.com/APKiwiOrg/KhaozEngine/issues/1470), written 2026-10-18 under owner
-rulings IC1 to IC6, revised the same day under the orchestrator's rulings OC1 to OC10, and approved by the owner
-on 2026-10-18 together with OC8 (a). Not built. It ships as one engine minor after 21.4.0, and this document picks
-no version number.
+Status: implemented, backend correctness and timing evidence pending for
+[#1470](https://github.com/APKiwiOrg/KhaozEngine/issues/1470). Approved on 2026-10-18 under owner rulings
+IC1 to IC6, orchestrator calls OC1 to OC10 and OC8 (a). Consumer captures remain the IC6 adoption gate.
+
+## As built
+
+The rulings and API sketch below preserve the approved design history. The shipped contracts differ here:
+
+- H1 sizes a 512 m window with `InteriorWindow.CellsFor(512f, cellSize)`, capped at 4096. The view reports
+  `interior.window` once when the cap reduces coverage. H2 puts source-wide `InteriorEncoding` in
+  `InteriorSourceResult.Encoding`. `Build(volumes, window, encoding)` takes it explicitly, and the adapter
+  reports `interior.step` at collection, not after building a window.
+- Membership uses float32 code space everywhere (F4-1): `q = (y - BaseY) * (1f / StepY)`, with
+  `hi > lo && q >= lo && q < hi`. `TryGetSpan` is an approximate decoded-height query. `FirstUncut` solves
+  in code space so its returned point agrees with `Contains` and shader pixels.
+- TileWorld columns retain only their lowest contiguous run of retained indoor planes, never spanning a
+  rejected storey or an outdoor gap (F3-1 and follow-up). Roofs apply only when that run reaches the column's
+  highest indoor plane. Rectangle grouping also separates roof eligibility. Core supplied-volume merging
+  still follows OC4. A highest-plane interior uses corner heights plus `PlaneHeight` for its fallback ceiling.
+- Core tests live in `KhaozEngine.Foundation.Tests` (D1). `PropLayer` remains a public readonly struct (D2),
+  and `DrawProps` remains a Terrain extension (D3). The existing public `TileCollisionBaker.WallFacing` is
+  retained (D4). Skinned-only shadow fragments preserve the excluded paths (D5).
+- Only the two terminal filtered `PropRenderer.DrawProps` overloads gain `cutInsideInteriors`, after
+  `drawFilter` and `layerIdentity`. Their four convenience overloads forward false (D8). `Queue` and
+  `DrawShadowOnlyProps` stay uncut. `PropLayer.CutsInsideInteriors` is preserved through its factories and copies.
+- `TileWorldView.CutArchetypeIds` is the internal opted-in archetype union, refreshed with `PropLayers` (P2).
+  The view publishes `AppliedInteriorCut` and the scene field together. Both picks and highlights consume it.
+- `InteriorCutBinding` is the shared texture/sampler binding helper. The frame UBO is 1376 bytes with tails
+  at 1344/1360, Model set 0 binding 14 follows atmosphere 11 to 13 and reuses sampler 6. Rigid outline and
+  silhouette payloads are 192 bytes in 256-byte slots, tails at 160/176, flags in `Params.w`/`Params.y`.
+- Contract assertions live in `InteriorCutContractTests` where the plan listed existing suites, and the
+  separate motion vertex block remains 144 bytes (D7). The timing source admits only hosted NVIDIA T4
+  adapters on direct3d11-native and vulkan-native. Local source tests do not execute it.
+
+MapDoc remains [#1474](https://github.com/APKiwiOrg/KhaozEngine/issues/1474), and world validation remains
+[#1473](https://github.com/APKiwiOrg/KhaozEngine/issues/1473). Living API use is documented in
+[USING-KHAOZENGINE](../USING-KHAOZENGINE.md) and the five affected package READMEs.
 
 ## The problem
 

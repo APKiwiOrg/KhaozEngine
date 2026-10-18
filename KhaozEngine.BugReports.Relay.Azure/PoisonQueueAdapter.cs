@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Azure.Storage.Queues;
@@ -16,13 +15,15 @@ internal sealed class PoisonQueueAdapter : IPoisonQueue
         this.queue = queue;
     }
 
-    public async Task<IReadOnlyList<PoisonQueueMessage>> ReceiveAsync(int maxMessages, TimeSpan visibilityTimeout, CancellationToken ct)
+    public async Task<PoisonQueueBatch> ReceiveAsync(int maxMessages, TimeSpan visibilityTimeout, CancellationToken ct)
     {
+        // Discard failures from earlier receives performed outside this adapter.
+        ReportQueueDecodingFailures.Take(queue);
         var messages = (await queue.ReceiveMessagesAsync(maxMessages, visibilityTimeout, ct).ConfigureAwait(false)).Value;
         var result = new PoisonQueueMessage[messages.Length];
         for (int i = 0; i < result.Length; i++)
             result[i] = new PoisonQueueMessage(messages[i].MessageId, messages[i].PopReceipt, messages[i].Body.ToString());
-        return result;
+        return new PoisonQueueBatch(result, ReportQueueDecodingFailures.Take(queue));
     }
 
     public async Task DeleteAsync(PoisonQueueMessage message, CancellationToken ct)

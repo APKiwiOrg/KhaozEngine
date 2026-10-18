@@ -18,6 +18,7 @@ public static class ReportQueueClientOptions
         var options = new QueueClientOptions { MessageEncoding = QueueMessageEncoding.Base64 };
         options.MessageDecodingFailed += args =>
         {
+            if (args.ReceivedMessage is not null) ReportQueueDecodingFailures.Record(args.Queue);
             string? id = args.ReceivedMessage?.MessageId ?? args.PeekedMessage?.MessageId;
             log.Warn($"Queue {args.Queue.Name} message {id} could not be decoded.");
             return Task.CompletedTask;

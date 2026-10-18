@@ -135,7 +135,7 @@ public sealed class PoisonQueueRequeuerTests
         public void Add(string id, ReportWorkItem item)
             => Messages.Add(new PoisonQueueMessage(id, "receipt", ReportWorkItemJson.Serialize(item)));
 
-        public Task<IReadOnlyList<PoisonQueueMessage>> ReceiveAsync(int maxMessages, TimeSpan visibilityTimeout, CancellationToken ct)
+        public Task<PoisonQueueBatch> ReceiveAsync(int maxMessages, TimeSpan visibilityTimeout, CancellationToken ct)
         {
             BeforeReceive?.Invoke(ct);
             ct.ThrowIfCancellationRequested();
@@ -144,7 +144,7 @@ public sealed class PoisonQueueRequeuerTests
             PoisonQueueMessage[] batch = Messages.Where(message => !hidden.Contains(message.Id)).Take(maxMessages).ToArray();
             foreach (PoisonQueueMessage message in batch)
                 hidden.Add(message.Id);
-            return Task.FromResult<IReadOnlyList<PoisonQueueMessage>>(batch);
+            return Task.FromResult(new PoisonQueueBatch(batch, 0));
         }
 
         public Task DeleteAsync(PoisonQueueMessage message, CancellationToken ct)

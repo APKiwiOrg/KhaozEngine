@@ -23,7 +23,8 @@ base64 encoding. `TableReportQuotaStore` uses the quota key as PartitionKey, Row
 and `ExpiresAt`. Creates use add and updates use a matching ETag with replace. The host owns expired
 entity cleanup, since Azure Table Storage does not expire entities from an `ExpiresAt` property.
 
-`PoisonQueueRequeuer` drains batches of up to 32 until no visible messages remain. It increments
+`PoisonQueueRequeuer` drains batches of up to 32 until a receive has neither decoded messages nor
+undecodable messages omitted by the SDK. A fully undecodable batch does not end the drain. It increments
 `Requeues`, sends to the work queue, then deletes from poison. The default cap is 3. Malformed and
 capped items stay and log only their message id once per drain. A drain returns its moved count after one hour and
 receives with two hours of visibility so retained items cannot starve later batches. On exit it

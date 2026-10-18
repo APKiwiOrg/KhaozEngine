@@ -61,13 +61,13 @@ public sealed class PoisonQueueRequeuer
             while (true)
             {
                 run.Token.ThrowIfCancellationRequested();
-                IReadOnlyList<PoisonQueueMessage> batch = await poison.ReceiveAsync(32, ReceiveVisibility, run.Token).ConfigureAwait(false);
-                if (batch.Count == 0)
+                PoisonQueueBatch batch = await poison.ReceiveAsync(32, ReceiveVisibility, run.Token).ConfigureAwait(false);
+                if (batch.Messages.Count == 0 && batch.UndecodableCount == 0)
                     return moved;
                 // Track the entire batch before processing, so a failed send releases its untouched tail too.
-                foreach (PoisonQueueMessage message in batch)
+                foreach (PoisonQueueMessage message in batch.Messages)
                     held.Add(message.Id, message);
-                foreach (PoisonQueueMessage message in batch)
+                foreach (PoisonQueueMessage message in batch.Messages)
                 {
                     run.Token.ThrowIfCancellationRequested();
                     ReportWorkItem item;

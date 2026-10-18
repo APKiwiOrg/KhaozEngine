@@ -22,7 +22,9 @@ public sealed class PoisonQueueAdapterTests
         options.Transport = new HttpClientTransport(http);
         options.Retry.MaxRetries = 0;
         var adapter = new PoisonQueueAdapter(new QueueClient(new Uri("https://unused.invalid/poison"), options));
-        var messages = await adapter.ReceiveAsync(32, TimeSpan.FromHours(2), default);
+        PoisonQueueBatch batch = await adapter.ReceiveAsync(32, TimeSpan.FromHours(2), default);
+        Assert.Equal(0, batch.UndecodableCount);
+        var messages = batch.Messages;
         Assert.Collection(messages,
             first => Assert.Equal(new PoisonQueueMessage("first", "receipt-first", "unencoded text"), first),
             second => Assert.Equal(new PoisonQueueMessage("second", "receipt-second", "malformed-json"), second));

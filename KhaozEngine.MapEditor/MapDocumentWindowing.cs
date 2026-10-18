@@ -64,21 +64,38 @@ public static class MapDocumentWindowing
         int wholeWorldTileLimit, int windowRadius, int playerSpawnSearchTileLimit,
         out bool windowed, out MapTileRect? window,
         string playerStartRole, Func<MapDocument, IReadOnlyList<MapMarkerAnchor>> nativeAnchors)
+        => Load(path, options, wholeWorldTileLimit, windowRadius, playerSpawnSearchTileLimit, out windowed, out window,
+            playerStartRole, nativeAnchors, out _);
+
+    /// <summary>The overload above, also reporting the anchor its window centres on, or null when the released fallback
+    /// chose the window or the document loaded whole.</summary>
+    internal static MapDocument Load(string path, MapDocumentLoadOptions options,
+        int wholeWorldTileLimit, int windowRadius, int playerSpawnSearchTileLimit,
+        out bool windowed, out MapTileRect? window,
+        string playerStartRole, Func<MapDocument, IReadOnlyList<MapMarkerAnchor>> nativeAnchors, out MapMarkerAnchor? anchor)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(playerStartRole);
         ArgumentNullException.ThrowIfNull(nativeAnchors);
         return LoadCore(path, options, wholeWorldTileLimit, windowRadius, playerSpawnSearchTileLimit, out windowed, out window,
-            playerStartRole, nativeAnchors);
+            playerStartRole, nativeAnchors, out anchor);
     }
 
     static MapDocument LoadCore(string path, MapDocumentLoadOptions options,
         int wholeWorldTileLimit, int windowRadius, int playerSpawnSearchTileLimit,
         out bool windowed, out MapTileRect? window,
         string? playerStartRole, Func<MapDocument, IReadOnlyList<MapMarkerAnchor>>? nativeAnchors)
+        => LoadCore(path, options, wholeWorldTileLimit, windowRadius, playerSpawnSearchTileLimit, out windowed, out window,
+            playerStartRole, nativeAnchors, out _);
+
+    static MapDocument LoadCore(string path, MapDocumentLoadOptions options,
+        int wholeWorldTileLimit, int windowRadius, int playerSpawnSearchTileLimit,
+        out bool windowed, out MapTileRect? window,
+        string? playerStartRole, Func<MapDocument, IReadOnlyList<MapMarkerAnchor>>? nativeAnchors, out MapMarkerAnchor? anchor)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(playerSpawnSearchTileLimit);
         windowed = false;
         window = null;
+        anchor = null;
 
         if (MapDocumentFile.DetectForm(path) != MapDocumentForm.Tiled)
             return MapDocumentFile.Load(path, options);
@@ -90,7 +107,7 @@ public static class MapDocumentWindowing
         MapDocument manifest = source.Manifest;
         float centerX = (manifest.Bounds.MinX + manifest.Bounds.MaxX) * 0.5f;
         float centerZ = (manifest.Bounds.MinZ + manifest.Bounds.MaxZ) * 0.5f;
-        MapMarkerAnchor? anchor = manifest.ResolverIdentity is not null && nativeAnchors is not null
+        anchor = manifest.ResolverIdentity is not null && nativeAnchors is not null
             ? MapMarkerAnchors.Select(nativeAnchors(manifest), playerStartRole!,
                 new MapExactXz(MapExactValue.FromSingle(centerX), MapExactValue.FromSingle(centerZ)))
             : null;

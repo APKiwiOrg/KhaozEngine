@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.MapDoc;
+using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Markers;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.Terrain;
@@ -63,7 +64,7 @@ public partial class MapEditorScene
         }
         try
         {
-            _markerReadouts = new NativeMarkerReadouts(doc, assetsOf(doc), options);
+            _markerReadouts = new NativeMarkerReadouts(doc, HostAssets(assetsOf, doc), options);
         }
         catch (Exception error) when (error is MapDocumentException or IOException or UnauthorizedAccessException or InvalidOperationException)
         {
@@ -87,16 +88,23 @@ public partial class MapEditorScene
         if (_options.MarkerOptions?.Roles is not { } roles || _options.MarkerAssets is not { } assetsOf)
             return MapDocumentWindowing.Load(_options.DocumentPath, load, _options.WholeWorldTileLimit, EffectiveWindowRadius,
                 _options.PlayerSpawnSearchTileLimit, out _, out window);
-        IReadOnlyList<MapMarkerAnchor>? anchors = null;
-        MapExactXz centre = default;
-        MapDocument doc = MapDocumentWindowing.Load(_options.DocumentPath, load, _options.WholeWorldTileLimit,
-            EffectiveWindowRadius, _options.PlayerSpawnSearchTileLimit, out _, out window, roles.PlayerStartRole, manifest =>
-            {
-                centre = BoundsCentre(manifest.Bounds);
-                return anchors = MapMarkerAnchors.Read(manifest, assetsOf(manifest));
-            });
-        if (window is not null && anchors is not null) anchor = MapMarkerAnchors.Select(anchors, roles.PlayerStartRole, centre);
-        return doc;
+        return MapDocumentWindowing.Load(_options.DocumentPath, load, _options.WholeWorldTileLimit, EffectiveWindowRadius,
+            _options.PlayerSpawnSearchTileLimit, out _, out window, roles.PlayerStartRole,
+            manifest => MapMarkerAnchors.Read(manifest, HostAssets(assetsOf, manifest)), out anchor);
+    }
+
+    // The host's closure delegate runs outside the engine. Any failure it raises is reported as a refusal, so readouts
+    // show unavailable and an open or reload refuses as a load failure rather than crashing a frame.
+    static MapAssetClosure HostAssets(Func<MapDocument, MapAssetClosure> assetsOf, MapDocument document)
+    {
+        try
+        {
+            return assetsOf(document) ?? throw new MapDocumentException("MapEditorOptions.MarkerAssets returned no asset closure.");
+        }
+        catch (Exception error) when (error is not MapDocumentException)
+        {
+            throw new MapDocumentException("MapEditorOptions.MarkerAssets failed: " + error.Message, error);
+        }
     }
 
     ViewportWorld CreateViewport(RenderDistanceProfile renderDistance) => new(_scene, _options.ManifestPaths)

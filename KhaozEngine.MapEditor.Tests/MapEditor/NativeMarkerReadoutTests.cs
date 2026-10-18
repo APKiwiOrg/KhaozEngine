@@ -89,7 +89,12 @@ public sealed class NativeMarkerReadoutTests
 
             // Without a Surface owner the row is omitted with one diagnostic, and focus leaves the pivot unchanged.
             var bare = new NativeMarkerReadouts(document, closure, new(MarkerConsumerFixtures.Roles(), null));
-            Assert.NotEqual(MapSupportStatus.Supported, bare.LegacySpawnHeight(spawn.X, spawn.Z).Status);
+            MapSupportResult unavailable = bare.LegacySpawnHeight(spawn.X, spawn.Z);
+            Assert.NotEqual(MapSupportStatus.Supported, unavailable.Status);
+            // One unavailable answer serves every row of the snapshot, so a steady frame builds no result per row.
+            Assert.Same(unavailable, bare.LegacySpawnHeight(spawn.X + 1f, spawn.Z));
+            bare.Refresh();
+            Assert.NotSame(unavailable, bare.LegacySpawnHeight(spawn.X, spawn.Z));
             SpawnBillboardFrame unconfigured = SpawnBillboards.Build(document, visibility, (x, z) => 900f, bare);
             Assert.DoesNotContain(unconfigured.Billboards, b => b.Id == spawn.Id);
             Assert.Contains("spawns_adopt", Assert.Single(unconfigured.Diagnostics));
@@ -194,13 +199,17 @@ public sealed class NativeMarkerReadoutTests
             scene.Document.Selection.Set(SelectionKind.Spawn, "old");
             NativeMarkerReadouts opened = scene.MarkerReadouts!;
 
-            void Expect(Vector3 tie, float spawnGround)
+            void Expect(Vector3 tie, float spawnGround, bool viewportFrame = true)
             {
                 MapPlayerStartView start = scene.MarkerReadouts!.PlayerStarts(enabledOnly: true).Single(s => s.Marker.Id == "start-tie");
                 Assert.Equal(tie, new Vector3(start.Marker.Position.X.ToSingle(), start.Marker.Position.Y.ToSingle(),
                     start.Marker.Position.Z.ToSingle()));
-                SpawnBillboardFrame frame = scene.SceneViewport.SpawnFrame(scene.Visibility);
-                Assert.Equal(spawnGround + SpawnBillboards.Lift, frame.Billboards.Single(b => b.Kind == SelectionKind.Spawn).Position.Y);
+                // The headless viewport stays bound to the opened document, so after a reload only the scene frame reads.
+                if (viewportFrame)
+                {
+                    SpawnBillboardFrame frame = scene.SceneViewport.SpawnFrame(scene.Visibility);
+                    Assert.Equal(spawnGround + SpawnBillboards.Lift, frame.Billboards.Single(b => b.Kind == SelectionKind.Spawn).Position.Y);
+                }
                 Assert.Equal(spawnGround + SpawnBillboards.Lift, scene.SpawnFrame().Billboards.Single(b => b.Kind == SelectionKind.Spawn).Position.Y);
                 PressF(manager, pointer);
                 Assert.Equal(spawnGround + SpawnBillboards.FocusLift, scene.NavigationPivot!.Value.Y);
@@ -232,7 +241,51 @@ public sealed class NativeMarkerReadoutTests
             Assert.True(scene.ReloadDocument(), scene.StatusText);
             Assert.NotSame(opened, scene.MarkerReadouts);
             scene.Document.Selection.Set(SelectionKind.Spawn, "old");
-            Expect(explicitTie, 20f);
+            Assert.False(scene.SceneViewport.IsBuilt);
+            Expect(explicitTie, 20f, viewportFrame: false);
+        });
+    }
+
+    /// <summary>A Select-mode click through an input frame picks the resolver-2 legacy spawn on its drawn support
+    /// height, before and after a reload, so the scene's spawn frame reaches both controller wirings.</summary>
+    [Fact]
+    public void SelectClick_PicksNativeSpawnThroughTheSceneFrame()
+    {
+        WithRoot(root =>
+        {
+            MarkerConsumerFixtures.WindowedNative(root);
+            MapAssetClosure closure = MarkerConsumerFixtures.Closure(MapDocumentFile.LoadTiled(root), root);
+            (MarkerScene scene, SceneManager manager, Pointer pointer) = Push(null,
+                Options(root, new(MarkerConsumerFixtures.Roles(), MarkerConsumerFixtures.SupportOwner), closure));
+            // A flat field keeps the terrain off the ray, so only a spawn box can be hit.
+            var flat = new TerrainField(new TerrainConfig { GentleAmplitude = 0f, DetailOctaves = 0 });
+            for (int pass = 0; pass < 2; pass++)
+            {
+                MapSpawn spawn = Assert.Single(scene.Document.Doc.Spawns);
+                scene.Controller.Field = flat;
+                scene.Document.Selection.Clear();
+                Click(scene, manager, pointer, new Vector3(spawn.X, 20f + SpawnBillboards.Lift, spawn.Z));
+                Assert.Equal((SelectionKind.Spawn, spawn.Id), (scene.Document.Selection.Kind, scene.Document.Selection.Id));
+                if (pass == 0) Assert.True(scene.ReloadDocument(), scene.StatusText);
+            }
+        });
+    }
+
+    /// <summary>A host closure delegate that throws leaves the readouts unavailable with its diagnostic, and the frame
+    /// draws no native legacy spawn rather than failing.</summary>
+    [Fact]
+    public void HostClosureFailure_ShowsUnavailable()
+    {
+        WithRoot(root =>
+        {
+            MarkerConsumerFixtures.WindowedNative(root);
+            MapEditorOptions options = Options(root, new(MarkerConsumerFixtures.Roles(), MarkerConsumerFixtures.SupportOwner),
+                MarkerConsumerFixtures.Closure(MapDocumentFile.LoadTiled(root), root));
+            options.MarkerAssets = _ => throw new NotSupportedException("host closure offline");
+            (MarkerScene scene, _, _) = Push(MapDocumentFile.LoadTiled(root), options);
+            Assert.Null(scene.MarkerReadouts);
+            Assert.Contains("host closure offline", scene.MarkerDiagnostic, StringComparison.Ordinal);
+            Assert.Empty(scene.SpawnFrame().Billboards);
         });
     }
 
@@ -285,6 +338,26 @@ public sealed class NativeMarkerReadoutTests
         var manager = new SceneManager { Pointer = pointer, UiViewport = new UiViewport(960, 540, 960, 540) };
         manager.Push(scene);
         return (scene, manager, pointer);
+    }
+
+    // Looks along +X at the target from 5 units west, then presses and releases the left button where it projects.
+    void Click(MarkerScene scene, SceneManager manager, Pointer pointer, Vector3 target)
+    {
+        scene.Camera.Position = target - new Vector3(5f, 0f, 0f);
+        scene.Camera.Yaw = MathF.PI / 2f;
+        scene.Camera.Pitch = 0f;
+        Assert.True(scene.Camera.WorldToScreen(target, 960, 540, out Vector2 at));
+        foreach (bool down in new[] { true, false })
+        {
+            var held = new HashSet<MouseButton>();
+            if (down) held.Add(MouseButton.Left);
+            var (pressed, released) = _mouse.Advance(held);
+            var frame = new InputState(new HashSet<Key>(), new HashSet<Key>(), new HashSet<Key>(), held, pressed,
+                at, default, 0f, 960, 540, windowFocused: true, mouseReleased: released);
+            pointer.Update(frame);
+            manager.Input = frame;
+            manager.Update(0.016f);
+        }
     }
 
     void PressF(SceneManager manager, Pointer pointer)

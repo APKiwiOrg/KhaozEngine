@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using KhaozEngine.MapDoc;
+using KhaozEngine.MapDoc.Markers;
 
 namespace KhaozEngine.MapEditor;
 
@@ -32,9 +33,10 @@ public partial class MapEditorScene
         ViewportWorld? replacementViewport = null;
         EditorDocument replacementDocument;
         MapTileRect? replacementWindow;
+        MapMarkerAnchor? replacementAnchor;
         try
         {
-            MapDocument replacementMap = LoadEditorDocument(_document.Registry, out replacementWindow, out _);
+            MapDocument replacementMap = LoadEditorDocument(_document.Registry, out replacementWindow, out replacementAnchor);
             replacementDocument = new EditorDocument(replacementMap, _document.Registry);
             replacementViewport = BuildReloadViewport(replacementDocument);
         }
@@ -45,7 +47,7 @@ public partial class MapEditorScene
             return false;
         }
 
-        CommitReload(replacementDocument, replacementViewport, replacementWindow);
+        CommitReload(replacementDocument, replacementViewport, replacementWindow, replacementAnchor);
         _statusText = MapEditorStrings.Resolve(MapEditorStrings.Reloaded, _options.DocumentPath);
         return true;
     }
@@ -70,7 +72,8 @@ public partial class MapEditorScene
 
     internal ViewportWorld CreateReloadViewport() => CreateViewport(_viewport.RenderDistance);
 
-    void CommitReload(EditorDocument replacement, ViewportWorld? replacementViewport, MapTileRect? replacementWindow)
+    void CommitReload(EditorDocument replacement, ViewportWorld? replacementViewport, MapTileRect? replacementWindow,
+        MapMarkerAnchor? replacementAnchor)
     {
         EditorDocument previousDocument = _document;
         ViewportWorld previousViewport = _viewport;
@@ -96,6 +99,7 @@ public partial class MapEditorScene
         _document = replacement;
         _controller = replacementController;
         _window = replacementWindow;
+        _windowAnchor = replacementAnchor;
         if (replacementViewport is not null)
         {
             _viewport = replacementViewport;

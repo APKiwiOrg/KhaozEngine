@@ -99,12 +99,12 @@ internal static class SpawnBillboards
         }
     }
 
+    // A Supported row allocates nothing, so a steady frame builds no diagnostic text. Only an omitted row names itself.
     static float? NativeGround(NativeMarkerReadouts? native, SelectionKind kind, string id, float x, float z, out string? why)
     {
-        string row = $"{kind} '{id}'";
         if (native is null)
         {
-            why = row + " (native marker readouts are not configured).";
+            why = $"{kind} '{id}' (native marker readouts are not configured).";
             return null;
         }
         MapSupportResult support = native.LegacySpawnHeight(x, z);
@@ -113,7 +113,7 @@ internal static class SpawnBillboards
             why = null;
             return support.WorldY;
         }
-        why = $"{row} (support {support.Status}: {support.Detail}).";
+        why = $"{kind} '{id}' (support {support.Status}: {support.Detail}).";
         return null;
     }
 }

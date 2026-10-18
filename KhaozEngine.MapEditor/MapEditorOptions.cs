@@ -126,7 +126,9 @@ public sealed class MapEditorOptions
 
     /// <summary>Returns the verified asset closure of a native document (or of its manifest, for a windowed open). Native
     /// marker and legacy spawn readouts need it together with <see cref="MarkerOptions"/>. Without both they are
-    /// unavailable with a developer diagnostic and never fall back to the analytic terrain. Null supplies none.</summary>
+    /// unavailable with a developer diagnostic and never fall back to the analytic terrain. Null supplies none. Any
+    /// exception it throws, or a null closure, is reported as a <see cref="MapDocumentException"/>: readouts show
+    /// unavailable with that diagnostic, and a windowed open or reload refuses as a load failure.</summary>
     public Func<MapDocument, MapAssetClosure>? MarkerAssets;
 
     /// <summary>When true (the default) the editor OWNS the host <c>Scene3D</c>'s look: it applies its own sky,

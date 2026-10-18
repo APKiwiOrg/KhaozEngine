@@ -438,6 +438,35 @@ public sealed class GitHubAppIssueClientTests : IDisposable
         Assert.Empty(handler.Requests);
     }
 
+    [Fact]
+    public async Task Token_CanceledHeldExchange_ReleasesWaitingCaller()
+    {
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var held = new TaskCompletionSource<HttpResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        handler.Enqueue(async (_, ct) =>
+        {
+            entered.SetResult();
+            return await held.Task.WaitAsync(ct);
+        });
+        TokenResponse();
+        IssueResponse();
+        using var client = Client();
+        using var cancellation = new CancellationTokenSource();
+
+        Task<int> canceled = client.CreateIssueAsync(Draft, cancellation.Token);
+        await entered.Task;
+        Task<int> next = client.CreateIssueAsync(Draft, CancellationToken.None);
+        Assert.False(next.IsCompleted);
+        Assert.Single(handler.Requests);
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => canceled);
+        Assert.Equal(42, await next);
+        Assert.Equal(new[] { "/app/installations/789/access_tokens", "/app/installations/789/access_tokens",
+            "/repos/example/reports/issues" }, handler.Requests.Select(request => request.Uri.AbsolutePath));
+        Assert.Equal("Bearer " + Token, handler.Requests[2].Authorization);
+    }
+
     public void Dispose()
     {
         http.Dispose();

@@ -299,7 +299,12 @@ original vector. Hit bounds never grant placement permission. Warm shape/value q
 fallback and refusal allocate no managed bytes and retain scratch capacity. Each reader retains up to
 four general-sweep workspaces for nested loans. First use provisions each depth once, warmed nesting
 allocates zero bytes, and a fifth simultaneous loan returns default Unresolved without allocation.
-Native G1b, explicit-tick cost-scene acceptance and consumer adoption remain separate gates.
+Acquired explicit cost scenes and captured player-scale hull stairs are covered by the
+[general sweep acceptance record](../docs/design/CERTIFIED-GENERAL-SWEEPS-2026-10-18.md#task-6-captured-content-evidence-and-gb-r13).
+Exact quarter-turn tread-edge footprint tangency still returns Unsupported and blocks the controller
+even when the shell sweeps certify Clear (#1494). Off-tangency split/compound stairs advance and
+reach the unchanged 1 mm arrival ball at both physics origins. Native G1b, SG-12/#1334 timing and
+aggregate actor cost, navigation, release and consumer adoption remain separate gates.
 
 ## Usage
 

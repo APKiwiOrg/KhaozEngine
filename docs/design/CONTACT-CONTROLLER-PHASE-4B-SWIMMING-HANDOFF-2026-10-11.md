@@ -639,7 +639,7 @@ owners through producer identity, never equality of local handle numbers. FootSu
 does not establish insertion-order-independent canonical ownership for coincident distinct semantic owners.
 Such ambiguous semantic registrations refuse until the producer supplies one authoritative owner.
 
-Adoption blockers remain #1355 certified sweep shapes, #1334 support cost, #1347 hidden support and
+Adoption blockers remain #1494 exact-edge support, #1334 support cost, #1347 hidden support and
 #1344 small bodies. W1 proves the descending bank through certified analytic ground. A tilted Bepu
 box was refused by the certified shell sweep, so this is no native tilted-bank completeness claim.
 The support cost gate #1334 remains open with 96 harness-corrected time rejections and owner-approved

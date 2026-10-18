@@ -4,6 +4,20 @@ Status: historical candidate proposal with the installed rotated-box, hull, mesh
 The checkpoint sections retain their original evidence. Current restrictions live in the
 [backend README](../../KhaozEngine.Physics.Bepu/README.md).
 
+## Final general-family acceptance
+
+The [general-sweep acceptance record](CERTIFIED-GENERAL-SWEEPS-2026-10-18.md#task-6-captured-content-evidence-and-gb-r13)
+completes #1355 for admitted rotated boxes, installed hulls, finite one-sided mesh triangles,
+spheres, capsules, cylinders and supported flat compound descendants. It adds actual acquired
+cost-scene ticks and player-scale captured Grimhollow stairs. Both split and eight-hull compound
+installations retain installed vertex/centroid identity. Off-tangency quarter-turn ascent/descent
+advances every tick and reaches the exact Euclidean 1 mm arrival ball at both physics origins.
+The six exact-edge rows retain Clear shell sweeps and Unsupported footprints with Blocked movement.
+The independent real-quaternion/represented-matrix edge disagreement remains the open support
+boundary #1494. No support, roof, raw identity, reach or lifetime rule changes. GS-3 ceilings,
+GS-9 sidedness/culling, GS-10 non-rigid seam refusal and whole-query atomic refusal remain binding.
+Native G1b, SG-12/#1334 timing/cost, navigation, release and consumer adoption remain separate.
+
 ## Installed rotated-box evidence
 
 Each monotonically assigned registration id owns captured immutable Bepu Box topology. Removal
@@ -311,8 +325,8 @@ geometry certificate was added by this slice.
 
 The next implementation/test batch is the actual optional backend sweep, not another isolated value
 helper. Thirty-two prepared facts use the real Bepu owner or its exact restricted view and actual read
-leases. Production does not yet implement IPhysicsCapsuleSweep, so initial RED expects missing backend
-capability after valid setup. No native producer or movement adoption is part of this batch.
+leases. At this historical checkpoint production did not implement IPhysicsCapsuleSweep, so initial
+RED expected missing backend capability after valid setup. No native producer or movement adoption is part of this batch.
 
 Planned production scope:
 
@@ -368,8 +382,9 @@ the raw overlap enumerator directly on that over-budget tree. There are no loops
 loads. The partial-failure fixture observes the newly allocated shapeless anchor before asserting
 persistent refusal, rather than inferring partial mutation from an exception alone.
 
-The initial identity-box sweep/bound domain remains a material backend capability limit. Passing these
-fixtures will not finish Task 4, general-shape support, the full movement resolver or native G1b.
+The initial identity-box sweep/bound domain was this checkpoint's backend capability limit. These
+fixtures alone did not finish Task 4, general-shape support, the full movement resolver or native G1b.
+The final general-family acceptance above supersedes that shape limit, with native G1b still separate.
 
 Integrated RED compiled and all 32 facts failed at the expected missing IPhysicsCapsuleSweep backend
 capability (25 owner, 7 view). Zero passes/skips and no compiler/setup failure, exit 1 in

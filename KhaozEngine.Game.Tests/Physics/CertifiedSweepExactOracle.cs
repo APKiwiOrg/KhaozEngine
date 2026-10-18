@@ -16,6 +16,15 @@ namespace KhaozEngine.Tests.Physics;
 // All allocation and exact rational root isolation belong outside allocation measurement windows.
 internal static class CertifiedSweepExactOracle
 {
+    internal static bool WithinArrivalBall(Vector3 actual, Vector3 target, float radius)
+    {
+        if (!float.IsFinite(radius) || radius < 0 ||
+            !float.IsFinite(actual.X) || !float.IsFinite(actual.Y) || !float.IsFinite(actual.Z) ||
+            !float.IsFinite(target.X) || !float.IsFinite(target.Y) || !float.IsFinite(target.Z)) return false;
+        V difference = V.From(actual) - V.From(target);
+        return difference.LengthSquared <= R.From(radius).Square();
+    }
+
     // Independent rational predicates for point probes. The entry fixtures use a signed
     // permutation and a path whose midpoint is inside the solid. Convexity then makes
     // bisection on the initial half-path an independent first-event oracle.

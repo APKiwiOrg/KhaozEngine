@@ -2,16 +2,21 @@
 
 Design for [#1355](https://github.com/APKiwiOrg/KhaozEngine/issues/1355), including the
 explicit-tick reproduction recorded in closed duplicate #1459. Baseline `dcb0599e3`.
-Status: proposed implementation contract, no new shape family is certified by this document.
-The [implementation plan](../superpowers/plans/2026-10-18-certified-general-sweeps.md) carries
-the family gates and exact fixtures.
+Status: implemented with headless family and acquired movement acceptance. Identity and rotated
+boxes, installed convex hulls, finite one-sided mesh triangles, spheres, capsules, cylinders and
+supported flat compound descendants certify within GS-3 and the refusal boundaries below.
+The [implementation plan](../superpowers/plans/2026-10-18-certified-general-sweeps.md) carries the
+serial family gates. Current consumer use lives in the
+[backend README](../../KhaozEngine.Physics.Bepu/README.md).
 
-The investigation is retained at `.superpowers/sdd/contact-followups/research-a.md` in the
-engine main checkout. The first refused operation is the upward shell lift. The complete
-zero-margin contact query succeeds, acquisition succeeds, and borrowing the composed lease
-does not change the refusal. `SelectedSweepBoundsProved` rejects the selected hulls, meshes
+The original investigation is retained at `.superpowers/sdd/contact-followups/research-a.md` in the
+engine main checkout. At that baseline the first refused operation was the upward shell lift.
+The complete zero-margin contact query and acquisition succeeded, and borrowing the composed lease
+did not change the refusal. `SelectedSweepBoundsProved` rejected the selected hulls, meshes
 and tilted crate before aperture construction. Behind it, `CapsuleBoxFractionSweep` also
-requires an identity box. Both proof gaps must close.
+required an identity box. Both sweep proof gaps are now closed for the admitted families.
+A separate complete-footprint refusal at exact quarter-turn tread tangency remains
+[#1494](https://github.com/APKiwiOrg/KhaozEngine/issues/1494), as recorded under GB-R13 below.
 
 This extends [the original sweep design](SWIM-TASK4-CERTIFIED-SWEEP-2026-10-07.md) and
 [candidate coverage](SWIM-TASK4-CANDIDATE-COVERAGE-2026-10-07.md). It preserves
@@ -414,7 +419,7 @@ Capture the vertices as hull points with provenance, not one staircase AABB. The
 | 2 | (-0.5, 0, -0.5) | (0.5, 0.47, 0) |
 | 3 | (-0.5, 0.47, -0.5) | (0.5, 0.5, 0) |
 | 4 | (-0.5, 0, 0) | (0.5, 0.72, 0.5) |
-| 5 | (-0.5, 0.72, 0.5) | (0.5, 0.75, 0.5) |
+| 5 | (-0.5, 0.72, 0) | (0.5, 0.75, 0.5) |
 | 6 | (-0.5, 0, 0.5) | (0.5, 0.97, 1) |
 | 7 | (-0.5, 0.97, 0.5) | (0.5, 1, 1) |
 
@@ -422,7 +427,8 @@ Use radius 0.3 m, half-height 0.75 m, step 0.4 m, foot radius 0.15 m and explici
 0.001 m. At feet `(0, 0.5, -0.25)`, the first shell centre is `(0, 1.4510001, -0.25)`,
 radius 0.3 and cylinder length 0.5. Prove its upward lift and a grounded +Z acquired explicit tick.
 Then bounded ascent/descent, yaw-rotated installation, split statics and compound representations
-must reach the final 3D target within a Euclidean 0.001 m ball. No per-axis substitute.
+reach the final 3D target within a Euclidean 0.001 m ball, subject to GB-R13's retained support boundary.
+No per-axis substitute.
 Capture source float values without decimal retuning and independently read installed geometry
 for support/roof expectations. Canonical owners follow captured provenance, raw IDs remain visible.
 
@@ -521,3 +527,53 @@ and the pushed-axis raw-support rebind. No existing expectation changed.
 Final solution format verification passed, with zero of 8,366 files changed. Diagnostic project
 coverage includes all 169 solution projects, with both target frameworks for the four multi-target
 projects. Staged dash, prose and file-size guards and the doc-version check pass.
+
+## Task 6 captured-content evidence and GB-R13
+
+`CapturedStairExplicitSweepTests` consumes the committed portable collision JSON without another
+checkout or the private GLB. Provenance asserts the source repository, path and SHA-256 above,
+eight identity-node meshes, 24 source positions per mesh, eight corners and every bound's float bits.
+The actual installer supplies both eight split hulls and the real eight-hull compound, with the
+centroid-compensating local offsets retained. A common edge is formed from local source operands
+before applying the affine map, retaining shared transform coefficients and translation cancellation.
+No installed point, quarter turn, support reach, skin, tolerance or work ceiling is changed.
+
+The exact player-scale first lift has complete zero-margin contacts with zero written/required,
+a raw upward miss as a control and certified Clear through 0.4 m through owner/restricted views
+and both shape/value sweep overloads. Real empty-exclusion acquired intervals drive each public
+explicit tick, with canonical stairs and separately labelled pad owners bound only to registered
+raw static/feature pairs. Independent installed-face footprint and roof oracles check accepted ticks.
+Ascent and descent use the unchanged 240-tick bound and exact dyadic Euclidean 0.001 m arrival ball,
+including closed-radius acceptance and rejection of the per-axis cube. The 0.001 m placement offset
+is removed before comparing support feet with the absolute target.
+
+GB-R13 keeps all six zero-origin quarter-turn exact-edge rows. Their actual upward shell lift and
+both horizontal sweeps certify Clear, while the complete footprint returns Unsupported and the
+controller returns Blocked. The initial-tick edge/disc discriminants expose opposite exact signs
+for the real polynomial of the stored quaternion and the represented matrix, about 1e-9 apart.
+The traversal refusals retain their independently checked near-tangent edges. The lower
+raw face remains part of the proof. This is the open support-contract decision
+[#1494](https://github.com/APKiwiOrg/KhaozEngine/issues/1494), not a missing sweep certificate.
+
+Additional quarter-turn rows offset start and target along the walk axis by one whole millimetre.
+Both representations, both physics origins and both traversal directions advance every tick,
+retain supported final placement and arrive within the same 1 mm ball. For every actual footprint
+query, an independent rational oracle reads installed source vertices and composed poses, checks
+both transform readings, proves equal discriminant signs and more than 1e-7 m2 of squared-distance
+separation from every upward edge's line. No exact-tangency row is replaced or silently moved.
+
+Removal, reused handles, invalidated registration, expired pins, disposed leases and undersized
+scopes hold atomically. Warm successful captured ticks retain only the named one-use tokens
+(312 bytes on the recorded .NET 10 arm64 route), with zero borrowed-query bytes. Allocation
+acceptance follows successful geometry and uses one cold, one prime and one measured invocation.
+Over-cap topology, unsupported descendants, unresolved geometry/side/operational correspondence,
+the GS-10 non-rigid nested seam and exhausted bounded work remain atomic refusals. Native G1b,
+SG-12/#1334 timing and aggregate actor cost, navigation, release and consumer adoption remain
+separate gates. SG-1, SG-6 to SG-8, SG-22, SG-23 and P5A-2/P5A-9/P5A-14 with A2/A3/A5 are unchanged.
+
+The final focused regression selection passes 724 tests with no skips. The strengthened captured
+selection passes all 54 cases with no skips. The Release solution build has zero warnings and
+errors, and the once-only full Game.Tests suite passes 5,955 tests with one pre-existing skipped
+perturbation recipe, 5,956 discovered in total. No timing/load acceptance follows from these runs.
+Final solution format verification changes zero of 8,371 files and covers all 169 declared projects.
+Staged dash, prose and file-size guards plus the doc-version check pass. The version remains 21.5.1.

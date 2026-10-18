@@ -779,7 +779,12 @@ the 0.3 m log's 0.6 m crest is above the 0.4 m step height. Its approach stays o
 no shell overlap, blocked within two contact skins of the lifted shell's analytic contact near 0.49 m. A body
 seated on that crest walks 0.25 m along it or 0.3 m down its walkable flank and arrives within 1 mm. Every
 row replays bit for bit. Those ground-core rows stop before the steep lower flank. Per FA-R9
-the leased head's traversal over rotated, hull, mesh and curved props waits on certified general sweeps (#1355).
+the leased head's traversal over rotated, hull, mesh and curved props was deferred to #1355.
+The [general-sweep acceptance record](CERTIFIED-GENERAL-SWEEPS-2026-10-18.md#task-6-captured-content-evidence-and-gb-r13)
+now proves acquired cost scenes and captured split/compound stairs with unchanged 1 mm arrival,
+roof and installed-footprint checks. Exact quarter-turn tread-edge support refusal remains #1494
+even with Clear shell sweeps. SG-1, SG-6 to SG-8, SG-22 and SG-23 remain unchanged, as do native
+G1b, SG-12/#1334 cost, navigation and consumer adoption gates.
 
 The #1486 walk-off adds four full dry controller rows in `ContactCurvedFlankLandingTests`: cylinder and capsule,
 radius 0.3 m, both lying turns, starting on the 0.6 m crest and walking across the flank toward the floor.

@@ -41,6 +41,7 @@
     <!-- One digest per support neighborhood and FootSupport question, recorded before the neighborhood was made
          allocation free. SupportNeighborhoodEquivalenceTests proves every result is still bit-identical. -->
     <None Include="Locomotion/Contacts/Fixtures/support-equivalence.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Locomotion/Contacts/Fixtures/grimhollow-stairs-collision.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.App/KhaozEngine.App.csproj" />

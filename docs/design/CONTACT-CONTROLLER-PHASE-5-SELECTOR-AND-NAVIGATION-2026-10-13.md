@@ -34,6 +34,16 @@ Out of scope: all navigation change (5b), native MapDoc movement and `MapNavTili
 G1b), resolver-1 MapDoc contexts on the contact controller (P5A-12), #1355 certified sweep shapes, #1344 small bodies,
 the SG-12 budget, any hosted or local load run, engine release, tag, game pin, Grimhollow edits and world edits.
 
+## General sweep prerequisite disposition
+
+#1355 is complete for the admitted families in the
+[general-sweep acceptance record](CERTIFIED-GENERAL-SWEEPS-2026-10-18.md#task-6-captured-content-evidence-and-gb-r13),
+including acquired cost-scene ticks and captured player-scale split/compound hull stairs. Exact
+quarter-turn tread-edge footprint support remains an open boundary (#1494) despite Clear shell
+sweeps. Native G1b, SG-12/#1334 cost, navigation and adoption remain separate. P5A-2, P5A-9 and
+P5A-14, including A2, A3 and A5, retain their original obligations. The baseline observations below
+remain historical evidence, not the current backend domain.
+
 ## Current state
 
 Facts at `ec20a2b61`, from code.

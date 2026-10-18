@@ -26,7 +26,7 @@ contact controller and support primitive. The verified profile identity is
 The old `f3-full-capsule-v1` identity is retained only as a compatibility test fixture.
 
 Native producer certification, phase 5 navigation and game adoption remain separate gates.
-Known blockers are #1355 certified sweep shapes, #1334 cost, #1347 hidden support and #1344 small bodies.
+Known blockers are #1494 exact-edge support, #1334 cost, #1347 hidden support and #1344 small bodies.
 
 ## Reproduction retained as RED evidence
 

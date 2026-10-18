@@ -88,6 +88,14 @@ internal static class CapsuleSweepFeatureDistance
             return Add(Add(Add(Scale(x, w.Constant(local.X), w), Scale(y, w.Constant(local.Y), w), w),
                 Scale(z, w.Constant(local.Z), w), w), translation, w);
         }
+        Point Edge(int from, int to)
+        {
+            // Subtract local operands before applying their common affine map. Subtracting
+            // independently enclosed world vertices loses shared coefficients and translation,
+            // turning an exactly parallel axis/face pair into an unproved rank-three pair.
+            Point local = Sub(Literal(geometry.Vertex(to), w), Literal(geometry.Vertex(from), w), w);
+            return Add(Add(Scale(x, local.X, w), Scale(y, local.Y, w), w), Scale(z, local.Z, w), w);
+        }
         Point query = axisRegime == 2 ? c : Add(c, Scale(axis,
             w.Constant(axisRegime == 0 ? -halfCylinderLength : halfCylinderLength), w), w);
         int count = 0;
@@ -103,8 +111,9 @@ internal static class CapsuleSweepFeatureDistance
             for (int face = 0; face < geometry.FaceCount; face++)
             {
                 Point a = Vertex(geometry.InteriorFaceVertex(face, 0));
-                Point normal = Cross(Sub(Vertex(geometry.InteriorFaceVertex(face, 1)), a, w),
-                    Sub(Vertex(geometry.InteriorFaceVertex(face, geometry.InteriorFaceSize(face) - 1)), a, w), w);
+                int first = geometry.InteriorFaceVertex(face, 0);
+                Point normal = Cross(Edge(first, geometry.InteriorFaceVertex(face, 1)),
+                    Edge(first, geometry.InteriorFaceVertex(face, geometry.InteriorFaceSize(face) - 1)), w);
                 Bound(w.Negate(Dot(normal, Sub(query, a, w), w)), w.Negate(Dot(normal, d, w)));
             }
             regime = new(zero, zero, w.Negate(radiusSquared), scratch.Eligibility, count);
@@ -118,10 +127,10 @@ internal static class CapsuleSweepFeatureDistance
         Span<Point> columns = stackalloc Point[3];
         if (dimension == 2)
         {
-            columns[0] = Sub(Vertex(geometry.FaceVertex(featureIndex, 1)), originPoint, w);
-            columns[1] = Sub(Vertex(geometry.FaceVertex(featureIndex, geometry.InteriorFaceSize(featureIndex) - 1)), originPoint, w);
+            columns[0] = Edge(anchor, geometry.FaceVertex(featureIndex, 1));
+            columns[1] = Edge(anchor, geometry.FaceVertex(featureIndex, geometry.InteriorFaceSize(featureIndex) - 1));
         }
-        else if (dimension == 1) columns[0] = Sub(Vertex(geometry.Edge(featureIndex - edgeStart).B), originPoint, w);
+        else if (dimension == 1) columns[0] = Edge(anchor, geometry.Edge(featureIndex - edgeStart).B);
         int rank = dimension;
         if (axisRegime == 2) columns[rank++] = Scale(axis, w.Constant(-1), w);
         Span<int> gram = stackalloc int[9], adjugate = stackalloc int[9];
@@ -212,9 +221,9 @@ internal static class CapsuleSweepFeatureDistance
             int vertices = geometry.InteriorFaceSize(featureIndex);
             for (int i = 0; i < vertices; i++)
             {
-                Point a = Vertex(geometry.FaceVertex(featureIndex, i));
-                Point edge = Sub(Vertex(geometry.FaceVertex(featureIndex, (i + 1) % vertices)), a, w);
-                Point offset0 = Sub(projected0, Scale(Sub(a, originPoint, w), denominator, w), w);
+                int vertex = geometry.FaceVertex(featureIndex, i);
+                Point edge = Edge(vertex, geometry.FaceVertex(featureIndex, (i + 1) % vertices));
+                Point offset0 = Sub(projected0, Scale(Edge(anchor, vertex), denominator, w), w);
                 Bound(Dot(Cross(edge, offset0, w), normal, w), Dot(Cross(edge, projected1, w), normal, w));
             }
         }

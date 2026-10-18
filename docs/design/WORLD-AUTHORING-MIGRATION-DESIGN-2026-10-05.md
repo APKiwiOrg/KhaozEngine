@@ -272,7 +272,7 @@ headless builds, physical doorway clearance, two storeys, local support/paint/wa
 free yaw/non-grid placement/scales 0.8 and 1.2, strict closure and edit/save/reload identity. The controller-only
 private comparison separately checks the frozen seven definitions, nine actual buildings and an inventoried
 standalone unlinked shelter. Keep every source leaf once and retain actual instance differences. Native walking
-and layered door routes wait for G1b, #1355 and #438. R8 owns roof/shadow/camera/light pixels, and R11/G2 owns
+and layered door routes wait for G1b, #1494 and #438. R8 owns roof/shadow/camera/light pixels, and R11/G2 owns
 import refreeze and named differential acceptance. Candidate gates, private comparison and hosted CI must pass
 before integration. Reload preserves each leaf ID and transform [E13, E21, G3, S1].
 

@@ -9593,6 +9593,10 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
   `Unresolved` without a usable prefix. `IsComplete` reports structural Clear/Hit status, not proof of
   the backend certificate. Validate the whole request extent, error budget, scope and read lifetime.
   Closed endpoints and stationary requests are included. Hit bounds do not authorize placement.
+  [Captured player-scale hull stairs](design/CERTIFIED-GENERAL-SWEEPS-2026-10-18.md#task-6-captured-content-evidence-and-gb-r13)
+  prove acquired split/compound ascent and descent within the unchanged 1 mm arrival ball. Exact
+  quarter-turn tread-edge footprint tangency still refuses support (#1494) despite Clear shell
+  sweeps. Native G1b, SG-12/#1334 cost, navigation and consumer adoption remain separate gates.
 - Optional `IPhysicsCapsuleGeometryQueries` offers the same complete sweep and contact queries with
   `CapsuleQueryDimensions` value inputs. Exact represented radius and cylindrical length reach the same
   Bepu query core without constructing a shape. Restricted views retain their exclusions and read gates.
@@ -11047,7 +11051,7 @@ Doors remain AuthoredOpen. `MapRoofPolicy` returns separate colour, shadow, came
 Auto concealment uses occupied rooms and explicit links/groups, and leaves unlinked shelters visible. Hidden
 roofs still cast shadows and block sky picking, and never change physics statics. R8 owns rendering, cameras
 and local-light pixels. Live door state waits for [#1363](https://github.com/APKiwiOrg/KhaozEngine/issues/1363).
-Native controller walking and layered routes remain gated by G1b, #1355 and #438. Physical doorway clearance
+Native controller walking and layered routes remain gated by G1b, #1494 and #438. Physical doorway clearance
 is headless R5 evidence. R9 owns the GUI host and real input, and R10 owns the remaining verb-map parity.
 
 See the [MapDoc reference](../KhaozEngine.MapDoc/README.md#rigid-prefab-payloads-and-building-intent),

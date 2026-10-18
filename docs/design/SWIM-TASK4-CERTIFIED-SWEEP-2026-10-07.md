@@ -4,6 +4,20 @@ Status: historical prerequisite design with the current rotated-box, hull, mesh 
 The checkpoint sections retain the evidence and limits of their original slices. Current consumer
 use and restrictions live in the [backend README](../../KhaozEngine.Physics.Bepu/README.md).
 
+## Final general-family acceptance
+
+The [general-sweep acceptance record](CERTIFIED-GENERAL-SWEEPS-2026-10-18.md#task-6-captured-content-evidence-and-gb-r13)
+completes #1355 for admitted rotated boxes, installed hulls, finite one-sided mesh triangles,
+spheres, capsules, cylinders and supported flat compound descendants. It adds actual acquired
+cost-scene ticks and player-scale captured Grimhollow stairs. Both split and eight-hull compound
+installations retain installed vertex/centroid identity. Off-tangency quarter-turn ascent/descent
+advances every tick and reaches the exact Euclidean 1 mm arrival ball at both physics origins.
+The six exact-edge rows retain Clear shell sweeps and Unsupported footprints with Blocked movement.
+The independent real-quaternion/represented-matrix edge disagreement remains the open support
+boundary #1494. No support, roof, raw identity, reach or lifetime rule changes. GS-3 ceilings,
+GS-9 sidedness/culling, GS-10 non-rigid seam refusal and whole-query atomic refusal remain binding.
+Native G1b, SG-12/#1334 timing/cost, navigation, release and consumer adoption remain separate.
+
 ## Rotated-box family extension
 
 The [general-sweep contract](CERTIFIED-GENERAL-SWEEPS-2026-10-18.md) adds installed rotated boxes
@@ -56,7 +70,8 @@ The hull ceilings remain 256 faces, 508 vertices and 1524 face-index entries. Th
 topology may still exhaust a query budget and refuse atomically. `CertifiedHullSweepTests` and
 `CertifiedHullSweepLifetimeTests` cover native reuse, centroid compensation, static/dynamic poses,
 nonzero-Y frames, bound repair, exact fallback and zero warm allocation. General compound composition
-uses the extension below. Authored multi-hull stairs acceptance and movement adoption remain later gates.
+uses the extension below. The final acceptance above proves authored multi-hull stairs. Movement
+adoption remains separate.
 
 ## Finite static mesh extension
 
@@ -68,7 +83,8 @@ back-face row. Stationary/back/crossing relationships without a proved contact a
 The exact [side/filter matrix](CERTIFIED-GENERAL-SWEEPS-2026-10-18.md#installed-mesh-implementation-and-pinned-side-policy)
 and pinned source symbols are recorded in GS-9. `CertifiedMeshSweepTests`,
 `CertifiedMeshSweepCoverageTests` and `CertifiedMeshSweepLifetimeTests` carry these gates.
-General compounds use the extension below. Movement acceptance remains a later task.
+General compounds use the extension below. Acquired movement acceptance is recorded above, while
+native producer certification and consumer adoption remain separate.
 
 ## Atomic compound extension
 

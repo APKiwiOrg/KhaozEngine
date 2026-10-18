@@ -5,8 +5,8 @@ using System.Threading.Tasks;
 
 namespace KhaozEngine.Tests;
 
-// Threads the tracked persistence fixture owns, so no controlled pause ever blocks a thread-pool
-// thread. A pool thread that completes an awaited task queues the awaiter on its own local
+// Test-owned threads keep controlled pauses and hang guards independent of pool scheduling.
+// A pool thread that completes an awaited task queues the awaiter on its own local
 // work-stealing queue, and other workers steal from it only after every global queue is empty. A
 // pool thread that then blocks until that awaiter releases it can stay parked until a watchdog fires
 // on a loaded runner. That was #1317.
@@ -55,6 +55,15 @@ internal sealed class DedicatedDrainScheduler
 /// <summary>Runs an action on a new dedicated thread and reports it as a task, faulted with any exception it throws.</summary>
 internal static class DedicatedThread
 {
+    // Thread.Start flows ExecutionContext. The context keeps awaits, including Task.Yield, on owned
+    // threads too, so a timed handshake never depends on a pool continuation getting scheduled.
+    public static Task Run(Func<Task> action)
+        => Run(() =>
+        {
+            SynchronizationContext.SetSynchronizationContext(new OwnedContinuationContext());
+            action().GetAwaiter().GetResult();
+        });
+
     public static Task Run(Action action)
     {
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -71,6 +80,16 @@ internal static class DedicatedThread
             }
         }) { IsBackground = true, Name = "persistence-test-actor" }.Start();
         return completion.Task;
+    }
+
+    private sealed class OwnedContinuationContext : SynchronizationContext
+    {
+        public override void Post(SendOrPostCallback callback, object? state)
+            => _ = Run(() =>
+            {
+                SetSynchronizationContext(this);
+                callback(state);
+            });
     }
 }
 

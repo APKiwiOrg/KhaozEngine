@@ -128,8 +128,8 @@ public class LogManagerAsyncTests
 
         mgr.GetLogger("L").Info("x");   // writer Emit -> reentrant.Emit -> mgr.Flush() on the writer thread
 
-        // WaitAsync throws TimeoutException if Flush deadlocks; completing normally proves it does not.
-        await Task.Run(() => mgr.Flush()).WaitAsync(TimeSpan.FromSeconds(5));
+        // This hang guard bounds a test-owned thread running Flush.
+        await DedicatedThread.Run(mgr.Flush).WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Contains(observer.Entries, e => e.Message == "x");
     }
 

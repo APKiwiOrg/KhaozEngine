@@ -137,7 +137,7 @@ public sealed class LogScopeTests
             using var parent = Log.Use(parentManager);
             var changed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var observed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            Task child = Task.Run(async () =>
+            Task child = DedicatedThread.Run(async () =>
             {
                 Assert.Same(parentManager, Log.Manager);
                 parent.Dispose();
@@ -148,7 +148,7 @@ public sealed class LogScopeTests
                 await observed.Task.WaitAsync(TimeSpan.FromSeconds(10));
                 cached.Info("child");
             });
-            Task sibling = Task.Run(async () =>
+            Task sibling = DedicatedThread.Run(async () =>
             {
                 await changed.Task.WaitAsync(TimeSpan.FromSeconds(10));
                 Assert.Same(parentManager, Log.Manager);

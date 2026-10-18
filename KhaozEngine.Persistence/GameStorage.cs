@@ -64,6 +64,12 @@ public sealed class GameStorage : IDisposable
     /// </summary>
     /// <exception cref="ArgumentNullException"><paramref name="paths"/> or <paramref name="saveEncoding"/> is null.</exception>
     public GameStorage(AppDataPaths paths, SaveEncoding saveEncoding, GameStorageOptions? options = null)
+        : this(paths, saveEncoding, options, scheduleDrain: null)
+    {
+    }
+
+    // Test seam. Null preserves the queue's default thread-pool scheduler.
+    internal GameStorage(AppDataPaths paths, SaveEncoding saveEncoding, GameStorageOptions? options, Action<Action>? scheduleDrain)
     {
         ArgumentNullException.ThrowIfNull(paths);
         ArgumentNullException.ThrowIfNull(saveEncoding);
@@ -77,7 +83,8 @@ public sealed class GameStorage : IDisposable
         // FileSettingsStorage.LoadSettingsDetailed's own clamp).
         backupGenerations = Math.Max(0, options.BackupGenerations);
         gameVersion = options.GameVersion;
-        WriteQueue = new PersistenceQueue(options.Logger, options.MaxWriteAttempts, options.RetryDelay, backupGenerations);
+        WriteQueue = new PersistenceQueue(AtomicJsonWriter.WriteText, options.Logger, options.MaxWriteAttempts, options.RetryDelay,
+            backupGenerations, scheduleDrain: scheduleDrain);
         // Settings never see the encoder: they stay plaintext under either posture by design.
         Settings = new FileSettingsStorage(Paths, WriteQueue);
         SaveEncoding = saveEncoding;

@@ -38,7 +38,10 @@ internal static class SupportFootprintProposalGeometry
         for (int i = 0; i < polygon.Edges.Length; i++)
             if (!Edge(polygon, i, axis, radius, share, ref range)) return GeometrySign.Unresolved;
 
-        FeatureNumber length = Root(FeaturePoint.Dot(polygon.Normal, polygon.Normal));
+        InstalledSupportMemberFacts? facts = polygon.SharedMemberFacts;
+        FeatureNumber length = facts is null
+            ? Root(FeaturePoint.Dot(polygon.Normal, polygon.Normal)) : facts.ProposalNormalLength;
+        if (facts is not null) SupportQueryDiagnostics.Record(SupportQueryCounter.SharedMemberFacts);
         FeatureNumber scale = radius.Divide(length);
         FeatureNumber x = axis.X.Subtract(polygon.Normal.X.Multiply(scale, exactZeroProducts: true));
         FeatureNumber z = axis.Z.Subtract(polygon.Normal.Z.Multiply(scale, exactZeroProducts: true));
@@ -58,6 +61,33 @@ internal static class SupportFootprintProposalGeometry
             if (!height.IsResolved) return GeometrySign.Unresolved;
             range.Add(height.Bounds, inside != GeometrySign.Unresolved);
         }
+        return Finish(polygon, range, inside, sourceHeight, out lowest);
+    }
+
+    /// <summary>The complete evaluator for a proposal whose axis is certified outside the polygon's closed interior,
+    /// where the interior stratum resolves without adding a height. Only the vertex and edge strata whose bits are set
+    /// run, in the complete order. The caller certifies an upward polygon whose omitted strata each resolve without
+    /// adding a height.</summary>
+    internal static GeometrySign LowestOutside(SupportPolygon polygon, in SupportFootprintProposal proposal,
+        int vertices, int edges, out GeometryInterval lowest)
+    {
+        lowest = default;
+        FeatureNumber radius = FeatureNumber.Exact(proposal.Probe.Radius);
+        FeaturePoint axis = new(FeatureNumber.Exact(proposal.Start.Position.X), Zero,
+            FeatureNumber.Exact(proposal.Start.Position.Z));
+        bool share = polygon.SharesFootprintOperands(proposal);
+        var range = new Maximum();
+        for (int i = 0; i < polygon.Vertices.Length; i++)
+            if ((vertices & (1 << i)) != 0 && !range.Add(polygon, i, axis, radius, share)) return GeometrySign.Unresolved;
+        for (int i = 0; i < polygon.Edges.Length; i++)
+            if ((edges & (1 << i)) != 0 && !Edge(polygon, i, axis, radius, share, ref range)) return GeometrySign.Unresolved;
+        return Finish(polygon, range, GeometrySign.Negative, sourceHeight: true, out lowest);
+    }
+
+    static GeometrySign Finish(SupportPolygon polygon, Maximum range, GeometrySign inside, bool sourceHeight,
+        out GeometryInterval lowest)
+    {
+        lowest = default;
         if (!range.HasUpper) return GeometrySign.Negative;
         if (!range.HasLower) return GeometrySign.Unresolved;
         if (sourceHeight && polygon.HasSource && polygon.SourcePredicates.HorizontalPlaneHeight(polygon, out var horizontal))
@@ -187,7 +217,7 @@ internal static class SupportFootprintProposalGeometry
         return true;
     }
 
-    static FeatureNumber Root(FeatureNumber value)
+    internal static FeatureNumber Root(FeatureNumber value)
     {
         if (!value.IsResolved || value.Bounds.Upper < 0) return default;
         if (value.IsExact)

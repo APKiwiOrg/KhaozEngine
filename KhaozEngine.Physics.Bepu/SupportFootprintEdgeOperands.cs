@@ -35,17 +35,18 @@ internal sealed class SupportFootprintEdgeWorkspace
 
     internal SupportFootprintEdgeOperands Read(SupportPolygon polygon, int index, FeaturePoint axis, bool share = true)
     {
-        if (!_active || !share || !axis.X.IsExact || !axis.Z.IsExact || !axis.Y.IsExact || axis.Y.Value != 0)
-            return Unshared(polygon.Vertices[index], polygon.Edges[index], axis);
+        if (SupportReferenceEvaluation.Active || !_active || !share || !axis.X.IsExact || !axis.Z.IsExact ||
+            !axis.Y.IsExact || axis.Y.Value != 0)
+            return Unshared(polygon, index, axis);
         int row = 0;
         while (row < _used && (!Same(_x[row], axis.X.Value) || !Same(_z[row], axis.Z.Value))) row++;
         if (row == _used)
         {
-            if (_used == _rows.Length) return Unshared(polygon.Vertices[index], polygon.Edges[index], axis);
+            if (_used == _rows.Length) return Unshared(polygon, index, axis);
             using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportEdgeSetup);
             int count = polygon.Edges.Length;
             if (_rows[row].Length < count) _rows[row] = new SupportFootprintEdgeOperands[count];
-            for (int i = 0; i < count; i++) _rows[row][i] = Evaluate(polygon.Vertices[i], polygon.Edges[i], axis);
+            for (int i = 0; i < count; i++) _rows[row][i] = Evaluate(polygon, i, axis);
             _x[row] = axis.X.Value;
             _z[row] = axis.Z.Value;
             _used++;
@@ -53,15 +54,23 @@ internal sealed class SupportFootprintEdgeWorkspace
         return _rows[row][index];
     }
 
-    static SupportFootprintEdgeOperands Unshared(FeaturePoint vertex, FeaturePoint edge, FeaturePoint axis)
+    static SupportFootprintEdgeOperands Unshared(SupportPolygon polygon, int index, FeaturePoint axis)
     {
         using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportEdgeSetup);
-        return Evaluate(vertex, edge, axis);
+        return Evaluate(polygon, index, axis);
     }
 
-    static SupportFootprintEdgeOperands Evaluate(FeaturePoint vertex, FeaturePoint edge, FeaturePoint axis)
+    static SupportFootprintEdgeOperands Evaluate(SupportPolygon polygon, int index, FeaturePoint axis)
     {
-        FeatureNumber a = edge.X.Multiply(edge.X, exactZeroProducts: true)
+        FeaturePoint vertex = polygon.Vertices[index], edge = polygon.Edges[index];
+        InstalledSupportMemberFacts? facts = polygon.SharedMemberFacts;
+        FeatureNumber a;
+        if (facts is not null)
+        {
+            a = facts.ProjectedEdgeLengthsSquared[index];
+            SupportQueryDiagnostics.Record(SupportQueryCounter.SharedMemberFacts);
+        }
+        else a = edge.X.Multiply(edge.X, exactZeroProducts: true)
             .Add(edge.Z.Multiply(edge.Z, exactZeroProducts: true));
         FeatureNumber dx = vertex.X.Subtract(axis.X), dz = vertex.Z.Subtract(axis.Z);
         FeatureNumber dot = dx.Multiply(edge.X, exactZeroProducts: true).Add(dz.Multiply(edge.Z, exactZeroProducts: true));

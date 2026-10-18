@@ -21,6 +21,14 @@ no rules and takes everything the earlier ones did not. Each slice's vstest filt
 the negation of every earlier slice's rules, so no test can match two slices and no test can match none. A new
 Render.Tests class or method falls into the first slice that names it, or into the last.
 
+THE BUILD. A sharded job restores and builds a derived solution containing only its test projects and
+lets ProjectReference edges build their dependencies. Render shards build Render.Tests alone. Project shards
+build their named test projects. Rest builds its non-Render test projects, plus Render.Tests on Windows for
+FXC validation and on Vulkan for shader-cache verification. Unsharded jobs still build the original solution.
+scripts/gpu-shard-build.sh keeps Configuration=Release on references absent from the derived solution,
+instead of MSBuild's Debug fallback, and rejects Debug output on the fresh CI checkout. The test solutions
+and exactly-once guards are independent of this build selection.
+
 THE GUARD. `check-render` reads every Render.Tests method listed on the shard's own build output, parses the
 filter text each of the backend's slices hands to vstest, and evaluates it with the operators vstest applies
 (case-insensitive equality and containment on FullyQualifiedName). It fails when any method matches no slice
@@ -35,7 +43,8 @@ THE BALANCE comes from the per-test durations in the TRX files of dispatch runs 
 A job's runner factor is the geometric mean of its repeated methods' duration ratios to their
 across-run geometric means. Divide durations by that factor, then take each method's geometric mean over
 the runs. Hosted speed varies uniformly across a job, so balancing raw times would move work toward the
-last run's fast hosts. Every job also spends about 4 minutes on setup and build before its tests start.
+last run's fast hosts. Those measurement runs spent about 4 minutes per job on setup and the original
+full-solution build.
 The shapes differ by backend:
   * vulkan-native runs serialised, so a slice costs the sum of its tests, about 123.7 minutes for
     Render.Tests. TemporalFollowPhaseGpuTests' orthographic Native and Quality
@@ -172,6 +181,33 @@ def cmd_solution(args):
                 continue
             path = project.attrib["Path"]
             if path == RENDER_PROJECT or (shard and project_shard(backend, path) != shard):
+                parent.remove(project)
+            else:
+                project.set("Path", os.path.relpath(source_dir / path, destination_dir).replace(os.sep, "/"))
+    solution.write(destination, encoding="unicode")
+
+
+def cmd_build_solution(args):
+    """Build test roots for one shard, plus the primary leg's Render.Tests instrumentation."""
+    backend, shard, source, destination = args
+    if shard not in shards(backend):
+        fail(f"'{shard}' is not a {backend} shard")
+    tests = set(solution_test_projects(source).values())
+    if RENDER_PROJECT not in tests:
+        fail("expected a Render.Tests test project")
+    selected = {RENDER_PROJECT} if shard.startswith("render-") else {
+        path for path in tests if path != RENDER_PROJECT and project_shard(backend, path) == shard
+    }
+    if shard == REST and backend in ("direct3d11-native", "vulkan-native"):
+        selected.add(RENDER_PROJECT)
+    solution = ET.parse(source)
+    source_dir, destination_dir = Path(source).resolve().parent, Path(destination).resolve().parent
+    for parent in solution.iter():
+        for project in list(parent):
+            if project.tag != "Project":
+                continue
+            path = project.attrib["Path"]
+            if path not in selected:
                 parent.remove(project)
             else:
                 project.set("Path", os.path.relpath(source_dir / path, destination_dir).replace(os.sep, "/"))
@@ -494,6 +530,7 @@ COMMANDS = {
     "expand": cmd_expand,
     "filter": cmd_filter,
     "solution": cmd_solution,
+    "build-solution": cmd_build_solution,
     "check-render": cmd_check_render,
     "report": cmd_report,
     "summarize": cmd_summarize,

@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Text;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.BugReports.Contracts;
@@ -30,7 +29,6 @@ public sealed class LocalFolderSink : IBugReportSink
     public const string WriteFailedError = "write_failed";
 
     const string LogSection = "sections/log.json";
-    const int LogTailLines = 50;
 
     readonly string root;
     readonly bool openViewer;
@@ -124,7 +122,7 @@ public sealed class LocalFolderSink : IBugReportSink
         }
 
         ClipIndex? clip = entries.TryGetValue(BundleEntryNames.ClipIndex, out byte[]? index) ? BugReportJson.DeserializeClipIndex(index) : null;
-        IReadOnlyList<string> logTail = entries.TryGetValue(LogSection, out byte[]? log) ? LogTail(log) : [];
+        IReadOnlyList<string> logTail = entries.TryGetValue(LogSection, out byte[]? log) ? BugReportLogTail.FromLogSection(log) : [];
         string page = render(new BugReportViewerModel(manifest, clip, sections, null, null, logTail));
         return WriteFile(folder, "viewer.html", Encoding.UTF8.GetBytes(page));
     }
@@ -137,24 +135,5 @@ public sealed class LocalFolderSink : IBugReportSink
         File.WriteAllBytes(temp, data);
         File.Move(temp, path, overwrite: true);
         return path;
-    }
-
-    // The log section is {"lines":[...]}. Anything else, or a line that is not a string, gives no lines.
-    static IReadOnlyList<string> LogTail(byte[] json)
-    {
-        try
-        {
-            using JsonDocument document = JsonDocument.Parse(json, BugReportJson.SectionDocumentOptions);
-            if (!document.RootElement.TryGetProperty("lines", out JsonElement lines) || lines.ValueKind != JsonValueKind.Array)
-                return [];
-            var tail = new List<string>();
-            foreach (JsonElement line in lines.EnumerateArray())
-                if (line.ValueKind == JsonValueKind.String) tail.Add(line.GetString()!);
-            return tail.Count > LogTailLines ? tail.GetRange(tail.Count - LogTailLines, LogTailLines) : tail;
-        }
-        catch (Exception e) when (e is JsonException or InvalidOperationException)
-        {
-            return [];
-        }
     }
 }

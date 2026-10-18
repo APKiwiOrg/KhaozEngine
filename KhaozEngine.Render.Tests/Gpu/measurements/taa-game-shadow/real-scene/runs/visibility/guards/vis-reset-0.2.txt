@@ -3895,7 +3895,7 @@ Native still: textured band 0.005660087 above 0.004840000
 [xUnit.net 00:00:30.85]           far flat         74909   0.0007   0.0028   -0.0007  0.0000     0.0000     0.0000     0.0004   0.0004   0.0008
 [xUnit.net 00:00:30.85]           textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -0 -0 -0 -1 2 -1 -1 -1
 [xUnit.net 00:00:30.85]           flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -0 -0 -1 1 -1 -1 -1
-[xUnit.net 00:00:30.85]         
+[xUnit.net 00:00:30.85]
 [xUnit.net 00:00:30.85]         summary, mean absolute luma error, then the textured band's grain out, ref and error, the flat band's error grain, and each band's frame-to-frame change out, ref and error
 [xUnit.net 00:00:30.85]         case                                   bandT  tailT  farT    bandF  tailF  farF    grOutT grRefT grErrT  grErrF  chgT   chRefT chErrT  chgF   chRefF chErrF
 [xUnit.net 00:00:30.85]         Quality S 1.0 px advancing             0.0094 0.0022 0.0046  0.0067 0.0005 0.0007  0.0158 0.0153 0.0058  0.0024  0.0147 0.0126 0.0121  0.0135 0.0131 0.0111
@@ -4340,7 +4340,7 @@ Native C pan 8.0 px: textured band 0.006283297 above 0.005500000 plus a tenth
    far flat         74909   0.0007   0.0028   -0.0007  0.0000     0.0000     0.0000     0.0004   0.0004   0.0008
    textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -0 -0 -0 -1 2 -1 -1 -1
    flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -0 -0 -1 1 -1 -1 -1
- 
+
  summary, mean absolute luma error, then the textured band's grain out, ref and error, the flat band's error grain, and each band's frame-to-frame change out, ref and error
  case                                   bandT  tailT  farT    bandF  tailF  farF    grOutT grRefT grErrT  grErrF  chgT   chRefT chErrT  chgF   chRefF chErrF
  Quality S 1.0 px advancing             0.0094 0.0022 0.0046  0.0067 0.0005 0.0007  0.0158 0.0153 0.0058  0.0024  0.0147 0.0126 0.0121  0.0135 0.0131 0.0111

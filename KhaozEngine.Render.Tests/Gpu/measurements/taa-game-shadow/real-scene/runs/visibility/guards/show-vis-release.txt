@@ -3817,7 +3817,7 @@ Silhouette evidence: scratch/taa-vis-guards/show-vis-release/silhouette_continui
    far flat         74909   0.0007   0.0028   -0.0007  0.0000     0.0000     0.0000     0.0004   0.0004   0.0008
    textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -0 -1 -0 -0 -0 1 1 2 4 20 -1 -1 -1
    flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -0 0 3 14 -1 -1 -1
- 
+
  summary, mean absolute luma error, then the textured band's grain out, ref and error, the flat band's error grain, and each band's frame-to-frame change out, ref and error
  case                                   bandT  tailT  farT    bandF  tailF  farF    grOutT grRefT grErrT  grErrF  chgT   chRefT chErrT  chgF   chRefF chErrF
  Quality S 1.0 px advancing             0.0208 0.0031 0.0046  0.0130 0.0005 0.0007  0.0197 0.0153 0.0110  0.0050  0.0134 0.0126 0.0178  0.0134 0.0131 0.0156

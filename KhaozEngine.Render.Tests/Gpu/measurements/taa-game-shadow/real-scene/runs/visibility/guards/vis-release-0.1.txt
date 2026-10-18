@@ -3740,7 +3740,7 @@ Silhouette evidence: guards/vis-release-0.1/silhouette_continuity.png
 [xUnit.net 00:00:33.30]           far flat         74909   0.0007   0.0028   -0.0007  0.0000     0.0000     0.0000     0.0004   0.0004   0.0008
 [xUnit.net 00:00:33.30]           textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -0 -0 -0 -0 0 0 1 4 18 -1 -1 -1
 [xUnit.net 00:00:33.30]           flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -0 2 14 -1 -1 -1
-[xUnit.net 00:00:33.30]         
+[xUnit.net 00:00:33.30]
 [xUnit.net 00:00:33.30]         summary, mean absolute luma error, then the textured band's grain out, ref and error, the flat band's error grain, and each band's frame-to-frame change out, ref and error
 [xUnit.net 00:00:33.30]         case                                   bandT  tailT  farT    bandF  tailF  farF    grOutT grRefT grErrT  grErrF  chgT   chRefT chErrT  chgF   chRefF chErrF
 [xUnit.net 00:00:33.30]         Quality S 1.0 px advancing             0.0176 0.0031 0.0046  0.0130 0.0005 0.0007  0.0174 0.0153 0.0096  0.0050  0.0135 0.0126 0.0151  0.0134 0.0131 0.0156
@@ -4297,7 +4297,7 @@ Native S 8.0 px retreating: textured tail 0.008185859 above 1.5 times the 1 px t
    far flat         74909   0.0007   0.0028   -0.0007  0.0000     0.0000     0.0000     0.0004   0.0004   0.0008
    textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -0 -0 -0 -0 0 0 1 4 18 -1 -1 -1
    flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -0 2 14 -1 -1 -1
- 
+
  summary, mean absolute luma error, then the textured band's grain out, ref and error, the flat band's error grain, and each band's frame-to-frame change out, ref and error
  case                                   bandT  tailT  farT    bandF  tailF  farF    grOutT grRefT grErrT  grErrF  chgT   chRefT chErrT  chgF   chRefF chErrF
  Quality S 1.0 px advancing             0.0176 0.0031 0.0046  0.0130 0.0005 0.0007  0.0174 0.0153 0.0096  0.0050  0.0135 0.0126 0.0151  0.0134 0.0131 0.0156

@@ -23,7 +23,7 @@ def sanitize(text):
     text = re.sub(r"/[^/\s]+/[^/\s]+/work/KhaozEngine/KhaozEngine/", "", text)
     text = text.replace("/_/", "")
     text = re.sub(r"/Users/[^\s:]+", "runtime-path", text)
-    return text
+    return "\n".join(line.rstrip() for line in text.splitlines()).rstrip()+"\n"
 
 
 for artifact in sorted(source.glob("filtered-render-measurements-*")):

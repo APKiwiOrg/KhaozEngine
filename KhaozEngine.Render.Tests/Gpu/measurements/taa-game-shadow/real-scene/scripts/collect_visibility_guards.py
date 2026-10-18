@@ -25,7 +25,8 @@ def clean(text):
         text = text.replace(str(path.resolve())+"/", label+"/")
         text = text.replace(str(path)+"/", label+"/")
     text = re.sub(r"/Users/[^\s:]+", "runtime-path", text)
-    return text.replace("/private/tmp/", "scratch/").replace("/tmp/", "scratch/")
+    text = text.replace("/private/tmp/", "scratch/").replace("/tmp/", "scratch/")
+    return "\n".join(line.rstrip() for line in text.splitlines()).rstrip()+"\n"
 
 
 def result(path):

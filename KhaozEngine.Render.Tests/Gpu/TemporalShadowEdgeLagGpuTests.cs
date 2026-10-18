@@ -173,17 +173,20 @@ namespace KhaozEngine.Tests.Gpu
         // figures from 0.0058 and 0.0052 to 0.0072 and 0.0064.
         static readonly Dictionary<TemporalUpscale, (double Band, double Far)> HardwareStill = new()
         {
-            [TemporalUpscale.Quality] = (0.0058, 0.0052), [TemporalUpscale.Native] = (0.0044, 0.0039),
+            [TemporalUpscale.Quality] = (0.0058, 0.0052),
+            [TemporalUpscale.Native] = (0.0044, 0.0039),
         };
 
         static readonly Dictionary<TemporalUpscale, (double Band, double Far)> WarpStill = new()
         {
-            [TemporalUpscale.Quality] = (0.0057, 0.0052), [TemporalUpscale.Native] = (0.0044, 0.0039),
+            [TemporalUpscale.Quality] = (0.0057, 0.0052),
+            [TemporalUpscale.Native] = (0.0044, 0.0039),
         };
 
         static readonly Dictionary<TemporalUpscale, (double Band, double Far)> LavapipeStill = new()
         {
-            [TemporalUpscale.Quality] = (0.0058, 0.0053), [TemporalUpscale.Native] = (0.0044, 0.0040),
+            [TemporalUpscale.Quality] = (0.0058, 0.0053),
+            [TemporalUpscale.Native] = (0.0044, 0.0040),
         };
 
         static double StillBand(TemporalUpscale preset) => 1.1 * Still[preset].Band;
@@ -254,8 +257,8 @@ namespace KhaozEngine.Tests.Gpu
                     + "err grain");
                 foreach ((string name, ShadowEdgeRegion r) in m.Regions)
                 {
-                    output.WriteLine($"  {name,-15} {r.Count,6}   {r.Mean:0.0000}   {r.P95:0.0000}   {r.Bias,7:0.0000}  "
-                        + $"{r.GrainOut:0.0000}     {r.GrainRef:0.0000}     {r.ErrorGrain:0.0000}");
+                    output.WriteLine($"  {name,-15} {r.Count,6}   {r.Mean:0.000000000}   {r.P95:0.000000000}   {r.Bias,7:0.000000000}  "
+                        + $"{r.GrainOut:0.000000000}     {r.GrainRef:0.000000000}     {r.ErrorGrain:0.000000000}");
                     Assert.True(r.Count > 0, $"{c.Name}: the {name} region holds no pixels");
                 }
                 string bins = $"{ProfileBin} px bins of travel from {ProfileAhead - ProfileBins * ProfileBin} (behind) to "
@@ -281,23 +284,23 @@ namespace KhaozEngine.Tests.Gpu
                 if (c.PixelsPerFrame == 0f)
                 {
                     Check(r["band textured"].Mean <= StillBand(c.Preset),
-                        $"{c.Name}: textured band {r["band textured"].Mean:0.0000} above {StillBand(c.Preset):0.0000}");
+                        $"{c.Name}: textured band {r["band textured"].Mean:0.000000000} above {StillBand(c.Preset):0.000000000}");
                     Check(r["far textured"].Mean <= StillFar(c.Preset),
-                        $"{c.Name}: textured control {r["far textured"].Mean:0.0000} above {StillFar(c.Preset):0.0000}");
+                        $"{c.Name}: textured control {r["far textured"].Mean:0.000000000} above {StillFar(c.Preset):0.000000000}");
                     foreach (string region in new[] { "band textured", "far textured" })
                         Check(r[region].GrainOut >= StillGrainShare * r[region].GrainRef,
-                            $"{c.Name}: {region} grain {r[region].GrainOut:0.0000} below {StillGrainShare} of the "
-                            + $"reference's {r[region].GrainRef:0.0000}");
+                            $"{c.Name}: {region} grain {r[region].GrainOut:0.000000000} below {StillGrainShare} of the "
+                            + $"reference's {r[region].GrainRef:0.000000000}");
                     continue;
                 }
                 if (MathF.Abs(c.PixelsPerFrame) != 1f) continue;
                 Case slow = c with { Name = c.Name.Replace("1.00", "0.25"), PixelsPerFrame = c.PixelsPerFrame / 4f };
                 double tail = r["tail textured"].Mean, slowTail = measured[slow]["tail textured"].Mean;
                 Check(tail <= TravelTailRatio * slowTail,
-                    $"{c.Name}: textured tail {tail:0.0000} above {TravelTailRatio} times the 0.25 px tail {slowTail:0.0000}");
+                    $"{c.Name}: textured tail {tail:0.000000000} above {TravelTailRatio} times the 0.25 px tail {slowTail:0.000000000}");
                 if (c.Preset == TemporalUpscale.Quality)
                     Check(r["band textured"].Mean <= QualityBandLimit,
-                        $"{c.Name}: textured band {r["band textured"].Mean:0.0000} above {QualityBandLimit}");
+                        $"{c.Name}: textured band {r["band textured"].Mean:0.000000000} above {QualityBandLimit}");
             }
             Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
 

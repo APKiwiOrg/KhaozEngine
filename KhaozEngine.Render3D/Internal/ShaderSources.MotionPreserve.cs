@@ -11,7 +11,8 @@ namespace KhaozEngine.Render3D.Internal;
 internal static partial class ShaderSources
 {
     static string PreservingMotion(string fragment) => ShaderText.BeforeEndOfMain(
-        ShaderText.After(fragment, DepthOutputGlsl, "\nlayout(location=3) out vec4 oMotion;"),
+        ShaderText.After(fragment.Replace("layout(location=3) out float oKeyVisibility;",
+            "layout(location=4) out float oKeyVisibility;", System.StringComparison.Ordinal), DepthOutputGlsl, "\nlayout(location=3) out vec4 oMotion;"),
         "    oMotion = vec4(0.0);   // discarded (PreserveDestination blend on attachment 3)\n");
 
     public static readonly string TexturedBillboardMotionFrag = PreservingMotion(TexturedBillboardFrag);

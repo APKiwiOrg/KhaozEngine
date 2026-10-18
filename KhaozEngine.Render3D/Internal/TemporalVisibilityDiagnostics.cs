@@ -22,6 +22,14 @@ internal static class TemporalVisibilityDiagnostics
             "\n    oKeyVisibility = keyShadow;");
     }
 
+    internal static string PreserveFragment(string program)
+    {
+        if (!Enabled) return program;
+        program = ShaderText.After(program, "layout(location=2) out vec4 oDepth;",
+            "\nlayout(location=3) out float oKeyVisibility;");
+        return ShaderText.BeforeEndOfMain(program, "    oKeyVisibility = 0.0;\n");
+    }
+
     internal static string ResolveFragment(string program)
     {
         if (!Enabled) return program;

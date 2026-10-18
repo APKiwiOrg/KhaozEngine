@@ -52,7 +52,7 @@ void main() {
     vColor = Color;
 }";
 
-        public const string OverlayUnlitFrag = @"#version 450
+        public static string OverlayUnlitFrag => TemporalVisibilityDiagnostics.PreserveFragment(@"#version 450
 layout(location=0) in vec4 vColor;
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oNormal;
@@ -61,7 +61,7 @@ void main() {
     oColor = vColor;       // alpha via the AlphaBlend attachment on target 0
     oNormal = vec4(0.0);   // discarded (PreserveDestination blend on attachment 1)
     oDepth  = vec4(0.0);   // discarded (PreserveDestination blend on attachment 2)
-}";
+}");
 
         // ---- Shared fullscreen triangle ----
         public const string FullscreenVert = @"#version 450

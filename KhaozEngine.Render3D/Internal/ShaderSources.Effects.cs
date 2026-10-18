@@ -64,7 +64,7 @@ void main() {
         //      It reuses BillboardVert. It samples a texture sub-rect (vUv carries the source rect) times the tint,
         //      and writes all 3 MRT targets so the SPIR-V output count matches the framebuffer: only colour matters
         //      (the normal/depth attachments use a PreserveDestination blend, so what it writes there is discarded). ----
-        public const string TexturedBillboardFrag = @"#version 450
+        public static string TexturedBillboardFrag => TemporalVisibilityDiagnostics.PreserveFragment(@"#version 450
 layout(set=0, binding=0) uniform U { mat4 ViewProj; vec4 FogBlend; };
 " + AtmosphereBindingsAt3Glsl + AtmosphereFogGlsl + @"
 layout(set=0, binding=1) uniform texture2D Tex;
@@ -80,7 +80,7 @@ void main() {
     oColor = vec4(atmosphereFog(t.rgb * vColor.rgb, vWorld, FogBlend.x > 0.5, FogBlend.y > 0.5), t.a * vColor.a);
     oNormal = vec4(0.0);   // discarded (PreserveDestination blend on attachment 1)
     oDepth  = vec4(0.0);   // discarded (PreserveDestination blend on attachment 2)
-}";
+}");
 
         // ---- Modern particle sprites (ParticleRenderer). One instanced draw for the whole frame's queue:
         //      per-instance attributes carry each sprite (locations 0..4, no holes, every attribute consumed,
@@ -538,7 +538,7 @@ void main() {
     vWorld = Position;
 }";
 
-        public const string BeamFrag = @"#version 450
+        public static string BeamFrag => TemporalVisibilityDiagnostics.PreserveFragment(@"#version 450
 " + AtmosphereBindingsAt1Glsl + AtmosphereFogGlsl + @"
 layout(set=0, binding=0) uniform U { mat4 ViewProj; vec4 Time; };
 layout(location=0) in vec2 vUv;
@@ -572,7 +572,7 @@ void main() {
     oColor  = vec4(rgb, master);   // Additive (src.a / one): out.rgb = rgb*master + dst.rgb
     oNormal = vec4(0.0);           // discarded (PreserveDestination on attachment 1)
     oDepth  = vec4(0.0);           // discarded (PreserveDestination on attachment 2)
-}";
+}");
 
         // ---- Motion-trail ribbon (weapon swings, thruster streaks, tracers): a tapered strip traced along a moving
         //      point, built by TrailGeometry. The tail fade + taper are baked into the vertex (Color.a, geometry);
@@ -594,7 +594,7 @@ void main() {
     vWorld = Position;
 }";
 
-        public const string TrailFrag = @"#version 450
+        public static string TrailFrag => TemporalVisibilityDiagnostics.PreserveFragment(@"#version 450
 layout(set=0, binding=0) uniform U { mat4 ViewProj; vec4 FogBlend; };
 " + AtmosphereBindingsAt1Glsl + AtmosphereFogGlsl + @"
 layout(location=0) in vec3 vUv;     // x=across, y=along, z=softEdge
@@ -611,6 +611,6 @@ void main() {
     oColor  = vec4(atmosphereFog(vColor.rgb, vWorld, FogBlend.x > 0.5, FogBlend.y > 0.5), a);   // Additive: rgb*a + dst; AlphaBlend: rgb*a + dst*(1-a)
     oNormal = vec4(0.0);             // discarded (PreserveDestination on attachment 1)
     oDepth  = vec4(0.0);             // discarded (PreserveDestination on attachment 2)
-}";
+}");
     }
 }

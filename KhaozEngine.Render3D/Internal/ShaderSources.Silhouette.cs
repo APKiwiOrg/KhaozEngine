@@ -26,7 +26,7 @@ void main() {
     gl_Position = ViewProj * world;
 }";
 
-        public const string SilhouetteFrag = @"#version 450
+        public static string SilhouetteFrag => TemporalVisibilityDiagnostics.PreserveFragment(@"#version 450
 layout(set=0, binding=0) uniform Draw { mat4 ViewProj; mat4 World; vec4 Color; vec4 Params; };
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oNormal;
@@ -35,6 +35,6 @@ void main() {
     oColor = Color;        // flat, alpha via the AlphaBlend attachment on target 0
     oNormal = vec4(0.0);   // discarded (PreserveDestination blend on attachment 1)
     oDepth  = vec4(0.0);   // discarded (PreserveDestination blend on attachment 2)
-}";
+}");
     }
 }

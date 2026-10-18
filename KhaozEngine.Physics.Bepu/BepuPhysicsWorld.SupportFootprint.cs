@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using BepuPhysics;
 using KhaozEngine.Physics;
 
 namespace KhaozEngine.Physics.Bepu;
@@ -105,5 +106,5 @@ public sealed partial class BepuPhysicsWorld : IPhysicsSupportFootprint
 
     static bool FootprintProposalDomain(in SupportFootprintProposal proposal) =>
         proposal.Probe.Radius is >= 0.01f and <= 2f && proposal.Probe.Length <= 8 &&
-        RepresentedGeometryTransforms.PosePoint(proposal.Start, Vector3.Zero).IsResolved;
+        InstalledPoseOperator.TryCreateSupport(new RigidPose(proposal.Start.Position, proposal.Start.Orientation), out _);
 }

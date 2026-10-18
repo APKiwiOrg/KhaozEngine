@@ -105,19 +105,19 @@ public partial class SupportFootprintTests
         scene.Install(new TriangleMeshShape([new(-2, 0, -2), new(2, 0, -2), new(2, 0, 2), new(-2, 0, 2)],
             [0, 1, 2, 0, 2, 3]), new(new(0, 0.125f, 0), rotation));
         var map = CapturedMesh(scene, Request())[0].SourceMap;
-        Assert.True(map.X.Y.Lower < map.X.Y.Upper);
+        Assert.True(GeometryInterval.Exact(map.X.Y).Lower < GeometryInterval.Exact(map.X.Y).Upper);
         OracleFace Sample(double xy)
         {
-            V Transform(float x, float z) => new(R.From(map.X.X.Lower) * R.From(x) + R.From(map.Z.X.Lower) * R.From(z),
-                R.From(xy) * R.From(x) + R.From(map.Z.Y.Lower) * R.From(z) + R.From(0.125),
-                R.From(map.X.Z.Lower) * R.From(x) + R.From(map.Z.Z.Lower) * R.From(z));
+            V Transform(float x, float z) => new(R.From(map.X.X) * R.From(x) + R.From(map.Z.X) * R.From(z),
+                R.From(xy) * R.From(x) + R.From(map.Z.Y) * R.From(z) + R.From(0.125),
+                R.From(map.X.Z) * R.From(x) + R.From(map.Z.Z) * R.From(z));
             V[] exact = [Transform(-2, -2), Transform(-2, 2), Transform(2, 2), Transform(2, -2)];
             return new(default, 0, exact.Select(v => new OracleVector(SupportFootprintExactOracle.AsDouble(v.X),
                 SupportFootprintExactOracle.AsDouble(v.Y), SupportFootprintExactOracle.AsDouble(v.Z))).ToArray())
             { ExactVertices = exact };
         }
-        var low = SupportFootprintExactOracle.Contact(Sample(map.X.Y.Lower), Request().FootProposal)!.Value;
-        var high = SupportFootprintExactOracle.Contact(Sample(map.X.Y.Upper), Request().FootProposal)!.Value;
+        var low = SupportFootprintExactOracle.Contact(Sample(map.X.Y), Request().FootProposal)!.Value;
+        var high = SupportFootprintExactOracle.Contact(Sample(map.X.Y), Request().FootProposal)!.Value;
         double boundary = SupportFootprintExactOracle.AsDouble((low.Upper + high.Lower) / new R(2, 1));
         Assert.True(low.Upper < R.From(boundary));
         Assert.True(high.Lower > R.From(boundary));

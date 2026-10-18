@@ -3,7 +3,7 @@ using KhaozEngine.Physics;
 
 namespace KhaozEngine.Physics.Bepu;
 
-/// <summary>Closed-stratum signs over the captured local vertices and their one shared coefficient box.
+/// <summary>Closed-stratum signs over the captured local vertices and their one represented point map.
 /// Squared radical comparisons are polynomials of degree at most eight. The outward path calls this owner
 /// only when its sign is undecided. No rounded vertex or coefficient midpoint defines the source.</summary>
 internal sealed partial class SupportFootprintSourcePredicates
@@ -22,32 +22,27 @@ internal sealed partial class SupportFootprintSourcePredicates
         SupportQueryDiagnostics.Record(SupportQueryCounter.ExactFallbacks);
         _polygon = polygon;
         var map = polygon.SourceMap;
-        if (_hasMap && Same(map.X, _sourceMap.X) && Same(map.Y, _sourceMap.Y) &&
-            Same(map.Z, _sourceMap.Z) && map.Translation == _sourceMap.Translation)
+        if (_hasMap && SupportSourceMapComparer.Instance.Equals(map, _sourceMap))
         {
             _work.ResetExpressions();
             return true;
         }
         using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportSourceSetup);
         _work.Reset();
-        _map[0] = _work.Coefficient(map.X.X);
-        _map[1] = _work.Coefficient(map.Y.X);
-        _map[2] = _work.Coefficient(map.Z.X);
-        _map[3] = _work.Coefficient(map.X.Y);
-        _map[4] = _work.Coefficient(map.Y.Y);
-        _map[5] = _work.Coefficient(map.Z.Y);
-        _map[6] = _work.Coefficient(map.X.Z);
-        _map[7] = _work.Coefficient(map.Y.Z);
-        _map[8] = _work.Coefficient(map.Z.Z);
+        _map[0] = _work.Constant(map.X.X);
+        _map[1] = _work.Constant(map.Y.X);
+        _map[2] = _work.Constant(map.Z.X);
+        _map[3] = _work.Constant(map.X.Y);
+        _map[4] = _work.Constant(map.Y.Y);
+        _map[5] = _work.Constant(map.Z.Y);
+        _map[6] = _work.Constant(map.X.Z);
+        _map[7] = _work.Constant(map.Y.Z);
+        _map[8] = _work.Constant(map.Z.Z);
         _work.CompleteMap();
         _sourceMap = map;
         _hasMap = _work.IsResolved;
         return _work.IsResolved;
     }
-
-    static bool Same(GeometryVector a, GeometryVector b) => Same(a.X, b.X) && Same(a.Y, b.Y) && Same(a.Z, b.Z);
-    static bool Same(GeometryInterval a, GeometryInterval b) =>
-        a.IsResolved == b.IsResolved && a.Lower == b.Lower && a.Upper == b.Upper;
 
     SupportSourcePolynomial Component(Vector3 a, Vector3 b, int axis, double translation = 0) =>
         _work.Linear(_map[axis * 3], _map[axis * 3 + 1], _map[axis * 3 + 2], a, b, translation);
@@ -107,7 +102,7 @@ internal sealed partial class SupportFootprintSourcePredicates
         height = default;
         if (!polygon.HasSource) return false;
         Vector3 first = polygon.SourceVertices[0];
-        // Equal source heights make every polygon point horizontal over the whole coefficient box.
+        // Equal source heights make every polygon point horizontal under the represented map.
         // Reset per vertex so the fixed expression capacity is independent of the polygon's size.
         for (int i = 1; i < polygon.SourceVertices.Length; i++)
         {

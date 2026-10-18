@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using BepuPhysics;
 using KhaozEngine.Physics;
 
 namespace KhaozEngine.Physics.Bepu;
@@ -50,7 +51,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsSupportNeighborhood
         // The same proven domain as the feature query: an upright probe of bounded size and a bounded band.
         if (pose.Orientation.X != 0f || pose.Orientation.Z != 0f ||
             probe.Radius is < 0.01f or > 2f || probe.Length > 8f || bandMetres > 0.01f ||
-            !RepresentedGeometryTransforms.PosePoint(pose, Vector3.Zero).IsResolved)
+            !InstalledPoseOperator.TryCreateSupport(new RigidPose(pose.Position, pose.Orientation), out _))
             return SupportNeighborhoodResult.Refused(CapsuleFeatureStatus.Unsupported);
         QueryScratch scratch = scope.Scratch;
         SupportNeighborhoodCollector collector = scratch.Neighborhoods.Take();

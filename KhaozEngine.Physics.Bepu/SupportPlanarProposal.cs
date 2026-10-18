@@ -5,7 +5,7 @@ using KhaozEngine.Physics;
 namespace KhaozEngine.Physics.Bepu;
 
 /// <summary>Sufficient certificates for attained interior contacts on bounded horizontal polygons.
-/// All other cases keep the complete finite-stratum evaluator, including uncertain source maps.</summary>
+/// All other cases keep the complete finite-stratum evaluator, including unresolved arithmetic.</summary>
 internal static class SupportPlanarProposal
 {
     internal static bool Contact(SupportPolygon polygon, FeaturePoint start, FeaturePoint direction,
@@ -64,12 +64,8 @@ internal static class SupportPlanarProposal
         return true;
     }
 
-    static bool Unit(GeometryVector vector, int axis) =>
-        Exact(vector.X, axis == 0 ? 1 : 0) && Exact(vector.Y, axis == 1 ? 1 : 0) &&
-        Exact(vector.Z, axis == 2 ? 1 : 0);
-
-    static bool Exact(GeometryInterval value, double expected) =>
-        value.IsResolved && value.Lower == expected && value.Upper == expected;
+    static bool Unit(Vector3 vector, int axis) => vector.X == (axis == 0 ? 1 : 0) &&
+        vector.Y == (axis == 1 ? 1 : 0) && vector.Z == (axis == 2 ? 1 : 0);
 
     // Exact signs on the represented coordinates. A rounded cast could move a vertex of a hull installed at an
     // offset centre across the axis. The certificate and the axis lattice keep every operand inside the exact

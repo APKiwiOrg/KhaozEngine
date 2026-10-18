@@ -139,7 +139,7 @@ public partial class SupportFootprintTests
     static SupportPolygon IncidencePolygon(Vector3[] local, in RigidPose pose, int owner)
     {
         if (Vector3.Cross(local[1] - local[0], local[2] - local[0]).Y < 0) Array.Reverse(local);
-        Assert.True(InstalledPoseOperator.TryCreate(pose, out var map));
+        Assert.True(InstalledPoseOperator.TryCreateSupport(pose, out var map));
         var polygon = new SupportPolygon();
         polygon.Begin(new StaticHandle(owner), 0, local.Length);
         polygon.BeginSource(map);

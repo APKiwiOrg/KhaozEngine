@@ -113,7 +113,8 @@ internal static class SupportNeighborhoodOracle
     internal const int BoxMinusX = 0;
     internal const int BoxMinusZ = 4;
 
-    internal static List<OracleFace> Box(StaticHandle owner, Vector3 half, Pose pose)
+    internal static List<OracleFace> Box(StaticHandle owner, Vector3 half, Pose pose,
+        Func<Pose, Vector3, OracleVector>? historical = null)
     {
         var corners = new OracleVector[8];
         var localCorners = new Vector3[8];
@@ -122,7 +123,7 @@ internal static class SupportNeighborhoodOracle
             var local = new OracleVector((i & 1) == 0 ? -half.X : half.X, (i & 2) == 0 ? -half.Y : half.Y,
                 (i & 4) == 0 ? -half.Z : half.Z);
             localCorners[i] = new((float)local.X, (float)local.Y, (float)local.Z);
-            corners[i] = OracleVector.Rotate(pose.Orientation, local) + OracleVector.From(pose.Position);
+            corners[i] = historical is null ? Point(pose, localCorners[i]) : historical(pose, localCorners[i]);
         }
         var exact = SupportFootprintExactOracle.Transform(localCorners, pose);
         var faces = new List<OracleFace>();
@@ -134,7 +135,8 @@ internal static class SupportNeighborhoodOracle
 
     /// <summary>The faces of the only static in <paramref name="world"/>, a convex hull in its centroid wrapper,
     /// read from the installed shape.</summary>
-    internal static List<OracleFace> InstalledHull(BepuPhysicsWorld world, StaticHandle owner)
+    internal static List<OracleFace> InstalledHull(BepuPhysicsWorld world, StaticHandle owner,
+        Func<Pose, Pose, Vector3, OracleVector>? historical = null)
     {
         FieldInfo? field = typeof(BepuPhysicsWorld).GetField("_sim", BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.NotNull(field);
@@ -148,33 +150,37 @@ internal static class SupportNeighborhoodOracle
         Assert.Equal(default(BepuHull).TypeId, child.ShapeIndex.Type);
         Assert.Equal(Quaternion.Identity, child.LocalPose.Orientation);
         ref BepuHull hull = ref simulation.Shapes.GetShape<BepuHull>(child.ShapeIndex.Index);
+        BepuCompound.GetWorldPose(child.LocalPose, body.Pose, out var installedPose);
+        Pose pose = new(installedPose.Position, installedPose.Orientation);
+        Pose root = new(body.Pose.Position, body.Pose.Orientation), localPose = new(child.LocalPose.Position, child.LocalPose.Orientation);
         var faces = new List<OracleFace>();
         for (int face = 0; face < hull.FaceToVertexIndicesStart.Length; face++)
         {
             hull.GetVertexIndicesForFace(face, out var indices);
             var vertices = new OracleVector[indices.Length];
+            var local = new Vector3[indices.Length];
             for (int i = 0; i < indices.Length; i++)
             {
                 hull.GetPoint(indices[i], out Vector3 point);
-                OracleVector local = OracleVector.From(child.LocalPose.Position) + OracleVector.From(point);
-                vertices[i] = OracleVector.Rotate(body.Pose.Orientation, local) + OracleVector.From(body.Pose.Position);
+                local[i] = point;
+                vertices[i] = historical is null ? Point(pose, point) : historical(root, localPose, point);
             }
-            faces.Add(new OracleFace(owner, face, vertices));
+            faces.Add(new OracleFace(owner, face, vertices) { ExactVertices = SupportFootprintExactOracle.Transform(local, pose) });
         }
         return faces;
     }
 
     /// <summary>The triangles of mesh static <paramref name="owner"/>, read from the installed shape and pose. Element
     /// id is the triangle index. Vertices run A, C, B so the normal is the backend's front, Cross(C - A, B - A).</summary>
-    internal static List<OracleFace> InstalledMesh(BepuPhysicsWorld world, StaticHandle owner)
+    internal static List<OracleFace> InstalledMesh(BepuPhysicsWorld world, StaticHandle owner,
+        Func<Pose, Vector3, OracleVector>? historical = null)
     {
         BepuSim simulation = Installed(world, owner, out BepuStaticDescription description);
         Assert.Equal(default(BepuMesh).TypeId, description.Shape.Type);
         ref BepuMesh mesh = ref simulation.Shapes.GetShape<BepuMesh>(description.Shape.Index);
         Assert.Equal(Vector3.One, mesh.Scale);
-        OracleVector World(Vector3 local) =>
-            OracleVector.Rotate(description.Pose.Orientation, OracleVector.From(local)) +
-            OracleVector.From(description.Pose.Position);
+        Pose pose = new(description.Pose.Position, description.Pose.Orientation);
+        OracleVector World(Vector3 local) => historical is null ? Point(pose, local) : historical(pose, local);
         var faces = new List<OracleFace>();
         for (int i = 0; i < mesh.Triangles.Length; i++)
         {
@@ -191,7 +197,8 @@ internal static class SupportNeighborhoodOracle
     /// <summary>The curved surface elements of static <paramref name="owner"/>, read from the installed shapes and
     /// poses: a sphere or capsule static, or every sphere, capsule and cylinder leaf of a compound. A cylinder's leaf
     /// pose carries the base alignment lift.</summary>
-    internal static List<OracleTangent> InstalledCurved(BepuPhysicsWorld world, StaticHandle owner)
+    internal static List<OracleTangent> InstalledCurved(BepuPhysicsWorld world, StaticHandle owner,
+        Func<Pose, Pose?, (OracleVector Centre, OracleVector Axis)>? historical = null)
     {
         BepuSim simulation = Installed(world, owner, out BepuStaticDescription description);
         var tangents = new List<OracleTangent>();
@@ -199,8 +206,9 @@ internal static class SupportNeighborhoodOracle
         OracleVector position = OracleVector.From(description.Pose.Position);
         if (description.Shape.Type != default(BepuCompound).TypeId)
         {
-            AddCurved(simulation, description.Shape, owner, 0, position,
-                OracleVector.Rotate(orientation, new OracleVector(0, 1, 0)).Unit, tangents);
+            var frame = historical is null ? (position, OracleVector.Rotate(orientation, new OracleVector(0, 1, 0)).Unit)
+                : historical(new(description.Pose.Position, orientation), null);
+            AddCurved(simulation, description.Shape, owner, 0, frame.Item1, frame.Item2, tangents);
             return tangents;
         }
         ref BepuCompound compound = ref simulation.Shapes.GetShape<BepuCompound>(description.Shape.Index);
@@ -210,9 +218,19 @@ internal static class SupportNeighborhoodOracle
             OracleVector centre = OracleVector.Rotate(orientation, OracleVector.From(child.LocalPose.Position)) + position;
             OracleVector axis = OracleVector.Rotate(orientation,
                 OracleVector.Rotate(child.LocalPose.Orientation, new OracleVector(0, 1, 0))).Unit;
+            if (historical is not null)
+                (centre, axis) = historical(new(description.Pose.Position, orientation), new Pose(child.LocalPose.Position, child.LocalPose.Orientation));
             AddCurved(simulation, child.ShapeIndex, owner, leaf, centre, axis, tangents);
         }
         return tangents;
+    }
+
+    internal static OracleVector Point(Pose pose, Vector3 local)
+    {
+        var exact = InstalledPoseOracle.Represented(pose.Orientation).Apply(InstalledPoseOracle.V.From(local)) +
+            InstalledPoseOracle.V.From(pose.Position);
+        return new(SupportFootprintExactOracle.AsDouble(exact.X), SupportFootprintExactOracle.AsDouble(exact.Y),
+            SupportFootprintExactOracle.AsDouble(exact.Z));
     }
 
     static void AddCurved(BepuSim simulation, BepuTypedIndex shape, StaticHandle owner, int leaf, OracleVector centre,

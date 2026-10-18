@@ -85,7 +85,7 @@ public partial class SupportFootprintTests
         var polygon = Assert.Single(CapturedMesh(scene, request));
         var map = polygon.SourceMap;
         Assert.Equal(variables, new[] { map.X.X, map.X.Y, map.X.Z, map.Y.X, map.Y.Y, map.Y.Z,
-            map.Z.X, map.Z.Y, map.Z.Z }.Count(c => c.Lower != c.Upper));
+            map.Z.X, map.Z.Y, map.Z.Z }.Count(c => GeometryInterval.Exact(c).Lower != GeometryInterval.Exact(c).Upper));
         var axis = FeaturePoint.Exact(Vector3.Zero);
         var radius = FeatureNumber.Exact(request.Radius);
         // Include cold sparse terms and the structural scratch inspection before the warm window.

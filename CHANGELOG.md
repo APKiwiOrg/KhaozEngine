@@ -21,6 +21,11 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   [phase 3 hosted verdict](docs/verification/2026-10-18-support-cost-hosted-1334-phase3.md) passes 135 of 139
   ordinary rows. The stairs mesh and hidden crate rows that still miss SG-12 are judged against the aggregate
   actor budget before a consumer pin (#1334).
+- Contact controller ground support covers more props. Players can stand on planks pitched 3 to 6 degrees at any
+  yaw, climb onto lying logs and pipes up to the step height, and walk where a sloped edge crosses joined mesh
+  triangles or statics without a pacing hitch or a false step signal (#1429, #1455, #1454). Log ends and capsule caps
+  can still refuse support, and authoritative ticks over rotated, hull, mesh and round props still wait on certified
+  shell sweeps (#1355).
 
 ## 21.4.0
 

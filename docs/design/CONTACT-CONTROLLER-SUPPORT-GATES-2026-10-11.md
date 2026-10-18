@@ -765,6 +765,18 @@ with its arena provisions 21,040 bytes once and grows only past its previous hig
 their row capture and copies still allocate nothing. A support read outside an open interval, such as a nested
 tick whose memo is already open, carries no handle and keeps the unjoined rule. No timing is claimed for the larger copies.
 
+CF-6's headless traversal adds no further result change. `ContactFollowupTraversalTests` drives the dry ground
+core through each tick's own lease and open support memo, with the default tuning at 1 m/s and 60 Hz. Planks
+pitched 3 and 6 degrees at yaw 0.77, compound and standalone, in both directions, reach the plank centre or a
+floor target 0.75 m past it within the 1 mm arrival ball in at most 240 ticks. HeightError stays at most
+0.0005 m, and a tick seated on the top face throughout has no step rise. Cylinders and capsules of radius 0.1
+and 0.15 m, in both turns and both directions, arrive the same way on the crest or past it. Per ruling FA-R8
+the 0.3 m log's 0.6 m crest is above the 0.4 m step height. Its approach stays on the floor with no climb and
+no shell overlap, blocked within two contact skins of the lifted shell's analytic contact near 0.49 m. A body
+seated on that crest walks 0.25 m along it or 0.3 m down its walkable flank and arrives within 1 mm. Every
+row replays bit for bit. Walking on past the steep lower flank into the air pass is not covered. Per FA-R9
+the leased head's traversal over rotated, hull, mesh and curved props waits on certified general sweeps (#1355).
+
 **Ruling SG-24. The hosted proof is plumbed, normalized and approved before it gates #1334.** The
 repository's stress caller (`.github/workflows/stress-test.yml`) now forwards support-cost mode to the
 pinned shared workflow, which sets `KHAOZ_SUPPORT_COST_ARTIFACT` and `DOTNET_TieredCompilation=0`,

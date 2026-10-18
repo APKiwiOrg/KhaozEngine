@@ -193,13 +193,16 @@ public sealed class TrackedPersistenceTests
         try
         {
             Task<PersistenceWriteResult> task = queue.EnqueueTracked(files.Path, "payload");
-            // Attached while the drain is held, so it runs as the completion's continuation.
+            // Attached while the drain is held, so it runs as the completion's continuation. ExecuteSynchronously
+            // would run it on the drain thread, where Flush deadlocks, if the completion ever ran its continuations
+            // inline. The owned scheduler allows that inline run and queues the asynchronous one to a test-owned
+            // thread, so the hang guard below never waits on the pool.
             Task continuation = task.ContinueWith(_ =>
             {
                 queue.Enqueue(files.OtherPath, "followup");
                 queue.Flush();
                 queue.Dispose();
-            }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, new OwnedThreadScheduler());
             Assert.False(task.IsCompleted);
             drains.Start();
 

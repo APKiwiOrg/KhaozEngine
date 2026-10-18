@@ -93,6 +93,19 @@ internal static class DedicatedThread
     }
 }
 
+/// <summary>Runs each queued task on a new dedicated thread instead of the pool. It still lets a task run inline
+/// when the caller asks, so a continuation that would run synchronously on the completing thread still does.</summary>
+internal sealed class OwnedThreadScheduler : TaskScheduler
+{
+    protected override void QueueTask(Task task)
+        => new Thread(() => TryExecuteTask(task)) { IsBackground = true, Name = "persistence-test-continuation" }.Start();
+
+    protected override bool TryExecuteTaskInline(Task task, bool taskWasPreviouslyQueued)
+        => !taskWasPreviouslyQueued && TryExecuteTask(task);
+
+    protected override IEnumerable<Task> GetScheduledTasks() => Array.Empty<Task>();
+}
+
 /// <summary>A pause that a test-owned thread holds until another test-owned thread releases it. It refuses a thread-pool thread, so a pause can never park the work that would release it.</summary>
 internal sealed class ControlledHold(string timeoutMessage, TimeSpan timeout) : IDisposable
 {

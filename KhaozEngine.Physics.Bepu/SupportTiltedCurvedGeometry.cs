@@ -212,9 +212,9 @@ internal sealed partial class SupportTiltedCurvedGeometry
             GeometrySign proved = SideBoundary(candidate.Lateral == DiscLateralBoundary.Positive ? 1 : -1, slope, out point);
             certain = proved == GeometrySign.Positive;
             if (proved != GeometrySign.Unresolved) return proved;
-            // An unproved equation keeps only the clipped candidate's possible enclosure, never attainment.
+            // An unproved equation falls back to the clipped untagged candidate, with exactly its own certainty.
             return SidePoint(new(Clip(candidate.Parameter), candidate.End, candidate.AtEnd, candidate.Slope,
-                candidate.Rim), slope, out point, out _);
+                candidate.Rim), slope, out point, out certain);
         }
         point = default; certain = false;
         GeometryInterval z = candidate.Parameter, v = z.Lower == z.Upper && z.Lower == 0 ? I(1) :

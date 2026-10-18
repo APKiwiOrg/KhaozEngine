@@ -12,8 +12,8 @@ and .github/workflows/cross-platform-gpu.yml reads it through the subcommands be
 THE SPLIT. Shard `rest` runs every test project in KhaozEngine.slnx except KhaozEngine.Render.Tests and
 the named projects in PROJECT_SLICES, through a solution derived from the current one at run time, so a new
 test project lands in it with no edit. Vulkan's `projects-1` takes MapEditor.Tests, Game.Tests and
-Movement.Tests, and Windows' takes Catalog.Tests (#1458). Only `rest` is primary and runs the once-per-leg
-steps. The unsharded Windows isolation pass still takes every non-Render project. Every `render-N` shard runs one slice of
+Movement.Tests. Windows' `projects-1` takes Catalog.Tests and its `projects-2` takes MapEditor.Tests and
+Server.Tests (#1458, #1471). Only `rest` is primary and runs the once-per-leg steps. The unsharded Windows isolation pass still takes every non-Render project. Every `render-N` shard runs one slice of
 KhaozEngine.Render.Tests. Each backend has its own slice table,
 because the three rasterizers disagree about what is expensive (below). Within a table the slices are an
 ORDERED FIRST-MATCH partition: a test belongs to the first slice whose rules match it, and the last slice has
@@ -59,7 +59,10 @@ The shapes differ by backend:
     ShadowCascadeCullPerfGpuTests took about 15 minutes there against 1 on Metal, has a slice to itself
     and sets that backend's floor. The rest jobs took 14m24s and 18m55s, then 22m54s in 39074411898.
     Catalog.Tests took 16.30 minutes there against 13.01 for MapEditor.Tests, so Catalog.Tests moves to
-    projects-1 on its own host. Every other non-Render project stays on rest. TemporalFollowPhaseGpuTests'
+    projects-1 on its own host. Windows then runs its non-Render projects one assembly at a time (#1471),
+    because four test hosts at once on the 4 vCPU runner starved a loopback Kestrel host past its 20 s
+    HttpClient timeout. Serial, rest took 20.0 test-minutes in 39085526893, MapEditor.Tests 5.68 and
+    Server.Tests 5.32 of them, so those two move to projects-2 and leave about 9 on rest. TemporalFollowPhaseGpuTests'
     methods are spread over two slices so that class is no longer a 16-minute serial chain. The other three slices sum 29 to
     35 minutes each.
   * metal-native has the same parallel shape on a real (paravirtual) GPU at about a third of the cost.
@@ -133,6 +136,8 @@ RENDER_PROJECT = f"{RENDER_ASSEMBLY}/{RENDER_ASSEMBLY}.csproj"
 PROJECT_SLICES = {
     "direct3d11-native": [
         ("projects-1", ("KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj",)),
+        ("projects-2", tuple(f"{name}/{name}.csproj" for name in (
+            "KhaozEngine.MapEditor.Tests", "KhaozEngine.Server.Tests"))),
     ],
     "vulkan-native": [
         ("projects-1", tuple(f"{name}/{name}.csproj" for name in (

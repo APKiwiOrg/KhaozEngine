@@ -1483,3 +1483,105 @@ normal-scale contact-sheet frame, showing the character and ground together.
 
 The [2x ground comparison](runs/shadow-filters/visuals/ground-edge-fxaa-015-2x.png) uses each arm's own FXAA.
 Its order is baseline, shared 3x3, single tap, shared 3x3 plus kill, single tap plus kill.
+
+## Lit visibility signal diagnostic
+
+This round tests visibility from the renderer instead of inferring shading from colour. These remain archive
+branches. The earlier luma-kill recommendation above was rejected by the full temporal suite on the production
+attempt and is not an accepted fix.
+
+### Plumbing and token semantics
+
+Only a process started with a `vis-*` token builds this path. The rigid, GPU-skinned, CPU-skinned, foliage,
+splat-terrain and tile-ground lighting fragments, including motion and dissolve variants, write the exact
+`keyShadow` returned by their existing `sampleKeyShadow` call. The normal offset, bias, cascade selection,
+coverage fallback, strength and cascade blend are therefore the ones used by the lit colour. No shadow is
+sampled again. A disabled shadow writes 1, and the background clears to 1.
+
+The signal is an extra R32Float attachment at internal resolution, at location 3 without motion and location 4
+with motion. Transparent model writers preserve it, and later colour-only passes cannot overwrite it. The
+MSAA variant attaches and resolves an extra multisampled signal too. No lit path required a fallback pass.
+R32Float uses a format already supported by the GPU seam, which has no single-channel R16Float member.
+
+`TemporalResolveRenderer` owns two internal-resolution R32Float histories, following the colour history's read
+and write indices and target generation. After either entry point finishes, `CopyTexture` stores this frame's
+lit attachment into the write history. The read history stays intact for the diagnostic overlay. Both entry
+points bind the same visibility resources and run the same comparison helper. Their previous-jitter uniform
+is updated from the last resolved frame, and invalid colour history suppresses visibility comparisons too.
+Standalone resolve tests without a lit input get a constant fully lit signal.
+
+The resolve compares each current texel of the centre's 3x3 footprint with bilinear visibility history at its
+corresponding reprojected position. It removes current jitter and adds previous jitter when addressing the
+stored internal grid. It takes the maximum of the nine absolute changes. This covers a shading change beside
+a locked sample, including diagonals, while comparing corresponding positions rather than unrelated footprint
+extrema. Single-texel and 2x2 variants were not measured in this round.
+
+| Token | Rule where history is usable and maximum visibility change exceeds T |
+| --- | --- |
+| `vis-release-0.1` | T 0.1, clear stored lock and clip hold |
+| `vis-release-0.2` | T 0.2, clear stored lock and clip hold |
+| `vis-release-0.3` | T 0.3, clear stored lock and clip hold |
+| `vis-reset-0.2` | T 0.2, also clear accumulated weight and display share, as the shading release does |
+| `show-vis-release` | Paint the firing set magenta after the post chain, without entering history |
+
+The visibility bits occupy bits 24 to 28 of the diagnostic mask. They travel as the small integer `mask >> 24`
+in the previously reserved `Params.x`. Existing bits stay in `Params.w` as `mask & 0xFFFFFF`, so composing an
+overlay with a visibility token does not round low bits away in a float uniform. With multiple threshold tokens,
+0.1 takes precedence, then 0.2, then 0.3. The reset bit adds the reset action. Measurements select one arm.
+
+Unset allocates no visibility attachment, history, uniform buffer or extra bindings. It adds no compiled GLSL.
+All four final baseline conditions are compared in [the identity proof](runs/visibility/baseline-identity.txt).
+
+### Visibility measurement method
+
+The same four conditions, own FXAA, region masks and dot criterion as the bilinear round apply. Every capture
+passes `--start-time 0.49777777777777776`, with 80 warm-up and 16 measured frames. Lock share comes from the
+same arm plus `show-locked`. Release coincidence comes from the same arm plus `show-vis-release`. Overlay
+colours are never included in grain or dot measurements.
+
+### Visibility cost
+
+Costs below are source fetch and storage counts, not GPU timing. No timing benchmark or load test ran.
+At a 2560x1440 display, Native renders 2560x1440 internally. Quality renders 1707x960.
+
+| Resource | Native bytes (MiB) | Quality bytes (MiB) |
+| --- | ---: | ---: |
+| Lit R32Float attachment | 14745600 (14.0625) | 6554880 (6.2512) |
+| One R32Float visibility history | 14745600 (14.0625) | 6554880 (6.2512) |
+| Two history textures | 29491200 (28.1250) | 13109760 (12.5024) |
+| Signal plus history pair | 44236800 (42.1875) | 19664640 (18.7537) |
+
+There is also one 16-byte previous-jitter uniform buffer per resolve. The fully lit fallback is allocated only
+for standalone tests that omit a lit input. Normal non-MSAA scenes allocate no multisampled visibility target.
+
+The lit fragment adds one scalar output store and no texture fetch or shadow comparison. The resolve adds nine
+current `texelFetch` operations and nine bilinear history samples, nine absolute differences and nine max
+reductions, plus coordinate arithmetic and the threshold branch. A bilinear history sample covers four R32F
+texels, so the uncached upper source-read count is 45 texels or 180 bytes per display pixel. Cache reuse and
+compression are not measured. The signal store is 4 bytes per shaded internal sample. The history copy reads
+and writes 4 bytes each per internal pixel, another 8 bytes. This is 192 bytes per pixel at Native before clear
+traffic, or about 185.33 bytes per display pixel at Quality. Clearing the signal adds 4 bytes per internal pixel.
+The bilinear shadow combination adds the previously measured 16 versus 9 shadow-depth fetches per cascade
+lookup. None of these figures is an instruction-level ISA measurement or a frame-time claim.
+
+### Reproduce visibility
+
+The workflow has no diagnostic environment input. `TemporalVisibilityArchiveGpuTests` temporarily selects the
+chosen token only in this archive branch's `cross-platform-gpu` workflow dispatch, inside the test assembly.
+Its GPU fact asserts the startup mask and MRT flag and prints the token. It does not select a token in engine
+packages, game captures, other branches, other workflows or local runs. No workflow file was changed.
+
+From the engine archive, with `GAME_PROBE`, `KHAOZENGINE_FEED`, `CAPTURE_ROOT` and `GUARD_ROOT` set as above:
+
+~~~bash
+KHAOZENGINE_FEED="${KHAOZENGINE_FEED:?set a private feed first}" build-slot --heavy --label vis-pack -- scripts/pack-local-feed.sh
+# Refresh and build from the game probe, using the same private feed.
+build-slot --label vis-refresh -- scripts/refresh-engine.sh
+build-slot --label vis-probe-build -- dotnet build Grimhollow.slnx -c Release
+# Back in the engine archive.
+python3 KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/real-scene/scripts/capture_shadow_filters.py \
+  "$GAME_PROBE" "$CAPTURE_ROOT" baseline vis-release-0.1 vis-release-0.2 vis-release-0.3 vis-reset-0.2
+build-slot --label vis-test-build -- dotnet build KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release
+python3 KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/real-scene/scripts/run_shadow_filter_guards.py \
+  "$GUARD_ROOT" vis-release-0.1 vis-reset-0.2 shadow-bilinear-3x3,vis-release-0.1
+~~~

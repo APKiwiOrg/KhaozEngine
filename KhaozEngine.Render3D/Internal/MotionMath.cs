@@ -30,7 +30,7 @@ internal static class MotionMath
 
     /// <summary>Whether a model-pass output description carries the motion attachment. Every renderer that draws into
     /// the model framebuffer builds its temporal variants for exactly this case.</summary>
-    public static bool IsTemporal(in GpuOutputDescription outputs) => outputs.Colour.Length > Attachment;
+    public static bool IsTemporal(in GpuOutputDescription outputs) => outputs.Colour.Length > Attachment && outputs.Colour[Attachment] == Format;
 
     /// <summary>Whether a stored motion value is the background sentinel.</summary>
     public static bool IsBackground(Vector2 motion) => MathF.Abs(motion.X) > BackgroundThreshold;

@@ -32,7 +32,8 @@ internal static partial class ShaderSources
     internal static string MotionFragment(string fragment, int firstLocation, string sinkDeclaration = "",
         string sinkRead = "") =>
         ShaderText.BeforeEndOfMain(
-            ShaderText.After(fragment, DepthOutputGlsl,
+            ShaderText.After(fragment.Replace("layout(location=3) out float oKeyVisibility;",
+                "layout(location=4) out float oKeyVisibility;", System.StringComparison.Ordinal), DepthOutputGlsl,
                 "\nlayout(location=3) out vec4 oMotion;"
                 + "\nlayout(location=" + firstLocation.ToString(CultureInfo.InvariantCulture) + ") in vec4 vCurClip;"
                 + "\nlayout(location=" + (firstLocation + 1).ToString(CultureInfo.InvariantCulture) + ") in vec4 vPrevClip;"

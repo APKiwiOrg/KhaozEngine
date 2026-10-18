@@ -55,10 +55,10 @@ namespace KhaozEngine.Render3D.Rendering
                 ShaderSources.TemporalAccumulateFragment(TemporalResolvePrecisionPolicy.For(gd)));
             _prepareLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 T("SceneColor"), T("OpaqueColor"), T("SceneDepth"), T("MotionTex"), S("LinearClamp"), U("Resolve")));
-            _accumulateLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
+            _accumulateLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(TemporalVisibilityHistory.Layout(
                 T("SceneColor"), T("SceneDepth"), T("MotionTex"), T("PrevDepth"), T("HistoryColor"),
                 T("HistoryConfidence"), T("PreparedColour"), T("PreparedSurface"), T("PreparedExpected"),
-                T("PreparedEdge"), S("LinearClamp"), U("Resolve")));
+                T("PreparedEdge"), S("LinearClamp"), U("Resolve"))));
             var prepareOutputs = new GpuPixelFormat[TemporalSplitFormats.FirstPassAttachments];
             TemporalSplitFormats.Targets.CopyTo(prepareOutputs, 0);
             prepareOutputs[^1] = TemporalFormats.PreviousDepth;
@@ -83,7 +83,7 @@ namespace KhaozEngine.Render3D.Rendering
         /// <paramref name="retired"/> (or draining without one), and build the sets and framebuffers over them, unless
         /// the inputs, the history owner and its generation are the ones already bound.</summary>
         public void Bind(in TemporalResolveInputs inputs, TemporalHistory history, IGpuSampler clamp,
-            IGpuBuffer uniforms, GpuRetireQueue? retired)
+            IGpuBuffer uniforms, GpuRetireQueue? retired, TemporalVisibilityHistory? visibility = null)
         {
             if (TargetsAllocated && (_targetWidth != history.InternalWidth || _targetHeight != history.InternalHeight))
                 ReleaseTargets(retired);
@@ -112,9 +112,9 @@ namespace KhaozEngine.Render3D.Rendering
                 colour[^1] = history.PreviousDepth(i);
                 _prepareFramebuffers[i] = f.CreateFramebuffer(null, colour);
                 // Read index i: last frame's history and depths.
-                _accumulateSets[i] = f.CreateResourceSet(new GpuResourceSetDescription(_accumulateLayout,
+                _accumulateSets[i] = f.CreateResourceSet(new GpuResourceSetDescription(_accumulateLayout, TemporalVisibilityHistory.Resources(visibility, i,
                     inputs.SceneColor, inputs.SceneDepth, inputs.Motion, history.PreviousDepth(i), history.Color(i),
-                    history.Confidence(i), targets[0], targets[1], targets[2], targets[3], clamp, uniforms));
+                    history.Confidence(i), targets[0], targets[1], targets[2], targets[3], clamp, uniforms)));
             }
             _boundInputs = inputs;
             _boundTargets = history.TargetGeneration;

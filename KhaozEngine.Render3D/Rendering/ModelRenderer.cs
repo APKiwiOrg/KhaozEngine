@@ -503,6 +503,7 @@ namespace KhaozEngine.Render3D.Rendering
             cl.ClearColorTarget(2, bg);
             // Background carries the sentinel, which marks no opaque geometry for every motion reader (MotionMath).
             if (res.MotionAllocated) cl.ClearColorTarget(MotionMath.Attachment, MotionMath.SentinelColor);
+            if (res.KeyVisibility is not null) cl.ClearColorTarget(res.MotionAllocated ? 4u : 3u, Color.White);
             cl.ClearDepthStencil(1f);
         }
 

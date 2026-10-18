@@ -1,0 +1,3149 @@
+{
+  "Options": {
+    "Output": "captures/back60-vis-release-0.3",
+    "Spot": {
+      "Name": "back-edge",
+      "X": 100.9,
+      "Z": 89.5,
+      "YawDegrees": 230,
+      "Focus": "Character"
+    },
+    "Width": 2560,
+    "Height": 1440,
+    "FrameSeconds": 0.016666666666666666,
+    "DayMinutes": 5,
+    "StartTime": 0.49777777777777776,
+    "Warmup": 80,
+    "Frames": 16,
+    "BandPixels": 12,
+    "Distance": 6.6,
+    "Pitch": 0.4,
+    "Sharpen": null,
+    "HoldTexels": null,
+    "ShadowDetail": "Default",
+    "TemporalResolve": null,
+    "TemporalDiag": "vis-release-0.3"
+  },
+  "Feet": [
+    100.9,
+    0,
+    -89.5
+  ],
+  "Crop": {
+    "X": 1094,
+    "Y": 542,
+    "Width": 370,
+    "Height": 557
+  },
+  "ValidRegions": true,
+  "CharacterValid": true,
+  "GroundValid": true,
+  "EngineAssembly": "21.5.0.0",
+  "TemporalResolveOverride": null,
+  "EngineForcedResolve": "none",
+  "TemporalDiagOverride": "vis-release-0.3",
+  "EngineDiagMask": "67108864",
+  "SheetColumns": [
+    "taa-native",
+    "taa-quality",
+    "fxaa"
+  ],
+  "Method": "Rec.709 display RGB luma. Absolute residual from 3x3 median. Pooled mean and nearest-rank p95. Fixed-pixel temporal change on consecutive region intersections. Shared FXAA shadow attenuation boundary (>0.03 against matched no-shadow). Character band: upper 18..68% of silhouette, eroded 3 px, Manhattan band distance. Control: body beyond twice band radius from any body shadow boundary, central luma gradient <0.02. Ground band and ground control: every world pixel more than band radius + 3 px from the visible body, within and beyond twice the band radius of a world shadow boundary, texture kept. Silhouette intersects no-shadow player-minus-world difference (>4/255 in any RGB channel), excluding occluded character pixels. Self-shadow edges can enter the character band, and the player's own cast shadow can enter the ground band. Review the edge crops visually.",
+  "Regions": [
+    {
+      "Frame": 0,
+      "EdgePixels": 203,
+      "GroundEdgePixels": 1038,
+      "Character": 3257,
+      "Control": 3322,
+      "Ground": 11774,
+      "GroundControl": 146014
+    },
+    {
+      "Frame": 1,
+      "EdgePixels": 209,
+      "GroundEdgePixels": 1064,
+      "Character": 3255,
+      "Control": 3323,
+      "Ground": 11994,
+      "GroundControl": 145676
+    },
+    {
+      "Frame": 2,
+      "EdgePixels": 210,
+      "GroundEdgePixels": 1064,
+      "Character": 3260,
+      "Control": 3319,
+      "Ground": 11994,
+      "GroundControl": 145671
+    },
+    {
+      "Frame": 3,
+      "EdgePixels": 209,
+      "GroundEdgePixels": 1064,
+      "Character": 3263,
+      "Control": 3335,
+      "Ground": 11994,
+      "GroundControl": 145671
+    },
+    {
+      "Frame": 4,
+      "EdgePixels": 200,
+      "GroundEdgePixels": 1056,
+      "Character": 3348,
+      "Control": 3253,
+      "Ground": 12335,
+      "GroundControl": 144976
+    },
+    {
+      "Frame": 5,
+      "EdgePixels": 198,
+      "GroundEdgePixels": 1056,
+      "Character": 3341,
+      "Control": 3251,
+      "Ground": 12336,
+      "GroundControl": 144972
+    },
+    {
+      "Frame": 6,
+      "EdgePixels": 193,
+      "GroundEdgePixels": 1056,
+      "Character": 3288,
+      "Control": 3256,
+      "Ground": 12337,
+      "GroundControl": 144970
+    },
+    {
+      "Frame": 7,
+      "EdgePixels": 203,
+      "GroundEdgePixels": 1058,
+      "Character": 3288,
+      "Control": 3604,
+      "Ground": 12464,
+      "GroundControl": 144610
+    },
+    {
+      "Frame": 8,
+      "EdgePixels": 204,
+      "GroundEdgePixels": 1057,
+      "Character": 3292,
+      "Control": 3598,
+      "Ground": 12461,
+      "GroundControl": 144615
+    },
+    {
+      "Frame": 9,
+      "EdgePixels": 202,
+      "GroundEdgePixels": 1057,
+      "Character": 3285,
+      "Control": 3592,
+      "Ground": 12461,
+      "GroundControl": 144619
+    },
+    {
+      "Frame": 10,
+      "EdgePixels": 187,
+      "GroundEdgePixels": 1094,
+      "Character": 3236,
+      "Control": 3621,
+      "Ground": 12795,
+      "GroundControl": 144083
+    },
+    {
+      "Frame": 11,
+      "EdgePixels": 179,
+      "GroundEdgePixels": 1094,
+      "Character": 3190,
+      "Control": 3630,
+      "Ground": 12794,
+      "GroundControl": 144083
+    },
+    {
+      "Frame": 12,
+      "EdgePixels": 183,
+      "GroundEdgePixels": 1094,
+      "Character": 3240,
+      "Control": 3632,
+      "Ground": 12793,
+      "GroundControl": 144084
+    },
+    {
+      "Frame": 13,
+      "EdgePixels": 218,
+      "GroundEdgePixels": 1105,
+      "Character": 3437,
+      "Control": 3540,
+      "Ground": 12974,
+      "GroundControl": 143690
+    },
+    {
+      "Frame": 14,
+      "EdgePixels": 213,
+      "GroundEdgePixels": 1105,
+      "Character": 3372,
+      "Control": 3541,
+      "Ground": 12977,
+      "GroundControl": 143691
+    },
+    {
+      "Frame": 15,
+      "EdgePixels": 211,
+      "GroundEdgePixels": 1107,
+      "Character": 3370,
+      "Control": 3540,
+      "Ground": 12972,
+      "GroundControl": 143689
+    }
+  ],
+  "Modes": [
+    {
+      "Name": "taa-native",
+      "Regions": {
+        "character": {
+          "Pixels": 52722,
+          "GrainMean": 0.008926319600182331,
+          "GrainP95": 0.050928627450980424,
+          "ChangePixels": 48662,
+          "ChangeMean": 0.004779767858480823,
+          "ChangeP95": 0.01595372549019608
+        },
+        "control": {
+          "Pixels": 55357,
+          "GrainMean": 0.0005258452391199239,
+          "GrainP95": 0.0028047058823530424,
+          "ChangePixels": 51182,
+          "ChangeMean": 0.00014754919200300683,
+          "ChangeP95": 0.0008337254901960023
+        },
+        "ground": {
+          "Pixels": 199455,
+          "GrainMean": 0.005900348980382673,
+          "GrainP95": 0.022989803921568575,
+          "ChangePixels": 183963,
+          "ChangeMean": 0.0032556971505249255,
+          "ChangeP95": 0.015387450980392292
+        },
+        "ground-ctrl": {
+          "Pixels": 2315114,
+          "GrainMean": 0.00473883571463179,
+          "GrainP95": 0.017636862745098014,
+          "ChangePixels": 2167026,
+          "ChangeMean": 0.00014435607213227815,
+          "ChangeP95": 0.0008337254901961133
+        }
+      },
+      "Frames": [
+        {
+          "Diagnostics": {
+            "Frame": 80,
+            "Seconds": 1.3333333333333333,
+            "TimeOfDay": 0.49777777777777776,
+            "Backend": "MetalNative",
+            "InternalWidth": 2560,
+            "InternalHeight": 1440,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": true,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": false,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.4589324,
+              -0.7985776,
+              -0.38942894
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3257,
+              "GrainMean": 0.008503176627113865,
+              "GrainP95": 0.048993725490196094,
+              "ChangePixels": 0,
+              "ChangeMean": null,
+              "ChangeP95": null
+            },
+            "control": {
+              "Pixels": 3322,
+              "GrainMean": 0.0005182594940444561,
+              "GrainP95": 0.003087843137254853,
+              "ChangePixels": 0,
+              "ChangeMean": null,
+              "ChangeP95": null
+            },
+            "ground": {
+              "Pixels": 11774,
+              "GrainMean": 0.005895604405852673,
+              "GrainP95": 0.02300549019607856,
+              "ChangePixels": 0,
+              "ChangeMean": null,
+              "ChangeP95": null
+            },
+            "ground-ctrl": {
+              "Pixels": 146014,
+              "GrainMean": 0.004744631938327774,
+              "GrainP95": 0.017636862745098125,
+              "ChangePixels": 0,
+              "ChangeMean": null,
+              "ChangeP95": null
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 81,
+            "Seconds": 1.35,
+            "TimeOfDay": 0.4978333333333333,
+            "Backend": "MetalNative",
+            "InternalWidth": 2560,
+            "InternalHeight": 1440,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": true,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": true,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.45871443,
+              -0.7985804,
+              -0.38967985
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3255,
+              "GrainMean": 0.00943975542905337,
+              "GrainP95": 0.05570431372549012,
+              "ChangePixels": 3151,
+              "ChangeMean": 0.008793024312232039,
+              "ChangeP95": 0.06659921568627447
+            },
+            "control": {
+              "Pixels": 3323,
+              "GrainMean": 0.0004629502044573454,
+              "GrainP95": 0.0028047058823530424,
+              "ChangePixels": 3211,
+              "ChangeMean": 0.00010925482868326343,
+              "ChangeP95": 0.0008337254901960578
+            },
+            "ground": {
+              "Pixels": 11994,
+              "GrainMean": 0.00609502430954034,
+              "GrainP95": 0.023843921568627358,
+              "ChangePixels": 11345,
+              "ChangeMean": 0.00972195127852815,
+              "ChangeP95": 0.06912078431372537
+            },
+            "ground-ctrl": {
+              "Pixels": 145676,
+              "GrainMean": 0.004701591724637447,
+              "GrainP95": 0.01738509803921562,
+              "ChangePixels": 145314,
+              "ChangeMean": 0.00014264914895585466,
+              "ChangeP95": 0.0008337254901961133
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 82,
+            "Seconds": 1.3666666666666667,
+            "TimeOfDay": 0.4978888888888889,
+            "Backend": "MetalNative",
+            "InternalWidth": 2560,
+            "InternalHeight": 1440,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": true,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": false,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.45849293,
+              -0.7985832,
+              -0.38993472
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3260,
+              "GrainMean": 0.009089004932034172,
+              "GrainP95": 0.054850196078431335,
+              "ChangePixels": 3250,
+              "ChangeMean": 0.0026481522775263747,
+              "ChangeP95": 0.011481568627450978
+            },
+            "control": {
+              "Pixels": 3319,
+              "GrainMean": 0.00043078011921852103,
+              "GrainP95": 0.002804705882352987,
+              "ChangePixels": 3308,
+              "ChangeMean": 0.0001247305403418901,
+              "ChangeP95": 0.0008337254901960023
+            },
+            "ground": {
+              "Pixels": 11994,
+              "GrainMean": 0.005989155100425977,
+              "GrainP95": 0.023199215686274588,
+              "ChangePixels": 11994,
+              "ChangeMean": 0.001510318819540484,
+              "ChangeP95": 0.008393725490196013
+            },
+            "ground-ctrl": {
+              "Pixels": 145671,
+              "GrainMean": 0.004738807883086608,
+              "GrainP95": 0.017636862745098125,
+              "ChangePixels": 145671,
+              "ChangeMean": 0.00011411990570747736,
+              "ChangeP95": 0.0008337254901960023
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 83,
+            "Seconds": 1.3833333333333333,
+            "TimeOfDay": 0.4979444444444444,
+            "Backend": "MetalNative",
+            "InternalWidth": 2560,
+            "InternalHeight": 1440,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": true,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": false,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.458271,
+              -0.79858595,
+              -0.39018995
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3263,
+              "GrainMean": 0.008460895723290856,
+              "GrainP95": 0.04789254901960782,
+              "ChangePixels": 3255,
+              "ChangeMean": 0.0023056621186108685,
+              "ChangeP95": 0.011198431372549167
+            },
+            "control": {
+              "Pixels": 3335,
+              "GrainMean": 0.0003956080783137832,
+              "GrainP95": 0.002804705882352959,
+              "ChangePixels": 3303,
+              "ChangeMean": 8.734092001923301e-05,
+              "ChangeP95": 0.0002831372549019773
+            },
+            "ground": {
+              "Pixels": 11994,
+              "GrainMean": 0.005781889245276184,
+              "GrainP95": 0.02216078431372559,
+              "ChangePixels": 11994,
+              "ChangeMean": 0.0011142266558115523,
+              "ChangeP95": 0.004755294117646969
+            },
+            "ground-ctrl": {
+              "Pixels": 145671,
+              "GrainMean": 0.004719660777353723,
+              "GrainP95": 0.017400784313725493,
+              "ChangePixels": 145670,
+              "ChangeMean": 0.00016986347061647954,
+              "ChangeP95": 0.0008337254901961133
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 84,
+            "Seconds": 1.4,
+            "TimeOfDay": 0.498,
+            "Backend": "MetalNative",
+            "InternalWidth": 2560,
+            "InternalHeight": 1440,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": true,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": true,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.45804995,
+              -0.7985886,
+              -0.39044407
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3348,
+              "GrainMean": 0.009024977627849245,
+              "GrainP95": 0.0537333333333333,
+              "ChangePixels": 3200,
+              "ChangeMean": 0.010153726715686302,
+              "ChangeP95": 0.060176470588235276
+            },
+            "control": {
+              "Pixels": 3253,
+              "GrainMean": 0.0004020870026461237,
+              "GrainP95": 0.002804705882352959,
+              "ChangePixels": 3208,
+              "ChangeMean": 7.375189477287112e-05,
+              "ChangeP95": 0.0002831372549019773
+            },
+            "ground": {
+              "Pixels": 12335,
+              "GrainMean": 0.00590384288291722,
+              "GrainP95": 0.02321490196078435,
+              "ChangePixels": 11494,
+              "ChangeMean": 0.006398582721761082,
+              "ChangeP95": 0.04056862745098044
+            },
+            "ground-ctrl": {
+              "Pixels": 144976,
+              "GrainMean": 0.00471876195329597,
+              "GrainP95": 0.017400784313725493,
+              "ChangePixels": 144593,
+              "ChangeMean": 0.0001573926055867527,
+              "ChangeP95": 0.0008337254901961133
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 85,
+            "Seconds": 1.4166666666666667,
+            "TimeOfDay": 0.49805555555555553,
+            "Backend": "MetalNative",
+            "InternalWidth": 2560,
+            "InternalHeight": 1440,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": true,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": false,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.45782837,
+              -0.79859114,
+              -0.39069855
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3341,
+              "GrainMean": 0.008640293677482973,
+              "GrainP95": 0.04816000000000009,
+              "ChangePixels": 3341,
+              "ChangeMean": 0.004117256427862953,
+              "ChangeP95": 0.013149019607843093
+            },
+            "control": {
+              "Pixels": 3251,
+              "GrainMean": 0.000390960971284853,
+              "GrainP95": 0.002804705882352959,
+              "ChangePixels": 3240,
+              "ChangeMean": 0.00010150786734446824,
+              "ChangeP95": 0.0008337254901960023
+            },
+            "ground": {
+              "Pixels": 12336,
+              "GrainMean": 0.005823077236082473,
+              "GrainP95": 0.0227380392156864,
+              "ChangePixels": 12335,
+              "ChangeMean": 0.002122853732007618,
+              "ChangeP95": 0.010915294117646912
+            },
+            "ground-ctrl": {
+              "Pixels": 144972,
+              "GrainMean": 0.004750874116055505,
+              "GrainP95": 0.017652549019607888,
+              "ChangePixels": 144972,
+              "ChangeMean": 0.00011903251094328902,
+              "ChangeP95": 0.0008337254901960023
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 86,
+            "Seconds": 1.4333333333333333,
+            "TimeOfDay": 0.4981111111111111,
+            "Backend": "MetalNative",
+            "InternalWidth": 2560,
+            "InternalHeight": 1440,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": true,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": false,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.45760778,
+              -0.79859364,
+              -0.39095187
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3288,
+              "GrainMean": 0.008545281713658719,
+              "GrainP95": 0.04784078431372546,
+              "ChangePixels": 3267,
+              "ChangeMean": 0.0013913377386461099,
+              "ChangeP95": 0.006726274509804009
+            },
+            "control": {
+              "Pixels": 3256,
+              "GrainMean": 0.0003992809654574359,
+              "GrainP95": 0.002804705882352959,
+              "ChangePixels": 3237,
+              "ChangeMean": 9.195587780988161e-05,
+              "ChangeP95": 0.0008337254901960023
+            },
+            "ground": {
+              "Pixels": 12337,
+              "GrainMean": 0.005662076298461286,
+              "GrainP95": 0.02242352941176473,
+              "ChangePixels": 12332,
+              "ChangeMean": 0.0006822212258240888,
+              "ChangeP95": 0.0036384313725491557
+            },
+            "ground-ctrl": {
+              "Pixels": 144970,
+              "GrainMean": 0.0046979871697583045,
+              "GrainP95": 0.01738509803921562,
+              "ChangePixels": 144970,
+              "ChangeMean": 0.0001217310897318847,
+              "ChangeP95": 0.0008337254901960023
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 87,
+            "Seconds": 1.45,
+            "TimeOfDay": 0.49816666666666665,
+            "Backend": "MetalNative",
+            "InternalWidth": 2560,
+            "InternalHeight": 1440,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": true,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": true,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.4573854,
+              -0.7985961,
+              -0.39120692
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3288,
+              "GrainMean": 0.009660075855159607,
+              "GrainP95": 0.056553725490195994,
+              "ChangePixels": 3215,
+              "ChangeMean": 0.010974818284390012,
+              "ChangeP95": 0.06940392156862751
+            },
+            "control": {
+              "Pixels": 3604,
+              "GrainMean": 0.0009317309742987082,
+              "GrainP95": 0.0036384313725490447,
+              "ChangePixels": 3227,
+              "ChangeMean": 8.602951809791101e-05,
+              "ChangeP95": 0.0002831372549019495
+            },
+            "ground": {
+              "Pixels": 12464,
+              "GrainMean": 0.006122394094993528,
+              "GrainP95": 0.02381254901960783,
+              "ChangePixels": 11784,
+              "ChangeMean": 0.006655041065985178,
+              "ChangeP95": 0.043105882352941105
+            },
+            "ground-ctrl": {
+              "Pixels": 144610,
+              "GrainMean": 0.004752830479815584,
+              "GrainP95": 0.017652549019607888,
+              "ChangePixels": 144161,
+              "ChangeMean": 0.0001732213506929878,
+              "ChangeP95": 0.0008337254901961133
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 88,
+            "Seconds": 1.4666666666666666,
+            "TimeOfDay": 0.49822222222222223,
+            "Backend": "MetalNative",
+            "InternalWidth": 2560,
+            "InternalHeight": 1440,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": true,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": false,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.4571653,
+              -0.7985984,
+              -0.39145938
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3292,
+              "GrainMean": 0.008965630524384751,
+              "GrainP95": 0.052065882352941295,
+              "ChangePixels": 3287,
+              "ChangeMean": 0.002731449739615937,
+              "ChangeP95": 0.01231529411764698
+            },
+            "control": {
+              "Pixels": 3598,
+              "GrainMean": 0.0007576130530033012,
+              "GrainP95": 0.003638431372548989,
+              "ChangePixels": 3595,
+              "ChangeMean": 0.00033274842510022055,
+              "ChangeP95": 0.0008337254901961133
+            },
+            "ground": {
+              "Pixels": 12461,
+              "GrainMean": 0.005932089295071175,
+              "GrainP95": 0.02299450980392148,
+              "ChangePixels": 12461,
+              "ChangeMean": 0.001294293757307093,
+              "ChangeP95": 0.007276862745097978
+            },
+            "ground-ctrl": {
+              "Pixels": 144615,
+              "GrainMean": 0.0047721527598963065,
+              "GrainP95": 0.01766823529411754,
+              "ChangePixels": 144610,
+              "ChangeMean": 0.00015793495147867562,
+              "ChangeP95": 0.0008337254901961133
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 89,
+            "Seconds": 1.4833333333333334,
+            "TimeOfDay": 0.49827777777777776,
+            "Backend": "MetalNative",
+            "InternalWidth": 2560,
+            "InternalHeight": 1440,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": true,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": false,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.45694077,
+              -0.79860073,
+              -0.39171675
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3285,
+              "GrainMean": 0.008953437072850476,
+              "GrainP95": 0.05151529411764699,
+              "ChangePixels": 3284,
+              "ChangeMean": 0.002235949702658145,
+              "ChangeP95": 0.007843137254901933
+            },
+            "control": {
+              "Pixels": 3592,
+              "GrainMean": 0.0006195025983667406,
+              "GrainP95": 0.003087843137254964,
+              "ChangePixels": 3589,
+              "ChangeMean": 0.00030405170482793235,
+              "ChangeP95": 0.0008337254901960856
+            },
+            "ground": {
+              "Pixels": 12461,
+              "GrainMean": 0.005706839503958195,
+              "GrainP95": 0.022098039215686316,
+              "ChangePixels": 12461,
+              "ChangeMean": 0.0014768308967114607,
+              "ChangeP95": 0.005274509803921523
+            },
+            "ground-ctrl": {
+              "Pixels": 144619,
+              "GrainMean": 0.004718865974949562,
+              "GrainP95": 0.017396078431372586,
+              "ChangePixels": 144615,
+              "ChangeMean": 0.00014338426369405849,
+              "ChangeP95": 0.0008337254901961133
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 90,
+            "Seconds": 1.5,
+            "TimeOfDay": 0.4983333333333333,
+            "Backend": "MetalNative",
+            "InternalWidth": 2560,
+            "InternalHeight": 1440,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": true,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": true,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.45671836,
+              -0.79860294,
+              -0.39197156
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3236,
+              "GrainMean": 0.008940843452337666,
+              "GrainP95": 0.049544313725490216,
+              "ChangePixels": 3191,
+              "ChangeMean": 0.005514139153624457,
+              "ChangeP95": 0.021825882352941084
+            },
+            "control": {
+              "Pixels": 3621,
+              "GrainMean": 0.0005046882293375781,
+              "GrainP95": 0.0030878431372549087,
+              "ChangePixels": 3544,
+              "ChangeMean": 0.000201712256008498,
+              "ChangeP95": 0.0008337254901960023
+            },
+            "ground": {
+              "Pixels": 12795,
+              "GrainMean": 0.005979762928227148,
+              "GrainP95": 0.02300549019607856,
+              "ChangePixels": 12009,
+              "ChangeMean": 0.004787294627068976,
+              "ChangeP95": 0.027985882352941083
+            },
+            "ground-ctrl": {
+              "Pixels": 144083,
+              "GrainMean": 0.0047661150701118005,
+              "GrainP95": 0.01766823529411765,
+              "ChangePixels": 143688,
+              "ChangeMean": 0.0001156394792202297,
+              "ChangeP95": 0.0008337254901960023
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 91,
+            "Seconds": 1.5166666666666666,
+            "TimeOfDay": 0.4983888888888889,
+            "Backend": "MetalNative",
+            "InternalWidth": 2560,
+            "InternalHeight": 1440,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": true,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": false,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.45649698,
+              -0.7986051,
+              -0.39222497
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3190,
+              "GrainMean": 0.009280652529350293,
+              "GrainP95": 0.05147921568627456,
+              "ChangePixels": 3187,
+              "ChangeMean": 0.00442072266622367,
+              "ChangeP95": 0.016488627450980453
+            },
+            "control": {
+              "Pixels": 3630,
+              "GrainMean": 0.0005143451628585308,
+              "GrainP95": 0.0028047058823530424,
+              "ChangePixels": 3610,
+              "ChangeMean": 0.00013977622073760147,
+              "ChangeP95": 0.0008337254901960023
+            },
+            "ground": {
+              "Pixels": 12794,
+              "GrainMean": 0.005918392261078241,
+              "GrainP95": 0.02300549019607856,
+              "ChangePixels": 12794,
+              "ChangeMean": 0.002165746688858462,
+              "ChangeP95": 0.009227450980392127
+            },
+            "ground-ctrl": {
+              "Pixels": 144083,
+              "GrainMean": 0.0047459591115296546,
+              "GrainP95": 0.017652549019607777,
+              "ChangePixels": 144083,
+              "ChangeMean": 0.0001711858837355657,
+              "ChangeP95": 0.0008337254901961133
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 92,
+            "Seconds": 1.5333333333333332,
+            "TimeOfDay": 0.4984444444444444,
+            "Backend": "MetalNative",
+            "InternalWidth": 2560,
+            "InternalHeight": 1440,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": true,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": false,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.4562691,
+              -0.7986072,
+              -0.3924857
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3240,
+              "GrainMean": 0.0085055468409586,
+              "GrainP95": 0.047043137254902,
+              "ChangePixels": 3187,
+              "ChangeMean": 0.002627265668740024,
+              "ChangeP95": 0.011198431372548945
+            },
+            "control": {
+              "Pixels": 3632,
+              "GrainMean": 0.0005012241945236239,
+              "GrainP95": 0.0028047058823530424,
+              "ChangePixels": 3625,
+              "ChangeMean": 0.00013386753211629474,
+              "ChangeP95": 0.0008337254901960578
+            },
+            "ground": {
+              "Pixels": 12793,
+              "GrainMean": 0.005763175695041512,
+              "GrainP95": 0.022680000000000033,
+              "ChangePixels": 12793,
+              "ChangeMean": 0.001272371256952704,
+              "ChangeP95": 0.00475529411764708
+            },
+            "ground-ctrl": {
+              "Pixels": 144084,
+              "GrainMean": 0.004734835752128378,
+              "GrainP95": 0.017605490196078377,
+              "ChangePixels": 144083,
+              "ChangeMean": 0.00015945458996739455,
+              "ChangeP95": 0.0008337254901961133
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 93,
+            "Seconds": 1.55,
+            "TimeOfDay": 0.4985,
+            "Backend": "MetalNative",
+            "InternalWidth": 2560,
+            "InternalHeight": 1440,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": true,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": true,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.45605123,
+              -0.79860914,
+              -0.39273497
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3437,
+              "GrainMean": 0.009140967898360976,
+              "GrainP95": 0.05041411764705883,
+              "ChangePixels": 3141,
+              "ChangeMean": 0.009687318014120668,
+              "ChangeP95": 0.07135450980392166
+            },
+            "control": {
+              "Pixels": 3540,
+              "GrainMean": 0.0004966524869834931,
+              "GrainP95": 0.0028047058823530424,
+              "ChangePixels": 3451,
+              "ChangeMean": 0.00010264828040749715,
+              "ChangeP95": 0.0008337254901960023
+            },
+            "ground": {
+              "Pixels": 12974,
+              "GrainMean": 0.0061287761042446535,
+              "GrainP95": 0.023796862745097958,
+              "ChangePixels": 12224,
+              "ChangeMean": 0.008267229301406411,
+              "ChangeP95": 0.05990901960784312
+            },
+            "ground-ctrl": {
+              "Pixels": 143690,
+              "GrainMean": 0.004771572150830279,
+              "GrainP95": 0.01766823529411765,
+              "ChangePixels": 143217,
+              "ChangeMean": 0.00012188261690370491,
+              "ChangeP95": 0.0008337254901960023
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 94,
+            "Seconds": 1.5666666666666667,
+            "TimeOfDay": 0.49855555555555553,
+            "Backend": "MetalNative",
+            "InternalWidth": 2560,
+            "InternalHeight": 1440,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": true,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": false,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.4558332,
+              -0.79861104,
+              -0.39298403
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3372,
+              "GrainMean": 0.009101474193473364,
+              "GrainP95": 0.04906117647058833,
+              "ChangePixels": 3341,
+              "ChangeMean": 0.002156282667511771,
+              "ChangeP95": 0.008393725490196013
+            },
+            "control": {
+              "Pixels": 3541,
+              "GrainMean": 0.0005209721414688434,
+              "GrainP95": 0.003087843137254853,
+              "ChangePixels": 3497,
+              "ChangeMean": 0.000182998312278872,
+              "ChangeP95": 0.0008337254901960578
+            },
+            "ground": {
+              "Pixels": 12977,
+              "GrainMean": 0.005880816164949401,
+              "GrainP95": 0.023010196078431466,
+              "ChangePixels": 12973,
+              "ChangeMean": 0.0009801723337912848,
+              "ChangeP95": 0.004472156862745047
+            },
+            "ground-ctrl": {
+              "Pixels": 143691,
+              "GrainMean": 0.004718295121570516,
+              "GrainP95": 0.01740078431372516,
+              "ChangePixels": 143690,
+              "ChangeMean": 0.0001226363672339277,
+              "ChangeP95": 0.0008337254901960023
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 95,
+            "Seconds": 1.5833333333333333,
+            "TimeOfDay": 0.4986111111111111,
+            "Backend": "MetalNative",
+            "InternalWidth": 2560,
+            "InternalHeight": 1440,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": true,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": false,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.45561156,
+              -0.7986129,
+              -0.39323726
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3370,
+              "GrainMean": 0.008570223773782505,
+              "GrainP95": 0.04781176470588233,
+              "ChangePixels": 3365,
+              "ChangeMean": 0.0025815456690848585,
+              "ChangeP95": 0.012315294117647035
+            },
+            "control": {
+              "Pixels": 3540,
+              "GrainMean": 0.0005067763376537048,
+              "GrainP95": 0.0028047058823530424,
+              "ChangePixels": 3537,
+              "ChangeMean": 0.00010540094352697203,
+              "ChangeP95": 0.0002831372549019773
+            },
+            "ground": {
+              "Pixels": 12972,
+              "GrainMean": 0.005821124412762296,
+              "GrainP95": 0.02263764705882354,
+              "ChangePixels": 12970,
+              "ChangeMean": 0.0016040564197922975,
+              "ChangeP95": 0.007560000000000122
+            },
+            "ground-ctrl": {
+              "Pixels": 143689,
+              "GrainMean": 0.00476929360100743,
+              "GrainP95": 0.01766823529411754,
+              "ChangePixels": 143689,
+              "ChangeMean": 0.0001752789241579391,
+              "ChangeP95": 0.0008337254901961133
+            }
+          }
+        }
+      ]
+    },
+    {
+      "Name": "taa-quality",
+      "Regions": {
+        "character": {
+          "Pixels": 52722,
+          "GrainMean": 0.009725946723138078,
+          "GrainP95": 0.05511764705882349,
+          "ChangePixels": 48662,
+          "ChangeMean": 0.0049264202288531855,
+          "ChangeP95": 0.01595372549019608
+        },
+        "control": {
+          "Pixels": 55357,
+          "GrainMean": 0.0006420904028645668,
+          "GrainP95": 0.0036384313725490447,
+          "ChangePixels": 51182,
+          "ChangeMean": 0.0001600421257166818,
+          "ChangeP95": 0.0008337254901960856
+        },
+        "ground": {
+          "Pixels": 199455,
+          "GrainMean": 0.006447970236540742,
+          "GrainP95": 0.02597254901960777,
+          "ChangePixels": 183963,
+          "ChangeMean": 0.0032519420987574695,
+          "ChangeP95": 0.012865882352941282
+        },
+        "ground-ctrl": {
+          "Pixels": 2315114,
+          "GrainMean": 0.004347501800734371,
+          "GrainP95": 0.01625254901960793,
+          "ChangePixels": 2167026,
+          "ChangeMean": 0.0002762422427564879,
+          "ChangeP95": 0.0028047058823529314
+        }
+      },
+      "Frames": [
+        {
+          "Diagnostics": {
+            "Frame": 80,
+            "Seconds": 1.3333333333333333,
+            "TimeOfDay": 0.49777777777777776,
+            "Backend": "MetalNative",
+            "InternalWidth": 1707,
+            "InternalHeight": 960,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": true,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": false,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.4589324,
+              -0.7985776,
+              -0.38942894
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3257,
+              "GrainMean": 0.009050174646462869,
+              "GrainP95": 0.05041411764705889,
+              "ChangePixels": 0,
+              "ChangeMean": null,
+              "ChangeP95": null
+            },
+            "control": {
+              "Pixels": 3322,
+              "GrainMean": 0.0006352129003317124,
+              "GrainP95": 0.003638431372549017,
+              "ChangePixels": 0,
+              "ChangeMean": null,
+              "ChangeP95": null
+            },
+            "ground": {
+              "Pixels": 11774,
+              "GrainMean": 0.006185370557259723,
+              "GrainP95": 0.024913725490195993,
+              "ChangePixels": 0,
+              "ChangeMean": null,
+              "ChangeP95": null
+            },
+            "ground-ctrl": {
+              "Pixels": 146014,
+              "GrainMean": 0.0042963057960859535,
+              "GrainP95": 0.015985098039215773,
+              "ChangePixels": 0,
+              "ChangeMean": null,
+              "ChangeP95": null
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 81,
+            "Seconds": 1.35,
+            "TimeOfDay": 0.4978333333333333,
+            "Backend": "MetalNative",
+            "InternalWidth": 1707,
+            "InternalHeight": 960,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": true,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": true,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.45871443,
+              -0.7985804,
+              -0.38967985
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3255,
+              "GrainMean": 0.009759844582994528,
+              "GrainP95": 0.0554164705882353,
+              "ChangePixels": 3151,
+              "ChangeMean": 0.006912108823218288,
+              "ChangeP95": 0.024630588235294293
+            },
+            "control": {
+              "Pixels": 3323,
+              "GrainMean": 0.0006054167920553677,
+              "GrainP95": 0.003638431372549017,
+              "ChangePixels": 3211,
+              "ChangeMean": 0.00017096964478721972,
+              "ChangeP95": 0.0008337254901960856
+            },
+            "ground": {
+              "Pixels": 11994,
+              "GrainMean": 0.006690891654977791,
+              "GrainP95": 0.027749803921568672,
+              "ChangePixels": 11345,
+              "ChangeMean": 0.00609752929078204,
+              "ChangeP95": 0.0321749019607841
+            },
+            "ground-ctrl": {
+              "Pixels": 145676,
+              "GrainMean": 0.0043077841021350914,
+              "GrainP95": 0.016000784313725536,
+              "ChangePixels": 145314,
+              "ChangeMean": 0.00028837076815672056,
+              "ChangeP95": 0.0028047058823529314
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 82,
+            "Seconds": 1.3666666666666667,
+            "TimeOfDay": 0.4978888888888889,
+            "Backend": "MetalNative",
+            "InternalWidth": 1707,
+            "InternalHeight": 960,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": true,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": false,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.45849293,
+              -0.7985832,
+              -0.38993472
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3260,
+              "GrainMean": 0.009448645013833782,
+              "GrainP95": 0.05346588235294117,
+              "ChangePixels": 3250,
+              "ChangeMean": 0.00344365683257916,
+              "ChangeP95": 0.012865882352941227
+            },
+            "control": {
+              "Pixels": 3319,
+              "GrainMean": 0.0005749336263580426,
+              "GrainP95": 0.003638431372549017,
+              "ChangePixels": 3308,
+              "ChangeMean": 0.00013124001232899207,
+              "ChangeP95": 0.0008337254901960578
+            },
+            "ground": {
+              "Pixels": 11994,
+              "GrainMean": 0.006497282562849998,
+              "GrainP95": 0.027450980392156987,
+              "ChangePixels": 11994,
+              "ChangeMean": 0.002107579606796871,
+              "ChangeP95": 0.009227450980392127
+            },
+            "ground-ctrl": {
+              "Pixels": 145671,
+              "GrainMean": 0.004316636137220096,
+              "GrainP95": 0.016041568627450986,
+              "ChangePixels": 145671,
+              "ChangeMean": 0.00026826148798104733,
+              "ChangeP95": 0.0028047058823529314
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 83,
+            "Seconds": 1.3833333333333333,
+            "TimeOfDay": 0.4979444444444444,
+            "Backend": "MetalNative",
+            "InternalWidth": 1707,
+            "InternalHeight": 960,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": true,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": false,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.458271,
+              -0.79858595,
+              -0.39018995
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3263,
+              "GrainMean": 0.009028184576926099,
+              "GrainP95": 0.04897803921568633,
+              "ChangePixels": 3255,
+              "ChangeMean": 0.0021908325652841634,
+              "ChangeP95": 0.008393725490196235
+            },
+            "control": {
+              "Pixels": 3335,
+              "GrainMean": 0.000560450127877235,
+              "GrainP95": 0.003638431372549017,
+              "ChangePixels": 3303,
+              "ChangeMean": 0.0001308224846099499,
+              "ChangeP95": 0.0008337254901960578
+            },
+            "ground": {
+              "Pixels": 11994,
+              "GrainMean": 0.006304997727621939,
+              "GrainP95": 0.02573647058823536,
+              "ChangePixels": 11994,
+              "ChangeMean": 0.0010926214741357534,
+              "ChangeP95": 0.00420470588235311
+            },
+            "ground-ctrl": {
+              "Pixels": 145671,
+              "GrainMean": 0.004317715814349084,
+              "GrainP95": 0.016247843137254914,
+              "ChangePixels": 145670,
+              "ChangeMean": 0.00026511523090735846,
+              "ChangeP95": 0.0028047058823529314
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 84,
+            "Seconds": 1.4,
+            "TimeOfDay": 0.498,
+            "Backend": "MetalNative",
+            "InternalWidth": 1707,
+            "InternalHeight": 960,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": true,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": true,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.45804995,
+              -0.7985886,
+              -0.39044407
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3348,
+              "GrainMean": 0.010150566683065118,
+              "GrainP95": 0.05932235294117644,
+              "ChangePixels": 3200,
+              "ChangeMean": 0.010211248284313777,
+              "ChangeP95": 0.05483450980392157
+            },
+            "control": {
+              "Pixels": 3253,
+              "GrainMean": 0.000560766471974585,
+              "GrainP95": 0.003638431372549017,
+              "ChangePixels": 3208,
+              "ChangeMean": 0.00011274925431519171,
+              "ChangeP95": 0.0008337254901960578
+            },
+            "ground": {
+              "Pixels": 12335,
+              "GrainMean": 0.006814888417304461,
+              "GrainP95": 0.028253333333333464,
+              "ChangePixels": 11494,
+              "ChangeMean": 0.00629957850131527,
+              "ChangeP95": 0.035278431372549046
+            },
+            "ground-ctrl": {
+              "Pixels": 144976,
+              "GrainMean": 0.004334941420999813,
+              "GrainP95": 0.01625254901960782,
+              "ChangePixels": 144593,
+              "ChangeMean": 0.0002738215542937863,
+              "ChangeP95": 0.0028047058823529314
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 85,
+            "Seconds": 1.4166666666666667,
+            "TimeOfDay": 0.49805555555555553,
+            "Backend": "MetalNative",
+            "InternalWidth": 1707,
+            "InternalHeight": 960,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": true,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": false,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.45782837,
+              -0.79859114,
+              -0.39069855
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3341,
+              "GrainMean": 0.009980079699045168,
+              "GrainP95": 0.057989803921568606,
+              "ChangePixels": 3341,
+              "ChangeMean": 0.004492376240529106,
+              "ChangeP95": 0.019875294117647102
+            },
+            "control": {
+              "Pixels": 3251,
+              "GrainMean": 0.0005594451179425908,
+              "GrainP95": 0.003638431372549017,
+              "ChangePixels": 3240,
+              "ChangeMean": 0.00014757879448075513,
+              "ChangeP95": 0.0008337254901961133
+            },
+            "ground": {
+              "Pixels": 12336,
+              "GrainMean": 0.006463246801963287,
+              "GrainP95": 0.02633411764705884,
+              "ChangePixels": 12335,
+              "ChangeMean": 0.0032528720284222754,
+              "ChangeP95": 0.015670588235294103
+            },
+            "ground-ctrl": {
+              "Pixels": 144972,
+              "GrainMean": 0.0043266769296349036,
+              "GrainP95": 0.01625254901960782,
+              "ChangePixels": 144972,
+              "ChangeMean": 0.0002846399548148311,
+              "ChangeP95": 0.0028047058823529314
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 86,
+            "Seconds": 1.4333333333333333,
+            "TimeOfDay": 0.4981111111111111,
+            "Backend": "MetalNative",
+            "InternalWidth": 1707,
+            "InternalHeight": 960,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": true,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": false,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.45760778,
+              -0.79859364,
+              -0.39095187
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3288,
+              "GrainMean": 0.009682224369066374,
+              "GrainP95": 0.05347058823529416,
+              "ChangePixels": 3267,
+              "ChangeMean": 0.0018653630781972897,
+              "ChangeP95": 0.008676862745098046
+            },
+            "control": {
+              "Pixels": 3256,
+              "GrainMean": 0.000568193621428913,
+              "GrainP95": 0.003638431372548989,
+              "ChangePixels": 3237,
+              "ChangeMean": 9.816206000472413e-05,
+              "ChangeP95": 0.0008337254901960023
+            },
+            "ground": {
+              "Pixels": 12337,
+              "GrainMean": 0.0062140501949340754,
+              "GrainP95": 0.02463058823529407,
+              "ChangePixels": 12332,
+              "ChangeMean": 0.001329728237710907,
+              "ChangeP95": 0.004755294117646969
+            },
+            "ground-ctrl": {
+              "Pixels": 144970,
+              "GrainMean": 0.004334583138904178,
+              "GrainP95": 0.01625254901960782,
+              "ChangePixels": 144970,
+              "ChangeMean": 0.0002723407547471055,
+              "ChangeP95": 0.0028047058823529314
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 87,
+            "Seconds": 1.45,
+            "TimeOfDay": 0.49816666666666665,
+            "Backend": "MetalNative",
+            "InternalWidth": 1707,
+            "InternalHeight": 960,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": true,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": true,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.4573854,
+              -0.7985961,
+              -0.39120692
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3288,
+              "GrainMean": 0.010715442965507405,
+              "GrainP95": 0.06056941176470587,
+              "ChangePixels": 3215,
+              "ChangeMean": 0.01010838020309215,
+              "ChangeP95": 0.05958980392156865
+            },
+            "control": {
+              "Pixels": 3604,
+              "GrainMean": 0.0008548549541903306,
+              "GrainP95": 0.003921568627450911,
+              "ChangePixels": 3227,
+              "ChangeMean": 0.00012560248394368633,
+              "ChangeP95": 0.0008337254901960856
+            },
+            "ground": {
+              "Pixels": 12464,
+              "GrainMean": 0.006642371504442514,
+              "GrainP95": 0.027147450980392174,
+              "ChangePixels": 11784,
+              "ChangeMean": 0.006527990029684707,
+              "ChangeP95": 0.03749647058823524
+            },
+            "ground-ctrl": {
+              "Pixels": 144610,
+              "GrainMean": 0.004349812230596421,
+              "GrainP95": 0.01625254901960782,
+              "ChangePixels": 144161,
+              "ChangeMean": 0.00028376213903547547,
+              "ChangeP95": 0.0028047058823529314
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 88,
+            "Seconds": 1.4666666666666666,
+            "TimeOfDay": 0.49822222222222223,
+            "Backend": "MetalNative",
+            "InternalWidth": 1707,
+            "InternalHeight": 960,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": true,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": false,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.4571653,
+              -0.7985984,
+              -0.39145938
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3292,
+              "GrainMean": 0.010058834012341289,
+              "GrainP95": 0.05738745098039222,
+              "ChangePixels": 3287,
+              "ChangeMean": 0.0038172059867451415,
+              "ChangeP95": 0.015403137254901944
+            },
+            "control": {
+              "Pixels": 3598,
+              "GrainMean": 0.0007787821120666149,
+              "GrainP95": 0.0036384313725490447,
+              "ChangePixels": 3595,
+              "ChangeMean": 0.00024337833046987923,
+              "ChangeP95": 0.0008337254901961133
+            },
+            "ground": {
+              "Pixels": 12461,
+              "GrainMean": 0.0065157702699087305,
+              "GrainP95": 0.025542745098039332,
+              "ChangePixels": 12461,
+              "ChangeMean": 0.002173456761566684,
+              "ChangeP95": 0.008393725490196124
+            },
+            "ground-ctrl": {
+              "Pixels": 144615,
+              "GrainMean": 0.004357453370781562,
+              "GrainP95": 0.016263529411764677,
+              "ChangePixels": 144610,
+              "ChangeMean": 0.0002643311299763702,
+              "ChangeP95": 0.0028047058823529314
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 89,
+            "Seconds": 1.4833333333333334,
+            "TimeOfDay": 0.49827777777777776,
+            "Backend": "MetalNative",
+            "InternalWidth": 1707,
+            "InternalHeight": 960,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": true,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": false,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.45694077,
+              -0.79860073,
+              -0.39171675
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3285,
+              "GrainMean": 0.009789541767391906,
+              "GrainP95": 0.054299607843137254,
+              "ChangePixels": 3284,
+              "ChangeMean": 0.0022513278880370493,
+              "ChangeP95": 0.009227450980392182
+            },
+            "control": {
+              "Pixels": 3592,
+              "GrainMean": 0.0006611452465173126,
+              "GrainP95": 0.0036384313725490447,
+              "ChangePixels": 3589,
+              "ChangeMean": 0.00021147689836592158,
+              "ChangeP95": 0.0008337254901960856
+            },
+            "ground": {
+              "Pixels": 12461,
+              "GrainMean": 0.006282142842531382,
+              "GrainP95": 0.024331764705882497,
+              "ChangePixels": 12461,
+              "ChangeMean": 0.0013480341961036077,
+              "ChangeP95": 0.004755294117646969
+            },
+            "ground-ctrl": {
+              "Pixels": 144619,
+              "GrainMean": 0.0043602347317196165,
+              "GrainP95": 0.016268235294117472,
+              "ChangePixels": 144615,
+              "ChangeMean": 0.00028675282104684844,
+              "ChangeP95": 0.0028047058823529314
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 90,
+            "Seconds": 1.5,
+            "TimeOfDay": 0.4983333333333333,
+            "Backend": "MetalNative",
+            "InternalWidth": 1707,
+            "InternalHeight": 960,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": true,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": true,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.45671836,
+              -0.79860294,
+              -0.39197156
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3236,
+              "GrainMean": 0.010037050582903145,
+              "GrainP95": 0.055169411764705883,
+              "ChangePixels": 3191,
+              "ChangeMean": 0.0074468793973245795,
+              "ChangeP95": 0.02434745098039215
+            },
+            "control": {
+              "Pixels": 3621,
+              "GrainMean": 0.0006447273258930725,
+              "GrainP95": 0.0036384313725490447,
+              "ChangePixels": 3544,
+              "ChangeMean": 0.00020465476032399376,
+              "ChangeP95": 0.0008337254901960856
+            },
+            "ground": {
+              "Pixels": 12795,
+              "GrainMean": 0.006647688419955664,
+              "GrainP95": 0.027136470588235206,
+              "ChangePixels": 12009,
+              "ChangeMean": 0.006603130723852555,
+              "ChangeP95": 0.036379607843137096
+            },
+            "ground-ctrl": {
+              "Pixels": 144083,
+              "GrainMean": 0.004367861514461256,
+              "GrainP95": 0.016263529411764677,
+              "ChangePixels": 143688,
+              "ChangeMean": 0.0002908712559128922,
+              "ChangeP95": 0.0028047058823529314
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 91,
+            "Seconds": 1.5166666666666666,
+            "TimeOfDay": 0.4983888888888889,
+            "Backend": "MetalNative",
+            "InternalWidth": 1707,
+            "InternalHeight": 960,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": true,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": false,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.45649698,
+              -0.7986051,
+              -0.39222497
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3190,
+              "GrainMean": 0.00984667871411887,
+              "GrainP95": 0.054299607843137254,
+              "ChangePixels": 3187,
+              "ChangeMean": 0.0038067103490281914,
+              "ChangeP95": 0.014852549019607808
+            },
+            "control": {
+              "Pixels": 3630,
+              "GrainMean": 0.0006777883649327459,
+              "GrainP95": 0.0036384313725490447,
+              "ChangePixels": 3610,
+              "ChangeMean": 0.0001790742490902172,
+              "ChangeP95": 0.0008337254901961133
+            },
+            "ground": {
+              "Pixels": 12794,
+              "GrainMean": 0.00641132767504375,
+              "GrainP95": 0.02494509803921552,
+              "ChangePixels": 12794,
+              "ChangeMean": 0.0019610583392337838,
+              "ChangeP95": 0.008676862745098046
+            },
+            "ground-ctrl": {
+              "Pixels": 144083,
+              "GrainMean": 0.004359198196354823,
+              "GrainP95": 0.016268235294117583,
+              "ChangePixels": 144083,
+              "ChangeMean": 0.00028299959459643365,
+              "ChangeP95": 0.0028047058823529314
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 92,
+            "Seconds": 1.5333333333333332,
+            "TimeOfDay": 0.4984444444444444,
+            "Backend": "MetalNative",
+            "InternalWidth": 1707,
+            "InternalHeight": 960,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": true,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": false,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.4562691,
+              -0.7986072,
+              -0.3924857
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3240,
+              "GrainMean": 0.009150516339869274,
+              "GrainP95": 0.04899372549019615,
+              "ChangePixels": 3187,
+              "ChangeMean": 0.002367887188763156,
+              "ChangeP95": 0.009227450980392182
+            },
+            "control": {
+              "Pixels": 3632,
+              "GrainMean": 0.0006281851947827559,
+              "GrainP95": 0.003638431372548989,
+              "ChangePixels": 3625,
+              "ChangeMean": 0.0001667109127789051,
+              "ChangeP95": 0.0008337254901961133
+            },
+            "ground": {
+              "Pixels": 12793,
+              "GrainMean": 0.006264766362732057,
+              "GrainP95": 0.024378823529411786,
+              "ChangePixels": 12793,
+              "ChangeMean": 0.0011513893474219118,
+              "ChangeP95": 0.004472156862745158
+            },
+            "ground-ctrl": {
+              "Pixels": 144084,
+              "GrainMean": 0.004366371631797931,
+              "GrainP95": 0.016268235294117694,
+              "ChangePixels": 144083,
+              "ChangeMean": 0.0002707394716525782,
+              "ChangeP95": 0.0028047058823529314
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 93,
+            "Seconds": 1.55,
+            "TimeOfDay": 0.4985,
+            "Backend": "MetalNative",
+            "InternalWidth": 1707,
+            "InternalHeight": 960,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": true,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": true,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.45605123,
+              -0.79860914,
+              -0.39273497
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3437,
+              "GrainMean": 0.009664688653465486,
+              "GrainP95": 0.055400784313725526,
+              "ChangePixels": 3141,
+              "ChangeMean": 0.008551100873332483,
+              "ChangeP95": 0.032473725490196115
+            },
+            "control": {
+              "Pixels": 3540,
+              "GrainMean": 0.0006387032236623435,
+              "GrainP95": 0.0036384313725490447,
+              "ChangePixels": 3451,
+              "ChangeMean": 0.00013585104630087303,
+              "ChangeP95": 0.0008337254901960856
+            },
+            "ground": {
+              "Pixels": 12974,
+              "GrainMean": 0.006609132654449105,
+              "GrainP95": 0.026601568627451,
+              "ChangePixels": 12224,
+              "ChangeMean": 0.005898309593470945,
+              "ChangeP95": 0.03190745098039216
+            },
+            "ground-ctrl": {
+              "Pixels": 143690,
+              "GrainMean": 0.0043792710723923245,
+              "GrainP95": 0.016268235294117694,
+              "ChangePixels": 143217,
+              "ChangeMean": 0.0002750170884248551,
+              "ChangeP95": 0.0028047058823529314
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 94,
+            "Seconds": 1.5666666666666667,
+            "TimeOfDay": 0.49855555555555553,
+            "Backend": "MetalNative",
+            "InternalWidth": 1707,
+            "InternalHeight": 960,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": true,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": false,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.4558332,
+              -0.79861104,
+              -0.39298403
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3372,
+              "GrainMean": 0.009448416719000773,
+              "GrainP95": 0.05513803921568616,
+              "ChangePixels": 3341,
+              "ChangeMean": 0.003619452905376443,
+              "ChangeP95": 0.012315294117647035
+            },
+            "control": {
+              "Pixels": 3541,
+              "GrainMean": 0.000656378446323457,
+              "GrainP95": 0.0036384313725490447,
+              "ChangePixels": 3497,
+              "ChangeMean": 0.00016926463579426665,
+              "ChangeP95": 0.0008337254901960856
+            },
+            "ground": {
+              "Pixels": 12977,
+              "GrainMean": 0.00639775204094118,
+              "GrainP95": 0.02467764705882336,
+              "ChangePixels": 12973,
+              "ChangeMean": 0.0020571841063566536,
+              "ChangeP95": 0.008393725490196124
+            },
+            "ground-ctrl": {
+              "Pixels": 143691,
+              "GrainMean": 0.0043909008287247924,
+              "GrainP95": 0.016519999999999868,
+              "ChangePixels": 143690,
+              "ChangeMean": 0.00025856490620466385,
+              "ChangeP95": 0.0028047058823529314
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 95,
+            "Seconds": 1.5833333333333333,
+            "TimeOfDay": 0.4986111111111111,
+            "Backend": "MetalNative",
+            "InternalWidth": 1707,
+            "InternalHeight": 960,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": true,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": false,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.45561156,
+              -0.7986129,
+              -0.39323726
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3370,
+              "GrainMean": 0.009786834235177773,
+              "GrainP95": 0.057104313725490186,
+              "ChangePixels": 3365,
+              "ChangeMean": 0.0032734630422748415,
+              "ChangeP95": 0.009778039215686207
+            },
+            "control": {
+              "Pixels": 3540,
+              "GrainMean": 0.0006306256785199938,
+              "GrainP95": 0.0036384313725490447,
+              "ChangePixels": 3537,
+              "ChangeMean": 0.0001533394313337432,
+              "ChangeP95": 0.0008337254901960856
+            },
+            "ground": {
+              "Pixels": 12972,
+              "GrainMean": 0.00622360184530175,
+              "GrainP95": 0.024090980392156847,
+              "ChangePixels": 12970,
+              "ChangeMean": 0.0017760356176395081,
+              "ChangeP95": 0.00782745098039217
+            },
+            "ground-ctrl": {
+              "Pixels": 143689,
+              "GrainMean": 0.004396607799059889,
+              "GrainP95": 0.01651999999999998,
+              "ChangePixels": 143689,
+              "ChangeMean": 0.0002781235072096878,
+              "ChangeP95": 0.0028047058823529314
+            }
+          }
+        }
+      ]
+    },
+    {
+      "Name": "fxaa",
+      "Regions": {
+        "character": {
+          "Pixels": 52722,
+          "GrainMean": 0.002955329731756061,
+          "GrainP95": 0.015953725490196025,
+          "ChangePixels": 48662,
+          "ChangeMean": 0.004700304138753002,
+          "ChangeP95": 0.033574901960784276
+        },
+        "control": {
+          "Pixels": 55357,
+          "GrainMean": 0.0006459273868335108,
+          "GrainP95": 0.0036384313725490447,
+          "ChangePixels": 51182,
+          "ChangeMean": 7.744458261597592e-05,
+          "ChangeP95": 0
+        },
+        "ground": {
+          "Pixels": 199455,
+          "GrainMean": 0.002089821260975259,
+          "GrainP95": 0.008676862745097935,
+          "ChangePixels": 183963,
+          "ChangeMean": 0.0030677536670044663,
+          "ChangeP95": 0.02686901960784327
+        },
+        "ground-ctrl": {
+          "Pixels": 2315114,
+          "GrainMean": 0.0018501729035196237,
+          "GrainP95": 0.007843137254901822,
+          "ChangePixels": 2167026,
+          "ChangeMean": 4.186132171419232e-06,
+          "ChangeP95": 0
+        }
+      },
+      "Frames": [
+        {
+          "Diagnostics": {
+            "Frame": 80,
+            "Seconds": 1.3333333333333333,
+            "TimeOfDay": 0.49777777777777776,
+            "Backend": "MetalNative",
+            "InternalWidth": 1600,
+            "InternalHeight": 900,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": false,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": false,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.4589324,
+              -0.7985776,
+              -0.38942894
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3257,
+              "GrainMean": 0.0028702183532301343,
+              "GrainP95": 0.015403137254901972,
+              "ChangePixels": 0,
+              "ChangeMean": null,
+              "ChangeP95": null
+            },
+            "control": {
+              "Pixels": 3322,
+              "GrainMean": 0.0005999416840788085,
+              "GrainP95": 0.0036384313725490447,
+              "ChangePixels": 0,
+              "ChangeMean": null,
+              "ChangeP95": null
+            },
+            "ground": {
+              "Pixels": 11774,
+              "GrainMean": 0.002080748075686878,
+              "GrainP95": 0.00869254901960781,
+              "ChangePixels": 0,
+              "ChangeMean": null,
+              "ChangeP95": null
+            },
+            "ground-ctrl": {
+              "Pixels": 146014,
+              "GrainMean": 0.0018372058977958708,
+              "GrainP95": 0.007575686274509885,
+              "ChangePixels": 0,
+              "ChangeMean": null,
+              "ChangeP95": null
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 81,
+            "Seconds": 1.35,
+            "TimeOfDay": 0.4978333333333333,
+            "Backend": "MetalNative",
+            "InternalWidth": 1600,
+            "InternalHeight": 900,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": false,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": true,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.45871443,
+              -0.7985804,
+              -0.38967985
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3255,
+              "GrainMean": 0.0029693259841570892,
+              "GrainP95": 0.015953725490196136,
+              "ChangePixels": 3151,
+              "ChangeMean": 0.010876786578801648,
+              "ChangeP95": 0.0626776470588235
+            },
+            "control": {
+              "Pixels": 3323,
+              "GrainMean": 0.0006147079475786694,
+              "GrainP95": 0.0036384313725490447,
+              "ChangePixels": 3211,
+              "ChangeMean": 8.182632006399581e-05,
+              "ChangeP95": 0
+            },
+            "ground": {
+              "Pixels": 11994,
+              "GrainMean": 0.0020517158579289557,
+              "GrainP95": 0.008425098039215873,
+              "ChangePixels": 11345,
+              "ChangeMean": 0.009726056464366192,
+              "ChangeP95": 0.0486949019607843
+            },
+            "ground-ctrl": {
+              "Pixels": 145676,
+              "GrainMean": 0.0018412295887353415,
+              "GrainP95": 0.007575686274509996,
+              "ChangePixels": 145314,
+              "ChangeMean": 2.54502825119477e-06,
+              "ChangeP95": 0
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 82,
+            "Seconds": 1.3666666666666667,
+            "TimeOfDay": 0.4978888888888889,
+            "Backend": "MetalNative",
+            "InternalWidth": 1600,
+            "InternalHeight": 900,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": false,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": false,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.45849293,
+              -0.7985832,
+              -0.38993472
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3260,
+              "GrainMean": 0.0031207304222302303,
+              "GrainP95": 0.01622117647058835,
+              "ChangePixels": 3250,
+              "ChangeMean": 0.000869314268476621,
+              "ChangeP95": 0.0028047058823530424
+            },
+            "control": {
+              "Pixels": 3319,
+              "GrainMean": 0.0006141866496523274,
+              "GrainP95": 0.0036384313725490447,
+              "ChangePixels": 3308,
+              "ChangeMean": 3.808141878274883e-05,
+              "ChangeP95": 0
+            },
+            "ground": {
+              "Pixels": 11994,
+              "GrainMean": 0.0020521813194178708,
+              "GrainP95": 0.008425098039215873,
+              "ChangePixels": 11994,
+              "ChangeMean": 3.383718002792256e-06,
+              "ChangeP95": 0
+            },
+            "ground-ctrl": {
+              "Pixels": 145671,
+              "GrainMean": 0.0018405535062154023,
+              "GrainP95": 0.007580392156862681,
+              "ChangePixels": 145671,
+              "ChangeMean": 3.1105495448311454e-06,
+              "ChangeP95": 0
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 83,
+            "Seconds": 1.3833333333333333,
+            "TimeOfDay": 0.4979444444444444,
+            "Backend": "MetalNative",
+            "InternalWidth": 1600,
+            "InternalHeight": 900,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": false,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": false,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.458271,
+              -0.79858595,
+              -0.39018995
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3263,
+              "GrainMean": 0.003095491097450306,
+              "GrainP95": 0.016221176470588294,
+              "ChangePixels": 3255,
+              "ChangeMean": 0.0006108902743893251,
+              "ChangeP95": 0.0028047058823529314
+            },
+            "control": {
+              "Pixels": 3335,
+              "GrainMean": 0.0006003807508010695,
+              "GrainP95": 0.0036384313725490447,
+              "ChangePixels": 3303,
+              "ChangeMean": 4.3403916819528144e-05,
+              "ChangeP95": 0
+            },
+            "ground": {
+              "Pixels": 11994,
+              "GrainMean": 0.002052578184517085,
+              "GrainP95": 0.008425098039215873,
+              "ChangePixels": 11994,
+              "ChangeMean": 2.1449940656603204e-06,
+              "ChangeP95": 0
+            },
+            "ground-ctrl": {
+              "Pixels": 145671,
+              "GrainMean": 0.0018406817565393585,
+              "GrainP95": 0.007575686274509996,
+              "ChangePixels": 145670,
+              "ChangeMean": 2.239512623886653e-06,
+              "ChangeP95": 0
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 84,
+            "Seconds": 1.4,
+            "TimeOfDay": 0.498,
+            "Backend": "MetalNative",
+            "InternalWidth": 1600,
+            "InternalHeight": 900,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": false,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": true,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.45804995,
+              -0.7985886,
+              -0.39044407
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3348,
+              "GrainMean": 0.0029265111157963644,
+              "GrainP95": 0.015953725490196025,
+              "ChangePixels": 3200,
+              "ChangeMean": 0.014987307598039264,
+              "ChangeP95": 0.08730823529411769
+            },
+            "control": {
+              "Pixels": 3253,
+              "GrainMean": 0.00061023344966637,
+              "GrainP95": 0.0036384313725490447,
+              "ChangePixels": 3208,
+              "ChangeMean": 5.2975160138868305e-05,
+              "ChangeP95": 0
+            },
+            "ground": {
+              "Pixels": 12335,
+              "GrainMean": 0.002073069426230146,
+              "GrainP95": 0.008676862745098046,
+              "ChangePixels": 11494,
+              "ChangeMean": 0.009880079291156103,
+              "ChangeP95": 0.05178274509803915
+            },
+            "ground-ctrl": {
+              "Pixels": 144976,
+              "GrainMean": 0.001846338157931633,
+              "GrainP95": 0.00782745098039217,
+              "ChangePixels": 144593,
+              "ChangeMean": 2.8574377058092572e-06,
+              "ChangeP95": 0
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 85,
+            "Seconds": 1.4166666666666667,
+            "TimeOfDay": 0.49805555555555553,
+            "Backend": "MetalNative",
+            "InternalWidth": 1600,
+            "InternalHeight": 900,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": false,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": false,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.45782837,
+              -0.79859114,
+              -0.39069855
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3341,
+              "GrainMean": 0.002926033417257943,
+              "GrainP95": 0.01595372549019608,
+              "ChangePixels": 3341,
+              "ChangeMean": 0.00032570405713916765,
+              "ChangeP95": 0.0008337254901961133
+            },
+            "control": {
+              "Pixels": 3251,
+              "GrainMean": 0.0006091984969933817,
+              "GrainP95": 0.0036384313725490447,
+              "ChangePixels": 3240,
+              "ChangeMean": 8.31227305737105e-05,
+              "ChangeP95": 0
+            },
+            "ground": {
+              "Pixels": 12336,
+              "GrainMean": 0.002073543907835495,
+              "GrainP95": 0.008676862745098046,
+              "ChangePixels": 12335,
+              "ChangeMean": 3.179220614066486e-06,
+              "ChangeP95": 0
+            },
+            "ground-ctrl": {
+              "Pixels": 144972,
+              "GrainMean": 0.0018465725578920588,
+              "GrainP95": 0.00782745098039217,
+              "ChangePixels": 144972,
+              "ChangeMean": 2.284162513058635e-06,
+              "ChangeP95": 0
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 86,
+            "Seconds": 1.4333333333333333,
+            "TimeOfDay": 0.4981111111111111,
+            "Backend": "MetalNative",
+            "InternalWidth": 1600,
+            "InternalHeight": 900,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": false,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": false,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.45760778,
+              -0.79859364,
+              -0.39095187
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3288,
+              "GrainMean": 0.002964872143504593,
+              "GrainP95": 0.016504313725490216,
+              "ChangePixels": 3267,
+              "ChangeMean": 0.0005631290924695563,
+              "ChangeP95": 0.0028047058823528204
+            },
+            "control": {
+              "Pixels": 3256,
+              "GrainMean": 0.0006069053813171443,
+              "GrainP95": 0.0036384313725490447,
+              "ChangePixels": 3237,
+              "ChangeMean": 0.0001258594559232402,
+              "ChangeP95": 0.00028313725490192176
+            },
+            "ground": {
+              "Pixels": 12337,
+              "GrainMean": 0.002073081675241212,
+              "GrainP95": 0.008676862745098046,
+              "ChangePixels": 12332,
+              "ChangeMean": 2.2030362582918477e-06,
+              "ChangeP95": 0
+            },
+            "ground-ctrl": {
+              "Pixels": 144970,
+              "GrainMean": 0.0018481423364129581,
+              "GrainP95": 0.007838431372548915,
+              "ChangePixels": 144970,
+              "ChangeMean": 6.126508932882667e-06,
+              "ChangeP95": 0
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 87,
+            "Seconds": 1.45,
+            "TimeOfDay": 0.49816666666666665,
+            "Backend": "MetalNative",
+            "InternalWidth": 1600,
+            "InternalHeight": 900,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": false,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": true,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.4573854,
+              -0.7985961,
+              -0.39120692
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3288,
+              "GrainMean": 0.0030430695100424426,
+              "GrainP95": 0.015953725490196247,
+              "ChangePixels": 3215,
+              "ChangeMean": 0.014491154575671673,
+              "ChangeP95": 0.08706117647058831
+            },
+            "control": {
+              "Pixels": 3604,
+              "GrainMean": 0.0006194600770385831,
+              "GrainP95": 0.0036384313725490447,
+              "ChangePixels": 3227,
+              "ChangeMean": 0.00010089040388389577,
+              "ChangeP95": 0
+            },
+            "ground": {
+              "Pixels": 12464,
+              "GrainMean": 0.0020932702811548055,
+              "GrainP95": 0.008676862745098046,
+              "ChangePixels": 11784,
+              "ChangeMean": 0.009315076208351581,
+              "ChangeP95": 0.047861176470588296
+            },
+            "ground-ctrl": {
+              "Pixels": 144610,
+              "GrainMean": 0.0018499519763093884,
+              "GrainP95": 0.007843137254901822,
+              "ChangePixels": 144161,
+              "ChangeMean": 7.234574742210192e-06,
+              "ChangeP95": 0
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 88,
+            "Seconds": 1.4666666666666666,
+            "TimeOfDay": 0.49822222222222223,
+            "Backend": "MetalNative",
+            "InternalWidth": 1600,
+            "InternalHeight": 900,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": false,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": false,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.4571653,
+              -0.7985984,
+              -0.39145938
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3292,
+              "GrainMean": 0.003022714602244285,
+              "GrainP95": 0.016236862745098057,
+              "ChangePixels": 3287,
+              "ChangeMean": 0.0002660892285116072,
+              "ChangeP95": 0.0008337254901961133
+            },
+            "control": {
+              "Pixels": 3598,
+              "GrainMean": 0.0006310475318532064,
+              "GrainP95": 0.0036384313725490447,
+              "ChangePixels": 3595,
+              "ChangeMean": 7.190706045978875e-05,
+              "ChangeP95": 0
+            },
+            "ground": {
+              "Pixels": 12461,
+              "GrainMean": 0.0020929453620786853,
+              "GrainP95": 0.008676862745098046,
+              "ChangePixels": 12461,
+              "ChangeMean": 1.2311982011326753e-06,
+              "ChangeP95": 0
+            },
+            "ground-ctrl": {
+              "Pixels": 144615,
+              "GrainMean": 0.0018501040694256009,
+              "GrainP95": 0.007843137254901822,
+              "ChangePixels": 144610,
+              "ChangeMean": 2.140746375308293e-06,
+              "ChangeP95": 0
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 89,
+            "Seconds": 1.4833333333333334,
+            "TimeOfDay": 0.49827777777777776,
+            "Backend": "MetalNative",
+            "InternalWidth": 1600,
+            "InternalHeight": 900,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": false,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": false,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.45694077,
+              -0.79860073,
+              -0.39171675
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3285,
+              "GrainMean": 0.003032853552988911,
+              "GrainP95": 0.016236862745098057,
+              "ChangePixels": 3284,
+              "ChangeMean": 0.0002420068782689711,
+              "ChangeP95": 0.001116862745097924
+            },
+            "control": {
+              "Pixels": 3592,
+              "GrainMean": 0.0006308723088344447,
+              "GrainP95": 0.0036384313725490447,
+              "ChangePixels": 3589,
+              "ChangeMean": 9.152191609438405e-05,
+              "ChangeP95": 0
+            },
+            "ground": {
+              "Pixels": 12461,
+              "GrainMean": 0.002091711394452634,
+              "GrainP95": 0.008676862745098046,
+              "ChangePixels": 12461,
+              "ChangeMean": 2.9216174070944406e-06,
+              "ChangeP95": 0
+            },
+            "ground-ctrl": {
+              "Pixels": 144619,
+              "GrainMean": 0.0018503029393392065,
+              "GrainP95": 0.007843137254901822,
+              "ChangePixels": 144615,
+              "ChangeMean": 1.988929361462097e-06,
+              "ChangeP95": 0
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 90,
+            "Seconds": 1.5,
+            "TimeOfDay": 0.4983333333333333,
+            "Backend": "MetalNative",
+            "InternalWidth": 1600,
+            "InternalHeight": 900,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": false,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": true,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.45671836,
+              -0.79860294,
+              -0.39197156
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3236,
+              "GrainMean": 0.0028931593106958312,
+              "GrainP95": 0.015953725490196136,
+              "ChangePixels": 3191,
+              "ChangeMean": 0.01271320539999143,
+              "ChangeP95": 0.07165803921568636
+            },
+            "control": {
+              "Pixels": 3621,
+              "GrainMean": 0.0006862762426152434,
+              "GrainP95": 0.0036384313725490447,
+              "ChangePixels": 3544,
+              "ChangeMean": 0.00011015004647457149,
+              "ChangeP95": 0
+            },
+            "ground": {
+              "Pixels": 12795,
+              "GrainMean": 0.002112822073573439,
+              "GrainP95": 0.008692549019607698,
+              "ChangePixels": 12009,
+              "ChangeMean": 0.009252446286200316,
+              "ChangeP95": 0.047861176470588296
+            },
+            "ground-ctrl": {
+              "Pixels": 144083,
+              "GrainMean": 0.0018566651220775327,
+              "GrainP95": 0.007843137254901822,
+              "ChangePixels": 143688,
+              "ChangeMean": 8.591168665005105e-06,
+              "ChangeP95": 0
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 91,
+            "Seconds": 1.5166666666666666,
+            "TimeOfDay": 0.4983888888888889,
+            "Backend": "MetalNative",
+            "InternalWidth": 1600,
+            "InternalHeight": 900,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": false,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": false,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.45649698,
+              -0.7986051,
+              -0.39222497
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3190,
+              "GrainMean": 0.002864068104984928,
+              "GrainP95": 0.015953725490196025,
+              "ChangePixels": 3187,
+              "ChangeMean": 0.00027358226126973916,
+              "ChangeP95": 0.0028047058823528204
+            },
+            "control": {
+              "Pixels": 3630,
+              "GrainMean": 0.0006897410468319539,
+              "GrainP95": 0.0036384313725490447,
+              "ChangePixels": 3610,
+              "ChangeMean": 6.012557710064554e-05,
+              "ChangeP95": 0
+            },
+            "ground": {
+              "Pixels": 12794,
+              "GrainMean": 0.002113206435614703,
+              "GrainP95": 0.008687843137255014,
+              "ChangePixels": 12794,
+              "ChangeMean": 1.3769322016754477e-06,
+              "ChangeP95": 0
+            },
+            "ground-ctrl": {
+              "Pixels": 144083,
+              "GrainMean": 0.001855850548015988,
+              "GrainP95": 0.007843137254901822,
+              "ChangePixels": 144083,
+              "ChangeMean": 7.85897235430611e-06,
+              "ChangeP95": 0
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 92,
+            "Seconds": 1.5333333333333332,
+            "TimeOfDay": 0.4984444444444444,
+            "Backend": "MetalNative",
+            "InternalWidth": 1600,
+            "InternalHeight": 900,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": false,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": false,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.4562691,
+              -0.7986072,
+              -0.3924857
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3240,
+              "GrainMean": 0.0028070273541515225,
+              "GrainP95": 0.015403137254901944,
+              "ChangePixels": 3187,
+              "ChangeMean": 0.0005156982102536624,
+              "ChangeP95": 0.0011168627450980906
+            },
+            "control": {
+              "Pixels": 3632,
+              "GrainMean": 0.0006884741297399996,
+              "GrainP95": 0.0036384313725490447,
+              "ChangePixels": 3625,
+              "ChangeMean": 7.242969574036337e-05,
+              "ChangeP95": 0.00028313725490192176
+            },
+            "ground": {
+              "Pixels": 12793,
+              "GrainMean": 0.0021125269793682805,
+              "GrainP95": 0.008692549019607698,
+              "ChangePixels": 12793,
+              "ChangeMean": 1.9692141689005628e-06,
+              "ChangeP95": 0
+            },
+            "ground-ctrl": {
+              "Pixels": 144084,
+              "GrainMean": 0.0018575977792909396,
+              "GrainP95": 0.007843137254901822,
+              "ChangePixels": 144083,
+              "ChangeMean": 6.013843055874781e-06,
+              "ChangeP95": 0
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 93,
+            "Seconds": 1.55,
+            "TimeOfDay": 0.4985,
+            "Backend": "MetalNative",
+            "InternalWidth": 1600,
+            "InternalHeight": 900,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": false,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": true,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.45605123,
+              -0.79860914,
+              -0.39273497
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3437,
+              "GrainMean": 0.002911299297723141,
+              "GrainP95": 0.014250196078431365,
+              "ChangePixels": 3141,
+              "ChangeMean": 0.013968503598828935,
+              "ChangeP95": 0.07610980392156863
+            },
+            "control": {
+              "Pixels": 3540,
+              "GrainMean": 0.0007025184446660003,
+              "GrainP95": 0.0036384313725490447,
+              "ChangePixels": 3451,
+              "ChangeMean": 5.800330679939327e-05,
+              "ChangeP95": 0
+            },
+            "ground": {
+              "Pixels": 12974,
+              "GrainMean": 0.0021181512950485984,
+              "GrainP95": 0.008645490196078298,
+              "ChangePixels": 12224,
+              "ChangeMean": 0.00975951737501272,
+              "ChangeP95": 0.050382745098039416
+            },
+            "ground-ctrl": {
+              "Pixels": 143690,
+              "GrainMean": 0.0018619736933675524,
+              "GrainP95": 0.007843137254901933,
+              "ChangePixels": 143217,
+              "ChangeMean": 2.442529620826331e-06,
+              "ChangeP95": 0
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 94,
+            "Seconds": 1.5666666666666667,
+            "TimeOfDay": 0.49855555555555553,
+            "Backend": "MetalNative",
+            "InternalWidth": 1600,
+            "InternalHeight": 900,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": false,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": false,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.4558332,
+              -0.79861104,
+              -0.39298403
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3372,
+              "GrainMean": 0.0029073051426976295,
+              "GrainP95": 0.014852549019607836,
+              "ChangePixels": 3341,
+              "ChangeMean": 0.000513442141897166,
+              "ChangeP95": 0.0028047058823529036
+            },
+            "control": {
+              "Pixels": 3541,
+              "GrainMean": 0.0007104156907044073,
+              "GrainP95": 0.0036384313725490447,
+              "ChangePixels": 3497,
+              "ChangeMean": 6.403292457961155e-05,
+              "ChangeP95": 0
+            },
+            "ground": {
+              "Pixels": 12977,
+              "GrainMean": 0.0021173796777707553,
+              "GrainP95": 0.008645490196078298,
+              "ChangePixels": 12973,
+              "ChangeMean": 2.2663661934364296e-06,
+              "ChangeP95": 0
+            },
+            "ground-ctrl": {
+              "Pixels": 143691,
+              "GrainMean": 0.0018602619537211136,
+              "GrainP95": 0.007843137254901933,
+              "ChangePixels": 143690,
+              "ChangeMean": 5.899590485508703e-06,
+              "ChangeP95": 0
+            }
+          }
+        },
+        {
+          "Diagnostics": {
+            "Frame": 95,
+            "Seconds": 1.5833333333333333,
+            "TimeOfDay": 0.4986111111111111,
+            "Backend": "MetalNative",
+            "InternalWidth": 1600,
+            "InternalHeight": 900,
+            "DisplayWidth": 2560,
+            "DisplayHeight": 1440,
+            "Sharpness": 0.25,
+            "HistoryValid": false,
+            "ShadowActive": true,
+            "ShadowRendered": true,
+            "LightMatrixChanged": false,
+            "SkinnedCasters": 1,
+            "Cascades": 3,
+            "HoldTexels": 1,
+            "SunDirection": [
+              -0.45561156,
+              -0.7986129,
+              -0.39323726
+            ]
+          },
+          "Regions": {
+            "character": {
+              "Pixels": 3370,
+              "GrainMean": 0.0029313474137429253,
+              "GrainP95": 0.014868235294117627,
+              "ChangePixels": 3365,
+              "ChangeMean": 0.0005409268420592636,
+              "ChangeP95": 0.0028047058823529314
+            },
+            "control": {
+              "Pixels": 3540,
+              "GrainMean": 0.0006998730475240924,
+              "GrainP95": 0.0036384313725490447,
+              "ChangePixels": 3537,
+              "ChangeMean": 0.00010698110174236674,
+              "ChangeP95": 0.00028313725490192176
+            },
+            "ground": {
+              "Pixels": 12972,
+              "GrainMean": 0.0021176772898490043,
+              "GrainP95": 0.008629803921568535,
+              "ChangePixels": 12970,
+              "ChangeMean": 8.43998971986661e-07,
+              "ChangeP95": 0
+            },
+            "ground-ctrl": {
+              "Pixels": 143689,
+              "GrainMean": 0.0018599632785348595,
+              "GrainP95": 0.007843137254901933,
+              "ChangePixels": 143689,
+              "ChangeMean": 1.5231697979527972e-06,
+              "ChangeP95": 0
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

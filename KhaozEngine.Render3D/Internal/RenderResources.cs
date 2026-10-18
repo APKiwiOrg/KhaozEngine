@@ -80,6 +80,7 @@ namespace KhaozEngine.Render3D.Internal
         /// <see cref="MotionMath.Sentinel"/> by the model pass, so background pixels carry it. Never multisampled,
         /// because temporal rendering is single-sample.</summary>
         public IGpuTexture? MotionTex;
+        public IGpuTexture? KeyVisibility, MsKeyVisibility;
 
         /// <summary>Whether <see cref="MotionTex"/> is allocated and attached (the <c>motion</c> argument of the last
         /// <see cref="Resize"/>).</summary>
@@ -215,6 +216,7 @@ namespace KhaozEngine.Render3D.Internal
             ColorTex = Tex(uw, uh, colorFmt, blitRt, blitMips);
             NormalTex = Tex(uw, uh, GpuPixelFormat.R8G8B8A8UNorm, rt);
             DepthColorTex = Tex(uw, uh, GpuPixelFormat.R32Float, rt);
+            KeyVisibility = TemporalVisibilityDiagnostics.Enabled ? Tex(uw, uh, TemporalVisibilityDiagnostics.Format, rt) : null;
 
             if (Msaa)
             {
@@ -225,7 +227,10 @@ namespace KhaozEngine.Render3D.Internal
                 MsNormal = Tex(uw, uh, GpuPixelFormat.R8G8B8A8UNorm, rtOnly, 1, s);
                 MsDepthColor = Tex(uw, uh, GpuPixelFormat.R32Float, rtOnly, 1, s);
                 DepthStencil = Tex(uw, uh, GpuPixelFormat.D32FloatS8UInt, GpuTextureUsage.DepthStencil, 1, s);
-                ModelFB = _gd.Factory.CreateFramebuffer(DepthStencil, MsColor, MsNormal, MsDepthColor);
+                MsKeyVisibility = KeyVisibility is null ? null : Tex(uw, uh, TemporalVisibilityDiagnostics.Format, rtOnly, 1, s);
+                ModelFB = MsKeyVisibility is null
+                    ? _gd.Factory.CreateFramebuffer(DepthStencil, MsColor, MsNormal, MsDepthColor)
+                    : _gd.Factory.CreateFramebuffer(DepthStencil, MsColor, MsNormal, MsDepthColor, MsKeyVisibility);
                 ColorDepthFB = _gd.Factory.CreateFramebuffer(DepthStencil, MsColor);
             }
             else
@@ -234,9 +239,10 @@ namespace KhaozEngine.Render3D.Internal
                 // While temporal rendering is active every opaque path writes motion in the same pass as colour,
                 // normal and depth, so the target rides as a fourth attachment (MotionMath).
                 MotionTex = motion ? Tex(uw, uh, MotionMath.Format, rt) : null;
-                ModelFB = MotionTex is null
-                    ? _gd.Factory.CreateFramebuffer(DepthStencil, ColorTex, NormalTex, DepthColorTex)
-                    : _gd.Factory.CreateFramebuffer(DepthStencil, ColorTex, NormalTex, DepthColorTex, MotionTex);
+                var attachments = new System.Collections.Generic.List<IGpuTexture> { ColorTex, NormalTex, DepthColorTex };
+                if (MotionTex is not null) attachments.Add(MotionTex);
+                if (KeyVisibility is not null) attachments.Add(KeyVisibility);
+                ModelFB = _gd.Factory.CreateFramebuffer(DepthStencil, attachments.ToArray());
                 // Lit color attachment + the scene depth-stencil, so the ground-decal pass can blend into ColorTex AND
                 // use a read-only hardware depth test to reject no-geometry background pixels (cleared to the far
                 // plane), while sampling the separate linear-depth texture (DepthColorTex) for world reconstruction.
@@ -331,6 +337,7 @@ namespace KhaozEngine.Render3D.Internal
             if (!Msaa) return;
             cl.ResolveTexture(MsDepthColor!, DepthColorTex);
             cl.ResolveTexture(MsNormal!, NormalTex);
+            if (MsKeyVisibility is not null) cl.ResolveTexture(MsKeyVisibility, KeyVisibility!);
         }
 
         /// <summary>Resolve the multisampled lit colour into the single-sample target the post chain samples. Call
@@ -396,6 +403,8 @@ namespace KhaozEngine.Render3D.Internal
             MsColor = MsNormal = MsDepthColor = null;
             MotionTex?.Dispose();
             MotionTex = null;
+            KeyVisibility?.Dispose(); MsKeyVisibility?.Dispose();
+            KeyVisibility = MsKeyVisibility = null;
             DisposePings();
             DisposeBloom();
         }

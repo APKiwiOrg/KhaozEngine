@@ -24,6 +24,13 @@ void main() {
 #ifdef TemporalDiagnostics
     // Mode 5 overlays the resolve decision without putting its colour into history.
     if (int(Mode.x + 0.5) == 5) {
+#ifdef TemporalVisibility
+        if ((int(Params.x + 0.5) & 16) != 0) {
+            if (t.visReleased < 0.5) discard;
+            oColor = vec4(1.0, 0.0, 1.0, 1.0);
+            return;
+        }
+#endif
         int diag = temporalDiag();
         // Flat 0 or 1 channels, so a capture reads each code back exactly.
         const vec3 codes[8] = vec3[8](vec3(0.0), vec3(1.0, 0.0, 0.0), vec3(0.0, 1.0, 0.0), vec3(0.0, 0.0, 1.0),

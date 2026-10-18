@@ -85,6 +85,7 @@ namespace KhaozEngine.Render3D.Internal
         /// the lighting program untouched. The two filters are mutually exclusive.</summary>
         internal static string ApplyShadowFilter(string program, int? mask = null)
         {
+            if (mask is null) program = TemporalVisibilityDiagnostics.LitFragment(program);
             int filter = (mask ?? Mask) & ShadowFilterMask;
             string define = filter switch
             {
@@ -102,7 +103,8 @@ namespace KhaozEngine.Render3D.Internal
         internal const string Define = "#define TemporalDiagnostics\n";
 
         /// <summary>The mask the tokens set when the process first asked.</summary>
-        public static int Mask { get; private set; } = Parse(Environment.GetEnvironmentVariable(EnvironmentVariable));
+        internal static readonly int InitialMask = Parse(Environment.GetEnvironmentVariable(EnvironmentVariable));
+        public static int Mask { get; private set; } = InitialMask;
 
         /// <summary>Override the mask for a paired diagnostic measurement. The caller serializes process-global
         /// state, creates the scene with a nonzero mask to compile the diagnostic GLSL, and restores the old mask.</summary>
@@ -110,13 +112,14 @@ namespace KhaozEngine.Render3D.Internal
 
         /// <summary>Whether a diagnostic overlay is set. Precedence is ShowGate, ShowGateExtent, ShowLockAge, ShowLocked,
         /// then ShowReleased.</summary>
-        public static bool ShowsOverlay => (Mask & (ShowReleased | ShowLocked | ShowGate | ShowLockAge | ShowGateExtent)) != 0;
+        public static bool ShowsOverlay => (Mask & (ShowReleased | ShowLocked | ShowGate | ShowLockAge | ShowGateExtent | TemporalVisibilityDiagnostics.ShowRelease)) != 0;
 
         /// <summary><paramref name="program"/> with <see cref="Define"/> after its <c>#version</c> line while the mask
         /// is not 0, else <paramref name="program"/> itself.</summary>
         internal static string Apply(string program)
         {
-            if ((Mask & ~ShadowFilterMask) == 0) return program;
+            program = TemporalVisibilityDiagnostics.ResolveFragment(program);
+            if ((Mask & ~ShadowFilterMask) == 0 && !TemporalVisibilityDiagnostics.Enabled) return program;
             int line = program.IndexOf('\n');
             return line < 0 ? Define + program : program.Insert(line + 1, Define);
         }
@@ -131,6 +134,11 @@ namespace KhaozEngine.Render3D.Internal
             {
                 mask |= raw.ToLowerInvariant() switch
                 {
+                    "vis-release-0.1" => TemporalVisibilityDiagnostics.Release10,
+                    "vis-release-0.2" => TemporalVisibilityDiagnostics.Release20,
+                    "vis-release-0.3" => TemporalVisibilityDiagnostics.Release30,
+                    "vis-reset-0.2" => TemporalVisibilityDiagnostics.Reset20,
+                    "show-vis-release" => TemporalVisibilityDiagnostics.ShowRelease,
                     "shadow-bilinear-3x3" => ShadowBilinear3x3,
                     "shadow-bilinear-1" => ShadowBilinear1,
                     "show-released" => ShowReleased,

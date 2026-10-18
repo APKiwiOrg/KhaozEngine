@@ -6,10 +6,7 @@ import sys
 
 root = Path.cwd().resolve()
 out = Path(sys.argv[1]).resolve()
-temporal = ["TemporalShadowEdgeLagGpuTests", "TemporalMovingShadeLagGpuTests", "TemporalStableDetailGpuTests",
-            "TemporalStablePeakGpuTests", "TemporalGameShadowGrainGpuTests"]
-selection = "(" + "|".join(
-    "FullyQualifiedName~" + t for t in temporal + ["Shadow", "Golden"]) + ")"
+selection = "((FullyQualifiedName~Temporal&FullyQualifiedName~GpuTests)|FullyQualifiedName~Shadow|FullyQualifiedName~Golden)"
 selection += "&(FullyQualifiedName!~Bench)&(FullyQualifiedName!~Perf)"
 
 def guard():
@@ -37,6 +34,6 @@ def run(token):
         raise SystemExit(75)
     return result.returncode
 
-a = run("shadow-bilinear-3x3")
-b = run("shadow-bilinear-1")
-print("MEASUREMENT EXITS", a, b)
+tokens = sys.argv[2:] or ["shadow-bilinear-3x3", "shadow-bilinear-1"]
+results = {token: run(token) for token in tokens}
+print("MEASUREMENT EXITS", results)

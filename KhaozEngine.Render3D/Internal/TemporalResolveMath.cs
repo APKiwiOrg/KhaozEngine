@@ -142,8 +142,7 @@ namespace KhaozEngine.Render3D.Internal
         /// previous view exists and both reprojections invert. The previous projection is the current one when it is
         /// not. <paramref name="screenFixedBackground"/> sets <see cref="TemporalResolveUniforms.Params"/>.y for a
         /// background that stays on its pixels, the starfield, and z is the camera's travel since last frame
-        /// (<see cref="CameraTravel"/>) where history is readable. Its other lanes are reserved and written as
-        /// 0.</summary>
+        /// (<see cref="CameraTravel"/>) where history is readable. Its x and w lanes carry the diagnostic mask.</summary>
         public static TemporalResolveUniforms BuildUniforms(in TemporalViewInput current, TemporalViewInput? previous,
             Vector2 jitterPixels, int internalWidth, int internalHeight, int displayWidth, int displayHeight,
             bool historyValid, bool screenFixedBackground = false)
@@ -164,9 +163,9 @@ namespace KhaozEngine.Render3D.Internal
                 Sizes = new Vector4(iw, ih, dw, dh),
                 Jitter = new Vector4(jitterPixels.X, jitterPixels.Y, displayOverInternal, readable ? 1f : 0f),
                 CurrentDepth = currentDepth,
-                Params = new Vector4(0f, screenFixedBackground ? 1f : 0f,
+                Params = new Vector4(TemporalResolveDiagnostics.Mask >> 24, screenFixedBackground ? 1f : 0f,
                     readable && previous is { } before ? CameraTravel(current.View, before.View) : 0f,
-                    TemporalResolveDiagnostics.Mask),
+                    TemporalResolveDiagnostics.Mask & 0xFFFFFF),
             };
         }
 

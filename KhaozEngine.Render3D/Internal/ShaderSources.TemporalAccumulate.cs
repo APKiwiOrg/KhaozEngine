@@ -12,12 +12,12 @@ namespace KhaozEngine.Render3D.Internal
     /// </summary>
     internal static partial class ShaderSources
     {
-        internal const string TemporalAccumulateGlsl = @"
+        internal const string TemporalAccumulateGlsl = TemporalVisibilityGlsl + @"
 struct TemporalPixel {
     vec3 color; float confidence; float stability; float moved; float disocclusion; float reactive; float clip;
     float alpha;
 #ifdef TemporalDiagnostics
-    float released; float gate; float gateExtent; float lockAge;
+    float released; float visReleased; float gate; float gateExtent; float lockAge;
 #endif
 };
 
@@ -558,6 +558,10 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
         lockValue = 0.0;
     float lockAge = temporalDiagnosticLockAge(lockValue, refreshRidge, historyState.y);
 #endif
+#ifdef TemporalVisibility
+    bool visReleased = useHistory && temporalVisibilityChanged(uv, centreTexel, maxTexel, previousUv);
+    if (visReleased) lockValue = 0.0;
+#endif
     float hold = clamp(lockValue * LockHoldGain, 0.0, 1.0);
 
     // Step 5: variance clipping in luma-weighted YCoCg, from the box centre towards the history, which keeps its hue.
@@ -675,6 +679,12 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
         accumulated = 0.0;
     }
 #endif
+#ifdef TemporalVisibility
+    if (visReleased && (int(Params.x + 0.5) & 8) != 0) {
+        accumulated = 0.0;
+        released = true;
+    }
+#endif
     excess.x *= 1.0 - hold;
     float clipScale = max(excess.x, max(excess.y, excess.z));
     vec3 clipped = clipScale > 1.0 ? boxCentre + fromCentre / clipScale : historyYcc;
@@ -760,6 +770,10 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     result.clip = useHistory && clipScale > 1.0 && length(clipped - historyYcc) > ClipFlagMinimumMove ? 1.0 : 0.0;
 #ifdef TemporalDiagnostics
     result.released = released ? 1.0 : 0.0;
+    result.visReleased = 0.0;
+#ifdef TemporalVisibility
+    result.visReleased = visReleased ? 1.0 : 0.0;
+#endif
     result.gate = gate.x;
     result.gateExtent = gate.y;
     result.lockAge = lockAge;

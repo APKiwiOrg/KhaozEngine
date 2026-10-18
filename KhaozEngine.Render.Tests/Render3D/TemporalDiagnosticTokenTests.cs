@@ -1,12 +1,19 @@
 using System;
+using System.Numerics;
 using KhaozEngine.Render3D.Internal;
 using Xunit;
 
 namespace KhaozEngine.Tests.Render3D;
 
+[Collection("NativeDeviceLifecycle")]
 public sealed class TemporalDiagnosticTokenTests
 {
     [Theory]
+    [InlineData("vis-release-0.1", 16777216)]
+    [InlineData("vis-release-0.2", 33554432)]
+    [InlineData("vis-release-0.3", 67108864)]
+    [InlineData("vis-reset-0.2", 134217728)]
+    [InlineData("show-vis-release", 268435456)]
     [InlineData("shadow-bilinear-3x3", 4194304)]
     [InlineData("shadow-bilinear-1", 8388608)]
     [InlineData("lock-history-ridge", 1024)]
@@ -58,6 +65,22 @@ public sealed class TemporalDiagnosticTokenTests
     {
         Assert.Throws<InvalidOperationException>(() =>
             TemporalResolveDiagnostics.Parse("shadow-bilinear-3x3,shadow-bilinear-1"));
+    }
+
+    [Fact]
+    public void VisibilityFlagsDoNotRoundAwayLowDiagnosticBits()
+    {
+        int saved = TemporalResolveDiagnostics.Mask;
+        try
+        {
+            int mask = TemporalResolveDiagnostics.Parse("vis-reset-0.2,show-vis-release,show-released,shadow-bilinear-3x3");
+            TemporalResolveDiagnostics.OverrideMaskForMeasurement(mask);
+            var view = new TemporalViewInput(Matrix4x4.Identity, Matrix4x4.Identity);
+            var uniforms = TemporalResolveMath.BuildUniforms(view, null, Vector2.Zero, 16, 16, 16, 16, false);
+            Assert.Equal(24f, uniforms.Params.X);
+            Assert.Equal(4194305f, uniforms.Params.W);
+        }
+        finally { TemporalResolveDiagnostics.OverrideMaskForMeasurement(saved); }
     }
 
 }

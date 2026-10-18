@@ -55,7 +55,7 @@ namespace KhaozEngine.Render3D.Internal
         /// reprojects in place, with zero motion, instead of by <see cref="BackgroundToPrevious"/>, else 0. z: how far
         /// the camera travelled since last frame, in metres, 0 when history is not readable, which the band's world
         /// test scales by <see cref="TemporalResolveTuning.WorldMotionEyeFraction"/>. w: the diagnostic mask
-        /// (<see cref="TemporalResolveDiagnostics.Mask"/>), 0 unless set. x is reserved and written as 0.</summary>
+        /// (<see cref="TemporalResolveDiagnostics.Mask"/>), low 24 bits, 0 unless set. x carries the visibility diagnostic bits above bit 23.</summary>
         public Vector4 Params;
     }
 

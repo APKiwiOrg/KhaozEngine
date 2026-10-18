@@ -299,7 +299,12 @@ below). Each sharded leg runs as jobs named `<os> / <backend> / <shard>`:
 - `rest` runs every test project in `KhaozEngine.slnx` except `KhaozEngine.Render.Tests` and any named projects
   taken by another shard, through a solution derived at run time. A new test project defaults to `rest` with
   no edit. It also runs the once-per-leg steps (the FXC validation on Windows, the Vulkan device limits and
-  the shader cache verification).
+  the shader cache verification). Windows `rest` runs one test project at a time with MSBuild `-m:1`,
+  preserving parallel collections within each assembly. Even after Catalog moved out, four concurrent hosts
+  let MapDoc, MapEditor and Movement overlap Exchange's loopback HTTP tests in run `39078676061`.
+  The seven-request log disclosure test took 114.42 seconds and timed out on the final malformed request,
+  against 0.055 and 0.107 seconds in runs `39081283982` and `39082956923`, where Exchange finished before
+  those assemblies started ([#1471](https://github.com/APKiwiOrg/KhaozEngine/issues/1471)).
 - `projects-1` on Vulkan runs exactly `KhaozEngine.MapEditor.Tests`, `KhaozEngine.Game.Tests` and
   `KhaozEngine.Movement.Tests`. Their assemblies took 8.55 and 8.03 of the serial non-Render suite's 15.25 and
   14.99 minutes in runs `39039926687` and `39072468288`, whose `rest` jobs reached 20m03s and 20m00s.

@@ -1348,6 +1348,11 @@ jobs:
           mkdir -p TestResults
           : > TestResults/suite-output.log
           read -r -a build_args <<< "$KE_TEST_BUILD_ARGS"
+          # Four parallel non-Render hosts can still starve loopback HTTP on the 4 vCPU Windows runner
+          # (#1471). Bound projects here, leaving parallel collections inside each assembly unchanged.
+          if [ "$KE_GRAPHICS_BACKEND" = "direct3d11-native" ] && [ "$KE_TEST_SHARD" = "rest" ]; then
+            build_args+=(-m:1)
+          fi
           read -r -a logger_args <<< "$KE_TEST_LOGGER_ARGS"
           read -r -a extra_args <<< "$KE_TEST_EXTRA_ARGS"
           suite_filter="$KE_TEST_FILTER"

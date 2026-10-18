@@ -12,11 +12,23 @@ namespace KhaozEngine.Gpu.Internal
         internal static string Rewrite(string source)
         {
             var helpers = new List<string>();
-            foreach (Match definition in Regex.Matches(source, @"\b(spvFMul\w*)\s*\([^;{}]*\)[^;{}]*\{"))
+            var names = new HashSet<string>(StringComparer.Ordinal);
+            var tokens = new List<Match>();
+            // Comments and literals do not contain identifiers. Keep every other token for call validation.
+            foreach (Match token in Regex.Matches(source,
+                @"//[^\r\n]*|/\*[\s\S]*?\*/|""(?:\\.|[^""\\])*""|'(?:\\.|[^'\\])*'|[A-Za-z_]\w*|[^\s]"))
+                if (!token.Value.StartsWith("//", StringComparison.Ordinal) && !token.Value.StartsWith("/*", StringComparison.Ordinal)
+                    && token.Value[0] is not ('"' or '\'')) tokens.Add(token);
+            int acceptedEnd = 0;
+            for (int i = 0; i < tokens.Count; i++)
             {
-                int start = source.LastIndexOf("template<", definition.Index, StringComparison.Ordinal);
-                int end = definition.Index + definition.Length;
-                int depth = 1;
+                Match identifier = tokens[i];
+                if (identifier.Index < acceptedEnd || !identifier.Value.StartsWith("spvFMul", StringComparison.Ordinal)) continue;
+                if (IsCall(tokens, i, names)) continue;
+                int start = source.LastIndexOf("template<", identifier.Index, StringComparison.Ordinal);
+                int brace = source.IndexOf('{', identifier.Index);
+                int end = brace >= 0 ? brace + 1 : source.Length;
+                int depth = brace >= 0 ? 1 : -1;
                 while (end < source.Length && depth != 0)
                 {
                     char c = source[end++];
@@ -27,18 +39,39 @@ namespace KhaozEngine.Gpu.Internal
                 string helper = start >= 0 ? source[start..end] : string.Empty;
                 if (start >= 0 && depth == 0)
                 {
-                    string canonical = helper.Replace("\r\n", "\n", StringComparison.Ordinal);
+                    string canonical = helper.ReplaceLineEndings("\n");
                     foreach (string candidate in Pinned)
-                        if (canonical == candidate || canonical == Correct(candidate)) { pinned = candidate; break; }
+                    {
+                        string expected = candidate.ReplaceLineEndings("\n");
+                        if (canonical == expected || canonical == Correct(expected)) { pinned = candidate; break; }
+                    }
                 }
                 if (pinned is null)
-                    throw new ShaderValidationException($"MSL precise multiplication helper {definition.Groups[1].Value} has an unrecognised form. "
+                    throw new ShaderValidationException($"MSL precise multiplication helper {identifier.Value} has an unrecognised form. "
                         + "Expected the pinned SPIRV-Cross 2.23.0 helper or its signed-zero correction. Review issue 1495 before upgrading the toolchain.");
                 helpers.Add(helper);
+                names.Add(identifier.Value);
+                acceptedEnd = end;
             }
             foreach (string helper in helpers)
                 source = source.Replace(helper, Correct(helper), StringComparison.Ordinal);
             return source;
+        }
+
+        static bool IsCall(List<Match> tokens, int index, HashSet<string> names)
+        {
+            // The pinned emitter writes direct assignment/return calls with inferred template arguments.
+            // Refuse other uses, including declarations, aliases, macros and unfamiliar helper names.
+            if (!names.Contains(tokens[index].Value) || index == 0 || tokens[index - 1].Value is not ("=" or "return")
+                || index + 1 >= tokens.Count || tokens[index + 1].Value != "(") return false;
+            int depth = 0;
+            for (int i = index + 1; i < tokens.Count; i++)
+            {
+                if (tokens[i].Value == "(") depth++;
+                else if (tokens[i].Value == ")" && --depth == 0)
+                    return i + 1 < tokens.Count && tokens[i + 1].Value == ";";
+            }
+            return false;
         }
 
         static string Correct(string helper) => helper.Replace("T(0)", "T(-0.0)", StringComparison.Ordinal)

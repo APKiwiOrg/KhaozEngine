@@ -7,11 +7,13 @@ exact predicates and complete construction equivalence belong to later tasks.
 
 ## Evidence status
 
-The local Release build passed with zero warnings and zero errors. All 20 focused tests passed,
+The fix-round-1 local Release build passed with zero warnings and zero errors. All 103 focused tests passed,
 including three native facts on MetalNative with an Apple M2 Max. The coverage fact compared all
 13,949 words from 377 dynamic rows exactly. Scoped whitespace and SPIR-V validation passed.
-Native Vulkan and Direct3D11 WARP execution, Vulkan validation-layer results and actual FXC compilation
-are **hosted-only and pending**. Source qualifiers and cross-compilation alone do not close those gates.
+The first hosted run, 39165413387, exposed Windows CRLF helper comparisons and WARP dynamic
+component-selection poisoning. Fix round 1 addresses both below. Fresh native Vulkan and Direct3D11
+WARP execution, Vulkan validation-layer results and actual FXC compilation remain **hosted-only and
+pending**. Source qualifiers and cross-compilation alone do not close those gates.
 No timing, load, performance budget or whole-coverage correctness claim follows from this record.
 The 72 frozen cases and their 144-row `outputs.sha256` manifest are unchanged.
 
@@ -28,6 +30,9 @@ mismatch, signed-zero equality, each component's NaN guard, inclusive flushing a
 survival. Every returned uint is compared with `CoverageReferenceArithmetic` and
 `CoverageReferenceMath`, without a tolerance, canonicalization or coverage-side sign repair.
 Independent literal assertions also pin the required boundary decisions and vector guard results.
+Matrix inputs use 16 explicit scalar fields and all vector outputs use named components. The probe
+does not dynamically insert matrix fields or extract vector components. In row 18, `cross.z` is
+negative infinity while `cross.x` must retain `bfffffff`. This is the hosted WARP regression case.
 
 | Observation | Required word or decision |
 | --- | --- |
@@ -84,6 +89,20 @@ Actual FXC compilation and Direct3D11 word equality are hosted-only and pending.
 fact creates its shader through the real factory with PreciseMath enabled. The hosted Windows leg
 therefore compiles with FXC and executes the same dynamic probe on WARP.
 
+C5 prohibits `OpVectorExtractDynamic` and `OpVectorInsertDynamic` in every coverage kernel and
+probe. It also prohibits non-constant vector or matrix component indices in `OpAccessChain` and
+`OpInBoundsAccessChain` on Function or Private storage. FXC may implement dynamic component selection
+with arithmetic, so an unselected infinity or NaN can poison the selected finite lane even under
+IEEE strictness. Use named components, literal matrix indices or scalar arrays.
+
+`CoverageSpirvAccessAudit` walks the compiled pointer and composite types, including array and
+structure steps and chained pointer results. Dynamic array indices remain allowed when every
+vector or matrix component step is constant. `ShaderSourceValidationTests.CoverageComputeKernels`
+applies it to every module in the coverage-kernel corpus, and the scalar inventory audit shares it.
+Negative controls cover Function and Private vectors and matrices, nested arrays, in-bounds access
+chains and both forbidden vector instructions. A retained patch-file control plants dynamic access
+in the actual probe and must fail the corpus validation before the exact patch is reversed.
+
 ## MSL and Metal
 
 PreciseMath enables SPIRV-Cross invariant floating math and disables Metal fast math on the compute
@@ -101,6 +120,12 @@ and separate-rounding decisions on Metal rather than inferring them from those h
 
 Task 1A backports every multiplication-helper zero seed in pinned SPIRV-Cross 2.23.0. The recogniser
 accepts only a complete pinned helper or its corrected body, and rejects unfamiliar definitions.
+It scans every `spvFMul`-prefixed identifier independently of declaration punctuation. Outside an
+accepted definition, only the pinned emitter's direct assignment or return call to an accepted
+helper is recognised. Comment-separated declarations, aliases, macros and unknown identifiers fail
+compilation. Comments and string literals are not identifiers. Both the pinned constants and emitted
+helpers are compared with normalized line endings, while replacements preserve source line endings.
+CRLF-checkout controls exercise CRLF pinned constants against LF, CRLF and CR emitted helpers.
 It preserves the pinned MatrixMatrix dimensions. The separate rectangular dimension defect and
 backport removal are tracked in [#1495](https://github.com/APKiwiOrg/KhaozEngine/issues/1495).
 The precise cache identity includes the revised IEEE-preservation and MSL lowering policy.
@@ -129,7 +154,7 @@ Run a Release build, then these focused checks through build-slot. Local native 
 `KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-native`.
 
 ```bash
-build-slot --label coverage-arithmetic -- env KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-native dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter 'FullyQualifiedName~CoverageGpuArithmeticTests|FullyQualifiedName~CoverageComputeArithmeticGpuTests|FullyQualifiedName~PreciseShaderCompileTests' --logger 'console;verbosity=normal'
+build-slot --label coverage-arithmetic -- env KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-native dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter 'FullyQualifiedName~PreciseShaderCompileTests|FullyQualifiedName~ComputePreciseMathGpuTests|FullyQualifiedName~CoverageGpuArithmeticTests|FullyQualifiedName~CoverageComputeArithmeticGpuTests|FullyQualifiedName~ShaderSourceValidationTests' --logger 'console;verbosity=normal'
 ```
 
 Set `KE_SHADER_CORPUS_DUMP` to an absolute artifact directory to retain the probe's `.spirv`, `.hlsl`
@@ -137,7 +162,7 @@ and `.msl` files. `spirv-dis --raw-id` exposes the IDs above. Validate the preci
 `spirv-val --target-env vulkan1.3`. The compiler corpus includes all five CoverageArithmetic target
 and layout rows. No existing shipped-program hash is rebaked to accept a numerical change.
 
-Root's hosted filter is the same three-class expression above. Include
-`FullyQualifiedName~ComputePreciseMathGpuTests` to retain Task 1A's generic exceptional-value rows.
+Root's hosted filter is the same five-class expression above. It includes the generic
+exceptional-value rows and the module-wide coverage audit.
 Require zero-error Vulkan validation logs and no skipped native facts. Hosted Vulkan and D3D11 gates
 remain pending until their actual results are recorded.

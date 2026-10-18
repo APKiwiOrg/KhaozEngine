@@ -23,9 +23,11 @@ internal static class CoverageGpuArithmeticProbe
             uint s = 1u + i * 25u, d = i * 37u;
             vec3 a = vec3(uintBitsToFloat(Inputs[s]), uintBitsToFloat(Inputs[s+1u]), uintBitsToFloat(Inputs[s+2u]));
             vec3 b = vec3(uintBitsToFloat(Inputs[s+3u]), uintBitsToFloat(Inputs[s+4u]), uintBitsToFloat(Inputs[s+5u]));
-            mat4 m;
-            for (uint col = 0u; col < 4u; col++)
-                for (uint row = 0u; row < 4u; row++) m[col][row] = uintBitsToFloat(Inputs[s+6u+col*4u+row]);
+            mat4 m = mat4(
+                uintBitsToFloat(Inputs[s+6u]), uintBitsToFloat(Inputs[s+7u]), uintBitsToFloat(Inputs[s+8u]), uintBitsToFloat(Inputs[s+9u]),
+                uintBitsToFloat(Inputs[s+10u]), uintBitsToFloat(Inputs[s+11u]), uintBitsToFloat(Inputs[s+12u]), uintBitsToFloat(Inputs[s+13u]),
+                uintBitsToFloat(Inputs[s+14u]), uintBitsToFloat(Inputs[s+15u]), uintBitsToFloat(Inputs[s+16u]), uintBitsToFloat(Inputs[s+17u]),
+                uintBitsToFloat(Inputs[s+18u]), uintBitsToFloat(Inputs[s+19u]), uintBitsToFloat(Inputs[s+20u]), uintBitsToFloat(Inputs[s+21u]));
             float lo = uintBitsToFloat(Inputs[s+22u]), hi = uintBitsToFloat(Inputs[s+23u]);
             float c = uintBitsToFloat(Inputs[s+24u]);
             Results[d] = floatBitsToUint(covF(a.x));
@@ -50,12 +52,18 @@ internal static class CoverageGpuArithmeticProbe
             Results[d+19u] = floatBitsToUint(covDot3(a, b));
             Results[d+20u] = floatBitsToUint(covDot2(a.xy, b.xy));
             vec3 cross = covCross(a, b), sub = covSub3(a, b), point = covPoint(a, m), linear = covLinear(a, m);
-            for (uint k = 0u; k < 3u; k++) {
-                Results[d+21u+k] = floatBitsToUint(cross[k]);
-                Results[d+24u+k] = floatBitsToUint(sub[k]);
-                Results[d+27u+k] = floatBitsToUint(point[k]);
-                Results[d+30u+k] = floatBitsToUint(linear[k]);
-            }
+            Results[d+21u] = floatBitsToUint(cross.x);
+            Results[d+22u] = floatBitsToUint(cross.y);
+            Results[d+23u] = floatBitsToUint(cross.z);
+            Results[d+24u] = floatBitsToUint(sub.x);
+            Results[d+25u] = floatBitsToUint(sub.y);
+            Results[d+26u] = floatBitsToUint(sub.z);
+            Results[d+27u] = floatBitsToUint(point.x);
+            Results[d+28u] = floatBitsToUint(point.y);
+            Results[d+29u] = floatBitsToUint(point.z);
+            Results[d+30u] = floatBitsToUint(linear.x);
+            Results[d+31u] = floatBitsToUint(linear.y);
+            Results[d+32u] = floatBitsToUint(linear.z);
             Results[d+33u] = uint(covEqual3(a, b));
             Results[d+34u] = uint(covFinite3(a));
             Results[d+35u] = covLess(a.x, b.x) ? Inputs[s] : Inputs[s+3u];

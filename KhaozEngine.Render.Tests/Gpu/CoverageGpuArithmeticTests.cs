@@ -9,7 +9,7 @@ using Xunit.Abstractions;
 
 namespace KhaozEngine.Tests.Gpu;
 
-public sealed class CoverageGpuArithmeticTests(ITestOutputHelper output)
+public sealed partial class CoverageGpuArithmeticTests(ITestOutputHelper output)
 {
     internal static readonly GpuShaderCompileOptions Precise = new(PreciseMath: true);
 
@@ -73,6 +73,9 @@ public sealed class CoverageGpuArithmeticTests(ITestOutputHelper output)
         Assert.Equal(0u, separateMultiplyAdd); // (0x3f800001 * 0x3f7ffffe) + -1
         Assert.False(nanFinite);
         Assert.True(nanNotEqual);
+        // WARP must not let the infinite Z lane poison the selected finite X lane.
+        Assert.Equal(0xbfffffffu, At(0u, 0x7f7fffffu, 21));
+        Assert.Equal(0xff800000u, At(0u, 0x7f7fffffu, 23));
         int firstVectorRow = (int)inputs[0] - CoverageGpuArithmeticProbe.VectorCases.Length;
         for (int row = 0; row < CoverageGpuArithmeticProbe.VectorCases.Length; row++)
         {

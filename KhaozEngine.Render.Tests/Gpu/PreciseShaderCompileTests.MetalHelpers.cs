@@ -37,6 +37,56 @@ namespace KhaozEngine.Tests.Gpu
                 "template<typename T>\nT spvFMul(T l, T r)\n{\n    return l * r;\n}"));
         }
 
+        [Theory]
+        [MemberData(nameof(PinnedMultiplyHelpers))]
+        public void MetalMultiplyHelpersRejectUnrecognisedIdentifiers(string pinned)
+        {
+            int start = pinned.IndexOf("spvFMul", StringComparison.Ordinal);
+            string name = pinned[start..pinned.IndexOf('(', start)];
+            string[] unfamiliar =
+            {
+                pinned.Replace(name + "(", name + " /* toolchain comment */ (", StringComparison.Ordinal),
+                pinned.Replace(name + "(", name + " // toolchain comment\n(", StringComparison.Ordinal),
+                pinned.Replace(name + "(", name + " // toolchain comment\r\n(", StringComparison.Ordinal),
+                pinned.Replace(name + "(", name + "<T>(", StringComparison.Ordinal),
+                "T " + name + "(T l, T r);",
+                "T (*" + name + ")(T, T);",
+                "auto alias = " + name + ";",
+                "auto value = " + name + "Unfamiliar(a, b);",
+                "#define " + name + "(l, r) ((l) * (r))"
+            };
+            foreach (string unknown in unfamiliar)
+            {
+                // A known definition must not make an unfamiliar second declaration or use acceptable.
+                foreach (string source in new[] { unknown, pinned + "\n" + unknown })
+                {
+                    ShaderValidationException error = Assert.Throws<ShaderValidationException>(() => MslPreciseMath.Rewrite(source));
+                    Assert.Contains(name, error.Message);
+                    Assert.Contains("unrecognised", error.Message);
+                }
+            }
+            string call = "\nfloat result = " + name + "(a, b);\n";
+            Assert.Equal(MslPreciseMath.Rewrite(pinned) + call, MslPreciseMath.Rewrite(pinned + call));
+            string returning = "\nfloat caller(float a, float b) { return " + name + "(a, b); }\n";
+            Assert.Equal(MslPreciseMath.Rewrite(pinned) + returning, MslPreciseMath.Rewrite(pinned + returning));
+            string comments = "\n// " + name + " is a helper\nconst char* label = \"" + name + "\";\n";
+            Assert.Equal(MslPreciseMath.Rewrite(pinned) + comments, MslPreciseMath.Rewrite(pinned + comments));
+        }
+
+        [Theory]
+        [MemberData(nameof(PinnedMultiplyHelpers))]
+        public void MetalMultiplyHelpersPreserveLineEndings(string pinned)
+        {
+            foreach (string newline in new[] { "\n", "\r\n", "\r" })
+            {
+                string emitted = pinned.ReplaceLineEndings(newline);
+                string corrected = emitted.Replace("T(0)", "T(-0.0)", StringComparison.Ordinal)
+                    .Replace("(0)", "(T(-0.0))", StringComparison.Ordinal);
+                Assert.Equal(corrected, MslPreciseMath.Rewrite(emitted));
+                Assert.Equal(corrected, MslPreciseMath.Rewrite(corrected));
+            }
+        }
+
         static void DumpPreciseModule(GpuShaderStages stage, byte[] spirv)
         {
             string? directory = Environment.GetEnvironmentVariable("KE_SHADER_CORPUS_DUMP");
@@ -103,7 +153,7 @@ namespace KhaozEngine.Tests.Gpu
                 }
                 """
             };
-            foreach (string helper in helpers) yield return new object[] { helper };
+            foreach (string helper in helpers) yield return new object[] { helper.ReplaceLineEndings("\n") };
         }
     }
 }

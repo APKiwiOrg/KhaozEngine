@@ -13,6 +13,7 @@ internal static class CoverageArithmeticSpirvAudit
 {
     internal static int MissingSites(byte[] spirv, ITestOutputHelper output)
     {
+        CoverageSpirvAccessAudit.Validate(spirv, "coverage arithmetic");
         uint[] words = MemoryMarshal.Cast<byte, uint>(spirv).ToArray();
         var names = new Dictionary<uint, string>();
         var decorated = new HashSet<uint>();

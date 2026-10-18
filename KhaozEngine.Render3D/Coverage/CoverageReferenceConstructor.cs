@@ -18,6 +18,8 @@ internal static class CoverageReferenceConstructor
         for (int i = 0; i < posedSource.Length; i++)
             if (!CoverageRefinement.Finite(posedSource[i]))
                 return Refuse(topology, CoverageFailureCode.UnsupportedTransform, out failure);
+        // Compare aliases by value exactly as CoverageRefinement.TryInterpolate does. Originals keep their own posed bits.
+        // Computed groups share one canonical position. Part C kernels must reproduce this policy.
         for (int i = 0; i < topology.SourceAliases.Count; i++)
         {
             var alias = topology.SourceAliases[i];

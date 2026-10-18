@@ -152,6 +152,66 @@ public sealed class CoverageReferenceConstructionTests
     }
 
     [Fact]
+    public void Signed_zero_aliases_match_exact_interpolation_policy()
+    {
+        var fixture = CoverageFixture.CurvedPanel();
+        var topology = CoverageRefinement.Build(fixture.Source, fixture.Map);
+        var alias = topology.SourceAliases[0];
+        fixture.Posed[alias.Representative].Position.X = +0f;
+        fixture.Posed[alias.SourceVertex].Position = fixture.Posed[alias.Representative].Position;
+        fixture.Posed[alias.SourceVertex].Position.X = -0f;
+        var exact = new ModelVertex[topology.VertexCount];
+        var scratch = new CoverageReferenceScratch(topology);
+        Assert.True(topology.TryInterpolate(fixture.Posed, exact, out var exactFailure), exactFailure.ToString());
+        Assert.True(CoverageReferenceConstructor.TryInterpolate(topology, fixture.Posed, scratch, out var failure), failure.ToString());
+
+        int representative = Enumerable.Range(0, topology.VertexCount).First(v => topology.Vertices[v].SourceVertex == alias.Representative);
+        int originalAlias = Enumerable.Range(0, topology.VertexCount).First(v => topology.Vertices[v].SourceVertex == alias.SourceVertex);
+        Assert.Equal(0f, topology.Vertices[representative].Strength);
+        Assert.Equal(0f, topology.Vertices[originalAlias].Strength);
+        Assert.Equal(topology.Vertices[representative].PositionGroup, topology.Vertices[originalAlias].PositionGroup);
+        foreach (var output in new[] { exact, scratch.Before })
+        {
+            Assert.Equal(0, BitConverter.SingleToInt32Bits(output[representative].Position.X));
+            Assert.Equal(int.MinValue, BitConverter.SingleToInt32Bits(output[originalAlias].Position.X));
+            Assert.Equal(Bytes(fixture.Posed.AsSpan(alias.Representative, 1)), Bytes(output.AsSpan(representative, 1)));
+            Assert.Equal(Bytes(fixture.Posed.AsSpan(alias.SourceVertex, 1)), Bytes(output.AsSpan(originalAlias, 1)));
+        }
+        int seams = 0;
+        foreach (var group in Enumerable.Range(0, topology.VertexCount).Where(v => topology.Vertices[v].SourceVertex < 0)
+            .GroupBy(v => topology.Vertices[v].PositionGroup))
+        {
+            var bits = PositionBits(scratch.GroupPositions[group.Key]);
+            Assert.All(group, v => Assert.Equal(bits, PositionBits(scratch.Before[v].Position)));
+            Assert.All(group, v => Assert.Equal(PositionBits(exact[group.First()].Position), PositionBits(exact[v].Position)));
+            if (group.Count() > 1) seams++;
+        }
+        Assert.True(seams > 0);
+        for (int v = 0; v < topology.VertexCount; v++)
+        {
+            if (topology.Vertices[v].SourceVertex < 0) continue;
+            byte[] expected = Bytes(exact.AsSpan(v, 1)), actual = Bytes(scratch.Before.AsSpan(v, 1));
+            Assert.True(expected.AsSpan().SequenceEqual(actual),
+                $"Vertex {v} differs: exact {Convert.ToHexString(expected)}, reference {Convert.ToHexString(actual)}.");
+        }
+    }
+
+    [Fact]
+    public void Value_mismatched_aliases_match_exact_folded_patch_refusal()
+    {
+        var fixture = CoverageFixture.CurvedPanel();
+        var topology = CoverageRefinement.Build(fixture.Source, fixture.Map);
+        var alias = topology.SourceAliases[0];
+        fixture.Posed[alias.SourceVertex].Position.X = MathF.BitIncrement(fixture.Posed[alias.Representative].Position.X);
+        var exact = new ModelVertex[topology.VertexCount];
+        var scratch = new CoverageReferenceScratch(topology);
+        Assert.False(topology.TryInterpolate(fixture.Posed, exact, out var exactFailure));
+        Assert.False(CoverageReferenceConstructor.TryInterpolate(topology, fixture.Posed, scratch, out var failure));
+        Assert.Equal(CoverageFailureCode.FoldedPatch, exactFailure.Code);
+        Assert.Equal(CoverageFailureCode.FoldedPatch, failure.Code);
+    }
+
+    [Fact]
     public void Interior_float_sums_keep_left_associated_cancellation()
     {
         var fixture = CoverageFixture.CurvedPanel(seams: false, level: 3);

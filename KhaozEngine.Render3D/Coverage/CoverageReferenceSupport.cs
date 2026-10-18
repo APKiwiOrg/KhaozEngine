@@ -32,6 +32,12 @@ internal sealed class CoverageReferenceSupport
         }
         MaxSlope = slope;
         GridMin = min; GridMax = max;
+        // The grid defines the query. Bin each binary32 triangle AABB with the same monotone
+        // binary32 Cell function used by the point query, including the outer maximum in cell 15.
+        // In that cell, retain source order, reject candidates whose inclusive AABB excludes the
+        // point, then select the first accepted scalar edge predicate. No accepted candidate means
+        // a miss for the caller's boundary path. Part C kernels must reproduce this definition,
+        // including AABB rejection of points accepted only by rounded edge signs outside the bounds.
         CellOffsets = new int[GridSize * GridSize + 1];
         for (int t = 0; t < Triangles.Length; t++) VisitCells(t, true, null);
         for (int i = 1; i < CellOffsets.Length; i++) CellOffsets[i] += CellOffsets[i - 1];
@@ -72,6 +78,8 @@ internal sealed class CoverageReferenceSupport
         {
             var t = Triangles[CellTriangles[i]];
             Vector3 a = Positions[t.A], b = Positions[t.B], c = Positions[t.C];
+            Bounds(a, b, c, out Vector2 min, out Vector2 max);
+            if (point.X < min.X || point.X > max.X || point.Y < min.Y || point.Y > max.Y) continue;
             float area = CoverageReferenceMath.Edge(a, b, c), u = CoverageReferenceMath.Edge(b, c, p),
                 v = CoverageReferenceMath.Edge(c, a, p), w = CoverageReferenceMath.Edge(a, b, p);
             if (!float.IsFinite(area) || area == 0 || !float.IsFinite(u) || !float.IsFinite(v) || !float.IsFinite(w)) return false;
@@ -114,10 +122,9 @@ internal sealed class CoverageReferenceSupport
     {
         var t = Triangles[triangle];
         Vector3 a = Positions[t.A], b = Positions[t.B], c = Positions[t.C];
-        int x0 = Cell(MathF.Min(a.X, MathF.Min(b.X, c.X)), GridMin.X, GridMax.X),
-            x1 = Cell(MathF.Max(a.X, MathF.Max(b.X, c.X)), GridMin.X, GridMax.X),
-            y0 = Cell(MathF.Min(a.Y, MathF.Min(b.Y, c.Y)), GridMin.Y, GridMax.Y),
-            y1 = Cell(MathF.Max(a.Y, MathF.Max(b.Y, c.Y)), GridMin.Y, GridMax.Y);
+        Bounds(a, b, c, out Vector2 min, out Vector2 max);
+        int x0 = Cell(min.X, GridMin.X, GridMax.X), x1 = Cell(max.X, GridMin.X, GridMax.X),
+            y0 = Cell(min.Y, GridMin.Y, GridMax.Y), y1 = Cell(max.Y, GridMin.Y, GridMax.Y);
         for (int y = y0; y <= y1; y++)
             for (int x = x0; x <= x1; x++)
             {
@@ -127,6 +134,12 @@ internal sealed class CoverageReferenceSupport
             }
     }
 
-    // Grid addressing is CPU-only acceleration, independent of the reproduced float query expression graph.
-    static int Cell(float value, float min, float max) => Math.Clamp((int)(((double)value - min) / ((double)max - min) * GridSize), 0, GridSize - 1);
+    static void Bounds(Vector3 a, Vector3 b, Vector3 c, out Vector2 min, out Vector2 max)
+    {
+        min = new(MathF.Min(a.X, MathF.Min(b.X, c.X)), MathF.Min(a.Y, MathF.Min(b.Y, c.Y)));
+        max = new(MathF.Max(a.X, MathF.Max(b.X, c.X)), MathF.Max(a.Y, MathF.Max(b.Y, c.Y)));
+    }
+
+    // Subtract, divide, multiply in binary32, truncate to an integer, then clamp.
+    static int Cell(float value, float min, float max) => Math.Clamp((int)(((value - min) / (max - min)) * GridSize), 0, GridSize - 1);
 }

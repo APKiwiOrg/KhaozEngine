@@ -7,6 +7,7 @@ using I = KhaozEngine.Render3D.CoverageFloatInterval;
 using F = KhaozEngine.Render3D.CoverageFloatIntervals;
 using P = KhaozEngine.Render3D.CoverageReferencePrecision;
 using M = KhaozEngine.Render3D.CoverageReferenceMath;
+using ReferenceSupport = KhaozEngine.Render3D.CoverageReferenceSupport;
 
 namespace KhaozEngine.Tests.Render3D;
 
@@ -275,34 +276,82 @@ public sealed class CoverageReferencePrimitiveTests
     }
 
     [Fact]
-    public void Grid_candidates_match_a_complete_ordered_scan_at_cell_edges_and_outer_maxima()
+    public void Grid_queries_match_a_source_ordered_scalar_scan_with_inclusive_bounds()
     {
-        Vector3[] positions = Enumerable.Range(0, 25).Select(i => new Vector3(i % 5 - 2, i / 5 - 2, i % 5 - 2)).ToArray();
-        uint[] indices = Enumerable.Range(0, 16).SelectMany(i =>
+        ReferenceSupport[] supports = [GridSupport([-2, -1, 0, 1, 2]),
+            GridSupport([-1, -MathF.ScaleB(1, -25), 1]), RoundedEdgeSupport(2), RoundedEdgeSupport(3)];
+        var random = new Random(1602);
+        foreach (var support in supports)
         {
-            uint a = (uint)(i / 4 * 5 + i % 4);
-            return new[] { a, a + 1, a + 6, a, a + 6, a + 5 };
-        }).ToArray();
-        var support = CoverageSupportSurface.Compile(CoverageCommands.Solid("reference-grid", positions, indices),
-            [new(0, 0, 0, 32)], Matrix4x4.Identity).ReferenceData;
-        for (int y = 0; y <= 32; y++)
-            for (int x = 0; x <= 32; x++)
+            Assert.True(EachRowIsStrictlySortedAndDuplicateFree(support.CellOffsets, support.CellTriangles));
+            for (int y = 0; y <= 32; y++)
+                for (int x = 0; x <= 32; x++)
+                    Check(new(support.GridMin.X + x / 32f * (support.GridMax.X - support.GridMin.X),
+                        support.GridMin.Y + y / 32f * (support.GridMax.Y - support.GridMin.Y)));
+            for (int i = 0; i < 512; i++)
+                Check(new(support.GridMin.X + (float)(random.NextDouble() * 1.5 - .25) * (support.GridMax.X - support.GridMin.X),
+                    support.GridMin.Y + (float)(random.NextDouble() * 1.5 - .25) * (support.GridMax.Y - support.GridMin.Y)));
+            foreach (var triangle in support.Triangles)
             {
-                Vector2 p = new(-2 + x / 8f, -2 + y / 8f);
-                // Independent binary64 oriented-area membership on this exactly dyadic fixture.
-                int expected = Enumerable.Range(0, 32).First(t =>
-                    Side(indices[t * 3], indices[t * 3 + 1], p) >= 0
-                    && Side(indices[t * 3 + 1], indices[t * 3 + 2], p) >= 0
-                    && Side(indices[t * 3 + 2], indices[t * 3], p) >= 0);
-                Assert.True(support.TryHeight(p, out float height, out int actual));
-                Assert.Equal(expected, actual);
-                Assert.Equal(p.X, height);
+                Vector3 a = support.Positions[triangle.A], b = support.Positions[triangle.B], c = support.Positions[triangle.C];
+                foreach (float x in BoundsNeighbours(a.X, b.X, c.X))
+                    foreach (float y in BoundsNeighbours(a.Y, b.Y, c.Y)) Check(new(x, y));
             }
-        Assert.False(support.TryHeight(new(MathF.BitIncrement(2), 0), out _));
-        Assert.False(support.TryHeight(new(0, MathF.BitDecrement(-2)), out _));
-        Assert.True(support.CellTriangles.Length < 32 * 256);
-        double Side(uint a, uint b, Vector2 p) => ((double)positions[b].X - positions[a].X) * ((double)p.Y - positions[a].Y)
-            - ((double)positions[b].Y - positions[a].Y) * ((double)p.X - positions[a].X);
+            Check(new(1, -MathF.ScaleB(1, -24) / (1 - MathF.ScaleB(1, -24))));
+            Check(new(float.NaN, 0));
+            Check(new(0, float.PositiveInfinity));
+            Assert.True(support.CellTriangles.Length < support.Triangles.Length * 256);
+            void Check(Vector2 point)
+            {
+                bool expected = ScanBounds(support, point, out float expectedHeight, out int expectedSource);
+                Assert.Equal(expected, support.TryHeight(point, out float actualHeight, out int actualSource));
+                Assert.Equal(expectedSource, actualSource);
+                Assert.Equal(BitConverter.SingleToInt32Bits(expectedHeight), BitConverter.SingleToInt32Bits(actualHeight));
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(2f)]
+    [InlineData(3f)]
+    public void Rounded_edge_acceptance_outside_triangle_bounds_takes_the_miss_path(float right)
+    {
+        var support = RoundedEdgeSupport(right);
+        var triangle = support.Triangles[0];
+        Vector3 a = support.Positions[triangle.A], b = support.Positions[triangle.B], c = support.Positions[triangle.C];
+        Vector2 point = new(1, -MathF.ScaleB(1, -24) / (1 - MathF.ScaleB(1, -24)));
+        Vector3 p = new(point, 0);
+        Assert.True(M.Edge(a, b, c) > 0);
+        Assert.Equal(0f, M.Edge(b, c, p));
+        Assert.True(M.Edge(c, a, p) > 0);
+        Assert.Equal(0f, M.Edge(a, b, p));
+        Assert.True(point.X > b.X);
+        Assert.False(support.Support.TryGetHeight(point, out _));
+        Assert.False(support.TryHeight(point, out float height, out int source));
+        Assert.Equal(0f, height);
+        Assert.Equal(-1, source);
+    }
+
+    [Fact]
+    public void Triangle_bounds_corners_and_inside_float_neighbours_find_the_binned_candidate()
+    {
+        var rounded = GridSupport([-1, -MathF.ScaleB(1, -25), 1]);
+        // Subtraction rounds this interior corner onto cell (8,8). Binary64 addressing gives (7,7).
+        Assert.Contains(0, rounded.CellTriangles[rounded.CellOffsets[136]..rounded.CellOffsets[137]]);
+        foreach (var support in new[] { rounded, GridSupport([-2, -1, 0, 1, 2]), RoundedEdgeSupport(2), RoundedEdgeSupport(3) })
+            for (int t = 0; t < support.Triangles.Length; t++)
+            {
+                var triangle = support.Triangles[t];
+                Vector3 a = support.Positions[triangle.A], b = support.Positions[triangle.B], c = support.Positions[triangle.C];
+                foreach (float x in BoundsNeighbours(a.X, b.X, c.X))
+                    foreach (float y in BoundsNeighbours(a.Y, b.Y, c.Y))
+                    {
+                        if (OutsideBounds(x, a.X, b.X, c.X) || OutsideBounds(y, a.Y, b.Y, c.Y)) continue;
+                        int cell = Cell(y, support.GridMin.Y, support.GridMax.Y) * 16 + Cell(x, support.GridMin.X, support.GridMax.X);
+                        Assert.Contains(t, support.CellTriangles[support.CellOffsets[cell]..support.CellOffsets[cell + 1]]);
+                    }
+            }
+        static int Cell(float value, float min, float max) => Math.Clamp((int)(((value - min) / (max - min)) * 16), 0, 15);
     }
 
     [Fact]
@@ -407,6 +456,56 @@ public sealed class CoverageReferencePrimitiveTests
 
     static CoverageSupportSurface Square() => CoverageSupportSurface.Compile(CoverageCommands.Solid("reference-square",
         [new(-1, -1, -1), new(1, -1, 1), new(1, 1, 1), new(-1, 1, -1)], [0, 1, 2, 0, 2, 3]), [new(0, 0, 0, 2)], Matrix4x4.Identity);
+
+    static ReferenceSupport GridSupport(float[] coordinates)
+    {
+        int width = coordinates.Length;
+        Vector3[] positions = Enumerable.Range(0, width * width).Select(i =>
+            new Vector3(coordinates[i % width], coordinates[i / width], coordinates[i % width])).ToArray();
+        uint[] indices = Enumerable.Range(0, (width - 1) * (width - 1)).SelectMany(i =>
+        {
+            uint a = (uint)(i / (width - 1) * width + i % (width - 1)), step = (uint)width;
+            return new[] { a, a + 1, a + step + 1, a, a + step + 1, a + step };
+        }).ToArray();
+        return CoverageSupportSurface.Compile(CoverageCommands.Solid("reference-grid", positions, indices),
+            [new(0, 0, 0, indices.Length / 3)], Matrix4x4.Identity).ReferenceData;
+    }
+
+    static ReferenceSupport RoundedEdgeSupport(float right) => CoverageSupportSurface.Compile(
+        CoverageCommands.Solid("reference-rounded-edge",
+            [new(0, 1 - MathF.ScaleB(1, -13), 0), new(1 - MathF.ScaleB(1, -24), 0, 0),
+                new(0, 1, 0), new(right, -MathF.ScaleB(1, -15), 0)], [0, 1, 2, 1, 3, 2]),
+        [new(0, 0, 0, 2)], Matrix4x4.Identity).ReferenceData;
+
+    static float[] BoundsNeighbours(float a, float b, float c)
+    {
+        float min = MathF.Min(a, MathF.Min(b, c)), max = MathF.Max(a, MathF.Max(b, c));
+        return [MathF.BitDecrement(min), min, MathF.BitIncrement(min), MathF.BitDecrement(max), max, MathF.BitIncrement(max)];
+    }
+
+    static bool OutsideBounds(float p, float a, float b, float c) => p < a && p < b && p < c || p > a && p > b && p > c;
+
+    static bool ScanBounds(ReferenceSupport support, Vector2 point, out float height, out int source)
+    {
+        height = 0;
+        source = -1;
+        if (!float.IsFinite(point.X) || !float.IsFinite(point.Y)) return false;
+        for (int i = 0; i < support.Triangles.Length; i++)
+        {
+            var triangle = support.Triangles[i];
+            Vector3 a = support.Positions[triangle.A], b = support.Positions[triangle.B], c = support.Positions[triangle.C];
+            if (OutsideBounds(point.X, a.X, b.X, c.X) || OutsideBounds(point.Y, a.Y, b.Y, c.Y)) continue;
+            Vector3 p = new(point, 0);
+            float area = M.Edge(a, b, c), u = M.Edge(b, c, p), v = M.Edge(c, a, p), w = M.Edge(a, b, p);
+            if (!float.IsFinite(area) || area == 0 || !float.IsFinite(u) || !float.IsFinite(v) || !float.IsFinite(w)) return false;
+            if (area > 0 ? u < 0 || v < 0 || w < 0 : u > 0 || v > 0 || w > 0) continue;
+            height = M.Height(a, b, c, point);
+            if (!float.IsFinite(height)) return false;
+            source = support.SourceIndices[i];
+            return true;
+        }
+        return false;
+    }
 
     static bool EachRowIsStrictlySortedAndDuplicateFree(int[] offsets, int[] values)
     {

@@ -17,6 +17,8 @@ public static class InteriorHeightFieldBuilder
         var occupied = new BitArray(window.Cells * window.Cells);
         var merged = new BitArray(window.Cells * window.Cells);
         var outOfRange = new BitArray(window.Cells * window.Cells);
+        const int sliceSize = 64;
+        float[]? roofScratch = null;
         int mergedCells = 0, outOfRangeCells = 0;
         double originX = RasterOrigin(window.Min.X, window.CellSize), originZ = RasterOrigin(window.Min.Y, window.CellSize);
         foreach (InteriorVolume volume in volumes)
@@ -26,8 +28,7 @@ public static class InteriorHeightFieldBuilder
             if (!float.IsFinite(volume.FloorY) || !float.IsFinite(volume.CeilingY) || volume.CeilingY < volume.FloorY)
                 throw new ArgumentException("Interior heights must be finite and ordered.", nameof(volumes));
             if (volume.CeilingY == volume.FloorY) continue;
-            int floor = Pack(volume.FloorY, encoding), top = Pack(volume.CeilingY, encoding);
-            bool clamped = volume.FloorY < encoding.BaseY || volume.CeilingY > encoding.BaseY + 65535f * encoding.StepY;
+            int floor = Pack(volume.FloorY, encoding), ceiling = Pack(volume.CeilingY, encoding);
             Vector2 min = new(float.PositiveInfinity), max = new(float.NegativeInfinity);
             foreach (Vector2 point in volume.Outline)
             {
@@ -36,37 +37,56 @@ public static class InteriorHeightFieldBuilder
             }
             int x0 = CellBound(min.X, originX, window), x1 = CellBound(max.X, originX, window);
             int z0 = CellBound(min.Y, originZ, window), z1 = CellBound(max.Y, originZ, window);
-            for (int z = z0; z < z1; z++)
-                for (int x = x0; x < x1; x++)
+            for (int firstZ = z0; firstZ < z1; firstZ += sliceSize)
+                for (int firstX = x0; firstX < x1; firstX += sliceSize)
                 {
-                    var cellMin = new Vector2((float)(originX + x * (double)window.CellSize), (float)(originZ + z * (double)window.CellSize));
-                    if (!InteriorFieldRasterizer.Covers(volume.Outline, cellMin, window.CellSize)) continue;
-                    int cell = z * window.Cells + x, offset = cell * 4;
-                    if (clamped && !outOfRange[cell])
+                    int width = Math.Min(sliceSize, x1 - firstX), height = Math.Min(sliceSize, z1 - firstZ);
+                    Span<float> lowestSamples = default;
+                    if (volume.Roofs.Count > 0)
                     {
-                        outOfRange[cell] = true;
-                        outOfRangeCells++;
+                        roofScratch ??= new float[sliceSize * sliceSize];
+                        lowestSamples = roofScratch.AsSpan(0, width * height);
+                        lowestSamples.Fill(float.PositiveInfinity);
+                        foreach (InteriorRoof roof in volume.Roofs)
+                            InteriorRoofRasterizer.Lower(roof, window, firstX, firstZ, width, height, lowestSamples);
                     }
-                    int oldFloor = (texels[offset] << 8) | texels[offset + 1];
-                    int oldTop = (texels[offset + 2] << 8) | texels[offset + 3];
-                    int mergedFloor = floor, mergedTop = top;
-                    // Collapsed endpoints still contribute to a later union. Span lookup applies the
-                    // empty-span rule only after all positive-height contributions have been merged.
-                    if (occupied[cell])
-                    {
-                        mergedFloor = Math.Min(floor, oldFloor);
-                        mergedTop = Math.Max(top, oldTop);
-                        if (!merged[cell])
+                    for (int z = firstZ; z < firstZ + height; z++)
+                        for (int x = firstX; x < firstX + width; x++)
                         {
-                            merged[cell] = true;
-                            mergedCells++;
+                            var cellMin = new Vector2((float)(originX + x * (double)window.CellSize), (float)(originZ + z * (double)window.CellSize));
+                            if (!InteriorFieldRasterizer.Covers(volume.Outline, cellMin, window.CellSize)) continue;
+                            float sample = lowestSamples.IsEmpty ? float.PositiveInfinity : lowestSamples[(z - firstZ) * width + x - firstX];
+                            float topY = float.IsPositiveInfinity(sample) ? volume.CeilingY : sample;
+                            if (topY <= volume.FloorY) continue;
+                            int top = float.IsPositiveInfinity(sample) ? ceiling : Pack(topY, encoding);
+                            bool clamped = volume.FloorY < encoding.BaseY || topY > encoding.BaseY + 65535f * encoding.StepY;
+                            int cell = z * window.Cells + x, offset = cell * 4;
+                            if (clamped && !outOfRange[cell])
+                            {
+                                outOfRange[cell] = true;
+                                outOfRangeCells++;
+                            }
+                            int oldFloor = (texels[offset] << 8) | texels[offset + 1];
+                            int oldTop = (texels[offset + 2] << 8) | texels[offset + 3];
+                            int mergedFloor = floor, mergedTop = top;
+                            // Collapsed endpoints still contribute to a later union. Span lookup applies the
+                            // empty-span rule only after all positive-height contributions have been merged.
+                            if (occupied[cell])
+                            {
+                                mergedFloor = Math.Min(floor, oldFloor);
+                                mergedTop = Math.Max(top, oldTop);
+                                if (!merged[cell])
+                                {
+                                    merged[cell] = true;
+                                    mergedCells++;
+                                }
+                            }
+                            occupied[cell] = true;
+                            texels[offset] = (byte)(mergedFloor >> 8);
+                            texels[offset + 1] = (byte)mergedFloor;
+                            texels[offset + 2] = (byte)(mergedTop >> 8);
+                            texels[offset + 3] = (byte)mergedTop;
                         }
-                    }
-                    occupied[cell] = true;
-                    texels[offset] = (byte)(mergedFloor >> 8);
-                    texels[offset + 1] = (byte)mergedFloor;
-                    texels[offset + 2] = (byte)(mergedTop >> 8);
-                    texels[offset + 3] = (byte)mergedTop;
                 }
         }
         return new InteriorHeightField(window, encoding, texels, mergedCells, outOfRangeCells);

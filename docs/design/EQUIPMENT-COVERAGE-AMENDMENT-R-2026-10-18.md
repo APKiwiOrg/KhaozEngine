@@ -232,8 +232,11 @@ affected.
    exact capture. A core-corrected group that exceeds it is investigated, never accepted by widening the
    bound. The reserve's deliberate extra recession is checked separately against its mapped size.
    Refusal codes match on the existing construction negatives.
-3. **Oracle.** Every fixture's reference output passes the oracle. An over-tight clearance, a support
-   escape and a recession-budget excess each fail with the correct stage and code.
+3. **Oracle.** On every fixture, the oracle's verdict on the reference output equals the exact
+   certifier's verdict on that fixture's exact capture. Six full-weight challenging-collar fixtures
+   were captured as uncertified candidates whose collars sit inside the clearance, so they are
+   certification negatives on both paths (root ruling B39). An over-tight clearance, a support escape
+   and a recession-budget excess each fail with the correct stage and code.
 4. **Part A capabilities.** A backend test per capability on all three CI devices. Vulkan synchronisation
    validation stays clean.
 5. **Device equivalence.** Every GPU output vertex equals its reference vertex bit for bit on every

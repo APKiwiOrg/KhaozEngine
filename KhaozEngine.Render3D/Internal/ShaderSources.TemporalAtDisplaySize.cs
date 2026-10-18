@@ -27,7 +27,7 @@ namespace KhaozEngine.Render3D.Internal
         /// size.</summary>
         public static string TemporalAccumulateFragment(TemporalResolvePrecision precision, bool upscales) =>
             upscales ? TemporalAccumulateFragment(precision)
-            : precision == TemporalResolvePrecision.Half ? TemporalAccumulateAtDisplaySizeHalfFrag
-            : TemporalAccumulateAtDisplaySizeFrag;
+            : TemporalResolveDiagnostics.Apply(precision == TemporalResolvePrecision.Half
+                ? TemporalAccumulateAtDisplaySizeHalfFrag : TemporalAccumulateAtDisplaySizeFrag);
     }
 }

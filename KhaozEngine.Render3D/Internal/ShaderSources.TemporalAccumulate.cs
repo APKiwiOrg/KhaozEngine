@@ -15,10 +15,15 @@ namespace KhaozEngine.Render3D.Internal
         internal const string TemporalAccumulateGlsl = @"
 struct TemporalPixel {
     vec3 color; float confidence; float stability; float moved; float disocclusion; float reactive; float clip;
-    float alpha; float released;
+    float alpha;
+#ifdef TemporalDiagnostics
+    float released;
+#endif
 };
 
-// The diagnostic mask (TemporalResolveDiagnostics), carried in Params.w and 0 unless KE_TEMPORAL_DIAG is set.
+#ifdef TemporalDiagnostics
+// The diagnostic mask (TemporalResolveDiagnostics), carried in Params.w. These lines compile only while
+// KE_TEMPORAL_DIAG is set, so an unset process runs the resolve's own text.
 const int DiagShowReleased = 1;
 const int DiagReleaseOff = 2;
 const int DiagReleaseFloor2 = 4;
@@ -35,6 +40,7 @@ float temporalNonNegativeKernel(float x) {
     float ax = abs(x);
     return ax >= 2.0 ? 0.0 : exp(-2.29 * ax * ax);
 }
+#endif
 
 // sinc(x) * sinc(x / 2) on |x| < 2, mirrored by TemporalResolveMath.Lanczos2.
 float lanczos2(float x) {
@@ -164,8 +170,11 @@ void temporalPixelSite(ivec2 displayPixel, out vec2 uv, out vec2 pixelCentre, ou
 // Step 4's kernel is separable, and each axis of a clamped 3x3 texel depends on that axis alone. So three weights per
 // axis at internal scale for the reconstruction, and three per axis at display scale for the sample weight, form the
 // nine products the 3x3 takes: 12 kernel evaluations in place of 36.
-struct TemporalKernels { avec3 x; avec3 y; avec3 displayX; avec3 displayY; avec3 sampleX; avec3 sampleY;
-    ivec2 nearBase; };
+struct TemporalKernels { avec3 x; avec3 y; avec3 displayX; avec3 displayY;
+#ifdef TemporalDiagnostics
+    avec3 sampleX; avec3 sampleY; ivec2 nearBase;
+#endif
+};
 
 TemporalKernels temporalKernels(vec2 pixelCentre, ivec2 centreTexel, ivec2 maxTexel) {
     vec2 jitter = Jitter.xy;
@@ -175,6 +184,7 @@ TemporalKernels temporalKernels(vec2 pixelCentre, ivec2 centreTexel, ivec2 maxTe
     kernels.y = avec3(0.0);
     kernels.displayX = avec3(0.0);
     kernels.displayY = avec3(0.0);
+#ifdef TemporalDiagnostics
     kernels.sampleX = avec3(0.0);
     kernels.sampleY = avec3(0.0);
     // The dering-near diagnostic's 2x2: the texels whose jittered samples bracket the pixel centre, as the column and
@@ -200,6 +210,16 @@ TemporalKernels temporalKernels(vec2 pixelCentre, ivec2 centreTexel, ivec2 maxTe
             kernels.displayY[i] = toAfloat(sampleY);
         }
     }
+#else
+    for (int i = 0; i < 3; i++) {
+        ivec2 texel = clamp(centreTexel + ivec2(i - 1), ivec2(0), maxTexel);
+        vec2 toSample = vec2(texel) + 0.5 - jitter - pixelCentre;
+        kernels.x[i] = toAfloat(lanczos2(toSample.x));
+        kernels.y[i] = toAfloat(lanczos2(toSample.y));
+        kernels.displayX[i] = toAfloat(lanczos2(toSample.x * displayOverInternal));
+        kernels.displayY[i] = toAfloat(lanczos2(toSample.y * displayOverInternal));
+    }
+#endif
     return kernels;
 }
 
@@ -213,7 +233,10 @@ afloat temporalLanczosWeight(TemporalKernels kernels, int x, int y) { return ker
 struct TemporalNeighbourhood {
     vec3 momentSum; vec3 momentSquares; avec3 neighbourMin; avec3 neighbourMax; afloat alphaMin; afloat alphaMax;
     vec4 reconstruction; float reconstructionWeight; vec4 display; afloat sampleWeight; afloat reactiveDifference;
-    float centreLuma; avec3 nearMin; avec3 nearMax;
+    float centreLuma;
+#ifdef TemporalDiagnostics
+    avec3 nearMin; avec3 nearMax;
+#endif
 };
 
 TemporalNeighbourhood temporalNeighbourhood() {
@@ -230,8 +253,10 @@ TemporalNeighbourhood temporalNeighbourhood() {
     n.sampleWeight = afloat(0.0);
     n.reactiveDifference = afloat(0.0);
     n.centreLuma = 0.0;
+#ifdef TemporalDiagnostics
     n.nearMin = avec3(TemporalRangeLimit);
     n.nearMax = avec3(-TemporalRangeLimit);
+#endif
     return n;
 }
 
@@ -253,6 +278,8 @@ void temporalGather(inout TemporalNeighbourhood n, TemporalKernels kernels, int 
 #ifndef TemporalAtDisplaySize
     n.display += vec4(toVec3(ycc), 1.0) * toFloat(displayWeight);
 #endif
+#ifdef TemporalDiagnostics
+    // The sample weight stays on Lanczos 2 whatever kernel the reconstructions take.
     afloat sampleWeight = kernels.sampleX[x] * kernels.sampleY[y];
     n.sampleWeight = max(n.sampleWeight, clamp(sampleWeight, afloat(0.0), afloat(1.0)));
     if (x >= kernels.nearBase.x && x <= kernels.nearBase.x + 1 && y >= kernels.nearBase.y
@@ -260,6 +287,9 @@ void temporalGather(inout TemporalNeighbourhood n, TemporalKernels kernels, int 
         n.nearMin = min(n.nearMin, ycc);
         n.nearMax = max(n.nearMax, ycc);
     }
+#else
+    n.sampleWeight = max(n.sampleWeight, clamp(displayWeight, afloat(0.0), afloat(1.0)));
+#endif
     n.reactiveDifference = max(n.reactiveDifference, reactiveDifference);
     if (x == 1 && y == 1) n.centreLuma = toFloat(ycc.x);
 }
@@ -321,13 +351,18 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     float reactive = clamp(toFloat(n.reactiveDifference) * ReactiveGain, 0.0, 1.0);
     vec3 mean = n.momentSum / 9.0;
     vec3 deviation = sqrt(max(n.momentSquares / 9.0 - mean * mean, vec3(0.0)));
-    int diag = temporalDiag();
     vec4 current = n.reconstruction / max(reconstructionWeight, 1.0e-4);
-    // The negative lobes cannot ring past the neighbourhood. The dering-near diagnostic clamps to the 2x2 instead.
+#ifdef TemporalDiagnostics
+    int diag = temporalDiag();
+    // The dering-near diagnostic clamps to the 2x2 in place of the 3x3.
     bool deringNear = (diag & DiagDeringNear) != 0;
     vec3 currentMin = deringNear ? toVec3(n.nearMin) : neighbourMin;
     vec3 currentMax = deringNear ? toVec3(n.nearMax) : neighbourMax;
     current.xyz = clamp(current.xyz, currentMin, currentMax);
+#else
+    // The negative lobes cannot ring past the neighbourhood.
+    current.xyz = clamp(current.xyz, neighbourMin, neighbourMax);
+#endif
     current.w = clamp(current.w, alphaMin, alphaMax);
 
     // Steps 1 and 3: where this pixel was last frame, by the surface its centre texel prepared, the dilated nearest or
@@ -503,7 +538,9 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
         / (LockMotionEndPixels - LockMotionStartPixels), 0.0, 1.0);
     lockValue *= (1.0 - motionRelease) * (1.0 - clamp(reactive * LockReactiveRelease, 0.0, 1.0))
         * (1.0 - clamp((ownReprojected && useHistory ? 0.0 : edgeMotion) * LockEdgeRelease, 0.0, 1.0));
+#ifdef TemporalDiagnostics
     if ((diag & DiagLocksOff) != 0) lockValue = 0.0;
+#endif
     float hold = clamp(lockValue * LockHoldGain, 0.0, 1.0);
 
     // Step 5: variance clipping in luma-weighted YCoCg, from the box centre towards the history, which keeps its hue.
@@ -572,6 +609,7 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
                 && (!carriedLock || ringShift.y > ShadingLockPairExtents * releaseExtent);
         }
     }
+#ifdef TemporalDiagnostics
     if ((diag & DiagReleaseOff) != 0) released = false;
     // The release-floor diagnostics keep a released pixel's history, clipped to a box of half the gamma, with the
     // accumulated weight capped at 2 or 4 frames, and its display share.
@@ -588,6 +626,12 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
             accumulated = 0.0;
         }
     }
+#else
+    if (released) {
+        hold = 0.0;
+        accumulated = 0.0;
+    }
+#endif
     excess.x *= 1.0 - hold;
     float clipScale = max(excess.x, max(excess.y, excess.z));
     vec3 clipped = clipScale > 1.0 ? boxCentre + fromCentre / clipScale : historyYcc;
@@ -637,6 +681,7 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     // Step 4 for a converged pixel: the display-sized reconstruction by its share (temporalDisplayCurrent), none where
     // the shading release dropped the pixel's accumulated weight this frame. A program compiled for the display's own
     // size (TemporalAtDisplaySize), where the share is always none, leaves it out.
+#ifdef TemporalDiagnostics
     // The current-only diagnostic takes no history: the clamped internal reconstruction, with no display share.
     bool currentOnly = (diag & DiagCurrentOnly) != 0;
     if (currentOnly) accumulated = 0.0;
@@ -645,6 +690,13 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
         historyState.x, motionPixels, reactive);
     if (displayShare > 0.0)
         current.xyz = temporalDisplayCurrent(current.xyz, n.display, displayShare, currentMin, currentMax);
+#endif
+#else
+#ifndef TemporalAtDisplaySize
+    float displayShare = temporalDisplayShare(useHistory && !released, historyState.x, motionPixels, reactive);
+    if (displayShare > 0.0)
+        current.xyz = temporalDisplayCurrent(current.xyz, n.display, displayShare, neighbourMin, neighbourMax);
+#endif
 #endif
 
     // Step 8, second half: blend in the weighted space. The current weight is 1 on a reset and falls to
@@ -663,7 +715,9 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     result.disocclusion = historyValid && (!onScreen || disoccluded) ? 1.0 : 0.0;
     result.reactive = reactive;
     result.clip = useHistory && clipScale > 1.0 && length(clipped - historyYcc) > ClipFlagMinimumMove ? 1.0 : 0.0;
+#ifdef TemporalDiagnostics
     result.released = released ? 1.0 : 0.0;
+#endif
     return result;
 }
 ";

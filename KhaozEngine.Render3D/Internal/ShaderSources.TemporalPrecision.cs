@@ -61,18 +61,19 @@ namespace KhaozEngine.Render3D.Internal
 
         /// <summary>The fused resolve at a precision.</summary>
         public static string TemporalResolveFragment(TemporalResolvePrecision precision) =>
-            precision == TemporalResolvePrecision.Half ? TemporalResolveHalfFrag : TemporalResolveFrag;
+            TemporalResolveDiagnostics.Apply(precision == TemporalResolvePrecision.Half ? TemporalResolveHalfFrag : TemporalResolveFrag);
 
         /// <summary>The split's second pass at a precision. Its first pass has one.</summary>
         public static string TemporalAccumulateFragment(TemporalResolvePrecision precision) =>
-            precision == TemporalResolvePrecision.Half ? TemporalAccumulateHalfFrag : TemporalAccumulateFrag;
+            TemporalResolveDiagnostics.Apply(precision == TemporalResolvePrecision.Half ? TemporalAccumulateHalfFrag
+                : TemporalAccumulateFrag);
 
         /// <summary>The debug views at a precision.</summary>
         public static string TemporalDebugFragment(TemporalResolvePrecision precision) =>
-            precision == TemporalResolvePrecision.Half ? TemporalDebugHalfFrag : TemporalDebugFrag;
+            TemporalResolveDiagnostics.Apply(precision == TemporalResolvePrecision.Half ? TemporalDebugHalfFrag : TemporalDebugFrag);
 
         /// <summary>The count probe at a precision.</summary>
         public static string TemporalProbeFragment(TemporalResolvePrecision precision) =>
-            precision == TemporalResolvePrecision.Half ? TemporalProbeHalfFrag : TemporalProbeFrag;
+            TemporalResolveDiagnostics.Apply(precision == TemporalResolvePrecision.Half ? TemporalProbeHalfFrag : TemporalProbeFrag);
     }
 }

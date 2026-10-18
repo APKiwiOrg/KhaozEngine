@@ -8,6 +8,12 @@ namespace KhaozEngine.Render3D.Internal
     /// <see cref="TemporalResolveUniforms.Params"/>.w (<see cref="TemporalResolveMath.BuildUniforms"/>), and the
     /// shader reads it as <c>temporalDiag</c>. Unset, the mask is 0 and every rule runs as it does without the
     /// switches. Not a setting. A game never ships it set.
+    /// <para><b>COMPILED ONLY WHEN SET.</b> The switches' GLSL sits under <c>#ifdef TemporalDiagnostics</c>, which
+    /// <see cref="Apply"/> defines in every program that runs the per-pixel resolve only while the mask is not 0.
+    /// Metal compiles with fast math, so any change to a program's text can move its rounding, and the shading
+    /// release's thresholds carry a rounding step into a visible one. Unset, each program's text after preprocessing
+    /// is the resolve's own, and so is its output. Set, every token is compiled in, and <c>noop</c> is the control
+    /// that compiles them in with no effect.</para>
     /// </summary>
     internal static class TemporalResolveDiagnostics
     {
@@ -35,12 +41,26 @@ namespace KhaozEngine.Render3D.Internal
         /// <summary>The internal and display reconstructions are clamped to the range of the 2x2 texels nearest the
         /// pixel centre in jittered sample space, in place of the 3x3.</summary>
         public const int DeringNear = 128;
+        /// <summary>Compiles the switches in and changes nothing, the control for the others.</summary>
+        public const int NoOp = 256;
+
+        /// <summary>The define that compiles the switches' GLSL in.</summary>
+        internal const string Define = "#define TemporalDiagnostics\n";
 
         /// <summary>The mask the tokens set when the process first asked.</summary>
         public static int Mask { get; } = Parse(Environment.GetEnvironmentVariable(EnvironmentVariable));
 
         /// <summary>Whether <see cref="ShowReleased"/> is set.</summary>
         public static bool ShowsReleased => (Mask & ShowReleased) != 0;
+
+        /// <summary><paramref name="program"/> with <see cref="Define"/> after its <c>#version</c> line while the mask
+        /// is not 0, else <paramref name="program"/> itself.</summary>
+        internal static string Apply(string program)
+        {
+            if (Mask == 0) return program;
+            int line = program.IndexOf('\n');
+            return line < 0 ? Define + program : program.Insert(line + 1, Define);
+        }
 
         /// <summary>The mask of a token list. Null or blank is 0. An unknown token throws, so a typo never measures
         /// as the base.</summary>
@@ -60,6 +80,7 @@ namespace KhaozEngine.Render3D.Internal
                     "current-only" => CurrentOnly,
                     "recon-nonneg" => ReconNonNegative,
                     "dering-near" => DeringNear,
+                    "noop" => NoOp,
                     _ => throw new InvalidOperationException(
                         $"{EnvironmentVariable}: unknown token '{raw}'."),
                 };

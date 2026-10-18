@@ -1,0 +1,11 @@
+### Server snapshot
+
+Received for report {reference}.
+
+| Field | Value |
+| --- | --- |
+| Server tick | 1234 |
+| Players | 2 |
+
+- [Server snapshot](https://media.example.test/reports/grimhollow/2026-10/0192f3a4b5c67d8e9f0a1b2c3d4e5f60-00112233445566778899aabbccddeeff/server.json)
+- [Viewer](https://media.example.test/reports/grimhollow/2026-10/0192f3a4b5c67d8e9f0a1b2c3d4e5f60-00112233445566778899aabbccddeeff/viewer.html)

@@ -5,8 +5,17 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 21.4.1
+## 21.5.0
 
+2026-10-18
+
+- New opt-in `KhaozEngine.BugReports.Relay` authenticates and validates uploads, stores capability-linked media and queues GitHub issues and server snapshot comments with epoch claims and result markers.
+- New opt-in `KhaozEngine.BugReports.Relay.Azure` supplies Blob media, Queue work, Table quota counters and daily poison requeueing over host-owned clients, with offline conformance tests and a gated live leg.
+- `KhaozEngine.BugReports` exposes `BugReportLogTail.FromLogSection` for the viewer and relay to share the newest captured log lines.
+- `KhaozEngine.BugReports.Relay` exposes `ReportPaths.IsValid` as the media path rule shared by every store.
+- Every unfinished relay resend enqueues issue work before acceptance, including immediate retries after a failed enqueue.
+- `BugReportRelay.RevokeAsync` durably revokes reports, and missing public manifests stop late work from republishing deleted media.
+- The bug report viewer plays the full recorded interval between clip frames, including gaps longer than one second.
 - `MapPlacement` in `KhaozEngine.MapDoc` counts reads of its lookup keys (`Id`, `Kind`, `X`, `Z`) internally,
   so the viewport pick linearity test in `KhaozEngine.MapEditor` also catches a per-element scan through a
   captured document or the viewport's own copy, with the viewport's pick state built (#1453). Public behaviour

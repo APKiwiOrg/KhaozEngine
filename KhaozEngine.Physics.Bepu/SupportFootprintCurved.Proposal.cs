@@ -11,9 +11,9 @@ internal sealed partial class SupportFootprintCurved
         double bandLower, double bandUpper, out GeometryInterval lowest)
     {
         lowest = default;
-        if (_work.Failed) return GeometrySign.Unresolved;
+        if (_work.Failed) return _work.Complete(GeometrySign.Unresolved, ref lowest);
         if (!Begin(leaf, proposal.Start.Position.X, proposal.Start.Position.Z))
-            return _tilted.Lowest(leaf, part, proposal, bandLower, bandUpper, out lowest);
+            return _work.Complete(_tilted.Lowest(leaf, part, proposal, bandLower, bandUpper, out lowest), ref lowest);
         Number probe = C(proposal.Probe.Radius), y = _centre.Y, square;
         if (leaf.Shape != SupportCurvedShape.Cylinder)
         {
@@ -27,7 +27,7 @@ internal sealed partial class SupportFootprintCurved
         {
             if (part != SupportNeighborhoodCurved.Side &&
                 (part == SupportNeighborhoodCurved.TopCap ? _axisSign : -_axisSign) < 0)
-                return GeometrySign.Negative;
+                return _work.Complete(GeometrySign.Negative, ref lowest);
             Number distance = Root(_distanceSquared);
             // The upward cap is filled. The side contacts the upper circular rim.
             Number gap = part == SupportNeighborhoodCurved.Side ? Abs(Sub(distance, _radius)) :
@@ -41,17 +41,17 @@ internal sealed partial class SupportFootprintCurved
                 Mul(C(part == SupportNeighborhoodCurved.TopCap ? 1 : -1), _half);
             Number transverse = Sub(Sq(probe), Sq(Sub(_p, t)));
             GeometrySign possible = Sign(transverse);
-            if (possible == GeometrySign.Negative || possible == GeometrySign.Unresolved) return possible;
+            if (possible == GeometrySign.Negative || possible == GeometrySign.Unresolved) return _work.Complete(possible, ref lowest);
             Number effective = Add(_radius, Root(transverse));
             square = Sub(Sq(effective), Sq(_q));
         }
         GeometrySign sign = Sign(square);
-        if (sign == GeometrySign.Negative || sign == GeometrySign.Unresolved) return sign;
+        if (sign == GeometrySign.Negative || sign == GeometrySign.Unresolved) return _work.Complete(sign, ref lowest);
         Number height = Sub(Add(y, Root(square)), probe);
         // A source-backed equality certifies an authored band boundary exactly.
         if (Sign(Sub(height, C(bandLower))) == GeometrySign.Zero) height = C(bandLower);
         if (Sign(Sub(height, C(bandUpper))) == GeometrySign.Zero) height = C(bandUpper);
         lowest = Bounds(height);
-        return lowest.IsResolved ? GeometrySign.Positive : GeometrySign.Unresolved;
+        return _work.Complete(lowest.IsResolved ? GeometrySign.Positive : GeometrySign.Unresolved, ref lowest);
     }
 }

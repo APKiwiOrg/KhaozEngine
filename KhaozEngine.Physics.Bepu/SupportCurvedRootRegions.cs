@@ -34,7 +34,7 @@ internal sealed class SupportCurvedRootRegions
     internal int TerminalCells => Count;
     internal int EvaluatedCells { get; private set; }
     internal bool CapacityRefused { get; private set; }
-    internal GeometryInterval Get(int index) => _roots[index];
+    internal GeometryInterval Get(int index) => _work.Complete(_roots[index]);
 
     internal void ResetStatistics()
     {
@@ -66,7 +66,7 @@ internal sealed class SupportCurvedRootRegions
             GeometrySign constant = arithmetic.Sign(_sourceCoefficients[0]);
             // A zero polynomial has a continuum of roots, not an empty root list.
             // Its optimizer needs the caller's separate coincident-stratum certificate.
-            return constant is GeometrySign.Positive or GeometrySign.Negative;
+            return _work.Complete(constant is GeometrySign.Positive or GeometrySign.Negative);
         }
         int zeros = 0;
         while (zeros < _degree && arithmetic.Sign(_sourceCoefficients[zeros]) == GeometrySign.Zero) zeros++;
@@ -77,9 +77,9 @@ internal sealed class SupportCurvedRootRegions
             for (int i = zeros; i <= _degree; i++)
             { _sourceCoefficients[i - zeros] = _sourceCoefficients[i]; _coefficients[i - zeros] = _coefficients[i]; }
             _degree -= zeros;
-            if (_degree == 0) return !_work.Failed;
+            if (_degree == 0) return _work.Complete(true);
         }
-        return Traverse(low, high);
+        return _work.Complete(Traverse(low, high));
     }
 
     internal bool Solve(ISupportCurvedRootFunction function, double low, double high, int maximumRoots = MaximumTerminalCells)
@@ -88,7 +88,7 @@ internal sealed class SupportCurvedRootRegions
         // Three axial-clamp branches, each with at most four unsquared-valid roots.
         _terminalLimit = maximumRoots;
         Count = 0; LiveHighWater = 1; EvaluatedCells = 0; CapacityRefused = false;
-        return Traverse(low, high);
+        return _work.Complete(Traverse(low, high));
     }
 
     bool Traverse(double low, double high)
@@ -163,7 +163,7 @@ internal sealed class SupportCurvedRootRegions
             { _roots[j] = _roots[j - 1]; j--; }
             _roots[j] = root;
         }
-        return true;
+        return _work.Complete(true);
     }
 
     bool Refuse(SupportCurvedWorkFailure reason = SupportCurvedWorkFailure.None)
@@ -181,12 +181,12 @@ internal sealed class SupportCurvedRootRegions
             {
                 // Adjacent source-uniform regions can duplicate an exact splitting-point root.
                 if (root.Lower == root.Upper && _roots[i].Lower == root.Lower && _roots[i].Upper == root.Upper)
-                    return true;
+                    return _work.Complete(true);
                 return false;
             }
         if (Count == _terminalLimit) { _work.Fail(SupportCurvedWorkFailure.TerminalRoots); return false; }
         _roots[Count++] = root;
-        return true;
+        return _work.Complete(true);
     }
 
     GeometryInterval Refine(GeometryInterval region, int slope)
@@ -197,21 +197,21 @@ internal sealed class SupportCurvedRootRegions
         {
             if (!_work.TryCharge(SupportCurvedWorkKind.Refine)) return default;
             double middle = region.Lower + (region.Upper - region.Lower) * 0.5;
-            if (!(middle > region.Lower && middle < region.Upper)) return region;
+            if (!(middle > region.Lower && middle < region.Upper)) return _work.Complete(region);
             GeometryInterval newton = GeometryInterval.Exact(middle).Subtract(
                 Evaluate(GeometryInterval.Exact(middle), false).Divide(Evaluate(region, true)));
             if (_work.Failed) return default;
             if (!newton.IsResolved)
             {
                 int sign = EndpointSign(middle);
-                if (sign == 0) return GeometryInterval.Exact(middle);
-                if (sign == 2) return region;
+                if (sign == 0) return _work.Complete(GeometryInterval.Exact(middle));
+                if (sign == 2) return _work.Complete(region);
                 region = sign == slope ? GeometryInterval.Enclose(region.Lower, middle) :
                     GeometryInterval.Enclose(middle, region.Upper);
                 continue;
             }
             double low = Math.Max(region.Lower, newton.Lower), high = Math.Min(region.Upper, newton.Upper);
-            if (low > high || (low == region.Lower && high == region.Upper)) return region;
+            if (low > high || (low == region.Lower && high == region.Upper)) return _work.Complete(region);
             region = GeometryInterval.Enclose(low, high);
         }
     }
@@ -219,13 +219,13 @@ internal sealed class SupportCurvedRootRegions
     GeometryInterval Evaluate(GeometryInterval x, bool derivative)
     {
         if (_work.Failed) return default;
-        if (_function is { } function) return function.Evaluate(x, derivative);
+        if (_function is { } function) return _work.Complete(function.Evaluate(x, derivative));
         GeometryInterval value = derivative ? _coefficients[_degree].Multiply(GeometryInterval.Exact(_degree)) :
             _coefficients[_degree];
         for (int i = _degree - 1; i >= (derivative ? 1 : 0); i--)
             value = value.Multiply(x).Add(derivative ? _coefficients[i].Multiply(GeometryInterval.Exact(i)) :
                 _coefficients[i]);
-        return value;
+        return _work.Complete(value);
     }
 
     int EndpointSign(double x)
@@ -234,7 +234,7 @@ internal sealed class SupportCurvedRootRegions
         int sign = StrictSign(Evaluate(GeometryInterval.Exact(x), false));
         if (sign != 0) return sign;
         if (_function is { } function)
-            return function.Sign(x) switch { GeometrySign.Negative => -1, GeometrySign.Zero => 0, GeometrySign.Positive => 1, _ => 2 };
+            return _work.Complete(function.Sign(x)) switch { GeometrySign.Negative => -1, GeometrySign.Zero => 0, GeometrySign.Positive => 1, _ => 2 };
         int checkpoint = _arithmetic.Checkpoint;
         Number value = _sourceCoefficients[_degree], argument = _arithmetic.Constant(x);
         for (int i = _degree - 1; i >= 0; i--)

@@ -10,7 +10,7 @@ internal sealed partial class SupportTiltedCurvedGeometry
     Vector Scale(Vector a, Number b) => new(Mul(a.X, b), Mul(a.Y, b), Mul(a.Z, b));
     internal int CapKind(int part) => ((part == SupportNeighborhoodCurved.TopCap ? 1 : -1) * _direction) > 0 ? 2 : 3;
     internal bool CapFacesDown(int part) => CapUpward(CapKind(part)).Upper < 0;
-    internal GeometryInterval CapUpward(int kind) => kind == 2 ? _axis.Y : N(_axis.Y);
+    internal GeometryInterval CapUpward(int kind) => _work.Complete(kind == 2 ? _axis.Y : N(_axis.Y));
     GeometryInterval NormalizedYBounds()
     {
         GeometryInterval bounds = B(_k), source = B(_arithmetic.Y);
@@ -20,40 +20,40 @@ internal sealed partial class SupportTiltedCurvedGeometry
         double lower = bounds.Lower, upper = bounds.Upper;
         if (_direction > 0 ? source.Lower >= 0 : source.Upper <= 0) lower = Math.Max(0, lower);
         if (_direction > 0 ? source.Upper <= 0 : source.Lower >= 0) upper = Math.Min(0, upper);
-        return GeometryInterval.Enclose(lower, upper);
+        return _work.Complete(GeometryInterval.Enclose(lower, upper));
     }
     GeometryVector CapNormal(int part)
     {
         int kind = CapKind(part);
         GeometryVector normal = Scale(_axis, I(kind == 2 ? 1 : -1));
-        return new(normal.X, CapUpward(kind), normal.Z);
+        return _work.Complete(new GeometryVector(normal.X, CapUpward(kind), normal.Z));
     }
     internal bool CapNeedsUpperCoverage(int part)
     {
         GeometryInterval upward = CapUpward(CapKind(part));
-        return upward.Lower < 0 && upward.Upper >= 0;
+        return _work.Complete(upward.Lower < 0 && upward.Upper >= 0);
     }
     internal bool CapUniformlyUp(int kind)
     {
         if (_work.Failed) return false;
         GeometrySign sign = Sign(Mul(_k, C(kind == 2 ? 1 : -1)));
-        return !_work.Failed && (sign is GeometrySign.Positive or GeometrySign.Zero || CapUpward(kind).Lower >= 0);
+        return _work.Complete(sign is GeometrySign.Positive or GeometrySign.Zero || CapUpward(kind).Lower >= 0);
     }
 
     internal GeometryVector Surface(int kind, GeometryInterval a, GeometryInterval b)
     {
         if (_work.Failed) return default;
         if (kind is 2 or 3)
-            return Add(Add(_centre, Scale(_axis, B(_h).Multiply(I(kind == 2 ? 1 : -1)))),
-                Scale(Add(Scale(_w, a), Scale(_f, b)), B(_r)));
+            return _work.Complete(Add(Add(_centre, Scale(_axis, B(_h).Multiply(I(kind == 2 ? 1 : -1)))),
+                Scale(Add(Scale(_w, a), Scale(_f, b)), B(_r))));
         GeometryInterval v = PositiveRoot(I(1).Subtract(b.Square()));
         if ((kind & 1) != 0) v = N(v);
         GeometryVector radial = Add(Scale(_w, v), Scale(_f, b));
-        if (kind < 4) return Add(Add(_centre, Scale(_axis, B(_h).Multiply(a))), Scale(radial, B(_r)));
+        if (kind < 4) return _work.Complete(Add(Add(_centre, Scale(_axis, B(_h).Multiply(a))), Scale(radial, B(_r))));
         int end = kind < 6 ? 1 : -1;
         GeometryInterval h = a.Add(I(1)).Multiply(I(0.5)), lateral = PositiveRoot(I(1).Subtract(h.Square()));
         GeometryVector normal = Add(Scale(_axis, h.Multiply(I(end))), Scale(radial, lateral));
-        return Add(Add(_centre, Scale(_axis, B(_h).Multiply(I(end)))), Scale(normal, B(_r)));
+        return _work.Complete(Add(Add(_centre, Scale(_axis, B(_h).Multiply(I(end)))), Scale(normal, B(_r))));
     }
 
     internal bool SurfacePointInside(int kind, double a, double b, double x, double z, double radius,
@@ -65,14 +65,14 @@ internal sealed partial class SupportTiltedCurvedGeometry
         GeometryVector position = Surface(kind, I(a), I(b));
         GeometryInterval distance = position.X.Subtract(I(x)).Square().Add(position.Z.Subtract(I(z)).Square());
         if (position.IsResolved && position.Y.Lower >= bottom && position.Y.Upper <= top &&
-            distance.Upper <= I(radius).Square().Lower) return true;
+            distance.Upper <= I(radius).Square().Lower) return _work.Complete(true);
         int checkpoint = _arithmetic.Checkpoint;
         Vector sample = SourceSurface(kind, C(a), C(b));
         GeometrySign inside = Sign(Sub(Sq(C(radius)), Add(Sq(Sub(sample.X, C(x))), Sq(Sub(sample.Z, C(z))))));
         GeometrySign above = Sign(Sub(sample.Y, C(bottom))), below = Sign(Sub(C(top), sample.Y));
         _arithmetic.Restore(checkpoint);
-        return inside is GeometrySign.Positive or GeometrySign.Zero &&
-            above is GeometrySign.Positive or GeometrySign.Zero && below is GeometrySign.Positive or GeometrySign.Zero;
+        return _work.Complete(inside is GeometrySign.Positive or GeometrySign.Zero &&
+            above is GeometrySign.Positive or GeometrySign.Zero && below is GeometrySign.Positive or GeometrySign.Zero);
     }
 
     Vector SourceSurface(int kind, Number a, Number b)

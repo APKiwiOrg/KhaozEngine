@@ -62,7 +62,7 @@ internal sealed class SupportCurvedSurfaceAdmission
                 if (bounds.Y.Lower > top || bounds.Y.Upper < bottom || distance.Lower > r2.Upper) continue;
                 double am = cell.A0 + (cell.A1 - cell.A0) * 0.5, bm = cell.B0 + (cell.B1 - cell.B0) * 0.5;
                 if (uniformlyUp && geometry.SurfacePointInside(cell.Kind, am, bm, x, z, radius.Lower, bottom, top) && !_work.Failed)
-                    return GeometrySign.Positive;
+                    return _work.Complete(GeometrySign.Positive);
                 if (_work.Failed) return GeometrySign.Unresolved;
                 bool splitA = cell.A1 - cell.A0 >= cell.B1 - cell.B0;
                 if (splitA && !(am > cell.A0 && am < cell.A1) || !splitA && !(bm > cell.B0 && bm < cell.B1))
@@ -95,6 +95,6 @@ internal sealed class SupportCurvedSurfaceAdmission
             _work.ObserveStorage(0, LiveHighWater);
             (_live, _next) = (_next, _live); live = next;
         }
-        return GeometrySign.Negative;
+        return _work.Complete(GeometrySign.Negative);
     }
 }

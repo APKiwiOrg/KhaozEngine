@@ -22,6 +22,23 @@ internal sealed class SupportCurvedWork
     internal bool Failed => _snapshot.Failure != SupportCurvedWorkFailure.None;
     internal SupportCurvedWorkObservation Snapshot => _snapshot;
 
+    // A cached certificate cannot survive the request's first failure. Default signs are Unresolved.
+    internal T Complete<T>(T certificate) where T : struct => Failed ? default : certificate;
+
+    internal TResult Complete<TResult, TOutput>(TResult result, ref TOutput output)
+        where TResult : struct where TOutput : struct
+    {
+        if (Failed) output = default;
+        return Complete(result);
+    }
+
+    internal TResult Complete<TResult, TFirst, TSecond>(TResult result, ref TFirst first, ref TSecond second)
+        where TResult : struct where TFirst : struct where TSecond : struct
+    {
+        if (Failed) { first = default; second = default; }
+        return Complete(result);
+    }
+
     internal bool TryCharge(SupportCurvedWorkKind kind)
     {
         if (Failed) return false;

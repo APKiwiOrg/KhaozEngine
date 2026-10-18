@@ -402,3 +402,19 @@ Task 7 work. Task 5 owns the original seam measurements and traversal failure ga
 Self-review also exercised a denied Sign inside `CapUniformlyUp`. Its cached upward bound originally
 returned true after that denial. The added regression failed False versus True, then passed after
 the shortcut checked the sticky owner again. The caller's existing refusal remains unchanged.
+
+### Task 4 fix round 1: sticky success exits
+
+FC-R9 is enforced at curved certificate exits through `SupportCurvedWork.Complete`. A failed owner
+returns Unresolved signs, false booleans and default geometry, and clears witness, height and member
+outputs even when an earlier nested step already resolved them. This covers optional band snaps,
+cap normal refinement, cached cap bounds, side and round extrema, root refinement, surface admission,
+both proposal contacts and their tilted and footprint callers. The helper neither charges nor changes
+the first failure. The fixed ceiling, every tolerance and band, arrival rule and raw identity stay unchanged.
+
+Two regressions failed before the fix. The represented cylinder rotated about Z by PI / 6 with radius
+0.25, half-length 0.5 and owner limit 85 returned Positive from Contact at lower band
+0.5551881949939084 after WorkLimit. A second fixture first completed the same root solve with bands
+-2 and 2, then exhausted during optional cap upward refinement and retained a resolved witness.
+Both now refuse or clear their output, preserve WorkLimit and keep Consumed at 85 on later attempts.
+The Contact regression also checks cached cap bounds, surface output and root callbacks after failure.

@@ -5,6 +5,14 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 21.5.0-grain.1
+
+2026-10-18
+
+- Diagnostic prerelease for a private probe feed, never published. `KE_TEMPORAL_DIAG` takes comma-separated
+  tokens that switch parts of the temporal resolve off or swap them, to attribute shadow edge grain. Unset, the
+  resolve runs as in 21.5.0.
+
 ## 21.5.0
 
 2026-10-18

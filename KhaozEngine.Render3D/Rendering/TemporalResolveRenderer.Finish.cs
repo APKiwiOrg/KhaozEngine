@@ -23,6 +23,16 @@ namespace KhaozEngine.Render3D.Rendering
             (_debugView ??= new TemporalDebugViewPass(_gd, ResolveLayout, targetOutput)).Draw(cl, view, set, target);
         }
 
+        /// <summary>Paint this frame's released pixels magenta over <paramref name="target"/>, the show-released
+        /// diagnostic (<see cref="Internal.TemporalResolveDiagnostics.ShowReleased"/>). Called as
+        /// <see cref="DrawDebugView"/> is.</summary>
+        internal void DrawReleasedOverlay(IGpuCommandList cl, IGpuFramebuffer target, GpuOutputDescription targetOutput)
+        {
+            if (CurrentSet is not { } set) return;
+            (_debugView ??= new TemporalDebugViewPass(_gd, ResolveLayout, targetOutput)).DrawReleasedOverlay(cl, set,
+                target);
+        }
+
         TemporalCountProbe? _countProbe;
         bool _countsArmed;
 

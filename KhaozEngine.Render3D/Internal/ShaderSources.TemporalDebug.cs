@@ -13,7 +13,8 @@ namespace KhaozEngine.Render3D.Internal
             + TemporalDebugMainGlsl;
 
         internal const string TemporalDebugMainGlsl = @"
-// Mode.x is the SceneDebugView value: 2 History, 3 Disocclusion, 4 Reactive.
+// Mode.x is the SceneDebugView value: 2 History, 3 Disocclusion, 4 Reactive. 5 is the show-released diagnostic
+// (TemporalResolveDiagnostics), which leaves every pixel the shading release kept and paints the released ones magenta.
 layout(set=1, binding=0) uniform DebugView { vec4 Mode; };
 layout(location=0) in vec2 vUv;
 layout(location=0) out vec4 oColor;
@@ -21,6 +22,11 @@ void main() {
     ivec2 size = temporalDisplaySize();
     ivec2 p = clamp(ivec2(vec2(vUv.x, 1.0 - vUv.y) * vec2(size)), ivec2(0), size - ivec2(1));
     TemporalPixel t = temporalResolvePixel(p);
+    if (int(Mode.x + 0.5) == 5) {
+        if (t.released < 0.5) discard;
+        oColor = vec4(1.0, 0.0, 1.0, 1.0);
+        return;
+    }
     float l = dot(max(t.color, vec3(0.0)), vec3(0.2126, 0.7152, 0.0722));
     vec3 context = vec3(0.35 * l / (1.0 + l));   // the scene, dimmed, so each overlay reads against it
     int mode = int(Mode.x + 0.5);

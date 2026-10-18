@@ -26,8 +26,13 @@ namespace KhaozEngine.Render3D.Rendering
 
         readonly IGpuShaderSet _shaders;
         readonly IGpuResourceLayout _modeLayout;
-        readonly IGpuBuffer[] _modeBuffers = new IGpuBuffer[3];
-        readonly IGpuResourceSet[] _modeSets = new IGpuResourceSet[3];
+        // One more slot than the views: the show-released diagnostic's overlay (ReleasedOverlayMode).
+        readonly IGpuBuffer[] _modeBuffers = new IGpuBuffer[4];
+        readonly IGpuResourceSet[] _modeSets = new IGpuResourceSet[4];
+
+        /// <summary>The mode value of the show-released diagnostic's overlay
+        /// (<see cref="TemporalResolveDiagnostics.ShowReleased"/>).</summary>
+        internal const int ReleasedOverlayMode = 5;
         readonly IGpuPipeline _pipeline;
 
         public TemporalDebugViewPass(IGpuDevice gd, IGpuResourceLayout resolveLayout, GpuOutputDescription targetOutput)
@@ -37,11 +42,12 @@ namespace KhaozEngine.Render3D.Rendering
                 ShaderSources.TemporalDebugFragment(TemporalResolvePrecisionPolicy.For(gd)));
             _modeLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 new GpuResourceLayoutElement("DebugView", GpuResourceKind.UniformBuffer, GpuShaderStages.Fragment)));
-            for (int i = 0; i < Views.Length; i++)
+            for (int i = 0; i < _modeBuffers.Length; i++)
             {
                 _modeBuffers[i] = f.CreateBuffer(new GpuBufferDescription(DebugViewBufferBytes,
                     GpuBufferUsage.UniformBuffer));
-                gd.UpdateBuffer(_modeBuffers[i], 0, new DebugViewUbo { Mode = new Vector4((int)Views[i], 0f, 0f, 0f) });
+                int mode = i < Views.Length ? (int)Views[i] : ReleasedOverlayMode;
+                gd.UpdateBuffer(_modeBuffers[i], 0, new DebugViewUbo { Mode = new Vector4(mode, 0f, 0f, 0f) });
                 _modeSets[i] = f.CreateResourceSet(new GpuResourceSetDescription(_modeLayout, _modeBuffers[i]));
             }
             _pipeline = f.CreateGraphicsPipeline(new GpuPipelineDescription
@@ -71,6 +77,16 @@ namespace KhaozEngine.Render3D.Rendering
                 _ => -1,
             };
             if (slot < 0) return;
+            Record(cl, slot, resolveSet, target);
+        }
+
+        /// <summary>Paint the pixels the shading release let go magenta over <paramref name="target"/>, leaving the
+        /// rest of its image as it is. The show-released diagnostic.</summary>
+        public void DrawReleasedOverlay(IGpuCommandList cl, IGpuResourceSet resolveSet, IGpuFramebuffer target)
+            => Record(cl, Views.Length, resolveSet, target);
+
+        void Record(IGpuCommandList cl, int slot, IGpuResourceSet resolveSet, IGpuFramebuffer target)
+        {
             cl.SetFramebuffer(target);
             cl.SetPipeline(_pipeline);
             cl.SetGraphicsResourceSet(0, resolveSet);

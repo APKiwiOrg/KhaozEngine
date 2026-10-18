@@ -165,7 +165,8 @@ namespace KhaozEngine.Render3D.Internal
                 Jitter = new Vector4(jitterPixels.X, jitterPixels.Y, displayOverInternal, readable ? 1f : 0f),
                 CurrentDepth = currentDepth,
                 Params = new Vector4(0f, screenFixedBackground ? 1f : 0f,
-                    readable && previous is { } before ? CameraTravel(current.View, before.View) : 0f, 0f),
+                    readable && previous is { } before ? CameraTravel(current.View, before.View) : 0f,
+                    TemporalResolveDiagnostics.Mask),
             };
         }
 

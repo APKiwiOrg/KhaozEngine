@@ -84,6 +84,9 @@ void main() {
             using IGpuTexture target = factory.CreateTexture(GpuTextureDescription.Texture2D(
                 Size, Size, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget | GpuTextureUsage.Sampled));
             using IGpuFramebuffer framebuffer = factory.CreateFramebuffer(null, target);
+            using IGpuTexture probeOutputTarget = factory.CreateTexture(GpuTextureDescription.Texture2D(
+                1, 1, GpuPixelFormat.R8G8B8A8UNorm, GpuTextureUsage.RenderTarget));
+            using IGpuFramebuffer probeFramebuffer = factory.CreateFramebuffer(null, probeOutputTarget);
             using IGpuComputeShader writer = factory.CreateComputeShaderFromSpirv(Writer);
             using IGpuResourceLayout computeLayout = factory.CreateResourceLayout(new GpuResourceLayoutDescription(
                 new GpuResourceLayoutElement("WordBuf", GpuResourceKind.StructuredBufferReadWrite, GpuShaderStages.Compute)));
@@ -130,6 +133,8 @@ void main() {
             commands.Draw(3, 1, 0, 0);
             commands.WriteTimestamp(pool, 2);
             commands.EndTimestamps(pool);
+            // Replace the output binding before sampling target in the compute probe.
+            commands.SetFramebuffer(probeFramebuffer);
             commands.SetComputePipeline(readPixel);
             commands.SetComputeResourceSet(0, pixelSet);
             commands.Dispatch(1, 1, 1);

@@ -198,7 +198,8 @@ internal static class SupportCostVerdict
     }
 
     /// <summary>The verdict for one recorded row, or null for an operation without a cost gate. A row without
-    /// its legacy pair is rejected. <paramref name="hosted"/> adds the hosted precondition of <see cref="Check"/>.</summary>
+    /// its legacy pair is rejected. A saved legacy outcome without support instead uses the absolute ceiling
+    /// (SC-18). <paramref name="hosted"/> adds the hosted precondition of <see cref="Check"/>.</summary>
     internal static SupportCostRowVerdict? JudgeRow(SupportCostSample sample, IReadOnlyList<SupportCostSample> samples,
         double hostScale, long explicitLifetimeBytes, bool hosted)
     {
@@ -252,6 +253,24 @@ internal static class SupportCostVerdict
         return Check(candidate, legacy, dense, hostScale, explicitLifetimeBytes, hosted).Passed ? SupportCostGate.Pass : SupportCostGate.Reject;
     }
 
+    internal static bool OutsideComparableEnvelope(in SupportCostSample candidate) =>
+        candidate.Operation is "DryTick" or "ExplicitTick" &&
+        (candidate.AchievedMotion.X == 0 && candidate.AchievedMotion.Z == 0 || candidate.Substeps > 3 ||
+            candidate.Counts.ModeSegments > 1 || !candidate.Comparable);
+
+    /// <summary>Whether every iteration of an uncomparable tick stays within the controller's structural caps
+    /// (SC-18). A median verdict reuses the first iteration's counters, so it must also require this.</summary>
+    internal static bool EveryIterationBounded(IReadOnlyList<SupportCostSample> iterations)
+    {
+        if (!OutsideComparableEnvelope(iterations[0])) return true;
+        SupportCostTickBound bound = SupportCostTickBound.For(iterations[0].Operation == "ExplicitTick");
+        return iterations.All(sample => bound.Contains(sample));
+    }
+
+    /// <summary>SC-18 uses the saved <see cref="SupportCostSample.Outcome"/>, never geometry/oracle agreement
+    /// or a reconstruction from EndState. Grounded legacy ticks retain their relative cost comparison.</summary>
+    internal static bool LegacyHasNoSupport(in SupportCostSample legacy) => legacy.Outcome is "None" or "Airborne";
+
     /// <summary>The SG-12 limits for a gated row and every rule it breaks. A hosted row also needs successful
     /// first-use geometry and oracle agreement, which counts as a geometry failure.</summary>
     internal static SupportCostCheck Check(in SupportCostSample candidate, in SupportCostSample legacy, bool dense,
@@ -263,37 +282,38 @@ internal static class SupportCostVerdict
         bool tick = candidate.Operation is "DryTick" or "ExplicitTick";
         double timeLimit = (candidate.Operation == "Find" ? dense ? 500 : 50 : tick ? dense ? 4000 : 1000 : dense ? 1000 : 200) * hostScale;
         long byteLimit = candidate.Operation switch { "DryTick" => 208, "ExplicitTick" => explicitLifetimeBytes, _ => 0 };
-        bool outsideEnvelope = false, legacyFailed = false;
+        bool boundFailed = false, legacyFailed = false;
         if (tick)
         {
-            outsideEnvelope = candidate.AchievedMotion.X == 0 && candidate.AchievedMotion.Z == 0 || candidate.Substeps > 3 ||
-                candidate.Counts.ModeSegments > 1 || !candidate.Comparable;
+            bool outsideEnvelope = OutsideComparableEnvelope(candidate);
+            boundFailed = outsideEnvelope && (dense || !SupportCostTickBound.For(candidate.Operation == "ExplicitTick").Contains(candidate));
             if (!dense)
             {
                 bool legacyTimed = double.IsFinite(legacy.WarmMicroseconds) && legacy.WarmMicroseconds >= 0;
-                legacyFailed = !legacy.GeometryPassed || !legacyTimed;
-                if (legacyTimed) timeLimit = Math.Min(timeLimit,
+                legacyFailed = !legacyTimed;
+                if (legacyTimed && !LegacyHasNoSupport(legacy) && !outsideEnvelope) timeLimit = Math.Min(timeLimit,
                     legacy.WarmMicroseconds + Math.Max(hostScale * 100, 0.25 * legacy.WarmMicroseconds));
             }
         }
         bool time = !(double.IsFinite(candidate.WarmMicroseconds) && candidate.WarmMicroseconds >= 0 &&
             candidate.WarmMicroseconds <= timeLimit);
         bool allocation = candidate.WarmBytes < 0 || tick && byteLimit <= 0 || candidate.WarmBytes > byteLimit;
-        return new(timeLimit, byteLimit, time, geometry, outsideEnvelope, legacyFailed, allocation);
+        return new(timeLimit, byteLimit, time, geometry, boundFailed, legacyFailed, allocation);
     }
 }
 
 /// <summary>One recorded row's verdict and the legacy row it was compared with.</summary>
 internal readonly record struct SupportCostRowVerdict(SupportCostSample? Legacy, SupportCostGate Gate);
 
-/// <summary>A gated row's limits and failures: <c>T</c> time, <c>G</c> geometry, oracle or refusal, <c>E</c> outside
-/// the comparable moving single-mode envelope, <c>L</c> unsuccessful ordinary legacy, <c>A</c> allocation.</summary>
+/// <summary>A gated row's limits and failures: <c>T</c> time, <c>G</c> geometry, oracle or refusal, <c>E</c> an
+/// exceeded deterministic bound (ordinary) or incomparable envelope (dense), <c>L</c> invalid legacy timing,
+/// <c>A</c> allocation. Legacy geometry/oracle disagreement is informational under SC-18.</summary>
 internal readonly record struct SupportCostCheck(double TimeLimit, long ByteLimit, bool Time, bool Geometry,
-    bool OutsideEnvelope, bool Legacy, bool Allocation)
+    bool Bound, bool Legacy, bool Allocation)
 {
-    public bool Passed => !(Time || Geometry || OutsideEnvelope || Legacy || Allocation);
+    public bool Passed => !(Time || Geometry || Bound || Legacy || Allocation);
 
-    public string Codes => string.Join(",", new[] { (Time, "T"), (Geometry, "G"), (OutsideEnvelope, "E"), (Legacy, "L"), (Allocation, "A") }
+    public string Codes => string.Join(",", new[] { (Time, "T"), (Geometry, "G"), (Bound, "E"), (Legacy, "L"), (Allocation, "A") }
         .Where(code => code.Item1).Select(code => code.Item2));
 }
 

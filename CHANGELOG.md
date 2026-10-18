@@ -16,6 +16,20 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - Every unfinished relay resend enqueues issue work before acceptance, including immediate retries after a failed enqueue.
 - `BugReportRelay.RevokeAsync` durably revokes reports, and missing public manifests stop late work from republishing deleted media.
 - The bug report viewer plays the full recorded interval between clip frames, including gaps longer than one second.
+- `MapPlacement` in `KhaozEngine.MapDoc` counts reads of its lookup keys (`Id`, `Kind`, `X`, `Z`) internally,
+  so the viewport pick linearity test in `KhaozEngine.MapEditor` also catches a per-element scan through a
+  captured document or the viewport's own copy, with the viewport's pick state built (#1453). Public behaviour
+  and the serialized document are unchanged.
+- `GameStorage` in `KhaozEngine.Persistence` gains an internal drain scheduling seam for tests, the same one
+  `PersistenceQueue` has. Public behaviour is unchanged. The Foundation tests that waited on thread-pool work
+  under a short bound now run it on test-owned threads (#1467).
+- Contact controller support reads cost less on stairs and boxes. Exactly horizontal axis-aligned rectangular
+  faces take an exact path through support extrema and contact height, axis-aligned rectangular faces certify
+  their contact sign directly, and installed faces keep their query-independent edge, normal and plane facts.
+  Results stay bit-identical to the reference evaluator. The
+  [phase 3 hosted verdict](docs/verification/2026-10-18-support-cost-hosted-1334-phase3.md) passes 135 of 139
+  ordinary rows. The stairs mesh and hidden crate rows that still miss SG-12 are judged against the aggregate
+  actor budget before a consumer pin (#1334).
 
 ## 21.4.0
 
@@ -43,6 +57,13 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   `RemoveOverlay` for overlays that draw above any screen and can hold the game's input, and
   `InputState.WithoutInteraction`. A button, trigger or stick still held when a hold ends stays hidden from the
   game until it is released.
+- Temporal anti-aliasing no longer leaves a speckled band or a fading tail behind a shadow edge that travels several
+  pixels a frame, or that crosses a moving object, at Native and Quality. The shading release from 21.2.0 now also
+  covers moving pixels through the history ring test, and a carried lock with no ridge this frame releases only when
+  both diagonal pairs of its ring read the change, so missed thin and diagonal detail keeps its hold. Balanced and
+  lower presets are unchanged ([#1431](https://github.com/APKiwiOrg/KhaozEngine/issues/1431)). See amendment 34 of
+  the [temporal resolve design](docs/design/TEMPORAL-RESOLVE-UPSCALING-DESIGN-2026-09-24.md)
+  ([#1448](https://github.com/APKiwiOrg/KhaozEngine/issues/1448)).
 - `Browser` on macOS and Linux now passes a URL as one process argument, so a file path containing spaces opens.
 - `PersistenceQueue` in `KhaozEngine.Persistence` gains an internal drain scheduling seam for tests. Public
   behaviour is unchanged. The tracked persistence tests now hold every controlled pause on test-owned threads,

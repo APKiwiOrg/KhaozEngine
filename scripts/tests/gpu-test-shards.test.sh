@@ -39,15 +39,16 @@ matrix = json.loads(lines["matrix"])["include"]
 sharded = json.loads(lines["sharded"])
 primaries = {e["backend"] for e in matrix if e["primary"] == "1"}
 assert len(primaries) == 3 and sum(e["primary"] == "1" for e in matrix) == 3, "one primary entry per leg"
+assert all(e["shard"] in ("", "rest") for e in matrix if e["primary"] == "1"), "only rest is primary when sharded"
 print(len(matrix), ",".join(s["backend"] for s in sharded) or "none")
 PY
 }
 
 echo "expand: which triggers shard which legs"
-check "push is 3 Metal shards + 2 legs"     "5 metal-native"  "$(expand push false '')"
-check "pull_request matches push"           "5 metal-native"  "$(expand pull_request false '')"
-check "dispatch shards all three"           "18 metal-native,direct3d11-native,vulkan-native" "$(expand workflow_dispatch false '')"
-check "schedule matches dispatch"           "18 metal-native,direct3d11-native,vulkan-native" "$(expand schedule false '')"
+check "push keeps Metal's full suite on one job" "3 none"    "$(expand push false '')"
+check "pull_request matches push"           "3 none"          "$(expand pull_request false '')"
+check "dispatch shards all three"           "23 metal-native,direct3d11-native,vulkan-native" "$(expand workflow_dispatch false '')"
+check "schedule matches dispatch"           "23 metal-native,direct3d11-native,vulkan-native" "$(expand schedule false '')"
 check "a bake shards nothing"               "3 none"          "$(expand workflow_dispatch true '')"
 check "a render filter shards nothing"      "3 none"          "$(expand workflow_dispatch false 'FullyQualifiedName~Golden')"
 
@@ -56,7 +57,8 @@ G=KhaozEngine.Tests.Gpu
 cat > "$TMPROOT/list.txt" <<EOF
 Build started.
 The following Tests are available:
-    $G.TemporalFollowPhaseGpuTests.The_orthographic_follow_holds_its_bounds_from_every_start_phase_at_Native_and_Quality
+    $G.TemporalFollowPhaseGpuTests.The_orthographic_follow_holds_its_bounds_from_every_start_phase_at_Native
+    $G.TemporalFollowPhaseGpuTests.The_orthographic_follow_holds_its_bounds_from_every_start_phase_at_Quality
     $G.TemporalFollowPhaseGpuTests.The_orthographic_follow_holds_its_bounds_from_every_start_phase_at_Performance_and_Ultra
     $G.TemporalFollowPhaseGpuTests.The_perspective_follow_holds_its_bounds_from_every_start_phase_at_Native_and_Quality
     $G.TemporalFollowPhaseGpuTests.The_follow_stop_holds_its_bounds_from_every_start_phase
@@ -76,17 +78,18 @@ The following Tests are available:
 EOF
 for backend in metal-native direct3d11-native vulkan-native; do
   check "$backend partitions the listing" 0 "$(run check-render "$backend" "$TMPROOT/list.txt")"
-  check "$backend reports 17 methods, none unassigned or doubled" 1 \
-    "$(grep -c '^17 Render.Tests methods listed, 0 unassigned, 0 assigned twice$' "$OUTFILE")"
+  check "$backend reports 18 methods, none unassigned or doubled" 1 \
+    "$(grep -c '^18 Render.Tests methods listed, 0 unassigned, 0 assigned twice$' "$OUTFILE")"
 done
 run check-render vulkan-native "$TMPROOT/list.txt" > /dev/null
-check "vulkan render-1 holds the Native and Quality orthographic sweep alone" 1 "$(grep -c '^vulkan-native render-1: 1 listed test methods$' "$OUTFILE")"
-check "vulkan render-9 takes the unnamed classes" 1 "$(grep -c '^vulkan-native render-9: 4 listed test methods$' "$OUTFILE")"
+check "vulkan render-1 holds the Quality orthographic sweep alone" 1 "$(grep -c '^vulkan-native render-1: 1 listed test methods$' "$OUTFILE")"
+check "vulkan render-6 holds Native, the phase lines and atmosphere" 1 "$(grep -c '^vulkan-native render-6: 3 listed test methods$' "$OUTFILE")"
+check "vulkan render-12 takes the unnamed classes" 1 "$(grep -c '^vulkan-native render-12: 2 listed test methods$' "$OUTFILE")"
 run check-render direct3d11-native "$TMPROOT/list.txt" > /dev/null
 check "d3d11 render-1 holds the cascade cull alone" 1 "$(grep -c '^direct3d11-native render-1: 1 listed test methods$' "$OUTFILE")"
 check "d3d11 render-4 takes every class outside Temporal" 1 "$(grep -c '^direct3d11-native render-4: 5 listed test methods$' "$OUTFILE")"
 run check-render metal-native "$TMPROOT/list.txt" > /dev/null
-check "metal render-1 holds the follow sweeps" 1 "$(grep -c '^metal-native render-1: 8 listed test methods$' "$OUTFILE")"
+check "metal render-1 holds the follow sweeps" 1 "$(grep -c '^metal-native render-1: 9 listed test methods$' "$OUTFILE")"
 check "an empty listing is refused" 1 "$(run check-render metal-native /dev/null)"
 check "an unknown backend is refused" 1 "$(run filter opengl render-1)"
 check "an unknown slice is refused" 1 "$(run filter metal-native render-3)"
@@ -153,6 +156,97 @@ reports success rest,render-1
 check "an assembly on two shards fails the backend" 1 "$(run summarize metal-native "$TMPROOT/reports" "$S/Fixture.slnx")"
 reports success ''
 check "a test project that ran nowhere fails the backend" 1 "$(run summarize metal-native "$TMPROOT/reports" "$S/Fixture.slnx")"
+
+echo "project shards: named projects move once, new projects stay on rest"
+python3 - "$S" <<'PY'
+import pathlib, sys, xml.etree.ElementTree as ET
+base = pathlib.Path(sys.argv[1])
+solution = ET.parse(base / "Fixture.slnx")
+for name in ("KhaozEngine.MapEditor.Tests", "KhaozEngine.Game.Tests", "KhaozEngine.Movement.Tests", "KhaozEngine.Catalog.Tests"):
+    path = base / name / (name + ".csproj")
+    path.parent.mkdir()
+    override = "<AssemblyName>Fixture.Editor.Tests</AssemblyName>" if "MapEditor" in name else ""
+    path.write_text('<Project><PropertyGroup>' + override + '</PropertyGroup><ItemGroup>'
+                    '<PackageReference Include="Microsoft.NET.Test.Sdk" /></ItemGroup></Project>')
+    ET.SubElement(solution.getroot(), "Project", Path=f"{name}/{name}.csproj")
+solution.write(base / "Fixture.slnx")
+(base / "output").mkdir()
+PY
+check "rest solution excludes Render.Tests and the named projects" 0 \
+  "$(run solution vulkan-native rest "$S/Fixture.slnx" "$S/output/rest.slnx")"
+check "the named project solution is generated" 0 \
+  "$(run solution vulkan-native projects-1 "$S/Fixture.slnx" "$S/output/projects.slnx")"
+check "unsharded isolation keeps all non-render projects" 0 \
+  "$(run solution vulkan-native '' "$S/Fixture.slnx" "$S/output/all.slnx")"
+check "Windows rest excludes the named projects" 0 \
+  "$(run solution direct3d11-native rest "$S/Fixture.slnx" "$S/output/windows.slnx")"
+check "the Windows named project solution is generated" 0 \
+  "$(run solution direct3d11-native projects-1 "$S/Fixture.slnx" "$S/output/windows-projects.slnx")"
+check "Render slices cannot generate a project solution" 1 \
+  "$(run solution vulkan-native render-1 "$S/Fixture.slnx" "$S/output/invalid.slnx")"
+_rc=0
+python3 - "$S" > "$OUTFILE" 2>&1 <<'PY' || _rc=$?
+import pathlib, sys, xml.etree.ElementTree as ET
+base = pathlib.Path(sys.argv[1])
+def paths(name):
+    return {p.get("Path") for p in ET.parse(base / "output" / (name + ".slnx")).iter("Project")}
+rest = {"../A.Tests/A.Tests.csproj", "../Lib/Lib.csproj"}
+catalog = {"../KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj"}
+named = {f"../{name}/{name}.csproj" for name in
+         ("KhaozEngine.MapEditor.Tests", "KhaozEngine.Game.Tests", "KhaozEngine.Movement.Tests")}
+assert paths("rest") == rest | catalog, paths("rest")
+assert paths("projects") == named, paths("projects")
+assert paths("all") == rest | named | catalog, paths("all")
+assert paths("windows") == rest | named, paths("windows")
+assert paths("windows-projects") == catalog, paths("windows-projects")
+assert not paths("rest") & paths("projects"), "project shards overlap"
+assert not paths("windows") & paths("windows-projects"), "Windows project shards overlap"
+assert all((base / "output" / p).exists() for p in paths("all")), "paths were not rebased"
+PY
+check "derived solutions partition projects and rebase paths" 0 "$_rc"
+
+project_reports() { # mutation, backend. Applied to an otherwise complete software backend
+  rm -rf "$TMPROOT/reports"; mkdir -p "$TMPROOT/reports"
+  python3 - "$PLAN" "$TMPROOT/reports" "$1" "$2" <<'PY'
+import importlib.util, json, sys
+spec = importlib.util.spec_from_file_location("plan", sys.argv[1])
+plan = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(plan)
+out, mutation, backend = sys.argv[2:]
+one = {"total": 2, "passed": 2, "failed": 0, "skipped": 0, "runs": 1}
+world = ["projects-1"] if backend == "vulkan-native" else ["rest"]
+where = {"a.tests": ["rest"], "Fixture.Editor.Tests": world.copy(),
+         "KhaozEngine.Game.Tests": world.copy(), "KhaozEngine.Movement.Tests": world.copy(),
+         "KhaozEngine.Catalog.Tests": ["projects-1"] if backend == "direct3d11-native" else ["rest"],
+         "KhaozEngine.Render.Tests": [name for name, _ in plan.render_slices(backend)]}
+moved = "Fixture.Editor.Tests" if backend == "vulkan-native" else "KhaozEngine.Catalog.Tests"
+if mutation == "duplicate":
+    where[moved].append("rest")
+elif mutation == "missing":
+    where[moved] = []
+elif mutation == "wrong shard":
+    where[moved] = ["rest"]
+elif mutation == "new project moved":
+    where["a.tests"] = ["projects-1"]
+elif mutation == "render moved":
+    where["KhaozEngine.Render.Tests"].append("projects-1")
+for shard in ["rest", "projects-1"] + where["KhaozEngine.Render.Tests"]:
+    assemblies = {name: dict(one) for name, shards in where.items() if shard in shards}
+    if mutation == "twice on one" and shard == "projects-1":
+        assemblies[moved]["runs"] = 2
+    json.dump({"backend": backend, "shard": shard, "outcome": "success", "assemblies": assemblies},
+              open(f"{out}/{backend}-{shard}.json", "w"))
+PY
+}
+for backend in direct3d11-native vulkan-native; do
+  project_reports none "$backend"
+  check "$backend named assemblies once and new assemblies on rest pass" 0 \
+    "$(run summarize "$backend" "$TMPROOT/reports" "$S/Fixture.slnx")"
+  for mutation in duplicate missing 'wrong shard' 'new project moved' 'render moved' 'twice on one'; do
+    project_reports "$mutation" "$backend"
+    check "$backend project coverage refuses $mutation" 1 "$(run summarize "$backend" "$TMPROOT/reports" "$S/Fixture.slnx")"
+  done
+done
 
 echo "gpu-test-shards.test: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

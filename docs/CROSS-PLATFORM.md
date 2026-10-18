@@ -261,6 +261,8 @@ not held to that value. They compare two code paths that legitimately differ by 
 
 For diagnosis, a dispatch may set `renderTestFilter` to a vstest filter. That targets only
 `KhaozEngine.Render.Tests` on the selected native legs while retaining their compiler and validation steps.
+Filtered dispatches retain detailed output from passing tests on every leg in the
+`filtered-render-measurements-<backend>` artifact, so per-device figures remain available on Windows too.
 Leave it empty for release verification and the standard full-suite policy. The filter is passed through
 a quoted environment value, never interpolated into shell source.
 
@@ -289,32 +291,47 @@ the job, and both retain the trx logger, blame sequence files and combined suite
 in run `38991082421` (2h15m of it in `Render.Tests`) and `direct3d11-native` spent 46 minutes in `Render.Tests`
 alone in run `39010325116`. The pre-tag release gate dispatches this workflow, so the slowest job sets the release
 time, and once those two legs were split that job was the unsharded Metal leg (a 26-minute test step in run
-`39022823501`). A leg is sharded whenever it runs its full suite and the run neither bakes nor sets
-`renderTestFilter`: on every trigger for `metal-native`, and on the `schedule` and `workflow_dispatch` for the two
-software legs. Each sharded leg runs as jobs named `<os> / <backend> / <shard>`:
+`39022823501`). A leg is sharded when it runs its full suite on the `schedule` or a `workflow_dispatch` and the
+run neither bakes nor sets `renderTestFilter`. `metal-native` also runs its full suite on `push` and
+`pull_request`, as one `macos-26 / metal-native` job ([#1460](https://github.com/APKiwiOrg/KhaozEngine/issues/1460),
+below). Each sharded leg runs as jobs named `<os> / <backend> / <shard>`:
 
-- `rest` runs every test project in `KhaozEngine.slnx` except `KhaozEngine.Render.Tests`, through the same
-  solution derived at run time that the Windows isolation pass uses, so a new test project is covered with no
-  edit. It also runs the once-per-leg steps (the FXC validation on Windows, the Vulkan device limits and the
-  shader cache verification).
+- `rest` runs every test project in `KhaozEngine.slnx` except `KhaozEngine.Render.Tests` and any named projects
+  taken by another shard, through a solution derived at run time. A new test project defaults to `rest` with
+  no edit. It also runs the once-per-leg steps (the FXC validation on Windows, the Vulkan device limits and
+  the shader cache verification).
+- `projects-1` on Vulkan runs exactly `KhaozEngine.MapEditor.Tests`, `KhaozEngine.Game.Tests` and
+  `KhaozEngine.Movement.Tests`. Their assemblies took 8.55 and 8.03 of the serial non-Render suite's 15.25 and
+  14.99 minutes in runs `39039926687` and `39072468288`, whose `rest` jobs reached 20m03s and 20m00s.
+  The generated `rest` solution excludes those projects.
+  On Windows it runs only `KhaozEngine.Catalog.Tests`. The Windows `rest` job took 14m24s and 18m55s in those
+  runs, then 22m54s in the Windows-only control `39074411898`. Catalog.Tests took 16.30 minutes there against
+  13.01 for MapEditor.Tests. Isolating the longest assembly gives it its own host, while every other Windows
+  test project defaults to `rest`. The unsharded Windows isolation pass still includes every non-Render project.
 - `render-1` to `render-N` each run one slice of `KhaozEngine.Render.Tests`. Each backend has its own slice
   table in `scripts/gpu-test-shards.py`, because the three rasterizers disagree about what is expensive:
-  `metal-native` has 2 slices, `direct3d11-native` 4 and `vulkan-native` 9. Every table is an ordered first-match
+  `metal-native` has 2 slices, `direct3d11-native` 4 and `vulkan-native` 12. Every table is an ordered first-match
   partition over `FullyQualifiedName`: a test belongs to the first slice whose rules match it, and the last slice
   takes everything the earlier slices do not name. A new class or method therefore always lands in exactly one
   slice. The heaviest methods are named one by one and set each backend's floor. `TemporalFollowPhaseGpuTests`'
   orthographic sweep took 17 to 22 minutes on serialised lavapipe as one method, so it is split by preset like the
-  perspective sweep beside it, and its Native and Quality half has a Vulkan slice to itself.
+  perspective sweep beside it. Native and Quality now have separate methods and Vulkan slices (#1458), with
+  Performance and UltraPerformance together in a third method. The twelve Vulkan slices cost 10.2 to 10.5
+  normalized test minutes each, leaving more room for runner variation than the former nine.
   `ShadowCascadeCullPerfGpuTests` takes 13 to 15 minutes on WARP and has a Windows slice to itself. Each shard
   uploads its TRX files as `shard-trx-<backend>-<shard>`, which carry the per-test durations to re-balance from.
 
-So a default-input dispatch is 3 Metal, 5 Windows and 10 Linux jobs plus the `sync` job. The org's Team plan
+So a default-input dispatch is 3 Metal, 6 Windows and 14 Linux jobs plus the `sync` job. The org's Team plan
 allows 60 concurrent hosted jobs and 5 concurrent macOS jobs
-([GitHub Actions limits](https://docs.github.com/en/actions/reference/limits)), so the 19 jobs of the dispatch
+([GitHub Actions limits](https://docs.github.com/en/actions/reference/limits)), so the 24 jobs of the dispatch
 and the 4 of the `ci` dispatch the pre-tag gate runs beside it all start at once. The macOS cap is the one that
 binds: every `push` and `pull_request` runs the Metal full suite too, so overlapping runs share 5 macOS slots.
 Metal stops at 3 jobs because its slowest shard is already well under the Vulkan floor, and a fourth would only
-spend that shared allowance.
+spend that shared allowance. While Metal was sharded on every trigger, a push run on `main` that started 18
+seconds before the gate dispatch held 3 slots, and the dispatch's `render-1` shard queued for 13 minutes (run
+`39041795759` took 27.3 minutes against 21.3 uncontended at the same commit). So `push` and `pull_request` run
+Metal's full suite as one job, about half an hour that nothing waits on, and a push run beside the gate needs 4
+macOS slots ([#1460](https://github.com/APKiwiOrg/KhaozEngine/issues/1460)).
 
 Every shard keeps its leg's instruments: `strict` validation and full serialisation on Vulkan, the pool watch on
 Windows, the debug layer and the device-evidence detector on Metal. **Coverage is guarded twice.** Before it runs
@@ -478,7 +495,7 @@ dropped about 63 minutes of runner time from a full dispatch.
 - **GitHub-hosted D3D11 native leg (2x billing)**: the engine's own `KhaozEngine.Gpu.D3D11` backend
   (`KE_GRAPHICS_BACKEND=direct3d11-native`), golden tests only (`FullyQualifiedName~Golden`) on
   `push`/`pull_request` and the WHOLE suite on the weekly `schedule` (Sunday 18:00 UTC) and on
-  `workflow_dispatch`, sharded across five jobs as described above. The tier was chosen on a measurement of the incumbent leg, where the full suite on
+  `workflow_dispatch`, sharded across six jobs as described above. The tier was chosen on a measurement of the incumbent leg, where the full suite on
   hosted Windows was 17m14s against the golden-only 7m44s, about +19 billed 2x minutes per run, and it survived
   the `18.0.0` re-decision on feedback speed alone at 25m43s for this leg's own full suite. It OWNS the
   `direct3d11-native` golden family since `17.41.0`: it verifies the committed `.direct3d11-native.txt` grids
@@ -489,7 +506,7 @@ dropped about 63 minutes of runner time from a full dispatch.
   compiler over the shipped programs.
 - **GitHub-hosted Vulkan native leg (1x)**: the engine's own `KhaozEngine.Gpu.Vulkan` backend
   (`KE_GRAPHICS_BACKEND=vulkan-native`), golden tests only on `push`/`pull_request` and the WHOLE suite on the
-  weekly `schedule` and on `workflow_dispatch`, sharded across ten jobs as described above, with every
+  weekly `schedule` and on `workflow_dispatch`, sharded across fourteen jobs as described above, with every
   full-suite shard serializing xUnit test collections (`-- xUnit.ParallelizeTestCollections=false`, one live
   device at a time on each runner). It OWNS the `vulkan-native` golden
   family since `17.41.0`, verifying the committed `.vulkan-native.txt` grids on lavapipe and baking them on a
@@ -628,8 +645,8 @@ INTERMEDIATE target, ask what in the final image would have to move before assum
 
 | trigger                          | behaviour                                                                     |
 | -------------------------------- | ----------------------------------------------------------------------------- |
-| `push` / `pull_request` on main  | **verify**: `metal-native` runs the full suite across its three shards, answered by one `macos-26 / metal-native / full suite` check. `direct3d11-native` and `vulkan-native` run the golden tests only. The only validation tier that runs is Metal's debug layer, which the Metal leg arms on every trigger, and it arms it ALONE: `MTL_CAPTURE_ENABLED` would displace the `MTLDebugDevice` that does the validating ([#614](https://github.com/APKiwiOrg/KhaozEngine/issues/614)) |
-| `schedule` (weekly, Sun 18:00 UTC) | **full sweep**: all three legs run the full suite (`vulkan-native` serialized and under `strict` validation, every leg sharded, `metal-native` across three jobs, `direct3d11-native` five and `vulkan-native` ten, with one `full suite` check per backend), plus the `sync` validation job. The Metal leg keeps its debug layer here, alone for the same #614 reason, and does NOT arm `MTL_SHADER_VALIDATION` ([#617](https://github.com/APKiwiOrg/KhaozEngine/issues/617)) |
+| `push` / `pull_request` on main  | **verify**: `metal-native` runs the full suite as one `macos-26 / metal-native` job, unsharded so a push run leaves the gate dispatch its macOS slots ([#1460](https://github.com/APKiwiOrg/KhaozEngine/issues/1460)). `direct3d11-native` and `vulkan-native` run the golden tests only. The only validation tier that runs is Metal's debug layer, which the Metal leg arms on every trigger, and it arms it ALONE: `MTL_CAPTURE_ENABLED` would displace the `MTLDebugDevice` that does the validating ([#614](https://github.com/APKiwiOrg/KhaozEngine/issues/614)) |
+| `schedule` (weekly, Sun 18:00 UTC) | **full sweep**: all three legs run the full suite (`vulkan-native` serialized and under `strict` validation, every leg sharded, `metal-native` across three jobs, `direct3d11-native` six and `vulkan-native` fourteen, with one `full suite` check per backend), plus the `sync` validation job. The Metal leg keeps its debug layer here, alone for the same #614 reason, and does NOT arm `MTL_SHADER_VALIDATION` ([#617](https://github.com/APKiwiOrg/KhaozEngine/issues/617)) |
 | `workflow_dispatch` `bake=false` | same as `schedule` (all three legs full suite, `vulkan-native` serialized, every leg sharded unless `renderTestFilter` is set, plus the `sync` job), plus the one thing no other trigger can do: `tier` picks the Metal leg's shape, where `push` (the default) is the unattended debug-device shape, `deep` is the opt-in shader validation tier that adds `MTL_SHADER_VALIDATION=1`, and `capture` adds `MTL_CAPTURE_ENABLED=1` instead. A `push` dispatch against a `deep` one is #617's control since `18.0.0`, the incumbent-leg input that used to be it having gone with that leg |
 | `workflow_dispatch` `bake=true`  | **re-bake** (`KE_UPDATE_GOLDENS=1`) on all three legs, each writing its own family, uploaded as per-backend goldens. A bake is never sharded, so each family arrives as one `goldens-<backend>` artifact. Every leg has been a bake leg since `17.41.0`, when the three native legs became owners. The `sync` job still does not run: it is a validation instrument over a subset rather than a producer of references, and the `vulkan-native` matrix leg bakes that family. The copy constraint that used to sit here died with row 4 of [#683](https://github.com/APKiwiOrg/KhaozEngine/issues/683): each leg's artifact is committed as it comes |
 
@@ -834,8 +851,9 @@ PASSED:
   one heap dump on the first still-queued probe or episode that reaches ten seconds. Dumping suspends the
   process and can take minutes, so logging must not opt a test host into that operation. The armed line records
   whether dumping is enabled. An armed line with nothing after it is a clean run. The same tier adds a trx logger,
-  and the artifact carries those files from both passes, so an episode's timestamps can be laid against every
-  test that was running beside it. Retention is three days. Explicit dumps use the same directory and can be read
+  so an episode's timestamps can be laid against every test that was running beside it. An unsharded run's
+  artifact carries those files from both passes. A shard's are in its `shard-trx-direct3d11-native-<shard>`
+  artifact instead, kept a week ([#1461](https://github.com/APKiwiOrg/KhaozEngine/issues/1461)). Retention is three days. Explicit dumps use the same directory and can be read
   with `dotnet-dump analyze`, `threadpool` and `clrstack -all`.
 
 The fast inner-loop CI (`.github/workflows/ci.yml`: build/test/pack/publish, GPU tests skipped) is separate and

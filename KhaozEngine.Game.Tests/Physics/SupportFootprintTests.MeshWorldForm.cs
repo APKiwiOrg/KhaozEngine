@@ -30,13 +30,7 @@ public partial class SupportFootprintTests
         SupportQueryCounts warm = SupportQueryDiagnostics.Snapshot();
         Assert.Equal(0, warm.MeshTriangleCaptures);
         Assert.Equal(cold with { WorldFormBuilds = 0, MeshTriangleCaptures = 0 }, warm);
-        long bytes;
-        using (SupportAllocationRegion.Start())
-        {
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            scene.Find(lease);
-            bytes = GC.GetAllocatedBytesForCurrentThread() - before;
-        }
+        long bytes = AllocationMeasurement.Measure(nameof(WarmMeshFindCapturesNoTriangles), () => scene.Find(lease));
         Assert.Equal(0, bytes);
         SupportQueryDiagnostics.Reset();
         using (SupportReferenceEvaluation.Begin()) scene.Find(lease);
@@ -57,14 +51,9 @@ public partial class SupportFootprintTests
             () => FootSupport.Find(null, scene.Target, lease, query));
         FootSupport.Find(null, scene.Target, lease, query);
         SupportQueryDiagnostics.Reset();
-        SupportSample warm;
-        long bytes;
-        using (SupportAllocationRegion.Start())
-        {
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            warm = FootSupport.Find(null, scene.Target, lease, query);
-            bytes = GC.GetAllocatedBytesForCurrentThread() - before;
-        }
+        SupportSample warm = default;
+        long bytes = AllocationMeasurement.Measure(nameof(WarmMeshFindAcrossACoplanarNeighbourAllocatesNothing), () =>
+            warm = FootSupport.Find(null, scene.Target, lease, query));
         Assert.Equal(expected, warm);
         Assert.Equal(0, bytes);
         Assert.Equal(0, SupportQueryDiagnostics.Snapshot().MeshTriangleCaptures);

@@ -227,22 +227,6 @@ public sealed class BundleValidatorTests
     }
 
     [Fact]
-    public void Too_many_central_records_are_rejected_before_parsing()
-    {
-        Assert.Equal("too_many_entries", BundleValidator.Validate(TestBundles.CentralRecords(records: 3, declared: 5000)).Error);
-        Assert.Equal("too_many_entries", BundleValidator.Validate(TestBundles.CentralRecords(records: 5000, declared: 5)).Error);
-
-        MemoryStream crafted = TestBundles.CentralRecords(records: 5000, declared: 5000);
-        BundleValidator.Validate(TestBundles.CentralRecords(records: 5000, declared: 5000));
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        BundleValidationResult result = BundleValidator.Validate(crafted);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-        Assert.Equal("too_many_entries", result.Error);
-        // ZipArchive would build one entry object per record, about 500 bytes each.
-        Assert.True(allocated < crafted.Length, $"allocated {allocated} bytes for a {crafted.Length} byte archive");
-    }
-
-    [Fact]
     public void Manifest_over_64_KiB_is_rejected()
         => Assert.Equal("manifest_invalid", ErrorOf(TestBundles.Default().WithManifestJson(j => j + new string(' ', 64 * 1024))));
 

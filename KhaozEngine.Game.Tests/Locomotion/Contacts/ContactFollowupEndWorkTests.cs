@@ -14,6 +14,10 @@ namespace KhaozEngine.Tests.Locomotion.Contacts;
 /// <summary>Single-Find evidence for the represented capsule seam and cylinder end tangency.</summary>
 public sealed class ContactFollowupEndWorkTests(ITestOutputHelper output)
 {
+    /// <summary>Interior cylinder row x = -0.25f measured at a251a3bf4, before any admission witness.
+    /// A fixed reference keeps the interior row and the seam bound from moving with the change under test.</summary>
+    internal const long PreAdmissionWitnessInteriorConsumed = 762;
+
     [Fact]
     public void RepresentedEndTangencyCounterGate()
     {
@@ -36,7 +40,8 @@ public sealed class ContactFollowupEndWorkTests(ITestOutputHelper output)
                 var interior = Observe(false, -0.25f);
                 AssertComplete(interior);
                 Write(false, -0.25f, interior);
-                long bound = 10L * interior.Work.Consumed;
+                Assert.InRange(interior.Work.Consumed, 1, PreAdmissionWitnessInteriorConsumed);
+                long bound = 10L * PreAdmissionWitnessInteriorConsumed;
                 Assert.InRange(left.Work.Consumed, 1, bound);
                 Assert.InRange(critical.Work.Consumed, 1, bound);
                 Assert.InRange(right.Work.Consumed, 1, bound);

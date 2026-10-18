@@ -46,6 +46,7 @@
     <None Include="Locomotion/Contacts/Fixtures/support-equivalence-fields.jsonl" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Locomotion/Contacts/Fixtures/support-equivalence.txt" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Physics/Fixtures/cylinder-admission-before.jsonl" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Physics/Fixtures/cylinder-admission-interior-before.jsonl" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Locomotion/Contacts/Fixtures/grimhollow-stairs-collision.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>

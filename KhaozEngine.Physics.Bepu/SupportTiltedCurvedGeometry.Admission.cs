@@ -8,26 +8,47 @@ internal sealed partial class SupportTiltedCurvedGeometry
     internal bool HasFiniteAdmissionWitness(SupportCurvedShape shape, int capKind, double x, double z,
         double radius, double bottom, double top, bool requireUpward)
     {
-        if (_work.Failed || shape != SupportCurvedShape.Cylinder) return false;
-        if (capKind is 2 or 3)
+        if (_work.Failed || shape != SupportCurvedShape.Cylinder || capKind is not (-1 or 2 or 3)) return false;
+        if (requireUpward && capKind >= 0 && !CapUniformlyUp(capKind)) return false;
+        // The nearest part point is a binary64 candidate only. SurfacePointInside proves the offered
+        // dyadic point exactly, so a hit proves existence on this part, never coverage or a maximum.
+        double dx = _centre.X.Lower - x, dz = _centre.Z.Lower - z;
+        double ex = Middle(_e.X), ez = Middle(_e.Z);
+        double along = dx * ex + dz * ez, lateral = dz * ex - dx * ez;
+        double u = Middle(B(_u)), k = Middle(B(_k)), r = Middle(B(_r)), h = Middle(B(_h));
+        if (capKind < 0)
         {
-            if (requireUpward && !CapUniformlyUp(capKind)) return false;
-            // These attained points prove existence on this cap only, never coverage or a maximum.
-            return _work.Complete(
-                SurfacePointInside(capKind, 0, 0, x, z, radius, bottom, top) ||
-                SurfacePointInside(capKind, 1, 0, x, z, radius, bottom, top) ||
-                SurfacePointInside(capKind, -1, 0, x, z, radius, bottom, top) ||
-                SurfacePointInside(capKind, 0, 1, x, z, radius, bottom, top) ||
-                SurfacePointInside(capKind, 0, -1, x, z, radius, bottom, top));
+            // Begin proves u > 0, so kind 0 at b = 0 is the upward top line. Its XZ shadow runs along e.
+            double a = (r * k - along) / (h * u);
+            return _work.Complete(Offer(0, double.IsNaN(a) ? 0 : Math.Clamp(a, -1, 1), 0, x, z, radius, bottom, top));
         }
-        if (capKind != -1) return false;
-        // Begin proves u > 0. At b = 0, kind 0 has upward normal u and kind 1 has -u.
-        for (int kind = 0; kind < (requireUpward ? 1 : 2); kind++)
-            if (SurfacePointInside(kind, -1, 0, x, z, radius, bottom, top) ||
-                SurfacePointInside(kind, 1, 0, x, z, radius, bottom, top))
-                return _work.Complete(true);
-        return false;
+        double ca = (along + (capKind == 2 ? h : -h) * u) / (r * k), cb = -lateral / r;
+        if (!double.IsFinite(ca)) ca = 0;
+        if (!double.IsFinite(cb)) cb = 0;
+        if (BoundedGeometryArithmetic.CompareSumOfFourSquares(ca, cb, 0, 0, 1) == GeometrySign.Positive)
+        {
+            // Outside the disc, offer the rim point toward the vertical projection of the foot centre.
+            double length = Math.Sqrt(ca * ca + cb * cb);
+            ca /= length; cb /= length;
+            if (BoundedGeometryArithmetic.CompareSumOfFourSquares(ca, cb, 0, 0, 1) == GeometrySign.Positive)
+            {
+                ca *= 1 - Math.ScaleB(1, -50); cb *= 1 - Math.ScaleB(1, -50);
+            }
+        }
+        return _work.Complete(Offer(capKind, ca, cb, x, z, radius, bottom, top));
     }
+
+    bool Offer(int kind, double a, double b, double x, double z, double radius, double bottom, double top)
+    {
+        // A candidate whose enclosure misses the column is declined before any source work.
+        GeometryVector position = Surface(kind, I(a), I(b));
+        if (position.IsResolved && (position.Y.Lower > top || position.Y.Upper < bottom ||
+            position.X.Subtract(I(x)).Square().Add(position.Z.Subtract(I(z)).Square()).Lower > I(radius).Square().Upper))
+            return false;
+        return SurfacePointInside(kind, a, b, x, z, radius, bottom, top);
+    }
+
+    static double Middle(GeometryInterval v) => v.Lower + (v.Upper - v.Lower) * 0.5;
 
     readonly record struct Vector(Number X, Number Y, Number Z);
     Vector Add(Vector a, Vector b) => new(Add(a.X, b.X), Add(a.Y, b.Y), Add(a.Z, b.Z));

@@ -451,8 +451,9 @@ Production agrees on all three, with Complete footprints and Failure None.
 The cost defect is independent. Each Find spends 1,696 admission cells in two passes, each
 with 846 barrel membership search cells before attaining a point, one upward-cap cell and
 one opposite-cap exclusion cell. The adjacent-neighbor bound conceals this uniformly hot seam.
-Task 6 is a cost repair with unchanged public results, bounded per row by ten times the same
-fixture's interior cylinder Find at x = -0.25f. It may not change either None to Walkable.
+Task 6 is a cost repair with unchanged public results, bounded per row by ten times the
+interior cylinder Find at x = -0.25f as measured at a251a3bf4 (762, FC-R11). It may not change
+either None to Walkable.
 
 FU-R4 selected the crown branch under the original premise. FC-R10 explicitly retains that
 certificate. The executable gate now asserts oracle statuses separately from integer cost.
@@ -543,34 +544,50 @@ living-contract publication remain Task 7 work. No tolerance, band, limit, ident
 rule changed. No capture variables, cost artifacts, load, consumer launch or full suite was used.
 
 
-## Task 6 finite cylinder admission cost repair (FC-R10)
+## Task 6 finite cylinder admission cost repair (FC-R10, FC-R11)
 
-`HasFiniteAdmissionWitness` offers the four actual barrel end points (kinds 0/1, a = -1/+1,
-b = 0). Each individual cap offers only its own centre and four cardinal rim points. Existing
-`SurfacePointInside` expressions prove inclusive disc and column membership. `CapUniformlyUp`
-protects upward cap coverage. Barrel upward queries use kind 0, whose normal Y is u > 0.
-A true result proves one attained member point only. A false result retains the original complete
-cell traversal, storage and refusal policy. It supplies no exclusion, coverage or maximum claim.
-All source events charge the existing owner. Every success exit observes FC-R9.
+Under FC-R11, `HasFiniteAdmissionWitness` offers one nearest-point candidate per part. The barrel
+offers the upward top-line point (kind 0, b = 0) at the axial parameter that puts it under the
+foot centre, clamped to [-1, 1]. Each individual cap offers the vertical projection of the foot
+centre when it lies in the disc, otherwise the centre-directed rim point. Both parameters are
+binary64 candidates only. An enclosure that misses the column declines a candidate before any
+source work. Otherwise the existing `SurfacePointInside` expressions prove inclusive disc and
+column membership exactly at the offered dyadic point. `CapUniformlyUp` protects upward cap
+coverage. A true result proves one attained member point only. A false result retains the
+original complete cell traversal, storage and refusal policy. It supplies no exclusion, coverage
+or maximum claim. All source events charge the existing owner. Every success exit observes FC-R9.
 
-The inert helper produced the behavioral red before Measure was changed. All three seam rows
-failed cost against the same-test interior row's 7,620-event bound. Four part/sign safety rows
-and the closed-endpoint test failed at the first missing positive witness. The independent roof
-control passed. Exit 1, eight failed, one passed. Status assertions and SC-9 comparisons passed.
+The first Task 6 commit (df3ff6d8c) offered a fixed set: the four barrel end points and each
+cap's centre and four cardinal rim points. Its inert helper produced the behavioral red before
+Measure was changed. All three seam rows failed cost, four part/sign safety rows and the
+closed-endpoint test failed at the first missing positive witness, the independent roof control
+passed. That fixed set missed at the ordinary interior row and charged 1,286 source events before
+the unchanged traversal, so FC-R11 replaced it.
 
-| Cylinder X bits | Status before and after | Consumed before | Consumed after | Admission cells before | Admission cells after | Root cells before and after | Refine before and after |
+| Cylinder X bits | Status | Consumed a251a3bf4 | Consumed fixed set | Consumed nearest point | Admission cells a251a3bf4, fixed, nearest | Root cells | Refine |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| bf333332 | Walkable | 71925 | 1655 | 1696 | 2 | 266 | 161 |
-| bf333333 | None | 72032 | 1762 | 1696 | 2 | 192 | 72 |
-| bf333334 | None | 71590 | 1320 | 1696 | 2 | 8 | 0 |
-| be800000, interior x = -0.25f | Walkable | 762 | 2048 | 12 | 12 | 36 | 54 |
+| bf333332 | Walkable | 71925 | 1655 | 1109 | 1696, 2, 2 | 266 | 161 |
+| bf333333 | None | 72032 | 1762 | 1216 | 1696, 2, 2 | 192 | 72 |
+| bf333334 | None | 71590 | 1320 | 774 | 1696, 2, 2 | 8 | 0 |
+| be800000, interior x = -0.25f | Walkable | 762 | 2048 | 588 | 12, 12, 4 | 36 | 54 |
 
-Each after row is below 10 * 2048 = 20480, measured against its interior reference in the same
-test. Each also fits the stricter original interior bound of 7620. Admission high water falls
-from 352 to 1 at the seam. The two remaining cells are the opposite cap's exclusion, one in
-each pass. Barrel and upward-cap membership attain finite points without subdivision.
-The interior point misses the finite set and retains its 12 admission cells, with 1,286 extra
-source events for the declined certificates. No limit was changed.
+The gate compares every seam row with 10 * 762 = 7620, the interior count measured at a251a3bf4
+and pinned as `PreAdmissionWitnessInteriorConsumed`. A reference measured after the change could
+hide a regression. The interior row itself must stay at or below 762. Admission high water is 1
+on every row. The two remaining seam cells are the opposite cap's exclusion, one in each pass.
+The interior row's four remaining cells are the two caps' exclusions. No limit was changed.
+
+`CertifiedCurvedStrataFitTheCumulativeQueryCeiling` was measured with the helper unwired
+(a251a3bf4 behavior), at df3ff6d8c and after FC-R11. No row rises above its a251a3bf4 value.
+Only the tilted cylinder rows move. Every other row is unchanged.
+
+| Corpus row | a251a3bf4 | Fixed set | Nearest point |
+| --- | --- | --- | --- |
+| tilted-side | 822 | 1226 | 729 |
+| tilted-cap | 1520 | 991 | 728 |
+| slope-below | 827 | 1231 | 734 |
+| slope-boundary | 1055 | 1459 | 962 |
+| slope-above | 1055 | 1459 | 962 |
 
 Before wiring Measure, the red run serialized the six unchanged cylinder and capsule rows.
 `Physics/Fixtures/cylinder-admission-before.jsonl` pins production a251a3bf4 with SHA-256
@@ -581,19 +598,24 @@ position/normal/height errors, XZ, owner and raw identity, disc bounds, both pro
 origin/generation, counts and every published join word. Receiver/source/lease identity is
 asserted in the live interval. All six rows match, optimized and reference outputs agree and
 all six warmed Finds allocate zero bytes. Capsule Consumed stays 636, 635, 1006.
+`Physics/Fixtures/cylinder-admission-interior-before.jsonl` pins the interior row the same way,
+captured from production df3ff6d8c, SHA-256
+`01ef72fffb5c2f4a15394ba69d63de905c44582ec633f09fe9c5b22ba146fe1e`. It matches after FC-R11.
 
 The safety matrix covers both physical ends, both installed near-quarter-turn axes with positive
 and negative represented Y, the independent 3-4-5 source columns, all cap cardinal points,
 barrel versus cap and opposite-cap isolation, upward-only membership, inclusive radius/height
-endpoints and an adjacent outside radius, outside columns and a missed finite set that still
-succeeds through full traversal. Final-event denial latches WorkLimit, blocks later helper
+endpoints and an adjacent outside radius, outside columns, the top-line parameter clamped at
+both ends against an unclamped point beyond the barrel, cap projections inside and outside the
+disc, the lower barrel line and an off-line barrel column that the candidate misses and the full
+traversal still finds. Final-event denial latches WorkLimit, blocks later helper
 success and keeps Measure Unresolved. The independent roof retains both InvalidStart proposals,
 a lower floor member and Refused public support. No maximum or proposal guard is bypassed.
 
 Task 7 retains full solution build, full suite, format verification and living-contract publication.
 No tolerance, band, limit, raw identity, arrival rule, version or release state changed.
 
-The final combined selection passed 133 tests, exit 0, with no compiler warnings. It includes
+The final combined selection passed 134 tests, exit 0, with no compiler warnings. It includes
 CylinderAdmissionWitness, CylinderEndTangency, RepresentedEndTangencyCounterGate, CurvedOracle,
 FootSupportBoundaryTests, CapsuleCrown, RepresentedCapsuleRoundedEndTraversal, CurvedWork and
 CertifiedCurvedStrataFitTheCumulativeQueryCeiling. All local test invocations used build-slot,

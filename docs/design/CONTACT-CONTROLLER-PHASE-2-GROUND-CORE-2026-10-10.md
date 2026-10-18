@@ -88,14 +88,21 @@ internal static class GroundCore
      horizontal move, `tan` of the tick's traction gate times the axis displacement, plus both certified height
      errors. The step part is the excess, and a descent charges nothing. A walkable slope, a planar face and a
      walkable sloped edge the footprint overhangs are therefore never charged, while a disc reaching up a curved
-     prop's flank, or closing on a sloped edge so fast its chord outruns a walkable grade, is. Analytic terrain
-     has no member. Across members the start field is its plane, or level when the start height lies below that
-     plane at its axis by more than the contact skin plus the start support's own certified error, because the
-     footprint then overhangs an edge or vertex. When `MaxStepClimbSpeed` is positive, the tick's owed climb and
-     step part together are capped at `MaxStepClimbSpeed * dt`, so a run up stairs paces its climb as the knob
-     always meant, while a continuous walkable slope over one member, or a plane continuing across members under
-     the axis, is followed exactly and never throttled. A sloped overhung edge split between members charges its
-     rise on the substep that crosses members. A paced body stays `Walkable` with its feet below the tread for a
+     prop's flank, or closing on a sloped edge so fast its chord outruns a walkable grade, is. The same rule
+     holds across two different walkable members when either endpoint's complete footprint directly joins the
+     selected pair (CF-4, CF-5): each physics sample carries a value copy of its selected member's direct
+     joined walkable row, bound to its source footprint, exact query and lease interval, and the seat reads it
+     only after both sources authenticate as one interval. Equal normals, mesh adjacency or an A-B-C chain never
+     stand in for the direct A-C join. Analytic terrain has no member. Across other members the start field is
+     its plane, or level when the start height lies below that plane at its axis by more than the contact skin
+     plus the start support's own certified error, because the footprint then overhangs an edge or vertex.
+     When `MaxStepClimbSpeed` is positive, the tick's owed climb and step part together are capped at
+     `MaxStepClimbSpeed * dt`, so a run up stairs paces its climb as the knob always meant, while a continuous
+     walkable slope over one member, or a plane continuing across members under the axis, is followed exactly
+     and never throttled. A sloped overhung edge split between two directly joined members, two mesh triangles
+     or two statics, is followed as one member (#1454). Split between members no endpoint certifies as joined,
+     such as across a crack wider than the 0.1 mm join band, it still charges its rise on the substep that
+     crosses members. A paced body stays `Walkable` with its feet below the tread for a
      tick or two. That is legs-band overlap, which the body model allows. Paced feet round down to the largest
      float not above the paced height, for the owed climb and the step part alike, so a paid climb never exceeds
      the budget.

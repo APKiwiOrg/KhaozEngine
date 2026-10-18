@@ -251,7 +251,9 @@ height capped by an overhung edge and charged a false 0.0577 m rise. The shipped
 - A same-member drop beyond the walkable grade is a negative discrete step for the smoother and descent signals,
   and charges nothing to the climb budget.
 - Across members the extrapolation uses the edge-aware `PlaneRise`. A sloped overhung edge split across two
-  members still charges once at the crossing substep (#1454).
+  members still charges once at the crossing substep (#1454). CF-4 and CF-5 in
+  [CONTACT-CONTROLLER-FOLLOWUPS-2026-10-18.md](CONTACT-CONTROLLER-FOLLOWUPS-2026-10-18.md) lift this limitation
+  for a pair either endpoint's footprint directly joins. Members not certified as joined keep this rule.
 The crate's remaining 0.22 m lag is the designed paced climb.
 
 Measured after SC-10 to SC-17, one local sample per row at `15e3d0bfc`

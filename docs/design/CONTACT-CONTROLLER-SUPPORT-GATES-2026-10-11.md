@@ -730,6 +730,28 @@ and an unresolved round disc maximum. Four radius-0.15 rows inside the upper end
 and an unresolved round disc maximum. Each returns Unsupported with unchanged member spans and join
 words, and Find returns Refused with no lower-floor fallback.
 
+CF-4, CF-5 and CF-6 add the derived #1454 disposition. Support selection is identical: the same raw winner,
+height, error, normal, witness and status. What changes is accounting at a crossing between two different walkable
+raw members whose selected pair either endpoint's complete footprint directly joins under the released predicate.
+`GroundSeat.StepPart` and `DiscreteStep` then take the SC-17 same-member signed grade excess instead of the
+edge-aware level residual. The pinned rows are `JoinedEdgeWithinWalkableGradeDoesNotCharge` on the plane
+y = 0.7x + 0.7z ending at x 0, footprint radius 0.2 at x 0.18, moving 0.1 along z. Two mesh triangles or two
+statics changed from StepPart 0.07 and DiscreteStep 0.07 to zero, and in reverse from StepPart -0.06999999 and
+DiscreteStep -0.07 to zero. The one-polygon control was already zero. Through ground signals, look-ahead from the
+same plane at radius 0.125 that crosses from A to B at its first 0.25 m sample, with a seated rise and no carried run,
+changed from a false ascent (ClimbRate and EWMA 1.47, StepDeltaY 0) to no run (0, 0 and the move's own 0.02 step).
+Prediction and server run the same seat and signal code on the same certified samples, so they stay in parity.
+Still charged: a rise beyond the walkable grade across a joined edge keeps its signed excess
+(`JoinedEdgeGradeExcessAndDropsKeepTheClimbBudget`, about 0.028 m over a 0.019 m move), a drop beyond grade stays a
+negative discrete step with no climb charge, and owed debt, placement and the climb budget are unchanged. A crack
+wider than the 0.1 mm band, or a transitive A-B-C chain without a direct A-C join, keeps the level residual
+(`JoinedEdgeNeedsTheDirectSelectedPair`). Curved parts and analytic terrain carry no joins. An unresolved relevant
+join still refuses the whole footprint. Evidence from a disposed, rebased or rebuilt interval, another receiver or
+another thread throws rather than excusing a rise. No selection, tolerance, band, bound or cost gate changes. Each
+supported physics sample now carries a 2,048-byte inline key row and its source, so a sample is 2,256 bytes and
+every value copy of it, in seat, placement and tick results and in each support memo entry, copies that payload.
+One 16-entry support memo now provisions 37,568 bytes once. Warm support reads still allocate nothing. No timing is claimed for the larger copies.
+
 **Ruling SG-24. The hosted proof is plumbed, normalized and approved before it gates #1334.** The
 repository's stress caller (`.github/workflows/stress-test.yml`) now forwards support-cost mode to the
 pinned shared workflow, which sets `KHAOZ_SUPPORT_COST_ARTIFACT` and `DOTNET_TieredCompilation=0`,

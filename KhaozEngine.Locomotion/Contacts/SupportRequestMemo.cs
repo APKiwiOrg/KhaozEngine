@@ -10,6 +10,10 @@ namespace KhaozEngine.Locomotion.Contacts;
 /// for its lease, and its owner closes it when that interval or tick ends, so nothing crosses ticks, bodies,
 /// reconciles or leases and no refusal outlives its interval. Storage is fixed at <see cref="Capacity"/>, and a full
 /// memo stops remembering rather than evicting.</summary>
+/// <remarks>Each entry holds the complete sample value, its interval evidence included: the source footprint, the
+/// exact query and the inline 256-slot join row (CF-4). A hit copies that value whole, so it carries the same
+/// evidence a fresh read of the same key would, and the key itself is unchanged. <see cref="Close"/> clears every
+/// entry, which releases the evidence's lease and world references with the interval.</remarks>
 internal sealed class SupportRequestMemo
 {
     internal const int Capacity = 16;

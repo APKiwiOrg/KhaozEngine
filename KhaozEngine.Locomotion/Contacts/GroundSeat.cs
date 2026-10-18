@@ -72,12 +72,12 @@ internal static class GroundSeat
     }
 
     // The seated height less the start support's height field extrapolated to the new axis. On the start's own
-    // member that field explains a rise up to a walkable grade over the move, and the part is the excess. Across
-    // members an overhung edge stays level. Without a start plane the reference is level at the start feet. A steep
-    // start, which only a slide moves from, explains no walkable rise, so the part is the rise above the start feet
-    // and a drop charges nothing. The part is charged against the climb budget, so it rounds up and a paid climb
-    // never exceeds the budget.
-    static float StepPart(in SupportSample support, in SupportSample start, Vector2 startAxis, float startFeetY,
+    // member, or across a pair either endpoint's footprint certifies as directly joined (CF-5), that field explains a
+    // rise up to a walkable grade over the move, and the part is the excess. Across other members an overhung edge
+    // stays level. Without a start plane the reference is level at the start feet. A steep start, which only a slide
+    // moves from, explains no walkable rise, so the part is the rise above the start feet and a drop charges nothing.
+    // The part is charged against the climb budget, so it rounds up and a paid climb never exceeds the budget.
+    internal static float StepPart(in SupportSample support, in SupportSample start, Vector2 startAxis, float startFeetY,
         Vector2 axis, float cosMaxSlope)
     {
         float height = support.Height;
@@ -86,10 +86,10 @@ internal static class GroundSeat
         Vector3 n = start.Normal;
         bool hasPlane = start.Status == SupportStatus.Walkable && n.Y > 0;
         if (!hasPlane) return GroundPlacement.NotBelow((double)height - startFeetY);
-        if (SameMember(start, support))
+        if (SupportContinuity.IsContinuous(start, startAxis, support, axis, cosMaxSlope))
         {
             double excess = MemberExcess(start, startAxis, support, axis, cosMaxSlope);
-            // A drop on one member pays nothing.
+            // A drop on one continuous height field pays nothing.
             return excess > 0 ? GroundPlacement.NotBelow(excess) : 0;
         }
         double plane = start.Height - PlaneRise(start, startAxis,
@@ -99,12 +99,13 @@ internal static class GroundSeat
 
     // Between members a height jump belongs to a step only when both support planes agree on its direction and
     // clear the contact skin plus both certified height errors. Opposite signs identify continuous ground. On one
-    // member only a rise or drop beyond a walkable grade over the move is a step, once it clears the contact skin.
+    // member, or across a certified direct join, only a rise or drop beyond a walkable grade over the move is a step,
+    // once it clears the contact skin.
     internal static float DiscreteStep(in SupportSample start, Vector2 startAxis, in SupportSample next,
         Vector2 axis, float cosMaxSlope)
     {
         if (start.Status != SupportStatus.Walkable || next.Status != SupportStatus.Walkable) return 0;
-        if (SameMember(start, next))
+        if (SupportContinuity.IsContinuous(start, startAxis, next, axis, cosMaxSlope))
         {
             double excess = MemberExcess(start, startAxis, next, axis, cosMaxSlope);
             return Math.Abs(excess) > ShellMotion.ContactSkin ? (float)excess : 0;
@@ -118,14 +119,10 @@ internal static class GroundSeat
         return (float)(Math.Sign(forward) * Math.Min(Math.Abs(forward), Math.Abs(backward)));
     }
 
-    // One raw member is one convex polygon or curved part of one static: a polyhedron face, a mesh triangle or a
-    // curved leaf part, named by its element id. Analytic terrain has no static and is never one member.
-    static bool SameMember(in SupportSample start, in SupportSample next) =>
-        start.Static is StaticHandle owner && next.Static == owner && start.FeatureId == next.FeatureId;
-
     // A member's certified height is continuous in the axis but not bounded by its walkable slopes: a disc reaching
-    // up a curved part, or along a sloped edge it overhangs, can rise or fall faster. The change a walkable grade over
-    // the horizontal move explains, plus both certified errors, is no step. The signed excess beyond it is.
+    // up a curved part, or along a sloped edge it overhangs, can rise or fall faster. The disc maximum over directly
+    // joined convex members is continuous in the same way. The change a walkable grade over the horizontal move
+    // explains, plus both certified errors, is no step. The signed excess beyond it is.
     static double MemberExcess(in SupportSample start, Vector2 startAxis, in SupportSample next, Vector2 axis,
         float cosMaxSlope)
     {

@@ -345,6 +345,13 @@ What it owns today:
     channel-swapped or garbage bytes on the third
     ([#83](https://github.com/APKiwiOrg/KhaozEngine/issues/83)). Resolve a multisampled target first, read one level
     of a mip chain with `ToRgbaMip`, and pass the source's own dimensions.
+- **`IGpuDevice.TryReadBuffer(staging, completion, offsetBytes, destination)`** - the NON-BLOCKING read, separate
+  from `GpuReadback`. It copies bytes a recorded `CopyBuffer` wrote into a `GpuBufferUsage.Staging` buffer once the
+  fence handed to that list's `Submit` reports completion, and answers `false` with the destination untouched
+  until then or while native access is busy. It never drains, flushes, submits or blocks on a lock. The caller
+  keeps the source, staging buffer and fence alive and does not reset the fence until a read succeeds. The default
+  implementation throws `NotSupportedException`, and the three native backends implement it. See the consumer
+  guide's "Reading a completed staging copy without waiting" for the refusals and the Direct3D 11 flush note.
 - **`GpuRetireQueue`** (since 17.37.0) - deferred disposal for anything a renderer frees MID-LIFE (a streamed mesh
   unloaded while the scene runs, a sprite atlas whose descriptor set fell out of the working set). `Retire(resource)`
   costs nothing at the call site, `BeginFrame()` seals the frame's retirements into one batch behind a fence and

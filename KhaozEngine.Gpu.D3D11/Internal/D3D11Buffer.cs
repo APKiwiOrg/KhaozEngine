@@ -39,7 +39,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
     /// </para>
     /// </summary>
     [SupportedOSPlatform("windows")]
-    internal sealed class D3D11Buffer : IGpuBuffer, ID3D11RingBacked, ID3D11BindableViews, ID3D11MappableResource
+    internal sealed class D3D11Buffer : IGpuBuffer, ID3D11RingBacked, ID3D11BindableViews, ID3D11ReadableStaging
     {
         readonly DeviceLiveness _liveness;
         readonly D3D11RingAllocator _rings;
@@ -108,6 +108,10 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// <summary>True once disposed, whether or not anything native was released.</summary>
         internal bool IsDisposed { get; private set; }
 
+        /// <summary>The creating device's liveness token, which is that device's identity for a reference
+        /// comparison. A staging read refuses a buffer whose owner is not the reading device.</summary>
+        internal DeviceLiveness Owner => _liveness;
+
         // ---- ID3D11BindableViews: the 'b' file takes the BUFFER, the other two take a view if it has one ----
         //
         // The constant-buffer member hands back the buffer itself rather than a view, because Direct3D 11 binds a
@@ -137,6 +141,17 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// they genuinely carry CPU write access, which keeps the map path's refusal a refusal of the impossible
         /// rather than a divergence from the incumbent.</remarks>
         bool ID3D11MappableResource.IsMappable => Views.Staging || Views.Dynamic || Views.Ring;
+
+        // ---- ID3D11ReadableStaging: what a non-blocking staging read checks before it polls anything ----
+
+        /// <inheritdoc/>
+        bool ID3D11ReadableStaging.IsStagingUsage => Views.Staging;
+
+        /// <inheritdoc/>
+        IDeviceLiveness ID3D11ReadableStaging.Owner => _liveness;
+
+        /// <inheritdoc/>
+        bool ID3D11ReadableStaging.IsDisposed => IsDisposed;
 
         public void Dispose()
         {

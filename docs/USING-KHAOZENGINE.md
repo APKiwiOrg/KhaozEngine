@@ -22322,6 +22322,46 @@ byte[] bad = GpuReadback.ToRgba(gd, swapchainBgra, w, h);       // throws: B8G8R
 byte[] mip = GpuReadback.ToRgbaMip(gd, mipped, 2, 0, w / 4, h / 4);   // one level of a mip chain
 ```
 
+### Reading a completed staging copy without waiting
+
+`IGpuDevice.TryReadBuffer(staging, completion, offsetBytes, destination)` copies bytes that a recorded
+`IGpuCommandList.CopyBuffer` wrote into a `GpuBufferUsage.Staging` buffer, once the submission that carried the copy
+has completed. It is a separate path from `GpuReadback` and the synchronous `Map`. A read `Map` drains the device
+on Metal and Vulkan and waits on the resource on Direct3D 11, so every `GpuReadback` call stalls. `TryReadBuffer`
+never drains, flushes, submits or blocks on a lock, on any of the three native backends. Use it when a small GPU
+result can arrive a few frames late.
+
+- It answers `false`, with `destination` untouched, while the fence is unsignalled or the backend's native access
+  is busy. A fence that was never submitted is unsignalled, so a read before `Submit` answers `false` too. Poll
+  again on a later frame.
+- It answers `true` once the bytes are copied, and any native mapping is closed before it returns.
+- The fence comes from `IGpuResourceFactory.CreateFence` on the same device (so `SupportsCompletionFences` must be
+  true) and is handed to `IGpuDevice.Submit(cl, fence)` with the list that recorded the copy.
+- Keep the copy's source, the staging buffer and the fence alive until the read succeeds. Do not `Reset` or
+  resubmit the fence before then. A reset or reused fence is a caller error, not a new completion.
+- It refuses, before any poll or native access, a disposed or lost device, a fence or buffer from another device or
+  backend, a disposed fence or buffer, a buffer without `GpuBufferUsage.Staging`, an `offsetBytes` that is not a
+  multiple of four, and a `destination` that runs past the end of the buffer.
+- On Direct3D 11 a `Submit` does not flush the immediate context. The next `Present` or drain hands the work to the
+  driver, which in a presenting frame loop is the frame boundary. A headless loop that neither presents nor drains
+  can read `false` indefinitely.
+- A device outside the three native backends takes the default implementation, which throws
+  `NotSupportedException` rather than hide a wait.
+
+```csharp
+cl.Begin();
+cl.SetComputePipeline(pipeline);
+cl.SetComputeResourceSet(0, set);
+cl.Dispatch(1, 1, 1);
+cl.CopyBuffer(results, 4, staging, 4, 12);     // the slice to collect, same offset on both sides here
+cl.End();
+gd.Submit(cl, fence);
+
+// On each later frame until it answers true:
+if (gd.TryReadBuffer(staging, fence, 4, bytes))
+    fence.Reset();                              // only now may the fence be reused
+```
+
 ### Unsigned storage-buffer atomics
 
 GLSL `uint atomicOr(inout uint word, uint value)` and `uint atomicMax(inout uint word, uint value)` operate on

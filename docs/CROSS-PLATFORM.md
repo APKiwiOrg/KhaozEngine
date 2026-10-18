@@ -850,7 +850,9 @@ in the `ShaderSources.cs` source comments; this is the consolidated checklist.)
 - **A read map drains the device on Metal and Vulkan and not on Direct3D 11.** `Map` of a staging resource for
   reading waits for the whole device on Metal and on Vulkan, and only for the mapped resource on Direct3D 11, so no
   readback on the seam is free of a stall on every backend. That is why the temporal counts are sampled on request
-  (`Scene3D.RequestTemporalCounts()`) rather than every frame.
+  (`Scene3D.RequestTemporalCounts()`) rather than every frame. The one read that never stalls is
+  `IGpuDevice.TryReadBuffer`, which collects a recorded staging copy only after its fence reports completion and
+  answers `false` until then on all three backends (`ComputeAsyncReadbackGpuTests`).
 - **One uniform buffer per pipeline, RETIRED.** The rule was written against the Veldrid Metal
   backend, where a STAGE referencing fewer buffers than the declared layout array puts before them made
   Veldrid's per-kind declaration count and SPIRV-Cross's emission disagree: a fragment function reading set 1

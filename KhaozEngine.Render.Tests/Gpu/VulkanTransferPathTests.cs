@@ -75,7 +75,9 @@ namespace KhaozEngine.Tests.Gpu
 
             Assert.Equal(PipelineStageFlags2.AllTransferBit, after.SrcStageMask);
             Assert.Equal(AccessFlags2.TransferWriteBit, after.SrcAccessMask);
-            Assert.Equal(PipelineStageFlags2.AllCommandsBit, after.DstStageMask);
+            Assert.Equal(PipelineStageFlags2.AllCommandsBit | PipelineStageFlags2.HostBit, after.DstStageMask);
+            Assert.Equal(AccessFlags2.MemoryReadBit | AccessFlags2.MemoryWriteBit | AccessFlags2.HostReadBit,
+                after.DstAccessMask);
         }
 
         /// <summary>A window that leaves either buffer is refused rather than clipped, because

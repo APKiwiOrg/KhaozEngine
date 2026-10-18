@@ -273,6 +273,7 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 // The staging map path, with decision G3's second check site wired: the latch arrives here so a
                 // failed map asks it BEFORE it builds an exception message.
                 _staging = new D3D11StagingAccess(new D3D11ContextStagingMemory(context), _submitLock, _loss);
+                _completedReads = new D3D11CompletedReads(_staging, _fences, _submitLock, _liveness);
 
                 // 6. THE SWAPCHAIN, on the windowed path only. The engine half owns the present boundary and the
                 // queued resize, and the native half is the four calls it makes.

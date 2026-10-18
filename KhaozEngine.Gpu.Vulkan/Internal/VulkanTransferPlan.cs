@@ -63,13 +63,15 @@ namespace KhaozEngine.Gpu.Vulkan.Internal
             dstAccessMask: AccessFlags2.TransferReadBit | AccessFlags2.TransferWriteBit);
 
         /// <summary>After the copy: the transfer's write becomes visible to everything that follows, including the
-        /// HOST, which is what a staging readback is waiting for.</summary>
+        /// HOST, which is what a staging readback is waiting for. The host stage is NAMED rather than assumed:
+        /// <c>ALL_COMMANDS</c> covers the stages commands on the queue run, and the host is not one of them, so a
+        /// completed fence alone does not make a device write visible to a CPU read without this half.</summary>
         internal static MemoryBarrier2 FromTransfer => new(
             sType: StructureType.MemoryBarrier2,
             srcStageMask: PipelineStageFlags2.AllTransferBit,
             srcAccessMask: AccessFlags2.TransferWriteBit,
-            dstStageMask: PipelineStageFlags2.AllCommandsBit,
-            dstAccessMask: AccessFlags2.MemoryReadBit | AccessFlags2.MemoryWriteBit);
+            dstStageMask: PipelineStageFlags2.AllCommandsBit | PipelineStageFlags2.HostBit,
+            dstAccessMask: AccessFlags2.MemoryReadBit | AccessFlags2.MemoryWriteBit | AccessFlags2.HostReadBit);
 
         /// <summary>
         /// ONE <c>vkCmdPipelineBarrier2</c> CARRYING ONE OF THE TWO, through the budget seam like every other

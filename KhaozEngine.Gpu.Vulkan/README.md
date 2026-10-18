@@ -668,6 +668,12 @@ call against released memory. Every destroy is already a no-op by then, which is
 live route into that memory. The refusal is the first thing either overload does, ahead of the setup flush and
 the drain.
 
+**`TryReadBuffer` reads a completed copy without that drain.** It polls the completion fence, invalidates the read
+window on a non-coherent memory type and copies from the persistently mapped pointer, calling neither `Map` nor
+`WaitForIdle`, the setup flush, a submit or the submit lock. Visibility comes from the copy itself: the barrier
+after every `CopyBuffer` names the HOST stage and `HOST_READ`, because `ALL_COMMANDS` covers only stages that run on
+the queue and a completed timeline value alone does not make a device write visible to a CPU read.
+
 **Disposal is one TERMINAL retire per resource.** The single held entry destroys a texture's views inline, then
 its image, then its memory, and never re-retires a child. A destroy that retired another destroy that then freed
 an allocation would append a third generation of retirement after the teardown drain had taken its snapshot, and

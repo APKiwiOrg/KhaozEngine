@@ -1195,7 +1195,10 @@ its boundary W5.
   to wait until the GPU is done with that resource, which is exactly what makes a readback correct without an
   explicit drain, and the wait is bounded by the work already submitted against that one resource rather than
   by a frame. The alternative, mapping with `DO_NOT_WAIT` and spinning outside the lock, trades a bounded wait
-  for a spin that can starve.
+  for a spin that can starve. `TryReadBuffer` is the non-blocking read and the one place that waits on neither:
+  it TRIES the lock with `Monitor.TryEnter`, polls the completion fence inside it and maps with `DO_NOT_WAIT`,
+  answering `false` at any step that would have waited (`DXGI_ERROR_WAS_STILL_DRAWING` included), then copies
+  and unmaps before releasing the lock. It never spins, because the caller polls again on a later frame.
 - The process-wide `GpuDeviceContext._lifecycleGate` is unchanged, and still serializes device creation and
   disposal across every backend.
 

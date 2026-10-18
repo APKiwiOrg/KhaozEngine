@@ -519,6 +519,41 @@ namespace KhaozEngine.Gpu
         /// <summary>Unmap a previously mapped staging buffer.</summary>
         void Unmap(IGpuBuffer staging);
 
+        /// <summary>
+        /// Copy <paramref name="destination"/>'s length of bytes out of a <see cref="GpuBufferUsage.Staging"/>
+        /// buffer at <paramref name="offsetBytes"/> IF the submission <paramref name="completion"/> was handed to
+        /// has completed, WITHOUT EVER WAITING. Answers false, with <paramref name="destination"/> untouched, while
+        /// the fence is unsignalled (including a fence never submitted) or the backend's native access is busy,
+        /// so a caller polls it again on a later frame. True means the bytes were copied and any native mapping
+        /// was closed before returning.
+        /// <para>
+        /// SEPARATE FROM <see cref="GpuReadback"/> AND FROM <see cref="Map(IGpuBuffer, GpuMapMode)"/>, which are
+        /// synchronous: a read map drains the device on Metal and Vulkan and waits on the resource on Direct3D 11.
+        /// This member never drains, flushes, submits or blocks on a lock, on any backend. The bytes are the ones
+        /// an <see cref="IGpuCommandList.CopyBuffer"/> recorded into <paramref name="staging"/> wrote, inside the
+        /// list submitted with <paramref name="completion"/> through
+        /// <see cref="Submit(IGpuCommandList, IGpuFence)"/>.
+        /// </para>
+        /// <para>
+        /// THE CALLER OWNS THE LIFETIMES. Keep the copy's source, the staging buffer and the fence alive until
+        /// the read succeeds, and never <see cref="IGpuFence.Reset"/> or resubmit the fence before then. A reset
+        /// or reused fence is a caller error, not a new completion. The fence must come from this device.
+        /// </para>
+        /// <para>
+        /// Refused, before any poll or native access: a disposed or lost device, a fence or buffer from another
+        /// device or backend, a disposed fence or buffer, a buffer without <see cref="GpuBufferUsage.Staging"/>,
+        /// an <paramref name="offsetBytes"/> that is not a multiple of four, and a window that leaves the buffer.
+        /// </para>
+        /// <para>
+        /// DEFAULT-IMPLEMENTED to throw <see cref="NotSupportedException"/>, so an implementer that cannot read
+        /// without waiting says so rather than hiding a wait. The three native backends implement it.
+        /// </para>
+        /// </summary>
+        bool TryReadBuffer(IGpuBuffer staging, IGpuFence completion, uint offsetBytes, Span<byte> destination)
+            => throw new NotSupportedException(
+                "This GPU device cannot read a completed staging copy without waiting. Use GpuReadback for a "
+                + "synchronous read.");
+
         /// <summary>Resize the main swapchain.</summary>
         void ResizeSwapchain(uint w, uint h);
         /// <summary>Present the main swapchain.</summary>

@@ -56,9 +56,9 @@ internal static class NativeDocumentTransaction
         return staged.Effects;
     }
 
-    internal static void Publish(MapDocument document, NativeStagedPublication staged)
+    internal static void Publish(MapDocument document, NativeStagedPublication staged, string? liveLists = null)
     {
-        NativeLegacySpawnAdmission.RequireAdmitted(document, staged.Candidate, staged.LegacySpawns);
+        NativeLegacySpawnAdmission.RequireAdmitted(document, staged.Candidate, staged.LegacySpawns, liveLists);
         if (staged.Mode == MapNativePublicationMode.CompleteSnapshot) NativeDocumentSnapshot.Publish(document, staged.Candidate);
         else NativeDocumentSnapshot.PublishWriteSet(document, staged.Candidate, staged.WriteSet);
         // Only an expansion already built during staging is a snapshot of what was published. Anything else clears it.
@@ -66,9 +66,11 @@ internal static class NativeDocumentTransaction
         else NativeAcceptedExpansions.Forget(document);
     }
 
+    /// <summary>Stages <paramref name="command"/> against <paramref name="document"/>. <paramref name="liveLists"/> is
+    /// the document's legacy list canonical when the caller already computed it for this transaction.</summary>
     internal static NativeStagedPublication Stage(MapDocument document, IEditorCommand command, bool undo,
         MapAssetClosure? assets, MapDocRegistry? registry = null, bool localOnly = false,
-        INativePlacementBounds? placementBounds = null)
+        INativePlacementBounds? placementBounds = null, string? liveLists = null)
     {
         ArgumentNullException.ThrowIfNull(document);
         if (document.Tiles is { IsPartial: true })
@@ -98,9 +100,12 @@ internal static class NativeDocumentTransaction
             publication = NativeDocumentSnapshot.Clone(document, registry);
             NativeDocumentSnapshot.PublishWriteSet(publication, candidate, preparation.WriteSet);
         }
-        if (permit is not null && (permit.BeforeLists != NativeLegacySpawnAdmission.Canonical(document) ||
-            permit.AfterLists != NativeLegacySpawnAdmission.Canonical(publication))) permit = null;
-        NativeLegacySpawnAdmission.RequireAdmitted(document, publication, permit);
+        if (permit is not null)
+        {
+            liveLists ??= NativeLegacySpawnAdmission.LiveLists(document);
+            if (permit.BeforeLists != liveLists || permit.AfterLists != NativeLegacySpawnAdmission.Canonical(publication)) permit = null;
+        }
+        NativeLegacySpawnAdmission.RequireAdmitted(document, publication, permit, liveLists);
         if (localOnly) MapBoundDocumentValidation.ValidateLocal(publication, registry);
         else MapBoundDocumentValidation.Validate(publication, selected!, registry);
         var beforeAssets = command is INativeAssetClosureCommand pair ? pair.Closure(!undo) : assets;

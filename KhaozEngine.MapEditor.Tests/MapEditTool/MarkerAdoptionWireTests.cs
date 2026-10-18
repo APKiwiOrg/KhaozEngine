@@ -63,6 +63,8 @@ public sealed class MarkerAdoptionWireTests
     [InlineData("null-height")]
     [InlineData("binding-null")]
     [InlineData("binding-foreign")]
+    [InlineData("missing-kind")]
+    [InlineData("missing-height")]
     public async Task ClosedChoices_RefuseWithoutStateAdvance(string variant)
     {
         string json = variant switch
@@ -76,6 +78,8 @@ public sealed class MarkerAdoptionWireTests
             "neither-height" => ChoicesJson.Replace("\"explicitY\":12.25", "", StringComparison.Ordinal),
             "null-height" => ChoicesJson.Replace("\"explicitY\":12.25", "\"explicitY\":null", StringComparison.Ordinal),
             "binding-null" => ChoicesJson.Replace("\"surfaceId\":\"adoption-floor\"", "\"surfaceId\":null", StringComparison.Ordinal),
+            "missing-kind" => ChoicesJson.Replace("\"kind\":\"Spawn\",", "", StringComparison.Ordinal),
+            "missing-height" => ChoicesJson.Replace(",\"height\":{\"explicitY\":12.25}", "", StringComparison.Ordinal),
             _ => ChoicesJson.Replace("\"surfaceId\":\"adoption-floor\"", "\"surfaceId\":\"adoption-floor\",\"spaceId\":null", StringComparison.Ordinal),
         };
         var seed = MarkerEditorFixtures.Session(MarkerFixtures.LegacyLists());
@@ -85,6 +89,10 @@ public sealed class MarkerAdoptionWireTests
         string before = MarkerEditorFixtures.State(session);
         var refused = await harness.Client.CallAsync("spawns_adopt", new Dictionary<string, object?> { ["choicesJson"] = json });
         Assert.True(refused.IsError == true, Text(refused));
+        Assert.NotEqual(ChoicesJson, json);
+        // A missing required member names itself, rather than defaulting a kind or failing on a null height.
+        if (variant is "missing-kind" or "missing-height")
+            Assert.Contains(variant["missing-".Length..], Text(refused), StringComparison.Ordinal);
         Assert.Equal(before, MarkerEditorFixtures.State(session));
     }
 

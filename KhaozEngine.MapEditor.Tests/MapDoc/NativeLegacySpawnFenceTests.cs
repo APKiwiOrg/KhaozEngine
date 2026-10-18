@@ -145,6 +145,37 @@ public sealed class NativeLegacySpawnFenceTests
         Assert.Equal(0, hooks);
     }
 
+    /// <summary>The released generic history test's player start, added by a callback on a tiled session, refuses at the
+    /// fence before publication and leaves the tiled session unchanged.</summary>
+    [Fact]
+    public void TiledGenericPlayerStartAdd_RefusesAtTheFence()
+    {
+        var session = MarkerEditorFixtures.Session(MarkerFixtures.LegacyLists());
+        string dir = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(session.DocumentPath)!, "tiled");
+        session.WithNativeAssets(c =>
+        {
+            foreach (var resource in c.Assets.CapturedResources)
+            {
+                string target = System.IO.Path.Combine(dir, resource.Reference.Path);
+                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(target)!);
+                System.IO.File.WriteAllBytes(target, resource.Bytes.ToArray());
+            }
+            return 0;
+        });
+        session.ConvertToTiled(dir);
+        Assert.NotNull(session.WithDocument((doc, _) => doc.Tiles));
+        string before = MarkerEditorFixtures.State(session);
+        int hooks = 0;
+        session.BeforeNativePublication = () => hooks++;
+        Guidance(Assert.Throws<MapDocumentException>(() => session.Mutate((candidate, _) =>
+        {
+            candidate.PlayerSpawns.Add(new() { Id = "native-start", X = 2, Z = -2 });
+            return 0;
+        }, false)));
+        Assert.Equal(before, MarkerEditorFixtures.State(session));
+        Assert.Equal(0, hooks);
+    }
+
     [Fact]
     public void OldNativeLists_LoadSaveAndUnrelatedMarkerEditsRemainAvailable()
     {
@@ -188,15 +219,21 @@ public sealed class NativeLegacySpawnFenceTests
         var session = new MapEditSession();
         session.Create(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "legacy-" + Guid.NewGuid().ToString("N"), "map.json"), "legacy-analytic", "Analytic", -32, -32, 32, 32);
         var mutation = new MutationService(session);
-        mutation.SpawnAdd("kit.actor", 1, 2, id: "npc");
-        mutation.SpawnMove("npc", 2, 3);
-        mutation.SpawnRename("npc", "npc-new");
-        mutation.SpawnSetEnabled("npc-new", false);
-        mutation.PlayerSpawnAdd(1, 2, id: "start");
-        mutation.PlayerSpawnMove("start", 2, 3);
-        mutation.PlayerSpawnRename("start", "start-new");
-        mutation.PlayerSpawnSetEnabled("start-new", false);
-        mutation.PlayerSpawnSetYaw("start-new", 1.25f);
+        // Each released verb keeps its result: verb name, the ID it reports and that no world geometry changed.
+        void Result(MutationResult result, string verb, string? id)
+        {
+            Assert.Equal((verb, id, false), (result.Verb, result.Id, result.WorldChanged));
+            Assert.False(string.IsNullOrEmpty(result.Detail));
+        }
+        Result(mutation.SpawnAdd("kit.actor", 1, 2, id: "npc"), "spawn_add", "npc");
+        Result(mutation.SpawnMove("npc", 2, 3), "spawn_move", null);
+        Result(mutation.SpawnRename("npc", "npc-new"), "spawn_rename", "npc-new");
+        Result(mutation.SpawnSetEnabled("npc-new", false), "spawn_set_enabled", null);
+        Result(mutation.PlayerSpawnAdd(1, 2, id: "start"), "player_spawn_add", "start");
+        Result(mutation.PlayerSpawnMove("start", 2, 3), "player_spawn_move", null);
+        Result(mutation.PlayerSpawnRename("start", "start-new"), "player_spawn_rename", "start-new");
+        Result(mutation.PlayerSpawnSetEnabled("start-new", false), "player_spawn_set_enabled", null);
+        Result(mutation.PlayerSpawnSetYaw("start-new", 1.25f), "player_spawn_set_yaw", null);
         session.WithDocument((doc, _) =>
         {
             var npc = Assert.Single(doc.Spawns);
@@ -205,8 +242,8 @@ public sealed class NativeLegacySpawnFenceTests
             Assert.Equal(("start-new", 2f, 3f, false, 1.25f), (player.Id, player.X, player.Z, player.Enabled, player.Yaw));
             return 0;
         });
-        mutation.SpawnRemove("npc-new");
-        mutation.PlayerSpawnRemove("start-new");
+        Result(mutation.SpawnRemove("npc-new"), "spawn_remove", null);
+        Result(mutation.PlayerSpawnRemove("start-new"), "player_spawn_remove", null);
         session.WithDocument((doc, _) => { Assert.Empty(doc.Spawns); Assert.Empty(doc.PlayerSpawns); return 0; });
         var gui = MapDocumentFile.LoadText(MarkerFixtures.FormatSevenJson(true));
         var history = new EditorHistory();

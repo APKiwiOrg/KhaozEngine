@@ -18,6 +18,8 @@ public sealed partial class MapEditSession
     // the callback edited the shared candidate afterwards, and the staged command's history label.
     (string Hash, MapTileIndex? Tiles, string Label)? _pendingNativeStamp;
     bool _nativeMutation;
+    // The live document's legacy list canonical for the current session mutation only, cleared when it ends.
+    string? _nativeLiveLists;
     long _nativeEvents;
     internal Action? BeforeNativePublication { get; set; }
     internal MapNativeEditEffects? LastNativeEffects { get; private set; }
@@ -51,7 +53,7 @@ public sealed partial class MapEditSession
         if (!_nativeMutation || _pendingNative is not null)
             throw new MapDocumentException("Native commands require one staged session mutation.");
         _nativeHistory.Registry = registry;
-        var staged = _nativeHistory.StageExecute(_doc!, command);
+        var staged = _nativeHistory.StageExecute(_doc!, command, _nativeLiveLists);
         NativeDocumentTransaction.Publish(document, staged);
         _pendingNativeStamp = (SemanticHash(staged.Candidate), staged.Candidate.Tiles, command.Label);
         _pendingNative = staged;
@@ -71,10 +73,11 @@ public sealed partial class MapEditSession
         lock (_lock)
         {
             RequireDocumentLocked();
-            var staged = _nativeHistory.StageExecute(_doc!, command);
+            string liveLists = NativeLegacySpawnAdmission.LiveLists(_doc!);
+            var staged = _nativeHistory.StageExecute(_doc!, command, liveLists);
             if (staged.Assets?.Hash != assets.Hash) throw new MapDocumentException("Asset command closure differs from its publication.");
             if (SemanticHash(_doc!) == SemanticHash(staged.Candidate)) return new(null, null, [], [], [], [], MapNativeInvalidation.None);
-            return PublishNative(staged, checkpoint);
+            return PublishNative(staged, checkpoint, liveLists: liveLists);
         }
     }
     T MutateNative<T>(Func<MapDocument, MapDocRegistry, T> fn, bool worldChanged)
@@ -83,13 +86,16 @@ public sealed partial class MapEditSession
         if (_nativeMutation) throw new MapDocumentException("Nested native mutations are not supported.");
         MapDocument before = NativeDocumentSnapshot.Clone(_doc!, _registry);
         MapDocument candidate = NativeDocumentSnapshot.Clone(_doc!, _registry);
+        // The live document does not change until publication, so its lists are serialized once for every check.
+        string liveLists = NativeLegacySpawnAdmission.LiveLists(_doc!);
+        _nativeLiveLists = liveLists;
         _nativeMutation = true;
         try
         {
             T result = fn(candidate, _registry);
             var staged = _pendingNative;
             if (staged is not null) NativeLegacySpawnAdmission.RequireAdmitted(staged.Candidate, candidate, null);
-            NativeLegacySpawnAdmission.RequireAdmitted(_doc!, staged?.Candidate ?? candidate, staged?.LegacySpawns);
+            NativeLegacySpawnAdmission.RequireAdmitted(_doc!, staged?.Candidate ?? candidate, staged?.LegacySpawns, liveLists);
             string published = SemanticHash(staged?.Candidate ?? candidate);
             if (SemanticHash(before) == published) return result;
             // fn can still edit the candidate it shares with a publication it staged. SemanticHash covers the format version, ID, globals including water, prefabs, building intent and resource
@@ -111,21 +117,23 @@ public sealed partial class MapEditSession
                 string label = staged is not null && _pendingNativeStamp is { } late ? late.Label : "Native document edit";
                 var command = new NativeSessionSnapshotCommand(label, before, staged?.Candidate ?? candidate, _nativeAssets,
                     staged?.Assets ?? _nativeAssets, effects);
-                staged = _nativeHistory.StageExecute(before, command);
+                staged = _nativeHistory.StageExecute(before, command, liveLists);
             }
-            PublishNative(staged, worldChanged: worldChanged);
+            PublishNative(staged, worldChanged: worldChanged, liveLists: liveLists);
             return result;
         }
-        finally { _pendingNative = null; _pendingNativeStamp = null; _nativeMutation = false; }
+        finally { _pendingNative = null; _pendingNativeStamp = null; _nativeLiveLists = null; _nativeMutation = false; }
     }
     // Staging validated the candidate against its closure, including effective water. A candidate edited after staging
     // was staged again from before, so its expansion is that of the published state.
-    MapNativeEditEffects PublishNative(NativeStagedPublication staged, Action? checkpoint = null, bool worldChanged = true)
+    MapNativeEditEffects PublishNative(NativeStagedPublication staged, Action? checkpoint = null, bool worldChanged = true,
+        string? liveLists = null)
     {
-        NativeLegacySpawnAdmission.RequireAdmitted(_doc!, staged.Candidate, staged.LegacySpawns);
+        liveLists ??= NativeLegacySpawnAdmission.LiveLists(_doc!);
+        NativeLegacySpawnAdmission.RequireAdmitted(_doc!, staged.Candidate, staged.LegacySpawns, liveLists);
         BeforeNativePublication?.Invoke();
         checkpoint?.Invoke();
-        NativeDocumentTransaction.Publish(_doc!, staged);
+        NativeDocumentTransaction.Publish(_doc!, staged, liveLists);
         _nativeAssets = staged.Assets;
         staged.Accept();
         _dirty = true;
@@ -178,8 +186,9 @@ public sealed partial class MapEditSession
         lock (_lock)
         {
             RequireDocumentLocked();
-            var staged = _nativeHistory.StageUndo(_doc!);
-            return staged is null ? null : PublishNative(staged);
+            string liveLists = NativeLegacySpawnAdmission.LiveLists(_doc!);
+            var staged = _nativeHistory.StageUndo(_doc!, liveLists);
+            return staged is null ? null : PublishNative(staged, liveLists: liveLists);
         }
     }
     /// <summary>Redoes one accepted native edit against its captured closure. An empty history returns null.</summary>
@@ -188,8 +197,9 @@ public sealed partial class MapEditSession
         lock (_lock)
         {
             RequireDocumentLocked();
-            var staged = _nativeHistory.StageRedo(_doc!);
-            return staged is null ? null : PublishNative(staged);
+            string liveLists = NativeLegacySpawnAdmission.LiveLists(_doc!);
+            var staged = _nativeHistory.StageRedo(_doc!, liveLists);
+            return staged is null ? null : PublishNative(staged, liveLists: liveLists);
         }
     }
 }

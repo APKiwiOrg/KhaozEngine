@@ -23,11 +23,22 @@ internal static class NativeLegacySpawnAdmission
         return json.RootElement.GetProperty("spawns").GetRawText() + "\n" + json.RootElement.GetProperty("playerSpawns").GetRawText();
     }
 
-    internal static void RequireAdmitted(MapDocument live, MapDocument candidate, NativeLegacySpawnPermit? permit)
+    /// <summary>The canonical lists of a live document, computed once per transaction and passed to every admission
+    /// check against that document. Never kept across transactions, as callers can change lists in place.</summary>
+    internal static string LiveLists(MapDocument live)
+    {
+        try { return Canonical(live); }
+        catch (Exception error) when (error is MapDocumentException or JsonException or ArgumentException)
+        {
+            throw new MapDocumentException(Guidance(live), error);
+        }
+    }
+
+    internal static void RequireAdmitted(MapDocument live, MapDocument candidate, NativeLegacySpawnPermit? permit, string? liveLists = null)
     {
         try
         {
-            string before = Canonical(live), after = Canonical(candidate);
+            string before = liveLists ?? Canonical(live), after = Canonical(candidate);
             if (string.Equals(before, after, StringComparison.Ordinal)) return;
             if (permit is not null && string.Equals(permit.BeforeLists, before, StringComparison.Ordinal) &&
                 string.Equals(permit.AfterLists, after, StringComparison.Ordinal)) return;

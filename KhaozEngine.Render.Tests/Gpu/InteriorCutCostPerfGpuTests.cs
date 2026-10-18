@@ -30,8 +30,9 @@ public sealed class InteriorCutCostPerfGpuTests(ITestOutputHelper output)
     {
         if (backend is not ("direct3d11-native" or "vulkan-native")) return false;
         string[] words = deviceName.Split([' ', '-', '(', ')'], StringSplitOptions.RemoveEmptyEntries);
-        return words.Contains("NVIDIA", StringComparer.OrdinalIgnoreCase)
-            && words.Contains("T4", StringComparer.OrdinalIgnoreCase);
+        return words.Contains("T4", StringComparer.OrdinalIgnoreCase)
+            && (words.Contains("NVIDIA", StringComparer.OrdinalIgnoreCase)
+                || words.Contains("Tesla", StringComparer.OrdinalIgnoreCase));
     }
 
     [GpuFact(RequiresRealGpu = true)]

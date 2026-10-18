@@ -80,15 +80,19 @@ directly joined walkable raw static/element keys into its support sample. Use th
 whole-polygon meeting and mutual-below predicate at the tick's traction gate. Preserve the
 contributing static and element even when another plane supplies its normal.
 
-The sample owns a bounded value certificate, not a reference into mutable scratch, a row index,
-a connected-component ID or a graph path. Its key storage has 256 inline slots, matching SG-7's
-existing raw-member bound, with at most 255 distinct neighbors. This is a 2,048-byte key payload,
-not a per-Find managed allocation. Record its copy/storage cost and enlarged sample/stack footprint
-separately. Do not replace it with a smaller truncated neighbor prefix or a wider capacity limit.
+The sample carries a small authenticated handle, not the rows themselves, and not a reference into
+mutable scratch, a connected-component ID or a graph path. The handle holds the interval-owned arena,
+a slot index and a non-repeating epoch, about 16 bytes, so the support sample stays near its previous
+size. The arena keeps each complete row (the selected key and up to 255 distinct direct neighbors,
+matching SG-7's raw-member bound) in storage provisioned once per read interval and immutable until
+the interval closes. It is never a per-Find managed allocation. Do not replace a row with a truncated
+neighbor prefix or a wider capacity limit. Amended 2026-10-18 (ruling FA-R5): the first implementation
+embedded the 2,048-byte row inline, which grew every support sample from about 48 to 2,256 bytes and
+every seat, placement and tick result to about 2.3 KB on the per-tick path.
 Bind the selected key and its direct neighbor keys to the exact source query, receiver, source,
 lease identity, origin and geometry generation. A later Find must not overwrite them. Exact-repeat
 memoization copies the evidence with its sample and retains its existing exact query key.
-Authenticate both endpoint sources before reading evidence. A disposed lease, another selected
+Authenticate the handle (arena, slot and epoch) and both endpoint sources before reading evidence. A disposed lease, another selected
 view, rebase, handle reuse or a changed query cannot revive it. No new lease, probe or support
 search is added. Evidence is internal to the interval and changes neither geometric value equality
 nor wire/replay state. Replay checks original geometric fields and fresh authenticated evidence.

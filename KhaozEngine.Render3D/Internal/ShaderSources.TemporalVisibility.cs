@@ -3,10 +3,14 @@ namespace KhaozEngine.Render3D.Internal;
 /// <summary>The archive's visibility change test, shared by the fused and split accumulation.</summary>
 internal static partial class ShaderSources
 {
-    internal const string TemporalVisibilityGlsl = @"
+    internal const string TemporalVisibilityGlsl = TemporalVisibilityMeanGlsl + @"
 #ifdef TemporalVisibility
-bool temporalVisibilityChanged(vec2 uv, ivec2 centre, ivec2 last, vec2 previousUv) {
+bool temporalVisibilityChanged(vec2 uv, ivec2 centre, ivec2 last, vec2 previousUv, float expectedDepth) {
     int flags = int(Params.x + 0.5);
+    if ((flags & 32) != 0) {
+        float threshold = (flags & 1) != 0 ? 0.1 : (flags & 2) != 0 ? 0.2 : 0.15;
+        return temporalVisibilityMeanChange(uv, centre, last, previousUv, expectedDepth, flags) > threshold;
+    }
     float threshold = (flags & 1) != 0 ? 0.1 : (flags & (2 | 8)) != 0 ? 0.2 : (flags & 4) != 0 ? 0.3 : 2.0;
     if (threshold > 1.0) return false;
     float change = 0.0;

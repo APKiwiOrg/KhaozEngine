@@ -338,7 +338,7 @@ namespace KhaozEngine.Tests.Gpu
                 output.WriteLine($"  flat signed error x1000, {bins}: {m.Profile(flat: true)}");
                 Assert.True(m.ReferenceContrast > 0.05,
                     $"{c.Name}: the reference shows no shadow edge, contrast {m.ReferenceContrast:0.000}");
-                summary.Add($"{c.Name,-38} {r["band textured"].Mean:0.0000} {r["tail textured"].Mean:0.0000} "
+                summary.Add($"{c.Name,-38} {r["band textured"].Mean:0.0000} {r["tail textured"].Mean:0.000000000} "
                     + $"{r["far textured"].Mean:0.0000}  {r["band flat"].Mean:0.0000} {r["tail flat"].Mean:0.0000} "
                     + $"{r["far flat"].Mean:0.0000}  {r["band textured"].GrainOut:0.0000} "
                     + $"{r["band textured"].GrainRef:0.0000} {r["band textured"].ErrorGrain:0.0000}  "

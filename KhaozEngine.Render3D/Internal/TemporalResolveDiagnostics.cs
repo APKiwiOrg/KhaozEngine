@@ -132,6 +132,11 @@ namespace KhaozEngine.Render3D.Internal
             int mask = 0;
             foreach (string raw in value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             {
+                if (TemporalVisibilityDiagnostics.TryComparison(raw.ToLowerInvariant(), out int comparison))
+                {
+                    mask |= comparison;
+                    continue;
+                }
                 mask |= raw.ToLowerInvariant() switch
                 {
                     "vis-release-0.1" => TemporalVisibilityDiagnostics.Release10,

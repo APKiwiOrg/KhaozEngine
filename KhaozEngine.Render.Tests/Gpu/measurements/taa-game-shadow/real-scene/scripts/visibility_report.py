@@ -31,7 +31,7 @@ for condition in conditions:
     for arm in arms:
         run = root/(condition+"-"+arm)
         overlay = root/(condition+"-"+arm+"+show-vis-release")
-        source = "shadow-bilinear-3x3" if arm.startswith("shadow-bilinear-3x3+") else "baseline"
+        source = "shadow-bilinear-3x3" if arm.startswith(("shadow-bilinear-3x3+", "vis-mean-", "vis-centre-")) else "baseline"
         baseline = root/(condition+"-"+source)
         for mode in ("taa-native", "taa-quality"):
             total = dict(band=0, released=0, dots=0, released_dots=0,

@@ -48,8 +48,10 @@ internal sealed class TemporalVisibilityHistory : IDisposable
         {
             uint w = (uint)history.InternalWidth, h = (uint)history.InternalHeight;
             _fallback = Texture(w, h);
-            var white = new byte[checked((int)(w * h * 4))];
-            for (int i = 0; i < white.Length; i += 4) { white[i + 2] = 0x80; white[i + 3] = 0x3f; }
+            bool compact = TemporalVisibilityDiagnostics.Format == GpuPixelFormat.R8UNorm;
+            var white = new byte[checked((int)(w * h * (compact ? 1u : 4u)))];
+            if (compact) Array.Fill(white, (byte)255);
+            else for (int i = 0; i < white.Length; i += 4) { white[i + 2] = 0x80; white[i + 3] = 0x3f; }
             _gd.UpdateTexture(_fallback, white, 0, 0, w, h);
             // Synthetic callers may seed already-valid colour history before their first resolve.
             // Both sides of their constant fully lit signal must agree on that first frame too.

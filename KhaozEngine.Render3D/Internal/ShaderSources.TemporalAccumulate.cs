@@ -559,7 +559,7 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     float lockAge = temporalDiagnosticLockAge(lockValue, refreshRidge, historyState.y);
 #endif
 #ifdef TemporalVisibility
-    bool visReleased = useHistory && temporalVisibilityChanged(uv, centreTexel, maxTexel, previousUv);
+    bool visReleased = useHistory && temporalVisibilityChanged(uv, centreTexel, maxTexel, previousUv, expectedDepth);
     if (visReleased) lockValue = 0.0;
 #endif
     float hold = clamp(lockValue * LockHoldGain, 0.0, 1.0);
@@ -680,7 +680,16 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     }
 #endif
 #ifdef TemporalVisibility
-    if (visReleased && (int(Params.x + 0.5) & 8) != 0) {
+    if (visReleased && (int(Params.x + 0.5) & (8 | 32)) == 8) {
+        accumulated = 0.0;
+        released = true;
+    }
+#endif
+#ifdef TemporalVisibilityLarge
+    // Only the explicit two-level arm drops weight for a full visibility transition.
+    if (useHistory && (int(Params.x + 0.5) & (32 | 1 | 2)) == (32 | 1 | 2)
+        && temporalVisibilityMeanChange(uv, centreTexel, maxTexel, previousUv,
+            expectedDepth, int(Params.x + 0.5)) > 0.5) {
         accumulated = 0.0;
         released = true;
     }

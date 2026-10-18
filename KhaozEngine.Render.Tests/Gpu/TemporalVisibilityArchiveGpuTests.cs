@@ -10,7 +10,8 @@ namespace KhaozEngine.Tests.Gpu;
 /// The workflow has no environment input. Normal runs and the engine library never select a token here.</summary>
 public sealed class TemporalVisibilityArchiveGpuTests(ITestOutputHelper output)
 {
-    internal const string HostedToken = "shadow-bilinear-3x3,vis-release-0.1";
+    internal const string HostedToken = "vis-mean-dq-large-0.1";
+    internal const int HostedMask = 1665138688;
     static bool ArchiveDispatch => Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true"
         && Environment.GetEnvironmentVariable("GITHUB_WORKFLOW") == "cross-platform-gpu"
         && Environment.GetEnvironmentVariable("GITHUB_EVENT_NAME") == "workflow_dispatch"
@@ -27,10 +28,10 @@ public sealed class TemporalVisibilityArchiveGpuTests(ITestOutputHelper output)
     public void Hosted_archive_dispatch_has_the_selected_visibility_signal_enabled()
     {
         output.WriteLine($"Visibility archive token {Environment.GetEnvironmentVariable("KE_TEMPORAL_DIAG") ?? "unset"}, "
-            + $"startup mask {TemporalResolveDiagnostics.InitialMask}, MRT enabled {TemporalVisibilityDiagnostics.Enabled}");
+            + $"startup mask {TemporalResolveDiagnostics.InitialMask}, MRT enabled {TemporalVisibilityDiagnostics.Enabled}, format {TemporalVisibilityDiagnostics.Format}");
         if (!ArchiveDispatch) return;
         Assert.Equal(HostedToken, Environment.GetEnvironmentVariable("KE_TEMPORAL_DIAG"));
-        Assert.Equal(20971520, TemporalResolveDiagnostics.InitialMask);
+        Assert.Equal(HostedMask, TemporalResolveDiagnostics.InitialMask);
         Assert.True(TemporalVisibilityDiagnostics.Enabled);
     }
 }

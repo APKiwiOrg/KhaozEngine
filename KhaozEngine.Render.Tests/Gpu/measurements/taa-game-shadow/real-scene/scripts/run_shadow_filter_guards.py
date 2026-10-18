@@ -16,7 +16,7 @@ def guard():
 def run(token):
     guard()
     out.mkdir(parents=True, exist_ok=True)
-    env = dict(os.environ, KE_GPU_TESTS="1", KE_GRAPHICS_BACKEND="metal-native", KE_TEMPORAL_DIAG=token,
+    env = dict(os.environ, KE_GPU_TESTS="1", KE_GRAPHICS_BACKEND="metal-native", KE_TEMPORAL_DIAG="" if token == "unset" else token,
                KE_GOLDEN_EVIDENCE_DIR=str(out/token))
     # These measurements never write committed goldens or shader hash tables.
     for name in ("KE_UPDATE_GOLDENS", "KE_WRITE_SHADER_CORPUS", "KE_WRITE_MSL_BASELINE",

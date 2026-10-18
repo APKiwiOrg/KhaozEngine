@@ -65,7 +65,7 @@ for token in sys.argv[4:]:
             m = re.match(r"(.+): reference changed from ([\d.]+) to ([\d.]+)", line)
             if m:
                 row.update(actual_delta=abs(float(m[3])-float(m[2])), bound=0.000001,
-                           classification="expected bilinear reference movement" if "shadow-bilinear" in token
+                           classification="expected bilinear reference movement" if "shadow-bilinear" in token or token.startswith(("vis-mean-", "vis-centre-"))
                            else "unexpected reference drift")
             m = re.match(r"(.+): textured (band|tail) ([\d.]+) above ([\d.]+) plus a tenth", line)
             if m:

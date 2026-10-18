@@ -9,6 +9,12 @@ namespace KhaozEngine.Tests.Render3D;
 public sealed class TemporalDiagnosticTokenTests
 {
     [Theory]
+    [InlineData("vis-mean-dq-large-0.1", (1 << 30) | (1 << 29) | (1 << 24) | (1 << 25) | 4194304)]
+    [InlineData("vis-mean-0.1", (1 << 29) | (1 << 24) | 4194304)]
+    [InlineData("vis-mean-0.15", (1 << 29) | (1 << 26) | 4194304)]
+    [InlineData("vis-mean-0.2", (1 << 29) | (1 << 25) | 4194304)]
+    [InlineData("vis-mean-dq-0.1", (1 << 30) | (1 << 29) | (1 << 24) | 4194304)]
+    [InlineData("vis-centre-dq-0.1", (1 << 30) | (1 << 29) | (1 << 27) | (1 << 24) | 4194304)]
     [InlineData("vis-release-0.1", 16777216)]
     [InlineData("vis-release-0.2", 33554432)]
     [InlineData("vis-release-0.3", 67108864)]

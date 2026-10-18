@@ -1931,7 +1931,7 @@ host crashes, so total coverage is unknown. The line-ending regression fails und
 normalization in `83f63d024`. These first-run Windows results do not evaluate the visibility hypothesis.
 Every completed failing test and its full error is retained in the [first-run result inventory](runs/visibility/hosted/39131215312/results.json).
 
-The owner authorized one corrected matrix after the first run fully finishes. The corrected selection is
+The orchestrating session authorized one corrected matrix after the first run fully finishes. The corrected selection is
 `shadow-bilinear-3x3,vis-release-0.1`, the best measured overall arm, with mask 20971520. Its test-only selection
 and exact dispatch-environment proof are in `b4b03ece4` and
 [the stamp proof](runs/visibility/verification/host-token-proof.txt). The corrected source includes the synthetic
@@ -1949,7 +1949,7 @@ the corrected matrix. This cancellation did not discard any running test work.
 
 The corrected matrix is [39139863925](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39139863925), source
 `50c8c6f3657e23df28fe33fffea845691169f0e1`, token `shadow-bilinear-3x3,vis-release-0.1`.
-It is the one additional matrix the owner approved. Its results are recorded separately from the first point-PCF
+It is the one additional matrix the orchestrating session approved. Its results are recorded separately from the first point-PCF
 run, because both the source and selected filter differ.
 
 
@@ -2021,3 +2021,49 @@ python3 KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/real-scene/scr
   "$HOST_DOWNLOAD" KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/real-scene/runs/visibility/hosted/39139863925 \
   39139863925 50c8c6f3657e23df28fe33fffea845691169f0e1
 ~~~
+
+
+## Low-pass visibility comparison diagnostic
+
+This round keeps the bilinear 3x3 PCF and uses R8UNorm for the signal and both histories in every new arm.
+The tokens select the filter themselves. The old `shadow-bilinear-3x3,vis-release-0.1` control retains R32Float.
+Unset still allocates no visibility resources and compiles no visibility GLSL. These are archive branches only.
+
+### Exact comparison formulas
+
+Let `c` be the current internal centre texel, `o` an offset in `{-1,0,1}^2`, `J` current jitter, `Jp` previous
+jitter, `S` internal size, `u` the current display UV and `up` the resolve's reprojected UV. Clamp `c+o` to the
+internal image, call it `a`, and sample previous visibility at
+`h(o) = up + (a + 0.5 - J) / S - u + Jp / S`. This is the same reprojected, jitter-corrected correspondence
+as the preceding round. No colour, texture contrast or thin-feature classifier enters the comparison.
+
+| Token | Exact release condition |
+| --- | --- |
+| `vis-mean-0.1` | `abs(sum(V(a))/9 - sum(bilinear(Vp,h(o)))/9) > 0.1` |
+| `vis-mean-0.15` | The same mean difference, greater than 0.15 |
+| `vis-mean-0.2` | The same mean difference, greater than 0.2 |
+| `vis-mean-dq-0.1` | The depth-qualified mean difference below, greater than 0.1 |
+| `vis-centre-dq-0.1` | The same depth-qualified comparison with only offset `(0,0)`, greater than 0.1 |
+| `vis-mean-dq-large-0.1` | Release above 0.1. Also drop accumulated weight and display share above 0.5 |
+
+Every release clears the stored lock before computing the clip hold. The five release-only arms preserve
+accumulated weight and display share unless the resolve's independent existing shading-release rule fires.
+The two-level arm is the sole explicit exception. It addresses the measured absolute fast-tail increase, which
+cannot be explained by an improved 1 px denominator alone.
+
+For depth qualification, accept a current texel only when
+`abs(currentLinearDepth(a) - currentCentreLinearDepth) <= 0.02 * max(currentCentreLinearDepth, 1e-5)`.
+For each accepted offset, inspect the four bilinear history texels separately using stored `PrevDepth`.
+Accept a history texel when `abs(storedDepth - expectedDepth) <= 0.02 * max(expectedDepth, 1e-5)`, where
+`expectedDepth` is the same reprojected surface depth used by history validity. Reject other surfaces before
+interpolation. Divide the current sum by accepted current count, and the history sum by the sum of accepted
+bilinear weights over those offsets. No accepted history weight means no release. The centre variant uses the
+same four depth-qualified history texels at `h(0)`. The symmetric relative tolerance is 2% on both sides.
+
+Threshold 0.1 was selected for the depth-qualified comparison because all three mean thresholds retain the
+same shadow-fact failures, while its absolute advancing 8 px tail is smallest. No acceptance bound changed.
+
+The two-level rule is compiled only for its own token. Other arms do not compile its reset code. The new
+mean and qualification flags occupy bits 29 and 30, still carried exactly through the small integer in
+`Params.x`. In the new mean path the old reset bit selects centre-only comparison, and the combination of
+0.1 and 0.2 threshold bits identifies the two-level arm. It cannot reset an ordinary release-only arm.

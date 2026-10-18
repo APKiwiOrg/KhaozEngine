@@ -24,7 +24,7 @@ for arm in sys.argv[3:]:
     lines += ["### "+arm, "", "| Condition | Arm | Region | Native | Quality | Own FXAA |",
               "| --- | --- | --- | ---: | ---: | ---: |"]
     for condition in ("back15", "day30", "back60", "ground15"):
-        for name in dict.fromkeys(("baseline", "shadow-bilinear-3x3", arm)):
+        for name in dict.fromkeys(("baseline", "shadow-bilinear-3x3", "shadow-bilinear-3x3+vis-release-0.1", arm)):
             row = values[condition+"/"+name]
             for region in ("character", "ground"):
                 cells = [metric(row, mode, region) for mode in ("taa-native", "taa-quality", "fxaa")]

@@ -22364,6 +22364,58 @@ if (gd.TryReadBuffer(staging, fence, 4, bytes))
     fence.Reset();                              // only now may the fence be reused
 ```
 
+#### Fixed staging slots with retained frame identity
+
+`GpuBufferReadbackRing` owns a fixed set of staging buffers, allocated once in its constructor. Use it from one
+thread, with a device that supports completion fences and `TryReadBuffer`. `Capacity` never grows, and
+`PendingCount` includes copies recorded in lists that have not yet been submitted. Its warmed `TryRecord` and
+`TryRead` paths allocate nothing. It never waits, flushes, submits, synchronously maps or takes a blocking lock.
+
+```csharp
+// Create once, before opening a frame list. Reuse a caller-owned destination as well.
+using var outcomes = new GpuBufferReadbackRing(gd, slotCount: 3, slotSizeInBytes: resultCapacityBytes);
+byte[] outcomeBytes = new byte[resultCapacityBytes];
+
+// After dispatching in the caller's open frame list:
+bool recorded = outcomes.TryRecord(cl, actorResults, 0, resultBytes, frameId, frameFence);
+cl.End();
+gd.Submit(cl, frameFence);                       // the caller submits the frame once
+
+// On a later frame, try the oldest entry once. No entry is consumed while pending or busy.
+if (outcomes.TryRead(outcomeBytes, out ulong completedFrameId, out uint sizeInBytes))
+{
+    // Consume outcomeBytes[0..sizeInBytes] using completedFrameId, not the current frame ID.
+}
+```
+
+Equipment coverage (Part C) records one aggregate actor-result copy per frame. The tag is the frame ID, and
+actor IDs and offsets are fields in that copied payload. Optional surface verification can share the same
+stable frame fence. The caller submits once with that fence and cannot reset, resubmit or dispose it until
+every associated ring has consumed its entries, or discarded them if the list was never submitted. If the
+ring is full, skip diagnostics for that frame, keep rendering and preserve the dispatched outcome. On Direct3D
+11, a `TryReadBuffer` poll completes only after a `Present` or drain, because `Submit` does not flush. The ring
+does not introduce a flush policy for headless consumers.
+
+`TryRecord(commands, source, sourceOffsetBytes, sizeInBytes, tag, completion)` copies into offset zero of the next
+free staging slot in the caller's open list. Validate the request before asking for space: the source offset
+must be a multiple of four, and the nonzero copy must fit both the source and a slot. A copy cannot exceed
+`int.MaxValue` bytes, since the complete entry must fit in one destination span. Null arguments are refused.
+Full returns `false` before recording anything. The source and caller-owned completion fence must stay alive
+until the entry is consumed. The ring never resets or disposes a fence.
+
+`TryRead(destination, out tag, out sizeInBytes)` attempts only the oldest pending entry through `TryReadBuffer`.
+It preserves FIFO order even when a later fence completes first. Empty, pending and busy reads return `false`,
+set both outputs to zero and leave the destination untouched. A successful read copies only the recorded byte
+count, preserves any destination tail and releases that slot. A too-small destination throws `ArgumentException`
+without consuming or polling the entry. Nonpositive `slotCount`, zero `slotSizeInBytes`, and an invalid copy
+offset or size throw `ArgumentOutOfRangeException` before a slot is reserved.
+
+Call `DiscardUnsubmitted(completion)` only when abandoning a list that was never submitted. It stably removes
+all entries retaining that exact fence and leaves every other entry in FIFO order. Using it with a submitted
+fence is a caller error, even if that fence has not signalled yet. Abandon the list before reusing the freed
+slots. `Dispose` throws `InvalidOperationException` while entries remain, including completed entries that have
+not been consumed. After consumption or valid discard it disposes only the owned staging buffers.
+
 ### Unsigned storage-buffer atomics
 
 GLSL `uint atomicOr(inout uint word, uint value)` and `uint atomicMax(inout uint word, uint value)` operate on

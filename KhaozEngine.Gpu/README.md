@@ -352,6 +352,19 @@ What it owns today:
   keeps the source, staging buffer and fence alive and does not reset the fence until a read succeeds. The default
   implementation throws `NotSupportedException`, and the three native backends implement it. See the consumer
   guide's "Reading a completed staging copy without waiting" for the refusals and the Direct3D 11 flush note.
+- **`GpuBufferReadbackRing`** - fixed staging slots over `TryReadBuffer`, allocated once by
+  `new GpuBufferReadbackRing(device, slotCount, slotSizeInBytes)`. `TryRecord(commands, source, sourceOffsetBytes,
+  sizeInBytes, tag, completion)` records a copy in the caller's open list and retains its tag, byte count and
+  caller-owned fence. Full returns `false` without a copy. `TryRead(destination, out tag, out sizeInBytes)` tries
+  only the oldest entry, returns `false` with zero outputs and untouched bytes while pending or busy, and frees
+  the slot only after a successful read. A larger destination keeps its unused tail. Both warmed operations
+  allocate nothing, and neither waits, flushes, submits, synchronously maps or takes a blocking lock.
+  `Capacity` is fixed and `PendingCount` includes unsubmitted recordings. `DiscardUnsubmitted(completion)` stably
+  removes only that fence's entries for an abandoned list that was never submitted. Using it for submitted work
+  is a caller error. The ring never resets or disposes a fence. `Dispose` refuses while entries remain and then
+  frees only its owned staging buffers. Equipment coverage copies one aggregate actor-result payload per frame,
+  tagged with the frame ID, with actor IDs and offsets in the payload. Direct3D 11 completion needs a `Present`
+  or drain because `Submit` does not flush. The consumer guide covers shared fences and full-ring handling.
 - **`GpuRetireQueue`** (since 17.37.0) - deferred disposal for anything a renderer frees MID-LIFE (a streamed mesh
   unloaded while the scene runs, a sprite atlas whose descriptor set fell out of the working set). `Retire(resource)`
   costs nothing at the call site, `BeginFrame()` seals the frame's retirements into one batch behind a fence and

@@ -78,6 +78,54 @@ void main() {
             Assert.Equal(new uint[] { 11u, 13u, 17u }, words32);
         }
 
+        [GpuFact]
+        public void FixedRingRetainsTheFrameTagForARecordedComputeResult()
+        {
+            using GpuDeviceContext gpu = GpuDeviceContext.CreateHeadless();
+            IGpuDevice device = gpu.GpuDevice;
+            _output.WriteLine("backend: " + device.Backend + " (" + device.Capabilities.DeviceName + ")");
+            Assert.True(device.Capabilities.SupportsCompute);
+            Assert.True(device.Capabilities.SupportsCompletionFences);
+            IGpuResourceFactory f = device.Factory;
+
+            using IGpuBuffer words = f.CreateBuffer(new GpuBufferDescription(
+                Bytes, GpuBufferUsage.StructuredBufferReadWrite, sizeof(uint)));
+            using IGpuComputeShader shader = f.CreateComputeShaderFromSpirv(WriteWords);
+            using IGpuResourceLayout layout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
+                new GpuResourceLayoutElement("WordBuf", GpuResourceKind.StructuredBufferReadWrite,
+                    GpuShaderStages.Compute)));
+            using IGpuResourceSet set = f.CreateResourceSet(new GpuResourceSetDescription(layout, words));
+            using IGpuComputePipeline pipeline = f.CreateComputePipeline(
+                new GpuComputePipelineDescription(shader, layout));
+            using IGpuFence completion = f.CreateFence();
+            using var ring = new GpuBufferReadbackRing(device, 3, Bytes);
+            using IGpuCommandList cl = f.CreateCommandList();
+            var destination = Filled((int)Bytes);
+
+            cl.Begin();
+            cl.SetComputePipeline(pipeline);
+            cl.SetComputeResourceSet(0, set);
+            cl.Dispatch(1, 1, 1);
+            Assert.True(ring.TryRecord(cl, words, 0, Bytes, 0x10000002aul, completion));
+            cl.End();
+            Assert.False(ring.TryRead(destination, out ulong frameId, out uint count));
+            Assert.Equal(0ul, frameId);
+            Assert.Equal(0u, count);
+            Assert.Equal(Filled((int)Bytes), destination);
+
+            device.Submit(cl, completion);
+            // The test drains once at completion. D3D11 Submit itself does not flush to the driver.
+            device.WaitForIdle();
+
+            Assert.True(ring.TryRead(destination, out frameId, out count));
+            Assert.Equal(0x10000002aul, frameId);
+            Assert.Equal(Bytes, count);
+            Assert.Equal(new uint[] { 7u, 11u, 13u, 17u },
+                MemoryMarshal.Cast<byte, uint>(destination).ToArray());
+            Assert.Equal(3, ring.Capacity);
+            Assert.Equal(0, ring.PendingCount);
+        }
+
         /// <summary>
         /// EVERY BUFFER REFUSAL FIRES BEFORE ANY READ, on whatever real device the host resolves: a non-staging
         /// source, a disposed staging buffer, an unaligned offset and a window that runs off the end. Each throws

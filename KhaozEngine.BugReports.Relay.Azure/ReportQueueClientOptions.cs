@@ -10,6 +10,7 @@ public static class ReportQueueClientOptions
     /// <summary>
     /// Creates the required Base64 options for work and poison clients. Undecodable messages remain in the queue
     /// until their visibility lease expires, with one warning naming only the queue and message id per encounter.
+    /// The requeuer owns receives on the poison client. Receives made outside it are not counted.
     /// </summary>
     /// <param name="logger">The warning logger. Null uses <c>Log.Get("BugReports.Relay")</c>.</param>
     public static QueueClientOptions Create(ILogger? logger = null)

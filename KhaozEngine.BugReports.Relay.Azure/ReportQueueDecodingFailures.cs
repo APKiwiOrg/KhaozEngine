@@ -15,8 +15,12 @@ internal static class ReportQueueDecodingFailures
     internal static int Take(QueueClient queue)
         => counts.TryGetValue(queue, out Counter? counter) ? Interlocked.Exchange(ref counter.Value, 0) : 0;
 
+    internal static SemaphoreSlim ReceiveGate(QueueClient queue)
+        => counts.GetValue(queue, static _ => new Counter()).ReceiveGate;
+
     sealed class Counter
     {
         public int Value;
+        public SemaphoreSlim ReceiveGate { get; } = new(1, 1);
     }
 }

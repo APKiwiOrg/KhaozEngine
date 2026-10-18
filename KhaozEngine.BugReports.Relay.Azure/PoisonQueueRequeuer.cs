@@ -23,6 +23,7 @@ public sealed class PoisonQueueRequeuer
     /// <summary>
     /// Wraps existing queues. Hosts must build both the work and poison QueueClient instances with
     /// <see cref="ReportQueueClientOptions.Create"/>, matching the Azure Functions trigger's Base64 default.
+    /// The requeuer owns receives on the poison client. Receives made outside it are not counted.
     /// A null clock uses <see cref="TimeProvider.System"/>. A null logger uses <c>Log.Get("BugReports.Relay")</c>.
     /// </summary>
     public PoisonQueueRequeuer(QueueClient poison, QueueClient work, int maxRequeues = 3, TimeProvider? time = null,

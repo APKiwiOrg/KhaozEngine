@@ -83,6 +83,10 @@ entity cleanup, since Azure Table Storage does not expire entities from an `Expi
 
 ## Poison recovery
 
+The requeuer owns receives on its poison `QueueClient`. Receives made outside it are not counted.
+Overlapping requeuer receives on the same client serialize from counter reset through the SDK receive
+and final count collection.
+
 `PoisonQueueRequeuer` drains batches of up to 32 until a receive has neither decoded messages nor
 undecodable messages omitted by the SDK. A fully undecodable batch does not end the drain. It increments
 `Requeues`, sends to the work queue, then deletes from poison. The default cap is 3. Malformed and

@@ -1639,6 +1639,45 @@
           "message": "PreparePointShadows over 20 steady frames: invalid allocation measurement because the no-GC region ended before the window completed. Budget=4194304 bytes, process=0 bytes, thread=0 bytes, other threads=0 bytes, test messages reported in the window=0, collections(gen0/gen1/gen2)=0/0/0. Runtime reason: NoGCRegion mode must be set."
         }
       ]
+    },
+    "vulkan-native": {
+      "counts": {
+        "Total tests": 1360,
+        "Passed": 1355,
+        "Failed": 5,
+        "Skipped": null
+      },
+      "aborted": false,
+      "token_stamp": [
+        "Visibility archive token vis-release-0.1, startup mask 16777216, MRT enabled True"
+      ],
+      "failures": [
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalMovingShadeLagGpuTests.Shadow_edge_lag_on_moving_pixels_and_fast_shadows_stays_within_its_bounds",
+          "reason": "acceptance failure",
+          "message": "Quality C pan 2.0 px: textured band 0.0072 above 0.0056 plus a tenth\nNative S 8.0 px advancing: textured tail 0.0046 above 1.5 times the 1 px tail 0.0031\nNative S 8.0 px retreating: textured tail 0.0082 above 1.5 times the 1 px tail 0.0054"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalMovingShadeRimGpuTests.Moving_shadow_receivers_keep_their_leading_and_trailing_rims",
+          "reason": "acceptance failure",
+          "message": "Quality M 1.0 trailing textured: temporal error 0.010485 above v21.2.0 0.008078 plus a tenth"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalStoredLockGpuTests.A_lock_stored_by_the_followed_surface_reads_back_unchanged_where_it_stopped",
+          "reason": "seeded fully lit history initialization bug, fixed in dab3a8981",
+          "message": "Assert.Equal() Failure: Values are not within tolerance 0.0001\nExpected: 0.67578125\nActual:   0"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalStoredLockGpuTests.A_lock_stored_where_a_moving_surface_showed_reads_back_unchanged",
+          "reason": "seeded fully lit history initialization bug, fixed in dab3a8981",
+          "message": "Assert.Equal() Failure: Values are not within tolerance 0.0001\nExpected: 0.6748046875\nActual:   0"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalStoredLockGpuTests.A_lock_stored_by_a_band_pixel_reads_back_unchanged_where_its_history_is_kept",
+          "reason": "seeded fully lit history initialization bug, fixed in dab3a8981",
+          "message": "Assert.Equal() Failure: Values are not within tolerance 0.0001\nExpected: 0.67578125\nActual:   0"
+        }
+      ]
     }
   }
 }

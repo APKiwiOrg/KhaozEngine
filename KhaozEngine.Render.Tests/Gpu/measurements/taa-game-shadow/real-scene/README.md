@@ -1937,3 +1937,17 @@ and exact dispatch-environment proof are in `b4b03ece4` and
 [the stamp proof](runs/visibility/verification/host-token-proof.txt). The corrected source includes the synthetic
 fallback, CRLF and explicit transparent-output fixes. The two runs must be read separately. No third matrix is
 authorized after an infrastructure failure in the corrected run.
+
+
+First-run Vulkan completes all 1360 tests, 1355 passed and five failed. Three are the seeded-lock initialization
+bug fixed before the corrected run. Two are moving-shade lag and moving-rim acceptance failures. The software
+Vulkan entry-identity facts use their existing bounded policy and pass. The Vulkan synchronization-validation
+job passes. The first run is finally marked cancelled because the Windows runner remains stuck in cleanup after
+its aborted tests. All three test artifacts were collected first, then normal and forced cancellation were used
+to terminate only that orphaned cleanup. The first run and every job were confirmed completed before dispatching
+the corrected matrix. This cancellation did not discard any running test work.
+
+The corrected matrix is [39139863925](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39139863925), source
+`50c8c6f3657e23df28fe33fffea845691169f0e1`, token `shadow-bilinear-3x3,vis-release-0.1`.
+It is the one additional matrix the owner approved. Its results are recorded separately from the first point-PCF
+run, because both the source and selected filter differ.

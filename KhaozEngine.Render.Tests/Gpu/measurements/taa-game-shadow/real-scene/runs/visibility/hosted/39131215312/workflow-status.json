@@ -1,0 +1,35 @@
+{
+  "id": 39131215312,
+  "status": "completed",
+  "conclusion": "cancelled",
+  "token": "vis-release-0.1",
+  "source": "e62236e561120669f6ca6be4c237c8cb46d50554",
+  "cleanup_note": "All three backend test artifacts were saved before stopping the Windows cleanup orphan. Normal cancellation did not finish it. Force cancellation completed the run before corrected dispatch.",
+  "jobs": [
+    {
+      "name": "select legs",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "windows-latest / direct3d11-native",
+      "status": "completed",
+      "conclusion": "cancelled"
+    },
+    {
+      "name": "ubuntu-latest / vulkan-native",
+      "status": "completed",
+      "conclusion": "failure"
+    },
+    {
+      "name": "macos-26 / metal-native",
+      "status": "completed",
+      "conclusion": "failure"
+    },
+    {
+      "name": "ubuntu-latest / vulkan-native (sync validation)",
+      "status": "completed",
+      "conclusion": "success"
+    }
+  ]
+}

@@ -9,7 +9,9 @@
     "token": "vis-release-0.1"
   },
   "corrected_hosted_run": {
-    "status": "authorized, waiting for first run to fully complete",
+    "id": 39139863925,
+    "source": "50c8c6f3657e23df28fe33fffea845691169f0e1",
+    "status": "in_progress",
     "token": "shadow-bilinear-3x3,vis-release-0.1"
   },
   "capture_conditions": [

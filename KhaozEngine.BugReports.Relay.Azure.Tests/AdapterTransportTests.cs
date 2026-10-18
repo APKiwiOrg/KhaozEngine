@@ -37,23 +37,42 @@ public sealed class AdapterTransportTests
     }
 
     [Theory]
-    [InlineData(404)]
-    [InlineData(403)]
-    [InlineData(500)]
-    public async Task BlobRead_Only404IsAbsent(int status)
+    [InlineData(404, "BlobNotFound")]
+    [InlineData(404, "ContainerNotFound")]
+    [InlineData(404, "UnknownFailure")]
+    [InlineData(403, "AuthorizationFailure")]
+    [InlineData(500, "InternalError")]
+    public async Task BlobRead_OnlyMissingBlobIsAbsent(int status, string errorCode)
     {
-        using var http = Http(_ => Task.FromResult(Response((HttpStatusCode)status)));
+        using var http = Http(_ => Task.FromResult(Response((HttpStatusCode)status, errorCode)));
         var adapter = new BlobContainerAdapter(Blob(http));
-        if (status == 404)
+        if (status == 404 && errorCode == "BlobNotFound")
         {
             Assert.Null(await adapter.DownloadAsync("a.json", 10, default));
             Assert.False(await adapter.ExistsAsync("a.json", default));
         }
         else
         {
-            Assert.Equal(status, (await Assert.ThrowsAsync<RequestFailedException>(() => adapter.DownloadAsync("a.json", 10, default))).Status);
-            Assert.Equal(status, (await Assert.ThrowsAsync<RequestFailedException>(() => adapter.ExistsAsync("a.json", default))).Status);
+            var read = await Assert.ThrowsAsync<RequestFailedException>(() => adapter.DownloadAsync("a.json", 10, default));
+            Assert.Equal(status, read.Status);
+            Assert.Equal(errorCode, read.ErrorCode);
+            var exists = await Assert.ThrowsAsync<RequestFailedException>(() => adapter.ExistsAsync("a.json", default));
+            Assert.Equal(status, exists.Status);
+            Assert.Equal(errorCode, exists.ErrorCode);
         }
+    }
+
+    [Fact]
+    public async Task BlobExists_Present_ReturnsTrue()
+    {
+        using var http = Http(request =>
+        {
+            Assert.Equal(HttpMethod.Head, request.Method);
+            var response = Response(HttpStatusCode.OK);
+            response.Content = new ByteArrayContent(Array.Empty<byte>());
+            return Task.FromResult(response);
+        });
+        Assert.True(await new BlobContainerAdapter(Blob(http)).ExistsAsync("a.json", default));
     }
 
     [Fact]
@@ -228,11 +247,14 @@ public sealed class AdapterTransportTests
     }
 
     static HttpClient Http(Func<HttpRequestMessage, Task<HttpResponseMessage>> respond) => new(new Handler(respond));
-    static HttpResponseMessage Response(HttpStatusCode status)
+    static HttpResponseMessage Response(HttpStatusCode status, string errorCode = "TestFailure")
     {
-        string json = (int)status >= 400 ? """{"error":{"code":"TestFailure","message":"test failure"}}""" : "{}";
+        string json = (int)status >= 400
+            ? System.Text.Json.JsonSerializer.Serialize(new { error = new { code = errorCode, message = "test failure" } })
+            : "{}";
         var response = new HttpResponseMessage(status) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
         response.Headers.Add("x-ms-request-id", "test-request");
+        if ((int)status >= 400) response.Headers.Add("x-ms-error-code", errorCode);
         response.Headers.ETag = new System.Net.Http.Headers.EntityTagHeaderValue("\"version\"");
         return response;
     }

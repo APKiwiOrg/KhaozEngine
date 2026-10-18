@@ -14,7 +14,8 @@ The package never takes an
 `BlobReportMediaStore` maps Public and Pending to separate containers. Uploads carry the supplied
 content type and cache policy. Every media store enforces the relay's public `ReportPaths.IsValid`
 rule. Create-only uploads use `If-None-Match: *`. Downloads reject a declared
-length over the caller's cap before reading the body. Only a 404 reads as absent. Other failures
+length over the caller's cap before reading the body. Only a 404 with `BlobNotFound` reads as absent.
+`ContainerNotFound` and other failures
 propagate so queue work can be redelivered.
 
 `StorageQueueReportWorkQueue` sends `ReportWorkItemJson` unchanged to the SDK, which performs the one

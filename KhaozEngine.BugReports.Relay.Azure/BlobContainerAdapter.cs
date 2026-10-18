@@ -51,7 +51,7 @@ internal sealed class BlobContainerAdapter : IReportBlobContainer
             await result.Content.ReadExactlyAsync(bytes, ct).ConfigureAwait(false);
             return bytes;
         }
-        catch (RequestFailedException failure) when (AzureStatus.IsAbsent(failure.Status))
+        catch (RequestFailedException failure) when (failure.Status == 404 && failure.ErrorCode == BlobErrorCode.BlobNotFound.ToString())
         {
             return null;
         }
@@ -61,9 +61,10 @@ internal sealed class BlobContainerAdapter : IReportBlobContainer
     {
         try
         {
-            return (await container.GetBlobClient(path).ExistsAsync(ct).ConfigureAwait(false)).Value;
+            await container.GetBlobClient(path).GetPropertiesAsync(cancellationToken: ct).ConfigureAwait(false);
+            return true;
         }
-        catch (RequestFailedException failure) when (AzureStatus.IsAbsent(failure.Status))
+        catch (RequestFailedException failure) when (failure.Status == 404 && failure.ErrorCode == BlobErrorCode.BlobNotFound.ToString())
         {
             return false;
         }

@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using BepuPhysics;
 using BepuUtilities;
 
@@ -61,8 +62,19 @@ internal readonly struct InstalledPoseOperator
     internal InstalledPoseOperator WithTranslation(Vector3 position) => IsResolved &&
         Within(position, RepresentedGeometryTransforms.MaximumPositionMagnitude) ? new(this, position) : default;
 
+    // Test observation of legacy dual admissions on this thread. Support queries must leave it unchanged.
+    [ThreadStatic] static StrongBox<int>? t_dualAdmissions;
+
+    internal static StrongBox<int>? ObserveDualAdmissions(StrongBox<int>? probe)
+    {
+        StrongBox<int>? prior = t_dualAdmissions;
+        t_dualAdmissions = probe;
+        return prior;
+    }
+
     internal static bool TryCreate(in RigidPose pose, out InstalledPoseOperator result)
     {
+        if (t_dualAdmissions is { } probe) probe.Value++;
         result = default;
         if (!Within(pose.Position, RepresentedGeometryTransforms.MaximumPositionMagnitude) ||
             !RepresentedGeometryTransforms.QuaternionNormWithinBand(pose.Orientation)) return false;

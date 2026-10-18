@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using BepuUtilities;
 using static KhaozEngine.Tests.Physics.InstalledPoseOracle;
 using RigidPose = BepuPhysics.RigidPose;
@@ -177,6 +178,53 @@ public sealed class InstalledSupportPoseTests
                 actual.Position.X = MathF.BitIncrement(actual.Position.X);
                 Assert.False(InstalledPoseOperations.ProveSupportComposition(child.LocalPose, installed.Pose, actual));
             }
+        }
+    }
+
+    [Fact]
+    public void PlanarCompoundSupportQueriesAdmitOnlyThroughTheSupportDoor()
+    {
+        Quaternion yaw = new(0, 0.70710677f, 0, 0.70710677f);
+        var corners = new Vector3[8];
+        for (int i = 0; i < 8; i++) corners[i] = new((i & 1) == 0 ? 0 : 2, (i & 2) == 0 ? -1 : 1, (i & 4) == 0 ? -1 : 1);
+        Vector3[] mirrored = [.. corners.Select(c => new Vector3(-c.X, c.Y, c.Z))];
+        Vector3[] offCentre = [.. corners.Select(c => c - new Vector3(0.5f, 0, 0))];
+        (string Name, PhysicsShape Shape)[] scenes =
+        [
+            ("boxes", new CompoundShape([new(new BoxShape(Vector3.One), Pose.At(new(-1, 0, 0))),
+                new(new BoxShape(Vector3.One), Pose.At(new(1, 0, 0)))])),
+            ("hulls", new CompoundShape([new(new ConvexHullShape(corners), Pose.Identity),
+                new(new ConvexHullShape(mirrored), Pose.Identity)])),
+            ("hull centroid wrapper", new ConvexHullShape(offCentre)),
+        ];
+        foreach ((string name, PhysicsShape shape) in scenes)
+        {
+            using var world = new BepuPhysicsWorld(Vector3.Zero);
+            world.AddStatic(shape, new(new(0, -1, 0), yaw));
+            var sim = (BepuPhysics.Simulation)typeof(BepuPhysicsWorld).GetField("_sim", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(world)!;
+            // Every scene installs as a Bepu compound, so the shared compound root gate runs.
+            Assert.Equal(default(BepuCompound).TypeId, sim.Statics[0].Shape.Type);
+            using var lease = world.AcquireQueryReadLease();
+            var members = new SupportFootprintMember[256];
+            var elements = new SupportElement[256];
+            var joins = new ulong[1024];
+            var dualAdmissions = new StrongBox<int>();
+            StrongBox<int>? prior = InstalledPoseOperator.ObserveDualAdmissions(dualAdmissions);
+            SupportNeighborhoodResult neighborhood;
+            SupportFootprintResult footprint;
+            try
+            {
+                neighborhood = ((IPhysicsSupportNeighborhood)world).QuerySupportNeighborhood(
+                    lease, new CapsuleShape(0.2f, 0.01f), Pose.At(new(0, 0.205f, 0)), 0.0001f, elements, joins);
+                footprint = ((IPhysicsSupportFootprint)world).QuerySupportFootprint(
+                    lease, SupportFootprintTests.Request(), members, joins);
+            }
+            finally { InstalledPoseOperator.ObserveDualAdmissions(prior); }
+            Assert.True(CapsuleFeatureStatus.Complete == neighborhood.Status, $"{name} neighborhood {neighborhood.Status}");
+            Assert.True(neighborhood.Elements > 0, name);
+            Assert.True(CapsuleFeatureStatus.Complete == footprint.Status, $"{name} footprint {footprint.Status}");
+            Assert.True(footprint.Members > 0, name);
+            Assert.True(dualAdmissions.Value == 0, $"{name} reached {dualAdmissions.Value} dual admissions");
         }
     }
 

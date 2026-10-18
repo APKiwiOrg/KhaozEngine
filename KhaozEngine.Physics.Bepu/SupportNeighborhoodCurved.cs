@@ -42,7 +42,8 @@ internal static class SupportNeighborhoodCurved
         if (!compound && !Curved(shape)) return CapsuleFeatureStatus.Complete;
         // Leaf proves this same pose first and refuses it as Unsupported.
         if (!compound) return Leaf(simulation, shape, pose, 0, leaves);
-        if (!CapsuleFeatureGeometry.ProveInstalledPose(pose)) return CapsuleFeatureStatus.Unsupported;
+        // The compound root and composition gates are shared with box and hull leaves, so they use the support door.
+        if (!InstalledPoseOperator.TryCreateSupport(pose, out _)) return CapsuleFeatureStatus.Unsupported;
         ref Compound installed = ref simulation.Shapes.GetShape<Compound>(shape.Index);
         if (installed.Children.Length is 0 or > CapsuleFeatureGeometry.MaximumLeaves)
             return CapsuleFeatureStatus.Unsupported;
@@ -50,10 +51,10 @@ internal static class SupportNeighborhoodCurved
         {
             ref var child = ref installed.Children[i];
             if (!Curved(child.ShapeIndex)) continue;
-            if (!CapsuleFeatureGeometry.ProveInstalledPose(child.LocalPose)) return CapsuleFeatureStatus.Unsupported;
+            if (!InstalledPoseOperator.TryCreateSupport(child.LocalPose, out _)) return CapsuleFeatureStatus.Unsupported;
             // Exactly the pinned backend's composition, including its represented rounding.
             Compound.GetWorldPose(child.LocalPose, pose, out RigidPose worldPose);
-            if (!InstalledPoseOperations.ProveComposition(child.LocalPose, pose, worldPose))
+            if (!InstalledPoseOperations.ProveSupportComposition(child.LocalPose, pose, worldPose))
                 return CapsuleFeatureStatus.Unsupported;
             CapsuleFeatureStatus status = Leaf(simulation, child.ShapeIndex, worldPose, i, leaves);
             if (status != CapsuleFeatureStatus.Complete) return status;

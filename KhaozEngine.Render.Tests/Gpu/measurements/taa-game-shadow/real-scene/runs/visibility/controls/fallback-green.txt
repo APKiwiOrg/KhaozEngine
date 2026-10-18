@@ -1,0 +1,15 @@
+Test run for KhaozEngine.Render.Tests/bin/Release/net10.0/KhaozEngine.Render.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+KhaozEngine.Render.Tests/bin/Release/net10.0/KhaozEngine.Render.Tests.dll
+[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v2.8.2+699d445a1a (64-bit .NET 10.0.13)
+[xUnit.net 00:00:00.12]   Discovering: KhaozEngine.Render.Tests
+[xUnit.net 00:00:00.80]   Discovered:  KhaozEngine.Render.Tests
+[xUnit.net 00:00:00.82]   Starting:    KhaozEngine.Render.Tests
+[xUnit.net 00:00:01.24]   Finished:    KhaozEngine.Render.Tests
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveRendererGpuTests.A_still_pixel_blends_its_history_by_its_accumulated_weight [395 ms]
+
+Test Run Successful.
+Total tests: 1
+     Passed: 1
+ Total time: 1.5706 Seconds
+build-slot: exit=0 waited=0.023s ran=2.220s

@@ -1,0 +1,177 @@
+VSTest version 18.7.0 (arm64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+original-control/KhaozEngine.Render.Tests.dll
+[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v2.8.2+699d445a1a (64-bit .NET 10.0.13)
+[xUnit.net 00:00:00.12]   Discovering: KhaozEngine.Render.Tests
+[xUnit.net 00:00:00.82]   Discovered:  KhaozEngine.Render.Tests
+[xUnit.net 00:00:00.83]   Starting:    KhaozEngine.Render.Tests
+[xUnit.net 00:00:02.91]     KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_on_every_frame(preset: Performance) [FAIL]
+[xUnit.net 00:00:02.91]       the entry points stored different state:
+[xUnit.net 00:00:02.91]         colour: 596 values differ on 17 frames from frame 31, the largest by 0.010253906 (21 half-float steps)
+[xUnit.net 00:00:02.91]         confidence: none differ
+[xUnit.net 00:00:02.91]         lock: 8 values differ on 3 frames from frame 27, the largest by 0.00024414062 (2 half-float steps)
+[xUnit.net 00:00:02.91]         mark: none differ
+[xUnit.net 00:00:02.91]       Stack Trace:
+[xUnit.net 00:00:02.91]         KhaozEngine.Render.Tests/Gpu/TemporalEntryIdentityGpuTests.cs(136,0): at KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Compare(TemporalUpscale preset, Boolean outline)
+[xUnit.net 00:00:02.91]         KhaozEngine.Render.Tests/Gpu/TemporalEntryIdentityGpuTests.cs(47,0): at KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_on_every_frame(TemporalUpscale preset)
+[xUnit.net 00:00:02.91]            at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+[xUnit.net 00:00:02.91]            at System.Reflection.MethodBaseInvoker.InvokeDirectByRefWithFewArgs(Object obj, Span`1 copyOfArgs, BindingFlags invokeAttr)
+[xUnit.net 00:00:02.91]       Output:
+[xUnit.net 00:00:02.91]         MetalNative on Apple M2 Max, 320x180 Performance
+[xUnit.net 00:00:02.91]           48 of 48 frames resolved, 2164 band marks, 4956 followed marks and 19930 moving shares stored by the fused entry
+[xUnit.net 00:00:02.91]           colour: 596 values differ on 17 frames from frame 31, the largest by 0.010253906 (21 half-float steps)
+[xUnit.net 00:00:02.91]           confidence: none differ
+[xUnit.net 00:00:02.91]           lock: 8 values differ on 3 frames from frame 27, the largest by 0.00024414062 (2 half-float steps)
+[xUnit.net 00:00:02.91]           mark: none differ
+  Failed KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_on_every_frame(preset: Performance) [2 s]
+  Error Message:
+   the entry points stored different state:
+  colour: 596 values differ on 17 frames from frame 31, the largest by 0.010253906 (21 half-float steps)
+  confidence: none differ
+  lock: 8 values differ on 3 frames from frame 27, the largest by 0.00024414062 (2 half-float steps)
+  mark: none differ
+  Stack Trace:
+     at KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Compare(TemporalUpscale preset, Boolean outline) in KhaozEngine.Render.Tests/Gpu/TemporalEntryIdentityGpuTests.cs:line 136
+   at KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_on_every_frame(TemporalUpscale preset) in KhaozEngine.Render.Tests/Gpu/TemporalEntryIdentityGpuTests.cs:line 47
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+   at System.Reflection.MethodBaseInvoker.InvokeDirectByRefWithFewArgs(Object obj, Span`1 copyOfArgs, BindingFlags invokeAttr)
+  Standard Output Messages:
+ MetalNative on Apple M2 Max, 320x180 Performance
+   48 of 48 frames resolved, 2164 band marks, 4956 followed marks and 19930 moving shares stored by the fused entry
+   colour: 596 values differ on 17 frames from frame 31, the largest by 0.010253906 (21 half-float steps)
+   confidence: none differ
+   lock: 8 values differ on 3 frames from frame 27, the largest by 0.00024414062 (2 half-float steps)
+   mark: none differ
+
+
+[xUnit.net 00:00:03.32]     KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_on_every_frame(preset: Quality) [FAIL]
+[xUnit.net 00:00:03.32]       the entry points stored different state:
+[xUnit.net 00:00:03.32]         colour: none differ
+[xUnit.net 00:00:03.32]         confidence: none differ
+[xUnit.net 00:00:03.32]         lock: 15 values differ on 8 frames from frame 22, the largest by 0.00048828125 (4 half-float steps)
+[xUnit.net 00:00:03.32]         mark: none differ
+[xUnit.net 00:00:03.32]       Stack Trace:
+[xUnit.net 00:00:03.32]         KhaozEngine.Render.Tests/Gpu/TemporalEntryIdentityGpuTests.cs(136,0): at KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Compare(TemporalUpscale preset, Boolean outline)
+[xUnit.net 00:00:03.32]         KhaozEngine.Render.Tests/Gpu/TemporalEntryIdentityGpuTests.cs(47,0): at KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_on_every_frame(TemporalUpscale preset)
+[xUnit.net 00:00:03.32]            at InvokeStub_TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_on_every_frame(Object, Span`1)
+[xUnit.net 00:00:03.32]            at System.Reflection.MethodBaseInvoker.InvokeWithOneArg(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+[xUnit.net 00:00:03.32]       Output:
+[xUnit.net 00:00:03.32]         MetalNative on Apple M2 Max, 320x180 Quality
+[xUnit.net 00:00:03.32]           48 of 48 frames resolved, 1516 band marks, 5006 followed marks and 1372 moving shares stored by the fused entry
+[xUnit.net 00:00:03.32]           colour: none differ
+[xUnit.net 00:00:03.32]           confidence: none differ
+[xUnit.net 00:00:03.32]           lock: 15 values differ on 8 frames from frame 22, the largest by 0.00048828125 (4 half-float steps)
+[xUnit.net 00:00:03.32]           mark: none differ
+[xUnit.net 00:00:03.91]     KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_on_every_frame(preset: Native) [FAIL]
+[xUnit.net 00:00:03.91]       the entry points stored different state:
+[xUnit.net 00:00:03.91]         colour: none differ
+[xUnit.net 00:00:03.91]         confidence: none differ
+[xUnit.net 00:00:03.91]         lock: 34 values differ on 18 frames from frame 17, the largest by 0.00048828125 (2 half-float steps)
+[xUnit.net 00:00:03.91]         mark: none differ
+[xUnit.net 00:00:03.91]       Stack Trace:
+[xUnit.net 00:00:03.91]         KhaozEngine.Render.Tests/Gpu/TemporalEntryIdentityGpuTests.cs(136,0): at KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Compare(TemporalUpscale preset, Boolean outline)
+[xUnit.net 00:00:03.91]         KhaozEngine.Render.Tests/Gpu/TemporalEntryIdentityGpuTests.cs(47,0): at KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_on_every_frame(TemporalUpscale preset)
+[xUnit.net 00:00:03.91]            at InvokeStub_TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_on_every_frame(Object, Span`1)
+[xUnit.net 00:00:03.91]            at System.Reflection.MethodBaseInvoker.InvokeWithOneArg(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+[xUnit.net 00:00:03.91]       Output:
+[xUnit.net 00:00:03.91]         MetalNative on Apple M2 Max, 320x180 Native
+[xUnit.net 00:00:03.91]           48 of 48 frames resolved, 15 band marks, 5073 followed marks and 979 moving shares stored by the fused entry
+[xUnit.net 00:00:03.91]           colour: none differ
+[xUnit.net 00:00:03.91]           confidence: none differ
+[xUnit.net 00:00:03.91]           lock: 34 values differ on 18 frames from frame 17, the largest by 0.00048828125 (2 half-float steps)
+[xUnit.net 00:00:03.91]           mark: none differ
+[xUnit.net 00:00:04.28]     KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_with_the_edge_outline_on [FAIL]
+[xUnit.net 00:00:04.28]       the entry points stored different state:
+[xUnit.net 00:00:04.28]         colour: none differ
+[xUnit.net 00:00:04.28]         confidence: none differ
+[xUnit.net 00:00:04.28]         lock: 15 values differ on 8 frames from frame 22, the largest by 0.00048828125 (4 half-float steps)
+[xUnit.net 00:00:04.28]         mark: none differ
+[xUnit.net 00:00:04.28]       Stack Trace:
+[xUnit.net 00:00:04.28]         KhaozEngine.Render.Tests/Gpu/TemporalEntryIdentityGpuTests.cs(136,0): at KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Compare(TemporalUpscale preset, Boolean outline)
+[xUnit.net 00:00:04.28]         KhaozEngine.Render.Tests/Gpu/TemporalEntryIdentityGpuTests.cs(56,0): at KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_with_the_edge_outline_on()
+[xUnit.net 00:00:04.28]            at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)
+[xUnit.net 00:00:04.28]            at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)
+[xUnit.net 00:00:04.28]            at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+[xUnit.net 00:00:04.28]            at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+[xUnit.net 00:00:04.28]       Output:
+[xUnit.net 00:00:04.28]         MetalNative on Apple M2 Max, 320x180 Quality
+[xUnit.net 00:00:04.28]           48 of 48 frames resolved, 1516 band marks, 5006 followed marks and 1372 moving shares stored by the fused entry
+[xUnit.net 00:00:04.28]           colour: none differ
+[xUnit.net 00:00:04.28]           confidence: none differ
+[xUnit.net 00:00:04.28]           lock: 15 values differ on 8 frames from frame 22, the largest by 0.00048828125 (4 half-float steps)
+[xUnit.net 00:00:04.28]           mark: none differ
+[xUnit.net 00:00:04.29]   Finished:    KhaozEngine.Render.Tests
+  Failed KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_on_every_frame(preset: Quality) [405 ms]
+  Error Message:
+   the entry points stored different state:
+  colour: none differ
+  confidence: none differ
+  lock: 15 values differ on 8 frames from frame 22, the largest by 0.00048828125 (4 half-float steps)
+  mark: none differ
+  Stack Trace:
+     at KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Compare(TemporalUpscale preset, Boolean outline) in KhaozEngine.Render.Tests/Gpu/TemporalEntryIdentityGpuTests.cs:line 136
+   at KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_on_every_frame(TemporalUpscale preset) in KhaozEngine.Render.Tests/Gpu/TemporalEntryIdentityGpuTests.cs:line 47
+   at InvokeStub_TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_on_every_frame(Object, Span`1)
+   at System.Reflection.MethodBaseInvoker.InvokeWithOneArg(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  Standard Output Messages:
+ MetalNative on Apple M2 Max, 320x180 Quality
+   48 of 48 frames resolved, 1516 band marks, 5006 followed marks and 1372 moving shares stored by the fused entry
+   colour: none differ
+   confidence: none differ
+   lock: 15 values differ on 8 frames from frame 22, the largest by 0.00048828125 (4 half-float steps)
+   mark: none differ
+
+
+  Failed KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_on_every_frame(preset: Native) [596 ms]
+  Error Message:
+   the entry points stored different state:
+  colour: none differ
+  confidence: none differ
+  lock: 34 values differ on 18 frames from frame 17, the largest by 0.00048828125 (2 half-float steps)
+  mark: none differ
+  Stack Trace:
+     at KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Compare(TemporalUpscale preset, Boolean outline) in KhaozEngine.Render.Tests/Gpu/TemporalEntryIdentityGpuTests.cs:line 136
+   at KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_on_every_frame(TemporalUpscale preset) in KhaozEngine.Render.Tests/Gpu/TemporalEntryIdentityGpuTests.cs:line 47
+   at InvokeStub_TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_on_every_frame(Object, Span`1)
+   at System.Reflection.MethodBaseInvoker.InvokeWithOneArg(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  Standard Output Messages:
+ MetalNative on Apple M2 Max, 320x180 Native
+   48 of 48 frames resolved, 15 band marks, 5073 followed marks and 979 moving shares stored by the fused entry
+   colour: none differ
+   confidence: none differ
+   lock: 34 values differ on 18 frames from frame 17, the largest by 0.00048828125 (2 half-float steps)
+   mark: none differ
+
+
+  Failed KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_with_the_edge_outline_on [368 ms]
+  Error Message:
+   the entry points stored different state:
+  colour: none differ
+  confidence: none differ
+  lock: 15 values differ on 8 frames from frame 22, the largest by 0.00048828125 (4 half-float steps)
+  mark: none differ
+  Stack Trace:
+     at KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Compare(TemporalUpscale preset, Boolean outline) in KhaozEngine.Render.Tests/Gpu/TemporalEntryIdentityGpuTests.cs:line 136
+   at KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_with_the_edge_outline_on() in KhaozEngine.Render.Tests/Gpu/TemporalEntryIdentityGpuTests.cs:line 56
+   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)
+   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+  Standard Output Messages:
+ MetalNative on Apple M2 Max, 320x180 Quality
+   48 of 48 frames resolved, 1516 band marks, 5006 followed marks and 1372 moving shares stored by the fused entry
+   colour: none differ
+   confidence: none differ
+   lock: 15 values differ on 8 frames from frame 22, the largest by 0.00048828125 (4 half-float steps)
+   mark: none differ
+
+
+
+Test Run Failed.
+Total tests: 4
+     Failed: 4
+ Total time: 4.6063 Seconds
+Results File: controls/original-noop-identity/results.trx
+build-slot: exit=1 waited=0.031s ran=4.928s

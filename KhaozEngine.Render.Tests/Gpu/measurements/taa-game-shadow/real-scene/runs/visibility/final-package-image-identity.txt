@@ -1,0 +1,48 @@
+baseline back15
+taa-native differing pixels over 16 frames 0 max channel diff 0 first differing frame None
+taa-quality differing pixels over 16 frames 0 max channel diff 0 first differing frame None
+fxaa differing pixels over 16 frames 0 max channel diff 0 first differing frame None
+metrics.txt byte-identical: True
+
+baseline day30
+taa-native differing pixels over 16 frames 0 max channel diff 0 first differing frame None
+taa-quality differing pixels over 16 frames 0 max channel diff 0 first differing frame None
+fxaa differing pixels over 16 frames 0 max channel diff 0 first differing frame None
+metrics.txt byte-identical: True
+
+baseline back60
+taa-native differing pixels over 16 frames 0 max channel diff 0 first differing frame None
+taa-quality differing pixels over 16 frames 0 max channel diff 0 first differing frame None
+fxaa differing pixels over 16 frames 0 max channel diff 0 first differing frame None
+metrics.txt byte-identical: True
+
+baseline ground15
+taa-native differing pixels over 16 frames 0 max channel diff 0 first differing frame None
+taa-quality differing pixels over 16 frames 0 max channel diff 0 first differing frame None
+fxaa differing pixels over 16 frames 0 max channel diff 0 first differing frame None
+metrics.txt byte-identical: True
+
+vis-release-0.1 back15
+taa-native differing pixels over 16 frames 0 max channel diff 0 first differing frame None
+taa-quality differing pixels over 16 frames 0 max channel diff 0 first differing frame None
+fxaa differing pixels over 16 frames 0 max channel diff 0 first differing frame None
+metrics.txt byte-identical: True
+
+vis-release-0.1 day30
+taa-native differing pixels over 16 frames 0 max channel diff 0 first differing frame None
+taa-quality differing pixels over 16 frames 0 max channel diff 0 first differing frame None
+fxaa differing pixels over 16 frames 0 max channel diff 0 first differing frame None
+metrics.txt byte-identical: True
+
+vis-release-0.1 back60
+taa-native differing pixels over 16 frames 0 max channel diff 0 first differing frame None
+taa-quality differing pixels over 16 frames 0 max channel diff 0 first differing frame None
+fxaa differing pixels over 16 frames 0 max channel diff 0 first differing frame None
+metrics.txt byte-identical: True
+
+vis-release-0.1 ground15
+taa-native differing pixels over 16 frames 0 max channel diff 0 first differing frame None
+taa-quality differing pixels over 16 frames 0 max channel diff 0 first differing frame None
+fxaa differing pixels over 16 frames 0 max channel diff 0 first differing frame None
+metrics.txt byte-identical: True
+

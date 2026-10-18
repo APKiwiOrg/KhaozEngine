@@ -1,0 +1,74 @@
+{
+  "back15/vis-release-0.1/taa-native": {
+    "band": 39873,
+    "released": 12376,
+    "dots": 624,
+    "released_dots": 376,
+    "baseline_dots": 1742,
+    "released_baseline_dots": 959,
+    "baseline_dots_near_release": 1059,
+    "baseline_dots_released_previous_frame": 973,
+    "baseline_dots_released_last4_screen_frames": 1218,
+    "outside_overlay_different": 0
+  },
+  "back15/vis-release-0.1/taa-quality": {
+    "band": 39873,
+    "released": 15010,
+    "dots": 820,
+    "released_dots": 487,
+    "baseline_dots": 1733,
+    "released_baseline_dots": 914,
+    "baseline_dots_near_release": 1020,
+    "baseline_dots_released_previous_frame": 937,
+    "baseline_dots_released_last4_screen_frames": 1162,
+    "outside_overlay_different": 0
+  },
+  "back15/vis-reset-0.2/taa-native": {
+    "band": 39873,
+    "released": 9134,
+    "dots": 450,
+    "released_dots": 158,
+    "baseline_dots": 1742,
+    "released_baseline_dots": 808,
+    "baseline_dots_near_release": 962,
+    "baseline_dots_released_previous_frame": 802,
+    "baseline_dots_released_last4_screen_frames": 1127,
+    "outside_overlay_different": 0
+  },
+  "back15/vis-reset-0.2/taa-quality": {
+    "band": 39873,
+    "released": 11131,
+    "dots": 331,
+    "released_dots": 142,
+    "baseline_dots": 1733,
+    "released_baseline_dots": 774,
+    "baseline_dots_near_release": 880,
+    "baseline_dots_released_previous_frame": 755,
+    "baseline_dots_released_last4_screen_frames": 1079,
+    "outside_overlay_different": 0
+  },
+  "back15/shadow-bilinear-3x3+vis-release-0.1/taa-native": {
+    "band": 39074,
+    "released": 11690,
+    "dots": 313,
+    "released_dots": 109,
+    "baseline_dots": 851,
+    "released_baseline_dots": 290,
+    "baseline_dots_near_release": 335,
+    "baseline_dots_released_previous_frame": 289,
+    "baseline_dots_released_last4_screen_frames": 404,
+    "outside_overlay_different": 0
+  },
+  "back15/shadow-bilinear-3x3+vis-release-0.1/taa-quality": {
+    "band": 39074,
+    "released": 14406,
+    "dots": 602,
+    "released_dots": 315,
+    "baseline_dots": 1166,
+    "released_baseline_dots": 539,
+    "baseline_dots_near_release": 577,
+    "baseline_dots_released_previous_frame": 526,
+    "baseline_dots_released_last4_screen_frames": 661,
+    "outside_overlay_different": 0
+  }
+}

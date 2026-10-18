@@ -1,0 +1,35 @@
+Test run for KhaozEngine.Render.Tests/bin/Release/net10.0/KhaozEngine.Render.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+KhaozEngine.Render.Tests/bin/Release/net10.0/KhaozEngine.Render.Tests.dll
+[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v2.8.2+699d445a1a (64-bit .NET 10.0.13)
+[xUnit.net 00:00:00.13]   Discovering: KhaozEngine.Render.Tests
+[xUnit.net 00:00:00.78]   Discovered:  KhaozEngine.Render.Tests
+[xUnit.net 00:00:00.79]   Starting:    KhaozEngine.Render.Tests
+[xUnit.net 00:00:00.82]     KhaozEngine.Tests.Render3D.TemporalDiagnosticTokenTests.VisibilityBindingsAcceptCheckoutLineEndings(newline: "\r\n") [FAIL]
+[xUnit.net 00:00:00.82]       System.InvalidOperationException : The shader anchor '    vec4 Params;
+[xUnit.net 00:00:00.82]       };' is missing, so a variant built on it would lose its insertion.
+[xUnit.net 00:00:00.82]       Stack Trace:
+[xUnit.net 00:00:00.82]         KhaozEngine.Render3D/Internal/ShaderText.cs(20,0): at KhaozEngine.Render3D.Internal.ShaderText.After(String source, String anchor, String insert)
+[xUnit.net 00:00:00.82]         KhaozEngine.Render3D/Internal/TemporalVisibilityDiagnostics.cs(33,0): at KhaozEngine.Render3D.Internal.TemporalVisibilityDiagnostics.ResolveFragment(String program)
+[xUnit.net 00:00:00.82]         KhaozEngine.Render.Tests/Render3D/TemporalDiagnosticTokenTests.cs(93,0): at KhaozEngine.Tests.Render3D.TemporalDiagnosticTokenTests.VisibilityBindingsAcceptCheckoutLineEndings(String newline)
+[xUnit.net 00:00:00.82]            at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+[xUnit.net 00:00:00.82]            at System.Reflection.MethodBaseInvoker.InvokeDirectByRefWithFewArgs(Object obj, Span`1 copyOfArgs, BindingFlags invokeAttr)
+[xUnit.net 00:00:00.83]   Finished:    KhaozEngine.Render.Tests
+  Failed KhaozEngine.Tests.Render3D.TemporalDiagnosticTokenTests.VisibilityBindingsAcceptCheckoutLineEndings(newline: "\r\n") [2 ms]
+  Error Message:
+   System.InvalidOperationException : The shader anchor '    vec4 Params;
+};' is missing, so a variant built on it would lose its insertion.
+  Stack Trace:
+     at KhaozEngine.Render3D.Internal.ShaderText.After(String source, String anchor, String insert) in KhaozEngine.Render3D/Internal/ShaderText.cs:line 20
+   at KhaozEngine.Render3D.Internal.TemporalVisibilityDiagnostics.ResolveFragment(String program) in KhaozEngine.Render3D/Internal/TemporalVisibilityDiagnostics.cs:line 33
+   at KhaozEngine.Tests.Render3D.TemporalDiagnosticTokenTests.VisibilityBindingsAcceptCheckoutLineEndings(String newline) in KhaozEngine.Render.Tests/Render3D/TemporalDiagnosticTokenTests.cs:line 93
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+   at System.Reflection.MethodBaseInvoker.InvokeDirectByRefWithFewArgs(Object obj, Span`1 copyOfArgs, BindingFlags invokeAttr)
+  Passed KhaozEngine.Tests.Render3D.TemporalDiagnosticTokenTests.VisibilityBindingsAcceptCheckoutLineEndings(newline: "\n") [< 1 ms]
+
+Test Run Failed.
+Total tests: 2
+     Passed: 1
+     Failed: 1
+ Total time: 1.1626 Seconds
+build-slot: exit=1 waited=0.024s ran=1.831s

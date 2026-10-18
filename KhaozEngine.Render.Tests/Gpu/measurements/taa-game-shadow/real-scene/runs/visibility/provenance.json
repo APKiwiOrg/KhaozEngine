@@ -1,0 +1,23 @@
+{
+  "initial_candidate_capture_source": "e62236e56 working tree before commit",
+  "corrected_main_and_locked_capture_source": "83f63d024",
+  "final_package_source": "a90f4e4e4",
+  "hosted_corrected_selection_source": "b4b03ece4",
+  "initial_hosted_run": {
+    "id": 39131215312,
+    "source": "e62236e561120669f6ca6be4c237c8cb46d50554",
+    "token": "vis-release-0.1"
+  },
+  "corrected_hosted_run": {
+    "status": "authorized, waiting for first run to fully complete",
+    "token": "shadow-bilinear-3x3,vis-release-0.1"
+  },
+  "capture_conditions": [
+    "back15",
+    "day30",
+    "back60",
+    "ground15"
+  ],
+  "start_time": 0.49777777777777776,
+  "note": "Initial higher-threshold main captures are reused only after final-package image identity checks. Main resolve and lit visibility shader calculations are unchanged by the fully lit fallback, CRLF and transparent-output corrections."
+}

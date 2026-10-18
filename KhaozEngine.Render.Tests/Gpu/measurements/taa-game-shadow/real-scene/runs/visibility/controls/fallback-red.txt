@@ -1,0 +1,33 @@
+Test run for KhaozEngine.Render.Tests/bin/Release/net10.0/KhaozEngine.Render.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+KhaozEngine.Render.Tests/bin/Release/net10.0/KhaozEngine.Render.Tests.dll
+[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v2.8.2+699d445a1a (64-bit .NET 10.0.13)
+[xUnit.net 00:00:00.19]   Discovering: KhaozEngine.Render.Tests
+[xUnit.net 00:00:01.09]   Discovered:  KhaozEngine.Render.Tests
+[xUnit.net 00:00:01.10]   Starting:    KhaozEngine.Render.Tests
+[xUnit.net 00:00:02.06]     KhaozEngine.Tests.Gpu.TemporalResolveRendererGpuTests.A_still_pixel_blends_its_history_by_its_accumulated_weight [FAIL]
+[xUnit.net 00:00:02.06]       Assert.Equal() Failure: Values are not within tolerance 0.001
+[xUnit.net 00:00:02.06]       Expected: 0.20744240283966064
+[xUnit.net 00:00:02.06]       Actual:   0.1998291015625
+[xUnit.net 00:00:02.06]       Stack Trace:
+[xUnit.net 00:00:02.06]         KhaozEngine.Render.Tests/Gpu/TemporalResolveRendererGpuTests.cs(228,0): at KhaozEngine.Tests.Gpu.TemporalResolveRendererGpuTests.AssertInteriorBlend(Rig rig, Func`2 history, Single accumulated)
+[xUnit.net 00:00:02.06]         KhaozEngine.Render.Tests/Gpu/TemporalResolveRendererGpuTests.cs(47,0): at KhaozEngine.Tests.Gpu.TemporalResolveRendererGpuTests.A_still_pixel_blends_its_history_by_its_accumulated_weight()
+[xUnit.net 00:00:02.06]            at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+[xUnit.net 00:00:02.06]            at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+[xUnit.net 00:00:02.07]   Finished:    KhaozEngine.Render.Tests
+  Failed KhaozEngine.Tests.Gpu.TemporalResolveRendererGpuTests.A_still_pixel_blends_its_history_by_its_accumulated_weight [925 ms]
+  Error Message:
+   Assert.Equal() Failure: Values are not within tolerance 0.001
+Expected: 0.20744240283966064
+Actual:   0.1998291015625
+  Stack Trace:
+     at KhaozEngine.Tests.Gpu.TemporalResolveRendererGpuTests.AssertInteriorBlend(Rig rig, Func`2 history, Single accumulated) in KhaozEngine.Render.Tests/Gpu/TemporalResolveRendererGpuTests.cs:line 228
+   at KhaozEngine.Tests.Gpu.TemporalResolveRendererGpuTests.A_still_pixel_blends_its_history_by_its_accumulated_weight() in KhaozEngine.Render.Tests/Gpu/TemporalResolveRendererGpuTests.cs:line 47
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+
+Test Run Failed.
+Total tests: 1
+     Failed: 1
+ Total time: 2.6525 Seconds
+build-slot: exit=1 waited=0.025s ran=3.862s

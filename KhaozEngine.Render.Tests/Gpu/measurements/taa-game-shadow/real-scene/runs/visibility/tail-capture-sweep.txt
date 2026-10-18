@@ -1,0 +1,12 @@
+START back15-vis-release-0.1+show-vis-release
+END back15-vis-release-0.1+show-vis-release exit 0
+START back15-vis-reset-0.2+show-vis-release
+END back15-vis-reset-0.2+show-vis-release exit 0
+START back15-shadow-bilinear-3x3+vis-release-0.1+show-vis-release
+END back15-shadow-bilinear-3x3+vis-release-0.1+show-vis-release exit 0
+START back15-vis-release-0.1-forced-fused
+END back15-vis-release-0.1-forced-fused exit 0
+START back15-vis-release-0.1-forced-split
+END back15-vis-release-0.1-forced-split exit 0
+START back15-vis-release-0.1+show-locked-final
+END back15-vis-release-0.1+show-locked-final exit 0

@@ -1,0 +1,203 @@
+Test run for KhaozEngine.Render.Tests/bin/Release/net10.0/KhaozEngine.Render.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v2.8.2+699d445a1a (64-bit .NET 10.0.13)
+[xUnit.net 00:00:00.12]   Discovering: KhaozEngine.Render.Tests
+[xUnit.net 00:00:00.74]   Discovered:  KhaozEngine.Render.Tests
+[xUnit.net 00:00:00.75]   Starting:    KhaozEngine.Render.Tests
+[xUnit.net 00:00:00.79]     KhaozEngine.Tests.Render3D.TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(stem: "OverlayUnlit", motion: False) [FAIL]
+[xUnit.net 00:00:00.79]       Assert.Equal() Failure: Collections differ
+[xUnit.net 00:00:00.79]                                              ↓ (pos 3)
+[xUnit.net 00:00:00.79]       Expected: RangeIterator<int> [0, 1, 2, 3]
+[xUnit.net 00:00:00.79]       Actual:   int[]              [0, 1, 2]
+[xUnit.net 00:00:00.79]       Stack Trace:
+[xUnit.net 00:00:00.79]         KhaozEngine.Render.Tests/Render3D/TemporalVisibilityInterfaceTests.cs(33,0): at KhaozEngine.Tests.Render3D.TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(String stem, Boolean motion)
+[xUnit.net 00:00:00.79]            at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+[xUnit.net 00:00:00.79]            at System.Reflection.MethodBaseInvoker.InvokeDirectByRefWithFewArgs(Object obj, Span`1 copyOfArgs, BindingFlags invokeAttr)
+[xUnit.net 00:00:00.79]     KhaozEngine.Tests.Render3D.TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(stem: "Silhouette", motion: True) [FAIL]
+[xUnit.net 00:00:00.79]       Assert.Equal() Failure: Collections differ
+[xUnit.net 00:00:00.79]                                                 ↓ (pos 4)
+[xUnit.net 00:00:00.79]       Expected: RangeIterator<int> [0, 1, 2, 3, 4]
+[xUnit.net 00:00:00.79]       Actual:   int[]              [0, 1, 2, 3]
+[xUnit.net 00:00:00.79]       Stack Trace:
+[xUnit.net 00:00:00.79]         KhaozEngine.Render.Tests/Render3D/TemporalVisibilityInterfaceTests.cs(33,0): at KhaozEngine.Tests.Render3D.TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(String stem, Boolean motion)
+[xUnit.net 00:00:00.79]            at InvokeStub_TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(Object, Span`1)
+[xUnit.net 00:00:00.80]            at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+[xUnit.net 00:00:00.80]     KhaozEngine.Tests.Render3D.TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(stem: "TexturedBillboard", motion: False) [FAIL]
+[xUnit.net 00:00:00.80]       Assert.Equal() Failure: Collections differ
+[xUnit.net 00:00:00.80]                                              ↓ (pos 3)
+[xUnit.net 00:00:00.80]       Expected: RangeIterator<int> [0, 1, 2, 3]
+[xUnit.net 00:00:00.80]       Actual:   int[]              [0, 1, 2]
+[xUnit.net 00:00:00.80]       Stack Trace:
+[xUnit.net 00:00:00.80]         KhaozEngine.Render.Tests/Render3D/TemporalVisibilityInterfaceTests.cs(33,0): at KhaozEngine.Tests.Render3D.TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(String stem, Boolean motion)
+[xUnit.net 00:00:00.80]            at InvokeStub_TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(Object, Span`1)
+[xUnit.net 00:00:00.80]            at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+[xUnit.net 00:00:00.80]     KhaozEngine.Tests.Render3D.TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(stem: "Trail", motion: True) [FAIL]
+[xUnit.net 00:00:00.80]       Assert.Equal() Failure: Collections differ
+[xUnit.net 00:00:00.80]                                                 ↓ (pos 4)
+[xUnit.net 00:00:00.80]       Expected: RangeIterator<int> [0, 1, 2, 3, 4]
+[xUnit.net 00:00:00.80]       Actual:   int[]              [0, 1, 2, 3]
+[xUnit.net 00:00:00.80]       Stack Trace:
+[xUnit.net 00:00:00.80]         KhaozEngine.Render.Tests/Render3D/TemporalVisibilityInterfaceTests.cs(33,0): at KhaozEngine.Tests.Render3D.TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(String stem, Boolean motion)
+[xUnit.net 00:00:00.80]            at InvokeStub_TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(Object, Span`1)
+[xUnit.net 00:00:00.80]            at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+[xUnit.net 00:00:00.80]     KhaozEngine.Tests.Render3D.TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(stem: "Trail", motion: False) [FAIL]
+[xUnit.net 00:00:00.80]       Assert.Equal() Failure: Collections differ
+[xUnit.net 00:00:00.80]                                              ↓ (pos 3)
+[xUnit.net 00:00:00.80]       Expected: RangeIterator<int> [0, 1, 2, 3]
+[xUnit.net 00:00:00.80]       Actual:   int[]              [0, 1, 2]
+[xUnit.net 00:00:00.80]       Stack Trace:
+[xUnit.net 00:00:00.80]         KhaozEngine.Render.Tests/Render3D/TemporalVisibilityInterfaceTests.cs(33,0): at KhaozEngine.Tests.Render3D.TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(String stem, Boolean motion)
+[xUnit.net 00:00:00.80]            at InvokeStub_TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(Object, Span`1)
+[xUnit.net 00:00:00.80]            at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+[xUnit.net 00:00:00.80]     KhaozEngine.Tests.Render3D.TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(stem: "OverlayUnlit", motion: True) [FAIL]
+[xUnit.net 00:00:00.80]       Assert.Equal() Failure: Collections differ
+[xUnit.net 00:00:00.80]                                                 ↓ (pos 4)
+[xUnit.net 00:00:00.80]       Expected: RangeIterator<int> [0, 1, 2, 3, 4]
+[xUnit.net 00:00:00.80]       Actual:   int[]              [0, 1, 2, 3]
+[xUnit.net 00:00:00.80]       Stack Trace:
+[xUnit.net 00:00:00.80]         KhaozEngine.Render.Tests/Render3D/TemporalVisibilityInterfaceTests.cs(33,0): at KhaozEngine.Tests.Render3D.TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(String stem, Boolean motion)
+[xUnit.net 00:00:00.80]            at InvokeStub_TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(Object, Span`1)
+[xUnit.net 00:00:00.80]            at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+[xUnit.net 00:00:00.80]     KhaozEngine.Tests.Render3D.TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(stem: "Silhouette", motion: False) [FAIL]
+[xUnit.net 00:00:00.80]       Assert.Equal() Failure: Collections differ
+[xUnit.net 00:00:00.80]                                              ↓ (pos 3)
+[xUnit.net 00:00:00.80]       Expected: RangeIterator<int> [0, 1, 2, 3]
+[xUnit.net 00:00:00.80]       Actual:   int[]              [0, 1, 2]
+[xUnit.net 00:00:00.80]       Stack Trace:
+[xUnit.net 00:00:00.80]         KhaozEngine.Render.Tests/Render3D/TemporalVisibilityInterfaceTests.cs(33,0): at KhaozEngine.Tests.Render3D.TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(String stem, Boolean motion)
+[xUnit.net 00:00:00.80]            at InvokeStub_TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(Object, Span`1)
+[xUnit.net 00:00:00.80]            at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+[xUnit.net 00:00:00.80]     KhaozEngine.Tests.Render3D.TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(stem: "TexturedBillboard", motion: True) [FAIL]
+[xUnit.net 00:00:00.80]       Assert.Equal() Failure: Collections differ
+[xUnit.net 00:00:00.80]                                                 ↓ (pos 4)
+[xUnit.net 00:00:00.80]       Expected: RangeIterator<int> [0, 1, 2, 3, 4]
+[xUnit.net 00:00:00.80]       Actual:   int[]              [0, 1, 2, 3]
+[xUnit.net 00:00:00.80]       Stack Trace:
+[xUnit.net 00:00:00.80]         KhaozEngine.Render.Tests/Render3D/TemporalVisibilityInterfaceTests.cs(33,0): at KhaozEngine.Tests.Render3D.TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(String stem, Boolean motion)
+[xUnit.net 00:00:00.80]            at InvokeStub_TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(Object, Span`1)
+[xUnit.net 00:00:00.80]            at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+[xUnit.net 00:00:00.80]     KhaozEngine.Tests.Render3D.TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(stem: "Beam", motion: False) [FAIL]
+[xUnit.net 00:00:00.80]       Assert.Equal() Failure: Collections differ
+[xUnit.net 00:00:00.80]                                              ↓ (pos 3)
+[xUnit.net 00:00:00.80]       Expected: RangeIterator<int> [0, 1, 2, 3]
+[xUnit.net 00:00:00.80]       Actual:   int[]              [0, 1, 2]
+[xUnit.net 00:00:00.80]       Stack Trace:
+[xUnit.net 00:00:00.80]         KhaozEngine.Render.Tests/Render3D/TemporalVisibilityInterfaceTests.cs(33,0): at KhaozEngine.Tests.Render3D.TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(String stem, Boolean motion)
+[xUnit.net 00:00:00.80]            at InvokeStub_TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(Object, Span`1)
+[xUnit.net 00:00:00.80]            at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  Failed KhaozEngine.Tests.Render3D.TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(stem: "OverlayUnlit", motion: False) [10 ms]
+  Error Message:
+   Assert.Equal() Failure: Collections differ
+                                       ↓ (pos 3)
+Expected: RangeIterator<int> [0, 1, 2, 3]
+Actual:   int[]              [0, 1, 2]
+  Stack Trace:
+     at KhaozEngine.Tests.Render3D.TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(String stem, Boolean motion) in KhaozEngine.Render.Tests/Render3D/TemporalVisibilityInterfaceTests.cs:line 33
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+   at System.Reflection.MethodBaseInvoker.InvokeDirectByRefWithFewArgs(Object obj, Span`1 copyOfArgs, BindingFlags invokeAttr)
+  Failed KhaozEngine.Tests.Render3D.TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(stem: "Silhouette", motion: True) [< 1 ms]
+  Error Message:
+   Assert.Equal() Failure: Collections differ
+                                          ↓ (pos 4)
+Expected: RangeIterator<int> [0, 1, 2, 3, 4]
+Actual:   int[]              [0, 1, 2, 3]
+  Stack Trace:
+     at KhaozEngine.Tests.Render3D.TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(String stem, Boolean motion) in KhaozEngine.Render.Tests/Render3D/TemporalVisibilityInterfaceTests.cs:line 33
+   at InvokeStub_TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(Object, Span`1)
+   at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  Failed KhaozEngine.Tests.Render3D.TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(stem: "TexturedBillboard", motion: False) [< 1 ms]
+  Error Message:
+   Assert.Equal() Failure: Collections differ
+                                       ↓ (pos 3)
+Expected: RangeIterator<int> [0, 1, 2, 3]
+Actual:   int[]              [0, 1, 2]
+  Stack Trace:
+     at KhaozEngine.Tests.Render3D.TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(String stem, Boolean motion) in KhaozEngine.Render.Tests/Render3D/TemporalVisibilityInterfaceTests.cs:line 33
+   at InvokeStub_TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(Object, Span`1)
+   at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  Failed KhaozEngine.Tests.Render3D.TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(stem: "Trail", motion: True) [< 1 ms]
+  Error Message:
+   Assert.Equal() Failure: Collections differ
+                                          ↓ (pos 4)
+Expected: RangeIterator<int> [0, 1, 2, 3, 4]
+Actual:   int[]              [0, 1, 2, 3]
+  Stack Trace:
+     at KhaozEngine.Tests.Render3D.TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(String stem, Boolean motion) in KhaozEngine.Render.Tests/Render3D/TemporalVisibilityInterfaceTests.cs:line 33
+   at InvokeStub_TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(Object, Span`1)
+   at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  Failed KhaozEngine.Tests.Render3D.TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(stem: "Trail", motion: False) [< 1 ms]
+  Error Message:
+   Assert.Equal() Failure: Collections differ
+                                       ↓ (pos 3)
+Expected: RangeIterator<int> [0, 1, 2, 3]
+Actual:   int[]              [0, 1, 2]
+  Stack Trace:
+     at KhaozEngine.Tests.Render3D.TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(String stem, Boolean motion) in KhaozEngine.Render.Tests/Render3D/TemporalVisibilityInterfaceTests.cs:line 33
+   at InvokeStub_TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(Object, Span`1)
+   at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  Failed KhaozEngine.Tests.Render3D.TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(stem: "OverlayUnlit", motion: True) [< 1 ms]
+  Error Message:
+   Assert.Equal() Failure: Collections differ
+                                          ↓ (pos 4)
+Expected: RangeIterator<int> [0, 1, 2, 3, 4]
+Actual:   int[]              [0, 1, 2, 3]
+  Stack Trace:
+     at KhaozEngine.Tests.Render3D.TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(String stem, Boolean motion) in KhaozEngine.Render.Tests/Render3D/TemporalVisibilityInterfaceTests.cs:line 33
+   at InvokeStub_TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(Object, Span`1)
+   at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  Failed KhaozEngine.Tests.Render3D.TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(stem: "Silhouette", motion: False) [< 1 ms]
+  Error Message:
+   Assert.Equal() Failure: Collections differ
+                                       ↓ (pos 3)
+Expected: RangeIterator<int> [0, 1, 2, 3]
+Actual:   int[]              [0, 1, 2]
+  Stack Trace:
+     at KhaozEngine.Tests.Render3D.TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(String stem, Boolean motion) in KhaozEngine.Render.Tests/Render3D/TemporalVisibilityInterfaceTests.cs:line 33
+   at InvokeStub_TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(Object, Span`1)
+   at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  Failed KhaozEngine.Tests.Render3D.TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(stem: "TexturedBillboard", motion: True) [< 1 ms]
+  Error Message:
+   Assert.Equal() Failure: Collections differ
+                                          ↓ (pos 4)
+Expected: RangeIterator<int> [0, 1, 2, 3, 4]
+Actual:   int[]              [0, 1, 2, 3]
+  Stack Trace:
+     at KhaozEngine.Tests.Render3D.TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(String stem, Boolean motion) in KhaozEngine.Render.Tests/Render3D/TemporalVisibilityInterfaceTests.cs:line 33
+   at InvokeStub_TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(Object, Span`1)
+   at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  Failed KhaozEngine.Tests.Render3D.TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(stem: "Beam", motion: False) [< 1 ms]
+  Error Message:
+   Assert.Equal() Failure: Collections differ
+                                       ↓ (pos 3)
+Expected: RangeIterator<int> [0, 1, 2, 3]
+Actual:   int[]              [0, 1, 2]
+  Stack Trace:
+     at KhaozEngine.Tests.Render3D.TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(String stem, Boolean motion) in KhaozEngine.Render.Tests/Render3D/TemporalVisibilityInterfaceTests.cs:line 33
+   at InvokeStub_TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(Object, Span`1)
+   at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+[xUnit.net 00:00:00.81]     KhaozEngine.Tests.Render3D.TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(stem: "Beam", motion: True) [FAIL]
+[xUnit.net 00:00:00.81]       Assert.Equal() Failure: Collections differ
+[xUnit.net 00:00:00.81]                                                 ↓ (pos 4)
+[xUnit.net 00:00:00.81]       Expected: RangeIterator<int> [0, 1, 2, 3, 4]
+[xUnit.net 00:00:00.81]       Actual:   int[]              [0, 1, 2, 3]
+[xUnit.net 00:00:00.81]       Stack Trace:
+[xUnit.net 00:00:00.81]         KhaozEngine.Render.Tests/Render3D/TemporalVisibilityInterfaceTests.cs(33,0): at KhaozEngine.Tests.Render3D.TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(String stem, Boolean motion)
+[xUnit.net 00:00:00.81]            at InvokeStub_TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(Object, Span`1)
+[xUnit.net 00:00:00.81]            at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+[xUnit.net 00:00:00.81]   Finished:    KhaozEngine.Render.Tests
+  Failed KhaozEngine.Tests.Render3D.TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(stem: "Beam", motion: True) [< 1 ms]
+  Error Message:
+   Assert.Equal() Failure: Collections differ
+                                          ↓ (pos 4)
+Expected: RangeIterator<int> [0, 1, 2, 3, 4]
+Actual:   int[]              [0, 1, 2, 3]
+  Stack Trace:
+     at KhaozEngine.Tests.Render3D.TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(String stem, Boolean motion) in KhaozEngine.Render.Tests/Render3D/TemporalVisibilityInterfaceTests.cs:line 33
+   at InvokeStub_TemporalVisibilityInterfaceTests.Preserving_fragments_declare_every_attached_model_target(Object, Span`1)
+   at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+
+Test Run Failed.
+Total tests: 10
+     Failed: 10
+ Total time: 1.1475 Seconds
+build-slot: exit=1 waited=0.024s ran=1.829s

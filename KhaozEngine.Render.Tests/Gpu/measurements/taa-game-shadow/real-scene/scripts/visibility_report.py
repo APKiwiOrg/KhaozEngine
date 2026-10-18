@@ -22,9 +22,13 @@ def dots(run, mode, i):
                                 for y in range(3) for x in range(3)]), axis=0)
     return (frame-median > .05) & (frame-fxaa > .05)
 
+arms = sys.argv[3:]
+conditions = ("back15", "day30", "back60", "ground15")
+if arms and arms[0] == "--back15-only":
+    conditions, arms = ("back15",), arms[1:]
 rows = {}
-for condition in ("back15", "day30", "back60", "ground15"):
-    for arm in sys.argv[3:]:
+for condition in conditions:
+    for arm in arms:
         run = root/(condition+"-"+arm)
         overlay = root/(condition+"-"+arm+"+show-vis-release")
         source = "shadow-bilinear-3x3" if arm.startswith("shadow-bilinear-3x3+") else "baseline"
@@ -32,7 +36,9 @@ for condition in ("back15", "day30", "back60", "ground15"):
         for mode in ("taa-native", "taa-quality"):
             total = dict(band=0, released=0, dots=0, released_dots=0,
                          baseline_dots=0, released_baseline_dots=0,
-                         baseline_dots_near_release=0, outside_overlay_different=0)
+                         baseline_dots_near_release=0, baseline_dots_released_previous_frame=0,
+                         baseline_dots_released_last4_screen_frames=0, outside_overlay_different=0)
+            recent = []
             for i in range(16):
                 image, marked = rgb(run/mode/f"crop-{i:03d}.png"), rgb(overlay/mode/f"crop-{i:03d}.png")
                 region = rgb(run/f"regions-{i:03d}.png")
@@ -49,6 +55,11 @@ for condition in ("back15", "day30", "back60", "ground15"):
                 total["baseline_dots"] += int((mask & b).sum())
                 total["released_baseline_dots"] += int((mask & b & release).sum())
                 total["baseline_dots_near_release"] += int((mask & b & near).sum())
+                if recent:
+                    total["baseline_dots_released_previous_frame"] += int((mask & b & recent[-1]).sum())
+                recent.append(release)
+                last4 = np.logical_or.reduce(recent[-4:])
+                total["baseline_dots_released_last4_screen_frames"] += int((mask & b & last4).sum())
                 total["outside_overlay_different"] += int((np.any(image != marked,axis=2) & ~release).sum())
             rows[condition+"/"+arm+"/"+mode] = total
             print(condition,arm,mode,total,flush=True)

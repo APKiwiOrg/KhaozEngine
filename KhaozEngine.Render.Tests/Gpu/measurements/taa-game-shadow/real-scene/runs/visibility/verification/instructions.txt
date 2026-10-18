@@ -1,0 +1,1 @@
+check-agent-instructions: 7772 / 16384 bytes

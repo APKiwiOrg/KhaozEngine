@@ -1,0 +1,2 @@
+KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.The_separable_Lanczos_kernel_takes_twelve_evaluations_per_pixel [1 ms]
+KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.The_thin_feature_lock_decays_the_same_at_every_preset_follows_its_history_and_releases_at_moving_edges [2 ms]

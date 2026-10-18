@@ -1,0 +1,62 @@
+Test run for KhaozEngine.Render.Tests/bin/Release/net10.0/KhaozEngine.Render.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+KhaozEngine.Render.Tests/bin/Release/net10.0/KhaozEngine.Render.Tests.dll
+[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v2.8.2+699d445a1a (64-bit .NET 10.0.13)
+[xUnit.net 00:00:00.12]   Discovering: KhaozEngine.Render.Tests
+[xUnit.net 00:00:00.83]   Discovered:  KhaozEngine.Render.Tests
+[xUnit.net 00:00:00.84]   Starting:    KhaozEngine.Render.Tests
+  Passed KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_on_every_frame(preset: Performance) [861 ms]
+  Standard Output Messages:
+ MetalNative on Apple M2 Max, 320x180 Performance
+   48 of 48 frames resolved, 2164 band marks, 4956 followed marks and 19930 moving shares stored by the fused entry
+   colour: none differ
+   confidence: none differ
+   lock: none differ
+   mark: none differ
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_on_every_frame(preset: Quality) [358 ms]
+  Standard Output Messages:
+ MetalNative on Apple M2 Max, 320x180 Quality
+   48 of 48 frames resolved, 1516 band marks, 5006 followed marks and 1372 moving shares stored by the fused entry
+   colour: none differ
+   confidence: none differ
+   lock: none differ
+   mark: none differ
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_on_every_frame(preset: Native) [482 ms]
+  Standard Output Messages:
+ MetalNative on Apple M2 Max, 320x180 Native
+   48 of 48 frames resolved, 15 band marks, 5073 followed marks and 979 moving shares stored by the fused entry
+   colour: none differ
+   confidence: none differ
+   lock: none differ
+   mark: none differ
+
+
+[xUnit.net 00:00:03.24]   Finished:    KhaozEngine.Render.Tests
+  Passed KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_with_the_edge_outline_on [669 ms]
+  Standard Output Messages:
+ MetalNative on Apple M2 Max, 320x180 Quality
+   48 of 48 frames resolved, 1516 band marks, 5006 followed marks and 1372 moving shares stored by the fused entry
+   colour: none differ
+   confidence: none differ
+   lock: none differ
+   mark: none differ
+ MetalNative on Apple M2 Max, 320x180 Quality, the edge outline on
+   48 of 48 frames resolved, 1516 band marks, 5006 followed marks and 1740 moving shares stored by the fused entry
+   colour: none differ
+   confidence: none differ
+   lock: none differ
+   mark: none differ
+   outline-coloured history pixels on the last frame: 1942 with the outline, 0 without
+
+
+
+Test Run Successful.
+Total tests: 4
+     Passed: 4
+ Total time: 3.5744 Seconds
+Results File: controls/unset-identity/results.trx
+build-slot: exit=0 waited=0.020s ran=4.237s

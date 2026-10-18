@@ -1,0 +1,46 @@
+{
+  "counts": {
+    "total": "4",
+    "executed": "4",
+    "passed": "4",
+    "failed": "0",
+    "error": "0",
+    "timeout": "0",
+    "aborted": "0",
+    "inconclusive": "0",
+    "passedButRunAborted": "0",
+    "notRunnable": "0",
+    "notExecuted": "0",
+    "disconnected": "0",
+    "warning": "0",
+    "completed": "0",
+    "inProgress": "0",
+    "pending": "0"
+  },
+  "tests": [
+    {
+      "name": "KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_with_the_edge_outline_on",
+      "class": "KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests",
+      "outcome": "Passed",
+      "failure": ""
+    },
+    {
+      "name": "KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_on_every_frame(preset: Quality)",
+      "class": "KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests",
+      "outcome": "Passed",
+      "failure": ""
+    },
+    {
+      "name": "KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_on_every_frame(preset: Performance)",
+      "class": "KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests",
+      "outcome": "Passed",
+      "failure": ""
+    },
+    {
+      "name": "KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_on_every_frame(preset: Native)",
+      "class": "KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests",
+      "outcome": "Passed",
+      "failure": ""
+    }
+  ]
+}

@@ -1499,7 +1499,7 @@ coverage fallback, strength and cascade blend are therefore the ones used by the
 sampled again. A disabled shadow writes 1, and the background clears to 1.
 
 The signal is an extra R32Float attachment at internal resolution, at location 3 without motion and location 4
-with motion. Transparent model writers preserve it, and later colour-only passes cannot overwrite it. The
+with motion. Transparent model writers explicitly emit zero into that slot with the existing zero/one destination-preserving blend. Their motion variants shift the slot to location 4. Later colour-only passes cannot overwrite it. The
 MSAA variant attaches and resolves an extra multisampled signal too. No lit path required a fallback pass.
 R32Float uses a format already supported by the GPU seam, which has no single-channel R16Float member.
 
@@ -1585,3 +1585,355 @@ build-slot --label vis-test-build -- dotnet build KhaozEngine.Render.Tests/Khaoz
 python3 KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/real-scene/scripts/run_shadow_filter_guards.py \
   "$GUARD_ROOT" vis-release-0.1 vis-reset-0.2 shadow-bilinear-3x3,vis-release-0.1
 ~~~
+
+
+### Full local guard reading
+
+Every candidate runs the complete temporal correctness selection plus shadow and golden tests, one Metal process
+per token with `KE_GPU_TESTS=1`. The selection covers 48 temporal correctness classes and 1360 tests, zero skipped.
+The two `Temporal*CostPerfGpuTests` classes are repeated timing benchmarks and are excluded under the no-load rule.
+No assertion or acceptance bound is relaxed. Failure messages and every measured bound are retained in
+[local-failures.md](runs/visibility/local-failures.md), with complete outcomes in
+[local-guard-results.json](runs/visibility/local-guard-results.json).
+
+| Arm | Passed | Failed | Interpretation |
+| --- | ---: | ---: | --- |
+| `noop` | 1356 | 4 | Original archive entry-identity failures only |
+| MRT, release disabled (`show-vis-release` alone) | 1355 | 5 | Same four, plus the expected debug-pass-built assertion under an explicitly selected overlay |
+| `vis-release-0.1` | 1354 | 6 | Same four, moving-shade lag and moving-rim acceptance failures |
+| `vis-release-0.2` | 1354 | 6 | Same four, moving-shade lag and moving-rim acceptance failures |
+| `vis-release-0.3` | 1355 | 5 | Same four and moving-rim acceptance failure |
+| `vis-reset-0.2` | 1353 | 7 | Same four, still-shadow, moving-shade lag and moving-rim acceptance failures |
+| `shadow-bilinear-3x3,vis-release-0.1` | 1354 | 6 | Same four, fast-tail ratios and moving-rim acceptance failures, plus expected bilinear pinned-reference movement inside the rim fact |
+
+The four entry-identity failures are not introduced by this signal. An isolated test-output copy loaded the
+original a787 archive Render3D DLL from the probe's 471b package. Its SHA-256 is
+`d386a38992517447d58256a0055dd8edf64a8989d6b5aaf2ca83599dfd338b60`.
+With `noop`, it produces exactly the same four failure messages, differing-value counts and maxima as the new
+binary. Unset passes all four facts. Native and Quality have identical colour in that fixture but stored locks
+differ by up to 0.00048828125. Performance also differs in colour by 0.010253906.
+See the [original control](runs/visibility/controls/original-noop-identity.json),
+[new noop control](runs/visibility/controls/noop-identity.json), and
+[unset control](runs/visibility/controls/unset-identity.json). The diagnostic archive therefore cannot claim strict
+state identity for either entry point. This pre-existing diagnostic compilation issue was recorded, not repaired.
+
+Both the `noop` and disabled-release MRT controls pass every shadow, texture and thin-geometry guard. The MRT
+control's additional failure expects the debug pass not to exist with `DebugView.None`, while the explicit overlay
+correctly builds it. That is a control-only structural mismatch, not a measured allocation failure. These controls
+separate the candidate shadow regressions from the new attachment and visibility-history plumbing.
+
+The static unshadowed detail and stable-peak values stay at the archive's reference values. The visibility rule
+still changes the static-light camera-pan case and the moving textured rim. Inference from those controls: a raw
+jittered visibility sample is not invariant under resampling. Bilinear history, neighbouring geometry and the
+3x3 maximum can report a visibility change even when lighting of the corresponding texture did not change.
+The footprint uses the resolved surface's motion plus each texel offset, without separate per-neighbour motion
+or depth qualification. This round does not isolate those mechanisms individually.
+
+The reset arm has the lowest back15 grain but makes slow-condition character change about twice its own FXAA.
+The release-only 0.1 arm is the stronger overall grain and stability choice. Increasing the threshold to 0.3 removes
+the lag fact's misses, but its Quality moving-rim temporal error is still 0.009746 against 0.00886655.
+The full guards do not accept any arm as a shipping fix.
+
+The three initial plumbing checks also have executable regressions. The token and float-mask contract suite
+passes 30 facts including LF and CRLF sources. The transparent-interface suite first fails all ten base and
+motion cases, then passes after every preserving fragment declares the extra output. The combined suite is
+40 of 40 with a visibility token. The fully lit synthetic fallback has a separate red/green proof using the
+existing seeded-history blend fact. These changes do not loosen a visual acceptance bound.
+
+The extra transparent target uses the existing zero/one blend, since the GPU seam has no per-target write mask.
+Its dummy scalar output is zero and the opaque visibility survives. Any blend traffic for covered transparent
+fragments is backend dependent and is not included in the opaque-sample bandwidth estimate above.
+
+
+### Visibility real-scene results
+
+The tables include each candidate beside point-PCF baseline, bilinear-only and each arm's own FXAA.
+Both character and ground regions are reported, with the locked share of that region rather than reusing the
+character share on ground rows. All machine-readable values and band counts are in
+[summary.json](runs/visibility/summary.json). The disabled-release MRT control has Native/Quality grain
+0.014280/0.014124 at back15, the archive noop's values, and 1739/1733 dots. Its field and history alone do not
+produce the reduction.
+
+Numbers are grain mean / p95 / change mean / dots / locked percent. FXAA omits locked percent.
+
+### vis-release-0.1
+
+| Condition | Arm | Region | Native | Quality | Own FXAA |
+| --- | --- | --- | ---: | ---: | ---: |
+| back15 | baseline | character | 0.014287 / 0.07499 / 0.01795 / 1742 / 65.33 | 0.014156 / 0.07334 / 0.01757 / 1733 / 72.68 | 0.002961 / 0.01649 / 0.01911 / 0 |
+| back15 | baseline | ground | 0.006708 / 0.02635 / 0.01249 / 485 / 14.16 | 0.007330 / 0.02830 / 0.01235 / 1881 / 24.96 | 0.002130 / 0.00869 / 0.01311 / 0 |
+| back15 | shadow-bilinear-3x3 | character | 0.008027 / 0.03893 / 0.01764 / 851 / 55.19 | 0.011053 / 0.05435 / 0.01751 / 1166 / 65.92 | 0.002607 / 0.01540 / 0.01840 / 0 |
+| back15 | shadow-bilinear-3x3 | ground | 0.005312 / 0.02074 / 0.01236 / 108 / 9.70 | 0.006370 / 0.02463 / 0.01226 / 1034 / 19.11 | 0.001655 / 0.00756 / 0.01310 / 0 |
+| back15 | vis-release-0.1 | character | 0.007271 / 0.04113 / 0.01878 / 624 / 30.67 | 0.008822 / 0.04981 / 0.01824 / 820 / 31.17 | 0.002961 / 0.01649 / 0.01911 / 0 |
+| back15 | vis-release-0.1 | ground | 0.006320 / 0.02435 / 0.01251 / 123 / 6.32 | 0.006654 / 0.02635 / 0.01243 / 1020 / 11.23 | 0.002130 / 0.00869 / 0.01311 / 0 |
+| day30 | baseline | character | 0.008413 / 0.04997 / 0.00371 / 1097 / 66.05 | 0.009148 / 0.05207 / 0.00366 / 1117 / 72.29 | 0.002976 / 0.01624 / 0.00402 / 0 |
+| day30 | baseline | ground | 0.005930 / 0.02326 / 0.00234 / 310 / 14.85 | 0.006355 / 0.02524 / 0.00238 / 906 / 26.58 | 0.002071 / 0.00868 / 0.00202 / 0 |
+| day30 | shadow-bilinear-3x3 | character | 0.005354 / 0.02882 / 0.00341 / 506 / 54.73 | 0.007044 / 0.03833 / 0.00318 / 784 / 64.07 | 0.002500 / 0.01430 / 0.00369 / 0 |
+| day30 | shadow-bilinear-3x3 | ground | 0.004652 / 0.01849 / 0.00215 / 16 / 10.01 | 0.005288 / 0.02098 / 0.00209 / 275 / 19.19 | 0.001602 / 0.00729 / 0.00200 / 0 |
+| day30 | vis-release-0.1 | character | 0.005762 / 0.03191 / 0.00374 / 467 / 30.81 | 0.006544 / 0.03583 / 0.00352 / 501 / 30.50 | 0.002976 / 0.01624 / 0.00402 / 0 |
+| day30 | vis-release-0.1 | ground | 0.005384 / 0.02043 / 0.00230 / 25 / 7.56 | 0.005395 / 0.02074 / 0.00231 / 202 / 12.87 | 0.002071 / 0.00868 / 0.00202 / 0 |
+| back60 | baseline | character | 0.009675 / 0.05484 / 0.00488 / 1355 / 62.54 | 0.010472 / 0.05966 / 0.00500 / 1535 / 70.67 | 0.002955 / 0.01595 / 0.00470 / 0 |
+| back60 | baseline | ground | 0.006055 / 0.02353 / 0.00328 / 379 / 15.25 | 0.006729 / 0.02718 / 0.00327 / 1303 / 27.14 | 0.002090 / 0.00868 / 0.00307 / 0 |
+| back60 | shadow-bilinear-3x3 | character | 0.006321 / 0.03384 / 0.00451 / 742 / 51.77 | 0.008142 / 0.04369 / 0.00434 / 1065 / 63.18 | 0.002547 / 0.01342 / 0.00436 / 0 |
+| back60 | shadow-bilinear-3x3 | ground | 0.004766 / 0.01906 / 0.00300 / 28 / 9.87 | 0.005683 / 0.02326 / 0.00299 / 423 / 19.25 | 0.001611 / 0.00729 / 0.00298 / 0 |
+| back60 | vis-release-0.1 | character | 0.006500 / 0.03501 / 0.00480 / 655 / 31.02 | 0.007556 / 0.04170 / 0.00487 / 831 / 31.78 | 0.002955 / 0.01595 / 0.00470 / 0 |
+| back60 | vis-release-0.1 | ground | 0.005474 / 0.02051 / 0.00324 / 42 / 7.61 | 0.005868 / 0.02325 / 0.00320 / 394 / 13.06 | 0.002090 / 0.00868 / 0.00307 / 0 |
+| ground15 | baseline | character | 0.002957 / 0.01148 / 0.00116 / 371 / 40.72 | 0.003024 / 0.01176 / 0.00118 / 340 / 48.15 | 0.002280 / 0.01260 / 0.00135 / 0 |
+| ground15 | baseline | ground | 0.005274 / 0.01937 / 0.00373 / 512 / 9.89 | 0.005695 / 0.02242 / 0.00378 / 1305 / 18.78 | 0.002343 / 0.00784 / 0.00334 / 0 |
+| ground15 | shadow-bilinear-3x3 | character | 0.002953 / 0.01148 / 0.00116 / 371 / 40.65 | 0.003027 / 0.01178 / 0.00118 / 341 / 48.09 | 0.002281 / 0.01260 / 0.00135 / 0 |
+| ground15 | shadow-bilinear-3x3 | ground | 0.004951 / 0.01792 / 0.00367 / 396 / 8.25 | 0.005405 / 0.02158 / 0.00373 / 948 / 17.27 | 0.002293 / 0.00758 / 0.00333 / 0 |
+| ground15 | vis-release-0.1 | character | 0.002924 / 0.01120 / 0.00117 / 360 / 34.29 | 0.002984 / 0.01176 / 0.00119 / 319 / 39.25 | 0.002280 / 0.01260 / 0.00135 / 0 |
+| ground15 | vis-release-0.1 | ground | 0.004612 / 0.01852 / 0.00383 / 261 / 4.49 | 0.004730 / 0.02016 / 0.00384 / 694 / 9.24 | 0.002343 / 0.00784 / 0.00334 / 0 |
+
+### vis-release-0.2
+
+| Condition | Arm | Region | Native | Quality | Own FXAA |
+| --- | --- | --- | ---: | ---: | ---: |
+| back15 | baseline | character | 0.014287 / 0.07499 / 0.01795 / 1742 / 65.33 | 0.014156 / 0.07334 / 0.01757 / 1733 / 72.68 | 0.002961 / 0.01649 / 0.01911 / 0 |
+| back15 | baseline | ground | 0.006708 / 0.02635 / 0.01249 / 485 / 14.16 | 0.007330 / 0.02830 / 0.01235 / 1881 / 24.96 | 0.002130 / 0.00869 / 0.01311 / 0 |
+| back15 | shadow-bilinear-3x3 | character | 0.008027 / 0.03893 / 0.01764 / 851 / 55.19 | 0.011053 / 0.05435 / 0.01751 / 1166 / 65.92 | 0.002607 / 0.01540 / 0.01840 / 0 |
+| back15 | shadow-bilinear-3x3 | ground | 0.005312 / 0.02074 / 0.01236 / 108 / 9.70 | 0.006370 / 0.02463 / 0.01226 / 1034 / 19.11 | 0.001655 / 0.00756 / 0.01310 / 0 |
+| back15 | vis-release-0.2 | character | 0.007830 / 0.04340 / 0.01868 / 722 / 36.60 | 0.009400 / 0.05176 / 0.01818 / 943 / 37.76 | 0.002961 / 0.01649 / 0.01911 / 0 |
+| back15 | vis-release-0.2 | ground | 0.006359 / 0.02440 / 0.01251 / 131 / 7.22 | 0.006720 / 0.02690 / 0.01243 / 1045 / 13.38 | 0.002130 / 0.00869 / 0.01311 / 0 |
+| day30 | baseline | character | 0.008413 / 0.04997 / 0.00371 / 1097 / 66.05 | 0.009148 / 0.05207 / 0.00366 / 1117 / 72.29 | 0.002976 / 0.01624 / 0.00402 / 0 |
+| day30 | baseline | ground | 0.005930 / 0.02326 / 0.00234 / 310 / 14.85 | 0.006355 / 0.02524 / 0.00238 / 906 / 26.58 | 0.002071 / 0.00868 / 0.00202 / 0 |
+| day30 | shadow-bilinear-3x3 | character | 0.005354 / 0.02882 / 0.00341 / 506 / 54.73 | 0.007044 / 0.03833 / 0.00318 / 784 / 64.07 | 0.002500 / 0.01430 / 0.00369 / 0 |
+| day30 | shadow-bilinear-3x3 | ground | 0.004652 / 0.01849 / 0.00215 / 16 / 10.01 | 0.005288 / 0.02098 / 0.00209 / 275 / 19.19 | 0.001602 / 0.00729 / 0.00200 / 0 |
+| day30 | vis-release-0.2 | character | 0.006443 / 0.03583 / 0.00368 / 588 / 45.20 | 0.007285 / 0.03922 / 0.00351 / 671 / 44.51 | 0.002976 / 0.01624 / 0.00402 / 0 |
+| day30 | vis-release-0.2 | ground | 0.005516 / 0.02101 / 0.00230 / 43 / 10.20 | 0.005625 / 0.02242 / 0.00231 / 290 / 17.71 | 0.002071 / 0.00868 / 0.00202 / 0 |
+| back60 | baseline | character | 0.009675 / 0.05484 / 0.00488 / 1355 / 62.54 | 0.010472 / 0.05966 / 0.00500 / 1535 / 70.67 | 0.002955 / 0.01595 / 0.00470 / 0 |
+| back60 | baseline | ground | 0.006055 / 0.02353 / 0.00328 / 379 / 15.25 | 0.006729 / 0.02718 / 0.00327 / 1303 / 27.14 | 0.002090 / 0.00868 / 0.00307 / 0 |
+| back60 | shadow-bilinear-3x3 | character | 0.006321 / 0.03384 / 0.00451 / 742 / 51.77 | 0.008142 / 0.04369 / 0.00434 / 1065 / 63.18 | 0.002547 / 0.01342 / 0.00436 / 0 |
+| back60 | shadow-bilinear-3x3 | ground | 0.004766 / 0.01906 / 0.00300 / 28 / 9.87 | 0.005683 / 0.02326 / 0.00299 / 423 / 19.25 | 0.001611 / 0.00729 / 0.00298 / 0 |
+| back60 | vis-release-0.2 | character | 0.007269 / 0.03945 / 0.00477 / 782 / 40.94 | 0.008327 / 0.04589 / 0.00486 / 1011 / 42.79 | 0.002955 / 0.01595 / 0.00470 / 0 |
+| back60 | vis-release-0.2 | ground | 0.005648 / 0.02151 / 0.00324 / 76 / 10.10 | 0.006086 / 0.02411 / 0.00321 / 524 / 17.62 | 0.002090 / 0.00868 / 0.00307 / 0 |
+| ground15 | baseline | character | 0.002957 / 0.01148 / 0.00116 / 371 / 40.72 | 0.003024 / 0.01176 / 0.00118 / 340 / 48.15 | 0.002280 / 0.01260 / 0.00135 / 0 |
+| ground15 | baseline | ground | 0.005274 / 0.01937 / 0.00373 / 512 / 9.89 | 0.005695 / 0.02242 / 0.00378 / 1305 / 18.78 | 0.002343 / 0.00784 / 0.00334 / 0 |
+| ground15 | shadow-bilinear-3x3 | character | 0.002953 / 0.01148 / 0.00116 / 371 / 40.65 | 0.003027 / 0.01178 / 0.00118 / 341 / 48.09 | 0.002281 / 0.01260 / 0.00135 / 0 |
+| ground15 | shadow-bilinear-3x3 | ground | 0.004951 / 0.01792 / 0.00367 / 396 / 8.25 | 0.005405 / 0.02158 / 0.00373 / 948 / 17.27 | 0.002293 / 0.00758 / 0.00333 / 0 |
+| ground15 | vis-release-0.2 | character | 0.002921 / 0.01120 / 0.00117 / 360 / 34.45 | 0.002989 / 0.01176 / 0.00119 / 319 / 39.73 | 0.002280 / 0.01260 / 0.00135 / 0 |
+| ground15 | vis-release-0.2 | ground | 0.004627 / 0.01854 / 0.00383 / 271 / 4.77 | 0.004761 / 0.02038 / 0.00383 / 728 / 9.82 | 0.002343 / 0.00784 / 0.00334 / 0 |
+
+### vis-release-0.3
+
+| Condition | Arm | Region | Native | Quality | Own FXAA |
+| --- | --- | --- | ---: | ---: | ---: |
+| back15 | baseline | character | 0.014287 / 0.07499 / 0.01795 / 1742 / 65.33 | 0.014156 / 0.07334 / 0.01757 / 1733 / 72.68 | 0.002961 / 0.01649 / 0.01911 / 0 |
+| back15 | baseline | ground | 0.006708 / 0.02635 / 0.01249 / 485 / 14.16 | 0.007330 / 0.02830 / 0.01235 / 1881 / 24.96 | 0.002130 / 0.00869 / 0.01311 / 0 |
+| back15 | shadow-bilinear-3x3 | character | 0.008027 / 0.03893 / 0.01764 / 851 / 55.19 | 0.011053 / 0.05435 / 0.01751 / 1166 / 65.92 | 0.002607 / 0.01540 / 0.01840 / 0 |
+| back15 | shadow-bilinear-3x3 | ground | 0.005312 / 0.02074 / 0.01236 / 108 / 9.70 | 0.006370 / 0.02463 / 0.01226 / 1034 / 19.11 | 0.001655 / 0.00756 / 0.01310 / 0 |
+| back15 | vis-release-0.3 | character | 0.008482 / 0.04617 / 0.01857 / 822 / 42.66 | 0.010478 / 0.05489 / 0.01806 / 1135 / 45.54 | 0.002961 / 0.01649 / 0.01911 / 0 |
+| back15 | vis-release-0.3 | ground | 0.006421 / 0.02469 / 0.01251 / 181 / 8.56 | 0.006832 / 0.02743 / 0.01243 / 1156 / 16.33 | 0.002130 / 0.00869 / 0.01311 / 0 |
+| day30 | baseline | character | 0.008413 / 0.04997 / 0.00371 / 1097 / 66.05 | 0.009148 / 0.05207 / 0.00366 / 1117 / 72.29 | 0.002976 / 0.01624 / 0.00402 / 0 |
+| day30 | baseline | ground | 0.005930 / 0.02326 / 0.00234 / 310 / 14.85 | 0.006355 / 0.02524 / 0.00238 / 906 / 26.58 | 0.002071 / 0.00868 / 0.00202 / 0 |
+| day30 | shadow-bilinear-3x3 | character | 0.005354 / 0.02882 / 0.00341 / 506 / 54.73 | 0.007044 / 0.03833 / 0.00318 / 784 / 64.07 | 0.002500 / 0.01430 / 0.00369 / 0 |
+| day30 | shadow-bilinear-3x3 | ground | 0.004652 / 0.01849 / 0.00215 / 16 / 10.01 | 0.005288 / 0.02098 / 0.00209 / 275 / 19.19 | 0.001602 / 0.00729 / 0.00200 / 0 |
+| day30 | vis-release-0.3 | character | 0.007555 / 0.04332 / 0.00370 / 873 / 55.96 | 0.007955 / 0.04369 / 0.00359 / 817 / 58.36 | 0.002976 / 0.01624 / 0.00402 / 0 |
+| day30 | vis-release-0.3 | ground | 0.005726 / 0.02216 / 0.00231 / 158 / 12.89 | 0.005981 / 0.02410 / 0.00234 / 504 / 22.86 | 0.002071 / 0.00868 / 0.00202 / 0 |
+| back60 | baseline | character | 0.009675 / 0.05484 / 0.00488 / 1355 / 62.54 | 0.010472 / 0.05966 / 0.00500 / 1535 / 70.67 | 0.002955 / 0.01595 / 0.00470 / 0 |
+| back60 | baseline | ground | 0.006055 / 0.02353 / 0.00328 / 379 / 15.25 | 0.006729 / 0.02718 / 0.00327 / 1303 / 27.14 | 0.002090 / 0.00868 / 0.00307 / 0 |
+| back60 | shadow-bilinear-3x3 | character | 0.006321 / 0.03384 / 0.00451 / 742 / 51.77 | 0.008142 / 0.04369 / 0.00434 / 1065 / 63.18 | 0.002547 / 0.01342 / 0.00436 / 0 |
+| back60 | shadow-bilinear-3x3 | ground | 0.004766 / 0.01906 / 0.00300 / 28 / 9.87 | 0.005683 / 0.02326 / 0.00299 / 423 / 19.25 | 0.001611 / 0.00729 / 0.00298 / 0 |
+| back60 | vis-release-0.3 | character | 0.008926 / 0.05093 / 0.00478 / 1263 / 54.20 | 0.009726 / 0.05512 / 0.00493 / 1370 / 58.21 | 0.002955 / 0.01595 / 0.00470 / 0 |
+| back60 | vis-release-0.3 | ground | 0.005900 / 0.02299 / 0.00326 / 224 / 13.24 | 0.006448 / 0.02597 / 0.00325 / 975 / 23.09 | 0.002090 / 0.00868 / 0.00307 / 0 |
+| ground15 | baseline | character | 0.002957 / 0.01148 / 0.00116 / 371 / 40.72 | 0.003024 / 0.01176 / 0.00118 / 340 / 48.15 | 0.002280 / 0.01260 / 0.00135 / 0 |
+| ground15 | baseline | ground | 0.005274 / 0.01937 / 0.00373 / 512 / 9.89 | 0.005695 / 0.02242 / 0.00378 / 1305 / 18.78 | 0.002343 / 0.00784 / 0.00334 / 0 |
+| ground15 | shadow-bilinear-3x3 | character | 0.002953 / 0.01148 / 0.00116 / 371 / 40.65 | 0.003027 / 0.01178 / 0.00118 / 341 / 48.09 | 0.002281 / 0.01260 / 0.00135 / 0 |
+| ground15 | shadow-bilinear-3x3 | ground | 0.004951 / 0.01792 / 0.00367 / 396 / 8.25 | 0.005405 / 0.02158 / 0.00373 / 948 / 17.27 | 0.002293 / 0.00758 / 0.00333 / 0 |
+| ground15 | vis-release-0.3 | character | 0.002924 / 0.01120 / 0.00117 / 361 / 34.83 | 0.002989 / 0.01176 / 0.00119 / 319 / 40.56 | 0.002280 / 0.01260 / 0.00135 / 0 |
+| ground15 | vis-release-0.3 | ground | 0.004655 / 0.01878 / 0.00383 / 305 / 5.45 | 0.004824 / 0.02073 / 0.00382 / 776 / 11.48 | 0.002343 / 0.00784 / 0.00334 / 0 |
+
+### vis-reset-0.2
+
+| Condition | Arm | Region | Native | Quality | Own FXAA |
+| --- | --- | --- | ---: | ---: | ---: |
+| back15 | baseline | character | 0.014287 / 0.07499 / 0.01795 / 1742 / 65.33 | 0.014156 / 0.07334 / 0.01757 / 1733 / 72.68 | 0.002961 / 0.01649 / 0.01911 / 0 |
+| back15 | baseline | ground | 0.006708 / 0.02635 / 0.01249 / 485 / 14.16 | 0.007330 / 0.02830 / 0.01235 / 1881 / 24.96 | 0.002130 / 0.00869 / 0.01311 / 0 |
+| back15 | shadow-bilinear-3x3 | character | 0.008027 / 0.03893 / 0.01764 / 851 / 55.19 | 0.011053 / 0.05435 / 0.01751 / 1166 / 65.92 | 0.002607 / 0.01540 / 0.01840 / 0 |
+| back15 | shadow-bilinear-3x3 | ground | 0.005312 / 0.02074 / 0.01236 / 108 / 9.70 | 0.006370 / 0.02463 / 0.01226 / 1034 / 19.11 | 0.001655 / 0.00756 / 0.01310 / 0 |
+| back15 | vis-reset-0.2 | character | 0.006435 / 0.03528 / 0.02081 / 450 / 36.60 | 0.006427 / 0.03386 / 0.02213 / 331 / 37.76 | 0.002961 / 0.01649 / 0.01911 / 0 |
+| back15 | vis-reset-0.2 | ground | 0.006545 / 0.02443 / 0.01350 / 73 / 7.22 | 0.005371 / 0.02016 / 0.01399 / 29 / 13.38 | 0.002130 / 0.00869 / 0.01311 / 0 |
+| day30 | baseline | character | 0.008413 / 0.04997 / 0.00371 / 1097 / 66.05 | 0.009148 / 0.05207 / 0.00366 / 1117 / 72.29 | 0.002976 / 0.01624 / 0.00402 / 0 |
+| day30 | baseline | ground | 0.005930 / 0.02326 / 0.00234 / 310 / 14.85 | 0.006355 / 0.02524 / 0.00238 / 906 / 26.58 | 0.002071 / 0.00868 / 0.00202 / 0 |
+| day30 | shadow-bilinear-3x3 | character | 0.005354 / 0.02882 / 0.00341 / 506 / 54.73 | 0.007044 / 0.03833 / 0.00318 / 784 / 64.07 | 0.002500 / 0.01430 / 0.00369 / 0 |
+| day30 | shadow-bilinear-3x3 | ground | 0.004652 / 0.01849 / 0.00215 / 16 / 10.01 | 0.005288 / 0.02098 / 0.00209 / 275 / 19.19 | 0.001602 / 0.00729 / 0.00200 / 0 |
+| day30 | vis-reset-0.2 | character | 0.006429 / 0.03529 / 0.00688 / 576 / 45.20 | 0.006326 / 0.03274 / 0.00920 / 426 / 44.51 | 0.002976 / 0.01624 / 0.00402 / 0 |
+| day30 | vis-reset-0.2 | ground | 0.006129 / 0.02356 / 0.00361 / 36 / 10.20 | 0.005119 / 0.01962 / 0.00468 / 11 / 17.71 | 0.002071 / 0.00868 / 0.00202 / 0 |
+| back60 | baseline | character | 0.009675 / 0.05484 / 0.00488 / 1355 / 62.54 | 0.010472 / 0.05966 / 0.00500 / 1535 / 70.67 | 0.002955 / 0.01595 / 0.00470 / 0 |
+| back60 | baseline | ground | 0.006055 / 0.02353 / 0.00328 / 379 / 15.25 | 0.006729 / 0.02718 / 0.00327 / 1303 / 27.14 | 0.002090 / 0.00868 / 0.00307 / 0 |
+| back60 | shadow-bilinear-3x3 | character | 0.006321 / 0.03384 / 0.00451 / 742 / 51.77 | 0.008142 / 0.04369 / 0.00434 / 1065 / 63.18 | 0.002547 / 0.01342 / 0.00436 / 0 |
+| back60 | shadow-bilinear-3x3 | ground | 0.004766 / 0.01906 / 0.00300 / 28 / 9.87 | 0.005683 / 0.02326 / 0.00299 / 423 / 19.25 | 0.001611 / 0.00729 / 0.00298 / 0 |
+| back60 | vis-reset-0.2 | character | 0.006614 / 0.03546 / 0.00847 / 605 / 40.94 | 0.006721 / 0.03418 / 0.01044 / 532 / 42.79 | 0.002955 / 0.01595 / 0.00470 / 0 |
+| back60 | vis-reset-0.2 | ground | 0.006107 / 0.02350 / 0.00456 / 40 / 10.10 | 0.005109 / 0.01936 / 0.00535 / 8 / 17.62 | 0.002090 / 0.00868 / 0.00307 / 0 |
+| ground15 | baseline | character | 0.002957 / 0.01148 / 0.00116 / 371 / 40.72 | 0.003024 / 0.01176 / 0.00118 / 340 / 48.15 | 0.002280 / 0.01260 / 0.00135 / 0 |
+| ground15 | baseline | ground | 0.005274 / 0.01937 / 0.00373 / 512 / 9.89 | 0.005695 / 0.02242 / 0.00378 / 1305 / 18.78 | 0.002343 / 0.00784 / 0.00334 / 0 |
+| ground15 | shadow-bilinear-3x3 | character | 0.002953 / 0.01148 / 0.00116 / 371 / 40.65 | 0.003027 / 0.01178 / 0.00118 / 341 / 48.09 | 0.002281 / 0.01260 / 0.00135 / 0 |
+| ground15 | shadow-bilinear-3x3 | ground | 0.004951 / 0.01792 / 0.00367 / 396 / 8.25 | 0.005405 / 0.02158 / 0.00373 / 948 / 17.27 | 0.002293 / 0.00758 / 0.00333 / 0 |
+| ground15 | vis-reset-0.2 | character | 0.003195 / 0.01120 / 0.00288 / 395 / 34.45 | 0.003617 / 0.01315 / 0.00389 / 432 / 39.73 | 0.002280 / 0.01260 / 0.00135 / 0 |
+| ground15 | vis-reset-0.2 | ground | 0.005664 / 0.01963 / 0.01190 / 204 / 4.77 | 0.005007 / 0.01851 / 0.01565 / 294 / 9.82 | 0.002343 / 0.00784 / 0.00334 / 0 |
+
+### shadow-bilinear-3x3+vis-release-0.1
+
+| Condition | Arm | Region | Native | Quality | Own FXAA |
+| --- | --- | --- | ---: | ---: | ---: |
+| back15 | baseline | character | 0.014287 / 0.07499 / 0.01795 / 1742 / 65.33 | 0.014156 / 0.07334 / 0.01757 / 1733 / 72.68 | 0.002961 / 0.01649 / 0.01911 / 0 |
+| back15 | baseline | ground | 0.006708 / 0.02635 / 0.01249 / 485 / 14.16 | 0.007330 / 0.02830 / 0.01235 / 1881 / 24.96 | 0.002130 / 0.00869 / 0.01311 / 0 |
+| back15 | shadow-bilinear-3x3 | character | 0.008027 / 0.03893 / 0.01764 / 851 / 55.19 | 0.011053 / 0.05435 / 0.01751 / 1166 / 65.92 | 0.002607 / 0.01540 / 0.01840 / 0 |
+| back15 | shadow-bilinear-3x3 | ground | 0.005312 / 0.02074 / 0.01236 / 108 / 9.70 | 0.006370 / 0.02463 / 0.01226 / 1034 / 19.11 | 0.001655 / 0.00756 / 0.01310 / 0 |
+| back15 | shadow-bilinear-3x3+vis-release-0.1 | character | 0.005048 / 0.02687 / 0.01754 / 313 / 29.75 | 0.007642 / 0.03975 / 0.01731 / 602 / 30.93 | 0.002607 / 0.01540 / 0.01840 / 0 |
+| back15 | shadow-bilinear-3x3+vis-release-0.1 | ground | 0.005175 / 0.02017 / 0.01236 / 26 / 6.37 | 0.006096 / 0.02381 / 0.01229 / 735 / 11.24 | 0.001655 / 0.00756 / 0.01310 / 0 |
+| day30 | baseline | character | 0.008413 / 0.04997 / 0.00371 / 1097 / 66.05 | 0.009148 / 0.05207 / 0.00366 / 1117 / 72.29 | 0.002976 / 0.01624 / 0.00402 / 0 |
+| day30 | baseline | ground | 0.005930 / 0.02326 / 0.00234 / 310 / 14.85 | 0.006355 / 0.02524 / 0.00238 / 906 / 26.58 | 0.002071 / 0.00868 / 0.00202 / 0 |
+| day30 | shadow-bilinear-3x3 | character | 0.005354 / 0.02882 / 0.00341 / 506 / 54.73 | 0.007044 / 0.03833 / 0.00318 / 784 / 64.07 | 0.002500 / 0.01430 / 0.00369 / 0 |
+| day30 | shadow-bilinear-3x3 | ground | 0.004652 / 0.01849 / 0.00215 / 16 / 10.01 | 0.005288 / 0.02098 / 0.00209 / 275 / 19.19 | 0.001602 / 0.00729 / 0.00200 / 0 |
+| day30 | shadow-bilinear-3x3+vis-release-0.1 | character | 0.004521 / 0.02380 / 0.00339 / 358 / 31.05 | 0.005447 / 0.02890 / 0.00314 / 363 / 33.32 | 0.002500 / 0.01430 / 0.00369 / 0 |
+| day30 | shadow-bilinear-3x3+vis-release-0.1 | ground | 0.004516 / 0.01764 / 0.00214 / 0 / 8.67 | 0.005031 / 0.01962 / 0.00208 / 138 / 15.25 | 0.001602 / 0.00729 / 0.00200 / 0 |
+| back60 | baseline | character | 0.009675 / 0.05484 / 0.00488 / 1355 / 62.54 | 0.010472 / 0.05966 / 0.00500 / 1535 / 70.67 | 0.002955 / 0.01595 / 0.00470 / 0 |
+| back60 | baseline | ground | 0.006055 / 0.02353 / 0.00328 / 379 / 15.25 | 0.006729 / 0.02718 / 0.00327 / 1303 / 27.14 | 0.002090 / 0.00868 / 0.00307 / 0 |
+| back60 | shadow-bilinear-3x3 | character | 0.006321 / 0.03384 / 0.00451 / 742 / 51.77 | 0.008142 / 0.04369 / 0.00434 / 1065 / 63.18 | 0.002547 / 0.01342 / 0.00436 / 0 |
+| back60 | shadow-bilinear-3x3 | ground | 0.004766 / 0.01906 / 0.00300 / 28 / 9.87 | 0.005683 / 0.02326 / 0.00299 / 423 / 19.25 | 0.001611 / 0.00729 / 0.00298 / 0 |
+| back60 | shadow-bilinear-3x3+vis-release-0.1 | character | 0.005019 / 0.02546 / 0.00448 / 447 / 30.79 | 0.006535 / 0.03556 / 0.00425 / 662 / 33.11 | 0.002547 / 0.01342 / 0.00436 / 0 |
+| back60 | shadow-bilinear-3x3+vis-release-0.1 | ground | 0.004633 / 0.01824 / 0.00300 / 0 / 8.32 | 0.005370 / 0.02101 / 0.00298 / 256 / 14.65 | 0.001611 / 0.00729 / 0.00298 / 0 |
+| ground15 | baseline | character | 0.002957 / 0.01148 / 0.00116 / 371 / 40.72 | 0.003024 / 0.01176 / 0.00118 / 340 / 48.15 | 0.002280 / 0.01260 / 0.00135 / 0 |
+| ground15 | baseline | ground | 0.005274 / 0.01937 / 0.00373 / 512 / 9.89 | 0.005695 / 0.02242 / 0.00378 / 1305 / 18.78 | 0.002343 / 0.00784 / 0.00334 / 0 |
+| ground15 | shadow-bilinear-3x3 | character | 0.002953 / 0.01148 / 0.00116 / 371 / 40.65 | 0.003027 / 0.01178 / 0.00118 / 341 / 48.09 | 0.002281 / 0.01260 / 0.00135 / 0 |
+| ground15 | shadow-bilinear-3x3 | ground | 0.004951 / 0.01792 / 0.00367 / 396 / 8.25 | 0.005405 / 0.02158 / 0.00373 / 948 / 17.27 | 0.002293 / 0.00758 / 0.00333 / 0 |
+| ground15 | shadow-bilinear-3x3+vis-release-0.1 | character | 0.002921 / 0.01120 / 0.00117 / 360 / 34.29 | 0.002986 / 0.01176 / 0.00119 / 320 / 39.21 | 0.002281 / 0.01260 / 0.00135 / 0 |
+| ground15 | shadow-bilinear-3x3+vis-release-0.1 | ground | 0.004340 / 0.01712 / 0.00378 / 201 / 4.46 | 0.004593 / 0.01962 / 0.00379 / 618 / 9.22 | 0.002293 / 0.00758 / 0.00333 / 0 |
+
+### Dot and release coincidence
+
+The release set is magenta, drawn after the post chain. Outside magenta there are zero differing crop pixels
+against the corresponding plain arm in all six back15 comparisons. No overlay colour enters history or the
+grain measurements. For the combination, source dots below mean the bilinear-only control's dots. The other
+arms use point-PCF baseline dots. Counts use each arm's own character band.
+
+| Arm | Mode | Release share of band | Source dots released now | Source dots within 1 px of release | Source dots touched in current or previous 3 screen frames | Surviving arm dots released now |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| vis-release-0.1 | taa-native | 31.04% | 55.05% | 60.79% | 69.92% | 60.26% |
+| vis-release-0.1 | taa-quality | 37.64% | 52.74% | 58.86% | 67.05% | 59.39% |
+| vis-reset-0.2 | taa-native | 22.91% | 46.38% | 55.22% | 64.70% | 35.11% |
+| vis-reset-0.2 | taa-quality | 27.92% | 44.66% | 50.78% | 62.26% | 42.90% |
+| shadow-bilinear-3x3+vis-release-0.1 | taa-native | 29.92% | 34.08% | 39.37% | 47.47% | 34.82% |
+| shadow-bilinear-3x3+vis-release-0.1 | taa-quality | 36.87% | 46.23% | 49.49% | 56.69% | 52.33% |
+
+The four-frame figure is a same-screen-position association over the saved frames, not a reprojected surface
+trace. It has no release masks from the warm-up frames before the first saved frame. The same-frame and 1 px
+counts do not need that approximation. The set has much stronger coincidence with source dots than the earlier
+colour-release overlay, but it does not cover every dot. Some surviving dots are released pixels themselves,
+so clearing the lock is not sufficient to eliminate the residual. Full counts are in
+[release-coincidence.json](runs/visibility/release-coincidence.json).
+
+### Final binary and entry proof
+
+The final engine library, private feed, vendored library and SnapshotTool-loaded library match SHA-256
+`f5c53b878f934515ebac8d2a57ab9264c6d21d7a7f63b15ee343bb660744a5a8`, from renderer source `a90f4e4e4`.
+See [binary identity](runs/visibility/final-binary-identity.json). No shipping pin or shared feed changed.
+Final-package unset reproduces all 192 original full frames at Native, Quality and FXAA across all four
+conditions, maximum channel difference zero, with every metrics file byte-identical. Final release 0.1 also
+reproduces its 192 prior full frames and metrics exactly. The final cyan overlay reproduces its earlier 48
+full frames exactly. That validates reuse of the main measurement set after the synthetic fallback, CRLF and
+transparent-output plumbing corrections. The higher threshold arms compile the same visibility program and
+change only the uniform flags. See [the final frame proof](runs/visibility/final-package-image-identity.txt),
+[the earlier 576-frame check](runs/visibility/corrected-capture-identity.txt), and
+[the final cyan check](runs/visibility/lock-overlay-final-identity.txt).
+
+The forced fused and forced split real-scene captures at back15 with release 0.1 are pixel-identical in all
+16 frames at each of Native, Quality and FXAA. See [the colour proof](runs/visibility/entry-colour-identity.txt).
+This colour result does not waive the inherited synthetic stored-state identity failures documented above.
+
+### Visibility crops and reading
+
+Each 4x sheet is Native, Quality and that arm's own FXAA, left to right. Individual per-mode 4x crops are next
+to each sheet. The contact sheets retain one display pixel per image pixel.
+
+| Arm | Character crop, 4x | Normal-scale sheet |
+| --- | --- | --- |
+| baseline | [crop](runs/visibility/visuals/baseline-character-015-4x.png) | [sheet](runs/visibility/visuals/baseline-contact-sheet-015.png) |
+| shadow-bilinear-3x3 | [crop](runs/visibility/visuals/shadow-bilinear-3x3-character-015-4x.png) | [sheet](runs/visibility/visuals/shadow-bilinear-3x3-contact-sheet-015.png) |
+| vis-release-0.1 | [crop](runs/visibility/visuals/vis-release-0.1-character-015-4x.png) | [sheet](runs/visibility/visuals/vis-release-0.1-contact-sheet-015.png) |
+| vis-release-0.2 | [crop](runs/visibility/visuals/vis-release-0.2-character-015-4x.png) | [sheet](runs/visibility/visuals/vis-release-0.2-contact-sheet-015.png) |
+| vis-release-0.3 | [crop](runs/visibility/visuals/vis-release-0.3-character-015-4x.png) | [sheet](runs/visibility/visuals/vis-release-0.3-contact-sheet-015.png) |
+| vis-reset-0.2 | [crop](runs/visibility/visuals/vis-reset-0.2-character-015-4x.png) | [sheet](runs/visibility/visuals/vis-reset-0.2-contact-sheet-015.png) |
+| shadow-bilinear-3x3+vis-release-0.1 | [crop](runs/visibility/visuals/shadow-bilinear-3x3+vis-release-0.1-character-015-4x.png) | [sheet](runs/visibility/visuals/shadow-bilinear-3x3+vis-release-0.1-contact-sheet-015.png) |
+
+The renderer signal removes most of the observed excess dots in the best combination, but not all of them,
+and the complete guard suite does not accept it without touching detail. Back15 combination dots fall from
+1742/1733 to 313/602, Native/Quality, reductions of 82.0% and 65.3%. Grain falls 64.7% and 46.0%, while change
+mean stays close to own FXAA. Locked band share falls from 65.3%/72.7% to 29.7%/30.9%.
+
+The next proper prototype should keep release-only visibility evidence and the bilinear 3x3 filter. It should
+first fix correspondence and confidence of the visibility comparison, then meet the camera-pan and moving-rim
+bounds before any shipping proposal. The current maximum over a raw reprojected 3x3 is not a reliable test of
+physical lighting change. The reset variant adds too much slow-condition temporal change and has more guard
+failures. A production implementation also needs a cheaper signal representation and comparison placement,
+with measured performance after separate timing approval. This archive does not supply a frame-time result.
+None of these branches is a merge candidate.
+
+### Reproduce the visibility evidence
+
+The capture helpers pass the required start time themselves. Run the commands serially, with private feed and
+probe paths supplied through the same environment variables as the earlier reproduction section.
+
+~~~bash
+python3 KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/real-scene/scripts/capture_shadow_filters.py \
+  "$GAME_PROBE" "$CAPTURE_ROOT" baseline shadow-bilinear-3x3 \
+  vis-release-0.1 vis-release-0.2 vis-release-0.3 vis-reset-0.2 \
+  shadow-bilinear-3x3,vis-release-0.1 show-vis-release
+python3 KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/real-scene/scripts/capture_shadow_filters.py \
+  "$GAME_PROBE" "$CAPTURE_ROOT" show-locked shadow-bilinear-3x3,show-locked \
+  vis-release-0.1,show-locked vis-release-0.2,show-locked vis-release-0.3,show-locked \
+  vis-reset-0.2,show-locked shadow-bilinear-3x3,vis-release-0.1,show-locked
+python3 KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/real-scene/scripts/capture_visibility_tail.py \
+  "$GAME_PROBE" "$CAPTURE_ROOT"
+python3 KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/real-scene/scripts/shadow_filter_report.py \
+  "$CAPTURE_ROOT" KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/real-scene/runs/visibility \
+  shadow-bilinear-3x3 vis-release-0.1 vis-release-0.2 vis-release-0.3 vis-reset-0.2 \
+  shadow-bilinear-3x3+vis-release-0.1 show-vis-release
+python3 KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/real-scene/scripts/visibility_report.py \
+  "$CAPTURE_ROOT" KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/real-scene/runs/visibility/release-coincidence.json \
+  --back15-only vis-release-0.1 vis-reset-0.2 shadow-bilinear-3x3+vis-release-0.1
+~~~
+
+`visibility_tables.py` regenerates the comparison tables from `summary.json`. `collect_visibility_guards.py`
+extracts every local result and bound from TRX and detailed logs. `hosted_visibility_report.py` extracts every
+hosted failure from the workflow's detailed measurement artifacts. Both collectors remove machine filesystem
+prefixes before writing public evidence. They never change test outcomes or retry tests.
+
+### Broader verification and archive limits
+
+Both complete solutions build Release with zero warnings. The game format check passes. The engine-wide format
+check reports 120 whitespace diagnostics in nine untouched files. The changed C# files pass their scoped format
+check. Whole-tree dash, prose, file-size, contributor-instruction and version-document checks pass, with exit
+codes recorded in [verification](runs/visibility/verification/repo-checks.json).
+
+The one broad engine headless run covers 41 assemblies and reports 35132 passed, 1425 skipped and two raw-shader
+assertion failures. The new `Params.x` diagnostic use made one old reserved-lane text assertion stale. It now
+checks the non-visibility program and passes. The subsequent Render3D/source-validation/motion-contract slice
+reports 3859 passed, 50 GPU-gated skips and only the original Lanczos source-count assertion, expected 5 calls
+and actual 9. Its old diagnostic alternatives already contain those nine calls. No unrelated source was changed
+and the broad suite was not repeated. The full game suite and navigation rebakes are omitted under the probe
+brief. See [the aggregate](runs/visibility/verification/headless-suite-summary.json) and
+[the final scoped run](runs/visibility/verification/headless-render-slice.txt).
+
+### Hosted run provenance
+
+The first matrix is [39131215312](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/39131215312), source
+`e62236e56`, token `vis-release-0.1` with point PCF. The test-scoped stamp confirms the token, mask 16777216 and
+MRT enabled on each downloaded backend. Metal reports 1350 passed and 10 failed. Three seeded-lock failures
+come from the fully lit synthetic-history initialization corrected in `dab3a8981`. Four are the inherited
+entry-identity class. Two are the measured shadow guards. The tenth is an invalid no-GC allocation measurement,
+with zero measured bytes and a runtime refusal, not evidence of an allocation regression.
+
+The first Windows leg aborts after 893 passes and 312 failures. The dominant failure is a CRLF-sensitive shader
+splice before visibility can be measured. Resource exhaustion follows the constructor failures and the test
+host crashes, so total coverage is unknown. The line-ending regression fails under CRLF, then passes after
+normalization in `83f63d024`. These first-run Windows results do not evaluate the visibility hypothesis.
+Every completed failing test and its full error is retained in the [first-run result inventory](runs/visibility/hosted/39131215312/results.json).
+
+The owner authorized one corrected matrix after the first run fully finishes. The corrected selection is
+`shadow-bilinear-3x3,vis-release-0.1`, the best measured overall arm, with mask 20971520. Its test-only selection
+and exact dispatch-environment proof are in `b4b03ece4` and
+[the stamp proof](runs/visibility/verification/host-token-proof.txt). The corrected source includes the synthetic
+fallback, CRLF and explicit transparent-output fixes. The two runs must be read separately. No third matrix is
+authorized after an infrastructure failure in the corrected run.

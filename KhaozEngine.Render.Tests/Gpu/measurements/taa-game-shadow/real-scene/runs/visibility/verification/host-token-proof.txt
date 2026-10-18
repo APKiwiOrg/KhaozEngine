@@ -1,0 +1,19 @@
+Test run for KhaozEngine.Render.Tests/bin/Release/net10.0/KhaozEngine.Render.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+KhaozEngine.Render.Tests/bin/Release/net10.0/KhaozEngine.Render.Tests.dll
+[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v2.8.2+699d445a1a (64-bit .NET 10.0.13)
+[xUnit.net 00:00:00.18]   Discovering: KhaozEngine.Render.Tests
+[xUnit.net 00:00:01.12]   Discovered:  KhaozEngine.Render.Tests
+[xUnit.net 00:00:01.14]   Starting:    KhaozEngine.Render.Tests
+[xUnit.net 00:00:01.18]   Finished:    KhaozEngine.Render.Tests
+  Passed KhaozEngine.Tests.Gpu.TemporalVisibilityArchiveGpuTests.Hosted_archive_dispatch_has_the_selected_visibility_signal_enabled [6 ms]
+  Standard Output Messages:
+ Visibility archive token shadow-bilinear-3x3,vis-release-0.1, startup mask 20971520, MRT enabled True
+
+
+
+Test Run Successful.
+Total tests: 1
+     Passed: 1
+ Total time: 2.1227 Seconds
+build-slot: exit=0 waited=0.063s ran=3.698s

@@ -1,0 +1,43 @@
+
+  Determining projects to restore...
+  Restored GrimhollowUpdater/GrimhollowUpdater.csproj (in 1.02 sec).
+  Restored tools/worldflora/WorldFlora.csproj (in 1.04 sec).
+  Restored tools/navbake/NavBake.csproj (in 1.04 sec).
+  Restored Grimhollow.Auth/Grimhollow.Auth.csproj (in 1.05 sec).
+  Restored Grimhollow.Admin/Grimhollow.Admin.csproj (in 1.05 sec).
+  Restored Grimhollow.Persistence/Grimhollow.Persistence.csproj (in 1.05 sec).
+  Restored GrimhollowStatusFunction/GrimhollowStatusFunction.csproj (in 1.05 sec).
+  Restored tools/journal-rehearsal/JournalRehearsal.csproj (in 1.06 sec).
+  Restored Grimhollow.Desktop/Grimhollow.Desktop.csproj (in 1.07 sec).
+  Restored Grimhollow.Core/Grimhollow.Core.csproj (in 1.08 sec).
+  Restored tools/SnapshotTool/SnapshotTool.csproj (in 1.08 sec).
+  Restored Grimhollow.Tests/Grimhollow.Tests.csproj (in 1.08 sec).
+  6 of 18 projects are up-to-date for restore.
+  GrimhollowUpdater -> GrimhollowUpdater/bin/Release/net10.0/GrimhollowUpdater.dll
+  Grimhollow.Shared -> Grimhollow.Shared/bin/Release/net10.0/Grimhollow.Shared.dll
+  WorldTrees -> tools/worldtrees/bin/Release/net10.0/WorldTrees.dll
+  PlaytestMcp -> tools/playtest-mcp/bin/Release/net10.0/PlaytestMcp.dll
+  NavBake -> tools/navbake/bin/Release/net10.0/NavBake.dll
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  Grimhollow.Persistence -> Grimhollow.Persistence/bin/Release/net10.0/Grimhollow.Persistence.dll
+  Grimhollow.Core -> Grimhollow.Core/bin/Release/net10.0/Grimhollow.Core.dll
+  WorldFlora -> tools/worldflora/bin/Release/net10.0/WorldFlora.dll
+  WorkerExtensions -> GrimhollowStatusFunction/obj/Release/net10.0/WorkerExtensions/bin/Release/net8.0/Microsoft.Azure.Functions.Worker.Extensions.dll
+  ServerProbe -> tools/server-probe/bin/Release/net10.0/ServerProbe.dll
+  Grimhollow.Server -> Grimhollow.Server/bin/Release/net10.0/Grimhollow.Server.dll
+  Grimhollow.Auth -> Grimhollow.Auth/bin/Release/net10.0/Grimhollow.Auth.dll
+  StoneArmourRigMeasure -> tools/StoneArmourRigMeasure/bin/Release/net10.0/StoneArmourRigMeasure.dll
+  Grimhollow.Desktop -> Grimhollow.Desktop/bin/Release/net10.0/Grimhollow.dll
+  SnapshotTool -> tools/SnapshotTool/bin/Release/net10.0/SnapshotTool.dll
+  JournalRehearsal -> tools/journal-rehearsal/bin/Release/net10.0/JournalRehearsal.dll
+  GrimhollowStatusFunction -> GrimhollowStatusFunction/bin/Release/net10.0/GrimhollowStatusFunction.dll
+  Grimhollow.Admin -> Grimhollow.Admin/bin/Release/net10.0/Grimhollow.Admin.dll
+  Grimhollow.Tests -> Grimhollow.Tests/bin/Release/net10.0/Grimhollow.Tests.dll
+
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:20.86
+build-slot: exit=0 waited=0.019s ran=21.120s

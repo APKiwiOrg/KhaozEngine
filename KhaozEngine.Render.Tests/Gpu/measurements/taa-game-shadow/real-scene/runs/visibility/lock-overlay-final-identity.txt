@@ -1,0 +1,3 @@
+taa-native differing pixels over 16 frames 0 max channel diff 0 first differing frame None
+taa-quality differing pixels over 16 frames 0 max channel diff 0 first differing frame None
+fxaa differing pixels over 16 frames 0 max channel diff 0 first differing frame None

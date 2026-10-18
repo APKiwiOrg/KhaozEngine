@@ -1,0 +1,1644 @@
+{
+  "run_id": "39131215312",
+  "source_commit": "e62236e561120669f6ca6be4c237c8cb46d50554",
+  "backends": {
+    "direct3d11-native": {
+      "counts": {
+        "Total tests": "Unknown",
+        "Passed": 893,
+        "Failed": 312,
+        "Skipped": null
+      },
+      "aborted": true,
+      "token_stamp": [
+        "Visibility archive token vis-release-0.1, startup mask 16777216, MRT enabled True"
+      ],
+      "failures": [
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveRendererGpuTests.Background_reprojects_by_rotation_and_keeps_its_history",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveRendererGpuTests.A_disoccluded_pixel_drops_its_history",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveRendererGpuTests.The_nearest_depth_in_the_neighbourhood_carries_the_motion",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveRendererGpuTests.The_reconstruction_weights_each_sample_by_lanczos_on_its_jittered_offset",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveRendererGpuTests.A_history_that_is_not_finite_never_reaches_the_output(poison: \u221e)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveRendererGpuTests.A_history_that_is_not_finite_never_reaches_the_output(poison: NaN)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveRendererGpuTests.Reactive_content_gives_up_confidence_in_proportion",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveRendererGpuTests.New_history_targets_rebuild_the_sets_the_resolve_reads",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveRendererGpuTests.A_still_pixel_blends_its_history_by_its_accumulated_weight",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveRendererGpuTests.A_reset_frame_outputs_the_current_frame_and_stores_linear_depth_with_background_marked",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveRendererGpuTests.A_reprojection_off_screen_drops_its_history",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalConvergedStabilityGpuTests.The_window_opens_once_the_fence_carries_the_confidence_the_rule_starts_from",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalGhostingGpuTests.AKeyedCrossingObjectLeavesNoTrail(textured: False, preset: Quality)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalPerspectiveFollowGpuTests.A_followed_avatar_leaves_no_trail_on_the_ground_it_uncovers",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalStabilityGpuTests.ThinGeometryKeepsItsSharpness(preset: Quality, panning: True, floor: 0.080000000000000002)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalGhostingGpuTests.AKeyedCrossingObjectLeavesNoTrail(textured: False, preset: Native)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalPerspectiveFollowGpuTests.A_followed_avatar_leaves_no_trail_past_the_reconstructions_reach",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalPerspectiveFollowGpuTests.The_perspective_follow_table_prints_every_walk",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalGhostingGpuTests.AKeyedCrossingObjectLeavesNoTrail(textured: True, preset: Native)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalGhostingGpuTests.AKeyedCrossingObjectLeavesNoTrail(textured: True, preset: Quality)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalNarrowCrossingGpuTests.A_ridged_keyed_box_keeps_no_history_by_its_locks_where_it_left(preset: Native)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalNarrowCrossingGpuTests.A_ridged_keyed_box_keeps_no_history_by_its_locks_where_it_left(preset: Quality)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalGhostingGpuTests.AnUnkeyedCrossingObjectOverAFlatWallLeavesNoTrail(preset: Native)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalNarrowCrossingGpuTests.A_keyed_line_two_texels_wide_leaves_no_trail_where_it_left(preset: Native)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalGhostingGpuTests.AnUnkeyedCrossingObjectOverAFlatWallLeavesNoTrail(preset: Quality)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalNarrowCrossingGpuTests.A_keyed_line_two_texels_wide_leaves_no_trail_where_it_left(preset: Quality)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalGhostingGpuTests.AKeyedTeleportWithinTheCutDistanceKeepsHistoryAndMovesByTheJump(preset: Native)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalNarrowCrossingGpuTests.A_keyed_line_one_texel_wide_leaves_no_trail_where_it_left(preset: Native)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalGhostingGpuTests.AKeyedTeleportWithinTheCutDistanceKeepsHistoryAndMovesByTheJump(preset: Quality)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalNarrowCrossingGpuTests.A_keyed_line_one_texel_wide_leaves_no_trail_where_it_left(preset: Quality)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalNarrowCrossingGpuTests.The_narrow_crossing_table_prints_every_case",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalGhostingGpuTests.AnOrthographicZoomLeavesNoGhost(preset: Quality)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalGhostingGpuTests.AnOrthographicZoomLeavesNoGhost(preset: Native)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalStabilityGpuTests.ThinGeometryKeepsItsSharpness(preset: Native, panning: True, floor: 0.14999999999999999)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalGhostingGpuTests.TheReactiveEstimateMarksTheParticles(preset: Quality)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalGhostingGpuTests.TheReactiveEstimateMarksTheParticles(preset: Native)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalStabilityGpuTests.ThinGeometryKeepsItsSharpness(preset: Quality, panning: False, floor: 0.22)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalGhostingGpuTests.TheGhostingTableCoversEveryPreset",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalEntryFlipMemoryGpuTests.FlippingTheEntryAndThePresetKeepsDeviceMemoryFlat",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalGhostingGpuTests.AParticleBurstOverAMovingBackgroundLeavesNoTrail",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalStabilityGpuTests.ThinGeometryKeepsItsSharpness(preset: Native, panning: False, floor: 0.40000000000000002)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalStabilityGpuTests.ASlowPanOverThinGeometryFlickersLessThanMsaa4xAtNative",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_on_every_frame(preset: Performance)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalStaticOrbitGpuTests.No_still_surface_stores_the_band_mark_under_an_orbit_a_strafe_or_a_creep",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalStaticOrbitGpuTests.The_still_field_table_prints_the_band_marks_and_the_static_travel",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_on_every_frame(preset: Quality)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_on_every_frame(preset: Native)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_with_the_edge_outline_on",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalLongHoldFollowGpuTests.The_long_hold_follow_camera_table_prints_every_walk",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalLongHoldFollowGpuTests.The_long_hold_perspective_follow_table_prints_every_walk",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalStabilityGpuTests.ASlowPanOverThinGeometryDoesNotShimmer(preset: Performance)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalCountProbeGpuTests.WithoutARequestNoProbeIsBuilt",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalCountProbeGpuTests.AStillFrameCountsAlmostNothing",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalCountProbeGpuTests.ARequestIsReadBackOnceAtTheNextPrepareFrame",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalCountProbeGpuTests.TheDisoccludedCountIsTheResolvesOwnDecisionAtEverySample",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalCountProbeGpuTests.ARevealedBackgroundIsCountedAsDisoccluded",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalCountProbeGpuTests.ASharpChangeOfColourIsCountedAsClipped",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowStopGpuTests.The_follow_stop_table_prints_the_avatars_own_error_around_the_turn",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowStopGpuTests.A_followed_avatar_keeps_its_own_history_when_it_stops_or_turns_back",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalStabilityGpuTests.ASlowPanOverThinGeometryDoesNotShimmer(preset: Quality)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowStopGpuTests.The_follow_stop_table_prints_the_avatar_beside_the_clear_colour_and_a_passer",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResetGpuTests.TheFrameAfterAResetMatchesAFromScratchRender(which: PresetToUltraPerformance)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResetGpuTests.TheFrameAfterAResetMatchesAFromScratchRender(which: HdrOff)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResetGpuTests.TheFrameAfterAResetMatchesAFromScratchRender(which: HdrOn)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResetGpuTests.TheFrameAfterAResetMatchesAFromScratchRender(which: HdrToggleWithPresetResizeAndCut)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResetGpuTests.TheFrameAfterAResetMatchesAFromScratchRender(which: CameraCutPastTheCutDistance)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResetGpuTests.TheFrameAfterAResetMatchesAFromScratchRender(which: PresetToPerformance)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResetGpuTests.TheFrameAfterAResetMatchesAFromScratchRender(which: AutomaticCut)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResetGpuTests.TheFrameAfterAResetMatchesAFromScratchRender(which: CameraCut)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResetGpuTests.TheFrameAfterAResetMatchesAFromScratchRender(which: PresetChangeWithDisplayResize)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalStabilityGpuTests.ASlowPanOverThinGeometryDoesNotShimmer(preset: UltraPerformance)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResetGpuTests.TheFrameAfterAResetMatchesAFromScratchRender(which: DisplayResizeUnderTheCap)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResetGpuTests.TheFrameAfterAResetMatchesAFromScratchRender(which: TemporalTurnedOn)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResetGpuTests.TheFrameAfterAResetMatchesAFromScratchRender(which: DisplayResize)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResetGpuTests.TheFrameAfterAResetMatchesAFromScratchRender(which: DisplayResizeWithCameraCut)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResetGpuTests.TheFrameAfterAResetMatchesAFromScratchRender(which: AntiAliasingChangeUnderTheMotionView)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResetGpuTests.ASharpnessChangeKeepsHistory",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResetGpuTests.AMipBiasOffsetChangeKeepsHistory",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalDiagonalDetailGpuTests.Diagonal_sub_texel_lines_on_texture_keep_their_history_still_and_under_a_slow_pan",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalStabilityGpuTests.ASlowPanOverThinGeometryDoesNotShimmer(preset: Native)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalStablePeakGpuTests.Isolated_stable_peaks_keep_their_history_under_a_still_camera_and_light",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalStabilityGpuTests.ASlowPanOverThinGeometryDoesNotShimmer(preset: Balanced)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalMovingShadeLagGpuTests.Shadow_edge_lag_on_moving_pixels_and_fast_shadows_stays_within_its_bounds",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalHeldBackgroundGpuTests.A_fast_narrow_line_over_a_held_textured_wall_prints_its_energy",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalShadowEdgeLagGpuTests.Shadow_edge_lag_metrics_under_a_turning_key_light_at_each_travel_rate",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowLinesGpuTests.The_follow_lines_table_prints_every_walk",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowLinesGpuTests.A_still_line_keeps_its_energy_beside_a_box_the_orthographic_camera_follows",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalStabilityGpuTests.APropMidDissolvePansCalmerThanWithoutAntiAliasing",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalMovingShadeRimGpuTests.A_reused_rim_scene_matches_a_fresh_scene_after_other_configurations",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalMovingShadeRimGpuTests.Moving_shadow_receivers_keep_their_leading_and_trailing_rims",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalDisocclusionGpuTests.ARevealedBackgroundCarriesNoHistoryFromItsOccluder(textured: False, preset: Quality)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalDisocclusionGpuTests.ARevealedBackgroundCarriesNoHistoryFromItsOccluder(textured: True, preset: Quality)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalDisocclusionGpuTests.ARevealedBackgroundCarriesNoHistoryFromItsOccluder(textured: False, preset: Native)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalUpscalingGoldenTests.QualityUpscalingBeatsABilinearUpscaleOfTheSameFrame",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalDisocclusionGpuTests.ARevealedBackgroundCarriesNoHistoryFromItsOccluder(textured: True, preset: Native)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalDisocclusionGpuTests.TheRevealTableCoversEveryPreset",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalStabilityGpuTests.ASlowPanOverThinGeometryOnAWallFlickersLessThanMsaa4xAtNative",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveSceneGpuTests.Bloom_and_distortion_run_on_the_display_chain_after_the_resolve",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveSceneGpuTests.A_solid_background_frame_with_nothing_opaque_copies_the_cleared_background",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveSceneGpuTests.A_beam_over_the_sky_shows_under_temporal",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveSceneGpuTests.A_second_render_at_another_size_leaves_the_history_valid",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveSceneGpuTests.Toggling_hdr_then_bloom_while_resolving_keeps_every_frame_sane_and_resets_only_on_hdr",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveSceneGpuTests.A_capture_from_another_camera_at_the_same_size_leaves_the_main_view_unchanged",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveSceneGpuTests.A_capture_inside_a_resolving_frame_looks_like_a_render_without_temporal_at_the_internal_size",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFastEdgeGpuTests.A_still_box_over_the_textured_wall_under_a_sideways_camera_keeps_its_edges(preset: Quality, maxEdgeError: 0.064000000000000001, maxTrail: 16)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalStabilityGpuTests.TheDefaultIsometricCameraZoomingDoesNotSwim(preset: Native, maxShareOfOff: 0.69999999999999996)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFastEdgeGpuTests.A_still_box_over_the_textured_wall_under_a_sideways_camera_keeps_its_edges(preset: Native, maxEdgeError: 0.044999999999999998, maxTrail: 11)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFastEdgeGpuTests.A_followed_keyed_box_keeps_its_own_edges_under_the_reach(preset: Native, speed: 0.5, maxEdgeError: 0.02)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFastEdgeGpuTests.A_followed_keyed_box_keeps_its_own_edges_under_the_reach(preset: Native, speed: 0.25, maxEdgeError: 0.019)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFastEdgeGpuTests.A_followed_keyed_box_keeps_its_own_edges_under_the_reach(preset: Quality, speed: 1, maxEdgeError: 0.028000000000000001)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFastEdgeGpuTests.A_followed_keyed_box_keeps_its_own_edges_under_the_reach(preset: Native, speed: 1, maxEdgeError: 0.014)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFastEdgeGpuTests.A_followed_keyed_box_keeps_its_own_edges_under_the_reach(preset: Quality, speed: 0.25, maxEdgeError: 0.025000000000000001)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFastEdgeGpuTests.A_followed_keyed_box_keeps_its_own_edges_under_the_reach(preset: Quality, speed: 0.5, maxEdgeError: 0.025999999999999999)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFastEdgeGpuTests.The_box_edge_table_prints_the_walks_under_the_reach",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFastEdgeGpuTests.A_still_box_against_the_sky_under_a_sideways_camera_keeps_steady_edges(preset: Quality, maxEdgeError: 0.032000000000000001)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFastEdgeGpuTests.A_still_box_against_the_sky_under_a_sideways_camera_keeps_steady_edges(preset: Native, maxEdgeError: 0.02)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFastEdgeGpuTests.A_keyed_line_crossing_fast_leaves_no_trail_and_does_not_shimmer(preset: Quality, maxTrail: 1)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalMaterialLodGpuTests.ALaterRenderInsideAResolvingFrameWritesExactZeros",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFastEdgeGpuTests.A_keyed_line_crossing_fast_leaves_no_trail_and_does_not_shimmer(preset: Native, maxTrail: 3)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFastEdgeGpuTests.The_fast_edge_table_prints_every_run",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFastEdgeGpuTests.A_keyed_box_crossing_fast_keeps_its_edges_close_to_the_reference(preset: Native)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFastEdgeGpuTests.A_keyed_box_crossing_fast_keeps_its_edges_close_to_the_reference(preset: Quality)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalStabilityGpuTests.TheDefaultIsometricCameraZoomingDoesNotSwim(preset: Quality, maxShareOfOff: 0.85999999999999999)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFastEdgeGpuTests.The_keyed_line_table_prints_the_resolve_against_msaa_4x_and_no_anti_aliasing",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalStabilityGpuTests.ASlowPanOverThinGeometryFlickersLessThanMsaa4xAtQuality",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalStabilityGpuTests.APropHeldAtHalfDissolveConvergesToASteadyPartialCoverage",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_on_a_surface_the_camera_follows_holds_like_a_still_one(preset: Native)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_on_a_surface_the_camera_follows_holds_like_a_still_one(preset: UltraPerformance)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.Two_lines_narrower_than_a_texel_in_neighbouring_columns_hold_like_still_ones(preset: Quality, ahead: False)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.Two_lines_narrower_than_a_texel_in_neighbouring_columns_hold_like_still_ones(preset: Native, ahead: True)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.Two_lines_narrower_than_a_texel_in_neighbouring_columns_hold_like_still_ones(preset: Native, ahead: False)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.Two_lines_narrower_than_a_texel_in_neighbouring_columns_hold_like_still_ones(preset: Quality, ahead: True)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_on_a_swaying_surface_holds_like_a_still_one(preset: Native, speed: 0.5)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_on_a_swaying_surface_holds_like_a_still_one(preset: Native, speed: 0.300000012)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_on_a_swaying_surface_holds_like_a_still_one(preset: UltraPerformance, speed: 0.300000012)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_keyed_thin_feature_leaves_no_trail_two_frames_after_it_passes(preset: UltraPerformance)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_keyed_thin_feature_leaves_no_trail_two_frames_after_it_passes(preset: Quality)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_surface_edge_the_jitter_crosses_holds_like_a_still_one(preset: Native, side: 1)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_surface_edge_the_jitter_crosses_holds_like_a_still_one(preset: Quality, side: 1)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_surface_edge_the_jitter_crosses_holds_like_a_still_one(preset: Native, side: -1)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalDebugViewGoldenTests.HistoryShowsConvergedWallBrightAndFreshRevealDark",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_surface_edge_the_jitter_crosses_holds_like_a_still_one(preset: Quality, side: -1)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_against_the_sky_holds_like_one_on_a_wall(preset: Native)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_against_the_sky_holds_like_one_on_a_wall(preset: Quality)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalDebugViewGoldenTests.ALaterRenderInTheFrameShowsTheOrdinaryImage",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_against_the_sky_holds_like_one_on_a_wall(preset: UltraPerformance)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_still_nearer_surface_holds_like_a_still_one(preset: Native, side: 1)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalDebugViewGoldenTests.ReactiveMarksTheParticleCloud",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_still_nearer_surface_holds_like_a_still_one(preset: UltraPerformance, side: -1)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_still_nearer_surface_holds_like_a_still_one(preset: Quality, side: 1)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_still_nearer_surface_holds_like_a_still_one(preset: UltraPerformance, side: 1)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalDebugViewGoldenTests.DisocclusionPaintsTheRevealedStripRed",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_still_nearer_surface_holds_like_a_still_one(preset: Quality, side: -1)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_still_nearer_surface_holds_like_a_still_one(preset: Native, side: -1)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_nearer_surface_crossing_a_held_line_carries_no_ghost_of_it(preset: UltraPerformance)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_nearer_surface_crossing_a_held_line_carries_no_ghost_of_it(preset: Native)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_nearer_surface_crossing_a_held_line_carries_no_ghost_of_it(preset: Quality)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_against_the_sky_beside_a_still_nearer_surface_holds_away_from_the_centre_as_at_it(preset: UltraPerformance)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_against_the_sky_beside_a_still_nearer_surface_holds_away_from_the_centre_as_at_it(preset: Quality)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_against_the_sky_beside_a_still_nearer_surface_holds_away_from_the_centre_as_at_it(preset: Native)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_keyed_thin_feature_keeps_half_its_still_contrast_while_it_moves(preset: UltraPerformance)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_keyed_thin_feature_keeps_half_its_still_contrast_while_it_moves(preset: Quality)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_thin_ridge_takes_a_lock_and_the_lock_holds_its_luma_against_the_clip",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_blade_narrower_than_a_texel_swaying_over_still_ground_holds_like_a_still_one(preset: UltraPerformance)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_blade_narrower_than_a_texel_swaying_over_still_ground_holds_like_a_still_one(preset: Native)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_blade_narrower_than_a_texel_swaying_over_still_ground_holds_like_a_still_one(preset: Quality)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.Of_three_lines_narrower_than_a_texel_side_by_side_an_outer_one_holds_like_a_still_one(preset: Quality)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.Of_three_lines_narrower_than_a_texel_side_by_side_an_outer_one_holds_like_a_still_one(preset: Native)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_still_line_narrower_than_a_texel_holds_steady_at_its_coverage(preset: Quality)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_still_line_narrower_than_a_texel_holds_steady_at_its_coverage(preset: UltraPerformance)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_still_line_narrower_than_a_texel_holds_steady_at_its_coverage(preset: Native)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_thin_feature_moving_without_motion_trails_no_more_than_one_internal_texel",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalStabilityGpuTests.ALodCrossfadePansCalmerThanWithoutAntiAliasing",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalOutlineGpuTests.UnderTemporalAntiAliasingAStillOutlineConvergesToSteadyPixels",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalOutlineGpuTests.TheResolveReadsNoOutlinePixelAsTransparentContent",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveEdgeCaseGpuTests.A_moving_pixel_clips_its_history_to_the_narrower_moving_box",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveEdgeCaseGpuTests.A_glint_in_the_history_never_rings_the_fetch_darker_than_the_surface_beside_it",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveSmokeGpuTests.A_still_scene_converges_upright_anti_aliased_and_unlike_a_single_jittered_frame",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveEdgeCaseGpuTests.A_fast_sideways_step_keeps_the_depth_test_and_drops_only_the_history_that_was_covered",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveEdgeCaseGpuTests.An_infinite_scene_colour_leaves_every_output_finite",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalResolveSmokeGpuTests.The_upscaling_presets_land_close_to_native_and_upright",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalDiagnosticsSizesGpuTests.TheDiagnosticsReportTheSizesAndThePreset(preset: Quality, wantW: 213, wantH: 120)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalDiagnosticsSizesGpuTests.TheDiagnosticsReportTheSizesAndThePreset(preset: Native, wantW: 320, wantH: 180)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalDiagnosticsSizesGpuTests.TheDiagnosticsReportTheSizesAndThePreset(preset: Performance, wantW: 160, wantH: 90)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalDiagnosticsSizesGpuTests.TheDiagnosticsReportTheSizesAndThePreset(preset: UltraPerformance, wantW: 107, wantH: 60)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalDiagnosticsSizesGpuTests.TheDiagnosticsReportTheSizesAndThePreset(preset: Balanced, wantW: 188, wantH: 106)",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalDiagnosticsSizesGpuTests.ALaterRenderAtAnotherSizeLeavesTheFramesDiagnosticsAlone",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalDiagnosticsSizesGpuTests.AnExplicitRatioOverridesThePresetInTheReportedSize",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowPhaseGpuTests.The_follow_lines_hold_their_share_from_every_start_phase",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowPhaseGpuTests.The_orthographic_follow_holds_its_bounds_from_every_start_phase_at_Native",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowPhaseGpuTests.The_perspective_follow_holds_its_bounds_from_every_start_phase_at_Native_and_Quality",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowPhaseGpuTests.The_orthographic_follow_holds_its_bounds_from_every_start_phase_at_Quality",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalStabilityGpuTests.ASlowPanOverThinGeometryOnAWallFlickersLessThanMsaa4xAtQuality",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowPhaseGpuTests.The_follow_stop_holds_its_bounds_from_every_start_phase",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalStabilityGpuTests.TheMotionClarityTablePrintsEveryRun",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.ShadowReconfigureGpuTests.Low_default_high_low_rebuilds_the_live_atlas_and_keeps_every_receiver_drawable",
+          "reason": "acceptance failure",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x887A0005], Module: [Vortice.DXGI], ApiCode: [DXGI_ERROR_DEVICE_REMOVED/DeviceRemoved], Message: [The GPU device instance has been suspended. Use GetDeviceRemovedReason to determine the appropriate action.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowCameraGpuTests.A_followed_keyed_box_leaves_no_trail_on_the_wall_it_uncovers(preset: Performance, speed: 0.5, maxExcess: 22)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.AlphaCutoutShadowGpuTests.A_cutout_hole_leaves_the_receiver_under_it_lit_while_the_rest_still_casts",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowCameraGpuTests.A_followed_keyed_box_leaves_no_trail_on_the_wall_it_uncovers(preset: Native, speed: 0.5, maxExcess: -1)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.AlphaCutoutShadowGpuTests.A_single_plane_card_casts_its_cutout_silhouette_whichever_face_points_at_the_light(facesLight: True)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowCameraGpuTests.A_followed_keyed_box_leaves_no_trail_on_the_wall_it_uncovers(preset: UltraPerformance, speed: 3, maxExcess: 38)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.AlphaCutoutShadowGpuTests.A_single_plane_card_casts_its_cutout_silhouette_whichever_face_points_at_the_light(facesLight: False)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowCameraGpuTests.A_followed_keyed_box_leaves_no_trail_on_the_wall_it_uncovers(preset: Quality, speed: 2.5, maxExcess: -1)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.AlphaCutoutShadowGpuTests.A_mask_caster_with_an_opaque_texture_casts_the_same_shadow_as_an_opaque_load",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowCameraGpuTests.A_followed_keyed_box_leaves_no_trail_on_the_wall_it_uncovers(preset: Native, speed: 2.5, maxExcess: -1)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Terrain.PropBlobShadowGpuTests.Sink_Draw_registers_blobs_for_individual_props_before_the_hlod_swap",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowCameraGpuTests.A_followed_keyed_box_leaves_no_trail_on_the_wall_it_uncovers(preset: Performance, speed: 1, maxExcess: 28)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Terrain.PropBlobShadowGpuTests.DrawProps_with_no_blob_table_registers_nothing_even_at_Blob_tier",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowCameraGpuTests.A_followed_keyed_box_leaves_no_trail_on_the_wall_it_uncovers(preset: UltraPerformance, speed: 1, maxExcess: 71)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowCameraGpuTests.A_followed_keyed_box_leaves_no_trail_on_the_wall_it_uncovers(preset: Native, speed: 2, maxExcess: 7)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Terrain.PropBlobShadowGpuTests.DrawProps_registers_a_blob_once_the_resolved_tier_is_Blob",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowCameraGpuTests.A_followed_keyed_box_leaves_no_trail_on_the_wall_it_uncovers(preset: Performance, speed: 1.5, maxExcess: 22)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalAcceptanceRigGpuTests.On_the_fence_pan_raw_flips_cannot_tell_msaa_from_aliasing_and_the_temporal_error_can",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Terrain.PropBlobShadowGpuTests.Sink_Draw_registers_no_blob_once_the_cluster_has_swapped_to_its_merged_hlod_mesh",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowCameraGpuTests.A_followed_keyed_box_leaves_no_trail_on_the_wall_it_uncovers(preset: Native, speed: 3, maxExcess: -1)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalAcceptanceRigGpuTests.Every_scene_renders_the_same_frame_the_same_way_twice",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalAcceptanceRigGpuTests.The_revealed_rectangle_shows_only_the_background_and_the_occluder_lands_where_it_says(textured: False)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Terrain.PropBlobShadowGpuTests.DrawProps_registers_no_blob_at_the_default_Off_tier",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowCameraGpuTests.A_followed_keyed_box_leaves_no_trail_on_the_wall_it_uncovers(preset: Quality, speed: 1.5, maxExcess: 6)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalAcceptanceRigGpuTests.The_revealed_rectangle_shows_only_the_background_and_the_occluder_lands_where_it_says(textured: True)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowCameraGpuTests.A_followed_keyed_box_leaves_no_trail_on_the_wall_it_uncovers(preset: Performance, speed: 2, maxExcess: 26)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalAcceptanceRigGpuTests.The_fade_prop_region_stays_on_the_prop_through_the_pan",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalStoredLockGpuTests.A_lock_stored_by_the_followed_surface_reads_back_unchanged_where_it_stopped",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalAcceptanceRigGpuTests.The_crossing_footprints_cover_exactly_what_the_crossing_draws(textured: True)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowCameraGpuTests.A_followed_keyed_box_leaves_no_trail_on_the_wall_it_uncovers(preset: Native, speed: 1, maxExcess: -1)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowCameraGpuTests.A_followed_keyed_box_leaves_no_trail_on_the_wall_it_uncovers(preset: Performance, speed: 2.5, maxExcess: -1)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalAcceptanceRigGpuTests.The_crossing_footprints_cover_exactly_what_the_crossing_draws(textured: False)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalStoredLockGpuTests.A_lock_stored_where_a_moving_surface_showed_reads_back_unchanged",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowCameraGpuTests.A_followed_keyed_box_leaves_no_trail_on_the_wall_it_uncovers(preset: Native, speed: 1.5, maxExcess: 4)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowCameraGpuTests.A_followed_keyed_box_leaves_no_trail_on_the_wall_it_uncovers(preset: Quality, speed: 2, maxExcess: 15)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalAcceptanceRigGpuTests.A_reference_sequence_equals_a_larger_sequence_box_filtered_and_its_lag_is_one_frame_earlier",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalStoredLockGpuTests.A_still_pixel_clear_of_any_edge_drops_the_history_a_band_pixel_stored",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowCameraGpuTests.A_followed_keyed_box_leaves_no_trail_on_the_wall_it_uncovers(preset: UltraPerformance, speed: 2.5, maxExcess: 38)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowCameraGpuTests.A_followed_keyed_box_leaves_no_trail_on_the_wall_it_uncovers(preset: UltraPerformance, speed: 1.5, maxExcess: 19)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalOffByteIdentityGoldenTests.AFrameWithoutTemporalBuildsNoneOfTheResolveObjects(mode: 0)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalStoredLockGpuTests.A_lock_stored_by_a_band_pixel_reads_back_unchanged_where_its_history_is_kept",
+          "reason": "CRLF splice bug, no visibility measurement",
+          "message": "System.InvalidOperationException : The shader anchor '    vec4 Params;\n};' is missing, so a variant built on it would lose its insertion."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowCameraGpuTests.A_followed_keyed_box_leaves_no_trail_on_the_wall_it_uncovers(preset: UltraPerformance, speed: 2, maxExcess: 68)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalOffByteIdentityGoldenTests.AFrameWithoutTemporalBuildsNoneOfTheResolveObjects(mode: 1)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowCameraGpuTests.A_followed_keyed_box_leaves_no_trail_on_the_wall_it_uncovers(preset: Performance, speed: 3, maxExcess: -1)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalOffByteIdentityGoldenTests.AFrameWithoutTemporalBuildsNoneOfTheResolveObjects(mode: 2)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Render3D.ShadowBlobQueueTests.ResolvedShadows_reflects_mode",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.PointShadowNearRadiusGpuTests.WithNoNearRadiusTheLampIsFullyShadowedByItsOwnFixture",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowCameraGpuTests.A_followed_keyed_box_leaves_no_trail_on_the_wall_it_uncovers(preset: Quality, speed: 3, maxExcess: -1)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.PointShadowNearRadiusGpuTests.AClearedLampStillCastsEverythingPastTheClearance",
+          "reason": "acceptance failure",
+          "message": "System.NullReferenceException : Object reference not set to an instance of an object."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.PointShadowNearRadiusGpuTests.AFixtureWhollyInsideTheClearanceIsNotEvenDrawn",
+          "reason": "acceptance failure",
+          "message": "System.NullReferenceException : Object reference not set to an instance of an object."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.PointShadowNearRadiusGpuTests.ChangingTheNearRadiusOnOneKeyRedrawsTheRowAndThePictureWithIt",
+          "reason": "acceptance failure",
+          "message": "System.NullReferenceException : Object reference not set to an instance of an object."
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.PointShadowNearRadiusGpuTests.ANearRadiusPastTheFixtureGivesTheLampItsRoomBack",
+          "reason": "acceptance failure",
+          "message": "System.NullReferenceException : Object reference not set to an instance of an object."
+        },
+        {
+          "test": "KhaozEngine.Tests.Render3D.ShadowBlobQueueTests.AddShadowBlob_enqueues_and_Begin_clears",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowCameraGpuTests.A_followed_keyed_box_leaves_no_trail_on_the_wall_it_uncovers(preset: Quality, speed: 0.5, maxExcess: 9)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalPassingBoxGpuTests.A_still_sub_texel_line_holds_while_a_narrow_keyed_passer_slides_past_it(preset: Native, side: -1, passerTexels: 1)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.MsaaResolveTargetGoldenTests.Golden3D_MsaaResolvedDepthAndNormalCarryTheSameFrameTheSingleSamplePathDoes",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalPassingBoxGpuTests.A_still_sub_texel_line_holds_while_a_narrow_keyed_passer_slides_past_it(preset: Quality, side: 1, passerTexels: 2)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowCameraGpuTests.A_followed_keyed_box_leaves_no_trail_on_the_wall_it_uncovers(preset: Quality, speed: 1, maxExcess: 12)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalPassingBoxGpuTests.A_still_sub_texel_line_holds_while_a_narrow_keyed_passer_slides_past_it(preset: Native, side: 1, passerTexels: 2)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowCameraGpuTests.A_followed_keyed_box_leaves_no_trail_on_the_wall_it_uncovers(preset: UltraPerformance, speed: 0.5, maxExcess: 45)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowCameraGpuTests.The_follow_camera_table_prints_every_preset",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalPassingBoxGpuTests.A_still_sub_texel_line_holds_while_a_narrow_keyed_passer_slides_past_it(preset: Native, side: -1, passerTexels: 2)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.SkinnedPointShadowGoldenTests.AgedSharedSceneMatchesAFreshSceneAfterPointShadowConfigurationChanges",
+          "reason": "acceptance failure",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x887A0005], Module: [Vortice.DXGI], ApiCode: [DXGI_ERROR_DEVICE_REMOVED/DeviceRemoved], Message: [The GPU device instance has been suspended. Use GetDeviceRemovedReason to determine the appropriate action.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.SkinnedPointShadowGoldenTests.HalfDissolveThinsTheSkinnedShadowAndOptOutKeepsTheBodyVisible(gpuSkinning: False)",
+          "reason": "acceptance failure",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x887A0005], Module: [Vortice.DXGI], ApiCode: [DXGI_ERROR_DEVICE_REMOVED/DeviceRemoved], Message: [The GPU device instance has been suspended. Use GetDeviceRemovedReason to determine the appropriate action.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.SkinnedPointShadowGoldenTests.HalfDissolveThinsTheSkinnedShadowAndOptOutKeepsTheBodyVisible(gpuSkinning: True)",
+          "reason": "acceptance failure",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x887A0005], Module: [Vortice.DXGI], ApiCode: [DXGI_ERROR_DEVICE_REMOVED/DeviceRemoved], Message: [The GPU device instance has been suspended. Use GetDeviceRemovedReason to determine the appropriate action.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.SkinnedPointShadowGoldenTests.BaseRowOneAndTransientRowZeroLandUnderTheSecondLight(gpuSkinning: True)",
+          "reason": "acceptance failure",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x887A0005], Module: [Vortice.DXGI], ApiCode: [DXGI_ERROR_DEVICE_REMOVED/DeviceRemoved], Message: [The GPU device instance has been suspended. Use GetDeviceRemovedReason to determine the appropriate action.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.SkinnedPointShadowGoldenTests.BaseRowOneAndTransientRowZeroLandUnderTheSecondLight(gpuSkinning: False)",
+          "reason": "acceptance failure",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x887A0005], Module: [Vortice.DXGI], ApiCode: [DXGI_ERROR_DEVICE_REMOVED/DeviceRemoved], Message: [The GPU device instance has been suspended. Use GetDeviceRemovedReason to determine the appropriate action.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.SkinnedPointShadowGoldenTests.DynamicLightDrawsRigidAndBentSkinnedCastersIntoBaseOnly(gpuSkinning: True)",
+          "reason": "acceptance failure",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x887A0005], Module: [Vortice.DXGI], ApiCode: [DXGI_ERROR_DEVICE_REMOVED/DeviceRemoved], Message: [The GPU device instance has been suspended. Use GetDeviceRemovedReason to determine the appropriate action.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.SkinnedPointShadowGoldenTests.DynamicLightDrawsRigidAndBentSkinnedCastersIntoBaseOnly(gpuSkinning: False)",
+          "reason": "acceptance failure",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x887A0005], Module: [Vortice.DXGI], ApiCode: [DXGI_ERROR_DEVICE_REMOVED/DeviceRemoved], Message: [The GPU device instance has been suspended. Use GetDeviceRemovedReason to determine the appropriate action.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowCameraGpuTests.A_followed_keyed_box_leaves_no_trail_past_the_reconstructions_reach(preset: UltraPerformance, speed: 3, maxExcess: 30)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalPassingBoxGpuTests.A_still_sub_texel_line_holds_while_a_narrow_keyed_passer_slides_past_it(preset: Quality, side: -1, passerTexels: 2)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowCameraGpuTests.A_followed_keyed_box_leaves_no_trail_past_the_reconstructions_reach(preset: Performance, speed: 1, maxExcess: -1)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalPassingBoxGpuTests.A_still_sub_texel_line_holds_while_a_narrow_keyed_passer_slides_past_it(preset: Quality, side: 1, passerTexels: 1)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Terrain.SplatTerrainGoldenTests.SplatTerrainGoldenIsTexturedNotWhite",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalPassingBoxGpuTests.A_still_sub_texel_line_holds_while_a_narrow_keyed_passer_slides_past_it(preset: Native, side: 1, passerTexels: 1)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowCameraGpuTests.A_followed_keyed_box_leaves_no_trail_past_the_reconstructions_reach(preset: UltraPerformance, speed: 1, maxExcess: 11)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalSharpenChainGpuTests.SharpeningRaisesEdgeContrast(hdr: False)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalPassingBoxGpuTests.A_still_sub_texel_line_holds_while_a_narrow_keyed_passer_slides_past_it(preset: Quality, side: -1, passerTexels: 1)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowCameraGpuTests.A_followed_keyed_box_leaves_no_trail_past_the_reconstructions_reach(preset: Quality, speed: 1, maxExcess: -1)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalSharpenChainGpuTests.SharpeningRaisesEdgeContrast(hdr: True)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalPassingBoxGpuTests.A_quarter_texel_line_missed_five_frames_running_prints_its_worst_frame_beside_a_narrow_passer",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowCameraGpuTests.A_followed_keyed_box_leaves_no_trail_past_the_reconstructions_reach(preset: UltraPerformance, speed: 1.5, maxExcess: 4)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalSharpenChainGpuTests.SharpeningKeepsTheFrameUpright(hdr: True)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalPassingBoxGpuTests.A_still_sub_texel_line_holds_while_a_keyed_box_slides_past_it(preset: Native, side: -1)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowCameraGpuTests.A_followed_keyed_box_leaves_no_trail_past_the_reconstructions_reach(preset: Performance, speed: 2, maxExcess: -1)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalSharpenChainGpuTests.SharpeningKeepsTheFrameUpright(hdr: False)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowCameraGpuTests.A_followed_keyed_box_leaves_no_trail_past_the_reconstructions_reach(preset: Performance, speed: 3, maxExcess: -1)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalPassingBoxGpuTests.A_still_sub_texel_line_holds_while_a_keyed_box_slides_past_it(preset: Native, side: 1)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalSharpenChainGpuTests.TheSharpenFollowsTheDisplayTargetsWheneverTheyAreRebuilt",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowCameraGpuTests.A_followed_keyed_box_leaves_no_trail_past_the_reconstructions_reach(preset: Quality, speed: 1.5, maxExcess: -1)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalPassingBoxGpuTests.A_still_sub_texel_line_holds_while_a_keyed_box_slides_past_it(preset: Quality, side: -1)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalSharpenChainGpuTests.TheSharpenIsBuiltOnlyWhileTemporalSharpens",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalPassingBoxGpuTests.A_still_sub_texel_line_holds_while_a_keyed_box_slides_past_it(preset: Quality, side: 1)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowCameraGpuTests.A_followed_keyed_box_leaves_no_trail_past_the_reconstructions_reach(preset: Quality, speed: 2, maxExcess: 4)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalSharpenChainGpuTests.ANaNSharpnessIsOffAndLeavesTheFrameAsSharpnessZeroDoes",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowCameraGpuTests.A_followed_keyed_box_leaves_no_trail_past_the_reconstructions_reach(preset: Performance, speed: 2.5, maxExcess: -1)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalSharpenChainGpuTests.ALaterRenderInAResolvingFrameIsNeverSharpened(hdr: False)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.PropLodCrossfadeGpuTests.ComplementaryLodHalvesPreserveColorAndShadowCoverageAtTheMidpoint",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowCameraGpuTests.A_followed_keyed_box_leaves_no_trail_past_the_reconstructions_reach(preset: UltraPerformance, speed: 2, maxExcess: 32)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalSharpenChainGpuTests.ALaterRenderInAResolvingFrameIsNeverSharpened(hdr: True)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalStarfieldGpuTests.TheSkyKeepsTheRotationReprojectionAndItsSunLandsWhereAStillFrameDrawsIt",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowCameraGpuTests.A_followed_keyed_box_leaves_no_trail_past_the_reconstructions_reach(preset: UltraPerformance, speed: 2.5, maxExcess: 21)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalSharpenChainGpuTests.SharpeningKeepsTheOutlineOnTheSilhouette(hdr: True)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalStarfieldGpuTests.AStarfieldHoldsStillWhileTheCameraYaws",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowCameraGpuTests.A_followed_keyed_box_leaves_no_trail_past_the_reconstructions_reach(preset: Performance, speed: 1.5, maxExcess: 4)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalSharpenChainGpuTests.SharpeningKeepsTheOutlineOnTheSilhouette(hdr: False)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowCameraGpuTests.A_followed_keyed_box_leaves_no_trail_past_the_reconstructions_reach(preset: Quality, speed: 3, maxExcess: -1)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.SilhouetteGoldenTests.Begin_clears_the_silhouette_queue",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.BlobShadowReceiverGoldenTests.Blob_shadow_is_not_painted_on_its_casters_body",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalFollowCameraGpuTests.A_followed_keyed_box_leaves_no_trail_past_the_reconstructions_reach(preset: Quality, speed: 2.5, maxExcess: -1)",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.SilhouetteGoldenTests.Golden3D_Silhouette_BoxHull",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.CascadeHandoffBlendGoldenTests.Golden_cascade_blend_cross_fades_the_handoff_band",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.ShadowLightHoldGpuTests.A_caster_that_moves_under_a_held_sun_still_re_records",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.A_slow_pan_over_the_textured_wall_resolves_as_before_the_release",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.ShadowLightHoldGpuTests.A_supra_threshold_step_re_fits_and_a_disabled_hold_never_holds_at_all",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.Texture_detail_near_the_display_nyquist_resolves_as_before_the_release_at_quality",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.ShadowLightHoldGpuTests.A_held_frame_keeps_the_receiver_and_the_atlas_in_agreement",
+          "reason": "resource exhaustion after constructor failures, measurement blocked",
+          "message": "SharpGen.Runtime.SharpGenException : HRESULT: [0x8007000E], Module: [General], ApiCode: [E_OUTOFMEMORY/Out of memory], Message: [Not enough memory resources are available to complete this operation.\n]"
+        }
+      ]
+    },
+    "metal-native": {
+      "counts": {
+        "Total tests": 1360,
+        "Passed": 1350,
+        "Failed": 10,
+        "Skipped": null
+      },
+      "aborted": false,
+      "token_stamp": [
+        "Visibility archive token vis-release-0.1, startup mask 16777216, MRT enabled True"
+      ],
+      "failures": [
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalStoredLockGpuTests.A_lock_stored_by_the_followed_surface_reads_back_unchanged_where_it_stopped",
+          "reason": "seeded fully lit history initialization bug, fixed in dab3a8981",
+          "message": "Assert.Equal() Failure: Values are not within tolerance 0.0001\nExpected: 0.67578125\nActual:   0"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalStoredLockGpuTests.A_lock_stored_where_a_moving_surface_showed_reads_back_unchanged",
+          "reason": "seeded fully lit history initialization bug, fixed in dab3a8981",
+          "message": "Assert.Equal() Failure: Values are not within tolerance 0.0001\nExpected: 0.6748046875\nActual:   0"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalStoredLockGpuTests.A_lock_stored_by_a_band_pixel_reads_back_unchanged_where_its_history_is_kept",
+          "reason": "seeded fully lit history initialization bug, fixed in dab3a8981",
+          "message": "Assert.Equal() Failure: Values are not within tolerance 0.0001\nExpected: 0.67578125\nActual:   0"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalMovingShadeLagGpuTests.Shadow_edge_lag_on_moving_pixels_and_fast_shadows_stays_within_its_bounds",
+          "reason": "acceptance failure",
+          "message": "Quality C pan 2.0 px: textured band 0.0071 above 0.0055 plus a tenth\nNative S 8.0 px advancing: textured tail 0.0046 above 1.5 times the 1 px tail 0.0030\nNative S 8.0 px retreating: textured tail 0.0082 above 1.5 times the 1 px tail 0.0054"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_on_every_frame(preset: Performance)",
+          "reason": "entry identity, original noop control fails this class locally",
+          "message": "the entry points stored different state:\ncolour: 596 values differ on 17 frames from frame 31, the largest by 0.010253906 (21 half-float steps)\nconfidence: none differ\nlock: 8 values differ on 3 frames from frame 27, the largest by 0.00024414062 (2 half-float steps)\nmark: none differ"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_on_every_frame(preset: Quality)",
+          "reason": "entry identity, original noop control fails this class locally",
+          "message": "the entry points stored different state:\ncolour: none differ\nconfidence: none differ\nlock: 15 values differ on 8 frames from frame 22, the largest by 0.00048828125 (4 half-float steps)\nmark: none differ"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_on_every_frame(preset: Native)",
+          "reason": "entry identity, original noop control fails this class locally",
+          "message": "the entry points stored different state:\ncolour: none differ\nconfidence: none differ\nlock: 34 values differ on 18 frames from frame 17, the largest by 0.00048828125 (2 half-float steps)\nmark: none differ"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_with_the_edge_outline_on",
+          "reason": "entry identity, original noop control fails this class locally",
+          "message": "the entry points stored different state:\ncolour: none differ\nconfidence: none differ\nlock: 15 values differ on 8 frames from frame 22, the largest by 0.00048828125 (4 half-float steps)\nmark: none differ"
+        },
+        {
+          "test": "KhaozEngine.Tests.Gpu.TemporalMovingShadeRimGpuTests.Moving_shadow_receivers_keep_their_leading_and_trailing_rims",
+          "reason": "acceptance failure",
+          "message": "Quality M 1.0 trailing textured: temporal error 0.010898 above v21.2.0 0.008060 plus a tenth"
+        },
+        {
+          "test": "KhaozEngine.Tests.Render3D.PointShadowAllocationTests.PreparePointShadowsOnASteadyFrameAllocatesNothing",
+          "reason": "invalid allocation measurement, infrastructure or runtime",
+          "message": "PreparePointShadows over 20 steady frames: invalid allocation measurement because the no-GC region ended before the window completed. Budget=4194304 bytes, process=0 bytes, thread=0 bytes, other threads=0 bytes, test messages reported in the window=0, collections(gen0/gen1/gen2)=0/0/0. Runtime reason: NoGCRegion mode must be set."
+        }
+      ]
+    }
+  }
+}

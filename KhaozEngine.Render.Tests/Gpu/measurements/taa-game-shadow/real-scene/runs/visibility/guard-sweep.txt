@@ -1,0 +1,7 @@
+START vis-release-0.1
+END vis-release-0.1 exit 1
+START vis-reset-0.2
+END vis-reset-0.2 exit 1
+START shadow-bilinear-3x3,vis-release-0.1
+END shadow-bilinear-3x3,vis-release-0.1 exit 1
+MEASUREMENT EXITS {'vis-release-0.1': 1, 'vis-reset-0.2': 1, 'shadow-bilinear-3x3,vis-release-0.1': 1}

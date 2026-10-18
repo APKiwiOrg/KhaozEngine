@@ -1,0 +1,43 @@
+Test run for KhaozEngine.Render.Tests/bin/Release/net10.0/KhaozEngine.Render.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v2.8.2+699d445a1a (64-bit .NET 10.0.13)
+[xUnit.net 00:00:00.11]   Discovering: KhaozEngine.Render.Tests
+[xUnit.net 00:00:00.75]   Discovered:  KhaozEngine.Render.Tests
+[xUnit.net 00:00:00.77]   Starting:    KhaozEngine.Render.Tests
+  Passed KhaozEngine.Tests.Render3D.TemporalDiagnosticTokenTests.TheWholeMaskStaysExactInTheFloatUniform [3 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalDiagnosticTokenTests.CandidateTokensHaveDistinctBits(token: "vis-release-0.3", bit: 67108864) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalDiagnosticTokenTests.CandidateTokensHaveDistinctBits(token: "lock-luma-kill-wide-0.1", bit: 2621440) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalDiagnosticTokenTests.CandidateTokensHaveDistinctBits(token: "shadow-bilinear-1", bit: 8388608) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalDiagnosticTokenTests.CandidateTokensHaveDistinctBits(token: "lock-trust-2", bit: 65536) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalDiagnosticTokenTests.CandidateTokensHaveDistinctBits(token: "vis-release-0.2", bit: 33554432) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalDiagnosticTokenTests.CandidateTokensHaveDistinctBits(token: "lock-trust-3", bit: 131072) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalDiagnosticTokenTests.CandidateTokensHaveDistinctBits(token: "lock-bound-current", bit: 4096) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalDiagnosticTokenTests.CandidateTokensHaveDistinctBits(token: "show-gate", bit: 8192) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalDiagnosticTokenTests.CandidateTokensHaveDistinctBits(token: "lock-luma-kill-0.1", bit: 524288) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalDiagnosticTokenTests.CandidateTokensHaveDistinctBits(token: "show-vis-release", bit: 268435456) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalDiagnosticTokenTests.CandidateTokensHaveDistinctBits(token: "shadow-bilinear-3x3", bit: 4194304) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalDiagnosticTokenTests.CandidateTokensHaveDistinctBits(token: "lock-history-ridge", bit: 1024) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalDiagnosticTokenTests.CandidateTokensHaveDistinctBits(token: "vis-reset-0.2", bit: 134217728) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalDiagnosticTokenTests.CandidateTokensHaveDistinctBits(token: "lock-luma-kill-0.2", bit: 1048576) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalDiagnosticTokenTests.CandidateTokensHaveDistinctBits(token: "show-lock-age", bit: 16384) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalDiagnosticTokenTests.CandidateTokensHaveDistinctBits(token: "lock-trust-4", bit: 262144) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalDiagnosticTokenTests.CandidateTokensHaveDistinctBits(token: "lock-shade-release", bit: 2048) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalDiagnosticTokenTests.CandidateTokensHaveDistinctBits(token: "lock-luma-kill-wide-0.2", bit: 3145728) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalDiagnosticTokenTests.CandidateTokensHaveDistinctBits(token: "show-gate-extent", bit: 32768) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalDiagnosticTokenTests.CandidateTokensHaveDistinctBits(token: "vis-release-0.1", bit: 16777216) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalDiagnosticTokenTests.LightingOnlyCompilesTheSelectedShadowFilter(mask: 4194304, define: "#define ShadowBilinear3x3\n") [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalDiagnosticTokenTests.LightingOnlyCompilesTheSelectedShadowFilter(mask: 512, define: "") [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalDiagnosticTokenTests.LightingOnlyCompilesTheSelectedShadowFilter(mask: 0, define: "") [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalDiagnosticTokenTests.LightingOnlyCompilesTheSelectedShadowFilter(mask: 9437696, define: "#define ShadowBilinear1\n") [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalDiagnosticTokenTests.VisibilityFlagsDoNotRoundAwayLowDiagnosticBits [1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalDiagnosticTokenTests.VisibilityBindingsAcceptCheckoutLineEndings(newline: "\r\n") [< 1 ms]
+[xUnit.net 00:00:00.81]   Finished:    KhaozEngine.Render.Tests
+  Passed KhaozEngine.Tests.Render3D.TemporalDiagnosticTokenTests.VisibilityBindingsAcceptCheckoutLineEndings(newline: "\n") [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalDiagnosticTokenTests.LockedOverlayTokenComposesWithoutChangingOtherBits [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalDiagnosticTokenTests.IncompatibleShadowFiltersAreRejected [< 1 ms]
+
+Test Run Successful.
+Total tests: 30
+     Passed: 30
+ Total time: 1.1208 Seconds
+build-slot: exit=0 waited=0.024s ran=1.784s

@@ -1,0 +1,9 @@
+{
+  "Total tests": 36559,
+  "Passed": 35132,
+  "Failed": 2,
+  "Skipped": 1425,
+  "assemblies": 41,
+  "owned_raw_assertion_fixed_after_run": true,
+  "remaining_preexisting_failure": "TemporalResolveShaderTests.The_separable_Lanczos_kernel_takes_twelve_evaluations_per_pixel, expected 5 calls, actual 9"
+}

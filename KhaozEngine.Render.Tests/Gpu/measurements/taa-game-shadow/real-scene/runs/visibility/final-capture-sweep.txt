@@ -1,0 +1,40 @@
+START back15-baseline
+END back15-baseline exit 0
+START day30-baseline
+END day30-baseline exit 0
+START back60-baseline
+END back60-baseline exit 0
+START ground15-baseline
+END ground15-baseline exit 0
+START back15-vis-release-0.1
+END back15-vis-release-0.1 exit 0
+START day30-vis-release-0.1
+END day30-vis-release-0.1 exit 0
+START back60-vis-release-0.1
+END back60-vis-release-0.1 exit 0
+START ground15-vis-release-0.1
+END ground15-vis-release-0.1 exit 0
+START back15-shadow-bilinear-3x3
+END back15-shadow-bilinear-3x3 exit 0
+START day30-shadow-bilinear-3x3
+END day30-shadow-bilinear-3x3 exit 0
+START back60-shadow-bilinear-3x3
+END back60-shadow-bilinear-3x3 exit 0
+START ground15-shadow-bilinear-3x3
+END ground15-shadow-bilinear-3x3 exit 0
+START back15-shadow-bilinear-3x3+vis-release-0.1
+END back15-shadow-bilinear-3x3+vis-release-0.1 exit 0
+START day30-shadow-bilinear-3x3+vis-release-0.1
+END day30-shadow-bilinear-3x3+vis-release-0.1 exit 0
+START back60-shadow-bilinear-3x3+vis-release-0.1
+END back60-shadow-bilinear-3x3+vis-release-0.1 exit 0
+START ground15-shadow-bilinear-3x3+vis-release-0.1
+END ground15-shadow-bilinear-3x3+vis-release-0.1 exit 0
+START back15-show-vis-release
+END back15-show-vis-release exit 0
+START day30-show-vis-release
+END day30-show-vis-release exit 0
+START back60-show-vis-release
+END back60-show-vis-release exit 0
+START ground15-show-vis-release
+END ground15-show-vis-release exit 0

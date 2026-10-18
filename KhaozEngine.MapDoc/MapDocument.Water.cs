@@ -9,5 +9,6 @@ public sealed partial class MapDocument
     /// world dry wherever no body covers.</summary>
     [JsonConverter(typeof(MapWaterSetJsonConverter))]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyOrder(MapDocumentOrder.Water)]
     public MapWaterSet? Water { get; set; }
 }

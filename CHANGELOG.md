@@ -23,6 +23,9 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - `GameStorage` in `KhaozEngine.Persistence` gains an internal drain scheduling seam for tests, the same one
   `PersistenceQueue` has. Public behaviour is unchanged. The Foundation tests that waited on thread-pool work
   under a short bound now run it on test-owned threads (#1467).
+- `MapDocument` and `MapPlacement` in `KhaozEngine.MapDoc` give every persisted member an explicit
+  `JsonPropertyOrder`, so moving a partial part to another file can no longer reorder saved documents, tile
+  files or tile content hashes. Saved bytes are unchanged (#1469).
 - Contact controller support reads cost less on stairs and boxes. Exactly horizontal axis-aligned rectangular
   faces take an exact path through support extrema and contact height, axis-aligned rectangular faces certify
   their contact sign directly, and installed faces keep their query-independent edge, normal and plane facts.

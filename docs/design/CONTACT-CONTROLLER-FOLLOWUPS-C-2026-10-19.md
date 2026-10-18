@@ -191,7 +191,7 @@ must consume at most ten times the same fixture's interior cylinder row at x = -
 Use integer comparisons, never elapsed time. FC-R10 corrects the earlier all-Walkable premise
 without undoing the capsule crown selected under FU-R4.
 
-Otherwise add a capsule-wide global-crown certificate before Side for the footprint role.
+Retain the capsule-wide global-crown certificate selected under FU-R4 before Side for the footprint role.
 Prove the higher endpoint from the exact sign of normalized axis Y, zero nearest gap between
 its projection and the original closed disc, correct hemisphere and requested slope. Reuse
 RoundEnd/source expressions. The attained height is

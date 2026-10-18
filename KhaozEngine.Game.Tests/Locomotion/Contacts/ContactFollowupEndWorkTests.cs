@@ -31,6 +31,16 @@ public sealed class ContactFollowupEndWorkTests(ITestOutputHelper output)
             AssertComplete(right, capsule ? SupportStatus.Walkable : CylinderEndStatus(MathF.BitDecrement(-0.7f)));
             if (capsule)
                 Assert.True(critical.Work.Consumed <= 10L * Math.Min(left.Work.Consumed, right.Work.Consumed));
+            else
+            {
+                var interior = Observe(false, -0.25f);
+                AssertComplete(interior);
+                Write(false, -0.25f, interior);
+                long bound = 10L * interior.Work.Consumed;
+                Assert.InRange(left.Work.Consumed, 1, bound);
+                Assert.InRange(critical.Work.Consumed, 1, bound);
+                Assert.InRange(right.Work.Consumed, 1, bound);
+            }
         }
     }
 

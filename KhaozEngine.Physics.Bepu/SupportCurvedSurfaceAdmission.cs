@@ -28,6 +28,11 @@ internal sealed class SupportCurvedSurfaceAdmission
         double x, double z, GeometryInterval radius, double bottom, double top, bool requireUpward = false)
     {
         if (_work.Failed) return GeometrySign.Unresolved;
+        LiveHighWater = EvaluatedCells = 0;
+        CapacityRefused = false;
+        if (geometry.HasFiniteAdmissionWitness(shape, capKind, x, z, radius.Lower, bottom, top, requireUpward))
+            return _work.Complete(GeometrySign.Positive);
+        if (_work.Failed) return GeometrySign.Unresolved;
         bool uniformlyUp = !requireUpward || geometry.CapUniformlyUp(capKind);
         if (_work.Failed) return GeometrySign.Unresolved;
         int live = 0;

@@ -625,10 +625,9 @@ approach the 0.6 m crest from the floor as if it fit a 0.4 m step.
 build-slot --heavy --label fu-c-crown-green -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --filter 'FullyQualifiedName~CapsuleCrown|FullyQualifiedName~RepresentedCapsuleRoundedEndTraversal|FullyQualifiedName~CurvedOracle|FullyQualifiedName~FootSupportBoundaryTests'
 ```
 
-Expected: capsule critical and both neighbors Walkable within the 10x integer bound. On the
-no-certificate branch include `RepresentedEndTangencyCounterGate` in this green filter instead.
-On the certificate branch the combined gate becomes mandatory after Task 6 if its cylinder
-decision was fail. Keep that pending state explicit in the proof record, without skipping tests.
+Expected: capsule critical and both neighbors Walkable within the 10x integer bound.
+FC-R10 retains the selected certificate branch. The combined gate is mandatory after Task 6
+and asserts the independent cylinder statuses separately from the interior-reference cost bound.
 
 - [ ] **Step 6: Stage only branch-produced Files paths, run staged guards and commit.**
 
@@ -639,13 +638,13 @@ Record which branch ran and its exact six-row evidence. No owner choice is requi
 ### Task 6: Repair cylinder admission cost without changing exact statuses (CC-8, G, FC-R10)
 
 **Files:**
-- Modify only if required: `KhaozEngine.Physics.Bepu/SupportCurvedSurfaceAdmission.cs`, `KhaozEngine.Physics.Bepu/SupportTiltedCurvedGeometry.Admission.cs`
-- Create only if required: `KhaozEngine.Game.Tests/Physics/SupportFootprintTests.CylinderAdmissionWitness.cs`
+- Modify: `KhaozEngine.Physics.Bepu/SupportCurvedSurfaceAdmission.cs`, `KhaozEngine.Physics.Bepu/SupportTiltedCurvedGeometry.Admission.cs`
+- Create: `KhaozEngine.Game.Tests/Physics/SupportFootprintTests.CylinderAdmissionWitness.cs`
 - Modify: `KhaozEngine.Game.Tests/Locomotion/Contacts/ContactFollowupEndWorkTests.cs`, `docs/verification/2026-10-19-contact-followups-c.md`
 
 **Interfaces:**
 - Consumes Task 5's recorded cylinder gate and Task 4's shared work owner.
-- Only if required, produces `SupportTiltedCurvedGeometry.HasFiniteAdmissionWitness(SupportCurvedShape shape, int capKind, double x, double z, double radius, double bottom, double top, bool requireUpward) -> bool` in the Admission partial. True certifies attained membership only, false leaves complete surface coverage unchanged.
+- Produces `SupportTiltedCurvedGeometry.HasFiniteAdmissionWitness(SupportCurvedShape shape, int capKind, double x, double z, double radius, double bottom, double top, bool requireUpward) -> bool` in the Admission partial. True certifies attained membership only, false leaves complete surface coverage unchanged.
 - Reuses `SurfacePointInside(int kind, double a, double b, double x, double z, double radius, double bottom, double top) -> bool` and `CapUniformlyUp(int kind) -> bool`. No sampled maximum, negative exclusion or new member type.
 
 - [ ] **Step 1: Apply the recorded gate without repeating unchanged measurements.**
@@ -660,7 +659,7 @@ XZ, owner and joins. Require each seam row's Consumed to be at most ten times th
 fixture's interior cylinder row at x = -0.25f, measured in the same test. Status and cost
 assertions are separate. Capsule statuses and the smaller-adjacent-neighbor bound stay unchanged.
 
-- [ ] **Step 2: Add safety tests and run the focused regression red if this task is required.**
+- [ ] **Step 2: Add safety tests and run the focused regression red for this cost repair.**
 
 `CylinderAdmissionWitnessNeverCertifiesAbsenceOrTheWrongPart` includes both finite ends, both
 quarter-turn axes, positive/negative Y, cap versus side, requireUpward, closed radius endpoints,
@@ -714,7 +713,7 @@ changing any limit.
 - [ ] **Step 5: Stage only required Files paths, run staged guards and commit if changed.**
 
 Commit `fix(support): certify finite cylinder admission before surface subdivision`.
-A not-needed task has no empty commit. Record that disposition in the next proof-record commit.
+Record before/after costs, frozen public bits, safety controls and exact test commands in the proof record.
 
 ### Task 7: Publish contract dispositions and finish staged 21.5.1 verification (CC-12)
 

@@ -83,10 +83,14 @@ public sealed class AtmosphereRendererTests
         var fragmentBytes = SpirvFrontEnd.ToSpirv(fragment, GpuShaderStages.Fragment, program);
         var pair = SpirvCrossCompile.VertexFragmentToMsl(vertexBytes, fragmentBytes, program);
         var elements = pair.Reflection.ResourceLayouts[0].Elements;
-        Assert.Equal(prefix + 3, elements.Length);
+        Assert.Equal(prefix + 3 + (prefix == 11 ? 1 : 0), elements.Length);
         Assert.Equal(new[] { GpuResourceKind.UniformBuffer, GpuResourceKind.TextureReadOnly,
-            GpuResourceKind.Sampler }, elements.Skip(prefix).Select(e => e.Kind));
+            GpuResourceKind.Sampler }, elements.Skip(prefix).Take(3).Select(e => e.Kind));
         Assert.All(elements.Skip(prefix), e => Assert.Equal(GpuShaderStages.Fragment, e.Stages));
+        if (prefix == 11)
+        {
+            Assert.Equal(GpuResourceKind.TextureReadOnly, elements[14].Kind);
+        }
         var metal = MetalShaderBuild.Pair(vertex, fragment, null, program);
         metal.Table.RequireLayoutShape(pair.Reflection.ResourceLayouts, program);
     }
@@ -194,15 +198,17 @@ public sealed class AtmosphereRendererTests
             model.EnsureSkinnedMainCapacity(1);
             var frameSets = factory.ResourceSets.Where(set => !set.Disposed
                 && set.Resources[0] is IGpuBuffer buffer && buffer.SizeInBytes == ModelRenderer.UboBytes).ToArray();
-            Assert.Equal(new[] { 6, 6, 7, 14 }, frameSets.Select(set => set.Resources.Length).OrderBy(n => n));
-            uniforms = Assert.IsType<FakeBuffer>(frameSets[0].Resources[^3]);
-            sky = Assert.IsType<FakeTexture>(frameSets[0].Resources[^2]);
+            Assert.Equal(new[] { 6, 6, 7, 15 }, frameSets.Select(set => set.Resources.Length).OrderBy(n => n));
+            FakeResourceSet rigid = Assert.Single(frameSets, set => set.Resources.Length == 15);
+            uniforms = Assert.IsType<FakeBuffer>(rigid.Resources[11]);
+            sky = Assert.IsType<FakeTexture>(rigid.Resources[12]);
             Assert.Equal(AtmosphereRenderer.UboBytes, uniforms.SizeInBytes);
             Assert.All(frameSets, set =>
             {
-                Assert.Same(uniforms, set.Resources[^3]);
-                Assert.Same(sky, set.Resources[^2]);
-                Assert.Same(frameSets[0].Resources[^1], set.Resources[^1]);
+                int atmosphereStart = set.Resources.Length == 15 ? 11 : set.Resources.Length - 3;
+                Assert.Same(uniforms, set.Resources[atmosphereStart]);
+                Assert.Same(sky, set.Resources[atmosphereStart + 1]);
+                Assert.Same(rigid.Resources[13], set.Resources[atmosphereStart + 2]);
             });
         }
         Assert.True(uniforms.Disposed);
@@ -243,13 +249,14 @@ public sealed class AtmosphereRendererTests
             {
                 var frameSets = factory.ResourceSets.Where(set => !set.Disposed
                     && set.Resources.Contains(model.PointLightBuffer)).ToArray();
-                Assert.Equal(retainedSkinnedSet ? new[] { 6, 6, 7, 7, 14, 14 } : new[] { 6, 6, 7, 14, 14 },
+                Assert.Equal(retainedSkinnedSet ? new[] { 6, 6, 7, 7, 15, 15 } : new[] { 6, 6, 7, 15, 15 },
                     frameSets.Select(set => set.Resources.Length).OrderBy(n => n));
                 Assert.All(frameSets, set =>
                 {
-                    Assert.Same(atmosphere.Uniforms, set.Resources[^3]);
-                    Assert.Same(atmosphere.SkyView, set.Resources[^2]);
-                    Assert.Same(atmosphere.SkySampler, set.Resources[^1]);
+                    int atmosphereStart = set.Resources.Length == 15 ? 11 : set.Resources.Length - 3;
+                    Assert.Same(atmosphere.Uniforms, set.Resources[atmosphereStart]);
+                    Assert.Same(atmosphere.SkyView, set.Resources[atmosphereStart + 1]);
+                    Assert.Same(atmosphere.SkySampler, set.Resources[atmosphereStart + 2]);
                 });
                 var material = Assert.IsType<FakeResourceSet>(skinned);
                 Assert.Equal(8, material.Resources.Length);

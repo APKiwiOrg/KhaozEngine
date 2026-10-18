@@ -146,11 +146,11 @@ namespace KhaozEngine.Tests.Gpu
             yield return new("GroundDecal", ShaderSources.DecalVert, ShaderSources.DecalFrag);
             yield return new("OverlayMesh", ShaderSources.OverlayUnlitVert, ShaderSources.OverlayUnlitFrag);
 
-            // Render3D target outlines. Rigid and skinned geometry share both mask fragments and one composite.
+            // Render3D target outlines. Rigid masks cut interiors, skinned masks stay uncut, and both share a composite.
             yield return new("TargetOutlineRigidFull",
-                ShaderSources.TargetOutlineMaskVert, ShaderSources.TargetOutlineFullMaskFrag);
+                ShaderSources.TargetOutlineMaskVert, ShaderSources.TargetOutlineRigidFullMaskFrag);
             yield return new("TargetOutlineRigidVisible",
-                ShaderSources.TargetOutlineMaskVert, ShaderSources.TargetOutlineVisibleMaskFrag);
+                ShaderSources.TargetOutlineMaskVert, ShaderSources.TargetOutlineRigidVisibleMaskFrag);
             yield return new("TargetOutlineComposite",
                 ShaderSources.FullscreenVert, ShaderSources.TargetOutlineCompositeFrag);
             yield return new("TargetOutlineSkinnedFull",

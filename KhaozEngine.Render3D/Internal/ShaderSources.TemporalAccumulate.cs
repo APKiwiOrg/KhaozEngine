@@ -177,7 +177,7 @@ afloat temporalLanczosWeight(TemporalKernels kernels, int x, int y) { return ker
 struct TemporalNeighbourhood {
     vec3 momentSum; vec3 momentSquares; avec3 neighbourMin; avec3 neighbourMax; afloat alphaMin; afloat alphaMax;
     vec4 reconstruction; float reconstructionWeight; vec4 display; afloat sampleWeight; afloat reactiveDifference;
-    float centreLuma;
+    float centreLuma; vec4 cornerLuma;
 };
 
 TemporalNeighbourhood temporalNeighbourhood() {
@@ -194,6 +194,7 @@ TemporalNeighbourhood temporalNeighbourhood() {
     n.sampleWeight = afloat(0.0);
     n.reactiveDifference = afloat(0.0);
     n.centreLuma = 0.0;
+    n.cornerLuma = vec4(0.0);
     return n;
 }
 
@@ -218,6 +219,7 @@ void temporalGather(inout TemporalNeighbourhood n, TemporalKernels kernels, int 
     n.sampleWeight = max(n.sampleWeight, clamp(displayWeight, afloat(0.0), afloat(1.0)));
     n.reactiveDifference = max(n.reactiveDifference, reactiveDifference);
     if (x == 1 && y == 1) n.centreLuma = toFloat(ycc.x);
+    if (x != 1 && y != 1) n.cornerLuma[(y / 2) * 2 + x / 2] = toFloat(ycc.x);
 }
 " + TemporalDisplayKernelGlsl + @"
 // Step 1: where this display pixel was last frame if it moved as the surface it reprojects by did. A surface reads
@@ -236,27 +238,36 @@ vec2 temporalPreviousUv(vec2 uv, vec2 motion, bool isBackground) {
     return previousUv;
 }
 
-// Steps 6 and 8: how far last frame's output around previousUv lies from this frame's 3x3 less its centre texel, in
-// mean luma, on the side the pixel's own history lies (side, its offset from the box centre). Four bilinear taps
-// ShadingRingPixels out on the diagonals, each the mean of the 2x2 display pixels there at a still pixel centre, so
-// the ring leaves out the pixel's own row and column as the eight texels leave out the centre. A stable peak's ring
-// and eight texels hold the same ground around it and agree. Under a shading change the ring holds the old shading.
-// Return the mean shift and the lower shift of the two opposite-corner pairs. A missed diagonal blade crosses one
-// pair, so its spill plus texture noise can move the mean past the share even when the other pair still agrees. A
-// carried lock requires both pair means past ShadingLockPairExtents too. Other pixels read only the four-tap mean.
-vec2 temporalHistoryRingShift(vec2 previousUv, vec2 displaySize, float aroundLuma, float side) {
+// Steps 6 and 8 share four bilinear history taps ShadingRingPixels out on the diagonals. Keep the sum and both
+// opposite-corner sums: the shading release reads their shifts, and the lock's low-frequency luma test adds a
+// bilinear centre. Fetch once where either test needs the ring, including a carried lock over a now-flat 3x3.
+struct TemporalRing { float sum; vec2 opposite; vec4 luma; };
+
+TemporalRing temporalHistoryRing(vec2 previousUv, vec2 displaySize) {
     vec2 reach = vec2(ShadingRingPixels) / displaySize;
     float ring = 0.0;
     vec2 opposite = vec2(0.0);
+    vec4 lumas = vec4(0.0);
     for (int corner = 0; corner < 4; corner++) {
         vec2 offset = reach * vec2((corner & 1) == 0 ? -1.0 : 1.0, (corner >> 1) == 0 ? -1.0 : 1.0);
         vec3 tap = textureLod(sampler2D(HistoryColor, LinearClamp), previousUv + offset, 0.0).rgb;
         float luma = rgbToYCoCg(temporalWeighted(tap)).x;
         ring += luma;
+        lumas[corner] = luma;
         opposite[(corner == 0 || corner == 3) ? 0 : 1] += luma;
     }
-    vec2 shift = (0.5 * opposite - vec2(aroundLuma)) * sign(side);
-    return vec2((0.25 * ring - aroundLuma) * sign(side), min(shift.x, shift.y));
+    TemporalRing result;
+    result.sum = ring;
+    result.opposite = opposite;
+    result.luma = lumas;
+    return result;
+}
+
+// How far the ring lies from this frame's eight texels around the centre, on the history's side of the box.
+// A missed diagonal feature can cross one pair, so a carried lock requires both pairs to read the shading change.
+vec2 temporalHistoryRingShift(TemporalRing ring, float aroundLuma, float side) {
+    vec2 shift = (0.5 * ring.opposite - vec2(aroundLuma)) * sign(side);
+    return vec2((0.25 * ring.sum - aroundLuma) * sign(side), min(shift.x, shift.y));
 }
 
 // The per-pixel resolve over a gathered 3x3 (temporalGather), its ridge (temporalRidge) and the surface its centre
@@ -449,12 +460,30 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     // it. A thin feature taking a ridge keeps its own lock, and so does one beside a still nearer surface,
     // which is no moving edge. The hold on the clip stays whole while the lock is at least 1 / LockHoldGain, so a
     // sub-texel feature missed for a few frames keeps its luma, and it lets go over the rest of the lock.
-    float lockValue = useHistory && !heldFromFarther ? max(historyState.y - LockDecay, 0.0) : 0.0;
+    precise float lockValue = useHistory && !heldFromFarther ? max(historyState.y - LockDecay, 0.0) : 0.0;
     if (ridge) lockValue = 1.0;
     float motionRelease = clamp((motionPixels - LockMotionStartPixels)
         / (LockMotionEndPixels - LockMotionStartPixels), 0.0, 1.0);
     lockValue *= (1.0 - motionRelease) * (1.0 - clamp(reactive * LockReactiveRelease, 0.0, 1.0))
         * (1.0 - clamp((ownReprojected && useHistory ? 0.0 : edgeMotion) * LockEdgeRelease, 0.0, 1.0));
+    // A coarse shadow's jittered staircase ridges like a thin feature, and a carried lock can outlast the
+    // staircase in a now-flat 3x3. Its hold keeps the old lit luma while neighbours follow the shadow. Compare
+    // low-frequency luma before the clip, independently of the box width which texture makes too permissive.
+    // The absolute floor keeps tiny changes on dark texture from releasing locks on a large relative change.
+    bool ringRead = useHistory && Jitter.z < ShadingMaxUpscale && lockValue > 0.0;
+    TemporalRing historyRing;
+    if (ringRead) {
+        historyRing = temporalHistoryRing(previousUv, displaySize);
+        vec3 centre = textureLod(sampler2D(HistoryColor, LinearClamp), previousUv, 0.0).rgb;
+        float previousMean = (historyRing.sum + rgbToYCoCg(temporalWeighted(centre)).x) / 5.0;
+        float lumaChange = abs(mean.x - previousMean);
+        // A missed line changes the mean through its centre column, and a boundary can move one corner while
+        // its opposite stays still. Require each corner to confirm the direction, rather than their pair means.
+        vec4 cornerChange = (historyRing.luma - n.cornerLuma) * sign(previousMean - mean.x);
+        if (all(greaterThan(cornerChange, vec4(LockLumaCornerAbsolute))) && lumaChange > LockLumaAbsolute
+            && lumaChange > LockLumaRelative * max(max(mean.x, previousMean), 1.0e-4))
+            lockValue = 0.0;
+    }
     float hold = clamp(lockValue * LockHoldGain, 0.0, 1.0);
 
     // Step 5: variance clipping in luma-weighted YCoCg, from the box centre towards the history, which keeps its hue.
@@ -516,7 +545,8 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
         bool ownChanged = ownShift > ShadingChangeExtents * Jitter.z * releaseExtent;
         released = ownChanged && !upscaled && !strict;
         if (!released && (ownChanged || !upscaled)) {
-            vec2 ringShift = temporalHistoryRingShift(previousUv, displaySize,
+            if (!ringRead) historyRing = temporalHistoryRing(previousUv, displaySize);
+            vec2 ringShift = temporalHistoryRingShift(historyRing,
                 (n.momentSum.x - n.centreLuma) / 8.0, fromCentre.x);
             released = ringShift.x > (strict ? max(ShadingStrictRingExtents * releaseExtent,
                 carriedLock ? ShadingLockRingShare * ownShift : 0.0) : ShadingRingExtents * releaseExtent)

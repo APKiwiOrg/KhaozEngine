@@ -1,0 +1,42 @@
+{
+  "all": {
+    "pixels": 30608,
+    "changed_pixels": 1568,
+    "before_error": 0.005549812172647419,
+    "after_error": 0.005845743750192185,
+    "contribution_to_band_error_change": 0.00029593157754476595,
+    "change_over_whole_band": 0.00042199940038744195
+  },
+  "shadow": {
+    "pixels": 15296,
+    "changed_pixels": 650,
+    "before_error": 0.005325915118139306,
+    "after_error": 0.00553667938305029,
+    "contribution_to_band_error_change": 0.00010532704508881391,
+    "change_over_whole_band": 0.00016096919426421911
+  },
+  "lit": {
+    "pixels": 15312,
+    "changed_pixels": 918,
+    "before_error": 0.00577347526994079,
+    "after_error": 0.0061544851660622485,
+    "contribution_to_band_error_change": 0.0001906045324559516,
+    "change_over_whole_band": 0.0002610302061232229
+  },
+  "within4": {
+    "pixels": 10200,
+    "changed_pixels": 1563,
+    "before_error": 0.007491179546328337,
+    "after_error": 0.008379426912725876,
+    "contribution_to_band_error_change": 0.00029600506851982833,
+    "change_over_whole_band": 0.00042192590941237973
+  },
+  "outside4": {
+    "pixels": 20408,
+    "changed_pixels": 5,
+    "before_error": 0.00457950899685629,
+    "after_error": 0.004579398774798044,
+    "contribution_to_band_error_change": -7.349097506188862e-08,
+    "change_over_whole_band": 7.34909750622731e-08
+  }
+}

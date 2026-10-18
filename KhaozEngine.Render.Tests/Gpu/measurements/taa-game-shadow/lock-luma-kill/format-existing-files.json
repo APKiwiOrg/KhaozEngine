@@ -1,0 +1,42 @@
+[
+  {
+    "path": "KhaozEngine.BugReports.Relay.Tests/Support/WorkerFixtures.cs",
+    "unchangedFromMergedHead": true,
+    "diagnostics": 1
+  },
+  {
+    "path": "KhaozEngine.Foundation.Tests/Logging/AmbientFacadeAllocationProbe.cs",
+    "unchangedFromMergedHead": true,
+    "diagnostics": 1
+  },
+  {
+    "path": "KhaozEngine.Foundation.Tests/Logging/LogScopeTests.cs",
+    "unchangedFromMergedHead": true,
+    "diagnostics": 92
+  },
+  {
+    "path": "KhaozEngine.Foundation.Tests/Persistence/TestOwnedThreads.cs",
+    "unchangedFromMergedHead": true,
+    "diagnostics": 1
+  },
+  {
+    "path": "KhaozEngine.Game.Tests/Locomotion/Contacts/SupportCostUncomparableVerdictTests.cs",
+    "unchangedFromMergedHead": true,
+    "diagnostics": 6
+  },
+  {
+    "path": "KhaozEngine.Game.Tests/Locomotion/Contacts/SupportFootprintStairStratumTests.cs",
+    "unchangedFromMergedHead": true,
+    "diagnostics": 2
+  },
+  {
+    "path": "KhaozEngine.Imaging/JpegThumbnailDecoder.cs",
+    "unchangedFromMergedHead": true,
+    "diagnostics": 11
+  },
+  {
+    "path": "KhaozEngine.Movement.Tests/Research/NavCaptureSnapshotTests.cs",
+    "unchangedFromMergedHead": true,
+    "diagnostics": 1
+  }
+]

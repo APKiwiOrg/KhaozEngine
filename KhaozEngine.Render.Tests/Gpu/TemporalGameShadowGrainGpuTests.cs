@@ -58,6 +58,10 @@ public sealed class TemporalGameShadowGrainGpuTests(GameShadowGrainScene scene, 
         }
     }
 
+    [GpuFact]
+    public void Texture_ridges_under_a_coarse_moving_shadow_do_not_hold_bright_grain()
+        => TexturedShadowGrainCase.AssertGrain(scene, output);
+
     static void Save(string name, byte[][] frames)
     {
         string? directory = Environment.GetEnvironmentVariable("KE_SHADOW_GRAIN_EVIDENCE_DIR");

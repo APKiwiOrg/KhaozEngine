@@ -1,0 +1,296 @@
+  Determining projects to restore...
+  Restored KhaozEngine.TestSupport.Services/KhaozEngine.TestSupport.Services.csproj (in 44 ms).
+  Restored KhaozEngine.Stats/KhaozEngine.Stats.csproj (in 95 ms).
+  Restored KhaozEngine.TileWorld.Editing/KhaozEngine.TileWorld.Editing.csproj (in 162 ms).
+  Restored KhaozEngine.Sqlite/KhaozEngine.Sqlite.csproj (in 90 ms).
+  Restored KhaozEngine.Foundation/KhaozEngine.Foundation.csproj (in 163 ms).
+  Restored KhaozEngine.Netcode.DecouplingTests/KhaozEngine.Netcode.DecouplingTests.csproj (in 207 ms).
+  Restored KhaozEngine.Netcode.Abstractions.DecouplingTests/KhaozEngine.Netcode.Abstractions.DecouplingTests.csproj (in 202 ms).
+  Restored KhaozEngine.Tests/KhaozEngine.Tests.csproj (in 161 ms).
+  Restored KhaozEngine.Sfx.Tool/KhaozEngine.Sfx.Tool.csproj (in 1 ms).
+  Restored KhaozEngine.Foundation.Tests/KhaozEngine.Foundation.Tests.csproj (in 202 ms).
+  Restored KhaozEngine.Sharding/KhaozEngine.Sharding.csproj (in 5 ms).
+  Restored KhaozEngine.Server/KhaozEngine.Server.csproj (in 26 ms).
+  Restored KhaozEngine.Gui.Tests/KhaozEngine.Gui.Tests.csproj (in 67 ms).
+  Restored KhaozEngine.BugReports.Client.Tests/KhaozEngine.BugReports.Client.Tests.csproj (in 49 ms).
+  Restored KhaozEngine.Automation/KhaozEngine.Automation.csproj (in 7 ms).
+  Restored KhaozEngine.Game2D/KhaozEngine.Game2D.csproj (in 287 ms).
+  Restored KhaozEngine.Showcase/KhaozEngine.Showcase.csproj (in 117 ms).
+  Restored KhaozEngine.Showcase.Tests/KhaozEngine.Showcase.Tests.csproj (in 110 ms).
+  Restored KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj (in 290 ms).
+  Restored KhaozEngine.Audio/KhaozEngine.Audio.csproj (in 4 ms).
+  Restored KhaozEngine.Game3D/KhaozEngine.Game3D.csproj (in 51 ms).
+  Restored KhaozEngine.Automation.Tests/KhaozEngine.Automation.Tests.csproj (in 9 ms).
+  Restored KhaozEngine.Attachments.Tests/KhaozEngine.Attachments.Tests.csproj (in 2 ms).
+  Restored KhaozEngine.Audio.Tests/KhaozEngine.Audio.Tests.csproj (in 8 ms).
+  Restored KhaozEngine.Accounts/KhaozEngine.Accounts.csproj (in 9 ms).
+  Restored KhaozEngine.Accounts.Sqlite/KhaozEngine.Accounts.Sqlite.csproj (in 3 ms).
+  Restored KhaozEngine.Commerce/KhaozEngine.Commerce.csproj (in 1 ms).
+  Restored KhaozEngine.Content.Validator/KhaozEngine.Content.Validator.csproj (in 3 ms).
+  Restored KhaozEngine.CodeHealth.Analyzers.Tests/KhaozEngine.CodeHealth.Analyzers.Tests.csproj (in 2 ms).
+  Restored KhaozEngine.TileEdit.Tool/KhaozEngine.TileEdit.Tool.csproj (in 345 ms).
+  Restored KhaozEngine.Commerce.Sqlite/KhaozEngine.Commerce.Sqlite.csproj (in 6 ms).
+  Restored KhaozEngine.TileEdit.Tests/KhaozEngine.TileEdit.Tests.csproj (in 345 ms).
+  Restored KhaozEngine.Catalog/KhaozEngine.Catalog.csproj (in 2 ms).
+  Restored KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj (in 6 ms).
+  Restored tools/PixelLabSheetAssembler/PixelLabSheetAssembler.csproj (in 1 ms).
+  Restored tools/PixelLabSheetAssembler.Tests/PixelLabSheetAssembler.Tests.csproj (in 6 ms).
+  Restored KhaozEngine.Benchmarks/KhaozEngine.Benchmarks.csproj (in 178 ms).
+  Restored KhaozEngine.Accounts.SqlServer/KhaozEngine.Accounts.SqlServer.csproj (in 54 ms).
+  Restored KhaozEngine.Accounts.Tests/KhaozEngine.Accounts.Tests.csproj (in 62 ms).
+  Restored KhaozEngine.Commerce.SqlServer/KhaozEngine.Commerce.SqlServer.csproj (in 34 ms).
+  Restored KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj (in 189 ms).
+  Restored tools/KeDungeon/KeDungeon.csproj (in 5 ms).
+  Restored KhaozEngine.Catalog.SqlServer/KhaozEngine.Catalog.SqlServer.csproj (in 19 ms).
+  Restored tools/GestureInputProbe/GestureInputProbe.csproj (in 7 ms).
+  Restored tools/KeDungeon.Tests/KeDungeon.Tests.csproj (in 6 ms).
+  Restored KhaozEngine.WorldStore/KhaozEngine.WorldStore.csproj (in 2 ms).
+  Restored MmoServerSample/MmoServerSample.csproj (in 6 ms).
+  Restored tools/DungeonKitGen/DungeonKitGen.csproj (in 68 ms).
+  Restored KhaozEngine.Social/KhaozEngine.Social.csproj (in 2 ms).
+  Restored KhaozEngine.WorldStore.Sqlite/KhaozEngine.WorldStore.Sqlite.csproj (in 2 ms).
+  Restored KhaozEngine.Skills/KhaozEngine.Skills.csproj (in 2 ms).
+  Restored KhaozEngine.WorldMap/KhaozEngine.WorldMap.csproj (in 2 ms).
+  Restored KhaozEngine.Social.Discord/KhaozEngine.Social.Discord.csproj (in 2 ms).
+  Restored KhaozEngine.WorldStore.SqlServer/KhaozEngine.WorldStore.SqlServer.csproj (in 3 ms).
+  Restored KhaozEngine.WorldMap.Tests/KhaozEngine.WorldMap.Tests.csproj (in 3 ms).
+  Restored tools/TestModelGen/TestModelGen.csproj (in 5 ms).
+  Restored KhaozEngine.Simulation.Tests/KhaozEngine.Simulation.Tests.csproj (in 8 ms).
+  Restored KhaozEngine.WorldMap.Gui/KhaozEngine.WorldMap.Gui.csproj (in 13 ms).
+  Restored KhaozEngine.WorldMap.Gui.Tests/KhaozEngine.WorldMap.Gui.Tests.csproj (in 8 ms).
+  Restored KhaozEngine.Windowing.Tests/KhaozEngine.Windowing.Tests.csproj (in 5 ms).
+  Restored KhaozEngine.Updates.Tool/KhaozEngine.Updates.Tool.csproj (in 3 ms).
+  Restored KhaozEngine.TileWorld.WorldMap/KhaozEngine.TileWorld.WorldMap.csproj (in 3 ms).
+  Restored KhaozEngine.TileWorld.WorldMap.Tests/KhaozEngine.TileWorld.WorldMap.Tests.csproj (in 4 ms).
+  Restored KhaozEngine.TileWorld.Tests/KhaozEngine.TileWorld.Tests.csproj (in 12 ms).
+  Restored KhaozEngine.TileWorld.Physics/KhaozEngine.TileWorld.Physics.csproj (in 12 ms).
+  Restored KhaozEngine.TileWorld.Physics.Tests/KhaozEngine.TileWorld.Physics.Tests.csproj (in 6 ms).
+  Restored KhaozEngine.TileWorld.Netcode/KhaozEngine.TileWorld.Netcode.csproj (in 5 ms).
+  Restored KhaozEngine.TileWorld.Netcode.Tests/KhaozEngine.TileWorld.Netcode.Tests.csproj (in 8 ms).
+  Restored KhaozEngine.Movement/KhaozEngine.Movement.csproj (in 6 ms).
+  Restored KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj (in 5 ms).
+  Restored KhaozEngine.MapEditor/KhaozEngine.MapEditor.csproj (in 15 ms).
+  Restored KhaozEngine.MapEditor.Tests/KhaozEngine.MapEditor.Tests.csproj (in 20 ms).
+  Restored KhaozEngine.MapEdit.Tool/KhaozEngine.MapEdit.Tool.csproj (in 16 ms).
+  Restored KhaozEngine.MapDoc.Tests/KhaozEngine.MapDoc.Tests.csproj (in 4 ms).
+  Restored KhaozEngine.MapDoc.Physics/KhaozEngine.MapDoc.Physics.csproj (in 5 ms).
+  Restored KhaozEngine.MapDoc.Compatibility.Tests/KhaozEngine.MapDoc.Compatibility.Tests.csproj (in 5 ms).
+  Restored KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj (in 8 ms).
+  Restored KhaozEngine.Localization.TestKit/KhaozEngine.Localization.TestKit.csproj (in 4 ms).
+  Restored KhaozEngine.Physics.HeadlessLoaderTests/KhaozEngine.Physics.HeadlessLoaderTests.csproj (in 2 ms).
+  Restored KhaozEngine.Persistence/KhaozEngine.Persistence.csproj (in 3 ms).
+  Restored KhaozEngine.Particles.Tests/KhaozEngine.Particles.Tests.csproj (in 2 ms).
+  Restored KhaozEngine.Objectives/KhaozEngine.Objectives.csproj (in 2 ms).
+  Restored KhaozEngine.NetWorld/KhaozEngine.NetWorld.csproj (in 6 ms).
+  Restored KhaozEngine.Netcode.LiteNetLib/KhaozEngine.Netcode.LiteNetLib.csproj (in 2 ms).
+  Restored KhaozEngine.Localization.Analyzers.Tests/KhaozEngine.Localization.Analyzers.Tests.csproj (in 1 ms).
+  Restored KhaozEngine.Items/KhaozEngine.Items.csproj (in 1 ms).
+  Restored KhaozEngine.ItemInstances/KhaozEngine.ItemInstances.csproj (in 2 ms).
+  Restored KhaozEngine.ItemInstances.Tests/KhaozEngine.ItemInstances.Tests.csproj (in 3 ms).
+  Restored KhaozEngine.ItemInstances.Journal/KhaozEngine.ItemInstances.Journal.csproj (in 4 ms).
+  Restored KhaozEngine.Identity/KhaozEngine.Identity.csproj (in 2 ms).
+  Restored KhaozEngine.Identity.Exchange/KhaozEngine.Identity.Exchange.csproj (in 5 ms).
+  Restored KhaozEngine.Physics.AotProbe/KhaozEngine.Physics.AotProbe.csproj (in 509 ms).
+  Restored KhaozEngine.Identity.Exchange.AspNetCore/KhaozEngine.Identity.Exchange.AspNetCore.csproj (in 4 ms).
+  Restored KhaozEngine.Identity.Discord/KhaozEngine.Identity.Discord.csproj (in 2 ms).
+  Restored KhaozEngine.Identity.Exchange.Tests/KhaozEngine.Identity.Exchange.Tests.csproj (in 5 ms).
+  Restored KhaozEngine.Server.AotProbe/KhaozEngine.Server.AotProbe.csproj (in 8 ms).
+  Restored KhaozEngine.SegmentRig/KhaozEngine.SegmentRig.csproj (in 1 ms).
+  Restored KhaozEngine.Server.Admin/KhaozEngine.Server.Admin.csproj (in 6 ms).
+  Restored KhaozEngine.Replication/KhaozEngine.Replication.csproj (in 7 ms).
+  Restored KhaozEngine.PropSurface.Tool/KhaozEngine.PropSurface.Tool.csproj (in 6 ms).
+  Restored KhaozEngine.Progression/KhaozEngine.Progression.csproj (in 1 ms).
+  Restored KhaozEngine.Catalog.Netcode/KhaozEngine.Catalog.Netcode.csproj (in 3 ms).
+  Restored KhaozEngine.Catalog.Sqlite/KhaozEngine.Catalog.Sqlite.csproj (in 3 ms).
+  Restored KhaozEngine.Catalog.GameTypes/KhaozEngine.Catalog.GameTypes.csproj (in 2 ms).
+  Restored KhaozEngine.Catalog.Authoring/KhaozEngine.Catalog.Authoring.csproj (in 5 ms).
+  Restored KhaozEngine.BugReports.Tests/KhaozEngine.BugReports.Tests.csproj (in 3 ms).
+  Restored KhaozEngine.BugReports.Relay/KhaozEngine.BugReports.Relay.csproj (in 3 ms).
+  Restored KhaozEngine.BugReports.Relay.Tests/KhaozEngine.BugReports.Relay.Tests.csproj (in 4 ms).
+  Restored KhaozEngine.Identity.Oidc/KhaozEngine.Identity.Oidc.csproj (in 1.03 sec).
+  Restored KhaozEngine.Localization.Analyzers/KhaozEngine.Localization.Analyzers.csproj (in 1.55 sec).
+  Restored KhaozEngine.Catalog.AzureBlob/KhaozEngine.Catalog.AzureBlob.csproj (in 695 ms).
+  Restored KhaozEngine.Catalog.AzureBlob.Tests/KhaozEngine.Catalog.AzureBlob.Tests.csproj (in 692 ms).
+  Restored KhaozEngine.BugReports.Relay.Azure/KhaozEngine.BugReports.Relay.Azure.csproj (in 504 ms).
+  Restored KhaozEngine.BugReports.Relay.Azure.Tests/KhaozEngine.BugReports.Relay.Azure.Tests.csproj (in 419 ms).
+  55 of 169 projects are up-to-date for restore.
+  KhaozEngine.CodeHealth.Analyzers -> KhaozEngine.CodeHealth.Analyzers/bin/Release/netstandard2.0/KhaozEngine.CodeHealth.Analyzers.dll
+  KhaozEngine.Attachments -> KhaozEngine.Attachments/bin/Release/net10.0/KhaozEngine.Attachments.dll
+  KhaozEngine.BugReports.Contracts -> KhaozEngine.BugReports.Contracts/bin/Release/net10.0/KhaozEngine.BugReports.Contracts.dll
+  KhaozEngine.Primitives -> KhaozEngine.Primitives/bin/Release/net10.0/KhaozEngine.Primitives.dll
+  KhaozEngine.Netcode.Abstractions -> KhaozEngine.Netcode.Abstractions/bin/Release/net10.0/KhaozEngine.Netcode.Abstractions.dll
+  KhaozEngine.Sqlite -> KhaozEngine.Sqlite/bin/Release/net10.0/KhaozEngine.Sqlite.dll
+  KhaozEngine.Serialization -> KhaozEngine.Serialization/bin/Release/net10.0/KhaozEngine.Serialization.dll
+  KhaozEngine.TestSupport -> KhaozEngine.TestSupport/bin/Release/net10.0/KhaozEngine.TestSupport.dll
+  KhaozEngine.Platform -> KhaozEngine.Platform/bin/Release/net10.0/KhaozEngine.Platform.dll
+  KhaozEngine.Imaging -> KhaozEngine.Imaging/bin/Release/net10.0/KhaozEngine.Imaging.dll
+  KhaozEngine.WorldStore -> KhaozEngine.WorldStore/bin/Release/net10.0/KhaozEngine.WorldStore.dll
+  KhaozEngine.Collision -> KhaozEngine.Collision/bin/Release/net10.0/KhaozEngine.Collision.dll
+  KhaozEngine.Diagnostics -> KhaozEngine.Diagnostics/bin/Release/net10.0/KhaozEngine.Diagnostics.dll
+  KhaozEngine.Http -> KhaozEngine.Http/bin/Release/net10.0/KhaozEngine.Http.dll
+  KhaozEngine.Physics -> KhaozEngine.Physics/bin/Release/net10.0/KhaozEngine.Physics.dll
+  KhaozEngine.Items -> KhaozEngine.Items/bin/Release/net10.0/KhaozEngine.Items.dll
+  KhaozEngine.Catalog -> KhaozEngine.Catalog/bin/Release/net10.0/KhaozEngine.Catalog.dll
+  KhaozEngine.Gpu -> KhaozEngine.Gpu/bin/Release/net10.0/KhaozEngine.Gpu.dll
+  KhaozEngine.Progression -> KhaozEngine.Progression/bin/Release/net10.0/KhaozEngine.Progression.dll
+  KhaozEngine.Gpu.Metal -> KhaozEngine.Gpu.Metal/bin/Release/net10.0/KhaozEngine.Gpu.Metal.dll
+  KhaozEngine.Catalog.AzureBlob -> KhaozEngine.Catalog.AzureBlob/bin/Release/net10.0/KhaozEngine.Catalog.AzureBlob.dll
+  KhaozEngine.Updates -> KhaozEngine.Updates/bin/Release/net10.0/KhaozEngine.Updates.dll
+  KhaozEngine.Audio -> KhaozEngine.Audio/bin/Release/net10.0/KhaozEngine.Audio.dll
+  KhaozEngine.Determinism -> KhaozEngine.Determinism/bin/Release/net10.0/KhaozEngine.Determinism.dll
+  KhaozEngine.Locomotion -> KhaozEngine.Locomotion/bin/Release/net10.0/KhaozEngine.Locomotion.dll
+  KhaozEngine.Gpu.Vulkan -> KhaozEngine.Gpu.Vulkan/bin/Release/net10.0/KhaozEngine.Gpu.Vulkan.dll
+  KhaozEngine.Gpu.D3D11 -> KhaozEngine.Gpu.D3D11/bin/Release/net10.0/KhaozEngine.Gpu.D3D11.dll
+  KhaozEngine.App -> KhaozEngine.App/bin/Release/net10.0/KhaozEngine.App.dll
+  KhaozEngine.CodeHealth.Analyzers.Tests -> KhaozEngine.CodeHealth.Analyzers.Tests/bin/Release/net10.0/KhaozEngine.CodeHealth.Analyzers.Tests.dll
+  KhaozEngine.Catalog.GameTypes -> KhaozEngine.Catalog.GameTypes/bin/Release/net10.0/KhaozEngine.Catalog.GameTypes.dll
+  KhaozEngine.Particles -> KhaozEngine.Particles/bin/Release/net10.0/KhaozEngine.Particles.dll
+  KhaozEngine.Catalog.Authoring -> KhaozEngine.Catalog.Authoring/bin/Release/net10.0/KhaozEngine.Catalog.Authoring.dll
+  KhaozEngine.Localization.Analyzers -> KhaozEngine.Localization.Analyzers/bin/Release/netstandard2.0/KhaozEngine.Localization.Analyzers.dll
+  KhaozEngine.Skills -> KhaozEngine.Skills/bin/Release/net10.0/KhaozEngine.Skills.dll
+  KhaozEngine.Identity -> KhaozEngine.Identity/bin/Release/net10.0/KhaozEngine.Identity.dll
+  KhaozEngine.Physics.Bepu -> KhaozEngine.Physics.Bepu/bin/Release/net10.0/KhaozEngine.Physics.Bepu.dll
+  KhaozEngine.SegmentRig -> KhaozEngine.SegmentRig/bin/Release/net10.0/KhaozEngine.SegmentRig.dll
+  KhaozEngine.WorldStore.SqlServer -> KhaozEngine.WorldStore.SqlServer/bin/Release/net10.0/KhaozEngine.WorldStore.SqlServer.dll
+  KhaozEngine.Terrain -> KhaozEngine.Terrain/bin/Release/net10.0/KhaozEngine.Terrain.dll
+  KhaozEngine.Content -> KhaozEngine.Content/bin/Release/net10.0/KhaozEngine.Content.dll
+  KhaozEngine.Sfx.Tool -> KhaozEngine.Sfx.Tool/bin/Release/net10.0/KhaozEngine.Sfx.Tool.dll
+  KhaozEngine.Netcode -> KhaozEngine.Netcode/bin/Release/net10.0/KhaozEngine.Netcode.dll
+  KhaozEngine.Social -> KhaozEngine.Social/bin/Release/net10.0/KhaozEngine.Social.dll
+  KhaozEngine.Stats -> KhaozEngine.Stats/bin/Release/net10.0/KhaozEngine.Stats.dll
+  KhaozEngine.Http -> KhaozEngine.Http/bin/Release/net8.0/KhaozEngine.Http.dll
+  KhaozEngine.ServerStatus -> KhaozEngine.ServerStatus/bin/Release/net10.0/KhaozEngine.ServerStatus.dll
+  KhaozEngine.Commerce -> KhaozEngine.Commerce/bin/Release/net10.0/KhaozEngine.Commerce.dll
+  KhaozEngine.Accounts -> KhaozEngine.Accounts/bin/Release/net10.0/KhaozEngine.Accounts.dll
+  KhaozEngine.Simulation -> KhaozEngine.Simulation/bin/Release/net10.0/KhaozEngine.Simulation.dll
+  KhaozEngine.Persistence -> KhaozEngine.Persistence/bin/Release/net10.0/KhaozEngine.Persistence.dll
+  KhaozEngine.WorldStore.Sqlite -> KhaozEngine.WorldStore.Sqlite/bin/Release/net10.0/KhaozEngine.WorldStore.Sqlite.dll
+  KhaozEngine.Objectives -> KhaozEngine.Objectives/bin/Release/net10.0/KhaozEngine.Objectives.dll
+  KhaozEngine.BugReports -> KhaozEngine.BugReports/bin/Release/net10.0/KhaozEngine.BugReports.dll
+  KhaozEngine.Localization.TestKit -> KhaozEngine.Localization.TestKit/bin/Release/net10.0/KhaozEngine.Localization.TestKit.dll
+  KhaozEngine.Physics.AotProbe -> KhaozEngine.Physics.AotProbe/bin/Release/net10.0/KhaozEngine.Physics.AotProbe.dll
+  KhaozEngine.Windowing -> KhaozEngine.Windowing/bin/Release/net10.0/KhaozEngine.Windowing.dll
+  KhaozEngine.Netcode.LiteNetLib -> KhaozEngine.Netcode.LiteNetLib/bin/Release/net10.0/KhaozEngine.Netcode.LiteNetLib.dll
+  KhaozEngine.Identity.Oidc -> KhaozEngine.Identity.Oidc/bin/Release/net10.0/KhaozEngine.Identity.Oidc.dll
+  KhaozEngine.Identity.Discord -> KhaozEngine.Identity.Discord/bin/Release/net10.0/KhaozEngine.Identity.Discord.dll
+  KhaozEngine.Automation -> KhaozEngine.Automation/bin/Release/net10.0/KhaozEngine.Automation.dll
+  KhaozEngine.Gpu.TestKit -> KhaozEngine.Gpu.TestKit/bin/Release/net10.0/KhaozEngine.Gpu.TestKit.dll
+  KhaozEngine.Catalog.Sqlite -> KhaozEngine.Catalog.Sqlite/bin/Release/net10.0/KhaozEngine.Catalog.Sqlite.dll
+  KhaozEngine.Navigation -> KhaozEngine.Navigation/bin/Release/net10.0/KhaozEngine.Navigation.dll
+  KhaozEngine.Netcode.Abstractions.DecouplingTests -> KhaozEngine.Netcode.Abstractions.DecouplingTests/bin/Release/net10.0/KhaozEngine.Netcode.Abstractions.DecouplingTests.dll
+  KhaozEngine.Diagnostics -> KhaozEngine.Diagnostics/bin/Release/net8.0/KhaozEngine.Diagnostics.dll
+  KhaozEngine.TestSupport.Windowing -> KhaozEngine.TestSupport.Windowing/bin/Release/net10.0/KhaozEngine.TestSupport.Windowing.dll
+  KhaozEngine.Attachments.Tests -> KhaozEngine.Attachments.Tests/bin/Release/net10.0/KhaozEngine.Attachments.Tests.dll
+  KhaozEngine.Primitives -> KhaozEngine.Primitives/bin/Release/net8.0/KhaozEngine.Primitives.dll
+  KhaozEngine.Localization.Analyzers.Tests -> KhaozEngine.Localization.Analyzers.Tests/bin/Release/net10.0/KhaozEngine.Localization.Analyzers.Tests.dll
+  KhaozEngine.Content.Validator -> KhaozEngine.Content.Validator/bin/Release/net10.0/KhaozEngine.Content.Validator.dll
+  KhaozEngine.Physics.HeadlessLoaderTests -> KhaozEngine.Physics.HeadlessLoaderTests/bin/Release/net10.0/KhaozEngine.Physics.HeadlessLoaderTests.dll
+  KhaozEngine.TileWorld -> KhaozEngine.TileWorld/bin/Release/net10.0/KhaozEngine.TileWorld.dll
+  KhaozEngine.Commerce.Sqlite -> KhaozEngine.Commerce.Sqlite/bin/Release/net10.0/KhaozEngine.Commerce.Sqlite.dll
+  KhaozEngine.MapDoc -> KhaozEngine.MapDoc/bin/Release/net10.0/KhaozEngine.MapDoc.dll
+  KhaozEngine.Commerce.SqlServer -> KhaozEngine.Commerce.SqlServer/bin/Release/net10.0/KhaozEngine.Commerce.SqlServer.dll
+  KhaozEngine.TestSupport.Services -> KhaozEngine.TestSupport.Services/bin/Release/net10.0/KhaozEngine.TestSupport.Services.dll
+  KhaozEngine.Ecs -> KhaozEngine.Ecs/bin/Release/net10.0/KhaozEngine.Ecs.dll
+  KhaozEngine.Render2D -> KhaozEngine.Render2D/bin/Release/net10.0/KhaozEngine.Render2D.dll
+  DungeonKitGen -> tools/DungeonKitGen/bin/Release/net10.0/DungeonKitGen.dll
+  KhaozEngine.Catalog.SqlServer -> KhaozEngine.Catalog.SqlServer/bin/Release/net10.0/KhaozEngine.Catalog.SqlServer.dll
+  KhaozEngine.TileWorld.Editing -> KhaozEngine.TileWorld.Editing/bin/Release/net10.0/KhaozEngine.TileWorld.Editing.dll
+  KhaozEngine.TestSupport.Gpu -> KhaozEngine.TestSupport.Gpu/bin/Release/net10.0/KhaozEngine.TestSupport.Gpu.dll
+  KhaozEngine.Accounts.Sqlite -> KhaozEngine.Accounts.Sqlite/bin/Release/net10.0/KhaozEngine.Accounts.Sqlite.dll
+  TestModelGen -> tools/TestModelGen/bin/Release/net10.0/TestModelGen.dll
+  KhaozEngine.Catalog.Netcode -> KhaozEngine.Catalog.Netcode/bin/Release/net10.0/KhaozEngine.Catalog.Netcode.dll
+  KhaozEngine.Updates.Tool -> KhaozEngine.Updates.Tool/bin/Release/net10.0/KhaozEngine.Updates.Tool.dll
+  KhaozEngine.ItemInstances -> KhaozEngine.ItemInstances/bin/Release/net10.0/KhaozEngine.ItemInstances.dll
+  KhaozEngine.Snapshot -> KhaozEngine.Snapshot/bin/Release/net10.0/KhaozEngine.Snapshot.dll
+  KhaozEngine.Social.Discord -> KhaozEngine.Social.Discord/bin/Release/net10.0/KhaozEngine.Social.Discord.dll
+  KhaozEngine.Gui -> KhaozEngine.Gui/bin/Release/net10.0/KhaozEngine.Gui.dll
+  KhaozEngine.Render3D -> KhaozEngine.Render3D/bin/Release/net10.0/KhaozEngine.Render3D.dll
+  KhaozEngine.Identity.Exchange -> KhaozEngine.Identity.Exchange/bin/Release/net10.0/KhaozEngine.Identity.Exchange.dll
+  KhaozEngine.WorldMap -> KhaozEngine.WorldMap/bin/Release/net10.0/KhaozEngine.WorldMap.dll
+  KhaozEngine.Tests -> KhaozEngine.Tests/bin/Release/net10.0/KhaozEngine.Tests.dll
+  PixelLabSheetAssembler -> tools/PixelLabSheetAssembler/bin/Release/net10.0/PixelLabSheetAssembler.dll
+  KhaozEngine.BugReports.Relay -> KhaozEngine.BugReports.Relay/bin/Release/net10.0/KhaozEngine.BugReports.Relay.dll
+  KhaozEngine.Netcode.DecouplingTests -> KhaozEngine.Netcode.DecouplingTests/bin/Release/net10.0/KhaozEngine.Netcode.DecouplingTests.dll
+  KhaozEngine.Accounts.SqlServer -> KhaozEngine.Accounts.SqlServer/bin/Release/net10.0/KhaozEngine.Accounts.SqlServer.dll
+  KhaozEngine.ServerStatus -> KhaozEngine.ServerStatus/bin/Release/net8.0/KhaozEngine.ServerStatus.dll
+  KhaozEngine.Telegraphs -> KhaozEngine.Telegraphs/bin/Release/net10.0/KhaozEngine.Telegraphs.dll
+  KhaozEngine.TileWorld.Physics -> KhaozEngine.TileWorld.Physics/bin/Release/net10.0/KhaozEngine.TileWorld.Physics.dll
+  KhaozEngine.Attachments.Render3D -> KhaozEngine.Attachments.Render3D/bin/Release/net10.0/KhaozEngine.Attachments.Render3D.dll
+  KhaozEngine.Identity.Exchange.AspNetCore -> KhaozEngine.Identity.Exchange.AspNetCore/bin/Release/net10.0/KhaozEngine.Identity.Exchange.AspNetCore.dll
+  KhaozEngine.Particles.Tests -> KhaozEngine.Particles.Tests/bin/Release/net10.0/KhaozEngine.Particles.Tests.dll
+  KhaozEngine.ItemInstances.Tests -> KhaozEngine.ItemInstances.Tests/bin/Release/net10.0/KhaozEngine.ItemInstances.Tests.dll
+  KhaozEngine.BugReports.Relay.Azure -> KhaozEngine.BugReports.Relay.Azure/bin/Release/net10.0/KhaozEngine.BugReports.Relay.Azure.dll
+  PixelLabSheetAssembler.Tests -> tools/PixelLabSheetAssembler.Tests/bin/Release/net10.0/PixelLabSheetAssembler.Tests.dll
+  KhaozEngine.Catalog.AzureBlob.Tests -> KhaozEngine.Catalog.AzureBlob.Tests/bin/Release/net10.0/KhaozEngine.Catalog.AzureBlob.Tests.dll
+  KhaozEngine.ItemInstances.Journal -> KhaozEngine.ItemInstances.Journal/bin/Release/net10.0/KhaozEngine.ItemInstances.Journal.dll
+  KhaozEngine.Windowing.Tests -> KhaozEngine.Windowing.Tests/bin/Release/net10.0/KhaozEngine.Windowing.Tests.dll
+  KhaozEngine.Automation.Tests -> KhaozEngine.Automation.Tests/bin/Release/net10.0/KhaozEngine.Automation.Tests.dll
+  KhaozEngine.BugReports.Tests -> KhaozEngine.BugReports.Tests/bin/Release/net10.0/KhaozEngine.BugReports.Tests.dll
+  KhaozEngine.WorldMap.Tests -> KhaozEngine.WorldMap.Tests/bin/Release/net10.0/KhaozEngine.WorldMap.Tests.dll
+  KhaozEngine.MapDoc.Tests -> KhaozEngine.MapDoc.Tests/bin/Release/net10.0/KhaozEngine.MapDoc.Tests.dll
+  GestureInputProbe -> tools/GestureInputProbe/bin/Release/net10.0/GestureInputProbe.dll
+  KhaozEngine.BugReports.Relay.Azure.Tests -> KhaozEngine.BugReports.Relay.Azure.Tests/bin/Release/net10.0/KhaozEngine.BugReports.Relay.Azure.Tests.dll
+  KhaozEngine.MapDoc.Compatibility.Tests -> KhaozEngine.MapDoc.Compatibility.Tests/bin/Release/net10.0/KhaozEngine.MapDoc.Compatibility.Tests.dll
+  KhaozEngine.Game -> KhaozEngine.Game/bin/Release/net10.0/KhaozEngine.Game.dll
+  KhaozEngine.BugReports.Relay.Tests -> KhaozEngine.BugReports.Relay.Tests/bin/Release/net10.0/KhaozEngine.BugReports.Relay.Tests.dll
+  KhaozEngine.WorldMap.Gui -> KhaozEngine.WorldMap.Gui/bin/Release/net10.0/KhaozEngine.WorldMap.Gui.dll
+  KhaozEngine.Terrain.Render3D -> KhaozEngine.Terrain.Render3D/bin/Release/net10.0/KhaozEngine.Terrain.Render3D.dll
+  KhaozEngine.Game.Render3D -> KhaozEngine.Game.Render3D/bin/Release/net10.0/KhaozEngine.Game.Render3D.dll
+  KhaozEngine.Snapshot.Render3D -> KhaozEngine.Snapshot.Render3D/bin/Release/net10.0/KhaozEngine.Snapshot.Render3D.dll
+  KhaozEngine.Particles.Render3D -> KhaozEngine.Particles.Render3D/bin/Release/net10.0/KhaozEngine.Particles.Render3D.dll
+  KhaozEngine.BugReports.Client -> KhaozEngine.BugReports.Client/bin/Release/net10.0/KhaozEngine.BugReports.Client.dll
+  KhaozEngine.Dungeon -> KhaozEngine.Dungeon/bin/Release/net10.0/KhaozEngine.Dungeon.dll
+  KhaozEngine.Movement -> KhaozEngine.Movement/bin/Release/net10.0/KhaozEngine.Movement.dll
+  KhaozEngine.TileWorld.Tests -> KhaozEngine.TileWorld.Tests/bin/Release/net10.0/KhaozEngine.TileWorld.Tests.dll
+  KhaozEngine.Telegraphs.Render3D -> KhaozEngine.Telegraphs.Render3D/bin/Release/net10.0/KhaozEngine.Telegraphs.Render3D.dll
+  KhaozEngine.TileWorld.WorldMap -> KhaozEngine.TileWorld.WorldMap/bin/Release/net10.0/KhaozEngine.TileWorld.WorldMap.dll
+  KhaozEngine.Audio.Tests -> KhaozEngine.Audio.Tests/bin/Release/net10.0/KhaozEngine.Audio.Tests.dll
+  KhaozEngine.Replication -> KhaozEngine.Replication/bin/Release/net10.0/KhaozEngine.Replication.dll
+  KhaozEngine.Render3D.Ecs -> KhaozEngine.Render3D.Ecs/bin/Release/net10.0/KhaozEngine.Render3D.Ecs.dll
+  KhaozEngine.Identity.Exchange.Tests -> KhaozEngine.Identity.Exchange.Tests/bin/Release/net10.0/KhaozEngine.Identity.Exchange.Tests.dll
+  KhaozEngine.TileWorld.Render3D -> KhaozEngine.TileWorld.Render3D/bin/Release/net10.0/KhaozEngine.TileWorld.Render3D.dll
+  KhaozEngine.Sharding -> KhaozEngine.Sharding/bin/Release/net10.0/KhaozEngine.Sharding.dll
+  KhaozEngine.PropSurface.Tool -> KhaozEngine.PropSurface.Tool/bin/Release/net10.0/KhaozEngine.PropSurface.Tool.dll
+  KeDungeon -> tools/KeDungeon/bin/Release/net10.0/KeDungeon.dll
+  KhaozEngine.Movement.Tests -> KhaozEngine.Movement.Tests/bin/Release/net10.0/KhaozEngine.Movement.Tests.dll
+  KhaozEngine.MapEditor -> KhaozEngine.MapEditor/bin/Release/net10.0/KhaozEngine.MapEditor.dll
+  KhaozEngine.Catalog.Tests -> KhaozEngine.Catalog.Tests/bin/Release/net10.0/KhaozEngine.Catalog.Tests.dll
+  KhaozEngine.NetWorld -> KhaozEngine.NetWorld/bin/Release/net10.0/KhaozEngine.NetWorld.dll
+  SnapshotTool -> SnapshotTool/bin/Release/net10.0/SnapshotTool.dll
+  KhaozEngine.TileWorld.Physics.Tests -> KhaozEngine.TileWorld.Physics.Tests/bin/Release/net10.0/KhaozEngine.TileWorld.Physics.Tests.dll
+  KhaozEngine.TileEdit.Tool -> KhaozEngine.TileEdit.Tool/bin/Release/net10.0/KhaozEngine.TileEdit.Tool.dll
+  KhaozEngine.TileWorld.Netcode -> KhaozEngine.TileWorld.Netcode/bin/Release/net10.0/KhaozEngine.TileWorld.Netcode.dll
+  KhaozEngine.TileWorld.WorldMap.Tests -> KhaozEngine.TileWorld.WorldMap.Tests/bin/Release/net10.0/KhaozEngine.TileWorld.WorldMap.Tests.dll
+  KhaozEngine.Foundation -> KhaozEngine.Foundation/bin/Release/net10.0/KhaozEngine.Foundation.dll
+  KhaozEngine.MapDoc.Physics -> KhaozEngine.MapDoc.Physics/bin/Release/net10.0/KhaozEngine.MapDoc.Physics.dll
+  KhaozEngine.Simulation.Tests -> KhaozEngine.Simulation.Tests/bin/Release/net10.0/KhaozEngine.Simulation.Tests.dll
+  KhaozEngine.Server.Admin -> KhaozEngine.Server.Admin/bin/Release/net10.0/KhaozEngine.Server.Admin.dll
+  KhaozEngine.WorldMap.Gui.Tests -> KhaozEngine.WorldMap.Gui.Tests/bin/Release/net10.0/KhaozEngine.WorldMap.Gui.Tests.dll
+  KhaozEngine.Server.AotProbe -> KhaozEngine.Server.AotProbe/bin/Release/net10.0/KhaozEngine.Server.AotProbe.dll
+  KhaozEngine.Gui.Tests -> KhaozEngine.Gui.Tests/bin/Release/net10.0/KhaozEngine.Gui.Tests.dll
+  KhaozEngine.Accounts.Tests -> KhaozEngine.Accounts.Tests/bin/Release/net10.0/KhaozEngine.Accounts.Tests.dll
+  KhaozEngine.Showcase -> KhaozEngine.Showcase/bin/Release/net10.0/KhaozEngine.Showcase.dll
+  MmoServerSample -> MmoServerSample/bin/Release/net10.0/MmoServerSample.dll
+  KhaozEngine.MapEdit.Tool -> KhaozEngine.MapEdit.Tool/bin/Release/net10.0/KhaozEngine.MapEdit.Tool.dll
+  KhaozEngine.Game2D -> KhaozEngine.Game2D/bin/Release/net10.0/KhaozEngine.Game2D.dll
+  KhaozEngine.BugReports.Client.Tests -> KhaozEngine.BugReports.Client.Tests/bin/Release/net10.0/KhaozEngine.BugReports.Client.Tests.dll
+  KhaozEngine.MapDoc.Physics.Tests -> KhaozEngine.MapDoc.Physics.Tests/bin/Release/net10.0/KhaozEngine.MapDoc.Physics.Tests.dll
+  KeDungeon.Tests -> tools/KeDungeon.Tests/bin/Release/net10.0/KeDungeon.Tests.dll
+  KhaozEngine.Benchmarks -> KhaozEngine.Benchmarks/bin/Release/net10.0/KhaozEngine.Benchmarks.dll
+  KhaozEngine.TileWorld.Netcode.Tests -> KhaozEngine.TileWorld.Netcode.Tests/bin/Release/net10.0/KhaozEngine.TileWorld.Netcode.Tests.dll
+  KhaozEngine.Foundation.Tests -> KhaozEngine.Foundation.Tests/bin/Release/net10.0/KhaozEngine.Foundation.Tests.dll
+  KhaozEngine.Server -> KhaozEngine.Server/bin/Release/net10.0/KhaozEngine.Server.dll
+  KhaozEngine.Game3D -> KhaozEngine.Game3D/bin/Release/net10.0/KhaozEngine.Game3D.dll
+  KhaozEngine.Game.Tests -> KhaozEngine.Game.Tests/bin/Release/net10.0/KhaozEngine.Game.Tests.dll
+  KhaozEngine.Render.Tests -> KhaozEngine.Render.Tests/bin/Release/net10.0/KhaozEngine.Render.Tests.dll
+  KhaozEngine.TileEdit.Tests -> KhaozEngine.TileEdit.Tests/bin/Release/net10.0/KhaozEngine.TileEdit.Tests.dll
+  KhaozEngine.Showcase.Tests -> KhaozEngine.Showcase.Tests/bin/Release/net10.0/KhaozEngine.Showcase.Tests.dll
+  KhaozEngine.MapEditor.Tests -> KhaozEngine.MapEditor.Tests/bin/Release/net10.0/KhaozEngine.MapEditor.Tests.dll
+  KhaozEngine.Server.Tests -> KhaozEngine.Server.Tests/bin/Release/net10.0/KhaozEngine.Server.Tests.dll
+
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:30.71
+build-slot: exit=0 waited=0.026s ran=30.987s

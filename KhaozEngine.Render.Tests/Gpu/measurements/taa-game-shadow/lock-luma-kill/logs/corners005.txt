@@ -1,0 +1,1435 @@
+  KhaozEngine.CodeHealth.Analyzers -> KhaozEngine.CodeHealth.Analyzers/bin/Release/netstandard2.0/KhaozEngine.CodeHealth.Analyzers.dll
+  KhaozEngine.Diagnostics -> KhaozEngine.Diagnostics/bin/Release/net10.0/KhaozEngine.Diagnostics.dll
+  KhaozEngine.Physics -> KhaozEngine.Physics/bin/Release/net10.0/KhaozEngine.Physics.dll
+  KhaozEngine.Primitives -> KhaozEngine.Primitives/bin/Release/net10.0/KhaozEngine.Primitives.dll
+  KhaozEngine.Collision -> KhaozEngine.Collision/bin/Release/net10.0/KhaozEngine.Collision.dll
+  KhaozEngine.Netcode.Abstractions -> KhaozEngine.Netcode.Abstractions/bin/Release/net10.0/KhaozEngine.Netcode.Abstractions.dll
+  KhaozEngine.Imaging -> KhaozEngine.Imaging/bin/Release/net10.0/KhaozEngine.Imaging.dll
+  KhaozEngine.Platform -> KhaozEngine.Platform/bin/Release/net10.0/KhaozEngine.Platform.dll
+  KhaozEngine.Serialization -> KhaozEngine.Serialization/bin/Release/net10.0/KhaozEngine.Serialization.dll
+  KhaozEngine.Attachments -> KhaozEngine.Attachments/bin/Release/net10.0/KhaozEngine.Attachments.dll
+  KhaozEngine.BugReports.Contracts -> KhaozEngine.BugReports.Contracts/bin/Release/net10.0/KhaozEngine.BugReports.Contracts.dll
+  KhaozEngine.Determinism -> KhaozEngine.Determinism/bin/Release/net10.0/KhaozEngine.Determinism.dll
+  KhaozEngine.TestSupport -> KhaozEngine.TestSupport/bin/Release/net10.0/KhaozEngine.TestSupport.dll
+  KhaozEngine.Particles -> KhaozEngine.Particles/bin/Release/net10.0/KhaozEngine.Particles.dll
+  KhaozEngine.Gpu -> KhaozEngine.Gpu/bin/Release/net10.0/KhaozEngine.Gpu.dll
+  KhaozEngine.Updates -> KhaozEngine.Updates/bin/Release/net10.0/KhaozEngine.Updates.dll
+  KhaozEngine.App -> KhaozEngine.App/bin/Release/net10.0/KhaozEngine.App.dll
+  KhaozEngine.Netcode -> KhaozEngine.Netcode/bin/Release/net10.0/KhaozEngine.Netcode.dll
+  KhaozEngine.Terrain -> KhaozEngine.Terrain/bin/Release/net10.0/KhaozEngine.Terrain.dll
+  KhaozEngine.Locomotion -> KhaozEngine.Locomotion/bin/Release/net10.0/KhaozEngine.Locomotion.dll
+  KhaozEngine.Content -> KhaozEngine.Content/bin/Release/net10.0/KhaozEngine.Content.dll
+  KhaozEngine.Http -> KhaozEngine.Http/bin/Release/net10.0/KhaozEngine.Http.dll
+  KhaozEngine.BugReports -> KhaozEngine.BugReports/bin/Release/net10.0/KhaozEngine.BugReports.dll
+  KhaozEngine.Simulation -> KhaozEngine.Simulation/bin/Release/net10.0/KhaozEngine.Simulation.dll
+  KhaozEngine.TileWorld -> KhaozEngine.TileWorld/bin/Release/net10.0/KhaozEngine.TileWorld.dll
+  KhaozEngine.Navigation -> KhaozEngine.Navigation/bin/Release/net10.0/KhaozEngine.Navigation.dll
+  KhaozEngine.MapDoc -> KhaozEngine.MapDoc/bin/Release/net10.0/KhaozEngine.MapDoc.dll
+  KhaozEngine.Physics.Bepu -> KhaozEngine.Physics.Bepu/bin/Release/net10.0/KhaozEngine.Physics.Bepu.dll
+  KhaozEngine.Gpu.Metal -> KhaozEngine.Gpu.Metal/bin/Release/net10.0/KhaozEngine.Gpu.Metal.dll
+  KhaozEngine.Gpu.D3D11 -> KhaozEngine.Gpu.D3D11/bin/Release/net10.0/KhaozEngine.Gpu.D3D11.dll
+  KhaozEngine.Gpu.Vulkan -> KhaozEngine.Gpu.Vulkan/bin/Release/net10.0/KhaozEngine.Gpu.Vulkan.dll
+  KhaozEngine.Ecs -> KhaozEngine.Ecs/bin/Release/net10.0/KhaozEngine.Ecs.dll
+  KhaozEngine.Dungeon -> KhaozEngine.Dungeon/bin/Release/net10.0/KhaozEngine.Dungeon.dll
+  KhaozEngine.Windowing -> KhaozEngine.Windowing/bin/Release/net10.0/KhaozEngine.Windowing.dll
+  KhaozEngine.Gpu.TestKit -> KhaozEngine.Gpu.TestKit/bin/Release/net10.0/KhaozEngine.Gpu.TestKit.dll
+  KhaozEngine.TestSupport.Windowing -> KhaozEngine.TestSupport.Windowing/bin/Release/net10.0/KhaozEngine.TestSupport.Windowing.dll
+  KhaozEngine.TestSupport.Gpu -> KhaozEngine.TestSupport.Gpu/bin/Release/net10.0/KhaozEngine.TestSupport.Gpu.dll
+  KhaozEngine.Render2D -> KhaozEngine.Render2D/bin/Release/net10.0/KhaozEngine.Render2D.dll
+  KhaozEngine.Gui -> KhaozEngine.Gui/bin/Release/net10.0/KhaozEngine.Gui.dll
+  KhaozEngine.Telegraphs -> KhaozEngine.Telegraphs/bin/Release/net10.0/KhaozEngine.Telegraphs.dll
+  KhaozEngine.Snapshot -> KhaozEngine.Snapshot/bin/Release/net10.0/KhaozEngine.Snapshot.dll
+  KhaozEngine.ServerStatus -> KhaozEngine.ServerStatus/bin/Release/net10.0/KhaozEngine.ServerStatus.dll
+  KhaozEngine.Game -> KhaozEngine.Game/bin/Release/net10.0/KhaozEngine.Game.dll
+  KhaozEngine.BugReports.Client -> KhaozEngine.BugReports.Client/bin/Release/net10.0/KhaozEngine.BugReports.Client.dll
+  KhaozEngine.Render3D -> KhaozEngine.Render3D/bin/Release/net10.0/KhaozEngine.Render3D.dll
+  KhaozEngine.Snapshot.Render3D -> KhaozEngine.Snapshot.Render3D/bin/Release/net10.0/KhaozEngine.Snapshot.Render3D.dll
+  KhaozEngine.Attachments.Render3D -> KhaozEngine.Attachments.Render3D/bin/Release/net10.0/KhaozEngine.Attachments.Render3D.dll
+  KhaozEngine.Telegraphs.Render3D -> KhaozEngine.Telegraphs.Render3D/bin/Release/net10.0/KhaozEngine.Telegraphs.Render3D.dll
+  KhaozEngine.Terrain.Render3D -> KhaozEngine.Terrain.Render3D/bin/Release/net10.0/KhaozEngine.Terrain.Render3D.dll
+  SnapshotTool -> SnapshotTool/bin/Release/net10.0/SnapshotTool.dll
+  KhaozEngine.Render3D.Ecs -> KhaozEngine.Render3D.Ecs/bin/Release/net10.0/KhaozEngine.Render3D.Ecs.dll
+  KhaozEngine.Particles.Render3D -> KhaozEngine.Particles.Render3D/bin/Release/net10.0/KhaozEngine.Particles.Render3D.dll
+  KhaozEngine.Game.Render3D -> KhaozEngine.Game.Render3D/bin/Release/net10.0/KhaozEngine.Game.Render3D.dll
+  KhaozEngine.TileWorld.Render3D -> KhaozEngine.TileWorld.Render3D/bin/Release/net10.0/KhaozEngine.TileWorld.Render3D.dll
+  KhaozEngine.Render.Tests -> KhaozEngine.Render.Tests/bin/Release/net10.0/KhaozEngine.Render.Tests.dll
+Test run for KhaozEngine.Render.Tests/bin/Release/net10.0/KhaozEngine.Render.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+KhaozEngine.Render.Tests/bin/Release/net10.0/KhaozEngine.Render.Tests.dll
+[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v2.8.2+699d445a1a (64-bit .NET 10.0.13)
+[xUnit.net 00:00:00.15]   Discovering: KhaozEngine.Render.Tests
+[xUnit.net 00:00:00.87]   Discovered:  KhaozEngine.Render.Tests
+[xUnit.net 00:00:00.91]   Starting:    KhaozEngine.Render.Tests
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.The_core_declares_the_nine_bindings_in_layout_order_and_no_stage_inputs_or_outputs [3 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.The_depth_store_shares_the_background_sentinel_and_the_linearisation [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float MovingAccumulation = 8.0;", csharp: 8, expected: 8) [1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float WorldMotionEyeFraction = 0.00390625;", csharp: 0.00390625, expected: 0.00390625) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float DisocclusionTolerance = 0.02;", csharp: 0.0199999996, expected: 0.0199999996) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float LockLumaCornerAbsolute = 0.005;", csharp: 0.00499999989, expected: 0.00499999989) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float LockReactiveRelease = 2.0;", csharp: 2, expected: 2) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float LockRidgeRelative = 0.1;", csharp: 0.100000001, expected: 0.100000001) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float ReactiveStrength = 0.9;", csharp: 0.899999976, expected: 0.899999976) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float DisocclusionVisibleShare = 0.5;", csharp: 0.5, expected: 0.5) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float GammaMoving = 0.75;", csharp: 0.75, expected: 0.75) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float ShadingRingPixels = 1.5;", csharp: 1.5, expected: 1.5) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float MovingSurfaceInternalPixels = 0.5;", csharp: 0.5, expected: 0.5) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float BackgroundLinearDepth = 1.0e30;", csharp: 1.00000002E+30, expected: 1.00000002E+30) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float ShadingResetExtents = 0.25;", csharp: 0.25, expected: 0.25) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float LockEdgeMotionFraction = 0.001953125;", csharp: 0.001953125, expected: 0.001953125) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float ClipFlagMinimumMove = 0.0009765625;", csharp: 0.0009765625, expected: 0.0009765625) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float LockHoldGain = 2.0;", csharp: 2, expected: 2) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float FollowedHistoryMotionFraction = 0.5;", csharp: 0.5, expected: 0.5) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float LockMotionEndPixels = 4.0;", csharp: 4, expected: 4) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float FollowedTravelRatio = 2.0;", csharp: 2, expected: 2) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float MaxAccumulation = 15.0;", csharp: 15, expected: 15) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float GammaMotionPixels = 3.0;", csharp: 3, expected: 3) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float MotionSentinel = 60000.0;", csharp: 60000, expected: 60000) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float LockEdgeRelease = 1.0;", csharp: 1, expected: 1) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float ShadingMaxUpscale = 1.6;", csharp: 1.60000002, expected: 1.60000002) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float DisplayKernelConfidenceStart = 0.5;", csharp: 0.5, expected: 0.5) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float ShadingChangeExtents = 0.85;", csharp: 0.850000024, expected: 0.850000024) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float MovingShareConfidence = 0.0;", csharp: 0, expected: 0) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float ReactiveGain = 4.0;", csharp: 4, expected: 4) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float FollowedStillDisplayPixels = 0.1;", csharp: 0.100000001, expected: 0.100000001) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float ShadingLockPairExtents = 0.75;", csharp: 0.75, expected: 0.75) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float WorldMotionMetres = 0.001;", csharp: 0.00100000005, expected: 0.00100000005) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float LockMotionStartPixels = 1.0;", csharp: 1, expected: 1) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float ShadingLockRingShare = 0.35;", csharp: 0.349999994, expected: 0.349999994) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float DisplayKernelMotionPixels = 2.0;", csharp: 2, expected: 2) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float ShadingRingExtents = 0.25;", csharp: 0.25, expected: 0.25) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float GammaStill = 1.5;", csharp: 1.5, expected: 1.5) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float DisplayKernelFullWeight = 0.25;", csharp: 0.25, expected: 0.25) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float MovingSurfaceMotionFraction = 0.000976"···, csharp: 0.0009765625, expected: 0.0009765625) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float LockDecay = 0.125;", csharp: 0.125, expected: 0.125) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float DilationReachInternalPixels = 1.25;", csharp: 1.25, expected: 1.25) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float ShadingStrictRingExtents = 1.0;", csharp: 1, expected: 1) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float LockRidgeAbsolute = 0.02;", csharp: 0.0199999996, expected: 0.0199999996) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float LockLumaRelative = 0.1;", csharp: 0.100000001, expected: 0.100000001) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float MotionAccumulationPixels = 16.0;", csharp: 16, expected: 16) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float LockLumaAbsolute = 0.02;", csharp: 0.0199999996, expected: 0.0199999996) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float LockEdgeFloorInternalPixels = 0.001;", csharp: 0.00100000005, expected: 0.00100000005) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_tuning_constant_is_the_same_in_the_shader_and_in_CSharp(glslLine: "const float ShadingLockFlatShare = 0.25;", csharp: 0.25, expected: 0.25) [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.The_separable_Lanczos_kernel_takes_twelve_evaluations_per_pixel [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Both_uniform_blocks_declare_exactly_the_members_of_their_CSharp_structs [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.An_infinite_scene_or_opaque_colour_is_held_finite_before_the_luma_weighting [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Beyond_the_dilation_reach_a_pixel_on_the_farther_surface_reprojects_by_its_own_centre_texel [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.The_clip_flag_marks_only_a_clip_that_moved_the_history_by_more_than_the_minimum [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Both_programs_keep_the_fullscreen_interpolant_live [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.A_mostly_covered_footprint_is_disoccluded_unless_a_still_narrow_feature_or_a_fresh_lock_covered_it [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.A_still_surface_pixel_drops_the_history_the_band_left_beside_or_on_a_followed_surface [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.The_thin_feature_lock_decays_the_same_at_every_preset_follows_its_history_and_releases_at_moving_edges [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Every_declared_resource_survives_the_optimised_compile_in_binding_order [656 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.The_resolve_is_the_core_plus_a_main_that_writes_colour_and_state [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.The_core_exposes_the_pixel_function_the_debug_views_and_counts_re_evaluate [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.The_expected_depth_and_the_static_previous_position_are_the_CSharp_mirrors_in_GLSL [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Beside_a_fast_narrow_feature_the_own_history_takes_the_feature_s_current_colour_for_its_share [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.The_history_fetch_is_clamped_to_its_bilinear_texel_footprint_before_the_finite_check [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.A_footprint_a_moving_surface_showed_at_keeps_its_history_only_where_it_is_whole [< 1 ms]
+  Passed KhaozEngine.Tests.Render3D.TemporalResolveShaderTests.Both_programs_read_their_inputs_without_gradients [< 1 ms]
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLumaLockGpuTests.A_carried_lock_releases_only_on_a_material_mean_luma_change(current: 0.00400000019, previous: 0.00800000038, expected: 0.875) [1 s]
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLumaLockGpuTests.A_carried_lock_releases_only_on_a_material_mean_luma_change(current: 0.100000001, previous: 0.400000006, expected: 0) [20 ms]
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLumaLockGpuTests.A_carried_lock_releases_only_on_a_material_mean_luma_change(current: 0.400000006, previous: 0.100000001, expected: 0) [12 ms]
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_on_a_surface_the_camera_follows_holds_like_a_still_one(preset: Native) [1 s]
+  Standard Output Messages:
+ Native: largest frame to frame change 3.5% of the contrast at pixel 24 frame 72, centre pixel 24 mean 41.7% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_on_a_surface_the_camera_follows_holds_like_a_still_one(preset: UltraPerformance) [70 ms]
+  Standard Output Messages:
+ UltraPerformance: largest frame to frame change 2.7% of the contrast at pixel 24 frame 76, centre pixel 25 mean 81.7% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.Two_lines_narrower_than_a_texel_in_neighbouring_columns_hold_like_still_ones(preset: Quality, ahead: False) [68 ms]
+  Standard Output Messages:
+ Quality, on the wall: left largest frame to frame change 3.3% of the contrast at pixel 24 frame 76, centre pixel 24 mean 44.8% against coverage 37.5%, right largest frame to frame change 8.4% of the contrast at pixel 26 frame 68, centre pixel 26 mean 1.8% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.Two_lines_narrower_than_a_texel_in_neighbouring_columns_hold_like_still_ones(preset: Native, ahead: True) [73 ms]
+  Standard Output Messages:
+ Native, standing ahead: left largest frame to frame change 43.8% of the contrast at pixel 24 frame 64, centre pixel 24 mean 14.0% against coverage 37.5%, right largest frame to frame change 10.0% of the contrast at pixel 25 frame 70, centre pixel 25 mean 2.5% against coverage 37.5%
+
+
+[xUnit.net 00:00:02.87]     KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_on_a_swaying_surface_holds_like_a_still_one(preset: Native, speed: 0.5) [FAIL]
+[xUnit.net 00:00:02.87]       Native at 0.5 px/frame: largest frame to frame change 21.8% of the contrast at frame 78, summed coverage mean 21.3% against 37.5%
+[xUnit.net 00:00:02.87]       Stack Trace:
+[xUnit.net 00:00:02.87]         KhaozEngine.Render.Tests/Gpu/TemporalResolveLockGpuTests.cs(198,0): at KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_on_a_swaying_surface_holds_like_a_still_one(TemporalUpscale preset, Single speed)
+[xUnit.net 00:00:02.87]            at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)
+[xUnit.net 00:00:02.87]            at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)
+[xUnit.net 00:00:02.87]            at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+[xUnit.net 00:00:02.87]            at System.Reflection.MethodBaseInvoker.InvokeDirectByRefWithFewArgs(Object obj, Span`1 copyOfArgs, BindingFlags invokeAttr)
+[xUnit.net 00:00:02.87]       Output:
+[xUnit.net 00:00:02.87]         Native at 0.5 px/frame: largest frame to frame change 21.8% of the contrast at frame 78, summed coverage mean 21.3% against 37.5%
+[xUnit.net 00:00:02.95]     KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_on_a_swaying_surface_holds_like_a_still_one(preset: Native, speed: 0.300000012) [FAIL]
+[xUnit.net 00:00:02.95]       Native at 0.3 px/frame: largest frame to frame change 17.5% of the contrast at frame 74, summed coverage mean 19.5% against 37.5%
+[xUnit.net 00:00:02.95]       Stack Trace:
+[xUnit.net 00:00:02.95]         KhaozEngine.Render.Tests/Gpu/TemporalResolveLockGpuTests.cs(198,0): at KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_on_a_swaying_surface_holds_like_a_still_one(TemporalUpscale preset, Single speed)
+[xUnit.net 00:00:02.95]            at InvokeStub_TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_on_a_swaying_surface_holds_like_a_still_one(Object, Span`1)
+[xUnit.net 00:00:02.95]            at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+[xUnit.net 00:00:02.95]       Output:
+[xUnit.net 00:00:02.95]         Native at 0.3 px/frame: largest frame to frame change 17.5% of the contrast at frame 74, summed coverage mean 19.5% against 37.5%
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.Two_lines_narrower_than_a_texel_in_neighbouring_columns_hold_like_still_ones(preset: Native, ahead: False) [105 ms]
+  Standard Output Messages:
+ Native, on the wall: left largest frame to frame change 3.5% of the contrast at pixel 24 frame 72, centre pixel 24 mean 41.7% against coverage 37.5%, right largest frame to frame change 10.0% of the contrast at pixel 25 frame 70, centre pixel 25 mean 2.5% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.Two_lines_narrower_than_a_texel_in_neighbouring_columns_hold_like_still_ones(preset: Quality, ahead: True) [70 ms]
+  Standard Output Messages:
+ Quality, standing ahead: left largest frame to frame change 3.3% of the contrast at pixel 24 frame 76, centre pixel 24 mean 44.8% against coverage 37.5%, right largest frame to frame change 49.9% of the contrast at pixel 25 frame 68, centre pixel 26 mean 1.8% against coverage 37.5%
+
+
+  Failed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_on_a_swaying_surface_holds_like_a_still_one(preset: Native, speed: 0.5) [80 ms]
+  Error Message:
+   Native at 0.5 px/frame: largest frame to frame change 21.8% of the contrast at frame 78, summed coverage mean 21.3% against 37.5%
+  Stack Trace:
+     at KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_on_a_swaying_surface_holds_like_a_still_one(TemporalUpscale preset, Single speed) in KhaozEngine.Render.Tests/Gpu/TemporalResolveLockGpuTests.cs:line 198
+   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)
+   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+   at System.Reflection.MethodBaseInvoker.InvokeDirectByRefWithFewArgs(Object obj, Span`1 copyOfArgs, BindingFlags invokeAttr)
+  Standard Output Messages:
+ Native at 0.5 px/frame: largest frame to frame change 21.8% of the contrast at frame 78, summed coverage mean 21.3% against 37.5%
+
+
+  Failed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_on_a_swaying_surface_holds_like_a_still_one(preset: Native, speed: 0.300000012) [82 ms]
+  Error Message:
+   Native at 0.3 px/frame: largest frame to frame change 17.5% of the contrast at frame 74, summed coverage mean 19.5% against 37.5%
+  Stack Trace:
+     at KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_on_a_swaying_surface_holds_like_a_still_one(TemporalUpscale preset, Single speed) in KhaozEngine.Render.Tests/Gpu/TemporalResolveLockGpuTests.cs:line 198
+   at InvokeStub_TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_on_a_swaying_surface_holds_like_a_still_one(Object, Span`1)
+   at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  Standard Output Messages:
+ Native at 0.3 px/frame: largest frame to frame change 17.5% of the contrast at frame 74, summed coverage mean 19.5% against 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_on_a_swaying_surface_holds_like_a_still_one(preset: UltraPerformance, speed: 0.300000012) [133 ms]
+  Standard Output Messages:
+ UltraPerformance at 0.3 px/frame: largest frame to frame change 2.8% of the contrast at frame 76, summed coverage mean 38.1% against 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_on_every_frame(preset: Performance) [2 s]
+  Standard Output Messages:
+ MetalNative on Apple M2 Max, 320x180 Performance
+   48 of 48 frames resolved, 2164 band marks, 4956 followed marks and 19930 moving shares stored by the fused entry
+   colour: none differ
+   confidence: none differ
+   lock: none differ
+   mark: none differ
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.A_slow_pan_over_the_textured_wall_resolves_as_before_the_release [2 s]
+  Standard Output Messages:
+ hardware Quality pan 0.3 px: error 0.01445, temporal error 0.00612
+ hardware Quality pan 0.8 px: error 0.01346, temporal error 0.01417
+ hardware Native pan 0.3 px: error 0.01152, temporal error 0.00529
+ hardware Native pan 0.8 px: error 0.01058, temporal error 0.01190
+
+
+[xUnit.net 00:00:04.45]     KhaozEngine.Tests.Gpu.TemporalGameShadowGrainGpuTests.Texture_ridges_under_a_coarse_moving_shadow_do_not_hold_bright_grain [FAIL]
+[xUnit.net 00:00:04.45]       Quality grain 0.009229 exceeds 0.008000.
+[xUnit.net 00:00:04.45]       Stack Trace:
+[xUnit.net 00:00:04.45]         KhaozEngine.Render.Tests/Gpu/TexturedShadowGrainCase.cs(45,0): at KhaozEngine.Tests.Gpu.TexturedShadowGrainCase.AssertGrain(GameShadowGrainScene scene, ITestOutputHelper output)
+[xUnit.net 00:00:04.45]         KhaozEngine.Render.Tests/Gpu/TemporalGameShadowGrainGpuTests.cs(63,0): at KhaozEngine.Tests.Gpu.TemporalGameShadowGrainGpuTests.Texture_ridges_under_a_coarse_moving_shadow_do_not_hold_bright_grain()
+[xUnit.net 00:00:04.45]            at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+[xUnit.net 00:00:04.45]            at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+[xUnit.net 00:00:04.45]       Output:
+[xUnit.net 00:00:04.45]         Textured grain Native, hardware: 0.010803, error grain 0.006569, reference grain 0.009643, change 0.008944, bound 0.011300.
+[xUnit.net 00:00:04.45]         Textured grain Quality, hardware: 0.009229, error grain 0.008993, reference grain 0.009643, change 0.008727, bound 0.008000.
+[xUnit.net 00:00:04.45]         Textured grain Balanced, hardware: 0.010526, error grain 0.006326, reference grain 0.009643, change 0.001635, bound report only.
+  Passed KhaozEngine.Tests.Gpu.TemporalStablePeakGpuTests.Isolated_stable_peaks_keep_their_history_under_a_still_camera_and_light [2 s]
+  Standard Output Messages:
+ hardware Quality flat: 220 peaks, frame-to-frame change 0.00203 (reference 0.00000), error 0.01504, reference peak contrast 0.208
+ hardware Quality textured: 220 peaks, frame-to-frame change 0.00237 (reference 0.00000), error 0.01546, reference peak contrast 0.265
+ hardware Native flat: 220 peaks, frame-to-frame change 0.00134 (reference 0.00000), error 0.01149, reference peak contrast 0.134
+ hardware Native textured: 220 peaks, frame-to-frame change 0.00150 (reference 0.00000), error 0.01278, reference peak contrast 0.195
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_on_every_frame(preset: Quality) [619 ms]
+  Standard Output Messages:
+ MetalNative on Apple M2 Max, 320x180 Quality
+   48 of 48 frames resolved, 1516 band marks, 5006 followed marks and 1487 moving shares stored by the fused entry
+   colour: none differ
+   confidence: none differ
+   lock: none differ
+   mark: none differ
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.Texture_detail_near_the_display_nyquist_resolves_as_before_the_release_at_quality [408 ms]
+  Standard Output Messages:
+ hardware Quality still, 1 px texels: error 0.00552, temporal error 0.00112
+ hardware Quality still, 0.5 px texels: error 0.00725, temporal error 0.00098
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_keyed_thin_feature_leaves_no_trail_two_frames_after_it_passes(preset: UltraPerformance) [1 s]
+  Standard Output Messages:
+ UltraPerformance: still 93% 93% 92% 92% 92% 92% 92% 92% 93% 93%, 0.3 px/frame: trail 0 px at frame 0 (5%: 0 px), trail peak 0%, kept least 75% at frame 77 mean 82%, 0.6 px/frame: trail 0 px at frame 0 (5%: 0 px), trail peak 0%, kept least 74% at frame 77 mean 81%, 0.9 px/frame: trail 0 px at frame 0 (5%: 0 px), trail peak 0%, kept least 89% at frame 77 mean 95%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_on_every_frame(preset: Native) [460 ms]
+  Standard Output Messages:
+ MetalNative on Apple M2 Max, 320x180 Native
+   48 of 48 frames resolved, 15 band marks, 5073 followed marks and 1062 moving shares stored by the fused entry
+   colour: none differ
+   confidence: none differ
+   lock: none differ
+   mark: none differ
+
+
+  Failed KhaozEngine.Tests.Gpu.TemporalGameShadowGrainGpuTests.Texture_ridges_under_a_coarse_moving_shadow_do_not_hold_bright_grain [3 s]
+  Error Message:
+   Quality grain 0.009229 exceeds 0.008000.
+  Stack Trace:
+     at KhaozEngine.Tests.Gpu.TexturedShadowGrainCase.AssertGrain(GameShadowGrainScene scene, ITestOutputHelper output) in KhaozEngine.Render.Tests/Gpu/TexturedShadowGrainCase.cs:line 45
+   at KhaozEngine.Tests.Gpu.TemporalGameShadowGrainGpuTests.Texture_ridges_under_a_coarse_moving_shadow_do_not_hold_bright_grain() in KhaozEngine.Render.Tests/Gpu/TemporalGameShadowGrainGpuTests.cs:line 63
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+  Standard Output Messages:
+ Textured grain Native, hardware: 0.010803, error grain 0.006569, reference grain 0.009643, change 0.008944, bound 0.011300.
+ Textured grain Quality, hardware: 0.009229, error grain 0.008993, reference grain 0.009643, change 0.008727, bound 0.008000.
+ Textured grain Balanced, hardware: 0.010526, error grain 0.006326, reference grain 0.009643, change 0.001635, bound report only.
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_keyed_thin_feature_leaves_no_trail_two_frames_after_it_passes(preset: Quality) [736 ms]
+  Standard Output Messages:
+ Quality: still 77% 68% 83% 83% 62% 84% 86% 70% 73% 85%, 0.3 px/frame: trail 0 px at frame 0 (5%: 0 px), trail peak 0%, kept least 45% at frame 77 mean 58%, 0.6 px/frame: trail 0 px at frame 0 (5%: 0 px), trail peak 0%, kept least 40% at frame 76 mean 52%, 0.9 px/frame: trail 0 px at frame 0 (5%: 0 px), trail peak 0%, kept least 59% at frame 79 mean 75%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_surface_edge_the_jitter_crosses_holds_like_a_still_one(preset: Native, side: 1) [50 ms]
+  Standard Output Messages:
+ Native, surface edge half a texel into the column on side 1: largest frame to frame change 3.5% of the contrast at pixel 24 frame 72, centre pixel 24 mean 41.8% against coverage 37.5%
+
+
+[xUnit.net 00:00:05.03]     KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_surface_edge_the_jitter_crosses_holds_like_a_still_one(preset: Quality, side: -1) [FAIL]
+[xUnit.net 00:00:05.03]       Quality, surface edge half a texel into the column on side -1: largest frame to frame change 63.8% of the contrast at pixel 24 frame 78, centre pixel 24 mean 19.7% against coverage 37.5%
+[xUnit.net 00:00:05.03]       Stack Trace:
+[xUnit.net 00:00:05.03]         KhaozEngine.Render.Tests/Gpu/TemporalResolveLockGpuTests.cs(269,0): at KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_surface_edge_the_jitter_crosses_holds_like_a_still_one(TemporalUpscale preset, Int32 side)
+[xUnit.net 00:00:05.03]            at InvokeStub_TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_surface_edge_the_jitter_crosses_holds_like_a_still_one(Object, Span`1)
+[xUnit.net 00:00:05.03]            at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+[xUnit.net 00:00:05.03]       Output:
+[xUnit.net 00:00:05.03]         Quality, surface edge half a texel into the column on side -1: largest frame to frame change 63.8% of the contrast at pixel 24 frame 78, centre pixel 24 mean 19.7% against coverage 37.5%
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_surface_edge_the_jitter_crosses_holds_like_a_still_one(preset: Quality, side: 1) [42 ms]
+  Standard Output Messages:
+ Quality, surface edge half a texel into the column on side 1: largest frame to frame change 3.9% of the contrast at pixel 24 frame 76, centre pixel 24 mean 35.9% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_surface_edge_the_jitter_crosses_holds_like_a_still_one(preset: Native, side: -1) [50 ms]
+  Standard Output Messages:
+ Native, surface edge half a texel into the column on side -1: largest frame to frame change 3.5% of the contrast at pixel 24 frame 72, centre pixel 24 mean 41.8% against coverage 37.5%
+
+
+  Failed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_surface_edge_the_jitter_crosses_holds_like_a_still_one(preset: Quality, side: -1) [60 ms]
+  Error Message:
+   Quality, surface edge half a texel into the column on side -1: largest frame to frame change 63.8% of the contrast at pixel 24 frame 78, centre pixel 24 mean 19.7% against coverage 37.5%
+  Stack Trace:
+     at KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_surface_edge_the_jitter_crosses_holds_like_a_still_one(TemporalUpscale preset, Int32 side) in KhaozEngine.Render.Tests/Gpu/TemporalResolveLockGpuTests.cs:line 269
+   at InvokeStub_TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_surface_edge_the_jitter_crosses_holds_like_a_still_one(Object, Span`1)
+   at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  Standard Output Messages:
+ Quality, surface edge half a texel into the column on side -1: largest frame to frame change 63.8% of the contrast at pixel 24 frame 78, centre pixel 24 mean 19.7% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalEntryIdentityGpuTests.Both_entry_points_write_the_same_history_with_the_edge_outline_on [840 ms]
+  Standard Output Messages:
+ MetalNative on Apple M2 Max, 320x180 Quality
+   48 of 48 frames resolved, 1516 band marks, 5006 followed marks and 1487 moving shares stored by the fused entry
+   colour: none differ
+   confidence: none differ
+   lock: none differ
+   mark: none differ
+ MetalNative on Apple M2 Max, 320x180 Quality, the edge outline on
+   48 of 48 frames resolved, 1516 band marks, 5006 followed marks and 1842 moving shares stored by the fused entry
+   colour: none differ
+   confidence: none differ
+   lock: none differ
+   mark: none differ
+   outline-coloured history pixels on the last frame: 1957 with the outline, 0 without
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_against_the_sky_holds_like_one_on_a_wall(preset: Native) [52 ms]
+  Standard Output Messages:
+ Native: largest frame to frame change 3.5% of the contrast at pixel 24 frame 72, centre pixel 24 mean 41.7% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_against_the_sky_holds_like_one_on_a_wall(preset: Quality) [46 ms]
+  Standard Output Messages:
+ Quality: largest frame to frame change 4.0% of the contrast at pixel 24 frame 76, centre pixel 24 mean 33.3% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_against_the_sky_holds_like_one_on_a_wall(preset: UltraPerformance) [47 ms]
+  Standard Output Messages:
+ UltraPerformance: largest frame to frame change 2.7% of the contrast at pixel 24 frame 76, centre pixel 25 mean 81.7% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_still_nearer_surface_holds_like_a_still_one(preset: Native, side: 1) [41 ms]
+  Standard Output Messages:
+ Native, surface on side 1: largest frame to frame change 3.5% of the contrast at pixel 24 frame 64, centre pixel 24 mean 41.0% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_still_nearer_surface_holds_like_a_still_one(preset: UltraPerformance, side: -1) [34 ms]
+  Standard Output Messages:
+ UltraPerformance, surface on side -1: largest frame to frame change 2.7% of the contrast at pixel 24 frame 76, centre pixel 25 mean 81.6% against coverage 37.5%
+
+
+[xUnit.net 00:00:05.27]     KhaozEngine.Tests.Gpu.TemporalTextureLightGpuTests.Dark_texture_and_animated_local_light_keep_detail_stable [FAIL]
+[xUnit.net 00:00:05.27]       flicker Native exceeds its paired detail or speckle bounds.
+[xUnit.net 00:00:05.27]       flicker Quality exceeds its paired detail or speckle bounds.
+[xUnit.net 00:00:05.27]       Stack Trace:
+[xUnit.net 00:00:05.27]         KhaozEngine.Render.Tests/Gpu/TemporalTextureLightGpuTests.cs(60,0): at KhaozEngine.Tests.Gpu.TemporalTextureLightGpuTests.Dark_texture_and_animated_local_light_keep_detail_stable()
+[xUnit.net 00:00:05.27]            at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+[xUnit.net 00:00:05.27]            at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+[xUnit.net 00:00:05.27]       Output:
+[xUnit.net 00:00:05.27]         Texture light dark Native hardware: error 0.000360, error grain 0.000356, change error 0.000045, mean luma 0.004197.
+[xUnit.net 00:00:05.27]           bounds error 0.000396, grain 0.000392, change 0.000050.
+[xUnit.net 00:00:05.27]         Texture light dark Quality hardware: error 0.001003, error grain 0.000877, change error 0.000085, mean luma 0.004197.
+[xUnit.net 00:00:05.27]           bounds error 0.001103, grain 0.000965, change 0.000094.
+[xUnit.net 00:00:05.27]         Texture light flicker Native hardware: error 0.016223, error grain 0.006545, change error 0.011183, mean luma 0.024637.
+[xUnit.net 00:00:05.27]           bounds error 0.016154, grain 0.006053, change 0.011758.
+[xUnit.net 00:00:05.27]         Texture light flicker Quality hardware: error 0.017858, error grain 0.006138, change error 0.011595, mean luma 0.024637.
+[xUnit.net 00:00:05.27]           bounds error 0.017654, grain 0.005874, change 0.012691.
+[xUnit.net 00:00:05.27]         Texture light moving Native hardware: error 0.010692, error grain 0.003824, change error 0.003289, mean luma 0.021647.
+[xUnit.net 00:00:05.27]           bounds error 0.011763, grain 0.004204, change 0.003619.
+[xUnit.net 00:00:05.27]         Texture light moving Quality hardware: error 0.012533, error grain 0.004559, change error 0.003301, mean luma 0.021647.
+[xUnit.net 00:00:05.27]           bounds error 0.013708, grain 0.004863, change 0.003622.
+[xUnit.net 00:00:05.38]     KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_still_nearer_surface_holds_like_a_still_one(preset: Quality, side: -1) [FAIL]
+[xUnit.net 00:00:05.38]       Quality, surface on side -1: largest frame to frame change 54.4% of the contrast at pixel 24 frame 65, centre pixel 24 mean 11.5% against coverage 37.5%
+[xUnit.net 00:00:05.38]       Stack Trace:
+[xUnit.net 00:00:05.38]         KhaozEngine.Render.Tests/Gpu/TemporalResolveLockGpuTests.cs(250,0): at KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_still_nearer_surface_holds_like_a_still_one(TemporalUpscale preset, Int32 side)
+[xUnit.net 00:00:05.38]            at InvokeStub_TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_still_nearer_surface_holds_like_a_still_one(Object, Span`1)
+[xUnit.net 00:00:05.38]            at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+[xUnit.net 00:00:05.38]       Output:
+[xUnit.net 00:00:05.38]         Quality, surface on side -1: largest frame to frame change 54.4% of the contrast at pixel 24 frame 65, centre pixel 24 mean 11.5% against coverage 37.5%
+  Failed KhaozEngine.Tests.Gpu.TemporalTextureLightGpuTests.Dark_texture_and_animated_local_light_keep_detail_stable [4 s]
+  Error Message:
+   flicker Native exceeds its paired detail or speckle bounds.
+flicker Quality exceeds its paired detail or speckle bounds.
+  Stack Trace:
+     at KhaozEngine.Tests.Gpu.TemporalTextureLightGpuTests.Dark_texture_and_animated_local_light_keep_detail_stable() in KhaozEngine.Render.Tests/Gpu/TemporalTextureLightGpuTests.cs:line 60
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+  Standard Output Messages:
+ Texture light dark Native hardware: error 0.000360, error grain 0.000356, change error 0.000045, mean luma 0.004197.
+   bounds error 0.000396, grain 0.000392, change 0.000050.
+ Texture light dark Quality hardware: error 0.001003, error grain 0.000877, change error 0.000085, mean luma 0.004197.
+   bounds error 0.001103, grain 0.000965, change 0.000094.
+ Texture light flicker Native hardware: error 0.016223, error grain 0.006545, change error 0.011183, mean luma 0.024637.
+   bounds error 0.016154, grain 0.006053, change 0.011758.
+ Texture light flicker Quality hardware: error 0.017858, error grain 0.006138, change error 0.011595, mean luma 0.024637.
+   bounds error 0.017654, grain 0.005874, change 0.012691.
+ Texture light moving Native hardware: error 0.010692, error grain 0.003824, change error 0.003289, mean luma 0.021647.
+   bounds error 0.011763, grain 0.004204, change 0.003619.
+ Texture light moving Quality hardware: error 0.012533, error grain 0.004559, change error 0.003301, mean luma 0.021647.
+   bounds error 0.013708, grain 0.004863, change 0.003622.
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_still_nearer_surface_holds_like_a_still_one(preset: Quality, side: 1) [43 ms]
+  Standard Output Messages:
+ Quality, surface on side 1: largest frame to frame change 3.9% of the contrast at pixel 24 frame 76, centre pixel 24 mean 35.8% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_still_nearer_surface_holds_like_a_still_one(preset: UltraPerformance, side: 1) [37 ms]
+  Standard Output Messages:
+ UltraPerformance, surface on side 1: largest frame to frame change 2.8% of the contrast at pixel 24 frame 76, centre pixel 25 mean 81.4% against coverage 37.5%
+
+
+  Failed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_still_nearer_surface_holds_like_a_still_one(preset: Quality, side: -1) [42 ms]
+  Error Message:
+   Quality, surface on side -1: largest frame to frame change 54.4% of the contrast at pixel 24 frame 65, centre pixel 24 mean 11.5% against coverage 37.5%
+  Stack Trace:
+     at KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_still_nearer_surface_holds_like_a_still_one(TemporalUpscale preset, Int32 side) in KhaozEngine.Render.Tests/Gpu/TemporalResolveLockGpuTests.cs:line 250
+   at InvokeStub_TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_still_nearer_surface_holds_like_a_still_one(Object, Span`1)
+   at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  Standard Output Messages:
+ Quality, surface on side -1: largest frame to frame change 54.4% of the contrast at pixel 24 frame 65, centre pixel 24 mean 11.5% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_still_nearer_surface_holds_like_a_still_one(preset: Native, side: -1) [47 ms]
+  Standard Output Messages:
+ Native, surface on side -1: largest frame to frame change 3.6% of the contrast at pixel 24 frame 72, centre pixel 24 mean 40.4% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_nearer_surface_crossing_a_held_line_carries_no_ghost_of_it(preset: UltraPerformance) [259 ms]
+  Standard Output Messages:
+ UltraPerformance: 0.1 px/frame: ghost 0 px at frame 0 (5%: 0 px), peak 3% at pixel 49 frame 69, 0.3 px/frame: ghost 1 px at frame 68 (5%: 1 px), peak 66% at pixel 50 frame 68, 0.6 px/frame: ghost 1 px at frame 80 (5%: 1 px), peak 50% at pixel 50 frame 80, 0.9 px/frame: ghost 0 px at frame 0 (5%: 0 px), peak 2% at pixel 51 frame 73
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_nearer_surface_crossing_a_held_line_carries_no_ghost_of_it(preset: Native) [265 ms]
+  Standard Output Messages:
+ Native: 0.1 px/frame: ghost 1 px at frame 160 (5%: 1 px), peak 22% at pixel 48 frame 160, 0.3 px/frame: ghost 0 px at frame 0 (5%: 0 px), peak 2% at pixel 49 frame 97, 0.6 px/frame: ghost 0 px at frame 0 (5%: 0 px), peak 1% at pixel 43 frame 68, 0.9 px/frame: ghost 0 px at frame 0 (5%: 0 px), peak 2% at pixel 49 frame 73
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_nearer_surface_crossing_a_held_line_carries_no_ghost_of_it(preset: Quality) [265 ms]
+  Standard Output Messages:
+ Quality: 0.1 px/frame: ghost 1 px at frame 76 (5%: 1 px), peak 45% at pixel 48 frame 77, 0.3 px/frame: ghost 0 px at frame 0 (5%: 0 px), peak 3% at pixel 50 frame 94, 0.6 px/frame: ghost 0 px at frame 0 (5%: 0 px), peak 2% at pixel 45 frame 73, 0.9 px/frame: ghost 0 px at frame 0 (5%: 0 px), peak 1% at pixel 50 frame 66
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_against_the_sky_beside_a_still_nearer_surface_holds_away_from_the_centre_as_at_it(preset: UltraPerformance) [74 ms]
+  Standard Output Messages:
+ UltraPerformance: centred largest frame to frame change 2.7% of the contrast at pixel 24 frame 76, centre pixel 25 mean 81.5% against coverage 37.5%, in the corner largest frame to frame change 2.7% of the contrast at pixel 6 frame 76, centre pixel 7 mean 81.6% against coverage 37.5%
+
+
+[xUnit.net 00:00:06.37]     KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_against_the_sky_beside_a_still_nearer_surface_holds_away_from_the_centre_as_at_it(preset: Quality) [FAIL]
+[xUnit.net 00:00:06.37]       Quality: centred largest frame to frame change 54.4% of the contrast at pixel 24 frame 65, centre pixel 24 mean 11.5% against coverage 37.5%, in the corner largest frame to frame change 54.4% of the contrast at pixel 6 frame 65, centre pixel 6 mean 11.5% against coverage 37.5%
+[xUnit.net 00:00:06.37]       Stack Trace:
+[xUnit.net 00:00:06.37]         KhaozEngine.Render.Tests/Gpu/TemporalResolveLockGpuTests.cs(340,0): at KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_against_the_sky_beside_a_still_nearer_surface_holds_away_from_the_centre_as_at_it(TemporalUpscale preset)
+[xUnit.net 00:00:06.37]            at InvokeStub_TemporalResolveLockGpuTests.A_line_against_the_sky_beside_a_still_nearer_surface_holds_away_from_the_centre_as_at_it(Object, Span`1)
+[xUnit.net 00:00:06.37]            at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+[xUnit.net 00:00:06.37]       Output:
+[xUnit.net 00:00:06.37]         Quality: centred largest frame to frame change 54.4% of the contrast at pixel 24 frame 65, centre pixel 24 mean 11.5% against coverage 37.5%, in the corner largest frame to frame change 54.4% of the contrast at pixel 6 frame 65, centre pixel 6 mean 11.5% against coverage 37.5%
+[xUnit.net 00:00:07.67]     KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_blade_narrower_than_a_texel_swaying_over_still_ground_holds_like_a_still_one(preset: Quality) [FAIL]
+[xUnit.net 00:00:07.67]       Quality at 0.1 px/frame: largest frame to frame change 7.0% of the contrast at frame 65, summed coverage mean 7.8% against 37.5%
+[xUnit.net 00:00:07.67]       Stack Trace:
+[xUnit.net 00:00:07.67]         KhaozEngine.Render.Tests/Gpu/TemporalResolveLockGpuTests.cs(361,0): at KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_blade_narrower_than_a_texel_swaying_over_still_ground_holds_like_a_still_one(TemporalUpscale preset)
+[xUnit.net 00:00:07.67]            at InvokeStub_TemporalResolveLockGpuTests.A_blade_narrower_than_a_texel_swaying_over_still_ground_holds_like_a_still_one(Object, Span`1)
+[xUnit.net 00:00:07.67]            at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+[xUnit.net 00:00:07.67]       Output:
+[xUnit.net 00:00:07.67]         Quality at 0.1 px/frame: largest frame to frame change 7.0% of the contrast at frame 65, summed coverage mean 7.8% against 37.5%
+  Failed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_against_the_sky_beside_a_still_nearer_surface_holds_away_from_the_centre_as_at_it(preset: Quality) [76 ms]
+  Error Message:
+   Quality: centred largest frame to frame change 54.4% of the contrast at pixel 24 frame 65, centre pixel 24 mean 11.5% against coverage 37.5%, in the corner largest frame to frame change 54.4% of the contrast at pixel 6 frame 65, centre pixel 6 mean 11.5% against coverage 37.5%
+  Stack Trace:
+     at KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_against_the_sky_beside_a_still_nearer_surface_holds_away_from_the_centre_as_at_it(TemporalUpscale preset) in KhaozEngine.Render.Tests/Gpu/TemporalResolveLockGpuTests.cs:line 340
+   at InvokeStub_TemporalResolveLockGpuTests.A_line_against_the_sky_beside_a_still_nearer_surface_holds_away_from_the_centre_as_at_it(Object, Span`1)
+   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  Standard Output Messages:
+ Quality: centred largest frame to frame change 54.4% of the contrast at pixel 24 frame 65, centre pixel 24 mean 11.5% against coverage 37.5%, in the corner largest frame to frame change 54.4% of the contrast at pixel 6 frame 65, centre pixel 6 mean 11.5% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_against_the_sky_beside_a_still_nearer_surface_holds_away_from_the_centre_as_at_it(preset: Native) [96 ms]
+  Standard Output Messages:
+ Native: centred largest frame to frame change 3.6% of the contrast at pixel 24 frame 72, centre pixel 24 mean 40.4% against coverage 37.5%, in the corner largest frame to frame change 3.6% of the contrast at pixel 6 frame 72, centre pixel 6 mean 40.4% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_keyed_thin_feature_keeps_half_its_still_contrast_while_it_moves(preset: UltraPerformance) [529 ms]
+  Standard Output Messages:
+ UltraPerformance: still 93% 93% 92% 92% 92% 92% 92% 92% 93% 93%, 0.3 px/frame: trail 0 px at frame 0 (5%: 0 px), trail peak 0%, kept least 75% at frame 77 mean 82%, 0.6 px/frame: trail 0 px at frame 0 (5%: 0 px), trail peak 0%, kept least 74% at frame 77 mean 81%, 0.9 px/frame: trail 0 px at frame 0 (5%: 0 px), trail peak 0%, kept least 89% at frame 77 mean 95%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_keyed_thin_feature_keeps_half_its_still_contrast_while_it_moves(preset: Quality) [556 ms]
+  Standard Output Messages:
+ Quality: still 77% 68% 83% 83% 62% 84% 86% 70% 73% 85%, 0.3 px/frame: trail 0 px at frame 0 (5%: 0 px), trail peak 0%, kept least 45% at frame 77 mean 58%, 0.6 px/frame: trail 0 px at frame 0 (5%: 0 px), trail peak 0%, kept least 40% at frame 76 mean 52%, 0.9 px/frame: trail 0 px at frame 0 (5%: 0 px), trail peak 0%, kept least 59% at frame 79 mean 75%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_thin_ridge_takes_a_lock_and_the_lock_holds_its_luma_against_the_clip [5 ms]
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_blade_narrower_than_a_texel_swaying_over_still_ground_holds_like_a_still_one(preset: UltraPerformance) [36 ms]
+  Standard Output Messages:
+ UltraPerformance at 0.1 px/frame: largest frame to frame change 6.0% of the contrast at frame 65, summed coverage mean 37.1% against 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_blade_narrower_than_a_texel_swaying_over_still_ground_holds_like_a_still_one(preset: Native) [38 ms]
+  Standard Output Messages:
+ Native at 0.1 px/frame: largest frame to frame change 8.7% of the contrast at frame 65, summed coverage mean 40.6% against 37.5%
+
+
+  Failed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_blade_narrower_than_a_texel_swaying_over_still_ground_holds_like_a_still_one(preset: Quality) [37 ms]
+  Error Message:
+   Quality at 0.1 px/frame: largest frame to frame change 7.0% of the contrast at frame 65, summed coverage mean 7.8% against 37.5%
+  Stack Trace:
+     at KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_blade_narrower_than_a_texel_swaying_over_still_ground_holds_like_a_still_one(TemporalUpscale preset) in KhaozEngine.Render.Tests/Gpu/TemporalResolveLockGpuTests.cs:line 361
+   at InvokeStub_TemporalResolveLockGpuTests.A_blade_narrower_than_a_texel_swaying_over_still_ground_holds_like_a_still_one(Object, Span`1)
+   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  Standard Output Messages:
+ Quality at 0.1 px/frame: largest frame to frame change 7.0% of the contrast at frame 65, summed coverage mean 7.8% against 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.Of_three_lines_narrower_than_a_texel_side_by_side_an_outer_one_holds_like_a_still_one(preset: Quality) [47 ms]
+  Standard Output Messages:
+ Quality: left largest frame to frame change 3.3% of the contrast at pixel 24 frame 76, centre pixel 24 mean 44.8% against coverage 37.5%, middle largest frame to frame change 132.3% of the contrast at pixel 25 frame 72, centre pixel 26 mean 41.2% against coverage 37.5%, right largest frame to frame change 72.2% of the contrast at pixel 27 frame 72, centre pixel 27 mean 19.6% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.Of_three_lines_narrower_than_a_texel_side_by_side_an_outer_one_holds_like_a_still_one(preset: Native) [55 ms]
+  Standard Output Messages:
+ Native: left largest frame to frame change 43.8% of the contrast at pixel 24 frame 64, centre pixel 24 mean 14.0% against coverage 37.5%, middle largest frame to frame change 102.6% of the contrast at pixel 25 frame 68, centre pixel 25 mean 38.1% against coverage 37.5%, right largest frame to frame change 3.5% of the contrast at pixel 26 frame 72, centre pixel 26 mean 41.8% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_still_line_narrower_than_a_texel_holds_steady_at_its_coverage(preset: Quality) [33 ms]
+  Standard Output Messages:
+ Quality: largest frame to frame change 4.0% of the contrast at pixel 24 frame 76, centre pixel 24 mean 33.3% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_still_line_narrower_than_a_texel_holds_steady_at_its_coverage(preset: UltraPerformance) [30 ms]
+  Standard Output Messages:
+ UltraPerformance: largest frame to frame change 2.7% of the contrast at pixel 24 frame 76, centre pixel 25 mean 81.7% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_still_line_narrower_than_a_texel_holds_steady_at_its_coverage(preset: Native) [32 ms]
+  Standard Output Messages:
+ Native: largest frame to frame change 3.5% of the contrast at pixel 24 frame 72, centre pixel 24 mean 41.7% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_thin_feature_moving_without_motion_trails_no_more_than_one_internal_texel [154 ms]
+  Standard Output Messages:
+ Trail two frames after the line passed, allowance 3 px. 0.3 px/frame: trail 0 px at frame 0 (5%: 0 px), trail peak 0%, kept least 9% at frame 63 mean 20%, 0.6 px/frame: trail 0 px at frame 0 (5%: 0 px), trail peak 2%, kept least 4% at frame 21 mean 13%, 0.9 px/frame: trail 1 px at frame 30 (5%: 1 px), trail peak 11%, kept least 1% at frame 50 mean 9%
+
+
+[xUnit.net 00:00:13.02]     KhaozEngine.Tests.Gpu.TemporalMovingShadeLagGpuTests.Shadow_edge_lag_on_moving_pixels_and_fast_shadows_stays_within_its_bounds [FAIL]
+[xUnit.net 00:00:13.02]       Native S 8.0 px retreating: textured tail 0.008256 above 1.5 times the 1 px tail 0.005460
+[xUnit.net 00:00:13.02]       Stack Trace:
+[xUnit.net 00:00:13.02]         KhaozEngine.Render.Tests/Gpu/TemporalMovingShadeLagGpuTests.cs(383,0): at KhaozEngine.Tests.Gpu.TemporalMovingShadeLagGpuTests.AssertBounds(Dictionary`2 measured)
+[xUnit.net 00:00:13.02]         KhaozEngine.Render.Tests/Gpu/TemporalMovingShadeLagGpuTests.cs(346,0): at KhaozEngine.Tests.Gpu.TemporalMovingShadeLagGpuTests.Shadow_edge_lag_on_moving_pixels_and_fast_shadows_stays_within_its_bounds()
+[xUnit.net 00:00:13.02]            at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+[xUnit.net 00:00:13.02]            at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+[xUnit.net 00:00:13.02]       Output:
+[xUnit.net 00:00:13.02]         320x180, device class hardware. Band 12 px, tail to 48 px behind, control 32 px ahead and beyond, frames 80 to 87.
+[xUnit.net 00:00:13.02]         Quality S 1.0 px advancing: edge travel over the receiver about 1.0 px a frame, reference edge contrast 0.309, drawn edge 2.13 px off the analytic line
+[xUnit.net 00:00:13.02]           region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+[xUnit.net 00:00:13.02]           band textured    30612   0.018638   0.107267   0.013360  0.018638     0.015292     0.010319     0.013403   0.012597   0.015687
+[xUnit.net 00:00:13.02]           band flat        30613   0.012998   0.089913   0.010097  0.001743     0.000112     0.004962     0.013415   0.013094   0.015609
+[xUnit.net 00:00:13.02]           tail textured    45921   0.003110   0.007843   -0.000017  0.014202     0.013923     0.002828     0.000679   0.000029   0.000698
+[xUnit.net 00:00:13.02]           tail flat        45732   0.000520   0.000834   -0.000520  0.000000     0.000000     0.000000     0.000239   0.000119   0.000119
+[xUnit.net 00:00:13.02]           far textured     39111   0.004567   0.011765   -0.001048  0.017123     0.015900     0.003518     0.000834   0.000104   0.000907
+[xUnit.net 00:00:13.02]           far flat         92585   0.000682   0.002805   -0.000682  0.000000     0.000000     0.000000     0.000395   0.000384   0.000779
+[xUnit.net 00:00:13.02]           textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -0 0 1 1 2 3 5 38 36 -1 -1 -1
+[xUnit.net 00:00:13.02]           flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 25 39 -1 -1 -1
+[xUnit.net 00:00:13.02]         Quality S 1.0 px retreating: edge travel over the receiver about 1.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+[xUnit.net 00:00:13.02]           region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+[xUnit.net 00:00:13.02]           band textured    30609   0.022724   0.137239   -0.019725  0.019759     0.015011     0.012590     0.013759   0.012639   0.017076
+[xUnit.net 00:00:13.02]           band flat        30609   0.013582   0.108687   -0.012256  0.002558     0.000113     0.006446     0.013528   0.012902   0.016478
+[xUnit.net 00:00:13.02]           tail textured    45912   0.007663   0.031923   -0.006957  0.016633     0.015644     0.005764     0.000851   0.000106   0.000922
+[xUnit.net 00:00:13.02]           tail flat        45915   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+[xUnit.net 00:00:13.02]           far textured     87166   0.005296   0.011765   -0.003914  0.015554     0.014316     0.003254     0.000730   0.000029   0.000752
+[xUnit.net 00:00:13.02]           far flat         33683   0.000118   0.000834   -0.000118  0.000000     0.000000     0.000000     0.000133   0.000000   0.000133
+[xUnit.net 00:00:13.02]           textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -7 -7 -7 -6 -6 -6 -7 -8 -8 -9 -12 -61 -29 -4 -4 -4
+[xUnit.net 00:00:13.02]           flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): 0 0 0 0 0 0 0 0 0 0 -0 -46 -27 -0 -0 -0
+[xUnit.net 00:00:13.02]         Quality S 2.0 px advancing: edge travel over the receiver about 2.0 px a frame, reference edge contrast 0.309, drawn edge 2.13 px off the analytic line
+[xUnit.net 00:00:13.02]           region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+[xUnit.net 00:00:13.02]           band textured    30612   0.018394   0.099140   0.013149  0.018403     0.015228     0.010360     0.026389   0.025155   0.023022
+[xUnit.net 00:00:13.02]           band flat        30612   0.012441   0.082070   0.009825  0.002597     0.000114     0.005434     0.026147   0.025903   0.020838
+[xUnit.net 00:00:13.02]           tail textured    45919   0.002868   0.007843   0.000589  0.013873     0.013974     0.002766     0.000751   0.000060   0.000792
+[xUnit.net 00:00:13.02]           tail flat        45806   0.000311   0.000834   -0.000311  0.000000     0.000000     0.000000     0.000238   0.000119   0.000119
+[xUnit.net 00:00:13.02]           far textured     34646   0.004598   0.011765   0.001150  0.017129     0.015899     0.003504     0.000827   0.000176   0.000942
+[xUnit.net 00:00:13.02]           far flat         88122   0.000356   0.002805   -0.000356  0.000000     0.000000     0.000000     0.000412   0.000401   0.000813
+[xUnit.net 00:00:13.02]           textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 0 0 0 0 1 1 1 2 2 4 33 38 1 1 1
+[xUnit.net 00:00:13.02]           flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -0 -0 -0 -0 -0 -0 -0 -0 -0 -0 21 39 -0 -0 -0
+[xUnit.net 00:00:13.02]         Quality S 2.0 px retreating: edge travel over the receiver about 2.0 px a frame, reference edge contrast 0.309, drawn edge 2.13 px off the analytic line
+[xUnit.net 00:00:13.02]           region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+[xUnit.net 00:00:13.02]           band textured    30609   0.022716   0.138073   -0.018913  0.019481     0.014991     0.012249     0.026579   0.025242   0.026438
+[xUnit.net 00:00:13.02]           band flat        30608   0.014460   0.120735   -0.012929  0.003146     0.000103     0.006784     0.026511   0.025988   0.024216
+[xUnit.net 00:00:13.02]           tail textured    45911   0.006726   0.019608   -0.005668  0.017062     0.015590     0.005676     0.000974   0.000182   0.001087
+[xUnit.net 00:00:13.02]           tail flat        45916   0.000104   0.000834   -0.000104  0.000000     0.000000     0.000000     0.000040   0.000160   0.000119
+[xUnit.net 00:00:13.02]           far textured     82701   0.005720   0.012882   -0.004644  0.015592     0.014353     0.003285     0.000725   0.000058   0.000768
+[xUnit.net 00:00:13.02]           far flat         29260   0.000136   0.000834   -0.000136  0.000000     0.000000     0.000000     0.000515   0.000363   0.000151
+[xUnit.net 00:00:13.02]           textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -5 -5 -5 -5 -6 -6 -6 -6 -7 -7 -10 -57 -30 -5 -5 -5
+[xUnit.net 00:00:13.02]           flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -0 -0 -0 -0 -0 -0 -0 -0 -0 -1 -49 -28 -0 -0 -0
+[xUnit.net 00:00:13.02]         Quality S 4.0 px advancing: edge travel over the receiver about 4.0 px a frame, reference edge contrast 0.308, drawn edge 2.13 px off the analytic line
+[xUnit.net 00:00:13.02]           region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+[xUnit.net 00:00:13.02]           band textured    30611   0.018609   0.090464   0.013062  0.017709     0.015281     0.009975     0.052745   0.050212   0.026344
+[xUnit.net 00:00:13.02]           band flat        30611   0.011328   0.077314   0.009149  0.001741     0.000117     0.004829     0.051725   0.051499   0.021095
+[xUnit.net 00:00:13.02]           tail textured    45918   0.003396   0.010931   0.000802  0.014049     0.014047     0.003305     0.001423   0.000118   0.001491
+[xUnit.net 00:00:13.02]           tail flat        45837   0.000032   0.000000   -0.000032  0.000027     0.000000     0.000027     0.000099   0.000119   0.000028
+[xUnit.net 00:00:13.02]           far textured     26357   0.006544   0.015403   0.005488  0.017102     0.015998     0.003561     0.000876   0.000321   0.001070
+[xUnit.net 00:00:13.02]           far flat         79194   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000454   0.000454   0.000000
+[xUnit.net 00:00:13.02]           textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): 1 1 1 1 1 1 1 1 1 2 3 22 41 6 6 6
+[xUnit.net 00:00:13.02]           flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): 0 0 -0 -0 -0 -0 -0 -0 -0 -0 -0 16 40 -0 0 0
+[xUnit.net 00:00:13.02]         Quality S 4.0 px retreating: edge travel over the receiver about 4.0 px a frame, reference edge contrast 0.308, drawn edge 2.13 px off the analytic line
+[xUnit.net 00:00:13.02]           region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+[xUnit.net 00:00:13.02]           band textured    30610   0.021825   0.133035   -0.017200  0.018246     0.014885     0.011090     0.052746   0.050495   0.031099
+[xUnit.net 00:00:13.02]           band flat        30611   0.014764   0.116813   -0.013122  0.003464     0.000102     0.007049     0.052408   0.051594   0.026598
+[xUnit.net 00:00:13.02]           tail textured    45912   0.006241   0.019608   -0.004524  0.016657     0.015452     0.005468     0.001748   0.000325   0.001897
+[xUnit.net 00:00:13.02]           tail flat        45916   0.000034   0.000283   -0.000034  0.000002     0.000000     0.000002     0.000158   0.000160   0.000076
+[xUnit.net 00:00:13.02]           far textured     73772   0.006680   0.015403   -0.006047  0.015597     0.014412     0.003274     0.000739   0.000114   0.000822
+[xUnit.net 00:00:13.02]           far flat         21617   0.000184   0.000834   -0.000184  0.000000     0.000000     0.000000     0.000681   0.000477   0.000204
+[xUnit.net 00:00:13.02]           textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -5 -5 -5 -5 -5 -4 -4 -4 -4 -5 -6 -49 -31 -6 -6 -6
+[xUnit.net 00:00:13.02]           flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -0 -0 -0 -0 -0 -0 -0 -0 -0 -1 -50 -28 -0 -0 -0
+[xUnit.net 00:00:13.02]         Quality S 8.0 px advancing: edge travel over the receiver about 8.0 px a frame, reference edge contrast 0.307, drawn edge 2.13 px off the analytic line
+[xUnit.net 00:00:13.02]           region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+[xUnit.net 00:00:13.02]           band textured    29218   0.022151   0.090464   0.015813  0.017702     0.015413     0.010973     0.109125   0.103384   0.028471
+[xUnit.net 00:00:13.02]           band flat        30610   0.011566   0.077314   0.009233  0.001781     0.000115     0.004850     0.103214   0.102887   0.023014
+[xUnit.net 00:00:13.02]           tail textured    45921   0.004524   0.015686   0.000861  0.013919     0.014121     0.004342     0.003213   0.000226   0.003303
+[xUnit.net 00:00:13.02]           tail flat        45847   0.000009   0.000000   -0.000009  0.000006     0.000000     0.000006     0.000121   0.000119   0.000036
+[xUnit.net 00:00:13.02]           far textured     15777   0.013957   0.023246   0.013800  0.016901     0.015958     0.003703     0.000963   0.000638   0.001276
+[xUnit.net 00:00:13.02]           far flat         61338   0.000496   0.002805   0.000496  0.000000     0.000000     0.000000     0.000845   0.000917   0.001165
+[xUnit.net 00:00:13.02]           textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): 1 1 0 1 0 2 0 2 0 3 -0 20 45 14 14 14
+[xUnit.net 00:00:13.02]           flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): 0 -0 -0 -0 -0 -0 -0 -0 -0 -0 0 15 39 0 0 0
+[xUnit.net 00:00:13.02]         Quality S 8.0 px retreating: edge travel over the receiver about 8.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+[xUnit.net 00:00:13.02]           region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+[xUnit.net 00:00:13.02]           band textured    30610   0.023566   0.134151   -0.018336  0.018278     0.014879     0.011827     0.103438   0.101178   0.032551
+[xUnit.net 00:00:13.02]           band flat        28408   0.015312   0.120735   -0.013635  0.003441     0.000099     0.007130     0.108988   0.107853   0.031053
+[xUnit.net 00:00:13.02]           tail textured    45909   0.006670   0.026617   -0.003826  0.016161     0.015303     0.005862     0.003746   0.000647   0.003922
+[xUnit.net 00:00:13.02]           tail flat        45906   0.000351   0.002805   -0.000351  0.000000     0.000000     0.000000     0.000745   0.000560   0.000984
+[xUnit.net 00:00:13.02]           far textured     55949   0.008858   0.016520   -0.008630  0.015499     0.014381     0.003333     0.000758   0.000226   0.000915
+[xUnit.net 00:00:13.03]           far flat         12723   0.000817   0.002805   -0.000817  0.000000     0.000000     0.000000     0.000837   0.000807   0.001645
+[xUnit.net 00:00:13.03]           textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -3 -5 -3 -4 -3 -5 -3 -5 -3 -7 -3 -51 -32 -9 -9 -9
+[xUnit.net 00:00:13.03]           flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -0 -0 -0 -0 -0 -0 -0 -0 -0 -2 -51 -27 -1 -1 -1
+[xUnit.net 00:00:13.03]         Quality C pan 1.0 px: edge travel over the receiver about 1.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+[xUnit.net 00:00:13.03]           region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+[xUnit.net 00:00:13.03]           band textured    30608   0.010471   0.031089   -0.002567  0.016205     0.015074     0.010110     0.042899   0.040712   0.016391
+[xUnit.net 00:00:13.03]           band flat        30608   0.003696   0.023246   -0.000377  0.000265     0.000105     0.002095     0.012592   0.012459   0.004483
+[xUnit.net 00:00:13.03]           tail textured    45928   0.007613   0.019608   -0.002923  0.014674     0.013913     0.008162     0.032511   0.030724   0.012694
+[xUnit.net 00:00:13.03]           tail flat        45733   0.000834   0.000834   -0.000834  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+[xUnit.net 00:00:13.03]           far textured     39264   0.009156   0.023529   -0.003186  0.016870     0.015951     0.009945     0.037131   0.034795   0.015300
+[xUnit.net 00:00:13.03]           far flat         92736   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+[xUnit.net 00:00:13.03]           textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -2 -3 -2 -3 -3 -4 -3 -3 -3 -3 -3 -2 -2 -3 -2 -3
+[xUnit.net 00:00:13.03]           flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 1 -2 0 0 0
+[xUnit.net 00:00:13.03]         Quality C pan 2.0 px: edge travel over the receiver about 2.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+[xUnit.net 00:00:13.03]           region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+[xUnit.net 00:00:13.03]           band textured    30608   0.005846   0.018491   -0.002159  0.013182     0.015074     0.004793     0.069051   0.072639   0.008478
+[xUnit.net 00:00:13.03]           band flat        30608   0.002616   0.015403   -0.000475  0.000183     0.000105     0.001929     0.025030   0.024919   0.004047
+[xUnit.net 00:00:13.03]           tail textured    45928   0.003913   0.011765   -0.002173  0.012508     0.013913     0.002973     0.050932   0.054495   0.005483
+[xUnit.net 00:00:13.03]           tail flat        45806   0.000834   0.000834   -0.000834  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+[xUnit.net 00:00:13.03]           far textured     34952   0.004881   0.014569   -0.002516  0.014071     0.015945     0.003491     0.057168   0.061618   0.006694
+[xUnit.net 00:00:13.03]           far flat         88424   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+[xUnit.net 00:00:13.03]           textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -2 -2 -2 -2 -2 -2 -2 -2 -2 -2 -3 -2 -2 -2 -2 -2
+[xUnit.net 00:00:13.03]           flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 1 -2 -0 0 0
+[xUnit.net 00:00:13.03]         Quality C pan 4.0 px: edge travel over the receiver about 4.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+[xUnit.net 00:00:13.03]           region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+[xUnit.net 00:00:13.03]           band textured    30608   0.015163   0.043137   0.000252  0.009259     0.015074     0.010088     0.088316   0.100807   0.022897
+[xUnit.net 00:00:13.03]           band flat        30608   0.003996   0.023813   -0.000055  0.000178     0.000105     0.001880     0.050029   0.049837   0.007023
+[xUnit.net 00:00:13.03]           tail textured    45928   0.012001   0.035294   -0.000933  0.008961     0.013913     0.008281     0.052581   0.065600   0.018085
+[xUnit.net 00:00:13.03]           tail flat        45839   0.000834   0.000834   -0.000834  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+[xUnit.net 00:00:13.03]           far textured     26873   0.014637   0.042854   0.000586  0.009549     0.015930     0.009801     0.056308   0.072071   0.021599
+[xUnit.net 00:00:13.03]           far flat         79800   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+[xUnit.net 00:00:13.03]           textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -0 -1 -1 -1 -2 -1 -1 -2 -0 -1 5 -3 0 0 1
+[xUnit.net 00:00:13.03]           flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 3 -2 -0 0 0
+[xUnit.net 00:00:13.03]         Quality C pan 8.0 px: edge travel over the receiver about 8.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+[xUnit.net 00:00:13.03]           region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+[xUnit.net 00:00:13.03]           band textured    29488   0.013800   0.042854   0.000511  0.008832     0.015034     0.009857     0.130072   0.139317   0.021973
+[xUnit.net 00:00:13.03]           band flat        30608   0.003214   0.019608   -0.000356  0.000191     0.000105     0.002294     0.099996   0.099675   0.005831
+[xUnit.net 00:00:13.03]           tail textured    45928   0.010482   0.032206   -0.000360  0.008889     0.013913     0.007320     0.053981   0.065720   0.016441
+[xUnit.net 00:00:13.03]           tail flat        45848   0.000834   0.000834   -0.000834  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+[xUnit.net 00:00:13.03]           far textured     16234   0.013251   0.039766   0.001104  0.009297     0.015955     0.008940     0.056497   0.071934   0.020611
+[xUnit.net 00:00:13.03]           far flat         62552   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+[xUnit.net 00:00:13.03]           textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -0 -1 0 -0 -1 -0 -0 -1 0 -0 5 -4 1 1 2
+[xUnit.net 00:00:13.03]           flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 3 -4 -0 0 0
+[xUnit.net 00:00:13.03]         Quality M object 0.5 px: edge travel over the receiver about 0.5 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+[xUnit.net 00:00:13.03]           region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+[xUnit.net 00:00:13.03]           band textured    25840   0.028703   0.110071   0.019210  0.012802     0.015510     0.014238     0.018218   0.018240   0.018388
+[xUnit.net 00:00:13.03]           band flat        25832   0.012430   0.086275   0.010334  0.002517     0.000091     0.004756     0.008536   0.000000   0.008536
+[xUnit.net 00:00:13.03]           tail textured    38768   0.013803   0.038933   0.002235  0.008647     0.014511     0.007883     0.009829   0.017062   0.009572
+[xUnit.net 00:00:13.03]           tail flat        38768   0.000834   0.000834   -0.000834  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+[xUnit.net 00:00:13.03]           far textured     40136   0.020480   0.055453   0.001159  0.009260     0.016352     0.010899     0.009576   0.019281   0.011846
+[xUnit.net 00:00:13.03]           far flat         78584   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+[xUnit.net 00:00:13.03]           textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): 0 -1 1 1 1 2 4 4 7 11 16 52 35 1 0 0
+[xUnit.net 00:00:13.03]           flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 29 35 0 0 0
+[xUnit.net 00:00:13.03]         Quality M object 1.0 px: edge travel over the receiver about 1.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+[xUnit.net 00:00:13.03]           region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+[xUnit.net 00:00:13.03]           band textured    25840   0.016428   0.086542   0.010857  0.017534     0.015024     0.009556     0.040004   0.032764   0.017514
+[xUnit.net 00:00:13.03]           band flat        25832   0.010932   0.074227   0.008272  0.001840     0.000091     0.004775     0.010469   0.000000   0.010469
+[xUnit.net 00:00:13.03]           tail textured    38768   0.002729   0.007843   -0.000548  0.013732     0.013896     0.002396     0.030761   0.030767   0.003919
+[xUnit.net 00:00:13.03]           tail flat        38768   0.000834   0.000834   -0.000834  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+[xUnit.net 00:00:13.03]           far textured     40136   0.002322   0.007009   -0.000898  0.015304     0.015641     0.002015     0.034286   0.034459   0.003095
+[xUnit.net 00:00:13.03]           far flat         78584   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+[xUnit.net 00:00:13.03]           textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -2 -2 -1 -1 -1 -0 0 0 1 3 5 31 32 -3 -2 -2
+[xUnit.net 00:00:13.03]           flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 19 33 0 0 0
+[xUnit.net 00:00:13.03]         Quality M object 2.0 px: edge travel over the receiver about 2.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+[xUnit.net 00:00:13.03]           region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+[xUnit.net 00:00:13.03]           band textured    25840   0.018288   0.078699   0.009041  0.017015     0.015298     0.013110     0.059754   0.058519   0.023856
+[xUnit.net 00:00:13.03]           band flat        25832   0.009657   0.061628   0.006076  0.002782     0.000091     0.005362     0.012062   0.000000   0.012062
+[xUnit.net 00:00:13.03]           tail textured    38768   0.007294   0.019608   0.000403  0.013654     0.013959     0.007155     0.050811   0.054770   0.010458
+[xUnit.net 00:00:13.03]           tail flat        38768   0.000834   0.000834   -0.000834  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+[xUnit.net 00:00:13.03]           far textured     40136   0.006642   0.019325   -0.000521  0.014921     0.015594     0.006715     0.058009   0.060357   0.008678
+[xUnit.net 00:00:13.03]           far flat         78584   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+[xUnit.net 00:00:13.03]           textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -1 -1 -0 0 1 1 1 2 2 4 25 27 -2 -2 -2
+[xUnit.net 00:00:13.03]           flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 16 22 0 0 0
+[xUnit.net 00:00:13.03]         Quality M object 4.0 px: edge travel over the receiver about 4.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+[xUnit.net 00:00:13.03]           region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+[xUnit.net 00:00:13.03]           band textured    25840   0.017339   0.058257   0.004548  0.012394     0.015352     0.012295     0.060681   0.069367   0.025813
+[xUnit.net 00:00:13.03]           band flat        25832   0.007441   0.049030   0.003185  0.002086     0.000091     0.004216     0.009360   0.000000   0.009360
+[xUnit.net 00:00:13.03]           tail textured    38768   0.010974   0.035011   -0.000075  0.009561     0.014022     0.007728     0.053288   0.065278   0.016698
+[xUnit.net 00:00:13.03]           tail flat        38768   0.000834   0.000834   -0.000834  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+[xUnit.net 00:00:13.03]           far textured     40136   0.009145   0.031089   0.001265  0.011349     0.015577     0.007088     0.062232   0.071818   0.014086
+[xUnit.net 00:00:13.03]           far flat         78584   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+[xUnit.net 00:00:13.03]           textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -1 -0 -0 -0 -0 0 0 0 1 2 6 16 1 1 1
+[xUnit.net 00:00:13.03]           flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 13 8 0 0 0
+[xUnit.net 00:00:13.03]         Quality M object 8.0 px: edge travel over the receiver about 8.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+[xUnit.net 00:00:13.03]           region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+[xUnit.net 00:00:13.03]           band textured    25840   0.017551   0.056569   0.004436  0.013512     0.015338     0.013271     0.061858   0.067954   0.025777
+[xUnit.net 00:00:13.03]           band flat        25832   0.007575   0.050147   0.003290  0.002156     0.000091     0.004295     0.009562   0.000000   0.009562
+[xUnit.net 00:00:13.03]           tail textured    38768   0.012759   0.038382   0.000814  0.010686     0.014128     0.009319     0.054932   0.065944   0.019413
+[xUnit.net 00:00:13.03]           tail flat        38768   0.000834   0.000834   -0.000834  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+[xUnit.net 00:00:13.03]           far textured     40136   0.008972   0.027168   0.000901  0.012581     0.015327     0.007756     0.065141   0.071222   0.013505
+[xUnit.net 00:00:13.03]           far flat         78584   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+[xUnit.net 00:00:13.03]           textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): 1 0 1 0 1 0 2 1 2 1 3 6 14 1 1 1
+[xUnit.net 00:00:13.03]           flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 14 8 0 0 0
+[xUnit.net 00:00:13.03]         Quality MS object 1.0 px, shadow 1.0 px: edge travel over the receiver about 2.0 px a frame, reference edge contrast 0.309, drawn edge 2.13 px off the analytic line
+[xUnit.net 00:00:13.03]           region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+[xUnit.net 00:00:13.03]           band textured    25838   0.016293   0.083454   0.010628  0.017628     0.015194     0.009614     0.045050   0.040023   0.021888
+[xUnit.net 00:00:13.03]           band flat        25840   0.010519   0.070588   0.007150  0.002252     0.000115     0.005126     0.015265   0.012778   0.014476
+[xUnit.net 00:00:13.03]           tail textured    38764   0.002851   0.007843   0.000443  0.013783     0.013946     0.002715     0.030767   0.030933   0.004603
+[xUnit.net 00:00:13.03]           tail flat        38764   0.000521   0.000834   -0.000521  0.000000     0.000000     0.000000     0.000238   0.000119   0.000119
+[xUnit.net 00:00:13.03]           far textured     36456   0.002104   0.007009   -0.000013  0.015294     0.015647     0.001991     0.034060   0.034297   0.003112
+[xUnit.net 00:00:13.03]           far flat         74909   0.000682   0.002805   -0.000682  0.000000     0.000000     0.000000     0.000395   0.000384   0.000779
+[xUnit.net 00:00:13.03]           textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -0 -0 0 0 1 1 1 1 2 4 27 33 -1 -1 -1
+[xUnit.net 00:00:13.03]           flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -0 14 32 -1 -1 -1
+[xUnit.net 00:00:13.03]         Quality MS object 2.0 px, shadow 1.0 px: edge travel over the receiver about 3.0 px a frame, reference edge contrast 0.309, drawn edge 2.13 px off the analytic line
+[xUnit.net 00:00:13.03]           region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+[xUnit.net 00:00:13.03]           band textured    25838   0.016106   0.063296   0.006843  0.016156     0.015289     0.012122     0.062231   0.063255   0.022661
+[xUnit.net 00:00:13.03]           band flat        25840   0.007729   0.050147   0.003726  0.001587     0.000115     0.004043     0.014453   0.012778   0.011363
+[xUnit.net 00:00:13.03]           tail textured    38764   0.006766   0.019325   0.000258  0.013550     0.013966     0.006750     0.051160   0.054996   0.009484
+[xUnit.net 00:00:13.03]           tail flat        38764   0.000521   0.000834   -0.000521  0.000000     0.000000     0.000000     0.000238   0.000119   0.000119
+[xUnit.net 00:00:13.03]           far textured     36456   0.006619   0.019325   -0.000153  0.014951     0.015586     0.006718     0.057896   0.060216   0.008649
+[xUnit.net 00:00:13.03]           far flat         74909   0.000682   0.002805   -0.000682  0.000000     0.000000     0.000000     0.000395   0.000384   0.000779
+[xUnit.net 00:00:13.03]           textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -0 -0 -0 0 0 1 1 1 2 2 12 26 -0 -1 -0
+[xUnit.net 00:00:13.03]           flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -0 6 19 -1 -1 -1
+[xUnit.net 00:00:13.03]         Native S 1.0 px advancing: edge travel over the receiver about 1.0 px a frame, reference edge contrast 0.309, drawn edge 2.13 px off the analytic line
+[xUnit.net 00:00:13.03]           region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+[xUnit.net 00:00:13.03]           band textured    30612   0.013820   0.070856   0.009334  0.017951     0.015292     0.008753     0.012911   0.012597   0.012435
+[xUnit.net 00:00:13.03]           band flat        30613   0.009134   0.062462   0.005840  0.002177     0.000112     0.006150     0.013387   0.013094   0.012005
+[xUnit.net 00:00:13.03]           tail textured    45921   0.003204   0.007843   -0.000420  0.014903     0.013923     0.002334     0.000223   0.000029   0.000247
+[xUnit.net 00:00:13.03]           tail flat        45732   0.000520   0.000834   -0.000520  0.000000     0.000000     0.000000     0.000239   0.000119   0.000119
+[xUnit.net 00:00:13.03]           far textured     39111   0.003561   0.007843   -0.000524  0.017160     0.015900     0.002354     0.000231   0.000104   0.000322
+[xUnit.net 00:00:13.03]           far flat         92585   0.000682   0.002805   -0.000682  0.000000     0.000000     0.000000     0.000395   0.000384   0.000779
+[xUnit.net 00:00:13.03]           textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -0 -0 0 1 2 4 22 30 -0 -1 -1
+[xUnit.net 00:00:13.03]           flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -0 0 13 23 -1 -1 -1
+[xUnit.net 00:00:13.03]         Native S 1.0 px retreating: edge travel over the receiver about 1.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+[xUnit.net 00:00:13.03]           region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+[xUnit.net 00:00:13.03]           band textured    30609   0.016875   0.081787   -0.014442  0.017996     0.015011     0.009805     0.013190   0.012639   0.013394
+[xUnit.net 00:00:13.03]           band flat        30609   0.009026   0.057707   -0.007237  0.001523     0.000113     0.006063     0.013770   0.012902   0.012761
+[xUnit.net 00:00:13.03]           tail textured    45912   0.005460   0.011765   -0.004684  0.016836     0.015644     0.002849     0.000316   0.000106   0.000405
+[xUnit.net 00:00:13.03]           tail flat        45915   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+[xUnit.net 00:00:13.03]           far textured     87166   0.003967   0.008126   -0.002794  0.015474     0.014316     0.002116     0.000174   0.000029   0.000201
+[xUnit.net 00:00:13.03]           far flat         33683   0.000118   0.000834   -0.000118  0.000000     0.000000     0.000000     0.000133   0.000000   0.000133
+[xUnit.net 00:00:13.03]           textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -4 -4 -4 -4 -5 -5 -5 -5 -6 -7 -11 -36 -26 -3 -3 -3
+[xUnit.net 00:00:13.03]           flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): 0 0 0 0 0 0 0 0 0 -0 -0 -19 -24 -0 -0 -0
+[xUnit.net 00:00:13.03]         Native S 2.0 px advancing: edge travel over the receiver about 2.0 px a frame, reference edge contrast 0.309, drawn edge 2.13 px off the analytic line
+[xUnit.net 00:00:13.03]           region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+[xUnit.net 00:00:13.03]           band textured    30612   0.013055   0.067217   0.008212  0.018070     0.015228     0.008409     0.025604   0.025155   0.016703
+[xUnit.net 00:00:13.03]           band flat        30612   0.007905   0.054902   0.004495  0.002020     0.000114     0.005618     0.026133   0.025903   0.013911
+[xUnit.net 00:00:13.03]           tail textured    45919   0.003196   0.007843   0.000005  0.015063     0.013974     0.002316     0.000318   0.000060   0.000368
+[xUnit.net 00:00:13.03]           tail flat        45806   0.000313   0.000834   -0.000310  0.000002     0.000000     0.000002     0.000239   0.000119   0.000121
+[xUnit.net 00:00:13.03]           far textured     34646   0.003520   0.007843   0.000892  0.017123     0.015899     0.002342     0.000284   0.000176   0.000427
+[xUnit.net 00:00:13.03]           far flat         88122   0.000356   0.002805   -0.000356  0.000000     0.000000     0.000000     0.000412   0.000401   0.000813
+[xUnit.net 00:00:13.03]           textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -0 -0 -0 -0 0 0 0 1 1 3 14 29 1 1 1
+[xUnit.net 00:00:13.03]           flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -0 -0 -0 -0 -0 -0 -0 -0 -0 -0 4 25 -0 -0 -0
+[xUnit.net 00:00:13.03]         Native S 2.0 px retreating: edge travel over the receiver about 2.0 px a frame, reference edge contrast 0.309, drawn edge 2.13 px off the analytic line
+[xUnit.net 00:00:13.03]           region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+[xUnit.net 00:00:13.03]           band textured    30609   0.015854   0.075894   -0.012730  0.018072     0.014991     0.009993     0.025575   0.025242   0.018166
+[xUnit.net 00:00:13.03]           band flat        30608   0.009021   0.057990   -0.006690  0.002068     0.000103     0.006440     0.026582   0.025988   0.015575
+[xUnit.net 00:00:13.03]           tail textured    45911   0.005442   0.012315   -0.004354  0.016815     0.015590     0.003166     0.000460   0.000182   0.000594
+[xUnit.net 00:00:13.03]           tail flat        45916   0.000106   0.000834   -0.000106  0.000002     0.000000     0.000002     0.000051   0.000160   0.000130
+[xUnit.net 00:00:13.03]           far textured     82701   0.004188   0.008960   -0.003280  0.015499     0.014353     0.002147     0.000185   0.000058   0.000238
+[xUnit.net 00:00:13.03]           far flat         29260   0.000136   0.000834   -0.000136  0.000000     0.000000     0.000000     0.000515   0.000363   0.000151
+[xUnit.net 00:00:13.03]           textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -4 -4 -4 -4 -4 -4 -4 -4 -5 -6 -10 -27 -27 -3 -3 -3
+[xUnit.net 00:00:13.03]           flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -0 -0 -0 -0 -0 -0 -0 -0 -0 -0 -16 -24 -0 -0 -0
+[xUnit.net 00:00:13.03]         Native S 4.0 px advancing: edge travel over the receiver about 4.0 px a frame, reference edge contrast 0.308, drawn edge 2.13 px off the analytic line
+[xUnit.net 00:00:13.03]           region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+[xUnit.net 00:00:13.03]           band textured    30611   0.012803   0.062179   0.008117  0.017527     0.015281     0.007938     0.051232   0.050212   0.017916
+[xUnit.net 00:00:13.03]           band flat        30611   0.007441   0.053785   0.004422  0.002007     0.000117     0.005427     0.051597   0.051499   0.014160
+[xUnit.net 00:00:13.03]           tail textured    45918   0.003811   0.008126   0.000531  0.015021     0.014047     0.002927     0.000595   0.000118   0.000684
+[xUnit.net 00:00:13.03]           tail flat        45837   0.000033   0.000000   -0.000033  0.000003     0.000000     0.000003     0.000086   0.000119   0.000033
+[xUnit.net 00:00:13.03]           far textured     26357   0.004456   0.011481   0.003698  0.017130     0.015998     0.002372     0.000396   0.000321   0.000626
+[xUnit.net 00:00:13.03]           far flat         79194   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000454   0.000454   0.000000
+[xUnit.net 00:00:13.03]           textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): 0 0 0 0 0 1 1 1 1 1 2 8 30 4 4 4
+[xUnit.net 00:00:13.03]           flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): 0 0 0 0 0 0 -0 -0 -0 -0 -0 2 25 -0 0 0
+[xUnit.net 00:00:13.03]         Native S 4.0 px retreating: edge travel over the receiver about 4.0 px a frame, reference edge contrast 0.308, drawn edge 2.13 px off the analytic line
+[xUnit.net 00:00:13.03]           region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+[xUnit.net 00:00:13.03]           band textured    30610   0.015601   0.070856   -0.011996  0.017962     0.014885     0.009692     0.051022   0.050495   0.019513
+[xUnit.net 00:00:13.03]           band flat        30611   0.009237   0.060795   -0.006817  0.002321     0.000102     0.006741     0.052295   0.051594   0.016787
+[xUnit.net 00:00:13.03]           tail textured    45912   0.006508   0.019608   -0.004750  0.016985     0.015452     0.004556     0.000930   0.000325   0.001114
+[xUnit.net 00:00:13.03]           tail flat        45916   0.000033   0.000283   -0.000033  0.000000     0.000000     0.000000     0.000157   0.000160   0.000074
+[xUnit.net 00:00:13.03]           far textured     73772   0.004738   0.011482   -0.004238  0.015454     0.014412     0.002188     0.000218   0.000114   0.000317
+[xUnit.net 00:00:13.03]           far flat         21617   0.000184   0.000834   -0.000184  0.000000     0.000000     0.000000     0.000681   0.000477   0.000204
+[xUnit.net 00:00:13.03]           textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -5 -5 -4 -4 -4 -5 -5 -5 -6 -7 -9 -21 -27 -4 -4 -4
+[xUnit.net 00:00:13.03]           flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -0 -0 -0 -0 -0 -0 -0 -0 -0 0 -17 -24 -0 -0 -0
+[xUnit.net 00:00:13.03]         Native S 8.0 px advancing: edge travel over the receiver about 8.0 px a frame, reference edge contrast 0.307, drawn edge 2.13 px off the analytic line
+[xUnit.net 00:00:13.03]           region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+[xUnit.net 00:00:13.03]           band textured    29218   0.014859   0.059374   0.009843  0.017612     0.015413     0.008412     0.106637   0.103384   0.019456
+[xUnit.net 00:00:13.03]           band flat        30610   0.007652   0.054068   0.004708  0.002077     0.000115     0.005480     0.103056   0.102887   0.015311
+[xUnit.net 00:00:13.03]           tail textured    45921   0.004724   0.011765   0.000968  0.014883     0.014121     0.003732     0.001308   0.000226   0.001433
+[xUnit.net 00:00:13.03]           tail flat        45847   0.000008   0.000000   -0.000008  0.000001     0.000000     0.000001     0.000113   0.000119   0.000029
+[xUnit.net 00:00:13.03]           far textured     15777   0.009286   0.015686   0.009095  0.016752     0.015958     0.002635     0.000668   0.000638   0.001014
+[xUnit.net 00:00:13.03]           far flat         61338   0.000496   0.002805   0.000496  0.000000     0.000000     0.000000     0.000845   0.000917   0.001165
+[xUnit.net 00:00:13.03]           textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): 1 1 1 1 1 1 1 1 1 2 1 6 32 9 9 9
+[xUnit.net 00:00:13.03]           flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): 0 0 0 0 0 0 0 -0 -0 -0 0 3 25 0 0 0
+[xUnit.net 00:00:13.03]         Native S 8.0 px retreating: edge travel over the receiver about 8.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+[xUnit.net 00:00:13.03]           region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+[xUnit.net 00:00:13.03]           band textured    30610   0.016334   0.067217   -0.012240  0.017854     0.014879     0.010347     0.100994   0.101178   0.020375
+[xUnit.net 00:00:13.03]           band flat        28408   0.009649   0.061911   -0.007104  0.002323     0.000099     0.006854     0.108851   0.107853   0.019565
+[xUnit.net 00:00:13.03]           tail textured    45909   0.008256   0.028285   -0.005909  0.016955     0.015303     0.005867     0.001955   0.000647   0.002169
+[xUnit.net 00:00:13.03]           tail flat        45906   0.000351   0.002805   -0.000351  0.000000     0.000000     0.000000     0.000565   0.000560   0.000806
+[xUnit.net 00:00:13.03]           far textured     55949   0.006070   0.011765   -0.005906  0.015245     0.014381     0.002379     0.000287   0.000226   0.000473
+[xUnit.net 00:00:13.03]           far flat         12723   0.000817   0.002805   -0.000817  0.000000     0.000000     0.000000     0.000837   0.000807   0.001645
+[xUnit.net 00:00:13.03]           textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -6 -5 -6 -5 -6 -6 -6 -7 -6 -9 -7 -18 -27 -6 -6 -6
+[xUnit.net 00:00:13.03]           flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -0 -0 -0 -0 -0 -0 -0 -0 -0 -0 -17 -23 -1 -1 -1
+[xUnit.net 00:00:13.03]         Native C pan 1.0 px: edge travel over the receiver about 1.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+[xUnit.net 00:00:13.03]           region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+[xUnit.net 00:00:13.03]           band textured    30608   0.004575   0.011765   -0.001919  0.016205     0.015074     0.003167     0.042475   0.040712   0.005388
+[xUnit.net 00:00:13.03]           band flat        30608   0.001708   0.008677   -0.000635  0.000162     0.000105     0.001062     0.012573   0.012459   0.002140
+[xUnit.net 00:00:13.03]           tail textured    45928   0.003663   0.007843   -0.002090  0.015073     0.013913     0.002189     0.032557   0.030724   0.003604
+[xUnit.net 00:00:13.03]           tail flat        45733   0.000834   0.000834   -0.000834  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+[xUnit.net 00:00:13.03]           far textured     39264   0.003961   0.008677   -0.001843  0.017201     0.015951     0.002523     0.036865   0.034795   0.004116
+[xUnit.net 00:00:13.03]           far flat         92736   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+[xUnit.net 00:00:13.03]           textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -2 -2 -2 -2 -2 -2 -2 -2 -2 -2 -2 -3 -1 -2 -2 -2
+[xUnit.net 00:00:13.03]           flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -2 -0 0 0 0
+[xUnit.net 00:00:13.03]         Native C pan 2.0 px: edge travel over the receiver about 2.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+[xUnit.net 00:00:13.03]           region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+[xUnit.net 00:00:13.03]           band textured    30608   0.004615   0.011765   -0.001946  0.015602     0.015074     0.003612     0.074975   0.072639   0.006633
+[xUnit.net 00:00:13.03]           band flat        30608   0.001755   0.010931   -0.000461  0.000155     0.000105     0.001087     0.025067   0.024919   0.002496
+[xUnit.net 00:00:13.03]           tail textured    45928   0.003522   0.007843   -0.001968  0.014386     0.013913     0.002671     0.056313   0.054495   0.004824
+[xUnit.net 00:00:13.03]           tail flat        45806   0.000834   0.000834   -0.000834  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+[xUnit.net 00:00:13.03]           far textured     34952   0.004018   0.008960   -0.001865  0.016598     0.015945     0.002998     0.064212   0.061618   0.005596
+[xUnit.net 00:00:13.03]           far flat         88424   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+[xUnit.net 00:00:13.03]           textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -2 -2 -2 -2 -2 -2 -2 -2 -2 -2 -2 -3 -1 -2 -2 -2
+[xUnit.net 00:00:13.03]           flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -0 0 0 0
+[xUnit.net 00:00:13.03]         Native C pan 4.0 px: edge travel over the receiver about 4.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+[xUnit.net 00:00:13.03]           region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+[xUnit.net 00:00:13.03]           band textured    30608   0.006071   0.019325   -0.000870  0.012836     0.015074     0.005441     0.098042   0.100807   0.009267
+[xUnit.net 00:00:13.03]           band flat        30608   0.001968   0.011482   -0.000276  0.000141     0.000105     0.001154     0.050036   0.049837   0.003104
+[xUnit.net 00:00:13.03]           tail textured    45928   0.004374   0.015403   -0.001213  0.012227     0.013913     0.003928     0.062421   0.065600   0.006728
+[xUnit.net 00:00:13.03]           tail flat        45839   0.000834   0.000834   -0.000834  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+[xUnit.net 00:00:13.03]           far textured     26873   0.005128   0.015686   -0.000708  0.013733     0.015930     0.004587     0.068962   0.072071   0.007497
+[xUnit.net 00:00:13.03]           far flat         79800   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+[xUnit.net 00:00:13.03]           textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -0 -1 0
+[xUnit.net 00:00:13.03]           flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 0 -0 0 0 0
+[xUnit.net 00:00:13.03]         Native C pan 8.0 px: edge travel over the receiver about 8.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+[xUnit.net 00:00:13.03]           region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+[xUnit.net 00:00:13.03]           band textured    29488   0.005507   0.016520   -0.000414  0.013011     0.015034     0.004989     0.137523   0.139317   0.008742
+[xUnit.net 00:00:13.03]           band flat        30608   0.001857   0.010931   -0.000262  0.000117     0.000105     0.001047     0.100001   0.099675   0.003157
+[xUnit.net 00:00:13.03]           tail textured    45928   0.003821   0.011765   -0.000875  0.012580     0.013913     0.003585     0.063452   0.065720   0.005865
+[xUnit.net 00:00:13.03]           tail flat        45848   0.000834   0.000834   -0.000834  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+[xUnit.net 00:00:13.03]           far textured     16234   0.004768   0.015403   -0.000437  0.013845     0.015955     0.004420     0.068880   0.071934   0.007205
+[xUnit.net 00:00:13.03]           far flat         62552   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+[xUnit.net 00:00:13.03]           textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -0 -0 -0 -0 0
+[xUnit.net 00:00:13.03]           flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -0 0 0 0 0
+[xUnit.net 00:00:13.03]         Native M object 0.5 px: edge travel over the receiver about 0.5 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+[xUnit.net 00:00:13.03]           region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+[xUnit.net 00:00:13.03]           band textured    25840   0.021144   0.086825   0.013591  0.013970     0.015510     0.011998     0.019131   0.018240   0.015183
+[xUnit.net 00:00:13.03]           band flat        25832   0.010306   0.070305   0.008055  0.002776     0.000091     0.005522     0.007902   0.000000   0.007902
+[xUnit.net 00:00:13.03]           tail textured    38768   0.010569   0.031089   0.000336  0.009994     0.014511     0.006667     0.011194   0.017062   0.008100
+[xUnit.net 00:00:13.03]           tail flat        38768   0.000834   0.000834   -0.000834  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+[xUnit.net 00:00:13.03]           far textured     40136   0.014230   0.039216   0.000917  0.010630     0.016352     0.008418     0.011863   0.019281   0.009741
+[xUnit.net 00:00:13.03]           far flat         78584   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+[xUnit.net 00:00:13.03]           textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -1 -0 0 -0 -0 1 2 3 4 9 37 30 1 1 1
+[xUnit.net 00:00:13.03]           flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 0 25 24 0 0 0
+[xUnit.net 00:00:13.03]         Native M object 1.0 px: edge travel over the receiver about 1.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+[xUnit.net 00:00:13.03]           region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+[xUnit.net 00:00:13.03]           band textured    25840   0.012498   0.063296   0.007510  0.017517     0.015024     0.008230     0.038965   0.032764   0.013427
+[xUnit.net 00:00:13.03]           band flat        25832   0.007985   0.056873   0.005520  0.001760     0.000091     0.005024     0.007727   0.000000   0.007727
+[xUnit.net 00:00:13.03]           tail textured    38768   0.003107   0.007843   -0.000816  0.014758     0.013896     0.002284     0.032163   0.030767   0.003729
+[xUnit.net 00:00:13.03]           tail flat        38768   0.000834   0.000834   -0.000834  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+[xUnit.net 00:00:13.03]           far textured     40136   0.003759   0.007843   -0.001047  0.016974     0.015641     0.002407     0.036618   0.034459   0.004045
+[xUnit.net 00:00:13.03]           far flat         78584   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+[xUnit.net 00:00:13.03]           textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -2 -2 -1 -1 -1 -1 -0 0 1 2 3 19 25 -2 -2 -2
+[xUnit.net 00:00:13.03]           flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -0 15 19 0 0 0
+[xUnit.net 00:00:13.03]         Native M object 2.0 px: edge travel over the receiver about 2.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+[xUnit.net 00:00:13.03]           region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+[xUnit.net 00:00:13.03]           band textured    25840   0.010891   0.054336   0.004742  0.016717     0.015298     0.007676     0.062232   0.058519   0.014128
+[xUnit.net 00:00:13.03]           band flat        25832   0.006437   0.045108   0.002900  0.001393     0.000091     0.003972     0.007462   0.000000   0.007462
+[xUnit.net 00:00:13.03]           tail textured    38768   0.003187   0.007843   -0.000745  0.014207     0.013959     0.002810     0.055671   0.054770   0.004750
+[xUnit.net 00:00:13.03]           tail flat        38768   0.000834   0.000834   -0.000834  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+[xUnit.net 00:00:13.03]           far textured     40136   0.003545   0.007843   -0.000680  0.016549     0.015594     0.002675     0.063557   0.060357   0.005297
+[xUnit.net 00:00:13.03]           far flat         78584   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+[xUnit.net 00:00:13.03]           textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -0 -0 0 1 2 8 21 -1 -1 -1
+[xUnit.net 00:00:13.03]           flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 2 17 0 0 0
+[xUnit.net 00:00:13.03]         Native M object 4.0 px: edge travel over the receiver about 4.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+[xUnit.net 00:00:13.03]           region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+[xUnit.net 00:00:13.03]           band textured    25840   0.010638   0.043688   0.003256  0.014924     0.015352     0.008370     0.067983   0.069367   0.015302
+[xUnit.net 00:00:13.03]           band flat        25832   0.006300   0.043137   0.003440  0.001762     0.000091     0.003774     0.007138   0.000000   0.007138
+[xUnit.net 00:00:13.03]           tail textured    38768   0.005081   0.016520   -0.000507  0.012318     0.014022     0.004433     0.061503   0.065278   0.007872
+[xUnit.net 00:00:13.03]           tail flat        38768   0.000834   0.000834   -0.000834  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+[xUnit.net 00:00:13.03]           far textured     40136   0.003454   0.008960   0.000074  0.015086     0.015577     0.003259     0.071457   0.071818   0.005222
+[xUnit.net 00:00:13.03]           far flat         78584   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+[xUnit.net 00:00:13.03]           textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -0 -0 -0 0 1 2 5 13 -0 -0 -0
+[xUnit.net 00:00:13.03]           flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 10 12 0 0 0
+[xUnit.net 00:00:13.03]         Native M object 8.0 px: edge travel over the receiver about 8.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+[xUnit.net 00:00:13.03]           region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+[xUnit.net 00:00:13.03]           band textured    25840   0.011417   0.043405   0.003699  0.014890     0.015338     0.008782     0.067305   0.067954   0.016065
+[xUnit.net 00:00:13.03]           band flat        25832   0.006264   0.042854   0.003396  0.001746     0.000091     0.003763     0.007123   0.000000   0.007123
+[xUnit.net 00:00:13.03]           tail textured    38768   0.006637   0.019608   0.000272  0.012194     0.014128     0.005425     0.061709   0.065944   0.009864
+[xUnit.net 00:00:13.03]           tail flat        38768   0.000834   0.000834   -0.000834  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+[xUnit.net 00:00:13.03]           far textured     40136   0.003308   0.008126   0.000151  0.015518     0.015327     0.002986     0.072288   0.071222   0.004949
+[xUnit.net 00:00:13.03]           far flat         78584   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+[xUnit.net 00:00:13.03]           textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -0 0 -0 0 -0 1 0 2 1 4 4 13 0 0 0
+[xUnit.net 00:00:13.03]           flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 10 12 0 0 0
+[xUnit.net 00:00:13.03]         Native MS object 1.0 px, shadow 1.0 px: edge travel over the receiver about 2.0 px a frame, reference edge contrast 0.309, drawn edge 2.13 px off the analytic line
+[xUnit.net 00:00:13.03]           region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+[xUnit.net 00:00:13.03]           band textured    25838   0.011901   0.056569   0.006488  0.017684     0.015194     0.008149     0.044796   0.040023   0.016373
+[xUnit.net 00:00:13.03]           band flat        25840   0.007187   0.049864   0.003393  0.001859     0.000115     0.004863     0.014302   0.012778   0.010684
+[xUnit.net 00:00:13.03]           tail textured    38764   0.003036   0.007843   -0.000189  0.014830     0.013946     0.002331     0.032372   0.030933   0.003781
+[xUnit.net 00:00:13.03]           tail flat        38764   0.000522   0.000834   -0.000520  0.000001     0.000000     0.000001     0.000240   0.000119   0.000121
+[xUnit.net 00:00:13.03]           far textured     36456   0.003636   0.007843   -0.000308  0.016985     0.015647     0.002408     0.036378   0.034297   0.004017
+[xUnit.net 00:00:13.03]           far flat         74909   0.000682   0.002805   -0.000682  0.000000     0.000000     0.000000     0.000395   0.000384   0.000779
+[xUnit.net 00:00:13.03]           textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -0 -0 -0 0 0 1 1 3 11 25 -0 -0 -0
+[xUnit.net 00:00:13.03]           flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -0 4 18 -1 -1 -1
+[xUnit.net 00:00:13.03]         Native MS object 2.0 px, shadow 1.0 px: edge travel over the receiver about 3.0 px a frame, reference edge contrast 0.309, drawn edge 2.13 px off the analytic line
+[xUnit.net 00:00:13.03]           region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+[xUnit.net 00:00:13.03]           band textured    25838   0.010402   0.047893   0.004129  0.016733     0.015289     0.007638     0.066549   0.063255   0.015245
+[xUnit.net 00:00:13.03]           band flat        25840   0.006204   0.042854   0.002231  0.001573     0.000115     0.003906     0.013911   0.012778   0.009551
+[xUnit.net 00:00:13.03]           tail textured    38764   0.003446   0.008677   -0.000286  0.014259     0.013966     0.003128     0.055806   0.054996   0.005313
+[xUnit.net 00:00:13.03]           tail flat        38764   0.000521   0.000834   -0.000521  0.000000     0.000000     0.000000     0.000238   0.000119   0.000119
+[xUnit.net 00:00:13.03]           far textured     36456   0.003541   0.007843   -0.000268  0.016540     0.015586     0.002707     0.063413   0.060216   0.005366
+[xUnit.net 00:00:13.03]           far flat         74909   0.000682   0.002805   -0.000682  0.000000     0.000000     0.000000     0.000395   0.000384   0.000779
+[xUnit.net 00:00:13.03]           textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -0 -0 -0 -0 0 1 1 1 4 20 -1 -1 -1
+[xUnit.net 00:00:13.03]           flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -0 2 14 -1 -1 -1
+[xUnit.net 00:00:13.03]
+[xUnit.net 00:00:13.03]         summary, mean absolute luma error, then the textured band's grain out, ref and error, the flat band's error grain, and each band's frame-to-frame change out, ref and error
+[xUnit.net 00:00:13.03]         case                                   bandT  tailT  farT    bandF  tailF  farF    grOutT grRefT grErrT  grErrF  chgT   chRefT chErrT  chgF   chRefF chErrF
+[xUnit.net 00:00:13.03]         Quality S 1.0 px advancing             0.018638 0.003110 0.004567  0.012998 0.000520 0.000682  0.018638 0.015292 0.010319  0.004962  0.013403 0.012597 0.015687  0.013415 0.013094 0.015609
+[xUnit.net 00:00:13.03]         Quality S 1.0 px retreating            0.022724 0.007663 0.005296  0.013582 0.000000 0.000118  0.019759 0.015011 0.012590  0.006446  0.013759 0.012639 0.017076  0.013528 0.012902 0.016478
+[xUnit.net 00:00:13.03]         Quality S 2.0 px advancing             0.018394 0.002868 0.004598  0.012441 0.000311 0.000356  0.018403 0.015228 0.010360  0.005434  0.026389 0.025155 0.023022  0.026147 0.025903 0.020838
+[xUnit.net 00:00:13.03]         Quality S 2.0 px retreating            0.022716 0.006726 0.005720  0.014460 0.000104 0.000136  0.019481 0.014991 0.012249  0.006784  0.026579 0.025242 0.026438  0.026511 0.025988 0.024216
+[xUnit.net 00:00:13.03]         Quality S 4.0 px advancing             0.018609 0.003396 0.006544  0.011328 0.000032 0.000000  0.017709 0.015281 0.009975  0.004829  0.052745 0.050212 0.026344  0.051725 0.051499 0.021095
+[xUnit.net 00:00:13.03]         Quality S 4.0 px retreating            0.021825 0.006241 0.006680  0.014764 0.000034 0.000184  0.018246 0.014885 0.011090  0.007049  0.052746 0.050495 0.031099  0.052408 0.051594 0.026598
+[xUnit.net 00:00:13.03]         Quality S 8.0 px advancing             0.022151 0.004524 0.013957  0.011566 0.000009 0.000496  0.017702 0.015413 0.010973  0.004850  0.109125 0.103384 0.028471  0.103214 0.102887 0.023014
+[xUnit.net 00:00:13.03]         Quality S 8.0 px retreating            0.023566 0.006670 0.008858  0.015312 0.000351 0.000817  0.018278 0.014879 0.011827  0.007130  0.103438 0.101178 0.032551  0.108988 0.107853 0.031053
+[xUnit.net 00:00:13.03]         Quality C pan 1.0 px                   0.010471 0.007613 0.009156  0.003696 0.000834 0.000000  0.016205 0.015074 0.010110  0.002095  0.042899 0.040712 0.016391  0.012592 0.012459 0.004483
+[xUnit.net 00:00:13.03]         Quality C pan 2.0 px                   0.005846 0.003913 0.004881  0.002616 0.000834 0.000000  0.013182 0.015074 0.004793  0.001929  0.069051 0.072639 0.008478  0.025030 0.024919 0.004047
+[xUnit.net 00:00:13.03]         Quality C pan 4.0 px                   0.015163 0.012001 0.014637  0.003996 0.000834 0.000000  0.009259 0.015074 0.010088  0.001880  0.088316 0.100807 0.022897  0.050029 0.049837 0.007023
+[xUnit.net 00:00:13.03]         Quality C pan 8.0 px                   0.013800 0.010482 0.013251  0.003214 0.000834 0.000000  0.008832 0.015034 0.009857  0.002294  0.130072 0.139317 0.021973  0.099996 0.099675 0.005831
+[xUnit.net 00:00:13.03]         Quality M object 0.5 px                0.028703 0.013803 0.020480  0.012430 0.000834 0.000000  0.012802 0.015510 0.014238  0.004756  0.018218 0.018240 0.018388  0.008536 0.000000 0.008536
+[xUnit.net 00:00:13.03]         Quality M object 1.0 px                0.016428 0.002729 0.002322  0.010932 0.000834 0.000000  0.017534 0.015024 0.009556  0.004775  0.040004 0.032764 0.017514  0.010469 0.000000 0.010469
+[xUnit.net 00:00:13.03]         Quality M object 2.0 px                0.018288 0.007294 0.006642  0.009657 0.000834 0.000000  0.017015 0.015298 0.013110  0.005362  0.059754 0.058519 0.023856  0.012062 0.000000 0.012062
+[xUnit.net 00:00:13.03]         Quality M object 4.0 px                0.017339 0.010974 0.009145  0.007441 0.000834 0.000000  0.012394 0.015352 0.012295  0.004216  0.060681 0.069367 0.025813  0.009360 0.000000 0.009360
+[xUnit.net 00:00:13.03]         Quality M object 8.0 px                0.017551 0.012759 0.008972  0.007575 0.000834 0.000000  0.013512 0.015338 0.013271  0.004295  0.061858 0.067954 0.025777  0.009562 0.000000 0.009562
+[xUnit.net 00:00:13.03]         Quality MS object 1.0 px, shadow 1.0 px 0.016293 0.002851 0.002104  0.010519 0.000521 0.000682  0.017628 0.015194 0.009614  0.005126  0.045050 0.040023 0.021888  0.015265 0.012778 0.014476
+[xUnit.net 00:00:13.03]         Quality MS object 2.0 px, shadow 1.0 px 0.016106 0.006766 0.006619  0.007729 0.000521 0.000682  0.016156 0.015289 0.012122  0.004043  0.062231 0.063255 0.022661  0.014453 0.012778 0.011363
+[xUnit.net 00:00:13.03]         Native S 1.0 px advancing              0.013820 0.003204 0.003561  0.009134 0.000520 0.000682  0.017951 0.015292 0.008753  0.006150  0.012911 0.012597 0.012435  0.013387 0.013094 0.012005
+[xUnit.net 00:00:13.03]         Native S 1.0 px retreating             0.016875 0.005460 0.003967  0.009026 0.000000 0.000118  0.017996 0.015011 0.009805  0.006063  0.013190 0.012639 0.013394  0.013770 0.012902 0.012761
+[xUnit.net 00:00:13.03]         Native S 2.0 px advancing              0.013055 0.003196 0.003520  0.007905 0.000313 0.000356  0.018070 0.015228 0.008409  0.005618  0.025604 0.025155 0.016703  0.026133 0.025903 0.013911
+[xUnit.net 00:00:13.03]         Native S 2.0 px retreating             0.015854 0.005442 0.004188  0.009021 0.000106 0.000136  0.018072 0.014991 0.009993  0.006440  0.025575 0.025242 0.018166  0.026582 0.025988 0.015575
+[xUnit.net 00:00:13.03]         Native S 4.0 px advancing              0.012803 0.003811 0.004456  0.007441 0.000033 0.000000  0.017527 0.015281 0.007938  0.005427  0.051232 0.050212 0.017916  0.051597 0.051499 0.014160
+[xUnit.net 00:00:13.03]         Native S 4.0 px retreating             0.015601 0.006508 0.004738  0.009237 0.000033 0.000184  0.017962 0.014885 0.009692  0.006741  0.051022 0.050495 0.019513  0.052295 0.051594 0.016787
+[xUnit.net 00:00:13.03]         Native S 8.0 px advancing              0.014859 0.004724 0.009286  0.007652 0.000008 0.000496  0.017612 0.015413 0.008412  0.005480  0.106637 0.103384 0.019456  0.103056 0.102887 0.015311
+[xUnit.net 00:00:13.03]         Native S 8.0 px retreating             0.016334 0.008256 0.006070  0.009649 0.000351 0.000817  0.017854 0.014879 0.010347  0.006854  0.100994 0.101178 0.020375  0.108851 0.107853 0.019565
+[xUnit.net 00:00:13.03]         Native C pan 1.0 px                    0.004575 0.003663 0.003961  0.001708 0.000834 0.000000  0.016205 0.015074 0.003167  0.001062  0.042475 0.040712 0.005388  0.012573 0.012459 0.002140
+[xUnit.net 00:00:13.03]         Native C pan 2.0 px                    0.004615 0.003522 0.004018  0.001755 0.000834 0.000000  0.015602 0.015074 0.003612  0.001087  0.074975 0.072639 0.006633  0.025067 0.024919 0.002496
+[xUnit.net 00:00:13.03]         Native C pan 4.0 px                    0.006071 0.004374 0.005128  0.001968 0.000834 0.000000  0.012836 0.015074 0.005441  0.001154  0.098042 0.100807 0.009267  0.050036 0.049837 0.003104
+[xUnit.net 00:00:13.03]         Native C pan 8.0 px                    0.005507 0.003821 0.004768  0.001857 0.000834 0.000000  0.013011 0.015034 0.004989  0.001047  0.137523 0.139317 0.008742  0.100001 0.099675 0.003157
+[xUnit.net 00:00:13.03]         Native M object 0.5 px                 0.021144 0.010569 0.014230  0.010306 0.000834 0.000000  0.013970 0.015510 0.011998  0.005522  0.019131 0.018240 0.015183  0.007902 0.000000 0.007902
+[xUnit.net 00:00:13.03]         Native M object 1.0 px                 0.012498 0.003107 0.003759  0.007985 0.000834 0.000000  0.017517 0.015024 0.008230  0.005024  0.038965 0.032764 0.013427  0.007727 0.000000 0.007727
+[xUnit.net 00:00:13.03]         Native M object 2.0 px                 0.010891 0.003187 0.003545  0.006437 0.000834 0.000000  0.016717 0.015298 0.007676  0.003972  0.062232 0.058519 0.014128  0.007462 0.000000 0.007462
+[xUnit.net 00:00:13.03]         Native M object 4.0 px                 0.010638 0.005081 0.003454  0.006300 0.000834 0.000000  0.014924 0.015352 0.008370  0.003774  0.067983 0.069367 0.015302  0.007138 0.000000 0.007138
+[xUnit.net 00:00:13.03]         Native M object 8.0 px                 0.011417 0.006637 0.003308  0.006264 0.000834 0.000000  0.014890 0.015338 0.008782  0.003763  0.067305 0.067954 0.016065  0.007123 0.000000 0.007123
+[xUnit.net 00:00:13.03]         Native MS object 1.0 px, shadow 1.0 px 0.011901 0.003036 0.003636  0.007187 0.000522 0.000682  0.017684 0.015194 0.008149  0.004863  0.044796 0.040023 0.016373  0.014302 0.012778 0.010684
+[xUnit.net 00:00:13.03]         Native MS object 2.0 px, shadow 1.0 px 0.010402 0.003446 0.003541  0.006204 0.000521 0.000682  0.016733 0.015289 0.007638  0.003906  0.066549 0.063255 0.015245  0.013911 0.012778 0.009551
+[xUnit.net 00:00:13.03]         device class hardware
+[xUnit.net 00:00:13.03]   Finished:    KhaozEngine.Render.Tests
+  Failed KhaozEngine.Tests.Gpu.TemporalMovingShadeLagGpuTests.Shadow_edge_lag_on_moving_pixels_and_fast_shadows_stays_within_its_bounds [12 s]
+  Error Message:
+   Native S 8.0 px retreating: textured tail 0.008256 above 1.5 times the 1 px tail 0.005460
+  Stack Trace:
+     at KhaozEngine.Tests.Gpu.TemporalMovingShadeLagGpuTests.AssertBounds(Dictionary`2 measured) in KhaozEngine.Render.Tests/Gpu/TemporalMovingShadeLagGpuTests.cs:line 383
+   at KhaozEngine.Tests.Gpu.TemporalMovingShadeLagGpuTests.Shadow_edge_lag_on_moving_pixels_and_fast_shadows_stays_within_its_bounds() in KhaozEngine.Render.Tests/Gpu/TemporalMovingShadeLagGpuTests.cs:line 346
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+  Standard Output Messages:
+ 320x180, device class hardware. Band 12 px, tail to 48 px behind, control 32 px ahead and beyond, frames 80 to 87.
+ Quality S 1.0 px advancing: edge travel over the receiver about 1.0 px a frame, reference edge contrast 0.309, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    30612   0.018638   0.107267   0.013360  0.018638     0.015292     0.010319     0.013403   0.012597   0.015687
+   band flat        30613   0.012998   0.089913   0.010097  0.001743     0.000112     0.004962     0.013415   0.013094   0.015609
+   tail textured    45921   0.003110   0.007843   -0.000017  0.014202     0.013923     0.002828     0.000679   0.000029   0.000698
+   tail flat        45732   0.000520   0.000834   -0.000520  0.000000     0.000000     0.000000     0.000239   0.000119   0.000119
+   far textured     39111   0.004567   0.011765   -0.001048  0.017123     0.015900     0.003518     0.000834   0.000104   0.000907
+   far flat         92585   0.000682   0.002805   -0.000682  0.000000     0.000000     0.000000     0.000395   0.000384   0.000779
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -0 0 1 1 2 3 5 38 36 -1 -1 -1
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 25 39 -1 -1 -1
+ Quality S 1.0 px retreating: edge travel over the receiver about 1.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    30609   0.022724   0.137239   -0.019725  0.019759     0.015011     0.012590     0.013759   0.012639   0.017076
+   band flat        30609   0.013582   0.108687   -0.012256  0.002558     0.000113     0.006446     0.013528   0.012902   0.016478
+   tail textured    45912   0.007663   0.031923   -0.006957  0.016633     0.015644     0.005764     0.000851   0.000106   0.000922
+   tail flat        45915   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+   far textured     87166   0.005296   0.011765   -0.003914  0.015554     0.014316     0.003254     0.000730   0.000029   0.000752
+   far flat         33683   0.000118   0.000834   -0.000118  0.000000     0.000000     0.000000     0.000133   0.000000   0.000133
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -7 -7 -7 -6 -6 -6 -7 -8 -8 -9 -12 -61 -29 -4 -4 -4
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): 0 0 0 0 0 0 0 0 0 0 -0 -46 -27 -0 -0 -0
+ Quality S 2.0 px advancing: edge travel over the receiver about 2.0 px a frame, reference edge contrast 0.309, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    30612   0.018394   0.099140   0.013149  0.018403     0.015228     0.010360     0.026389   0.025155   0.023022
+   band flat        30612   0.012441   0.082070   0.009825  0.002597     0.000114     0.005434     0.026147   0.025903   0.020838
+   tail textured    45919   0.002868   0.007843   0.000589  0.013873     0.013974     0.002766     0.000751   0.000060   0.000792
+   tail flat        45806   0.000311   0.000834   -0.000311  0.000000     0.000000     0.000000     0.000238   0.000119   0.000119
+   far textured     34646   0.004598   0.011765   0.001150  0.017129     0.015899     0.003504     0.000827   0.000176   0.000942
+   far flat         88122   0.000356   0.002805   -0.000356  0.000000     0.000000     0.000000     0.000412   0.000401   0.000813
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 0 0 0 0 1 1 1 2 2 4 33 38 1 1 1
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -0 -0 -0 -0 -0 -0 -0 -0 -0 -0 21 39 -0 -0 -0
+ Quality S 2.0 px retreating: edge travel over the receiver about 2.0 px a frame, reference edge contrast 0.309, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    30609   0.022716   0.138073   -0.018913  0.019481     0.014991     0.012249     0.026579   0.025242   0.026438
+   band flat        30608   0.014460   0.120735   -0.012929  0.003146     0.000103     0.006784     0.026511   0.025988   0.024216
+   tail textured    45911   0.006726   0.019608   -0.005668  0.017062     0.015590     0.005676     0.000974   0.000182   0.001087
+   tail flat        45916   0.000104   0.000834   -0.000104  0.000000     0.000000     0.000000     0.000040   0.000160   0.000119
+   far textured     82701   0.005720   0.012882   -0.004644  0.015592     0.014353     0.003285     0.000725   0.000058   0.000768
+   far flat         29260   0.000136   0.000834   -0.000136  0.000000     0.000000     0.000000     0.000515   0.000363   0.000151
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -5 -5 -5 -5 -6 -6 -6 -6 -7 -7 -10 -57 -30 -5 -5 -5
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -0 -0 -0 -0 -0 -0 -0 -0 -0 -1 -49 -28 -0 -0 -0
+ Quality S 4.0 px advancing: edge travel over the receiver about 4.0 px a frame, reference edge contrast 0.308, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    30611   0.018609   0.090464   0.013062  0.017709     0.015281     0.009975     0.052745   0.050212   0.026344
+   band flat        30611   0.011328   0.077314   0.009149  0.001741     0.000117     0.004829     0.051725   0.051499   0.021095
+   tail textured    45918   0.003396   0.010931   0.000802  0.014049     0.014047     0.003305     0.001423   0.000118   0.001491
+   tail flat        45837   0.000032   0.000000   -0.000032  0.000027     0.000000     0.000027     0.000099   0.000119   0.000028
+   far textured     26357   0.006544   0.015403   0.005488  0.017102     0.015998     0.003561     0.000876   0.000321   0.001070
+   far flat         79194   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000454   0.000454   0.000000
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): 1 1 1 1 1 1 1 1 1 2 3 22 41 6 6 6
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): 0 0 -0 -0 -0 -0 -0 -0 -0 -0 -0 16 40 -0 0 0
+ Quality S 4.0 px retreating: edge travel over the receiver about 4.0 px a frame, reference edge contrast 0.308, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    30610   0.021825   0.133035   -0.017200  0.018246     0.014885     0.011090     0.052746   0.050495   0.031099
+   band flat        30611   0.014764   0.116813   -0.013122  0.003464     0.000102     0.007049     0.052408   0.051594   0.026598
+   tail textured    45912   0.006241   0.019608   -0.004524  0.016657     0.015452     0.005468     0.001748   0.000325   0.001897
+   tail flat        45916   0.000034   0.000283   -0.000034  0.000002     0.000000     0.000002     0.000158   0.000160   0.000076
+   far textured     73772   0.006680   0.015403   -0.006047  0.015597     0.014412     0.003274     0.000739   0.000114   0.000822
+   far flat         21617   0.000184   0.000834   -0.000184  0.000000     0.000000     0.000000     0.000681   0.000477   0.000204
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -5 -5 -5 -5 -5 -4 -4 -4 -4 -5 -6 -49 -31 -6 -6 -6
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -0 -0 -0 -0 -0 -0 -0 -0 -0 -1 -50 -28 -0 -0 -0
+ Quality S 8.0 px advancing: edge travel over the receiver about 8.0 px a frame, reference edge contrast 0.307, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    29218   0.022151   0.090464   0.015813  0.017702     0.015413     0.010973     0.109125   0.103384   0.028471
+   band flat        30610   0.011566   0.077314   0.009233  0.001781     0.000115     0.004850     0.103214   0.102887   0.023014
+   tail textured    45921   0.004524   0.015686   0.000861  0.013919     0.014121     0.004342     0.003213   0.000226   0.003303
+   tail flat        45847   0.000009   0.000000   -0.000009  0.000006     0.000000     0.000006     0.000121   0.000119   0.000036
+   far textured     15777   0.013957   0.023246   0.013800  0.016901     0.015958     0.003703     0.000963   0.000638   0.001276
+   far flat         61338   0.000496   0.002805   0.000496  0.000000     0.000000     0.000000     0.000845   0.000917   0.001165
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): 1 1 0 1 0 2 0 2 0 3 -0 20 45 14 14 14
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): 0 -0 -0 -0 -0 -0 -0 -0 -0 -0 0 15 39 0 0 0
+ Quality S 8.0 px retreating: edge travel over the receiver about 8.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    30610   0.023566   0.134151   -0.018336  0.018278     0.014879     0.011827     0.103438   0.101178   0.032551
+   band flat        28408   0.015312   0.120735   -0.013635  0.003441     0.000099     0.007130     0.108988   0.107853   0.031053
+   tail textured    45909   0.006670   0.026617   -0.003826  0.016161     0.015303     0.005862     0.003746   0.000647   0.003922
+   tail flat        45906   0.000351   0.002805   -0.000351  0.000000     0.000000     0.000000     0.000745   0.000560   0.000984
+   far textured     55949   0.008858   0.016520   -0.008630  0.015499     0.014381     0.003333     0.000758   0.000226   0.000915
+   far flat         12723   0.000817   0.002805   -0.000817  0.000000     0.000000     0.000000     0.000837   0.000807   0.001645
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -3 -5 -3 -4 -3 -5 -3 -5 -3 -7 -3 -51 -32 -9 -9 -9
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -0 -0 -0 -0 -0 -0 -0 -0 -0 -2 -51 -27 -1 -1 -1
+ Quality C pan 1.0 px: edge travel over the receiver about 1.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    30608   0.010471   0.031089   -0.002567  0.016205     0.015074     0.010110     0.042899   0.040712   0.016391
+   band flat        30608   0.003696   0.023246   -0.000377  0.000265     0.000105     0.002095     0.012592   0.012459   0.004483
+   tail textured    45928   0.007613   0.019608   -0.002923  0.014674     0.013913     0.008162     0.032511   0.030724   0.012694
+   tail flat        45733   0.000834   0.000834   -0.000834  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+   far textured     39264   0.009156   0.023529   -0.003186  0.016870     0.015951     0.009945     0.037131   0.034795   0.015300
+   far flat         92736   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -2 -3 -2 -3 -3 -4 -3 -3 -3 -3 -3 -2 -2 -3 -2 -3
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 1 -2 0 0 0
+ Quality C pan 2.0 px: edge travel over the receiver about 2.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    30608   0.005846   0.018491   -0.002159  0.013182     0.015074     0.004793     0.069051   0.072639   0.008478
+   band flat        30608   0.002616   0.015403   -0.000475  0.000183     0.000105     0.001929     0.025030   0.024919   0.004047
+   tail textured    45928   0.003913   0.011765   -0.002173  0.012508     0.013913     0.002973     0.050932   0.054495   0.005483
+   tail flat        45806   0.000834   0.000834   -0.000834  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+   far textured     34952   0.004881   0.014569   -0.002516  0.014071     0.015945     0.003491     0.057168   0.061618   0.006694
+   far flat         88424   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -2 -2 -2 -2 -2 -2 -2 -2 -2 -2 -3 -2 -2 -2 -2 -2
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 1 -2 -0 0 0
+ Quality C pan 4.0 px: edge travel over the receiver about 4.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    30608   0.015163   0.043137   0.000252  0.009259     0.015074     0.010088     0.088316   0.100807   0.022897
+   band flat        30608   0.003996   0.023813   -0.000055  0.000178     0.000105     0.001880     0.050029   0.049837   0.007023
+   tail textured    45928   0.012001   0.035294   -0.000933  0.008961     0.013913     0.008281     0.052581   0.065600   0.018085
+   tail flat        45839   0.000834   0.000834   -0.000834  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+   far textured     26873   0.014637   0.042854   0.000586  0.009549     0.015930     0.009801     0.056308   0.072071   0.021599
+   far flat         79800   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -0 -1 -1 -1 -2 -1 -1 -2 -0 -1 5 -3 0 0 1
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 3 -2 -0 0 0
+ Quality C pan 8.0 px: edge travel over the receiver about 8.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    29488   0.013800   0.042854   0.000511  0.008832     0.015034     0.009857     0.130072   0.139317   0.021973
+   band flat        30608   0.003214   0.019608   -0.000356  0.000191     0.000105     0.002294     0.099996   0.099675   0.005831
+   tail textured    45928   0.010482   0.032206   -0.000360  0.008889     0.013913     0.007320     0.053981   0.065720   0.016441
+   tail flat        45848   0.000834   0.000834   -0.000834  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+   far textured     16234   0.013251   0.039766   0.001104  0.009297     0.015955     0.008940     0.056497   0.071934   0.020611
+   far flat         62552   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -0 -1 0 -0 -1 -0 -0 -1 0 -0 5 -4 1 1 2
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 3 -4 -0 0 0
+ Quality M object 0.5 px: edge travel over the receiver about 0.5 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    25840   0.028703   0.110071   0.019210  0.012802     0.015510     0.014238     0.018218   0.018240   0.018388
+   band flat        25832   0.012430   0.086275   0.010334  0.002517     0.000091     0.004756     0.008536   0.000000   0.008536
+   tail textured    38768   0.013803   0.038933   0.002235  0.008647     0.014511     0.007883     0.009829   0.017062   0.009572
+   tail flat        38768   0.000834   0.000834   -0.000834  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+   far textured     40136   0.020480   0.055453   0.001159  0.009260     0.016352     0.010899     0.009576   0.019281   0.011846
+   far flat         78584   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): 0 -1 1 1 1 2 4 4 7 11 16 52 35 1 0 0
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 29 35 0 0 0
+ Quality M object 1.0 px: edge travel over the receiver about 1.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    25840   0.016428   0.086542   0.010857  0.017534     0.015024     0.009556     0.040004   0.032764   0.017514
+   band flat        25832   0.010932   0.074227   0.008272  0.001840     0.000091     0.004775     0.010469   0.000000   0.010469
+   tail textured    38768   0.002729   0.007843   -0.000548  0.013732     0.013896     0.002396     0.030761   0.030767   0.003919
+   tail flat        38768   0.000834   0.000834   -0.000834  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+   far textured     40136   0.002322   0.007009   -0.000898  0.015304     0.015641     0.002015     0.034286   0.034459   0.003095
+   far flat         78584   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -2 -2 -1 -1 -1 -0 0 0 1 3 5 31 32 -3 -2 -2
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 19 33 0 0 0
+ Quality M object 2.0 px: edge travel over the receiver about 2.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    25840   0.018288   0.078699   0.009041  0.017015     0.015298     0.013110     0.059754   0.058519   0.023856
+   band flat        25832   0.009657   0.061628   0.006076  0.002782     0.000091     0.005362     0.012062   0.000000   0.012062
+   tail textured    38768   0.007294   0.019608   0.000403  0.013654     0.013959     0.007155     0.050811   0.054770   0.010458
+   tail flat        38768   0.000834   0.000834   -0.000834  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+   far textured     40136   0.006642   0.019325   -0.000521  0.014921     0.015594     0.006715     0.058009   0.060357   0.008678
+   far flat         78584   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -1 -1 -0 0 1 1 1 2 2 4 25 27 -2 -2 -2
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 16 22 0 0 0
+ Quality M object 4.0 px: edge travel over the receiver about 4.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    25840   0.017339   0.058257   0.004548  0.012394     0.015352     0.012295     0.060681   0.069367   0.025813
+   band flat        25832   0.007441   0.049030   0.003185  0.002086     0.000091     0.004216     0.009360   0.000000   0.009360
+   tail textured    38768   0.010974   0.035011   -0.000075  0.009561     0.014022     0.007728     0.053288   0.065278   0.016698
+   tail flat        38768   0.000834   0.000834   -0.000834  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+   far textured     40136   0.009145   0.031089   0.001265  0.011349     0.015577     0.007088     0.062232   0.071818   0.014086
+   far flat         78584   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -1 -0 -0 -0 -0 0 0 0 1 2 6 16 1 1 1
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 13 8 0 0 0
+ Quality M object 8.0 px: edge travel over the receiver about 8.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    25840   0.017551   0.056569   0.004436  0.013512     0.015338     0.013271     0.061858   0.067954   0.025777
+   band flat        25832   0.007575   0.050147   0.003290  0.002156     0.000091     0.004295     0.009562   0.000000   0.009562
+   tail textured    38768   0.012759   0.038382   0.000814  0.010686     0.014128     0.009319     0.054932   0.065944   0.019413
+   tail flat        38768   0.000834   0.000834   -0.000834  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+   far textured     40136   0.008972   0.027168   0.000901  0.012581     0.015327     0.007756     0.065141   0.071222   0.013505
+   far flat         78584   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): 1 0 1 0 1 0 2 1 2 1 3 6 14 1 1 1
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 14 8 0 0 0
+ Quality MS object 1.0 px, shadow 1.0 px: edge travel over the receiver about 2.0 px a frame, reference edge contrast 0.309, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    25838   0.016293   0.083454   0.010628  0.017628     0.015194     0.009614     0.045050   0.040023   0.021888
+   band flat        25840   0.010519   0.070588   0.007150  0.002252     0.000115     0.005126     0.015265   0.012778   0.014476
+   tail textured    38764   0.002851   0.007843   0.000443  0.013783     0.013946     0.002715     0.030767   0.030933   0.004603
+   tail flat        38764   0.000521   0.000834   -0.000521  0.000000     0.000000     0.000000     0.000238   0.000119   0.000119
+   far textured     36456   0.002104   0.007009   -0.000013  0.015294     0.015647     0.001991     0.034060   0.034297   0.003112
+   far flat         74909   0.000682   0.002805   -0.000682  0.000000     0.000000     0.000000     0.000395   0.000384   0.000779
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -0 -0 0 0 1 1 1 1 2 4 27 33 -1 -1 -1
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -0 14 32 -1 -1 -1
+ Quality MS object 2.0 px, shadow 1.0 px: edge travel over the receiver about 3.0 px a frame, reference edge contrast 0.309, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    25838   0.016106   0.063296   0.006843  0.016156     0.015289     0.012122     0.062231   0.063255   0.022661
+   band flat        25840   0.007729   0.050147   0.003726  0.001587     0.000115     0.004043     0.014453   0.012778   0.011363
+   tail textured    38764   0.006766   0.019325   0.000258  0.013550     0.013966     0.006750     0.051160   0.054996   0.009484
+   tail flat        38764   0.000521   0.000834   -0.000521  0.000000     0.000000     0.000000     0.000238   0.000119   0.000119
+   far textured     36456   0.006619   0.019325   -0.000153  0.014951     0.015586     0.006718     0.057896   0.060216   0.008649
+   far flat         74909   0.000682   0.002805   -0.000682  0.000000     0.000000     0.000000     0.000395   0.000384   0.000779
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -0 -0 -0 0 0 1 1 1 2 2 12 26 -0 -1 -0
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -0 6 19 -1 -1 -1
+ Native S 1.0 px advancing: edge travel over the receiver about 1.0 px a frame, reference edge contrast 0.309, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    30612   0.013820   0.070856   0.009334  0.017951     0.015292     0.008753     0.012911   0.012597   0.012435
+   band flat        30613   0.009134   0.062462   0.005840  0.002177     0.000112     0.006150     0.013387   0.013094   0.012005
+   tail textured    45921   0.003204   0.007843   -0.000420  0.014903     0.013923     0.002334     0.000223   0.000029   0.000247
+   tail flat        45732   0.000520   0.000834   -0.000520  0.000000     0.000000     0.000000     0.000239   0.000119   0.000119
+   far textured     39111   0.003561   0.007843   -0.000524  0.017160     0.015900     0.002354     0.000231   0.000104   0.000322
+   far flat         92585   0.000682   0.002805   -0.000682  0.000000     0.000000     0.000000     0.000395   0.000384   0.000779
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -0 -0 0 1 2 4 22 30 -0 -1 -1
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -0 0 13 23 -1 -1 -1
+ Native S 1.0 px retreating: edge travel over the receiver about 1.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    30609   0.016875   0.081787   -0.014442  0.017996     0.015011     0.009805     0.013190   0.012639   0.013394
+   band flat        30609   0.009026   0.057707   -0.007237  0.001523     0.000113     0.006063     0.013770   0.012902   0.012761
+   tail textured    45912   0.005460   0.011765   -0.004684  0.016836     0.015644     0.002849     0.000316   0.000106   0.000405
+   tail flat        45915   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+   far textured     87166   0.003967   0.008126   -0.002794  0.015474     0.014316     0.002116     0.000174   0.000029   0.000201
+   far flat         33683   0.000118   0.000834   -0.000118  0.000000     0.000000     0.000000     0.000133   0.000000   0.000133
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -4 -4 -4 -4 -5 -5 -5 -5 -6 -7 -11 -36 -26 -3 -3 -3
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): 0 0 0 0 0 0 0 0 0 -0 -0 -19 -24 -0 -0 -0
+ Native S 2.0 px advancing: edge travel over the receiver about 2.0 px a frame, reference edge contrast 0.309, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    30612   0.013055   0.067217   0.008212  0.018070     0.015228     0.008409     0.025604   0.025155   0.016703
+   band flat        30612   0.007905   0.054902   0.004495  0.002020     0.000114     0.005618     0.026133   0.025903   0.013911
+   tail textured    45919   0.003196   0.007843   0.000005  0.015063     0.013974     0.002316     0.000318   0.000060   0.000368
+   tail flat        45806   0.000313   0.000834   -0.000310  0.000002     0.000000     0.000002     0.000239   0.000119   0.000121
+   far textured     34646   0.003520   0.007843   0.000892  0.017123     0.015899     0.002342     0.000284   0.000176   0.000427
+   far flat         88122   0.000356   0.002805   -0.000356  0.000000     0.000000     0.000000     0.000412   0.000401   0.000813
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -0 -0 -0 -0 0 0 0 1 1 3 14 29 1 1 1
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -0 -0 -0 -0 -0 -0 -0 -0 -0 -0 4 25 -0 -0 -0
+ Native S 2.0 px retreating: edge travel over the receiver about 2.0 px a frame, reference edge contrast 0.309, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    30609   0.015854   0.075894   -0.012730  0.018072     0.014991     0.009993     0.025575   0.025242   0.018166
+   band flat        30608   0.009021   0.057990   -0.006690  0.002068     0.000103     0.006440     0.026582   0.025988   0.015575
+   tail textured    45911   0.005442   0.012315   -0.004354  0.016815     0.015590     0.003166     0.000460   0.000182   0.000594
+   tail flat        45916   0.000106   0.000834   -0.000106  0.000002     0.000000     0.000002     0.000051   0.000160   0.000130
+   far textured     82701   0.004188   0.008960   -0.003280  0.015499     0.014353     0.002147     0.000185   0.000058   0.000238
+   far flat         29260   0.000136   0.000834   -0.000136  0.000000     0.000000     0.000000     0.000515   0.000363   0.000151
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -4 -4 -4 -4 -4 -4 -4 -4 -5 -6 -10 -27 -27 -3 -3 -3
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -0 -0 -0 -0 -0 -0 -0 -0 -0 -0 -16 -24 -0 -0 -0
+ Native S 4.0 px advancing: edge travel over the receiver about 4.0 px a frame, reference edge contrast 0.308, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    30611   0.012803   0.062179   0.008117  0.017527     0.015281     0.007938     0.051232   0.050212   0.017916
+   band flat        30611   0.007441   0.053785   0.004422  0.002007     0.000117     0.005427     0.051597   0.051499   0.014160
+   tail textured    45918   0.003811   0.008126   0.000531  0.015021     0.014047     0.002927     0.000595   0.000118   0.000684
+   tail flat        45837   0.000033   0.000000   -0.000033  0.000003     0.000000     0.000003     0.000086   0.000119   0.000033
+   far textured     26357   0.004456   0.011481   0.003698  0.017130     0.015998     0.002372     0.000396   0.000321   0.000626
+   far flat         79194   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000454   0.000454   0.000000
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): 0 0 0 0 0 1 1 1 1 1 2 8 30 4 4 4
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): 0 0 0 0 0 0 -0 -0 -0 -0 -0 2 25 -0 0 0
+ Native S 4.0 px retreating: edge travel over the receiver about 4.0 px a frame, reference edge contrast 0.308, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    30610   0.015601   0.070856   -0.011996  0.017962     0.014885     0.009692     0.051022   0.050495   0.019513
+   band flat        30611   0.009237   0.060795   -0.006817  0.002321     0.000102     0.006741     0.052295   0.051594   0.016787
+   tail textured    45912   0.006508   0.019608   -0.004750  0.016985     0.015452     0.004556     0.000930   0.000325   0.001114
+   tail flat        45916   0.000033   0.000283   -0.000033  0.000000     0.000000     0.000000     0.000157   0.000160   0.000074
+   far textured     73772   0.004738   0.011482   -0.004238  0.015454     0.014412     0.002188     0.000218   0.000114   0.000317
+   far flat         21617   0.000184   0.000834   -0.000184  0.000000     0.000000     0.000000     0.000681   0.000477   0.000204
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -5 -5 -4 -4 -4 -5 -5 -5 -6 -7 -9 -21 -27 -4 -4 -4
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -0 -0 -0 -0 -0 -0 -0 -0 -0 0 -17 -24 -0 -0 -0
+ Native S 8.0 px advancing: edge travel over the receiver about 8.0 px a frame, reference edge contrast 0.307, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    29218   0.014859   0.059374   0.009843  0.017612     0.015413     0.008412     0.106637   0.103384   0.019456
+   band flat        30610   0.007652   0.054068   0.004708  0.002077     0.000115     0.005480     0.103056   0.102887   0.015311
+   tail textured    45921   0.004724   0.011765   0.000968  0.014883     0.014121     0.003732     0.001308   0.000226   0.001433
+   tail flat        45847   0.000008   0.000000   -0.000008  0.000001     0.000000     0.000001     0.000113   0.000119   0.000029
+   far textured     15777   0.009286   0.015686   0.009095  0.016752     0.015958     0.002635     0.000668   0.000638   0.001014
+   far flat         61338   0.000496   0.002805   0.000496  0.000000     0.000000     0.000000     0.000845   0.000917   0.001165
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): 1 1 1 1 1 1 1 1 1 2 1 6 32 9 9 9
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): 0 0 0 0 0 0 0 -0 -0 -0 0 3 25 0 0 0
+ Native S 8.0 px retreating: edge travel over the receiver about 8.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    30610   0.016334   0.067217   -0.012240  0.017854     0.014879     0.010347     0.100994   0.101178   0.020375
+   band flat        28408   0.009649   0.061911   -0.007104  0.002323     0.000099     0.006854     0.108851   0.107853   0.019565
+   tail textured    45909   0.008256   0.028285   -0.005909  0.016955     0.015303     0.005867     0.001955   0.000647   0.002169
+   tail flat        45906   0.000351   0.002805   -0.000351  0.000000     0.000000     0.000000     0.000565   0.000560   0.000806
+   far textured     55949   0.006070   0.011765   -0.005906  0.015245     0.014381     0.002379     0.000287   0.000226   0.000473
+   far flat         12723   0.000817   0.002805   -0.000817  0.000000     0.000000     0.000000     0.000837   0.000807   0.001645
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -6 -5 -6 -5 -6 -6 -6 -7 -6 -9 -7 -18 -27 -6 -6 -6
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -0 -0 -0 -0 -0 -0 -0 -0 -0 -0 -17 -23 -1 -1 -1
+ Native C pan 1.0 px: edge travel over the receiver about 1.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    30608   0.004575   0.011765   -0.001919  0.016205     0.015074     0.003167     0.042475   0.040712   0.005388
+   band flat        30608   0.001708   0.008677   -0.000635  0.000162     0.000105     0.001062     0.012573   0.012459   0.002140
+   tail textured    45928   0.003663   0.007843   -0.002090  0.015073     0.013913     0.002189     0.032557   0.030724   0.003604
+   tail flat        45733   0.000834   0.000834   -0.000834  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+   far textured     39264   0.003961   0.008677   -0.001843  0.017201     0.015951     0.002523     0.036865   0.034795   0.004116
+   far flat         92736   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -2 -2 -2 -2 -2 -2 -2 -2 -2 -2 -2 -3 -1 -2 -2 -2
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -2 -0 0 0 0
+ Native C pan 2.0 px: edge travel over the receiver about 2.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    30608   0.004615   0.011765   -0.001946  0.015602     0.015074     0.003612     0.074975   0.072639   0.006633
+   band flat        30608   0.001755   0.010931   -0.000461  0.000155     0.000105     0.001087     0.025067   0.024919   0.002496
+   tail textured    45928   0.003522   0.007843   -0.001968  0.014386     0.013913     0.002671     0.056313   0.054495   0.004824
+   tail flat        45806   0.000834   0.000834   -0.000834  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+   far textured     34952   0.004018   0.008960   -0.001865  0.016598     0.015945     0.002998     0.064212   0.061618   0.005596
+   far flat         88424   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -2 -2 -2 -2 -2 -2 -2 -2 -2 -2 -2 -3 -1 -2 -2 -2
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -0 0 0 0
+ Native C pan 4.0 px: edge travel over the receiver about 4.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    30608   0.006071   0.019325   -0.000870  0.012836     0.015074     0.005441     0.098042   0.100807   0.009267
+   band flat        30608   0.001968   0.011482   -0.000276  0.000141     0.000105     0.001154     0.050036   0.049837   0.003104
+   tail textured    45928   0.004374   0.015403   -0.001213  0.012227     0.013913     0.003928     0.062421   0.065600   0.006728
+   tail flat        45839   0.000834   0.000834   -0.000834  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+   far textured     26873   0.005128   0.015686   -0.000708  0.013733     0.015930     0.004587     0.068962   0.072071   0.007497
+   far flat         79800   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -0 -1 0
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 0 -0 0 0 0
+ Native C pan 8.0 px: edge travel over the receiver about 8.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    29488   0.005507   0.016520   -0.000414  0.013011     0.015034     0.004989     0.137523   0.139317   0.008742
+   band flat        30608   0.001857   0.010931   -0.000262  0.000117     0.000105     0.001047     0.100001   0.099675   0.003157
+   tail textured    45928   0.003821   0.011765   -0.000875  0.012580     0.013913     0.003585     0.063452   0.065720   0.005865
+   tail flat        45848   0.000834   0.000834   -0.000834  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+   far textured     16234   0.004768   0.015403   -0.000437  0.013845     0.015955     0.004420     0.068880   0.071934   0.007205
+   far flat         62552   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -0 -0 -0 -0 0
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -0 0 0 0 0
+ Native M object 0.5 px: edge travel over the receiver about 0.5 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    25840   0.021144   0.086825   0.013591  0.013970     0.015510     0.011998     0.019131   0.018240   0.015183
+   band flat        25832   0.010306   0.070305   0.008055  0.002776     0.000091     0.005522     0.007902   0.000000   0.007902
+   tail textured    38768   0.010569   0.031089   0.000336  0.009994     0.014511     0.006667     0.011194   0.017062   0.008100
+   tail flat        38768   0.000834   0.000834   -0.000834  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+   far textured     40136   0.014230   0.039216   0.000917  0.010630     0.016352     0.008418     0.011863   0.019281   0.009741
+   far flat         78584   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -1 -0 0 -0 -0 1 2 3 4 9 37 30 1 1 1
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 0 25 24 0 0 0
+ Native M object 1.0 px: edge travel over the receiver about 1.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    25840   0.012498   0.063296   0.007510  0.017517     0.015024     0.008230     0.038965   0.032764   0.013427
+   band flat        25832   0.007985   0.056873   0.005520  0.001760     0.000091     0.005024     0.007727   0.000000   0.007727
+   tail textured    38768   0.003107   0.007843   -0.000816  0.014758     0.013896     0.002284     0.032163   0.030767   0.003729
+   tail flat        38768   0.000834   0.000834   -0.000834  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+   far textured     40136   0.003759   0.007843   -0.001047  0.016974     0.015641     0.002407     0.036618   0.034459   0.004045
+   far flat         78584   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -2 -2 -1 -1 -1 -1 -0 0 1 2 3 19 25 -2 -2 -2
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -0 15 19 0 0 0
+ Native M object 2.0 px: edge travel over the receiver about 2.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    25840   0.010891   0.054336   0.004742  0.016717     0.015298     0.007676     0.062232   0.058519   0.014128
+   band flat        25832   0.006437   0.045108   0.002900  0.001393     0.000091     0.003972     0.007462   0.000000   0.007462
+   tail textured    38768   0.003187   0.007843   -0.000745  0.014207     0.013959     0.002810     0.055671   0.054770   0.004750
+   tail flat        38768   0.000834   0.000834   -0.000834  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+   far textured     40136   0.003545   0.007843   -0.000680  0.016549     0.015594     0.002675     0.063557   0.060357   0.005297
+   far flat         78584   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -0 -0 0 1 2 8 21 -1 -1 -1
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 2 17 0 0 0
+ Native M object 4.0 px: edge travel over the receiver about 4.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    25840   0.010638   0.043688   0.003256  0.014924     0.015352     0.008370     0.067983   0.069367   0.015302
+   band flat        25832   0.006300   0.043137   0.003440  0.001762     0.000091     0.003774     0.007138   0.000000   0.007138
+   tail textured    38768   0.005081   0.016520   -0.000507  0.012318     0.014022     0.004433     0.061503   0.065278   0.007872
+   tail flat        38768   0.000834   0.000834   -0.000834  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+   far textured     40136   0.003454   0.008960   0.000074  0.015086     0.015577     0.003259     0.071457   0.071818   0.005222
+   far flat         78584   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -0 -0 -0 0 1 2 5 13 -0 -0 -0
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 10 12 0 0 0
+ Native M object 8.0 px: edge travel over the receiver about 8.0 px a frame, reference edge contrast 0.310, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    25840   0.011417   0.043405   0.003699  0.014890     0.015338     0.008782     0.067305   0.067954   0.016065
+   band flat        25832   0.006264   0.042854   0.003396  0.001746     0.000091     0.003763     0.007123   0.000000   0.007123
+   tail textured    38768   0.006637   0.019608   0.000272  0.012194     0.014128     0.005425     0.061709   0.065944   0.009864
+   tail flat        38768   0.000834   0.000834   -0.000834  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+   far textured     40136   0.003308   0.008126   0.000151  0.015518     0.015327     0.002986     0.072288   0.071222   0.004949
+   far flat         78584   0.000000   0.000000   0.000000  0.000000     0.000000     0.000000     0.000000   0.000000   0.000000
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -0 -0 0 -0 0 -0 1 0 2 1 4 4 13 0 0 0
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 10 12 0 0 0
+ Native MS object 1.0 px, shadow 1.0 px: edge travel over the receiver about 2.0 px a frame, reference edge contrast 0.309, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    25838   0.011901   0.056569   0.006488  0.017684     0.015194     0.008149     0.044796   0.040023   0.016373
+   band flat        25840   0.007187   0.049864   0.003393  0.001859     0.000115     0.004863     0.014302   0.012778   0.010684
+   tail textured    38764   0.003036   0.007843   -0.000189  0.014830     0.013946     0.002331     0.032372   0.030933   0.003781
+   tail flat        38764   0.000522   0.000834   -0.000520  0.000001     0.000000     0.000001     0.000240   0.000119   0.000121
+   far textured     36456   0.003636   0.007843   -0.000308  0.016985     0.015647     0.002408     0.036378   0.034297   0.004017
+   far flat         74909   0.000682   0.002805   -0.000682  0.000000     0.000000     0.000000     0.000395   0.000384   0.000779
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -0 -0 -0 0 0 1 1 3 11 25 -0 -0 -0
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -0 4 18 -1 -1 -1
+ Native MS object 2.0 px, shadow 1.0 px: edge travel over the receiver about 3.0 px a frame, reference edge contrast 0.309, drawn edge 2.13 px off the analytic line
+   region          pixels   mean     p95      bias     grain out  grain ref  err grain  change   chg ref  chg err
+   band textured    25838   0.010402   0.047893   0.004129  0.016733     0.015289     0.007638     0.066549   0.063255   0.015245
+   band flat        25840   0.006204   0.042854   0.002231  0.001573     0.000115     0.003906     0.013911   0.012778   0.009551
+   tail textured    38764   0.003446   0.008677   -0.000286  0.014259     0.013966     0.003128     0.055806   0.054996   0.005313
+   tail flat        38764   0.000521   0.000834   -0.000521  0.000000     0.000000     0.000000     0.000238   0.000119   0.000119
+   far textured     36456   0.003541   0.007843   -0.000268  0.016540     0.015586     0.002707     0.063413   0.060216   0.005366
+   far flat         74909   0.000682   0.002805   -0.000682  0.000000     0.000000     0.000000     0.000395   0.000384   0.000779
+   textured signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -0 -0 -0 -0 0 1 1 1 4 20 -1 -1 -1
+   flat signed error x1000, 4 px bins of travel from -48 (behind) to 16 (ahead): -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -0 2 14 -1 -1 -1
+
+ summary, mean absolute luma error, then the textured band's grain out, ref and error, the flat band's error grain, and each band's frame-to-frame change out, ref and error
+ case                                   bandT  tailT  farT    bandF  tailF  farF    grOutT grRefT grErrT  grErrF  chgT   chRefT chErrT  chgF   chRefF chErrF
+ Quality S 1.0 px advancing             0.018638 0.003110 0.004567  0.012998 0.000520 0.000682  0.018638 0.015292 0.010319  0.004962  0.013403 0.012597 0.015687  0.013415 0.013094 0.015609
+ Quality S 1.0 px retreating            0.022724 0.007663 0.005296  0.013582 0.000000 0.000118  0.019759 0.015011 0.012590  0.006446  0.013759 0.012639 0.017076  0.013528 0.012902 0.016478
+ Quality S 2.0 px advancing             0.018394 0.002868 0.004598  0.012441 0.000311 0.000356  0.018403 0.015228 0.010360  0.005434  0.026389 0.025155 0.023022  0.026147 0.025903 0.020838
+ Quality S 2.0 px retreating            0.022716 0.006726 0.005720  0.014460 0.000104 0.000136  0.019481 0.014991 0.012249  0.006784  0.026579 0.025242 0.026438  0.026511 0.025988 0.024216
+ Quality S 4.0 px advancing             0.018609 0.003396 0.006544  0.011328 0.000032 0.000000  0.017709 0.015281 0.009975  0.004829  0.052745 0.050212 0.026344  0.051725 0.051499 0.021095
+ Quality S 4.0 px retreating            0.021825 0.006241 0.006680  0.014764 0.000034 0.000184  0.018246 0.014885 0.011090  0.007049  0.052746 0.050495 0.031099  0.052408 0.051594 0.026598
+ Quality S 8.0 px advancing             0.022151 0.004524 0.013957  0.011566 0.000009 0.000496  0.017702 0.015413 0.010973  0.004850  0.109125 0.103384 0.028471  0.103214 0.102887 0.023014
+ Quality S 8.0 px retreating            0.023566 0.006670 0.008858  0.015312 0.000351 0.000817  0.018278 0.014879 0.011827  0.007130  0.103438 0.101178 0.032551  0.108988 0.107853 0.031053
+ Quality C pan 1.0 px                   0.010471 0.007613 0.009156  0.003696 0.000834 0.000000  0.016205 0.015074 0.010110  0.002095  0.042899 0.040712 0.016391  0.012592 0.012459 0.004483
+ Quality C pan 2.0 px                   0.005846 0.003913 0.004881  0.002616 0.000834 0.000000  0.013182 0.015074 0.004793  0.001929  0.069051 0.072639 0.008478  0.025030 0.024919 0.004047
+ Quality C pan 4.0 px                   0.015163 0.012001 0.014637  0.003996 0.000834 0.000000  0.009259 0.015074 0.010088  0.001880  0.088316 0.100807 0.022897  0.050029 0.049837 0.007023
+ Quality C pan 8.0 px                   0.013800 0.010482 0.013251  0.003214 0.000834 0.000000  0.008832 0.015034 0.009857  0.002294  0.130072 0.139317 0.021973  0.099996 0.099675 0.005831
+ Quality M object 0.5 px                0.028703 0.013803 0.020480  0.012430 0.000834 0.000000  0.012802 0.015510 0.014238  0.004756  0.018218 0.018240 0.018388  0.008536 0.000000 0.008536
+ Quality M object 1.0 px                0.016428 0.002729 0.002322  0.010932 0.000834 0.000000  0.017534 0.015024 0.009556  0.004775  0.040004 0.032764 0.017514  0.010469 0.000000 0.010469
+ Quality M object 2.0 px                0.018288 0.007294 0.006642  0.009657 0.000834 0.000000  0.017015 0.015298 0.013110  0.005362  0.059754 0.058519 0.023856  0.012062 0.000000 0.012062
+ Quality M object 4.0 px                0.017339 0.010974 0.009145  0.007441 0.000834 0.000000  0.012394 0.015352 0.012295  0.004216  0.060681 0.069367 0.025813  0.009360 0.000000 0.009360
+ Quality M object 8.0 px                0.017551 0.012759 0.008972  0.007575 0.000834 0.000000  0.013512 0.015338 0.013271  0.004295  0.061858 0.067954 0.025777  0.009562 0.000000 0.009562
+ Quality MS object 1.0 px, shadow 1.0 px 0.016293 0.002851 0.002104  0.010519 0.000521 0.000682  0.017628 0.015194 0.009614  0.005126  0.045050 0.040023 0.021888  0.015265 0.012778 0.014476
+ Quality MS object 2.0 px, shadow 1.0 px 0.016106 0.006766 0.006619  0.007729 0.000521 0.000682  0.016156 0.015289 0.012122  0.004043  0.062231 0.063255 0.022661  0.014453 0.012778 0.011363
+ Native S 1.0 px advancing              0.013820 0.003204 0.003561  0.009134 0.000520 0.000682  0.017951 0.015292 0.008753  0.006150  0.012911 0.012597 0.012435  0.013387 0.013094 0.012005
+ Native S 1.0 px retreating             0.016875 0.005460 0.003967  0.009026 0.000000 0.000118  0.017996 0.015011 0.009805  0.006063  0.013190 0.012639 0.013394  0.013770 0.012902 0.012761
+ Native S 2.0 px advancing              0.013055 0.003196 0.003520  0.007905 0.000313 0.000356  0.018070 0.015228 0.008409  0.005618  0.025604 0.025155 0.016703  0.026133 0.025903 0.013911
+ Native S 2.0 px retreating             0.015854 0.005442 0.004188  0.009021 0.000106 0.000136  0.018072 0.014991 0.009993  0.006440  0.025575 0.025242 0.018166  0.026582 0.025988 0.015575
+ Native S 4.0 px advancing              0.012803 0.003811 0.004456  0.007441 0.000033 0.000000  0.017527 0.015281 0.007938  0.005427  0.051232 0.050212 0.017916  0.051597 0.051499 0.014160
+ Native S 4.0 px retreating             0.015601 0.006508 0.004738  0.009237 0.000033 0.000184  0.017962 0.014885 0.009692  0.006741  0.051022 0.050495 0.019513  0.052295 0.051594 0.016787
+ Native S 8.0 px advancing              0.014859 0.004724 0.009286  0.007652 0.000008 0.000496  0.017612 0.015413 0.008412  0.005480  0.106637 0.103384 0.019456  0.103056 0.102887 0.015311
+ Native S 8.0 px retreating             0.016334 0.008256 0.006070  0.009649 0.000351 0.000817  0.017854 0.014879 0.010347  0.006854  0.100994 0.101178 0.020375  0.108851 0.107853 0.019565
+ Native C pan 1.0 px                    0.004575 0.003663 0.003961  0.001708 0.000834 0.000000  0.016205 0.015074 0.003167  0.001062  0.042475 0.040712 0.005388  0.012573 0.012459 0.002140
+ Native C pan 2.0 px                    0.004615 0.003522 0.004018  0.001755 0.000834 0.000000  0.015602 0.015074 0.003612  0.001087  0.074975 0.072639 0.006633  0.025067 0.024919 0.002496
+ Native C pan 4.0 px                    0.006071 0.004374 0.005128  0.001968 0.000834 0.000000  0.012836 0.015074 0.005441  0.001154  0.098042 0.100807 0.009267  0.050036 0.049837 0.003104
+ Native C pan 8.0 px                    0.005507 0.003821 0.004768  0.001857 0.000834 0.000000  0.013011 0.015034 0.004989  0.001047  0.137523 0.139317 0.008742  0.100001 0.099675 0.003157
+ Native M object 0.5 px                 0.021144 0.010569 0.014230  0.010306 0.000834 0.000000  0.013970 0.015510 0.011998  0.005522  0.019131 0.018240 0.015183  0.007902 0.000000 0.007902
+ Native M object 1.0 px                 0.012498 0.003107 0.003759  0.007985 0.000834 0.000000  0.017517 0.015024 0.008230  0.005024  0.038965 0.032764 0.013427  0.007727 0.000000 0.007727
+ Native M object 2.0 px                 0.010891 0.003187 0.003545  0.006437 0.000834 0.000000  0.016717 0.015298 0.007676  0.003972  0.062232 0.058519 0.014128  0.007462 0.000000 0.007462
+ Native M object 4.0 px                 0.010638 0.005081 0.003454  0.006300 0.000834 0.000000  0.014924 0.015352 0.008370  0.003774  0.067983 0.069367 0.015302  0.007138 0.000000 0.007138
+ Native M object 8.0 px                 0.011417 0.006637 0.003308  0.006264 0.000834 0.000000  0.014890 0.015338 0.008782  0.003763  0.067305 0.067954 0.016065  0.007123 0.000000 0.007123
+ Native MS object 1.0 px, shadow 1.0 px 0.011901 0.003036 0.003636  0.007187 0.000522 0.000682  0.017684 0.015194 0.008149  0.004863  0.044796 0.040023 0.016373  0.014302 0.012778 0.010684
+ Native MS object 2.0 px, shadow 1.0 px 0.010402 0.003446 0.003541  0.006204 0.000521 0.000682  0.016733 0.015289 0.007638  0.003906  0.066549 0.063255 0.015245  0.013911 0.012778 0.009551
+ device class hardware
+
+
+
+Test Run Failed.
+Total tests: 121
+     Passed: 112
+     Failed: 9
+ Total time: 13.8783 Seconds
+build-slot: exit=1 waited=0.024s ran=52.925s

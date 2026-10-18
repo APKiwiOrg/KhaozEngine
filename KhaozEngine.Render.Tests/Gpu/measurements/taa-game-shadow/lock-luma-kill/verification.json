@@ -1,0 +1,72 @@
+{
+  "status": "blocked",
+  "shaderBaselineCommit": "7ca9d9583e75516bb1eba50b1ac9a8e84d8814f7",
+  "engineVersion": "21.5.0",
+  "productionCandidate": "corners005",
+  "build": {
+    "exitCode": 0,
+    "warnings": 0,
+    "errors": 0
+  },
+  "headlessSuite": {
+    "exitCode": 0,
+    "passed": 35343,
+    "failed": 0,
+    "skipped": 1426,
+    "assemblies": 41
+  },
+  "fullMetalTemporalCorrectness": {
+    "exitCode": 1,
+    "passed": 907,
+    "failed": 11,
+    "skipped": 0,
+    "total": 918,
+    "filter": "FullyQualifiedName~Temporal&FullyQualifiedName!~CostPerfGpuTests"
+  },
+  "originalShaderExistingGuards": {
+    "exitCode": 0,
+    "passed": 46,
+    "failed": 0,
+    "skipped": 0
+  },
+  "restoredCandidateBuild": {
+    "exitCode": 0,
+    "warnings": 0,
+    "errors": 0,
+    "renderDllMatchesFullGpuRun": true,
+    "renderDllSha256": "992c32b8547b62686920dc872ced85380662af002c239b02583c6663ecba61f2"
+  },
+  "restoredProof": {
+    "exitCode": 0,
+    "passed": 74,
+    "failed": 0,
+    "skipped": 0
+  },
+  "shaderHashBake": {
+    "exitCode": 0,
+    "passed": 6,
+    "tables": 3,
+    "changedTemporalFragmentsPerTable": 11
+  },
+  "format": {
+    "requiredTwoFilesExitCode": 0,
+    "ownedFilesExitCode": 0,
+    "finalAddedTestFilesExitCode": 0,
+    "wholeSolutionExitCode": 2,
+    "existingUnchangedFiles": 8,
+    "existingDiagnostics": 115
+  },
+  "governance": {
+    "dashes": 0,
+    "prose": 0,
+    "fileSize": 0,
+    "agentInstructions": 0,
+    "docVersions": 0
+  },
+  "privateFeedPack": "blocked on correctness",
+  "probeRepin": "not performed",
+  "probeExistingCommit": "8cfdd814a92940b78e982c1bfb6e8fc8bef67755",
+  "probeExistingCommitMatchesRemote": true,
+  "hostedGpu": "pending branch push",
+  "timingBenchmarks": "not run"
+}

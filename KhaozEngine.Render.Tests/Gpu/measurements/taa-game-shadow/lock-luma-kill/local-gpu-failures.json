@@ -1,0 +1,13 @@
+[
+  "KhaozEngine.Tests.Gpu.TemporalGameShadowGrainGpuTests.Texture_ridges_under_a_coarse_moving_shadow_do_not_hold_bright_grain",
+  "KhaozEngine.Tests.Gpu.TemporalTextureLightGpuTests.Dark_texture_and_animated_local_light_keep_detail_stable",
+  "KhaozEngine.Tests.Gpu.TemporalUpscalingGoldenTests.QualityUpscalingBeatsABilinearUpscaleOfTheSameFrame",
+  "KhaozEngine.Tests.Gpu.TemporalMovingShadeRimGpuTests.Moving_shadow_receivers_keep_their_leading_and_trailing_rims",
+  "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_on_a_swaying_surface_holds_like_a_still_one(preset: Native, speed: 0.5)",
+  "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_on_a_swaying_surface_holds_like_a_still_one(preset: Native, speed: 0.300000012)",
+  "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_surface_edge_the_jitter_crosses_holds_like_a_still_one(preset: Quality, side: -1)",
+  "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_still_nearer_surface_holds_like_a_still_one(preset: Quality, side: -1)",
+  "KhaozEngine.Tests.Gpu.TemporalMovingShadeLagGpuTests.Shadow_edge_lag_on_moving_pixels_and_fast_shadows_stays_within_its_bounds",
+  "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_against_the_sky_beside_a_still_nearer_surface_holds_away_from_the_centre_as_at_it(preset: Quality)",
+  "KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_blade_narrower_than_a_texel_swaying_over_still_ground_holds_like_a_still_one(preset: Quality)"
+]

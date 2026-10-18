@@ -1,0 +1,356 @@
+  KhaozEngine.CodeHealth.Analyzers -> KhaozEngine.CodeHealth.Analyzers/bin/Release/netstandard2.0/KhaozEngine.CodeHealth.Analyzers.dll
+  KhaozEngine.Imaging -> KhaozEngine.Imaging/bin/Release/net10.0/KhaozEngine.Imaging.dll
+  KhaozEngine.Serialization -> KhaozEngine.Serialization/bin/Release/net10.0/KhaozEngine.Serialization.dll
+  KhaozEngine.Platform -> KhaozEngine.Platform/bin/Release/net10.0/KhaozEngine.Platform.dll
+  KhaozEngine.BugReports.Contracts -> KhaozEngine.BugReports.Contracts/bin/Release/net10.0/KhaozEngine.BugReports.Contracts.dll
+  KhaozEngine.Physics -> KhaozEngine.Physics/bin/Release/net10.0/KhaozEngine.Physics.dll
+  KhaozEngine.Collision -> KhaozEngine.Collision/bin/Release/net10.0/KhaozEngine.Collision.dll
+  KhaozEngine.Attachments -> KhaozEngine.Attachments/bin/Release/net10.0/KhaozEngine.Attachments.dll
+  KhaozEngine.TestSupport -> KhaozEngine.TestSupport/bin/Release/net10.0/KhaozEngine.TestSupport.dll
+  KhaozEngine.Diagnostics -> KhaozEngine.Diagnostics/bin/Release/net10.0/KhaozEngine.Diagnostics.dll
+  KhaozEngine.Primitives -> KhaozEngine.Primitives/bin/Release/net10.0/KhaozEngine.Primitives.dll
+  KhaozEngine.Http -> KhaozEngine.Http/bin/Release/net10.0/KhaozEngine.Http.dll
+  KhaozEngine.Netcode.Abstractions -> KhaozEngine.Netcode.Abstractions/bin/Release/net10.0/KhaozEngine.Netcode.Abstractions.dll
+  KhaozEngine.Determinism -> KhaozEngine.Determinism/bin/Release/net10.0/KhaozEngine.Determinism.dll
+  KhaozEngine.App -> KhaozEngine.App/bin/Release/net10.0/KhaozEngine.App.dll
+  KhaozEngine.Physics.Bepu -> KhaozEngine.Physics.Bepu/bin/Release/net10.0/KhaozEngine.Physics.Bepu.dll
+  KhaozEngine.Gpu -> KhaozEngine.Gpu/bin/Release/net10.0/KhaozEngine.Gpu.dll
+  KhaozEngine.Updates -> KhaozEngine.Updates/bin/Release/net10.0/KhaozEngine.Updates.dll
+  KhaozEngine.Content -> KhaozEngine.Content/bin/Release/net10.0/KhaozEngine.Content.dll
+  KhaozEngine.Locomotion -> KhaozEngine.Locomotion/bin/Release/net10.0/KhaozEngine.Locomotion.dll
+  KhaozEngine.Netcode -> KhaozEngine.Netcode/bin/Release/net10.0/KhaozEngine.Netcode.dll
+  KhaozEngine.Particles -> KhaozEngine.Particles/bin/Release/net10.0/KhaozEngine.Particles.dll
+  KhaozEngine.Terrain -> KhaozEngine.Terrain/bin/Release/net10.0/KhaozEngine.Terrain.dll
+  KhaozEngine.BugReports -> KhaozEngine.BugReports/bin/Release/net10.0/KhaozEngine.BugReports.dll
+  KhaozEngine.Gpu.Vulkan -> KhaozEngine.Gpu.Vulkan/bin/Release/net10.0/KhaozEngine.Gpu.Vulkan.dll
+  KhaozEngine.Simulation -> KhaozEngine.Simulation/bin/Release/net10.0/KhaozEngine.Simulation.dll
+  KhaozEngine.TileWorld -> KhaozEngine.TileWorld/bin/Release/net10.0/KhaozEngine.TileWorld.dll
+  KhaozEngine.Gpu.Metal -> KhaozEngine.Gpu.Metal/bin/Release/net10.0/KhaozEngine.Gpu.Metal.dll
+  KhaozEngine.Ecs -> KhaozEngine.Ecs/bin/Release/net10.0/KhaozEngine.Ecs.dll
+  KhaozEngine.Gpu.D3D11 -> KhaozEngine.Gpu.D3D11/bin/Release/net10.0/KhaozEngine.Gpu.D3D11.dll
+  KhaozEngine.MapDoc -> KhaozEngine.MapDoc/bin/Release/net10.0/KhaozEngine.MapDoc.dll
+  KhaozEngine.Gpu.TestKit -> KhaozEngine.Gpu.TestKit/bin/Release/net10.0/KhaozEngine.Gpu.TestKit.dll
+  KhaozEngine.Navigation -> KhaozEngine.Navigation/bin/Release/net10.0/KhaozEngine.Navigation.dll
+  KhaozEngine.Windowing -> KhaozEngine.Windowing/bin/Release/net10.0/KhaozEngine.Windowing.dll
+  KhaozEngine.TestSupport.Gpu -> KhaozEngine.TestSupport.Gpu/bin/Release/net10.0/KhaozEngine.TestSupport.Gpu.dll
+  KhaozEngine.Render2D -> KhaozEngine.Render2D/bin/Release/net10.0/KhaozEngine.Render2D.dll
+  KhaozEngine.Dungeon -> KhaozEngine.Dungeon/bin/Release/net10.0/KhaozEngine.Dungeon.dll
+  KhaozEngine.TestSupport.Windowing -> KhaozEngine.TestSupport.Windowing/bin/Release/net10.0/KhaozEngine.TestSupport.Windowing.dll
+  KhaozEngine.Snapshot -> KhaozEngine.Snapshot/bin/Release/net10.0/KhaozEngine.Snapshot.dll
+  KhaozEngine.Telegraphs -> KhaozEngine.Telegraphs/bin/Release/net10.0/KhaozEngine.Telegraphs.dll
+  KhaozEngine.Gui -> KhaozEngine.Gui/bin/Release/net10.0/KhaozEngine.Gui.dll
+  KhaozEngine.ServerStatus -> KhaozEngine.ServerStatus/bin/Release/net10.0/KhaozEngine.ServerStatus.dll
+  KhaozEngine.Game -> KhaozEngine.Game/bin/Release/net10.0/KhaozEngine.Game.dll
+  KhaozEngine.BugReports.Client -> KhaozEngine.BugReports.Client/bin/Release/net10.0/KhaozEngine.BugReports.Client.dll
+  KhaozEngine.Render3D -> KhaozEngine.Render3D/bin/Release/net10.0/KhaozEngine.Render3D.dll
+  KhaozEngine.Game.Render3D -> KhaozEngine.Game.Render3D/bin/Release/net10.0/KhaozEngine.Game.Render3D.dll
+  KhaozEngine.Snapshot.Render3D -> KhaozEngine.Snapshot.Render3D/bin/Release/net10.0/KhaozEngine.Snapshot.Render3D.dll
+  KhaozEngine.Telegraphs.Render3D -> KhaozEngine.Telegraphs.Render3D/bin/Release/net10.0/KhaozEngine.Telegraphs.Render3D.dll
+  KhaozEngine.Particles.Render3D -> KhaozEngine.Particles.Render3D/bin/Release/net10.0/KhaozEngine.Particles.Render3D.dll
+  KhaozEngine.Attachments.Render3D -> KhaozEngine.Attachments.Render3D/bin/Release/net10.0/KhaozEngine.Attachments.Render3D.dll
+  KhaozEngine.Terrain.Render3D -> KhaozEngine.Terrain.Render3D/bin/Release/net10.0/KhaozEngine.Terrain.Render3D.dll
+  KhaozEngine.Render3D.Ecs -> KhaozEngine.Render3D.Ecs/bin/Release/net10.0/KhaozEngine.Render3D.Ecs.dll
+  SnapshotTool -> SnapshotTool/bin/Release/net10.0/SnapshotTool.dll
+  KhaozEngine.TileWorld.Render3D -> KhaozEngine.TileWorld.Render3D/bin/Release/net10.0/KhaozEngine.TileWorld.Render3D.dll
+  KhaozEngine.Render.Tests -> KhaozEngine.Render.Tests/bin/Release/net10.0/KhaozEngine.Render.Tests.dll
+Test run for KhaozEngine.Render.Tests/bin/Release/net10.0/KhaozEngine.Render.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+KhaozEngine.Render.Tests/bin/Release/net10.0/KhaozEngine.Render.Tests.dll
+[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v2.8.2+699d445a1a (64-bit .NET 10.0.13)
+[xUnit.net 00:00:00.13]   Discovering: KhaozEngine.Render.Tests
+[xUnit.net 00:00:00.86]   Discovered:  KhaozEngine.Render.Tests
+[xUnit.net 00:00:00.89]   Starting:    KhaozEngine.Render.Tests
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_on_a_surface_the_camera_follows_holds_like_a_still_one(preset: Native) [457 ms]
+  Standard Output Messages:
+ Native: largest frame to frame change 3.5% of the contrast at pixel 24 frame 72, centre pixel 24 mean 41.7% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_on_a_surface_the_camera_follows_holds_like_a_still_one(preset: UltraPerformance) [88 ms]
+  Standard Output Messages:
+ UltraPerformance: largest frame to frame change 2.7% of the contrast at pixel 24 frame 76, centre pixel 25 mean 81.7% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.Two_lines_narrower_than_a_texel_in_neighbouring_columns_hold_like_still_ones(preset: Quality, ahead: False) [95 ms]
+  Standard Output Messages:
+ Quality, on the wall: left largest frame to frame change 3.1% of the contrast at pixel 24 frame 76, centre pixel 24 mean 48.4% against coverage 37.5%, right largest frame to frame change 8.4% of the contrast at pixel 26 frame 68, centre pixel 26 mean 1.8% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.Two_lines_narrower_than_a_texel_in_neighbouring_columns_hold_like_still_ones(preset: Native, ahead: True) [107 ms]
+  Standard Output Messages:
+ Native, standing ahead: left largest frame to frame change 43.8% of the contrast at pixel 24 frame 64, centre pixel 24 mean 14.0% against coverage 37.5%, right largest frame to frame change 10.0% of the contrast at pixel 25 frame 70, centre pixel 25 mean 2.5% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalUpscalingGoldenTests.QualityUpscalingBeatsABilinearUpscaleOfTheSameFrame [810 ms]
+  Standard Output Messages:
+ HDR off, frame 48, Quality internal 213x120 of 320x180, ratio 0.665625
+ mean abs luma against the 8x box average: Quality upscale 0.01697, bilinear upscale 0.03419, share 0.4963 against a bound of 0.85
+ mean abs luma against the luma-weighted average: Quality upscale 0.01034, bilinear upscale 0.03158
+ bias: references 0.00962 apart, feature pixels 7677 on a ground of 0.0499: box 0.7277, weighted 0.6605, Quality 0.6183, bilinear 0.5640
+ 3 px bars: vertical reference contrast 0.1208, Quality keeps 0.867, bilinear keeps 0.641, horizontal reference contrast 0.1208, Quality keeps 0.856, bilinear keeps 0.512
+ 2 px bars: vertical reference contrast 0.1752, Quality keeps 0.905, bilinear keeps 0.542, horizontal reference contrast 0.1752, Quality keeps 0.927, bilinear keeps 0.502
+ 1.5 px bars: vertical reference contrast 0.2297, Quality keeps 0.764, bilinear keeps 0.490, horizontal reference contrast 0.2297, Quality keeps 0.779, bilinear keeps 0.135
+ 1.2 px bars: vertical reference contrast 0.2598, Quality keeps 0.718, bilinear keeps 0.188, horizontal reference contrast 0.2467, Quality keeps 0.719, bilinear keeps 0.210
+ 1 px bars: vertical reference contrast 0.2216, Quality keeps 0.463, bilinear keeps 0.082, horizontal reference contrast 0.2216, Quality keeps 0.604, bilinear keeps 0.113
+ control, Sharpness 0: Quality upscale 0.01725, share 0.5045
+ 3 px bars: vertical reference contrast 0.1208, Quality keeps 0.863, bilinear keeps 0.641, horizontal reference contrast 0.1208, Quality keeps 0.852, bilinear keeps 0.512
+ 2 px bars: vertical reference contrast 0.1752, Quality keeps 0.897, bilinear keeps 0.542, horizontal reference contrast 0.1752, Quality keeps 0.919, bilinear keeps 0.502
+ 1.5 px bars: vertical reference contrast 0.2297, Quality keeps 0.752, bilinear keeps 0.490, horizontal reference contrast 0.2297, Quality keeps 0.762, bilinear keeps 0.135
+ 1.2 px bars: vertical reference contrast 0.2598, Quality keeps 0.691, bilinear keeps 0.188, horizontal reference contrast 0.2467, Quality keeps 0.697, bilinear keeps 0.210
+ 1 px bars: vertical reference contrast 0.2216, Quality keeps 0.437, bilinear keeps 0.082, horizontal reference contrast 0.2216, Quality keeps 0.561, bilinear keeps 0.113
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.Two_lines_narrower_than_a_texel_in_neighbouring_columns_hold_like_still_ones(preset: Native, ahead: False) [92 ms]
+  Standard Output Messages:
+ Native, on the wall: left largest frame to frame change 3.5% of the contrast at pixel 24 frame 72, centre pixel 24 mean 41.7% against coverage 37.5%, right largest frame to frame change 10.0% of the contrast at pixel 25 frame 70, centre pixel 25 mean 2.5% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.Two_lines_narrower_than_a_texel_in_neighbouring_columns_hold_like_still_ones(preset: Quality, ahead: True) [74 ms]
+  Standard Output Messages:
+ Quality, standing ahead: left largest frame to frame change 3.1% of the contrast at pixel 24 frame 76, centre pixel 24 mean 48.4% against coverage 37.5%, right largest frame to frame change 49.9% of the contrast at pixel 25 frame 68, centre pixel 26 mean 1.8% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalMovingShadeRimGpuTests.A_reused_rim_scene_matches_a_fresh_scene_after_other_configurations [982 ms]
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_on_a_swaying_surface_holds_like_a_still_one(preset: Native, speed: 0.5) [75 ms]
+  Standard Output Messages:
+ Native at 0.5 px/frame: largest frame to frame change 5.8% of the contrast at frame 78, summed coverage mean 32.3% against 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalTextureLightGpuTests.Local_light_state_leaves_the_shared_scene_equal_to_a_fresh_scene [1 s]
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_on_a_swaying_surface_holds_like_a_still_one(preset: Native, speed: 0.300000012) [58 ms]
+  Standard Output Messages:
+ Native at 0.3 px/frame: largest frame to frame change 6.9% of the contrast at frame 78, summed coverage mean 38.5% against 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_on_a_swaying_surface_holds_like_a_still_one(preset: UltraPerformance, speed: 0.300000012) [37 ms]
+  Standard Output Messages:
+ UltraPerformance at 0.3 px/frame: largest frame to frame change 2.8% of the contrast at frame 76, summed coverage mean 38.1% against 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_keyed_thin_feature_leaves_no_trail_two_frames_after_it_passes(preset: UltraPerformance) [631 ms]
+  Standard Output Messages:
+ UltraPerformance: still 93% 93% 92% 92% 92% 92% 92% 92% 93% 93%, 0.3 px/frame: trail 0 px at frame 0 (5%: 0 px), trail peak 0%, kept least 75% at frame 77 mean 82%, 0.6 px/frame: trail 0 px at frame 0 (5%: 0 px), trail peak 0%, kept least 74% at frame 77 mean 81%, 0.9 px/frame: trail 0 px at frame 0 (5%: 0 px), trail peak 0%, kept least 89% at frame 77 mean 95%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_keyed_thin_feature_leaves_no_trail_two_frames_after_it_passes(preset: Quality) [702 ms]
+  Standard Output Messages:
+ Quality: still 77% 68% 83% 83% 62% 84% 86% 70% 73% 85%, 0.3 px/frame: trail 0 px at frame 0 (5%: 0 px), trail peak 0%, kept least 45% at frame 77 mean 58%, 0.6 px/frame: trail 0 px at frame 0 (5%: 0 px), trail peak 0%, kept least 44% at frame 76 mean 54%, 0.9 px/frame: trail 0 px at frame 0 (5%: 0 px), trail peak 0%, kept least 59% at frame 79 mean 75%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_surface_edge_the_jitter_crosses_holds_like_a_still_one(preset: Native, side: 1) [54 ms]
+  Standard Output Messages:
+ Native, surface edge half a texel into the column on side 1: largest frame to frame change 3.5% of the contrast at pixel 24 frame 72, centre pixel 24 mean 41.8% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_surface_edge_the_jitter_crosses_holds_like_a_still_one(preset: Quality, side: 1) [49 ms]
+  Standard Output Messages:
+ Quality, surface edge half a texel into the column on side 1: largest frame to frame change 3.8% of the contrast at pixel 24 frame 76, centre pixel 24 mean 37.1% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_surface_edge_the_jitter_crosses_holds_like_a_still_one(preset: Native, side: -1) [54 ms]
+  Standard Output Messages:
+ Native, surface edge half a texel into the column on side -1: largest frame to frame change 3.5% of the contrast at pixel 24 frame 72, centre pixel 24 mean 41.8% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalMovingShadeRimGpuTests.Moving_shadow_receivers_keep_their_leading_and_trailing_rims [1 s]
+  Standard Output Messages:
+ RIM hardware|Quality M 0.5 leading textured|0.015143|0.009889|0.010991|0.018509
+ RIM hardware|Quality M 0.5 leading flat|0.009307|0.006161|0.006161|0.000000
+ RIM hardware|Quality M 0.5 trailing textured|0.025954|0.016712|0.016825|0.018943
+ RIM hardware|Quality M 0.5 trailing flat|0.007357|0.005763|0.005763|0.000000
+ RIM hardware|Quality M 1.0 leading textured|0.002651|0.032110|0.004190|0.031816
+ RIM hardware|Quality M 1.0 leading flat|0.008298|0.007916|0.007916|0.000000
+ RIM hardware|Quality M 1.0 trailing textured|0.008827|0.038873|0.008396|0.035586
+ RIM hardware|Quality M 1.0 trailing flat|0.000223|0.000223|0.000223|0.000000
+ RIM hardware|Quality M 2.0 leading textured|0.008579|0.059533|0.013745|0.062212
+ RIM hardware|Quality M 2.0 leading flat|0.006845|0.014413|0.007637|0.006865
+ RIM hardware|Quality M 2.0 trailing textured|0.013438|0.055074|0.017487|0.056131
+ RIM hardware|Quality M 2.0 trailing flat|0.000969|0.000974|0.000974|0.000000
+ RIM hardware|Quality M 4.0 leading textured|0.011996|0.057573|0.020922|0.064929
+ RIM hardware|Quality M 4.0 leading flat|0.004933|0.046650|0.015150|0.031935
+ RIM hardware|Quality M 4.0 trailing textured|0.014590|0.052060|0.022490|0.066148
+ RIM hardware|Quality M 4.0 trailing flat|0.000272|0.000295|0.000295|0.000000
+ RIM hardware|Quality M 8.0 leading textured|0.012973|0.063464|0.013818|0.066294
+ RIM hardware|Quality M 8.0 leading flat|0.002920|0.090479|0.002939|0.088200
+ RIM hardware|Quality M 8.0 trailing textured|0.012343|0.054975|0.019911|0.063109
+ RIM hardware|Quality M 8.0 trailing flat|0.000966|0.000970|0.000970|0.000000
+ RIM hardware|Quality MS 1.0 leading textured|0.002994|0.032438|0.005283|0.031803
+ RIM hardware|Quality MS 1.0 leading flat|0.007375|0.010636|0.010598|0.008146
+ RIM hardware|Quality MS 1.0 trailing textured|0.007662|0.040020|0.010129|0.038593
+ RIM hardware|Quality MS 1.0 trailing flat|0.000292|0.000382|0.000382|0.000000
+ RIM hardware|Quality MS 2.0 leading textured|0.006965|0.058731|0.012725|0.062223
+ RIM hardware|Quality MS 2.0 leading flat|0.004955|0.016898|0.006985|0.013942
+ RIM hardware|Quality MS 2.0 trailing textured|0.012732|0.055214|0.017064|0.058579
+ RIM hardware|Quality MS 2.0 trailing flat|0.001078|0.001088|0.001088|0.000000
+ RIM hardware|Native M 0.5 leading textured|0.012493|0.011528|0.009799|0.018509
+ RIM hardware|Native M 0.5 leading flat|0.007753|0.005819|0.005819|0.000000
+ RIM hardware|Native M 0.5 trailing textured|0.018350|0.015813|0.013636|0.018943
+ RIM hardware|Native M 0.5 trailing flat|0.000904|0.000991|0.000991|0.000000
+ RIM hardware|Native M 1.0 leading textured|0.003324|0.033340|0.003530|0.031816
+ RIM hardware|Native M 1.0 leading flat|0.006394|0.006057|0.006057|0.000000
+ RIM hardware|Native M 1.0 trailing textured|0.008354|0.041675|0.009337|0.035586
+ RIM hardware|Native M 1.0 trailing flat|0.000057|0.000057|0.000057|0.000000
+ RIM hardware|Native M 2.0 leading textured|0.003089|0.064375|0.004923|0.062212
+ RIM hardware|Native M 2.0 leading flat|0.004578|0.011998|0.005249|0.006865
+ RIM hardware|Native M 2.0 trailing textured|0.006630|0.060717|0.009229|0.056131
+ RIM hardware|Native M 2.0 trailing flat|0.000057|0.000057|0.000057|0.000000
+ RIM hardware|Native M 4.0 leading textured|0.005155|0.063332|0.007646|0.064929
+ RIM hardware|Native M 4.0 leading flat|0.003686|0.035765|0.004113|0.031935
+ RIM hardware|Native M 4.0 trailing textured|0.006512|0.063677|0.009619|0.066148
+ RIM hardware|Native M 4.0 trailing flat|0.000035|0.000032|0.000032|0.000000
+ RIM hardware|Native M 8.0 leading textured|0.006627|0.066112|0.007464|0.066294
+ RIM hardware|Native M 8.0 leading flat|0.003057|0.090477|0.003117|0.088200
+ RIM hardware|Native M 8.0 trailing textured|0.006260|0.062652|0.009208|0.063109
+ RIM hardware|Native M 8.0 trailing flat|0.000077|0.000057|0.000057|0.000000
+ RIM hardware|Native MS 1.0 leading textured|0.003224|0.033450|0.003792|0.031803
+ RIM hardware|Native MS 1.0 leading flat|0.005254|0.010145|0.008003|0.008146
+ RIM hardware|Native MS 1.0 trailing textured|0.006772|0.041786|0.009372|0.038593
+ RIM hardware|Native MS 1.0 trailing flat|0.000140|0.000128|0.000128|0.000000
+ RIM hardware|Native MS 2.0 leading textured|0.003200|0.064709|0.005506|0.062223
+ RIM hardware|Native MS 2.0 leading flat|0.003932|0.016889|0.006388|0.013942
+ RIM hardware|Native MS 2.0 trailing textured|0.005893|0.062468|0.009381|0.058579
+ RIM hardware|Native MS 2.0 trailing flat|0.000140|0.000128|0.000128|0.000000
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_surface_edge_the_jitter_crosses_holds_like_a_still_one(preset: Quality, side: -1) [45 ms]
+  Standard Output Messages:
+ Quality, surface edge half a texel into the column on side -1: largest frame to frame change 3.8% of the contrast at pixel 24 frame 76, centre pixel 24 mean 37.1% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_against_the_sky_holds_like_one_on_a_wall(preset: Native) [49 ms]
+  Standard Output Messages:
+ Native: largest frame to frame change 3.5% of the contrast at pixel 24 frame 72, centre pixel 24 mean 41.7% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_against_the_sky_holds_like_one_on_a_wall(preset: Quality) [43 ms]
+  Standard Output Messages:
+ Quality: largest frame to frame change 3.8% of the contrast at pixel 24 frame 76, centre pixel 24 mean 37.1% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_against_the_sky_holds_like_one_on_a_wall(preset: UltraPerformance) [41 ms]
+  Standard Output Messages:
+ UltraPerformance: largest frame to frame change 2.7% of the contrast at pixel 24 frame 76, centre pixel 25 mean 81.7% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_still_nearer_surface_holds_like_a_still_one(preset: Native, side: 1) [43 ms]
+  Standard Output Messages:
+ Native, surface on side 1: largest frame to frame change 3.5% of the contrast at pixel 24 frame 64, centre pixel 24 mean 41.0% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_still_nearer_surface_holds_like_a_still_one(preset: UltraPerformance, side: -1) [41 ms]
+  Standard Output Messages:
+ UltraPerformance, surface on side -1: largest frame to frame change 2.7% of the contrast at pixel 24 frame 76, centre pixel 25 mean 81.6% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_still_nearer_surface_holds_like_a_still_one(preset: Quality, side: 1) [43 ms]
+  Standard Output Messages:
+ Quality, surface on side 1: largest frame to frame change 3.8% of the contrast at pixel 24 frame 76, centre pixel 24 mean 37.0% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_still_nearer_surface_holds_like_a_still_one(preset: UltraPerformance, side: 1) [38 ms]
+  Standard Output Messages:
+ UltraPerformance, surface on side 1: largest frame to frame change 2.8% of the contrast at pixel 24 frame 76, centre pixel 25 mean 81.4% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_still_nearer_surface_holds_like_a_still_one(preset: Quality, side: -1) [41 ms]
+  Standard Output Messages:
+ Quality, surface on side -1: largest frame to frame change 3.9% of the contrast at pixel 24 frame 76, centre pixel 24 mean 35.5% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_narrower_than_a_texel_beside_a_still_nearer_surface_holds_like_a_still_one(preset: Native, side: -1) [40 ms]
+  Standard Output Messages:
+ Native, surface on side -1: largest frame to frame change 3.6% of the contrast at pixel 24 frame 72, centre pixel 24 mean 40.4% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_nearer_surface_crossing_a_held_line_carries_no_ghost_of_it(preset: UltraPerformance) [235 ms]
+  Standard Output Messages:
+ UltraPerformance: 0.1 px/frame: ghost 0 px at frame 0 (5%: 0 px), peak 3% at pixel 49 frame 69, 0.3 px/frame: ghost 1 px at frame 68 (5%: 1 px), peak 66% at pixel 50 frame 68, 0.6 px/frame: ghost 1 px at frame 80 (5%: 1 px), peak 50% at pixel 50 frame 80, 0.9 px/frame: ghost 0 px at frame 0 (5%: 0 px), peak 2% at pixel 51 frame 73
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_nearer_surface_crossing_a_held_line_carries_no_ghost_of_it(preset: Native) [281 ms]
+  Standard Output Messages:
+ Native: 0.1 px/frame: ghost 1 px at frame 160 (5%: 1 px), peak 22% at pixel 48 frame 160, 0.3 px/frame: ghost 0 px at frame 0 (5%: 0 px), peak 2% at pixel 49 frame 97, 0.6 px/frame: ghost 0 px at frame 0 (5%: 0 px), peak 1% at pixel 43 frame 68, 0.9 px/frame: ghost 0 px at frame 0 (5%: 0 px), peak 2% at pixel 49 frame 73
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_nearer_surface_crossing_a_held_line_carries_no_ghost_of_it(preset: Quality) [256 ms]
+  Standard Output Messages:
+ Quality: 0.1 px/frame: ghost 1 px at frame 76 (5%: 1 px), peak 40% at pixel 48 frame 77, 0.3 px/frame: ghost 0 px at frame 0 (5%: 0 px), peak 3% at pixel 50 frame 94, 0.6 px/frame: ghost 0 px at frame 0 (5%: 0 px), peak 2% at pixel 45 frame 73, 0.9 px/frame: ghost 0 px at frame 0 (5%: 0 px), peak 1% at pixel 50 frame 66
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_against_the_sky_beside_a_still_nearer_surface_holds_away_from_the_centre_as_at_it(preset: UltraPerformance) [74 ms]
+  Standard Output Messages:
+ UltraPerformance: centred largest frame to frame change 2.7% of the contrast at pixel 24 frame 76, centre pixel 25 mean 81.5% against coverage 37.5%, in the corner largest frame to frame change 2.7% of the contrast at pixel 6 frame 76, centre pixel 7 mean 81.6% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_against_the_sky_beside_a_still_nearer_surface_holds_away_from_the_centre_as_at_it(preset: Quality) [73 ms]
+  Standard Output Messages:
+ Quality: centred largest frame to frame change 3.9% of the contrast at pixel 24 frame 76, centre pixel 24 mean 35.5% against coverage 37.5%, in the corner largest frame to frame change 3.9% of the contrast at pixel 6 frame 76, centre pixel 6 mean 35.5% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_line_against_the_sky_beside_a_still_nearer_surface_holds_away_from_the_centre_as_at_it(preset: Native) [70 ms]
+  Standard Output Messages:
+ Native: centred largest frame to frame change 3.6% of the contrast at pixel 24 frame 72, centre pixel 24 mean 40.4% against coverage 37.5%, in the corner largest frame to frame change 3.6% of the contrast at pixel 6 frame 72, centre pixel 6 mean 40.4% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_keyed_thin_feature_keeps_half_its_still_contrast_while_it_moves(preset: UltraPerformance) [473 ms]
+  Standard Output Messages:
+ UltraPerformance: still 93% 93% 92% 92% 92% 92% 92% 92% 93% 93%, 0.3 px/frame: trail 0 px at frame 0 (5%: 0 px), trail peak 0%, kept least 75% at frame 77 mean 82%, 0.6 px/frame: trail 0 px at frame 0 (5%: 0 px), trail peak 0%, kept least 74% at frame 77 mean 81%, 0.9 px/frame: trail 0 px at frame 0 (5%: 0 px), trail peak 0%, kept least 89% at frame 77 mean 95%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_keyed_thin_feature_keeps_half_its_still_contrast_while_it_moves(preset: Quality) [518 ms]
+  Standard Output Messages:
+ Quality: still 77% 68% 83% 83% 62% 84% 86% 70% 73% 85%, 0.3 px/frame: trail 0 px at frame 0 (5%: 0 px), trail peak 0%, kept least 45% at frame 77 mean 58%, 0.6 px/frame: trail 0 px at frame 0 (5%: 0 px), trail peak 0%, kept least 44% at frame 76 mean 54%, 0.9 px/frame: trail 0 px at frame 0 (5%: 0 px), trail peak 0%, kept least 59% at frame 79 mean 75%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_thin_ridge_takes_a_lock_and_the_lock_holds_its_luma_against_the_clip [6 ms]
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_blade_narrower_than_a_texel_swaying_over_still_ground_holds_like_a_still_one(preset: UltraPerformance) [34 ms]
+  Standard Output Messages:
+ UltraPerformance at 0.1 px/frame: largest frame to frame change 6.0% of the contrast at frame 65, summed coverage mean 37.1% against 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_blade_narrower_than_a_texel_swaying_over_still_ground_holds_like_a_still_one(preset: Native) [36 ms]
+  Standard Output Messages:
+ Native at 0.1 px/frame: largest frame to frame change 8.7% of the contrast at frame 65, summed coverage mean 40.6% against 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_blade_narrower_than_a_texel_swaying_over_still_ground_holds_like_a_still_one(preset: Quality) [34 ms]
+  Standard Output Messages:
+ Quality at 0.1 px/frame: largest frame to frame change 9.3% of the contrast at frame 65, summed coverage mean 22.4% against 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.Of_three_lines_narrower_than_a_texel_side_by_side_an_outer_one_holds_like_a_still_one(preset: Quality) [34 ms]
+  Standard Output Messages:
+ Quality: left largest frame to frame change 3.1% of the contrast at pixel 24 frame 76, centre pixel 24 mean 48.4% against coverage 37.5%, middle largest frame to frame change 132.3% of the contrast at pixel 25 frame 72, centre pixel 26 mean 41.2% against coverage 37.5%, right largest frame to frame change 72.2% of the contrast at pixel 27 frame 72, centre pixel 27 mean 19.6% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.Of_three_lines_narrower_than_a_texel_side_by_side_an_outer_one_holds_like_a_still_one(preset: Native) [38 ms]
+  Standard Output Messages:
+ Native: left largest frame to frame change 43.8% of the contrast at pixel 24 frame 64, centre pixel 24 mean 14.0% against coverage 37.5%, middle largest frame to frame change 102.6% of the contrast at pixel 25 frame 68, centre pixel 25 mean 38.1% against coverage 37.5%, right largest frame to frame change 3.5% of the contrast at pixel 26 frame 72, centre pixel 26 mean 41.8% against coverage 37.5%
+
+
+[xUnit.net 00:00:06.34]   Finished:    KhaozEngine.Render.Tests
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_still_line_narrower_than_a_texel_holds_steady_at_its_coverage(preset: Quality) [29 ms]
+  Standard Output Messages:
+ Quality: largest frame to frame change 3.8% of the contrast at pixel 24 frame 76, centre pixel 24 mean 37.1% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_still_line_narrower_than_a_texel_holds_steady_at_its_coverage(preset: UltraPerformance) [31 ms]
+  Standard Output Messages:
+ UltraPerformance: largest frame to frame change 2.7% of the contrast at pixel 24 frame 76, centre pixel 25 mean 81.7% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_still_line_narrower_than_a_texel_holds_steady_at_its_coverage(preset: Native) [34 ms]
+  Standard Output Messages:
+ Native: largest frame to frame change 3.5% of the contrast at pixel 24 frame 72, centre pixel 24 mean 41.7% against coverage 37.5%
+
+
+  Passed KhaozEngine.Tests.Gpu.TemporalResolveLockGpuTests.A_thin_feature_moving_without_motion_trails_no_more_than_one_internal_texel [126 ms]
+  Standard Output Messages:
+ Trail two frames after the line passed, allowance 3 px. 0.3 px/frame: trail 0 px at frame 0 (5%: 0 px), trail peak 0%, kept least 9% at frame 63 mean 20%, 0.6 px/frame: trail 0 px at frame 0 (5%: 0 px), trail peak 2%, kept least 4% at frame 21 mean 13%, 0.9 px/frame: trail 1 px at frame 30 (5%: 1 px), trail peak 11%, kept least 1% at frame 50 mean 9%
+
+
+
+Test Run Successful.
+Total tests: 46
+     Passed: 46
+ Total time: 6.7079 Seconds
+build-slot: exit=0 waited=0.027s ran=16.186s

@@ -234,26 +234,38 @@ namespace KhaozEngine.Tests.Gpu
         // amendment leaves every one of them as it was on Metal.
         static readonly Dictionary<string, (double Band, double Tail)> HardwareControl = new()
         {
-            ["Quality C pan 1.0 px"] = (0.0105, 0.0076), ["Quality C pan 2.0 px"] = (0.0055, 0.0039),
-            ["Quality C pan 4.0 px"] = (0.0152, 0.0120), ["Quality C pan 8.0 px"] = (0.0138, 0.0105),
-            ["Native C pan 1.0 px"] = (0.0046, 0.0037), ["Native C pan 2.0 px"] = (0.0046, 0.0035),
-            ["Native C pan 4.0 px"] = (0.0061, 0.0044), ["Native C pan 8.0 px"] = (0.0055, 0.0038),
+            ["Quality C pan 1.0 px"] = (0.0105, 0.0076),
+            ["Quality C pan 2.0 px"] = (0.0055, 0.0039),
+            ["Quality C pan 4.0 px"] = (0.0152, 0.0120),
+            ["Quality C pan 8.0 px"] = (0.0138, 0.0105),
+            ["Native C pan 1.0 px"] = (0.0046, 0.0037),
+            ["Native C pan 2.0 px"] = (0.0046, 0.0035),
+            ["Native C pan 4.0 px"] = (0.0061, 0.0044),
+            ["Native C pan 8.0 px"] = (0.0055, 0.0038),
         };
 
         static readonly Dictionary<string, (double Band, double Tail)> WarpControl = new()
         {
-            ["Quality C pan 1.0 px"] = (0.0105, 0.0076), ["Quality C pan 2.0 px"] = (0.0055, 0.0039),
-            ["Quality C pan 4.0 px"] = (0.0153, 0.0121), ["Quality C pan 8.0 px"] = (0.0138, 0.0105),
-            ["Native C pan 1.0 px"] = (0.0045, 0.0036), ["Native C pan 2.0 px"] = (0.0045, 0.0035),
-            ["Native C pan 4.0 px"] = (0.0060, 0.0044), ["Native C pan 8.0 px"] = (0.0056, 0.0038),
+            ["Quality C pan 1.0 px"] = (0.0105, 0.0076),
+            ["Quality C pan 2.0 px"] = (0.0055, 0.0039),
+            ["Quality C pan 4.0 px"] = (0.0153, 0.0121),
+            ["Quality C pan 8.0 px"] = (0.0138, 0.0105),
+            ["Native C pan 1.0 px"] = (0.0045, 0.0036),
+            ["Native C pan 2.0 px"] = (0.0045, 0.0035),
+            ["Native C pan 4.0 px"] = (0.0060, 0.0044),
+            ["Native C pan 8.0 px"] = (0.0056, 0.0038),
         };
 
         static readonly Dictionary<string, (double Band, double Tail)> LavapipeControl = new()
         {
-            ["Quality C pan 1.0 px"] = (0.0105, 0.0076), ["Quality C pan 2.0 px"] = (0.0056, 0.0040),
-            ["Quality C pan 4.0 px"] = (0.0150, 0.0120), ["Quality C pan 8.0 px"] = (0.0139, 0.0105),
-            ["Native C pan 1.0 px"] = (0.0046, 0.0036), ["Native C pan 2.0 px"] = (0.0045, 0.0034),
-            ["Native C pan 4.0 px"] = (0.0060, 0.0045), ["Native C pan 8.0 px"] = (0.0055, 0.0038),
+            ["Quality C pan 1.0 px"] = (0.0105, 0.0076),
+            ["Quality C pan 2.0 px"] = (0.0056, 0.0040),
+            ["Quality C pan 4.0 px"] = (0.0150, 0.0120),
+            ["Quality C pan 8.0 px"] = (0.0139, 0.0105),
+            ["Native C pan 1.0 px"] = (0.0046, 0.0036),
+            ["Native C pan 2.0 px"] = (0.0045, 0.0034),
+            ["Native C pan 4.0 px"] = (0.0060, 0.0045),
+            ["Native C pan 8.0 px"] = (0.0055, 0.0038),
         };
 
         static Dictionary<string, (double Band, double Tail)> Control => TemporalDeviceClass.Warp ? WarpControl
@@ -301,6 +313,7 @@ namespace KhaozEngine.Tests.Gpu
                 byte[][] frames = TemporalAcceptance.Sequence(W, H,
                     s => stage.Setup(s, AntiAliasing.Temporal, c.Preset, holdTexels: 1f), stage.Draw, FirstMeasured,
                     Measured);
+                TemporalShadeEvidence.Save(c.Name, frames, reference, W, H);
                 var m = new ShadowEdgeMeasure(W, H, stage.Receiver(), c.Sign, frames, reference, FirstMeasured);
 
                 output.WriteLine($"{c.Name}: edge travel over the receiver about {c.RelativeTravel:0.0} px a frame, "
@@ -311,10 +324,10 @@ namespace KhaozEngine.Tests.Gpu
                 var r = new Dictionary<string, ShadowEdgeRegion>();
                 foreach ((string name, ShadowEdgeRegion region) in m.Regions)
                 {
-                    output.WriteLine($"  {name,-15} {region.Count,6}   {region.Mean:0.0000}   {region.P95:0.0000}   "
-                        + $"{region.Bias,7:0.0000}  {region.GrainOut:0.0000}     {region.GrainRef:0.0000}     "
-                        + $"{region.ErrorGrain:0.0000}     {region.Change:0.0000}   {region.ChangeRef:0.0000}   "
-                        + $"{region.ChangeError:0.0000}");
+                    output.WriteLine($"  {name,-15} {region.Count,6}   {region.Mean:0.000000}   {region.P95:0.000000}   "
+                        + $"{region.Bias,7:0.000000}  {region.GrainOut:0.000000}     {region.GrainRef:0.000000}     "
+                        + $"{region.ErrorGrain:0.000000}     {region.Change:0.000000}   {region.ChangeRef:0.000000}   "
+                        + $"{region.ChangeError:0.000000}");
                     Assert.True(region.Count > 0, $"{c.Name}: the {name} region holds no pixels");
                     r[name] = region;
                 }
@@ -326,14 +339,14 @@ namespace KhaozEngine.Tests.Gpu
                 output.WriteLine($"  flat signed error x1000, {bins}: {m.Profile(flat: true)}");
                 Assert.True(m.ReferenceContrast > 0.05,
                     $"{c.Name}: the reference shows no shadow edge, contrast {m.ReferenceContrast:0.000}");
-                summary.Add($"{c.Name,-38} {r["band textured"].Mean:0.0000} {r["tail textured"].Mean:0.0000} "
-                    + $"{r["far textured"].Mean:0.0000}  {r["band flat"].Mean:0.0000} {r["tail flat"].Mean:0.0000} "
-                    + $"{r["far flat"].Mean:0.0000}  {r["band textured"].GrainOut:0.0000} "
-                    + $"{r["band textured"].GrainRef:0.0000} {r["band textured"].ErrorGrain:0.0000}  "
-                    + $"{r["band flat"].ErrorGrain:0.0000}  {r["band textured"].Change:0.0000} "
-                    + $"{r["band textured"].ChangeRef:0.0000} {r["band textured"].ChangeError:0.0000}  "
-                    + $"{r["band flat"].Change:0.0000} {r["band flat"].ChangeRef:0.0000} "
-                    + $"{r["band flat"].ChangeError:0.0000}");
+                summary.Add($"{c.Name,-38} {r["band textured"].Mean:0.000000} {r["tail textured"].Mean:0.000000} "
+                    + $"{r["far textured"].Mean:0.000000}  {r["band flat"].Mean:0.000000} {r["tail flat"].Mean:0.000000} "
+                    + $"{r["far flat"].Mean:0.000000}  {r["band textured"].GrainOut:0.000000} "
+                    + $"{r["band textured"].GrainRef:0.000000} {r["band textured"].ErrorGrain:0.000000}  "
+                    + $"{r["band flat"].ErrorGrain:0.000000}  {r["band textured"].Change:0.000000} "
+                    + $"{r["band textured"].ChangeRef:0.000000} {r["band textured"].ChangeError:0.000000}  "
+                    + $"{r["band flat"].Change:0.000000} {r["band flat"].ChangeRef:0.000000} "
+                    + $"{r["band flat"].ChangeError:0.000000}");
             }
             output.WriteLine("");
             output.WriteLine("summary, mean absolute luma error, then the textured band's grain out, ref and error, "
@@ -353,30 +366,33 @@ namespace KhaozEngine.Tests.Gpu
                 ShadowEdgeRegion band = r["band textured"];
                 if (c.Kind == MovingShadeKind.Shadow ? MathF.Abs(c.Shadow) > 1f : c.Motion >= 1f)
                     Check(band.GrainOut <= BandGrainRatio * band.GrainRef,
-                        $"{c.Name}: textured band grain {band.GrainOut:0.0000} above {BandGrainRatio} times the "
-                        + $"reference's {band.GrainRef:0.0000}");
+                        $"{c.Name}: textured band grain {band.GrainOut:0.000000} above {BandGrainRatio} times the "
+                        + $"reference's {band.GrainRef:0.000000}");
                 double tail = r["tail textured"].Mean;
                 if (c.Kind == MovingShadeKind.Shadow && MathF.Abs(c.Shadow) > 1f)
                 {
-                    Case slow = c with { Name = c.Name.Replace($"{MathF.Abs(c.Shadow):0.0} px", "1.0 px"),
-                        Shadow = c.Sign };
+                    Case slow = c with
+                    {
+                        Name = c.Name.Replace($"{MathF.Abs(c.Shadow):0.0} px", "1.0 px"),
+                        Shadow = c.Sign
+                    };
                     double slowTail = measured[slow]["tail textured"].Mean;
                     Check(tail <= FastTailRatio * slowTail,
-                        $"{c.Name}: textured tail {tail:0.0000} above {FastTailRatio} times the 1 px tail {slowTail:0.0000}");
+                        $"{c.Name}: textured tail {tail:0.000000} above {FastTailRatio} times the 1 px tail {slowTail:0.000000}");
                 }
                 else if (c.Kind == MovingShadeKind.Object && c.Motion >= 1f)
                 {
                     double far = r["far textured"].Mean;
                     Check(tail <= far + MovingTailExcess,
-                        $"{c.Name}: textured tail {tail:0.0000} more than {MovingTailExcess} above its control {far:0.0000}");
+                        $"{c.Name}: textured tail {tail:0.000000} more than {MovingTailExcess} above its control {far:0.000000}");
                 }
                 else if (c.Kind == MovingShadeKind.Pan)
                 {
                     (double before, double beforeTail) = Control[c.Name];
                     Check(band.Mean <= (1 + ControlTolerance) * before,
-                        $"{c.Name}: textured band {band.Mean:0.0000} above {before:0.0000} plus a tenth");
+                        $"{c.Name}: textured band {band.Mean:0.000000} above {before:0.000000} plus a tenth");
                     Check(tail <= (1 + ControlTolerance) * beforeTail,
-                        $"{c.Name}: textured tail {tail:0.0000} above {beforeTail:0.0000} plus a tenth");
+                        $"{c.Name}: textured tail {tail:0.000000} above {beforeTail:0.000000} plus a tenth");
                 }
             }
             Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));

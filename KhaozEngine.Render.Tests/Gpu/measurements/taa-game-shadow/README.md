@@ -1,5 +1,7 @@
 # Coarse shadow edge grain diagnosis
 
+The later [lock luma kill checkpoint](lock-luma-kill/README.md) records the implementation candidates and broader guard failures.
+
 Measured on Metal native from engine base `dcb0599e3`. No renderer change is proposed for this commit.
 
 `TemporalGameShadowGrainGpuTests.Coarse_shadow_texels_on_a_swaying_faceted_receiver_report_grain_against_fxaa`

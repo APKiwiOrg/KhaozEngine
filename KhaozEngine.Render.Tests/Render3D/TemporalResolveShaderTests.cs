@@ -40,6 +40,9 @@ namespace KhaozEngine.Tests.Render3D
             { "const float LockReactiveRelease = 2.0;", TemporalResolveTuning.LockReactiveRelease, 2f },
             { "const float LockDecay = 0.125;", TemporalResolveTuning.LockDecay, 0.125f },
             { "const float LockHoldGain = 2.0;", TemporalResolveTuning.LockHoldGain, 2f },
+            { "const float LockLumaRelative = 0.1;", TemporalResolveTuning.LockLumaRelative, 0.1f },
+            { "const float LockLumaAbsolute = 0.02;", TemporalResolveTuning.LockLumaAbsolute, 0.02f },
+            { "const float LockLumaCornerAbsolute = 0.005;", TemporalResolveTuning.LockLumaCornerAbsolute, 0.005f },
             { "const float LockEdgeRelease = 1.0;", TemporalResolveTuning.LockEdgeRelease, 1f },
             { "const float LockEdgeMotionFraction = 0.001953125;", TemporalResolveTuning.LockEdgeMotionFraction, 1f / 512f },
             { "const float LockEdgeFloorInternalPixels = 0.001;", TemporalResolveTuning.LockEdgeFloorInternalPixels, 1e-3f },
@@ -436,7 +439,7 @@ namespace KhaozEngine.Tests.Render3D
             // there even where the depth test is skipped, and never drop a lock where nothing moves: an edge must pass an
             // absolute floor as well, above the float rounding of a sky texel's own motion under a still camera.
             string core = ShaderSources.TemporalResolveCoreGlsl;
-            Assert.Contains("float lockValue = useHistory && !heldFromFarther "
+            Assert.Contains("precise float lockValue = useHistory && !heldFromFarther "
                 + "? max(historyState.y - LockDecay, 0.0) : 0.0;", core, StringComparison.Ordinal);
             Assert.Contains("bool movingEdge = edgeMotion > max(LockEdgeFloorInternalPixels,", core,
                 StringComparison.Ordinal);

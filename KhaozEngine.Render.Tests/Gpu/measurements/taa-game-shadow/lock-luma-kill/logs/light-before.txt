@@ -1,0 +1,79 @@
+  KhaozEngine.CodeHealth.Analyzers -> KhaozEngine.CodeHealth.Analyzers/bin/Release/netstandard2.0/KhaozEngine.CodeHealth.Analyzers.dll
+  KhaozEngine.Imaging -> KhaozEngine.Imaging/bin/Release/net10.0/KhaozEngine.Imaging.dll
+  KhaozEngine.Platform -> KhaozEngine.Platform/bin/Release/net10.0/KhaozEngine.Platform.dll
+  KhaozEngine.Attachments -> KhaozEngine.Attachments/bin/Release/net10.0/KhaozEngine.Attachments.dll
+  KhaozEngine.Netcode.Abstractions -> KhaozEngine.Netcode.Abstractions/bin/Release/net10.0/KhaozEngine.Netcode.Abstractions.dll
+  KhaozEngine.BugReports.Contracts -> KhaozEngine.BugReports.Contracts/bin/Release/net10.0/KhaozEngine.BugReports.Contracts.dll
+  KhaozEngine.Collision -> KhaozEngine.Collision/bin/Release/net10.0/KhaozEngine.Collision.dll
+  KhaozEngine.Physics -> KhaozEngine.Physics/bin/Release/net10.0/KhaozEngine.Physics.dll
+  KhaozEngine.TestSupport -> KhaozEngine.TestSupport/bin/Release/net10.0/KhaozEngine.TestSupport.dll
+  KhaozEngine.Primitives -> KhaozEngine.Primitives/bin/Release/net10.0/KhaozEngine.Primitives.dll
+  KhaozEngine.Serialization -> KhaozEngine.Serialization/bin/Release/net10.0/KhaozEngine.Serialization.dll
+  KhaozEngine.Diagnostics -> KhaozEngine.Diagnostics/bin/Release/net10.0/KhaozEngine.Diagnostics.dll
+  KhaozEngine.Http -> KhaozEngine.Http/bin/Release/net10.0/KhaozEngine.Http.dll
+  KhaozEngine.Terrain -> KhaozEngine.Terrain/bin/Release/net10.0/KhaozEngine.Terrain.dll
+  KhaozEngine.Determinism -> KhaozEngine.Determinism/bin/Release/net10.0/KhaozEngine.Determinism.dll
+  KhaozEngine.App -> KhaozEngine.App/bin/Release/net10.0/KhaozEngine.App.dll
+  KhaozEngine.Locomotion -> KhaozEngine.Locomotion/bin/Release/net10.0/KhaozEngine.Locomotion.dll
+  KhaozEngine.Updates -> KhaozEngine.Updates/bin/Release/net10.0/KhaozEngine.Updates.dll
+  KhaozEngine.Netcode -> KhaozEngine.Netcode/bin/Release/net10.0/KhaozEngine.Netcode.dll
+  KhaozEngine.Gpu -> KhaozEngine.Gpu/bin/Release/net10.0/KhaozEngine.Gpu.dll
+  KhaozEngine.Content -> KhaozEngine.Content/bin/Release/net10.0/KhaozEngine.Content.dll
+  KhaozEngine.BugReports -> KhaozEngine.BugReports/bin/Release/net10.0/KhaozEngine.BugReports.dll
+  KhaozEngine.Particles -> KhaozEngine.Particles/bin/Release/net10.0/KhaozEngine.Particles.dll
+  KhaozEngine.Simulation -> KhaozEngine.Simulation/bin/Release/net10.0/KhaozEngine.Simulation.dll
+  KhaozEngine.Navigation -> KhaozEngine.Navigation/bin/Release/net10.0/KhaozEngine.Navigation.dll
+  KhaozEngine.TileWorld -> KhaozEngine.TileWorld/bin/Release/net10.0/KhaozEngine.TileWorld.dll
+  KhaozEngine.Gpu.Metal -> KhaozEngine.Gpu.Metal/bin/Release/net10.0/KhaozEngine.Gpu.Metal.dll
+  KhaozEngine.Gpu.Vulkan -> KhaozEngine.Gpu.Vulkan/bin/Release/net10.0/KhaozEngine.Gpu.Vulkan.dll
+  KhaozEngine.MapDoc -> KhaozEngine.MapDoc/bin/Release/net10.0/KhaozEngine.MapDoc.dll
+  KhaozEngine.Gpu.D3D11 -> KhaozEngine.Gpu.D3D11/bin/Release/net10.0/KhaozEngine.Gpu.D3D11.dll
+  KhaozEngine.Ecs -> KhaozEngine.Ecs/bin/Release/net10.0/KhaozEngine.Ecs.dll
+  KhaozEngine.Physics.Bepu -> KhaozEngine.Physics.Bepu/bin/Release/net10.0/KhaozEngine.Physics.Bepu.dll
+  KhaozEngine.Windowing -> KhaozEngine.Windowing/bin/Release/net10.0/KhaozEngine.Windowing.dll
+  KhaozEngine.Gpu.TestKit -> KhaozEngine.Gpu.TestKit/bin/Release/net10.0/KhaozEngine.Gpu.TestKit.dll
+  KhaozEngine.Dungeon -> KhaozEngine.Dungeon/bin/Release/net10.0/KhaozEngine.Dungeon.dll
+  KhaozEngine.TestSupport.Windowing -> KhaozEngine.TestSupport.Windowing/bin/Release/net10.0/KhaozEngine.TestSupport.Windowing.dll
+  KhaozEngine.Render2D -> KhaozEngine.Render2D/bin/Release/net10.0/KhaozEngine.Render2D.dll
+  KhaozEngine.TestSupport.Gpu -> KhaozEngine.TestSupport.Gpu/bin/Release/net10.0/KhaozEngine.TestSupport.Gpu.dll
+  KhaozEngine.Snapshot -> KhaozEngine.Snapshot/bin/Release/net10.0/KhaozEngine.Snapshot.dll
+  KhaozEngine.Render3D -> KhaozEngine.Render3D/bin/Release/net10.0/KhaozEngine.Render3D.dll
+  KhaozEngine.Telegraphs -> KhaozEngine.Telegraphs/bin/Release/net10.0/KhaozEngine.Telegraphs.dll
+  KhaozEngine.Particles.Render3D -> KhaozEngine.Particles.Render3D/bin/Release/net10.0/KhaozEngine.Particles.Render3D.dll
+  KhaozEngine.Telegraphs.Render3D -> KhaozEngine.Telegraphs.Render3D/bin/Release/net10.0/KhaozEngine.Telegraphs.Render3D.dll
+  KhaozEngine.Terrain.Render3D -> KhaozEngine.Terrain.Render3D/bin/Release/net10.0/KhaozEngine.Terrain.Render3D.dll
+  KhaozEngine.Attachments.Render3D -> KhaozEngine.Attachments.Render3D/bin/Release/net10.0/KhaozEngine.Attachments.Render3D.dll
+  KhaozEngine.Render3D.Ecs -> KhaozEngine.Render3D.Ecs/bin/Release/net10.0/KhaozEngine.Render3D.Ecs.dll
+  KhaozEngine.Gui -> KhaozEngine.Gui/bin/Release/net10.0/KhaozEngine.Gui.dll
+  KhaozEngine.Snapshot.Render3D -> KhaozEngine.Snapshot.Render3D/bin/Release/net10.0/KhaozEngine.Snapshot.Render3D.dll
+  KhaozEngine.TileWorld.Render3D -> KhaozEngine.TileWorld.Render3D/bin/Release/net10.0/KhaozEngine.TileWorld.Render3D.dll
+  KhaozEngine.ServerStatus -> KhaozEngine.ServerStatus/bin/Release/net10.0/KhaozEngine.ServerStatus.dll
+  SnapshotTool -> SnapshotTool/bin/Release/net10.0/SnapshotTool.dll
+  KhaozEngine.Game -> KhaozEngine.Game/bin/Release/net10.0/KhaozEngine.Game.dll
+  KhaozEngine.Game.Render3D -> KhaozEngine.Game.Render3D/bin/Release/net10.0/KhaozEngine.Game.Render3D.dll
+  KhaozEngine.BugReports.Client -> KhaozEngine.BugReports.Client/bin/Release/net10.0/KhaozEngine.BugReports.Client.dll
+  KhaozEngine.Render.Tests -> KhaozEngine.Render.Tests/bin/Release/net10.0/KhaozEngine.Render.Tests.dll
+Test run for KhaozEngine.Render.Tests/bin/Release/net10.0/KhaozEngine.Render.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+KhaozEngine.Render.Tests/bin/Release/net10.0/KhaozEngine.Render.Tests.dll
+[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v2.8.2+699d445a1a (64-bit .NET 10.0.13)
+[xUnit.net 00:00:00.27]   Discovering: KhaozEngine.Render.Tests
+[xUnit.net 00:00:01.17]   Discovered:  KhaozEngine.Render.Tests
+[xUnit.net 00:00:01.19]   Starting:    KhaozEngine.Render.Tests
+[xUnit.net 00:00:03.69]   Finished:    KhaozEngine.Render.Tests
+  Passed KhaozEngine.Tests.Gpu.TemporalTextureLightGpuTests.Dark_texture_and_animated_local_light_keep_detail_stable [2 s]
+  Standard Output Messages:
+ Texture light dark Native hardware: error 0.000360, error grain 0.000356, change error 0.000045, mean luma 0.004197.
+ Texture light dark Quality hardware: error 0.001003, error grain 0.000877, change error 0.000085, mean luma 0.004197.
+ Texture light flicker Native hardware: error 0.014685, error grain 0.005503, change error 0.010689, mean luma 0.024637.
+ Texture light flicker Quality hardware: error 0.016049, error grain 0.005340, change error 0.011537, mean luma 0.024637.
+ Texture light moving Native hardware: error 0.010694, error grain 0.003822, change error 0.003290, mean luma 0.021647.
+ Texture light moving Quality hardware: error 0.012462, error grain 0.004421, change error 0.003293, mean luma 0.021647.
+
+
+
+Test Run Successful.
+Total tests: 1
+     Passed: 1
+ Total time: 5.0598 Seconds
+build-slot: exit=0 waited=0.076s ran=135.547s

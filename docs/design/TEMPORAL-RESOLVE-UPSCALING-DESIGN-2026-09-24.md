@@ -1168,3 +1168,44 @@ and changed these details. Its contract amendment blocks carry the evidence.
     Vulkan, a mean of about zero. The largest rise is the moving field on Direct3D 11, +0.15 ms at 1440p Native and
     +0.27 ms at 3456x2234 Quality, where the ring now runs on moving pixels. Both Vulkan legs measure the same case
     flat or lower.
+
+35. Proposed lock luma kill, blocked in validation. The
+    [diagnostic archive c1d32238a](https://github.com/APKiwiOrg/KhaozEngine/commit/c1d32238a) attributes the
+    Grimhollow shadow-edge white dots to refreshed and carried thin-feature locks, including carried locks over a
+    now-flat 3x3. Its effective diagnostic compares the current 3x3 mean weighted luma with four reprojected history
+    ring taps plus a bilinear centre, and clears the lock and its hold when `1 - min/max` exceeds 0.1. Unlike the
+    variance-box evidence, it is not diluted by a wide texture box. It adds no stored history, target or uniform.
+
+    The implementation adds an absolute weighted-luma change floor of 0.02, one absolute ridge step, to protect
+    near-black texture from large relative changes with tiny absolute changes. It reuses the four ring taps with
+    the existing shading release. A locked pixel whose ring already ran adds one centre fetch, while a locked
+    pixel whose old ring did not run adds five bilinear fetches. An unlocked pixel adds none. The latest candidate
+    confines the rule to Native and Quality through `ShadingMaxUpscale`, and each current corner must confirm
+    the mean change's direction against its history ring tap by 0.005. The corners come from the existing gather.
+    Precise lock arithmetic restores exact fused and split entry identity after the new conditional changed its
+    rounding by one to four half-float steps. No timing benchmark has been run.
+
+    This is not accepted production tuning. The mean-only port with the absolute floor passes the new textured
+    grain bound, Native 0.010732 and Quality 0.007940 against the 21.4.0 behavior's 0.012026 and 0.010852, but
+    fails 39 of 117 facts in the broader filter. It loses genuine thin-feature coverage and increases error under
+    flickering local light. The statistic is ambiguous: a missed bright feature over flat ground and a broad
+    shading change can produce the same two mean lumas. Opposite-corner-pair confirmation leaves 17 failures.
+    Individual-corner confirmation leaves nine of 121, despite keeping all entry identity, stable-detail and
+    stable-peak facts green. It measures grain 0.010803 and 0.009229, the latter above the new 0.008000 bound.
+
+    The Quality 2-pixel camera pan measures 0.005846 against the unchanged 0.006050 bound, restored from the
+    mean-only candidate's 0.006139. In that candidate 99.5 percent of the extra band error is within four pixels
+    of the shadow edge. The Native 8-pixel tails remain worse in absolute terms, advancing 0.004724 against
+    0.004442 and retreating 0.008256 against 0.006978, so no ratio guard was loosened or restated. Dark still
+    texture is unchanged. Flicker error-image grain rises from 0.005503 to 0.006545 at Native and 0.005340 to
+    0.006138 at Quality. Balanced is unchanged at synthetic grain 0.010526 and remains a separate issue.
+
+    The [implementation checkpoint](../../KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/lock-luma-kill/README.md)
+    retains the mechanism, all measured candidates, full guard logs and archive real-scene reference values.
+    The full local Metal correctness run subsequently passed 907 of 918 facts with zero skips, adding failures
+    in Quality 1.2-pixel bar contrast (0.413 against 0.500) and the Quality M 1 trailing textured rim's temporal
+    error (0.008895 against 0.008866). Timing benchmark classes were excluded. The full headless suite passed
+    35,343 facts with 1,426 skips and no failures. No candidate was packed or adopted by a consumer after these failures. A revised shading-evidence design
+    must preserve missed thin features, reject another surface's evidence near depth boundaries, and avoid the
+    retreating-shadow texture reconvergence cost before a fourth candidate or production adoption. The earlier
+    amendments' accepted bounds remain in force.

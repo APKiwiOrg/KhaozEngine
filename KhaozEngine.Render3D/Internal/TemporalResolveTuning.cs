@@ -105,6 +105,20 @@ namespace KhaozEngine.Render3D.Internal
         /// eight frames, outlasts the hold: it averages about 4 percent against its coverage of 12.5 and pulses by up to
         /// 9 percent a frame.</summary>
         public const float LockHoldGain = 2f;
+        /// <summary>Step 6. Relative change in low-frequency weighted luma that drops a thin-feature lock before
+        /// clipping. This frame's 3x3 mean is compared with four history ring taps plus a bilinear centre at its
+        /// reprojected position. Coarse shadow ridges otherwise refresh a whole hold on old lit pixels, even where
+        /// the variance box accepts them. The test adds no state. See amendment 35.</summary>
+        public const float LockLumaRelative = 0.1f;
+        /// <summary>Step 6. The mean weighted luma must also change by more than this absolute amount before
+        /// <see cref="LockLumaRelative"/> drops a lock. One absolute ridge step leaves near-black texture locked
+        /// through tiny changes whose relative size alone is large.</summary>
+        public const float LockLumaAbsolute = 0.02f;
+        /// <summary>Step 6. Each reprojected ring tap must change from its corresponding current corner in the mean
+        /// change's direction by this much. A single missed feature or a resampled boundary can move the mean and
+        /// both opposite-pair means while leaving a corner unchanged. One quarter of the absolute mean floor asks
+        /// for a coherent lighting change without requiring every textured corner to move by the full mean.</summary>
+        public const float LockLumaCornerAbsolute = 0.005f;
         /// <summary>Step 6. Lock lost per internal pixel of motion between the centre texel and the dilated nearest
         /// surface this frame. Where they differ, a moving feature is passing over a background, and the pixel holds the
         /// history that feature carried there, not a sub-texel feature of its own. A surface moving as a whole, a swaying

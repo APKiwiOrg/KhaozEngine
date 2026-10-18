@@ -26,6 +26,10 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - `MapDocument` and `MapPlacement` in `KhaozEngine.MapDoc` give every persisted member an explicit
   `JsonPropertyOrder`, so moving a partial part to another file can no longer reorder saved documents, tile
   files or tile content hashes. Saved bytes are unchanged (#1469).
+- `ReportRedactor` in `KhaozEngine.Diagnostics` runs its secret rules on the linear-time regex engine and checks
+  each rule with `IsMatch` before replacing, so clean text no longer allocates after a full collection and no
+  player-influenced log line can force a whole-report mask. Building the default rules allocates about 11.8 MB
+  once per process, and the first report spends about 70 ms preparing the matchers (#1475).
 - Contact controller support reads cost less on stairs and boxes. Exactly horizontal axis-aligned rectangular
   faces take an exact path through support extrema and contact height, axis-aligned rectangular faces certify
   their contact sign directly, and installed faces keep their query-independent edge, normal and plane facts.

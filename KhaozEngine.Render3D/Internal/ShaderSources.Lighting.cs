@@ -83,6 +83,40 @@ bool projectCascade(int i, vec3 worldPos, vec3 Ngeo, float slopeSin, float margi
 // depths instead would blend the atlas clear value (1.0 = no caster) into every tap next to a gap, which can only
 // ever lighten the result, and erases a dithered caster's shadow outright outside cascade 0 (issue #391).
 float pcfCascade(texture2D shadowAtlas, sampler shadowSamp, int cascade, int count, vec2 uv, float depth, float texelStep) {
+#if defined(ShadowBilinear3x3) || defined(ShadowBilinear1)
+    // Bilinear interpolation of comparison results, never of stored depths. Coordinates refer to texel
+    // centres, just as hardware PCF does. The 3x3 taps share their interior texels: outer weights are
+    // 1-f and f, interior weights are 1, so 16 comparisons replace the naive 36.
+    vec2 texel = uv / texelStep - vec2(0.5);
+    vec2 base = floor(texel);
+    vec2 f = fract(texel);
+#ifdef ShadowBilinear3x3
+    vec4 wx = vec4(1.0 - f.x, 1.0, 1.0, f.x);
+    vec4 wy = vec4(1.0 - f.y, 1.0, 1.0, f.y);
+    const int footprint = 4;
+    const float first = -1.0;
+    const float normalization = 9.0;
+#else
+    vec2 wx = vec2(1.0 - f.x, f.x);
+    vec2 wy = vec2(1.0 - f.y, f.y);
+    const int footprint = 2;
+    const float first = 0.0;
+    const float normalization = 1.0;
+#endif
+    float lit = 0.0;
+    float atlasScaleX = 1.0 / float(count);
+    float halfTexel = texelStep * 0.5;
+    for (int y = 0; y < footprint; y++) {
+        for (int x = 0; x < footprint; x++) {
+            vec2 centre = base + vec2(float(x) + first, float(y) + first) + vec2(0.5);
+            vec2 luv = clamp(centre * texelStep, vec2(halfTexel), vec2(1.0 - halfTexel));
+            vec2 auv = vec2((luv.x + float(cascade)) * atlasScaleX, luv.y);
+            float d = textureLod(sampler2D(shadowAtlas, shadowSamp), auv, 0.0).r;
+            lit += ((depth <= d) ? 1.0 : 0.0) * wx[x] * wy[y];
+        }
+    }
+    return lit / normalization;
+#else
     float atlasScaleX = 1.0 / float(count);
     float atlasBiasX = float(cascade) * atlasScaleX;
     float halfTexel = texelStep * 0.5;
@@ -97,6 +131,7 @@ float pcfCascade(texture2D shadowAtlas, sampler shadowSamp, int cascade, int cou
         }
     }
     return lit / 9.0;
+#endif
 }
 
 float sampleKeyShadow(texture2D shadowAtlas, sampler shadowSamp, vec3 worldPos, vec3 Ngeo, float ndl) {

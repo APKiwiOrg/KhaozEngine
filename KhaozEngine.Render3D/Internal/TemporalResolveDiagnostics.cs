@@ -75,6 +75,29 @@ namespace KhaozEngine.Render3D.Internal
         /// against last frame's ring plus centre.</summary>
         public const int LockLumaKillWide = 2097152;
 
+        /// <summary>Nine bilinear comparison taps, shared over a 4x4 footprint.</summary>
+        public const int ShadowBilinear3x3 = 4194304;
+        /// <summary>One bilinear comparison tap over a 2x2 footprint.</summary>
+        public const int ShadowBilinear1 = 8388608;
+        internal const int ShadowFilterMask = ShadowBilinear3x3 | ShadowBilinear1;
+
+        /// <summary>Compile only the selected shadow filter into a lighting fragment. Resolve-only tokens leave
+        /// the lighting program untouched. The two filters are mutually exclusive.</summary>
+        internal static string ApplyShadowFilter(string program, int? mask = null)
+        {
+            int filter = (mask ?? Mask) & ShadowFilterMask;
+            string define = filter switch
+            {
+                0 => "",
+                ShadowBilinear3x3 => "#define ShadowBilinear3x3\n",
+                ShadowBilinear1 => "#define ShadowBilinear1\n",
+                _ => throw new InvalidOperationException("Choose one shadow filter."),
+            };
+            if (define.Length == 0) return program;
+            int line = program.IndexOf('\n');
+            return line < 0 ? define + program : program.Insert(line + 1, define);
+        }
+
         /// <summary>The define that compiles the switches' GLSL in.</summary>
         internal const string Define = "#define TemporalDiagnostics\n";
 
@@ -93,7 +116,7 @@ namespace KhaozEngine.Render3D.Internal
         /// is not 0, else <paramref name="program"/> itself.</summary>
         internal static string Apply(string program)
         {
-            if (Mask == 0) return program;
+            if ((Mask & ~ShadowFilterMask) == 0) return program;
             int line = program.IndexOf('\n');
             return line < 0 ? Define + program : program.Insert(line + 1, Define);
         }
@@ -108,6 +131,8 @@ namespace KhaozEngine.Render3D.Internal
             {
                 mask |= raw.ToLowerInvariant() switch
                 {
+                    "shadow-bilinear-3x3" => ShadowBilinear3x3,
+                    "shadow-bilinear-1" => ShadowBilinear1,
                     "show-released" => ShowReleased,
                     "show-locked" => ShowLocked,
                     "lock-history-ridge" => LockHistoryRidge,
@@ -135,6 +160,8 @@ namespace KhaozEngine.Render3D.Internal
                         $"{EnvironmentVariable}: unknown token '{raw}'."),
                 };
             }
+            if ((mask & ShadowFilterMask) == ShadowFilterMask)
+                throw new InvalidOperationException("Choose one shadow filter.");
             return mask;
         }
     }

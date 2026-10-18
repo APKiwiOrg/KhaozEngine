@@ -240,6 +240,10 @@ public sealed class PointShadowUboLayoutTests
             .GetFields(BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy)
             .Where(f => f is { IsLiteral: true, IsInitOnly: false } && f.FieldType == typeof(string))
             .Select(f => (f.Name, Source: (string)f.GetRawConstantValue()!))
+            .Concat(typeof(ShaderSources)
+                .GetProperties(BindingFlags.Public | BindingFlags.Static)
+                .Where(p => p.PropertyType == typeof(string))
+                .Select(p => (p.Name, Source: (string)p.GetValue(null)!)))
             .Where(s => s.Source.Contains(FrameBlockMarker, StringComparison.Ordinal))
             .OrderBy(s => s.Name, StringComparer.Ordinal);
 
@@ -255,6 +259,11 @@ public sealed class PointShadowUboLayoutTests
         Assert.True(shaders.Length >= 11,
             $"only {shaders.Length} shader sources carry the frame block. The discovery above has stopped "
             + "finding them, so this test is asserting nothing.");
+
+        Assert.Contains(shaders, s => s.Name == nameof(ShaderSources.ModelFrag));
+        Assert.Contains(shaders, s => s.Name == nameof(ShaderSources.SkinnedModelFrag));
+        Assert.Contains(shaders, s => s.Name == nameof(ShaderSources.SplatFrag));
+        Assert.Contains(shaders, s => s.Name == nameof(ShaderSources.TileGroundFrag));
 
         foreach ((string name, string src) in shaders)
         {

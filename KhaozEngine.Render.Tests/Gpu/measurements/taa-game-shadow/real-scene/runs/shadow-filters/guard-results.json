@@ -1,0 +1,72 @@
+{
+  "shadow-bilinear-3x3": {
+    "counters": {
+      "total": "1047",
+      "executed": "1047",
+      "passed": "1045",
+      "failed": "2",
+      "error": "0",
+      "timeout": "0",
+      "aborted": "0",
+      "inconclusive": "0",
+      "passedButRunAborted": "0",
+      "notRunnable": "0",
+      "notExecuted": "0",
+      "disconnected": "0",
+      "warning": "0",
+      "completed": "0",
+      "inProgress": "0",
+      "pending": "0"
+    },
+    "named_guards": {
+      "KhaozEngine.Tests.Gpu.TemporalShadowEdgeLagGpuTests.Shadow_edge_lag_metrics_under_a_turning_key_light_at_each_travel_rate": "Passed",
+      "KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.Texture_detail_near_the_display_nyquist_resolves_as_before_the_release_at_quality": "Passed",
+      "KhaozEngine.Tests.Gpu.TemporalGameShadowGrainGpuTests.Shared_scene_matches_a_fresh_scene_after_changes_of_size_hold_and_temporal_mode": "Passed",
+      "KhaozEngine.Tests.Gpu.TemporalMovingShadeLagGpuTests.Shadow_edge_lag_on_moving_pixels_and_fast_shadows_stays_within_its_bounds": "Passed",
+      "KhaozEngine.Tests.Gpu.TemporalStablePeakGpuTests.Isolated_stable_peaks_keep_their_history_under_a_still_camera_and_light": "Passed",
+      "KhaozEngine.Tests.Gpu.TemporalGameShadowGrainGpuTests.Coarse_shadow_texels_on_a_swaying_faceted_receiver_report_grain_against_fxaa": "Passed",
+      "KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.A_slow_pan_over_the_textured_wall_resolves_as_before_the_release": "Passed",
+      "KhaozEngine.Tests.Gpu.TemporalGameShadowGrainGpuTests.Texture_ridges_under_a_coarse_moving_shadow_reproduce_the_lock_grain": "Passed"
+    },
+    "failures": {
+      "KhaozEngine.Tests.Render3D.PointShadowUboLayoutTests.EveryShaderThatDeclaresTheBlockDeclaresTheTail": "only 8 shader sources carry the frame block. The discovery above has stopped finding them, so this test is asserting nothing.",
+      "KhaozEngine.Tests.Gpu.TemporalMovingShadeRimGpuTests.Moving_shadow_receivers_keep_their_leading_and_trailing_rims": "Quality M 0.5 leading flat: error 0.010485 above v21.2.0 0.009307 plus a tenth\nQuality M 0.5 trailing textured: reference changed from 0.018943 to 0.018951\nQuality M 1.0 trailing textured: reference changed from 0.035586 to 0.035615\nQuality M 2.0 leading flat: reference changed from 0.006865 to 0.006928\nQuality M 2.0 trailing textured: reference changed from 0.056131 to 0.056194\nQuality M 4.0 leading flat: reference changed from 0.031935 to 0.032271\nQuality M 4.0 trailing textured: reference changed from 0.066148 to 0.066177\nQuality M 8.0 leading flat: reference changed from 0.088200 to 0.088301\nQuality M 8.0 trailing textured: reference changed from 0.063109 to 0.063160\nQuality MS 1.0 leading flat: reference changed from 0.008146 to 0.008074\nQuality MS 1.0 trailing textured: reference changed from 0.038593 to 0.038637\nQuality MS 2.0 leading flat: reference changed from 0.013942 to 0.014041\nQuality MS 2.0 trailing textured: reference changed from 0.058579 to 0.058518\nNative M 0.5 trailing textured: reference changed from 0.018943 to 0.018951\nNative M 1.0 trailing textured: reference changed from 0.035586 to 0.035615\nNative M 2.0 leading flat: reference changed from 0.006865 to 0.006928\nNative M 2.0 trailing textured: reference changed from 0.056131 to 0.056194\nNative M 4.0 leading flat: reference changed from 0.031935 to 0.032271\nNative M 4.0 trailing textured: reference changed from 0.066148 to 0.066177\nNative M 8.0 leading flat: reference changed from 0.088200 to 0.088301\nNative M 8.0 trailing textured: reference changed from 0.063109 to 0.063160\nNative MS 1.0 leading flat: reference changed from 0.008146 to 0.008074\nNative MS 1.0 trailing textured: reference changed from 0.038593 to 0.038637\nNative MS 2.0 leading flat: reference changed from 0.013942 to 0.014041\nNative MS 2.0 trailing textured: reference changed from 0.058579 to 0.058518"
+    },
+    "post_run_correction": "The field-only shader discovery was extended to properties and passed 35 focused checks after this run. No renderer change followed the captures or GPU runs."
+  },
+  "shadow-bilinear-1": {
+    "counters": {
+      "total": "1047",
+      "executed": "1047",
+      "passed": "1045",
+      "failed": "2",
+      "error": "0",
+      "timeout": "0",
+      "aborted": "0",
+      "inconclusive": "0",
+      "passedButRunAborted": "0",
+      "notRunnable": "0",
+      "notExecuted": "0",
+      "disconnected": "0",
+      "warning": "0",
+      "completed": "0",
+      "inProgress": "0",
+      "pending": "0"
+    },
+    "named_guards": {
+      "KhaozEngine.Tests.Gpu.TemporalStablePeakGpuTests.Isolated_stable_peaks_keep_their_history_under_a_still_camera_and_light": "Passed",
+      "KhaozEngine.Tests.Gpu.TemporalMovingShadeLagGpuTests.Shadow_edge_lag_on_moving_pixels_and_fast_shadows_stays_within_its_bounds": "Passed",
+      "KhaozEngine.Tests.Gpu.TemporalShadowEdgeLagGpuTests.Shadow_edge_lag_metrics_under_a_turning_key_light_at_each_travel_rate": "Passed",
+      "KhaozEngine.Tests.Gpu.TemporalGameShadowGrainGpuTests.Shared_scene_matches_a_fresh_scene_after_changes_of_size_hold_and_temporal_mode": "Passed",
+      "KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.A_slow_pan_over_the_textured_wall_resolves_as_before_the_release": "Passed",
+      "KhaozEngine.Tests.Gpu.TemporalGameShadowGrainGpuTests.Coarse_shadow_texels_on_a_swaying_faceted_receiver_report_grain_against_fxaa": "Passed",
+      "KhaozEngine.Tests.Gpu.TemporalGameShadowGrainGpuTests.Texture_ridges_under_a_coarse_moving_shadow_reproduce_the_lock_grain": "Passed",
+      "KhaozEngine.Tests.Gpu.TemporalStableDetailGpuTests.Texture_detail_near_the_display_nyquist_resolves_as_before_the_release_at_quality": "Passed"
+    },
+    "failures": {
+      "KhaozEngine.Tests.Gpu.TemporalMovingShadeRimGpuTests.Moving_shadow_receivers_keep_their_leading_and_trailing_rims": "Quality M 0.5 leading flat: error 0.010718 above v21.2.0 0.009307 plus a tenth\nQuality M 0.5 trailing textured: reference changed from 0.018943 to 0.018873\nQuality M 1.0 trailing textured: reference changed from 0.035586 to 0.035474\nQuality M 2.0 leading flat: reference changed from 0.006865 to 0.006600\nQuality M 2.0 trailing textured: reference changed from 0.056131 to 0.055990\nQuality M 4.0 leading flat: reference changed from 0.031935 to 0.031469\nQuality M 4.0 trailing textured: reference changed from 0.066148 to 0.065977\nQuality M 8.0 leading flat: reference changed from 0.088200 to 0.087236\nQuality M 8.0 trailing textured: reference changed from 0.063109 to 0.062941\nQuality MS 1.0 leading flat: reference changed from 0.008146 to 0.008002\nQuality MS 1.0 trailing textured: reference changed from 0.038593 to 0.039473\nQuality MS 2.0 leading flat: reference changed from 0.013942 to 0.013649\nQuality MS 2.0 trailing textured: reference changed from 0.058579 to 0.059275\nNative M 0.5 trailing textured: reference changed from 0.018943 to 0.018873\nNative M 1.0 trailing textured: reference changed from 0.035586 to 0.035474\nNative M 2.0 leading flat: reference changed from 0.006865 to 0.006600\nNative M 2.0 trailing textured: reference changed from 0.056131 to 0.055990\nNative M 4.0 leading flat: reference changed from 0.031935 to 0.031469\nNative M 4.0 trailing textured: reference changed from 0.066148 to 0.065977\nNative M 8.0 leading flat: reference changed from 0.088200 to 0.087236\nNative M 8.0 trailing textured: reference changed from 0.063109 to 0.062941\nNative MS 1.0 leading flat: error 0.008094 above v21.2.0 0.005423 plus a tenth\nNative MS 1.0 leading flat: temporal error 0.014099 above v21.2.0 0.008185 plus a tenth\nNative MS 1.0 leading flat: reference changed from 0.008146 to 0.008002\nNative MS 1.0 trailing textured: reference changed from 0.038593 to 0.039473\nNative MS 2.0 leading flat: reference changed from 0.013942 to 0.013649\nNative MS 2.0 trailing textured: reference changed from 0.058579 to 0.059275",
+      "KhaozEngine.Tests.Render3D.PointShadowUboLayoutTests.EveryShaderThatDeclaresTheBlockDeclaresTheTail": "only 8 shader sources carry the frame block. The discovery above has stopped finding them, so this test is asserting nothing."
+    },
+    "post_run_correction": "The field-only shader discovery was extended to properties and passed 35 focused checks after this run. No renderer change followed the captures or GPU runs."
+  }
+}

@@ -1,0 +1,4 @@
+Independent nine-bilinear-tap reference versus shared 4x4 tent weights
+1936 deterministic cases including clamped cascade borders
+Maximum double-precision difference 2.2204460492503131e-16
+This checks the mathematical reduction, not GPU pixel equality.

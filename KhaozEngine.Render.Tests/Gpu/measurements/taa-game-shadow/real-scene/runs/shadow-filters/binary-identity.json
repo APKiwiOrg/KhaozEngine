@@ -1,0 +1,8 @@
+{
+  "version": "21.5.0-grain.1",
+  "sha256": {
+    "engine": "d386a38992517447d58256a0055dd8edf64a8989d6b5aaf2ca83599dfd338b60",
+    "probe": "d386a38992517447d58256a0055dd8edf64a8989d6b5aaf2ca83599dfd338b60",
+    "vendored": "d386a38992517447d58256a0055dd8edf64a8989d6b5aaf2ca83599dfd338b60"
+  }
+}

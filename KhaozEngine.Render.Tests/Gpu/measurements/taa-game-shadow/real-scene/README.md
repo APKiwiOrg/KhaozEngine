@@ -231,7 +231,7 @@ Engine, from this worktree:
 
 ```bash
 build-slot --label build -- dotnet build KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release
-KHAOZENGINE_FEED=~/.cache/khaozengine-probe-feed/taa-grain build-slot --heavy --label pack -- scripts/pack-local-feed.sh
+KHAOZENGINE_FEED="${KHAOZENGINE_FEED:?set a private feed first}" build-slot --heavy --label pack -- scripts/pack-local-feed.sh
 KE_TEMPORAL_DIAG=locks-off KE_GPU_TESTS=1 build-slot --heavy --label guards -- dotnet test \
   KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build \
   --filter "FullyQualifiedName~TemporalShadowEdgeLagGpuTests|FullyQualifiedName~TemporalMovingShadeLagGpuTests|FullyQualifiedName~TemporalStableDetailGpuTests|FullyQualifiedName~TemporalStablePeakGpuTests|FullyQualifiedName~TemporalGameShadowGrainGpuTests" \
@@ -241,14 +241,14 @@ KE_TEMPORAL_DIAG=locks-off KE_GPU_TESTS=1 build-slot --heavy --label guards -- d
 Game, from the `probe/taa-grain-engine` worktree:
 
 ```bash
-KHAOZENGINE_FEED=~/.cache/khaozengine-probe-feed/taa-grain scripts/refresh-engine.sh
+scripts/refresh-engine.sh
 build-slot --label build -- dotnet build tools/SnapshotTool/SnapshotTool.csproj -c Release
 # baseline, then each token
 build-slot --heavy --label shadowgrain -- dotnet run --project tools/SnapshotTool -c Release --no-build -- \
-  shadowgrain /tmp/grimhollow-shadowgrain/engine-diag/baseline --spot back-edge --frame-time 1/15 \
+  shadowgrain captures/engine-diag/baseline --spot back-edge --frame-time 1/15 \
   --start-time 0.49777777777777776
 build-slot --heavy --label shadowgrain -- dotnet run --project tools/SnapshotTool -c Release --no-build -- \
-  shadowgrain /tmp/grimhollow-shadowgrain/engine-diag/locks-off --spot back-edge --frame-time 1/15 \
+  shadowgrain captures/engine-diag/locks-off --spot back-edge --frame-time 1/15 \
   --start-time 0.49777777777777776 --temporal-diag locks-off
 # other conditions add --frame-time 1/60, --day-minutes 30 or --spot ground-edge
 ```
@@ -257,10 +257,10 @@ Analysis, with numpy and Pillow, over the capture root:
 
 ```bash
 python3 scripts/pixdiff.py <reference-run> <probe-run>
-python3 scripts/coincide.py /tmp/grimhollow-shadowgrain/engine-diag
-python3 scripts/sparkcount.py /tmp/grimhollow-shadowgrain/engine-diag baseline noop locks-off
-python3 scripts/hold.py /tmp/grimhollow-shadowgrain/engine-diag/baseline
-python3 scripts/mdtable.py /tmp/grimhollow-shadowgrain/engine-diag baseline locks-off
+python3 scripts/coincide.py captures/engine-diag
+python3 scripts/sparkcount.py captures/engine-diag baseline noop locks-off
+python3 scripts/hold.py captures/engine-diag/baseline
+python3 scripts/mdtable.py captures/engine-diag baseline locks-off
 ```
 
 ## Direct lock coincidence
@@ -285,13 +285,13 @@ differ from `noop` at either preset.
 
 The direct evidence passes the brief's gate. The earlier thin-feature inference is now measured.
 Crop [show-locked character frame 15, 4x](crops/show-locked-character-015-4x.png) places Native, Quality and FXAA
-left to right, as the other crops do. The full capture is under `/tmp/grimhollow-shadowgrain/engine-diag/show-locked`.
+left to right, as the other crops do. The full capture is under `captures/engine-diag/show-locked`.
 
 ```bash
 build-slot --heavy --label grain-show-locked -- dotnet run --project tools/SnapshotTool -c Release --no-build -- \
-  shadowgrain /tmp/grimhollow-shadowgrain/engine-diag/show-locked --spot back-edge --frame-time 1/15 \
+  shadowgrain captures/engine-diag/show-locked --spot back-edge --frame-time 1/15 \
   --start-time 0.49777777777777776 --temporal-diag show-locked
-python3 scripts/coincide.py /tmp/grimhollow-shadowgrain/engine-diag show-locked
+python3 scripts/coincide.py captures/engine-diag show-locked
 ```
 
 ## Lock-rule round
@@ -571,11 +571,11 @@ the game root and branch before every serial capture and clears any inherited di
 
 ```bash
 python3 KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/real-scene/scripts/capture_lock_rules.py \
-  /Users/antonio/Grimhollow/.worktrees/taa-grain-probe /tmp/grimhollow-shadowgrain/lock-rule-round
+  "$GAME_PROBE" captures/lock-rule-round
 python3 KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/real-scene/scripts/lock_rule_tables.py \
-  /tmp/grimhollow-shadowgrain/lock-rule-round
+  captures/lock-rule-round
 python3 KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/real-scene/scripts/coincide.py \
-  /tmp/grimhollow-shadowgrain/lock-rule-round back15-show-locked back15-noop back15-baseline
+  captures/lock-rule-round back15-show-locked back15-noop back15-baseline
 ```
 
 Each GPU command below ran once, sequentially. The filter includes the new synthetic method in the existing class.
@@ -1159,17 +1159,17 @@ Engine pack and game refresh as in Commands above, then from the engine worktree
 
 ```bash
 python3 KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/real-scene/scripts/capture_lock_rules.py \
-  /Users/antonio/Grimhollow/.worktrees/taa-grain-probe /tmp/grimhollow-shadowgrain/lock-trust-round \
+  "$GAME_PROBE" captures/lock-trust-round \
   baseline noop show-gate show-lock-age show-gate-extent lock-trust-2 lock-trust-3 lock-trust-4 \
   lock-luma-kill-0.1 lock-luma-kill-0.2 lock-luma-kill-wide-0.1 lock-luma-kill-wide-0.2 \
   lock-trust-2,lock-luma-kill-0.2
 cd KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/real-scene
-python3 scripts/gate_histogram.py /tmp/grimhollow-shadowgrain/lock-trust-round back15
-python3 scripts/lock_trust_tables.py /tmp/grimhollow-shadowgrain/lock-trust-round \
-  /tmp/grimhollow-shadowgrain/lock-rule-round runs/lock-trust-round/summary.json lock-trust-2 lock-trust-3 \
+python3 scripts/gate_histogram.py captures/lock-trust-round back15
+python3 scripts/lock_trust_tables.py captures/lock-trust-round \
+  captures/lock-rule-round runs/lock-trust-round/summary.json lock-trust-2 lock-trust-3 \
   lock-trust-4 lock-luma-kill-0.1 lock-luma-kill-0.2 lock-luma-kill-wide-0.1 lock-luma-kill-wide-0.2 \
   lock-trust-2+lock-luma-kill-0.2
-python3 scripts/make_crops.py /tmp/grimhollow-shadowgrain/lock-trust-round crops lock-trust back15-show-gate
+python3 scripts/make_crops.py captures/lock-trust-round crops lock-trust back15-show-gate
 python3 scripts/guard_values.py guards/lock-trust-round/*.txt
 ```
 
@@ -1184,3 +1184,302 @@ KE_TEMPORAL_DIAG=lock-luma-kill-0.2 KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-nat
 
 All 40 captures this round exited zero ([sweep](runs/lock-trust-round/capture-sweep.txt)). Both branches remain
 diagnostic archives. Neither is a shipping fix or a merge candidate.
+
+
+## Bilinear shadow filter seed diagnostic
+
+The two new tokens affect the shared sun-shadow lookup used by rigid models, skinned models, splat terrain and
+tile ground, including motion and dissolve variants. Each filter is compiled only while its token is set.
+Resolve-only tokens leave the lighting program untouched. Filter-only tokens leave the resolve program without
+its diagnostic define. Unset keeps the original nine-point path behind the preprocessor alternative.
+
+| Token | Footprint | Depth fetches and comparisons per cascade lookup | Relative to nine |
+| --- | --- | ---: | ---: |
+| unset | 3x3 point comparisons | 9 | 1.00x |
+| shadow-bilinear-3x3 | Nine bilinear comparison taps shared over 4x4 texels | 16 | 1.78x |
+| shadow-bilinear-1 | One bilinear comparison tap over 2x2 texels | 4 | 0.44x |
+
+These are manual point depth fetches followed by comparison and interpolation. They never interpolate depths.
+For texel fraction f, the shared 3x3 weights are [1-f, 1, 1, f] in each axis, divided by nine. The single tap uses
+[1-f, f]. Every texel centre is clamped inside its cascade column. Bias, normal offset, selection and cascade blend
+are unchanged. A blended receiver can do two lookups, so the costs become 18, 32 and 8. Outside coverage there
+are no atlas fetches. These are source fetch counts, not measured GPU timings. No textureGather support is needed.
+
+The textured synthetic probe preserves the selected shadow filter when creating its scene and switching temporal
+lock arms. Its old mask reset would silently run the point filter despite the token. Its existing reproduction
+gate still asks whether baseline locks exceed locks-off by 1.3x at Quality. A failure under a new filter is
+reported as loss of the fixture's original separation, without changing that bound.
+
+### Measurement method
+
+All captures use Metal, 2560x1440, 80 warm-up and 16 measured frames, with start time 0.49777777777777776.
+back15 means back-edge at dt 1/15 with a five-minute day. day30 changes that to a thirty-minute day.
+back60 uses dt 1/60 with a five-minute day. ground15 uses ground-edge at dt 1/15 with a five-minute day.
+Every arm supplies its own FXAA, no-shadow frames and region masks. Grain, p95 and change come from the capture's
+pooled metrics. Dots retain the archive criterion, luma over the 3x3 median by 0.05 and over that arm's FXAA by 0.05.
+FXAA's relative dot count is zero by definition. Modified shadows never reuse baseline FXAA.
+
+Locked share counts pure cyan in the same token combined with show-locked, divided by that token's character band.
+The overlay compiles the diagnostic resolve, so its non-cyan pixels are not used as grain evidence.
+The summary also records the share of each arm's dots covered by cyan.
+
+Look widths are FXAA display-pixel transect distances between 10% and 90% of local attenuation,
+(no-shadow luma minus shadowed luma) divided by no-shadow luma. Endpoint medians set the plateaus, three pixels on the character and five on the ground.
+Isotonic regression removes material fluctuations without spatial blur. Linear interpolation locates crossings.
+Profiles need attenuation contrast of 0.15 and both crossings inside the window.
+Character transects are horizontal across the right upper arm at crop y 202, 204 and 206, x 213 through 230.
+The complete profile plus a one-pixel border must be inside the visible body. The shadow-side attenuation median
+must exceed 0.35 and the lit-side median must be below 0.15, rejecting incomplete crossings and silhouette edges.
+Only frames meeting these checks contribute.
+Back-edge ground transects are horizontal at y 80 through 110 in steps of five, x 90 through 219.
+Ground-edge ground transects are vertical at x 280 through 330 in steps of ten, y 270 through 379.
+Medians pool valid transects across 16 frames. Quartiles, counts and every accepted width are retained.
+These are fixed-direction look measurements on a textured animated model, not an isolated PCF impulse response
+or a screen-normal penumbra estimate. ground15 has no comparable upper-arm crossing, so character width is n/a.
+
+### Reproduction
+
+Set GAME_PROBE to the game probe worktree, KHAOZENGINE_FEED to an isolated private feed, CAPTURE_ROOT to untracked
+captures and GUARD_ROOT to untracked guard output. Paths below are relative to the engine worktree unless a
+variable supplies the root. Both branches remain diagnostic archives. No goldens are updated.
+
+~~~bash
+KHAOZENGINE_FEED="${KHAOZENGINE_FEED:?set a private feed first}" build-slot --heavy --label grain-pack -- scripts/pack-local-feed.sh
+# From the game probe, refresh with the same private feed and build SnapshotTool.
+scripts/refresh-engine.sh
+build-slot --label grain-probe-build -- dotnet build tools/SnapshotTool/SnapshotTool.csproj -c Release
+# Back in the engine worktree.
+python3 KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/real-scene/scripts/capture_shadow_filters.py \
+  "$GAME_PROBE" "$CAPTURE_ROOT" baseline shadow-bilinear-3x3 shadow-bilinear-1
+python3 KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/real-scene/scripts/capture_shadow_filters.py \
+  "$GAME_PROBE" "$CAPTURE_ROOT" show-locked shadow-bilinear-3x3,show-locked shadow-bilinear-1,show-locked \
+  shadow-bilinear-3x3,lock-luma-kill-0.2 shadow-bilinear-1,lock-luma-kill-0.2 \
+  shadow-bilinear-3x3,lock-luma-kill-0.2,show-locked shadow-bilinear-1,lock-luma-kill-0.2,show-locked
+build-slot --label grain-test-build -- dotnet build KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release
+python3 KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/real-scene/scripts/run_shadow_filter_guards.py \
+  "$GUARD_ROOT"
+python3 KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/real-scene/scripts/shadow_filter_report.py \
+  "$CAPTURE_ROOT" KhaozEngine.Render.Tests/Gpu/measurements/taa-game-shadow/real-scene/runs/shadow-filters \
+  shadow-bilinear-3x3 shadow-bilinear-1 \
+  shadow-bilinear-3x3+lock-luma-kill-0.2 shadow-bilinear-1+lock-luma-kill-0.2
+~~~
+
+
+### Bilinear results and decision
+
+Unset is pixel-identical to the prior archive baseline in all 192 full frames, with every metrics.txt byte-identical.
+That archive baseline was already compared with 21.4.0. This round adds a fresh link to that identity chain,
+rather than claiming a new 21.4.0 build. See [identity](runs/shadow-filters/baseline-identity.txt).
+The engine Release DLL, the vendored DLL and SnapshotTool's loaded DLL share SHA-256
+d386a38992517447d58256a0055dd8edf64a8989d6b5aaf2ca83599dfd338b60.
+The version stays 21.5.0-grain.1. The private pack replaced 222 package files and the refresh evicted all 78
+extracted diagnostic package versions. The shared engine feed was not an output.
+
+Neither filter reaches 1.5x its own FXAA at the back-edge conditions, so both requested luma-kill combinations
+were also measured. At back15, character grain divided by own FXAA is Native / Quality as follows.
+
+| Arm | Character grain / own FXAA, Native / Quality |
+| --- | ---: |
+| Baseline | 4.83 / 4.78 |
+| shadow-bilinear-3x3 | 3.08 / 4.24 |
+| shadow-bilinear-1 | 3.67 / 4.60 |
+| shadow-bilinear-3x3 + lock-luma-kill-0.2 | 2.42 / 3.35 |
+| shadow-bilinear-1 + lock-luma-kill-0.2 | 2.21 / 2.71 |
+
+The shared 3x3 filter removes some seeds, not the lock mechanism. Back15 character dots drop from 1742 to 851
+at Native and 1733 to 1166 at Quality. Character lock coverage drops from 65.33% to 55.19% and 72.68% to 65.92%.
+Of its remaining dots, 97.06% and 93.74% are cyan in the lock overlay. The single tap leaves 1199 and 1634 dots,
+with 62.16% and 71.00% lock coverage. Making interpolation continuous therefore does not by itself stop shadow
+ridges or held bright history in this scene. It would be too strong to claim that point-PCF quantisation is the
+only seed, or that this experiment proves a monotonic sampled receiver under jitter and moving light fits.
+
+Back15 FXAA widths are 12.41 character / 6.27 ground pixels at baseline, 12.33 / 6.24 for shared 3x3 and
+11.73 / 4.68 for the single tap. The 3x3 look stays close to the existing filter. The single tap visibly sharpens
+the ground edge. Character widths use 11 to 12 valid upper-arm transects at back15, versus up to 48 at slower
+conditions, because the moving edge leaves the narrow receiver. Counts and quartiles matter when reading
+differences smaller than a pixel.
+
+If further filter work is chosen, use shared 3x3 as the starting point. It has the strongest pure-filter result at
+the reported low-frame-rate back edge and preserves the current softness. Its 16 fetches cost 78% more than nine,
+so this is a candidate for proper design and later cost measurement, not a shipping recommendation.
+The single tap is cheaper but leaves more back15 dots and has larger moving-rim guard misses.
+Neither combination rehabilitates the blocked resolve-side luma-kill implementation. Its full-suite failures
+remain recorded on the separate blocked branch, which this round did not change.
+
+### Four-condition tables
+
+Each metric cell contains grain mean / grain p95 / change mean / dot count. C and G mean character and ground.
+The separate own-FXAA column is essential because each filter changes FXAA too.
+The same tables and machine-readable data are [retained here](runs/shadow-filters/tables.md) and
+[in summary.json](runs/shadow-filters/summary.json).
+
+### shadow-bilinear-3x3
+
+| Condition | Arm | Region | Native grain / p95 / change / dots | Quality grain / p95 / change / dots | Own FXAA grain / p95 / change / dots | Character locked % N / Q | FXAA width C / G px |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| back15 | baseline | character | 0.014287 / 0.07499 / 0.01795 / 1742 | 0.014156 / 0.07334 / 0.01757 / 1733 | 0.002961 / 0.01649 / 0.01911 / 0 | 65.33 / 72.68 | 12.41 / 6.27 |
+| back15 | baseline | ground | 0.006708 / 0.02635 / 0.01249 / 485 | 0.007330 / 0.02830 / 0.01235 / 1881 | 0.002130 / 0.00869 / 0.01311 / 0 | 65.33 / 72.68 | 12.41 / 6.27 |
+| back15 | shadow-bilinear-3x3 | character | 0.008027 / 0.03893 / 0.01764 / 851 | 0.011053 / 0.05435 / 0.01751 / 1166 | 0.002607 / 0.01540 / 0.01840 / 0 | 55.19 / 65.92 | 12.33 / 6.24 |
+| back15 | shadow-bilinear-3x3 | ground | 0.005312 / 0.02074 / 0.01236 / 108 | 0.006370 / 0.02463 / 0.01226 / 1034 | 0.001655 / 0.00756 / 0.01310 / 0 | 55.19 / 65.92 | 12.33 / 6.24 |
+| day30 | baseline | character | 0.008413 / 0.04997 / 0.00371 / 1097 | 0.009148 / 0.05207 / 0.00366 / 1117 | 0.002976 / 0.01624 / 0.00402 / 0 | 66.05 / 72.29 | 11.20 / 6.15 |
+| day30 | baseline | ground | 0.005930 / 0.02326 / 0.00234 / 310 | 0.006355 / 0.02524 / 0.00238 / 906 | 0.002071 / 0.00868 / 0.00202 / 0 | 66.05 / 72.29 | 11.20 / 6.15 |
+| day30 | shadow-bilinear-3x3 | character | 0.005354 / 0.02882 / 0.00341 / 506 | 0.007044 / 0.03833 / 0.00318 / 784 | 0.002500 / 0.01430 / 0.00369 / 0 | 54.73 / 64.07 | 11.52 / 6.30 |
+| day30 | shadow-bilinear-3x3 | ground | 0.004652 / 0.01849 / 0.00215 / 16 | 0.005288 / 0.02098 / 0.00209 / 275 | 0.001602 / 0.00729 / 0.00200 / 0 | 54.73 / 64.07 | 11.52 / 6.30 |
+| back60 | baseline | character | 0.009675 / 0.05484 / 0.00488 / 1355 | 0.010472 / 0.05966 / 0.00500 / 1535 | 0.002955 / 0.01595 / 0.00470 / 0 | 62.54 / 70.67 | 12.44 / 6.39 |
+| back60 | baseline | ground | 0.006055 / 0.02353 / 0.00328 / 379 | 0.006729 / 0.02718 / 0.00327 / 1303 | 0.002090 / 0.00868 / 0.00307 / 0 | 62.54 / 70.67 | 12.44 / 6.39 |
+| back60 | shadow-bilinear-3x3 | character | 0.006321 / 0.03384 / 0.00451 / 742 | 0.008142 / 0.04369 / 0.00434 / 1065 | 0.002547 / 0.01342 / 0.00436 / 0 | 51.77 / 63.18 | 12.34 / 6.38 |
+| back60 | shadow-bilinear-3x3 | ground | 0.004766 / 0.01906 / 0.00300 / 28 | 0.005683 / 0.02326 / 0.00299 / 423 | 0.001611 / 0.00729 / 0.00298 / 0 | 51.77 / 63.18 | 12.34 / 6.38 |
+| ground15 | baseline | character | 0.002957 / 0.01148 / 0.00116 / 371 | 0.003024 / 0.01176 / 0.00118 / 340 | 0.002280 / 0.01260 / 0.00135 / 0 | 40.72 / 48.15 | n/a / 3.80 |
+| ground15 | baseline | ground | 0.005274 / 0.01937 / 0.00373 / 512 | 0.005695 / 0.02242 / 0.00378 / 1305 | 0.002343 / 0.00784 / 0.00334 / 0 | 40.72 / 48.15 | n/a / 3.80 |
+| ground15 | shadow-bilinear-3x3 | character | 0.002953 / 0.01148 / 0.00116 / 371 | 0.003027 / 0.01178 / 0.00118 / 341 | 0.002281 / 0.01260 / 0.00135 / 0 | 40.65 / 48.09 | n/a / 3.97 |
+| ground15 | shadow-bilinear-3x3 | ground | 0.004951 / 0.01792 / 0.00367 / 396 | 0.005405 / 0.02158 / 0.00373 / 948 | 0.002293 / 0.00758 / 0.00333 / 0 | 40.65 / 48.09 | n/a / 3.97 |
+
+### shadow-bilinear-1
+
+| Condition | Arm | Region | Native grain / p95 / change / dots | Quality grain / p95 / change / dots | Own FXAA grain / p95 / change / dots | Character locked % N / Q | FXAA width C / G px |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| back15 | baseline | character | 0.014287 / 0.07499 / 0.01795 / 1742 | 0.014156 / 0.07334 / 0.01757 / 1733 | 0.002961 / 0.01649 / 0.01911 / 0 | 65.33 / 72.68 | 12.41 / 6.27 |
+| back15 | baseline | ground | 0.006708 / 0.02635 / 0.01249 / 485 | 0.007330 / 0.02830 / 0.01235 / 1881 | 0.002130 / 0.00869 / 0.01311 / 0 | 65.33 / 72.68 | 12.41 / 6.27 |
+| back15 | shadow-bilinear-1 | character | 0.010720 / 0.05352 / 0.02177 / 1199 | 0.013428 / 0.06218 / 0.02170 / 1634 | 0.002919 / 0.01679 / 0.02228 / 0 | 62.16 / 71.00 | 11.73 / 4.68 |
+| back15 | shadow-bilinear-1 | ground | 0.006844 / 0.02571 / 0.01329 / 844 | 0.007336 / 0.02516 / 0.01330 / 1883 | 0.001958 / 0.00814 / 0.01351 / 0 | 62.16 / 71.00 | 11.73 / 4.68 |
+| day30 | baseline | character | 0.008413 / 0.04997 / 0.00371 / 1097 | 0.009148 / 0.05207 / 0.00366 / 1117 | 0.002976 / 0.01624 / 0.00402 / 0 | 66.05 / 72.29 | 11.20 / 6.15 |
+| day30 | baseline | ground | 0.005930 / 0.02326 / 0.00234 / 310 | 0.006355 / 0.02524 / 0.00238 / 906 | 0.002071 / 0.00868 / 0.00202 / 0 | 66.05 / 72.29 | 11.20 / 6.15 |
+| day30 | shadow-bilinear-1 | character | 0.006718 / 0.03639 / 0.00397 / 697 | 0.007998 / 0.04113 / 0.00361 / 874 | 0.002949 / 0.01679 / 0.00435 / 0 | 62.28 / 69.66 | 10.53 / 5.26 |
+| day30 | shadow-bilinear-1 | ground | 0.006249 / 0.02411 / 0.00240 / 453 | 0.006328 / 0.02354 / 0.00237 / 1021 | 0.001923 / 0.00813 / 0.00210 / 0 | 62.28 / 69.66 | 10.53 / 5.26 |
+| back60 | baseline | character | 0.009675 / 0.05484 / 0.00488 / 1355 | 0.010472 / 0.05966 / 0.00500 / 1535 | 0.002955 / 0.01595 / 0.00470 / 0 | 62.54 / 70.67 | 12.44 / 6.39 |
+| back60 | baseline | ground | 0.006055 / 0.02353 / 0.00328 / 379 | 0.006729 / 0.02718 / 0.00327 / 1303 | 0.002090 / 0.00868 / 0.00307 / 0 | 62.54 / 70.67 | 12.44 / 6.39 |
+| back60 | shadow-bilinear-1 | character | 0.008310 / 0.04701 / 0.00511 / 1147 | 0.008743 / 0.04285 / 0.00494 / 1101 | 0.002920 / 0.01595 / 0.00487 / 0 | 59.42 / 67.94 | 11.94 / 4.75 |
+| back60 | shadow-bilinear-1 | ground | 0.006258 / 0.02381 / 0.00335 / 552 | 0.006545 / 0.02329 / 0.00337 / 1264 | 0.001905 / 0.00813 / 0.00312 / 0 | 59.42 / 67.94 | 11.94 / 4.75 |
+| ground15 | baseline | character | 0.002957 / 0.01148 / 0.00116 / 371 | 0.003024 / 0.01176 / 0.00118 / 340 | 0.002280 / 0.01260 / 0.00135 / 0 | 40.72 / 48.15 | n/a / 3.80 |
+| ground15 | baseline | ground | 0.005274 / 0.01937 / 0.00373 / 512 | 0.005695 / 0.02242 / 0.00378 / 1305 | 0.002343 / 0.00784 / 0.00334 / 0 | 40.72 / 48.15 | n/a / 3.80 |
+| ground15 | shadow-bilinear-1 | character | 0.002954 / 0.01148 / 0.00116 / 371 | 0.003028 / 0.01176 / 0.00118 / 341 | 0.002281 / 0.01260 / 0.00135 / 0 | 40.67 / 48.07 | n/a / 2.72 |
+| ground15 | shadow-bilinear-1 | ground | 0.005390 / 0.01961 / 0.00380 / 582 | 0.005579 / 0.02099 / 0.00389 / 1100 | 0.002360 / 0.00784 / 0.00333 / 0 | 40.67 / 48.07 | n/a / 2.72 |
+
+### shadow-bilinear-3x3+lock-luma-kill-0.2
+
+| Condition | Arm | Region | Native grain / p95 / change / dots | Quality grain / p95 / change / dots | Own FXAA grain / p95 / change / dots | Character locked % N / Q | FXAA width C / G px |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| back15 | baseline | character | 0.014287 / 0.07499 / 0.01795 / 1742 | 0.014156 / 0.07334 / 0.01757 / 1733 | 0.002961 / 0.01649 / 0.01911 / 0 | 65.33 / 72.68 | 12.41 / 6.27 |
+| back15 | baseline | ground | 0.006708 / 0.02635 / 0.01249 / 485 | 0.007330 / 0.02830 / 0.01235 / 1881 | 0.002130 / 0.00869 / 0.01311 / 0 | 65.33 / 72.68 | 12.41 / 6.27 |
+| back15 | shadow-bilinear-3x3+lock-luma-kill-0.2 | character | 0.006315 / 0.03359 / 0.01759 / 535 | 0.008730 / 0.04646 / 0.01745 / 770 | 0.002607 / 0.01540 / 0.01840 / 0 | 44.58 / 54.11 | 12.33 / 6.24 |
+| back15 | shadow-bilinear-3x3+lock-luma-kill-0.2 | ground | 0.005309 / 0.02076 / 0.01235 / 109 | 0.006400 / 0.02468 / 0.01226 / 1058 | 0.001655 / 0.00756 / 0.01310 / 0 | 44.58 / 54.11 | 12.33 / 6.24 |
+| day30 | baseline | character | 0.008413 / 0.04997 / 0.00371 / 1097 | 0.009148 / 0.05207 / 0.00366 / 1117 | 0.002976 / 0.01624 / 0.00402 / 0 | 66.05 / 72.29 | 11.20 / 6.15 |
+| day30 | baseline | ground | 0.005930 / 0.02326 / 0.00234 / 310 | 0.006355 / 0.02524 / 0.00238 / 906 | 0.002071 / 0.00868 / 0.00202 / 0 | 66.05 / 72.29 | 11.20 / 6.15 |
+| day30 | shadow-bilinear-3x3+lock-luma-kill-0.2 | character | 0.005124 / 0.02744 / 0.00339 / 431 | 0.006570 / 0.03556 / 0.00320 / 636 | 0.002500 / 0.01430 / 0.00369 / 0 | 51.19 / 61.37 | 11.52 / 6.30 |
+| day30 | shadow-bilinear-3x3+lock-luma-kill-0.2 | ground | 0.004651 / 0.01849 / 0.00215 / 16 | 0.005287 / 0.02095 / 0.00209 / 275 | 0.001602 / 0.00729 / 0.00200 / 0 | 51.19 / 61.37 | 11.52 / 6.30 |
+| back60 | baseline | character | 0.009675 / 0.05484 / 0.00488 / 1355 | 0.010472 / 0.05966 / 0.00500 / 1535 | 0.002955 / 0.01595 / 0.00470 / 0 | 62.54 / 70.67 | 12.44 / 6.39 |
+| back60 | baseline | ground | 0.006055 / 0.02353 / 0.00328 / 379 | 0.006729 / 0.02718 / 0.00327 / 1303 | 0.002090 / 0.00868 / 0.00307 / 0 | 62.54 / 70.67 | 12.44 / 6.39 |
+| back60 | shadow-bilinear-3x3+lock-luma-kill-0.2 | character | 0.006008 / 0.03219 / 0.00451 / 683 | 0.007686 / 0.04170 / 0.00437 / 962 | 0.002547 / 0.01342 / 0.00436 / 0 | 46.96 / 59.32 | 12.34 / 6.38 |
+| back60 | shadow-bilinear-3x3+lock-luma-kill-0.2 | ground | 0.004768 / 0.01906 / 0.00300 / 28 | 0.005684 / 0.02326 / 0.00299 / 422 | 0.001611 / 0.00729 / 0.00298 / 0 | 46.96 / 59.32 | 12.34 / 6.38 |
+| ground15 | baseline | character | 0.002957 / 0.01148 / 0.00116 / 371 | 0.003024 / 0.01176 / 0.00118 / 340 | 0.002280 / 0.01260 / 0.00135 / 0 | 40.72 / 48.15 | n/a / 3.80 |
+| ground15 | baseline | ground | 0.005274 / 0.01937 / 0.00373 / 512 | 0.005695 / 0.02242 / 0.00378 / 1305 | 0.002343 / 0.00784 / 0.00334 / 0 | 40.72 / 48.15 | n/a / 3.80 |
+| ground15 | shadow-bilinear-3x3+lock-luma-kill-0.2 | character | 0.002938 / 0.01093 / 0.00117 / 372 | 0.003023 / 0.01176 / 0.00120 / 337 | 0.002281 / 0.01260 / 0.00135 / 0 | 37.52 / 46.57 | n/a / 3.97 |
+| ground15 | shadow-bilinear-3x3+lock-luma-kill-0.2 | ground | 0.004786 / 0.01794 / 0.00373 / 343 | 0.005178 / 0.02157 / 0.00376 / 893 | 0.002293 / 0.00758 / 0.00333 / 0 | 37.52 / 46.57 | n/a / 3.97 |
+
+### shadow-bilinear-1+lock-luma-kill-0.2
+
+| Condition | Arm | Region | Native grain / p95 / change / dots | Quality grain / p95 / change / dots | Own FXAA grain / p95 / change / dots | Character locked % N / Q | FXAA width C / G px |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| back15 | baseline | character | 0.014287 / 0.07499 / 0.01795 / 1742 | 0.014156 / 0.07334 / 0.01757 / 1733 | 0.002961 / 0.01649 / 0.01911 / 0 | 65.33 / 72.68 | 12.41 / 6.27 |
+| back15 | baseline | ground | 0.006708 / 0.02635 / 0.01249 / 485 | 0.007330 / 0.02830 / 0.01235 / 1881 | 0.002130 / 0.00869 / 0.01311 / 0 | 65.33 / 72.68 | 12.41 / 6.27 |
+| back15 | shadow-bilinear-1+lock-luma-kill-0.2 | character | 0.006445 / 0.03613 / 0.02207 / 578 | 0.007908 / 0.04339 / 0.02204 / 761 | 0.002919 / 0.01679 / 0.02228 / 0 | 41.19 / 49.88 | 11.73 / 4.68 |
+| back15 | shadow-bilinear-1+lock-luma-kill-0.2 | ground | 0.006630 / 0.02526 / 0.01325 / 534 | 0.007361 / 0.02693 / 0.01327 / 1701 | 0.001958 / 0.00814 / 0.01351 / 0 | 41.19 / 49.88 | 11.73 / 4.68 |
+| day30 | baseline | character | 0.008413 / 0.04997 / 0.00371 / 1097 | 0.009148 / 0.05207 / 0.00366 / 1117 | 0.002976 / 0.01624 / 0.00402 / 0 | 66.05 / 72.29 | 11.20 / 6.15 |
+| day30 | baseline | ground | 0.005930 / 0.02326 / 0.00234 / 310 | 0.006355 / 0.02524 / 0.00238 / 906 | 0.002071 / 0.00868 / 0.00202 / 0 | 66.05 / 72.29 | 11.20 / 6.15 |
+| day30 | shadow-bilinear-1+lock-luma-kill-0.2 | character | 0.005539 / 0.03162 / 0.00392 / 507 | 0.006598 / 0.03529 / 0.00365 / 629 | 0.002949 / 0.01679 / 0.00435 / 0 | 55.68 / 63.87 | 10.53 / 5.26 |
+| day30 | shadow-bilinear-1+lock-luma-kill-0.2 | ground | 0.006175 / 0.02388 / 0.00240 / 428 | 0.006454 / 0.02414 / 0.00235 / 1030 | 0.001923 / 0.00813 / 0.00210 / 0 | 55.68 / 63.87 | 10.53 / 5.26 |
+| back60 | baseline | character | 0.009675 / 0.05484 / 0.00488 / 1355 | 0.010472 / 0.05966 / 0.00500 / 1535 | 0.002955 / 0.01595 / 0.00470 / 0 | 62.54 / 70.67 | 12.44 / 6.39 |
+| back60 | baseline | ground | 0.006055 / 0.02353 / 0.00328 / 379 | 0.006729 / 0.02718 / 0.00327 / 1303 | 0.002090 / 0.00868 / 0.00307 / 0 | 62.54 / 70.67 | 12.44 / 6.39 |
+| back60 | shadow-bilinear-1+lock-luma-kill-0.2 | character | 0.006264 / 0.03528 / 0.00518 / 776 | 0.007232 / 0.03837 / 0.00505 / 837 | 0.002920 / 0.01595 / 0.00487 / 0 | 51.21 / 60.38 | 11.94 / 4.75 |
+| back60 | shadow-bilinear-1+lock-luma-kill-0.2 | ground | 0.006178 / 0.02353 / 0.00333 / 501 | 0.006608 / 0.02410 / 0.00335 / 1253 | 0.001905 / 0.00813 / 0.00312 / 0 | 51.21 / 60.38 | 11.94 / 4.75 |
+| ground15 | baseline | character | 0.002957 / 0.01148 / 0.00116 / 371 | 0.003024 / 0.01176 / 0.00118 / 340 | 0.002280 / 0.01260 / 0.00135 / 0 | 40.72 / 48.15 | n/a / 3.80 |
+| ground15 | baseline | ground | 0.005274 / 0.01937 / 0.00373 / 512 | 0.005695 / 0.02242 / 0.00378 / 1305 | 0.002343 / 0.00784 / 0.00334 / 0 | 40.72 / 48.15 | n/a / 3.80 |
+| ground15 | shadow-bilinear-1+lock-luma-kill-0.2 | character | 0.002936 / 0.01093 / 0.00117 / 373 | 0.003022 / 0.01176 / 0.00120 / 337 | 0.002281 / 0.01260 / 0.00135 / 0 | 37.54 / 46.56 | n/a / 2.72 |
+| ground15 | shadow-bilinear-1+lock-luma-kill-0.2 | ground | 0.005159 / 0.01958 / 0.00384 / 439 | 0.005361 / 0.02132 / 0.00390 / 1003 | 0.002360 / 0.00784 / 0.00333 / 0 | 37.54 / 46.56 | n/a / 2.72 |
+
+
+
+### Bilinear guards and limits
+
+Both named temporal subsets pass all eight facts, zero skipped, including the faceted and textured grain cases.
+The full shadow and golden selection used one Metal test process per filter, with KE_GPU_TESTS=1.
+Each process ran 1047 tests, 1045 passed, two failed and zero skipped. One failure in each was the field-only
+shader-discovery test after the diagnostic fragments became properties. That test now discovers those properties
+and explicitly checks the model, skinned, splat and tile-ground members. The correction passed all 35 focused
+token and frame-block tests. No renderer code changed after the captures or GPU runs.
+
+The remaining failure is TemporalMovingShadeRimGpuTests.Moving_shadow_receivers_keep_their_leading_and_trailing_rims.
+Besides the expected pinned spatial-reference changes, it reports these acceptance misses.
+
+| Moving-rim metric | Bound including baseline rounding | shadow-bilinear-3x3 | shadow-bilinear-1 |
+| --- | ---: | ---: | ---: |
+| Quality M 0.5 leading flat error | <= 0.01023825 | 0.010485 fail | 0.010718 fail |
+| Native MS 1.0 leading flat error | <= 0.00596585 | no miss | 0.008094 fail |
+| Native MS 1.0 leading flat temporal error | <= 0.00900405 | no miss | 0.014099 fail |
+| Maximum pinned-reference movement | <= 0.000001 | 0.000336 fail | 0.000964 fail |
+
+| Guard metric | Bound | shadow-bilinear-3x3 | shadow-bilinear-1 |
+| --- | --- | ---: | ---: |
+| Named temporal facts passed | 8 of 8 | 8 | 8 |
+| Quality still 1 px texture error | <= 0.005885 | 0.00548 | 0.00548 |
+| Quality still 1 px texture temporal error | <= 0.001155 | 0.00112 | 0.00112 |
+| Quality still 0.5 px texture error | <= 0.007931 | 0.00724 | 0.00724 |
+| Quality camera pan 2 px textured band error | <= 0.00605 | 0.0042 | 0.0049 |
+| Quality camera pan 2 px textured tail error | <= 0.00429 | 0.0039 | 0.0039 |
+| Quality flat stable-peak error | <= 0.016544 | 0.01504 | 0.01504 |
+| Quality flat stable-peak change | <= 0.002233 | 0.00203 | 0.00203 |
+| Native S 1 px advancing textured band error | lag, lower is better | 0.0147 | 0.0145 |
+| Quality S 1 px advancing textured band error | lag, lower is better | 0.021 | 0.02 |
+| Native S 1 px advancing textured tail | reference for the 8 px ratio | 0.0031 | 0.0034 |
+| Native S 8 px advancing textured tail | <= 1.5 x the 1 px tail | 0.0045 | 0.0044 |
+| Native S 1 px retreating textured tail | reference for the 8 px ratio | 0.0056 | 0.0046 |
+| Native S 8 px retreating textured tail | <= 1.5 x the 1 px tail | 0.0071 | 0.0067 |
+| Quality S 1 px advancing textured tail | reference for the 8 px ratio | 0.0033 | 0.0026 |
+| Quality S 8 px advancing textured tail | <= 1.5 x the 1 px tail | 0.0043 | 0.0036 |
+| Synthetic textured grain, Native | diagnostic | 0.01177 | 0.012785 |
+| Synthetic textured grain, Quality | diagnostic requested grain, gate below | 0.010593 | 0.010358 |
+| Quality textured reproduction gate | baseline > 1.3 x locks-off | 0.010593 > 0.008638 | 0.010358 > 0.008327 |
+
+
+All 58 grid golden comparisons stay within their existing 0.01 bound. The changed shadow-bearing grids have
+these maximum channel differences against their committed golden cell values. The complete grids' delta logs
+are retained, including the passing small differences. No golden was rebaked.
+
+| Golden scene | shadow-bilinear-3x3 worst cell | shadow-bilinear-1 worst cell |
+| --- | ---: | ---: |
+| scene3d_shadow_map | 0.0007 | 0.0031 |
+| scene3d_splat_shadow | 0.0005 | 0.0011 |
+| scene3d_cascade_wide | 0.0005 | 0.0008 |
+| scene3d_cascade_handoff | 0.0004 | 0.0018 |
+| scene3d_sky | 0.0007 | 0.0031 |
+
+These are distances to committed grids, not a separate new baseline render subtracted from the candidate.
+The shadow lookup changes actual pixels while staying below the existing golden tolerance.
+
+Both complete solutions build Release with zero warnings. The broader Render3D namespace run, with GPU facts
+off, reports 3775 passed, 50 skipped and two failed. The discovery failure above is corrected. The remaining
+raw Lanczos source-count assertion expects five calls and sees nine, the same pre-existing archive failure
+documented in earlier rounds. The full engine format check reports 138 whitespace diagnostics in 11 untouched
+archive files. None is in a changed file. These are reported without unrelated repairs.
+The full Grimhollow suite and navigation rebakes were deliberately omitted for the diagnostic pin.
+
+Logs and measured guard rows are under [guards](runs/shadow-filters/guards) and
+[verification](runs/shadow-filters/verification). [guard-results.json](runs/shadow-filters/guard-results.json)
+records the exact named facts and both original failure messages.
+
+### Bilinear owner-look evidence
+
+Each character sheet is 4x nearest-neighbour, with Native, Quality and that arm's FXAA left to right.
+Separate per-mode crops are retained alongside the sheets. Each contact sheet is the complete captured
+normal-scale contact-sheet frame, showing the character and ground together.
+
+| Arm | Character 4x | Normal-scale contact sheet |
+| --- | --- | --- |
+| Baseline | [crop](runs/shadow-filters/visuals/baseline-character-015-4x.png) | [sheet](runs/shadow-filters/visuals/baseline-contact-sheet-015.png) |
+| shadow-bilinear-3x3 | [crop](runs/shadow-filters/visuals/shadow-bilinear-3x3-character-015-4x.png) | [sheet](runs/shadow-filters/visuals/shadow-bilinear-3x3-contact-sheet-015.png) |
+| shadow-bilinear-1 | [crop](runs/shadow-filters/visuals/shadow-bilinear-1-character-015-4x.png) | [sheet](runs/shadow-filters/visuals/shadow-bilinear-1-contact-sheet-015.png) |
+| shadow-bilinear-3x3 + kill | [crop](runs/shadow-filters/visuals/shadow-bilinear-3x3+lock-luma-kill-0.2-character-015-4x.png) | [sheet](runs/shadow-filters/visuals/shadow-bilinear-3x3+lock-luma-kill-0.2-contact-sheet-015.png) |
+| shadow-bilinear-1 + kill | [crop](runs/shadow-filters/visuals/shadow-bilinear-1+lock-luma-kill-0.2-character-015-4x.png) | [sheet](runs/shadow-filters/visuals/shadow-bilinear-1+lock-luma-kill-0.2-contact-sheet-015.png) |
+
+The [2x ground comparison](runs/shadow-filters/visuals/ground-edge-fxaa-015-2x.png) uses each arm's own FXAA.
+Its order is baseline, shared 3x3, single tap, shared 3x3 plus kill, single tap plus kill.

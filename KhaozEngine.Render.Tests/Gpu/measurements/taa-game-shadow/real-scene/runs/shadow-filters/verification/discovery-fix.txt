@@ -1,0 +1,12 @@
+  KhaozEngine.ServerStatus -> KhaozEngine.ServerStatus/bin/Release/net10.0/KhaozEngine.ServerStatus.dll
+  KhaozEngine.TileWorld.Render3D -> KhaozEngine.TileWorld.Render3D/bin/Release/net10.0/KhaozEngine.TileWorld.Render3D.dll
+  SnapshotTool -> SnapshotTool/bin/Release/net10.0/SnapshotTool.dll
+  KhaozEngine.Game -> KhaozEngine.Game/bin/Release/net10.0/KhaozEngine.Game.dll
+  KhaozEngine.Game.Render3D -> KhaozEngine.Game.Render3D/bin/Release/net10.0/KhaozEngine.Game.Render3D.dll
+  KhaozEngine.BugReports.Client -> KhaozEngine.BugReports.Client/bin/Release/net10.0/KhaozEngine.BugReports.Client.dll
+  KhaozEngine.Render.Tests -> KhaozEngine.Render.Tests/bin/Release/net10.0/KhaozEngine.Render.Tests.dll
+Test run for KhaozEngine.Render.Tests/bin/Release/net10.0/KhaozEngine.Render.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+
+Passed!  - Failed:     0, Passed:    35, Skipped:     0, Total:    35, Duration: 39 ms - KhaozEngine.Render.Tests.dll (net10.0)
+build-slot: exit=0 waited=0.025s ran=32.659s

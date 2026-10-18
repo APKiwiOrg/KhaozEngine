@@ -95,7 +95,7 @@ void main() {
         //      for the edge pass). The two arrays are still sampled in binding order (Albedo then Normal), which is
         //      no longer a Metal constraint (the native backend authors its own indices). The existing source
         //      retains that sequence without requiring it of other shaders. ----
-        public const string SplatFrag = @"#version 450
+        public static string SplatFrag => TemporalResolveDiagnostics.ApplyShadowFilter(@"#version 450
 layout(set=0, binding=0) uniform U {
     mat4 ViewProj;
     vec4 LightDir; vec4 LightColor; vec4 Ambient; vec4 Params;
@@ -244,6 +244,6 @@ void main() {
     // Per-fragment NDC depth, never a varying: see the note at the top of ShaderSources.Model.cs (issue #301).
     // Terrain is the shader that needed it most, since a chunk's triangles are the largest the engine draws.
     oDepth = vec4(gl_FragCoord.z, gl_FragCoord.z, gl_FragCoord.z, 1.0);
-}";
+}");
     }
 }

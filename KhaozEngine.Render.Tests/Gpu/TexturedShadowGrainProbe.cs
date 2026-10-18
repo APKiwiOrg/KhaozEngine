@@ -27,9 +27,10 @@ internal static class TexturedShadowGrainProbe
     internal static void Measure(ITestOutputHelper output)
     {
         int requested = TemporalResolveDiagnostics.Mask;
+        int filter = requested & TemporalResolveDiagnostics.ShadowFilterMask;
         try
         {
-            TemporalResolveDiagnostics.OverrideMaskForMeasurement(TemporalResolveDiagnostics.NoOp);
+            TemporalResolveDiagnostics.OverrideMaskForMeasurement(TemporalResolveDiagnostics.NoOp | filter);
             using var scene = new GameShadowGrainScene();
             byte[][] reference = scene.Run(4f, 0f, AntiAliasing.Off, TemporalUpscale.Native, false,
                 reference: true, textured: true).Frames;
@@ -40,7 +41,7 @@ internal static class TexturedShadowGrainProbe
             {
                 ShadowEdgeRegion Grain(int mask, float rate = 4f)
                 {
-                    TemporalResolveDiagnostics.OverrideMaskForMeasurement(mask);
+                    TemporalResolveDiagnostics.OverrideMaskForMeasurement(mask | filter);
                     byte[][] frames = scene.Run(rate, 1f, AntiAliasing.Temporal, preset, false, textured: true).Frames;
                     return new GameShadowGrainMeasure(frames, rate == 0f ? stillReference : reference, false, bandPixels: 12f).Band;
                 }

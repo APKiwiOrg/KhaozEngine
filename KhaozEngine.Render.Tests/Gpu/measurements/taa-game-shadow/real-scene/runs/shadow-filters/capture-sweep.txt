@@ -1,0 +1,80 @@
+START back15-baseline
+END back15-baseline exit 0
+START day30-baseline
+END day30-baseline exit 0
+START back60-baseline
+END back60-baseline exit 0
+START ground15-baseline
+END ground15-baseline exit 0
+START back15-shadow-bilinear-3x3
+END back15-shadow-bilinear-3x3 exit 0
+START day30-shadow-bilinear-3x3
+END day30-shadow-bilinear-3x3 exit 0
+START back60-shadow-bilinear-3x3
+END back60-shadow-bilinear-3x3 exit 0
+START ground15-shadow-bilinear-3x3
+END ground15-shadow-bilinear-3x3 exit 0
+START back15-shadow-bilinear-1
+END back15-shadow-bilinear-1 exit 0
+START day30-shadow-bilinear-1
+END day30-shadow-bilinear-1 exit 0
+START back60-shadow-bilinear-1
+END back60-shadow-bilinear-1 exit 0
+START ground15-shadow-bilinear-1
+END ground15-shadow-bilinear-1 exit 0
+START back15-show-locked
+END back15-show-locked exit 0
+START day30-show-locked
+END day30-show-locked exit 0
+START back60-show-locked
+END back60-show-locked exit 0
+START ground15-show-locked
+END ground15-show-locked exit 0
+START back15-shadow-bilinear-3x3+show-locked
+END back15-shadow-bilinear-3x3+show-locked exit 0
+START day30-shadow-bilinear-3x3+show-locked
+END day30-shadow-bilinear-3x3+show-locked exit 0
+START back60-shadow-bilinear-3x3+show-locked
+END back60-shadow-bilinear-3x3+show-locked exit 0
+START ground15-shadow-bilinear-3x3+show-locked
+END ground15-shadow-bilinear-3x3+show-locked exit 0
+START back15-shadow-bilinear-1+show-locked
+END back15-shadow-bilinear-1+show-locked exit 0
+START day30-shadow-bilinear-1+show-locked
+END day30-shadow-bilinear-1+show-locked exit 0
+START back60-shadow-bilinear-1+show-locked
+END back60-shadow-bilinear-1+show-locked exit 0
+START ground15-shadow-bilinear-1+show-locked
+END ground15-shadow-bilinear-1+show-locked exit 0
+START back15-shadow-bilinear-3x3+lock-luma-kill-0.2
+END back15-shadow-bilinear-3x3+lock-luma-kill-0.2 exit 0
+START day30-shadow-bilinear-3x3+lock-luma-kill-0.2
+END day30-shadow-bilinear-3x3+lock-luma-kill-0.2 exit 0
+START back60-shadow-bilinear-3x3+lock-luma-kill-0.2
+END back60-shadow-bilinear-3x3+lock-luma-kill-0.2 exit 0
+START ground15-shadow-bilinear-3x3+lock-luma-kill-0.2
+END ground15-shadow-bilinear-3x3+lock-luma-kill-0.2 exit 0
+START back15-shadow-bilinear-1+lock-luma-kill-0.2
+END back15-shadow-bilinear-1+lock-luma-kill-0.2 exit 0
+START day30-shadow-bilinear-1+lock-luma-kill-0.2
+END day30-shadow-bilinear-1+lock-luma-kill-0.2 exit 0
+START back60-shadow-bilinear-1+lock-luma-kill-0.2
+END back60-shadow-bilinear-1+lock-luma-kill-0.2 exit 0
+START ground15-shadow-bilinear-1+lock-luma-kill-0.2
+END ground15-shadow-bilinear-1+lock-luma-kill-0.2 exit 0
+START back15-shadow-bilinear-3x3+lock-luma-kill-0.2+show-locked
+END back15-shadow-bilinear-3x3+lock-luma-kill-0.2+show-locked exit 0
+START day30-shadow-bilinear-3x3+lock-luma-kill-0.2+show-locked
+END day30-shadow-bilinear-3x3+lock-luma-kill-0.2+show-locked exit 0
+START back60-shadow-bilinear-3x3+lock-luma-kill-0.2+show-locked
+END back60-shadow-bilinear-3x3+lock-luma-kill-0.2+show-locked exit 0
+START ground15-shadow-bilinear-3x3+lock-luma-kill-0.2+show-locked
+END ground15-shadow-bilinear-3x3+lock-luma-kill-0.2+show-locked exit 0
+START back15-shadow-bilinear-1+lock-luma-kill-0.2+show-locked
+END back15-shadow-bilinear-1+lock-luma-kill-0.2+show-locked exit 0
+START day30-shadow-bilinear-1+lock-luma-kill-0.2+show-locked
+END day30-shadow-bilinear-1+lock-luma-kill-0.2+show-locked exit 0
+START back60-shadow-bilinear-1+lock-luma-kill-0.2+show-locked
+END back60-shadow-bilinear-1+lock-luma-kill-0.2+show-locked exit 0
+START ground15-shadow-bilinear-1+lock-luma-kill-0.2+show-locked
+END ground15-shadow-bilinear-1+lock-luma-kill-0.2+show-locked exit 0

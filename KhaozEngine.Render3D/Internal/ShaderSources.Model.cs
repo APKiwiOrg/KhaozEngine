@@ -90,7 +90,7 @@ void main() {
     vDissolveComplement = IDissolveComplement;
 }";
 
-        public const string ModelFrag = @"#version 450
+        public static string ModelFrag => TemporalResolveDiagnostics.ApplyShadowFilter(@"#version 450
 layout(set=0, binding=0) uniform U {
     mat4 ViewProj;
     vec4 LightDir;   // xyz = key light travel direction
@@ -215,7 +215,7 @@ void main() {
     // static world (unchanged), 0 for skinned/dynamic geometry so the main ground-decal pass rejects it (issue #235).
     oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0 - clamp(vDynamic, 0.0, 1.0));
     oDepth = vec4(gl_FragCoord.z, gl_FragCoord.z, gl_FragCoord.z, 1.0);   // per-fragment NDC depth, see the note at the top
-}";
+}");
 
         // ---- CharDissolve variant of ModelFrag: noise-thresholded alpha clip + emissive edge ----
         // Identical lighting to ModelFrag, plus a world-space value-noise dissolve mask: fragments where the mask is
@@ -223,7 +223,7 @@ void main() {
         // band just above the threshold (width vDissolve.y) glows with the edge colour (which rides vEmissive during
         // a dissolve). World-space noise so the pattern is stable as the avatar moves. Only skinned draws the consumer
         // marks as dissolving use this pipeline; the normal path keeps ModelFrag byte-identical.
-        public const string ModelDissolveFrag = @"#version 450
+        public static string ModelDissolveFrag => TemporalResolveDiagnostics.ApplyShadowFilter(@"#version 450
 layout(set=0, binding=0) uniform U {
     mat4 ViewProj;
     vec4 LightDir;
@@ -318,7 +318,7 @@ void main() {
     oColor = vec4(lit, 1.0);
     oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0 - clamp(vDynamic, 0.0, 1.0)); // a: dynamic-geometry decal mask (issue #235)
     oDepth = vec4(gl_FragCoord.z, gl_FragCoord.z, gl_FragCoord.z, 1.0);   // per-fragment NDC depth, see the note at the top
-}";
+}");
 
         // ---- GPU skinning (the default, Scene3D.UseGpuSkinning). THREE uniform buffers, split by update frequency. The
         //      SHARED per-frame block `U` is at set 0 binding 0, read by BOTH stages, and is the very same buffer
@@ -442,7 +442,7 @@ void main() {
         // #604 is the SHARED per-frame buffer at set 0 binding 0 rather than a copy folded into the per-draw slot.
         // It declares nothing of VBlock (set 0 binding 3), because it reads nothing of it: the per-draw constants
         // arrive as interpolants. Material maps at set 1. Sample order (Albedo first, ShadowMap last) is preserved.
-        public const string SkinnedModelFrag = @"#version 450
+        public static string SkinnedModelFrag => TemporalResolveDiagnostics.ApplyShadowFilter(@"#version 450
 layout(set=0, binding=0) uniform U {
     mat4 ViewProj;
     vec4 LightDir;
@@ -515,12 +515,12 @@ void main() {
     oColor = vec4(lit, 1.0);
     oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0 - clamp(vDynamic, 0.0, 1.0)); // a: dynamic-geometry decal mask (issue #235)
     oDepth = vec4(gl_FragCoord.z, gl_FragCoord.z, gl_FragCoord.z, 1.0);   // per-fragment NDC depth, see the note at the top
-}";
+}");
 
         // Skinned CharDissolve variant: the same shared frame block at set 0 binding 0 the plain skinned fragment
         // reads, material maps at set 1. Identical noise-thresholded alpha clip + emissive edge, and RenderOrigin
         // (the last member of the block) is the one member only this variant reads.
-        public const string SkinnedModelDissolveFrag = @"#version 450
+        public static string SkinnedModelDissolveFrag => TemporalResolveDiagnostics.ApplyShadowFilter(@"#version 450
 layout(set=0, binding=0) uniform U {
     mat4 ViewProj;
     vec4 LightDir;
@@ -612,6 +612,6 @@ void main() {
     oColor = vec4(lit, 1.0);
     oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0 - clamp(vDynamic, 0.0, 1.0)); // a: dynamic-geometry decal mask (issue #235)
     oDepth = vec4(gl_FragCoord.z, gl_FragCoord.z, gl_FragCoord.z, 1.0);   // per-fragment NDC depth, see the note at the top
-}";
+}");
     }
 }

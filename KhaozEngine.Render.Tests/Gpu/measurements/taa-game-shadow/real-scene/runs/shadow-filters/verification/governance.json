@@ -1,0 +1,27 @@
+[
+  {
+    "command": "sh scripts/check-dashes.sh --tree",
+    "exit": 0,
+    "output": ""
+  },
+  {
+    "command": "sh scripts/check-prose.sh --tree",
+    "exit": 0,
+    "output": ""
+  },
+  {
+    "command": "sh scripts/check-agent-instructions.sh --tree",
+    "exit": 0,
+    "output": "check-agent-instructions: 7772 / 16384 bytes\n"
+  },
+  {
+    "command": "bash scripts/check-doc-versions.sh",
+    "exit": 0,
+    "output": "engine version (Directory.Build.props KhaozEngineVersion): 21.5.0-grain.1\nok    README.md: PackageReference example version = 21.5.0-grain.1\nok    README.md: PackageReference example version = 21.5.0-grain.1\nok    README.md: PackageReference example version = 21.5.0-grain.1\nok    README.md: PackageReference example version = 21.5.0-grain.1\nok    docs/USING-KHAOZENGINE.md: PackageReference example version = 21.5.0-grain.1\nok    docs/USING-KHAOZENGINE.md: PackageReference example version = 21.5.0-grain.1\nok    docs/USING-KHAOZENGINE.md: PackageReference example version = 21.5.0-grain.1\nok    docs/USING-KHAOZENGINE.md: PackageReference example version = 21.5.0-grain.1\nok    docs/USING-KHAOZENGINE.md: PackageReference example version = 21.5.0-grain.1\nok    docs/USING-KHAOZENGINE.md: PackageReference example version = 21.5.0-grain.1\nok    docs/USING-KHAOZENGINE.md: PackageReference example version = 21.5.0-grain.1\nok    CHANGELOG.md: newest entry heading = ## 21.5.0-grain.1\nall engine-version declarations match 21.5.0-grain.1, and package inventory plus umbrella membership are documented\n"
+  },
+  {
+    "command": "sh scripts/check-file-size.sh --tree",
+    "exit": 0,
+    "output": "Completed separately."
+  }
+]

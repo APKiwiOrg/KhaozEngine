@@ -126,7 +126,7 @@ void main() {
         //
         //      Lighting is the shared LightingCommonGlsl block and the three MRT targets are exactly SplatFrag's
         //      (geometric normal to attachment 1 for the edge pass, NDC depth to attachment 2). ----
-        public const string TileGroundFrag = @"#version 450
+        public static string TileGroundFrag => TemporalResolveDiagnostics.ApplyShadowFilter(@"#version 450
 layout(set=0, binding=0) uniform U {
     mat4 ViewProj;
     vec4 LightDir; vec4 LightColor; vec4 Ambient; vec4 Params;
@@ -302,6 +302,6 @@ void main() {
     oNormal = vec4(Ngeo * 0.5 + 0.5, 1.0); // GEOMETRIC normal for the edge pass
     // Per-fragment NDC depth, never a varying: see the note at the top of ShaderSources.Model.cs (issue #301).
     oDepth = vec4(gl_FragCoord.z, gl_FragCoord.z, gl_FragCoord.z, 1.0);
-}";
+}");
     }
 }

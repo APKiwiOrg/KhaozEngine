@@ -1,0 +1,16 @@
+back15 taa-native: 16/16 frames pixel-identical, zero differing pixels
+back15 taa-quality: 16/16 frames pixel-identical, zero differing pixels
+back15 fxaa: 16/16 frames pixel-identical, zero differing pixels
+back15 metrics.txt byte-identical: True
+day30 taa-native: 16/16 frames pixel-identical, zero differing pixels
+day30 taa-quality: 16/16 frames pixel-identical, zero differing pixels
+day30 fxaa: 16/16 frames pixel-identical, zero differing pixels
+day30 metrics.txt byte-identical: True
+back60 taa-native: 16/16 frames pixel-identical, zero differing pixels
+back60 taa-quality: 16/16 frames pixel-identical, zero differing pixels
+back60 fxaa: 16/16 frames pixel-identical, zero differing pixels
+back60 metrics.txt byte-identical: True
+ground15 taa-native: 16/16 frames pixel-identical, zero differing pixels
+ground15 taa-quality: 16/16 frames pixel-identical, zero differing pixels
+ground15 fxaa: 16/16 frames pixel-identical, zero differing pixels
+ground15 metrics.txt byte-identical: True

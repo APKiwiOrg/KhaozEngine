@@ -1,0 +1,6 @@
+  evicted  khaozengine.worldstore/21.5.0-grain.1  STALE: cached bytes DIFFERED from the vendored nupkg
+NuGet cache: evicted 78 package directories (78 stale, 0 uncomparable).
+warning: 78 of them held DIFFERENT bytes than the vendored nupkg for the same version.
+         Every build and test run in this repo before this refresh used those bytes, so any
+         green result from them is about a different engine than the one now vendored.
+         Re-run the build and the full test suite after the next restore.

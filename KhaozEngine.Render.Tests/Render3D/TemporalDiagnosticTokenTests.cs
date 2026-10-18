@@ -1,3 +1,4 @@
+using System;
 using KhaozEngine.Render3D.Internal;
 using Xunit;
 
@@ -6,6 +7,8 @@ namespace KhaozEngine.Tests.Render3D;
 public sealed class TemporalDiagnosticTokenTests
 {
     [Theory]
+    [InlineData("shadow-bilinear-3x3", 4194304)]
+    [InlineData("shadow-bilinear-1", 8388608)]
     [InlineData("lock-history-ridge", 1024)]
     [InlineData("lock-shade-release", 2048)]
     [InlineData("lock-bound-current", 4096)]
@@ -37,4 +40,24 @@ public sealed class TemporalDiagnosticTokenTests
         Assert.Equal(all, (int)((float)all + 0.5f));
         Assert.True(all < 1 << 24);
     }
+    [Theory]
+    [InlineData(0, "")]
+    [InlineData(512, "")]
+    [InlineData(4194304, "#define ShadowBilinear3x3\n")]
+    [InlineData(8388608 | 512 | 1048576, "#define ShadowBilinear1\n")]
+    public void LightingOnlyCompilesTheSelectedShadowFilter(int mask, string define)
+    {
+        const string program = "#version 450\nvoid main() {}";
+        string result = TemporalResolveDiagnostics.ApplyShadowFilter(program, mask);
+        Assert.Equal("#version 450\n" + define + "void main() {}", result);
+        if (define.Length == 0) Assert.Same(program, result);
+    }
+
+    [Fact]
+    public void IncompatibleShadowFiltersAreRejected()
+    {
+        Assert.Throws<InvalidOperationException>(() =>
+            TemporalResolveDiagnostics.Parse("shadow-bilinear-3x3,shadow-bilinear-1"));
+    }
+
 }

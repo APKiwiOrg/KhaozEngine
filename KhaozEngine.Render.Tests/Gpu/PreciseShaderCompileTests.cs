@@ -27,6 +27,8 @@ namespace KhaozEngine.Tests.Gpu
             foreach (GpuShaderStages stage in new[] { GpuShaderStages.Compute, GpuShaderStages.Vertex })
             {
                 string source = stage == GpuShaderStages.Compute ? PreciseMathShaders.Compute : PreciseMathShaders.Vertex;
+                byte[] defaultSpirv = SpirvFrontEnd.ToSpirv(source, stage, "authored precise default observation");
+                _output.WriteLine($"{stage} default compile of authored precise: {NoContractionResults(defaultSpirv).Count} NoContraction decorations (observation only)");
                 byte[] spirv = SpirvFrontEnd.ToSpirv(source, stage, "precise probe", Precise);
                 AssertSeparateOperations(spirv);
                 string hlsl = stage == GpuShaderStages.Compute
@@ -45,6 +47,8 @@ namespace KhaozEngine.Tests.Gpu
             string defaultIdentity = SpirvFrontEnd.OptionsIdentity("probe");
             string preciseIdentity = SpirvFrontEnd.OptionsIdentity("probe", Precise);
             Assert.Equal(SpirvFrontEndPin.Identity + ";label=probe", defaultIdentity);
+            Assert.Equal(Silk.NET.Shaderc.OptimizationLevel.Performance, SpirvFrontEndPin.OptimizationFor(default));
+            Assert.Contains(";opt=Performance;", defaultIdentity);
             Assert.Contains(";opt=Zero;", preciseIdentity);
             Assert.EndsWith(";precise=1", preciseIdentity);
             Assert.NotEqual(defaultIdentity, preciseIdentity);
@@ -61,12 +65,58 @@ namespace KhaozEngine.Tests.Gpu
                 uint actual = D3D11ShaderCompileFlags.For(stage, requested, Precise);
                 Assert.Equal(stage == D3D11ShaderStage.Fragment ? requested : requested | 0x00002000u, actual);
                 Assert.Equal(requested, D3D11ShaderCompileFlags.For(stage, requested, default));
+                Assert.Equal(0u, D3D11ShaderCompileFlags.For(stage, requested, default) & 0x00002000u);
                 Assert.NotEqual(D3D11ShaderKey.For(stage, requested, PreciseMathShaders.Vertex, PreciseMathShaders.Fragment),
                     D3D11ShaderKey.For(stage, requested, Precise, PreciseMathShaders.Vertex, PreciseMathShaders.Fragment));
             }
 
             ShaderValidation.ValidatePair(PreciseMathShaders.Vertex, PreciseMathShaders.Fragment, Precise, "precise pair");
             ShaderValidation.ValidateCompute(PreciseMathShaders.Compute, Precise, "precise compute");
+        }
+
+        // Injecting NoContraction or serving a qualified module for an unqualified key must fail here.
+        [Theory]
+        [InlineData(GpuShaderStages.Compute)]
+        [InlineData(GpuShaderStages.Vertex)]
+        public void UnqualifiedArithmeticNeverGainsNoContractionInColdOrWarmCaches(GpuShaderStages stage)
+        {
+            string source = (stage == GpuShaderStages.Compute ? PreciseMathShaders.Compute : PreciseMathShaders.Vertex)
+                .Replace("precise ", string.Empty, StringComparison.Ordinal);
+            var frontEnd = new SpirvCompileCache(enabled: true, capacity: 4);
+            using var directory = new CacheDirectory();
+            var bytes = new SpirvBytesCache(directory.Path);
+            foreach (GpuShaderCompileOptions options in new[] { default, Precise, default, Precise })
+            {
+                byte[] spirv = frontEnd.GetOrCompile(SpirvFrontEnd.OptionsIdentity("unqualified probe", options), stage, source,
+                    () => SpirvFrontEnd.ToSpirv(source, stage, "unqualified probe", options));
+                Assert.Empty(NoContractionResults(spirv));
+
+                // A fresh module cache makes the warm disk bytes reach the API for inspection too.
+                var api = new FakeVulkanShaderApi();
+                var modules = new VulkanShaderModuleCache(api);
+                try
+                {
+                    if (stage == GpuShaderStages.Compute)
+                    {
+                        using var kernel = new VulkanComputeShader(modules, source, bytesCache: bytes, options: options);
+                        Assert.Single(api.Created);
+                    }
+                    else
+                    {
+                        using var pair = new VulkanShaderSet(modules, source, PreciseMathShaders.Fragment,
+                            bytesCache: bytes, options: options);
+                        Assert.Equal(2, api.Created.Count);
+                    }
+                    Assert.Empty(NoContractionResults(api.Created[0]));
+                }
+                finally { modules.DestroyAll(); }
+                _output.WriteLine($"{stage}, PreciseMath={options.PreciseMath}: no NoContraction in front-end and Vulkan modules");
+            }
+            Assert.Equal(2L, frontEnd.CompileCount);
+            Assert.Equal(2L, frontEnd.HitCount);
+            Assert.Equal(stage == GpuShaderStages.Compute ? 2 : 3, bytes.Misses);
+            Assert.Equal(stage == GpuShaderStages.Compute ? 2 : 5, bytes.Hits);
+            Assert.Equal(stage == GpuShaderStages.Compute ? 2 : 3, bytes.Writes);
         }
 
         [Fact]
@@ -142,18 +192,33 @@ namespace KhaozEngine.Tests.Gpu
             Assert.Throws<NotSupportedException>(() => factory.CreateComputeShaderFromSpirv(PreciseMathShaders.Compute, Precise));
         }
 
+        static HashSet<uint> NoContractionResults(byte[] spirv)
+        {
+            ReadOnlySpan<uint> words = MemoryMarshal.Cast<byte, uint>(spirv);
+            Assert.True(words.Length >= 5);
+            Assert.Equal(0x07230203u, words[0]);
+            var decorated = new HashSet<uint>();
+            for (int offset = 5; offset < words.Length;)
+            {
+                int length = (int)(words[offset] >> 16);
+                Assert.True(length > 0 && offset + length <= words.Length);
+                if ((words[offset] & 0xffffu) == 71u && length >= 3 && words[offset + 2] == 42u)
+                    decorated.Add(words[offset + 1]);
+                offset += length;
+            }
+            return decorated;
+        }
+
         void AssertSeparateOperations(byte[] spirv)
         {
             ReadOnlySpan<uint> words = MemoryMarshal.Cast<byte, uint>(spirv);
-            var decorated = new HashSet<uint>();
+            HashSet<uint> decorated = NoContractionResults(spirv);
             var arithmetic = new List<(uint Opcode, uint Result)>();
             for (int offset = 5; offset < words.Length;)
             {
                 int length = (int)(words[offset] >> 16);
                 Assert.True(length > 0 && offset + length <= words.Length);
                 uint opcode = words[offset] & 0xffffu;
-                if (opcode == 71u && length >= 3 && words[offset + 2] == 42u)
-                    decorated.Add(words[offset + 1]);
                 if (opcode is 129u or 133u)
                     arithmetic.Add((opcode, words[offset + 2]));
                 offset += length;

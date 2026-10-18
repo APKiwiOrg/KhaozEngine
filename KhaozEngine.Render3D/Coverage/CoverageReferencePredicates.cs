@@ -19,6 +19,12 @@ internal static class CoverageReferencePredicates
     {
         if (!Finite(a) || !Finite(b) || !Finite(p)) return new(0, float.NaN);
         Span<double> expansion = stackalloc double[8];
+        int length = EdgeExpansion(a, b, p, expansion);
+        return Scalar(expansion[..length]);
+    }
+
+    static int EdgeExpansion(Vector3 a, Vector3 b, Vector3 p, Span<double> expansion)
+    {
         int length = 0;
         // A binary32 product is exact in binary64. Expand before subtracting coordinates so no difference is rounded.
         CoverageGeometry.Grow(expansion, ref length, (double)b.X * p.Y);
@@ -27,7 +33,28 @@ internal static class CoverageReferencePredicates
         CoverageGeometry.Grow(expansion, ref length, -(double)b.Y * p.X);
         CoverageGeometry.Grow(expansion, ref length, (double)b.Y * a.X);
         CoverageGeometry.Grow(expansion, ref length, (double)a.Y * p.X);
-        return Scalar(expansion[..length]);
+        return length;
+    }
+
+    /// <summary>B30's common power-of-two normalization precedes either RN32 conversion, so flushing cannot
+    /// turn two subnormal exact sides into a zero divisor. Float constructions retain the pinned order.</summary>
+    internal static float CrossingParameter(Vector3 s, Vector3 t, Vector3 a, Vector3 b)
+    {
+        if (!Finite(s) || !Finite(t) || !Finite(a) || !Finite(b)) return float.NaN;
+        Span<double> first = stackalloc double[8], second = stackalloc double[8];
+        int na = EdgeExpansion(s, t, a, first), nb = EdgeExpansion(s, t, b, second);
+        if (na == 0 || nb == 0 || Math.Sign(first[na - 1]) == Math.Sign(second[nb - 1])) return float.NaN;
+        var ca = first[..na]; var cb = second[..nb];
+        int sa = Math.Sign(ca[^1]), sb = Math.Sign(cb[^1]);
+        int exponent = Math.Max(Math.ILogB(Math.Abs(ca[^1])), Math.ILogB(Math.Abs(cb[^1])));
+        double binade = Math.ScaleB(1, exponent);
+        if (CompareMagnitude(ca, sa, binade) < 0 && CompareMagnitude(cb, sb, binade) < 0) exponent--;
+        else if (CompareMagnitude(ca, sa, 2 * binade) >= 0 || CompareMagnitude(cb, sb, 2 * binade) >= 0) exponent++;
+        for (int i = 0; i < na; i++) ca[i] = Math.ScaleB(ca[i], -exponent);
+        for (int i = 0; i < nb; i++) cb[i] = Math.ScaleB(cb[i], -exponent);
+        float x = Scalar(ca).Value, y = Scalar(cb).Value;
+        float denominator = x - y;
+        return x / denominator;
     }
 
     /// <summary>Returns the exact sign and RN32 value of (b.X-a.X)*(d.X-c.X)+(b.Y-a.Y)*(d.Y-c.Y),

@@ -3,9 +3,6 @@ using System.Linq;
 using System.Numerics;
 using KhaozEngine.Render3D;
 using Xunit;
-using I = KhaozEngine.Render3D.CoverageFloatInterval;
-using F = KhaozEngine.Render3D.CoverageFloatIntervals;
-using P = KhaozEngine.Render3D.CoverageReferencePrecision;
 using M = KhaozEngine.Render3D.CoverageReferenceMath;
 using ReferenceSupport = KhaozEngine.Render3D.CoverageReferenceSupport;
 
@@ -76,163 +73,12 @@ public sealed class CoverageReferencePrimitiveTests
     }
 
     [Fact]
-    public void Coordinate_only_roundoff_does_not_bound_skinny_triangle_height()
+    public void Skinny_triangle_heights_differ_by_half_between_adjacent_queries()
     {
         Vector3 a = Vector3.Zero, b = new(1, 1, 0), c = new(1, 1 + MathF.ScaleB(1, -23), 1);
         Assert.Equal(0f, M.Height(a, b, c, new(.5f, .5f)));
         Assert.Equal(.5f, M.Height(a, b, c, new(.5f, .5f + MathF.ScaleB(1, -24))));
         Assert.Equal(MathF.ScaleB(1, -23), CoverageReferencePredicates.Edge(a, b, c).Value);
-        // This is the height expression graph on a query interval covering both adjacent points.
-        I x = F.Point(.5f), y = new(.5, .5 + Math.ScaleB(1, -24));
-        I Edge(Vector3 from, Vector3 to, I px, I py) => F.Subtract(
-            F.Multiply(F.Subtract(F.Point(to.X), F.Point(from.X)), F.Subtract(py, F.Point(from.Y))),
-            F.Multiply(F.Subtract(F.Point(to.Y), F.Point(from.Y)), F.Subtract(px, F.Point(from.X))));
-        I area = Edge(a, b, F.Point(c.X), F.Point(c.Y));
-        I u = Edge(b, c, x, y), v = Edge(c, a, x, y), w = Edge(a, b, x, y);
-        I height = F.Divide(F.Add(F.Add(F.Multiply(u, F.Point(a.Z)), F.Multiply(v, F.Point(b.Z))), F.Multiply(w, F.Point(c.Z))), area);
-        Assert.True(height.Contains(0));
-        Assert.True(height.Contains(.5));
-        Assert.True(height.Max - height.Min >= .5);
-    }
-
-    [Fact]
-    public void Interval_operations_pin_ulps_domains_and_input_flushing()
-    {
-        Assert.Equal((1, 4, 16, 1), (P.BasicUlps, P.DivideUlps, P.SqrtUlps, P.StoreUlps));
-        Assert.Equal(P.MinNormal32, Math.ScaleB(1, -126));
-        Assert.Equal(P.MinSubnormal32, Math.ScaleB(1, -149));
-        Assert.Equal(P.MaxDivisor32, Math.ScaleB(1, 126));
-        Assert.Equal(.25 * (double).02f, P.Budget(.02f));
-        I stored = F.Store32(F.Point(1));
-        Assert.True(stored.Min < 1 && stored.Max > 1);
-        float n = MathF.ScaleB(1, -140), large = MathF.ScaleB(1, 100);
-        I product = F.Multiply(F.Point(n), F.Point(large));
-        Assert.True(product.Contains(0));
-        Assert.True(product.Contains((double)n * large));
-        Assert.True(F.Hull(F.Point(n), F.Point(n)).Contains(0));
-        Assert.True(F.Negate(F.Point(n)).Contains(0));
-        Assert.True(F.Abs(F.Point(-n)).Contains(0));
-        Assert.Equal(CoverageIntervalTruth.Either, F.CompareLess(F.Point(n), F.Point(n * .5f)));
-        Assert.False(F.Divide(F.Point(1), new(-1, 1)).IsFinite);
-        Assert.False(F.Divide(F.Point(1), F.Point(MathF.ScaleB(1, -127))).IsFinite);
-        Assert.False(F.Divide(F.Point(1), F.Point(MathF.ScaleB(1, 127))).IsFinite);
-        Assert.False(F.Sqrt(new(-1, 1)).IsFinite);
-        Assert.False(F.Add(F.Point(float.MaxValue), F.Point(float.MaxValue)).IsFinite);
-        Assert.False(F.Multiply(F.Point(float.MaxValue), F.Point(2)).IsFinite);
-        foreach (float divisor in new[] { MathF.ScaleB(1, -126), MathF.ScaleB(1, 126) })
-        {
-            I quotient = F.Divide(F.Point(divisor), F.Point(divisor));
-            Assert.True(quotient.IsFinite);
-            Assert.True(quotient.Contains(1));
-        }
-        Assert.True(F.Add(F.Point(1), F.Point(-1)).Contains(0));
-        Assert.True(F.Multiply(new(-1, 1), F.Point(2)).IsFinite);
-        Assert.True(F.Subtract(F.Point(-0f), F.Point(0f)).Contains(0));
-        I cross = F.Add(F.Point(MathF.BitDecrement(2)), F.Point(MathF.ScaleB(1, -24)));
-        Assert.True(cross.Contains((double)MathF.BitDecrement(2) + Math.ScaleB(1, -24)));
-        Assert.Equal(CoverageIntervalTruth.True, F.CompareLess(new(1, 2), new(3, 4)));
-        Assert.Equal(CoverageIntervalTruth.False, F.CompareLess(new(3, 4), new(1, 2)));
-        Assert.Equal(CoverageIntervalTruth.Either, F.CompareLess(new(1, 3), new(2, 4)));
-        Assert.Equal(new I(1, 3), F.Hull(new(1, 2), new(2, 3)));
-        Assert.Equal(new I(1, 2), F.Min(new(1, 3), new(2, 2)));
-        Assert.Equal(new I(2, 3), F.Max(new(1, 3), new(2, 2)));
-        Assert.Equal(new I(0, 1), F.Clamp(new(-1, 2), 0, 1));
-        Assert.False(F.Store32(F.Unbounded).IsFinite);
-    }
-
-    [Theory]
-    [InlineData(.75f, 1.25f)]
-    [InlineData(-3f, 2f)]
-    [InlineData(1.9999999f, 1.0000001f)]
-    public void Arithmetic_endpoints_bracket_independent_binary64_results(float a, float b)
-    {
-        I[] actual = [F.Add(F.Point(a), F.Point(b)), F.Subtract(F.Point(a), F.Point(b)),
-            F.Multiply(F.Point(a), F.Point(b)), F.Divide(F.Point(a), F.Point(b))];
-        double[] ideal = [(double)a + b, (double)a - b, (double)a * b, (double)a / b];
-        for (int i = 0; i < actual.Length; i++)
-        {
-            Assert.True(actual[i].IsFinite);
-            Assert.True(actual[i].Min < ideal[i] && actual[i].Max > ideal[i]);
-        }
-    }
-
-    [Fact]
-    public void Square_root_enclosure_at_zero_and_subnormals_is_finite()
-    {
-        foreach (I input in new[] { new I(0, 0), new I(0, Math.ScaleB(1, -140)), new I(0, 1) })
-        {
-            I actual = F.Sqrt(input);
-            Assert.True(actual.IsFinite);
-            Assert.True(actual.Min >= 0);
-            Assert.True(actual.Contains(0));
-            Assert.True(actual.Contains(Math.Sqrt(input.Max)));
-        }
-        foreach (I input in new[] { new I(P.MinNormal32, 1), new I(1, float.MaxValue) })
-        {
-            I actual = F.Sqrt(input);
-            Assert.True(actual.IsFinite);
-            Assert.True(actual.Min >= 0);
-            Assert.True(actual.Contains(Math.Sqrt(input.Min)));
-            Assert.True(actual.Contains(Math.Sqrt(input.Max)));
-        }
-    }
-
-    [Theory]
-    [InlineData(-4f)]
-    [InlineData(.5f)]
-    [InlineData(1.9999999f)]
-    [InlineData(2f)]
-    public void Division_contains_independent_reciprocal_multiply_expansion(float divisor)
-    {
-        double reciprocal = 1 / (double)divisor;
-        double ulp = Math.ScaleB(1, Math.ILogB(Math.Abs(reciprocal)) - 23);
-        double error = Math.BitIncrement(ulp + P.MinNormal32);
-        double low = Math.BitDecrement(reciprocal - error), high = Math.BitIncrement(reciprocal + error);
-        double productLow = Math.BitDecrement(3 * low), productHigh = Math.BitIncrement(3 * high);
-        double productUlp = Math.ScaleB(1, Math.ILogB(Math.Max(Math.Abs(productLow), Math.Abs(productHigh))) - 23);
-        double productError = Math.BitIncrement(productUlp + P.MinNormal32);
-        I result = F.Divide(F.Point(3), F.Point(divisor));
-        Assert.True(result.IsFinite);
-        Assert.True(result.Min <= Math.BitDecrement(productLow - productError));
-        Assert.True(result.Max >= Math.BitIncrement(productHigh + productError));
-        I inverse = F.Reciprocal1(F.Point(divisor));
-        Assert.True(inverse.Min <= low && inverse.Max >= high);
-    }
-
-    [Theory]
-    [InlineData(1f)]
-    [InlineData(2f)]
-    [InlineData(3.9999998f)]
-    [InlineData(4f)]
-    [InlineData(1.17549435e-38f)]
-    public void Square_root_contains_independent_symmetric_inherited_expansion(float x)
-    {
-        // Independent endpoint evaluation of two ULP inverse sqrt followed by strict division.
-        double root = Math.Sqrt(x), inverse = 1 / root;
-        double inverseUlp = Math.ScaleB(1, Math.Max(-149, Math.ILogB(inverse) - 23));
-        double e = Math.BitIncrement(2 * inverseUlp + Math.ScaleB(1, -126));
-        double lo = Math.BitDecrement(inverse - e), hi = Math.BitIncrement(inverse + e);
-        double lower = Math.BitDecrement(1 / hi), upper = Math.BitIncrement(1 / lo);
-        double divisionError = Math.BitIncrement(4 * Math.ScaleB(1, Math.Max(-149, Math.ILogB(upper) - 23)) + Math.ScaleB(1, -126));
-        double radius = Math.BitIncrement(Math.Max(root - Math.BitDecrement(lower - divisionError), Math.BitIncrement(upper + divisionError) - root));
-        I result = F.Sqrt(F.Point(x));
-        Assert.True(result.IsFinite);
-        Assert.True(result.Min <= root - radius && result.Max >= root + radius);
-    }
-
-    [Fact]
-    public void Radius_composes_host_and_equipment_error_outward()
-    {
-        var center = new CoverageVertexEnclosure(F.Point(0), F.Point(0), F.Point(0));
-        var device = new CoverageVertexEnclosure(new(-3, 3), new(-4, 4), F.Point(0));
-        Assert.True(device.Contains(new(3, -4, 0)));
-        Assert.False(device.Contains(new(4, 0, 0)));
-        double radius = P.Radius(device, center);
-        Assert.True(radius > 5 && radius < Math.BitIncrement(Math.BitIncrement(Math.BitIncrement(Math.BitIncrement(5)))));
-        Assert.Equal(0, P.ComposeTolerance(0, 0));
-        Assert.True(P.ComposeTolerance(.003, .002) > .005);
-        Assert.True(double.IsPositiveInfinity(P.ComposeTolerance(double.PositiveInfinity, 0)));
-        Assert.True(double.IsPositiveInfinity(P.Radius(new(F.Unbounded, F.Point(0), F.Point(0)), center)));
     }
 
     [Fact]

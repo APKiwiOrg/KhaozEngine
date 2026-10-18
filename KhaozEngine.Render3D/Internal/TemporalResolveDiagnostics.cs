@@ -54,6 +54,27 @@ namespace KhaozEngine.Render3D.Internal
         /// <summary>On that shading evidence, clip with no lock exemption and keep the lock state.</summary>
         public const int LockBoundCurrent = 4096;
 
+        /// <summary>Held, unreleased pixels draw a flat colour for the first shading-release condition that blocked
+        /// them, after the post chain.</summary>
+        public const int ShowGate = 8192;
+        /// <summary>Active locks draw a flat colour for their source, a ridge this frame or a carried lock by its age
+        /// since the last ridge, after the post chain.</summary>
+        public const int ShowLockAge = 16384;
+        /// <summary>Held, unreleased pixels past the upscale and ridge or box-width gates draw a flat colour for their
+        /// box half-width over ridgeStep, and whether the release would fire with ridgeStep as its extent.</summary>
+        public const int ShowGateExtent = 32768;
+        /// <summary>A ridge raises the lock by a half, a third or a quarter, capped at 1, in place of setting it whole.</summary>
+        public const int LockTrust2 = 65536;
+        public const int LockTrust3 = 131072;
+        public const int LockTrust4 = 262144;
+        /// <summary>The lock and hold drop to zero where low-frequency luma changed by more than 0.1 or 0.2, as one
+        /// minus min over max of this frame's and last frame's.</summary>
+        public const int LockLumaKill10 = 524288;
+        public const int LockLumaKill20 = 1048576;
+        /// <summary>The luma kill measures a 5x5 internal-texel footprint on both sides, in place of this frame's 3x3
+        /// against last frame's ring plus centre.</summary>
+        public const int LockLumaKillWide = 2097152;
+
         /// <summary>The define that compiles the switches' GLSL in.</summary>
         internal const string Define = "#define TemporalDiagnostics\n";
 
@@ -64,8 +85,9 @@ namespace KhaozEngine.Render3D.Internal
         /// state, creates the scene with a nonzero mask to compile the diagnostic GLSL, and restores the old mask.</summary>
         internal static void OverrideMaskForMeasurement(int mask) => Mask = mask;
 
-        /// <summary>Whether a diagnostic overlay is set. ShowLocked takes precedence if both are set.</summary>
-        public static bool ShowsOverlay => (Mask & (ShowReleased | ShowLocked)) != 0;
+        /// <summary>Whether a diagnostic overlay is set. Precedence is ShowGate, ShowGateExtent, ShowLockAge, ShowLocked,
+        /// then ShowReleased.</summary>
+        public static bool ShowsOverlay => (Mask & (ShowReleased | ShowLocked | ShowGate | ShowLockAge | ShowGateExtent)) != 0;
 
         /// <summary><paramref name="program"/> with <see cref="Define"/> after its <c>#version</c> line while the mask
         /// is not 0, else <paramref name="program"/> itself.</summary>
@@ -91,6 +113,16 @@ namespace KhaozEngine.Render3D.Internal
                     "lock-history-ridge" => LockHistoryRidge,
                     "lock-shade-release" => LockShadeRelease,
                     "lock-bound-current" => LockBoundCurrent,
+                    "show-gate" => ShowGate,
+                    "show-lock-age" => ShowLockAge,
+                    "show-gate-extent" => ShowGateExtent,
+                    "lock-trust-2" => LockTrust2,
+                    "lock-trust-3" => LockTrust3,
+                    "lock-trust-4" => LockTrust4,
+                    "lock-luma-kill-0.1" => LockLumaKill10,
+                    "lock-luma-kill-0.2" => LockLumaKill20,
+                    "lock-luma-kill-wide-0.1" => LockLumaKill10 | LockLumaKillWide,
+                    "lock-luma-kill-wide-0.2" => LockLumaKill20 | LockLumaKillWide,
                     "release-off" => ReleaseOff,
                     "release-floor-2" => ReleaseFloor2,
                     "release-floor-4" => ReleaseFloor4,

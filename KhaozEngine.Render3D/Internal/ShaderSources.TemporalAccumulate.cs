@@ -17,7 +17,7 @@ struct TemporalPixel {
     vec3 color; float confidence; float stability; float moved; float disocclusion; float reactive; float clip;
     float alpha;
 #ifdef TemporalDiagnostics
-    float released;
+    float released; float gate; float gateExtent; float lockAge;
 #endif
 };
 
@@ -537,7 +537,10 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
 #ifdef TemporalDiagnostics
     bool refreshRidge = ridge && ((diag & DiagLockHistoryRidge) == 0
         || (useHistory && temporalDiagnosticHistoryRidge(centreTexel, maxTexel, previousUv)));
-    if (refreshRidge) lockValue = 1.0;
+    // The lock-trust diagnostics raise the lock last frame stored by a step, capped at whole, in place of setting it.
+    float trustStep = temporalDiagnosticTrustStep(diag);
+    if (refreshRidge) lockValue = trustStep > 0.0
+        ? min((useHistory && !heldFromFarther ? historyState.y : 0.0) + trustStep, 1.0) : 1.0;
 #else
     if (ridge) lockValue = 1.0;
 #endif
@@ -547,6 +550,13 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
         * (1.0 - clamp((ownReprojected && useHistory ? 0.0 : edgeMotion) * LockEdgeRelease, 0.0, 1.0));
 #ifdef TemporalDiagnostics
     if ((diag & DiagLocksOff) != 0) lockValue = 0.0;
+    // The lock-luma-kill diagnostics drop the lock where low-frequency luma changed since last frame.
+    float killThreshold = temporalDiagnosticKillThreshold(diag);
+    if (killThreshold > 0.0 && useHistory && lockValue > 0.0
+        && temporalDiagnosticLumaChange((diag & DiagLockLumaKillWide) != 0, mean.x, centreTexel, maxTexel, previousUv)
+            > killThreshold)
+        lockValue = 0.0;
+    float lockAge = temporalDiagnosticLockAge(lockValue, refreshRidge, historyState.y);
 #endif
     float hold = clamp(lockValue * LockHoldGain, 0.0, 1.0);
 
@@ -604,6 +614,9 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     bool strict = carriedLock || !(motionPixels < LockMotionStartPixels);
 #ifdef TemporalDiagnostics
     bool lockShadingChange = false;
+    float preReleaseHold = hold;
+    bool gateRingRun = false;
+    vec2 gateRing = vec2(0.0);
 #endif
     if (useHistory && Jitter.z < ShadingMaxUpscale
         && (ridge || boxExtent.x > (carriedLock ? ShadingLockFlatShare : 1.0) * ridgeStep)
@@ -623,10 +636,17 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
 #ifdef TemporalDiagnostics
             lockShadingChange = ringShift.x > (strict ? max(ShadingStrictRingExtents * releaseExtent,
                 carriedLock ? ShadingLockRingShare * ownShift : 0.0) : ShadingRingExtents * releaseExtent);
+            gateRingRun = true;
+            gateRing = ringShift;
 #endif
         }
     }
 #ifdef TemporalDiagnostics
+    vec2 gate = (diag & (DiagShowGate | DiagShowGateExtent)) != 0 && preReleaseHold > 0.0 && !released
+        ? temporalDiagnosticGate(useHistory, ridge, carriedLock, upscaled, strict, gateRingRun, lockShadingChange,
+            gateRing, boxExtent.x, ridgeStep, releaseExtent, fromCentre.x, abs(historyYcc.x - current.x), previousUv,
+            (n.momentSum.x - n.centreLuma) / 8.0)
+        : vec2(0.0);
     if ((diag & DiagLockShadeRelease) != 0 && carriedLock && lockShadingChange) {
         released = true;
         lockValue = 0.0;
@@ -740,6 +760,9 @@ TemporalPixel temporalAccumulatePixel(vec2 uv, ivec2 centreTexel, ivec2 maxTexel
     result.clip = useHistory && clipScale > 1.0 && length(clipped - historyYcc) > ClipFlagMinimumMove ? 1.0 : 0.0;
 #ifdef TemporalDiagnostics
     result.released = released ? 1.0 : 0.0;
+    result.gate = gate.x;
+    result.gateExtent = gate.y;
+    result.lockAge = lockAge;
 #endif
     return result;
 }

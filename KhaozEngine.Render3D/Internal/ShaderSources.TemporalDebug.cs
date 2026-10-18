@@ -24,7 +24,22 @@ void main() {
 #ifdef TemporalDiagnostics
     // Mode 5 overlays the resolve decision without putting its colour into history.
     if (int(Mode.x + 0.5) == 5) {
-        bool lockedView = (temporalDiag() & DiagShowLocked) != 0;
+        int diag = temporalDiag();
+        // Flat 0 or 1 channels, so a capture reads each code back exactly.
+        const vec3 codes[8] = vec3[8](vec3(0.0), vec3(1.0, 0.0, 0.0), vec3(0.0, 1.0, 0.0), vec3(0.0, 0.0, 1.0),
+            vec3(1.0, 1.0, 0.0), vec3(1.0, 0.0, 1.0), vec3(0.0, 1.0, 1.0), vec3(1.0));
+        int code = -1;
+        if ((diag & DiagShowGate) != 0) code = int(t.gate + 0.5);
+        else if ((diag & DiagShowGateExtent) != 0) {
+            const int extentCodes[6] = int[6](0, 2, 4, 3, 1, 5);
+            code = extentCodes[int(t.gateExtent + 0.5)];
+        } else if ((diag & DiagShowLockAge) != 0) code = int(t.lockAge + 0.5);
+        if (code >= 0) {
+            if (code == 0) discard;
+            oColor = vec4(codes[code], 1.0);
+            return;
+        }
+        bool lockedView = (diag & DiagShowLocked) != 0;
         if (lockedView ? t.stability <= 0.0 : t.released < 0.5) discard;
         oColor = lockedView ? vec4(0.0, 1.0, 1.0, 1.0) : vec4(1.0, 0.0, 1.0, 1.0);
         return;

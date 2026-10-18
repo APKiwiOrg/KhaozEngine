@@ -216,14 +216,16 @@ public sealed class CertifiedCompoundSweepTests
     }
 
     [Theory]
+    [InlineData("box")]
+    [InlineData("hull")]
     [InlineData("sphere")]
     [InlineData("capsule")]
     [InlineData("cylinder")]
-    public void CompoundCurvedChildrenRetainTheirLeafProofAndRigidCancellationRefusal(string family)
+    public void CompoundChildrenRetainTheirLeafProofAndRigidCancellationRefusal(string family)
     {
         using var split = new BepuPhysicsWorld(Vector3.Zero);
         using var compound = new BepuPhysicsWorld(Vector3.Zero);
-        var shape = CertifiedCurvedSweepTests.Shape(family, 0.25f);
+        var shape = CancellationShape(family, 0.25f);
         Pose child = CertifiedCurvedSweepTests.Centred(family, 1, Cyclic);
         split.AddStatic(shape, child);
         var handle = compound.AddStatic(new CompoundShape([new(shape, child), new(Box, Pose.At(new(100, 0, 0)))]), Pose.Identity);
@@ -232,8 +234,20 @@ public sealed class CertifiedCompoundSweepTests
         SameBits(expected, Read(compound, new(-2, 0, 0), new(4, 0, 0), length: 0));
         compound.RemoveStatic(handle);
         Pose large = CertifiedCurvedSweepTests.Centred(family, 1, Quaternion.Identity, new(1024, 0, 0));
-        compound.AddStatic(new CompoundShape([new(CertifiedCurvedSweepTests.Shape(family, 1024), large),
+        compound.AddStatic(new CompoundShape([new(CancellationShape(family, 1024), large),
             new(Box, Pose.At(new(100, 0, 0)))]), Pose.Identity);
         Refused(Read(compound, new(-0.25001f, 0, 0), new(0, 0, 0.125f), length: 0));
     }
+
+    static PhysicsShape CancellationShape(string family, float radius)
+    {
+        if (family == "box") return new BoxShape(new(radius));
+        if (family != "hull") return CertifiedCurvedSweepTests.Shape(family, radius);
+        var points = new Vector3[8];
+        for (int i = 0; i < points.Length; i++)
+            points[i] = new((i & 1) == 0 ? -radius : radius, (i & 2) == 0 ? -radius : radius,
+                (i & 4) == 0 ? -radius : radius);
+        return new ConvexHullShape(points);
+    }
+
 }

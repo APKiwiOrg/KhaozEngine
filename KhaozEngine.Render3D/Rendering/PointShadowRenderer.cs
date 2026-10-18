@@ -100,6 +100,7 @@ namespace KhaozEngine.Render3D.Rendering
                 _interiorCutLayout = Built(built, f.CreateResourceLayout(new GpuResourceLayoutDescription(
                     new GpuResourceLayoutElement("InteriorCut", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
                     new GpuResourceLayoutElement("Samp", GpuResourceKind.Sampler, GpuShaderStages.Fragment))));
+                _interiorCutBinding = Built(built, new InteriorCutBinding(gd, _interiorCutLayout));
 
                 GpuOutputDescription outputs = new(GpuPixelFormat.D32FloatS8UInt, GpuPixelFormat.R32Float);
                 _pipeline = Built(built, BuildCasterPipeline(f, outputs, _shaders, dissolve: false));
@@ -239,7 +240,7 @@ namespace KhaozEngine.Render3D.Rendering
             cl.SetScissorRect(0, (uint)Math.Clamp(face, 0, PointShadowMath.FaceCount - 1) * res,
                 (uint)Math.Clamp(slot, 0, atlas.Rows - 1) * res, res, res);
             cl.SetGraphicsResourceSet(0, _set, (uint)packedIndex * FaceSlotBytes);
-            if (kind != ShadowCastKind.Opaque) cl.SetGraphicsResourceSet(1, _interiorCutSet!);
+            if (kind != ShadowCastKind.Opaque) cl.SetGraphicsResourceSet(1, _interiorCutBinding.Set!);
         }
 
         /// <summary>Draw one caster run into the CURRENTLY-BOUND cell: <paramref name="instanceCount"/> instances
@@ -358,7 +359,7 @@ namespace KhaozEngine.Render3D.Rendering
             _dissolveInvertedPipeline.Dispose();
             _dissolvePipeline.Dispose();
             _pipeline.Dispose();
-            _interiorCutSet?.Dispose();
+            _interiorCutBinding.Dispose();
             _interiorCutLayout.Dispose();
             _set.Dispose();
             _faceUbo.Dispose();

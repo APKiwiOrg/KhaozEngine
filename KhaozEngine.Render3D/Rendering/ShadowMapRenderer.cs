@@ -155,6 +155,7 @@ namespace KhaozEngine.Render3D.Rendering
             _interiorCutLayout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
                 new GpuResourceLayoutElement("InteriorCut", GpuResourceKind.TextureReadOnly, GpuShaderStages.Fragment),
                 new GpuResourceLayoutElement("Samp", GpuResourceKind.Sampler, GpuShaderStages.Fragment)));
+            _interiorCutBinding = new InteriorCutBinding(gd, _interiorCutLayout);
             _dissolveSet = f.CreateResourceSet(new GpuResourceSetDescription(_interiorFrameLayout, new GpuBufferRange(_lightUbo, 0, CascadeSlotBytes)));
 
             // Cutout depth shaders + the per-mesh albedo layout their fragment samples at set 1.
@@ -433,7 +434,7 @@ namespace KhaozEngine.Render3D.Rendering
             cl.SetPipeline(_graph.DissolvePipeline);
             SetCascadeScissor(cl, cascade);
             cl.SetGraphicsResourceSet(0, _dissolveSet, (uint)cascade * CascadeSlotBytes);
-            cl.SetGraphicsResourceSet(1, _interiorCutSet!);
+            cl.SetGraphicsResourceSet(1, _interiorCutBinding.Set!);
         }
 
         /// <summary>As <see cref="BeginCascadeRigidDissolve"/>, but binds the INVERTED dissolve fragment (issue
@@ -445,7 +446,7 @@ namespace KhaozEngine.Render3D.Rendering
             cl.SetPipeline(_graph.DissolveInvertedPipeline);
             SetCascadeScissor(cl, cascade);
             cl.SetGraphicsResourceSet(0, _dissolveSet, (uint)cascade * CascadeSlotBytes);
-            cl.SetGraphicsResourceSet(1, _interiorCutSet!);
+            cl.SetGraphicsResourceSet(1, _interiorCutBinding.Set!);
         }
 
         /// <summary>As <see cref="BeginCascadeRigidDissolve"/>, but binds an ALPHA-CUTOUT depth pipeline (issue #15)
@@ -457,7 +458,7 @@ namespace KhaozEngine.Render3D.Rendering
             cl.SetPipeline(inverted ? _graph.CutoutInvertedPipeline : _graph.CutoutPipeline);
             SetCascadeScissor(cl, cascade);
             cl.SetGraphicsResourceSet(0, _dissolveSet, (uint)cascade * CascadeSlotBytes);
-            cl.SetGraphicsResourceSet(2, _interiorCutSet!);
+            cl.SetGraphicsResourceSet(2, _interiorCutBinding.Set!);
         }
 
         /// <summary>Bind one MASK caster's albedo set (from <see cref="CreateCutoutMaterialSet"/>) at set 1 for the
@@ -604,7 +605,7 @@ namespace KhaozEngine.Render3D.Rendering
             _graph.Dispose();
             _set.Dispose();
             _dissolveSet.Dispose();
-            _interiorCutSet?.Dispose();
+            _interiorCutBinding.Dispose();
             _interiorCutLayout.Dispose();
             _interiorFrameLayout.Dispose();
             _dissolveShaders.Dispose();

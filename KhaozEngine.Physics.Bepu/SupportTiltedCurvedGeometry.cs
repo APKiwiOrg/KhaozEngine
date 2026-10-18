@@ -78,11 +78,11 @@ internal sealed partial class SupportTiltedCurvedGeometry
         if (!z.IsResolved || z.Lower > 1 || z.Upper < -1) return true;
         if (_count == _candidates.Length) return false;
         // A tagged quotient must prove its original source domain before any clipping.
-        GeometryInterval parameter = lateral == DiscLateralBoundary.None ?
-            GeometryInterval.Enclose(Math.Max(-1, z.Lower), Math.Min(1, z.Upper)) : z;
-        _candidates[_count++] = new(parameter, end, atEnd, slope, rim, lateral);
+        _candidates[_count++] = new(lateral == DiscLateralBoundary.None ? Clip(z) : z, end, atEnd, slope, rim, lateral);
         return true;
     }
+
+    static GeometryInterval Clip(GeometryInterval z) => GeometryInterval.Enclose(Math.Max(-1, z.Lower), Math.Min(1, z.Upper));
 
     bool Boundaries(double end, int rim = 0)
     {
@@ -193,9 +193,11 @@ internal sealed partial class SupportTiltedCurvedGeometry
         double upper = lower;
         for (int i = 0; i < _count; i++)
         {
-            GeometrySign feasible = SidePoint(_candidates[i], slope, out Witness point, out _);
+            GeometrySign feasible = SidePoint(_candidates[i], slope, out Witness point, out bool certain);
             if (feasible == GeometrySign.Unresolved) return feasible;
             if (feasible != GeometrySign.Positive || point.Position.Y.Upper < lower) continue;
+            // An unproved endpoint equation that an attained point does not dominate is relevant.
+            if (_candidates[i].Lateral != DiscLateralBoundary.None && !certain) return GeometrySign.Unresolved;
             witness = any ? new(Hull(witness.Position, point.Position), Hull(witness.Normal, point.Normal),
                 witness.AtSideCrest && point.AtSideCrest) : point;
             any = true; upper = Math.Max(upper, point.Position.Y.Upper);
@@ -208,9 +210,12 @@ internal sealed partial class SupportTiltedCurvedGeometry
     {
         if (candidate.Lateral != DiscLateralBoundary.None)
         {
-            int checkpoint = _arithmetic.Checkpoint;
-            try { return SideLateralPoint(candidate.Lateral, slope, out point, out certain); }
-            finally { _arithmetic.Restore(checkpoint); }
+            GeometrySign proved = SideBoundary(candidate.Lateral == DiscLateralBoundary.Positive ? 1 : -1, slope, out point);
+            certain = proved == GeometrySign.Positive;
+            if (proved != GeometrySign.Unresolved) return proved;
+            // An unproved equation keeps only the clipped candidate's possible enclosure, never attainment.
+            return SidePoint(new(Clip(candidate.Parameter), candidate.End, candidate.AtEnd, candidate.Slope,
+                candidate.Rim), slope, out point, out _);
         }
         point = default; certain = false;
         GeometryInterval z = candidate.Parameter, v = z.Lower == z.Upper && z.Lower == 0 ? I(1) :
@@ -246,10 +251,19 @@ internal sealed partial class SupportTiltedCurvedGeometry
         return point.Position.IsResolved && normal.IsResolved ? GeometrySign.Positive : GeometrySign.Unresolved;
     }
 
-    GeometrySign SideLateralPoint(DiscLateralBoundary boundary, double slope, out Witness point, out bool certain)
+    /// <summary>Certifies the side endpoint where Q+R*z equals sign*disc, after Begin. Positive is attained, Negative
+    /// is proved absent and Unresolved leaves the source equation unproved.</summary>
+    internal GeometrySign SideBoundary(int sign, double slope, out Witness point)
     {
-        point = default; certain = false;
-        Number numerator = Sub(boundary == DiscLateralBoundary.Positive ? _disc : Neg(_disc), _q);
+        int checkpoint = _arithmetic.Checkpoint;
+        try { return SideLateralPoint(sign > 0, slope, out point); }
+        finally { _arithmetic.Restore(checkpoint); }
+    }
+
+    GeometrySign SideLateralPoint(bool positive, double slope, out Witness point)
+    {
+        point = default;
+        Number numerator = Sub(positive ? _disc : Neg(_disc), _q);
         GeometrySign left = Sign(Add(numerator, _r)), right = Sign(Sub(_r, numerator));
         if (left == GeometrySign.Negative || right == GeometrySign.Negative) return GeometrySign.Negative;
         if (left == GeometrySign.Unresolved || right == GeometrySign.Unresolved) return GeometrySign.Unresolved;
@@ -269,7 +283,6 @@ internal sealed partial class SupportTiltedCurvedGeometry
         normal = new(normal.X, walkable == GeometrySign.Zero ? I(slope) :
             GeometryInterval.Enclose(Math.Max(slope, B(upward).Lower), B(upward).Upper), normal.Z);
         point = new(Add(Add(_centre, Scale(_axis, t)), Scale(normal, B(_r))), normal);
-        certain = point.Position.IsResolved && normal.IsResolved;
-        return certain ? GeometrySign.Positive : GeometrySign.Unresolved;
+        return point.Position.IsResolved && normal.IsResolved ? GeometrySign.Positive : GeometrySign.Unresolved;
     }
 }

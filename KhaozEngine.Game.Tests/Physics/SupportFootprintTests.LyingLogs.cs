@@ -127,6 +127,61 @@ public partial class SupportFootprintTests
         Assert.Equal(GeometrySign.Unresolved, unproved.Side(0, out _, out _));
     }
 
+    static SupportCurvedLeaf LyingLogBoundaryLeaf(double lower, double upper) =>
+        new(0, SupportCurvedShape.Cylinder, FeaturePoint.Exact(Vector3.Zero).Bounds, default, 0.25, 1,
+            default, default, default, new FeaturePoint(FeatureNumber.Exact(1), lower == upper ?
+                FeatureNumber.Exact(lower) : FeatureNumber.Enclosed(GeometryInterval.Enclose(lower, upper)),
+                FeatureNumber.Exact(0)));
+
+    [Fact]
+    public void LyingLogUnprovedBoundaryBelowAnAttainedPointKeepsTheSide()
+    {
+        var geometry = new SupportTiltedCurvedGeometry();
+        double slope = Math.Sqrt(0.84) * (1 - 2.5e-9);
+        Assert.True(geometry.Begin(LyingLogBoundaryLeaf(0, 1e-4), 0, -0.1, 0.2));
+        // The positive endpoint near z=0.4 has an upward normal that crosses the slope across the family.
+        Assert.Equal(GeometrySign.Unresolved, geometry.SideBoundary(1, slope, out _));
+        // The crest at z=0 is attained near 0.25, above that endpoint's height near 0.22913.
+        Assert.Equal(GeometrySign.Positive, geometry.Side(slope, out _, out var maximum));
+        Assert.InRange(maximum.Lower, 0.2499, 0.2501);
+        Assert.InRange(maximum.Upper, maximum.Lower, 0.2501);
+    }
+
+    [Fact]
+    public void LyingLogUnprovedBoundaryAtTheMaximumRefuses()
+    {
+        var geometry = new SupportTiltedCurvedGeometry();
+        // Only z in [-1,-0.4] meets the disc, so the positive endpoint near z=-0.4 is the maximum.
+        Assert.True(geometry.Begin(LyingLogBoundaryLeaf(1e-5, 1e-4), 1 - 1e-3, -0.3, 0.2));
+        Assert.Equal(GeometrySign.Positive, geometry.SideBoundary(1, 0, out var attained));
+        Assert.Equal(GeometrySign.Positive, geometry.Side(0, out _, out var maximum));
+        Assert.InRange(maximum.Lower, 0.229, 0.2293);
+        Assert.True(maximum.Lower >= attained.Position.Y.Lower && maximum.Upper >= attained.Position.Y.Upper);
+        // Here its finite-axis sign is unresolved across the family. It stays relevant and refuses.
+        Assert.True(geometry.Begin(LyingLogBoundaryLeaf(1e-5, 1e-4), 1 - 1e-5, -0.3, 0.2));
+        Assert.Equal(GeometrySign.Unresolved, geometry.SideBoundary(1, 0, out _));
+        Assert.Equal(GeometrySign.Unresolved, geometry.Side(0, out _, out _));
+    }
+
+    [Fact]
+    public void LyingLogBoundaryPredicatesEachRejectTheEndpoint()
+    {
+        var geometry = new SupportTiltedCurvedGeometry();
+        // Domain: Q+R*z=-disc gives z=-2, outside the circle for every source.
+        Assert.True(geometry.Begin(LyingLogBoundaryLeaf(1e-3, 1e-3), 0, -0.3, 0.2));
+        Assert.Equal(GeometrySign.Negative, geometry.SideBoundary(-1, 0, out _));
+        // Slope: the endpoint z=-0.4 has upward normal near 0.9165, below 0.95.
+        Assert.Equal(GeometrySign.Positive, geometry.SideBoundary(1, 0, out var flank));
+        Assert.Equal(GeometrySign.Negative, geometry.SideBoundary(1, 0.95, out _));
+        Assert.Equal(GeometrySign.Negative, geometry.Side(0.95, out _, out _));
+        // Finite axis: the endpoint lies near t=1.1, beyond the end at 1, where it would be near 0.2302.
+        Assert.True(geometry.Begin(LyingLogBoundaryLeaf(1e-3, 1e-3), 1.1, -0.3, 0.2));
+        Assert.Equal(GeometrySign.Negative, geometry.SideBoundary(1, 0, out _));
+        Assert.Equal(GeometrySign.Positive, geometry.Side(0, out _, out var maximum));
+        Assert.True(maximum.Lower < flank.Position.Y.Lower);
+        Assert.InRange(maximum.Lower, 0.2, 0.22);
+    }
+
     public static IEnumerable<object[]> LyingLogSeamRows()
     {
         foreach (bool capsule in new[] { false, true })

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Text.Json;
@@ -63,13 +64,18 @@ public sealed class SupportFootprintStairStratumTests
         foreach (SupportPolygon polygon in new[] { Polygon(tilted), Polygon(enclosed), Polygon(yawed),
             Polygon(horizontal[..3]), Polygon([.. horizontal.Reverse()]), contrary,
             Installed(Quaternion.CreateFromAxisAngle(Vector3.UnitY, 0.37f)),
-            Installed(Quaternion.CreateFromAxisAngle(Vector3.UnitX, 0.00000001f)) })
+            Installed(Quaternion.CreateFromAxisAngle(Vector3.UnitX, 0.00000001f)),
+            // An exact translation leaves the rotation as the only reason to fall through.
+            Installed(Quaternion.CreateFromAxisAngle(Vector3.UnitY, 0.37f), Vector3.Zero),
+            Installed(Quaternion.CreateFromAxisAngle(Vector3.UnitX, 0.00000001f), Vector3.Zero) })
         {
             Matches(polygon, Request(0, 0, 0.25f), out SupportQueryCounts counts);
             Assert.Equal(0, counts.StairStratum);
         }
         Matches(Rectangle(offset: Math.ScaleB(1, -30)), Request(0, 0, 0.25f), out SupportQueryCounts exact);
         Assert.True(exact.StairStratum > 0);
+        Matches(Installed(Quaternion.Identity, Vector3.Zero), Request(0, 0, 0.25f), out SupportQueryCounts unrotated);
+        Assert.True(unrotated.StairStratum > 0);
     }
 
     [Fact]
@@ -160,9 +166,19 @@ public sealed class SupportFootprintStairStratumTests
                 Func<float, float, float>? height = row.Analytic ? (x, _) => row.HeightAt(x) : null;
                 Func<float, float, Vector3>? normal = row.Analytic ? (x, _) => row.NormalAt(x) : null;
                 SupportQueryDiagnostics.Reset();
+                var runs = new List<SupportQueryCounts>();
                 SupportFootprintEquivalence.AssertMatchesReference(() =>
-                    FootSupport.Find(height, normal, scene.World, lease, row.Query), row.Name);
-                if (row.Name == "stairs box") Assert.True(SupportQueryDiagnostics.Snapshot().StairStratum > 0);
+                {
+                    SupportQueryCounts before = SupportQueryDiagnostics.Snapshot();
+                    SupportSample sample = FootSupport.Find(height, normal, scene.World, lease, row.Query);
+                    runs.Add(SupportQueryDiagnostics.Snapshot() - before);
+                    return sample;
+                }, row.Name);
+                if (row.Name == "stairs box") Assert.True(runs[0].StairStratum > 0);
+                // The stratum adds every candidate the generic path adds. The vertical admission certificate (SC-14)
+                // skips the reference's admission extrema of the faces it decides, so those scenes cannot compare.
+                if (runs[0].AdmissionCertificates == 0) Assert.Equal(runs[1].Extrema, runs[0].Extrema);
+                else Assert.True(runs[0].Extrema < runs[1].Extrema, row.Name);
                 SupportFootprintEquivalence.AssertMatchesReference(scene.World, lease,
                     FootSupport.DescribeFootprint(row.Query), row.Name);
             }
@@ -198,10 +214,12 @@ public sealed class SupportFootprintStairStratumTests
         return polygon;
     }
 
-    static SupportPolygon Installed(Quaternion rotation)
+    static SupportPolygon Installed(Quaternion rotation) => Installed(rotation, new Vector3(0.00000001f, 0, 0));
+
+    static SupportPolygon Installed(Quaternion rotation, Vector3 translation)
     {
-        Assert.True(InstalledPoseOperator.TryCreate(new BepuPhysics.RigidPose(new Vector3(0.00000001f, 0, 0),
-            rotation), out InstalledPoseOperator map));
+        Assert.True(InstalledPoseOperator.TryCreate(new BepuPhysics.RigidPose(translation, rotation),
+            out InstalledPoseOperator map));
         Vector3[] local = [new(-1, 0.5f, -1), new(-1, 0.5f, 1), new(1, 0.5f, 1), new(1, 0.5f, -1)];
         var polygon = new SupportPolygon();
         polygon.Begin(new StaticHandle(42), 7, 4);

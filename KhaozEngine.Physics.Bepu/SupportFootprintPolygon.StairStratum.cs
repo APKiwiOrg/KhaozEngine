@@ -7,14 +7,14 @@ internal static partial class SupportFootprintPolygon
 {
     // These are certificate bounds, not geometric tolerances. Products of certified nonzero edge and axis
     // differences stay normal and finite, so the generic interior's single nonzero product has the same sign.
-    const double StairMinimum = 7.888609052210118e-31, StairMaximum = 1.2676506002282294e30;
+    static readonly double StairMinimum = Math.ScaleB(1, -100), StairMaximum = Math.ScaleB(1, 100);
 
     static bool TryStairExtrema(SupportPolygon polygon, in SupportFootprintRequest request, FeatureNumber radius,
         ref Range range, out GeometrySign result)
     {
         result = GeometrySign.Unresolved;
         Span<double> dx = stackalloc double[4], dz = stackalloc double[4];
-        if (SupportReferenceEvaluation.Active || !StairRectangle(polygon, request, radius, dx, dz)) return false;
+        if (!StairRectangle(polygon, request.Axis.X, request.Axis.Y, radius, dx, dz)) return false;
         SupportQueryDiagnostics.Record(SupportQueryCounter.StairStratum);
         FeaturePoint axis = new(FeatureNumber.Exact(request.Axis.X), Zero, FeatureNumber.Exact(request.Axis.Y));
         // Opposite rectangle corners bracket the centre exactly. OnPlane copies the first vertex's Y when
@@ -51,7 +51,10 @@ internal static partial class SupportFootprintPolygon
         return true;
     }
 
-    static bool StairRectangle(SupportPolygon polygon, in SupportFootprintRequest request, FeatureNumber radius,
+    /// <summary>Whether <paramref name="polygon"/> is exactly an upward axis-aligned horizontal rectangle and
+    /// <paramref name="radius"/> an exact positive radius, all in the certified operand range. Writes each vertex's
+    /// exact offsets from the axis at (<paramref name="axisX"/>, <paramref name="axisZ"/>).</summary>
+    internal static bool StairRectangle(SupportPolygon polygon, double axisX, double axisZ, FeatureNumber radius,
         Span<double> dx, Span<double> dz)
     {
         if (!polygon.IsResolved || polygon.Vertices.Length != 4 || polygon.Orientation != GeometrySign.Positive ||
@@ -68,8 +71,8 @@ internal static partial class SupportFootprintPolygon
                 edge.Y.Value != 0 || !StairDifference(next.X.Value, vertex.X.Value, out double ex) ||
                 !StairDifference(next.Z.Value, vertex.Z.Value, out double ez) ||
                 ex != edge.X.Value || ez != edge.Z.Value ||
-                !StairDifference(vertex.X.Value, request.Axis.X, out dx[i]) ||
-                !StairDifference(vertex.Z.Value, request.Axis.Y, out dz[i])) return false;
+                !StairDifference(vertex.X.Value, axisX, out dx[i]) ||
+                !StairDifference(vertex.Z.Value, axisZ, out dz[i])) return false;
             bool alongX = (i % 2 == 0) == firstAlongX;
             if (alongX ? ex == 0 || ez != 0 : ez == 0 || ex != 0) return false;
         }
@@ -86,8 +89,8 @@ internal static partial class SupportFootprintPolygon
         return error == 0 && StairOperand(difference);
     }
 
-    static bool StairOperand(double value) => value == 0 ||
+    internal static bool StairOperand(double value) => value == 0 ||
         Math.Abs(value) >= StairMinimum && Math.Abs(value) <= StairMaximum;
 
-    static bool BetweenZero(double a, double b) => a <= 0 && b >= 0 || b <= 0 && a >= 0;
+    internal static bool BetweenZero(double a, double b) => a <= 0 && b >= 0 || b <= 0 && a >= 0;
 }

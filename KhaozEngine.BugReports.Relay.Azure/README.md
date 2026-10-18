@@ -31,6 +31,8 @@ releases retained and unprocessed messages, with a separate 30-second cleanup de
 release logs a warning. Cleanup timeout preserves the moved count. Other release faults propagate unless
 the drain already failed or reached its deadline, preserving the original outcome. Leases eventually expire.
 An optional `TimeProvider` drives the deadlines and defaults to `TimeProvider.System`.
+Pass an optional engine logger to `PoisonQueueRequeuer` to route its malformed, capped and cleanup
+warnings. A null logger uses `Log.Get("BugReports.Relay")`.
 Only caller cancellation throws `OperationCanceledException`. Delivery remains at least once if sending
 succeeds but deleting fails. The host owns poison routing after 5 dequeues and when this requeuer runs.
 

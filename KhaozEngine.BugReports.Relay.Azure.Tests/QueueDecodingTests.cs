@@ -47,6 +47,32 @@ public sealed class QueueDecodingTests
     }
 
     [Fact]
+    public async Task PublicRequeuer_UsesSuppliedLogger_WithoutExposingMalformedBodies()
+    {
+        var handler = new MixedBatchHandler("private-invalid-json");
+        using var http = new HttpClient(handler);
+        var log = new PoisonQueueRequeuerTests.RecordingLogger();
+        QueueClientOptions options = ReportQueueClientOptions.Create(log);
+        options.Transport = new HttpClientTransport(http);
+        options.Retry.MaxRetries = 0;
+        var poison = new QueueClient(new Uri("https://unused.invalid/poison"), options);
+        var work = new QueueClient(new Uri("https://unused.invalid/work"), options);
+
+        Assert.Equal(0, await new PoisonQueueRequeuer(poison, work, logger: log).RequeueAsync(default));
+
+        Assert.Equal(2, handler.Poison.Count);
+        Assert.Empty(handler.Work);
+        Assert.Equal(new[] { "valid-id" }, handler.Released);
+        Assert.Equal(2, log.Warnings.Count);
+        Assert.Contains(log.Warnings, warning => warning.Contains("valid-id", StringComparison.Ordinal));
+        Assert.All(log.Warnings, warning =>
+        {
+            Assert.DoesNotContain("private-invalid-json", warning, StringComparison.Ordinal);
+            Assert.DoesNotContain("secret", warning, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
     public async Task Base64WithoutDecodingHandler_ThrowsBeforeReturningMixedBatch()
     {
         var handler = new MixedBatchHandler();
@@ -65,16 +91,17 @@ public sealed class QueueDecodingTests
         Assert.Empty(handler.Work);
     }
 
-    sealed class MixedBatchHandler : HttpMessageHandler
+    sealed class MixedBatchHandler(string? decodedText = null) : HttpMessageHandler
     {
         bool received;
         public Dictionary<string, string> Poison { get; } = new()
         {
             ["bad-id"] = InvalidBody,
             ["valid-id"] = Convert.ToBase64String(Encoding.UTF8.GetBytes(
-                ReportWorkItemJson.Serialize(new ReportWorkItem(ReportWorkKind.CreateIssue, ReportId)))),
+                decodedText ?? ReportWorkItemJson.Serialize(new ReportWorkItem(ReportWorkKind.CreateIssue, ReportId)))),
         };
         public List<string> Work { get; } = new();
+        public List<string> Released { get; } = new();
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -92,6 +119,16 @@ public sealed class QueueDecodingTests
                 Assert.Equal("/poison/messages/valid-id", path);
                 Assert.True(Poison.Remove("valid-id"));
                 return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+            if (request.Method == HttpMethod.Put)
+            {
+                Assert.Equal("/poison/messages/valid-id", path);
+                Assert.Contains("visibilitytimeout=0", request.RequestUri.Query, StringComparison.Ordinal);
+                Released.Add("valid-id");
+                var response = new HttpResponseMessage(HttpStatusCode.NoContent);
+                response.Headers.Add("x-ms-popreceipt", "new-receipt");
+                response.Headers.Add("x-ms-time-next-visible", "Sun, 18 Oct 2026 00:00:00 GMT");
+                return response;
             }
             Assert.Equal(HttpMethod.Post, request.Method);
             Assert.Equal("/work/messages", path);

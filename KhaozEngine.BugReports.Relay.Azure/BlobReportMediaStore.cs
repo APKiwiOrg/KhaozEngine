@@ -57,16 +57,8 @@ public sealed class BlobReportMediaStore : IReportMediaStore
             ReportArea.Pending => pendingContainer,
             _ => throw new ArgumentOutOfRangeException(nameof(area), area, "Unknown report area."),
         };
-        if (string.IsNullOrEmpty(path))
+        if (!ReportPaths.IsValid(path))
             throw new ArgumentException("A relative lowercase report path is required.", nameof(path));
-        foreach (string segment in path.Split('/'))
-        {
-            if (segment.Length == 0 || segment is "." or "..")
-                throw new ArgumentException("A report path cannot contain an empty or traversal segment.", nameof(path));
-            foreach (char c in segment)
-                if (c is not (>= 'a' and <= 'z' or >= '0' and <= '9' or '.' or '_' or '-'))
-                    throw new ArgumentException("A report path must use lowercase portable characters.", nameof(path));
-        }
         return container;
     }
 }

@@ -12,7 +12,8 @@ The package never takes an
 `Azure.Identity` dependency or provisions a container, queue or table.
 
 `BlobReportMediaStore` maps Public and Pending to separate containers. Uploads carry the supplied
-content type and cache policy. Create-only uploads use `If-None-Match: *`. Downloads reject a declared
+content type and cache policy. Every media store enforces the relay's public `ReportPaths.IsValid`
+rule. Create-only uploads use `If-None-Match: *`. Downloads reject a declared
 length over the caller's cap before reading the body. Only a 404 reads as absent. Other failures
 propagate so queue work can be redelivered.
 

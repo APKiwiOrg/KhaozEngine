@@ -1,7 +1,7 @@
 namespace KhaozEngine.BugReports.Relay;
 
-/// <summary>The one rule for a relative path inside a storage area.</summary>
-internal static class ReportPaths
+/// <summary>The path rule every <see cref="IReportMediaStore"/> implementation enforces inside a storage area.</summary>
+public static class ReportPaths
 {
     /// <summary>
     /// True when <paramref name="path"/> is one or more <c>/</c> separated segments of <c>[a-z0-9._-]</c>, with no

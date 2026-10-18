@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Reflection;
 using BepuPhysics.Collidables;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Locomotion.Contacts;
@@ -17,6 +18,96 @@ namespace KhaozEngine.Tests.Physics;
 [Collection("AllocSensitive")]
 public sealed class CertifiedCurvedSweepLifetimeTests
 {
+    delegate CapsuleSweepResult ConvexProof(in InstalledSweepLeaf leaf, Vector3 centre, float radius,
+        float half, Vector3 delta, float error, double length, double width, ref CapsuleSweepWork work,
+        CapsuleSweepScratch scratch, double? witness);
+    delegate CapsuleSweepResult CylinderProof(in CapsuleCylinderFrame frame, Vector3 delta, double length,
+        double width, double? witness, ref CapsuleSweepWork work, CapsuleSweepScratch scratch);
+
+    [Theory]
+    [InlineData("sphere")]
+    [InlineData("capsule")]
+    [InlineData("cylinder")]
+    public void CurvedRefinementExhaustsAfterStartingWithoutAllocating(string family)
+    {
+        using var world = new BepuPhysicsWorld(Vector3.Zero);
+        var handle = world.AddStatic(Shape(family, 0.25f), Centred(family, 1, Turn(1)));
+        Vector3 start = new(-2, 0, 0), delta = new(4, 0, 0);
+        HitContains(Read(world, start, delta, length: 0), 1.5, 1.5);
+        var entry = Static(world, handle);
+        var geometry = ((Dictionary<int, InstalledSweepGeometry?>)Field(world, "_installedSweepStatics"))[handle.Value]!;
+        Sim(world).Statics.GetDescription(entry.Handle, out var installed);
+        Assert.True(CapsuleSweepGeometry.TryReadLeaf(Sim(world).Shapes, entry.Shape, installed.Pose, geometry, 0, out var leaf));
+        var scratch = new CapsuleSweepScratch();
+        var convex = typeof(CapsuleConvexSweep).GetMethod("Prove", BindingFlags.NonPublic | BindingFlags.Static)!.CreateDelegate<ConvexProof>();
+        var cylinder = typeof(CapsuleCylinderSweep).GetMethod("Prove", BindingFlags.NonPublic | BindingFlags.Static)!.CreateDelegate<CylinderProof>();
+        Assert.True(CapsuleCylinderFrame.TryCreate(leaf, start, delta, new(0.25f, 0), out var frame));
+        CapsuleSweepWork work = default;
+        CapsuleSweepResult result = default;
+        void Exhaust()
+        {
+            // Enter the real refinement with one cell left in an already admitted primitive.
+            work = new() { Descendants = 1, Cells = CapsuleGeneralSweepPolicy.MaximumCells - 1 };
+            scratch.Exact.Reset();
+            result = family == "cylinder"
+                ? cylinder(frame, delta, 4, 0.0000625, null, ref work, scratch)
+                : convex(leaf, start, 0.25f, 0, delta, 0.001f, 4, 0.0000625, ref work, scratch, null);
+        }
+        Exhaust();
+        Refused(result);
+        Assert.True(work.Exhausted);
+        Assert.Equal(CapsuleGeneralSweepPolicy.MaximumCells, work.Cells);
+        Assert.True(work.Features > 0);
+        long bytes = AllocationMeasurement.Measure(nameof(CurvedRefinementExhaustsAfterStartingWithoutAllocating), Exhaust);
+        Assert.Equal(0, bytes);
+        Refused(result);
+        Assert.True(work.Exhausted);
+        Assert.Equal(CapsuleGeneralSweepPolicy.MaximumCells, work.Cells);
+        Assert.True(work.Features > 0);
+    }
+
+    [Theory]
+    [InlineData("sphere")]
+    [InlineData("capsule")]
+    [InlineData("cylinder")]
+    public void CurvedQueriesRetainFourScratchDepthsAndRefuseTheFifth(string family)
+    {
+        using var world = new BepuPhysicsWorld(Vector3.Zero);
+        world.AddStatic(Shape(family, 0.25f), Centred(family, 1, Turn(1)));
+        using IPhysicsQueryLease lease = world.AcquireQueryReadLease();
+        var dimensions = new CapsuleQueryDimensions(0.25f, 0);
+        Pose pose = Pose.At(new(-2, 0, 0));
+        CapsuleSweepResult Query() => world.SweepCapsuleCertified(dimensions, pose, new(4, 0, 0));
+        HitContains(Query(), 1.5, 1.5);
+        QueryScratch scratch = ConcurrentReadGateTests.Gate(world).ScratchPool.Constructed()[0];
+        var loans = new CapsuleSweepScratch[4];
+        var results = new CapsuleSweepResult[5];
+        void Nested(int depth)
+        {
+            results[depth] = Query();
+            if (depth == 4) return;
+            CapsuleSweepScratch loan = scratch.GeneralSweeps.Take()!;
+            loans[depth] = loan;
+            try { Nested(depth + 1); }
+            finally { scratch.GeneralSweeps.Restore(loan); }
+        }
+        Nested(0);
+        for (int i = 0; i < 4; i++) HitContains(results[i], 1.5, 1.5);
+        Refused(results[4]);
+        var retained = (CapsuleSweepScratch[])loans.Clone();
+        long bytes = AllocationMeasurement.Measure(nameof(CurvedQueriesRetainFourScratchDepthsAndRefuseTheFifth), () => Nested(0));
+        Assert.Equal(0, bytes);
+        for (int i = 0; i < 4; i++)
+        {
+            HitContains(results[i], 1.5, 1.5);
+            Assert.Same(retained[i], loans[i]);
+            for (int j = 0; j < i; j++) Assert.NotSame(loans[j], loans[i]);
+        }
+        Refused(results[4]);
+        HitContains(Query(), 1.5, 1.5);
+        lease.AssertCurrent();
+    }
+
     [Theory]
     [InlineData("sphere")]
     [InlineData("capsule")]

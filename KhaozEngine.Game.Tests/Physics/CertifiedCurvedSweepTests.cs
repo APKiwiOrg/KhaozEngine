@@ -10,6 +10,35 @@ namespace KhaozEngine.Tests.Physics;
 
 public sealed class CertifiedCurvedSweepTests
 {
+    [Fact]
+    public void NonRigidSphereForwardDepartureContainsIndependentEllipsoidEntry()
+    {
+        using var world = new BepuPhysicsWorld(Vector3.Zero);
+        Quaternion q = new(0, 0, 0.5f, 0.8660254f);
+        var handle = world.AddStatic(new SphereShape(0.25f), new(Vector3.Zero, q));
+        var entry = Static(world, handle);
+        Sim(world).Statics.GetDescription(entry.Handle, out var installed);
+        Assert.True(InstalledPoseOperator.TryCreate(installed.Pose, out var map));
+        Assert.False(map.IsExactlyRigid);
+        var geometry = ((Dictionary<int, InstalledSweepGeometry?>)Field(world, "_installedSweepStatics"))[handle.Value]!;
+        Assert.True(CapsuleSweepGeometry.TryReadLeaf(Sim(world).Shapes, entry.Shape, installed.Pose, geometry, 0, out var leaf));
+        Assert.True(CapsuleCurvedCorrespondence.TryForwardError(leaf, out double departure));
+        Assert.True(departure > 0);
+        // The exact quaternion polynomial has orthogonal XY columns of squared length
+        // 1/4 + w*w. Along X its ellipsoid radius is 1/4 times that square root.
+        var squared = InstalledPoseOracle.R.From(0.5f).Square() + InstalledPoseOracle.R.From(q.W).Square();
+        var scale = InstalledPoseOracle.Root(squared);
+        var r = InstalledPoseOracle.R.From(0.25f);
+        var distance = InstalledPoseOracle.R.From(1.75f);
+        var result = Read(world, new(-2, 0, 0), new(4, 0, 0), length: 0);
+        Assert.Equal(CapsuleSweepStatus.Hit, result.Status);
+        Assert.NotNull(result.ImpactDistance);
+        Assert.True(InstalledPoseOracle.R.From(result.ClearThroughDistance) <= distance - r * scale.Upper);
+        Assert.True(InstalledPoseOracle.R.From(result.ImpactDistance.Value) >= distance - r * scale.Lower);
+        Assert.InRange(result.CertifiedErrorMetres, result.ImpactDistance.Value - result.ClearThroughDistance, 0.001f);
+        SameBits(result, Read(world, new(-2, 0, 0), new(4, 0, 0), length: 0, useDimensions: true));
+    }
+
     public static IEnumerable<object[]> Rows()
     {
         foreach (string family in new[] { "sphere", "capsule", "cylinder" })

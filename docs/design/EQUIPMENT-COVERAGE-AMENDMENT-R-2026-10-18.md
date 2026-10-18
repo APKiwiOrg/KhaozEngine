@@ -106,7 +106,8 @@ engine guide, and tested on all three CI devices.
    pinned operation order, so a conforming device reproduces the reference bit for bit. Subnormals are
    the one place backends may differ, because Direct3D11 flushes them and Vulkan and Metal may. The oracle
    therefore fails a sample with a device-exactness code if any reference operand or result in it is
-   subnormal, so every certified sample is identical on every conforming device. Construction still
+   nonzero with magnitude at most the smallest normal, `2^-126`, so every certified sample is identical on
+   every conforming device. Construction still
    reserves `MarginFraction x Clearance` in the receding direction, as margin against a driver that breaks
    its precision rules. Native equivalence tests on all three CI backends assert bit equality on every
    fixture. A mismatch fails, and nothing is loosened to pass.
@@ -155,7 +156,9 @@ Topology and support data are shared by every actor that uses them.
 
 Staging keeps its entry and identity checks and composes each command frame (host-to-coverage
 transform, recess direction, clearance, caps and collar width) into a small per-actor uniform. The bone
-palette uploads as today. The CPU refusals are identity, capacity, command frame admission and the
+palette for a covered actor is composed on the CPU by the pinned scalar reference routine, the same one
+the oracle uses, so the uploaded bits do not depend on the machine's vector or fused instructions (root
+ruling B31). The CPU refusals are identity, capacity, command frame admission and the
 origin-magnitude guard.
 
 **Origin magnitude.** Staging bounds the actor's coordinate magnitude relative to the latched frame render

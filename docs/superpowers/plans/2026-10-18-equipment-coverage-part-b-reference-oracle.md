@@ -4,9 +4,9 @@
 
 **Goal:** Preserve the exact construction evidence and provide a headless float reference and exact coverage oracle for asset CI and the Part C kernels.
 
-**Architecture:** Keep the current exact constructor and capture its results before introducing a separate reference implementation. The reference owns immutable gather tables and bounded scratch, while the public oracle uses the staging skinning math and the existing exact geometric predicates. A separate interval evaluator encloses the same device operations. The oracle rejects an excessive per-sample tolerance before exact certification. NC1 is resolved by the owner contract below, with the named specification-verification items.
+**Architecture:** Keep the current exact constructor and capture its results before introducing a separate reference implementation. The reference owns immutable gather tables and bounded scratch. Owner ruling NC2 makes every GPU coverage kernel reproduce the reference bit for bit, so the device tolerance is zero. Every device-reproduced binary32 operation goes through one arithmetic home that also records the first subnormal operand or result, and a compile-time analyzer holds the reference to the pinned operation inventory. The public oracle skins with a pinned reference skinning, constructs with the reference, fails a sample at a device-exactness stage when any reference operand or result is subnormal, and otherwise certifies the reference output with the existing exact geometric predicates at the approved clearance. NC1's interval enclosure was built in Task 6, failed its fixture gate and is superseded.
 
-**Tech Stack:** C# on .NET 10, System.Numerics, xUnit, existing expansion and interval geometry predicates, no new dependencies.
+**Tech Stack:** C# on .NET 10, System.Numerics value types as storage, xUnit, a Roslyn analyzer in the existing `KhaozEngine.CodeHealth.Analyzers`, existing expansion geometry predicates, no new dependencies.
 
 **Spec:** docs/design/EQUIPMENT-COVERAGE-AMENDMENT-R-2026-10-18.md
 
@@ -19,7 +19,9 @@
 - "A core-corrected group that exceeds it is investigated, never accepted by widening the bound."
 - "Refusal codes match on the existing construction negatives."
 - "A breach fails, and no bound is widened to pass."
-- Reserve `delta = Clearance * .25f` in construction. Use per-sample interval enclosures, never fixed rho or world epsilon. Reject unbounded enclosures and `epsilon > .25 * (double)Clearance` before certification.
+- Reserve `delta = Clearance * .25f` in construction, as margin against a driver that breaks its precision rules (NC2). Device tolerance is zero. No interval enclosure, world epsilon, clearance padding or tolerance budget survives, and the oracle certifies at the approved `Clearance`.
+- NC2 operation inventory for every device-reproduced value: binary32 add, subtract, multiply, divide and square root, the B27 exact predicate with the B30 crossing parameter, compare (including the finiteness test), select, abs, negate, min, max, clamp and binary32 store, in the pinned order of Tasks 2 to 5. CPU-side uniforms and static data are computed once on the CPU with scalar IEEE arithmetic and uploaded as binary32 or integers.
+- "The oracle therefore fails a sample with a device-exactness code if any reference operand or result in it is subnormal."
 - "Measurements and any release remain unauthorized until their own approvals."
 - "The 2 ms for 32 typical actors CPU gate, the 15 percent native GPU gate and the zero-allocation gate are unchanged."
 - `CoverageFrames.MarginFraction = .25`, `CoverageScratch.MaxCommands = 4`, support limits are 1,024 inward triangles and 256 boundary edges, and host limits are 65,536 vertices and 65,536 triangles.
@@ -27,20 +29,23 @@
 - "New behavior gets a headless test in the matching area test project."
 - "Commit subjects use `area(scope): summary`."
 - Implement later in `/Users/antonio/KhaozEngine/.worktrees/ec-oracle`, branch `feature/equipment-coverage-oracle`, created from `feature/equipment-coverage` containing `c525aa2bb52a75db2b4b9c0d17a31638b7938699`.
-- Part A owns `KhaozEngine.Gpu*`. This plan changes none of those projects, no shaders, no Scene3D staging or drawing, and deletes no exact constructor or render certifier.
+- Part A owns `KhaozEngine.Gpu*`. This plan changes none of those projects, no shaders, no Scene3D staging or drawing, and deletes no exact constructor or render certifier. Outside `KhaozEngine.Render3D` and `KhaozEngine.Render.Tests` it changes only `KhaozEngine.CodeHealth.Analyzers` and its tests (Task 6B) and adds one design document (Task 6D).
 - Do not merge main, bump versions, pack, release, run pilots, launch clients or integrate either parallel branch in these tasks. The root orchestrator owns the later batch finish.
 
 ## Review Focus
 
-1. Skinny support queries, near-zero correction divisors, subnormal operands and overflow must widen or become unbounded rather than acquire a coordinate-only error proof. Tasks 2 and 6 test amplification, flushing, domains and CPU containment.
-2. Seams in opposite triangle order retain welded position bits, smooth normal gathers and separate hard-normal/tangent neighborhoods. Tasks 1, 4 and 5 test these, and Task 6 includes their interval outputs.
-3. Zero transition still checks the full target and preserves every original byte when valid. Tasks 3, 4 and 8 test this. Task 6 encloses branch alternatives, including possible uncovered selection.
-4. Refusal then success, reordered commands or a numerically worse equipment transform must not reuse candidates, bounds or certificates. Tasks 6 and 8 test reset, equipment contributions and deterministic tolerance attribution.
-5. The reserve consumes the fidelity budget, never enlarges it. Task 5 retains exact quarter-clearance fidelity, Task 7 proves padding only strengthens separation, and Task 8 tests epsilon at and above delta and the new code.
+> Amended 2026-10-18 for owner ruling NC2. Items 1 to 5 originally named the NC1 enclosure in Tasks 6 and 7.
 
-## Resolved numerical contract NC1
+1. Skinny support queries, near-zero correction divisors and overflow keep their construction guard codes. A subnormal operand or result anywhere in skinning or construction becomes a device-exactness failure at its first site, never a silent pass. Tasks 2, 6C and 8 test these.
+2. Seams in opposite triangle order retain welded position bits, smooth normal gathers and separate hard-normal/tangent neighborhoods. Tasks 1, 4 and 5 test these, and Task 6A freezes their reference bytes.
+3. Zero transition still checks the full target and preserves every original byte when valid. Tasks 3, 4 and 8 test this.
+4. Refusal then success, reordered commands or a numerically worse equipment transform must not reuse candidates, subnormal traces or certificates. Tasks 6C and 8 test reset and order independence.
+5. The reserve consumes the fidelity budget, never enlarges it. Task 5 retains exact quarter-clearance fidelity. Task 8 certifies at the approved clearance with no padding.
+6. Bit exactness comes from the operation inventory and order, not from tolerances. Task 6A freezes 144 reference outputs, Task 6B rejects out-of-inventory code at compile time, Task 6C reroutes the device path with byte-identical outputs, and Task 6D states the contract Part C kernels meet.
 
-The owner resolution in Part B item 3, Part C step 3 and evidence item 5 replaces fixed rho and fixed epsilon. Task 1 is unchanged. No constructor rounding bias, operation-count gamma bound or fixed world tolerance survives.
+## Numerical contract: NC1 reserve and fidelity, NC2 device exactness
+
+The owner resolution in Part B item 3, Part C step 3 and evidence item 5 replaces fixed rho and fixed epsilon. Task 1 is unchanged. No constructor rounding bias, operation-count gamma bound or fixed world tolerance survives. NC1's reserve and fidelity rules below still stand. Its tolerance half was replaced on 2026-10-18 by owner ruling NC2, described after them.
 
 ### Reserve and fidelity
 
@@ -54,7 +59,7 @@ ActualClearanceCoverage = (ReservedClearance * sqrt(1f + S*S)) * SpectralUpper(i
 target = sheetHeight - ClearanceCoverage
 ```
 
-Core correction also uses the reserved `ActualClearanceCoverage`. Authored `Clearance`, cap margins and recession caps do not change. Full-target guards precede transition. There is no extra bias on point recession, correction or their sum. Rounding and final float32 stores belong to the enclosure, not a guessed constructor conversion allowance.
+Core correction also uses the reserved `ActualClearanceCoverage`. Authored `Clearance`, cap margins and recession caps do not change. Full-target guards precede transition. There is no extra bias on point recession, correction or their sum, and no guessed constructor conversion allowance. Under NC2 a conforming device reproduces these values exactly, so the reserve is margin, not a tolerance.
 
 For the same active branch before correction, write `M = sqrt(1+S*S)*SpectralUpper(inverse(C))`, `W = length(A.linear(D))` and `alpha = strength*spatial*TransitionWeight`. Ignoring arithmetic differences only for this comparison, the pointwise difference from capture is `alpha*abs(delta*M-exactSlackCoverage)*W`. The capture's world slack is between zero and delta. The new reserve can therefore spend the entire fidelity budget even in a unit flat frame. Slope and anisotropic transforms can give `M*W > 1`. Float interpolation, branch changes and core correction add differences. This is not a proof of fidelity or spare roundoff headroom.
 
@@ -62,51 +67,34 @@ For the same active branch before correction, write `M = sqrt(1+S*S)*SpectralUpp
 
 The reserve's deliberate extra recession is checked separately. For every conform-only group, `worldDistance(reserveRun,likeForLikeRun) <= up(alpha*abs(delta*M-capture.SlackCoverage[slot])*W)` with `M` and `W` from the same frame, plus the like-for-like bound. Core-corrected groups report this difference without asserting it, because correction depends nonlinearly on the target. This is the owner-accepted implication that skin may sit up to a quarter clearance deeper, measured perpendicular to the sheet.
 
-### Precision sources and k_op table
+### Device exactness NC2
+
+> Superseded on 2026-10-18 by owner ruling NC2: the k_op table and its derivations, RV1, RV2, outward interval evaluation, epsilon composition and refusal, `CoverageFloatInterval` and `CoverageFloatIntervals` (B15), `CoverageVertexEnclosure`, `CoverageReferencePrecision`, `DeviceToleranceExceeded`, `CoverageOracleStage.DeviceTolerance` and the clearance-padding seam. The Task 6 enclosure was built and failed on real fixtures: 11 of 72 rows were unbounded, two finite rows were far above the reserve, and one vertex the reference moved by 4e-9 m received a 2.8 cm box. Intervals lose correlations, and branch joins hull covered and uncovered outcomes. The draft and its evidence are archived at `fdf86dedb` on `feature/equipment-coverage-enclosure-draft`, never to be merged. NC2 was chosen over a measured tolerance and a correlated enclosure.
+
+Every coverage kernel computes the same binary32 bits as the reference, so the device tolerance is zero (spec Part B item 3). Every value is a function of the uploaded binary32 and integer inputs and the pinned operation order. Add, subtract and multiply are correctly rounded on all three backends in precise mode. Division and square root are correctly rounded in the reference, and a backend whose native operation is not correctly rounded corrects its result with an exact residual check. Exact predicates follow B27, and the crossing parameter follows B30. Subnormals are the one place conforming backends may differ, so the oracle fails a sample at its device-exactness stage when any reference operand or result in it is a nonzero binary32 of magnitude at most `2^-126` (root ruling B32: a result equal to the smallest normal may have rounded up from a tiny value, and some hardware detects tininess before rounding). The reserve stays as margin against a driver that breaks its precision rules.
+
+Precision sources, retained because they decide where Part C needs the division and square-root correction:
 
 - [Vulkan specification, Vulkan Environment for SPIR-V](https://docs.vulkan.org/spec/latest/appendices/spirvenv.html), **Precision and Operation of SPIR-V Instructions**, **Evaluation of Expressions**, **Precision of Individual Operations**, **ULP**, **Inherited From**, Table 3 **Precision of Core SPIR-V Instructions** and Table 4 **Precision of GLSL.std.450 Instructions**.
-- [Metal Shading Language Specification 4.1, 2026-06-04](https://developer.apple.com/metal/Metal-Shading-Language-Specification.pdf), **8.1 INF, NaN, and Denormalized Numbers**, **8.2 Rounding Mode**, **8.4 ULPs and Relative Error**, Table 8.1 **Accuracy of single-precision floating-point operations and functions** (pages 368 to 370), **8.5 Edge Case Behavior in Flush to Zero Mode** and **8.6 Conversion Rules for Floating-Point and Integer Types**. Fast maths is off, never use Table 8.2.
+- [Metal Shading Language Specification 4.1, 2026-06-04](https://developer.apple.com/metal/Metal-Shading-Language-Specification.pdf), **8.1 INF, NaN, and Denormalized Numbers**, **8.2 Rounding Mode**, **8.4 ULPs and Relative Error**, Table 8.1 **Accuracy of single-precision floating-point operations and functions** (pages 368 to 370) and **8.5 Edge Case Behavior in Flush to Zero Mode**. Fast maths is off, never use Table 8.2.
 - [Direct3D 11.3 Functional Specification](https://microsoft.github.io/DirectX-Specs/d3d/archive/D3D11_3_FunctionalSpec.htm), **3.1.2 Term: Unit-Last-Place (ULP)**, **3.1.3.1 Partial Listing of Honored IEEE-754 Rules** and **3.1.3.2 Complete Listing of Deviations or Additional Requirements vs. IEEE-754**. **22.10.18 rcp** and **22.10.19 rsq** are separately relaxed instructions.
 
-| Operation | Vulkan | Metal with fast maths off | D3D11.3 | Chosen binary32 k_op |
+| Operation | Vulkan | Metal with fast maths off | D3D11.3 | NC2 kernel rule |
 | --- | --- | --- | --- | --- |
-| Add, subtract, multiply | Correctly rounded | Correctly rounded | .5 ULP | `1` each |
-| Divide | 2.5 ULP for divisor magnitude `[2^-126,2^126]` | Correctly rounded | Reciprocal 1 ULP then multiply .5 ULP, or better | `4`, plus expansion hull below |
-| Square root | Inherited from `1/inversesqrt(x)`, inverse square root 2 ULP | Correctly rounded | 1 ULP | `16` on the finite normal intermediate domain, plus inherited hull below |
-| Float32 final store/conversion | Correctly rounded conversion, bit-preserving store | Supported rounding for conversion, bit-preserving store | Bit-preserving float32 storage | `1` conservatively per final store |
-| Abs, negate, min, max, clamp, compare, select | Exact finite result | Exact finite selection/sign operations | Exact finite selection with flushing | `0`, operand flushing and branch joins still apply |
+| Add, subtract, multiply | Correctly rounded | Correctly rounded | Correctly rounded (.5 ULP) | Native, precise mode, no contraction |
+| Divide | 2.5 ULP for divisor magnitude `[2^-126,2^126]` | Correctly rounded | Reciprocal 1 ULP then multiply, or better | Native, then exact residual correction where not correctly rounded |
+| Square root | Inherited from `1/inversesqrt(x)` | Correctly rounded | 1 ULP | Native, then exact residual correction where not correctly rounded |
+| Exact 2D predicate | Not native | Not native | Not native | B27 sign and RN32 value by a method Part C proves exact |
+| Compare, select, abs, negate, min, max, clamp | Exact on finite operands | Exact on finite operands | Exact on finite operands | Pinned signed-zero and selection semantics in Task 6D |
+| Subnormal operand or result | May flush | May flush | Flushes | The oracle fails the sample, kernels need not agree |
 
-The four-ULP quotient is conservative for strict D3D division with normal intermediates. Reciprocal relative error is at most `2^-23`, multiply at most `2^-24`, so the combined relative error is at most `3*2^-24+2^-47`, less than four output ULP. The square-root `16` is a conservative derivation, not a Vulkan table entry. Inverse-square-root relative error is at most `2^-22`. Combining it with the chosen four-ULP division gives relative error at most `(2^-22+2^-21)/(1-2^-22)`, less than sixteen output ULP. Test both expanded intervals and binade boundaries. These derivations do not replace intermediate flush or exceptional-domain handling.
+The oracle failure surface reuses the two slots the plan once gave NC1, which were never implemented: `CoverageFailureCode.SubnormalArithmetic = 15` and `CoverageOracleStage.DeviceExactness = 3`. Stages run in the order construction, device exactness, certification, independent of their numbering. A construction refusal reports `Construction` even when a subnormal event preceded it, because the sample fails either way and the guard code is the useful fact. Device exactness reports its first event's phase, element, operation and value bits, the attributed command and the total event count. Certification runs only on a successful construction with no event, at the approved clearance, through the unchanged public `CoverageCertification.ValidateGeometry`.
 
-**RV1 resolved by root.** The Vulkan Environment for SPIR-V states that positive and negative zeros are generated as IEEE 754 dictates for the encoding, that only results not mathematically defined are poison, and that denormalized inputs and inherited-operation results may be flushed to zero. `sqrt(+0)` is defined and equals `+0`. So for a square-root input interval `[l,h]` with `l >= 0` after operand flushing, the device result lies in `[lo,up(sqrt(h)*(1+16*2^-23))]`, where `lo = 0` when `l` is zero or a possible subnormal and otherwise `down(sqrt(l)*(1-16*2^-23))`, hulled with the inherited expansion on the normal part of the interval. Negative input stays unbounded. Add `Square_root_enclosure_at_zero_and_subnormals_is_finite` to Task 2 with inputs `[0,0]`, `[0,2^-140]` and `[0,1]`.
-
-**Root verification RV2:** Part C must verify that strict `/` and `sqrt` lower to the strict D3D requirements and preserve the pinned expression order on every backend. The separately relaxed `rcp`/`rsq` relative error is `2^-21`, not one ULP. No unconfirmed finite bound for that lowering is chosen here. Part B writes no compiler or GPU code. Root must confirm the finite-domain four/sixteen-ULP derivations before treating them as an approved device contract, or retain the explicit expansion hulls as the conservative larger bound.
-
-### Outward interval evaluation
-
-Use `CoverageFloatInterval(Min,Max)` with binary64 endpoints and unbounded `[-Infinity,+Infinity]`. Exact constants are `MinNormal32=2^-126`, `MinSubnormal32=2^-149` and `MaxDivisor32=2^126`. Device-read inputs enter as point intervals of their uploaded binary32 values: source attributes/weights, CPU-composed palette, support tables, region data, model/equipment matrices and emitted command uniforms. Do not add device error to CPU frame composition again.
-
-Round each binary64 endpoint operation outward with `Math.BitDecrement` and `Math.BitIncrement`, including extrema, error additions and radii. For outward real result `R=[l,h]`, set `m=max(abs(l),abs(h))`, `ulp32(m)=2^max(-149,floor(log2(m))-23)` for positive finite m and `ulp32(0)=2^-149`. Derive the exponent from bits or `Math.ILogB`, never a rounded logarithm. Each operation returns `[down(l-e),up(h+e)]`, where `e=up(k_op*ulp32(m)+2^-126)`. A final float32 store is an operation. Pure copies stay exact. [Math.BitDecrement](https://learn.microsoft.com/en-us/dotnet/api/system.math.bitdecrement?view=net-10.0) and [Math.BitIncrement](https://learn.microsoft.com/en-us/dotnet/api/system.math.bitincrement?view=net-10.0) return binary64 neighbors.
-
-Before arithmetic or arithmetic comparisons, include zero in an operand interval containing possible binary32 subnormals. Keep both preserved and flushed outcomes, with either zero sign where needed. Output-only `2^-126` cannot cover `subnormal*largeNormal` input flush.
-
-The complete operation set is add, subtract, multiply, divide, square root, float32 store, abs, negate, min, max, clamp, compare and hull/select. Expand dot, cross, affine transforms, norm, smoothstep, height and clipping into this set in reference order. `Divide(a,b)` hulls its direct four-ULP result with the D3D expansion `Multiply(a,Reciprocal1(b))`. `Reciprocal1` widens `1/b` by one ULP and has its own input/output flush. Square root also encloses `Divide(1,InverseSqrt2(x))`, with two ULP on inverse square root and each internal operation's flush, then symmetrizes the error about the outward ideal square-root interval as **Inherited From** requires. Hull that with the direct sixteen-ULP result. These are enclosure helpers, never reciprocal substitutions in the float constructor.
-
-A divisor interval containing zero or any magnitude outside `[2^-126,2^126]`, negative square-root input, possible non-finite intermediate or finite-binary32 overflow yields unbounded. So does an internal expansion's precondition failure. Never clamp it finite or retain only the CPU result. Only a proven nonnegative range permits clamping an outward square's lower endpoint to zero.
-
-If a comparison cannot select one branch, join both reachable results. Height queries join all possibly selected source-ordered triangles and possible boundary/miss results. Boundary ties join possible winners, overlays include every possibly accepted corner/crossing. Query every grid cell an interval AABB intersects, not the CPU point's cell. Include the uncovered current pose whenever any device guard, including a normal guard, might refuse. Join immediately in fixed scratch without path enumeration or allocated branch histories. A possible invalid arithmetic operation makes the enclosure unbounded. Replaying only the CPU-selected branch is unsound.
-
-### Epsilon composition and refusal
-
-Enclose each host's final stored model position and float device world transform. Enclose its exact-certifier center by outward binary64 evaluation of the stored reference position and uploaded model, without device widening. Component radii are `r_j=max(abs(deviceMin-centerMax),abs(deviceMax-centerMin))`, outward at every step. The world radius is `up(sqrt(up(up(r_x*r_x+r_y*r_y)+r_z*r_z)))`. Take the largest over every host vertex, including protected vertices. Stream every vertex of each complete rigid equipment solid through the same device transform enclosure and exact-center comparison. Take the largest equipment radius over every command, not only inward-sheet vertices.
-
-`epsilon=up(maxHostRadius+maxEquipmentRadius)`, allowing exact zero for zero plus zero. A command budget is `.25*(double)command.Clearance`. Require finite nonnegative `epsilon <= budget` for every command, including partial transition. Equality passes. An unbounded result or the next binary64 number above budget fails. The sum covers host/equipment triangle separation by barycentric convexity and the triangle inequality.
-
-Append `CoverageFailureCode.DeviceToleranceExceeded=15` after `UnsupportedAdapter=14` and extend the accepted-code guard, without renumbering. Append `CoverageOracleStage.DeviceTolerance=3`. After successful float construction, an unbounded enclosure or excessive epsilon returns `DeviceTolerance/DeviceToleranceExceeded` before certification, attributed to the first violating command in ascending ID order, with host/equipment identity, `Count=0`, `Limit=0` and default certificate. CPU output outside its own enclosure is an evaluator defect that fails correctness, never a reason to enlarge bounds. Certification gets `Clearance+epsilon` through Task 7's scalar seam, never subtraction or modified commands.
-
-Task 6 exposes internal per-vertex model/world bounds and the equipment-vertex evaluator for Part C native tests and dev-only verification. Part B implements no GPU, shader, readback or Scene3D work.
+Part B implements no GPU, shader, readback or Scene3D work. Task 6D writes the kernel contract Part C implements and proves on all three backends.
 
 ## File structure
+
+> Amended 2026-10-18 for NC2. The interval, precision and enclosure rows are withdrawn. Task 2 landed the interval types in `CoverageFloatIntervals.cs` (B15) and Task 6A deletes it with `CoverageReferencePrecision.cs`. Task 4 landed the B27 predicates in `CoverageReferencePredicates.cs`.
 
 All new engine files live in `KhaozEngine.Render3D/Coverage/` and use namespace `KhaozEngine.Render3D`. New tests use `KhaozEngine.Tests.Render3D`.
 
@@ -115,25 +103,29 @@ All new engine files live in `KhaozEngine.Render3D/Coverage/` and use namespace 
 | `KhaozEngine.Render.Tests/Render3D/CoverageReferenceCases.cs` | Cold, headless fixture adapters and the 72-case capture manifest |
 | `KhaozEngine.Render.Tests/Render3D/CoverageExactCaptureTests.cs` | One opt-in capture writer and unconditional exact replay tests |
 | `KhaozEngine.Render.Tests/Fixtures/coverage-exact-v1/*.json` | Canonical input and output float bits, topology identity and refusal evidence |
-| `CoverageReferenceTopology.cs` | Canonical position recipes and sorted compact sparse-row gather tables |
+| `KhaozEngine.Render.Tests/Fixtures/coverage-reference-v1/outputs.sha256` | SHA-256 of all 144 reference outputs, 72 cases in production and like-for-like modes |
+| `CoverageReferenceTopology.cs` | Canonical position recipes, binary32 recipe weights and sorted compact sparse-row gather tables |
 | `CoverageReferenceSupport.cs` | Float sheet and boundary data with deterministic lookup and overlay primitives |
-| `CoverageReferenceMath.cs` | Explicit scalar arithmetic, operation order and float geometric helpers |
-| `CoverageReferencePrecision.cs` | Cited k_op table, budget, outward world radius and epsilon composition |
-| `CoverageFloatInterval.cs` | Outward binary64 operations with binary32 widening, flushing and domains |
-| `CoverageReferenceEnclosure.cs` | Second device-formula evaluation, branch joins and per-vertex pose bounds |
-| `CoverageReferenceEnclosureScratch.cs` | Fixed source, host, group and face interval arrays with reset |
+| `CoverageReferencePredicates.cs` | B27 exact signs and RN32 values, B30 scaled crossing sides |
+| `CoverageReferenceArithmetic.cs` | The one home of every device-reproduced binary32 operation, with the per-construction subnormal trace |
+| `Binary32KernelAttributes.cs` | `Binary32KernelAttribute` and `Binary32ArithmeticAttribute`, read by the analyzer by name |
+| `CoverageReferenceMath.cs` | Composite scalar helpers (dot, cross, transforms, heights) written through the home |
+| `CoverageReferenceSkinning.cs` | CPU palette composition and the pinned reference skinning the oracle and Part C kernels share |
+| `CoverageExactnessSite.cs` | Phase, operation and site of the first subnormal event |
 | `CoverageReferenceFrames.cs` | Command admission and CPU-composed frames without construction intervals or slack |
-| `CoverageReferenceScratch.cs` | Fixed per-call arrays for interpolation, construction, reductions and normals |
+| `CoverageReferenceScratch.cs` | Fixed per-call arrays for interpolation, construction, reductions, normals and the arithmetic trace |
 | `CoverageReferenceConstructor.cs` | Interpolation, point conformation, guard reduction and atomic output publication |
 | `CoverageReferenceCorrection.cs` | Float face-overlay deficits and group-owned correction and transition |
 | `CoverageReferenceNormals.cs` | Per-vertex normal and tangent gather with folded-patch guard |
-| `CoverageOracle.cs` | Public headless owner of skinning, reference scratch and exact-certifier scratch |
+| `CoverageOracle.cs` | Public headless owner of reference skinning, reference scratch and exact-certifier scratch |
 | `CoverageOracleResult.cs` | Public stage, failure and certificate value types |
-| `CoverageFailure.cs` | Append-only device-tolerance code and accepted-code range |
-| `KhaozEngine.Render.Tests/Render3D/CoverageReference*Tests.cs` | Separate arithmetic, construction, correction and normal test cycles |
-| `KhaozEngine.Render.Tests/Render3D/CoverageOracle*Tests.cs` | Exact-clearance seam, public API, negatives, reuse and allocation tests |
+| `CoverageFailure.cs` | Append-only `SubnormalArithmetic` code and accepted-code range |
+| `KhaozEngine.CodeHealth.Analyzers/Binary32Kernel*.cs` | Compile-time operation-inventory rules for attributed kernel members |
+| `docs/design/EQUIPMENT-COVERAGE-KERNEL-CONTRACT-2026-10-18.md` | The Part C kernel contract: inventory, order, correction, predicates and subnormal rule |
+| `KhaozEngine.Render.Tests/Render3D/CoverageReference*Tests.cs` | Separate arithmetic, construction, correction, normal, skinning and output-manifest test cycles |
+| `KhaozEngine.Render.Tests/Render3D/CoverageOracle*Tests.cs` | Public API, stages, negatives, reuse and allocation tests |
 
-Existing engine changes are limited to exposing the immutable canonical position recipes in `CoverageRefinement.cs`, attaching cold float data in `CoverageSupportSurface.cs`, adding an internal threshold-padding overload in `CoverageCertification.cs`, and appending the failure code in `CoverageFailure.cs`. Existing exact construction behavior remains unchanged.
+Existing engine changes are limited to exposing the immutable canonical position recipes in `CoverageRefinement.cs`, attaching cold float data in `CoverageSupportSurface.cs`, the B6, B14 and B17 exact-path refactors already landed in Tasks 1 to 3, marking the `CoverageTally` and `CoverageFrames.Refuse` members the reference calls as kernel members in Task 6C, and appending the failure code in `CoverageFailure.cs`. NC2 withdraws the internal threshold-padding overload, so `CoverageCertification.cs` is unchanged. Existing exact construction behavior remains unchanged.
 
 ## Execution and verification convention
 
@@ -150,6 +142,8 @@ Every task's red test uses `dotnet test` without `--no-build`. A missing new typ
 The scoped formatting command uses the existing engine plan convention in `docs/superpowers/plans/2026-10-14-contact-controller-phase5b.md:20`: `dotnet format whitespace ... --verify-no-changes --no-restore`, limited to changed files. Use the project paths below rather than formatting unrelated projects. Also run `git diff --check` and the applicable dash, prose and size guards before each commit. Do not raise a size baseline to make a task pass. The full solution suite is a single later orchestrator finish through `build-slot --heavy`, not a per-task step.
 
 Stage and commit only the task's listed paths, with an explicit pathspec on both commands. No task integrates or pushes independently of the root's assigned branch ownership.
+
+> Note 2026-10-18, execution rulings. B13: the project-relative `--include` paths above match nothing, so that check silently passes. From Task 2 on, every task runs `dotnet format whitespace KhaozEngine.slnx --verify-no-changes --no-restore --include <repo-relative paths>` from the worktree root, and Tasks 6A to 8 below are written in that form. B26: no brief uses `git stash`. A red run that needs a temporary change saves the hunk as a patch file in the ledger directory and reverses it with `git apply -R`.
 
 ### Task 1: Freeze the current exact constructor before source changes
 
@@ -222,6 +216,8 @@ build-slot --label ec-b1-format -- dotnet format whitespace KhaozEngine.Render.T
 - [ ] Commit the listed files with `render3d(coverage): capture exact construction reference data`. This commit must precede every reference implementation commit. Root preserves it on the owning remote branch before dependent work.
 
 ### Task 2: Compile reference data and pin scalar float primitives
+
+> Note 2026-10-18 (NC2): Task 2 landed at `7cdb8b747` with the interval types in `CoverageFloatIntervals.cs` (B15). Its interval, precision and enclosure items are superseded and Task 6A deletes them: `CoverageFloatInterval`, `CoverageFloatIntervals`, `CoverageVertexEnclosure`, `CoverageReferencePrecision`, the k_op constants, RV1, `Interval_operations_pin_ulps_domains_and_input_flushing`, the interval half of `Coordinate_only_roundoff_does_not_bound_skinny_triangle_height`, and the enclosure-envelope and RV2 sentences of the arithmetic contract step. RV2's lowering obligation moves to the Task 6D contract. Frame values are binary32 uniforms, not point intervals. The scalar formulas, frames, support queries and gather tables stand, with B16 and B27 applied. Task 6C routes their device-reproduced operations through the arithmetic home without changing a bit.
 
 **Files**
 
@@ -385,6 +381,8 @@ build-slot --label ec-b3-test-format -- dotnet format whitespace KhaozEngine.Ren
 
 ### Task 4: Gather core-face correction and apply transition once per group
 
+> Note 2026-10-18 (NC2): the sentences giving rounding, stores, the deficit and the rate division to a Task 6 enclosure, `+epsilon` to Task 7 and the `CorrectionRate=2^-20` case to an amplified interval are superseded. A conforming device reproduces these values exactly, and Task 8 certifies the reference output at the approved clearance. The `2^-20` case stays a construction test. B22 and B24 were superseded by B27 during execution, and B30 later replaced the crossing quotient in Task 6A.
+
 **Files**
 
 - Create: `KhaozEngine.Render3D/Coverage/CoverageReferenceCorrection.cs`
@@ -528,156 +526,319 @@ build-slot --label ec-b5-test-format -- dotnet format whitespace KhaozEngine.Ren
 
 - [ ] Commit listed paths with `render3d(coverage): gather reference normals and enforce exact fidelity`.
 
-### Task 6: Evaluate per-pose enclosures and expose Part C's internal API
+### Task 6: Device-exact reference contract (NC2)
+
+> Replaced 2026-10-18 by owner ruling NC2. The original Task 6 built per-pose interval enclosures and failed its fixture gate (see the NC2 note in the numerical contract). It is now four bounded tasks, 6A to 6D, each with its own review and commit. They run in order, because 6A's hash manifest guards 6C and 6B's analyzer enforces 6C.
+
+**Root precondition, before 6A is dispatched.** The worktree still holds the blocked enclosure draft: modified `KhaozEngine.Render3D/Coverage/CoverageReferencePredicates.cs` and `CoverageReferenceSupport.cs`, untracked `CoverageEnclosureCorrection.cs`, `CoverageEnclosureMath.cs`, `CoverageEnclosureNormals.cs`, `CoverageEnclosureOverlay.cs`, `CoverageEnclosurePose.cs`, `CoverageEnclosurePredicates.cs`, `CoverageEnclosureSupport.cs`, `CoverageReferenceEnclosure.cs` and `CoverageReferenceEnclosureScratch.cs` in the same directory, and untracked `KhaozEngine.Render.Tests/Render3D/CoverageReferenceCrossingTests.cs`, `CoverageReferenceEnclosureDiagnosticTests.cs` and `CoverageReferenceEnclosureTests.cs`. All of it is archived at `fdf86dedb`. Root confirms the archive holds each path byte for byte, removes these paths, keeps the untracked `.superpowers/` ledger, and records the clean `8765a4c27` state in the ledger. The 6A worker reads the draft only through `git show fdf86dedb:<path>`. Every task in this section adds `test -z "$(git status --porcelain -- KhaozEngine.Render3D KhaozEngine.Render.Tests KhaozEngine.CodeHealth.Analyzers KhaozEngine.CodeHealth.Analyzers.Tests docs)"` to the starting guard.
+
+### Task 6A: Port B30, freeze the reference outputs and delete NC1 interval code
 
 **Files**
 
-- Create: `KhaozEngine.Render3D/Coverage/CoverageReferenceEnclosure.cs`
-- Create: `KhaozEngine.Render3D/Coverage/CoverageReferenceEnclosureScratch.cs`
-- Modify: `KhaozEngine.Render3D/Coverage/CoverageReferencePrecision.cs`, compose outward host/equipment maxima
-- Test: `KhaozEngine.Render.Tests/Render3D/CoverageReferenceEnclosureTests.cs`
+- Modify: `KhaozEngine.Render3D/Coverage/CoverageReferencePredicates.cs`, port `EdgeExpansion` and `CrossingParameter` from `fdf86dedb`
+- Modify: `KhaozEngine.Render3D/Coverage/CoverageReferenceSupport.cs:164-171`, the strictly opposite-sign branch calls `CrossingParameter`
+- Delete: `KhaozEngine.Render3D/Coverage/CoverageFloatIntervals.cs`, `KhaozEngine.Render3D/Coverage/CoverageReferencePrecision.cs`
+- Modify: `KhaozEngine.Render.Tests/Render3D/CoverageReferencePrimitiveTests.cs`, delete the interval and precision tests listed below
+- Create: `KhaozEngine.Render.Tests/Render3D/CoverageReferenceCrossingTests.cs`
+- Create: `KhaozEngine.Render.Tests/Render3D/CoverageReferenceOutputTests.cs`
+- Create: `KhaozEngine.Render.Tests/Fixtures/coverage-reference-v1/outputs.sha256`
+- Modify: `KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj:30`, add `<None Update="Fixtures/coverage-reference-v1/*.sha256" CopyToOutputDirectory="PreserveNewest" />` beside the exact-capture item
+- Read only: `git show fdf86dedb:KhaozEngine.Render3D/Coverage/CoverageReferencePredicates.cs`, the same for `CoverageReferenceSupport.cs` and `KhaozEngine.Render.Tests/Render3D/CoverageReferenceCrossingTests.cs`, and the ledger's `task-6r1-before-manifest.log`
 
 **Interfaces**
 
-- Consumes: Tasks 2 to 5's scalar operation graph, immutable topology/support data and rounded CPU frame uniforms. `composedPalette` is the exact binary32 upload produced by `SkinningMath.Compose`, not joint matrices composed a second time on the device.
-- Produces: `internal sealed class CoverageReferenceEnclosureScratch`, constructor `(CoverageRefinement topology, int commandCapacity = CoverageScratch.MaxCommands)`. Preallocate source, refined, group, face and final interval arrays plus branch/guard state. Expose `internal ReadOnlySpan<CoverageVertexEnclosure> HostModelBounds`, `HostWorldBounds` and `internal double DeviceTolerance`, invalidated by the next evaluation. Store no variable-size equipment array.
-- Produces: `internal static void CoverageReferenceEnclosure.Evaluate(CoverageRefinement topology, ReadOnlySpan<Matrix4x4> composedPalette, ReadOnlySpan<ModelVertex> referenceFinal, in Matrix4x4 model, ReadOnlySpan<CoverageCommandPose> commands, CoverageReferenceScratch referenceScratch, CoverageReferenceEnclosureScratch scratch)`.
-- Produces: `internal static CoverageVertexEnclosure CoverageReferenceEnclosure.EquipmentWorldVertex(CoverageSourceTopology source, int vertex, in Matrix4x4 equipmentWorld)`. This value API exposes any full-solid vertex without per-call storage. Evaluate streams these values into its equipment maximum.
-- Evaluate neither decides the budget refusal nor invokes certification. No finite proof returns unbounded boxes and `DeviceTolerance=PositiveInfinity`. Invalid lengths or scratch identity throw before mutation. Each evaluation resets active lengths, maxima and branch/guard state.
+- Produces: `internal static float CoverageReferencePredicates.CrossingParameter(Vector3 s, Vector3 t, Vector3 a, Vector3 b)`. It returns `RN32(ca*2^k) / (RN32(ca*2^k) - RN32(cb*2^k))` with `k` the common power of two that puts `max(|ca|,|cb|)*2^k` in `[1,2)`, for the exact sides `ca = Edge(s,t,a)` and `cb = Edge(s,t,b)`. Nonfinite inputs, a zero side or equal signs return `NaN`. The caller still clamps to `[0,1]` as before. Task 6C splits its final subtract and divide into the arithmetic home without changing bits.
+- Produces: `internal static class CoverageReferenceOutputs` inside `CoverageReferenceOutputTests.cs`, with `internal static string Hash(ReadOnlySpan<ModelVertex> vertices)` and `internal static IEnumerable<(string Name, string Hash, CoverageFailure Failure)> ComputeAll()`. `Hash` is lowercase hexadecimal SHA-256 over every `CoverageReferenceBits.Fields(vertex)` value written by `BinaryWriter.Write(float)`, which is little-endian on every platform, in vertex then field order. `ComputeAll` visits `CoverageReferenceCases.All()` in manifest order and two modes, named `<case>-0.bin` for production (reserve, empty overrides) and `<case>-1.bin` for like-for-like (`ClearanceCoverage + SlackCoverage`, `CorrectionClearance`, `CorrectionConversion` from the capture). These are the ledger's draft names, so the hashes compare directly.
 
-- [ ] Write `Every_fixture_float_vertex_is_inside_its_pose_enclosure` over all 72 frozen cases, every seam member and zero/half/full transition. Assert `HostModelBounds.Length==topology.VertexCount`, `HostModelBounds[i].Contains(referenceFinal[i].Position)` for every vertex, finite model/world bounds and finite epsilon. Compute world centers independently with outward binary64 arithmetic and assert their inclusion. Report RV1 conflicts or unbounded fixture rows, never omit them.
+- [ ] Before any source change, write the manifest and `Every_fixture_reference_output_matches_the_hash_manifest`. The writer is one explicitly filtered `[Fact]`, `Write_reference_output_manifest_when_explicitly_requested`, enabled only by `KE_WRITE_COVERAGE_REFERENCE_HASHES=1`, which writes `outputs.sha256` as 144 lines of `<hash> <name>` in `ComputeAll` order. Run it once on the unchanged `8765a4c27` code:
 
-```csharp
-Assert.Equal(topology.VertexCount, enclosure.HostModelBounds.Length);
-Assert.True(enclosure.HostModelBounds[i].Contains(referenceFinal[i].Position));
-Assert.True(enclosure.HostWorldBounds[i].X.IsFinite);
-Assert.True(enclosure.HostWorldBounds[i].Y.IsFinite);
-Assert.True(enclosure.HostWorldBounds[i].Z.IsFinite);
-Assert.True(double.IsFinite(enclosure.DeviceTolerance));
-Assert.True(CoverageReferencePrecision.Radius(deviceBox, zeroCenter) >= 5d);
-Assert.True(CoverageReferencePrecision.ComposeTolerance(5d, 12d) >= 17d);
+```bash
+KE_WRITE_COVERAGE_REFERENCE_HASHES=1 build-slot --label ec-b6a-manifest -- dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter 'FullyQualifiedName~Write_reference_output_manifest_when_explicitly_requested'
 ```
 
-  Add `Enclosures_propagate_conditioning_flushing_and_branch_alternatives`. Assert the skinny-triangle query interval contains both analytical heights. Reducing positive correction rate from `2^-10` to `2^-20` increases correction width. A divisor interval crossing zero is unbounded. At an uncertain support edge or nearest-edge tie both candidate outputs belong to the joined box. An uncertain guard encloses covered and uncovered positions. A final-store case contains the adjacent permitted floats and CPU value. Tests must not replay only the CPU-selected branch.
+  Compare the written file line for line with the ledger's `task-6r1-before-manifest.log`, which the blocked draft produced from the same code. Any difference stops the task and returns both files to root. The unconditional test asserts:
 
-  Add `World_tolerance_sums_host_and_full_equipment_bounds`. With independent host box `[-3,3] x [-4,4] x [0,0]` centered at zero and equipment radius `12`, assert host radius at least `5`, combined epsilon at least `17`, and excess limited to the specified outward binary64 steps. A large finite equipment vertex outside the inward-sheet subset must contribute transform error. Test nonuniform models, negative coordinates, large-translation cancellation and protected vertices. Reordered commands produce identical epsilon and ID-keyed bounds. Unbounded then valid evaluation reproduces the first valid bounds and epsilon exactly.
+```csharp
+Assert.Equal(144, expected.Length);
+Assert.Equal(expected.Select(e => e.Name), actual.Select(a => a.Name));
+Assert.All(actual, a => Assert.True(a.Failure.IsSuccess, a.Name));
+Assert.Equal(expected.Select(e => e.Hash), actual.Select(a => a.Hash)); // report the first differing name
+```
+
+  Also add `Reference_output_writer_is_disabled_without_explicit_environment_gate`, asserting an ordinary run writes nothing.
+
+- [ ] Write the crossing tests. Port `Subnormal_opposite_determinants_use_the_scaled_rational_parameter` from the draft unchanged, with its `-74` and `-75` rows and the independent rational bits `0x3eaaaaab` (one third) and `0x3f2aaaab` (two thirds). Add `Crossing_parameter_equals_the_unscaled_quotient_for_normal_sides`: for four normal opposite-sign side pairs, including one whose ratio crosses a binade, assert `CrossingParameter` bits equal `ca.Value / (ca.Value - cb.Value)` computed from `CoverageReferencePredicates.Edge`. Add `Crossing_parameter_rejects_zero_and_same_sign_sides`: zero, equal-sign and nonfinite inputs return `NaN`. Do not port the draft's environment-gated snapshot fact, which the manifest replaces.
 
 - [ ] Run to fail:
 
 ```bash
-build-slot --label ec-b6-red -- dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter 'FullyQualifiedName~CoverageReferenceEnclosureTests'
+build-slot --label ec-b6a-red -- dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter 'FullyQualifiedName~CoverageReferenceCrossingTests|FullyQualifiedName~CoverageReferenceOutputTests'
 ```
 
-  Expected: pose enclosure types are absent.
+  Expected: compile failure, `CrossingParameter` is missing. The manifest test alone passes on the unchanged code.
 
-- [ ] Implement the declared API as a second evaluation through Task 2's interval set. Expand skin-matrix blending, source point/direction transforms, canonical interpolation, conformation, analytic face overlays, core correction, transition, normal guards, final selection/store and world transforms in reference order. Uploaded frame fields are point inputs. Normal guard arithmetic affects covered/uncovered selection even when normals do not move positions. Keep the evaluator separate from float construction and do not change existing constructor refusal codes.
+- [ ] Port the B30 change exactly as the draft diff `git diff 8765a4c27 fdf86dedb -- KhaozEngine.Render3D/Coverage/CoverageReferencePredicates.cs KhaozEngine.Render3D/Coverage/CoverageReferenceSupport.cs` shows: extract `EdgeExpansion`, add `CrossingParameter` with its exponent search on the exact expansions, and replace the overlay's local quotient. Keep the non-finite quotient refusal.
 
-  Apply NC1's widening, subnormal operand hull, domains, candidate inclusion and branch joins. Evaluate full-equipment transforms from `Support.Source.Positions` and `EquipmentWorld`. Centers match exact geometry certification, using outward binary64 arithmetic without device widening. Compute component radii, maximum Euclidean host/equipment radii and `ComposeTolerance`. Expose host model bounds for future GPU-buffer tests and world bounds for epsilon composition. Implement no native tests or dev readback here.
+- [ ] Delete `CoverageFloatIntervals.cs` and `CoverageReferencePrecision.cs`. Their only users at `8765a4c27` are each other and `CoverageReferencePrimitiveTests.cs` (verified with `git grep -n -E "CoverageFloatInterval|CoverageReferencePrecision|CoverageVertexEnclosure|CoverageIntervalTruth" -- '*.cs'`, which must print nothing afterwards). In that test file delete `Interval_operations_pin_ulps_domains_and_input_flushing`, `Arithmetic_endpoints_bracket_independent_binary64_results`, `Square_root_enclosure_at_zero_and_subnormals_is_finite`, `Division_contains_independent_reciprocal_multiply_expansion`, `Square_root_contains_independent_symmetric_inherited_expansion`, `Radius_composes_host_and_equipment_error_outward`, the `I`, `F` and `P` aliases and the interval half of `Coordinate_only_roundoff_does_not_bound_skinny_triangle_height`. That test keeps its scalar assertions (`Height` at `p` and `q` is `0` and `.5`, `Edge(a,b,c).Value` is `2^-23`) and becomes `Skinny_triangle_heights_differ_by_half_between_adjacent_queries`. Every other primitive test stays.
 
 - [ ] Run to pass and finish:
 
 ```bash
-build-slot --label ec-b6-build -- dotnet build KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release
-build-slot --label ec-b6-tests -- dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~CoverageReferenceEnclosureTests|FullyQualifiedName~CoverageReferencePrimitiveTests|FullyQualifiedName~CoverageReferenceFidelityTests'
-build-slot --label ec-b6-engine-format -- dotnet format whitespace KhaozEngine.Render3D/KhaozEngine.Render3D.csproj --verify-no-changes --no-restore --include Coverage/CoverageReferenceEnclosure.cs Coverage/CoverageReferenceEnclosureScratch.cs Coverage/CoverageReferencePrecision.cs
-build-slot --label ec-b6-test-format -- dotnet format whitespace KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj --verify-no-changes --no-restore --include Render3D/CoverageReferenceEnclosureTests.cs
+build-slot --label ec-b6a-build -- dotnet build KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release
+build-slot --label ec-b6a-tests -- dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~CoverageReference|FullyQualifiedName~CoverageExactCaptureTests'
+build-slot --label ec-b6a-format -- dotnet format whitespace KhaozEngine.slnx --verify-no-changes --no-restore --include KhaozEngine.Render3D/Coverage/CoverageReferencePredicates.cs KhaozEngine.Render3D/Coverage/CoverageReferenceSupport.cs KhaozEngine.Render.Tests/Render3D/CoverageReferencePrimitiveTests.cs KhaozEngine.Render.Tests/Render3D/CoverageReferenceCrossingTests.cs KhaozEngine.Render.Tests/Render3D/CoverageReferenceOutputTests.cs
 ```
 
-  Expected: zero warnings, every fixture's CPU output contained, every fixture bound finite, domain/conditioning/branch tests pass, format exit 0. These are acceptance gates, not proofs obtained during planning.
+  Expected: zero-warning build, all 144 manifest rows unchanged after B30, crossing tests and every earlier reference test pass, format exit 0. A changed hash blocks the task and returns its name and first differing vertex to root. Never rewrite the manifest to pass.
 
-- [ ] Commit listed paths with `render3d(coverage): enclose reference poses for device equivalence`.
+- [ ] Commit the listed paths, including both deletions, with `render3d(coverage): scale reference crossing sides and freeze reference outputs`.
 
-### Task 7: Add the minimal exact-certification clearance-padding seam
+### Task 6B: Enforce the binary32 operation inventory at compile time
 
 **Files**
 
-- Modify: `KhaozEngine.Render3D/Coverage/CoverageCertification.cs:40-62,100-130,333-365`
-- Test: `KhaozEngine.Render.Tests/Render3D/CoverageOracleCertificationTests.cs`
+- Create: `KhaozEngine.CodeHealth.Analyzers/Binary32KernelAnalyzer.cs`
+- Create: `KhaozEngine.CodeHealth.Analyzers/Binary32KernelDiagnostics.cs`
+- Modify: `KhaozEngine.CodeHealth.Analyzers/README.md`, add the four diagnostics and the attribute contract
+- Modify: `KhaozEngine.CodeHealth.Analyzers.Tests/AnalyzerHarness.cs:31-53`, add an analyzer-agnostic runner and keep `Run` unchanged
+- Create: `KhaozEngine.CodeHealth.Analyzers.Tests/Binary32KernelAnalyzerTests.cs`
+- Read only: `FileSizeAnalyzer.cs`, `FileSizeDiagnostics.cs`, `Directory.Build.props:55-66`
+
+The analyzer already runs in every engine project through `Directory.Build.props`, so these rules apply to Render3D without a project change. They fire only where the attributes are used, so no other project or consumer changes behaviour.
 
 **Interfaces**
 
-- Consumes: existing exact `CoverageCertification.ValidateGeometry`, its prepared frames and exact predicates.
-- Produces: internal overload `static bool CoverageCertification.ValidateGeometry(CoverageRefinement topology, ReadOnlySpan<ModelVertex> before, ReadOnlySpan<ModelVertex> after, in Matrix4x4 actorModel, ReadOnlySpan<CoverageCommandPose> commands, double worldClearancePadding, CoverageScratch scratch, out CoverageGeometryCertificate certificate, out CoverageFailure failure)`.
-- Preserves: both existing public `ValidateGeometry` overloads and render-aware `Validate` with padding zero.
+- Produces: `public sealed class Binary32KernelAnalyzer : DiagnosticAnalyzer` and `public static class Binary32KernelDiagnostics` with `KEB32001` to `KEB32004`, category `KhaozEngine.CodeHealth`, severity Error, each message carrying its own remediation, as `FileSizeDiagnostics` does.
+- Produces: `public static Task<ImmutableArray<Diagnostic>> AnalyzerHarness.RunAnalyzer(DiagnosticAnalyzer analyzer, string idPrefix, params (string Path, string Content)[] sources)`.
+- Contract: a kernel member is a method, constructor, accessor, local function or lambda whose own symbol or any containing method or type carries an attribute whose simple name is `Binary32KernelAttribute`, in any namespace, like the compiler's `IsExternalInit` pattern. A home type carries `Binary32ArithmeticAttribute` and is exempt from all four rules. It is the single hand-reviewed place where binary32 operations are written. A compilation with neither attribute name is skipped at compilation start.
 
-- [ ] Write `Positive_oracle_padding_only_strengthens_separation` and `Padding_never_changes_caps_budget_domain_or_protected_checks`.
+Rules inside kernel members:
+
+| Id | Fires on |
+| --- | --- |
+| KEB32001 | A binary, unary, increment or compound-assignment operator whose operand type is `float`, `double` or `decimal`, including comparisons and equality |
+| KEB32002 | A non-constant numeric conversion whose source or target is `float`, `double` or `decimal`, implicit or explicit. Compile-time constant conversions such as `float x = 1` are allowed |
+| KEB32003 | An invocation or user-defined operator of `System.Math` or `System.MathF` with a floating parameter, of any `System.Single`, `System.Double`, `System.BitConverter`, `System.Numerics` or `System.Runtime.Intrinsics` member, including `Vector3` and `Matrix4x4` operators |
+| KEB32004 | An invocation of a method, or a reference to a non-auto property declared in source, that is neither a kernel member nor a home member. Allowed without marking: object creation, field and auto-property access, indexers of arrays, spans and `IReadOnlyList<T>`, and the copy and guard APIs `AsSpan`, `Slice`, `CopyTo`, `TryCopyTo`, `Clear`, `Fill`, `Overlaps`, `ReferenceEquals`, `ArgumentNullException.ThrowIfNull` and exception construction |
+
+Integer arithmetic, integer conversions, `bool` logic and conditional selection of floats (`c ? a : b`, a select) stay legal. KEB32004 closes the call graph: a kernel member reaches float arithmetic only through the home or through another kernel member, which the same rules check.
+
+- [ ] Write `Binary32KernelAnalyzerTests` with one source snippet per row, declaring both attributes in a test namespace. Concrete assertions:
 
 ```csharp
-Assert.True(ValidateExact(surface, padding: 0, out _));
-Assert.False(ValidateExact(surface, padding: .04, out var failure));
-Assert.Equal(CoverageFailureCode.EquipmentIntersection, failure.Code);
-Assert.Equal(1u, failure.CommandId);
-Assert.True(failure.Count > 0);
-Assert.Equal(originalFailure, PaddedFailure("cap-contact", .001));
-Assert.Equal(originalFailure, PaddedFailure("budget", .001));
-Assert.Equal(originalFailure, PaddedFailure("escaped-core", .001));
-Assert.Equal(originalFailure, PaddedFailure("rear-host", .001));
-Assert.Equal(default, rejectedCertificate);
+Assert.Equal(new[] { "KEB32001" }, Ids("[Binary32Kernel] static float F(float a, float b) => a + b;"));
+Assert.Equal(new[] { "KEB32001" }, Ids("[Binary32Kernel] static bool F(float a) => a < 0;"));
+Assert.Equal(new[] { "KEB32002" }, Ids("[Binary32Kernel] static float F(double a) => (float)a;"));
+Assert.Equal(new[] { "KEB32002" }, Ids("[Binary32Kernel] static float F(int k) => Home.Div(k, 12f);"));
+Assert.Empty(Ids("[Binary32Kernel] static float F() { float x = 1; return x; }"));
+Assert.Equal(new[] { "KEB32003" }, Ids("[Binary32Kernel] static float F(float a) => MathF.Sqrt(a);"));
+Assert.Equal(new[] { "KEB32003" }, Ids("[Binary32Kernel] static float F(float a, float b, float c) => MathF.FusedMultiplyAdd(a, b, c);"));
+Assert.Equal(new[] { "KEB32003" }, Ids("[Binary32Kernel] static Vector3 F(Vector3 a, Vector3 b) => a - b;"));
+Assert.Equal(new[] { "KEB32003" }, Ids("[Binary32Kernel] static bool F(float a) => float.IsFinite(a);"));
+Assert.Equal(new[] { "KEB32004" }, Ids("static float G(float a) => a; [Binary32Kernel] static float F(float a) => G(a);"));
+Assert.Empty(Ids("[Binary32Arithmetic] static class Home { internal static float Add(float a, float b) => a + b; }"
+    + " [Binary32Kernel] static float F(float a) => Home.Add(a, a);"));
+Assert.Empty(Ids("[Binary32Kernel] static float F(float a, bool c) => c ? a : 0f;"));
+Assert.Empty(Ids("[Binary32Kernel] static int F(int i) => (i * 3) + Math.Max(i, 2);"));
+Assert.Equal(new[] { "KEB32001" }, Ids("[Binary32Kernel] class K { float F(float a) { float L(float x) => x * x; return L(a); } }"));
+Assert.Empty(Ids("static float F(float a) => a * a;")); // unattributed code is untouched
 ```
 
-  Here `surface` is the accepted exact full-weight output for `CurvedPanel` with clearance `.02f`. Raising its required distance by `.04` exceeds its small construction headroom. Also cover protected-byte tampering, weld tampering, folded faces and an inside-solid scenario. Zero-padding certificate and failure fields must equal the existing public overload exactly. Negative, NaN or infinite padding throws `ArgumentOutOfRangeException` before scratch mutation. Add `Padding_also_strengthens_other_commanded_regions` using the existing two-region gap fixture, so the seam does not protect only own-region faces.
+  Also assert each message names its rule and the remedy, and that a compilation without either attribute name produces no diagnostics and registers no operation actions.
 
 - [ ] Run to fail:
 
 ```bash
-build-slot --label ec-b7-red -- dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter 'FullyQualifiedName~CoverageOracleCertificationTests'
+build-slot --label ec-b6b-red -- dotnet test KhaozEngine.CodeHealth.Analyzers.Tests/KhaozEngine.CodeHealth.Analyzers.Tests.csproj -c Release --filter 'FullyQualifiedName~Binary32KernelAnalyzerTests'
 ```
 
-  Expected: missing internal padding overload.
+  Expected: compile failure, the analyzer types are missing.
 
-- [ ] Implement the overload by threading a scalar padding through the private geometry-certification call to `Equipment`. Leave `CoverageFrames.TryPrepare` inputs and all command fields unchanged. In `Equipment`, set `threshold=(own ? frame.Clearance : Math.Max(frame.ConstructionErrorBound, frame.RenderErrorBound)) + worldClearancePadding`, and use that same value in broad-phase expansion, initial nearest bound and the exact lower-bound comparison. Add no padding by mutating `CoverageCommandPose.Clearance` or recomputing frames from a modified command.
-
-  Source confirms why this seam is required. `CoverageFrames.Derive` uses `command.Clearance` for both `CapMarginUpper` and `CapMargin` at lines 240-248 and for admission at lines 260-264. Passing `commands with { Clearance = ... }` to the current public overload therefore changes more than the separation predicate. The internal scalar seam strengthens distance by `+epsilon` in world Euclidean units without changing caps, budget, topology, containment or any other predicate.
-
-  A reference triangle is within `epsilon` of the corresponding device triangle when every corresponding vertex is within `epsilon`, by barycentric convexity. Distance to a fixed solid is 1-Lipschitz, so certifying `Clearance + epsilon` gives at least authored `Clearance` after a host-only displacement of at most `epsilon`. Task 6 sums the maximum host and full-equipment world radii, so epsilon includes both moving surfaces. Subtracting epsilon from the required clearance would weaken the claim and is forbidden. This argument concerns separation only, not automatic robustness of every other predicate to perturbation.
+- [ ] Implement with `RegisterCompilationStartAction`, bailing out when `compilation.GetSymbolsWithName` finds neither attribute name, then `RegisterOperationAction` for binary, unary, increment, compound assignment, conversion, invocation and property reference. Resolve kernel membership by walking `ContainingSymbol` from the operation's owning symbol and cache it per symbol. Keep the analyzer free of state shared across compilations. Add the README table rows and the attribute contract paragraph. The help link points to `docs/design/EQUIPMENT-COVERAGE-KERNEL-CONTRACT-2026-10-18.md`, written in Task 6D.
 
 - [ ] Run to pass and finish:
 
 ```bash
-build-slot --label ec-b7-build -- dotnet build KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release
-build-slot --label ec-b7-tests -- dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~CoverageOracleCertificationTests|FullyQualifiedName~CoverageCertificationTests|FullyQualifiedName~CoverageExactCaptureTests'
-build-slot --label ec-b7-engine-format -- dotnet format whitespace KhaozEngine.Render3D/KhaozEngine.Render3D.csproj --verify-no-changes --no-restore --include Coverage/CoverageCertification.cs
-build-slot --label ec-b7-test-format -- dotnet format whitespace KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj --verify-no-changes --no-restore --include Render3D/CoverageOracleCertificationTests.cs
+build-slot --label ec-b6b-build -- dotnet build KhaozEngine.CodeHealth.Analyzers.Tests/KhaozEngine.CodeHealth.Analyzers.Tests.csproj -c Release
+build-slot --label ec-b6b-tests -- dotnet test KhaozEngine.CodeHealth.Analyzers.Tests/KhaozEngine.CodeHealth.Analyzers.Tests.csproj -c Release --no-build
+build-slot --label ec-b6b-render-build -- dotnet build KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release
+build-slot --label ec-b6b-format -- dotnet format whitespace KhaozEngine.slnx --verify-no-changes --no-restore --include KhaozEngine.CodeHealth.Analyzers/Binary32KernelAnalyzer.cs KhaozEngine.CodeHealth.Analyzers/Binary32KernelDiagnostics.cs KhaozEngine.CodeHealth.Analyzers.Tests/AnalyzerHarness.cs KhaozEngine.CodeHealth.Analyzers.Tests/Binary32KernelAnalyzerTests.cs
 ```
 
-  Expected: zero warnings, strengthened-separation negatives pass, zero-padding equivalence passes, format exit 0.
+  Expected: zero warnings, every analyzer test passes including the existing file-size tests, Render3D still builds with no new diagnostic (nothing is attributed yet), format exit 0.
 
-- [ ] Commit listed paths with `render3d(coverage): add isolated oracle clearance padding`.
+- [ ] Commit the listed paths with `codehealth(analyzers): enforce the binary32 kernel operation inventory`.
+
+### Task 6C: Route the device path through one arithmetic home and trace subnormals
+
+**Files**
+
+- Create: `KhaozEngine.Render3D/Coverage/Binary32KernelAttributes.cs`, internal `Binary32KernelAttribute` (class and method targets) and `Binary32ArithmeticAttribute` (class target)
+- Create: `KhaozEngine.Render3D/Coverage/CoverageReferenceArithmetic.cs`
+- Create: `KhaozEngine.Render3D/Coverage/CoverageExactnessSite.cs`, internal in this task, made public in Task 8
+- Create: `KhaozEngine.Render3D/Coverage/CoverageReferenceSkinning.cs`
+- Modify: `CoverageReferenceMath.cs`, `CoverageReferenceSupport.cs`, `CoverageReferencePredicates.cs`, `CoverageReferenceConstructor.cs`, `CoverageReferenceCorrection.cs`, `CoverageReferenceNormals.cs`, `CoverageReferenceTopology.cs`, `CoverageReferenceScratch.cs`, `CoverageReferenceFrames.cs` under `KhaozEngine.Render3D/Coverage/`
+- Modify: `KhaozEngine.Render3D/Coverage/CoverageEvaluator.cs:199`, mark `CoverageTally.Note` and both `Succeeded` overloads `[Binary32Kernel]`, no body change
+- Modify: `KhaozEngine.Render3D/Coverage/CoverageCommandPose.cs:229-233`, mark both `CoverageFrames.Refuse` overloads `[Binary32Kernel]`, no body change
+- Create: `KhaozEngine.Render.Tests/Render3D/CoverageReferenceArithmeticTests.cs`, `KhaozEngine.Render.Tests/Render3D/CoverageReferenceSkinningTests.cs`
+- Modify: `KhaozEngine.Render.Tests/Render3D/CoverageReferenceOutputTests.cs`, and every `CoverageReference*Tests.cs` call site of a changed internal signature, mechanically, each with a fresh `new CoverageReferenceArithmetic()`
+- Read only: `Models/SkinningMath.cs:20-69`
+
+**Operations found outside the inventory at `8765a4c27`, and their disposition**
+
+| Site | Operation | Disposition |
+| --- | --- | --- |
+| `CoverageReferenceSupport.cs:225` (`Cell`, called at `:75`, `:207-208`) | float to int truncation, then integer clamp | Replace with a compare count: `x = ((value-min)/(max-min))*16f`, then `cell` is the number of `k` in `1f..15f` with `x >= k`, from a `static readonly float[]` of literals. Equal to the old cell for every input under .NET's saturating conversion, including `NaN` and both infinities |
+| `CoverageReferenceConstructor.cs:202` | int to float (`numerator / 12f`) | Topology precomputes the canonical edge parameter `t` per position group on the CPU, as static data |
+| `CoverageReferenceConstructor.cs:247-250` (`Sum`, `Value`, `Magnitude`) | int to float (`a * wa`, recipe and record weights) | Topology precomputes binary32 weights per position group and per refined vertex, as static data. Bits equal `(float)weight` |
+| `CoverageReferenceConstructor.cs:106`, `CoverageReferenceCorrection.cs:32-33` | double to float (like-for-like overrides) | Test seam. `TryConstruct` converts the overrides to binary32 once, on the CPU, before any kernel phase. Kernel phases take `ReadOnlySpan<float>`. Production passes empty spans |
+| `CoverageReferenceNormals.cs:33`, `:104-105`, `CoverageReferenceSupport.cs:27` | `System.Numerics` `Vector3` subtraction | `CoverageReferenceMath.Sub3`, componentwise through the home. Same bits, now in the pinned scalar graph |
+| `CoverageReferenceConstructor.cs:55`, `:182`, `:218`, `:238`, `CoverageReferenceNormals.cs:55`, `:85`, `:147` | `Vector3` equality and inequality | `CoverageReferenceMath.Equal3`, componentwise IEEE equality through the home, so `-0` equals `+0` as before |
+| `CoverageRefinement.Finite` and `float.IsFinite` throughout the five device-path files, and the non-auto `CoverageReferenceScalar.IsFinite` | finiteness classification | `IsFinite` in the home, an explicit inventory entry under compare. Kernels test exponent bits |
+| `MathF.Max`, `MathF.Min`, `Math.Clamp`, `MathF.Abs`, `MathF.Sqrt` sites (`CoverageReferenceConstructor.cs:162`, `:166`, `:242`, `:250`, `CoverageReferenceCorrection.cs:53`, `:110`, `:113`, `:143`, `CoverageReferenceSupport.cs:109`, `:117`, `:198`, `:220-221`, `CoverageReferenceNormals.cs:35`, `:40`, `:111-112`, `:132`, `CoverageReferenceMath.cs:40`) | in the inventory, but .NET signed-zero semantics are not GPU semantics | Through the home, which keeps .NET semantics. Task 6D pins them for kernels |
+| B30 `CrossingParameter` final `x - y` and `x / (x - y)` | binary32 device operations inside the predicate type | The predicate type returns the two scaled RN32 sides. The home subtracts and divides |
+| `Models/SkinningMath.cs:20`, `:29-35`, `:52-55`, `:61-65`, which the old Task 8 used for oracle skinning | `Matrix4x4` and `Vector3` operators, `Transform`, `TransformNormal`, `Length`, float to int index conversion | Not a pinned order, and the .NET implementations are vectorized and can fuse multiply-add on FMA hardware. Replace for the oracle with `CoverageReferenceSkinning`. `SkinningMath` stays unchanged for uncovered skinning |
+
+CPU-side values stay CPU-side and are documented in Task 6D: `CoverageReferenceFrames.Derive` and `SpectralUpper` (`CoverageReferenceFrames.cs:34-79`, double `CoverageAffine` composition rounded once, then binary32 frame scalars), the `CoverageReferenceSupport` constructor (`:11-52`, slope, grid bounds and binning), the rounded support positions (`CoverageSupportSurface.cs:35-36`) and the compile-time constant `1f / (1L << 50)` (`CoverageReferenceConstructor.cs:9`). Each is computed once per frame, equipment or host with scalar IEEE arithmetic, which RyuJIT does not contract, and uploaded as binary32. The B27 predicate's binary64 expansions (`CoverageReferencePredicates.cs:18-86`) are the exact-predicate inventory entry itself. No `FusedMultiplyAdd`, reciprocal or square-root estimate, transcendental function or other double arithmetic appears in the device path.
+
+**Interfaces**
+
+- Produces: `[Binary32Arithmetic] internal sealed class CoverageReferenceArithmetic` with `Reset()`, `At(CoverageExactnessPhase phase, int element, int slot = -1)`, `int EventCount`, `CoverageExactnessSite FirstSite`, `int FirstSlot`, binary32 `Add`, `Sub`, `Mul`, `Div`, `Sqrt`, `Abs`, `Neg`, `Min`, `Max`, `Clamp(float value, float min, float max)`, `bool` `Less`, `LessOrEqual`, `Greater`, `GreaterOrEqual`, `Equal`, `NotEqual`, `IsFinite`, and the predicate entries `CoverageReferenceScalar Edge(Vector3 a, Vector3 b, Vector3 p)`, `CoverageReferenceScalar Dot(Vector3 a, Vector3 b, Vector3 c, Vector3 d)` and `float CrossingParameter(Vector3 s, Vector3 t, Vector3 a, Vector3 b)`. Each method checks every binary32 operand and result it reads or produces (predicates read only X and Y). A value `x` is an event when `x != 0` and its exponent bits are zero. Every event increments `EventCount`, and the first also records the current site, operation and the event value's bits. Semantics equal C# binary32 operators, `MathF.Min`, `MathF.Max`, `Math.Clamp`, `MathF.Abs`, `MathF.Sqrt` and `float.IsFinite`, so no output bit changes. No allocation, no static mutable state.
+- Produces: `internal enum CoverageExactnessPhase { None = 0, Skinning = 1, SourceValidation = 2, GroupInterpolation = 3, AttributeInterpolation = 4, Conformation = 5, FaceCorrection = 6, GroupCorrection = 7, FullTarget = 8, Transition = 9, FaceValidation = 10, NormalGather = 11 }`, `internal enum CoverageExactnessOperation { None = 0, Add = 1, Subtract = 2, Multiply = 3, Divide = 4, SquareRoot = 5, Abs = 6, Negate = 7, Min = 8, Max = 9, Clamp = 10, Compare = 11, FiniteTest = 12, Predicate = 13, CrossingSide = 14 }` and `internal readonly record struct CoverageExactnessSite(CoverageExactnessPhase Phase, int Element, CoverageExactnessOperation Operation, uint ValueBits)`. The element is the source vertex for `Skinning` and `SourceValidation`, the position group for `GroupInterpolation`, `GroupCorrection` and `Transition`, the refined vertex for `AttributeInterpolation`, `Conformation`, `FullTarget` and `NormalGather`, and the triangle for `FaceCorrection` and `FaceValidation`. The slot is the sorted command slot where the phase has one, otherwise `-1`.
+- Produces: `CoverageReferenceScratch.Arithmetic` (the device trace) and `CoverageReferenceScratch.UniformArithmetic`, a second instance for CPU-side frame scalars whose trace nobody reads. `TryConstruct` calls `Arithmetic.Reset()` before frame preparation.
+- Produces: `internal static bool CoverageReferencePredicates.TryScaledSides(Vector3 s, Vector3 t, Vector3 a, Vector3 b, out float x, out float y)`, replacing `CrossingParameter` there. The home's `CrossingParameter` returns `NaN` when it is false and otherwise `Div(x, Sub(x, y))`.
+- Produces: `internal static Matrix4x4 CoverageReferenceSkinning.Compose(in Matrix4x4 jointWorld, in Matrix4x4 inverseBind)`, a CPU uniform with `M[i,j] = (((B[i,1]*J[1,j]) + (B[i,2]*J[2,j])) + (B[i,3]*J[3,j])) + (B[i,4]*J[4,j])`, where `B` is the inverse bind and `J` the joint world, the System.Numerics `inverseBind * jointWorld` meaning in scalar binary32 with no operator overloads.
+- Produces: `internal sealed class CoverageReferenceSkin`, constructor `(CoverageSourceTopology source, int boneCount)`, which validates every vertex with `SkinningMath.AreBoneIndicesValid` and stores four integer bone indices per source vertex. Invalid indices throw `ArgumentException`.
+- Produces: `[Binary32Kernel] internal static bool CoverageReferenceSkinning.TrySkin(CoverageReferenceArithmetic f, CoverageReferenceSkin skin, CoverageSourceTopology source, ReadOnlySpan<Matrix4x4> composed, Span<ModelVertex> posed, out CoverageFailureCode code)`. Pinned order per source vertex: `total = ((w.X + w.Y) + w.Z) + w.W`. If `total < 1e-8f` the skin is the identity, otherwise each of the twelve affine coefficients is `((B0*w.X + B1*w.Y) + B2*w.Z) + B3*w.W`. Position is `CoverageReferenceMath.Point`. Normal is `Linear`, then `len = Sqrt(Dot3(n,n))` and `len > 1e-8f ? n/len : v.Normal`, componentwise. A tangent with `Dot3(t,t) > 1e-12f` takes the same transform and fallback and keeps its W, otherwise it stays zero. Color and UV copy. A nonfinite result returns `UnsupportedTransform`. This mirrors `SkinningMath.SkinVertex` semantics, not its bits.
+- Changes: every kernel phase, `CoverageReferenceMath` helper and `CoverageReferenceSupport` query takes the arithmetic instance as its first parameter. `CoverageReferenceMath` gains `Sub3`, `Equal3`, `IsFinite3` and `IsFiniteVertex`. Kernel members are `CoverageReferenceMath`, `CoverageReferenceCorrection`, `CoverageReferenceNormals` (type level), the `CoverageReferenceConstructor` phases (`TryInterpolate`, `TryConformGroups`, `Conform`, `Position`, `Edge`, `TryVertex`, `Direction`, `Sum`, `Value`, `Magnitude`, method level), the `CoverageReferenceSupport` queries (`TryHeight`, `TryBoundary`, `TryOverlayMaximum`, `OverlayPair`, `OverlayInside`, `OverlayAccumulate`, `Bounds`, `Cell`), `CoverageReferenceSkinning.TrySkin`, `CoverageTally.Note` and `Succeeded`, and the `CoverageFrames.Refuse` overloads. Host orchestration stays unattributed: `TryConstruct`, argument validation, frame preparation, the support constructor and `Compose`.
+
+- [ ] Write the arithmetic tests in `CoverageReferenceArithmeticTests`:
+
+```csharp
+Assert.Equal(1f, f.Add(1f, MathF.ScaleB(1, -24)));                       // ties to even
+Assert.Equal(BitConverter.SingleToUInt32Bits(a * b), BitConverter.SingleToUInt32Bits(f.Mul(a, b))); // table rows
+Assert.Equal(0x00000000u, BitConverter.SingleToUInt32Bits(f.Max(-0f, 0f)));
+Assert.Equal(0x80000000u, BitConverter.SingleToUInt32Bits(f.Min(0f, -0f)));
+Assert.Equal(0x80000000u, BitConverter.SingleToUInt32Bits(f.Clamp(-0f, 0f, 1f)));
+Assert.True(f.Equal(-0f, 0f));
+Assert.Equal(0, f.EventCount);                                           // nothing above was subnormal
+f.At(CoverageExactnessPhase.Conformation, 7, 1);
+_ = f.Mul(MathF.ScaleB(1, -130), 1f);
+Assert.Equal(new CoverageExactnessSite(CoverageExactnessPhase.Conformation, 7, CoverageExactnessOperation.Multiply,
+    BitConverter.SingleToUInt32Bits(MathF.ScaleB(1, -130))), f.FirstSite);
+Assert.Equal(1, f.FirstSlot);
+f.At(CoverageExactnessPhase.NormalGather, 3);
+_ = f.Mul(MathF.ScaleB(1, -63), MathF.ScaleB(1, -64));                   // result 2^-127
+Assert.Equal(2, f.EventCount);
+Assert.Equal(CoverageExactnessPhase.Conformation, f.FirstSite.Phase);   // first event kept
+f.Reset();
+Assert.Equal((0, default(CoverageExactnessSite), -1), (f.EventCount, f.FirstSite, f.FirstSlot));
+```
+
+  The table rows compare `Add`, `Sub`, `Mul`, `Div` and `Sqrt` bits with the raw C# operators and `MathF.Sqrt` over signed, cancelling, binade-crossing and overflowing pairs. `Smallest_normal_is_an_event_and_zero_is_not` (B32) asserts events for `2^-126` and `-2^-126` and none for `+0`, `-0` and the next normal `2^-126 + 2^-149`, as operands and results. `Predicate_inputs_and_rounded_values_are_traced` gives `Edge` a subnormal X coordinate, then inputs `(0,0)`, `(2^-70,0)`, `(0,2^-70)` whose exact determinant `2^-140` rounds to a subnormal, and expects `Predicate` events. `Grid_cell_compare_count_matches_truncating_cell` checks the new `Cell` against `Math.Clamp((int)(((v-min)/(max-min))*16), 0, 15)` written in the test, at every `k*(max-min)/16+min` boundary and both float neighbours, at `min`, `max`, outside both ends, `NaN`, both infinities and a degenerate `max == min`. `Device_path_members_are_binary32_kernels` reflects over the kernel member list above and asserts each carries `Binary32KernelAttribute`, and that `CoverageReferenceArithmetic` carries `Binary32ArithmeticAttribute`.
+
+- [ ] Write `CoverageReferenceSkinningTests`. `Compose_pins_scalar_row_vector_order` compares bits with the formula written inline for three fixed matrix pairs, including a translation-heavy pair, and checks closeness to `SkinningMath.Compose` within `1e-6` relative. `Reference_skinning_pins_blend_transform_and_normalize_order` uses one two-bone vertex and compares every output bit with an inline independent scalar evaluation, then checks zero total weight keeps the source position, a near-zero normal falls back to the source normal, a zero tangent stays `Vector4.Zero`, and closeness to `SkinningMath.SkinVertex` within `1e-5`. `Reference_skin_rejects_invalid_bone_indices` expects `ArgumentException` for an index equal to the bone count.
+
+- [ ] Extend `CoverageReferenceOutputTests`. `Fixture_reference_constructions_trace_no_subnormal_events` runs all 144 constructions and asserts `EventCount == 0` with the case name. `Subnormal_source_attribute_reports_its_first_consuming_operation` clones the `curved-ordinary-seams-l2-w1` posed input, sets source vertex 0's `Color.X` to `2^-130`, and expects the first site `(SourceValidation, 0, FiniteTest, bits(2^-130))` with construction still succeeding. `Tracing_does_not_change_outputs` runs one case twice through `Reset` and asserts identical bytes and identical traces. The existing manifest test is the byte-identity proof for the whole rewrite.
+
+- [ ] Run to fail:
+
+```bash
+build-slot --label ec-b6c-red -- dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter 'FullyQualifiedName~CoverageReferenceArithmeticTests|FullyQualifiedName~CoverageReferenceSkinningTests|FullyQualifiedName~CoverageReferenceOutputTests'
+```
+
+  Expected: compile failure, the home, site and skinning types are missing.
+
+- [ ] Implement. Add the attributes and the home first, then rewrite one kernel file at a time in place, keeping every expression tree exactly as it is: `(a * b) + c` becomes `f.Add(f.Mul(a, b), c)`, never a reassociated or fused form. Set `f.At(...)` at the head of each element loop with the phase table above. Precompute the topology weights and edge parameters, split the override conversion into `TryConstruct`'s CPU prelude, split the B30 sides, and add the reference skinning. The 6B analyzer must report nothing, so every remaining raw floating operator, conversion or call in a kernel member is a build error to fix at its source. Never add a suppression or widen the allow list. If a hash changes, find the reassociated or reordered expression and restore it. A hash that cannot be kept stops the task and returns to root with its name and first differing vertex.
+
+- [ ] Run to pass and finish:
+
+```bash
+build-slot --label ec-b6c-build -- dotnet build KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release
+build-slot --label ec-b6c-tests -- dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~CoverageReference|FullyQualifiedName~CoverageExactCaptureTests|FullyQualifiedName~CoverageCandidateConstructionTests|FullyQualifiedName~CoverageCertificationTests|FullyQualifiedName~CoverageCoreCorrectionTests'
+build-slot --label ec-b6c-format -- dotnet format whitespace KhaozEngine.slnx --verify-no-changes --no-restore --include <every path changed in this task, repo-relative>
+```
+
+  Expected: zero warnings and zero KEB32 diagnostics, all 144 hashes unchanged, no fixture subnormal events, every earlier reference, exact-capture and exact-path test passes, format exit 0.
+
+- [ ] Commit the listed paths with `render3d(coverage): route reference arithmetic through a traced binary32 home`.
+
+### Task 6D: Write the Part C kernel contract
+
+**Files**
+
+- Create: `docs/design/EQUIPMENT-COVERAGE-KERNEL-CONTRACT-2026-10-18.md`
+- Read only: the amendment R spec (Part B items 3, 4 and 6, Part C per-frame GPU steps, evidence 5), Tasks 2 to 6C of this plan, the ledger rulings B16, B19, B25, B27 and B30, and the reference sources as committed by Task 6C
+
+The contract is the document Part C implements and proves. It states rules and cites the reference by file and member, never by line, so it survives edits. It does not restate the spec. Root links it from the spec on the integration branch.
+
+- [ ] Write the document with these sections, each concrete enough to implement from:
+
+  1. **Authority.** The C# reference is the executable contract. Every coverage kernel output equals the reference output bit for bit on every fixture on Vulkan, Metal and Direct3D11. A mismatch fails and nothing is loosened. The device tolerance is zero. The `MarginFraction x Clearance` reserve is margin against a driver that breaks its precision rules, not a tolerance.
+  2. **Inputs.** The CPU-side uniforms and static data, each with its producing member: command frames (`CoverageReferenceFrames`, double `CoverageAffine` composition rounded once, binary32 frame scalars), the composed palette (`CoverageReferenceSkinning.Compose`, which Part C staging must use for covered actors instead of `SkinningMath.Compose`), integer bone indices (`CoverageReferenceSkin`), support positions, slope, grid bounds and cell lists (`CoverageReferenceSupport`), and topology recipes, binary32 weights, edge parameters and gather rows (`CoverageReferenceTopology`). They are computed with scalar IEEE arithmetic on the CPU, never System.Numerics operators, so every CPU computes the same bits.
+  3. **Operation inventory.** One table row per `CoverageReferenceArithmetic` member: add, subtract, multiply, divide, square root, abs, negate, min, max, clamp, the six comparisons, the finiteness test, the B27 predicate entries and the B30 crossing parameter, plus select and binary32 store. For each: the exact semantics and the kernel form. Comparisons are IEEE ordered and `-0 == +0`. Abs and negate act on the sign bit. Min and max follow .NET on finite operands, so `max(-0,+0) = +0` and `min(+0,-0) = -0`, and kernels implement them by compare and select with a sign test, never with native `min`, `max`, `fmin` or `fmax`. Clamp is `x < lo ? lo : (x > hi ? hi : x)`, which keeps `-0` at a `+0` lower bound. The finiteness test is an exponent-field bit test, never `isnan` or `isinf`. Stores preserve bits. Constants are the listed binary32 literals with their bit patterns. Integer index arithmetic and select are unrestricted.
+  4. **Pinned order.** Every expression tree, transcribed from the Task 6C sources: `Dot3`, `Dot2`, `Cross`, `Point`, `Linear`, `Height` and `EdgeHeight`, skinning, edge and interior interpolation, attribute and direction interpolation, the collar smoothstep and point conformation, the grid cell compare count, the boundary query, the overlay crossing and accumulate, discrepancy, deficit and correction, the full-target check, transition, face validation, the normal basis, `Unit`, `Combine` and the gathers. Kernels write the same trees. No reassociation, contraction or algebraic simplification, including `x + 0` and `x * 1`. The like-for-like overrides are a test seam that kernels omit. Production correction is `deficit / CorrectionRate`, equal to the reference's `(deficit + 0) / CorrectionRate` because the deficit is positive there.
+  5. **Compilation.** GLSL `precise` on every intermediate of these kernels, Metal fast maths off for the coverage library, and FXC with IEEE strictness (`D3DCOMPILE_IEEE_STRICTNESS`) and no `rcp` or `rsq` lowering of `/` and `sqrt`. Part C verifies the emitted code keeps the order, which was the old RV2 lowering obligation.
+  6. **Division and square root.** Where a backend's native result is not correctly rounded (the table in this plan's NC2 section), the kernel takes the native value and selects the correctly rounded neighbour with an exact residual sign test built from correctly rounded add, subtract and multiply (TwoSum and Veltkamp-Dekker TwoProduct) or 32-bit integer arithmetic. For normal operands and results a binary32 quotient or square root is never exactly halfway between neighbours, so no tie rule is needed, but the tests still cover near-midpoint cases. Part C proves per backend that the native error bound keeps the correct result inside the searched neighbours, and preserves overflow to infinity. Subnormal cases are excluded by section 8.
+  7. **Exact predicates and the crossing parameter.** B27: each predicate returns the exact sign and the exact value rounded once to nearest binary32, ties to even, of its binary32 inputs, so any exact method matches. Float error-free expansions are allowed only on a backend where correctly rounded add, subtract and multiply without contraction are verified, otherwise 32-bit integer multiword arithmetic. B30: `t = RN32(ca*2^k) / (RN32(ca*2^k) - RN32(cb*2^k))`, with `k` putting `max(|ca|,|cb|)*2^k` in `[1,2)`, then clamp to `[0,1]`.
+  8. **Subnormal rule.** The oracle fails any sample with a nonzero binary32 operand or result of magnitude at most `2^-126` (B32), at the device-exactness stage with code `SubnormalArithmetic`. Kernels need not reproduce subnormal behaviour, and their output for such samples is uncertified. The dev-only real-GPU verification mode logs the first differing vertex whatever the cause.
+  9. **Control flow.** The B16 grid query definition, the B19 alias policy, the B25 correction order, guard reduction keys and order (`CoverageTally`), first-code attribution, refusal codes and the atomic all-or-nothing publication, all as in the reference.
+  10. **Verification.** Part C native equivalence tests run all 72 fixtures in production mode on all three CI backends and compare every output word with the reference, using `outputs.sha256` from Task 6A as the frozen expectation. Unit kernels test the inventory rows, the division and square-root correction at binade boundaries and near midpoints, and the predicates against a BigInteger oracle including a binary32 midpoint.
+
+- [ ] Run the document guards and finish:
+
+```bash
+sh scripts/check-dashes.sh --tree
+sh scripts/check-prose.sh --tree
+sh scripts/check-file-size.sh --tree
+bash scripts/check-doc-versions.sh
+git diff --check
+```
+
+  Expected: every guard exits 0. Root reviews the contract against Task 6C's committed sources before Part C planning uses it.
+
+- [ ] Commit the document with `docs(coverage): state the bit-exact coverage kernel contract`.
+
+### Task 7: Removed by NC2
+
+> Removed 2026-10-18. Task 7 added an internal `CoverageCertification.ValidateGeometry` overload with a world clearance padding, used only to certify at `Clearance + epsilon` under NC1. NC2 makes epsilon zero and the oracle certifies at the approved clearance through the unchanged public overload. No other need was found: the over-tight separation negative in Task 8 uses its own fixture and the approved clearance, the reserve is applied in construction, not certification, and exact certification's cap, budget and admission checks need no threshold change. `CoverageCertification.cs` stays unchanged. The number is kept so later references stay stable.
 
 ### Task 8: Publish the headless oracle with negatives, warm allocation proof and guide
+
+> Amended 2026-10-18 for NC2. The oracle no longer evaluates enclosures, composes a tolerance or pads certification. It skins with the pinned reference skinning, constructs, checks device exactness and certifies at the approved clearance.
 
 **Files**
 
 - Create: `KhaozEngine.Render3D/Coverage/CoverageOracle.cs`
 - Create: `KhaozEngine.Render3D/Coverage/CoverageOracleResult.cs`
-- Modify: `KhaozEngine.Render3D/Coverage/CoverageFailure.cs`, append code 15 and extend its constructor guard
-- Modify: `KhaozEngine.Render3D/Coverage/CoverageReferencePrecision.cs`, add tolerance acceptance
+- Modify: `KhaozEngine.Render3D/Coverage/CoverageFailure.cs`, append `SubnormalArithmetic = 15` and extend the constructor guard
+- Modify: `KhaozEngine.Render3D/Coverage/CoverageExactnessSite.cs`, make the two enums and the site public with XML documentation, no value change
 - Test: `KhaozEngine.Render.Tests/Render3D/CoverageOracleTests.cs`
 - Test: `KhaozEngine.Render.Tests/Render3D/CoverageOracleAllocationTests.cs`
 - Modify: `docs/USING-KHAOZENGINE.md:6363-6368`, add a headless oracle subsection beside optional coverage
 - Modify: `KhaozEngine.Render3D/README.md:151-160`, link the headless oracle contract without changing the still-existing runtime description
-- Read only: `Scene3D.Coverage.cs:81-86`, `Models/SkinningMath.cs:18-76`, `test-shared/AllocationMeasurement.cs`, `test-shared/AllocationRegion.cs`
+- Read only: `Scene3D.Coverage.cs:81-86`, `CoverageCertification.cs:30-41`, `test-shared/AllocationMeasurement.cs`, `test-shared/AllocationRegion.cs`
 
 **Interfaces**
 
-- Consumes: Task 5 constructor, Task 6 pose bounds/epsilon, Task 7 padded exact validator and Task 2 budget composition.
-- Produces: `public enum CoverageOracleStage { None = 0, Construction = 1, Certification = 2, DeviceTolerance = 3 }`.
-- Produces: `public readonly record struct CoverageOracleFailure(CoverageOracleStage Stage, CoverageFailure Failure)`.
-- Produces: `public readonly record struct CoverageOracleCertificate(bool FullCoreClearance, double MinimumCoreClearance, double DeviceTolerance, int DisplacedVertices)`.
+- Consumes: Task 5 constructor, Task 6C arithmetic trace, `CoverageReferenceSkin`, `CoverageReferenceSkinning.Compose` and `TrySkin`, and the unchanged public `CoverageCertification.ValidateGeometry(topology, before, after, actorModel, commands, scratch, out CoverageGeometryCertificate, out CoverageFailure)`.
+- Produces: `public enum CoverageOracleStage { None = 0, Construction = 1, Certification = 2, DeviceExactness = 3 }`. Stages run construction, device exactness, certification.
+- Produces: `CoverageFailureCode.SubnormalArithmetic = 15`, appended after `UnsupportedAdapter = 14` without renumbering. These are the slots the plan once gave `DeviceTolerance` and `DeviceToleranceExceeded`, which were never implemented.
+- Produces: `public readonly record struct CoverageOracleFailure(CoverageOracleStage Stage, CoverageFailure Failure, CoverageExactnessSite Site)`. `Site` is default except at `DeviceExactness`.
+- Produces: `public readonly record struct CoverageOracleCertificate(bool FullCoreClearance, double MinimumCoreClearance, int DisplacedVertices)`, mapped from `CoverageGeometryCertificate`.
 - Produces: `public sealed class CoverageOracle`, constructor `(CoverageRefinement topology, ReadOnlySpan<Matrix4x4> inverseBind, int commandCapacity = CoverageScratch.MaxCommands)`, `public CoverageRefinement Topology { get; }` and `public bool TryCheck(ReadOnlySpan<Matrix4x4> palette, in Matrix4x4 model, ReadOnlySpan<CoverageCommandPose> commands, out CoverageOracleCertificate certificate, out CoverageOracleFailure failure)`.
-- Produces internally: `internal ReadOnlySpan<ModelVertex> CoverageOracle.LastConstructedVertices`, empty after construction refusal, and `internal CoverageReferenceEnclosureScratch CoverageOracle.LastEnclosure` for tests and Part C. Owned scratch is invalidated on the next check and is never a public drawable surface. Clear active enclosure lengths even on an early refusal.
-- Produces: `internal static bool CoverageReferencePrecision.TryAcceptTolerance(CoverageRefinement topology, double epsilon, ReadOnlySpan<CoverageCommandPose> commands, out CoverageFailure failure)`. This deterministic budget/code seam requires finite nonnegative epsilon within every budget, otherwise reports `DeviceToleranceExceeded` with the NC1 attribution. Capacity admission rejects empty commands before this seam.
+- Produces internally: `internal ReadOnlySpan<ModelVertex> CoverageOracle.LastConstructedVertices`, empty after a construction refusal, and `internal int CoverageOracle.CertificationRunsForTests`, an integer incremented when exact validation runs (B11, no delegate). Owned scratch is invalidated on the next check and is never a public drawable surface.
+- Device-exactness failure record: `new CoverageFailure(SubnormalArithmetic, host, equipmentInstanceId, commandId, count: EventCount, limit: 0)`, where the equipment and command identify the first event's slot and are zero for a phase without one.
 
-- [ ] Write `Every_frozen_fixture_reference_passes_the_public_headless_oracle`, `Oracle_negatives_preserve_stage_code_command_and_count`, and `Refusal_does_not_poison_the_next_check`.
+- [ ] Write `Every_frozen_fixture_reference_passes_the_public_headless_oracle`, `Oracle_negatives_preserve_stage_code_command_and_count`, `Refusal_does_not_poison_the_next_check` and `Failure_numbering_is_append_only`.
 
 ```csharp
 Assert.True(oracle.TryCheck(palette, model, commands, out var certificate, out var failure));
 Assert.Equal(default, failure);
 Assert.Equal(commands.All(c => c.TransitionWeight == 1f), certificate.FullCoreClearance);
-Assert.True(certificate.DeviceTolerance >= 0);
-Assert.All(commands, c => Assert.True(certificate.DeviceTolerance <= .25 * (double)c.Clearance));
-Assert.Equal(15, (int)CoverageFailureCode.DeviceToleranceExceeded);
-Assert.Equal(3, (int)CoverageOracleStage.DeviceTolerance);
+Assert.Equal(15, (int)CoverageFailureCode.SubnormalArithmetic);
+Assert.Equal(3, (int)CoverageOracleStage.DeviceExactness);
 Assert.Equal(CoverageOracleStage.Construction, escaped.Stage);
 Assert.Equal(CoverageFailureCode.CoreEscaped, escaped.Failure.Code);
 Assert.Equal(CoverageOracleStage.Construction, budget.Stage);
@@ -686,20 +847,23 @@ Assert.Equal(CoverageOracleStage.Certification, overTight.Stage);
 Assert.Equal(CoverageFailureCode.EquipmentIntersection, overTight.Failure.Code);
 Assert.Equal(1u, overTight.Failure.CommandId);
 Assert.True(overTight.Failure.Count > 0);
+Assert.Equal(default, overTight.Site);
 Assert.Equal(default, failedCertificate);
 Assert.Equal(firstSuccessCertificate, successAfterFailureCertificate);
 Assert.Equal(firstSuccessBits, successAfterFailureBits);
 ```
 
-  Add `Tolerance_budget_equality_passes_and_next_double_fails`. With clearance `.03125f`, assert `TryAcceptTolerance(...,.0078125,...)` succeeds. `Math.BitIncrement(.0078125)`, negative epsilon, `NaN` and `PositiveInfinity` fail with code `DeviceToleranceExceeded`, first violating command in ascending ID order and zero count/limit. Preserve every previous failure numeric value, accept code `15` in `CoverageFailure` and throw for code `16`.
+  The fixture test runs all 72 cases through `TryCheck` with each case's palette, inverse binds, model and commands. A case that fails at any stage is reported with its stage, code and site and returns to root. It is never omitted or relaxed. `Failure_numbering_is_append_only` asserts every earlier `CoverageFailureCode` value is unchanged, `CoverageFailure` accepts code `15` and throws `ArgumentOutOfRangeException` for `16`.
 
-  Add `Excessive_device_enclosure_refuses_before_exact_certification`: use a finite world translation of `2^20`, clearance `.02f` and generous caps/budget. Assert float construction succeeds, computed epsilon exceeds `.25*(double).02f`, public failure is `DeviceTolerance/DeviceToleranceExceeded`, certificate is default and an internal test observer confirms exact validation did not run. Keep instrumentation internal and allocate its delegate outside warm measurements. Do not inject a fabricated accepted epsilon into the public oracle.
+  Support escape uses the existing `.9f` support translation. Budget excess uses `.1f` at full and zero transition weights. Define the over-tight **separation** case independently of construction: retain a small host fixture with a protected collar edge whose known positive gap to the real solid is `.01f`, place every core vertex behind the sheet, and submit clearance `.02f` with caps `[-2,2]` and budget `.8f`. Point construction and normal guards must succeed, while whole-face exact separation must fail `EquipmentIntersection`. Pin the rigid solid and collar-edge coordinates in the test and assert its `.01f` separation with `CoverageTriangleGeometry.SeparationLowerBound` before invoking the oracle. Do not use `Clearance=1e-6f` as this test, since exact frame admission would mask separation.
 
-  Support escape uses the existing `.9f` support translation. Budget excess uses `.1f` at full and zero transition weights. Define the over-tight **separation** case independently of construction: retain a small host fixture with a protected collar edge whose known positive gap to the real solid is `.01f`, place every core vertex behind the sheet, and submit clearance `.02f` with caps `[-2,2]` and budget `.8f`. Point construction and normal guards must succeed, while whole-face exact separation must fail `EquipmentIntersection`. Pin the rigid solid and collar-edge coordinates in the test and assert its `.01f` separation with `CoverageTriangleGeometry.SeparationLowerBound` before invoking the oracle. Do not use `Clearance=1e-6f` as this test, since the existing exact frame-admission refusal could mask separation.
+- [ ] Write `Subnormal_operand_fails_at_device_exactness_before_certification`. Take `cost-typical-l2-lifted-w1`, whose inverse binds are identities, so `Compose` keeps a joint coefficient exactly. Set joint 1's `M12` to `2^-130`, a shear far below any guard, and first assert the case still constructs with that palette. Let `s` be the lowest source vertex whose total weight is at least `1e-8f` and whose four bone indices name joint 1, since the blend reads all four bones whatever their weight. Expect `Stage == DeviceExactness`, `Failure.Code == SubnormalArithmetic`, `Failure.Count >= 1`, `Site == (Skinning, s, Multiply, bits(2^-130))`, a default certificate and an unchanged `CertificationRunsForTests`. `Construction_refusal_outranks_a_subnormal_event` combines that palette with the escaped-core commands and expects `Construction/CoreEscaped` with a default site. `Subnormal_free_success_reports_no_site` checks a passing case has `failure == default`.
 
-  Add `Oracle_skinning_matches_staging_for_nonidentity_inverse_binds`: use inverse binds translating X by `-.25f` and `+.125f`, joint matrices translating X by `+.25f` and `-.125f`, and independently compose and skin through `SkinningMath.Compose`/`SkinVertex`. Feed those direct posed vertices to `CoverageReferenceConstructor.TryConstruct` and assert its final bits equal `oracle.LastConstructedVertices`. Mutating the constructor's caller-owned inverse-bind array afterwards must not change results. The zero-weight bone case retains identity skinning. A palette length mismatch throws `ArgumentException` before construction.
+- [ ] Write `Unabsorbed_error_scenario_reports_the_exact_certifier_refusal`, the B2 negative. The `unabsorbed-error` scenario (`Clearance = 1e-6f`) has no reference uncertainty refusal, so construction succeeds (`LastConstructedVertices` is not empty) and no subnormal event occurs. Exact frame admission then refuses, so assert `Stage == Certification`, `Failure.Code == UnsupportedTransform`, `Failure.CommandId == 1u` and a default certificate. It never passes silently.
 
-  Add `Partial_weight_certificate_does_not_claim_core_clearance`: at weights `0f` and `.5f`, expect `FullCoreClearance=false` and `double.IsNaN(MinimumCoreClearance)`, while weight zero retains every unconformed reference byte. Such a result is never documented as proving full-weight clearance.
+- [ ] Write `Oracle_skinning_is_the_pinned_reference_skinning`: use inverse binds translating X by `-.25f` and `+.125f` and joint matrices translating X by `+.25f` and `-.125f`. Compose each with `CoverageReferenceSkinning.Compose`, skin with `TrySkin` and a fresh arithmetic, feed the posed vertices to `CoverageReferenceConstructor.TryConstruct`, and assert its final bits equal `oracle.LastConstructedVertices`. Mutating the caller's inverse-bind array afterwards must not change results. The zero-weight bone case keeps identity skinning. A palette length mismatch throws `ArgumentException` before construction.
+
+- [ ] Write `Partial_weight_certificate_does_not_claim_core_clearance`: at weights `0f` and `.5f`, expect `FullCoreClearance=false` and `double.IsNaN(MinimumCoreClearance)`, while weight zero retains every unconformed reference byte. Such a result is never documented as proving full-weight clearance.
 
 - [ ] Run to fail:
 
@@ -707,15 +871,15 @@ Assert.Equal(firstSuccessBits, successAfterFailureBits);
 build-slot --label ec-b8-red -- dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter 'FullyQualifiedName~CoverageOracleTests|FullyQualifiedName~CoverageOracleAllocationTests'
 ```
 
-  Expected: public oracle types are absent.
+  Expected: compile failure, the public oracle types are absent.
 
-- [ ] Implement the public signatures. The constructor snapshots inverse binds, validates count `1..128`, validates all four source bone indices against that count, and allocates composed matrices, posed-source vertices, reference scratch, enclosure scratch, final vertices and independent `CoverageScratch` for exact certification. Validate finite affine inverse binds. Wrong capacities or invalid source-skin indices are argument errors at creation. The object is reusable, single-caller and not thread safe. It owns no GPU resource and needs no `IDisposable`.
+- [ ] Implement the public signatures. The constructor snapshots inverse binds, validates count `1..128` and finite affine inverse binds, builds `CoverageReferenceSkin` against that count, and allocates composed matrices, posed-source vertices, reference scratch, final vertices and an independent `CoverageScratch` for exact certification. Wrong capacities or invalid bone indices are argument errors at creation. The object is reusable, single-caller and not thread safe. It owns no GPU resource and needs no `IDisposable`.
 
-  Each call resets its certificate, exposed candidate length and enclosure active lengths/maxima. Require one through `commandCapacity` commands, matching staging. An empty or oversized command span reports `Construction/CapacityExceeded`, with zero command IDs, the supplied count and the configured limit. Compose every palette entry with `SkinningMath.Compose(palette[i], inverseBind[i])`, then skin the topology's original `SkinVertices` through `SkinningMath.SkinVertex` against that composed prefix, exactly as staging does. Data failures in finite transforms, skinning or reference construction report `Construction` with the unchanged `CoverageFailure`. A successful construction calls Task 6 with the exact composed upload palette, model, original commands and reference output. Every CPU position must be contained. A containment defect makes tolerance unbounded and independently fails correctness tests. Run `TryAcceptTolerance` next. Failure reports `DeviceTolerance` with default certificate and never invokes exact validation. Only finite accepted epsilon reaches Task 7 with original commands, reference `Before` and reference final output. Its failure reports `Certification` and the exact certifier's complete failure record. Success maps the geometry certificate into `CoverageOracleCertificate` and includes the epsilon used. No render context, pass capture, Scene3D, GPU object or runtime fallback is created.
+  Each call resets its certificate, exposed candidate length and arithmetic trace. Require one through `commandCapacity` commands, matching staging. An empty or oversized command span reports `Construction/CapacityExceeded`, with zero command IDs, the supplied count and the configured limit. Compose every palette entry with `CoverageReferenceSkinning.Compose(palette[i], inverseBind[i])` on the CPU, then skin through `TrySkin` with the scratch's traced arithmetic. A skinning refusal reports `Construction` with `UnsupportedTransform`. Construct with the reference in production mode. A construction refusal reports `Construction` with the unchanged `CoverageFailure`. A nonzero `EventCount` then reports `DeviceExactness` with the failure record above and `FirstSite`, and never runs exact validation. Otherwise call the public `ValidateGeometry` with the original commands, the reference `Before` and the reference final output. Its failure reports `Certification` with the exact certifier's complete failure record. Success maps the geometry certificate. No render context, pass capture, Scene3D, GPU object or runtime fallback is created.
 
-  Exact certification still performs its own frame preparation. Its precondition or uncertainty refusals therefore report `Certification/UnsupportedTransform`, rather than being hidden or replaced by a guessed construction code. The removed reference uncertainty refusal has an explicit test documenting this distinction.
+  Exact certification still performs its own frame preparation, so its precondition or uncertainty refusals report `Certification/UnsupportedTransform` rather than a guessed construction code. The B2 test documents this.
 
-- [ ] Write the allocation assertion in `[Collection("AllocSensitive")]`, whose definition disables parallelization. Prebuild the fixture, command arrays, accepted pose, escaped pose, budget-negative commands, over-tight fixture and excessive-device-tolerance pose. Warm each distinct success and refusal path once outside the measured region. Use `AllocationMeasurement.Measure` with a precreated delegate containing one success, the three original refusals, device-tolerance refusal and another success. Store booleans and failures in preallocated state and assert afterwards:
+- [ ] Write the allocation assertion in `[Collection("AllocSensitive")]`, whose definition disables parallelization. Prebuild the fixture, command arrays, accepted pose, escaped pose, budget-negative commands, over-tight fixture and subnormal palette. Warm each distinct success and refusal path once outside the measured region. Use `AllocationMeasurement.Measure` with a precreated delegate containing one success, the three original refusals, the device-exactness refusal and another success. Store booleans and failures in preallocated state and assert afterwards:
 
 ```csharp
 Assert.Equal(0, allocatedBytes);
@@ -723,23 +887,22 @@ Assert.Equal(new[] { true, false, false, false, false, true }, results);
 Assert.Equal(CoverageOracleStage.Construction, failures[1].Stage);
 Assert.Equal(CoverageOracleStage.Construction, failures[2].Stage);
 Assert.Equal(CoverageOracleStage.Certification, failures[3].Stage);
-Assert.Equal(CoverageOracleStage.DeviceTolerance, failures[4].Stage);
-Assert.Equal(CoverageFailureCode.DeviceToleranceExceeded, failures[4].Failure.Code);
+Assert.Equal(CoverageOracleStage.DeviceExactness, failures[4].Stage);
+Assert.Equal(CoverageFailureCode.SubnormalArithmetic, failures[4].Failure.Code);
 ```
 
-  The check includes skinning, construction, full interval evaluation, equipment transforms, tolerance acceptance and exact validation, including refusal handling and recovery. No assertions, formatting, delegate creation, array allocation or LINQ runs inside the measured delegate. This is an allocation correctness test, not a timing pilot or a loop of suite runs.
+  The check includes composition, traced skinning, construction, the exactness decision and exact validation, including refusal handling and recovery. No assertions, formatting, delegate creation, array allocation or LINQ runs inside the measured delegate. This is an allocation correctness test, not a timing pilot or a loop of suite runs.
 
-- [ ] Document the constructor, copied inverse-bind ownership, exact `TryCheck` signature, stage/code/command/count reporting, zero warm allocations, non-thread-safe reuse and the distinction between a headless certificate and drawable permission. Include one complete headless example that builds a refinement, supplies the same palette and actual command frames as the game and fails CI on a false result. State the reserve, cited operation table, interval domains, host-plus-equipment epsilon and `DeviceToleranceExceeded` stage/code exactly, the `Clearance + epsilon` rule, the partial-transition limitation, and the R2 sampled-pose limitation. The game's sampler, blend grid and asset inventory remain Part D. The dev-only async device verification mode remains Part C.
+- [ ] Document the constructor, copied inverse-bind ownership, exact `TryCheck` signature, the three stages in execution order, stage, code, command, count and site reporting, zero warm allocations, non-thread-safe reuse and the distinction between a headless certificate and drawable permission. Include one complete headless example that builds a refinement, supplies the same palette and actual command frames as the game and fails CI on a false result. State that certification uses the approved clearance with zero device tolerance, that the reserve is margin, that the guarantee holds on devices meeting the kernel contract (link Task 6D's document), that a sample with a subnormal operand or result fails at device exactness, and that the certificate covers the exact palette, model and commands supplied, so the game's sampler must produce them deterministically on every machine that plays them. State the partial-transition limitation and the R2 sampled-pose limitation. The game's sampler, blend grid and asset inventory remain Part D. The dev-only real-GPU verification mode remains Part C.
 
-  Run the full Markdown name sweep for `CoverageOracle`, `CoverageEvaluator`, `CoverageCertification`, `TryConstructCandidate` and the claim that every submitted pose is certified. Change only the two living references listed for this task. Report other runtime descriptions to root for the already-planned Part C API/doc sweep. Do not rewrite historical designs or preemptively describe the old runtime as removed.
+  Run the full Markdown name sweep for `CoverageOracle`, `CoverageEvaluator`, `CoverageCertification`, `TryConstructCandidate` and the claim that every submitted pose is certified. Change only the two living references listed for this task. Report other runtime descriptions to root for the already-planned Part C API and doc sweep. Do not rewrite historical designs or preemptively describe the old runtime as removed.
 
 - [ ] Run to pass and finish:
 
 ```bash
 build-slot --label ec-b8-build -- dotnet build KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release
 build-slot --label ec-b8-tests -- dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~CoverageOracle|FullyQualifiedName~CoverageReference|FullyQualifiedName~CoverageExactCaptureTests|FullyQualifiedName~CoverageCertificationTests'
-build-slot --label ec-b8-engine-format -- dotnet format whitespace KhaozEngine.Render3D/KhaozEngine.Render3D.csproj --verify-no-changes --no-restore --include Coverage/CoverageOracle.cs Coverage/CoverageOracleResult.cs Coverage/CoverageFailure.cs Coverage/CoverageReferencePrecision.cs
-build-slot --label ec-b8-test-format -- dotnet format whitespace KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj --verify-no-changes --no-restore --include Render3D/CoverageOracleTests.cs Render3D/CoverageOracleAllocationTests.cs
+build-slot --label ec-b8-format -- dotnet format whitespace KhaozEngine.slnx --verify-no-changes --no-restore --include KhaozEngine.Render3D/Coverage/CoverageOracle.cs KhaozEngine.Render3D/Coverage/CoverageOracleResult.cs KhaozEngine.Render3D/Coverage/CoverageFailure.cs KhaozEngine.Render3D/Coverage/CoverageExactnessSite.cs KhaozEngine.Render.Tests/Render3D/CoverageOracleTests.cs KhaozEngine.Render.Tests/Render3D/CoverageOracleAllocationTests.cs
 sh scripts/check-dashes.sh --tree
 sh scripts/check-prose.sh --tree
 sh scripts/check-file-size.sh --tree
@@ -747,17 +910,19 @@ bash scripts/check-doc-versions.sh
 git diff --check
 ```
 
-  Expected: zero-warning Release build, every selected correctness and allocation test passes, both format checks and all guards exit 0. No native backend or measurement claim is made by this headless slice. Root receives the commit, case counts, zero-byte result and any remaining numerical-contract objection.
+  Expected: zero-warning Release build with zero KEB32 diagnostics, every selected correctness and allocation test passes, the format check and all guards exit 0. No native backend or measurement claim is made by this headless slice. Root receives the commit, case counts, the zero-byte result and any remaining numerical-contract objection.
 
-- [ ] Commit listed paths with `render3d(coverage): expose the headless reference oracle`.
+- [ ] Commit the listed paths with `render3d(coverage): expose the headless reference oracle`.
 
 ## Self-review
 
-- [x] Spec coverage: Task 1 is the unchanged 72-case capture-first commit. Tasks 2 to 5 own scalar frames, reserve, interpolation, conformation, guards, correction and normals. Tasks 6 to 8 own enclosure APIs, exact padding and the public headless oracle. GPU implementation and game sampling remain Parts C and D.
-- [x] NC1: fixed rho, gamma bounds, coordinate-only epsilon and unspecified correctionScale are removed. Reserve, cited k_op table, outward operations, input/output flushing, domains, branch joins, world/equipment radii, `+epsilon` and code 15 have owning tests.
-- [x] Honest limits: RV1 is resolved by root from the Vulkan IEEE 754 zero and flushing rules, so square root over `[0,h]` encloses finitely. RV2 names strict lowering and confirmation of the conservative finite-domain derivations. Neither returns to fixed-rho design. All-fixture finite enclosures and quarter-clearance fidelity, measured like with like at the capture's effective clearance, remain acceptance assertions, not guarantees inferred from the reserve. The reserve's extra recession has its own mapped bound.
-- [x] Step scan: every task has Files, Interfaces, failing assertions, red invocation, implementation signatures/formulas, zero-warning Release build, focused green invocation, scoped format and commit subject. Every local build/test uses build-slot. No loops, timings, native implementation or load are authorized.
-- [x] Types: Task 6 consumes Task 2 interval/precision types and Tasks 3 to 5's graph. Task 8 consumes Task 6 bounds and Task 7 padding. Stage 3 and failure 15 are append-only. Cold scratch allocation and full resets cover warm reuse.
-- [x] Review Focus: 1 has Task 2/6 conditioning/domain tests, 2 has Task 1/4/5/6 seam tests, 3 has Task 3/4/6/8 transition/selection tests, 4 has Task 6/8 state/equipment/order tests, 5 has Task 5/7/8 fidelity/padding/threshold tests.
-- [x] Proportion: one extra task owns the independently reviewable interval evaluator. Numerical formulas and source qualifications specify choices the implementer cannot invent. No production method bodies, unrelated fixes, GPU work or release ritual were added.
-- [x] Planning validation was source/spec reading and inspection of this plan. No builds, tests, dotnet, benchmarks, load, commits, branch changes, pushes, issues or network writes ran. Official specifications were read over the network. The Metal PDF was extracted in memory without saving another file.
+> Amended 2026-10-18 for NC2. The NC1 entries described the enclosure, padding and epsilon tasks that NC2 replaced.
+
+- [x] Spec coverage: Task 1 is the unchanged 72-case capture-first commit. Tasks 2 to 5 own scalar frames, reserve, interpolation, conformation, guards, correction and normals. Task 6A ports B30 and freezes 144 reference outputs. Task 6B enforces the operation inventory at compile time. Task 6C routes the device path through one traced arithmetic home and adds the pinned reference skinning. Task 6D states the Part C kernel contract. Task 7 is removed. Task 8 owns the public headless oracle with its three stages. GPU implementation, native equivalence and the dev real-GPU mode remain Part C, and game sampling remains Part D.
+- [x] NC2: no enclosure, epsilon, padding, k_op table or tolerance budget survives. The reserve stays as margin. Every out-of-inventory site found at `8765a4c27` has a disposition in Task 6C. Subnormal events have one home, one trace and one oracle stage, `DeviceExactness = 3` with `SubnormalArithmetic = 15`, reusing the never-implemented NC1 slots.
+- [x] Honest limits: bit exactness is proved per backend only by Part C's native tests, which the frozen manifest feeds. The oracle certifies the exact palette, model and commands supplied, so cross-machine determinism of the game's sampler is a Part D obligation. Division and square-root correction and the exact predicate method are Part C proof obligations stated in Task 6D. Quarter-clearance fidelity, measured like with like, remains an acceptance assertion.
+- [x] Step scan: every new task has Files, Interfaces, failing assertions, a red invocation, implementation rules, a zero-warning Release build, a focused green invocation, the B13 format form and a commit subject. Every local build and test uses build-slot. No loops, timings, native implementation or load are authorized. No step uses `git stash` (B26).
+- [x] Types: Task 6C consumes 6A's manifest and 6B's analyzer. Task 8 consumes 6C's trace, site and skinning. Stage 3 and failure 15 are append-only. Cold scratch allocation and full resets cover warm reuse.
+- [x] Review Focus: 1 has Task 2, 6C and 8 tests, 2 has Task 1, 4, 5 and 6A tests, 3 has Task 3, 4 and 8 tests, 4 has Task 6C and 8 reset and order tests, 5 has Task 5 and 8 tests, 6 has Tasks 6A to 6D.
+- [x] Proportion: the analyzer is the one new enforcement mechanism, chosen because a lexical sweep cannot see raw float operators and a bit-exact contract needs the order enforced, not reviewed. Removing the NC1 interval code leaves no speculative code. No production method bodies, unrelated fixes, GPU work or release ritual were added.
+- [x] Planning validation for the NC2 amendment was source, spec, ledger and draft-branch reading. No builds, tests, dotnet, benchmarks, load, commits, branch changes, pushes, issues or network writes ran.

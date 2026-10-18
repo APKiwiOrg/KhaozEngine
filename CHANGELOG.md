@@ -15,6 +15,7 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - `KhaozEngine.BugReports.Relay` exposes `ReportPaths.IsValid` as the media path rule shared by every store.
 - Every unfinished relay resend enqueues issue work before acceptance, including immediate retries after a failed enqueue.
 - `BugReportRelay.RevokeAsync` durably revokes reports, and missing public manifests stop late work from republishing deleted media.
+- The bug report viewer plays the full recorded interval between clip frames, including gaps longer than one second.
 
 ## 21.4.0
 

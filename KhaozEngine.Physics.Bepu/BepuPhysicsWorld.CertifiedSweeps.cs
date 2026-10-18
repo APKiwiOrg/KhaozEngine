@@ -41,8 +41,8 @@ public sealed partial class BepuPhysicsWorld : IPhysicsCapsuleSweep
             !_sweepEvidence.IsCurrent(this, _queryGeneration) || !SweepRecordCountsMatch() ||
             !SelectedSweepBoundsProved(filter.Mobility, exclusions)) return default;
         float halfCylinder = capsule.Length * 0.5f;
-        if (!CapsuleGeneralSweepPolicy.ContainsQuery(pose.Position, capsule.Radius, halfCylinder, displacement) &&
-            _sweepSelection.HasGeneral(filter.Mobility, exclusions)) return default;
+        bool hasGeneral = _sweepSelection.HasGeneral(filter.Mobility, exclusions);
+        if (hasGeneral && !CapsuleGeneralSweepPolicy.ContainsQuery(pose.Position, capsule.Radius, halfCylinder, displacement)) return default;
         if (!CapsuleSweepAperture.TryCreate(pose.Position, capsule.Radius, halfCylinder, displacement,
             out Vector3 min, out Vector3 max)) return default;
         double length = System.Math.Sqrt((double)displacement.X * displacement.X +
@@ -65,9 +65,21 @@ public sealed partial class BepuPhysicsWorld : IPhysicsCapsuleSweep
         try
         {
             candidates.Clear();
-            var collector = new SweepCandidates(candidates, filter.Mobility, exclusions);
+            var collector = new SweepCandidates(candidates, filter.Mobility, exclusions, this, generalOnly: false);
             _sim.BroadPhase.GetOverlaps(min, max, ref collector);
             if (collector.Overflow) return default;
+            if (hasGeneral)
+            {
+                var bounds = _sweepSelection.Bounds(filter.Mobility, exclusions);
+                if (!CapsuleSweepPruning.TryQueryPad(pose.Position, capsule.Radius, halfCylinder, displacement, bounds, out double pad) ||
+                    !CapsuleSweepPruning.ExpandAperture(min, max, pad, out var generalMin, out var generalMax)) return default;
+                // Preflight and enumeration share the same general-only selection under
+                // this read interval. Identity leaves consume none of its leaf budget.
+                var preflight = new SweepCandidates(null, filter.Mobility, exclusions, this, generalOnly: true);
+                if (!VisitGeneralSweepTrees(generalMin, generalMax, ref preflight)) return default;
+                var selected = new SweepCandidates(candidates, filter.Mobility, exclusions, this, generalOnly: true);
+                if (!VisitGeneralSweepTrees(generalMin, generalMax, ref selected)) return default;
+            }
             return CertifyCandidates(candidates, capsule, pose, halfCylinder, displacement, length,
                 representedLength, min, max, filter, general);
         }
@@ -81,7 +93,6 @@ public sealed partial class BepuPhysicsWorld : IPhysicsCapsuleSweep
         var work = new CapsuleSweepWork();
         bool hit = false;
         float lower = float.PositiveInfinity, upper = float.PositiveInfinity, error = 0;
-        double queryPad = -1;
         foreach (CollidableReference candidate in candidates)
         {
             if (!TryGetSweepLeaf(candidate, out TypedIndex shape, out RigidPose bodyPose)) return default;
@@ -98,9 +109,9 @@ public sealed partial class BepuPhysicsWorld : IPhysicsCapsuleSweep
                     return default;
                 if (!geometry.Matches(_sim.Shapes, shape) || !geometry.TryPose(bodyPose, out _) ||
                     geometry.PruningBounds is not { } bounds) return default;
-                if (queryPad < 0 && !CapsuleSweepPruning.TryQueryPad(pose.Position, capsule.Radius, halfCylinder, displacement, out queryPad))
-                    return default;
-                if (!CapsuleSweepPruning.ExpandStored(bounds.Min, bounds.Max, queryPad, out var requiredMin, out var requiredMax))
+                if (!CapsuleSweepPruning.TryQueryPad(pose.Position, capsule.Radius, halfCylinder, displacement, geometry.PruningMetrics,
+                    out double queryPad, includePreimage: false)) return default;
+                if (!CapsuleSweepPruning.ExpandAperture(bounds.Min, bounds.Max, queryPad, out var requiredMin, out var requiredMax))
                     return default;
                 if (!BoundingBox.Intersects(queryMin, queryMax, requiredMin, requiredMax)) continue;
                 leaf = CapsuleGeneralSweep.Sweep(_sim.Shapes, shape, bodyPose, geometry, capsule, pose.Position,
@@ -148,21 +159,42 @@ public sealed partial class BepuPhysicsWorld : IPhysicsCapsuleSweep
         return true;
     }
 
-    struct SweepCandidates(List<CollidableReference> target, QueryMobility mobility,
-        StaticQueryExclusions? exclusions) : IBreakableForEach<CollidableReference>
+    bool VisitGeneralSweepTrees(Vector3 min, Vector3 max, ref SweepCandidates collector)
+    {
+        if (!CapsuleGeneralSweepTraversal.TryValidate(_sim.BroadPhase.ActiveTree, min, max) ||
+            !CapsuleGeneralSweepTraversal.TryValidate(_sim.BroadPhase.StaticTree, min, max)) return false;
+        _sim.BroadPhase.GetOverlaps(min, max, ref collector);
+        return !collector.Overflow;
+    }
+
+    bool IsGeneralSweepCandidate(CollidableReference reference) => reference.Mobility == CollidableMobility.Static
+        ? _reverseHandles.TryGetValue(reference.StaticHandle.Value, out int id) && _sweepSelection.Contains(id, dynamic: false)
+        : _reverseDynamics.TryGetValue(reference.BodyHandle.Value, out int dynamicId) && _sweepSelection.Contains(dynamicId, dynamic: true);
+
+    struct SweepCandidates(List<CollidableReference>? target, QueryMobility mobility,
+        StaticQueryExclusions? exclusions, BepuPhysicsWorld owner, bool generalOnly) : IBreakableForEach<CollidableReference>
     {
         public bool Overflow;
         int examined;
 
         public bool LoopBody(CollidableReference reference)
         {
-            if (Overflow || examined == MaximumSweepCandidates) { Overflow = true; return false; }
-            examined++;
+            if (!generalOnly)
+            {
+                if (Overflow || examined == MaximumSweepCandidates) { Overflow = true; return false; }
+                examined++;
+            }
             bool isStatic = reference.Mobility == CollidableMobility.Static;
             if (mobility == QueryMobility.Statics && !isStatic || mobility == QueryMobility.Dynamics && isStatic)
                 return true;
             if (exclusions is not null && !exclusions.Allows(reference)) return true;
-            target.Add(reference);
+            if (owner.IsGeneralSweepCandidate(reference) != generalOnly) return true;
+            if (generalOnly)
+            {
+                if (Overflow || examined == MaximumSweepCandidates) { Overflow = true; return false; }
+                examined++;
+            }
+            target?.Add(reference);
             return true;
         }
     }

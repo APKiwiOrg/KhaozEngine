@@ -35,59 +35,53 @@ internal static class CapsuleSweepPruning
             FeaturePoint.Scale(map.InverseTransposeY, FeatureNumber.Exact(point.Y))),
             FeaturePoint.Scale(map.InverseTransposeZ, FeatureNumber.Exact(point.Z))), map.Translation);
 
-    internal static bool TryStoredPad(RigidPose root, RigidPose leaf, Vector3 localOffset, out double pad)
+    internal static bool TryQueryPad(Vector3 centre, float radius, float half, Vector3 displacement,
+        in CapsuleSweepPruningBounds bounds, out double pad, bool includePreimage = true)
     {
         pad = 0;
-        // For every admitted query, |C0 + t D - P| <= 2 Cmax + |P|.
-        // Retain original magnitudes even when the final position cancels the path.
-        GeometryInterval m = GeometryInterval.Exact(2d * CapsuleGeneralSweepPolicy.MaximumStoredCoordinate)
-            .Add(GeometryInterval.Exact(MaxAbs(leaf.Position)));
-        if (!m.IsResolved) return false;
-        GeometryInterval error = InstalledSweepBounds.BaseOperationalError(m.Upper, CapsuleGeneralSweepPolicy.MaximumQueryHalfLength);
-        if (localOffset != Vector3.Zero)
+        if (!bounds.IsResolved || !CapsuleGeneralSweepPolicy.ContainsQuery(centre, radius, half, displacement)) return false;
+        GeometryInterval start = GeometryInterval.Exact(MaxAbs(centre)), delta = GeometryInterval.Exact(MaxAbs(displacement));
+        GeometryInterval root = start.Add(GeometryInterval.Exact(bounds.Root));
+        GeometryInterval leaf = start.Add(delta).Add(GeometryInterval.Exact(bounds.Leaf));
+        GeometryInterval subtraction = Round(root), product = Round(delta);
+        GeometryInterval input = subtraction.Add(product);
+        input = input.Add(Round(root.Add(delta).Add(input)));
+        if (bounds.HasChild)
         {
-            if (!InstalledPoseOperator.TryCreate(root, out var rootMap)) return false;
-            GeometryVector offset = rootMap.RoundedDirection(FeaturePoint.Exact(localOffset).Bounds);
-            if (!offset.IsResolved) return false;
-            double h = Math.Max(Magnitude(offset.X), Math.Max(Magnitude(offset.Y), Magnitude(offset.Z)));
-            GeometryInterval rootM = GeometryInterval.Exact(2d * CapsuleGeneralSweepPolicy.MaximumStoredCoordinate)
-                .Add(GeometryInterval.Exact(MaxAbs(root.Position)));
-            if (!rootM.IsResolved) return false;
-            // Every admitted transpose coefficient is below 2 in magnitude, hence its
-            // absolute row sum is below 6. This includes the root/child operational order.
-            error = error.Add(InstalledSweepBounds.ChildOperationalError(rootM.Upper, h, MaxAbs(root.Position))
-                .Multiply(GeometryInterval.Exact(6)));
+            input = input.Add(GeometryInterval.Exact(bounds.CompositionError));
+            input = input.Add(Round(leaf.Add(input)));
         }
-        GeometryInterval padding = error.Multiply(GeometryInterval.Exact(InverseInfinityNorm))
-            .Add(GeometryInterval.Exact(CapsuleGeneralSweepPolicy.MaximumQueryRadius)
-                .Multiply(GeometryInterval.Exact(InverseSkinDeparture)));
-        if (!padding.IsResolved || !double.IsFinite(padding.Upper)) return false;
-        pad = padding.Upper;
-        return true;
-    }
-
-    internal static bool TryQueryPad(Vector3 centre, float radius, float half, Vector3 displacement, out double pad)
-    {
-        pad = 0;
-        // A second, general-only rejection uses the same proof with this query's smaller
-        // operands. The tree keeps its original aperture and domain-wide stored enclosure.
-        const double p = RepresentedGeometryTransforms.MaximumPositionMagnitude, h = 16384;
-        GeometryInterval m = GeometryInterval.Exact(MaxAbs(centre)).Add(GeometryInterval.Exact(MaxAbs(displacement)))
-            .Add(GeometryInterval.Exact(p));
-        if (!m.IsResolved) return false;
-        GeometryInterval error = InstalledSweepBounds.BaseOperationalError(m.Upper, half)
-            .Add(InstalledSweepBounds.ChildOperationalError(m.Upper, h, p).Multiply(GeometryInterval.Exact(6)));
-        GeometryInterval padding = error.Multiply(GeometryInterval.Exact(InverseInfinityNorm))
+        GeometryInterval relative = leaf.Add(input);
+        GeometryInterval products = relative.Multiply(GeometryInterval.Exact(bounds.TransposeNorm))
+            .Multiply(GeometryInterval.Exact(UnitRoundoff)).Add(GeometryInterval.Exact(3 * HalfSubnormal));
+        GeometryInterval firstSum = Round(relative.Multiply(GeometryInterval.Exact(bounds.PairNorm)).Add(products));
+        GeometryInterval axis = GeometryInterval.Exact(half).Multiply(GeometryInterval.Exact(bounds.Axis));
+        GeometryInterval axisError = Round(axis);
+        // At an operational contact the final rounded axis point is within radius of
+        // the local solid. Reverse the final rounding to bound its error and then the
+        // preceding transpose sum. A pruned candidate cannot contain such a contact.
+        GeometryInterval contact = GeometryInterval.Exact(bounds.Local).Add(GeometryInterval.Exact(radius));
+        GeometryInterval axisAdd = ReverseRound(contact);
+        GeometryInterval finalSum = ReverseRound(contact.Add(axis).Add(axisError).Add(axisAdd));
+        GeometryInterval error = input.Multiply(GeometryInterval.Exact(bounds.TransposeNorm))
+            .Add(products).Add(firstSum).Add(finalSum).Add(axisError).Add(axisAdd);
+        GeometryInterval padding = error.Multiply(GeometryInterval.Exact(bounds.InverseNorm))
             .Add(GeometryInterval.Exact(radius).Multiply(GeometryInterval.Exact(InverseSkinDeparture)));
+        if (includePreimage) padding = padding.Add(GeometryInterval.Exact(bounds.PreimageExcess));
         if (!padding.IsResolved || !double.IsFinite(padding.Upper)) return false;
         pad = padding.Upper;
         return true;
     }
 
-    internal static bool ExpandStored(Vector3 min, Vector3 max, double padding, out Vector3 lo, out Vector3 hi) =>
-        Expand(min, max, padding, out lo, out hi) &&
-        InstalledPoseOperator.Within(lo, CapsuleGeneralSweepPolicy.MaximumStoredCoordinate) &&
-        InstalledPoseOperator.Within(hi, CapsuleGeneralSweepPolicy.MaximumStoredCoordinate);
+    const double UnitRoundoff = 1d / (1 << 24);
+    const double HalfSubnormal = 7.006492321624085e-46;
+    static GeometryInterval Round(GeometryInterval magnitude) => magnitude.Multiply(GeometryInterval.Exact(UnitRoundoff))
+        .Add(GeometryInterval.Exact(HalfSubnormal));
+    static GeometryInterval ReverseRound(GeometryInterval magnitude) => Round(magnitude)
+        .Divide(GeometryInterval.Exact(1 - UnitRoundoff));
+
+    internal static bool ExpandAperture(Vector3 min, Vector3 max, double padding, out Vector3 lo, out Vector3 hi) =>
+        Expand(min, max, padding, out lo, out hi);
 
     static bool Expand(Vector3 min, Vector3 max, double padding, out Vector3 lo, out Vector3 hi)
     {

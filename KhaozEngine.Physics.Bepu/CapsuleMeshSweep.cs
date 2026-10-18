@@ -27,7 +27,10 @@ internal static class CapsuleMeshSweep
             maximumLeaves <= 0 || maximumLeaves > CapsuleGeneralSweepPolicy.MaximumLeaves ||
             maximumPending <= 0 || maximumPending > CapsuleGeneralSweepPolicy.MaximumPending ||
             !CapsuleGeneralSweepPolicy.ContainsQuery(centre, capsule.Radius, capsule.Length * 0.5f, displacement) ||
-            !CapsuleSweepAperture.TryCreate(centre, capsule.Radius, capsule.Length * 0.5f, displacement, out Vector3 min, out Vector3 max)) return default;
+            !CapsuleSweepAperture.TryCreate(centre, capsule.Radius, capsule.Length * 0.5f, displacement, out Vector3 min, out Vector3 max) ||
+            !CapsuleSweepPruning.TryQueryPad(centre, capsule.Radius, capsule.Length * 0.5f, displacement, installed.PruningMetrics,
+                out double pad, includePreimage: false) ||
+            !CapsuleSweepPruning.ExpandAperture(min, max, pad, out min, out max)) return default;
         ref Mesh mesh = ref shapes.GetShape<Mesh>(root.Index);
         int index = 0, count = 0, nodes = 0, leaves = 0;
         bool hit = false;

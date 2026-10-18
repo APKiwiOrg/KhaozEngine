@@ -9591,7 +9591,8 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
   General queries require radius and half-cylinder length at most 1000 m, with original centre and
   displacement components within [-1000000, 1000000] m. Out-of-domain requests refuse before traversal
   if the selected set contains any non-identity-box installation. Identity-only selections keep their
-  original domain. General poses require proved forward/operational correspondence and a complete
+  original domain and unpadded traversal. General-only traversal uses an actual-query enclosure
+  without inflating the simulation collision tree. General poses require proved forward/operational correspondence and a complete
   bracket within 0.001 m. The [backend domain and work ceilings](../KhaozEngine.Physics.Bepu/README.md) apply. Default is
   `Unresolved` without a usable prefix. `IsComplete` reports structural Clear/Hit status, not proof of
   the backend certificate. Validate the whole request extent, error budget, scope and read lifetime.

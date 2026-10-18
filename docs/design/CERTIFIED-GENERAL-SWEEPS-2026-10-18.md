@@ -95,6 +95,8 @@ Retain these ceilings, with smaller injected budgets allowed in internal tests o
 | Hull faces, vertices and face-index entries | 256, 508 and 1524 |
 | Exact predicate storage | 4096 bits per integer, with checked intermediate growth |
 
+The original identity traversal keeps these counts exactly. GS-4 defines the separate
+general-only traversal and its selected-leaf accounting.
 The new descendant and feature budgets bound previously unsupported work. They do not increase
 any existing cap. Sparse large meshes use certified pruning, not a total-world triangle cap.
 Policy versions and all these constants are recorded together in an internal
@@ -125,84 +127,108 @@ may remove unsupported geometry, but cannot hide structurally invalid tree bound
 No per-query whole-world scan or replacement spatial index is introduced.
 Cost if wrong: correct leaf proofs certify Clear after the tree silently omitted a collision.
 
-Rulings GB-R14 and GB-R16. Forward-pose bounds alone do not prove operational exclusion.
-Let A be the actual represented transpose used by the pinned local map, and K the installed
-local solid. Bounds union the forward affine geometry, its rounded pose graph and
-`leafPosition + inverse(A) K`. Every admitted operator proves inverse infinity norm at most
-2 and inverse Euclidean row norm at most `1 + 2^-15`. No near-unit quaternion is assumed rigid.
-Curved leaves enclose their full radial/axial sets. Mesh bounds retain both raw/scaled and
-recentered preimages. These are pruning proof bounds, not collision tolerances.
+Rulings GB-R14, GB-R16 and GB-R17. Stored Bepu bounds contain only the forward affine
+geometry and its rounded pose graph, using Task 1's owning repair and ancestor refit. No
+operational pad or inverse preimage is written into Bepu's collision tree. This matters to
+ordinary simulation pair generation as well as the certified sweep's finite candidate budget.
 
-The following per-leaf stored pad covers every query in GS-3. All displayed sums, products,
-interval endpoints and bound conversions are outward. Let `C = 1000000`, `R = h = 1000`,
-`pL = maxAbs(leafPosition)`, `p0 = maxAbs(rootPosition)`, `ML = 2 C + pL`, and
-`M0 = 2 C + p0`. Let H bound every component of the rounded root rotation of the installed
-child offset, as certified by `rootMap.RoundedDirection`. Let U(x) be the full distance
-between the binary32 predecessor and successor of the represented nonnegative x.
-The existing GS-6 operational error expressions give
+Let A be the actual represented transpose used by the pinned local map, and K the installed
+local solid. Mutation evidence separately retains the union of the forward enclosure and
+`leafPosition + inverse(A) K`. Every admitted operator proves inverse infinity norm at most
+2 and inverse Euclidean row norm at most `1 + 2^-15`. Curved leaves enclose their full
+radial/axial sets. Mesh evidence retains both raw/scaled and recentered preimages, with
+bottom-up ancestor unions in its private posed bounds. Bepu's raw mesh tree is unchanged.
+Let Q be an outward maximum coordinate excess of this private enclosure beyond the forward
+bounds. For compounds take the maximum child excess, since union preserves containment.
+For meshes compare the two complete root enclosures after ancestor unions.
+
+`CapsuleSweepPruningBounds` publishes maxima of root and composed leaf position magnitudes,
+rounded rotated child magnitude H, root/child composition error c, local contact extent L,
+transpose absolute row sum T, largest two-term absolute row sum V, inverse absolute row sum I,
+and transformed unit-axis component magnitude a. The actual rounded child offset is checked
+by the existing scalar/SIMD composition proof. Its composition error is enclosed from
+`rootPosition + roundedChild - leafPosition`, retaining every original operand and exponent.
+In particular c is bounded by the rounding of the root-plus-child sum, not by a cancellation
+of the query path. These are mutation-time scans of installed data, never query-time rebuilds.
+Owner and live view selection maintain these maxima along with the GS-3 counts. Exclusions,
+pose changes, mobility, removals and sleep/wake refreshes cannot leave a smaller stale bound.
+New entries extend maxima directly. A transaction with pose changes or removals rebuilds each
+dirty owner/view maximum once before evidence publication, avoiding a scan per changed body.
+
+The earlier B/J full-spacing derivation remains valid for leaf certification. Substituting
+4096 m operands in that loose bound does not give a centimetre-scale query aperture. Pruning
+instead uses the following tighter forward-error proof of the same operational graph.
+All arithmetic, norm sums, extrema and endpoint conversions are outward. Write
+`u = 2^-24`, `eta = 2^-150`, `R(x) = u*x + eta`, and `S(x) = R(x)/(1-u)`.
+For one binary32 round-to-nearest operation with exact magnitude at most x, R(x) bounds
+its absolute rounding error, including subnormals. If the rounded output has magnitude at
+most x, solving that same inequality backwards bounds its error by S(x).
+
+Let C and D be the maximum absolute original query components, p0 and pL the selected
+root and leaf maxima, r the actual radius and h the actual half-cylinder length. Then
 
 ```text
-B(M,h) = 6 U(M) + 3 U(4 M) + 2 U(16 M) + U(2 h) + U(16 (M+h))
-J(M,H,p) = U(M) + U(2 M) + U(4 M) + U(4 M+H) + U(p+H)
-E_L = B(ML,1000) + 6 J(M0,H,p0)   if the installed child offset is nonzero
-E_L = B(ML,1000)                  otherwise
-P_L = 2 E_L + 1000 * 2^-15
+m0 = C + p0
+m = C + D + pL
+e0 = R(m0) + R(D)
+e = e0 + R(m0 + D + e0)
+e = e + c + R(m + e + c)              when a child offset is present
+v = m + e
+b = u*T*v + 3*eta
+f = R(V*v + b)
+z = h*a
+j = R(z)
+k = S(L + r)
+l = S(L + r + z + j + k)
+E = T*e + b + f + l + j + k
+P = Q + I*E + r*2^-15
 ```
 
-For every t in [0,1], the original root/leaf-relative coordinate magnitude is bounded by
-`abs(C0) + abs(D) + abs(position)`, hence ML or M0. Final-position cancellation cannot
-shrink that account. B covers the original subtraction, displacement product and path sum,
-transpose evaluation and full capsule axis for every s in [-1000,1000]. J covers the original
-root subtraction, displacement product, path sum, later rounded child add and composed-pose
-add. Each transpose coefficient has magnitude below 2, so its absolute row sum is below 6.
-Thus E_L encloses operational arithmetic uniformly over the whole query domain and axis.
-A zero child offset adds exactly zero and needs no J term.
+The first three error terms cover the original root-relative subtraction, displacement
+product and path sum. A child additionally contributes its captured composed-pose error
+and the later rounded child addition. The exact pre-round child sum equals the leaf-relative
+path plus these errors, so its magnitude is bounded by m plus the accumulated error. Neither
+small endpoint coordinates nor final-position cancellation reduces C or D.
 
-For an operational contact there is a point of K whose local difference from the exact
-transformed query axis is `r u + e`, with Euclidean norm of u at most 1 and maxAbs(e) at
-most E_L. Applying inverse(A) bounds each coordinate of the skin by `(1 + 2^-15) r`
-and each error coordinate by `2 E_L`. The original aperture already carries r, so
-only `r * 2^-15 + 2 E_L` remains. Since r <= 1000, P_L encloses that remainder.
-Moving this Minkowski pad from the aperture to the leaf preserves every required
-intersection. Forward-model contact is already enclosed by the unpadded geometry union.
-The rounded full-axis account includes the discrepancy in axis multiplication and addition,
-so this argument does not assume an exactly transformed capsule axis.
+The transpose has three products with total rounding error b and a first sum with error f.
+Every supported sum order has its two coefficients bounded by V. For a possible operational
+contact the final rounded axis point is within r of the installed local solid, hence its
+component magnitude is at most L+r. Backwards rounding therefore bounds the final axis add
+by k. Subtracting the rounded axis product bounds the preceding rounded transpose output
+by `L+r+z+j+k`, so its final sum error is at most l. This implication is used only for
+pruning: an operational contact must obey it. It asserts no contact witness and does not
+replace any finite feature predicate. The complete capsule axis is retained for all s in
+[-h,h], including axis-product error j. T propagates the input error and I propagates E
+back to world coordinates. The inverse Euclidean row bound propagates the skin. The original
+aperture already contains r, leaving only `r*2^-15` as additional skin departure.
+Thus an operational contact intersects the original aperture expanded by P against the
+forward stored bound. A forward contact is already enclosed without P. Failure of any
+required account refuses instead of authorizing a prune.
 
-For an explicit worst-case arithmetic check, `pL,p0 <= 2048`, `ML,M0 <= 2002048` and
-`H < 16384` follow from GS-3 admission and the rounded root map. Monotonic neighboring
-spacing then gives `U(M) <= 0.25`, `U(2 M) <= 0.5`, `U(4 M) <= 1`,
-`U(16 M) <= 4`, `U(2000) = 0.000244140625`, `U(16 (M+1000)) <= 4`,
-`U(4 M+H) <= 1` and `U(p0+H) <= 0.00390625`.
-Before outward binary64 accumulation, B is at most 16.500244140625,
-J at most 2.75390625, E_L at most 33.023681640625 and P_L at most
-66.077880859375 m. The outward implementation remains below 66.078 m.
-These deliberately conservative stored bounds can retain additional general candidates.
+For an explicit Grimhollow-scale small-prop check, C and D are each 4096 m, r is binary32
+0.3, h is 0.75, p0 and pL are 2048, H is at most 16384, c is at most 1/8192, L is 2,
+T and I are at most 1.75, V is at most 1.5, a is at most `1+2^-15`, and Q is at most
+1/4096. The outward pad is below 0.009706754 m. This is a checked fixture envelope, not
+a new domain limit. Larger local geometry or larger proved preimage excess uses its actual
+mutation-published bound and can require a larger query-only pad.
 
-`InstalledSweepBounds` applies P_L independently to every general leaf. Compound roots
-union their padded descendants. The posed mesh proof pads each raw branch and, for a leaf,
-uses the maximum raw and separately recentered pad. Bottom-up ancestor unions preserve
-both representations. The outer installed bound inherits the padded root. Bepu's raw
-mesh tree stays unchanged. Mutation-time repair uses `BroadPhase.UpdateStaticBounds`
-or `UpdateActiveBounds`, refits ancestors and rereads containment before publishing evidence.
-An unproved pad or stored containment leaves the selected bounds unproved and refuses.
-All padded stored coordinates must still satisfy the unchanged 1000000 m ceiling.
+Identity enumeration retains its original aperture, original checked preflight and original
+callback ceiling. It admits only identity leaves to the identity kernel. When and only when
+the selected set contains a general installation, a separate general-only pass uses P.
+Its checked A-first structural preflight retains the 8192-node and 128-pending ceilings.
+The matching count-only callback preflight and subsequent enumeration each count only selected
+non-identity leaves against their own 4096-leaf/callback ceiling. Identity leaves in the padded
+fringe consume none of that count. Both passes run in the same owner read interval. No
+replacement spatial index or private Bepu leaf-buffer access is introduced. All leaf work,
+including the shared descendant ceiling, still aggregates atomically.
 
-Outer preflight/enumeration and inner mesh traversal use the original unpadded aperture.
-An identity Box takes its original bounds owner and kernels without stored padding.
-After enumeration, a general candidate can be rejected against its mutation-retained unpadded
-geometry union, expanded by the same proved pad expression with this query's operands.
-Use `M = maxAbs(C0) + maxAbs(D) + 2048`, actual radius and half-length, and the uniform
-child bounds `H = 16384`, `p0 = 2048`. This retains the GB-R14 cancellation proof and
-never changes the tree aperture. The geometry union, installation and published pose must
-match before this rejection. No geometry is scanned or rebuilt for the bound at query time.
-This second rejection prevents the domain-wide pad from forcing a demonstrably separated
-pitched plank into an existing uncertain leaf proof during a small vertical lift. It proves
-separation for both the forward and operational models. Traversal, callback and candidate
-counts still precede this rejection and retain their original ceilings. Only a surviving
-candidate consumes the unchanged primitive work account.
-Queries beyond the general domain cannot use these finite pads and refuse before traversal
-when any selected installation requires them, including otherwise far geometry. Work limits,
-leaf predicates, geometric radii and the 0.001 m publication ceiling are unchanged.
+After enumeration a general candidate can use its own mutation-published private geometry
+union and actual-query error pad to reject a proved separated candidate before its leaf
+kernel. That union already includes Q, so it needs only `I*E+r*2^-15`. Mesh inner traversal
+uses the same query-time error pad over its private raw/recentered bounds. No stored tree
+pad, warm allocation, geometric tolerance, primitive predicate, publication ceiling or work
+limit changes. Installation identity and the published pose are checked before this evidence
+is used. Original identity bounds and kernels remain byte-identical to merge base fdce0905c.
 
 ### GS-5. Bind immutable geometry to installation and mutation lifetime
 

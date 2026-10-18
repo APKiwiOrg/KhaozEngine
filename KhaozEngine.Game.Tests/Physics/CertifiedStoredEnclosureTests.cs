@@ -15,21 +15,13 @@ public sealed class CertifiedStoredEnclosureTests
 
     [Theory]
     [MemberData(nameof(Routes))]
-    public void InDomainStoredEnclosureKeepsCorrectHitAndClear(string family, bool view, bool dimensions)
+    public void InDomainQueryEnclosureKeepsCorrectHitAndClear(string family, bool view, bool dimensions)
     {
         using var world = new BepuPhysicsWorld(Vector3.Zero);
         StaticHandle handle = world.AddStatic(Shape(family), new(Vector3.Zero,
             family == "box" ? new(0.5f, 0.5f, 0.5f, 0.5f) : Quaternion.Identity));
         StaticHandle[]? exclusions = view
             ? [world.AddStatic(new BoxShape(new(0.25f)), Pose.At(new(0, 100, 0)))] : null;
-        // The original native bounds are about one metre. Padding must actually reside
-        // in the installed tree, rather than being applied to the identity aperture.
-        var simulation = Sim(world);
-        int index = simulation.Statics[simulation.Statics.HandleToIndex[Static(world, handle).Handle.Value]].BroadPhaseIndex;
-        var link = simulation.BroadPhase.StaticTree.Leaves[index];
-        var node = simulation.BroadPhase.StaticTree.Nodes[link.NodeIndex];
-        var stored = link.ChildIndex == 0 ? node.A : node.B;
-        Assert.True(stored.Min.X < -16 && stored.Max.X > 16);
         HitContains(Read(world, new(3, 0, 0), new(-4, 0, 0), length: 0,
             useDimensions: dimensions, exclusions: exclusions), family == "mesh" ? 2.75 : 1.75, family == "mesh" ? 2.75 : 1.75);
         Clear(Read(world, new(3, 0, 0), new(0, 0, 0.125f), length: 0,
@@ -54,7 +46,7 @@ public sealed class CertifiedStoredEnclosureTests
 
     [Theory]
     [MemberData(nameof(CertifiedStoredBoundsResidualTests.Routes), MemberType = typeof(CertifiedStoredBoundsResidualTests))]
-    public void StoredPadDoesNotForceSeparatedPlankIntoLeafRefusal(bool view, bool dimensions)
+    public void QueryPadDoesNotForceSeparatedPlankIntoLeafRefusal(bool view, bool dimensions)
     {
         foreach (bool compound in new[] { false, true })
         {

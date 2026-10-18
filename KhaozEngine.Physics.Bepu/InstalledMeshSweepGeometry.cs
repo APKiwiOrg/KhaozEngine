@@ -21,6 +21,7 @@ internal sealed class InstalledMeshSweepGeometry
     bool _posed;
     internal (Vector3 Min, Vector3 Max) RootBounds { get; private set; }
     internal (Vector3 Min, Vector3 Max) PruningBounds { get; private set; }
+    internal CapsuleSweepPruningBounds PruningMetrics { get; private set; }
     readonly int _triangleBuffer, _nodeBuffer, _leafBuffer;
     readonly Node[] _nodes;
     readonly (Vector3 Min, Vector3 Max)[] _posedBounds;
@@ -104,7 +105,7 @@ internal sealed class InstalledMeshSweepGeometry
         ref Mesh mesh = ref _owner.GetShape<Mesh>(_root.Index);
         if (_posed && pose.Position == _lastPose.Position && pose.Orientation == _lastPose.Orientation && MatchesProof(mesh)) return true;
         if (!ProveTree(ref mesh)) return false;
-        if (!CapsuleSweepPruning.TryStoredPad(pose, pose, Vector3.Zero, out double rawPad)) return false;
+        CapsuleSweepPruningBounds metrics = default;
         bool identity = pose.Orientation == Quaternion.Identity;
         for (int i = 0; i < Count; i++)
         {
@@ -126,8 +127,11 @@ internal sealed class InstalledMeshSweepGeometry
             }
             _triangles[i].PublishPose(pose, pose, map);
             _triangles[i].SweepCompanion!.PublishPose(pose, nativePose, nativeMap);
+            if (!CapsuleSweepPruningBounds.TryCreate(_triangles[i], pose, pose, map, out var rawMetrics) ||
+                !CapsuleSweepPruningBounds.TryCreate(_triangles[i].SweepCompanion!, pose, nativePose, nativeMap, out var nativeMetrics)) return false;
+            metrics = metrics.Include(rawMetrics).Include(nativeMetrics);
         }
-        Vector3 pruningMin = new(float.PositiveInfinity), pruningMax = new(float.NegativeInfinity);
+        Vector3 forwardRootMin = new(float.PositiveInfinity), forwardRootMax = new(float.NegativeInfinity);
         for (int i = 0; i < _nodes.Length; i++)
         {
             _nodes[i] = mesh.Tree.Nodes[i];
@@ -135,9 +139,11 @@ internal sealed class InstalledMeshSweepGeometry
             {
                 NodeChild source = child == 0 ? _nodes[i].A : _nodes[i].B;
                 Vector3 min = new(float.PositiveInfinity), max = new(float.NegativeInfinity);
+                Vector3 forwardMin = min, forwardMax = max;
                 if (identity)
                 {
                     if (!Translate(source.Min * _scale, source.Max * _scale, pose.Position, out min, out max)) return false;
+                    forwardMin = min; forwardMax = max;
                 }
                 else for (int corner = 0; corner < 8; corner++)
                 {
@@ -147,9 +153,10 @@ internal sealed class InstalledMeshSweepGeometry
                     // scaled installed vertex, including points on a closed tree boundary.
                     point *= _scale;
                     if (!Local(point) || !InstalledSweepBounds.TryPoint(map, pose, point, out Vector3 lo, out Vector3 hi)) return false;
+                    forwardMin = Vector3.Min(forwardMin, lo); forwardMax = Vector3.Max(forwardMax, hi);
+                    if (!InstalledSweepBounds.TryPruningPoint(map, pose, point, out lo, out hi)) return false;
                     min = Vector3.Min(min, lo); max = Vector3.Max(max, hi);
                 }
-                double pad = rawPad;
                 if (source.Index < 0)
                 {
                     // ConvexHomogeneousCompoundSweepTask uses GetPosedLocalChild.
@@ -157,23 +164,23 @@ internal sealed class InstalledMeshSweepGeometry
                     // geometry, instead of asserting that subtracting the center is exact.
                     int triangle = Tree.Encode(source.Index);
                     InstalledSweepGeometry native = _triangles[triangle].SweepCompanion!;
-                    if (!native.TryPose(pose, out var nativeMap) ||
-                        !CapsuleSweepPruning.TryStoredPad(pose, native.LeafPose, native.LocalPose.Position, out double nativePad)) return false;
-                    pad = Math.Max(pad, nativePad);
+                    if (!native.TryPose(pose, out var nativeMap)) return false;
                     if (identity)
                     {
                         var local = _nativeBounds[triangle];
                         if (!Translate(local.Min, local.Max, native.LeafPose.Position, out Vector3 lo, out Vector3 hi)) return false;
                         min = Vector3.Min(min, lo); max = Vector3.Max(max, hi);
+                        forwardMin = Vector3.Min(forwardMin, lo); forwardMax = Vector3.Max(forwardMax, hi);
                     }
                     else for (int vertex = 0; vertex < 3; vertex++)
                     {
                         if (!InstalledSweepBounds.TryPoint(nativeMap, native.LeafPose, native.Vertex(vertex), out Vector3 lo, out Vector3 hi)) return false;
+                        forwardMin = Vector3.Min(forwardMin, lo); forwardMax = Vector3.Max(forwardMax, hi);
+                        if (!InstalledSweepBounds.TryPruningPoint(nativeMap, native.LeafPose, native.Vertex(vertex), out lo, out hi)) return false;
                         min = Vector3.Min(min, lo); max = Vector3.Max(max, hi);
                     }
                 }
-                pruningMin = Vector3.Min(pruningMin, min); pruningMax = Vector3.Max(pruningMax, max);
-                if (!CapsuleSweepPruning.ExpandStored(min, max, pad, out min, out max)) return false;
+                forwardRootMin = Vector3.Min(forwardRootMin, forwardMin); forwardRootMax = Vector3.Max(forwardRootMax, forwardMax);
                 _posedBounds[i * 2 + child] = (min, max);
             }
         }
@@ -193,8 +200,9 @@ internal sealed class InstalledMeshSweepGeometry
             }
         }
         var first = _posedBounds[0];
-        RootBounds = Count == 1 ? first : (Vector3.Min(first.Min, _posedBounds[1].Min), Vector3.Max(first.Max, _posedBounds[1].Max));
-        PruningBounds = (pruningMin, pruningMax);
+        RootBounds = (forwardRootMin, forwardRootMax);
+        PruningBounds = Count == 1 ? first : (Vector3.Min(first.Min, _posedBounds[1].Min), Vector3.Max(first.Max, _posedBounds[1].Max));
+        PruningMetrics = metrics.WithExcess(RootBounds.Min, RootBounds.Max, PruningBounds.Min, PruningBounds.Max);
         _lastPose = pose; _posed = true;
         return true;
     }

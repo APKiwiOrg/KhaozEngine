@@ -122,14 +122,17 @@ internal static class InstalledSweepBounds
         {
             Vector3 childMin = new(float.PositiveInfinity), childMax = new(float.NegativeInfinity);
             Vector3 pruningMin = childMin, pruningMax = childMax;
+            CapsuleSweepPruningBounds metrics = default;
             foreach (var child in children)
             {
                 if (!TryCreate(child, pose, out var lo, out var hi)) return false;
                 childMin = Vector3.Min(childMin, lo); childMax = Vector3.Max(childMax, hi);
+                metrics = metrics.Include(child.PruningMetrics);
                 if (child.PruningBounds is not { } bounds) return false;
                 pruningMin = Vector3.Min(pruningMin, bounds.Min); pruningMax = Vector3.Max(pruningMax, bounds.Max);
             }
             geometry.PruningBounds = (pruningMin, pruningMax);
+            geometry.PruningMetrics = metrics;
             minimum = childMin; maximum = childMax;
             return children.Length > 0 && children.Length <= CapsuleGeneralSweepPolicy.MaximumChildren;
         }
@@ -137,12 +140,14 @@ internal static class InstalledSweepBounds
         {
             if (!mesh.ProvePose(pose, map)) return false;
             geometry.PruningBounds = mesh.PruningBounds;
+            geometry.PruningMetrics = mesh.PruningMetrics;
             (minimum, maximum) = mesh.RootBounds;
             return InstalledPoseOperator.Within(minimum, CapsuleGeneralSweepPolicy.MaximumStoredCoordinate) &&
                 InstalledPoseOperator.Within(maximum, CapsuleGeneralSweepPolicy.MaximumStoredCoordinate);
         }
-        if (!CapsuleSweepPruning.TryStoredPad(pose, leafPose, geometry.LocalPose.Position, out double pad)) return false;
+        if (!CapsuleSweepPruningBounds.TryCreate(geometry, pose, leafPose, map, out var leafMetrics)) return false;
         Vector3 min = new(float.PositiveInfinity), max = new(float.NegativeInfinity);
+        Vector3 operationalMin = min, operationalMax = max;
         if (geometry.Curved.HasValue)
         {
             // A local box encloses the full circular radial set, without replacing the
@@ -155,6 +160,8 @@ internal static class InstalledSweepBounds
                     (corner & 2) == 0 ? -extent : extent, (corner & 4) == 0 ? -extent : extent);
                 if (!TryPoint(map, leafPose, point, out var lo, out var hi)) return false;
                 min = Vector3.Min(min, lo); max = Vector3.Max(max, hi);
+                if (!TryPruningPoint(map, leafPose, point, out lo, out hi)) return false;
+                operationalMin = Vector3.Min(operationalMin, lo); operationalMax = Vector3.Max(operationalMax, hi);
             }
             Vector3 r = new(geometry.Radius);
             for (int i = 0; i < geometry.VertexCount; i++)
@@ -162,17 +169,27 @@ internal static class InstalledSweepBounds
                 if (!TryPoint(map, leafPose, geometry.Vertex(i), out var lo, out var hi)) return false;
                 min = Vector3.Min(min, new(Down((double)lo.X - r.X), Down((double)lo.Y - r.Y), Down((double)lo.Z - r.Z)));
                 max = Vector3.Max(max, new(Up((double)hi.X + r.X), Up((double)hi.Y + r.Y), Up((double)hi.Z + r.Z)));
+                if (!TryPruningPoint(map, leafPose, geometry.Vertex(i), out lo, out hi)) return false;
+                operationalMin = Vector3.Min(operationalMin, new(Down((double)lo.X - r.X), Down((double)lo.Y - r.Y), Down((double)lo.Z - r.Z)));
+                operationalMax = Vector3.Max(operationalMax, new(Up((double)hi.X + r.X), Up((double)hi.Y + r.Y), Up((double)hi.Z + r.Z)));
             }
-            geometry.PruningBounds = (min, max);
-            return CapsuleSweepPruning.ExpandStored(min, max, pad, out minimum, out maximum);
+            geometry.PruningBounds = (operationalMin, operationalMax);
+            geometry.PruningMetrics = leafMetrics.WithExcess(min, max, operationalMin, operationalMax);
+            minimum = min; maximum = max;
+            return InstalledPoseOperator.Within(min, CapsuleGeneralSweepPolicy.MaximumStoredCoordinate) &&
+                InstalledPoseOperator.Within(max, CapsuleGeneralSweepPolicy.MaximumStoredCoordinate);
         }
         for (int i = 0; i < geometry.VertexCount; i++)
         {
             if (!TryPoint(map, leafPose, geometry.Vertex(i), out var lo, out var hi)) return false;
             min = Vector3.Min(min, lo); max = Vector3.Max(max, hi);
+            if (!TryPruningPoint(map, leafPose, geometry.Vertex(i), out lo, out hi)) return false;
+            operationalMin = Vector3.Min(operationalMin, lo); operationalMax = Vector3.Max(operationalMax, hi);
         }
-        geometry.PruningBounds = (min, max);
-        return CapsuleSweepPruning.ExpandStored(min, max, pad, out minimum, out maximum);
+        geometry.PruningBounds = (operationalMin, operationalMax);
+        geometry.PruningMetrics = leafMetrics.WithExcess(min, max, operationalMin, operationalMax);
+        minimum = min; maximum = max;
+        return true;
     }
 
     internal static bool TryPoint(InstalledPoseOperator map, RigidPose pose, Vector3 point,
@@ -181,15 +198,22 @@ internal static class InstalledSweepBounds
         minimum = maximum = default;
         FeaturePoint affine = map.Point(point, exactZeroProducts: true);
         GeometryVector rounded = RepresentedGeometryTransforms.PosePoint(new Pose(pose.Position, pose.Orientation), point);
-        // The source tests distance after the transpose map. Its preimage is the inverse
-        // transpose, which need not equal the forward quaternion map. Rounded root/child
-        // arithmetic is separately enclosed by this leaf's mutation-time stored pad.
-        FeaturePoint operational = CapsuleSweepPruning.OperationalPoint(map, point);
-        if (!affine.IsResolved || !rounded.IsResolved || !operational.IsResolved) return false;
+        if (!affine.IsResolved || !rounded.IsResolved) return false;
         minimum = new(Down(Math.Min(affine.X.Bounds.Lower, rounded.X.Lower)),
             Down(Math.Min(affine.Y.Bounds.Lower, rounded.Y.Lower)), Down(Math.Min(affine.Z.Bounds.Lower, rounded.Z.Lower)));
         maximum = new(Up(Math.Max(affine.X.Bounds.Upper, rounded.X.Upper)),
             Up(Math.Max(affine.Y.Bounds.Upper, rounded.Y.Upper)), Up(Math.Max(affine.Z.Bounds.Upper, rounded.Z.Upper)));
+
+        return InstalledPoseOperator.Within(minimum, CapsuleGeneralSweepPolicy.MaximumStoredCoordinate) &&
+            InstalledPoseOperator.Within(maximum, CapsuleGeneralSweepPolicy.MaximumStoredCoordinate);
+    }
+
+    internal static bool TryPruningPoint(InstalledPoseOperator map, RigidPose pose, Vector3 point,
+        out Vector3 minimum, out Vector3 maximum)
+    {
+        if (!TryPoint(map, pose, point, out minimum, out maximum)) return false;
+        FeaturePoint operational = CapsuleSweepPruning.OperationalPoint(map, point);
+        if (!operational.IsResolved) return false;
         minimum = Vector3.Min(minimum, new(Down(operational.X.Bounds.Lower), Down(operational.Y.Bounds.Lower), Down(operational.Z.Bounds.Lower)));
         maximum = Vector3.Max(maximum, new(Up(operational.X.Bounds.Upper), Up(operational.Y.Bounds.Upper), Up(operational.Z.Bounds.Upper)));
         return InstalledPoseOperator.Within(minimum, CapsuleGeneralSweepPolicy.MaximumStoredCoordinate) &&

@@ -254,15 +254,17 @@ General installed local coordinates and translations stay
 within 2048 m, with the existing squared quaternion norm band `1 +/- 2^-20` and positive determinant.
 A rounded quaternion is never normalized. The forward finite geometry and the pinned transpose-local
 operation graph must both prove the same outcome, including exactly rigid maps. Rounded root-offset
-subtraction and child-offset addition can disagree even with identity rotation. Outer and mesh inner
-pruning use mutation-proved padded general-leaf bounds that enclose the full operational graph
-as well as the forward model, including cancellation along the original path. The stored pad
-covers root subtraction, child addition, full-axis rounding and inverse-transpose skin contraction
-for the complete general query domain. Outer and inner queries keep the original unpadded aperture.
-Unproved stored enclosures refuse. A general-only rejection after enumeration uses the retained
-geometry union and the same enclosure proof with this query's smaller operands. It avoids
-unnecessary leaf refusals without changing tree traversal or work limits.
-Identity-box bounds and kernels receive no padding.
+subtraction and child-offset addition can disagree even with identity rotation. Stored Bepu
+bounds retain the forward enclosure without any operational pad. A separate general-only
+query traversal expands its aperture from the actual query operands and mutation-maintained
+selected root, child, geometry and operator bounds. It covers the complete operational graph,
+including cancellation and inverse-transpose skin departure. Only selected non-identity leaves
+count against that pass's own 4096-leaf preflight and callback ceilings. Identity leaves retain
+the original unpadded aperture, checked preflight, callback ceiling and kernels. The extra pass
+runs only when the selection contains a general installation. General candidate rejection and
+mesh inner traversal use the same actual-query proof over retained raw/recentered preimages.
+Unproved evidence refuses. No query-time geometry scan, replacement spatial index or warm
+allocation is introduced, and the simulation's collision tree receives no operational inflation.
 Hit brackets include their complete disagreement
 within 0.001 m. Unknown coefficient correspondence, ambiguous tangency and ill-conditioned transforms
 refuse. Hulls use the installed face loops and point identities, including SIMD padding, after strict

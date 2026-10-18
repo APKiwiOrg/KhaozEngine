@@ -30,7 +30,8 @@ public sealed partial class BepuPhysicsWorld
         if (!ObserveInstalledSweepBounds(new CollidableReference(entry.Handle), body.Shape, body.Pose, min, max,
             out bool proved)) return false;
         SetSweepBoundStatus(_sweepStaticBounds, _unprovedSweepStatics, id, proved);
-        _sweepSelection.Observe(id, dynamic: false, !CapsuleSweepGeometry.TryReadIdentityBox(_sim.Shapes, body.Shape, body.Pose, out _));
+        _sweepSelection.Observe(id, dynamic: false, !CapsuleSweepGeometry.TryReadIdentityBox(_sim.Shapes, body.Shape, body.Pose, out _),
+            _installedSweepStatics[id]?.PruningMetrics ?? default);
         return true;
     }
 
@@ -47,7 +48,8 @@ public sealed partial class BepuPhysicsWorld
         if (!stored) return false;
         if (!ObserveInstalledSweepBounds(new CollidableReference(CollidableMobility.Dynamic, entry.Handle), body.Collidable.Shape, body.Pose, min, max, out bool proved)) return false;
         SetSweepBoundStatus(_sweepDynamicBounds, _unprovedSweepDynamics, id, proved);
-        _sweepSelection.Observe(id, dynamic: true, !CapsuleSweepGeometry.TryReadIdentityBox(_sim.Shapes, body.Collidable.Shape, body.Pose, out _));
+        _sweepSelection.Observe(id, dynamic: true, !CapsuleSweepGeometry.TryReadIdentityBox(_sim.Shapes, body.Collidable.Shape, body.Pose, out _),
+            _installedSweepDynamics[id]?.PruningMetrics ?? default);
         return true;
     }
 

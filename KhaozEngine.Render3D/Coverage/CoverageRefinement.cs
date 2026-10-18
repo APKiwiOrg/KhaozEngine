@@ -55,7 +55,7 @@ public sealed class CoverageRefinement
     public CoverageSourceTopology Source => source;
     /// <summary>The immutable host map this topology was compiled from. Region indices index Map.Regions.</summary>
     public HostCoverageMap Map { get; }
-    public string HostIdentity => source.Identity;
+    public string HostIdentity { [Binary32Kernel] get => source.Identity; }
     public int SourceVertexCount => source.Vertices.Count;
     public int VertexCount => Vertices.Count;
     public int TriangleCount => Triangles.Count;
@@ -291,6 +291,12 @@ public sealed class CoverageRefinement
 
     /// <summary>True for every vertex of an authored core triangle, whose region strength is exactly one.</summary>
     internal bool IsCoreVertex(int vertex) => coreVertices[vertex];
+
+    internal CoveragePositionRecipe GetPositionRecipe(int positionGroup)
+    {
+        var recipe = positionRecipes[positionGroup];
+        return new(recipe.A, recipe.B, recipe.C, recipe.Weights.A, recipe.Weights.B, recipe.Weights.C, Denominator);
+    }
 
     /// <summary>Rest-pose refined position, used only to shape cold spatial hierarchies.</summary>
     internal Vector3 RestPosition(int vertex)

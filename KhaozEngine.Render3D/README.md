@@ -151,6 +151,11 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   Its non-mutating `MatchesHostSkin` compares a captured inverse-bind span with the actual uploaded skin
   without exposing owned arrays. Attachment binding uses this to reject garments validated against another
   skin even when the skeleton instance is shared.
+  For headless sampled-pose CI, `CoverageOracle` owns copied inverse binds and reusable reference and exact
+  certification scratch. It constructs then certifies at the approved clearance with zero device tolerance.
+  Warm checks allocate no managed memory. Flush events are diagnostic, and partial transitions do not prove
+  full-weight core clearance. Its geometry certificate grants no drawable permission. See the
+  [headless oracle contract](../docs/USING-KHAOZENGINE.md#headless-equipment-coverage-oracle).
   After `Begin`, `TryStageCoverageEquipment` verifies a complete rigid source against uploaded position and
   index fingerprints and returns frozen descriptors without queuing them. Submit those descriptors through
   `Draw` and the descriptor `DrawMeshOutline` overload. Asset-byte verification is still the caller's job.

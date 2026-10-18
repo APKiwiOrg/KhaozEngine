@@ -78,7 +78,8 @@ internal static class CoverageCoreCorrection
         return double.IsFinite(deficit);
     }
 
-    static bool TryTerms(ReadOnlySpan<ModelVertex> before, in Matrix4x4 actorModel, in CoverageCommandPose command,
+    /// <summary>Internal so reference capture can record the exact correction clearance and conversion terms.</summary>
+    internal static bool TryTerms(ReadOnlySpan<ModelVertex> before, in Matrix4x4 actorModel, in CoverageCommandPose command,
         in CoverageCommandFrame frame, out double clearance, out double rate, out double conversion)
     {
         clearance = rate = conversion = double.NaN;

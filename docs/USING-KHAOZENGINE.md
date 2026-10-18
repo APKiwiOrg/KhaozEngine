@@ -6414,6 +6414,98 @@ Version 21 removes the old rigid-only set type names without aliases. See the
 [migration and design record](design/SKINNED-ATTACHMENT-PARTS-DESIGN-2026-10-15.md) and the
 [renderer package reference](../KhaozEngine.Attachments.Render3D/README.md) for the full contract.
 
+#### Headless equipment coverage oracle
+
+`CoverageOracle` in `KhaozEngine.Render3D` checks a sampled pose without a scene, render context,
+GPU resource or fallback. This is test and CI infrastructure. It grants no drawable permission and
+does not replace the runtime coverage path described above.
+
+Create `new CoverageOracle(topology, inverseBind, commandCapacity)` once per actor topology. Creation
+copies the inverse binds, requires 1 to 128 finite affine matrices, validates every source bone index
+against that count and allocates bounded workspaces. `commandCapacity` defaults to
+`CoverageScratch.MaxCommands` (4) and must be 1 through 4. `Topology` exposes the same immutable
+refinement for command binding. The oracle owns no disposable or GPU resource.
+
+```csharp
+public bool TryCheck(ReadOnlySpan<Matrix4x4> palette, in Matrix4x4 model,
+    ReadOnlySpan<CoverageCommandPose> commands,
+    out CoverageOracleCertificate certificate, out CoverageOracleFailure failure);
+```
+
+The palette contains joint model matrices and must match the copied inverse-bind count. A mismatch
+throws `ArgumentException`. Empty or oversized commands return `Construction/CapacityExceeded`, with
+zero equipment and command IDs, the supplied count and the configured limit. Warm checks, including
+refusal and recovery, allocate zero managed bytes. Reuse is single-caller and not thread safe.
+
+`CoverageOracleStage` is `None = 0`, `Construction = 1`, `Certification = 2`. Checks run in that order:
+
+1. Construction composes the palette with the pinned `CoverageReferenceSkinning.Compose`, skins the
+   source with reference arithmetic and constructs the reference surface in production reserve mode.
+   A refusal returns its original guard code before certification runs.
+2. Certification passes that surface and its interpolated before surface to the unchanged
+   `CoverageCertification.ValidateGeometry`, at the approved `Clearance` with zero device tolerance.
+   Exact frame-admission refusals remain `Certification/UnsupportedTransform`, including an
+   unabsorbed-error sample with clearance `1e-6f`.
+
+On every frozen fixture, the oracle verdict must match exact certification of the frozen exact
+capture's own `Before` and `Final`, using the same model, commands and approved clearance. Compare
+pass or refusal stage and code. Failure counts can differ because the surfaces differ. The oracle
+can reject authored poses whose collars fall inside the clearance. The six reference examples
+`curved-challenging-seams-l2-w1`, `curved-challenging-welded-l2-w1`,
+`curved-challenging-seams-l3-w1`, `curved-challenging-welded-l3-w1`,
+`curved-challenging-seams-l4-w1` and `curved-challenging-welded-l4-w1` all refuse with
+`Certification/EquipmentIntersection` on both paths. These are certification negatives. The other
+66 frozen fixtures pass on both paths.
+
+`CoverageOracleFailure(Stage, Failure)` preserves `CoverageFailure.Code`, `HostIdentity`,
+`EquipmentInstanceId`, `CommandId`, `Count` and `Limit`. It has no site field. Success returns a default
+failure. Every refusal returns a default certificate. No new failure code is introduced.
+`CoverageOracleCertificate(FullCoreClearance, MinimumCoreClearance, DisplacedVertices)` maps the exact
+geometry certificate. At a partial transition, `FullCoreClearance` is false and
+`MinimumCoreClearance` is NaN. Weight zero preserves the unconformed reference bytes and still checks
+the full construction target. Partial transitions do not prove full-weight core clearance.
+
+Construction's quarter-clearance reserve is margin against drivers that break their precision rules.
+It adds no certification padding. The guarantee applies to devices meeting the
+[equipment coverage kernel contract](design/EQUIPMENT-COVERAGE-KERNEL-CONTRACT-2026-10-18.md).
+Each reference operand and result whose magnitude is at most `2^-126`, including the smallest normal,
+flushes to a zero of the same sign. Uploaded inputs flush on first read. Flush events are diagnostic
+and do not create another stage or refuse a sample. A subnormal palette input therefore checks like
+the same input replaced by its signed zero.
+
+This complete headless check builds a refinement and binds a real sampled equipment frame. Pass the
+same asset data, palette, actor model, equipment world matrix and authored command values used by the
+game. Call it from CI so a refusal fails the check. Retain the oracle and command storage across
+samples when checking warm allocations.
+
+```csharp
+using System;
+using System.Numerics;
+using KhaozEngine.Render3D;
+
+static CoverageOracleCertificate CheckPose(CoverageSourceTopology host, HostCoverageMap map,
+    ReadOnlySpan<Matrix4x4> inverseBind, ReadOnlySpan<Matrix4x4> jointPalette,
+    in Matrix4x4 actorModel, CoverageSupportSurface support, in Matrix4x4 equipmentWorld,
+    uint commandId, ulong equipmentInstanceId, int regionIndex,
+    float minZ, float maxZ, float collarWidth, float clearance, float budget, float weight)
+{
+    CoverageRefinement topology = CoverageRefinement.Build(host, map);
+    var oracle = new CoverageOracle(topology, inverseBind, commandCapacity: 1);
+    CoverageCommandPose[] commands = [new(commandId, equipmentInstanceId, topology, regionIndex,
+        support, equipmentWorld, support.CoverageLocal * equipmentWorld,
+        minZ, maxZ, collarWidth, clearance, budget, weight)];
+    if (!oracle.TryCheck(jointPalette, actorModel, commands, out var certificate, out var failure))
+        throw new InvalidOperationException($"Coverage refused at {failure.Stage}: {failure.Failure}");
+    return certificate;
+}
+```
+
+A certificate covers only the exact supplied palette, model and command bits. The game's sampler
+must produce those bits deterministically on every machine that plays them. R2's sampled-pose
+limitation remains: passing samples does not prove unsampled blends, transitions or continuous
+animation. The game's sampler, blend grid and asset inventory remain Part D. The dev-only real-GPU
+verification mode and native bit-equality proof remain Part C.
+
 #### Migrating from 20.x
 
 Besides the set type renames in the design record table:

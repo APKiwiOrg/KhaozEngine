@@ -56,6 +56,7 @@ public sealed class CoverageSupportSurface
             hash.AppendData(MemoryMarshal.AsBytes(values.AsSpan()));
         }
         Identity = Convert.ToHexStringLower(hash.GetHashAndReset());
+        ReferenceData = new(this);
     }
 
     public CoverageSourceTopology Source { get; }
@@ -81,6 +82,7 @@ public sealed class CoverageSupportSurface
     /// <summary>True when the displayed source is an embedded closed manifold and the support is certified as its
     /// inward side. Runtime conformation refuses any other support, because it cannot certify solid containment.</summary>
     public bool InwardOfClosedSolid { get; }
+    internal CoverageReferenceSupport ReferenceData { get; }
     internal double MaxSlope { get; }
     internal double MaxSourceMagnitude { get; }
 

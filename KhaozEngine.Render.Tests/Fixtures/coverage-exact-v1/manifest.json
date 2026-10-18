@@ -1,0 +1,734 @@
+{
+  "Format": "coverage-exact-v1",
+  "ConstructorBase": "c525aa2bb52a75db2b4b9c0d17a31638b7938699",
+  "CaptureCommit": "16080d2f8505fa729ce9f2c280449f784db7e97c",
+  "FieldOrder": {
+    "ModelVertex": "Position.XYZ Normal.XYZ Color.XYZW Uv.XY Tangent.XYZW",
+    "SkinnedVertex": "Position.XYZ Normal.XYZ Color.XYZW Uv.XY BoneIndices.XYZW BoneWeights.XYZW Tangent.XYZW",
+    "Matrix4x4": "M11 M12 M13 M14 M21 M22 M23 M24 M31 M32 M33 M34 M41 M42 M43 M44",
+    "CommandScalars": "MinZ MaxZ CollarWidth Clearance MaxWorldRecession TransitionWeight",
+    "Words": "binary32 as 8 and binary64 as 16 uppercase hex digits, space separated"
+  },
+  "Cases": [
+    {
+      "Id": "cost-typical-l2-lifted-w0",
+      "Family": "cost",
+      "Level": 2,
+      "Weight": "00000000",
+      "File": "cost-typical-l2-lifted-w0.json",
+      "SourceVertices": 1092,
+      "RefinedVertices": 1258,
+      "Commands": 2
+    },
+    {
+      "Id": "cost-typical-l2-lifted-w05",
+      "Family": "cost",
+      "Level": 2,
+      "Weight": "3F000000",
+      "File": "cost-typical-l2-lifted-w05.json",
+      "SourceVertices": 1092,
+      "RefinedVertices": 1258,
+      "Commands": 2
+    },
+    {
+      "Id": "cost-typical-l2-lifted-w1",
+      "Family": "cost",
+      "Level": 2,
+      "Weight": "3F800000",
+      "File": "cost-typical-l2-lifted-w1.json",
+      "SourceVertices": 1092,
+      "RefinedVertices": 1258,
+      "Commands": 2
+    },
+    {
+      "Id": "cost-typical-l2-bent-w0",
+      "Family": "cost",
+      "Level": 2,
+      "Weight": "00000000",
+      "File": "cost-typical-l2-bent-w0.json",
+      "SourceVertices": 1092,
+      "RefinedVertices": 1258,
+      "Commands": 2
+    },
+    {
+      "Id": "cost-typical-l2-bent-w05",
+      "Family": "cost",
+      "Level": 2,
+      "Weight": "3F000000",
+      "File": "cost-typical-l2-bent-w05.json",
+      "SourceVertices": 1092,
+      "RefinedVertices": 1258,
+      "Commands": 2
+    },
+    {
+      "Id": "cost-typical-l2-bent-w1",
+      "Family": "cost",
+      "Level": 2,
+      "Weight": "3F800000",
+      "File": "cost-typical-l2-bent-w1.json",
+      "SourceVertices": 1092,
+      "RefinedVertices": 1258,
+      "Commands": 2
+    },
+    {
+      "Id": "cost-typical-l3-lifted-w0",
+      "Family": "cost",
+      "Level": 3,
+      "Weight": "00000000",
+      "File": "cost-typical-l3-lifted-w0.json",
+      "SourceVertices": 1092,
+      "RefinedVertices": 1520,
+      "Commands": 2
+    },
+    {
+      "Id": "cost-typical-l3-lifted-w05",
+      "Family": "cost",
+      "Level": 3,
+      "Weight": "3F000000",
+      "File": "cost-typical-l3-lifted-w05.json",
+      "SourceVertices": 1092,
+      "RefinedVertices": 1520,
+      "Commands": 2
+    },
+    {
+      "Id": "cost-typical-l3-lifted-w1",
+      "Family": "cost",
+      "Level": 3,
+      "Weight": "3F800000",
+      "File": "cost-typical-l3-lifted-w1.json",
+      "SourceVertices": 1092,
+      "RefinedVertices": 1520,
+      "Commands": 2
+    },
+    {
+      "Id": "cost-typical-l3-bent-w0",
+      "Family": "cost",
+      "Level": 3,
+      "Weight": "00000000",
+      "File": "cost-typical-l3-bent-w0.json",
+      "SourceVertices": 1092,
+      "RefinedVertices": 1520,
+      "Commands": 2
+    },
+    {
+      "Id": "cost-typical-l3-bent-w05",
+      "Family": "cost",
+      "Level": 3,
+      "Weight": "3F000000",
+      "File": "cost-typical-l3-bent-w05.json",
+      "SourceVertices": 1092,
+      "RefinedVertices": 1520,
+      "Commands": 2
+    },
+    {
+      "Id": "cost-typical-l3-bent-w1",
+      "Family": "cost",
+      "Level": 3,
+      "Weight": "3F800000",
+      "File": "cost-typical-l3-bent-w1.json",
+      "SourceVertices": 1092,
+      "RefinedVertices": 1520,
+      "Commands": 2
+    },
+    {
+      "Id": "cost-typical-l4-lifted-w0",
+      "Family": "cost",
+      "Level": 4,
+      "Weight": "00000000",
+      "File": "cost-typical-l4-lifted-w0.json",
+      "SourceVertices": 1092,
+      "RefinedVertices": 1878,
+      "Commands": 2
+    },
+    {
+      "Id": "cost-typical-l4-lifted-w05",
+      "Family": "cost",
+      "Level": 4,
+      "Weight": "3F000000",
+      "File": "cost-typical-l4-lifted-w05.json",
+      "SourceVertices": 1092,
+      "RefinedVertices": 1878,
+      "Commands": 2
+    },
+    {
+      "Id": "cost-typical-l4-lifted-w1",
+      "Family": "cost",
+      "Level": 4,
+      "Weight": "3F800000",
+      "File": "cost-typical-l4-lifted-w1.json",
+      "SourceVertices": 1092,
+      "RefinedVertices": 1878,
+      "Commands": 2
+    },
+    {
+      "Id": "cost-typical-l4-bent-w0",
+      "Family": "cost",
+      "Level": 4,
+      "Weight": "00000000",
+      "File": "cost-typical-l4-bent-w0.json",
+      "SourceVertices": 1092,
+      "RefinedVertices": 1878,
+      "Commands": 2
+    },
+    {
+      "Id": "cost-typical-l4-bent-w05",
+      "Family": "cost",
+      "Level": 4,
+      "Weight": "3F000000",
+      "File": "cost-typical-l4-bent-w05.json",
+      "SourceVertices": 1092,
+      "RefinedVertices": 1878,
+      "Commands": 2
+    },
+    {
+      "Id": "cost-typical-l4-bent-w1",
+      "Family": "cost",
+      "Level": 4,
+      "Weight": "3F800000",
+      "File": "cost-typical-l4-bent-w1.json",
+      "SourceVertices": 1092,
+      "RefinedVertices": 1878,
+      "Commands": 2
+    },
+    {
+      "Id": "cost-limit-l2-lifted-w0",
+      "Family": "cost",
+      "Level": 2,
+      "Weight": "00000000",
+      "File": "cost-limit-l2-lifted-w0.json",
+      "SourceVertices": 1092,
+      "RefinedVertices": 1224,
+      "Commands": 4
+    },
+    {
+      "Id": "cost-limit-l2-lifted-w05",
+      "Family": "cost",
+      "Level": 2,
+      "Weight": "3F000000",
+      "File": "cost-limit-l2-lifted-w05.json",
+      "SourceVertices": 1092,
+      "RefinedVertices": 1224,
+      "Commands": 4
+    },
+    {
+      "Id": "cost-limit-l2-lifted-w1",
+      "Family": "cost",
+      "Level": 2,
+      "Weight": "3F800000",
+      "File": "cost-limit-l2-lifted-w1.json",
+      "SourceVertices": 1092,
+      "RefinedVertices": 1224,
+      "Commands": 4
+    },
+    {
+      "Id": "cost-limit-l2-bent-w0",
+      "Family": "cost",
+      "Level": 2,
+      "Weight": "00000000",
+      "File": "cost-limit-l2-bent-w0.json",
+      "SourceVertices": 1092,
+      "RefinedVertices": 1224,
+      "Commands": 4
+    },
+    {
+      "Id": "cost-limit-l2-bent-w05",
+      "Family": "cost",
+      "Level": 2,
+      "Weight": "3F000000",
+      "File": "cost-limit-l2-bent-w05.json",
+      "SourceVertices": 1092,
+      "RefinedVertices": 1224,
+      "Commands": 4
+    },
+    {
+      "Id": "cost-limit-l2-bent-w1",
+      "Family": "cost",
+      "Level": 2,
+      "Weight": "3F800000",
+      "File": "cost-limit-l2-bent-w1.json",
+      "SourceVertices": 1092,
+      "RefinedVertices": 1224,
+      "Commands": 4
+    },
+    {
+      "Id": "cost-limit-l3-lifted-w0",
+      "Family": "cost",
+      "Level": 3,
+      "Weight": "00000000",
+      "File": "cost-limit-l3-lifted-w0.json",
+      "SourceVertices": 1092,
+      "RefinedVertices": 1428,
+      "Commands": 4
+    },
+    {
+      "Id": "cost-limit-l3-lifted-w05",
+      "Family": "cost",
+      "Level": 3,
+      "Weight": "3F000000",
+      "File": "cost-limit-l3-lifted-w05.json",
+      "SourceVertices": 1092,
+      "RefinedVertices": 1428,
+      "Commands": 4
+    },
+    {
+      "Id": "cost-limit-l3-lifted-w1",
+      "Family": "cost",
+      "Level": 3,
+      "Weight": "3F800000",
+      "File": "cost-limit-l3-lifted-w1.json",
+      "SourceVertices": 1092,
+      "RefinedVertices": 1428,
+      "Commands": 4
+    },
+    {
+      "Id": "cost-limit-l3-bent-w0",
+      "Family": "cost",
+      "Level": 3,
+      "Weight": "00000000",
+      "File": "cost-limit-l3-bent-w0.json",
+      "SourceVertices": 1092,
+      "RefinedVertices": 1428,
+      "Commands": 4
+    },
+    {
+      "Id": "cost-limit-l3-bent-w05",
+      "Family": "cost",
+      "Level": 3,
+      "Weight": "3F000000",
+      "File": "cost-limit-l3-bent-w05.json",
+      "SourceVertices": 1092,
+      "RefinedVertices": 1428,
+      "Commands": 4
+    },
+    {
+      "Id": "cost-limit-l3-bent-w1",
+      "Family": "cost",
+      "Level": 3,
+      "Weight": "3F800000",
+      "File": "cost-limit-l3-bent-w1.json",
+      "SourceVertices": 1092,
+      "RefinedVertices": 1428,
+      "Commands": 4
+    },
+    {
+      "Id": "cost-limit-l4-lifted-w0",
+      "Family": "cost",
+      "Level": 4,
+      "Weight": "00000000",
+      "File": "cost-limit-l4-lifted-w0.json",
+      "SourceVertices": 1092,
+      "RefinedVertices": 1704,
+      "Commands": 4
+    },
+    {
+      "Id": "cost-limit-l4-lifted-w05",
+      "Family": "cost",
+      "Level": 4,
+      "Weight": "3F000000",
+      "File": "cost-limit-l4-lifted-w05.json",
+      "SourceVertices": 1092,
+      "RefinedVertices": 1704,
+      "Commands": 4
+    },
+    {
+      "Id": "cost-limit-l4-lifted-w1",
+      "Family": "cost",
+      "Level": 4,
+      "Weight": "3F800000",
+      "File": "cost-limit-l4-lifted-w1.json",
+      "SourceVertices": 1092,
+      "RefinedVertices": 1704,
+      "Commands": 4
+    },
+    {
+      "Id": "cost-limit-l4-bent-w0",
+      "Family": "cost",
+      "Level": 4,
+      "Weight": "00000000",
+      "File": "cost-limit-l4-bent-w0.json",
+      "SourceVertices": 1092,
+      "RefinedVertices": 1704,
+      "Commands": 4
+    },
+    {
+      "Id": "cost-limit-l4-bent-w05",
+      "Family": "cost",
+      "Level": 4,
+      "Weight": "3F000000",
+      "File": "cost-limit-l4-bent-w05.json",
+      "SourceVertices": 1092,
+      "RefinedVertices": 1704,
+      "Commands": 4
+    },
+    {
+      "Id": "cost-limit-l4-bent-w1",
+      "Family": "cost",
+      "Level": 4,
+      "Weight": "3F800000",
+      "File": "cost-limit-l4-bent-w1.json",
+      "SourceVertices": 1092,
+      "RefinedVertices": 1704,
+      "Commands": 4
+    },
+    {
+      "Id": "curved-ordinary-welded-l2-w0",
+      "Family": "curved",
+      "Level": 2,
+      "Weight": "00000000",
+      "File": "curved-ordinary-welded-l2-w0.json",
+      "SourceVertices": 49,
+      "RefinedVertices": 105,
+      "Commands": 1
+    },
+    {
+      "Id": "curved-ordinary-welded-l2-w05",
+      "Family": "curved",
+      "Level": 2,
+      "Weight": "3F000000",
+      "File": "curved-ordinary-welded-l2-w05.json",
+      "SourceVertices": 49,
+      "RefinedVertices": 105,
+      "Commands": 1
+    },
+    {
+      "Id": "curved-ordinary-welded-l2-w1",
+      "Family": "curved",
+      "Level": 2,
+      "Weight": "3F800000",
+      "File": "curved-ordinary-welded-l2-w1.json",
+      "SourceVertices": 49,
+      "RefinedVertices": 105,
+      "Commands": 1
+    },
+    {
+      "Id": "curved-ordinary-welded-l3-w0",
+      "Family": "curved",
+      "Level": 3,
+      "Weight": "00000000",
+      "File": "curved-ordinary-welded-l3-w0.json",
+      "SourceVertices": 49,
+      "RefinedVertices": 193,
+      "Commands": 1
+    },
+    {
+      "Id": "curved-ordinary-welded-l3-w05",
+      "Family": "curved",
+      "Level": 3,
+      "Weight": "3F000000",
+      "File": "curved-ordinary-welded-l3-w05.json",
+      "SourceVertices": 49,
+      "RefinedVertices": 193,
+      "Commands": 1
+    },
+    {
+      "Id": "curved-ordinary-welded-l3-w1",
+      "Family": "curved",
+      "Level": 3,
+      "Weight": "3F800000",
+      "File": "curved-ordinary-welded-l3-w1.json",
+      "SourceVertices": 49,
+      "RefinedVertices": 193,
+      "Commands": 1
+    },
+    {
+      "Id": "curved-ordinary-welded-l4-w0",
+      "Family": "curved",
+      "Level": 4,
+      "Weight": "00000000",
+      "File": "curved-ordinary-welded-l4-w0.json",
+      "SourceVertices": 49,
+      "RefinedVertices": 313,
+      "Commands": 1
+    },
+    {
+      "Id": "curved-ordinary-welded-l4-w05",
+      "Family": "curved",
+      "Level": 4,
+      "Weight": "3F000000",
+      "File": "curved-ordinary-welded-l4-w05.json",
+      "SourceVertices": 49,
+      "RefinedVertices": 313,
+      "Commands": 1
+    },
+    {
+      "Id": "curved-ordinary-welded-l4-w1",
+      "Family": "curved",
+      "Level": 4,
+      "Weight": "3F800000",
+      "File": "curved-ordinary-welded-l4-w1.json",
+      "SourceVertices": 49,
+      "RefinedVertices": 313,
+      "Commands": 1
+    },
+    {
+      "Id": "curved-ordinary-seams-l2-w0",
+      "Family": "curved",
+      "Level": 2,
+      "Weight": "00000000",
+      "File": "curved-ordinary-seams-l2-w0.json",
+      "SourceVertices": 56,
+      "RefinedVertices": 116,
+      "Commands": 1
+    },
+    {
+      "Id": "curved-ordinary-seams-l2-w05",
+      "Family": "curved",
+      "Level": 2,
+      "Weight": "3F000000",
+      "File": "curved-ordinary-seams-l2-w05.json",
+      "SourceVertices": 56,
+      "RefinedVertices": 116,
+      "Commands": 1
+    },
+    {
+      "Id": "curved-ordinary-seams-l2-w1",
+      "Family": "curved",
+      "Level": 2,
+      "Weight": "3F800000",
+      "File": "curved-ordinary-seams-l2-w1.json",
+      "SourceVertices": 56,
+      "RefinedVertices": 116,
+      "Commands": 1
+    },
+    {
+      "Id": "curved-ordinary-seams-l3-w0",
+      "Family": "curved",
+      "Level": 3,
+      "Weight": "00000000",
+      "File": "curved-ordinary-seams-l3-w0.json",
+      "SourceVertices": 56,
+      "RefinedVertices": 208,
+      "Commands": 1
+    },
+    {
+      "Id": "curved-ordinary-seams-l3-w05",
+      "Family": "curved",
+      "Level": 3,
+      "Weight": "3F000000",
+      "File": "curved-ordinary-seams-l3-w05.json",
+      "SourceVertices": 56,
+      "RefinedVertices": 208,
+      "Commands": 1
+    },
+    {
+      "Id": "curved-ordinary-seams-l3-w1",
+      "Family": "curved",
+      "Level": 3,
+      "Weight": "3F800000",
+      "File": "curved-ordinary-seams-l3-w1.json",
+      "SourceVertices": 56,
+      "RefinedVertices": 208,
+      "Commands": 1
+    },
+    {
+      "Id": "curved-ordinary-seams-l4-w0",
+      "Family": "curved",
+      "Level": 4,
+      "Weight": "00000000",
+      "File": "curved-ordinary-seams-l4-w0.json",
+      "SourceVertices": 56,
+      "RefinedVertices": 332,
+      "Commands": 1
+    },
+    {
+      "Id": "curved-ordinary-seams-l4-w05",
+      "Family": "curved",
+      "Level": 4,
+      "Weight": "3F000000",
+      "File": "curved-ordinary-seams-l4-w05.json",
+      "SourceVertices": 56,
+      "RefinedVertices": 332,
+      "Commands": 1
+    },
+    {
+      "Id": "curved-ordinary-seams-l4-w1",
+      "Family": "curved",
+      "Level": 4,
+      "Weight": "3F800000",
+      "File": "curved-ordinary-seams-l4-w1.json",
+      "SourceVertices": 56,
+      "RefinedVertices": 332,
+      "Commands": 1
+    },
+    {
+      "Id": "curved-challenging-welded-l2-w0",
+      "Family": "curved",
+      "Level": 2,
+      "Weight": "00000000",
+      "File": "curved-challenging-welded-l2-w0.json",
+      "SourceVertices": 49,
+      "RefinedVertices": 105,
+      "Commands": 1
+    },
+    {
+      "Id": "curved-challenging-welded-l2-w05",
+      "Family": "curved",
+      "Level": 2,
+      "Weight": "3F000000",
+      "File": "curved-challenging-welded-l2-w05.json",
+      "SourceVertices": 49,
+      "RefinedVertices": 105,
+      "Commands": 1
+    },
+    {
+      "Id": "curved-challenging-welded-l2-w1",
+      "Family": "curved",
+      "Level": 2,
+      "Weight": "3F800000",
+      "File": "curved-challenging-welded-l2-w1.json",
+      "SourceVertices": 49,
+      "RefinedVertices": 105,
+      "Commands": 1
+    },
+    {
+      "Id": "curved-challenging-welded-l3-w0",
+      "Family": "curved",
+      "Level": 3,
+      "Weight": "00000000",
+      "File": "curved-challenging-welded-l3-w0.json",
+      "SourceVertices": 49,
+      "RefinedVertices": 193,
+      "Commands": 1
+    },
+    {
+      "Id": "curved-challenging-welded-l3-w05",
+      "Family": "curved",
+      "Level": 3,
+      "Weight": "3F000000",
+      "File": "curved-challenging-welded-l3-w05.json",
+      "SourceVertices": 49,
+      "RefinedVertices": 193,
+      "Commands": 1
+    },
+    {
+      "Id": "curved-challenging-welded-l3-w1",
+      "Family": "curved",
+      "Level": 3,
+      "Weight": "3F800000",
+      "File": "curved-challenging-welded-l3-w1.json",
+      "SourceVertices": 49,
+      "RefinedVertices": 193,
+      "Commands": 1
+    },
+    {
+      "Id": "curved-challenging-welded-l4-w0",
+      "Family": "curved",
+      "Level": 4,
+      "Weight": "00000000",
+      "File": "curved-challenging-welded-l4-w0.json",
+      "SourceVertices": 49,
+      "RefinedVertices": 313,
+      "Commands": 1
+    },
+    {
+      "Id": "curved-challenging-welded-l4-w05",
+      "Family": "curved",
+      "Level": 4,
+      "Weight": "3F000000",
+      "File": "curved-challenging-welded-l4-w05.json",
+      "SourceVertices": 49,
+      "RefinedVertices": 313,
+      "Commands": 1
+    },
+    {
+      "Id": "curved-challenging-welded-l4-w1",
+      "Family": "curved",
+      "Level": 4,
+      "Weight": "3F800000",
+      "File": "curved-challenging-welded-l4-w1.json",
+      "SourceVertices": 49,
+      "RefinedVertices": 313,
+      "Commands": 1
+    },
+    {
+      "Id": "curved-challenging-seams-l2-w0",
+      "Family": "curved",
+      "Level": 2,
+      "Weight": "00000000",
+      "File": "curved-challenging-seams-l2-w0.json",
+      "SourceVertices": 56,
+      "RefinedVertices": 116,
+      "Commands": 1
+    },
+    {
+      "Id": "curved-challenging-seams-l2-w05",
+      "Family": "curved",
+      "Level": 2,
+      "Weight": "3F000000",
+      "File": "curved-challenging-seams-l2-w05.json",
+      "SourceVertices": 56,
+      "RefinedVertices": 116,
+      "Commands": 1
+    },
+    {
+      "Id": "curved-challenging-seams-l2-w1",
+      "Family": "curved",
+      "Level": 2,
+      "Weight": "3F800000",
+      "File": "curved-challenging-seams-l2-w1.json",
+      "SourceVertices": 56,
+      "RefinedVertices": 116,
+      "Commands": 1
+    },
+    {
+      "Id": "curved-challenging-seams-l3-w0",
+      "Family": "curved",
+      "Level": 3,
+      "Weight": "00000000",
+      "File": "curved-challenging-seams-l3-w0.json",
+      "SourceVertices": 56,
+      "RefinedVertices": 208,
+      "Commands": 1
+    },
+    {
+      "Id": "curved-challenging-seams-l3-w05",
+      "Family": "curved",
+      "Level": 3,
+      "Weight": "3F000000",
+      "File": "curved-challenging-seams-l3-w05.json",
+      "SourceVertices": 56,
+      "RefinedVertices": 208,
+      "Commands": 1
+    },
+    {
+      "Id": "curved-challenging-seams-l3-w1",
+      "Family": "curved",
+      "Level": 3,
+      "Weight": "3F800000",
+      "File": "curved-challenging-seams-l3-w1.json",
+      "SourceVertices": 56,
+      "RefinedVertices": 208,
+      "Commands": 1
+    },
+    {
+      "Id": "curved-challenging-seams-l4-w0",
+      "Family": "curved",
+      "Level": 4,
+      "Weight": "00000000",
+      "File": "curved-challenging-seams-l4-w0.json",
+      "SourceVertices": 56,
+      "RefinedVertices": 332,
+      "Commands": 1
+    },
+    {
+      "Id": "curved-challenging-seams-l4-w05",
+      "Family": "curved",
+      "Level": 4,
+      "Weight": "3F000000",
+      "File": "curved-challenging-seams-l4-w05.json",
+      "SourceVertices": 56,
+      "RefinedVertices": 332,
+      "Commands": 1
+    },
+    {
+      "Id": "curved-challenging-seams-l4-w1",
+      "Family": "curved",
+      "Level": 4,
+      "Weight": "3F800000",
+      "File": "curved-challenging-seams-l4-w1.json",
+      "SourceVertices": 56,
+      "RefinedVertices": 332,
+      "Commands": 1
+    }
+  ]
+}
